@@ -1,10 +1,9 @@
-# Affine Multi-Scale Tick-Consistent Market Generator (Brainstorm Summary)
+# Janiform: Affine Hawkes–NIG with Coupled News Gaps
+## Multi-scale tick generator with tractable coarse-time pricing/simulation
 
 > **Purpose:** A tractable, calibratable model that generates **realistic financial price paths** (and optionally tapes) while matching stylized facts across time scales, and enabling **risk simulation** and **options pricing** without simulating billions of ticks.
 >
 > This document reconstructs the full brainstorming session: **all decisions**, **equations**, and **reasoning**. It should be sufficient for a quant dev to implement and for a researcher to draft a white paper.
->
-> Proposed model name: "Janiform: Affine Hawkes–NIG model with coupled news gaps"
 
 ---
 
@@ -37,7 +36,7 @@
 
 ### Tractability requirements (hard constraints)
 - Must be calibratable in reasonable time.
-- Must support **direct simulation and pricing at coarse time steps** (e.g., hourly) without tick simulation.
+- Must support **direct simulation and pricing at coarse time steps** (e.g., coarse-interval (e.g., hourly)) without tick simulation.
 - Must avoid unrealistic assumptions like "ticks lie on a fixed millisecond grid."
 
 ---
@@ -48,14 +47,17 @@
 - **Business time:** a stochastic "activity clock" driven by trade intensity.
 - **Projective / semigroup / scale consistency:** coarse-time transition laws are consistent with refined-time transitions (Chapman–Kolmogorov consistency). Practically: aggregating simulated fine-scale returns equals simulating directly at a coarser scale.
 - **Market open/closed indicator:** \(\mathbf{1}_{\text{open}}(t)\), \(\mathbf{1}_{\text{closed}}(t)=1-\mathbf{1}_{\text{open}}(t)\).  
-  **Convention:** "closed" includes overnight, weekend, and exchange holidays. If a simulation step straddles an open/close boundary, either (i) split the step at the boundary or (ii) align the coarse grid to session boundaries (recommended for 1h stepping).
 
 ---
 
 ## 2. High-level architecture
 
-We commit to projective/semigroup consistency:
-> The model must admit an explicit coarse-time transition / transform so that **hourly simulation and option pricing** are feasible without tick simulation.
+### Scope note (explicit)
+- **Tick-event generation is in scope and primary.** The canonical fine-scale model is the bivariate buy/sell trade point process with stochastic intensity and exogenous shocks.
+- **Coarse-time pricing/simulation is derived for tractability.** For any chosen interval length \(\Delta\), we use transforms/sufficient-statistics to avoid generating all ticks when the use case is pricing or large-scale risk simulation.
+
+We commit to (projective/semigroup consistency):  
+> The model must admit an explicit coarse-time transition / transform so that **coarse-interval (e.g., hourly) simulation and option pricing** are feasible without tick simulation.
 
 ### 2.1 Price model at coarse scale
 Total log-return process \(X_t\) is decomposed as:
@@ -68,7 +70,7 @@ Where:
 
 - \(L^+\) and \(L^-\) are **NIG Lévy processes** (heavy tails + skew), run in **business time**.
 - \(A^\pm_t = \int_0^t \lambda^\pm_u\,du\) are **integrated intensities** of buy/sell trade processes.
-- \(G_t\) is a **compound Poisson** jump process that only produces returns when the market is closed (overnight/weekend/holiday), with **Kou / double-exponential** jumps.  
+- \(G_t\) is a **compound Poisson** jump process that only produces returns when the market is closed (overnight/weekend/holiday), with **Kou / double-exponential** jumps.
   **Clarification:** In the final specification below, \(G_t\) is driven by the *same* Poisson news arrivals as the exogenous activity shocks; it is therefore compound Poisson, but not an independent jump process.
 
 **Reasoning:**  
@@ -167,7 +169,7 @@ Pins down predictable calendar structure and prevents confounding with latent st
 **Implementation note (identifiability):** Normalize \(s(t)\) so it does not absorb the overall event rate (e.g., enforce \(\mathbb E[s(t)]=1\) over the estimation window, or equivalently center the fitted log-seasonality). This avoids confounding with \(\bar\lambda\).
 
 ### 4.3 Piecewise constant approximation (final)
-For pricing/sufficient-statistics per hour:
+For pricing/sufficient-statistics per interval:
 
 \[
 s(t)\approx s_h \quad \text{for } t\in[h,h+1\text{h}).
@@ -188,16 +190,10 @@ We need:
 ### 5.1 One shared "news process" with dependent marks
 News arrivals: a Poisson process \(N_t^{\text{news}}\) with deterministic intensity \(\nu_{\text{news}}(t)\).
 
-**Final decision:** \(\nu_{\text{news}}(t)\) must be active during *both* open and closed windows to allow open-market exogenous shocks (activity bursts), while **gap returns** are still applied only when closed.
-
-A convenient two-regime deterministic specification is:
+**Final decision:** \(\nu_{\text{news}}(t)\) includes day-of-week / day-of-year / holiday terms and is active in closed windows:
 
 \[
-\nu_{\text{news}}(t)
-=
-\mathbf{1}_{\text{open}}(t)\,\exp\Big(g_{\text{open,dow}}(\mathrm{dow}(t)) + g_{\text{open,doy}}(\mathrm{doy}(t)) + g_{\text{open,holiday}}(t)\Big)
-\;+\;
-\mathbf{1}_{\text{closed}}(t)\,\exp\Big(g_{\text{closed,dow}}(\mathrm{dow}(t)) + g_{\text{closed,doy}}(\mathrm{doy}(t)) + g_{\text{closed,holiday}}(t)\Big).
+\nu_{\text{news}}(t) = \mathbf{1}_{\text{closed}}(t)\,\exp\Big(g_{\text{dow}}(\mathrm{dow}(t)) + g_{\text{doy}}(\mathrm{doy}(t)) + g_{\text{holiday}}(t)\Big).
 \]
 
 ### 5.2 Dependent coupling between "gap jump" and "activity burst" (closed-form)
@@ -234,14 +230,13 @@ Define:
 \[
 J_t = \sum_{\tau_m \le t} U_m.
 \]
-  **Clarification:** \(J_t\) is a cumulative marked-sum process (severity accumulator), not a separate price-jump process.
 
 - Gap return component (closed only):
 \[
 G_t = \sum_{\tau_m \le t} \mathbf{1}_{\text{closed}}(\tau_m)\, Z_m.
 \]
 
-**Decision:** When news hits during open, Hawkes-state dynamics dominate; gap returns apply only when closed.  
+**Decision:** When news hits during open, Hawkes-state dynamics dominate; gap returns apply only when closed.
 **Clarification:** Open-news affects prices *indirectly* via higher activity (\(A^\pm\)) and therefore larger/heavier trading-time increments; closed-news additionally contributes an explicit gap return \(G\).
 
 ---
@@ -346,10 +341,10 @@ Martingale condition under \(Q\):
 ## 9. Hybrid implementation strategy (final)
 
 ### 9.1 Engine A: Pricing (CF engine)
-Computes hourly CF of returns conditional on hour boundary state \(\mathbf Y_h\), then prices via Fourier methods.
+Computes coarse-interval (e.g., hourly) CF of returns conditional on hour boundary state \(\mathbf Y_h\), then prices via Fourier methods.
 
 ### 9.2 Engine B: Risk simulation (sufficient-statistics sampler)
-Samples sufficient statistics \((A^+,A^-,N^+,N^-)\) per hour and updates \(\mathbf Y\) at hour boundaries; then samples NIG increments conditional on \(A^\pm\) and adds gap component if closed.
+Samples sufficient statistics \((A^+,A^-,N^+,N^-)\) per interval and updates \(\mathbf Y\) at hour boundaries; then samples NIG increments conditional on \(A^\pm\) and adds gap component if closed.
 
 **Final decision:** Use **sufficient statistics** (not cluster simulation).
 
@@ -357,7 +352,7 @@ Samples sufficient statistics \((A^+,A^-,N^+,N^-)\) per hour and updates \(\math
 
 ## 10. Sufficient-statistics oracle (explicit ODE system)
 
-Define transform over one hour \([0,\Delta]\) with piecewise constant \(s(t)=s_h\), \(\nu_{\text{news}}(t)=\nu_h\):
+Define transform over one interval \([0,\Delta]\) with piecewise constant \(s(t)=s_h\), \(\nu_{\text{news}}(t)=\nu_h\):
 
 \[
 F(u_+,u_-,z_+,z_- \mid \mathbf Y_0)
