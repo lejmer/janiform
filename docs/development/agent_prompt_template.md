@@ -16,10 +16,6 @@ In this team, we mainly plan in Linear, so we organize all work into Projects an
 
 # IMPORTANT
 
-Do not catch all exceptions unless absolutely necessary. If you do, ALWAYS log them, including a debug-level stack trace. Do NOT write overly defensive code. Always assume the user has enough control over the code base. No `getattr` just because "maybe the class isn't there in the users copy of the code". Always assume the user has the latest version of the code and that all the attributes the code expects is always there. Unnecessary use of `getattr` creates hard-to-find bugs and is bad practice.
-
-Do not use global helpers for classes! Prefer static methods or class methods. If multiple classes need the same helper, do not copy the helper. Make an abstract base class they inherit instead. Always remember to use `@override` for overridden implementations (even for implementations of abstract methods and abstract properties).
-
 If you find your working tree to be dirty, you have our explicit permission to run `git reset --hard HEAD` to clean it before you begin working. All prior work has already been merged, so there will be no data loss.
 
 ---
