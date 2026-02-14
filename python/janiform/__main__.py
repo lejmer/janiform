@@ -1,3 +1,3 @@
-from janus.cli import main
+from .cli import main
 
 main()

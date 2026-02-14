@@ -1,0 +1,15 @@
+[package]
+name = "janiform-pybind"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "PyO3 bindings for Janiform."
+
+[lib]
+name = "_native"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+janiform-core = { path = "../core" }
+pyo3 = { workspace = true }

@@ -1,7 +1,30 @@
+[build-system]
+requires = ["maturin>=1.8,<2.0"]
+build-backend = "maturin"
+
 [project]
 name = "janiform"
-version = "0.1.0"
-description = "An affine Hawkes–NIG model with coupled news gaps."
+description = "Python package and CLI for the Janiform SDE."
 readme = "README.md"
 requires-python = ">=3.12"
+dynamic = ["version"]
 dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "maturin>=1.8,<2.0",
+    "pytest>=8.0",
+]
+
+[project.scripts]
+janiform = "janiform.cli:main"
+
+[tool.maturin]
+bindings = "pyo3"
+manifest-path = "crates/pybind/Cargo.toml"
+module-name = "janiform._native"
+python-source = "python"
+
+[tool.pytest.ini_options]
+pythonpath = ["python"]
+testpaths = ["tests/python"]

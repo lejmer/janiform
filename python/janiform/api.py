@@ -1,2 +1,9 @@
-# TODO: Import from _native without exposing _native directly!
-# TODO: This file should be thoroughly documented with docstrings, because this is the user-facing API!
+from importlib import import_module
+from types import ModuleType
+
+
+def native_module() -> ModuleType:
+    return import_module("janiform._native")
+
+
+__all__ = ["native_module"]
