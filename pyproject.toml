@@ -1,5 +1,5 @@
 [project]
-name = "janus"
+name = "janiform"
 version = "0.1.0"
 description = "An affine Hawkes–NIG model with coupled news gaps."
 readme = "README.md"
