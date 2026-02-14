@@ -42,3 +42,11 @@ When writing an Issue:
      - Acceptance Criteria.
      - Optional: Unit tests (and/or when necessary, integration tests).
      - Optional: Notes/Constraints.
+
+## General writing rules
+
+- Use `"` for citations and `'` for apostrophes. Avoid using `“`/`”` and `’`.
+- Don't overuse `;`.
+- Don't overuse `+` to delimit list items in text
+- Don't overuse `+` in place of `and`.
+- Don't write em-dashes (`—`).
