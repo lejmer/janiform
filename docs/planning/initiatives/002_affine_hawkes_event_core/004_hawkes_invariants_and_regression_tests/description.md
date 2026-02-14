@@ -1,0 +1,19 @@
+## Project 004: Hawkes Invariants And Regression Tests
+
+### Context and requirements
+- Build an invariant-driven test suite for Hawkes dynamics and event simulation outputs.
+- Define regression scenarios that lock down known-good behavior for state transitions and event statistics.
+- Ensure failures quickly reveal whether issues arise from constraints, dynamics, or random sampling.
+
+### Definition of Done
+- Invariant tests validate non-negativity, deterministic boundary updates, and stable evolution under valid parameters.
+- Regression scenarios exist for asymmetry behavior and clustered-event signatures.
+- Test diagnostics include enough metadata to support rapid root-cause analysis.
+
+### Agent implementation notes
+- Keep fixtures reusable and minimal to avoid fragile tests.
+- Separate deterministic equation tests from statistical-property tests.
+
+### Initiative alignment
+- Reinforces Initiative 002 success signals around deterministic state transitions and robust behavioral guarantees.
+- Reduces regression risk as pricing and calibration layers are added.
