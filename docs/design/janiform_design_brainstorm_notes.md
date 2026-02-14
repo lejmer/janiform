@@ -4,7 +4,7 @@
 >
 > This document reconstructs the full brainstorming session: **all decisions**, **equations**, and **reasoning**. It should be sufficient for a quant dev to implement and for a researcher to draft a white paper.
 >
-> Proposed model name: "Janus: Affine Hawkes–NIG with Coupled News Gaps"
+> Proposed model name: "Janiform: Affine Hawkes–NIG model with coupled news gaps"
 
 ---
 
