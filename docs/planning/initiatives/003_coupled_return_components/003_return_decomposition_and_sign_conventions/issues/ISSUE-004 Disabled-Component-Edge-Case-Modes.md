@@ -1,0 +1,19 @@
+## ISSUE-004: Disabled Component Edge Case Modes
+
+### Description
+Implement explicit edge-case modes where one decomposition component is disabled to isolate correctness and simplify debugging.
+
+### Acceptance Criteria
+- System supports buy-only, sell-only, and gap-only decomposition test modes.
+- Disabled components contribute exactly zero in both simulation and CF assembly paths.
+- Edge-mode behavior is documented and stable across engines.
+- Edge modes are available in test and debug workflows.
+
+### Unit tests
+- Tests for buy-only mode with zero sell and gap contributions.
+- Tests for sell-only mode with correct negative sign behavior.
+- Tests for gap-only mode isolating `G` contribution.
+
+### Notes/Constraints
+- Keep edge modes behind explicit configuration to avoid accidental production use.
+- Ensure mode behavior is deterministic under fixed seeds and inputs.
