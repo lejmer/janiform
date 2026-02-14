@@ -2,11 +2,13 @@
 
 ### Context and requirements
 - Implement the ODE solver for `C(t)` and `D(t)` that defines the sufficient-statistics transform over an interval.
-- Support hourly piecewise-constant factors and configurable numeric integrators.
+- Support configurable interval length `Delta` with hourly piecewise-constant factors as the v0.1 pricing default.
+- Keep solver inputs compatible with other interval grids for non-pricing generation workflows.
 - Enforce domain guards for transform validity and fail safely on blow-up conditions.
 
 ### Definition of Done
 - Solver API computes transform outputs for pricing and risk sampling use cases.
+- Solver API accepts interval length `Delta` explicitly rather than hardcoding hourly steps.
 - Domain constraints are validated during integration with clear error reporting.
 - Regression tests verify solver outputs on deterministic parameter fixtures.
 

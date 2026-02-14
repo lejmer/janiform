@@ -4,6 +4,7 @@
 - Build a coarse-interval option pricer using transform outputs and Fourier inversion methods.
 - Apply Esscher-tilted Levy dynamics under the risk-neutral pricing setup.
 - Support baseline vanilla option pricing workflows with clear model input contracts.
+- Use hourly boundaries as the v0.1 intraday default while keeping interfaces aligned with interval-parametric solver outputs.
 
 ### Definition of Done
 - Pricer computes prices for vanilla options from hourly boundary state and model parameters.
