@@ -79,23 +79,24 @@ Read and follow `docs/development/guides/python_style_guide.md`. Agents must adh
 ### 3. Rust
 #### Tooling & style
 - Edition/MSRV: Rust edition 2024; do not use features requiring newer Rust than the repo MSRV.
-- No “style wars”: follow standard Rust conventions (snake_case for fn/vars/modules, CamelCase for types/traits, SCREAMING_SNAKE_CASE for consts/statics).
+- No "style wars": follow standard Rust conventions (snake_case for fn/vars/modules, CamelCase for types/traits, SCREAMING_SNAKE_CASE for consts/statics).
 
 #### API & module hygiene
 - Keep the crate graph clean:
   - `core` crate must be pure Rust (no PyO3, no Python-specific types).
   - `pybind` crate owns all PyO3 boundary code and conversions.
 - Visibility: default to `pub(crate)`; only make items `pub` when part of a deliberate public API.
-- Prefer small, focused modules; avoid “god modules” and long files.
+- Prefer small, focused modules; avoid "god modules" and long files.
 - Document public APIs with `///` doc comments; include minimal examples where helpful.
 
 #### Types, ownership, and allocations
 - Prefer borrowing over owning:
-  - Accept `&str` instead of `String` when you don’t need ownership.
-  - Accept slices `&[T]` instead of `Vec<T>` when you don’t need ownership.
+  - Accept `&str` instead of `String` when you don't need ownership.
+  - Accept slices `&[T]` instead of `Vec<T>` when you don't need ownership.
 - Avoid unnecessary clones:
-  - Do not `.clone()` “to make the borrow checker happy”; restructure code first.
-  - If cloning is needed, comment why (e.g., “intentional copy to decouple lifetime / avoid holding lock”).
+  - Do not `.clone()` "to make the borrow checker happy"; restructure code first.
+  - If cloning is needed, comment why (e.g., "intentional copy to decouple lifetime / avoid holding lock").
+- Any `.clone()` added in core must be either (a) on a small Copy-ish type, or (b) accompanied by a comment explaining why cloning is the best tradeoff.
 - Prefer iterators over indexing; avoid panics from out-of-bounds indexing.
 - Use `Option<T>`/`Result<T, E>` for absence/failure, not sentinel values.
 
@@ -151,7 +152,7 @@ Read and follow `docs/development/guides/python_style_guide.md`. Agents must adh
 - Benchmarks (criterion) for performance-critical kernels; optimize based on measurement, not vibes.
 
 #### Dependencies
-- Add dependencies deliberately; avoid “just in case” crates.
+- Add dependencies deliberately; avoid "just in case" crates.
 - Prefer widely-used crates with good maintenance signals.
 - Keep feature flags minimal; document why each non-default feature is enabled.
 
