@@ -12,7 +12,11 @@ from .calendar import (
     resolve_market_state,
 )
 from .seasonality import (
+    INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
     PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION,
+    IntradaySeasonalityEstimate,
+    IntradaySeasonalityEstimatorSettings,
+    IntradaySmoothingKernel,
     SessionFilter,
     SeasonalityInputValidationError,
     SeasonalityPreprocessingError,
@@ -20,6 +24,7 @@ from .seasonality import (
     TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION,
     TimestampEventInputSchema,
     TimestampEventPreprocessingResult,
+    estimate_intraday_seasonality,
     preprocess_timestamp_events,
 )
 
@@ -39,6 +44,10 @@ __all__ = [
     "CalendarRegistry",
     "CalendarRegistryLoadError",
     "CalendarResolveError",
+    "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
+    "IntradaySeasonalityEstimate",
+    "IntradaySeasonalityEstimatorSettings",
+    "IntradaySmoothingKernel",
     "MarketState",
     "PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION",
     "SessionFilter",
@@ -48,6 +57,7 @@ __all__ = [
     "TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION",
     "TimestampEventInputSchema",
     "TimestampEventPreprocessingResult",
+    "estimate_intraday_seasonality",
     "preprocess_timestamp_events",
     "resolve_market_state",
 ]

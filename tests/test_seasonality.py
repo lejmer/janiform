@@ -5,8 +5,12 @@ import pytest
 
 from janiform.calendar import CalendarRegistry
 from janiform.seasonality import (
+    INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
+    IntradaySeasonalityEstimatorSettings,
+    IntradaySmoothingKernel,
     SessionFilter,
     SeasonalityInputValidationError,
+    estimate_intraday_seasonality,
     preprocess_timestamp_events,
 )
 
@@ -190,6 +194,94 @@ def test_preprocess_timestamp_events_raises_for_naive_datetime_values(
         )
 
 
+def test_estimate_intraday_seasonality_recovers_synthetic_bimodal_pattern(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    event_records: list[dict[str, object]] = _build_bimodal_intraday_event_records()
+    preprocessed = preprocess_timestamp_events(
+        event_records,
+        exchange_code="XNYS",
+        calendar_registry=calendar_registry,
+        session_filter=SessionFilter.OPEN_ONLY,
+    )
+    estimate = estimate_intraday_seasonality(
+        preprocessed,
+        settings=IntradaySeasonalityEstimatorSettings(
+            minutes_per_bin=30,
+            smoothing_kernel=IntradaySmoothingKernel.GAUSSIAN,
+            smoothing_bandwidth_bins=1.2,
+            minimum_bin_events=1,
+            pseudocount=1e-6,
+        ),
+    )
+    open_bin_index: int = 570 // 30
+    midday_bin_index: int = 720 // 30
+    close_bin_index: int = 930 // 30
+
+    assert estimate.schema_version == INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION
+    assert estimate.intraday_factor_by_bin[open_bin_index] > estimate.intraday_factor_by_bin[midday_bin_index]
+    assert estimate.intraday_factor_by_bin[close_bin_index] > estimate.intraday_factor_by_bin[midday_bin_index]
+    assert sum(estimate.intraday_factor_by_bin) / len(estimate.intraday_factor_by_bin) == pytest.approx(1.0)
+
+
+def test_estimate_intraday_seasonality_handles_sparse_bins_and_day_boundary_wrap(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    event_records: list[dict[str, object]] = [
+        {"timestamp": "2026-02-02T00:00:00-05:00"},
+        {"timestamp": "2026-02-02T00:00:30-05:00"},
+        {"timestamp": "2026-02-02T23:59:00-05:00"},
+        {"timestamp": "2026-02-02T23:59:30-05:00"},
+        {"timestamp": "2026-02-03T00:00:00-05:00"},
+        {"timestamp": "2026-02-03T23:59:00-05:00"},
+    ]
+    preprocessed = preprocess_timestamp_events(
+        event_records,
+        exchange_code="XNYS",
+        calendar_registry=calendar_registry,
+        session_filter=SessionFilter.ALL,
+    )
+    estimate = estimate_intraday_seasonality(
+        preprocessed,
+        settings=IntradaySeasonalityEstimatorSettings(
+            minutes_per_bin=1,
+            smoothing_kernel=IntradaySmoothingKernel.GAUSSIAN,
+            smoothing_bandwidth_bins=2.0,
+            minimum_bin_events=2,
+            pseudocount=1e-6,
+        ),
+    )
+
+    assert estimate.bin_count == 1_440
+    assert estimate.sparse_bin_count > 1_000
+    assert all(intraday_factor > 0.0 for intraday_factor in estimate.intraday_factor_by_bin)
+    assert abs(estimate.intraday_factor_by_bin[0] - estimate.intraday_factor_by_bin[1_439]) < 0.4
+    assert estimate.intraday_factor_by_bin[0] > estimate.intraday_factor_by_bin[720]
+
+
+def test_estimate_intraday_seasonality_is_reproducible_for_fixed_input(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    event_records: list[dict[str, object]] = _build_bimodal_intraday_event_records()
+    preprocessed = preprocess_timestamp_events(
+        event_records,
+        exchange_code="XNYS",
+        calendar_registry=calendar_registry,
+        session_filter=SessionFilter.OPEN_ONLY,
+    )
+    settings = IntradaySeasonalityEstimatorSettings(
+        minutes_per_bin=15,
+        smoothing_kernel=IntradaySmoothingKernel.UNIFORM,
+        smoothing_bandwidth_bins=2.0,
+        minimum_bin_events=1,
+        pseudocount=1e-6,
+    )
+    first_estimate = estimate_intraday_seasonality(preprocessed, settings=settings)
+    second_estimate = estimate_intraday_seasonality(preprocessed, settings=settings)
+
+    assert _intraday_estimate_snapshot(first_estimate) == _intraday_estimate_snapshot(second_estimate)
+
+
 def _result_snapshot(result: object) -> dict[str, object]:
     return {
         "schema_version": cast(str, result.schema_version),
@@ -214,6 +306,39 @@ def _result_snapshot(result: object) -> dict[str, object]:
         "missing_hour_bucket_count": cast(int, result.missing_hour_bucket_count),
         "sparse_hour_bucket_count": cast(int, result.sparse_hour_bucket_count),
     }
+
+
+def _intraday_estimate_snapshot(estimate: object) -> dict[str, object]:
+    return {
+        "schema_version": cast(str, estimate.schema_version),
+        "minutes_per_bin": cast(int, estimate.minutes_per_bin),
+        "smoothing_kernel": cast(str, estimate.smoothing_kernel),
+        "smoothing_bandwidth_bins": cast(float, estimate.smoothing_bandwidth_bins),
+        "minimum_bin_events": cast(int, estimate.minimum_bin_events),
+        "pseudocount": cast(float, estimate.pseudocount),
+        "bin_start_minute_of_day": list(cast(list[int], estimate.bin_start_minute_of_day)),
+        "event_count_by_bin": list(cast(list[int], estimate.event_count_by_bin)),
+        "sparse_bin_flags": bytes(cast(bytes, estimate.sparse_bin_flags)),
+        "smoothed_density_by_bin": list(cast(list[float], estimate.smoothed_density_by_bin)),
+        "intraday_log_component_by_bin": list(cast(list[float], estimate.intraday_log_component_by_bin)),
+        "intraday_factor_by_bin": list(cast(list[float], estimate.intraday_factor_by_bin)),
+        "input_event_count": cast(int, estimate.input_event_count),
+        "bin_count": cast(int, estimate.bin_count),
+        "zero_event_bin_count": cast(int, estimate.zero_event_bin_count),
+        "sparse_bin_count": cast(int, estimate.sparse_bin_count),
+    }
+
+
+def _build_bimodal_intraday_event_records() -> list[dict[str, object]]:
+    event_records: list[dict[str, object]] = []
+    for day in [2, 3, 4, 5, 6]:
+        for second in range(20):
+            event_records.append({"timestamp": f"2026-02-{day:02d}T09:30:{second:02d}-05:00"})
+        for second in range(4):
+            event_records.append({"timestamp": f"2026-02-{day:02d}T12:00:{second:02d}-05:00"})
+        for second in range(18):
+            event_records.append({"timestamp": f"2026-02-{day:02d}T15:30:{second:02d}-05:00"})
+    return event_records
 
 
 def _utc_nanos(

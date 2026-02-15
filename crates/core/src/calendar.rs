@@ -92,6 +92,11 @@ const CALENDAR_REGISTRY_SCHEMA_VERSION: &str = "calendar.registry.v1";
 pub const TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION: &str = "seasonality.timestamp_event.v1";
 pub const PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION: &str =
     "seasonality.timestamp_event.preprocessed.v1";
+pub use crate::seasonality::{
+    INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION, IntradaySeasonalityDiagnostics,
+    IntradaySeasonalityEstimateOutput, IntradaySeasonalityEstimationError,
+    IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel, estimate_intraday_seasonality,
+};
 
 /// Weekday used by regular exchange sessions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]

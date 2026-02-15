@@ -13,6 +13,7 @@ from .calendar import (
 
 TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION: str = "seasonality.timestamp_event.v1"
 PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION: str = "seasonality.timestamp_event.preprocessed.v1"
+INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION: str = "seasonality.intraday.estimate.v1"
 
 
 class SeasonalityPreprocessingError(Exception):
@@ -29,6 +30,11 @@ class SessionFilter(StrEnum):
     CLOSED_ONLY = 'closed_only'
 
 
+class IntradaySmoothingKernel(StrEnum):
+    GAUSSIAN = 'gaussian'
+    UNIFORM = 'uniform'
+
+
 @dataclass(frozen=True, slots=True)
 class TimestampEventInputSchema:
     schema_version: str
@@ -37,6 +43,15 @@ class TimestampEventInputSchema:
     accepted_timestamp_types: tuple[str, ...]
     timezone_requirement: str
     ordering_policy: str
+
+
+@dataclass(frozen=True, slots=True)
+class IntradaySeasonalityEstimatorSettings:
+    minutes_per_bin: int = 1
+    smoothing_kernel: IntradaySmoothingKernel = IntradaySmoothingKernel.GAUSSIAN
+    smoothing_bandwidth_bins: float = 3.0
+    minimum_bin_events: int = 1
+    pseudocount: float = 1e-6
 
 
 TIMESTAMP_EVENT_INPUT_SCHEMA: TimestampEventInputSchema = TimestampEventInputSchema(
@@ -140,6 +155,77 @@ class TimestampEventPreprocessingResult:
         return cast(int, self._native_result.sparse_hour_bucket_count)
 
 
+class IntradaySeasonalityEstimate:
+    """Thin Python wrapper over the Rust intraday seasonality estimator output object."""
+
+    def __init__(self, native_result: object) -> None:
+        self._native_result: object = native_result
+
+    @property
+    def schema_version(self) -> str:
+        return cast(str, self._native_result.schema_version)
+
+    @property
+    def minutes_per_bin(self) -> int:
+        return cast(int, self._native_result.minutes_per_bin)
+
+    @property
+    def smoothing_kernel(self) -> str:
+        return cast(str, self._native_result.smoothing_kernel)
+
+    @property
+    def smoothing_bandwidth_bins(self) -> float:
+        return cast(float, self._native_result.smoothing_bandwidth_bins)
+
+    @property
+    def minimum_bin_events(self) -> int:
+        return cast(int, self._native_result.minimum_bin_events)
+
+    @property
+    def pseudocount(self) -> float:
+        return cast(float, self._native_result.pseudocount)
+
+    @property
+    def bin_start_minute_of_day(self) -> list[int]:
+        return cast(list[int], self._native_result.bin_start_minute_of_day)
+
+    @property
+    def event_count_by_bin(self) -> list[int]:
+        return cast(list[int], self._native_result.event_count_by_bin)
+
+    @property
+    def sparse_bin_flags(self) -> bytes:
+        return cast(bytes, self._native_result.sparse_bin_flags)
+
+    @property
+    def smoothed_density_by_bin(self) -> list[float]:
+        return cast(list[float], self._native_result.smoothed_density_by_bin)
+
+    @property
+    def intraday_log_component_by_bin(self) -> list[float]:
+        return cast(list[float], self._native_result.intraday_log_component_by_bin)
+
+    @property
+    def intraday_factor_by_bin(self) -> list[float]:
+        return cast(list[float], self._native_result.intraday_factor_by_bin)
+
+    @property
+    def input_event_count(self) -> int:
+        return cast(int, self._native_result.input_event_count)
+
+    @property
+    def bin_count(self) -> int:
+        return cast(int, self._native_result.bin_count)
+
+    @property
+    def zero_event_bin_count(self) -> int:
+        return cast(int, self._native_result.zero_event_bin_count)
+
+    @property
+    def sparse_bin_count(self) -> int:
+        return cast(int, self._native_result.sparse_bin_count)
+
+
 def preprocess_timestamp_events(
     event_records: Sequence[Mapping[str, object]],
     *,
@@ -169,7 +255,36 @@ def preprocess_timestamp_events(
     return TimestampEventPreprocessingResult(native_result)
 
 
+def estimate_intraday_seasonality(
+    preprocessed_events: TimestampEventPreprocessingResult,
+    *,
+    settings: Optional[IntradaySeasonalityEstimatorSettings] = None,
+) -> IntradaySeasonalityEstimate:
+    native: ModuleType = native_module()
+    estimator_settings: IntradaySeasonalityEstimatorSettings = (
+        IntradaySeasonalityEstimatorSettings() if settings is None else settings
+    )
+
+    try:
+        native_result: object = native.estimate_intraday_seasonality(
+            preprocessed_events.exchange_local_minute_of_day,
+            minutes_per_bin=estimator_settings.minutes_per_bin,
+            smoothing_kernel=estimator_settings.smoothing_kernel.value,
+            smoothing_bandwidth_bins=estimator_settings.smoothing_bandwidth_bins,
+            minimum_bin_events=estimator_settings.minimum_bin_events,
+            pseudocount=estimator_settings.pseudocount,
+        )
+    except native.SeasonalityInputValidationError as e:
+        raise SeasonalityInputValidationError(str(e)) from e
+
+    return IntradaySeasonalityEstimate(native_result)
+
+
 __all__ = [
+    "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
+    "IntradaySeasonalityEstimate",
+    "IntradaySeasonalityEstimatorSettings",
+    "IntradaySmoothingKernel",
     "PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION",
     "SessionFilter",
     "SeasonalityInputValidationError",
@@ -178,5 +293,6 @@ __all__ = [
     "TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION",
     "TimestampEventInputSchema",
     "TimestampEventPreprocessingResult",
+    "estimate_intraday_seasonality",
     "preprocess_timestamp_events",
 ]
