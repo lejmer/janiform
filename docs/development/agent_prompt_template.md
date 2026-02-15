@@ -22,12 +22,6 @@ First and foremost, read `./docs/design/janiform_design_brainstorm_notes.md` and
 
 ---
 
-# IMPORTANT
-
-If you find your working tree to be dirty, you have our explicit permission to run `git reset --hard HEAD` to clean it before you begin working. All prior work has already been merged, so there will be no data loss.
-
----
-
 Begin by reading `./AGENTS.md` and follow that exactly when writing code.
 
 Now that the expectations are set and you have the relevant context, please do your best to implement the Issue described above. If you find yourself unsure about something or if you want clarification, it is better to ask questions than to just impose your own assumptions.

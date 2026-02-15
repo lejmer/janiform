@@ -16,3 +16,4 @@ Implement the core resolver that returns market state as `open` or `closed` for 
 ### Notes/Constraints
 - Keep the state vocabulary minimal for v0.1 using only `open` and `closed`.
 - Document boundary policy in code-level docs and planning notes.
+- Boundary policy for v0.1 resolver: treat each session window as a half-open interval `[open, close)`, where exact `open` resolves to `open` and exact `close` resolves to `closed`.
