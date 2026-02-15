@@ -3,12 +3,12 @@
 ### Context and requirements
 - Implement shared exogenous news arrivals with Gamma severity and double-exponential gap marks.
 - Couple news severity into Hawkes-state loading and closed-window gap jump generation.
-- Preserve deterministic behavior for open-window news where returns are affected through activity only.
+- Preserve deterministic behavior where explicit gap increments are closed-window only, while open-window injected news scenarios affect returns through activity only.
 
 ### Definition of Done
 - News process supports configurable deterministic intensity and mark distribution parameters.
 - Severity marks feed both Hawkes accumulation `J_t` and gap mark scaling without duplicated logic.
-- Tests verify coupling behavior for open and closed windows and mark distribution properties.
+- Tests verify mark and coupling primitives plus gating rules, while end-to-end open and closed leakage regression coverage is owned by Project 004 in this Initiative.
 
 ### Agent implementation notes
 - Keep mark-generation interfaces composable to support future alternative distributions.
