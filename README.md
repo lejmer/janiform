@@ -74,6 +74,28 @@ market_state = calendar_registry.resolve_market_state(
 assert market_state == MarketState.OPEN
 ```
 
+## Seasonality Timestamp Event Input Schema
+
+Use `preprocess_timestamp_events(...)` before nonparametric seasonality estimation.
+
+- Schema version: `seasonality.timestamp_event.v1`
+- Required event field: `'timestamp'`
+- Accepted timestamp types:
+  - timezone-aware `datetime`
+  - RFC3339 or ISO-8601 string with timezone offset
+- Exchange context:
+  - `exchange_code` is required
+  - session classification is resolved through `CalendarRegistry`
+  - timestamps are normalized to UTC and exchange-local timezone
+- Determinism:
+  - output events are sorted by normalized UTC timestamp and input position
+  - repeated runs with identical input produce identical output
+- Sparse coverage diagnostics:
+  - preprocessing returns missing and sparse hourly buckets for the selected session filter
+- Output layout:
+  - Rust returns compact columnar data suitable for large datasets
+  - `market_state_codes` and `exchange_local_day_of_week` are compact `bytes` (`u8` values)
+
 ## Developer Commands
 
 ```bash

@@ -67,6 +67,22 @@ class CalendarRegistry:
             case _:
                 raise CalendarResolveError(f"unexpected market state value returned by native resolver: {state_value}")
 
+    def _preprocess_timestamp_events_native(
+        self,
+        exchange_code: str,
+        event_records: object,
+        timestamp_field_name: str,
+        session_filter: str,
+        sparse_hour_event_threshold: int,
+    ) -> object:
+        return self._native_registry.preprocess_timestamp_events(
+            exchange_code,
+            event_records,
+            timestamp_field_name,
+            session_filter,
+            sparse_hour_event_threshold,
+        )
+
 
 def resolve_market_state(registry_json: str, exchange_code: str, timestamp_utc: datetime) -> MarketState:
     calendar_registry: CalendarRegistry = CalendarRegistry(registry_json)

@@ -11,10 +11,12 @@ dynamic = ["version"]
 dependencies = []
 
 [project.optional-dependencies]
-dev = [
-    "maturin>=1.8,<2.0",
+test = [
     "pytest>=8.0",
     "pytest-cov>=7.0.0",
+]
+dev = [
+    "janiform[test]",
 ]
 
 [project.scripts]
