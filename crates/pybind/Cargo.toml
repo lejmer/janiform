@@ -11,5 +11,6 @@ path = "src/lib.rs"
 crate-type = ["cdylib"]
 
 [dependencies]
+chrono = { workspace = true }
 janiform-core = { path = "../core" }
 pyo3 = { workspace = true }

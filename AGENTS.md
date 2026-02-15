@@ -66,7 +66,6 @@ This document provides instructions and guardrails for AI coding agents (and hum
   - If you need helpers, look for fixtures in `conftest.py` before writing local module helpers as the helper you require could already exist.
   - If your fixture exists but needs to be modified, modify the fixture and make sure all other tests logically work with the updated fixture.
   - If your fixture does not exist, consider if this will be useful for other tests in the future, and if so, write it as a fixture in `conftest.py` instead of as a local helper function or class.
-  - Do not run tests, agents don't have `pytest` available in their environment
 
 **Before finishing the task**
 

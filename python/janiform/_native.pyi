@@ -1,1 +1,19 @@
 __doc__: str
+
+
+class CalendarRegistryLoadError(Exception): ...
+
+
+class CalendarMissingExchangeError(Exception): ...
+
+
+class CalendarInvalidTimezoneError(Exception): ...
+
+
+class CalendarTimestampParseError(ValueError): ...
+
+
+class CalendarRegistry:
+    def __init__(self, registry_json: str) -> None: ...
+
+    def resolve_market_state(self, exchange_code: str, timestamp_utc: str) -> str: ...
