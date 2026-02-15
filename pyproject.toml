@@ -27,4 +27,4 @@ python-source = "python"
 
 [tool.pytest.ini_options]
 pythonpath = ["python"]
-testpaths = ["tests/python"]
+testpaths = ["python/tests"]
