@@ -19,8 +19,7 @@ The Python package exposes an importable API and CLI via PyO3 bindings.
 - `crates/core/`: Rust core library
 - `crates/pybind/`: PyO3 extension module (`janiform._native`)
 - `python/janiform/`: Python package and CLI entrypoints
-- `python/tests/`: Python tests and shared fixtures
-- `tests/rust/`: Rust tests
+- `tests/`: Python tests and shared fixtures
 - `docs/`: Design and development documentation
 
 ## Quickstart
