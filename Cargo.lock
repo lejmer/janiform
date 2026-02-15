@@ -131,6 +131,7 @@ dependencies = [
 name = "janiform-pybind"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "janiform-core",
  "pyo3",
 ]
