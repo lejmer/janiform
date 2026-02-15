@@ -89,6 +89,9 @@ use chrono_tz::Tz;
 use serde::Deserialize;
 
 const CALENDAR_REGISTRY_SCHEMA_VERSION: &str = "calendar.registry.v1";
+pub const TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION: &str = "seasonality.timestamp_event.v1";
+pub const PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION: &str =
+    "seasonality.timestamp_event.preprocessed.v1";
 
 /// Weekday used by regular exchange sessions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
@@ -179,6 +182,63 @@ impl Display for MarketState {
         };
         formatter.write_str(value)
     }
+}
+
+/// Session filter applied during timestamp event preprocessing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimestampEventSessionFilter {
+    All,
+    OpenOnly,
+    ClosedOnly,
+}
+
+impl TimestampEventSessionFilter {
+    fn includes_market_state(self, market_state: MarketState) -> bool {
+        match self {
+            Self::All => true,
+            Self::OpenOnly => market_state == MarketState::Open,
+            Self::ClosedOnly => market_state == MarketState::Closed,
+        }
+    }
+}
+
+/// Canonical input record for seasonality timestamp preprocessing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TimestampEventInputRecord {
+    pub source_record_position: u64,
+    pub timestamp_utc: DateTime<Utc>,
+}
+
+/// Diagnostics emitted by timestamp preprocessing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TimestampEventPreprocessingDiagnostics {
+    pub input_record_count: usize,
+    pub validated_record_count: usize,
+    pub accepted_record_count: usize,
+    pub filtered_record_count: usize,
+    pub first_event_timestamp_utc_nanos: Option<i64>,
+    pub last_event_timestamp_utc_nanos: Option<i64>,
+    pub hour_bucket_count: usize,
+    pub missing_hour_bucket_count: usize,
+    pub sparse_hour_bucket_count: usize,
+}
+
+/// Compact, deterministic preprocessing output for seasonality workflows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TimestampEventPreprocessingOutput {
+    pub schema_version: &'static str,
+    pub input_schema_version: &'static str,
+    pub exchange_code: String,
+    pub exchange_timezone_name: String,
+    pub source_record_positions: Vec<u64>,
+    pub timestamp_utc_nanos: Vec<i64>,
+    pub exchange_local_minute_of_day: Vec<u16>,
+    pub exchange_local_day_of_week: Vec<u8>,
+    pub exchange_local_day_of_year: Vec<u16>,
+    pub market_state_codes: Vec<u8>,
+    pub missing_hour_bucket_utc_nanos: Vec<i64>,
+    pub sparse_hour_bucket_utc_nanos: Vec<i64>,
+    pub diagnostics: TimestampEventPreprocessingDiagnostics,
 }
 
 /// Artifact structure loaded from versioned calendar configuration data.
@@ -818,6 +878,133 @@ impl ExchangeCalendarRegistry {
         exchange_code: &str,
         timestamp_utc: DateTime<Utc>,
     ) -> Result<MarketState, ExchangeCalendarResolveError> {
+        let (definition, timezone) = self.required_definition_and_timezone(exchange_code)?;
+        Ok(resolve_market_state_for_definition_at_utc(
+            definition,
+            timezone,
+            timestamp_utc,
+        ))
+    }
+
+    /// Preprocess timestamp events for deterministic seasonality workflows.
+    pub fn preprocess_timestamp_events(
+        &self,
+        exchange_code: &str,
+        input_records: Vec<TimestampEventInputRecord>,
+        session_filter: TimestampEventSessionFilter,
+        sparse_hour_event_threshold: usize,
+    ) -> Result<TimestampEventPreprocessingOutput, TimestampEventPreprocessingError> {
+        if sparse_hour_event_threshold < 1 {
+            return Err(
+                TimestampEventPreprocessingError::InvalidSparseHourEventThreshold {
+                    sparse_hour_event_threshold,
+                },
+            );
+        }
+
+        let (definition, timezone) = self
+            .required_definition_and_timezone(exchange_code)
+            .map_err(TimestampEventPreprocessingError::from_calendar_resolve_error)?;
+        let exchange_timezone_name = definition.timezone_name().to_string();
+
+        let input_record_count = input_records.len();
+        let validated_record_count = input_record_count;
+        let mut accepted_rows: Vec<AcceptedPreprocessedTimestampEventRow> = Vec::new();
+        for input_record in input_records {
+            let timestamp_utc_nanos = input_record
+                .timestamp_utc
+                .timestamp_nanos_opt()
+                .ok_or_else(|| TimestampEventPreprocessingError::TimestampOutOfRange {
+                    source_record_position: input_record.source_record_position,
+                })?;
+            let timestamp_local = input_record.timestamp_utc.with_timezone(&timezone);
+            let market_state =
+                resolve_market_state_for_definition_at_local(definition, timestamp_local);
+            if !session_filter.includes_market_state(market_state) {
+                continue;
+            }
+
+            accepted_rows.push(AcceptedPreprocessedTimestampEventRow {
+                source_record_position: input_record.source_record_position,
+                timestamp_utc_nanos,
+                exchange_local_minute_of_day: (timestamp_local.hour() * 60
+                    + timestamp_local.minute())
+                    as u16,
+                exchange_local_day_of_week: timestamp_local.weekday().number_from_monday() as u8,
+                exchange_local_day_of_year: timestamp_local.ordinal() as u16,
+                market_state_code: market_state_to_code(market_state),
+            });
+        }
+
+        accepted_rows.sort_by(|left_row, right_row| {
+            left_row
+                .timestamp_utc_nanos
+                .cmp(&right_row.timestamp_utc_nanos)
+                .then(
+                    left_row
+                        .source_record_position
+                        .cmp(&right_row.source_record_position),
+                )
+        });
+
+        let accepted_record_count = accepted_rows.len();
+        let filtered_record_count = validated_record_count.saturating_sub(accepted_record_count);
+
+        let mut source_record_positions: Vec<u64> = Vec::with_capacity(accepted_record_count);
+        let mut timestamp_utc_nanos: Vec<i64> = Vec::with_capacity(accepted_record_count);
+        let mut exchange_local_minute_of_day: Vec<u16> = Vec::with_capacity(accepted_record_count);
+        let mut exchange_local_day_of_week: Vec<u8> = Vec::with_capacity(accepted_record_count);
+        let mut exchange_local_day_of_year: Vec<u16> = Vec::with_capacity(accepted_record_count);
+        let mut market_state_codes: Vec<u8> = Vec::with_capacity(accepted_record_count);
+        for accepted_row in accepted_rows {
+            source_record_positions.push(accepted_row.source_record_position);
+            timestamp_utc_nanos.push(accepted_row.timestamp_utc_nanos);
+            exchange_local_minute_of_day.push(accepted_row.exchange_local_minute_of_day);
+            exchange_local_day_of_week.push(accepted_row.exchange_local_day_of_week);
+            exchange_local_day_of_year.push(accepted_row.exchange_local_day_of_year);
+            market_state_codes.push(accepted_row.market_state_code);
+        }
+
+        let (
+            missing_hour_bucket_utc_nanos,
+            sparse_hour_bucket_utc_nanos,
+            first_event_timestamp_utc_nanos,
+            last_event_timestamp_utc_nanos,
+            hour_bucket_count,
+        ) = build_hour_bucket_diagnostics(&timestamp_utc_nanos, sparse_hour_event_threshold);
+        let diagnostics = TimestampEventPreprocessingDiagnostics {
+            input_record_count,
+            validated_record_count,
+            accepted_record_count,
+            filtered_record_count,
+            first_event_timestamp_utc_nanos,
+            last_event_timestamp_utc_nanos,
+            hour_bucket_count,
+            missing_hour_bucket_count: missing_hour_bucket_utc_nanos.len(),
+            sparse_hour_bucket_count: sparse_hour_bucket_utc_nanos.len(),
+        };
+
+        Ok(TimestampEventPreprocessingOutput {
+            schema_version: PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION,
+            input_schema_version: TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION,
+            exchange_code: exchange_code.to_string(),
+            exchange_timezone_name,
+            source_record_positions,
+            timestamp_utc_nanos,
+            exchange_local_minute_of_day,
+            exchange_local_day_of_week,
+            exchange_local_day_of_year,
+            market_state_codes,
+            missing_hour_bucket_utc_nanos,
+            sparse_hour_bucket_utc_nanos,
+            diagnostics,
+        })
+    }
+
+    fn required_definition_and_timezone(
+        &self,
+        exchange_code: &str,
+    ) -> Result<(&ExchangeCalendarDefinition, Tz), ExchangeCalendarResolveError> {
         let definition = self
             .get_required(exchange_code)
             .map_err(ExchangeCalendarResolveError::from_lookup_error)?;
@@ -828,20 +1015,114 @@ impl ExchangeCalendarRegistry {
                 timezone_name: timezone_name.to_string(),
             }
         })?;
-        let timestamp_local = timestamp_utc.with_timezone(&timezone);
-        let local_date = CalendarDate::from_local_timestamp(&timestamp_local);
-        let local_weekday = TradingWeekday::from_chrono_weekday(timestamp_local.weekday());
-        let local_clock = SessionTime::from_hour_minute(
-            timestamp_local.hour() as u8,
-            timestamp_local.minute() as u8,
-        );
-
-        Ok(definition.resolve_market_state_for_local_timestamp(
-            local_date,
-            local_weekday,
-            local_clock,
-        ))
+        Ok((definition, timezone))
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AcceptedPreprocessedTimestampEventRow {
+    source_record_position: u64,
+    timestamp_utc_nanos: i64,
+    exchange_local_minute_of_day: u16,
+    exchange_local_day_of_week: u8,
+    exchange_local_day_of_year: u16,
+    market_state_code: u8,
+}
+
+const OPEN_MARKET_STATE_CODE: u8 = 1;
+const CLOSED_MARKET_STATE_CODE: u8 = 0;
+const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
+
+fn market_state_to_code(market_state: MarketState) -> u8 {
+    match market_state {
+        MarketState::Open => OPEN_MARKET_STATE_CODE,
+        MarketState::Closed => CLOSED_MARKET_STATE_CODE,
+    }
+}
+
+fn resolve_market_state_for_definition_at_utc(
+    definition: &ExchangeCalendarDefinition,
+    timezone: Tz,
+    timestamp_utc: DateTime<Utc>,
+) -> MarketState {
+    let timestamp_local = timestamp_utc.with_timezone(&timezone);
+    resolve_market_state_for_definition_at_local(definition, timestamp_local)
+}
+
+fn resolve_market_state_for_definition_at_local(
+    definition: &ExchangeCalendarDefinition,
+    timestamp_local: DateTime<Tz>,
+) -> MarketState {
+    let local_date = CalendarDate::from_local_timestamp(&timestamp_local);
+    let local_weekday = TradingWeekday::from_chrono_weekday(timestamp_local.weekday());
+    let local_clock =
+        SessionTime::from_hour_minute(timestamp_local.hour() as u8, timestamp_local.minute() as u8);
+
+    definition.resolve_market_state_for_local_timestamp(local_date, local_weekday, local_clock)
+}
+
+fn floor_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> i64 {
+    timestamp_utc_nanos.div_euclid(ONE_HOUR_NANOS) * ONE_HOUR_NANOS
+}
+
+fn build_hour_bucket_diagnostics(
+    timestamp_utc_nanos: &[i64],
+    sparse_hour_event_threshold: usize,
+) -> (Vec<i64>, Vec<i64>, Option<i64>, Option<i64>, usize) {
+    if timestamp_utc_nanos.is_empty() {
+        return (Vec::new(), Vec::new(), None, None, 0);
+    }
+
+    let first_event_timestamp_utc_nanos = timestamp_utc_nanos.first().copied();
+    let last_event_timestamp_utc_nanos = timestamp_utc_nanos.last().copied();
+
+    let mut observed_bucket_counts: BTreeMap<i64, usize> = BTreeMap::new();
+    for timestamp_utc_nanos in timestamp_utc_nanos {
+        let hour_bucket_utc_nanos = floor_to_hour_utc_nanos(*timestamp_utc_nanos);
+        *observed_bucket_counts
+            .entry(hour_bucket_utc_nanos)
+            .or_insert(0) += 1;
+    }
+
+    let (first_hour_bucket_utc_nanos, last_hour_bucket_utc_nanos) = match (
+        first_event_timestamp_utc_nanos,
+        last_event_timestamp_utc_nanos,
+    ) {
+        (Some(first_timestamp_utc_nanos), Some(last_timestamp_utc_nanos)) => (
+            floor_to_hour_utc_nanos(first_timestamp_utc_nanos),
+            floor_to_hour_utc_nanos(last_timestamp_utc_nanos),
+        ),
+        _ => {
+            return (Vec::new(), Vec::new(), None, None, 0);
+        }
+    };
+
+    let mut missing_hour_bucket_utc_nanos: Vec<i64> = Vec::new();
+    let mut sparse_hour_bucket_utc_nanos: Vec<i64> = Vec::new();
+    let mut hour_bucket_count: usize = 0;
+    let mut current_bucket_utc_nanos = first_hour_bucket_utc_nanos;
+    while current_bucket_utc_nanos <= last_hour_bucket_utc_nanos {
+        hour_bucket_count += 1;
+        let observed_count = observed_bucket_counts
+            .get(&current_bucket_utc_nanos)
+            .copied()
+            .unwrap_or(0);
+        if observed_count == 0 {
+            missing_hour_bucket_utc_nanos.push(current_bucket_utc_nanos);
+        } else if observed_count < sparse_hour_event_threshold {
+            sparse_hour_bucket_utc_nanos.push(current_bucket_utc_nanos);
+        }
+
+        current_bucket_utc_nanos += ONE_HOUR_NANOS;
+    }
+
+    (
+        missing_hour_bucket_utc_nanos,
+        sparse_hour_bucket_utc_nanos,
+        first_event_timestamp_utc_nanos,
+        last_event_timestamp_utc_nanos,
+        hour_bucket_count,
+    )
 }
 
 /// Loader for parsing exchange calendar registry artifacts.
@@ -923,6 +1204,54 @@ impl Display for ExchangeCalendarResolveError {
 }
 
 impl Error for ExchangeCalendarResolveError {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TimestampEventPreprocessingError {
+    InvalidSparseHourEventThreshold {
+        sparse_hour_event_threshold: usize,
+    },
+    TimestampOutOfRange {
+        source_record_position: u64,
+    },
+    CalendarResolve {
+        source: ExchangeCalendarResolveError,
+    },
+}
+
+impl TimestampEventPreprocessingError {
+    fn from_calendar_resolve_error(source: ExchangeCalendarResolveError) -> Self {
+        Self::CalendarResolve { source }
+    }
+}
+
+impl Display for TimestampEventPreprocessingError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidSparseHourEventThreshold {
+                sparse_hour_event_threshold,
+            } => write!(
+                formatter,
+                "sparse_hour_event_threshold must be at least 1, received {sparse_hour_event_threshold}"
+            ),
+            Self::TimestampOutOfRange {
+                source_record_position,
+            } => write!(
+                formatter,
+                "event record at position {source_record_position} has a timestamp outside the supported nanosecond range"
+            ),
+            Self::CalendarResolve { source } => write!(formatter, "{source}"),
+        }
+    }
+}
+
+impl Error for TimestampEventPreprocessingError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::CalendarResolve { source } => Some(source),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExchangeCalendarRegistryLoadError {
@@ -1246,7 +1575,8 @@ mod tests {
         ExchangeCalendarRegistryLoadError, ExchangeCalendarRegistryLoader,
         ExchangeCalendarRegistryLookupError, ExchangeCalendarResolveError,
         ExchangeCalendarValidationError, MarketState, RegularSessionArtifact,
-        SessionWindowArtifact, TradingWeekday,
+        SessionWindowArtifact, TimestampEventInputRecord, TimestampEventPreprocessingError,
+        TimestampEventSessionFilter, TradingWeekday,
     };
     use chrono::{DateTime, TimeZone, Utc};
 
@@ -1901,6 +2231,102 @@ mod tests {
         );
     }
 
+    #[test]
+    fn preprocessing_applies_session_filter_and_local_context() {
+        let registry = resolver_test_registry();
+        let input_records = vec![
+            timestamp_input_record(0, 2026, 2, 2, 14, 30, 0),
+            timestamp_input_record(1, 2026, 2, 2, 3, 0, 0),
+        ];
+
+        let output = registry
+            .preprocess_timestamp_events(
+                "XNYS",
+                input_records,
+                TimestampEventSessionFilter::OpenOnly,
+                1,
+            )
+            .expect("preprocessing should succeed");
+
+        assert_eq!(output.exchange_timezone_name, "America/New_York");
+        assert_eq!(output.source_record_positions, vec![0]);
+        assert_eq!(
+            output.timestamp_utc_nanos,
+            vec![
+                timestamp_utc(2026, 2, 2, 14, 30, 0)
+                    .timestamp_nanos_opt()
+                    .expect("fixture timestamp should be in nanos range")
+            ]
+        );
+        assert_eq!(output.exchange_local_minute_of_day, vec![570]);
+        assert_eq!(output.exchange_local_day_of_week, vec![1]);
+        assert_eq!(output.market_state_codes, vec![1]);
+        assert_eq!(output.diagnostics.accepted_record_count, 1);
+        assert_eq!(output.diagnostics.filtered_record_count, 1);
+    }
+
+    #[test]
+    fn preprocessing_is_deterministic_and_emits_sparse_hour_diagnostics() {
+        let registry = resolver_test_registry();
+        let input_records = vec![
+            timestamp_input_record(0, 2026, 2, 2, 16, 30, 0),
+            timestamp_input_record(1, 2026, 2, 2, 14, 30, 0),
+            timestamp_input_record(2, 2026, 2, 2, 16, 31, 0),
+        ];
+
+        let first_output = registry
+            .preprocess_timestamp_events(
+                "XNYS",
+                input_records.clone(),
+                TimestampEventSessionFilter::All,
+                2,
+            )
+            .expect("preprocessing should succeed");
+        let second_output = registry
+            .preprocess_timestamp_events("XNYS", input_records, TimestampEventSessionFilter::All, 2)
+            .expect("preprocessing should succeed");
+
+        assert_eq!(first_output, second_output);
+        assert_eq!(first_output.source_record_positions, vec![1, 0, 2]);
+        assert_eq!(
+            first_output.missing_hour_bucket_utc_nanos,
+            vec![
+                timestamp_utc(2026, 2, 2, 15, 0, 0)
+                    .timestamp_nanos_opt()
+                    .expect("fixture timestamp should be in nanos range")
+            ]
+        );
+        assert_eq!(
+            first_output.sparse_hour_bucket_utc_nanos,
+            vec![
+                timestamp_utc(2026, 2, 2, 14, 0, 0)
+                    .timestamp_nanos_opt()
+                    .expect("fixture timestamp should be in nanos range")
+            ]
+        );
+    }
+
+    #[test]
+    fn preprocessing_rejects_invalid_sparse_hour_threshold() {
+        let registry = resolver_test_registry();
+
+        let result = registry.preprocess_timestamp_events(
+            "XNYS",
+            vec![timestamp_input_record(0, 2026, 2, 2, 14, 30, 0)],
+            TimestampEventSessionFilter::All,
+            0,
+        );
+
+        assert_eq!(
+            result,
+            Err(
+                TimestampEventPreprocessingError::InvalidSparseHourEventThreshold {
+                    sparse_hour_event_threshold: 0,
+                },
+            ),
+        );
+    }
+
     fn valid_exchange_artifact() -> ExchangeCalendarArtifact {
         ExchangeCalendarArtifact {
             schema_version: "calendar.v1".to_string(),
@@ -2037,5 +2463,20 @@ mod tests {
         Utc.with_ymd_and_hms(year, month, day, hour, minute, second)
             .single()
             .expect("timestamp fixture must resolve to a unique UTC datetime")
+    }
+
+    fn timestamp_input_record(
+        source_record_position: u64,
+        year: i32,
+        month: u32,
+        day: u32,
+        hour: u32,
+        minute: u32,
+        second: u32,
+    ) -> TimestampEventInputRecord {
+        TimestampEventInputRecord {
+            source_record_position,
+            timestamp_utc: timestamp_utc(year, month, day, hour, minute, second),
+        }
     }
 }

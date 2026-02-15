@@ -1,4 +1,4 @@
-## ISSUE-003: Day Of Week And Day Of Year Component Estimators
+## Day Of Week And Day Of Year Component Estimators
 
 ### Description
 Implement nonparametric estimators for `f_dow(dow)` and `f_doy(doy)` and compose them with intraday structure into a unified deterministic seasonality signal.

@@ -1,4 +1,4 @@
-## ISSUE-004: Seasonality Normalization And Identifiability Guards
+## Seasonality Normalization And Identifiability Guards
 
 ### Description
 Implement normalization rules for the combined seasonality signal so `s(t)` preserves identifiability with baseline Hawkes intensity. Include safeguards that enforce anchored mean level over the chosen estimation window.

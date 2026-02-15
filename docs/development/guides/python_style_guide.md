@@ -22,48 +22,37 @@ You have stumbled upon a sacred scroll, one that guards us from an ancient evil.
 Imports are grouped and ordered like so:
 
 1. **Python standard library**
-
-   1.1 `from ... import ...`
-
-   1.2 `import ...`
-
+   1. `import ...`
+   2. `from ... import ...`
 2. **Third-party modules/packages**
-
-   2.1 `from ... import ...`
-   
-   2.2 `import ...`
-
+   1`import ...`
+   2`from ... import ...`
 3. **Repo-level modules/packages**
-
-   3.1 `from ... import ...`
-
-   3.2 `import ...`
-
+   1. `import ...`
+   2. `from ... import ...`
 4. **Relative imports within the repo**
-   
-   4.1 `from ... import ...`
-   
-   4.2 `import ...`
+   1. `import ...`
+   2. `from ... import ...`
 
 Rules of thumb:
-- Always put a blank line before `import ...` when switching from `from ... import ...`.
 - Always put a blank line between the major import groups above.
-- Always sort each group alphabetically
+- Always sort each group alphabetically (`import ...` separately from `from ... import ...`)
+- Put `as` imports on their own line, otherwise group them.
 
 ### Example:
 
 ```python
+import math
 from collections.abc import Callable
 from typing import Optional
 
-import math
-
-from qtpy.QtCore import Qt
-from qtpy.QtGui import QColor
-
 import numpy as np
 import pandas as pd
+from pyspark.sql import DataFrame
+from pyspark.sql import functions as F
+from scipy.stats import gamma, laplace
 
+import some_module
 from repo_level_package.module import Something
 
 from .relative_module import helper_function
@@ -79,7 +68,7 @@ from .relative_module import helper_function
 ### Example:
 
 ```python
-log_path: str = "/var/log/app.log"
+some_path: str = "/var/path/some_file.abc"
 status: str = 'running'
 value: Optional[int] = some_dict.get('key', None)
 
@@ -271,10 +260,10 @@ def foo_bar(param_with_long_name: int, another_param_with_long_name: bool) -> No
 
 
 def foo_bar_again(
-        param_with_long_name: int,
-        another_param_with_long_name: bool,
-        yet_another_param: str,
-        and_another_one: float,  # <-- Trailing comma!
+    param_with_long_name: int,
+    another_param_with_long_name: bool,
+    yet_another_param: str,
+    and_another_one: float,  # <-- Trailing comma!
 ) -> None:
     # Here the line would have exceeded 120 chars so we put the parameters each on their own lines,
     # and used two indentation levels!
@@ -287,9 +276,9 @@ class MySubClass(BaseClass, SomeMixin):
 
 
 class MyOtherSubClassWithALongName[TMyTypeVar](
-        ABaseClassWithALongNameThatTakesUpSpace,
-        AMixinThatAlsoHasAVeryLongName,
-        AndYetAnotherBaseClass,  # <-- Trailing comma!
+     ABaseClassWithALongNameThatTakesUpSpace,
+     AMixinThatAlsoHasAVeryLongName,
+     AndYetAnotherBaseClass,  # <-- Trailing comma!
 ):
     # Here the line would have exceeded 120 chars so we put the base classes on their own lines,
     # and used two indentation levels!

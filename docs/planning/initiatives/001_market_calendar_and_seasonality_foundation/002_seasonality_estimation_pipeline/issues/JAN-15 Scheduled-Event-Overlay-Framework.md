@@ -1,4 +1,4 @@
-## ISSUE-005: Scheduled Event Overlay Framework
+## Scheduled Event Overlay Framework
 
 ### Description
 Add support for deterministic scheduled-event overlays `f_special(t)` that adjust baseline seasonality when configured. Overlays should be optional, composable, and transparent in output artifacts.
