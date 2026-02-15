@@ -12,9 +12,3 @@ Build the deterministic calendar and seasonality backbone that feeds all Hawkes 
 - Seasonality estimation supports intraday, day-of-week, and day-of-year effects and outputs a normalized signal with mean level anchored (for example, average `s(t) = 1` over the fit window).
 - Hourly piecewise-constant values (`s_h`, `nu_h`) are generated and consumed by simulation and pricing paths.
 - Tests cover normal sessions, weekends, holidays, and market closures with deterministic expected outputs.
-
-### Example projects
-- Build exchange calendar and session-state service (`open`, `closed`, boundary handling).
-- Implement nonparametric seasonality estimation and normalization pipeline.
-- Add hourly seasonality and news-intensity materialization for downstream engines.
-- Add validation and fixtures for holiday calendars and scheduled events.

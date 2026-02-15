@@ -12,9 +12,3 @@ Implement the core bivariate Hawkes event engine and safety constraints that def
 - Parameter validation enforces non-negativity, positive decay and baseline, and spectral-radius stability (`rho(Alpha / beta) < 1`).
 - Simulation paths produce event clustering and buy-sell asymmetry under controlled seeded runs.
 - State transition at interval boundaries is deterministic given seed and parameters and is covered by unit tests.
-
-### Example projects
-- Implement bivariate Hawkes state and event update kernel in `crates/core`.
-- Add constraint and parameterization layer for base-plus-delta asymmetry.
-- Implement deterministic seeded simulation for fine-scale event generation.
-- Add stability and invariant tests, including failure-path tests for invalid parameters.

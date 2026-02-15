@@ -12,9 +12,3 @@ Establish reproducible calibration workflows and validation tooling that prove f
 - Validation reports include activity clustering, heavy tails, skew, volatility persistence, and gap behavior across multiple horizons.
 - Fine-to-coarse consistency checks show direct coarse simulation agrees with aggregated fine simulation within predefined tolerances.
 - Calibration artifacts (inputs, params, metrics, diagnostics) are versioned and reloadable for reruns and comparisons.
-
-### Example projects
-- Implement staged calibration flow with constrained optimization and checkpointing.
-- Add model-vs-data diagnostics package for stylized facts and horizon scaling.
-- Add consistency test harness for tick aggregation versus direct coarse transitions.
-- Define calibration artifact schema and result persistence format.

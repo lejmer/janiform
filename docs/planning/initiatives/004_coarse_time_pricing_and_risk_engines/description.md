@@ -14,9 +14,3 @@ Deliver tractable coarse-time pricing and risk engines powered by the exponentia
 - The risk engine samples interval sufficient statistics (`A+`, `A-`, `N+`, `N-`) and updates state without cluster simulation.
 - Benchmarks show coarse-time simulation and pricing can run at practical portfolio scales.
 - Non-pricing generation supports configurable interval grids when compatible factors are provided, including sub-hour intervals.
-
-### Example projects
-- Build the ODE-based transform solver and reusable oracle API in `crates/core`.
-- Implement CF-based option pricer with Esscher-tilted Levy component under risk-neutral measure.
-- Implement sufficient-statistics sampler and path simulator for risk scenarios.
-- Add numerical regression tests against controlled Monte Carlo baselines.

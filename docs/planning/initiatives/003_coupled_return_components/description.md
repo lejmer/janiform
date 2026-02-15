@@ -12,9 +12,3 @@ Implement the coupled return layer that combines business-time NIG moves with sh
 - The model applies sell-side contribution with the correct sign convention in the characteristic function path.
 - News marks (`U`, `Z`) follow the specified Gamma plus double-exponential construction and feed both Hawkes shock accumulation and gap returns.
 - Gap returns are emitted only during `closed` windows and open-window news affects returns only through activity dynamics.
-
-### Example projects
-- Implement NIG driver module for buy and sell components with shared core parameters and skew shift.
-- Implement marked news process and coupling into Hawkes state and gap process.
-- Add return-composition sampler for interval and path simulation.
-- Add tests for sign conventions, mark sampling, and open-vs-closed behavior.

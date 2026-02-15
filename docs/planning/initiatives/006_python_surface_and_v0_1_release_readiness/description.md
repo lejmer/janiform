@@ -12,9 +12,3 @@ Ship a production-ready Python and CLI surface with stable contracts, hardened b
 - PyO3 boundary code is thin and consistent, with explicit conversion and error mapping.
 - CI-level checks pass for core build, Python importability, and repository verification commands.
 - Documentation covers install, quickstart, model concepts, and examples for the primary v0.1 workflows.
-
-### Example projects
-- Define Python API surface and CLI commands for simulation, calibration, and pricing.
-- Harden Rust-to-Python binding layer and exception mapping.
-- Add usage documentation and runnable examples for core workflows.
-- Add CI workflow for build, lint, and smoke-test gates targeting v0.1 release criteria.
