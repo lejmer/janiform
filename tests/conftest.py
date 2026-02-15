@@ -1,10 +1,27 @@
 from pathlib import Path
+from typing import TypedDict, cast
 
 import json
 
 import pytest
 
 from janiform.calendar import CalendarRegistry
+
+
+class CalendarRegressionCase(TypedDict):
+    fixture_id: str
+    exchange_code: str
+    timestamp_utc: str
+    expected_state: str
+    tags: list[str]
+    description: str
+
+
+class CalendarRegressionFixtureDocument(TypedDict):
+    schema_version: str
+    fixture_set_id: str
+    calendar_registry: dict[str, object]
+    cases: list[CalendarRegressionCase]
 
 
 @pytest.fixture(scope="session")
@@ -18,83 +35,36 @@ def python_source_root(project_root: Path) -> Path:
 
 
 @pytest.fixture(scope="session")
-def calendar_registry_json() -> str:
-    weekdays: list[str] = [
-        'Monday',
-        'Tuesday',
-        'Wednesday',
-        'Thursday',
-        'Friday',
-    ]
-    regular_sessions: list[dict[str, object]] = [
-        {
-            'weekday': weekday,
-            'windows': [
-                {
-                    'label': 'regular',
-                    'open_time': '09:30',
-                    'close_time': '16:00',
-                },
-            ],
-        }
-        for weekday in weekdays
-    ]
-    xtks_regular_sessions: list[dict[str, object]] = [
-        {
-            'weekday': weekday,
-            'windows': [
-                {
-                    'label': 'regular',
-                    'open_time': '09:30',
-                    'close_time': '15:00',
-                },
-            ],
-        }
-        for weekday in weekdays
-    ]
-    registry_artifact: dict[str, object] = {
-        'schema_version': 'calendar.registry.v1',
-        'artifact_date': '2026-01-31',
-        'exchanges': [
-            {
-                'schema_version': 'calendar.v1',
-                'exchange_code': 'XNYS',
-                'exchange_name': 'New York Stock Exchange',
-                'timezone_name': 'America/New_York',
-                'rule_metadata': {
-                    'holiday_calendar_code': 'US_EQUITIES',
-                    'early_close_rule_set': 'US_EQUITIES_EARLY_CLOSE',
-                },
-                'regular_sessions': regular_sessions,
-                'holiday_dates': ['2026-02-03'],
-                'early_close_sessions': [
-                    {
-                        'date': '2026-02-04',
-                        'windows': [
-                            {
-                                'label': 'early_close',
-                                'open_time': '09:30',
-                                'close_time': '13:00',
-                            },
-                        ],
-                    },
-                ],
-            },
-            {
-                'schema_version': 'calendar.v1',
-                'exchange_code': 'XTKS',
-                'exchange_name': 'Tokyo Stock Exchange',
-                'timezone_name': 'Asia/Tokyo',
-                'rule_metadata': {
-                    'holiday_calendar_code': 'JP_EQUITIES',
-                    'early_close_rule_set': None,
-                },
-                'regular_sessions': xtks_regular_sessions,
-                'holiday_dates': [],
-                'early_close_sessions': [],
-            },
-        ],
-    }
+def calendar_regression_fixture_path() -> Path:
+    return (
+        Path(__file__).resolve().parent
+        / "fixtures"
+        / "calendar"
+        / "calendar_service_regression_matrix.json"
+    )
+
+
+@pytest.fixture(scope="session")
+def calendar_regression_fixture_document(
+    calendar_regression_fixture_path: Path,
+) -> CalendarRegressionFixtureDocument:
+    fixture_text: str = calendar_regression_fixture_path.read_text(encoding="utf-8")
+    fixture_value: object = json.loads(fixture_text)
+    return cast(CalendarRegressionFixtureDocument, fixture_value)
+
+
+@pytest.fixture(scope="session")
+def calendar_regression_cases(
+    calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
+) -> list[CalendarRegressionCase]:
+    return list(calendar_regression_fixture_document["cases"])
+
+
+@pytest.fixture(scope="session")
+def calendar_registry_json(
+    calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
+) -> str:
+    registry_artifact: dict[str, object] = calendar_regression_fixture_document["calendar_registry"]
     return json.dumps(registry_artifact)
 
 
