@@ -1,4 +1,4 @@
-## ISSUE-005: Python Adapter For Calendar State Queries
+## Python Adapter For Calendar State Queries
 
 ### Description
 Expose the calendar resolver through the Python package so higher-level workflows can query `open` and `closed` state without duplicating logic outside Rust core.

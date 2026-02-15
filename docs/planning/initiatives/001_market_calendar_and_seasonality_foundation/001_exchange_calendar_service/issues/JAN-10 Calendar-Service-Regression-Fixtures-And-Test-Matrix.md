@@ -1,4 +1,4 @@
-## ISSUE-006: Calendar Service Regression Fixtures And Test Matrix
+## Calendar Service Regression Fixtures And Test Matrix
 
 ### Description
 Create a reusable fixture set and regression matrix for exchange calendar behavior to protect against accidental changes in open and closed classification.

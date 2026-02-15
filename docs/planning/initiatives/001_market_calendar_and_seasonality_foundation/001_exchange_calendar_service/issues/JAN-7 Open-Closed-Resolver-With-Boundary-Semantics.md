@@ -1,4 +1,4 @@
-## ISSUE-003: Open Closed Resolver With Boundary Semantics
+## Open Closed Resolver With Boundary Semantics
 
 ### Description
 Implement the core resolver that returns market state as `open` or `closed` for a timestamp and exchange, with explicit boundary rules at session transitions.

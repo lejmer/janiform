@@ -1,4 +1,4 @@
-## ISSUE-001: Calendar Domain Model And Exchange Metadata
+## Calendar Domain Model And Exchange Metadata
 
 ### Description
 Define the Rust core domain model for exchange calendars used by Janiform. The model must represent trading sessions, timezone context, regular session windows, and metadata required for rule resolution.

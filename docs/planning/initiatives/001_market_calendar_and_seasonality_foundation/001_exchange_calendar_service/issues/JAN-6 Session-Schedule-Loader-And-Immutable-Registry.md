@@ -1,4 +1,4 @@
-## ISSUE-002: Session Schedule Loader And Immutable Registry
+## Session Schedule Loader And Immutable Registry
 
 ### Description
 Implement loading of exchange calendar artifacts into an immutable in-memory registry that can be queried by exchange identifier.

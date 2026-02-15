@@ -1,4 +1,4 @@
-## ISSUE-004: Holiday And Early Close Rule Handling
+## Holiday And Early Close Rule Handling
 
 ### Description
 Add support for exchange holidays and early-close sessions so the open and closed resolver correctly reflects non-regular schedules.
