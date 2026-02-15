@@ -107,23 +107,24 @@ wheels = [
 [[package]]
 name = "janiform"
 source = { editable = "." }
-dependencies = [
-    { name = "pytest-cov" },
-]
 
 [package.optional-dependencies]
 dev = [
-    { name = "maturin" },
     { name = "pytest" },
+    { name = "pytest-cov" },
+]
+test = [
+    { name = "pytest" },
+    { name = "pytest-cov" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "maturin", marker = "extra == 'dev'", specifier = ">=1.8,<2.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "janiform", extras = ["test"], marker = "extra == 'dev'" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+    { name = "pytest-cov", marker = "extra == 'test'", specifier = ">=7.0.0" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["dev", "test"]
 
 [[package]]
 name = "maturin"
