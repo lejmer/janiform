@@ -79,8 +79,12 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use serde::Deserialize;
+
+const CALENDAR_REGISTRY_SCHEMA_VERSION: &str = "calendar.registry.v1";
+
 /// Weekday used by regular exchange sessions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
 pub enum TradingWeekday {
     Monday,
     Tuesday,
@@ -107,7 +111,8 @@ impl Display for TradingWeekday {
 }
 
 /// Artifact structure loaded from versioned calendar configuration data.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExchangeCalendarArtifact {
     pub schema_version: String,
     pub exchange_code: String,
@@ -118,21 +123,24 @@ pub struct ExchangeCalendarArtifact {
 }
 
 /// Artifact metadata for holiday and early close rule resolution.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CalendarRuleMetadataArtifact {
     pub holiday_calendar_code: String,
     pub early_close_rule_set: Option<String>,
 }
 
 /// Regular session windows for a weekday in artifact form.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RegularSessionArtifact {
     pub weekday: TradingWeekday,
     pub windows: Vec<SessionWindowArtifact>,
 }
 
 /// Session window in artifact form.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SessionWindowArtifact {
     pub label: String,
     pub open_time: String,
@@ -490,6 +498,234 @@ impl Display for ExchangeCalendarValidationError {
 
 impl Error for ExchangeCalendarValidationError {}
 
+/// Versioned artifact containing exchange calendar entries for registry construction.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExchangeCalendarRegistryArtifact {
+    pub schema_version: String,
+    pub artifact_date: String,
+    pub exchanges: Vec<ExchangeCalendarArtifact>,
+}
+
+/// Immutable in-memory calendar registry keyed by exchange code.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExchangeCalendarRegistry {
+    definitions_by_exchange: BTreeMap<String, ExchangeCalendarDefinition>,
+}
+
+impl ExchangeCalendarRegistry {
+    /// Build a registry from a parsed registry artifact.
+    pub fn from_artifact(
+        artifact: ExchangeCalendarRegistryArtifact,
+    ) -> Result<Self, ExchangeCalendarRegistryLoadError> {
+        let schema_version = require_non_empty(artifact.schema_version, "schema_version")
+            .map_err(ExchangeCalendarRegistryLoadError::from_validation_error)?;
+        if schema_version != CALENDAR_REGISTRY_SCHEMA_VERSION {
+            return Err(ExchangeCalendarRegistryLoadError::UnsupportedSchemaVersion {
+                expected: CALENDAR_REGISTRY_SCHEMA_VERSION,
+                actual: schema_version,
+            });
+        }
+
+        if artifact.exchanges.is_empty() {
+            return Err(ExchangeCalendarRegistryLoadError::MissingField {
+                field: "exchanges",
+            });
+        }
+
+        validate_iso_date(&artifact.artifact_date).map_err(|reason| {
+            ExchangeCalendarRegistryLoadError::MalformedDate {
+                field: "artifact_date",
+                value: artifact.artifact_date.clone(),
+                reason,
+            }
+        })?;
+
+        let mut definitions_by_exchange: BTreeMap<String, ExchangeCalendarDefinition> = BTreeMap::new();
+        for exchange_artifact in artifact.exchanges {
+            let exchange_code = exchange_artifact.exchange_code.trim().to_string();
+            let definition = ExchangeCalendarDefinition::from_artifact(exchange_artifact)
+                .map_err(|source| ExchangeCalendarRegistryLoadError::InvalidExchangeArtifact {
+                    exchange_code: (!exchange_code.is_empty()).then_some(exchange_code.clone()),
+                    source,
+                })?;
+            if definitions_by_exchange
+                .insert(exchange_code.clone(), definition)
+                .is_some()
+            {
+                return Err(ExchangeCalendarRegistryLoadError::DuplicateExchangeId {
+                    exchange_code,
+                });
+            }
+        }
+
+        Ok(Self {
+            definitions_by_exchange,
+        })
+    }
+
+    /// Lookup a loaded exchange by identifier.
+    pub fn get(&self, exchange_code: &str) -> Option<&ExchangeCalendarDefinition> {
+        self.definitions_by_exchange.get(exchange_code)
+    }
+
+    /// Lookup a loaded exchange by identifier with a structured error when missing.
+    pub fn get_required(
+        &self,
+        exchange_code: &str,
+    ) -> Result<&ExchangeCalendarDefinition, ExchangeCalendarRegistryLookupError> {
+        self.get(exchange_code).ok_or_else(|| ExchangeCalendarRegistryLookupError::MissingExchangeId {
+            exchange_code: exchange_code.to_string(),
+        })
+    }
+}
+
+/// Loader for parsing exchange calendar registry artifacts.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ExchangeCalendarRegistryLoader;
+
+impl ExchangeCalendarRegistryLoader {
+    /// Parse and load a registry from JSON artifact content.
+    pub fn load_from_json(
+        artifact_json: &str,
+    ) -> Result<ExchangeCalendarRegistry, ExchangeCalendarRegistryLoadError> {
+        let artifact =
+            serde_json::from_str::<ExchangeCalendarRegistryArtifact>(artifact_json).map_err(
+                ExchangeCalendarRegistryLoadError::from_deserialization_error,
+            )?;
+        ExchangeCalendarRegistry::from_artifact(artifact)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExchangeCalendarRegistryLookupError {
+    MissingExchangeId { exchange_code: String },
+}
+
+impl Display for ExchangeCalendarRegistryLookupError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingExchangeId { exchange_code } => {
+                write!(formatter, "missing exchange id `{exchange_code}` in registry")
+            }
+        }
+    }
+}
+
+impl Error for ExchangeCalendarRegistryLookupError {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExchangeCalendarRegistryLoadError {
+    MalformedArtifact {
+        reason: String,
+    },
+    UnknownField {
+        field: String,
+    },
+    MissingField {
+        field: &'static str,
+    },
+    MalformedDate {
+        field: &'static str,
+        value: String,
+        reason: &'static str,
+    },
+    UnsupportedSchemaVersion {
+        expected: &'static str,
+        actual: String,
+    },
+    DuplicateExchangeId {
+        exchange_code: String,
+    },
+    InvalidExchangeArtifact {
+        exchange_code: Option<String>,
+        source: ExchangeCalendarValidationError,
+    },
+}
+
+impl ExchangeCalendarRegistryLoadError {
+    fn from_validation_error(source: ExchangeCalendarValidationError) -> Self {
+        match source {
+            ExchangeCalendarValidationError::MissingField { field } => Self::MissingField { field },
+            _ => Self::InvalidExchangeArtifact {
+                exchange_code: None,
+                source,
+            },
+        }
+    }
+
+    fn from_deserialization_error(source: serde_json::Error) -> Self {
+        let message = source.to_string();
+        if let Some(field_name) = parse_unknown_field_name(&message) {
+            return Self::UnknownField { field: field_name };
+        }
+        Self::MalformedArtifact { reason: message }
+    }
+}
+
+impl Display for ExchangeCalendarRegistryLoadError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MalformedArtifact { reason } => {
+                write!(formatter, "malformed calendar registry artifact: {reason}")
+            }
+            Self::UnknownField { field } => {
+                write!(formatter, "unknown field `{field}` in calendar registry artifact")
+            }
+            Self::MissingField { field } => {
+                write!(
+                    formatter,
+                    "missing required field `{field}` in calendar registry artifact"
+                )
+            }
+            Self::MalformedDate {
+                field,
+                value,
+                reason,
+            } => {
+                write!(
+                    formatter,
+                    "malformed date `{value}` in `{field}`: {reason}"
+                )
+            }
+            Self::UnsupportedSchemaVersion { expected, actual } => {
+                write!(
+                    formatter,
+                    "unsupported registry schema version `{actual}`, expected `{expected}`"
+                )
+            }
+            Self::DuplicateExchangeId { exchange_code } => {
+                write!(
+                    formatter,
+                    "duplicate exchange id `{exchange_code}` in calendar registry artifact"
+                )
+            }
+            Self::InvalidExchangeArtifact {
+                exchange_code,
+                source,
+            } => {
+                if let Some(exchange_code) = exchange_code {
+                    write!(
+                        formatter,
+                        "invalid calendar artifact for exchange `{exchange_code}`: {source}"
+                    )
+                } else {
+                    write!(formatter, "invalid calendar artifact: {source}")
+                }
+            }
+        }
+    }
+}
+
+impl Error for ExchangeCalendarRegistryLoadError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidExchangeArtifact { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
+
 fn require_non_empty(
     value: String,
     field: &'static str,
@@ -507,12 +743,75 @@ fn normalize_optional_string(value: Option<String>) -> Option<String> {
         .and_then(|trimmed_value| (!trimmed_value.is_empty()).then_some(trimmed_value))
 }
 
+fn parse_unknown_field_name(error_message: &str) -> Option<String> {
+    let unknown_field_prefix = "unknown field `";
+    let after_prefix = error_message.split_once(unknown_field_prefix)?.1;
+    let field_name = after_prefix.split('`').next()?;
+    Some(field_name.to_string())
+}
+
+fn validate_iso_date(raw: &str) -> Result<(), &'static str> {
+    if raw.len() != 10 {
+        return Err("date must use YYYY-MM-DD format");
+    }
+
+    let bytes = raw.as_bytes();
+    if bytes[4] != b'-' || bytes[7] != b'-' {
+        return Err("date must use YYYY-MM-DD format");
+    }
+
+    if !bytes[0..4].iter().all(u8::is_ascii_digit)
+        || !bytes[5..7].iter().all(u8::is_ascii_digit)
+        || !bytes[8..10].iter().all(u8::is_ascii_digit)
+    {
+        return Err("date must contain numeric year, month, and day values");
+    }
+
+    let year = raw[0..4]
+        .parse::<u16>()
+        .map_err(|_| "year must be numeric")?;
+    let month = raw[5..7]
+        .parse::<u8>()
+        .map_err(|_| "month must be numeric")?;
+    let day = raw[8..10]
+        .parse::<u8>()
+        .map_err(|_| "day must be numeric")?;
+
+    if month == 0 || month > 12 {
+        return Err("month must be between 01 and 12");
+    }
+
+    let maximum_day = max_day_of_month(year, month);
+    if day == 0 || day > maximum_day {
+        return Err("day is outside valid range for month");
+    }
+
+    Ok(())
+}
+
+fn max_day_of_month(year: u16, month: u8) -> u8 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            let leap_year = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+            if leap_year {
+                29
+            } else {
+                28
+            }
+        }
+        _ => 31,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarDefinition,
-        ExchangeCalendarValidationError, RegularSessionArtifact, SessionWindowArtifact,
-        TradingWeekday,
+        ExchangeCalendarRegistryLoadError, ExchangeCalendarRegistryLoader,
+        ExchangeCalendarRegistryLookupError, ExchangeCalendarValidationError, RegularSessionArtifact,
+        SessionWindowArtifact, TradingWeekday,
     };
 
     #[test]
@@ -653,6 +952,258 @@ mod tests {
         assert_eq!(
             definition.regular_sessions()[2].weekday(),
             TradingWeekday::Wednesday
+        );
+    }
+
+    #[test]
+    fn loader_ingests_registry_with_multiple_exchanges() {
+        let artifact_json = r#"
+        {
+            "schema_version": "calendar.registry.v1",
+            "artifact_date": "2026-01-31",
+            "exchanges": [
+                {
+                    "schema_version": "calendar.v1",
+                    "exchange_code": "XNYS",
+                    "exchange_name": "New York Stock Exchange",
+                    "timezone_name": "America/New_York",
+                    "rule_metadata": {
+                        "holiday_calendar_code": "US_EQUITIES",
+                        "early_close_rule_set": "US_EQUITIES_EARLY_CLOSE"
+                    },
+                    "regular_sessions": [
+                        {
+                            "weekday": "Monday",
+                            "windows": [
+                                {
+                                    "label": "regular",
+                                    "open_time": "09:30",
+                                    "close_time": "16:00"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "schema_version": "calendar.v1",
+                    "exchange_code": "XTKS",
+                    "exchange_name": "Tokyo Stock Exchange",
+                    "timezone_name": "Asia/Tokyo",
+                    "rule_metadata": {
+                        "holiday_calendar_code": "JP_EQUITIES",
+                        "early_close_rule_set": null
+                    },
+                    "regular_sessions": [
+                        {
+                            "weekday": "Monday",
+                            "windows": [
+                                {
+                                    "label": "morning",
+                                    "open_time": "09:00",
+                                    "close_time": "11:30"
+                                },
+                                {
+                                    "label": "afternoon",
+                                    "open_time": "12:30",
+                                    "close_time": "15:00"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+        "#;
+
+        let registry = ExchangeCalendarRegistryLoader::load_from_json(artifact_json)
+            .expect("valid registry artifact should load");
+        let xnys = registry
+            .get_required("XNYS")
+            .expect("XNYS must be present in registry");
+        let xtks = registry
+            .get_required("XTKS")
+            .expect("XTKS must be present in registry");
+
+        assert_eq!(xnys.timezone_name(), "America/New_York");
+        assert_eq!(xtks.timezone_name(), "Asia/Tokyo");
+    }
+
+    #[test]
+    fn loader_rejects_unknown_fields() {
+        let artifact_json = r#"
+        {
+            "schema_version": "calendar.registry.v1",
+            "artifact_date": "2026-01-31",
+            "unexpected_field": true,
+            "exchanges": []
+        }
+        "#;
+
+        let result = ExchangeCalendarRegistryLoader::load_from_json(artifact_json);
+
+        assert_eq!(
+            result,
+            Err(ExchangeCalendarRegistryLoadError::UnknownField {
+                field: "unexpected_field".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn loader_rejects_malformed_dates() {
+        let artifact_json = r#"
+        {
+            "schema_version": "calendar.registry.v1",
+            "artifact_date": "2026-13-01",
+            "exchanges": [
+                {
+                    "schema_version": "calendar.v1",
+                    "exchange_code": "XNYS",
+                    "exchange_name": "New York Stock Exchange",
+                    "timezone_name": "America/New_York",
+                    "rule_metadata": {
+                        "holiday_calendar_code": "US_EQUITIES",
+                        "early_close_rule_set": "US_EQUITIES_EARLY_CLOSE"
+                    },
+                    "regular_sessions": [
+                        {
+                            "weekday": "Monday",
+                            "windows": [
+                                {
+                                    "label": "regular",
+                                    "open_time": "09:30",
+                                    "close_time": "16:00"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+        "#;
+
+        let result = ExchangeCalendarRegistryLoader::load_from_json(artifact_json);
+
+        match result {
+            Err(ExchangeCalendarRegistryLoadError::MalformedDate {
+                field,
+                value,
+                reason,
+            }) => {
+                assert_eq!(field, "artifact_date");
+                assert_eq!(value, "2026-13-01");
+                assert_eq!(reason, "month must be between 01 and 12");
+            }
+            _ => panic!("expected malformed date error"),
+        }
+    }
+
+    #[test]
+    fn loader_rejects_duplicate_exchange_ids() {
+        let artifact_json = r#"
+        {
+            "schema_version": "calendar.registry.v1",
+            "artifact_date": "2026-01-31",
+            "exchanges": [
+                {
+                    "schema_version": "calendar.v1",
+                    "exchange_code": "XNYS",
+                    "exchange_name": "New York Stock Exchange",
+                    "timezone_name": "America/New_York",
+                    "rule_metadata": {
+                        "holiday_calendar_code": "US_EQUITIES",
+                        "early_close_rule_set": "US_EQUITIES_EARLY_CLOSE"
+                    },
+                    "regular_sessions": [
+                        {
+                            "weekday": "Monday",
+                            "windows": [
+                                {
+                                    "label": "regular",
+                                    "open_time": "09:30",
+                                    "close_time": "16:00"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "schema_version": "calendar.v1",
+                    "exchange_code": "XNYS",
+                    "exchange_name": "New York Stock Exchange Copy",
+                    "timezone_name": "America/New_York",
+                    "rule_metadata": {
+                        "holiday_calendar_code": "US_EQUITIES",
+                        "early_close_rule_set": null
+                    },
+                    "regular_sessions": [
+                        {
+                            "weekday": "Tuesday",
+                            "windows": [
+                                {
+                                    "label": "regular",
+                                    "open_time": "09:30",
+                                    "close_time": "16:00"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+        "#;
+
+        let result = ExchangeCalendarRegistryLoader::load_from_json(artifact_json);
+
+        assert_eq!(
+            result,
+            Err(ExchangeCalendarRegistryLoadError::DuplicateExchangeId {
+                exchange_code: "XNYS".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn registry_lookup_returns_structured_error_for_missing_exchange() {
+        let artifact_json = r#"
+        {
+            "schema_version": "calendar.registry.v1",
+            "artifact_date": "2026-01-31",
+            "exchanges": [
+                {
+                    "schema_version": "calendar.v1",
+                    "exchange_code": "XNYS",
+                    "exchange_name": "New York Stock Exchange",
+                    "timezone_name": "America/New_York",
+                    "rule_metadata": {
+                        "holiday_calendar_code": "US_EQUITIES",
+                        "early_close_rule_set": "US_EQUITIES_EARLY_CLOSE"
+                    },
+                    "regular_sessions": [
+                        {
+                            "weekday": "Monday",
+                            "windows": [
+                                {
+                                    "label": "regular",
+                                    "open_time": "09:30",
+                                    "close_time": "16:00"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+        "#;
+        let registry = ExchangeCalendarRegistryLoader::load_from_json(artifact_json)
+            .expect("valid artifact should load");
+
+        assert_eq!(registry.get("MISSING"), None);
+        assert_eq!(
+            registry.get_required("MISSING"),
+            Err(ExchangeCalendarRegistryLookupError::MissingExchangeId {
+                exchange_code: "MISSING".to_string(),
+            })
         );
     }
 
