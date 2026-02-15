@@ -30,6 +30,8 @@
 //!             close_time: "16:00".to_string(),
 //!         }],
 //!     }],
+//!     holiday_dates: vec![],
+//!     early_close_sessions: vec![],
 //! };
 //!
 //! let definition = ExchangeCalendarDefinition::from_artifact(artifact)?;
@@ -68,6 +70,8 @@
 //!             },
 //!         ],
 //!     }],
+//!     holiday_dates: vec![],
+//!     early_close_sessions: vec![],
 //! };
 //!
 //! let definition = ExchangeCalendarDefinition::from_artifact(artifact)?;
@@ -75,7 +79,7 @@
 //! # Ok::<(), janiform_core::calendar::ExchangeCalendarValidationError>(())
 //! ```
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
@@ -127,6 +131,39 @@ impl TradingWeekday {
     }
 }
 
+/// Local exchange date used for holiday and early-close schedule keys.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct CalendarDate {
+    year: i32,
+    month: u8,
+    day: u8,
+}
+
+impl CalendarDate {
+    fn parse(raw: &str) -> Result<Self, &'static str> {
+        let (year, month, day) = parse_iso_date_parts(raw)?;
+        Ok(Self { year, month, day })
+    }
+
+    fn from_local_timestamp(timestamp_local: &DateTime<Tz>) -> Self {
+        Self {
+            year: timestamp_local.year(),
+            month: timestamp_local.month() as u8,
+            day: timestamp_local.day() as u8,
+        }
+    }
+}
+
+impl Display for CalendarDate {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{:04}-{:02}-{:02}",
+            self.year, self.month, self.day
+        )
+    }
+}
+
 /// Canonical market state returned by calendar resolution for v0.1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MarketState {
@@ -154,6 +191,10 @@ pub struct ExchangeCalendarArtifact {
     pub timezone_name: Option<String>,
     pub rule_metadata: CalendarRuleMetadataArtifact,
     pub regular_sessions: Vec<RegularSessionArtifact>,
+    #[serde(default)]
+    pub holiday_dates: Vec<String>,
+    #[serde(default)]
+    pub early_close_sessions: Vec<EarlyCloseSessionArtifact>,
 }
 
 /// Artifact metadata for holiday and early close rule resolution.
@@ -181,6 +222,14 @@ pub struct SessionWindowArtifact {
     pub close_time: String,
 }
 
+/// Truncated session windows for one explicit early-close date.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EarlyCloseSessionArtifact {
+    pub date: String,
+    pub windows: Vec<SessionWindowArtifact>,
+}
+
 /// Immutable exchange calendar definition used by core calendar services.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExchangeCalendarDefinition {
@@ -189,6 +238,8 @@ pub struct ExchangeCalendarDefinition {
     timezone_name: String,
     rule_metadata: CalendarRuleMetadata,
     regular_sessions: Box<[RegularSessionDefinition]>,
+    holiday_dates: BTreeSet<CalendarDate>,
+    early_close_sessions_by_date: BTreeMap<CalendarDate, Box<[SessionWindowDefinition]>>,
 }
 
 impl ExchangeCalendarDefinition {
@@ -307,6 +358,9 @@ impl ExchangeCalendarDefinition {
             })
             .collect::<Vec<_>>()
             .into_boxed_slice();
+        let holiday_dates = build_holiday_dates(artifact.holiday_dates)?;
+        let early_close_sessions_by_date =
+            build_early_close_sessions(artifact.early_close_sessions)?;
 
         Ok(Self {
             schema_version,
@@ -320,6 +374,8 @@ impl ExchangeCalendarDefinition {
                 early_close_rule_set,
             },
             regular_sessions,
+            holiday_dates,
+            early_close_sessions_by_date,
         })
     }
 
@@ -343,7 +399,26 @@ impl ExchangeCalendarDefinition {
         &self.regular_sessions
     }
 
-    fn resolve_market_state_for_local_clock(
+    fn resolve_market_state_for_local_timestamp(
+        &self,
+        local_date: CalendarDate,
+        weekday: TradingWeekday,
+        local_clock: SessionTime,
+    ) -> MarketState {
+        // Rule precedence is deterministic and centralized
+        // 1. Holidays always resolve closed
+        // 2. Early-close windows override regular sessions for the same date
+        // 3. Regular sessions apply for all remaining dates
+        if self.holiday_dates.contains(&local_date) {
+            return MarketState::Closed;
+        }
+        if let Some(early_close_windows) = self.early_close_sessions_by_date.get(&local_date) {
+            return resolve_market_state_for_session_windows(early_close_windows, local_clock);
+        }
+        self.resolve_regular_market_state_for_local_clock(weekday, local_clock)
+    }
+
+    fn resolve_regular_market_state_for_local_clock(
         &self,
         weekday: TradingWeekday,
         local_clock: SessionTime,
@@ -356,15 +431,7 @@ impl ExchangeCalendarDefinition {
             return MarketState::Closed;
         };
 
-        if regular_session
-            .windows
-            .iter()
-            .any(|window| window.contains_local_clock(local_clock))
-        {
-            return MarketState::Open;
-        }
-
-        MarketState::Closed
+        resolve_market_state_for_session_windows(&regular_session.windows, local_clock)
     }
 }
 
@@ -446,6 +513,19 @@ impl SessionWindowDefinition {
     }
 }
 
+fn resolve_market_state_for_session_windows(
+    windows: &[SessionWindowDefinition],
+    local_clock: SessionTime,
+) -> MarketState {
+    if windows
+        .iter()
+        .any(|window| window.contains_local_clock(local_clock))
+    {
+        return MarketState::Open;
+    }
+    MarketState::Closed
+}
+
 /// Clock time represented in local exchange time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SessionTime {
@@ -504,6 +584,14 @@ pub enum ExchangeCalendarValidationError {
     MissingSessionWindows {
         weekday: TradingWeekday,
     },
+    MissingEarlyCloseSessionWindows {
+        date: String,
+    },
+    InvalidDate {
+        field: &'static str,
+        value: String,
+        reason: &'static str,
+    },
     InvalidClockTime {
         field: &'static str,
         value: String,
@@ -523,6 +611,26 @@ pub enum ExchangeCalendarValidationError {
         first_window: String,
         second_window: String,
     },
+    InvalidEarlyCloseSessionWindow {
+        date: String,
+        label: String,
+        open_time: String,
+        close_time: String,
+        reason: &'static str,
+    },
+    OverlappingEarlyCloseSessions {
+        date: String,
+        first_label: String,
+        second_label: String,
+        first_window: String,
+        second_window: String,
+    },
+    DuplicateHolidayDate {
+        date: String,
+    },
+    DuplicateEarlyCloseDate {
+        date: String,
+    },
 }
 
 impl Display for ExchangeCalendarValidationError {
@@ -536,6 +644,15 @@ impl Display for ExchangeCalendarValidationError {
                 formatter,
                 "regular session entry for {weekday} must include at least one session window"
             ),
+            Self::MissingEarlyCloseSessionWindows { date } => write!(
+                formatter,
+                "early-close session entry for {date} must include at least one session window"
+            ),
+            Self::InvalidDate {
+                field,
+                value,
+                reason,
+            } => write!(formatter, "invalid date `{value}` in `{field}`: {reason}"),
             Self::InvalidClockTime {
                 field,
                 value,
@@ -563,6 +680,36 @@ impl Display for ExchangeCalendarValidationError {
             } => write!(
                 formatter,
                 "overlapping regular session windows for {weekday}: `{first_label}` ({first_window}) overlaps `{second_label}` ({second_window})"
+            ),
+            Self::InvalidEarlyCloseSessionWindow {
+                date,
+                label,
+                open_time,
+                close_time,
+                reason,
+            } => write!(
+                formatter,
+                "invalid early-close session window `{label}` for {date} using {open_time}-{close_time}: {reason}"
+            ),
+            Self::OverlappingEarlyCloseSessions {
+                date,
+                first_label,
+                second_label,
+                first_window,
+                second_window,
+            } => write!(
+                formatter,
+                "overlapping early-close session windows for {date}: `{first_label}` ({first_window}) overlaps `{second_label}` ({second_window})"
+            ),
+            Self::DuplicateHolidayDate { date } => {
+                write!(
+                    formatter,
+                    "duplicate holiday date `{date}` in calendar artifact"
+                )
+            }
+            Self::DuplicateEarlyCloseDate { date } => write!(
+                formatter,
+                "duplicate early-close date `{date}` in calendar artifact"
             ),
         }
     }
@@ -662,6 +809,10 @@ impl ExchangeCalendarRegistry {
     /// - Session windows are interpreted as half-open intervals `[open, close)`.
     /// - Exact session open timestamp resolves to `MarketState::Open`.
     /// - Exact session close timestamp resolves to `MarketState::Closed`.
+    /// Rule precedence:
+    /// - Holidays resolve `MarketState::Closed` for the full local exchange date.
+    /// - Early-close windows override regular sessions when configured for a local date.
+    /// - Regular sessions apply when neither holiday nor early-close rule matches.
     pub fn resolve_market_state_at_utc(
         &self,
         exchange_code: &str,
@@ -678,13 +829,18 @@ impl ExchangeCalendarRegistry {
             }
         })?;
         let timestamp_local = timestamp_utc.with_timezone(&timezone);
+        let local_date = CalendarDate::from_local_timestamp(&timestamp_local);
         let local_weekday = TradingWeekday::from_chrono_weekday(timestamp_local.weekday());
         let local_clock = SessionTime::from_hour_minute(
             timestamp_local.hour() as u8,
             timestamp_local.minute() as u8,
         );
 
-        Ok(definition.resolve_market_state_for_local_clock(local_weekday, local_clock))
+        Ok(definition.resolve_market_state_for_local_timestamp(
+            local_date,
+            local_weekday,
+            local_clock,
+        ))
     }
 }
 
@@ -880,6 +1036,129 @@ impl Error for ExchangeCalendarRegistryLoadError {
     }
 }
 
+fn build_holiday_dates(
+    holiday_date_values: Vec<String>,
+) -> Result<BTreeSet<CalendarDate>, ExchangeCalendarValidationError> {
+    let mut holiday_dates: BTreeSet<CalendarDate> = BTreeSet::new();
+    for holiday_date_value in holiday_date_values {
+        let raw_date = require_non_empty(holiday_date_value, "holiday_dates")?;
+        let date = CalendarDate::parse(&raw_date).map_err(|reason| {
+            ExchangeCalendarValidationError::InvalidDate {
+                field: "holiday_dates",
+                value: raw_date.clone(),
+                reason,
+            }
+        })?;
+        if !holiday_dates.insert(date) {
+            return Err(ExchangeCalendarValidationError::DuplicateHolidayDate {
+                date: date.to_string(),
+            });
+        }
+    }
+    Ok(holiday_dates)
+}
+
+fn build_early_close_sessions(
+    early_close_sessions: Vec<EarlyCloseSessionArtifact>,
+) -> Result<BTreeMap<CalendarDate, Box<[SessionWindowDefinition]>>, ExchangeCalendarValidationError>
+{
+    let mut sessions_by_date: BTreeMap<CalendarDate, Box<[SessionWindowDefinition]>> =
+        BTreeMap::new();
+
+    for early_close_session in early_close_sessions {
+        let raw_date = require_non_empty(early_close_session.date, "early_close_sessions.date")?;
+        let date = CalendarDate::parse(&raw_date).map_err(|reason| {
+            ExchangeCalendarValidationError::InvalidDate {
+                field: "early_close_sessions.date",
+                value: raw_date.clone(),
+                reason,
+            }
+        })?;
+        if early_close_session.windows.is_empty() {
+            return Err(
+                ExchangeCalendarValidationError::MissingEarlyCloseSessionWindows {
+                    date: date.to_string(),
+                },
+            );
+        }
+
+        let mut windows = Vec::with_capacity(early_close_session.windows.len());
+        for window in early_close_session.windows {
+            let label = require_non_empty(window.label, "early_close_sessions.windows.label")?;
+            let open_time = SessionTime::parse(&window.open_time).map_err(|parse_reason| {
+                ExchangeCalendarValidationError::InvalidClockTime {
+                    field: "early_close_sessions.windows.open_time",
+                    value: window.open_time.clone(),
+                    reason: parse_reason,
+                }
+            })?;
+            let close_time = SessionTime::parse(&window.close_time).map_err(|parse_reason| {
+                ExchangeCalendarValidationError::InvalidClockTime {
+                    field: "early_close_sessions.windows.close_time",
+                    value: window.close_time.clone(),
+                    reason: parse_reason,
+                }
+            })?;
+            if open_time >= close_time {
+                return Err(
+                    ExchangeCalendarValidationError::InvalidEarlyCloseSessionWindow {
+                        date: date.to_string(),
+                        label,
+                        open_time: window.open_time,
+                        close_time: window.close_time,
+                        reason: "open_time must be earlier than close_time",
+                    },
+                );
+            }
+            windows.push(SessionWindowDefinition {
+                label,
+                open_time,
+                close_time,
+            });
+        }
+
+        windows.sort_by(|left_window, right_window| {
+            left_window
+                .open_time
+                .cmp(&right_window.open_time)
+                .then(left_window.close_time.cmp(&right_window.close_time))
+                .then(left_window.label.cmp(&right_window.label))
+        });
+        for window_pair in windows.windows(2) {
+            let first_window = &window_pair[0];
+            let second_window = &window_pair[1];
+            if first_window.close_time > second_window.open_time {
+                return Err(
+                    ExchangeCalendarValidationError::OverlappingEarlyCloseSessions {
+                        date: date.to_string(),
+                        first_label: first_window.label.clone(),
+                        second_label: second_window.label.clone(),
+                        first_window: format!(
+                            "{}-{}",
+                            first_window.open_time, first_window.close_time
+                        ),
+                        second_window: format!(
+                            "{}-{}",
+                            second_window.open_time, second_window.close_time
+                        ),
+                    },
+                );
+            }
+        }
+
+        if sessions_by_date
+            .insert(date, windows.into_boxed_slice())
+            .is_some()
+        {
+            return Err(ExchangeCalendarValidationError::DuplicateEarlyCloseDate {
+                date: raw_date,
+            });
+        }
+    }
+
+    Ok(sessions_by_date)
+}
+
 fn require_non_empty(
     value: String,
     field: &'static str,
@@ -905,6 +1184,10 @@ fn parse_unknown_field_name(error_message: &str) -> Option<String> {
 }
 
 fn validate_iso_date(raw: &str) -> Result<(), &'static str> {
+    parse_iso_date_parts(raw).map(|_| ())
+}
+
+fn parse_iso_date_parts(raw: &str) -> Result<(i32, u8, u8), &'static str> {
     if raw.len() != 10 {
         return Err("date must use YYYY-MM-DD format");
     }
@@ -922,7 +1205,7 @@ fn validate_iso_date(raw: &str) -> Result<(), &'static str> {
     }
 
     let year = raw[0..4]
-        .parse::<u16>()
+        .parse::<i32>()
         .map_err(|_| "year must be numeric")?;
     let month = raw[5..7]
         .parse::<u8>()
@@ -940,10 +1223,10 @@ fn validate_iso_date(raw: &str) -> Result<(), &'static str> {
         return Err("day is outside valid range for month");
     }
 
-    Ok(())
+    Ok((year, month, day))
 }
 
-fn max_day_of_month(year: u16, month: u8) -> u8 {
+fn max_day_of_month(year: i32, month: u8) -> u8 {
     match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
         4 | 6 | 9 | 11 => 30,
@@ -958,8 +1241,8 @@ fn max_day_of_month(year: u16, month: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::{
-        CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarDefinition,
-        ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact,
+        CalendarRuleMetadataArtifact, EarlyCloseSessionArtifact, ExchangeCalendarArtifact,
+        ExchangeCalendarDefinition, ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact,
         ExchangeCalendarRegistryLoadError, ExchangeCalendarRegistryLoader,
         ExchangeCalendarRegistryLookupError, ExchangeCalendarResolveError,
         ExchangeCalendarValidationError, MarketState, RegularSessionArtifact,
@@ -1001,6 +1284,8 @@ mod tests {
                     close_time: "09:30".to_string(),
                 }],
             }],
+            holiday_dates: vec![],
+            early_close_sessions: vec![],
         };
 
         let result = ExchangeCalendarDefinition::from_artifact(artifact);
@@ -1049,6 +1334,8 @@ mod tests {
                     },
                 ],
             }],
+            holiday_dates: vec![],
+            early_close_sessions: vec![],
         };
 
         let result = ExchangeCalendarDefinition::from_artifact(artifact);
@@ -1179,6 +1466,77 @@ mod tests {
 
         assert_eq!(xnys.timezone_name(), "America/New_York");
         assert_eq!(xtks.timezone_name(), "Asia/Tokyo");
+    }
+
+    #[test]
+    fn loader_ingests_holiday_and_early_close_schedule_fields() {
+        let artifact_json = r#"
+        {
+            "schema_version": "calendar.registry.v1",
+            "artifact_date": "2026-01-31",
+            "exchanges": [
+                {
+                    "schema_version": "calendar.v1",
+                    "exchange_code": "XNYS",
+                    "exchange_name": "New York Stock Exchange",
+                    "timezone_name": "America/New_York",
+                    "rule_metadata": {
+                        "holiday_calendar_code": "US_EQUITIES",
+                        "early_close_rule_set": "US_EQUITIES_EARLY_CLOSE"
+                    },
+                    "regular_sessions": [
+                        {
+                            "weekday": "Tuesday",
+                            "windows": [
+                                {
+                                    "label": "regular",
+                                    "open_time": "09:30",
+                                    "close_time": "16:00"
+                                }
+                            ]
+                        },
+                        {
+                            "weekday": "Wednesday",
+                            "windows": [
+                                {
+                                    "label": "regular",
+                                    "open_time": "09:30",
+                                    "close_time": "16:00"
+                                }
+                            ]
+                        }
+                    ],
+                    "holiday_dates": ["2026-02-03"],
+                    "early_close_sessions": [
+                        {
+                            "date": "2026-02-04",
+                            "windows": [
+                                {
+                                    "label": "early_close",
+                                    "open_time": "09:30",
+                                    "close_time": "13:00"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+        "#;
+
+        let registry = ExchangeCalendarRegistryLoader::load_from_json(artifact_json)
+            .expect("registry with holiday and early-close fields should load");
+        let holiday_timestamp = timestamp_utc(2026, 2, 3, 15, 0, 0);
+        let early_close_boundary = timestamp_utc(2026, 2, 4, 18, 0, 0);
+
+        assert_eq!(
+            registry.resolve_market_state_at_utc("XNYS", holiday_timestamp),
+            Ok(MarketState::Closed)
+        );
+        assert_eq!(
+            registry.resolve_market_state_at_utc("XNYS", early_close_boundary),
+            Ok(MarketState::Closed)
+        );
     }
 
     #[test]
@@ -1404,6 +1762,70 @@ mod tests {
     }
 
     #[test]
+    fn resolver_returns_closed_for_holiday_during_regular_weekday_session() {
+        let mut artifact = xnys_full_week_artifact();
+        artifact.holiday_dates = vec!["2026-02-03".to_string()];
+        let registry = single_exchange_registry(artifact);
+        let holiday_timestamp = timestamp_utc(2026, 2, 3, 15, 0, 0);
+
+        assert_eq!(
+            registry.resolve_market_state_at_utc("XNYS", holiday_timestamp),
+            Ok(MarketState::Closed)
+        );
+    }
+
+    #[test]
+    fn resolver_uses_truncated_early_close_window_for_market_state_transitions() {
+        let mut artifact = xnys_full_week_artifact();
+        artifact.early_close_sessions = vec![EarlyCloseSessionArtifact {
+            date: "2026-02-04".to_string(),
+            windows: vec![SessionWindowArtifact {
+                label: "early_close".to_string(),
+                open_time: "09:30".to_string(),
+                close_time: "13:00".to_string(),
+            }],
+        }];
+        let registry = single_exchange_registry(artifact);
+        let before_early_close = timestamp_utc(2026, 2, 4, 17, 59, 59);
+        let at_early_close = timestamp_utc(2026, 2, 4, 18, 0, 0);
+        let after_early_close = timestamp_utc(2026, 2, 4, 18, 0, 1);
+
+        assert_eq!(
+            registry.resolve_market_state_at_utc("XNYS", before_early_close),
+            Ok(MarketState::Open)
+        );
+        assert_eq!(
+            registry.resolve_market_state_at_utc("XNYS", at_early_close),
+            Ok(MarketState::Closed)
+        );
+        assert_eq!(
+            registry.resolve_market_state_at_utc("XNYS", after_early_close),
+            Ok(MarketState::Closed)
+        );
+    }
+
+    #[test]
+    fn resolver_applies_holiday_precedence_over_early_close_schedule() {
+        let mut artifact = xnys_full_week_artifact();
+        artifact.holiday_dates = vec!["2026-02-05".to_string()];
+        artifact.early_close_sessions = vec![EarlyCloseSessionArtifact {
+            date: "2026-02-05".to_string(),
+            windows: vec![SessionWindowArtifact {
+                label: "early_close".to_string(),
+                open_time: "09:30".to_string(),
+                close_time: "13:00".to_string(),
+            }],
+        }];
+        let registry = single_exchange_registry(artifact);
+        let timestamp_inside_early_close_window = timestamp_utc(2026, 2, 5, 16, 0, 0);
+
+        assert_eq!(
+            registry.resolve_market_state_at_utc("XNYS", timestamp_inside_early_close_window),
+            Ok(MarketState::Closed)
+        );
+    }
+
+    #[test]
     fn resolver_returns_structured_error_for_missing_exchange_id() {
         let registry = resolver_test_registry();
         let timestamp = timestamp_utc(2026, 2, 2, 14, 30, 0);
@@ -1462,6 +1884,8 @@ mod tests {
                     early_close_rule_set: None,
                 },
                 regular_sessions: full_week_regular_sessions("09:30", "16:00"),
+                holiday_dates: vec![],
+                early_close_sessions: vec![],
             }],
         };
         let registry = ExchangeCalendarRegistry::from_artifact(artifact)
@@ -1520,6 +1944,8 @@ mod tests {
                     ],
                 },
             ],
+            holiday_dates: vec![],
+            early_close_sessions: vec![],
         }
     }
 
@@ -1533,6 +1959,18 @@ mod tests {
             .expect("resolver test registry artifact should be valid")
     }
 
+    fn single_exchange_registry(
+        exchange_artifact: ExchangeCalendarArtifact,
+    ) -> ExchangeCalendarRegistry {
+        let artifact = ExchangeCalendarRegistryArtifact {
+            schema_version: "calendar.registry.v1".to_string(),
+            artifact_date: "2026-01-31".to_string(),
+            exchanges: vec![exchange_artifact],
+        };
+        ExchangeCalendarRegistry::from_artifact(artifact)
+            .expect("single-exchange registry artifact should be valid")
+    }
+
     fn xnys_full_week_artifact() -> ExchangeCalendarArtifact {
         ExchangeCalendarArtifact {
             schema_version: "calendar.v1".to_string(),
@@ -1544,6 +1982,8 @@ mod tests {
                 early_close_rule_set: Some("US_EQUITIES_EARLY_CLOSE".to_string()),
             },
             regular_sessions: full_week_regular_sessions("09:30", "16:00"),
+            holiday_dates: vec![],
+            early_close_sessions: vec![],
         }
     }
 
@@ -1558,6 +1998,8 @@ mod tests {
                 early_close_rule_set: None,
             },
             regular_sessions: full_week_regular_sessions("09:30", "15:00"),
+            holiday_dates: vec![],
+            early_close_sessions: vec![],
         }
     }
 

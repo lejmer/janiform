@@ -27,13 +27,13 @@ The Python package exposes an importable API and CLI via PyO3 bindings.
 
 ```bash
 maturin develop
-python -m janiform --help
+python3 -m janiform --help
 janiform --help
 ```
 
 ## Developer Commands
 
 ```bash
-python -m py_compile python/janiform/*.py tests/python/conftest.py
+python3 -m py_compile python/janiform/*.py tests/python/conftest.py
 cargo check --workspace
 ```
