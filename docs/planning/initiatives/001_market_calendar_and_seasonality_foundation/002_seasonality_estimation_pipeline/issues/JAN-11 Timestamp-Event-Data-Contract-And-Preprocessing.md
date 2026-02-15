@@ -1,4 +1,4 @@
-## ISSUE-001: Timestamp Event Data Contract And Preprocessing
+## Timestamp Event Data Contract And Preprocessing
 
 ### Description
 Define the input contract and preprocessing workflow for seasonality estimation from event timestamps. This includes schema validation, timezone normalization, session filtering, and handling of missing or sparse periods.

@@ -1,4 +1,4 @@
-## ISSUE-006: Component Diagnostics And Reproducibility Report
+## Component Diagnostics And Reproducibility Report
 
 ### Description
 Implement diagnostics and reporting for each seasonal component and overall fit quality, with reproducibility metadata for reruns and comparisons.

@@ -1,4 +1,4 @@
-## ISSUE-002: Intraday Seasonality Estimator Implementation
+## Intraday Seasonality Estimator Implementation
 
 ### Description
 Implement the nonparametric intraday estimator for `f_intra(tod)` using event timestamp density over time of day. The estimator should support smooth output suitable for hourly aggregation later.
