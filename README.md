@@ -96,6 +96,18 @@ Use `preprocess_timestamp_events(...)` before nonparametric seasonality estimati
   - Rust returns compact columnar data suitable for large datasets
   - `market_state_codes` and `exchange_local_day_of_week` are compact `bytes` (`u8` values)
 
+## Intraday Seasonality Estimation
+
+Use `estimate_intraday_seasonality(...)` with preprocessed events to estimate `f_intra(tod)` from
+timestamp density with explicit smoothing controls.
+
+- Input:
+  - preprocessed event output (`exchange_local_minute_of_day`)
+  - estimator settings (`minutes_per_bin`, kernel, bandwidth, pseudocount)
+- Output:
+  - deterministic machine-readable bins (`bin_start_minute_of_day`, `intraday_factor_by_bin`)
+  - normalized component with anchored mean (`mean(intraday_factor_by_bin) = 1`)
+
 ## Developer Commands
 
 ```bash

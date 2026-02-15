@@ -5,6 +5,11 @@ use janiform_core::calendar::{
     TimestampEventPreprocessingError, TimestampEventPreprocessingOutput,
     TimestampEventSessionFilter,
 };
+use janiform_core::seasonality::{
+    IntradaySeasonalityEstimateOutput, IntradaySeasonalityEstimationError,
+    IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel,
+    estimate_intraday_seasonality as estimate_intraday_seasonality_core,
+};
 use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyValueError};
 use pyo3::prelude::*;
@@ -28,6 +33,15 @@ struct PyCalendarRegistry {
 #[derive(Clone)]
 struct PyTimestampEventPreprocessingResult {
     output: TimestampEventPreprocessingOutput,
+}
+
+#[pyclass(
+    module = "janiform._native",
+    name = "IntradaySeasonalityEstimateResult"
+)]
+#[derive(Clone)]
+struct PyIntradaySeasonalityEstimateResult {
+    output: IntradaySeasonalityEstimateOutput,
 }
 
 #[pymethods]
@@ -139,6 +153,89 @@ impl PyTimestampEventPreprocessingResult {
 }
 
 #[pymethods]
+impl PyIntradaySeasonalityEstimateResult {
+    #[getter]
+    fn schema_version(&self) -> &str {
+        self.output.schema_version
+    }
+
+    #[getter]
+    fn minutes_per_bin(&self) -> u16 {
+        self.output.minutes_per_bin
+    }
+
+    #[getter]
+    fn smoothing_kernel(&self) -> &str {
+        self.output.smoothing_kernel.as_str()
+    }
+
+    #[getter]
+    fn smoothing_bandwidth_bins(&self) -> f64 {
+        self.output.smoothing_bandwidth_bins
+    }
+
+    #[getter]
+    fn minimum_bin_events(&self) -> usize {
+        self.output.minimum_bin_events
+    }
+
+    #[getter]
+    fn pseudocount(&self) -> f64 {
+        self.output.pseudocount
+    }
+
+    #[getter]
+    fn bin_start_minute_of_day(&self) -> Vec<u16> {
+        self.output.bin_start_minute_of_day.clone()
+    }
+
+    #[getter]
+    fn event_count_by_bin(&self) -> Vec<u64> {
+        self.output.event_count_by_bin.clone()
+    }
+
+    #[getter]
+    fn sparse_bin_flags(&self) -> Vec<u8> {
+        self.output.sparse_bin_flags.clone()
+    }
+
+    #[getter]
+    fn smoothed_density_by_bin(&self) -> Vec<f64> {
+        self.output.smoothed_density_by_bin.clone()
+    }
+
+    #[getter]
+    fn intraday_log_component_by_bin(&self) -> Vec<f64> {
+        self.output.intraday_log_component_by_bin.clone()
+    }
+
+    #[getter]
+    fn intraday_factor_by_bin(&self) -> Vec<f64> {
+        self.output.intraday_factor_by_bin.clone()
+    }
+
+    #[getter]
+    fn input_event_count(&self) -> usize {
+        self.output.diagnostics.input_event_count
+    }
+
+    #[getter]
+    fn bin_count(&self) -> usize {
+        self.output.diagnostics.bin_count
+    }
+
+    #[getter]
+    fn zero_event_bin_count(&self) -> usize {
+        self.output.diagnostics.zero_event_bin_count
+    }
+
+    #[getter]
+    fn sparse_bin_count(&self) -> usize {
+        self.output.diagnostics.sparse_bin_count
+    }
+}
+
+#[pymethods]
 impl PyCalendarRegistry {
     #[new]
     fn new(registry_json: &str) -> PyResult<Self> {
@@ -241,6 +338,93 @@ fn parse_session_filter(raw_session_filter: &str) -> PyResult<TimestampEventSess
         _ => Err(SeasonalityInputValidationError::new_err(format!(
             "unsupported session filter value: {raw_session_filter}"
         ))),
+    }
+}
+
+#[pyfunction]
+#[pyo3(signature = (exchange_local_minute_of_day, *, minutes_per_bin = 1, smoothing_kernel = "gaussian", smoothing_bandwidth_bins = 3.0, minimum_bin_events = 1, pseudocount = 1e-6))]
+fn estimate_intraday_seasonality(
+    py: Python<'_>,
+    exchange_local_minute_of_day: &Bound<'_, PyAny>,
+    minutes_per_bin: u16,
+    smoothing_kernel: &str,
+    smoothing_bandwidth_bins: f64,
+    minimum_bin_events: usize,
+    pseudocount: f64,
+) -> PyResult<PyIntradaySeasonalityEstimateResult> {
+    let minute_of_day_values: Vec<u16> = exchange_local_minute_of_day.extract().map_err(|_| {
+        SeasonalityInputValidationError::new_err(
+            "exchange_local_minute_of_day must be an iterable of integer minute-of-day values",
+        )
+    })?;
+    let parsed_smoothing_kernel = parse_intraday_smoothing_kernel(smoothing_kernel)?;
+    let estimator_settings = IntradaySeasonalityEstimatorSettings {
+        minutes_per_bin,
+        smoothing_kernel: parsed_smoothing_kernel,
+        smoothing_bandwidth_bins,
+        minimum_bin_events,
+        pseudocount,
+    };
+
+    let output = py
+        .allow_threads(|| {
+            estimate_intraday_seasonality_core(&minute_of_day_values, estimator_settings)
+        })
+        .map_err(map_intraday_estimation_error)?;
+
+    Ok(PyIntradaySeasonalityEstimateResult { output })
+}
+
+fn parse_intraday_smoothing_kernel(
+    raw_smoothing_kernel: &str,
+) -> PyResult<IntradaySmoothingKernel> {
+    match raw_smoothing_kernel {
+        "gaussian" => Ok(IntradaySmoothingKernel::Gaussian),
+        "uniform" => Ok(IntradaySmoothingKernel::Uniform),
+        _ => Err(SeasonalityInputValidationError::new_err(format!(
+            "unsupported intraday smoothing kernel value: {raw_smoothing_kernel}"
+        ))),
+    }
+}
+
+fn map_intraday_estimation_error(error: IntradaySeasonalityEstimationError) -> PyErr {
+    match error {
+        IntradaySeasonalityEstimationError::EmptyInputEvents => {
+            SeasonalityInputValidationError::new_err(
+                "intraday seasonality estimation requires at least one accepted event",
+            )
+        }
+        IntradaySeasonalityEstimationError::InvalidMinutesPerBin { minutes_per_bin } => {
+            SeasonalityInputValidationError::new_err(format!(
+                "minutes_per_bin must be a positive divisor of 1440, received {minutes_per_bin}"
+            ))
+        }
+        IntradaySeasonalityEstimationError::InvalidSmoothingBandwidthBins {
+            smoothing_bandwidth_bins,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "smoothing_bandwidth_bins must be a finite positive value, received {smoothing_bandwidth_bins}"
+        )),
+        IntradaySeasonalityEstimationError::InvalidMinimumBinEvents { minimum_bin_events } => {
+            SeasonalityInputValidationError::new_err(format!(
+                "minimum_bin_events must be at least 1, received {minimum_bin_events}"
+            ))
+        }
+        IntradaySeasonalityEstimationError::InvalidPseudocount { pseudocount } => {
+            SeasonalityInputValidationError::new_err(format!(
+                "pseudocount must be a finite positive value, received {pseudocount}"
+            ))
+        }
+        IntradaySeasonalityEstimationError::InvalidMinuteOfDay {
+            record_position,
+            minute_of_day,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "event record at position {record_position} has invalid local minute-of-day value {minute_of_day}"
+        )),
+        IntradaySeasonalityEstimationError::UnstableNormalization => {
+            SeasonalityInputValidationError::new_err(
+                "intraday seasonality estimation produced a non-positive normalization constant",
+            )
+        }
     }
 }
 
@@ -363,5 +547,10 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?;
     module.add_class::<PyCalendarRegistry>()?;
     module.add_class::<PyTimestampEventPreprocessingResult>()?;
+    module.add_class::<PyIntradaySeasonalityEstimateResult>()?;
+    module.add_function(pyo3::wrap_pyfunction!(
+        estimate_intraday_seasonality,
+        module
+    )?)?;
     Ok(())
 }
