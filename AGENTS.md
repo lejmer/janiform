@@ -22,6 +22,13 @@ This document provides instructions and guardrails for AI coding agents (and hum
 
 ---
 
+## Available Tooling
+- `cargo` for Rust
+- `python3` for Python
+- `pytest` for Python tests
+
+---
+
 ## Agent Heuristics and Checklist
 ### 1. General
 - Before adding new functions or classes, look through the repo to see if something similar already exists (except for enums and dataclasses that have context-dependent names):
@@ -70,7 +77,8 @@ This document provides instructions and guardrails for AI coding agents (and hum
 - You updated docs/inline comments where behavior changed.
 - You verify that the code is DRY (remember to look for other functions and classes that do the same thing).
 - You update README.md with an updated project structure, if there are big enough changes to it.
-- All code compiles (verify by running `python -m py_compile`).
+- All code compiles (verify by running `python3 -m py_compile`).
+- All tests succeed (verify using `pytest`).
 
 **Python Style Guide**
 
