@@ -223,3 +223,6 @@ target
 
 # Agent-generated pull requests should be ignored
 pull_requests/
+
+# Codex
+.codex/
