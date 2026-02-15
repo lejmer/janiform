@@ -1,4 +1,10 @@
-In this team, we mainly plan in Linear, so we organize all work into Projects and Issues. A Project is a full feature or full improvement of a feature (similar in concept to Epics). An Issue is a specific implementation task (similar in concept to Stories). Below, you will be given the full Project description, for context, followed by the specific Issue to implement.
+In this team, we mainly plan in Linear, so we organize all work into Initiatives, Projects and Issues. An Initiative is a collection of Projects. A Project is a full feature or full improvement of a feature (similar in concept to Epics). An Issue is a specific implementation task (similar in concept to Stories). Below, you will first be given the full Initiative description and the current Project description, for context. Then you will be given the specific Issue to implement. Your task is to implement that Issue.
+
+---
+
+# Initiative description
+
+
 
 ---
 
