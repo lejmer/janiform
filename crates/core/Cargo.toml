@@ -10,5 +10,7 @@ name = "janiform_core"
 path = "src/lib.rs"
 
 [dependencies]
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

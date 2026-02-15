@@ -1,4 +1,4 @@
-//! Exchange calendar domain model and artifact validation.
+//! Exchange calendar domain model, resolver semantics, and artifact validation.
 //!
 //! The model is designed for immutable construction from versioned artifacts.
 //! It covers timezone context, exchange metadata, and regular session windows
@@ -78,7 +78,10 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::str::FromStr;
 
+use chrono::{DateTime, Datelike, Timelike, Utc, Weekday as ChronoWeekday};
+use chrono_tz::Tz;
 use serde::Deserialize;
 
 const CALENDAR_REGISTRY_SCHEMA_VERSION: &str = "calendar.registry.v1";
@@ -105,6 +108,37 @@ impl Display for TradingWeekday {
             Self::Friday => "Friday",
             Self::Saturday => "Saturday",
             Self::Sunday => "Sunday",
+        };
+        formatter.write_str(value)
+    }
+}
+
+impl TradingWeekday {
+    fn from_chrono_weekday(weekday: ChronoWeekday) -> Self {
+        match weekday {
+            ChronoWeekday::Mon => Self::Monday,
+            ChronoWeekday::Tue => Self::Tuesday,
+            ChronoWeekday::Wed => Self::Wednesday,
+            ChronoWeekday::Thu => Self::Thursday,
+            ChronoWeekday::Fri => Self::Friday,
+            ChronoWeekday::Sat => Self::Saturday,
+            ChronoWeekday::Sun => Self::Sunday,
+        }
+    }
+}
+
+/// Canonical market state returned by calendar resolution for v0.1.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MarketState {
+    Open,
+    Closed,
+}
+
+impl Display for MarketState {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        let value = match self {
+            Self::Open => "open",
+            Self::Closed => "closed",
         };
         formatter.write_str(value)
     }
@@ -177,7 +211,8 @@ impl ExchangeCalendarDefinition {
             artifact.rule_metadata.holiday_calendar_code,
             "rule_metadata.holiday_calendar_code",
         )?;
-        let early_close_rule_set = normalize_optional_string(artifact.rule_metadata.early_close_rule_set);
+        let early_close_rule_set =
+            normalize_optional_string(artifact.rule_metadata.early_close_rule_set);
 
         if artifact.regular_sessions.is_empty() {
             return Err(ExchangeCalendarValidationError::MissingField {
@@ -185,7 +220,8 @@ impl ExchangeCalendarDefinition {
             });
         }
 
-        let mut grouped_windows: BTreeMap<TradingWeekday, Vec<SessionWindowDefinition>> = BTreeMap::new();
+        let mut grouped_windows: BTreeMap<TradingWeekday, Vec<SessionWindowDefinition>> =
+            BTreeMap::new();
         for weekday_sessions in artifact.regular_sessions {
             if weekday_sessions.windows.is_empty() {
                 return Err(ExchangeCalendarValidationError::MissingSessionWindows {
@@ -203,13 +239,14 @@ impl ExchangeCalendarDefinition {
                         reason: parse_reason,
                     }
                 })?;
-                let close_time = SessionTime::parse(&window.close_time).map_err(|parse_reason| {
-                    ExchangeCalendarValidationError::InvalidClockTime {
-                        field: "regular_sessions.windows.close_time",
-                        value: window.close_time.clone(),
-                        reason: parse_reason,
-                    }
-                })?;
+                let close_time =
+                    SessionTime::parse(&window.close_time).map_err(|parse_reason| {
+                        ExchangeCalendarValidationError::InvalidClockTime {
+                            field: "regular_sessions.windows.close_time",
+                            value: window.close_time.clone(),
+                            reason: parse_reason,
+                        }
+                    })?;
                 if open_time >= close_time {
                     return Err(ExchangeCalendarValidationError::InvalidSessionWindow {
                         weekday,
@@ -243,19 +280,21 @@ impl ExchangeCalendarDefinition {
                 let first_window = &window_pair[0];
                 let second_window = &window_pair[1];
                 if first_window.close_time > second_window.open_time {
-                    return Err(ExchangeCalendarValidationError::OverlappingRegularSessions {
-                        weekday: *weekday,
-                        first_label: first_window.label.clone(),
-                        second_label: second_window.label.clone(),
-                        first_window: format!(
-                            "{}-{}",
-                            first_window.open_time, first_window.close_time
-                        ),
-                        second_window: format!(
-                            "{}-{}",
-                            second_window.open_time, second_window.close_time
-                        ),
-                    });
+                    return Err(
+                        ExchangeCalendarValidationError::OverlappingRegularSessions {
+                            weekday: *weekday,
+                            first_label: first_window.label.clone(),
+                            second_label: second_window.label.clone(),
+                            first_window: format!(
+                                "{}-{}",
+                                first_window.open_time, first_window.close_time
+                            ),
+                            second_window: format!(
+                                "{}-{}",
+                                second_window.open_time, second_window.close_time
+                            ),
+                        },
+                    );
                 }
             }
         }
@@ -302,6 +341,30 @@ impl ExchangeCalendarDefinition {
 
     pub fn regular_sessions(&self) -> &[RegularSessionDefinition] {
         &self.regular_sessions
+    }
+
+    fn resolve_market_state_for_local_clock(
+        &self,
+        weekday: TradingWeekday,
+        local_clock: SessionTime,
+    ) -> MarketState {
+        let Some(regular_session) = self
+            .regular_sessions
+            .iter()
+            .find(|definition| definition.weekday == weekday)
+        else {
+            return MarketState::Closed;
+        };
+
+        if regular_session
+            .windows
+            .iter()
+            .any(|window| window.contains_local_clock(local_clock))
+        {
+            return MarketState::Open;
+        }
+
+        MarketState::Closed
     }
 }
 
@@ -376,6 +439,11 @@ impl SessionWindowDefinition {
     pub fn close_time(&self) -> SessionTime {
         self.close_time
     }
+
+    fn contains_local_clock(&self, local_clock: SessionTime) -> bool {
+        // Boundary policy is [open, close): exact open resolves open and exact close resolves closed.
+        local_clock >= self.open_time && local_clock < self.close_time
+    }
 }
 
 /// Clock time represented in local exchange time.
@@ -386,6 +454,10 @@ pub struct SessionTime {
 }
 
 impl SessionTime {
+    fn from_hour_minute(hour: u8, minute: u8) -> Self {
+        Self { hour, minute }
+    }
+
     fn parse(raw: &str) -> Result<Self, &'static str> {
         let mut parts = raw.split(':');
         let hour_segment = parts
@@ -521,16 +593,16 @@ impl ExchangeCalendarRegistry {
         let schema_version = require_non_empty(artifact.schema_version, "schema_version")
             .map_err(ExchangeCalendarRegistryLoadError::from_validation_error)?;
         if schema_version != CALENDAR_REGISTRY_SCHEMA_VERSION {
-            return Err(ExchangeCalendarRegistryLoadError::UnsupportedSchemaVersion {
-                expected: CALENDAR_REGISTRY_SCHEMA_VERSION,
-                actual: schema_version,
-            });
+            return Err(
+                ExchangeCalendarRegistryLoadError::UnsupportedSchemaVersion {
+                    expected: CALENDAR_REGISTRY_SCHEMA_VERSION,
+                    actual: schema_version,
+                },
+            );
         }
 
         if artifact.exchanges.is_empty() {
-            return Err(ExchangeCalendarRegistryLoadError::MissingField {
-                field: "exchanges",
-            });
+            return Err(ExchangeCalendarRegistryLoadError::MissingField { field: "exchanges" });
         }
 
         validate_iso_date(&artifact.artifact_date).map_err(|reason| {
@@ -541,13 +613,16 @@ impl ExchangeCalendarRegistry {
             }
         })?;
 
-        let mut definitions_by_exchange: BTreeMap<String, ExchangeCalendarDefinition> = BTreeMap::new();
+        let mut definitions_by_exchange: BTreeMap<String, ExchangeCalendarDefinition> =
+            BTreeMap::new();
         for exchange_artifact in artifact.exchanges {
             let exchange_code = exchange_artifact.exchange_code.trim().to_string();
-            let definition = ExchangeCalendarDefinition::from_artifact(exchange_artifact)
-                .map_err(|source| ExchangeCalendarRegistryLoadError::InvalidExchangeArtifact {
-                    exchange_code: (!exchange_code.is_empty()).then_some(exchange_code.clone()),
-                    source,
+            let definition =
+                ExchangeCalendarDefinition::from_artifact(exchange_artifact).map_err(|source| {
+                    ExchangeCalendarRegistryLoadError::InvalidExchangeArtifact {
+                        exchange_code: (!exchange_code.is_empty()).then_some(exchange_code.clone()),
+                        source,
+                    }
                 })?;
             if definitions_by_exchange
                 .insert(exchange_code.clone(), definition)
@@ -574,9 +649,42 @@ impl ExchangeCalendarRegistry {
         &self,
         exchange_code: &str,
     ) -> Result<&ExchangeCalendarDefinition, ExchangeCalendarRegistryLookupError> {
-        self.get(exchange_code).ok_or_else(|| ExchangeCalendarRegistryLookupError::MissingExchangeId {
-            exchange_code: exchange_code.to_string(),
+        self.get(exchange_code).ok_or_else(|| {
+            ExchangeCalendarRegistryLookupError::MissingExchangeId {
+                exchange_code: exchange_code.to_string(),
+            }
         })
+    }
+
+    /// Resolve market state for a UTC timestamp and exchange identifier.
+    ///
+    /// Boundary policy:
+    /// - Session windows are interpreted as half-open intervals `[open, close)`.
+    /// - Exact session open timestamp resolves to `MarketState::Open`.
+    /// - Exact session close timestamp resolves to `MarketState::Closed`.
+    pub fn resolve_market_state_at_utc(
+        &self,
+        exchange_code: &str,
+        timestamp_utc: DateTime<Utc>,
+    ) -> Result<MarketState, ExchangeCalendarResolveError> {
+        let definition = self
+            .get_required(exchange_code)
+            .map_err(ExchangeCalendarResolveError::from_lookup_error)?;
+        let timezone_name = definition.timezone_name();
+        let timezone = Tz::from_str(timezone_name).map_err(|_| {
+            ExchangeCalendarResolveError::InvalidTimezoneName {
+                exchange_code: exchange_code.to_string(),
+                timezone_name: timezone_name.to_string(),
+            }
+        })?;
+        let timestamp_local = timestamp_utc.with_timezone(&timezone);
+        let local_weekday = TradingWeekday::from_chrono_weekday(timestamp_local.weekday());
+        let local_clock = SessionTime::from_hour_minute(
+            timestamp_local.hour() as u8,
+            timestamp_local.minute() as u8,
+        );
+
+        Ok(definition.resolve_market_state_for_local_clock(local_weekday, local_clock))
     }
 }
 
@@ -589,10 +697,8 @@ impl ExchangeCalendarRegistryLoader {
     pub fn load_from_json(
         artifact_json: &str,
     ) -> Result<ExchangeCalendarRegistry, ExchangeCalendarRegistryLoadError> {
-        let artifact =
-            serde_json::from_str::<ExchangeCalendarRegistryArtifact>(artifact_json).map_err(
-                ExchangeCalendarRegistryLoadError::from_deserialization_error,
-            )?;
+        let artifact = serde_json::from_str::<ExchangeCalendarRegistryArtifact>(artifact_json)
+            .map_err(ExchangeCalendarRegistryLoadError::from_deserialization_error)?;
         ExchangeCalendarRegistry::from_artifact(artifact)
     }
 }
@@ -606,13 +712,61 @@ impl Display for ExchangeCalendarRegistryLookupError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::MissingExchangeId { exchange_code } => {
-                write!(formatter, "missing exchange id `{exchange_code}` in registry")
+                write!(
+                    formatter,
+                    "missing exchange id `{exchange_code}` in registry"
+                )
             }
         }
     }
 }
 
 impl Error for ExchangeCalendarRegistryLookupError {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExchangeCalendarResolveError {
+    MissingExchangeId {
+        exchange_code: String,
+    },
+    InvalidTimezoneName {
+        exchange_code: String,
+        timezone_name: String,
+    },
+}
+
+impl ExchangeCalendarResolveError {
+    fn from_lookup_error(source: ExchangeCalendarRegistryLookupError) -> Self {
+        match source {
+            ExchangeCalendarRegistryLookupError::MissingExchangeId { exchange_code } => {
+                Self::MissingExchangeId { exchange_code }
+            }
+        }
+    }
+}
+
+impl Display for ExchangeCalendarResolveError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingExchangeId { exchange_code } => {
+                write!(
+                    formatter,
+                    "missing exchange id `{exchange_code}` in registry"
+                )
+            }
+            Self::InvalidTimezoneName {
+                exchange_code,
+                timezone_name,
+            } => {
+                write!(
+                    formatter,
+                    "invalid timezone `{timezone_name}` configured for exchange `{exchange_code}`"
+                )
+            }
+        }
+    }
+}
+
+impl Error for ExchangeCalendarResolveError {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExchangeCalendarRegistryLoadError {
@@ -670,7 +824,10 @@ impl Display for ExchangeCalendarRegistryLoadError {
                 write!(formatter, "malformed calendar registry artifact: {reason}")
             }
             Self::UnknownField { field } => {
-                write!(formatter, "unknown field `{field}` in calendar registry artifact")
+                write!(
+                    formatter,
+                    "unknown field `{field}` in calendar registry artifact"
+                )
             }
             Self::MissingField { field } => {
                 write!(
@@ -683,10 +840,7 @@ impl Display for ExchangeCalendarRegistryLoadError {
                 value,
                 reason,
             } => {
-                write!(
-                    formatter,
-                    "malformed date `{value}` in `{field}`: {reason}"
-                )
+                write!(formatter, "malformed date `{value}` in `{field}`: {reason}")
             }
             Self::UnsupportedSchemaVersion { expected, actual } => {
                 write!(
@@ -795,11 +949,7 @@ fn max_day_of_month(year: u16, month: u8) -> u8 {
         4 | 6 | 9 | 11 => 30,
         2 => {
             let leap_year = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
-            if leap_year {
-                29
-            } else {
-                28
-            }
+            if leap_year { 29 } else { 28 }
         }
         _ => 31,
     }
@@ -809,10 +959,13 @@ fn max_day_of_month(year: u16, month: u8) -> u8 {
 mod tests {
     use super::{
         CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarDefinition,
+        ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact,
         ExchangeCalendarRegistryLoadError, ExchangeCalendarRegistryLoader,
-        ExchangeCalendarRegistryLookupError, ExchangeCalendarValidationError, RegularSessionArtifact,
+        ExchangeCalendarRegistryLookupError, ExchangeCalendarResolveError,
+        ExchangeCalendarValidationError, MarketState, RegularSessionArtifact,
         SessionWindowArtifact, TradingWeekday,
     };
+    use chrono::{DateTime, TimeZone, Utc};
 
     #[test]
     fn missing_timezone_fails_validation() {
@@ -1207,6 +1360,123 @@ mod tests {
         );
     }
 
+    #[test]
+    fn resolver_returns_expected_boundaries_for_regular_session() {
+        let registry = resolver_test_registry();
+
+        let pre_open = timestamp_utc(2026, 2, 2, 14, 29, 59);
+        let at_open = timestamp_utc(2026, 2, 2, 14, 30, 0);
+        let in_session = timestamp_utc(2026, 2, 2, 20, 59, 59);
+        let at_close = timestamp_utc(2026, 2, 2, 21, 0, 0);
+        let post_close = timestamp_utc(2026, 2, 2, 21, 0, 1);
+
+        assert_eq!(
+            registry.resolve_market_state_at_utc("XNYS", pre_open),
+            Ok(MarketState::Closed)
+        );
+        assert_eq!(
+            registry.resolve_market_state_at_utc("XNYS", at_open),
+            Ok(MarketState::Open)
+        );
+        assert_eq!(
+            registry.resolve_market_state_at_utc("XNYS", in_session),
+            Ok(MarketState::Open)
+        );
+        assert_eq!(
+            registry.resolve_market_state_at_utc("XNYS", at_close),
+            Ok(MarketState::Closed)
+        );
+        assert_eq!(
+            registry.resolve_market_state_at_utc("XNYS", post_close),
+            Ok(MarketState::Closed)
+        );
+    }
+
+    #[test]
+    fn resolver_returns_closed_on_weekend_timestamp() {
+        let registry = resolver_test_registry();
+        let weekend_timestamp = timestamp_utc(2026, 2, 1, 3, 0, 0);
+
+        assert_eq!(
+            registry.resolve_market_state_at_utc("XNYS", weekend_timestamp),
+            Ok(MarketState::Closed)
+        );
+    }
+
+    #[test]
+    fn resolver_returns_structured_error_for_missing_exchange_id() {
+        let registry = resolver_test_registry();
+        let timestamp = timestamp_utc(2026, 2, 2, 14, 30, 0);
+
+        assert_eq!(
+            registry.resolve_market_state_at_utc("MISSING", timestamp),
+            Err(ExchangeCalendarResolveError::MissingExchangeId {
+                exchange_code: "MISSING".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn resolver_uses_exchange_timezone_and_cross_day_local_date() {
+        let registry = resolver_test_registry();
+        let same_utc_timestamp = timestamp_utc(2026, 2, 2, 0, 30, 0);
+
+        assert_eq!(
+            registry.resolve_market_state_at_utc("XNYS", same_utc_timestamp),
+            Ok(MarketState::Closed)
+        );
+        assert_eq!(
+            registry.resolve_market_state_at_utc("XTKS", same_utc_timestamp),
+            Ok(MarketState::Open)
+        );
+    }
+
+    #[test]
+    fn resolver_handles_cross_day_transition_for_ahead_timezone_exchange() {
+        let registry = resolver_test_registry();
+        let before_utc_midnight = timestamp_utc(2026, 2, 2, 23, 59, 0);
+        let after_utc_midnight = timestamp_utc(2026, 2, 3, 0, 30, 0);
+
+        assert_eq!(
+            registry.resolve_market_state_at_utc("XTKS", before_utc_midnight),
+            Ok(MarketState::Closed)
+        );
+        assert_eq!(
+            registry.resolve_market_state_at_utc("XTKS", after_utc_midnight),
+            Ok(MarketState::Open)
+        );
+    }
+
+    #[test]
+    fn resolver_returns_structured_error_for_invalid_timezone_name() {
+        let artifact = ExchangeCalendarRegistryArtifact {
+            schema_version: "calendar.registry.v1".to_string(),
+            artifact_date: "2026-01-31".to_string(),
+            exchanges: vec![ExchangeCalendarArtifact {
+                schema_version: "calendar.v1".to_string(),
+                exchange_code: "XBAD".to_string(),
+                exchange_name: "Broken Exchange".to_string(),
+                timezone_name: Some("Not/A_Real_Timezone".to_string()),
+                rule_metadata: CalendarRuleMetadataArtifact {
+                    holiday_calendar_code: "BROKEN".to_string(),
+                    early_close_rule_set: None,
+                },
+                regular_sessions: full_week_regular_sessions("09:30", "16:00"),
+            }],
+        };
+        let registry = ExchangeCalendarRegistry::from_artifact(artifact)
+            .expect("registry artifact should validate before timezone resolution");
+        let timestamp = timestamp_utc(2026, 2, 2, 14, 30, 0);
+
+        assert_eq!(
+            registry.resolve_market_state_at_utc("XBAD", timestamp),
+            Err(ExchangeCalendarResolveError::InvalidTimezoneName {
+                exchange_code: "XBAD".to_string(),
+                timezone_name: "Not/A_Real_Timezone".to_string(),
+            })
+        );
+    }
+
     fn valid_exchange_artifact() -> ExchangeCalendarArtifact {
         ExchangeCalendarArtifact {
             schema_version: "calendar.v1".to_string(),
@@ -1251,5 +1521,79 @@ mod tests {
                 },
             ],
         }
+    }
+
+    fn resolver_test_registry() -> ExchangeCalendarRegistry {
+        let artifact = ExchangeCalendarRegistryArtifact {
+            schema_version: "calendar.registry.v1".to_string(),
+            artifact_date: "2026-01-31".to_string(),
+            exchanges: vec![xnys_full_week_artifact(), xtks_full_week_artifact()],
+        };
+        ExchangeCalendarRegistry::from_artifact(artifact)
+            .expect("resolver test registry artifact should be valid")
+    }
+
+    fn xnys_full_week_artifact() -> ExchangeCalendarArtifact {
+        ExchangeCalendarArtifact {
+            schema_version: "calendar.v1".to_string(),
+            exchange_code: "XNYS".to_string(),
+            exchange_name: "New York Stock Exchange".to_string(),
+            timezone_name: Some("America/New_York".to_string()),
+            rule_metadata: CalendarRuleMetadataArtifact {
+                holiday_calendar_code: "US_EQUITIES".to_string(),
+                early_close_rule_set: Some("US_EQUITIES_EARLY_CLOSE".to_string()),
+            },
+            regular_sessions: full_week_regular_sessions("09:30", "16:00"),
+        }
+    }
+
+    fn xtks_full_week_artifact() -> ExchangeCalendarArtifact {
+        ExchangeCalendarArtifact {
+            schema_version: "calendar.v1".to_string(),
+            exchange_code: "XTKS".to_string(),
+            exchange_name: "Tokyo Stock Exchange".to_string(),
+            timezone_name: Some("Asia/Tokyo".to_string()),
+            rule_metadata: CalendarRuleMetadataArtifact {
+                holiday_calendar_code: "JP_EQUITIES".to_string(),
+                early_close_rule_set: None,
+            },
+            regular_sessions: full_week_regular_sessions("09:30", "15:00"),
+        }
+    }
+
+    fn full_week_regular_sessions(
+        open_time: &str,
+        close_time: &str,
+    ) -> Vec<RegularSessionArtifact> {
+        [
+            TradingWeekday::Monday,
+            TradingWeekday::Tuesday,
+            TradingWeekday::Wednesday,
+            TradingWeekday::Thursday,
+            TradingWeekday::Friday,
+        ]
+        .into_iter()
+        .map(|weekday| RegularSessionArtifact {
+            weekday,
+            windows: vec![SessionWindowArtifact {
+                label: "regular".to_string(),
+                open_time: open_time.to_string(),
+                close_time: close_time.to_string(),
+            }],
+        })
+        .collect()
+    }
+
+    fn timestamp_utc(
+        year: i32,
+        month: u32,
+        day: u32,
+        hour: u32,
+        minute: u32,
+        second: u32,
+    ) -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(year, month, day, hour, minute, second)
+            .single()
+            .expect("timestamp fixture must resolve to a unique UTC datetime")
     }
 }
