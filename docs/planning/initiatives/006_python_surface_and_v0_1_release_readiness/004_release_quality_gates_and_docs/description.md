@@ -1,5 +1,7 @@
 ## Project 004: Release Quality Gates And Docs
 
+Establish CI quality gates, v0.1 docs completeness, and objective release signoff criteria.
+
 ### Context and requirements
 - Establish CI quality gates for build, type checks, core verification commands, and packaging smoke tests.
 - Produce v0.1 documentation for installation, quickstart, model overview, and workflow examples.

@@ -1,5 +1,7 @@
 ## Initiative 001: Market Calendar And Seasonality Foundation
 
+Build the deterministic calendar and seasonality backbone that feeds all Hawkes and coarse-time components with identifiable, reusable time effects.
+
 ### Desired outcome
 - Janiform has a production-ready calendar-time layer that models market open and closed windows and deterministic activity seasonality.
 - The system can produce normalized seasonality factors `s(t)` and closed-window news intensity baselines `nu_news(t)` at hourly resolution for any timestamp in supported exchanges.

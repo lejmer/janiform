@@ -1,5 +1,7 @@
 ## Project 003: Pybind Boundary Hardening
 
+Harden the PyO3 boundary with strict conversion, exception mapping, and panic containment rules.
+
 ### Context and requirements
 - Harden Rust-to-Python boundary conversion and error mapping with clear invariants.
 - Keep PyO3 layer thin and free of core business logic.

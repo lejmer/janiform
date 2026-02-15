@@ -1,5 +1,7 @@
 ## Initiative 002: Affine Hawkes Event Core
 
+Implement the core bivariate Hawkes event engine and safety constraints that define Janiform fine-scale activity dynamics.
+
 ### Desired outcome
 - Janiform provides a stable, calibrated bivariate Hawkes event engine for buy and sell arrivals with exponential-kernel excitation and shared decay.
 - The engine implements structured asymmetry for endogenous and exogenous excitation (`alpha`, `rho`) while enforcing positivity and stability constraints.

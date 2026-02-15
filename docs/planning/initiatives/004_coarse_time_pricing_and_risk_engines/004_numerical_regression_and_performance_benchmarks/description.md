@@ -1,5 +1,7 @@
 ## Project 004: Numerical Regression And Performance Benchmarks
 
+Measure and regress numerical accuracy and runtime performance for oracle, pricing, and risk components.
+
 ### Context and requirements
 - Establish benchmark and regression harnesses for oracle, pricing, and risk simulation performance.
 - Compare coarse-time outputs against controlled fine-scale Monte Carlo references for engine-level numerical sanity on bounded fixtures.

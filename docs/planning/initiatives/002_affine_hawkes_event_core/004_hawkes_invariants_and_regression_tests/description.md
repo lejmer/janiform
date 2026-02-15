@@ -1,5 +1,7 @@
 ## Project 004: Hawkes Invariants And Regression Tests
 
+Create invariant and regression suites that detect behavioral drift in Hawkes dynamics and event outputs.
+
 ### Context and requirements
 - Build an invariant-driven test suite for Hawkes dynamics and event simulation outputs.
 - Define regression scenarios that lock down known-good behavior for state transitions and event statistics.

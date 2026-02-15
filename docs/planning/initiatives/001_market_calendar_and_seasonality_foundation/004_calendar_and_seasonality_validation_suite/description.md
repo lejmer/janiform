@@ -1,5 +1,7 @@
 ## Project 004: Calendar And Seasonality Validation Suite
 
+Provide shared fixtures and regression checks that lock down calendar and seasonality correctness over time.
+
 ### Context and requirements
 - Create a dedicated validation and fixture suite for calendar and seasonality behavior.
 - Include regression fixtures for historical holiday calendars and known session anomalies.

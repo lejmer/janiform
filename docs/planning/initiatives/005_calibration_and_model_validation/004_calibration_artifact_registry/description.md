@@ -1,5 +1,7 @@
 ## Project 004: Calibration Artifact Registry
 
+Version and persist calibration artifacts so runs are reloadable, traceable, and comparable over time.
+
 ### Context and requirements
 - Define artifact schemas for datasets, fitted parameters, diagnostics, and metadata.
 - Implement persistence and reload paths for calibration outputs and comparisons.

@@ -1,5 +1,7 @@
 ## Project 001: Python API Contracts
 
+Define the stable Python API contract for simulation, calibration, and pricing workflows.
+
 ### Context and requirements
 - Define stable Python API entrypoints for simulation, calibration, and pricing workflows.
 - Specify typed request and response contracts and error behavior.

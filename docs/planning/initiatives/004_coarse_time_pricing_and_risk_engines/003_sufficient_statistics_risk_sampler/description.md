@@ -1,5 +1,7 @@
 ## Project 003: Sufficient Statistics Risk Sampler
 
+Implement interval sufficient-statistics risk sampling for long-horizon scenario generation without cluster replay.
+
 ### Context and requirements
 - Implement interval sampling of `A_plus`, `A_minus`, `N_plus`, and `N_minus` from transform slices.
 - Update boundary Hawkes state and sample return increments without cluster simulation.

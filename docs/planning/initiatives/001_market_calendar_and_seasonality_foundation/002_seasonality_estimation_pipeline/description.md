@@ -1,5 +1,7 @@
 ## Project 002: Seasonality Estimation Pipeline
 
+Build nonparametric seasonality estimation outputs normalized for identifiability and downstream calibration reuse.
+
 ### Context and requirements
 - Implement nonparametric estimation for intraday, day-of-week, and day-of-year seasonality from event timestamps.
 - Produce a normalized `s(t)` that preserves identifiability against baseline Hawkes intensity.

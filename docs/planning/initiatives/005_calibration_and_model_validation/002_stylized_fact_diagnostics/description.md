@@ -1,5 +1,7 @@
 ## Project 002: Stylized Fact Diagnostics
 
+Compute and compare stylized-fact diagnostics across horizons for empirical and model-generated data.
+
 ### Context and requirements
 - Implement diagnostics that compare fitted model outputs against empirical stylized facts.
 - Cover activity clustering, heavy tails, skew, volatility persistence, and gap behavior.

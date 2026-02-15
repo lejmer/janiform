@@ -1,5 +1,7 @@
 ## Project 003: Seeded Tick Event Simulator
 
+Build deterministic seeded tick-event simulation for buy and sell arrivals with reproducible tapes and diagnostics.
+
 ### Context and requirements
 - Build a deterministic seeded simulator for buy and sell event arrivals under calibrated Hawkes dynamics.
 - Generate event tapes with timestamp, side, and state snapshots needed by diagnostics.

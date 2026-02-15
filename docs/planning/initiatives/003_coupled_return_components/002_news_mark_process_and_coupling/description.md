@@ -1,5 +1,7 @@
 ## Project 002: News Mark Process And Coupling
 
+Implement shared-news mark generation and coupling into activity and closed-window gap channels.
+
 ### Context and requirements
 - Implement shared exogenous news arrivals with Gamma severity and double-exponential gap marks.
 - Couple news severity into Hawkes-state loading and closed-window gap jump generation.

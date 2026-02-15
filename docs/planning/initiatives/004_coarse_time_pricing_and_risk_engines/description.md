@@ -1,5 +1,7 @@
 ## Initiative 004: Coarse-Time Pricing And Risk Engines
 
+Deliver tractable coarse-time pricing and risk engines powered by the exponential-affine sufficient-statistics oracle.
+
 ### Desired outcome
 - Janiform supports direct coarse-interval simulation and pricing without requiring tick-by-tick replay.
 - The exponential-affine sufficient-statistics oracle is implemented as the canonical bridge between fine and coarse scales.

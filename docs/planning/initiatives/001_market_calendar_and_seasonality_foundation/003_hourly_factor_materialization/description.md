@@ -1,5 +1,7 @@
 ## Project 003: Hourly Factor Materialization
 
+Convert seasonality and news-intensity signals into interval-aligned factors for simulation and pricing.
+
 ### Context and requirements
 - Convert continuous or high-resolution seasonal signals into hourly piecewise-constant factors.
 - Generate and expose `s_h` and `nu_h` values for each modeled interval.

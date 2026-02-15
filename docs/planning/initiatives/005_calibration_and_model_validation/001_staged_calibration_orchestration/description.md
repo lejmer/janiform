@@ -1,5 +1,7 @@
 ## Project 001: Staged Calibration Orchestration
 
+Orchestrate multi-stage calibration with deterministic execution, constrained optimization, and resumable checkpoints.
+
 ### Context and requirements
 - Build an end-to-end calibration workflow with explicit stages for seasonality, Hawkes, and return components.
 - Support constrained optimization with deterministic seeds and checkpointing.

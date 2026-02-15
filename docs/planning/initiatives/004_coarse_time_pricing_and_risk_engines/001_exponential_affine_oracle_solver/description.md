@@ -1,5 +1,7 @@
 ## Project 001: Exponential Affine Oracle Solver
 
+Implement the exponential-affine ODE solver that produces sufficient-statistics transforms for coarse-time engines.
+
 ### Context and requirements
 - Implement the ODE solver for `C(t)` and `D(t)` that defines the sufficient-statistics transform over an interval.
 - Support configurable interval length `Delta` with hourly piecewise-constant factors as the v0.1 pricing default.

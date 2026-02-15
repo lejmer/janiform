@@ -1,5 +1,7 @@
 ## Initiative 003: Coupled Return Components
 
+Implement the coupled return layer that combines business-time NIG moves with shared-news gap behavior and strict sign semantics.
+
 ### Desired outcome
 - Janiform implements the full return decomposition `X = trading_time_moves + closed_market_gap_moves`.
 - Trading-time moves are driven by buy and sell NIG Levy components in business time with the agreed one-parameter skew asymmetry.

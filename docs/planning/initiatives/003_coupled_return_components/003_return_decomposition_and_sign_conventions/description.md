@@ -1,5 +1,7 @@
 ## Project 003: Return Decomposition And Sign Conventions
 
+Standardize return composition and characteristic-function sign conventions across pricing and simulation paths.
+
 ### Context and requirements
 - Implement return composition `X = L_plus(A_plus) - L_minus(A_minus) + G` with strict sign handling.
 - Ensure characteristic-function composition applies sell-side exponent with `-u` argument.

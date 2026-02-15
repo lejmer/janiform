@@ -1,5 +1,7 @@
 ## Initiative 005: Calibration And Model Validation
 
+Establish reproducible calibration workflows and validation tooling that prove fitted models meet target stylized facts and scale consistency.
+
 ### Desired outcome
 - Janiform has an end-to-end calibration workflow that fits model parameters on market data with robust constraints and reproducible outputs.
 - The fitted model is validated against the target stylized facts and scale-consistency requirements defined for v0.1.

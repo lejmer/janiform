@@ -1,5 +1,7 @@
 ## Project 002: CLI Workflows And User Experience
 
+Deliver scriptable CLI workflows with consistent arguments, structured outputs, and predictable error behavior.
+
 ### Context and requirements
 - Implement CLI commands for core workflows with consistent argument patterns and outputs.
 - Support common use cases for simulation, calibration orchestration, and pricing tasks.

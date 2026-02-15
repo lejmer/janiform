@@ -1,5 +1,7 @@
 ## Project 002: Parameter Constraints And Stability
 
+Define parameter schemas and validators that enforce positivity, structure, and Hawkes stability conditions.
+
 ### Context and requirements
 - Implement parameter objects and validators for positivity and structural asymmetry constraints.
 - Enforce spectral-radius stability for the de-seasonalized Hawkes kernel.

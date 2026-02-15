@@ -1,5 +1,7 @@
 ## Project 004: Open Closed Gap Behavior Validation
 
+Validate end-to-end open and closed gap behavior and prevent leakage of direct gap moves into open windows.
+
 ### Context and requirements
 - Build targeted validation scenarios for market open and closed shock behavior.
 - Confirm that explicit gap jumps are emitted only during closed windows.

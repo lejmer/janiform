@@ -1,5 +1,7 @@
 ## Project 001: Hawkes State Kernel
 
+Implement the 4D Hawkes state transition kernel used across simulation, transforms, and calibration.
+
 ### Context and requirements
 - Implement the 4D Hawkes excitation state and transition equations with shared decay.
 - Support event-driven updates for buy and sell arrivals and exogenous news loading.

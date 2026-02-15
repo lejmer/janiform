@@ -1,5 +1,7 @@
 ## Project 001: Exchange Calendar Service
 
+Create the canonical exchange calendar service that resolves open/closed state and boundary behavior consistently.
+
 ### Context and requirements
 - Build a canonical calendar component that resolves market state as `open` or `closed` for a timestamp and exchange.
 - Support regular sessions, early closes, holidays, and weekend behavior.

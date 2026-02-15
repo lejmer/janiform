@@ -1,5 +1,7 @@
 ## Project 001: NIG Levy Driver Module
 
+Implement reusable NIG exponent and sampling utilities for buy and sell trading-time return components.
+
 ### Context and requirements
 - Implement NIG exponent and sampling utilities for buy and sell trading-time return components.
 - Support shared core parameters with one-parameter sell-side skew shift.

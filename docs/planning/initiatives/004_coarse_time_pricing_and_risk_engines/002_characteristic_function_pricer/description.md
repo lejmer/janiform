@@ -1,5 +1,7 @@
 ## Project 002: Characteristic Function Pricer
 
+Build the characteristic-function option pricer with risk-neutral transformation and robust numerical integration controls.
+
 ### Context and requirements
 - Build a coarse-interval option pricer using transform outputs and Fourier inversion methods.
 - Apply Esscher-tilted Levy dynamics under the risk-neutral pricing setup.

@@ -1,5 +1,7 @@
 ## Project 003: Scale Consistency Harness
 
+Compare direct coarse outputs against aggregated fine simulations with governed pass and fail thresholds.
+
 ### Context and requirements
 - Build a harness that compares direct coarse simulation to aggregated fine-scale simulation.
 - Define model-validation tolerance thresholds for key distributional and path statistics across regimes.
