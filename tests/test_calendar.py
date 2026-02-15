@@ -66,8 +66,8 @@ def test_resolve_market_state_matches_golden_regression_matrix(
     for regression_case in calendar_regression_cases:
         exchange_code: str = cast(str, regression_case["exchange_code"])
         timestamp_utc: datetime = _parse_fixture_timestamp(cast(str, regression_case["timestamp_utc"]))
-        expected_state: MarketState = _expected_market_state(cast(str, regression_case["expected_state"]))
 
+        expected_state: MarketState = _expected_market_state(cast(str, regression_case["expected_state"]))
         resolved_state: MarketState = calendar_registry.resolve_market_state(exchange_code, timestamp_utc)
 
         assert resolved_state == expected_state, (
@@ -170,9 +170,10 @@ def test_python_adapter_matches_native_resolver_outputs(
     for regression_case in calendar_regression_cases:
         exchange_code: str = cast(str, regression_case["exchange_code"])
         timestamp_utc: datetime = _parse_fixture_timestamp(cast(str, regression_case["timestamp_utc"]))
-        native_state: str = native_registry.resolve_market_state(exchange_code, timestamp_utc.isoformat())
 
+        native_state: str = native_registry.resolve_market_state(exchange_code, timestamp_utc.isoformat())
         wrapped_state: MarketState = calendar_registry.resolve_market_state(exchange_code, timestamp_utc)
+
         assert wrapped_state.value == native_state
 
 
