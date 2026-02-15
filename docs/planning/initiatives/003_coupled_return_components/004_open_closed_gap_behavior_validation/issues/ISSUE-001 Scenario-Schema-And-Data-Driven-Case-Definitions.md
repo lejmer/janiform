@@ -5,7 +5,7 @@ Define a data-driven scenario schema for open and closed gap validation cases, i
 
 ### Acceptance Criteria
 - A scenario schema exists for event timing, market state, marks, and expected component outcomes.
-- Schema supports intraday, overnight, and weekend case definitions.
+- Schema supports overnight and weekend baseline cases plus intraday injected-news case definitions.
 - Scenario loader validates required fields and reports structured errors.
 - Scenario definitions are reusable across engines and test suites.
 

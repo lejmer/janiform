@@ -1,12 +1,12 @@
 ## ISSUE-003: Coarse Versus Fine Consistency Regression Harness
 
 ### Description
-Build regression harness that compares coarse-time outputs against controlled fine-scale Monte Carlo references for pricing and risk metrics.
+Build engine-level regression harness that compares coarse-time outputs against controlled fine-scale Monte Carlo references on bounded benchmark fixtures.
 
 ### Acceptance Criteria
 - Harness runs paired coarse and fine reference experiments on shared scenarios.
-- Output includes metric deltas for key pricing and risk statistics.
-- Regression pass or fail decisions use versioned tolerance configuration.
+- Output includes metric deltas for key pricing and risk statistics used by engine benchmarking.
+- Regression pass or fail decisions use versioned engine-level tolerance configuration.
 - Harness reports deterministic scenario identifiers and run metadata.
 
 ### Unit tests
@@ -17,3 +17,4 @@ Build regression harness that compares coarse-time outputs against controlled fi
 ### Notes/Constraints
 - Keep fine-scale references bounded to practical runtime budgets.
 - Use shared random controls where appropriate to reduce variance noise.
+- Keep model-level multi-regime consistency governance in Initiative 005 Project 003.

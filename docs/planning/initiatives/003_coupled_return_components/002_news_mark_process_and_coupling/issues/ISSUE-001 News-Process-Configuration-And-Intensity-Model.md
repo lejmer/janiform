@@ -5,7 +5,7 @@ Define configuration schema for the shared exogenous news process and implement 
 
 ### Acceptance Criteria
 - A typed configuration model exists for news intensity and mark distribution parameters.
-- Intensity model supports deterministic time-dependent inputs used by simulation and pricing paths.
+- Intensity model supports baseline closed-window news intensity policy and deterministic time-dependent inputs used by simulation and pricing paths.
 - Configuration validation reports missing or invalid fields with actionable errors.
 - Configuration can be serialized for calibration artifact persistence.
 
@@ -16,4 +16,5 @@ Define configuration schema for the shared exogenous news process and implement 
 
 ### Notes/Constraints
 - Keep intensity model independent from specific calendar implementation details.
+- Keep baseline behavior aligned with closed-window intensity policy from the design specification.
 - Avoid duplicated config structs across modules.
