@@ -25,6 +25,7 @@ from .seasonality import (
     IntradaySeasonalityEstimate,
     IntradaySeasonalityEstimatorSettings,
     IntradaySmoothingKernel,
+    ScheduledEventOverlayDefinition,
     SessionFilter,
     SeasonalityInputValidationError,
     SeasonalityPreprocessingError,
@@ -36,6 +37,7 @@ from .seasonality import (
     estimate_day_of_week_seasonality,
     estimate_day_of_year_seasonality,
     estimate_intraday_seasonality,
+    load_scheduled_event_overlay_definitions,
     preprocess_timestamp_events,
 )
 
@@ -69,6 +71,7 @@ __all__ = [
     "IntradaySmoothingKernel",
     "MarketState",
     "PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION",
+    "ScheduledEventOverlayDefinition",
     "SessionFilter",
     "SeasonalityInputValidationError",
     "SeasonalityPreprocessingError",
@@ -80,6 +83,7 @@ __all__ = [
     "estimate_day_of_week_seasonality",
     "estimate_day_of_year_seasonality",
     "estimate_intraday_seasonality",
+    "load_scheduled_event_overlay_definitions",
     "preprocess_timestamp_events",
     "resolve_market_state",
 ]

@@ -103,9 +103,10 @@ pub use crate::seasonality::{
     DeterministicSeasonalityCompositionError, DeterministicSeasonalityCompositionOutput,
     INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION, IntradaySeasonalityDiagnostics,
     IntradaySeasonalityEstimateOutput, IntradaySeasonalityEstimationError,
-    IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel,
-    compose_deterministic_seasonality_signal, estimate_day_of_week_seasonality,
-    estimate_day_of_year_seasonality, estimate_intraday_seasonality,
+    IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel, ScheduledEventOverlayDefinition,
+    ScheduledEventOverlayProvenanceMetadata, compose_deterministic_seasonality_signal,
+    estimate_day_of_week_seasonality, estimate_day_of_year_seasonality,
+    estimate_intraday_seasonality,
 };
 
 /// Weekday used by regular exchange sessions.

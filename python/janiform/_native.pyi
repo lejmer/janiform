@@ -239,6 +239,15 @@ class DeterministicSeasonalityCompositionResult:
     def day_of_year_log_component_by_event(self) -> list[float]: ...
 
     @property
+    def special_log_component_by_event(self) -> list[float]: ...
+
+    @property
+    def special_overlay_active_flags_by_event(self) -> bytes: ...
+
+    @property
+    def active_overlay_ids_by_event(self) -> list[str]: ...
+
+    @property
     def combined_log_component_by_event(self) -> list[float]: ...
 
     @property
@@ -270,6 +279,36 @@ class DeterministicSeasonalityCompositionResult:
 
     @property
     def mean_anchor_tolerance(self) -> float: ...
+
+    @property
+    def overlays_enabled(self) -> bool: ...
+
+    @property
+    def configured_overlay_count(self) -> int: ...
+
+    @property
+    def enabled_overlay_count(self) -> int: ...
+
+    @property
+    def active_overlay_event_count(self) -> int: ...
+
+    @property
+    def overlay_precedence_policy(self) -> str: ...
+
+    @property
+    def overlay_merge_policy(self) -> str: ...
+
+    @property
+    def overlay_window_boundary_policy(self) -> str: ...
+
+    @property
+    def configured_overlay_ids_in_order(self) -> list[str]: ...
+
+    @property
+    def applied_overlay_ids_in_order(self) -> list[str]: ...
+
+    @property
+    def overlay_source_labels_in_order(self) -> list[str]: ...
 
 
 class CalendarRegistry:
@@ -315,6 +354,7 @@ def estimate_day_of_year_seasonality(
 
 
 def compose_deterministic_seasonality_signal(
+    timestamp_utc_nanos: object,
     exchange_local_minute_of_day: object,
     exchange_local_day_of_week: object,
     exchange_local_day_of_year: object,
@@ -323,4 +363,5 @@ def compose_deterministic_seasonality_signal(
     day_of_year_log_component: object,
     *,
     intraday_minutes_per_bin: int = 1,
+    scheduled_event_overlays: object | None = None,
 ) -> DeterministicSeasonalityCompositionResult: ...

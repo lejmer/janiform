@@ -14,12 +14,14 @@ from janiform.seasonality import (
     DayOfYearSeasonalityEstimatorSettings,
     IntradaySeasonalityEstimatorSettings,
     IntradaySmoothingKernel,
+    ScheduledEventOverlayDefinition,
     SessionFilter,
     SeasonalityInputValidationError,
     compose_deterministic_seasonality_signal,
     estimate_day_of_week_seasonality,
     estimate_day_of_year_seasonality,
     estimate_intraday_seasonality,
+    load_scheduled_event_overlay_definitions,
     preprocess_timestamp_events,
 )
 
@@ -403,6 +405,7 @@ def test_compose_deterministic_seasonality_signal_is_explicit_and_reproducible(
             first_output.intraday_log_component_by_event[event_position]
             + first_output.day_of_week_log_component_by_event[event_position]
             + first_output.day_of_year_log_component_by_event[event_position]
+            + first_output.special_log_component_by_event[event_position]
             - first_output.normalization_log_offset
         )
         assert first_output.combined_log_component_by_event[event_position] == pytest.approx(
@@ -412,6 +415,183 @@ def test_compose_deterministic_seasonality_signal_is_explicit_and_reproducible(
             math.exp(expected_log_component)
         )
     assert sum(first_output.combined_factor_by_event) / first_output.input_event_count == pytest.approx(1.0)
+
+
+def test_compose_deterministic_seasonality_signal_applies_single_and_multiple_overlay_windows(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    event_records: list[dict[str, object]] = _build_weekly_pattern_event_records()
+    preprocessed = preprocess_timestamp_events(
+        event_records,
+        exchange_code="XNYS",
+        calendar_registry=calendar_registry,
+        session_filter=SessionFilter.ALL,
+    )
+    intraday_estimate = estimate_intraday_seasonality(preprocessed)
+    day_of_week_estimate = estimate_day_of_week_seasonality(preprocessed)
+    day_of_year_estimate = estimate_day_of_year_seasonality(preprocessed)
+    scheduled_event_overlays = load_scheduled_event_overlay_definitions(
+        [
+            {
+                "overlay_id": "monday_window",
+                "start_timestamp_utc": "2026-02-02T15:00:00Z",
+                "end_timestamp_utc": "2026-02-02T15:30:00Z",
+                "log_adjustment": 0.2,
+                "precedence": 1,
+                "source_label": "macro_calendar",
+            },
+            {
+                "overlay_id": "friday_window",
+                "start_timestamp_utc": "2026-02-06T15:00:00Z",
+                "end_timestamp_utc": "2026-02-06T15:30:00Z",
+                "log_adjustment": -0.1,
+                "precedence": 1,
+                "source_label": "macro_calendar",
+            },
+        ]
+    )
+
+    composition = compose_deterministic_seasonality_signal(
+        preprocessed,
+        intraday_estimate,
+        day_of_week_estimate,
+        day_of_year_estimate,
+        scheduled_event_overlays=scheduled_event_overlays,
+    )
+
+    monday_event_positions = [
+        event_position
+        for event_position, day_of_week in enumerate(preprocessed.exchange_local_day_of_week)
+        if day_of_week == 1
+    ]
+    friday_event_positions = [
+        event_position
+        for event_position, day_of_week in enumerate(preprocessed.exchange_local_day_of_week)
+        if day_of_week == 5
+    ]
+
+    assert composition.configured_overlay_count == 2
+    assert composition.enabled_overlay_count == 2
+    assert composition.overlays_enabled is True
+    assert composition.active_overlay_event_count == len(monday_event_positions) + len(friday_event_positions)
+    assert composition.overlay_precedence_policy == "highest_precedence_wins.v1"
+    assert composition.overlay_merge_policy == "equal_precedence_additive.v1"
+    assert composition.overlay_window_boundary_policy == "start_inclusive_end_exclusive.v1"
+    assert composition.configured_overlay_ids_in_order == ["monday_window", "friday_window"]
+    assert composition.applied_overlay_ids_in_order == ["monday_window", "friday_window"]
+    for event_position in monday_event_positions:
+        assert composition.special_log_component_by_event[event_position] == pytest.approx(0.2)
+        assert composition.special_overlay_active_flags_by_event[event_position] == 1
+        assert composition.active_overlay_ids_by_event[event_position] == "monday_window"
+    for event_position in friday_event_positions:
+        assert composition.special_log_component_by_event[event_position] == pytest.approx(-0.1)
+        assert composition.special_overlay_active_flags_by_event[event_position] == 1
+        assert composition.active_overlay_ids_by_event[event_position] == "friday_window"
+
+
+def test_compose_deterministic_seasonality_signal_applies_overlay_precedence_when_windows_overlap(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    event_records: list[dict[str, object]] = _build_weekly_pattern_event_records()
+    preprocessed = preprocess_timestamp_events(
+        event_records,
+        exchange_code="XNYS",
+        calendar_registry=calendar_registry,
+        session_filter=SessionFilter.ALL,
+    )
+    intraday_estimate = estimate_intraday_seasonality(preprocessed)
+    day_of_week_estimate = estimate_day_of_week_seasonality(preprocessed)
+    day_of_year_estimate = estimate_day_of_year_seasonality(preprocessed)
+    scheduled_event_overlays = [
+        ScheduledEventOverlayDefinition(
+            overlay_id="low_priority",
+            start_timestamp_utc="2026-02-02T15:00:00Z",
+            end_timestamp_utc="2026-02-02T15:30:00Z",
+            log_adjustment=0.1,
+            precedence=1,
+            source_label="macro_calendar",
+        ),
+        ScheduledEventOverlayDefinition(
+            overlay_id="high_priority",
+            start_timestamp_utc="2026-02-02T15:00:00Z",
+            end_timestamp_utc="2026-02-02T15:30:00Z",
+            log_adjustment=0.3,
+            precedence=2,
+            source_label="macro_calendar",
+        ),
+        ScheduledEventOverlayDefinition(
+            overlay_id="high_priority_peer",
+            start_timestamp_utc="2026-02-02T15:00:00Z",
+            end_timestamp_utc="2026-02-02T15:30:00Z",
+            log_adjustment=0.2,
+            precedence=2,
+            source_label="macro_calendar",
+        ),
+    ]
+
+    composition = compose_deterministic_seasonality_signal(
+        preprocessed,
+        intraday_estimate,
+        day_of_week_estimate,
+        day_of_year_estimate,
+        scheduled_event_overlays=scheduled_event_overlays,
+    )
+
+    monday_event_positions = [
+        event_position
+        for event_position, day_of_week in enumerate(preprocessed.exchange_local_day_of_week)
+        if day_of_week == 1
+    ]
+    assert monday_event_positions
+    assert "low_priority" not in composition.applied_overlay_ids_in_order
+    for event_position in monday_event_positions:
+        assert composition.special_log_component_by_event[event_position] == pytest.approx(0.5)
+        assert composition.active_overlay_ids_by_event[event_position] == "high_priority,high_priority_peer"
+
+
+def test_compose_deterministic_seasonality_signal_is_noop_when_overlays_are_disabled(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    event_records: list[dict[str, object]] = _build_weekly_pattern_event_records()
+    preprocessed = preprocess_timestamp_events(
+        event_records,
+        exchange_code="XNYS",
+        calendar_registry=calendar_registry,
+        session_filter=SessionFilter.ALL,
+    )
+    intraday_estimate = estimate_intraday_seasonality(preprocessed)
+    day_of_week_estimate = estimate_day_of_week_seasonality(preprocessed)
+    day_of_year_estimate = estimate_day_of_year_seasonality(preprocessed)
+
+    without_overlays = compose_deterministic_seasonality_signal(
+        preprocessed,
+        intraday_estimate,
+        day_of_week_estimate,
+        day_of_year_estimate,
+    )
+    with_disabled_overlay = compose_deterministic_seasonality_signal(
+        preprocessed,
+        intraday_estimate,
+        day_of_week_estimate,
+        day_of_year_estimate,
+        scheduled_event_overlays=[
+            ScheduledEventOverlayDefinition(
+                overlay_id="disabled_overlay",
+                start_timestamp_utc="2026-02-02T15:00:00Z",
+                end_timestamp_utc="2026-02-02T15:30:00Z",
+                log_adjustment=1.0,
+                precedence=100,
+                enabled=False,
+                source_label="macro_calendar",
+            )
+        ],
+    )
+
+    assert with_disabled_overlay.active_overlay_event_count == 0
+    assert all(flag == 0 for flag in with_disabled_overlay.special_overlay_active_flags_by_event)
+    assert without_overlays.special_log_component_by_event == with_disabled_overlay.special_log_component_by_event
+    assert without_overlays.combined_log_component_by_event == with_disabled_overlay.combined_log_component_by_event
+    assert without_overlays.combined_factor_by_event == with_disabled_overlay.combined_factor_by_event
 
 
 def _result_snapshot(result: object) -> dict[str, object]:
@@ -471,6 +651,11 @@ def _composition_snapshot(composition: object) -> dict[str, object]:
             cast(list[float], composition.day_of_week_log_component_by_event)
         ),
         "day_of_year_log_component_by_event": list(cast(list[float], composition.day_of_year_log_component_by_event)),
+        "special_log_component_by_event": list(cast(list[float], composition.special_log_component_by_event)),
+        "special_overlay_active_flags_by_event": bytes(
+            cast(bytes, composition.special_overlay_active_flags_by_event)
+        ),
+        "active_overlay_ids_by_event": list(cast(list[str], composition.active_overlay_ids_by_event)),
         "combined_log_component_by_event": list(cast(list[float], composition.combined_log_component_by_event)),
         "combined_factor_by_event": list(cast(list[float], composition.combined_factor_by_event)),
         "input_event_count": cast(int, composition.input_event_count),
@@ -482,6 +667,16 @@ def _composition_snapshot(composition: object) -> dict[str, object]:
         "normalization_log_offset": cast(float, composition.normalization_log_offset),
         "post_normalization_mean_factor": cast(float, composition.post_normalization_mean_factor),
         "mean_anchor_tolerance": cast(float, composition.mean_anchor_tolerance),
+        "overlays_enabled": cast(bool, composition.overlays_enabled),
+        "configured_overlay_count": cast(int, composition.configured_overlay_count),
+        "enabled_overlay_count": cast(int, composition.enabled_overlay_count),
+        "active_overlay_event_count": cast(int, composition.active_overlay_event_count),
+        "overlay_precedence_policy": cast(str, composition.overlay_precedence_policy),
+        "overlay_merge_policy": cast(str, composition.overlay_merge_policy),
+        "overlay_window_boundary_policy": cast(str, composition.overlay_window_boundary_policy),
+        "configured_overlay_ids_in_order": list(cast(list[str], composition.configured_overlay_ids_in_order)),
+        "applied_overlay_ids_in_order": list(cast(list[str], composition.applied_overlay_ids_in_order)),
+        "overlay_source_labels_in_order": list(cast(list[str], composition.overlay_source_labels_in_order)),
     }
 
 

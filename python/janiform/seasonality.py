@@ -1,8 +1,9 @@
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 from types import ModuleType
-from typing import Optional, cast
+from typing import Optional, Self, cast
 
 from .api import native_module
 from .calendar import (
@@ -67,6 +68,111 @@ class DayOfWeekSeasonalityEstimatorSettings:
 class DayOfYearSeasonalityEstimatorSettings:
     minimum_bucket_events: int = 1
     pseudocount: float = 1e-6
+
+
+@dataclass(frozen=True, slots=True)
+class ScheduledEventOverlayDefinition:
+    overlay_id: str
+    start_timestamp_utc: str | datetime
+    end_timestamp_utc: str | datetime
+    log_adjustment: float
+    precedence: int = 0
+    enabled: bool = True
+    source_label: str = "configuration"
+
+    @staticmethod
+    def from_config_record(
+        config_record: Mapping[str, object],
+    ) -> Self:
+        if "overlay_id" not in config_record:
+            raise SeasonalityInputValidationError(
+                "scheduled event overlay configuration record is missing required field 'overlay_id'"
+            )
+        overlay_id_value: object = config_record["overlay_id"]
+        if not isinstance(overlay_id_value, str) or not overlay_id_value.strip():
+            raise SeasonalityInputValidationError(
+                "scheduled event overlay field 'overlay_id' must be a non-empty string"
+            )
+
+        if "start_timestamp_utc" not in config_record:
+            raise SeasonalityInputValidationError(
+                "scheduled event overlay configuration record is missing required field 'start_timestamp_utc'"
+            )
+        start_timestamp_utc_value: object = config_record["start_timestamp_utc"]
+        if not isinstance(start_timestamp_utc_value, str | datetime):
+            raise SeasonalityInputValidationError(
+                "scheduled event overlay field 'start_timestamp_utc' must be an RFC3339 string or timezone-aware datetime"
+            )
+
+        if "end_timestamp_utc" not in config_record:
+            raise SeasonalityInputValidationError(
+                "scheduled event overlay configuration record is missing required field 'end_timestamp_utc'"
+            )
+        end_timestamp_utc_value: object = config_record["end_timestamp_utc"]
+        if not isinstance(end_timestamp_utc_value, str | datetime):
+            raise SeasonalityInputValidationError(
+                "scheduled event overlay field 'end_timestamp_utc' must be an RFC3339 string or timezone-aware datetime"
+            )
+
+        if "log_adjustment" not in config_record:
+            raise SeasonalityInputValidationError(
+                "scheduled event overlay configuration record is missing required field 'log_adjustment'"
+            )
+        log_adjustment_value: object = config_record["log_adjustment"]
+        if isinstance(log_adjustment_value, bool) or not isinstance(log_adjustment_value, int | float):
+            raise SeasonalityInputValidationError(
+                "scheduled event overlay field 'log_adjustment' must be a float"
+            )
+
+        precedence: int = 0
+        if "precedence" in config_record:
+            precedence_value: object = config_record["precedence"]
+            if isinstance(precedence_value, bool) or not isinstance(precedence_value, int):
+                raise SeasonalityInputValidationError(
+                    "scheduled event overlay field 'precedence' must be an integer"
+                )
+            if precedence_value < 0:
+                raise SeasonalityInputValidationError(
+                    "scheduled event overlay field 'precedence' must be non-negative"
+                )
+            precedence = precedence_value
+
+        enabled: bool = True
+        if "enabled" in config_record:
+            enabled_value: object = config_record["enabled"]
+            if not isinstance(enabled_value, bool):
+                raise SeasonalityInputValidationError(
+                    "scheduled event overlay field 'enabled' must be a boolean"
+                )
+            enabled = enabled_value
+
+        source_label: str = "configuration"
+        if "source_label" in config_record:
+            source_label_value: object = config_record["source_label"]
+            if not isinstance(source_label_value, str):
+                raise SeasonalityInputValidationError(
+                    "scheduled event overlay field 'source_label' must be a string"
+                )
+            source_label = source_label_value
+
+        return ScheduledEventOverlayDefinition(
+            overlay_id=overlay_id_value,
+            start_timestamp_utc=start_timestamp_utc_value,
+            end_timestamp_utc=end_timestamp_utc_value,
+            log_adjustment=float(log_adjustment_value),
+            precedence=precedence,
+            enabled=enabled,
+            source_label=source_label,
+        )
+
+
+def load_scheduled_event_overlay_definitions(
+    overlay_configuration_records: Sequence[Mapping[str, object]],
+) -> list[ScheduledEventOverlayDefinition]:
+    return [
+        ScheduledEventOverlayDefinition.from_config_record(config_record)
+        for config_record in overlay_configuration_records
+    ]
 
 
 TIMESTAMP_EVENT_INPUT_SCHEMA: TimestampEventInputSchema = TimestampEventInputSchema(
@@ -398,6 +504,18 @@ class DeterministicSeasonalityComposition:
         return cast(list[float], self._native_result.day_of_year_log_component_by_event)
 
     @property
+    def special_log_component_by_event(self) -> list[float]:
+        return cast(list[float], self._native_result.special_log_component_by_event)
+
+    @property
+    def special_overlay_active_flags_by_event(self) -> bytes:
+        return cast(bytes, self._native_result.special_overlay_active_flags_by_event)
+
+    @property
+    def active_overlay_ids_by_event(self) -> list[str]:
+        return cast(list[str], self._native_result.active_overlay_ids_by_event)
+
+    @property
     def combined_log_component_by_event(self) -> list[float]:
         return cast(list[float], self._native_result.combined_log_component_by_event)
 
@@ -440,6 +558,46 @@ class DeterministicSeasonalityComposition:
     @property
     def mean_anchor_tolerance(self) -> float:
         return cast(float, self._native_result.mean_anchor_tolerance)
+
+    @property
+    def overlays_enabled(self) -> bool:
+        return cast(bool, self._native_result.overlays_enabled)
+
+    @property
+    def configured_overlay_count(self) -> int:
+        return cast(int, self._native_result.configured_overlay_count)
+
+    @property
+    def enabled_overlay_count(self) -> int:
+        return cast(int, self._native_result.enabled_overlay_count)
+
+    @property
+    def active_overlay_event_count(self) -> int:
+        return cast(int, self._native_result.active_overlay_event_count)
+
+    @property
+    def overlay_precedence_policy(self) -> str:
+        return cast(str, self._native_result.overlay_precedence_policy)
+
+    @property
+    def overlay_merge_policy(self) -> str:
+        return cast(str, self._native_result.overlay_merge_policy)
+
+    @property
+    def overlay_window_boundary_policy(self) -> str:
+        return cast(str, self._native_result.overlay_window_boundary_policy)
+
+    @property
+    def configured_overlay_ids_in_order(self) -> list[str]:
+        return cast(list[str], self._native_result.configured_overlay_ids_in_order)
+
+    @property
+    def applied_overlay_ids_in_order(self) -> list[str]:
+        return cast(list[str], self._native_result.applied_overlay_ids_in_order)
+
+    @property
+    def overlay_source_labels_in_order(self) -> list[str]:
+        return cast(list[str], self._native_result.overlay_source_labels_in_order)
 
 
 def preprocess_timestamp_events(
@@ -545,11 +703,19 @@ def compose_deterministic_seasonality_signal(
     intraday_estimate: IntradaySeasonalityEstimate,
     day_of_week_estimate: DayOfWeekSeasonalityEstimate,
     day_of_year_estimate: DayOfYearSeasonalityEstimate,
+    *,
+    scheduled_event_overlays: Optional[Sequence[ScheduledEventOverlayDefinition]] = None,
 ) -> DeterministicSeasonalityComposition:
     native: ModuleType = native_module()
+    serialized_scheduled_event_overlays: Optional[list[dict[str, object]]] = (
+        _serialize_scheduled_event_overlays(scheduled_event_overlays)
+        if scheduled_event_overlays is not None
+        else None
+    )
 
     try:
         native_result: object = native.compose_deterministic_seasonality_signal(
+            preprocessed_events.timestamp_utc_nanos,
             preprocessed_events.exchange_local_minute_of_day,
             preprocessed_events.exchange_local_day_of_week,
             preprocessed_events.exchange_local_day_of_year,
@@ -557,11 +723,36 @@ def compose_deterministic_seasonality_signal(
             day_of_week_estimate.day_of_week_log_component,
             day_of_year_estimate.day_of_year_log_component,
             intraday_minutes_per_bin=intraday_estimate.minutes_per_bin,
+            scheduled_event_overlays=serialized_scheduled_event_overlays,
         )
     except native.SeasonalityInputValidationError as e:
         raise SeasonalityInputValidationError(str(e)) from e
 
     return DeterministicSeasonalityComposition(native_result)
+
+
+def _serialize_scheduled_event_overlays(
+    scheduled_event_overlays: Sequence[ScheduledEventOverlayDefinition],
+) -> list[dict[str, object]]:
+    serialized_overlays: list[dict[str, object]] = []
+    for scheduled_event_overlay in scheduled_event_overlays:
+        if scheduled_event_overlay.precedence > 65_535:
+            raise SeasonalityInputValidationError(
+                "scheduled event overlay field 'precedence' must be in the range 0..65535"
+            )
+        serialized_overlays.append(
+            {
+                "overlay_id": scheduled_event_overlay.overlay_id,
+                "start_timestamp_utc": scheduled_event_overlay.start_timestamp_utc,
+                "end_timestamp_utc": scheduled_event_overlay.end_timestamp_utc,
+                "log_adjustment": scheduled_event_overlay.log_adjustment,
+                "precedence": scheduled_event_overlay.precedence,
+                "enabled": scheduled_event_overlay.enabled,
+                "source_label": scheduled_event_overlay.source_label,
+            }
+        )
+
+    return serialized_overlays
 
 
 __all__ = [
@@ -573,10 +764,12 @@ __all__ = [
     "DayOfYearSeasonalityEstimate",
     "DayOfYearSeasonalityEstimatorSettings",
     "DeterministicSeasonalityComposition",
+    "ScheduledEventOverlayDefinition",
     "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
     "IntradaySeasonalityEstimate",
     "IntradaySeasonalityEstimatorSettings",
     "IntradaySmoothingKernel",
+    "load_scheduled_event_overlay_definitions",
     "PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION",
     "SessionFilter",
     "SeasonalityInputValidationError",
