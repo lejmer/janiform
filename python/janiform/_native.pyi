@@ -365,3 +365,15 @@ def compose_deterministic_seasonality_signal(
     intraday_minutes_per_bin: int = 1,
     scheduled_event_overlays: object | None = None,
 ) -> DeterministicSeasonalityCompositionResult: ...
+
+
+def generate_seasonality_diagnostics_report(
+    dataset_id: str,
+    preprocessed_events: TimestampEventPreprocessingResult,
+    intraday_estimate: IntradaySeasonalityEstimateResult,
+    day_of_week_estimate: DayOfWeekSeasonalityEstimateResult,
+    day_of_year_estimate: DayOfYearSeasonalityEstimateResult,
+    composition: DeterministicSeasonalityCompositionResult,
+    *,
+    estimator_version: str = "seasonality_estimator.v1",
+) -> str: ...

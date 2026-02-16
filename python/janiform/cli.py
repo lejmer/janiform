@@ -9,6 +9,7 @@ def _build_parser() -> ArgumentParser:
         description="Command line interface for Janiform.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+
     return parser
 
 
