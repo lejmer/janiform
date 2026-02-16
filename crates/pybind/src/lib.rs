@@ -11,7 +11,7 @@ use janiform_core::seasonality::{
     DayOfYearSeasonalityEstimationError, DayOfYearSeasonalityEstimatorSettings,
     DeterministicSeasonalityCompositionError, DeterministicSeasonalityCompositionOutput,
     IntradaySeasonalityEstimateOutput, IntradaySeasonalityEstimationError,
-    IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel,
+    IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel, ScheduledEventOverlayDefinition,
     compose_deterministic_seasonality_signal as compose_deterministic_seasonality_signal_core,
     estimate_day_of_week_seasonality as estimate_day_of_week_seasonality_core,
     estimate_day_of_year_seasonality as estimate_day_of_year_seasonality_core,
@@ -448,6 +448,21 @@ impl PyDeterministicSeasonalityCompositionResult {
     }
 
     #[getter]
+    fn special_log_component_by_event(&self) -> Vec<f64> {
+        self.output.special_log_component_by_event.clone()
+    }
+
+    #[getter]
+    fn special_overlay_active_flags_by_event(&self) -> Vec<u8> {
+        self.output.special_overlay_active_flags_by_event.clone()
+    }
+
+    #[getter]
+    fn active_overlay_ids_by_event(&self) -> Vec<String> {
+        self.output.active_overlay_ids_by_event.clone()
+    }
+
+    #[getter]
     fn combined_log_component_by_event(&self) -> Vec<f64> {
         self.output.combined_log_component_by_event.clone()
     }
@@ -524,6 +539,89 @@ impl PyDeterministicSeasonalityCompositionResult {
             .diagnostics
             .normalization_metadata
             .mean_anchor_tolerance
+    }
+
+    #[getter]
+    fn overlays_enabled(&self) -> bool {
+        self.output
+            .diagnostics
+            .overlay_provenance_metadata
+            .overlays_enabled
+    }
+
+    #[getter]
+    fn configured_overlay_count(&self) -> usize {
+        self.output
+            .diagnostics
+            .overlay_provenance_metadata
+            .configured_overlay_count
+    }
+
+    #[getter]
+    fn enabled_overlay_count(&self) -> usize {
+        self.output
+            .diagnostics
+            .overlay_provenance_metadata
+            .enabled_overlay_count
+    }
+
+    #[getter]
+    fn active_overlay_event_count(&self) -> usize {
+        self.output
+            .diagnostics
+            .overlay_provenance_metadata
+            .active_overlay_event_count
+    }
+
+    #[getter]
+    fn overlay_precedence_policy(&self) -> &str {
+        self.output
+            .diagnostics
+            .overlay_provenance_metadata
+            .precedence_policy
+    }
+
+    #[getter]
+    fn overlay_merge_policy(&self) -> &str {
+        self.output
+            .diagnostics
+            .overlay_provenance_metadata
+            .merge_policy
+    }
+
+    #[getter]
+    fn overlay_window_boundary_policy(&self) -> &str {
+        self.output
+            .diagnostics
+            .overlay_provenance_metadata
+            .window_boundary_policy
+    }
+
+    #[getter]
+    fn configured_overlay_ids_in_order(&self) -> Vec<String> {
+        self.output
+            .diagnostics
+            .overlay_provenance_metadata
+            .configured_overlay_ids_in_order
+            .clone()
+    }
+
+    #[getter]
+    fn applied_overlay_ids_in_order(&self) -> Vec<String> {
+        self.output
+            .diagnostics
+            .overlay_provenance_metadata
+            .applied_overlay_ids_in_order
+            .clone()
+    }
+
+    #[getter]
+    fn overlay_source_labels_in_order(&self) -> Vec<String> {
+        self.output
+            .diagnostics
+            .overlay_provenance_metadata
+            .overlay_source_labels_in_order
+            .clone()
     }
 }
 
@@ -722,9 +820,10 @@ fn estimate_day_of_year_seasonality(
 }
 
 #[pyfunction]
-#[pyo3(signature = (exchange_local_minute_of_day, exchange_local_day_of_week, exchange_local_day_of_year, intraday_log_component_by_bin, day_of_week_log_component, day_of_year_log_component, *, intraday_minutes_per_bin = 1))]
+#[pyo3(signature = (timestamp_utc_nanos, exchange_local_minute_of_day, exchange_local_day_of_week, exchange_local_day_of_year, intraday_log_component_by_bin, day_of_week_log_component, day_of_year_log_component, *, intraday_minutes_per_bin = 1, scheduled_event_overlays = None))]
 fn compose_deterministic_seasonality_signal(
     py: Python<'_>,
+    timestamp_utc_nanos: &Bound<'_, PyAny>,
     exchange_local_minute_of_day: &Bound<'_, PyAny>,
     exchange_local_day_of_week: &Bound<'_, PyAny>,
     exchange_local_day_of_year: &Bound<'_, PyAny>,
@@ -732,7 +831,13 @@ fn compose_deterministic_seasonality_signal(
     day_of_week_log_component: &Bound<'_, PyAny>,
     day_of_year_log_component: &Bound<'_, PyAny>,
     intraday_minutes_per_bin: u16,
+    scheduled_event_overlays: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<PyDeterministicSeasonalityCompositionResult> {
+    let timestamp_utc_nanos_values: Vec<i64> = timestamp_utc_nanos.extract().map_err(|_| {
+        SeasonalityInputValidationError::new_err(
+            "timestamp_utc_nanos must be an iterable of integer UTC nanosecond values",
+        )
+    })?;
     let minute_of_day_values: Vec<u16> = exchange_local_minute_of_day.extract().map_err(|_| {
         SeasonalityInputValidationError::new_err(
             "exchange_local_minute_of_day must be an iterable of integer minute-of-day values",
@@ -763,10 +868,12 @@ fn compose_deterministic_seasonality_signal(
             "day_of_year_log_component must be an iterable of float values",
         )
     })?;
+    let overlay_definitions = parse_scheduled_event_overlay_definitions(scheduled_event_overlays)?;
 
     let output = py
         .allow_threads(|| {
             compose_deterministic_seasonality_signal_core(
+                &timestamp_utc_nanos_values,
                 &minute_of_day_values,
                 &day_of_week_values,
                 &day_of_year_values,
@@ -774,11 +881,151 @@ fn compose_deterministic_seasonality_signal(
                 &intraday_log_values,
                 &day_of_week_log_values,
                 &day_of_year_log_values,
+                &overlay_definitions,
             )
         })
         .map_err(map_deterministic_composition_error)?;
 
     Ok(PyDeterministicSeasonalityCompositionResult { output })
+}
+
+fn parse_scheduled_event_overlay_definitions(
+    scheduled_event_overlays: Option<&Bound<'_, PyAny>>,
+) -> PyResult<Vec<ScheduledEventOverlayDefinition>> {
+    let Some(raw_scheduled_event_overlays) = scheduled_event_overlays else {
+        return Ok(Vec::new());
+    };
+    if raw_scheduled_event_overlays.is_none() {
+        return Ok(Vec::new());
+    }
+
+    let overlay_iterator = raw_scheduled_event_overlays.try_iter().map_err(|_| {
+        SeasonalityInputValidationError::new_err(
+            "scheduled_event_overlays must be an iterable of mapping records",
+        )
+    })?;
+
+    let mut overlays: Vec<ScheduledEventOverlayDefinition> = Vec::new();
+    for (overlay_position, overlay_record_result) in overlay_iterator.enumerate() {
+        let overlay_record = overlay_record_result?;
+        let overlay_mapping = overlay_record.downcast::<PyMapping>().map_err(|_| {
+            SeasonalityInputValidationError::new_err(format!(
+                "scheduled_event_overlay at position {overlay_position} must be a mapping"
+            ))
+        })?;
+
+        let overlay_id_value = overlay_mapping
+            .contains("overlay_id")?
+            .then(|| overlay_mapping.get_item("overlay_id"))
+            .ok_or_else(|| {
+                SeasonalityInputValidationError::new_err(format!(
+                    "scheduled_event_overlay at position {overlay_position} is missing required field 'overlay_id'"
+                ))
+            })??;
+        let overlay_id: String = overlay_id_value.extract().map_err(|_| {
+            SeasonalityInputValidationError::new_err(format!(
+                "scheduled_event_overlay at position {overlay_position} field 'overlay_id' must be a string"
+            ))
+        })?;
+
+        let start_timestamp_value = overlay_mapping
+            .contains("start_timestamp_utc")?
+            .then(|| overlay_mapping.get_item("start_timestamp_utc"))
+            .ok_or_else(|| {
+                SeasonalityInputValidationError::new_err(format!(
+                    "scheduled_event_overlay at position {overlay_position} is missing required field 'start_timestamp_utc'"
+                ))
+            })??;
+        let start_timestamp_utc = parse_timestamp_utc_from_python(
+            &start_timestamp_value,
+            overlay_position,
+            "start_timestamp_utc",
+        )?;
+        let start_timestamp_utc_nanos =
+            start_timestamp_utc
+                .timestamp_nanos_opt()
+                .ok_or_else(|| {
+                    SeasonalityInputValidationError::new_err(format!(
+                        "scheduled_event_overlay at position {overlay_position} field 'start_timestamp_utc' is outside the supported nanosecond range"
+                    ))
+                })?;
+
+        let end_timestamp_value = overlay_mapping
+            .contains("end_timestamp_utc")?
+            .then(|| overlay_mapping.get_item("end_timestamp_utc"))
+            .ok_or_else(|| {
+                SeasonalityInputValidationError::new_err(format!(
+                    "scheduled_event_overlay at position {overlay_position} is missing required field 'end_timestamp_utc'"
+                ))
+            })??;
+        let end_timestamp_utc = parse_timestamp_utc_from_python(
+            &end_timestamp_value,
+            overlay_position,
+            "end_timestamp_utc",
+        )?;
+        let end_timestamp_utc_nanos = end_timestamp_utc.timestamp_nanos_opt().ok_or_else(|| {
+            SeasonalityInputValidationError::new_err(format!(
+                "scheduled_event_overlay at position {overlay_position} field 'end_timestamp_utc' is outside the supported nanosecond range"
+            ))
+        })?;
+
+        let log_adjustment_value = overlay_mapping
+            .contains("log_adjustment")?
+            .then(|| overlay_mapping.get_item("log_adjustment"))
+            .ok_or_else(|| {
+                SeasonalityInputValidationError::new_err(format!(
+                    "scheduled_event_overlay at position {overlay_position} is missing required field 'log_adjustment'"
+                ))
+            })??;
+        let log_adjustment: f64 = log_adjustment_value.extract().map_err(|_| {
+            SeasonalityInputValidationError::new_err(format!(
+                "scheduled_event_overlay at position {overlay_position} field 'log_adjustment' must be a float"
+            ))
+        })?;
+
+        let precedence = if overlay_mapping.contains("precedence")? {
+            let precedence_value = overlay_mapping.get_item("precedence")?;
+            precedence_value.extract::<u16>().map_err(|_| {
+                SeasonalityInputValidationError::new_err(format!(
+                    "scheduled_event_overlay at position {overlay_position} field 'precedence' must be an integer in the range 0..65535"
+                ))
+            })?
+        } else {
+            0_u16
+        };
+        let enabled = if overlay_mapping.contains("enabled")? {
+            let enabled_value = overlay_mapping.get_item("enabled")?;
+            enabled_value.extract::<bool>().map_err(|_| {
+                SeasonalityInputValidationError::new_err(format!(
+                    "scheduled_event_overlay at position {overlay_position} field 'enabled' must be a boolean"
+                ))
+            })?
+        } else {
+            true
+        };
+        let source_label = if overlay_mapping.contains("source_label")? {
+            let source_label_value = overlay_mapping.get_item("source_label")?;
+            source_label_value.extract::<String>().map_err(|_| {
+                SeasonalityInputValidationError::new_err(format!(
+                    "scheduled_event_overlay at position {overlay_position} field 'source_label' must be a string"
+                ))
+            })?
+        } else {
+            "configuration".to_string()
+        };
+
+        overlays.push(ScheduledEventOverlayDefinition {
+            overlay_id,
+            start_timestamp_utc_nanos,
+            end_timestamp_utc_nanos,
+            log_adjustment,
+            precedence,
+            enabled,
+            source_label,
+        });
+    }
+
+    Ok(overlays)
 }
 
 fn parse_intraday_smoothing_kernel(
@@ -904,11 +1151,12 @@ fn map_deterministic_composition_error(error: DeterministicSeasonalityCompositio
             )
         }
         DeterministicSeasonalityCompositionError::MismatchedInputLengths {
+            timestamp_utc_nanos_count,
             minute_of_day_count,
             day_of_week_count,
             day_of_year_count,
         } => SeasonalityInputValidationError::new_err(format!(
-            "composition inputs must have matching lengths, received minute_of_day={minute_of_day_count}, day_of_week={day_of_week_count}, day_of_year={day_of_year_count}"
+            "composition inputs must have matching lengths, received timestamp_utc_nanos={timestamp_utc_nanos_count}, minute_of_day={minute_of_day_count}, day_of_week={day_of_week_count}, day_of_year={day_of_year_count}"
         )),
         DeterministicSeasonalityCompositionError::InvalidIntradayMinutesPerBin {
             intraday_minutes_per_bin,
@@ -950,6 +1198,33 @@ fn map_deterministic_composition_error(error: DeterministicSeasonalityCompositio
             day_of_year,
         } => SeasonalityInputValidationError::new_err(format!(
             "event record at position {record_position} has invalid local day-of-year value {day_of_year}"
+        )),
+        DeterministicSeasonalityCompositionError::EmptyOverlayId { overlay_position } => {
+            SeasonalityInputValidationError::new_err(format!(
+                "scheduled event overlay at position {overlay_position} is missing a non-empty overlay_id"
+            ))
+        }
+        DeterministicSeasonalityCompositionError::DuplicateOverlayId { overlay_id } => {
+            SeasonalityInputValidationError::new_err(format!(
+                "scheduled event overlay id '{overlay_id}' is duplicated and must be unique"
+            ))
+        }
+        DeterministicSeasonalityCompositionError::InvalidOverlayWindow {
+            overlay_position,
+            start_timestamp_utc_nanos,
+            end_timestamp_utc_nanos,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "scheduled event overlay at position {overlay_position} has an invalid window where start={start_timestamp_utc_nanos} and end={end_timestamp_utc_nanos}"
+        )),
+        DeterministicSeasonalityCompositionError::InvalidOverlayLogAdjustment {
+            overlay_position,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "scheduled event overlay at position {overlay_position} has a non-finite log_adjustment"
+        )),
+        DeterministicSeasonalityCompositionError::InvalidSpecialOverlayLogComponent {
+            record_position,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "deterministic seasonality composition produced a non-finite special overlay log component at record position {record_position}"
         )),
         DeterministicSeasonalityCompositionError::InvalidCombinedLogComponent {
             record_position,

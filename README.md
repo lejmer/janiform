@@ -132,6 +132,20 @@ day-of-year log components into a unified deterministic signal per accepted time
 - Normalization metadata:
   - policy identifier, fit-window event count, pre and post means
   - normalization constant and log offset used to anchor `s(t)`
+- Scheduled-event overlay support:
+  - optional `scheduled_event_overlays` can be passed to the same composition API
+  - overlay config records can be loaded with `load_scheduled_event_overlay_definitions(...)`
+  - each overlay record supports:
+    - `overlay_id`, `start_timestamp_utc`, `end_timestamp_utc`, `log_adjustment`
+    - optional `precedence`, `enabled`, and `source_label`
+  - precedence and merge policy:
+    - highest precedence wins when windows overlap
+    - overlays at the same precedence merge additively in log-space
+    - windows are `start` inclusive and `end` exclusive
+  - output artifacts expose overlay provenance metadata:
+    - configured and applied overlay ids
+    - per-event overlay ids and active flags
+    - deterministic precedence, merge, and window-boundary policy identifiers
 
 ## Developer Commands
 
