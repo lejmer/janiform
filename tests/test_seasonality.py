@@ -393,18 +393,25 @@ def test_compose_deterministic_seasonality_signal_is_explicit_and_reproducible(
 
     assert first_output.schema_version == DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION
     assert _composition_snapshot(first_output) == _composition_snapshot(second_output)
+    assert first_output.normalization_policy == "mean_factor_anchor.v1"
+    assert first_output.fit_window_event_count == first_output.input_event_count
+    assert first_output.target_mean_factor == pytest.approx(1.0)
+    assert first_output.post_normalization_mean_factor == pytest.approx(1.0)
+    assert first_output.normalization_constant > 0.0
     for event_position in range(first_output.input_event_count):
-        expected_factor = (
+        expected_log_component = (
             first_output.intraday_log_component_by_event[event_position]
             + first_output.day_of_week_log_component_by_event[event_position]
             + first_output.day_of_year_log_component_by_event[event_position]
+            - first_output.normalization_log_offset
         )
         assert first_output.combined_log_component_by_event[event_position] == pytest.approx(
-            expected_factor
+            expected_log_component
         )
         assert first_output.combined_factor_by_event[event_position] == pytest.approx(
-            math.exp(expected_factor)
+            math.exp(expected_log_component)
         )
+    assert sum(first_output.combined_factor_by_event) / first_output.input_event_count == pytest.approx(1.0)
 
 
 def _result_snapshot(result: object) -> dict[str, object]:
@@ -467,6 +474,14 @@ def _composition_snapshot(composition: object) -> dict[str, object]:
         "combined_log_component_by_event": list(cast(list[float], composition.combined_log_component_by_event)),
         "combined_factor_by_event": list(cast(list[float], composition.combined_factor_by_event)),
         "input_event_count": cast(int, composition.input_event_count),
+        "normalization_policy": cast(str, composition.normalization_policy),
+        "fit_window_event_count": cast(int, composition.fit_window_event_count),
+        "target_mean_factor": cast(float, composition.target_mean_factor),
+        "pre_normalization_mean_factor": cast(float, composition.pre_normalization_mean_factor),
+        "normalization_constant": cast(float, composition.normalization_constant),
+        "normalization_log_offset": cast(float, composition.normalization_log_offset),
+        "post_normalization_mean_factor": cast(float, composition.post_normalization_mean_factor),
+        "mean_anchor_tolerance": cast(float, composition.mean_anchor_tolerance),
     }
 
 

@@ -409,6 +409,38 @@ class DeterministicSeasonalityComposition:
     def input_event_count(self) -> int:
         return cast(int, self._native_result.input_event_count)
 
+    @property
+    def normalization_policy(self) -> str:
+        return cast(str, self._native_result.normalization_policy)
+
+    @property
+    def fit_window_event_count(self) -> int:
+        return cast(int, self._native_result.fit_window_event_count)
+
+    @property
+    def target_mean_factor(self) -> float:
+        return cast(float, self._native_result.target_mean_factor)
+
+    @property
+    def pre_normalization_mean_factor(self) -> float:
+        return cast(float, self._native_result.pre_normalization_mean_factor)
+
+    @property
+    def normalization_constant(self) -> float:
+        return cast(float, self._native_result.normalization_constant)
+
+    @property
+    def normalization_log_offset(self) -> float:
+        return cast(float, self._native_result.normalization_log_offset)
+
+    @property
+    def post_normalization_mean_factor(self) -> float:
+        return cast(float, self._native_result.post_normalization_mean_factor)
+
+    @property
+    def mean_anchor_tolerance(self) -> float:
+        return cast(float, self._native_result.mean_anchor_tolerance)
+
 
 def preprocess_timestamp_events(
     event_records: Sequence[Mapping[str, object]],

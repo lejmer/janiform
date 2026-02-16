@@ -14,6 +14,9 @@ pub const DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION: &str =
 const MINUTES_PER_DAY: usize = 1_440;
 const DAYS_PER_WEEK: usize = 7;
 const DAYS_PER_YEAR: usize = 366;
+const IDENTIFIABILITY_NORMALIZATION_POLICY: &str = "mean_factor_anchor.v1";
+const IDENTIFIABILITY_TARGET_MEAN_FACTOR: f64 = 1.0;
+const IDENTIFIABILITY_MEAN_ANCHOR_TOLERANCE: f64 = 1e-12;
 
 /// Supported smoothing kernels for nonparametric intraday seasonality estimation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -539,10 +542,23 @@ pub fn estimate_day_of_year_seasonality(
     })
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct SeasonalityNormalizationMetadata {
+    pub normalization_policy: &'static str,
+    pub fit_window_event_count: usize,
+    pub target_mean_factor: f64,
+    pub pre_normalization_mean_factor: f64,
+    pub normalization_constant: f64,
+    pub normalization_log_offset: f64,
+    pub post_normalization_mean_factor: f64,
+    pub mean_anchor_tolerance: f64,
+}
+
 /// Diagnostics emitted by deterministic seasonality composition.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DeterministicSeasonalityCompositionDiagnostics {
     pub input_event_count: usize,
+    pub normalization_metadata: SeasonalityNormalizationMetadata,
 }
 
 /// Deterministic composition output for intraday, day-of-week, and day-of-year components.
@@ -660,6 +676,13 @@ pub fn compose_deterministic_seasonality_signal(
         let combined_log_component = intraday_log_component
             + day_of_week_log_component_value
             + day_of_year_log_component_value;
+        if !combined_log_component.is_finite() {
+            return Err(
+                DeterministicSeasonalityCompositionError::InvalidCombinedLogComponent {
+                    record_position,
+                },
+            );
+        }
         let combined_factor = combined_log_component.exp();
         if !combined_factor.is_finite() || combined_factor <= 0.0 {
             return Err(
@@ -677,6 +700,38 @@ pub fn compose_deterministic_seasonality_signal(
         combined_factor_by_event.push(combined_factor);
     }
 
+    let normalization_result = normalize_seasonality_factors_for_identifiability(
+        &combined_factor_by_event,
+        &combined_log_component_by_event,
+    )
+    .map_err(|error| match error {
+        SeasonalityNormalizationError::EmptyFitWindow => {
+            DeterministicSeasonalityCompositionError::EmptyInputEvents
+        }
+        SeasonalityNormalizationError::InvalidInputFactor { record_position } => {
+            DeterministicSeasonalityCompositionError::InvalidNormalizationInputFactor {
+                record_position,
+            }
+        }
+        SeasonalityNormalizationError::InvalidInputLogComponent { record_position } => {
+            DeterministicSeasonalityCompositionError::InvalidNormalizationInputLogComponent {
+                record_position,
+            }
+        }
+        SeasonalityNormalizationError::UnstableNormalizationConstant => {
+            DeterministicSeasonalityCompositionError::UnstableNormalizationConstant
+        }
+        SeasonalityNormalizationError::IdentifiabilityGuardViolation {
+            anchored_mean_factor,
+            target_mean_factor,
+            mean_anchor_tolerance,
+        } => DeterministicSeasonalityCompositionError::IdentifiabilityGuardViolation {
+            anchored_mean_factor,
+            target_mean_factor,
+            mean_anchor_tolerance,
+        },
+    })?;
+
     Ok(DeterministicSeasonalityCompositionOutput {
         schema_version: DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION,
         intraday_minutes_per_bin,
@@ -684,9 +739,12 @@ pub fn compose_deterministic_seasonality_signal(
         intraday_log_component_by_event,
         day_of_week_log_component_by_event,
         day_of_year_log_component_by_event,
-        combined_log_component_by_event,
-        combined_factor_by_event,
-        diagnostics: DeterministicSeasonalityCompositionDiagnostics { input_event_count },
+        combined_log_component_by_event: normalization_result.normalized_log_component_by_event,
+        combined_factor_by_event: normalization_result.normalized_factor_by_event,
+        diagnostics: DeterministicSeasonalityCompositionDiagnostics {
+            input_event_count,
+            normalization_metadata: normalization_result.normalization_metadata,
+        },
     })
 }
 
@@ -829,8 +887,23 @@ pub enum DeterministicSeasonalityCompositionError {
         record_position: usize,
         day_of_year: u16,
     },
+    InvalidCombinedLogComponent {
+        record_position: usize,
+    },
     UnstableCombinedFactor {
         record_position: usize,
+    },
+    InvalidNormalizationInputFactor {
+        record_position: usize,
+    },
+    InvalidNormalizationInputLogComponent {
+        record_position: usize,
+    },
+    UnstableNormalizationConstant,
+    IdentifiabilityGuardViolation {
+        anchored_mean_factor: f64,
+        target_mean_factor: f64,
+        mean_anchor_tolerance: f64,
     },
 }
 
@@ -899,15 +972,162 @@ impl Display for DeterministicSeasonalityCompositionError {
                 formatter,
                 "event record at position {record_position} has invalid local day-of-year value {day_of_year}"
             ),
+            Self::InvalidCombinedLogComponent { record_position } => write!(
+                formatter,
+                "deterministic seasonality composition produced a non-finite combined log component at record position {record_position}"
+            ),
             Self::UnstableCombinedFactor { record_position } => write!(
                 formatter,
                 "deterministic seasonality composition produced a non-finite combined factor at record position {record_position}"
+            ),
+            Self::InvalidNormalizationInputFactor { record_position } => write!(
+                formatter,
+                "deterministic seasonality normalization received a non-finite or non-positive factor at record position {record_position}"
+            ),
+            Self::InvalidNormalizationInputLogComponent { record_position } => write!(
+                formatter,
+                "deterministic seasonality normalization received a non-finite log component at record position {record_position}"
+            ),
+            Self::UnstableNormalizationConstant => write!(
+                formatter,
+                "deterministic seasonality normalization produced a non-positive normalization constant"
+            ),
+            Self::IdentifiabilityGuardViolation {
+                anchored_mean_factor,
+                target_mean_factor,
+                mean_anchor_tolerance,
+            } => write!(
+                formatter,
+                "deterministic seasonality normalization failed identifiability guard, anchored mean={anchored_mean_factor}, target mean={target_mean_factor}, tolerance={mean_anchor_tolerance}"
             ),
         }
     }
 }
 
 impl Error for DeterministicSeasonalityCompositionError {}
+
+#[derive(Debug, Clone, PartialEq)]
+enum SeasonalityNormalizationError {
+    EmptyFitWindow,
+    InvalidInputFactor {
+        record_position: usize,
+    },
+    InvalidInputLogComponent {
+        record_position: usize,
+    },
+    UnstableNormalizationConstant,
+    IdentifiabilityGuardViolation {
+        anchored_mean_factor: f64,
+        target_mean_factor: f64,
+        mean_anchor_tolerance: f64,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct SeasonalityNormalizationResult {
+    normalized_factor_by_event: Vec<f64>,
+    normalized_log_component_by_event: Vec<f64>,
+    normalization_metadata: SeasonalityNormalizationMetadata,
+}
+
+fn normalize_seasonality_factors_for_identifiability(
+    factor_by_event: &[f64],
+    log_component_by_event: &[f64],
+) -> Result<SeasonalityNormalizationResult, SeasonalityNormalizationError> {
+    if factor_by_event.is_empty() {
+        return Err(SeasonalityNormalizationError::EmptyFitWindow);
+    }
+    if log_component_by_event.len() != factor_by_event.len() {
+        return Err(SeasonalityNormalizationError::UnstableNormalizationConstant);
+    }
+
+    for (record_position, factor_value) in factor_by_event.iter().copied().enumerate() {
+        if !factor_value.is_finite() || factor_value <= 0.0 {
+            return Err(SeasonalityNormalizationError::InvalidInputFactor { record_position });
+        }
+    }
+    for (record_position, log_component_value) in log_component_by_event.iter().copied().enumerate()
+    {
+        if !log_component_value.is_finite() {
+            return Err(SeasonalityNormalizationError::InvalidInputLogComponent {
+                record_position,
+            });
+        }
+    }
+
+    let pre_normalization_mean_factor =
+        factor_by_event.iter().sum::<f64>() / factor_by_event.len() as f64;
+    if !pre_normalization_mean_factor.is_finite() || pre_normalization_mean_factor <= 0.0 {
+        return Err(SeasonalityNormalizationError::UnstableNormalizationConstant);
+    }
+
+    let normalization_constant = pre_normalization_mean_factor / IDENTIFIABILITY_TARGET_MEAN_FACTOR;
+    if !normalization_constant.is_finite() || normalization_constant <= 0.0 {
+        return Err(SeasonalityNormalizationError::UnstableNormalizationConstant);
+    }
+    let normalization_log_offset = normalization_constant.ln();
+    if !normalization_log_offset.is_finite() {
+        return Err(SeasonalityNormalizationError::UnstableNormalizationConstant);
+    }
+
+    let normalized_factor_by_event: Vec<f64> = factor_by_event
+        .iter()
+        .map(|factor_value| *factor_value / normalization_constant)
+        .collect();
+    let normalized_log_component_by_event: Vec<f64> = log_component_by_event
+        .iter()
+        .map(|log_component_value| *log_component_value - normalization_log_offset)
+        .collect();
+
+    for (record_position, normalized_factor) in
+        normalized_factor_by_event.iter().copied().enumerate()
+    {
+        if !normalized_factor.is_finite() || normalized_factor <= 0.0 {
+            return Err(SeasonalityNormalizationError::InvalidInputFactor { record_position });
+        }
+    }
+    for (record_position, normalized_log_component) in normalized_log_component_by_event
+        .iter()
+        .copied()
+        .enumerate()
+    {
+        if !normalized_log_component.is_finite() {
+            return Err(SeasonalityNormalizationError::InvalidInputLogComponent {
+                record_position,
+            });
+        }
+    }
+
+    let post_normalization_mean_factor =
+        normalized_factor_by_event.iter().sum::<f64>() / normalized_factor_by_event.len() as f64;
+    if !post_normalization_mean_factor.is_finite()
+        || (post_normalization_mean_factor - IDENTIFIABILITY_TARGET_MEAN_FACTOR).abs()
+            > IDENTIFIABILITY_MEAN_ANCHOR_TOLERANCE
+    {
+        return Err(
+            SeasonalityNormalizationError::IdentifiabilityGuardViolation {
+                anchored_mean_factor: post_normalization_mean_factor,
+                target_mean_factor: IDENTIFIABILITY_TARGET_MEAN_FACTOR,
+                mean_anchor_tolerance: IDENTIFIABILITY_MEAN_ANCHOR_TOLERANCE,
+            },
+        );
+    }
+
+    Ok(SeasonalityNormalizationResult {
+        normalized_factor_by_event,
+        normalized_log_component_by_event,
+        normalization_metadata: SeasonalityNormalizationMetadata {
+            normalization_policy: IDENTIFIABILITY_NORMALIZATION_POLICY,
+            fit_window_event_count: factor_by_event.len(),
+            target_mean_factor: IDENTIFIABILITY_TARGET_MEAN_FACTOR,
+            pre_normalization_mean_factor,
+            normalization_constant,
+            normalization_log_offset,
+            post_normalization_mean_factor,
+            mean_anchor_tolerance: IDENTIFIABILITY_MEAN_ANCHOR_TOLERANCE,
+        },
+    })
+}
 
 #[derive(Debug, Clone, PartialEq)]
 enum DiscreteSeasonalityByBucketEstimationError {
@@ -1011,8 +1231,9 @@ mod tests {
         DayOfWeekSeasonalityEstimatorSettings, DayOfYearSeasonalityEstimatorSettings,
         DeterministicSeasonalityCompositionError, IntradaySeasonalityEstimationError,
         IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel,
-        compose_deterministic_seasonality_signal, estimate_day_of_week_seasonality,
-        estimate_day_of_year_seasonality, estimate_intraday_seasonality,
+        SeasonalityNormalizationError, compose_deterministic_seasonality_signal,
+        estimate_day_of_week_seasonality, estimate_day_of_year_seasonality,
+        estimate_intraday_seasonality, normalize_seasonality_factors_for_identifiability,
     };
 
     #[test]
@@ -1234,8 +1455,40 @@ mod tests {
 
         assert_eq!(first_output, second_output);
         assert_eq!(first_output.intraday_bin_index_by_event, vec![9, 15]);
-        assert!((first_output.combined_factor_by_event[0] - 2.64).abs() < 1e-12);
-        assert!((first_output.combined_factor_by_event[1] - 1.08).abs() < 1e-12);
+        assert!((first_output.combined_factor_by_event[0] - (2.64 / 1.86)).abs() < 1e-12);
+        assert!((first_output.combined_factor_by_event[1] - (1.08 / 1.86)).abs() < 1e-12);
+        assert_eq!(
+            first_output
+                .diagnostics
+                .normalization_metadata
+                .normalization_policy,
+            "mean_factor_anchor.v1"
+        );
+        assert_eq!(
+            first_output
+                .diagnostics
+                .normalization_metadata
+                .fit_window_event_count,
+            2
+        );
+        assert!(
+            (first_output
+                .diagnostics
+                .normalization_metadata
+                .pre_normalization_mean_factor
+                - 1.86)
+                .abs()
+                < 1e-12
+        );
+        assert!(
+            (first_output
+                .diagnostics
+                .normalization_metadata
+                .post_normalization_mean_factor
+                - 1.0)
+                .abs()
+                < 1e-12
+        );
     }
 
     #[test]
@@ -1258,6 +1511,69 @@ mod tests {
                 day_of_week_count: 1,
                 day_of_year_count: 2,
             }
+        );
+    }
+
+    #[test]
+    fn deterministic_seasonality_composition_rejects_non_finite_log_components() {
+        let mut intraday_log_component_by_bin: Vec<f64> = vec![0.0; 24];
+        intraday_log_component_by_bin[9] = f64::NAN;
+        let error = compose_deterministic_seasonality_signal(
+            &[570],
+            &[1],
+            &[32],
+            60,
+            &intraday_log_component_by_bin,
+            &vec![0.0; 7],
+            &vec![0.0; 366],
+        )
+        .expect_err("composition should fail for non-finite log components");
+
+        assert_eq!(
+            error,
+            DeterministicSeasonalityCompositionError::InvalidCombinedLogComponent {
+                record_position: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn seasonality_normalization_anchors_mean_and_emits_metadata() {
+        let factors = vec![2.64, 1.08];
+        let logs = vec![2.64_f64.ln(), 1.08_f64.ln()];
+        let normalized = normalize_seasonality_factors_for_identifiability(&factors, &logs)
+            .expect("normalization should succeed");
+
+        let anchored_mean = normalized.normalized_factor_by_event.iter().sum::<f64>()
+            / normalized.normalized_factor_by_event.len() as f64;
+        assert!((anchored_mean - 1.0).abs() < 1e-12);
+        assert_eq!(
+            normalized.normalization_metadata.normalization_policy,
+            "mean_factor_anchor.v1"
+        );
+        assert_eq!(normalized.normalization_metadata.fit_window_event_count, 2);
+    }
+
+    #[test]
+    fn seasonality_normalization_rejects_invalid_inputs_and_degenerate_windows() {
+        let empty_result = normalize_seasonality_factors_for_identifiability(&[], &[]);
+        assert_eq!(
+            empty_result,
+            Err(SeasonalityNormalizationError::EmptyFitWindow)
+        );
+
+        let invalid_factor_result =
+            normalize_seasonality_factors_for_identifiability(&[1.0, f64::NAN], &[0.0, 0.0]);
+        assert_eq!(
+            invalid_factor_result,
+            Err(SeasonalityNormalizationError::InvalidInputFactor { record_position: 1 })
+        );
+
+        let invalid_log_component_result =
+            normalize_seasonality_factors_for_identifiability(&[1.0, 2.0], &[0.0, f64::INFINITY]);
+        assert_eq!(
+            invalid_log_component_result,
+            Err(SeasonalityNormalizationError::InvalidInputLogComponent { record_position: 1 })
         );
     }
 }

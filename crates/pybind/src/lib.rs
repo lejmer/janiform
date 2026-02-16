@@ -461,6 +461,70 @@ impl PyDeterministicSeasonalityCompositionResult {
     fn input_event_count(&self) -> usize {
         self.output.diagnostics.input_event_count
     }
+
+    #[getter]
+    fn normalization_policy(&self) -> &str {
+        self.output
+            .diagnostics
+            .normalization_metadata
+            .normalization_policy
+    }
+
+    #[getter]
+    fn fit_window_event_count(&self) -> usize {
+        self.output
+            .diagnostics
+            .normalization_metadata
+            .fit_window_event_count
+    }
+
+    #[getter]
+    fn target_mean_factor(&self) -> f64 {
+        self.output
+            .diagnostics
+            .normalization_metadata
+            .target_mean_factor
+    }
+
+    #[getter]
+    fn pre_normalization_mean_factor(&self) -> f64 {
+        self.output
+            .diagnostics
+            .normalization_metadata
+            .pre_normalization_mean_factor
+    }
+
+    #[getter]
+    fn normalization_constant(&self) -> f64 {
+        self.output
+            .diagnostics
+            .normalization_metadata
+            .normalization_constant
+    }
+
+    #[getter]
+    fn normalization_log_offset(&self) -> f64 {
+        self.output
+            .diagnostics
+            .normalization_metadata
+            .normalization_log_offset
+    }
+
+    #[getter]
+    fn post_normalization_mean_factor(&self) -> f64 {
+        self.output
+            .diagnostics
+            .normalization_metadata
+            .post_normalization_mean_factor
+    }
+
+    #[getter]
+    fn mean_anchor_tolerance(&self) -> f64 {
+        self.output
+            .diagnostics
+            .normalization_metadata
+            .mean_anchor_tolerance
+    }
 }
 
 #[pymethods]
@@ -887,11 +951,38 @@ fn map_deterministic_composition_error(error: DeterministicSeasonalityCompositio
         } => SeasonalityInputValidationError::new_err(format!(
             "event record at position {record_position} has invalid local day-of-year value {day_of_year}"
         )),
+        DeterministicSeasonalityCompositionError::InvalidCombinedLogComponent {
+            record_position,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "deterministic seasonality composition produced a non-finite combined log component at record position {record_position}"
+        )),
         DeterministicSeasonalityCompositionError::UnstableCombinedFactor { record_position } => {
             SeasonalityInputValidationError::new_err(format!(
                 "deterministic seasonality composition produced a non-finite combined factor at record position {record_position}"
             ))
         }
+        DeterministicSeasonalityCompositionError::InvalidNormalizationInputFactor {
+            record_position,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "deterministic seasonality normalization received a non-finite or non-positive factor at record position {record_position}"
+        )),
+        DeterministicSeasonalityCompositionError::InvalidNormalizationInputLogComponent {
+            record_position,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "deterministic seasonality normalization received a non-finite log component at record position {record_position}"
+        )),
+        DeterministicSeasonalityCompositionError::UnstableNormalizationConstant => {
+            SeasonalityInputValidationError::new_err(
+                "deterministic seasonality normalization produced a non-positive normalization constant",
+            )
+        }
+        DeterministicSeasonalityCompositionError::IdentifiabilityGuardViolation {
+            anchored_mean_factor,
+            target_mean_factor,
+            mean_anchor_tolerance,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "deterministic seasonality normalization failed identifiability guard, anchored mean={anchored_mean_factor}, target mean={target_mean_factor}, tolerance={mean_anchor_tolerance}"
+        )),
     }
 }
 

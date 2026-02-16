@@ -17,3 +17,6 @@ Implement normalization rules for the combined seasonality signal so `s(t)` pres
 ### Notes/Constraints
 - Keep normalization logic centralized to avoid inconsistent handling across modules.
 - Ensure guard outputs are consumable by calibration diagnostics.
+
+### Out-of-scope
+- Hawkes is not in scope for this Issue.

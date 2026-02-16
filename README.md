@@ -125,6 +125,14 @@ same preprocessed event output to estimate deterministic weekly and yearly effec
 Use `compose_deterministic_seasonality_signal(...)` to combine intraday, day-of-week, and
 day-of-year log components into a unified deterministic signal per accepted timestamp event.
 
+- Combined signal normalization:
+  - applies a deterministic mean-anchor policy over the fit window
+  - enforces `mean(combined_factor_by_event) = 1` for identifiability with baseline intensity
+  - fails fast if normalization assumptions are violated
+- Normalization metadata:
+  - policy identifier, fit-window event count, pre and post means
+  - normalization constant and log offset used to anchor `s(t)`
+
 ## Developer Commands
 
 ```bash
