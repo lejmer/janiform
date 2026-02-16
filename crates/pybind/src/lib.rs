@@ -6,8 +6,15 @@ use janiform_core::calendar::{
     TimestampEventSessionFilter,
 };
 use janiform_core::seasonality::{
+    DayOfWeekSeasonalityEstimateOutput, DayOfWeekSeasonalityEstimationError,
+    DayOfWeekSeasonalityEstimatorSettings, DayOfYearSeasonalityEstimateOutput,
+    DayOfYearSeasonalityEstimationError, DayOfYearSeasonalityEstimatorSettings,
+    DeterministicSeasonalityCompositionError, DeterministicSeasonalityCompositionOutput,
     IntradaySeasonalityEstimateOutput, IntradaySeasonalityEstimationError,
     IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel,
+    compose_deterministic_seasonality_signal as compose_deterministic_seasonality_signal_core,
+    estimate_day_of_week_seasonality as estimate_day_of_week_seasonality_core,
+    estimate_day_of_year_seasonality as estimate_day_of_year_seasonality_core,
     estimate_intraday_seasonality as estimate_intraday_seasonality_core,
 };
 use pyo3::create_exception;
@@ -42,6 +49,33 @@ struct PyTimestampEventPreprocessingResult {
 #[derive(Clone)]
 struct PyIntradaySeasonalityEstimateResult {
     output: IntradaySeasonalityEstimateOutput,
+}
+
+#[pyclass(
+    module = "janiform._native",
+    name = "DayOfWeekSeasonalityEstimateResult"
+)]
+#[derive(Clone)]
+struct PyDayOfWeekSeasonalityEstimateResult {
+    output: DayOfWeekSeasonalityEstimateOutput,
+}
+
+#[pyclass(
+    module = "janiform._native",
+    name = "DayOfYearSeasonalityEstimateResult"
+)]
+#[derive(Clone)]
+struct PyDayOfYearSeasonalityEstimateResult {
+    output: DayOfYearSeasonalityEstimateOutput,
+}
+
+#[pyclass(
+    module = "janiform._native",
+    name = "DeterministicSeasonalityCompositionResult"
+)]
+#[derive(Clone)]
+struct PyDeterministicSeasonalityCompositionResult {
+    output: DeterministicSeasonalityCompositionOutput,
 }
 
 #[pymethods]
@@ -236,6 +270,200 @@ impl PyIntradaySeasonalityEstimateResult {
 }
 
 #[pymethods]
+impl PyDayOfWeekSeasonalityEstimateResult {
+    #[getter]
+    fn schema_version(&self) -> &str {
+        self.output.schema_version
+    }
+
+    #[getter]
+    fn minimum_bucket_events(&self) -> usize {
+        self.output.minimum_bucket_events
+    }
+
+    #[getter]
+    fn pseudocount(&self) -> f64 {
+        self.output.pseudocount
+    }
+
+    #[getter]
+    fn day_of_week_number(&self) -> Vec<u8> {
+        self.output.day_of_week_number.clone()
+    }
+
+    #[getter]
+    fn event_count_by_day_of_week(&self) -> Vec<u64> {
+        self.output.event_count_by_day_of_week.clone()
+    }
+
+    #[getter]
+    fn sparse_bucket_flags(&self) -> Vec<u8> {
+        self.output.sparse_bucket_flags.clone()
+    }
+
+    #[getter]
+    fn fallback_bucket_flags(&self) -> Vec<u8> {
+        self.output.fallback_bucket_flags.clone()
+    }
+
+    #[getter]
+    fn day_of_week_log_component(&self) -> Vec<f64> {
+        self.output.day_of_week_log_component.clone()
+    }
+
+    #[getter]
+    fn day_of_week_factor(&self) -> Vec<f64> {
+        self.output.day_of_week_factor.clone()
+    }
+
+    #[getter]
+    fn input_event_count(&self) -> usize {
+        self.output.diagnostics.input_event_count
+    }
+
+    #[getter]
+    fn bucket_count(&self) -> usize {
+        self.output.diagnostics.bucket_count
+    }
+
+    #[getter]
+    fn zero_event_bucket_count(&self) -> usize {
+        self.output.diagnostics.zero_event_bucket_count
+    }
+
+    #[getter]
+    fn sparse_bucket_count(&self) -> usize {
+        self.output.diagnostics.sparse_bucket_count
+    }
+
+    #[getter]
+    fn fallback_bucket_count(&self) -> usize {
+        self.output.diagnostics.fallback_bucket_count
+    }
+}
+
+#[pymethods]
+impl PyDayOfYearSeasonalityEstimateResult {
+    #[getter]
+    fn schema_version(&self) -> &str {
+        self.output.schema_version
+    }
+
+    #[getter]
+    fn minimum_bucket_events(&self) -> usize {
+        self.output.minimum_bucket_events
+    }
+
+    #[getter]
+    fn pseudocount(&self) -> f64 {
+        self.output.pseudocount
+    }
+
+    #[getter]
+    fn day_of_year_number(&self) -> Vec<u16> {
+        self.output.day_of_year_number.clone()
+    }
+
+    #[getter]
+    fn event_count_by_day_of_year(&self) -> Vec<u64> {
+        self.output.event_count_by_day_of_year.clone()
+    }
+
+    #[getter]
+    fn sparse_bucket_flags(&self) -> Vec<u8> {
+        self.output.sparse_bucket_flags.clone()
+    }
+
+    #[getter]
+    fn fallback_bucket_flags(&self) -> Vec<u8> {
+        self.output.fallback_bucket_flags.clone()
+    }
+
+    #[getter]
+    fn day_of_year_log_component(&self) -> Vec<f64> {
+        self.output.day_of_year_log_component.clone()
+    }
+
+    #[getter]
+    fn day_of_year_factor(&self) -> Vec<f64> {
+        self.output.day_of_year_factor.clone()
+    }
+
+    #[getter]
+    fn input_event_count(&self) -> usize {
+        self.output.diagnostics.input_event_count
+    }
+
+    #[getter]
+    fn bucket_count(&self) -> usize {
+        self.output.diagnostics.bucket_count
+    }
+
+    #[getter]
+    fn zero_event_bucket_count(&self) -> usize {
+        self.output.diagnostics.zero_event_bucket_count
+    }
+
+    #[getter]
+    fn sparse_bucket_count(&self) -> usize {
+        self.output.diagnostics.sparse_bucket_count
+    }
+
+    #[getter]
+    fn fallback_bucket_count(&self) -> usize {
+        self.output.diagnostics.fallback_bucket_count
+    }
+}
+
+#[pymethods]
+impl PyDeterministicSeasonalityCompositionResult {
+    #[getter]
+    fn schema_version(&self) -> &str {
+        self.output.schema_version
+    }
+
+    #[getter]
+    fn intraday_minutes_per_bin(&self) -> u16 {
+        self.output.intraday_minutes_per_bin
+    }
+
+    #[getter]
+    fn intraday_bin_index_by_event(&self) -> Vec<u16> {
+        self.output.intraday_bin_index_by_event.clone()
+    }
+
+    #[getter]
+    fn intraday_log_component_by_event(&self) -> Vec<f64> {
+        self.output.intraday_log_component_by_event.clone()
+    }
+
+    #[getter]
+    fn day_of_week_log_component_by_event(&self) -> Vec<f64> {
+        self.output.day_of_week_log_component_by_event.clone()
+    }
+
+    #[getter]
+    fn day_of_year_log_component_by_event(&self) -> Vec<f64> {
+        self.output.day_of_year_log_component_by_event.clone()
+    }
+
+    #[getter]
+    fn combined_log_component_by_event(&self) -> Vec<f64> {
+        self.output.combined_log_component_by_event.clone()
+    }
+
+    #[getter]
+    fn combined_factor_by_event(&self) -> Vec<f64> {
+        self.output.combined_factor_by_event.clone()
+    }
+
+    #[getter]
+    fn input_event_count(&self) -> usize {
+        self.output.diagnostics.input_event_count
+    }
+}
+
+#[pymethods]
 impl PyCalendarRegistry {
     #[new]
     fn new(registry_json: &str) -> PyResult<Self> {
@@ -375,6 +603,120 @@ fn estimate_intraday_seasonality(
     Ok(PyIntradaySeasonalityEstimateResult { output })
 }
 
+#[pyfunction]
+#[pyo3(signature = (exchange_local_day_of_week, *, minimum_bucket_events = 1, pseudocount = 1e-6))]
+fn estimate_day_of_week_seasonality(
+    py: Python<'_>,
+    exchange_local_day_of_week: &Bound<'_, PyAny>,
+    minimum_bucket_events: usize,
+    pseudocount: f64,
+) -> PyResult<PyDayOfWeekSeasonalityEstimateResult> {
+    let day_of_week_values: Vec<u8> = exchange_local_day_of_week.extract().map_err(|_| {
+        SeasonalityInputValidationError::new_err(
+            "exchange_local_day_of_week must be an iterable of integer day-of-week values",
+        )
+    })?;
+    let estimator_settings = DayOfWeekSeasonalityEstimatorSettings {
+        minimum_bucket_events,
+        pseudocount,
+    };
+
+    let output = py
+        .allow_threads(|| {
+            estimate_day_of_week_seasonality_core(&day_of_week_values, estimator_settings)
+        })
+        .map_err(map_day_of_week_estimation_error)?;
+
+    Ok(PyDayOfWeekSeasonalityEstimateResult { output })
+}
+
+#[pyfunction]
+#[pyo3(signature = (exchange_local_day_of_year, *, minimum_bucket_events = 1, pseudocount = 1e-6))]
+fn estimate_day_of_year_seasonality(
+    py: Python<'_>,
+    exchange_local_day_of_year: &Bound<'_, PyAny>,
+    minimum_bucket_events: usize,
+    pseudocount: f64,
+) -> PyResult<PyDayOfYearSeasonalityEstimateResult> {
+    let day_of_year_values: Vec<u16> = exchange_local_day_of_year.extract().map_err(|_| {
+        SeasonalityInputValidationError::new_err(
+            "exchange_local_day_of_year must be an iterable of integer day-of-year values",
+        )
+    })?;
+    let estimator_settings = DayOfYearSeasonalityEstimatorSettings {
+        minimum_bucket_events,
+        pseudocount,
+    };
+
+    let output = py
+        .allow_threads(|| {
+            estimate_day_of_year_seasonality_core(&day_of_year_values, estimator_settings)
+        })
+        .map_err(map_day_of_year_estimation_error)?;
+
+    Ok(PyDayOfYearSeasonalityEstimateResult { output })
+}
+
+#[pyfunction]
+#[pyo3(signature = (exchange_local_minute_of_day, exchange_local_day_of_week, exchange_local_day_of_year, intraday_log_component_by_bin, day_of_week_log_component, day_of_year_log_component, *, intraday_minutes_per_bin = 1))]
+fn compose_deterministic_seasonality_signal(
+    py: Python<'_>,
+    exchange_local_minute_of_day: &Bound<'_, PyAny>,
+    exchange_local_day_of_week: &Bound<'_, PyAny>,
+    exchange_local_day_of_year: &Bound<'_, PyAny>,
+    intraday_log_component_by_bin: &Bound<'_, PyAny>,
+    day_of_week_log_component: &Bound<'_, PyAny>,
+    day_of_year_log_component: &Bound<'_, PyAny>,
+    intraday_minutes_per_bin: u16,
+) -> PyResult<PyDeterministicSeasonalityCompositionResult> {
+    let minute_of_day_values: Vec<u16> = exchange_local_minute_of_day.extract().map_err(|_| {
+        SeasonalityInputValidationError::new_err(
+            "exchange_local_minute_of_day must be an iterable of integer minute-of-day values",
+        )
+    })?;
+    let day_of_week_values: Vec<u8> = exchange_local_day_of_week.extract().map_err(|_| {
+        SeasonalityInputValidationError::new_err(
+            "exchange_local_day_of_week must be an iterable of integer day-of-week values",
+        )
+    })?;
+    let day_of_year_values: Vec<u16> = exchange_local_day_of_year.extract().map_err(|_| {
+        SeasonalityInputValidationError::new_err(
+            "exchange_local_day_of_year must be an iterable of integer day-of-year values",
+        )
+    })?;
+    let intraday_log_values: Vec<f64> = intraday_log_component_by_bin.extract().map_err(|_| {
+        SeasonalityInputValidationError::new_err(
+            "intraday_log_component_by_bin must be an iterable of float values",
+        )
+    })?;
+    let day_of_week_log_values: Vec<f64> = day_of_week_log_component.extract().map_err(|_| {
+        SeasonalityInputValidationError::new_err(
+            "day_of_week_log_component must be an iterable of float values",
+        )
+    })?;
+    let day_of_year_log_values: Vec<f64> = day_of_year_log_component.extract().map_err(|_| {
+        SeasonalityInputValidationError::new_err(
+            "day_of_year_log_component must be an iterable of float values",
+        )
+    })?;
+
+    let output = py
+        .allow_threads(|| {
+            compose_deterministic_seasonality_signal_core(
+                &minute_of_day_values,
+                &day_of_week_values,
+                &day_of_year_values,
+                intraday_minutes_per_bin,
+                &intraday_log_values,
+                &day_of_week_log_values,
+                &day_of_year_log_values,
+            )
+        })
+        .map_err(map_deterministic_composition_error)?;
+
+    Ok(PyDeterministicSeasonalityCompositionResult { output })
+}
+
 fn parse_intraday_smoothing_kernel(
     raw_smoothing_kernel: &str,
 ) -> PyResult<IntradaySmoothingKernel> {
@@ -424,6 +766,131 @@ fn map_intraday_estimation_error(error: IntradaySeasonalityEstimationError) -> P
             SeasonalityInputValidationError::new_err(
                 "intraday seasonality estimation produced a non-positive normalization constant",
             )
+        }
+    }
+}
+
+fn map_day_of_week_estimation_error(error: DayOfWeekSeasonalityEstimationError) -> PyErr {
+    match error {
+        DayOfWeekSeasonalityEstimationError::EmptyInputEvents => {
+            SeasonalityInputValidationError::new_err(
+                "day-of-week seasonality estimation requires at least one accepted event",
+            )
+        }
+        DayOfWeekSeasonalityEstimationError::InvalidMinimumBucketEvents {
+            minimum_bucket_events,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "minimum_bucket_events must be at least 1, received {minimum_bucket_events}"
+        )),
+        DayOfWeekSeasonalityEstimationError::InvalidPseudocount { pseudocount } => {
+            SeasonalityInputValidationError::new_err(format!(
+                "pseudocount must be a finite positive value, received {pseudocount}"
+            ))
+        }
+        DayOfWeekSeasonalityEstimationError::InvalidDayOfWeek {
+            record_position,
+            day_of_week,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "event record at position {record_position} has invalid local day-of-week value {day_of_week}"
+        )),
+        DayOfWeekSeasonalityEstimationError::UnstableNormalization => {
+            SeasonalityInputValidationError::new_err(
+                "day-of-week seasonality estimation produced a non-positive normalization constant",
+            )
+        }
+    }
+}
+
+fn map_day_of_year_estimation_error(error: DayOfYearSeasonalityEstimationError) -> PyErr {
+    match error {
+        DayOfYearSeasonalityEstimationError::EmptyInputEvents => {
+            SeasonalityInputValidationError::new_err(
+                "day-of-year seasonality estimation requires at least one accepted event",
+            )
+        }
+        DayOfYearSeasonalityEstimationError::InvalidMinimumBucketEvents {
+            minimum_bucket_events,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "minimum_bucket_events must be at least 1, received {minimum_bucket_events}"
+        )),
+        DayOfYearSeasonalityEstimationError::InvalidPseudocount { pseudocount } => {
+            SeasonalityInputValidationError::new_err(format!(
+                "pseudocount must be a finite positive value, received {pseudocount}"
+            ))
+        }
+        DayOfYearSeasonalityEstimationError::InvalidDayOfYear {
+            record_position,
+            day_of_year,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "event record at position {record_position} has invalid local day-of-year value {day_of_year}"
+        )),
+        DayOfYearSeasonalityEstimationError::UnstableNormalization => {
+            SeasonalityInputValidationError::new_err(
+                "day-of-year seasonality estimation produced a non-positive normalization constant",
+            )
+        }
+    }
+}
+
+fn map_deterministic_composition_error(error: DeterministicSeasonalityCompositionError) -> PyErr {
+    match error {
+        DeterministicSeasonalityCompositionError::EmptyInputEvents => {
+            SeasonalityInputValidationError::new_err(
+                "deterministic seasonality composition requires at least one accepted event",
+            )
+        }
+        DeterministicSeasonalityCompositionError::MismatchedInputLengths {
+            minute_of_day_count,
+            day_of_week_count,
+            day_of_year_count,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "composition inputs must have matching lengths, received minute_of_day={minute_of_day_count}, day_of_week={day_of_week_count}, day_of_year={day_of_year_count}"
+        )),
+        DeterministicSeasonalityCompositionError::InvalidIntradayMinutesPerBin {
+            intraday_minutes_per_bin,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "intraday_minutes_per_bin must be a positive divisor of 1440, received {intraday_minutes_per_bin}"
+        )),
+        DeterministicSeasonalityCompositionError::InvalidIntradayComponentLength {
+            expected_intraday_bin_count,
+            actual_intraday_bin_count,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "intraday component length mismatch, expected {expected_intraday_bin_count} bins and received {actual_intraday_bin_count}"
+        )),
+        DeterministicSeasonalityCompositionError::InvalidDayOfWeekComponentLength {
+            expected_day_of_week_bucket_count,
+            actual_day_of_week_bucket_count,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "day-of-week component length mismatch, expected {expected_day_of_week_bucket_count} buckets and received {actual_day_of_week_bucket_count}"
+        )),
+        DeterministicSeasonalityCompositionError::InvalidDayOfYearComponentLength {
+            expected_day_of_year_bucket_count,
+            actual_day_of_year_bucket_count,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "day-of-year component length mismatch, expected {expected_day_of_year_bucket_count} buckets and received {actual_day_of_year_bucket_count}"
+        )),
+        DeterministicSeasonalityCompositionError::InvalidMinuteOfDay {
+            record_position,
+            minute_of_day,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "event record at position {record_position} has invalid local minute-of-day value {minute_of_day}"
+        )),
+        DeterministicSeasonalityCompositionError::InvalidDayOfWeek {
+            record_position,
+            day_of_week,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "event record at position {record_position} has invalid local day-of-week value {day_of_week}"
+        )),
+        DeterministicSeasonalityCompositionError::InvalidDayOfYear {
+            record_position,
+            day_of_year,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "event record at position {record_position} has invalid local day-of-year value {day_of_year}"
+        )),
+        DeterministicSeasonalityCompositionError::UnstableCombinedFactor { record_position } => {
+            SeasonalityInputValidationError::new_err(format!(
+                "deterministic seasonality composition produced a non-finite combined factor at record position {record_position}"
+            ))
         }
     }
 }
@@ -548,8 +1015,23 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyCalendarRegistry>()?;
     module.add_class::<PyTimestampEventPreprocessingResult>()?;
     module.add_class::<PyIntradaySeasonalityEstimateResult>()?;
+    module.add_class::<PyDayOfWeekSeasonalityEstimateResult>()?;
+    module.add_class::<PyDayOfYearSeasonalityEstimateResult>()?;
+    module.add_class::<PyDeterministicSeasonalityCompositionResult>()?;
     module.add_function(pyo3::wrap_pyfunction!(
         estimate_intraday_seasonality,
+        module
+    )?)?;
+    module.add_function(pyo3::wrap_pyfunction!(
+        estimate_day_of_week_seasonality,
+        module
+    )?)?;
+    module.add_function(pyo3::wrap_pyfunction!(
+        estimate_day_of_year_seasonality,
+        module
+    )?)?;
+    module.add_function(pyo3::wrap_pyfunction!(
+        compose_deterministic_seasonality_signal,
         module
     )?)?;
     Ok(())

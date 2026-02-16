@@ -9,6 +9,7 @@ This document provides instructions and guardrails for AI coding agents (and hum
 - Follow the style and architectural conventions of this repo.
 - Prefer clarity and maintainability over cleverness.
 - Do not introduce global state; use existing services and registries.
+- Implementations are Rust first for most things (unless specified otherwise or obvious from context): Python is just a thin wrapper and the user-facing API.
 
 ---
 
@@ -92,6 +93,7 @@ Read and follow `docs/development/guides/python_style_guide.md`. Agents must adh
 - Keep the crate graph clean:
   - `core` crate must be pure Rust (no PyO3, no Python-specific types).
   - `pybind` crate owns all PyO3 boundary code and conversions.
+  - Add other crates if the need arises but don't do it for no good reason. When you do, update this document to list it here.
 - Visibility: default to `pub(crate)`; only make items `pub` when part of a deliberate public API.
 - Prefer small, focused modules; avoid "god modules" and long files.
 - Document public APIs with `///` doc comments; include minimal examples where helpful.
@@ -162,6 +164,15 @@ Read and follow `docs/development/guides/python_style_guide.md`. Agents must adh
 - Add dependencies deliberately; avoid "just in case" crates.
 - Prefer widely-used crates with good maintenance signals.
 - Keep feature flags minimal; document why each non-default feature is enabled.
+
+**Before finishing the task**
+
+- You avoided changing public APIs unintentionally.
+- You updated docs/inline comments where behavior changed.
+- You verify that the code is DRY (remember to look for other functions and classes that do the same thing).
+- You update README.md with an updated project structure, if there are big enough changes to it.
+- All code compiles.
+- All tests succeed.
 
 ---
 
