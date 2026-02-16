@@ -1,3 +1,4 @@
+import math
 from datetime import UTC, datetime
 from typing import Optional, cast
 
@@ -5,11 +6,19 @@ import pytest
 
 from janiform.calendar import CalendarRegistry
 from janiform.seasonality import (
+    DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
+    DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
+    DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION,
     INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
+    DayOfWeekSeasonalityEstimatorSettings,
+    DayOfYearSeasonalityEstimatorSettings,
     IntradaySeasonalityEstimatorSettings,
     IntradaySmoothingKernel,
     SessionFilter,
     SeasonalityInputValidationError,
+    compose_deterministic_seasonality_signal,
+    estimate_day_of_week_seasonality,
+    estimate_day_of_year_seasonality,
     estimate_intraday_seasonality,
     preprocess_timestamp_events,
 )
@@ -282,6 +291,122 @@ def test_estimate_intraday_seasonality_is_reproducible_for_fixed_input(
     assert _intraday_estimate_snapshot(first_estimate) == _intraday_estimate_snapshot(second_estimate)
 
 
+def test_estimate_day_of_week_seasonality_recovers_synthetic_weekly_pattern(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    event_records: list[dict[str, object]] = _build_weekly_pattern_event_records()
+    preprocessed = preprocess_timestamp_events(
+        event_records,
+        exchange_code="XNYS",
+        calendar_registry=calendar_registry,
+        session_filter=SessionFilter.ALL,
+    )
+    estimate = estimate_day_of_week_seasonality(
+        preprocessed,
+        settings=DayOfWeekSeasonalityEstimatorSettings(
+            minimum_bucket_events=2,
+            pseudocount=1e-6,
+        ),
+    )
+
+    assert estimate.schema_version == DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION
+    assert estimate.day_of_week_factor[0] > estimate.day_of_week_factor[2]
+    assert estimate.day_of_week_factor[4] > estimate.day_of_week_factor[2]
+    assert estimate.sparse_bucket_flags[5] == 1
+    assert estimate.sparse_bucket_flags[6] == 1
+    assert sum(estimate.day_of_week_factor) / len(estimate.day_of_week_factor) == pytest.approx(1.0)
+
+
+def test_estimate_day_of_year_seasonality_handles_sparse_day_buckets(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    event_records: list[dict[str, object]] = _build_yearly_pattern_event_records()
+    preprocessed = preprocess_timestamp_events(
+        event_records,
+        exchange_code="XNYS",
+        calendar_registry=calendar_registry,
+        session_filter=SessionFilter.ALL,
+    )
+    estimate = estimate_day_of_year_seasonality(
+        preprocessed,
+        settings=DayOfYearSeasonalityEstimatorSettings(
+            minimum_bucket_events=5,
+            pseudocount=1e-6,
+        ),
+    )
+
+    assert estimate.schema_version == DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION
+    assert estimate.day_of_year_factor[59] > estimate.day_of_year_factor[199]
+    assert estimate.sparse_bucket_flags[329] == 1
+    assert estimate.sparse_bucket_flags[149] == 1
+    assert abs(estimate.day_of_year_factor[329] - estimate.day_of_year_factor[149]) < 1e-10
+    assert sum(estimate.day_of_year_factor) / len(estimate.day_of_year_factor) == pytest.approx(1.0)
+
+
+def test_compose_deterministic_seasonality_signal_is_explicit_and_reproducible(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    event_records: list[dict[str, object]] = _build_weekly_pattern_event_records()
+    preprocessed = preprocess_timestamp_events(
+        event_records,
+        exchange_code="XNYS",
+        calendar_registry=calendar_registry,
+        session_filter=SessionFilter.ALL,
+    )
+    intraday_estimate = estimate_intraday_seasonality(
+        preprocessed,
+        settings=IntradaySeasonalityEstimatorSettings(
+            minutes_per_bin=30,
+            smoothing_kernel=IntradaySmoothingKernel.GAUSSIAN,
+            smoothing_bandwidth_bins=1.2,
+            minimum_bin_events=1,
+            pseudocount=1e-6,
+        ),
+    )
+    day_of_week_estimate = estimate_day_of_week_seasonality(
+        preprocessed,
+        settings=DayOfWeekSeasonalityEstimatorSettings(
+            minimum_bucket_events=2,
+            pseudocount=1e-6,
+        ),
+    )
+    day_of_year_estimate = estimate_day_of_year_seasonality(
+        preprocessed,
+        settings=DayOfYearSeasonalityEstimatorSettings(
+            minimum_bucket_events=1,
+            pseudocount=1e-6,
+        ),
+    )
+
+    first_output = compose_deterministic_seasonality_signal(
+        preprocessed,
+        intraday_estimate,
+        day_of_week_estimate,
+        day_of_year_estimate,
+    )
+    second_output = compose_deterministic_seasonality_signal(
+        preprocessed,
+        intraday_estimate,
+        day_of_week_estimate,
+        day_of_year_estimate,
+    )
+
+    assert first_output.schema_version == DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION
+    assert _composition_snapshot(first_output) == _composition_snapshot(second_output)
+    for event_position in range(first_output.input_event_count):
+        expected_factor = (
+            first_output.intraday_log_component_by_event[event_position]
+            + first_output.day_of_week_log_component_by_event[event_position]
+            + first_output.day_of_year_log_component_by_event[event_position]
+        )
+        assert first_output.combined_log_component_by_event[event_position] == pytest.approx(
+            expected_factor
+        )
+        assert first_output.combined_factor_by_event[event_position] == pytest.approx(
+            math.exp(expected_factor)
+        )
+
+
 def _result_snapshot(result: object) -> dict[str, object]:
     return {
         "schema_version": cast(str, result.schema_version),
@@ -329,6 +454,22 @@ def _intraday_estimate_snapshot(estimate: object) -> dict[str, object]:
     }
 
 
+def _composition_snapshot(composition: object) -> dict[str, object]:
+    return {
+        "schema_version": cast(str, composition.schema_version),
+        "intraday_minutes_per_bin": cast(int, composition.intraday_minutes_per_bin),
+        "intraday_bin_index_by_event": list(cast(list[int], composition.intraday_bin_index_by_event)),
+        "intraday_log_component_by_event": list(cast(list[float], composition.intraday_log_component_by_event)),
+        "day_of_week_log_component_by_event": list(
+            cast(list[float], composition.day_of_week_log_component_by_event)
+        ),
+        "day_of_year_log_component_by_event": list(cast(list[float], composition.day_of_year_log_component_by_event)),
+        "combined_log_component_by_event": list(cast(list[float], composition.combined_log_component_by_event)),
+        "combined_factor_by_event": list(cast(list[float], composition.combined_factor_by_event)),
+        "input_event_count": cast(int, composition.input_event_count),
+    }
+
+
 def _build_bimodal_intraday_event_records() -> list[dict[str, object]]:
     event_records: list[dict[str, object]] = []
     for day in [2, 3, 4, 5, 6]:
@@ -338,6 +479,31 @@ def _build_bimodal_intraday_event_records() -> list[dict[str, object]]:
             event_records.append({"timestamp": f"2026-02-{day:02d}T12:00:{second:02d}-05:00"})
         for second in range(18):
             event_records.append({"timestamp": f"2026-02-{day:02d}T15:30:{second:02d}-05:00"})
+    return event_records
+
+
+def _build_weekly_pattern_event_records() -> list[dict[str, object]]:
+    event_records: list[dict[str, object]] = []
+    weekly_pattern = [
+        ("2026-02-02", 60),
+        ("2026-02-03", 30),
+        ("2026-02-04", 10),
+        ("2026-02-05", 20),
+        ("2026-02-06", 50),
+    ]
+    for day_value, event_count in weekly_pattern:
+        for second in range(event_count):
+            event_records.append({"timestamp": f"{day_value}T10:00:{second % 60:02d}-05:00"})
+    return event_records
+
+
+def _build_yearly_pattern_event_records() -> list[dict[str, object]]:
+    event_records: list[dict[str, object]] = []
+    for second in range(60):
+        event_records.append({"timestamp": f"2026-03-01T10:00:{second:02d}-05:00"})
+    for second in range(20):
+        event_records.append({"timestamp": f"2026-07-19T10:00:{second:02d}-04:00"})
+    event_records.append({"timestamp": "2026-11-26T10:00:00-05:00"})
     return event_records
 
 

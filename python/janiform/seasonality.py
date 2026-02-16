@@ -14,6 +14,9 @@ from .calendar import (
 TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION: str = "seasonality.timestamp_event.v1"
 PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION: str = "seasonality.timestamp_event.preprocessed.v1"
 INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION: str = "seasonality.intraday.estimate.v1"
+DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION: str = "seasonality.day_of_week.estimate.v1"
+DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION: str = "seasonality.day_of_year.estimate.v1"
+DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION: str = "seasonality.deterministic.composition.v1"
 
 
 class SeasonalityPreprocessingError(Exception):
@@ -51,6 +54,18 @@ class IntradaySeasonalityEstimatorSettings:
     smoothing_kernel: IntradaySmoothingKernel = IntradaySmoothingKernel.GAUSSIAN
     smoothing_bandwidth_bins: float = 3.0
     minimum_bin_events: int = 1
+    pseudocount: float = 1e-6
+
+
+@dataclass(frozen=True, slots=True)
+class DayOfWeekSeasonalityEstimatorSettings:
+    minimum_bucket_events: int = 1
+    pseudocount: float = 1e-6
+
+
+@dataclass(frozen=True, slots=True)
+class DayOfYearSeasonalityEstimatorSettings:
+    minimum_bucket_events: int = 1
     pseudocount: float = 1e-6
 
 
@@ -226,6 +241,175 @@ class IntradaySeasonalityEstimate:
         return cast(int, self._native_result.sparse_bin_count)
 
 
+class DayOfWeekSeasonalityEstimate:
+    """Thin Python wrapper over the Rust day-of-week seasonality estimator output object."""
+
+    def __init__(self, native_result: object) -> None:
+        self._native_result: object = native_result
+
+    @property
+    def schema_version(self) -> str:
+        return cast(str, self._native_result.schema_version)
+
+    @property
+    def minimum_bucket_events(self) -> int:
+        return cast(int, self._native_result.minimum_bucket_events)
+
+    @property
+    def pseudocount(self) -> float:
+        return cast(float, self._native_result.pseudocount)
+
+    @property
+    def day_of_week_number(self) -> bytes:
+        return cast(bytes, self._native_result.day_of_week_number)
+
+    @property
+    def event_count_by_day_of_week(self) -> list[int]:
+        return cast(list[int], self._native_result.event_count_by_day_of_week)
+
+    @property
+    def sparse_bucket_flags(self) -> bytes:
+        return cast(bytes, self._native_result.sparse_bucket_flags)
+
+    @property
+    def fallback_bucket_flags(self) -> bytes:
+        return cast(bytes, self._native_result.fallback_bucket_flags)
+
+    @property
+    def day_of_week_log_component(self) -> list[float]:
+        return cast(list[float], self._native_result.day_of_week_log_component)
+
+    @property
+    def day_of_week_factor(self) -> list[float]:
+        return cast(list[float], self._native_result.day_of_week_factor)
+
+    @property
+    def input_event_count(self) -> int:
+        return cast(int, self._native_result.input_event_count)
+
+    @property
+    def bucket_count(self) -> int:
+        return cast(int, self._native_result.bucket_count)
+
+    @property
+    def zero_event_bucket_count(self) -> int:
+        return cast(int, self._native_result.zero_event_bucket_count)
+
+    @property
+    def sparse_bucket_count(self) -> int:
+        return cast(int, self._native_result.sparse_bucket_count)
+
+    @property
+    def fallback_bucket_count(self) -> int:
+        return cast(int, self._native_result.fallback_bucket_count)
+
+
+class DayOfYearSeasonalityEstimate:
+    """Thin Python wrapper over the Rust day-of-year seasonality estimator output object."""
+
+    def __init__(self, native_result: object) -> None:
+        self._native_result: object = native_result
+
+    @property
+    def schema_version(self) -> str:
+        return cast(str, self._native_result.schema_version)
+
+    @property
+    def minimum_bucket_events(self) -> int:
+        return cast(int, self._native_result.minimum_bucket_events)
+
+    @property
+    def pseudocount(self) -> float:
+        return cast(float, self._native_result.pseudocount)
+
+    @property
+    def day_of_year_number(self) -> list[int]:
+        return cast(list[int], self._native_result.day_of_year_number)
+
+    @property
+    def event_count_by_day_of_year(self) -> list[int]:
+        return cast(list[int], self._native_result.event_count_by_day_of_year)
+
+    @property
+    def sparse_bucket_flags(self) -> bytes:
+        return cast(bytes, self._native_result.sparse_bucket_flags)
+
+    @property
+    def fallback_bucket_flags(self) -> bytes:
+        return cast(bytes, self._native_result.fallback_bucket_flags)
+
+    @property
+    def day_of_year_log_component(self) -> list[float]:
+        return cast(list[float], self._native_result.day_of_year_log_component)
+
+    @property
+    def day_of_year_factor(self) -> list[float]:
+        return cast(list[float], self._native_result.day_of_year_factor)
+
+    @property
+    def input_event_count(self) -> int:
+        return cast(int, self._native_result.input_event_count)
+
+    @property
+    def bucket_count(self) -> int:
+        return cast(int, self._native_result.bucket_count)
+
+    @property
+    def zero_event_bucket_count(self) -> int:
+        return cast(int, self._native_result.zero_event_bucket_count)
+
+    @property
+    def sparse_bucket_count(self) -> int:
+        return cast(int, self._native_result.sparse_bucket_count)
+
+    @property
+    def fallback_bucket_count(self) -> int:
+        return cast(int, self._native_result.fallback_bucket_count)
+
+
+class DeterministicSeasonalityComposition:
+    """Thin Python wrapper over the Rust deterministic seasonality composition output object."""
+
+    def __init__(self, native_result: object) -> None:
+        self._native_result: object = native_result
+
+    @property
+    def schema_version(self) -> str:
+        return cast(str, self._native_result.schema_version)
+
+    @property
+    def intraday_minutes_per_bin(self) -> int:
+        return cast(int, self._native_result.intraday_minutes_per_bin)
+
+    @property
+    def intraday_bin_index_by_event(self) -> list[int]:
+        return cast(list[int], self._native_result.intraday_bin_index_by_event)
+
+    @property
+    def intraday_log_component_by_event(self) -> list[float]:
+        return cast(list[float], self._native_result.intraday_log_component_by_event)
+
+    @property
+    def day_of_week_log_component_by_event(self) -> list[float]:
+        return cast(list[float], self._native_result.day_of_week_log_component_by_event)
+
+    @property
+    def day_of_year_log_component_by_event(self) -> list[float]:
+        return cast(list[float], self._native_result.day_of_year_log_component_by_event)
+
+    @property
+    def combined_log_component_by_event(self) -> list[float]:
+        return cast(list[float], self._native_result.combined_log_component_by_event)
+
+    @property
+    def combined_factor_by_event(self) -> list[float]:
+        return cast(list[float], self._native_result.combined_factor_by_event)
+
+    @property
+    def input_event_count(self) -> int:
+        return cast(int, self._native_result.input_event_count)
+
+
 def preprocess_timestamp_events(
     event_records: Sequence[Mapping[str, object]],
     *,
@@ -280,7 +464,83 @@ def estimate_intraday_seasonality(
     return IntradaySeasonalityEstimate(native_result)
 
 
+def estimate_day_of_week_seasonality(
+    preprocessed_events: TimestampEventPreprocessingResult,
+    *,
+    settings: Optional[DayOfWeekSeasonalityEstimatorSettings] = None,
+) -> DayOfWeekSeasonalityEstimate:
+    native: ModuleType = native_module()
+    estimator_settings: DayOfWeekSeasonalityEstimatorSettings = (
+        DayOfWeekSeasonalityEstimatorSettings() if settings is None else settings
+    )
+
+    try:
+        native_result: object = native.estimate_day_of_week_seasonality(
+            preprocessed_events.exchange_local_day_of_week,
+            minimum_bucket_events=estimator_settings.minimum_bucket_events,
+            pseudocount=estimator_settings.pseudocount,
+        )
+    except native.SeasonalityInputValidationError as e:
+        raise SeasonalityInputValidationError(str(e)) from e
+
+    return DayOfWeekSeasonalityEstimate(native_result)
+
+
+def estimate_day_of_year_seasonality(
+    preprocessed_events: TimestampEventPreprocessingResult,
+    *,
+    settings: Optional[DayOfYearSeasonalityEstimatorSettings] = None,
+) -> DayOfYearSeasonalityEstimate:
+    native: ModuleType = native_module()
+    estimator_settings: DayOfYearSeasonalityEstimatorSettings = (
+        DayOfYearSeasonalityEstimatorSettings() if settings is None else settings
+    )
+
+    try:
+        native_result: object = native.estimate_day_of_year_seasonality(
+            preprocessed_events.exchange_local_day_of_year,
+            minimum_bucket_events=estimator_settings.minimum_bucket_events,
+            pseudocount=estimator_settings.pseudocount,
+        )
+    except native.SeasonalityInputValidationError as e:
+        raise SeasonalityInputValidationError(str(e)) from e
+
+    return DayOfYearSeasonalityEstimate(native_result)
+
+
+def compose_deterministic_seasonality_signal(
+    preprocessed_events: TimestampEventPreprocessingResult,
+    intraday_estimate: IntradaySeasonalityEstimate,
+    day_of_week_estimate: DayOfWeekSeasonalityEstimate,
+    day_of_year_estimate: DayOfYearSeasonalityEstimate,
+) -> DeterministicSeasonalityComposition:
+    native: ModuleType = native_module()
+
+    try:
+        native_result: object = native.compose_deterministic_seasonality_signal(
+            preprocessed_events.exchange_local_minute_of_day,
+            preprocessed_events.exchange_local_day_of_week,
+            preprocessed_events.exchange_local_day_of_year,
+            intraday_estimate.intraday_log_component_by_bin,
+            day_of_week_estimate.day_of_week_log_component,
+            day_of_year_estimate.day_of_year_log_component,
+            intraday_minutes_per_bin=intraday_estimate.minutes_per_bin,
+        )
+    except native.SeasonalityInputValidationError as e:
+        raise SeasonalityInputValidationError(str(e)) from e
+
+    return DeterministicSeasonalityComposition(native_result)
+
+
 __all__ = [
+    "DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
+    "DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
+    "DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION",
+    "DayOfWeekSeasonalityEstimate",
+    "DayOfWeekSeasonalityEstimatorSettings",
+    "DayOfYearSeasonalityEstimate",
+    "DayOfYearSeasonalityEstimatorSettings",
+    "DeterministicSeasonalityComposition",
     "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
     "IntradaySeasonalityEstimate",
     "IntradaySeasonalityEstimatorSettings",
@@ -293,6 +553,9 @@ __all__ = [
     "TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION",
     "TimestampEventInputSchema",
     "TimestampEventPreprocessingResult",
+    "compose_deterministic_seasonality_signal",
+    "estimate_day_of_week_seasonality",
+    "estimate_day_of_year_seasonality",
     "estimate_intraday_seasonality",
     "preprocess_timestamp_events",
 ]

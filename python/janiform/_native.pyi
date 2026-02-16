@@ -131,6 +131,123 @@ class IntradaySeasonalityEstimateResult:
     def sparse_bin_count(self) -> int: ...
 
 
+class DayOfWeekSeasonalityEstimateResult:
+    @property
+    def schema_version(self) -> str: ...
+
+    @property
+    def minimum_bucket_events(self) -> int: ...
+
+    @property
+    def pseudocount(self) -> float: ...
+
+    @property
+    def day_of_week_number(self) -> bytes: ...
+
+    @property
+    def event_count_by_day_of_week(self) -> list[int]: ...
+
+    @property
+    def sparse_bucket_flags(self) -> bytes: ...
+
+    @property
+    def fallback_bucket_flags(self) -> bytes: ...
+
+    @property
+    def day_of_week_log_component(self) -> list[float]: ...
+
+    @property
+    def day_of_week_factor(self) -> list[float]: ...
+
+    @property
+    def input_event_count(self) -> int: ...
+
+    @property
+    def bucket_count(self) -> int: ...
+
+    @property
+    def zero_event_bucket_count(self) -> int: ...
+
+    @property
+    def sparse_bucket_count(self) -> int: ...
+
+    @property
+    def fallback_bucket_count(self) -> int: ...
+
+
+class DayOfYearSeasonalityEstimateResult:
+    @property
+    def schema_version(self) -> str: ...
+
+    @property
+    def minimum_bucket_events(self) -> int: ...
+
+    @property
+    def pseudocount(self) -> float: ...
+
+    @property
+    def day_of_year_number(self) -> list[int]: ...
+
+    @property
+    def event_count_by_day_of_year(self) -> list[int]: ...
+
+    @property
+    def sparse_bucket_flags(self) -> bytes: ...
+
+    @property
+    def fallback_bucket_flags(self) -> bytes: ...
+
+    @property
+    def day_of_year_log_component(self) -> list[float]: ...
+
+    @property
+    def day_of_year_factor(self) -> list[float]: ...
+
+    @property
+    def input_event_count(self) -> int: ...
+
+    @property
+    def bucket_count(self) -> int: ...
+
+    @property
+    def zero_event_bucket_count(self) -> int: ...
+
+    @property
+    def sparse_bucket_count(self) -> int: ...
+
+    @property
+    def fallback_bucket_count(self) -> int: ...
+
+
+class DeterministicSeasonalityCompositionResult:
+    @property
+    def schema_version(self) -> str: ...
+
+    @property
+    def intraday_minutes_per_bin(self) -> int: ...
+
+    @property
+    def intraday_bin_index_by_event(self) -> list[int]: ...
+
+    @property
+    def intraday_log_component_by_event(self) -> list[float]: ...
+
+    @property
+    def day_of_week_log_component_by_event(self) -> list[float]: ...
+
+    @property
+    def day_of_year_log_component_by_event(self) -> list[float]: ...
+
+    @property
+    def combined_log_component_by_event(self) -> list[float]: ...
+
+    @property
+    def combined_factor_by_event(self) -> list[float]: ...
+
+    @property
+    def input_event_count(self) -> int: ...
+
+
 class CalendarRegistry:
     def __init__(self, registry_json: str) -> None: ...
 
@@ -155,3 +272,31 @@ def estimate_intraday_seasonality(
     minimum_bin_events: int = 1,
     pseudocount: float = 1e-6,
 ) -> IntradaySeasonalityEstimateResult: ...
+
+
+def estimate_day_of_week_seasonality(
+    exchange_local_day_of_week: object,
+    *,
+    minimum_bucket_events: int = 1,
+    pseudocount: float = 1e-6,
+) -> DayOfWeekSeasonalityEstimateResult: ...
+
+
+def estimate_day_of_year_seasonality(
+    exchange_local_day_of_year: object,
+    *,
+    minimum_bucket_events: int = 1,
+    pseudocount: float = 1e-6,
+) -> DayOfYearSeasonalityEstimateResult: ...
+
+
+def compose_deterministic_seasonality_signal(
+    exchange_local_minute_of_day: object,
+    exchange_local_day_of_week: object,
+    exchange_local_day_of_year: object,
+    intraday_log_component_by_bin: object,
+    day_of_week_log_component: object,
+    day_of_year_log_component: object,
+    *,
+    intraday_minutes_per_bin: int = 1,
+) -> DeterministicSeasonalityCompositionResult: ...

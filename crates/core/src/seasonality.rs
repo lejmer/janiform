@@ -4,8 +4,16 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 pub const INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION: &str = "seasonality.intraday.estimate.v1";
+pub const DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION: &str =
+    "seasonality.day_of_week.estimate.v1";
+pub const DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION: &str =
+    "seasonality.day_of_year.estimate.v1";
+pub const DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION: &str =
+    "seasonality.deterministic.composition.v1";
 
 const MINUTES_PER_DAY: usize = 1_440;
+const DAYS_PER_WEEK: usize = 7;
+const DAYS_PER_YEAR: usize = 366;
 
 /// Supported smoothing kernels for nonparametric intraday seasonality estimation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -323,11 +331,688 @@ impl Display for IntradaySeasonalityEstimationError {
 
 impl Error for IntradaySeasonalityEstimationError {}
 
+/// Configuration for day-of-week seasonality estimation from timestamp event density.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DayOfWeekSeasonalityEstimatorSettings {
+    pub minimum_bucket_events: usize,
+    pub pseudocount: f64,
+}
+
+impl Default for DayOfWeekSeasonalityEstimatorSettings {
+    fn default() -> Self {
+        Self {
+            minimum_bucket_events: 1,
+            pseudocount: 1e-6,
+        }
+    }
+}
+
+/// Diagnostics emitted by day-of-week seasonality estimation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DayOfWeekSeasonalityDiagnostics {
+    pub input_event_count: usize,
+    pub bucket_count: usize,
+    pub zero_event_bucket_count: usize,
+    pub sparse_bucket_count: usize,
+    pub fallback_bucket_count: usize,
+}
+
+/// Deterministic nonparametric day-of-week seasonality estimate.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DayOfWeekSeasonalityEstimateOutput {
+    pub schema_version: &'static str,
+    pub minimum_bucket_events: usize,
+    pub pseudocount: f64,
+    pub day_of_week_number: Vec<u8>,
+    pub event_count_by_day_of_week: Vec<u64>,
+    pub sparse_bucket_flags: Vec<u8>,
+    pub fallback_bucket_flags: Vec<u8>,
+    pub day_of_week_log_component: Vec<f64>,
+    pub day_of_week_factor: Vec<f64>,
+    pub diagnostics: DayOfWeekSeasonalityDiagnostics,
+}
+
+/// Estimate a nonparametric day-of-week seasonality component.
+pub fn estimate_day_of_week_seasonality(
+    exchange_local_day_of_week: &[u8],
+    settings: DayOfWeekSeasonalityEstimatorSettings,
+) -> Result<DayOfWeekSeasonalityEstimateOutput, DayOfWeekSeasonalityEstimationError> {
+    if exchange_local_day_of_week.is_empty() {
+        return Err(DayOfWeekSeasonalityEstimationError::EmptyInputEvents);
+    }
+    if settings.minimum_bucket_events < 1 {
+        return Err(
+            DayOfWeekSeasonalityEstimationError::InvalidMinimumBucketEvents {
+                minimum_bucket_events: settings.minimum_bucket_events,
+            },
+        );
+    }
+    if !settings.pseudocount.is_finite() || settings.pseudocount <= 0.0 {
+        return Err(DayOfWeekSeasonalityEstimationError::InvalidPseudocount {
+            pseudocount: settings.pseudocount,
+        });
+    }
+
+    let mut bucket_index_by_event: Vec<usize> =
+        Vec::with_capacity(exchange_local_day_of_week.len());
+    for (record_position, day_of_week) in exchange_local_day_of_week.iter().copied().enumerate() {
+        if !(1..=7).contains(&day_of_week) {
+            return Err(DayOfWeekSeasonalityEstimationError::InvalidDayOfWeek {
+                record_position,
+                day_of_week,
+            });
+        }
+        bucket_index_by_event.push((day_of_week - 1) as usize);
+    }
+
+    let estimate_by_bucket = estimate_discrete_seasonality_by_bucket(
+        &bucket_index_by_event,
+        DAYS_PER_WEEK,
+        settings.minimum_bucket_events,
+        settings.pseudocount,
+    )
+    .map_err(|_| DayOfWeekSeasonalityEstimationError::UnstableNormalization)?;
+
+    Ok(DayOfWeekSeasonalityEstimateOutput {
+        schema_version: DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
+        minimum_bucket_events: settings.minimum_bucket_events,
+        pseudocount: settings.pseudocount,
+        day_of_week_number: (1..=DAYS_PER_WEEK)
+            .map(|day_of_week| day_of_week as u8)
+            .collect(),
+        event_count_by_day_of_week: estimate_by_bucket.event_count_by_bucket,
+        sparse_bucket_flags: estimate_by_bucket.sparse_bucket_flags,
+        fallback_bucket_flags: estimate_by_bucket.fallback_bucket_flags,
+        day_of_week_log_component: estimate_by_bucket.log_component_by_bucket,
+        day_of_week_factor: estimate_by_bucket.factor_by_bucket,
+        diagnostics: DayOfWeekSeasonalityDiagnostics {
+            input_event_count: exchange_local_day_of_week.len(),
+            bucket_count: DAYS_PER_WEEK,
+            zero_event_bucket_count: estimate_by_bucket.zero_event_bucket_count,
+            sparse_bucket_count: estimate_by_bucket.sparse_bucket_count,
+            fallback_bucket_count: estimate_by_bucket.fallback_bucket_count,
+        },
+    })
+}
+
+/// Configuration for day-of-year seasonality estimation from timestamp event density.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DayOfYearSeasonalityEstimatorSettings {
+    pub minimum_bucket_events: usize,
+    pub pseudocount: f64,
+}
+
+impl Default for DayOfYearSeasonalityEstimatorSettings {
+    fn default() -> Self {
+        Self {
+            minimum_bucket_events: 1,
+            pseudocount: 1e-6,
+        }
+    }
+}
+
+/// Diagnostics emitted by day-of-year seasonality estimation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DayOfYearSeasonalityDiagnostics {
+    pub input_event_count: usize,
+    pub bucket_count: usize,
+    pub zero_event_bucket_count: usize,
+    pub sparse_bucket_count: usize,
+    pub fallback_bucket_count: usize,
+}
+
+/// Deterministic nonparametric day-of-year seasonality estimate.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DayOfYearSeasonalityEstimateOutput {
+    pub schema_version: &'static str,
+    pub minimum_bucket_events: usize,
+    pub pseudocount: f64,
+    pub day_of_year_number: Vec<u16>,
+    pub event_count_by_day_of_year: Vec<u64>,
+    pub sparse_bucket_flags: Vec<u8>,
+    pub fallback_bucket_flags: Vec<u8>,
+    pub day_of_year_log_component: Vec<f64>,
+    pub day_of_year_factor: Vec<f64>,
+    pub diagnostics: DayOfYearSeasonalityDiagnostics,
+}
+
+/// Estimate a nonparametric day-of-year seasonality component.
+pub fn estimate_day_of_year_seasonality(
+    exchange_local_day_of_year: &[u16],
+    settings: DayOfYearSeasonalityEstimatorSettings,
+) -> Result<DayOfYearSeasonalityEstimateOutput, DayOfYearSeasonalityEstimationError> {
+    if exchange_local_day_of_year.is_empty() {
+        return Err(DayOfYearSeasonalityEstimationError::EmptyInputEvents);
+    }
+    if settings.minimum_bucket_events < 1 {
+        return Err(
+            DayOfYearSeasonalityEstimationError::InvalidMinimumBucketEvents {
+                minimum_bucket_events: settings.minimum_bucket_events,
+            },
+        );
+    }
+    if !settings.pseudocount.is_finite() || settings.pseudocount <= 0.0 {
+        return Err(DayOfYearSeasonalityEstimationError::InvalidPseudocount {
+            pseudocount: settings.pseudocount,
+        });
+    }
+
+    let mut bucket_index_by_event: Vec<usize> =
+        Vec::with_capacity(exchange_local_day_of_year.len());
+    for (record_position, day_of_year) in exchange_local_day_of_year.iter().copied().enumerate() {
+        if !(1..=366).contains(&day_of_year) {
+            return Err(DayOfYearSeasonalityEstimationError::InvalidDayOfYear {
+                record_position,
+                day_of_year,
+            });
+        }
+        bucket_index_by_event.push((day_of_year - 1) as usize);
+    }
+
+    let estimate_by_bucket = estimate_discrete_seasonality_by_bucket(
+        &bucket_index_by_event,
+        DAYS_PER_YEAR,
+        settings.minimum_bucket_events,
+        settings.pseudocount,
+    )
+    .map_err(|_| DayOfYearSeasonalityEstimationError::UnstableNormalization)?;
+
+    Ok(DayOfYearSeasonalityEstimateOutput {
+        schema_version: DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
+        minimum_bucket_events: settings.minimum_bucket_events,
+        pseudocount: settings.pseudocount,
+        day_of_year_number: (1..=DAYS_PER_YEAR)
+            .map(|day_of_year| day_of_year as u16)
+            .collect(),
+        event_count_by_day_of_year: estimate_by_bucket.event_count_by_bucket,
+        sparse_bucket_flags: estimate_by_bucket.sparse_bucket_flags,
+        fallback_bucket_flags: estimate_by_bucket.fallback_bucket_flags,
+        day_of_year_log_component: estimate_by_bucket.log_component_by_bucket,
+        day_of_year_factor: estimate_by_bucket.factor_by_bucket,
+        diagnostics: DayOfYearSeasonalityDiagnostics {
+            input_event_count: exchange_local_day_of_year.len(),
+            bucket_count: DAYS_PER_YEAR,
+            zero_event_bucket_count: estimate_by_bucket.zero_event_bucket_count,
+            sparse_bucket_count: estimate_by_bucket.sparse_bucket_count,
+            fallback_bucket_count: estimate_by_bucket.fallback_bucket_count,
+        },
+    })
+}
+
+/// Diagnostics emitted by deterministic seasonality composition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeterministicSeasonalityCompositionDiagnostics {
+    pub input_event_count: usize,
+}
+
+/// Deterministic composition output for intraday, day-of-week, and day-of-year components.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeterministicSeasonalityCompositionOutput {
+    pub schema_version: &'static str,
+    pub intraday_minutes_per_bin: u16,
+    pub intraday_bin_index_by_event: Vec<u16>,
+    pub intraday_log_component_by_event: Vec<f64>,
+    pub day_of_week_log_component_by_event: Vec<f64>,
+    pub day_of_year_log_component_by_event: Vec<f64>,
+    pub combined_log_component_by_event: Vec<f64>,
+    pub combined_factor_by_event: Vec<f64>,
+    pub diagnostics: DeterministicSeasonalityCompositionDiagnostics,
+}
+
+/// Compose intraday, day-of-week, and day-of-year log components into a unified signal.
+pub fn compose_deterministic_seasonality_signal(
+    exchange_local_minute_of_day: &[u16],
+    exchange_local_day_of_week: &[u8],
+    exchange_local_day_of_year: &[u16],
+    intraday_minutes_per_bin: u16,
+    intraday_log_component_by_bin: &[f64],
+    day_of_week_log_component: &[f64],
+    day_of_year_log_component: &[f64],
+) -> Result<DeterministicSeasonalityCompositionOutput, DeterministicSeasonalityCompositionError> {
+    if exchange_local_minute_of_day.is_empty() {
+        return Err(DeterministicSeasonalityCompositionError::EmptyInputEvents);
+    }
+    let input_event_count = exchange_local_minute_of_day.len();
+    if exchange_local_day_of_week.len() != input_event_count
+        || exchange_local_day_of_year.len() != input_event_count
+    {
+        return Err(
+            DeterministicSeasonalityCompositionError::MismatchedInputLengths {
+                minute_of_day_count: input_event_count,
+                day_of_week_count: exchange_local_day_of_week.len(),
+                day_of_year_count: exchange_local_day_of_year.len(),
+            },
+        );
+    }
+    if intraday_minutes_per_bin == 0
+        || usize::from(intraday_minutes_per_bin) > MINUTES_PER_DAY
+        || !MINUTES_PER_DAY.is_multiple_of(usize::from(intraday_minutes_per_bin))
+    {
+        return Err(
+            DeterministicSeasonalityCompositionError::InvalidIntradayMinutesPerBin {
+                intraday_minutes_per_bin,
+            },
+        );
+    }
+
+    let intraday_bin_count = MINUTES_PER_DAY / usize::from(intraday_minutes_per_bin);
+    if intraday_log_component_by_bin.len() != intraday_bin_count {
+        return Err(
+            DeterministicSeasonalityCompositionError::InvalidIntradayComponentLength {
+                expected_intraday_bin_count: intraday_bin_count,
+                actual_intraday_bin_count: intraday_log_component_by_bin.len(),
+            },
+        );
+    }
+    if day_of_week_log_component.len() != DAYS_PER_WEEK {
+        return Err(
+            DeterministicSeasonalityCompositionError::InvalidDayOfWeekComponentLength {
+                expected_day_of_week_bucket_count: DAYS_PER_WEEK,
+                actual_day_of_week_bucket_count: day_of_week_log_component.len(),
+            },
+        );
+    }
+    if day_of_year_log_component.len() != DAYS_PER_YEAR {
+        return Err(
+            DeterministicSeasonalityCompositionError::InvalidDayOfYearComponentLength {
+                expected_day_of_year_bucket_count: DAYS_PER_YEAR,
+                actual_day_of_year_bucket_count: day_of_year_log_component.len(),
+            },
+        );
+    }
+
+    let mut intraday_bin_index_by_event: Vec<u16> = Vec::with_capacity(input_event_count);
+    let mut intraday_log_component_by_event: Vec<f64> = Vec::with_capacity(input_event_count);
+    let mut day_of_week_log_component_by_event: Vec<f64> = Vec::with_capacity(input_event_count);
+    let mut day_of_year_log_component_by_event: Vec<f64> = Vec::with_capacity(input_event_count);
+    let mut combined_log_component_by_event: Vec<f64> = Vec::with_capacity(input_event_count);
+    let mut combined_factor_by_event: Vec<f64> = Vec::with_capacity(input_event_count);
+
+    for record_position in 0..input_event_count {
+        let minute_of_day = exchange_local_minute_of_day[record_position];
+        if usize::from(minute_of_day) >= MINUTES_PER_DAY {
+            return Err(
+                DeterministicSeasonalityCompositionError::InvalidMinuteOfDay {
+                    record_position,
+                    minute_of_day,
+                },
+            );
+        }
+        let day_of_week = exchange_local_day_of_week[record_position];
+        if !(1..=7).contains(&day_of_week) {
+            return Err(DeterministicSeasonalityCompositionError::InvalidDayOfWeek {
+                record_position,
+                day_of_week,
+            });
+        }
+        let day_of_year = exchange_local_day_of_year[record_position];
+        if !(1..=366).contains(&day_of_year) {
+            return Err(DeterministicSeasonalityCompositionError::InvalidDayOfYear {
+                record_position,
+                day_of_year,
+            });
+        }
+
+        let intraday_bin_index = minute_of_day / intraday_minutes_per_bin;
+        let intraday_log_component = intraday_log_component_by_bin[usize::from(intraday_bin_index)];
+        let day_of_week_log_component_value = day_of_week_log_component[(day_of_week - 1) as usize];
+        let day_of_year_log_component_value = day_of_year_log_component[(day_of_year - 1) as usize];
+        let combined_log_component = intraday_log_component
+            + day_of_week_log_component_value
+            + day_of_year_log_component_value;
+        let combined_factor = combined_log_component.exp();
+        if !combined_factor.is_finite() || combined_factor <= 0.0 {
+            return Err(
+                DeterministicSeasonalityCompositionError::UnstableCombinedFactor {
+                    record_position,
+                },
+            );
+        }
+
+        intraday_bin_index_by_event.push(intraday_bin_index);
+        intraday_log_component_by_event.push(intraday_log_component);
+        day_of_week_log_component_by_event.push(day_of_week_log_component_value);
+        day_of_year_log_component_by_event.push(day_of_year_log_component_value);
+        combined_log_component_by_event.push(combined_log_component);
+        combined_factor_by_event.push(combined_factor);
+    }
+
+    Ok(DeterministicSeasonalityCompositionOutput {
+        schema_version: DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION,
+        intraday_minutes_per_bin,
+        intraday_bin_index_by_event,
+        intraday_log_component_by_event,
+        day_of_week_log_component_by_event,
+        day_of_year_log_component_by_event,
+        combined_log_component_by_event,
+        combined_factor_by_event,
+        diagnostics: DeterministicSeasonalityCompositionDiagnostics { input_event_count },
+    })
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DayOfWeekSeasonalityEstimationError {
+    EmptyInputEvents,
+    InvalidMinimumBucketEvents {
+        minimum_bucket_events: usize,
+    },
+    InvalidPseudocount {
+        pseudocount: f64,
+    },
+    InvalidDayOfWeek {
+        record_position: usize,
+        day_of_week: u8,
+    },
+    UnstableNormalization,
+}
+
+impl Display for DayOfWeekSeasonalityEstimationError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyInputEvents => {
+                write!(
+                    formatter,
+                    "day-of-week seasonality estimation requires at least one accepted event"
+                )
+            }
+            Self::InvalidMinimumBucketEvents {
+                minimum_bucket_events,
+            } => write!(
+                formatter,
+                "minimum_bucket_events must be at least 1, received {minimum_bucket_events}"
+            ),
+            Self::InvalidPseudocount { pseudocount } => write!(
+                formatter,
+                "pseudocount must be a finite positive value, received {pseudocount}"
+            ),
+            Self::InvalidDayOfWeek {
+                record_position,
+                day_of_week,
+            } => write!(
+                formatter,
+                "event record at position {record_position} has invalid local day-of-week value {day_of_week}"
+            ),
+            Self::UnstableNormalization => write!(
+                formatter,
+                "day-of-week seasonality estimation produced a non-positive normalization constant"
+            ),
+        }
+    }
+}
+
+impl Error for DayOfWeekSeasonalityEstimationError {}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DayOfYearSeasonalityEstimationError {
+    EmptyInputEvents,
+    InvalidMinimumBucketEvents {
+        minimum_bucket_events: usize,
+    },
+    InvalidPseudocount {
+        pseudocount: f64,
+    },
+    InvalidDayOfYear {
+        record_position: usize,
+        day_of_year: u16,
+    },
+    UnstableNormalization,
+}
+
+impl Display for DayOfYearSeasonalityEstimationError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyInputEvents => {
+                write!(
+                    formatter,
+                    "day-of-year seasonality estimation requires at least one accepted event"
+                )
+            }
+            Self::InvalidMinimumBucketEvents {
+                minimum_bucket_events,
+            } => write!(
+                formatter,
+                "minimum_bucket_events must be at least 1, received {minimum_bucket_events}"
+            ),
+            Self::InvalidPseudocount { pseudocount } => write!(
+                formatter,
+                "pseudocount must be a finite positive value, received {pseudocount}"
+            ),
+            Self::InvalidDayOfYear {
+                record_position,
+                day_of_year,
+            } => write!(
+                formatter,
+                "event record at position {record_position} has invalid local day-of-year value {day_of_year}"
+            ),
+            Self::UnstableNormalization => write!(
+                formatter,
+                "day-of-year seasonality estimation produced a non-positive normalization constant"
+            ),
+        }
+    }
+}
+
+impl Error for DayOfYearSeasonalityEstimationError {}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DeterministicSeasonalityCompositionError {
+    EmptyInputEvents,
+    MismatchedInputLengths {
+        minute_of_day_count: usize,
+        day_of_week_count: usize,
+        day_of_year_count: usize,
+    },
+    InvalidIntradayMinutesPerBin {
+        intraday_minutes_per_bin: u16,
+    },
+    InvalidIntradayComponentLength {
+        expected_intraday_bin_count: usize,
+        actual_intraday_bin_count: usize,
+    },
+    InvalidDayOfWeekComponentLength {
+        expected_day_of_week_bucket_count: usize,
+        actual_day_of_week_bucket_count: usize,
+    },
+    InvalidDayOfYearComponentLength {
+        expected_day_of_year_bucket_count: usize,
+        actual_day_of_year_bucket_count: usize,
+    },
+    InvalidMinuteOfDay {
+        record_position: usize,
+        minute_of_day: u16,
+    },
+    InvalidDayOfWeek {
+        record_position: usize,
+        day_of_week: u8,
+    },
+    InvalidDayOfYear {
+        record_position: usize,
+        day_of_year: u16,
+    },
+    UnstableCombinedFactor {
+        record_position: usize,
+    },
+}
+
+impl Display for DeterministicSeasonalityCompositionError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyInputEvents => {
+                write!(
+                    formatter,
+                    "deterministic seasonality composition requires at least one accepted event"
+                )
+            }
+            Self::MismatchedInputLengths {
+                minute_of_day_count,
+                day_of_week_count,
+                day_of_year_count,
+            } => write!(
+                formatter,
+                "composition inputs must have matching lengths, received minute_of_day={minute_of_day_count}, day_of_week={day_of_week_count}, day_of_year={day_of_year_count}"
+            ),
+            Self::InvalidIntradayMinutesPerBin {
+                intraday_minutes_per_bin,
+            } => write!(
+                formatter,
+                "intraday_minutes_per_bin must be a positive divisor of 1440, received {intraday_minutes_per_bin}"
+            ),
+            Self::InvalidIntradayComponentLength {
+                expected_intraday_bin_count,
+                actual_intraday_bin_count,
+            } => write!(
+                formatter,
+                "intraday component length mismatch, expected {expected_intraday_bin_count} bins and received {actual_intraday_bin_count}"
+            ),
+            Self::InvalidDayOfWeekComponentLength {
+                expected_day_of_week_bucket_count,
+                actual_day_of_week_bucket_count,
+            } => write!(
+                formatter,
+                "day-of-week component length mismatch, expected {expected_day_of_week_bucket_count} buckets and received {actual_day_of_week_bucket_count}"
+            ),
+            Self::InvalidDayOfYearComponentLength {
+                expected_day_of_year_bucket_count,
+                actual_day_of_year_bucket_count,
+            } => write!(
+                formatter,
+                "day-of-year component length mismatch, expected {expected_day_of_year_bucket_count} buckets and received {actual_day_of_year_bucket_count}"
+            ),
+            Self::InvalidMinuteOfDay {
+                record_position,
+                minute_of_day,
+            } => write!(
+                formatter,
+                "event record at position {record_position} has invalid local minute-of-day value {minute_of_day}"
+            ),
+            Self::InvalidDayOfWeek {
+                record_position,
+                day_of_week,
+            } => write!(
+                formatter,
+                "event record at position {record_position} has invalid local day-of-week value {day_of_week}"
+            ),
+            Self::InvalidDayOfYear {
+                record_position,
+                day_of_year,
+            } => write!(
+                formatter,
+                "event record at position {record_position} has invalid local day-of-year value {day_of_year}"
+            ),
+            Self::UnstableCombinedFactor { record_position } => write!(
+                formatter,
+                "deterministic seasonality composition produced a non-finite combined factor at record position {record_position}"
+            ),
+        }
+    }
+}
+
+impl Error for DeterministicSeasonalityCompositionError {}
+
+#[derive(Debug, Clone, PartialEq)]
+enum DiscreteSeasonalityByBucketEstimationError {
+    UnstableNormalization,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct DiscreteSeasonalityByBucketEstimate {
+    event_count_by_bucket: Vec<u64>,
+    sparse_bucket_flags: Vec<u8>,
+    fallback_bucket_flags: Vec<u8>,
+    log_component_by_bucket: Vec<f64>,
+    factor_by_bucket: Vec<f64>,
+    zero_event_bucket_count: usize,
+    sparse_bucket_count: usize,
+    fallback_bucket_count: usize,
+}
+
+fn estimate_discrete_seasonality_by_bucket(
+    bucket_index_by_event: &[usize],
+    bucket_count: usize,
+    minimum_bucket_events: usize,
+    pseudocount: f64,
+) -> Result<DiscreteSeasonalityByBucketEstimate, DiscreteSeasonalityByBucketEstimationError> {
+    let mut event_count_by_bucket: Vec<u64> = vec![0; bucket_count];
+    for bucket_index in bucket_index_by_event {
+        event_count_by_bucket[*bucket_index] += 1;
+    }
+
+    let zero_event_bucket_count: usize = event_count_by_bucket
+        .iter()
+        .copied()
+        .filter(|event_count| *event_count == 0)
+        .count();
+    let sparse_bucket_flags: Vec<u8> = event_count_by_bucket
+        .iter()
+        .copied()
+        .map(|event_count| {
+            if event_count < minimum_bucket_events as u64 {
+                1
+            } else {
+                0
+            }
+        })
+        .collect();
+    let sparse_bucket_count: usize = sparse_bucket_flags
+        .iter()
+        .copied()
+        .filter(|sparse_flag| *sparse_flag == 1)
+        .count();
+    let fallback_bucket_flags = sparse_bucket_flags.clone();
+    let fallback_bucket_count = sparse_bucket_count;
+
+    let fallback_event_count =
+        bucket_index_by_event.len() as f64 / bucket_count as f64 + pseudocount;
+    let adjusted_event_count_by_bucket: Vec<f64> = event_count_by_bucket
+        .iter()
+        .enumerate()
+        .map(|(bucket_index, event_count)| {
+            if sparse_bucket_flags[bucket_index] == 1 {
+                fallback_event_count
+            } else {
+                *event_count as f64 + pseudocount
+            }
+        })
+        .collect();
+    let adjusted_event_count_total: f64 = adjusted_event_count_by_bucket.iter().sum();
+    if !adjusted_event_count_total.is_finite() || adjusted_event_count_total <= 0.0 {
+        return Err(DiscreteSeasonalityByBucketEstimationError::UnstableNormalization);
+    }
+
+    let bucket_count_float = bucket_count as f64;
+    let density_by_bucket: Vec<f64> = adjusted_event_count_by_bucket
+        .iter()
+        .map(|adjusted_event_count| *adjusted_event_count / adjusted_event_count_total)
+        .collect();
+    let factor_by_bucket: Vec<f64> = density_by_bucket
+        .iter()
+        .map(|density_value| *density_value * bucket_count_float)
+        .collect();
+    let log_component_by_bucket: Vec<f64> = factor_by_bucket
+        .iter()
+        .map(|factor_value| factor_value.ln())
+        .collect();
+
+    Ok(DiscreteSeasonalityByBucketEstimate {
+        event_count_by_bucket,
+        sparse_bucket_flags,
+        fallback_bucket_flags,
+        log_component_by_bucket,
+        factor_by_bucket,
+        zero_event_bucket_count,
+        sparse_bucket_count,
+        fallback_bucket_count,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        IntradaySeasonalityEstimationError, IntradaySeasonalityEstimatorSettings,
-        IntradaySmoothingKernel, estimate_intraday_seasonality,
+        DayOfWeekSeasonalityEstimatorSettings, DayOfYearSeasonalityEstimatorSettings,
+        DeterministicSeasonalityCompositionError, IntradaySeasonalityEstimationError,
+        IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel,
+        compose_deterministic_seasonality_signal, estimate_day_of_week_seasonality,
+        estimate_day_of_year_seasonality, estimate_intraday_seasonality,
     };
 
     #[test]
@@ -436,6 +1121,143 @@ mod tests {
         assert_eq!(
             result,
             Err(IntradaySeasonalityEstimationError::EmptyInputEvents)
+        );
+    }
+
+    #[test]
+    fn day_of_week_estimator_recovers_synthetic_weekday_pattern() {
+        let mut day_of_week_events: Vec<u8> = Vec::new();
+        for _ in 0..60 {
+            day_of_week_events.push(1);
+        }
+        for _ in 0..30 {
+            day_of_week_events.push(2);
+        }
+        for _ in 0..10 {
+            day_of_week_events.push(3);
+        }
+        for _ in 0..20 {
+            day_of_week_events.push(4);
+        }
+        for _ in 0..50 {
+            day_of_week_events.push(5);
+        }
+
+        let estimate = estimate_day_of_week_seasonality(
+            &day_of_week_events,
+            DayOfWeekSeasonalityEstimatorSettings {
+                minimum_bucket_events: 2,
+                pseudocount: 1e-6,
+            },
+        )
+        .expect("day-of-week estimation should succeed");
+
+        assert!(estimate.day_of_week_factor[0] > estimate.day_of_week_factor[2]);
+        assert!(estimate.day_of_week_factor[4] > estimate.day_of_week_factor[2]);
+        assert_eq!(estimate.sparse_bucket_flags[5], 1);
+        assert_eq!(estimate.sparse_bucket_flags[6], 1);
+
+        let mean_factor = estimate.day_of_week_factor.iter().sum::<f64>()
+            / estimate.day_of_week_factor.len() as f64;
+        assert!((mean_factor - 1.0).abs() < 1e-12);
+        assert_eq!(
+            estimate.diagnostics.input_event_count,
+            day_of_week_events.len()
+        );
+    }
+
+    #[test]
+    fn day_of_year_estimator_handles_sparse_day_buckets_with_defined_fallback() {
+        let mut day_of_year_events: Vec<u16> = Vec::new();
+        for _ in 0..60 {
+            day_of_year_events.push(60);
+        }
+        for _ in 0..20 {
+            day_of_year_events.push(200);
+        }
+        day_of_year_events.push(330);
+
+        let estimate = estimate_day_of_year_seasonality(
+            &day_of_year_events,
+            DayOfYearSeasonalityEstimatorSettings {
+                minimum_bucket_events: 5,
+                pseudocount: 1e-6,
+            },
+        )
+        .expect("day-of-year estimation should succeed");
+
+        assert!(estimate.day_of_year_factor[59] > estimate.day_of_year_factor[199]);
+        assert_eq!(estimate.sparse_bucket_flags[329], 1);
+        assert_eq!(estimate.sparse_bucket_flags[149], 1);
+        assert!(
+            (estimate.day_of_year_factor[329] - estimate.day_of_year_factor[149]).abs() < 1e-12
+        );
+
+        let mean_factor = estimate.day_of_year_factor.iter().sum::<f64>()
+            / estimate.day_of_year_factor.len() as f64;
+        assert!((mean_factor - 1.0).abs() < 1e-12);
+        assert!(estimate.diagnostics.fallback_bucket_count > 300);
+    }
+
+    #[test]
+    fn deterministic_seasonality_composition_combines_components_deterministically() {
+        let mut intraday_log_component_by_bin: Vec<f64> = vec![0.0; 24];
+        intraday_log_component_by_bin[9] = 2.0_f64.ln();
+        intraday_log_component_by_bin[15] = 1.5_f64.ln();
+        let mut day_of_week_log_component: Vec<f64> = vec![0.0; 7];
+        day_of_week_log_component[0] = 1.2_f64.ln();
+        day_of_week_log_component[4] = 0.8_f64.ln();
+        let mut day_of_year_log_component: Vec<f64> = vec![0.0; 366];
+        day_of_year_log_component[31] = 1.1_f64.ln();
+        day_of_year_log_component[200] = 0.9_f64.ln();
+
+        let first_output = compose_deterministic_seasonality_signal(
+            &[570, 930],
+            &[1, 5],
+            &[32, 201],
+            60,
+            &intraday_log_component_by_bin,
+            &day_of_week_log_component,
+            &day_of_year_log_component,
+        )
+        .expect("composition should succeed");
+        let second_output = compose_deterministic_seasonality_signal(
+            &[570, 930],
+            &[1, 5],
+            &[32, 201],
+            60,
+            &intraday_log_component_by_bin,
+            &day_of_week_log_component,
+            &day_of_year_log_component,
+        )
+        .expect("composition should succeed");
+
+        assert_eq!(first_output, second_output);
+        assert_eq!(first_output.intraday_bin_index_by_event, vec![9, 15]);
+        assert!((first_output.combined_factor_by_event[0] - 2.64).abs() < 1e-12);
+        assert!((first_output.combined_factor_by_event[1] - 1.08).abs() < 1e-12);
+    }
+
+    #[test]
+    fn deterministic_seasonality_composition_rejects_mismatched_input_lengths() {
+        let error = compose_deterministic_seasonality_signal(
+            &[570, 930],
+            &[1],
+            &[32, 201],
+            60,
+            &vec![0.0; 24],
+            &vec![0.0; 7],
+            &vec![0.0; 366],
+        )
+        .expect_err("composition should fail for mismatched input lengths");
+
+        assert_eq!(
+            error,
+            DeterministicSeasonalityCompositionError::MismatchedInputLengths {
+                minute_of_day_count: 2,
+                day_of_week_count: 1,
+                day_of_year_count: 2,
+            }
         );
     }
 }

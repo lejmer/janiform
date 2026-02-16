@@ -108,6 +108,23 @@ timestamp density with explicit smoothing controls.
   - deterministic machine-readable bins (`bin_start_minute_of_day`, `intraday_factor_by_bin`)
   - normalized component with anchored mean (`mean(intraday_factor_by_bin) = 1`)
 
+## Day Of Week, Day Of Year, And Composition
+
+Use `estimate_day_of_week_seasonality(...)` and `estimate_day_of_year_seasonality(...)` on the
+same preprocessed event output to estimate deterministic weekly and yearly effects.
+
+- Day-of-week output:
+  - fixed weekday buckets (`day_of_week_number` values `1..7`, Monday-first)
+  - sparse bucket flags and fallback flags for deterministic missing-data handling
+  - normalized factor component (`day_of_week_factor`) and additive log component
+- Day-of-year output:
+  - fixed daily buckets (`day_of_year_number` values `1..366`)
+  - sparse bucket flags and fallback flags for deterministic missing-data handling
+  - normalized factor component (`day_of_year_factor`) and additive log component
+
+Use `compose_deterministic_seasonality_signal(...)` to combine intraday, day-of-week, and
+day-of-year log components into a unified deterministic signal per accepted timestamp event.
+
 ## Developer Commands
 
 ```bash

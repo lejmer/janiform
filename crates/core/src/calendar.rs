@@ -93,9 +93,19 @@ pub const TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION: &str = "seasonality.timestamp_ev
 pub const PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION: &str =
     "seasonality.timestamp_event.preprocessed.v1";
 pub use crate::seasonality::{
+    DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
+    DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
+    DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION, DayOfWeekSeasonalityDiagnostics,
+    DayOfWeekSeasonalityEstimateOutput, DayOfWeekSeasonalityEstimationError,
+    DayOfWeekSeasonalityEstimatorSettings, DayOfYearSeasonalityDiagnostics,
+    DayOfYearSeasonalityEstimateOutput, DayOfYearSeasonalityEstimationError,
+    DayOfYearSeasonalityEstimatorSettings, DeterministicSeasonalityCompositionDiagnostics,
+    DeterministicSeasonalityCompositionError, DeterministicSeasonalityCompositionOutput,
     INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION, IntradaySeasonalityDiagnostics,
     IntradaySeasonalityEstimateOutput, IntradaySeasonalityEstimationError,
-    IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel, estimate_intraday_seasonality,
+    IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel,
+    compose_deterministic_seasonality_signal, estimate_day_of_week_seasonality,
+    estimate_day_of_year_seasonality, estimate_intraday_seasonality,
 };
 
 /// Weekday used by regular exchange sessions.
