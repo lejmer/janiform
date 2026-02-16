@@ -9,6 +9,7 @@ This document provides instructions and guardrails for AI coding agents (and hum
 - Follow the style and architectural conventions of this repo.
 - Prefer clarity and maintainability over cleverness.
 - Do not introduce global state; use existing services and registries.
+- Implementations are Rust first for most things (unless specified otherwise or obvious from context): Python is just a thin wrapper and the user-facing API.
 
 ---
 
