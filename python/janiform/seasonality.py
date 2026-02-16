@@ -1,3 +1,4 @@
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -18,6 +19,9 @@ INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION: str = "seasonality.intraday.estima
 DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION: str = "seasonality.day_of_week.estimate.v1"
 DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION: str = "seasonality.day_of_year.estimate.v1"
 DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION: str = "seasonality.deterministic.composition.v1"
+SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION: str = "seasonality.diagnostics.report.v1"
+SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION: str = "seasonality.diagnostics.batch.v1"
+DEFAULT_SEASONALITY_ESTIMATOR_VERSION: str = "seasonality_estimator.v1"
 
 
 class SeasonalityPreprocessingError(Exception):
@@ -88,6 +92,7 @@ class ScheduledEventOverlayDefinition:
             raise SeasonalityInputValidationError(
                 "scheduled event overlay configuration record is missing required field 'overlay_id'"
             )
+
         overlay_id_value: object = config_record["overlay_id"]
         if not isinstance(overlay_id_value, str) or not overlay_id_value.strip():
             raise SeasonalityInputValidationError(
@@ -98,6 +103,7 @@ class ScheduledEventOverlayDefinition:
             raise SeasonalityInputValidationError(
                 "scheduled event overlay configuration record is missing required field 'start_timestamp_utc'"
             )
+
         start_timestamp_utc_value: object = config_record["start_timestamp_utc"]
         if not isinstance(start_timestamp_utc_value, str | datetime):
             raise SeasonalityInputValidationError(
@@ -108,6 +114,7 @@ class ScheduledEventOverlayDefinition:
             raise SeasonalityInputValidationError(
                 "scheduled event overlay configuration record is missing required field 'end_timestamp_utc'"
             )
+
         end_timestamp_utc_value: object = config_record["end_timestamp_utc"]
         if not isinstance(end_timestamp_utc_value, str | datetime):
             raise SeasonalityInputValidationError(
@@ -118,6 +125,7 @@ class ScheduledEventOverlayDefinition:
             raise SeasonalityInputValidationError(
                 "scheduled event overlay configuration record is missing required field 'log_adjustment'"
             )
+
         log_adjustment_value: object = config_record["log_adjustment"]
         if isinstance(log_adjustment_value, bool) or not isinstance(log_adjustment_value, int | float):
             raise SeasonalityInputValidationError(
@@ -131,10 +139,12 @@ class ScheduledEventOverlayDefinition:
                 raise SeasonalityInputValidationError(
                     "scheduled event overlay field 'precedence' must be an integer"
                 )
+
             if precedence_value < 0:
                 raise SeasonalityInputValidationError(
                     "scheduled event overlay field 'precedence' must be non-negative"
                 )
+
             precedence = precedence_value
 
         enabled: bool = True
@@ -144,6 +154,7 @@ class ScheduledEventOverlayDefinition:
                 raise SeasonalityInputValidationError(
                     "scheduled event overlay field 'enabled' must be a boolean"
                 )
+
             enabled = enabled_value
 
         source_label: str = "configuration"
@@ -153,6 +164,7 @@ class ScheduledEventOverlayDefinition:
                 raise SeasonalityInputValidationError(
                     "scheduled event overlay field 'source_label' must be a string"
                 )
+
             source_label = source_label_value
 
         return ScheduledEventOverlayDefinition(
@@ -600,6 +612,16 @@ class DeterministicSeasonalityComposition:
         return cast(list[str], self._native_result.overlay_source_labels_in_order)
 
 
+@dataclass(frozen=True, slots=True)
+class SeasonalityDiagnosticsBatchInput:
+    dataset_id: str
+    preprocessed_events: TimestampEventPreprocessingResult
+    intraday_estimate: IntradaySeasonalityEstimate
+    day_of_week_estimate: DayOfWeekSeasonalityEstimate
+    day_of_year_estimate: DayOfYearSeasonalityEstimate
+    composition: DeterministicSeasonalityComposition
+
+
 def preprocess_timestamp_events(
     event_records: Sequence[Mapping[str, object]],
     *,
@@ -731,6 +753,75 @@ def compose_deterministic_seasonality_signal(
     return DeterministicSeasonalityComposition(native_result)
 
 
+def generate_seasonality_diagnostics_report(
+    dataset_id: str,
+    preprocessed_events: TimestampEventPreprocessingResult,
+    intraday_estimate: IntradaySeasonalityEstimate,
+    day_of_week_estimate: DayOfWeekSeasonalityEstimate,
+    day_of_year_estimate: DayOfYearSeasonalityEstimate,
+    composition: DeterministicSeasonalityComposition,
+    *,
+    estimator_version: str = DEFAULT_SEASONALITY_ESTIMATOR_VERSION,
+) -> dict[str, object]:
+    native: ModuleType = native_module()
+
+    try:
+        report_json: object = native.generate_seasonality_diagnostics_report(
+            dataset_id,
+            preprocessed_events._native_result,
+            intraday_estimate._native_result,
+            day_of_week_estimate._native_result,
+            day_of_year_estimate._native_result,
+            composition._native_result,
+            estimator_version=estimator_version,
+        )
+    except native.SeasonalityInputValidationError as e:
+        raise SeasonalityInputValidationError(str(e)) from e
+
+    return cast(dict[str, object], json.loads(cast(str, report_json)))
+
+
+def generate_seasonality_diagnostics_reports_batch(
+    batch_inputs: Sequence[SeasonalityDiagnosticsBatchInput],
+    *,
+    estimator_version: str = DEFAULT_SEASONALITY_ESTIMATOR_VERSION,
+) -> dict[str, object]:
+    if len(batch_inputs) == 0:
+        raise SeasonalityInputValidationError(
+            "seasonality diagnostics batch report requires at least one dataset input"
+        )
+
+    report_documents: list[dict[str, object]] = []
+    dataset_ids_in_order: list[str] = []
+    observed_dataset_ids: set[str] = set()
+    for batch_input in batch_inputs:
+        if batch_input.dataset_id in observed_dataset_ids:
+            raise SeasonalityInputValidationError(
+                f"seasonality diagnostics batch report received duplicate dataset id '{batch_input.dataset_id}'"
+            )
+
+        observed_dataset_ids.add(batch_input.dataset_id)
+
+        report_document = generate_seasonality_diagnostics_report(
+            batch_input.dataset_id,
+            batch_input.preprocessed_events,
+            batch_input.intraday_estimate,
+            batch_input.day_of_week_estimate,
+            batch_input.day_of_year_estimate,
+            batch_input.composition,
+            estimator_version=estimator_version,
+        )
+        report_documents.append(report_document)
+        dataset_ids_in_order.append(batch_input.dataset_id)
+
+    return {
+        "schema_version": SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION,
+        "report_count": len(report_documents),
+        "dataset_ids_in_order": dataset_ids_in_order,
+        "reports": report_documents,
+    }
+
+
 def _serialize_scheduled_event_overlays(
     scheduled_event_overlays: Sequence[ScheduledEventOverlayDefinition],
 ) -> list[dict[str, object]]:
@@ -740,6 +831,7 @@ def _serialize_scheduled_event_overlays(
             raise SeasonalityInputValidationError(
                 "scheduled event overlay field 'precedence' must be in the range 0..65535"
             )
+
         serialized_overlays.append(
             {
                 "overlay_id": scheduled_event_overlay.overlay_id,
@@ -759,11 +851,15 @@ __all__ = [
     "DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
     "DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
     "DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION",
+    "DEFAULT_SEASONALITY_ESTIMATOR_VERSION",
     "DayOfWeekSeasonalityEstimate",
     "DayOfWeekSeasonalityEstimatorSettings",
     "DayOfYearSeasonalityEstimate",
     "DayOfYearSeasonalityEstimatorSettings",
     "DeterministicSeasonalityComposition",
+    "SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION",
+    "SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION",
+    "SeasonalityDiagnosticsBatchInput",
     "ScheduledEventOverlayDefinition",
     "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
     "IntradaySeasonalityEstimate",
@@ -782,5 +878,7 @@ __all__ = [
     "estimate_day_of_week_seasonality",
     "estimate_day_of_year_seasonality",
     "estimate_intraday_seasonality",
+    "generate_seasonality_diagnostics_report",
+    "generate_seasonality_diagnostics_reports_batch",
     "preprocess_timestamp_events",
 ]

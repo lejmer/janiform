@@ -12,15 +12,18 @@ use janiform_core::seasonality::{
     DeterministicSeasonalityCompositionError, DeterministicSeasonalityCompositionOutput,
     IntradaySeasonalityEstimateOutput, IntradaySeasonalityEstimationError,
     IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel, ScheduledEventOverlayDefinition,
+    SeasonalityDiagnosticsReportError, SeasonalityDiagnosticsReportInput,
     compose_deterministic_seasonality_signal as compose_deterministic_seasonality_signal_core,
     estimate_day_of_week_seasonality as estimate_day_of_week_seasonality_core,
     estimate_day_of_year_seasonality as estimate_day_of_year_seasonality_core,
     estimate_intraday_seasonality as estimate_intraday_seasonality_core,
+    generate_seasonality_diagnostics_report as generate_seasonality_diagnostics_report_core,
 };
 use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyMapping, PyModule};
+use serde_json::to_string as serialize_to_json_string;
 
 create_exception!(_native, CalendarInvalidTimezoneError, PyException);
 create_exception!(_native, CalendarMissingExchangeError, PyException);
@@ -889,6 +892,50 @@ fn compose_deterministic_seasonality_signal(
     Ok(PyDeterministicSeasonalityCompositionResult { output })
 }
 
+#[pyfunction]
+#[pyo3(signature = (dataset_id, preprocessed_events, intraday_estimate, day_of_week_estimate, day_of_year_estimate, composition, *, estimator_version = "seasonality_estimator.v1"))]
+fn generate_seasonality_diagnostics_report(
+    py: Python<'_>,
+    dataset_id: &str,
+    preprocessed_events: &PyTimestampEventPreprocessingResult,
+    intraday_estimate: &PyIntradaySeasonalityEstimateResult,
+    day_of_week_estimate: &PyDayOfWeekSeasonalityEstimateResult,
+    day_of_year_estimate: &PyDayOfYearSeasonalityEstimateResult,
+    composition: &PyDeterministicSeasonalityCompositionResult,
+    estimator_version: &str,
+) -> PyResult<String> {
+    let report_output = py
+        .allow_threads(|| {
+            generate_seasonality_diagnostics_report_core(SeasonalityDiagnosticsReportInput {
+                dataset_id,
+                input_schema_version: preprocessed_events.output.input_schema_version,
+                preprocessed_schema_version: preprocessed_events.output.schema_version,
+                exchange_code: &preprocessed_events.output.exchange_code,
+                exchange_timezone_name: &preprocessed_events.output.exchange_timezone_name,
+                source_record_positions: &preprocessed_events.output.source_record_positions,
+                timestamp_utc_nanos: &preprocessed_events.output.timestamp_utc_nanos,
+                exchange_local_minute_of_day: &preprocessed_events
+                    .output
+                    .exchange_local_minute_of_day,
+                exchange_local_day_of_week: &preprocessed_events.output.exchange_local_day_of_week,
+                exchange_local_day_of_year: &preprocessed_events.output.exchange_local_day_of_year,
+                market_state_codes: &preprocessed_events.output.market_state_codes,
+                intraday_estimate: &intraday_estimate.output,
+                day_of_week_estimate: &day_of_week_estimate.output,
+                day_of_year_estimate: &day_of_year_estimate.output,
+                composition: &composition.output,
+                estimator_version,
+            })
+        })
+        .map_err(map_seasonality_diagnostics_report_error)?;
+
+    serialize_to_json_string(&report_output).map_err(|_| {
+        SeasonalityInputValidationError::new_err(
+            "failed to serialize seasonality diagnostics report to json",
+        )
+    })
+}
+
 fn parse_scheduled_event_overlay_definitions(
     scheduled_event_overlays: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<Vec<ScheduledEventOverlayDefinition>> {
@@ -1261,6 +1308,112 @@ fn map_deterministic_composition_error(error: DeterministicSeasonalityCompositio
     }
 }
 
+fn map_seasonality_diagnostics_report_error(error: SeasonalityDiagnosticsReportError) -> PyErr {
+    match error {
+        SeasonalityDiagnosticsReportError::EmptyDatasetId => {
+            SeasonalityInputValidationError::new_err(
+                "seasonality diagnostics report requires a non-empty dataset_id",
+            )
+        }
+        SeasonalityDiagnosticsReportError::EmptyEstimatorVersion => {
+            SeasonalityInputValidationError::new_err(
+                "seasonality diagnostics report requires a non-empty estimator_version",
+            )
+        }
+        SeasonalityDiagnosticsReportError::EmptyInputSchemaVersion => {
+            SeasonalityInputValidationError::new_err(
+                "seasonality diagnostics report requires a non-empty input_schema_version",
+            )
+        }
+        SeasonalityDiagnosticsReportError::EmptyPreprocessedSchemaVersion => {
+            SeasonalityInputValidationError::new_err(
+                "seasonality diagnostics report requires a non-empty preprocessed_schema_version",
+            )
+        }
+        SeasonalityDiagnosticsReportError::EmptyExchangeCode => {
+            SeasonalityInputValidationError::new_err(
+                "seasonality diagnostics report requires a non-empty exchange_code",
+            )
+        }
+        SeasonalityDiagnosticsReportError::EmptyExchangeTimezoneName => {
+            SeasonalityInputValidationError::new_err(
+                "seasonality diagnostics report requires a non-empty exchange_timezone_name",
+            )
+        }
+        SeasonalityDiagnosticsReportError::EmptyInputEvents => {
+            SeasonalityInputValidationError::new_err(
+                "seasonality diagnostics report requires at least one accepted input event",
+            )
+        }
+        SeasonalityDiagnosticsReportError::MismatchedInputLengths {
+            timestamp_utc_nanos_count,
+            source_record_position_count,
+            minute_of_day_count,
+            day_of_week_count,
+            day_of_year_count,
+            market_state_code_count,
+            combined_log_component_count,
+            combined_factor_count,
+            special_log_component_count,
+            special_overlay_flag_count,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "seasonality diagnostics report inputs must have matching lengths, received timestamp_utc_nanos={timestamp_utc_nanos_count}, source_record_positions={source_record_position_count}, minute_of_day={minute_of_day_count}, day_of_week={day_of_week_count}, day_of_year={day_of_year_count}, market_state_codes={market_state_code_count}, combined_log_component={combined_log_component_count}, combined_factor={combined_factor_count}, special_log_component={special_log_component_count}, special_overlay_flags={special_overlay_flag_count}"
+        )),
+        SeasonalityDiagnosticsReportError::InputEventCountMismatch {
+            component_name,
+            expected_input_event_count,
+            actual_input_event_count,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "seasonality diagnostics report component '{component_name}' input_event_count mismatch, expected {expected_input_event_count} and received {actual_input_event_count}"
+        )),
+        SeasonalityDiagnosticsReportError::ComponentLengthMismatch {
+            component_name,
+            expected_bucket_count,
+            actual_bucket_count,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "seasonality diagnostics report component '{component_name}' length mismatch, expected {expected_bucket_count} buckets and received {actual_bucket_count}"
+        )),
+        SeasonalityDiagnosticsReportError::InvalidComponentPseudocount {
+            component_name,
+            pseudocount,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "seasonality diagnostics report component '{component_name}' has invalid pseudocount value {pseudocount}"
+        )),
+        SeasonalityDiagnosticsReportError::InvalidComponentFactor {
+            component_name,
+            bucket_position,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "seasonality diagnostics report component '{component_name}' has non-finite or non-positive factor at bucket position {bucket_position}"
+        )),
+        SeasonalityDiagnosticsReportError::InvalidCombinedFactor { record_position } => {
+            SeasonalityInputValidationError::new_err(format!(
+                "seasonality diagnostics report received non-finite or non-positive combined factor at record position {record_position}"
+            ))
+        }
+        SeasonalityDiagnosticsReportError::InvalidCombinedLogComponent { record_position } => {
+            SeasonalityInputValidationError::new_err(format!(
+                "seasonality diagnostics report received non-finite combined log component at record position {record_position}"
+            ))
+        }
+        SeasonalityDiagnosticsReportError::InvalidSpecialOverlayFlag {
+            record_position,
+            overlay_active_flag,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "seasonality diagnostics report received invalid special overlay active flag {overlay_active_flag} at record position {record_position}"
+        )),
+        SeasonalityDiagnosticsReportError::EmptyBatchInput => {
+            SeasonalityInputValidationError::new_err(
+                "seasonality diagnostics batch report requires at least one dataset input",
+            )
+        }
+        SeasonalityDiagnosticsReportError::DuplicateDatasetId { dataset_id } => {
+            SeasonalityInputValidationError::new_err(format!(
+                "seasonality diagnostics batch report received duplicate dataset id '{dataset_id}'"
+            ))
+        }
+    }
+}
+
 fn parse_timestamp_event_records(
     event_records: &Bound<'_, PyAny>,
     timestamp_field_name: &str,
@@ -1398,6 +1551,10 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     module.add_function(pyo3::wrap_pyfunction!(
         compose_deterministic_seasonality_signal,
+        module
+    )?)?;
+    module.add_function(pyo3::wrap_pyfunction!(
+        generate_seasonality_diagnostics_report,
         module
     )?)?;
     Ok(())

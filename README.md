@@ -147,6 +147,23 @@ day-of-year log components into a unified deterministic signal per accepted time
     - per-event overlay ids and active flags
     - deterministic precedence, merge, and window-boundary policy identifiers
 
+## Seasonality Diagnostics Reports
+
+Use `generate_seasonality_diagnostics_report(...)` to produce a stable machine-readable report
+for one dataset, and `generate_seasonality_diagnostics_reports_batch(...)` to emit a batch report.
+
+- Report artifacts:
+  - schema versioned output (`seasonality.diagnostics.report.v1`)
+  - intraday, day-of-week, day-of-year, and optional overlay component summaries
+  - fit-quality metrics for downstream validation tools
+  - reproducibility metadata:
+    - input snapshot fingerprint and event window
+    - estimator configuration snapshot
+    - estimator version label
+- Batch artifacts:
+  - schema versioned output (`seasonality.diagnostics.batch.v1`)
+  - deterministic dataset ordering and per-dataset report entries
+
 ## Developer Commands
 
 ```bash

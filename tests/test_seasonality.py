@@ -8,21 +8,32 @@ from janiform.calendar import CalendarRegistry
 from janiform.seasonality import (
     DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
     DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
+    DEFAULT_SEASONALITY_ESTIMATOR_VERSION,
     DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION,
     INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
+    SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION,
+    SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION,
     DayOfWeekSeasonalityEstimatorSettings,
+    DayOfWeekSeasonalityEstimate,
     DayOfYearSeasonalityEstimatorSettings,
+    DayOfYearSeasonalityEstimate,
+    DeterministicSeasonalityComposition,
+    IntradaySeasonalityEstimate,
     IntradaySeasonalityEstimatorSettings,
     IntradaySmoothingKernel,
     ScheduledEventOverlayDefinition,
+    SeasonalityDiagnosticsBatchInput,
     SessionFilter,
     SeasonalityInputValidationError,
     compose_deterministic_seasonality_signal,
     estimate_day_of_week_seasonality,
     estimate_day_of_year_seasonality,
     estimate_intraday_seasonality,
+    generate_seasonality_diagnostics_report,
+    generate_seasonality_diagnostics_reports_batch,
     load_scheduled_event_overlay_definitions,
     preprocess_timestamp_events,
+    TimestampEventPreprocessingResult,
 )
 
 OPEN_MARKET_STATE_CODE: int = 1
@@ -246,6 +257,7 @@ def test_estimate_intraday_seasonality_handles_sparse_bins_and_day_boundary_wrap
         {"timestamp": "2026-02-03T00:00:00-05:00"},
         {"timestamp": "2026-02-03T23:59:00-05:00"},
     ]
+
     preprocessed = preprocess_timestamp_events(
         event_records,
         exchange_code="XNYS",
@@ -287,6 +299,7 @@ def test_estimate_intraday_seasonality_is_reproducible_for_fixed_input(
         minimum_bin_events=1,
         pseudocount=1e-6,
     )
+
     first_estimate = estimate_intraday_seasonality(preprocessed, settings=settings)
     second_estimate = estimate_intraday_seasonality(preprocessed, settings=settings)
 
@@ -400,6 +413,7 @@ def test_compose_deterministic_seasonality_signal_is_explicit_and_reproducible(
     assert first_output.target_mean_factor == pytest.approx(1.0)
     assert first_output.post_normalization_mean_factor == pytest.approx(1.0)
     assert first_output.normalization_constant > 0.0
+
     for event_position in range(first_output.input_event_count):
         expected_log_component = (
             first_output.intraday_log_component_by_event[event_position]
@@ -408,12 +422,14 @@ def test_compose_deterministic_seasonality_signal_is_explicit_and_reproducible(
             + first_output.special_log_component_by_event[event_position]
             - first_output.normalization_log_offset
         )
+
         assert first_output.combined_log_component_by_event[event_position] == pytest.approx(
             expected_log_component
         )
         assert first_output.combined_factor_by_event[event_position] == pytest.approx(
             math.exp(expected_log_component)
         )
+
     assert sum(first_output.combined_factor_by_event) / first_output.input_event_count == pytest.approx(1.0)
 
 
@@ -479,10 +495,12 @@ def test_compose_deterministic_seasonality_signal_applies_single_and_multiple_ov
     assert composition.overlay_window_boundary_policy == "start_inclusive_end_exclusive.v1"
     assert composition.configured_overlay_ids_in_order == ["monday_window", "friday_window"]
     assert composition.applied_overlay_ids_in_order == ["monday_window", "friday_window"]
+
     for event_position in monday_event_positions:
         assert composition.special_log_component_by_event[event_position] == pytest.approx(0.2)
         assert composition.special_overlay_active_flags_by_event[event_position] == 1
         assert composition.active_overlay_ids_by_event[event_position] == "monday_window"
+
     for event_position in friday_event_positions:
         assert composition.special_log_component_by_event[event_position] == pytest.approx(-0.1)
         assert composition.special_overlay_active_flags_by_event[event_position] == 1
@@ -544,6 +562,7 @@ def test_compose_deterministic_seasonality_signal_applies_overlay_precedence_whe
     ]
     assert monday_event_positions
     assert "low_priority" not in composition.applied_overlay_ids_in_order
+
     for event_position in monday_event_positions:
         assert composition.special_log_component_by_event[event_position] == pytest.approx(0.5)
         assert composition.active_overlay_ids_by_event[event_position] == "high_priority,high_priority_peer"
@@ -592,6 +611,218 @@ def test_compose_deterministic_seasonality_signal_is_noop_when_overlays_are_disa
     assert without_overlays.special_log_component_by_event == with_disabled_overlay.special_log_component_by_event
     assert without_overlays.combined_log_component_by_event == with_disabled_overlay.combined_log_component_by_event
     assert without_overlays.combined_factor_by_event == with_disabled_overlay.combined_factor_by_event
+
+
+def test_generate_seasonality_diagnostics_report_emits_component_metrics_and_metadata(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    (
+        preprocessed,
+        intraday_estimate,
+        day_of_week_estimate,
+        day_of_year_estimate,
+        composition,
+    ) = _build_diagnostics_report_components(calendar_registry)
+    report = generate_seasonality_diagnostics_report(
+        "dataset_alpha",
+        preprocessed,
+        intraday_estimate,
+        day_of_week_estimate,
+        day_of_year_estimate,
+        composition,
+    )
+
+    assert report["schema_version"] == SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION
+    assert report["dataset_id"] == "dataset_alpha"
+
+    intraday_summary = cast(dict[str, object], report["intraday_component_summary"])
+    day_of_week_summary = cast(dict[str, object], report["day_of_week_component_summary"])
+    day_of_year_summary = cast(dict[str, object], report["day_of_year_component_summary"])
+    fit_quality_metrics = cast(dict[str, object], report["fit_quality_metrics"])
+    reproducibility_metadata = cast(dict[str, object], report["reproducibility_metadata"])
+    input_snapshot = cast(dict[str, object], reproducibility_metadata["input_snapshot"])
+    estimator_configuration = cast(dict[str, object], reproducibility_metadata["estimator_configuration"])
+
+    assert intraday_summary["component_name"] == "intraday"
+    assert day_of_week_summary["component_name"] == "day_of_week"
+    assert day_of_year_summary["component_name"] == "day_of_year"
+    assert cast(float, fit_quality_metrics["combined_factor_mean"]) > 0.0
+    assert cast(float, fit_quality_metrics["normalization_anchor_error"]) <= 1e-12
+    assert input_snapshot["snapshot_fingerprint_algorithm"] == "fnv1a64.v1"
+    assert len(cast(str, input_snapshot["snapshot_fingerprint_hex"])) == 16
+    assert reproducibility_metadata["estimator_version"] == DEFAULT_SEASONALITY_ESTIMATOR_VERSION
+    assert estimator_configuration["intraday_schema_version"] == INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION
+
+    overlay_summary = cast(dict[str, object], report["overlay_component_summary"])
+    assert overlay_summary["configured_overlay_count"] == 1
+    assert overlay_summary["active_overlay_event_count"] > 0
+
+
+def test_generate_seasonality_diagnostics_report_validates_required_metadata_fields(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    (
+        preprocessed,
+        intraday_estimate,
+        day_of_week_estimate,
+        day_of_year_estimate,
+        composition,
+    ) = _build_diagnostics_report_components(calendar_registry)
+
+    with pytest.raises(
+        SeasonalityInputValidationError,
+        match="non-empty dataset_id",
+    ):
+        generate_seasonality_diagnostics_report(
+            "",
+            preprocessed,
+            intraday_estimate,
+            day_of_week_estimate,
+            day_of_year_estimate,
+            composition,
+        )
+
+
+def test_generate_seasonality_diagnostics_report_is_deterministic_for_fixed_inputs(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    (
+        preprocessed,
+        intraday_estimate,
+        day_of_week_estimate,
+        day_of_year_estimate,
+        composition,
+    ) = _build_diagnostics_report_components(calendar_registry)
+
+    first_report = generate_seasonality_diagnostics_report(
+        "dataset_alpha",
+        preprocessed,
+        intraday_estimate,
+        day_of_week_estimate,
+        day_of_year_estimate,
+        composition,
+    )
+    second_report = generate_seasonality_diagnostics_report(
+        "dataset_alpha",
+        preprocessed,
+        intraday_estimate,
+        day_of_week_estimate,
+        day_of_year_estimate,
+        composition,
+    )
+
+    assert first_report == second_report
+
+
+def test_generate_seasonality_diagnostics_reports_batch_supports_multiple_datasets(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    (
+        preprocessed,
+        intraday_estimate,
+        day_of_week_estimate,
+        day_of_year_estimate,
+        composition,
+    ) = _build_diagnostics_report_components(calendar_registry)
+    batch_report = generate_seasonality_diagnostics_reports_batch(
+        [
+            SeasonalityDiagnosticsBatchInput(
+                dataset_id="dataset_alpha",
+                preprocessed_events=preprocessed,
+                intraday_estimate=intraday_estimate,
+                day_of_week_estimate=day_of_week_estimate,
+                day_of_year_estimate=day_of_year_estimate,
+                composition=composition,
+            ),
+            SeasonalityDiagnosticsBatchInput(
+                dataset_id="dataset_beta",
+                preprocessed_events=preprocessed,
+                intraday_estimate=intraday_estimate,
+                day_of_week_estimate=day_of_week_estimate,
+                day_of_year_estimate=day_of_year_estimate,
+                composition=composition,
+            ),
+        ]
+    )
+
+    assert batch_report["schema_version"] == SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION
+    assert batch_report["report_count"] == 2
+    assert batch_report["dataset_ids_in_order"] == ["dataset_alpha", "dataset_beta"]
+
+    reports = cast(list[dict[str, object]], batch_report["reports"])
+    assert reports[0]["schema_version"] == SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION
+    assert reports[1]["schema_version"] == SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION
+
+    with pytest.raises(
+        SeasonalityInputValidationError,
+        match="duplicate dataset id",
+    ):
+        generate_seasonality_diagnostics_reports_batch(
+            [
+                SeasonalityDiagnosticsBatchInput(
+                    dataset_id="dataset_alpha",
+                    preprocessed_events=preprocessed,
+                    intraday_estimate=intraday_estimate,
+                    day_of_week_estimate=day_of_week_estimate,
+                    day_of_year_estimate=day_of_year_estimate,
+                    composition=composition,
+                ),
+                SeasonalityDiagnosticsBatchInput(
+                    dataset_id="dataset_alpha",
+                    preprocessed_events=preprocessed,
+                    intraday_estimate=intraday_estimate,
+                    day_of_week_estimate=day_of_week_estimate,
+                    day_of_year_estimate=day_of_year_estimate,
+                    composition=composition,
+                ),
+            ]
+        )
+
+
+def _build_diagnostics_report_components(
+    calendar_registry: CalendarRegistry,
+) -> tuple[
+    TimestampEventPreprocessingResult,
+    IntradaySeasonalityEstimate,
+    DayOfWeekSeasonalityEstimate,
+    DayOfYearSeasonalityEstimate,
+    DeterministicSeasonalityComposition,
+]:
+    event_records: list[dict[str, object]] = _build_weekly_pattern_event_records()
+    preprocessed = preprocess_timestamp_events(
+        event_records,
+        exchange_code="XNYS",
+        calendar_registry=calendar_registry,
+        session_filter=SessionFilter.ALL,
+    )
+    intraday_estimate = estimate_intraday_seasonality(preprocessed)
+    day_of_week_estimate = estimate_day_of_week_seasonality(preprocessed)
+    day_of_year_estimate = estimate_day_of_year_seasonality(preprocessed)
+    composition = compose_deterministic_seasonality_signal(
+        preprocessed,
+        intraday_estimate,
+        day_of_week_estimate,
+        day_of_year_estimate,
+        scheduled_event_overlays=[
+            ScheduledEventOverlayDefinition(
+                overlay_id="monday_window",
+                start_timestamp_utc="2026-02-02T15:00:00Z",
+                end_timestamp_utc="2026-02-02T15:30:00Z",
+                log_adjustment=0.2,
+                precedence=1,
+                enabled=True,
+                source_label="macro_calendar",
+            )
+        ],
+    )
+
+    return (
+        preprocessed,
+        intraday_estimate,
+        day_of_week_estimate,
+        day_of_year_estimate,
+        composition,
+    )
 
 
 def _result_snapshot(result: object) -> dict[str, object]:
@@ -682,6 +913,7 @@ def _composition_snapshot(composition: object) -> dict[str, object]:
 
 def _build_bimodal_intraday_event_records() -> list[dict[str, object]]:
     event_records: list[dict[str, object]] = []
+
     for day in [2, 3, 4, 5, 6]:
         for second in range(20):
             event_records.append({"timestamp": f"2026-02-{day:02d}T09:30:{second:02d}-05:00"})
@@ -689,6 +921,7 @@ def _build_bimodal_intraday_event_records() -> list[dict[str, object]]:
             event_records.append({"timestamp": f"2026-02-{day:02d}T12:00:{second:02d}-05:00"})
         for second in range(18):
             event_records.append({"timestamp": f"2026-02-{day:02d}T15:30:{second:02d}-05:00"})
+
     return event_records
 
 
@@ -701,19 +934,24 @@ def _build_weekly_pattern_event_records() -> list[dict[str, object]]:
         ("2026-02-05", 20),
         ("2026-02-06", 50),
     ]
+
     for day_value, event_count in weekly_pattern:
         for second in range(event_count):
             event_records.append({"timestamp": f"{day_value}T10:00:{second % 60:02d}-05:00"})
+
     return event_records
 
 
 def _build_yearly_pattern_event_records() -> list[dict[str, object]]:
     event_records: list[dict[str, object]] = []
+
     for second in range(60):
         event_records.append({"timestamp": f"2026-03-01T10:00:{second:02d}-05:00"})
     for second in range(20):
         event_records.append({"timestamp": f"2026-07-19T10:00:{second:02d}-04:00"})
+
     event_records.append({"timestamp": "2026-11-26T10:00:00-05:00"})
+
     return event_records
 
 
