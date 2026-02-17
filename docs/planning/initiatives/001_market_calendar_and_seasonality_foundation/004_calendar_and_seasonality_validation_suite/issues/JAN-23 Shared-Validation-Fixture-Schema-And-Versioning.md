@@ -1,4 +1,4 @@
-## ISSUE-001: Shared Validation Fixture Schema And Versioning
+## Shared Validation Fixture Schema And Versioning
 
 ### Description
 Define a canonical schema and versioning strategy for calendar and seasonality validation fixtures shared between Rust and Python tests.

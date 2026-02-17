@@ -1,4 +1,4 @@
-## ISSUE-005: Acceptance Thresholds And Factor Range Policies
+## Acceptance Thresholds And Factor Range Policies
 
 ### Description
 Define quantitative acceptance thresholds for deterministic outputs and expected seasonality factor ranges, including policy for threshold updates.

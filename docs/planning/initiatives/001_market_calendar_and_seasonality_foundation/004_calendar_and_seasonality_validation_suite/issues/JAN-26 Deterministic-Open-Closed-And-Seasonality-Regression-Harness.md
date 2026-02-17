@@ -1,4 +1,4 @@
-## ISSUE-004: Deterministic Open Closed And Seasonality Regression Harness
+## Deterministic Open Closed And Seasonality Regression Harness
 
 ### Description
 Build a deterministic regression harness that executes fixture-driven checks for market state classification and seasonality factor outputs.

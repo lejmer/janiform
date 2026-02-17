@@ -1,4 +1,4 @@
-## ISSUE-003: Session Anomaly And Early Close Fixture Pack
+## Session Anomaly And Early Close Fixture Pack
 
 ### Description
 Add fixtures for known session anomalies including early closes, delayed opens, and boundary anomalies so resolver behavior is protected by regression coverage.
