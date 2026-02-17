@@ -358,10 +358,25 @@ class HourlyFactorContractResult:
     def last_interval_end_utc_nanos(self) -> int: ...
 
     @property
+    def skipped_local_hour_interval_count(self) -> int: ...
+
+    @property
+    def repeated_local_hour_interval_count(self) -> int: ...
+
+    @property
     def interval_boundary_policy(self) -> str: ...
 
     @property
     def interval_alignment_policy(self) -> str: ...
+
+    @property
+    def timezone_transition_policy(self) -> str: ...
+
+    @property
+    def spring_forward_policy(self) -> str: ...
+
+    @property
+    def fall_back_policy(self) -> str: ...
 
     @property
     def seasonality_materialization_method(self) -> str: ...
@@ -420,6 +435,12 @@ class HourlySeasonalityMaterializationResult:
     def fallback_interval_count(self) -> int: ...
 
     @property
+    def skipped_local_hour_interval_count(self) -> int: ...
+
+    @property
+    def repeated_local_hour_interval_count(self) -> int: ...
+
+    @property
     def interpolation_method(self) -> str: ...
 
     @property
@@ -436,6 +457,15 @@ class HourlySeasonalityMaterializationResult:
 
     @property
     def interval_alignment_policy(self) -> str: ...
+
+    @property
+    def timezone_transition_policy(self) -> str: ...
+
+    @property
+    def spring_forward_policy(self) -> str: ...
+
+    @property
+    def fall_back_policy(self) -> str: ...
 
 
 class HourlyNewsIntensityMaterializationResult:
@@ -488,6 +518,12 @@ class HourlyNewsIntensityMaterializationResult:
     def open_window_override_interval_count(self) -> int: ...
 
     @property
+    def skipped_local_hour_interval_count(self) -> int: ...
+
+    @property
+    def repeated_local_hour_interval_count(self) -> int: ...
+
+    @property
     def materialization_method(self) -> str: ...
 
     @property
@@ -504,6 +540,15 @@ class HourlyNewsIntensityMaterializationResult:
 
     @property
     def interval_alignment_policy(self) -> str: ...
+
+    @property
+    def timezone_transition_policy(self) -> str: ...
+
+    @property
+    def spring_forward_policy(self) -> str: ...
+
+    @property
+    def fall_back_policy(self) -> str: ...
 
 
 class CalendarRegistry:

@@ -740,6 +740,16 @@ impl PyHourlyFactorContractResult {
     }
 
     #[getter]
+    fn skipped_local_hour_interval_count(&self) -> usize {
+        self.output.diagnostics.skipped_local_hour_interval_count
+    }
+
+    #[getter]
+    fn repeated_local_hour_interval_count(&self) -> usize {
+        self.output.diagnostics.repeated_local_hour_interval_count
+    }
+
+    #[getter]
     fn interval_boundary_policy(&self) -> &str {
         self.output.metadata.interval_boundary_policy
     }
@@ -747,6 +757,21 @@ impl PyHourlyFactorContractResult {
     #[getter]
     fn interval_alignment_policy(&self) -> &str {
         self.output.metadata.interval_alignment_policy
+    }
+
+    #[getter]
+    fn timezone_transition_policy(&self) -> &str {
+        self.output.metadata.timezone_transition_policy
+    }
+
+    #[getter]
+    fn spring_forward_policy(&self) -> &str {
+        self.output.metadata.spring_forward_policy
+    }
+
+    #[getter]
+    fn fall_back_policy(&self) -> &str {
+        self.output.metadata.fall_back_policy
     }
 
     #[getter]
@@ -843,6 +868,16 @@ impl PyHourlySeasonalityMaterializationResult {
     }
 
     #[getter]
+    fn skipped_local_hour_interval_count(&self) -> usize {
+        self.output.diagnostics.skipped_local_hour_interval_count
+    }
+
+    #[getter]
+    fn repeated_local_hour_interval_count(&self) -> usize {
+        self.output.diagnostics.repeated_local_hour_interval_count
+    }
+
+    #[getter]
     fn interpolation_method(&self) -> &str {
         self.output.metadata.interpolation_method
     }
@@ -870,6 +905,21 @@ impl PyHourlySeasonalityMaterializationResult {
     #[getter]
     fn interval_alignment_policy(&self) -> &str {
         self.output.metadata.interval_alignment_policy
+    }
+
+    #[getter]
+    fn timezone_transition_policy(&self) -> &str {
+        self.output.metadata.timezone_transition_policy
+    }
+
+    #[getter]
+    fn spring_forward_policy(&self) -> &str {
+        self.output.metadata.spring_forward_policy
+    }
+
+    #[getter]
+    fn fall_back_policy(&self) -> &str {
+        self.output.metadata.fall_back_policy
     }
 }
 
@@ -956,6 +1006,16 @@ impl PyHourlyNewsIntensityMaterializationResult {
     }
 
     #[getter]
+    fn skipped_local_hour_interval_count(&self) -> usize {
+        self.output.diagnostics.skipped_local_hour_interval_count
+    }
+
+    #[getter]
+    fn repeated_local_hour_interval_count(&self) -> usize {
+        self.output.diagnostics.repeated_local_hour_interval_count
+    }
+
+    #[getter]
     fn materialization_method(&self) -> &str {
         self.output.metadata.materialization_method
     }
@@ -983,6 +1043,21 @@ impl PyHourlyNewsIntensityMaterializationResult {
     #[getter]
     fn interval_alignment_policy(&self) -> &str {
         self.output.metadata.interval_alignment_policy
+    }
+
+    #[getter]
+    fn timezone_transition_policy(&self) -> &str {
+        self.output.metadata.timezone_transition_policy
+    }
+
+    #[getter]
+    fn spring_forward_policy(&self) -> &str {
+        self.output.metadata.spring_forward_policy
+    }
+
+    #[getter]
+    fn fall_back_policy(&self) -> &str {
+        self.output.metadata.fall_back_policy
     }
 }
 
