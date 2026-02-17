@@ -11,7 +11,10 @@ use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
 use serde::Serialize;
 
-use crate::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLookupError};
+use crate::calendar::{
+    ExchangeCalendarRegistry, ExchangeCalendarRegistryLookupError, ExchangeCalendarResolveError,
+    MarketState,
+};
 
 pub const HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION: &str = "seasonality.hourly_factor.contract.v1";
 pub const HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY: &str = "start_inclusive_end_exclusive.v1";
@@ -19,12 +22,19 @@ pub const HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY: &str = "utc_hour_aligned.v1";
 pub const DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD: &str = "explicit_hourly_input.v1";
 pub const HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION: &str =
     "seasonality.hourly_s_h.materialization.v1";
+pub const HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION: &str =
+    "seasonality.hourly_nu_h.materialization.v1";
 pub const DEFAULT_SEASONALITY_INTERPOLATION_METHOD: &str = "previous_observation_carry_forward.v1";
 pub const DEFAULT_SEASONALITY_AGGREGATION_METHOD: &str = "mean_of_observations.v1";
 pub const DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY: &str = "global_mean.v1";
 pub const DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT: usize = 1;
+pub const DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD: &str =
+    "calendar_closed_window_baseline_with_optional_open_window_overrides.v1";
+pub const DEFAULT_NEWS_INTENSITY_CALENDAR_DEPENDENCY: &str = "resolve_market_state_at_utc.v1";
+pub const DEFAULT_OPEN_WINDOW_OVERRIDE_POLICY: &str = "interval_indexed_open_share_override.v1";
 
 const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
+const ONE_MINUTE_NANOS: i64 = 60_000_000_000;
 const ONE_SECOND_NANOS: i64 = 1_000_000_000;
 
 /// Audit metadata emitted with hourly factor materialization outputs.
@@ -102,6 +112,45 @@ pub struct HourlySeasonalityMaterializationOutput {
     pub diagnostics: HourlySeasonalityMaterializationDiagnostics,
 }
 
+/// Audit metadata emitted with hourly news-intensity materialization outputs.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HourlyNewsIntensityMaterializationMetadata {
+    pub materialization_method: &'static str,
+    pub calendar_market_state_dependency: &'static str,
+    pub open_window_override_policy: &'static str,
+    pub closed_window_baseline_intensity: f64,
+    pub interval_boundary_policy: &'static str,
+    pub interval_alignment_policy: &'static str,
+}
+
+/// Deterministic diagnostics for hourly news-intensity materialization outputs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HourlyNewsIntensityMaterializationDiagnostics {
+    pub interval_count: usize,
+    pub fully_closed_interval_count: usize,
+    pub fully_open_interval_count: usize,
+    pub mixed_state_interval_count: usize,
+    pub open_window_override_interval_count: usize,
+}
+
+/// Canonical hourly news-intensity output for downstream engines.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HourlyNewsIntensityMaterializationOutput {
+    pub schema_version: &'static str,
+    pub exchange_code: String,
+    pub exchange_timezone_name: String,
+    pub request_start_utc_nanos: i64,
+    pub request_end_utc_nanos: i64,
+    pub interval_indices: Vec<u64>,
+    pub interval_start_utc_nanos: Vec<i64>,
+    pub interval_end_utc_nanos: Vec<i64>,
+    pub interval_start_exchange_local: Vec<String>,
+    pub interval_end_exchange_local: Vec<String>,
+    pub nu_h: Vec<f64>,
+    pub metadata: HourlyNewsIntensityMaterializationMetadata,
+    pub diagnostics: HourlyNewsIntensityMaterializationDiagnostics,
+}
+
 /// Validation failures and contract build errors for hourly factor outputs.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HourlyFactorContractError {
@@ -137,6 +186,17 @@ pub enum HourlyFactorContractError {
     },
     InvalidNewsIntensityFactor {
         interval_index: usize,
+        value: f64,
+    },
+    InvalidClosedWindowBaselineIntensity {
+        value: f64,
+    },
+    OpenWindowOverrideIntervalOutOfRange {
+        interval_index: u64,
+        interval_count: usize,
+    },
+    InvalidOpenWindowOverrideIntensity {
+        interval_index: u64,
         value: f64,
     },
     SourceLengthMismatch {
@@ -230,6 +290,24 @@ impl Display for HourlyFactorContractError {
             } => write!(
                 formatter,
                 "nu_h must contain finite non-negative values, found {value} at interval index {interval_index}"
+            ),
+            Self::InvalidClosedWindowBaselineIntensity { value } => write!(
+                formatter,
+                "closed_window_baseline_intensity must be a finite non-negative value, found {value}"
+            ),
+            Self::OpenWindowOverrideIntervalOutOfRange {
+                interval_index,
+                interval_count,
+            } => write!(
+                formatter,
+                "open_window_override_by_interval_index contains interval index {interval_index}, expected a value in [0, {interval_count})"
+            ),
+            Self::InvalidOpenWindowOverrideIntensity {
+                interval_index,
+                value,
+            } => write!(
+                formatter,
+                "open_window_override_by_interval_index value at interval index {interval_index} must be finite and non-negative, found {value}"
             ),
             Self::SourceLengthMismatch {
                 source_timestamp_count,
@@ -680,6 +758,137 @@ pub fn materialize_hourly_seasonality_factors(
     })
 }
 
+/// Materialize news intensity into hourly `nu_h` using calendar state policies.
+///
+/// Baseline policy:
+/// - Closed windows receive `closed_window_baseline_intensity`.
+/// - Open windows receive `0.0` unless an explicit open-window override is provided.
+/// - Interval values are minute-sampled averages over `[start, end)` using market-state resolution.
+pub fn materialize_hourly_news_intensity_factors(
+    calendar_registry: &ExchangeCalendarRegistry,
+    exchange_code: &str,
+    range_start_utc: DateTime<Utc>,
+    range_end_utc: DateTime<Utc>,
+    closed_window_baseline_intensity: f64,
+    open_window_override_by_interval_index: &[(u64, f64)],
+) -> Result<HourlyNewsIntensityMaterializationOutput, HourlyFactorContractError> {
+    if !closed_window_baseline_intensity.is_finite() || closed_window_baseline_intensity < 0.0 {
+        return Err(
+            HourlyFactorContractError::InvalidClosedWindowBaselineIntensity {
+                value: closed_window_baseline_intensity,
+            },
+        );
+    }
+
+    let interval_indexing = build_hourly_interval_indexing(
+        calendar_registry,
+        exchange_code,
+        range_start_utc,
+        range_end_utc,
+    )?;
+
+    let mut open_window_overrides_by_interval_index: Vec<Option<f64>> =
+        vec![None; interval_indexing.interval_count];
+    for &(interval_index, open_window_override_intensity) in open_window_override_by_interval_index
+    {
+        if !open_window_override_intensity.is_finite() || open_window_override_intensity < 0.0 {
+            return Err(
+                HourlyFactorContractError::InvalidOpenWindowOverrideIntensity {
+                    interval_index,
+                    value: open_window_override_intensity,
+                },
+            );
+        }
+
+        let override_interval_position = interval_index as usize;
+        if override_interval_position >= interval_indexing.interval_count {
+            return Err(
+                HourlyFactorContractError::OpenWindowOverrideIntervalOutOfRange {
+                    interval_index,
+                    interval_count: interval_indexing.interval_count,
+                },
+            );
+        }
+
+        open_window_overrides_by_interval_index[override_interval_position] =
+            Some(open_window_override_intensity);
+    }
+
+    let mut materialized_nu_h: Vec<f64> = Vec::with_capacity(interval_indexing.interval_count);
+    let mut fully_closed_interval_count: usize = 0;
+    let mut fully_open_interval_count: usize = 0;
+    let mut mixed_state_interval_count: usize = 0;
+    let mut open_window_override_interval_count: usize = 0;
+    let minute_sample_count_per_interval: usize = (ONE_HOUR_NANOS / ONE_MINUTE_NANOS) as usize;
+
+    for interval_index in 0..interval_indexing.interval_count {
+        let interval_start_utc_nanos = interval_indexing.interval_start_utc_nanos[interval_index];
+        let closed_sample_count = count_closed_samples_in_interval(
+            calendar_registry,
+            exchange_code,
+            interval_start_utc_nanos,
+            ONE_HOUR_NANOS,
+        )?;
+        let closed_share = closed_sample_count as f64 / minute_sample_count_per_interval as f64;
+        let open_share = 1.0 - closed_share;
+
+        if closed_sample_count == minute_sample_count_per_interval {
+            fully_closed_interval_count += 1;
+        } else if closed_sample_count == 0 {
+            fully_open_interval_count += 1;
+        } else {
+            mixed_state_interval_count += 1;
+        }
+
+        let mut interval_nu_h = closed_window_baseline_intensity * closed_share;
+        if let Some(open_window_override_intensity) =
+            open_window_overrides_by_interval_index[interval_index]
+        {
+            if open_share > 0.0 {
+                open_window_override_interval_count += 1;
+            }
+            interval_nu_h += open_window_override_intensity * open_share;
+        }
+
+        if !interval_nu_h.is_finite() || interval_nu_h < 0.0 {
+            return Err(HourlyFactorContractError::InvalidNewsIntensityFactor {
+                interval_index,
+                value: interval_nu_h,
+            });
+        }
+        materialized_nu_h.push(interval_nu_h);
+    }
+
+    Ok(HourlyNewsIntensityMaterializationOutput {
+        schema_version: HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
+        exchange_code: interval_indexing.exchange_code.clone(),
+        exchange_timezone_name: interval_indexing.exchange_timezone_name.clone(),
+        request_start_utc_nanos: interval_indexing.request_start_utc_nanos,
+        request_end_utc_nanos: interval_indexing.request_end_utc_nanos,
+        interval_indices: interval_indexing.interval_indices,
+        interval_start_utc_nanos: interval_indexing.interval_start_utc_nanos,
+        interval_end_utc_nanos: interval_indexing.interval_end_utc_nanos,
+        interval_start_exchange_local: interval_indexing.interval_start_exchange_local,
+        interval_end_exchange_local: interval_indexing.interval_end_exchange_local,
+        nu_h: materialized_nu_h,
+        metadata: HourlyNewsIntensityMaterializationMetadata {
+            materialization_method: DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
+            calendar_market_state_dependency: DEFAULT_NEWS_INTENSITY_CALENDAR_DEPENDENCY,
+            open_window_override_policy: DEFAULT_OPEN_WINDOW_OVERRIDE_POLICY,
+            closed_window_baseline_intensity,
+            interval_boundary_policy: HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
+            interval_alignment_policy: HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
+        },
+        diagnostics: HourlyNewsIntensityMaterializationDiagnostics {
+            interval_count: interval_indexing.interval_count,
+            fully_closed_interval_count,
+            fully_open_interval_count,
+            mixed_state_interval_count,
+            open_window_override_interval_count,
+        },
+    })
+}
+
 fn build_hourly_interval_indexing(
     calendar_registry: &ExchangeCalendarRegistry,
     exchange_code: &str,
@@ -853,6 +1062,30 @@ fn fallback_factor_for_sparse_interval(
     }
 }
 
+fn count_closed_samples_in_interval(
+    calendar_registry: &ExchangeCalendarRegistry,
+    exchange_code: &str,
+    interval_start_utc_nanos: i64,
+    interval_length_utc_nanos: i64,
+) -> Result<usize, HourlyFactorContractError> {
+    let minute_sample_count = (interval_length_utc_nanos / ONE_MINUTE_NANOS) as usize;
+    let mut closed_sample_count: usize = 0;
+    for sample_index in 0..minute_sample_count {
+        let sample_offset_utc_nanos =
+            sample_index as i64 * ONE_MINUTE_NANOS + (ONE_MINUTE_NANOS / 2);
+        let sample_timestamp_utc_nanos = interval_start_utc_nanos + sample_offset_utc_nanos;
+        let sample_timestamp_utc =
+            utc_timestamp_from_nanos(sample_timestamp_utc_nanos, "range_start_utc")?;
+        let market_state = calendar_registry
+            .resolve_market_state_at_utc(exchange_code, sample_timestamp_utc)
+            .map_err(map_calendar_resolve_error)?;
+        if market_state == MarketState::Closed {
+            closed_sample_count += 1;
+        }
+    }
+    Ok(closed_sample_count)
+}
+
 fn map_registry_lookup_error(
     source: ExchangeCalendarRegistryLookupError,
 ) -> HourlyFactorContractError {
@@ -860,6 +1093,21 @@ fn map_registry_lookup_error(
         ExchangeCalendarRegistryLookupError::MissingExchangeId { exchange_code } => {
             HourlyFactorContractError::MissingExchangeId { exchange_code }
         }
+    }
+}
+
+fn map_calendar_resolve_error(source: ExchangeCalendarResolveError) -> HourlyFactorContractError {
+    match source {
+        ExchangeCalendarResolveError::MissingExchangeId { exchange_code } => {
+            HourlyFactorContractError::MissingExchangeId { exchange_code }
+        }
+        ExchangeCalendarResolveError::InvalidTimezoneName {
+            exchange_code,
+            timezone_name,
+        } => HourlyFactorContractError::InvalidTimezoneName {
+            exchange_code,
+            timezone_name,
+        },
     }
 }
 
@@ -888,10 +1136,13 @@ mod tests {
 
     use crate::calendar::ExchangeCalendarRegistryLoader;
     use crate::hourly_factors::{
-        DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
+        DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+        DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD, HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
         HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY, HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
+        HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
         HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION, HourlyFactorContractError,
-        build_hourly_factor_contract, materialize_hourly_seasonality_factors,
+        build_hourly_factor_contract, materialize_hourly_news_intensity_factors,
+        materialize_hourly_seasonality_factors,
     };
 
     #[test]
@@ -1117,6 +1368,158 @@ mod tests {
         assert_eq!(first_output, second_output);
     }
 
+    #[test]
+    fn news_intensity_materializer_applies_closed_window_baseline_and_open_window_overrides() {
+        let registry = build_calendar_registry();
+        let output = materialize_hourly_news_intensity_factors(
+            &registry,
+            "XNYS",
+            parse_timestamp("2026-02-02T14:00:00Z"),
+            parse_timestamp("2026-02-02T17:00:00Z"),
+            0.6,
+            &[(0, 1.0), (1, 1.0)],
+        )
+        .expect("news intensity materialization should succeed");
+
+        assert_eq!(
+            output.schema_version,
+            HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION
+        );
+        assert_eq!(output.nu_h, vec![0.8, 1.0, 0.0]);
+        assert_eq!(
+            output.metadata.materialization_method,
+            DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD
+        );
+        assert_eq!(output.diagnostics.interval_count, 3);
+        assert_eq!(output.diagnostics.fully_closed_interval_count, 0);
+        assert_eq!(output.diagnostics.fully_open_interval_count, 2);
+        assert_eq!(output.diagnostics.mixed_state_interval_count, 1);
+        assert_eq!(output.diagnostics.open_window_override_interval_count, 2);
+    }
+
+    #[test]
+    fn news_intensity_materializer_closed_state_logic_dominates_overnight_and_weekend() {
+        let registry = build_calendar_registry();
+
+        let weekend_output = materialize_hourly_news_intensity_factors(
+            &registry,
+            "XNYS",
+            parse_timestamp("2026-02-07T00:00:00Z"),
+            parse_timestamp("2026-02-07T06:00:00Z"),
+            0.7,
+            &[(0, 3.0), (1, 3.0)],
+        )
+        .expect("weekend news intensity materialization should succeed");
+        assert_eq!(weekend_output.nu_h, vec![0.7, 0.7, 0.7, 0.7, 0.7, 0.7]);
+        assert_eq!(weekend_output.diagnostics.fully_closed_interval_count, 6);
+        assert_eq!(
+            weekend_output
+                .diagnostics
+                .open_window_override_interval_count,
+            0
+        );
+
+        let overnight_output = materialize_hourly_news_intensity_factors(
+            &registry,
+            "XNYS",
+            parse_timestamp("2026-02-03T01:00:00Z"),
+            parse_timestamp("2026-02-03T05:00:00Z"),
+            0.7,
+            &[(0, 3.0), (1, 3.0)],
+        )
+        .expect("overnight news intensity materialization should succeed");
+        assert_eq!(overnight_output.nu_h, vec![0.7, 0.7, 0.7, 0.7]);
+        assert_eq!(overnight_output.diagnostics.fully_closed_interval_count, 4);
+        assert_eq!(
+            overnight_output
+                .diagnostics
+                .open_window_override_interval_count,
+            0
+        );
+    }
+
+    #[test]
+    fn news_intensity_materializer_aligns_one_to_one_with_seasonality_hour_grid() {
+        let registry = build_calendar_registry();
+
+        let seasonality_output = materialize_hourly_seasonality_factors(
+            &registry,
+            "XNYS",
+            parse_timestamp("2026-02-02T14:00:00Z"),
+            parse_timestamp("2026-02-02T18:00:00Z"),
+            &[
+                parse_timestamp("2026-02-02T14:05:00Z")
+                    .timestamp_nanos_opt()
+                    .unwrap(),
+                parse_timestamp("2026-02-02T15:05:00Z")
+                    .timestamp_nanos_opt()
+                    .unwrap(),
+                parse_timestamp("2026-02-02T16:05:00Z")
+                    .timestamp_nanos_opt()
+                    .unwrap(),
+                parse_timestamp("2026-02-02T17:05:00Z")
+                    .timestamp_nanos_opt()
+                    .unwrap(),
+            ],
+            &[1.0, 1.1, 1.2, 1.3],
+            "previous_observation_carry_forward.v1",
+            "mean_of_observations.v1",
+            "global_mean.v1",
+            1,
+        )
+        .expect("seasonality materialization should succeed");
+        let news_output = materialize_hourly_news_intensity_factors(
+            &registry,
+            "XNYS",
+            parse_timestamp("2026-02-02T14:00:00Z"),
+            parse_timestamp("2026-02-02T18:00:00Z"),
+            0.5,
+            &[(1, 0.25)],
+        )
+        .expect("news intensity materialization should succeed");
+
+        assert_eq!(
+            news_output.interval_indices,
+            seasonality_output.interval_indices
+        );
+        assert_eq!(
+            news_output.interval_start_utc_nanos,
+            seasonality_output.interval_start_utc_nanos
+        );
+        assert_eq!(
+            news_output.interval_end_utc_nanos,
+            seasonality_output.interval_end_utc_nanos
+        );
+        assert_eq!(
+            news_output.interval_start_exchange_local,
+            seasonality_output.interval_start_exchange_local
+        );
+        assert_eq!(
+            news_output.interval_end_exchange_local,
+            seasonality_output.interval_end_exchange_local
+        );
+        assert_eq!(news_output.nu_h.len(), seasonality_output.s_h.len());
+    }
+
+    #[test]
+    fn news_intensity_materializer_rejects_invalid_override_interval_indices() {
+        let registry = build_calendar_registry();
+        let error = materialize_hourly_news_intensity_factors(
+            &registry,
+            "XNYS",
+            parse_timestamp("2026-02-02T14:00:00Z"),
+            parse_timestamp("2026-02-02T16:00:00Z"),
+            0.5,
+            &[(2, 1.0)],
+        )
+        .expect_err("out-of-range interval override index must fail");
+
+        assert!(matches!(
+            error,
+            HourlyFactorContractError::OpenWindowOverrideIntervalOutOfRange { .. }
+        ));
+    }
+
     fn build_calendar_registry() -> crate::calendar::ExchangeCalendarRegistry {
         ExchangeCalendarRegistryLoader::load_from_json(
             r#"
@@ -1136,6 +1539,30 @@ mod tests {
                   "regular_sessions": [
                     {
                       "weekday": "Monday",
+                      "windows": [
+                        {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                      ]
+                    },
+                    {
+                      "weekday": "Tuesday",
+                      "windows": [
+                        {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                      ]
+                    },
+                    {
+                      "weekday": "Wednesday",
+                      "windows": [
+                        {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                      ]
+                    },
+                    {
+                      "weekday": "Thursday",
+                      "windows": [
+                        {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                      ]
+                    },
+                    {
+                      "weekday": "Friday",
                       "windows": [
                         {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
                       ]

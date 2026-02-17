@@ -9,8 +9,10 @@ use janiform_core::hourly_factors::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_SEASONALITY_AGGREGATION_METHOD,
     DEFAULT_SEASONALITY_INTERPOLATION_METHOD, DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY,
     DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT, HourlyFactorContractError,
-    HourlyFactorContractOutput, HourlySeasonalityMaterializationOutput,
+    HourlyFactorContractOutput, HourlyNewsIntensityMaterializationOutput,
+    HourlySeasonalityMaterializationOutput,
     build_hourly_factor_contract as build_hourly_factor_contract_core,
+    materialize_hourly_news_intensity_factors as materialize_hourly_news_intensity_factors_core,
     materialize_hourly_seasonality_factors as materialize_hourly_seasonality_factors_core,
 };
 use janiform_core::seasonality::{
@@ -102,6 +104,15 @@ struct PyHourlyFactorContractResult {
 #[derive(Clone)]
 struct PyHourlySeasonalityMaterializationResult {
     output: HourlySeasonalityMaterializationOutput,
+}
+
+#[pyclass(
+    module = "janiform._native",
+    name = "HourlyNewsIntensityMaterializationResult"
+)]
+#[derive(Clone)]
+struct PyHourlyNewsIntensityMaterializationResult {
+    output: HourlyNewsIntensityMaterializationOutput,
 }
 
 #[pymethods]
@@ -863,6 +874,119 @@ impl PyHourlySeasonalityMaterializationResult {
 }
 
 #[pymethods]
+impl PyHourlyNewsIntensityMaterializationResult {
+    #[getter]
+    fn schema_version(&self) -> &str {
+        self.output.schema_version
+    }
+
+    #[getter]
+    fn exchange_code(&self) -> &str {
+        &self.output.exchange_code
+    }
+
+    #[getter]
+    fn exchange_timezone_name(&self) -> &str {
+        &self.output.exchange_timezone_name
+    }
+
+    #[getter]
+    fn request_start_utc_nanos(&self) -> i64 {
+        self.output.request_start_utc_nanos
+    }
+
+    #[getter]
+    fn request_end_utc_nanos(&self) -> i64 {
+        self.output.request_end_utc_nanos
+    }
+
+    #[getter]
+    fn interval_indices(&self) -> Vec<u64> {
+        self.output.interval_indices.clone()
+    }
+
+    #[getter]
+    fn interval_start_utc_nanos(&self) -> Vec<i64> {
+        self.output.interval_start_utc_nanos.clone()
+    }
+
+    #[getter]
+    fn interval_end_utc_nanos(&self) -> Vec<i64> {
+        self.output.interval_end_utc_nanos.clone()
+    }
+
+    #[getter]
+    fn interval_start_exchange_local(&self) -> Vec<String> {
+        self.output.interval_start_exchange_local.clone()
+    }
+
+    #[getter]
+    fn interval_end_exchange_local(&self) -> Vec<String> {
+        self.output.interval_end_exchange_local.clone()
+    }
+
+    #[getter]
+    fn nu_h(&self) -> Vec<f64> {
+        self.output.nu_h.clone()
+    }
+
+    #[getter]
+    fn interval_count(&self) -> usize {
+        self.output.diagnostics.interval_count
+    }
+
+    #[getter]
+    fn fully_closed_interval_count(&self) -> usize {
+        self.output.diagnostics.fully_closed_interval_count
+    }
+
+    #[getter]
+    fn fully_open_interval_count(&self) -> usize {
+        self.output.diagnostics.fully_open_interval_count
+    }
+
+    #[getter]
+    fn mixed_state_interval_count(&self) -> usize {
+        self.output.diagnostics.mixed_state_interval_count
+    }
+
+    #[getter]
+    fn open_window_override_interval_count(&self) -> usize {
+        self.output.diagnostics.open_window_override_interval_count
+    }
+
+    #[getter]
+    fn materialization_method(&self) -> &str {
+        self.output.metadata.materialization_method
+    }
+
+    #[getter]
+    fn calendar_market_state_dependency(&self) -> &str {
+        self.output.metadata.calendar_market_state_dependency
+    }
+
+    #[getter]
+    fn open_window_override_policy(&self) -> &str {
+        self.output.metadata.open_window_override_policy
+    }
+
+    #[getter]
+    fn closed_window_baseline_intensity(&self) -> f64 {
+        self.output.metadata.closed_window_baseline_intensity
+    }
+
+    #[getter]
+    fn interval_boundary_policy(&self) -> &str {
+        self.output.metadata.interval_boundary_policy
+    }
+
+    #[getter]
+    fn interval_alignment_policy(&self) -> &str {
+        self.output.metadata.interval_alignment_policy
+    }
+}
+
+#[pymethods]
 impl PyCalendarRegistry {
     #[new]
     fn new(registry_json: &str) -> PyResult<Self> {
@@ -1285,6 +1409,57 @@ fn materialize_hourly_seasonality_factors(
         .map_err(map_hourly_factor_contract_error)?;
 
     Ok(PyHourlySeasonalityMaterializationResult { output })
+}
+
+#[pyfunction]
+#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, closed_window_baseline_intensity, *, open_window_override_by_interval_index = None))]
+fn materialize_hourly_news_intensity_factors(
+    py: Python<'_>,
+    calendar_registry: &PyCalendarRegistry,
+    exchange_code: &str,
+    range_start_utc: &str,
+    range_end_utc: &str,
+    closed_window_baseline_intensity: f64,
+    open_window_override_by_interval_index: Option<&Bound<'_, PyAny>>,
+) -> PyResult<PyHourlyNewsIntensityMaterializationResult> {
+    let parsed_range_start_utc = parse_timestamp_utc(range_start_utc)?;
+    let parsed_range_end_utc = parse_timestamp_utc(range_end_utc)?;
+    let parsed_open_window_override_by_interval_index: Vec<(u64, f64)> = if let Some(
+        raw_open_window_override_by_interval_index,
+    ) =
+        open_window_override_by_interval_index
+    {
+        if raw_open_window_override_by_interval_index.is_none() {
+            Vec::new()
+        } else {
+            let parsed_mapping: std::collections::BTreeMap<u64, f64> =
+                    raw_open_window_override_by_interval_index
+                        .extract()
+                        .map_err(|_| {
+                            SeasonalityInputValidationError::new_err(
+                                "open_window_override_by_interval_index must be a mapping of integer interval indices to float intensity values",
+                            )
+                        })?;
+            parsed_mapping.into_iter().collect()
+        }
+    } else {
+        Vec::new()
+    };
+
+    let output = py
+        .allow_threads(|| {
+            materialize_hourly_news_intensity_factors_core(
+                &calendar_registry.registry,
+                exchange_code,
+                parsed_range_start_utc,
+                parsed_range_end_utc,
+                closed_window_baseline_intensity,
+                &parsed_open_window_override_by_interval_index,
+            )
+        })
+        .map_err(map_hourly_factor_contract_error)?;
+
+    Ok(PyHourlyNewsIntensityMaterializationResult { output })
 }
 
 fn parse_scheduled_event_overlay_definitions(
@@ -1721,6 +1896,23 @@ fn map_hourly_factor_contract_error(error: HourlyFactorContractError) -> PyErr {
         } => SeasonalityInputValidationError::new_err(format!(
             "nu_h must contain finite non-negative values, found {value} at interval index {interval_index}"
         )),
+        HourlyFactorContractError::InvalidClosedWindowBaselineIntensity { value } => {
+            SeasonalityInputValidationError::new_err(format!(
+                "closed_window_baseline_intensity must be a finite non-negative value, found {value}"
+            ))
+        }
+        HourlyFactorContractError::OpenWindowOverrideIntervalOutOfRange {
+            interval_index,
+            interval_count,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "open_window_override_by_interval_index contains interval index {interval_index}, expected a value in [0, {interval_count})"
+        )),
+        HourlyFactorContractError::InvalidOpenWindowOverrideIntensity {
+            interval_index,
+            value,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "open_window_override_by_interval_index value at interval index {interval_index} must be finite and non-negative, found {value}"
+        )),
         HourlyFactorContractError::SourceLengthMismatch {
             source_timestamp_count,
             source_factor_count,
@@ -1992,6 +2184,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyDeterministicSeasonalityCompositionResult>()?;
     module.add_class::<PyHourlyFactorContractResult>()?;
     module.add_class::<PyHourlySeasonalityMaterializationResult>()?;
+    module.add_class::<PyHourlyNewsIntensityMaterializationResult>()?;
     module.add_function(pyo3::wrap_pyfunction!(
         estimate_intraday_seasonality,
         module
@@ -2018,6 +2211,10 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     module.add_function(pyo3::wrap_pyfunction!(
         materialize_hourly_seasonality_factors,
+        module
+    )?)?;
+    module.add_function(pyo3::wrap_pyfunction!(
+        materialize_hourly_news_intensity_factors,
         module
     )?)?;
     Ok(())

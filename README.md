@@ -182,6 +182,22 @@ hourly `s_h` values on the canonical interval grid.
   - materialization policy identifiers and sparse threshold are emitted with output
   - sparse, interpolated, and fallback interval counts are emitted in diagnostics
 
+Use `materialize_hourly_news_intensity_factors(...)` to convert closed-window news baseline policy
+into hourly `nu_h` values on the same canonical interval grid.
+
+- Materialization schema:
+  - schema version: `seasonality.hourly_nu_h.materialization.v1`
+  - exchange context and UTC interval fields match the canonical hourly contract
+  - output values: `nu_h`
+- Deterministic policy:
+  - closed-window baseline intensity is applied from calendar market-state resolution
+  - optional open-window overrides are keyed by interval index for scenario studies
+- Auditability metadata:
+  - `materialization_method`
+  - `calendar_market_state_dependency`
+  - `open_window_override_policy`
+  - `closed_window_baseline_intensity`
+
 Use `build_hourly_factor_contract(...)` to emit the canonical hourly contract consumed by
 downstream engines.
 
