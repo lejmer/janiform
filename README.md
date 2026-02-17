@@ -222,6 +222,25 @@ downstream engines.
   - `news_intensity_materialization_method`
   - deterministic policy identifiers for interval boundary and alignment choices
 
+## Shared Hourly Factor Provider Integration
+
+Use `provide_hourly_factor_contract(...)` from `janiform_core::hourly_factor_provider` as the
+single integration point for hourly factor delivery.
+
+- Provider API behavior:
+  - accepts one request with optional seasonality and news-intensity sources
+  - supports explicit hourly values or deterministic materialization in the same API
+  - returns canonical interval-aligned `s_h` and `nu_h` contract output
+  - returns structured provider errors for missing inputs and unsupported ranges
+- Downstream engine usage:
+  - pricing path: call `janiform_core::pricing::load_hourly_factor_contract_for_pricing(...)`
+  - simulation path: call `janiform_core::simulation::load_hourly_factor_contract_for_simulation(...)`
+  - both paths call the same shared provider and do not own local factor adapters
+- Python user-facing API:
+  - shared provider entrypoint: `janiform.provide_hourly_factor_contract(...)`
+  - pricing adapter: `janiform.load_hourly_factor_contract_for_pricing(...)`
+  - simulation adapter: `janiform.load_hourly_factor_contract_for_simulation(...)`
+
 ## Developer Commands
 
 ```bash
