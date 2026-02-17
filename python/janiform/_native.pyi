@@ -311,6 +311,65 @@ class DeterministicSeasonalityCompositionResult:
     def overlay_source_labels_in_order(self) -> list[str]: ...
 
 
+class HourlyFactorContractResult:
+    @property
+    def schema_version(self) -> str: ...
+
+    @property
+    def exchange_code(self) -> str: ...
+
+    @property
+    def exchange_timezone_name(self) -> str: ...
+
+    @property
+    def request_start_utc_nanos(self) -> int: ...
+
+    @property
+    def request_end_utc_nanos(self) -> int: ...
+
+    @property
+    def interval_indices(self) -> list[int]: ...
+
+    @property
+    def interval_start_utc_nanos(self) -> list[int]: ...
+
+    @property
+    def interval_end_utc_nanos(self) -> list[int]: ...
+
+    @property
+    def interval_start_exchange_local(self) -> list[str]: ...
+
+    @property
+    def interval_end_exchange_local(self) -> list[str]: ...
+
+    @property
+    def s_h(self) -> list[float]: ...
+
+    @property
+    def nu_h(self) -> list[float]: ...
+
+    @property
+    def interval_count(self) -> int: ...
+
+    @property
+    def first_interval_start_utc_nanos(self) -> int: ...
+
+    @property
+    def last_interval_end_utc_nanos(self) -> int: ...
+
+    @property
+    def interval_boundary_policy(self) -> str: ...
+
+    @property
+    def interval_alignment_policy(self) -> str: ...
+
+    @property
+    def seasonality_materialization_method(self) -> str: ...
+
+    @property
+    def news_intensity_materialization_method(self) -> str: ...
+
+
 class CalendarRegistry:
     def __init__(self, registry_json: str) -> None: ...
 
@@ -377,3 +436,16 @@ def generate_seasonality_diagnostics_report(
     *,
     estimator_version: str = "seasonality_estimator.v1",
 ) -> str: ...
+
+
+def build_hourly_factor_contract(
+    calendar_registry: CalendarRegistry,
+    exchange_code: str,
+    range_start_utc: str,
+    range_end_utc: str,
+    seasonality_hourly_factors: object,
+    news_intensity_hourly_factors: object,
+    *,
+    seasonality_materialization_method: str = "explicit_hourly_input.v1",
+    news_intensity_materialization_method: str = "explicit_hourly_input.v1",
+) -> HourlyFactorContractResult: ...

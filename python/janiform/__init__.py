@@ -11,6 +11,14 @@ from .calendar import (
     MarketState,
     resolve_market_state,
 )
+from .hourly_factors import (
+    DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+    HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
+    HOURLY_FACTOR_OUTPUT_SCHEMA,
+    HourlyFactorContract,
+    HourlyFactorOutputSchema,
+    build_hourly_factor_contract,
+)
 from .seasonality import (
     DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
     DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
@@ -65,8 +73,11 @@ __all__ = [
     "CalendarResolveError",
     "DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
     "DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
+    "DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD",
     "DEFAULT_SEASONALITY_ESTIMATOR_VERSION",
     "DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION",
+    "HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION",
+    "HOURLY_FACTOR_OUTPUT_SCHEMA",
     "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
     "SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION",
     "SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION",
@@ -75,6 +86,8 @@ __all__ = [
     "DayOfYearSeasonalityEstimate",
     "DayOfYearSeasonalityEstimatorSettings",
     "DeterministicSeasonalityComposition",
+    "HourlyFactorContract",
+    "HourlyFactorOutputSchema",
     "IntradaySeasonalityEstimate",
     "IntradaySeasonalityEstimatorSettings",
     "IntradaySmoothingKernel",
@@ -90,6 +103,7 @@ __all__ = [
     "TimestampEventInputSchema",
     "TimestampEventPreprocessingResult",
     "compose_deterministic_seasonality_signal",
+    "build_hourly_factor_contract",
     "estimate_day_of_week_seasonality",
     "estimate_day_of_year_seasonality",
     "estimate_intraday_seasonality",

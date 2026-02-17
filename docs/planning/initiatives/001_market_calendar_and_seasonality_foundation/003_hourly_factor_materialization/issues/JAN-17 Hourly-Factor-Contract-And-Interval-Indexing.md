@@ -1,4 +1,4 @@
-## ISSUE-001: Hourly Factor Contract And Interval Indexing
+## Hourly Factor Contract And Interval Indexing
 
 ### Description
 Define the canonical data contract for hourly factors and interval indexing used by downstream engines. The contract must represent hourly buckets, exchange context, and values for `s_h` and `nu_h`.

@@ -1,4 +1,4 @@
-## ISSUE-005: Shared Hourly Factor Provider API Integration
+## Shared Hourly Factor Provider API Integration
 
 ### Description
 Expose a shared API that provides hourly factors to pricing and simulation modules without duplicating materialization logic.

@@ -164,6 +164,26 @@ for one dataset, and `generate_seasonality_diagnostics_reports_batch(...)` to em
   - schema versioned output (`seasonality.diagnostics.batch.v1`)
   - deterministic dataset ordering and per-dataset report entries
 
+## Hourly Factor Contract And Interval Indexing
+
+Use `build_hourly_factor_contract(...)` to emit the canonical hourly contract consumed by
+downstream engines.
+
+- Contract schema:
+  - schema version: `seasonality.hourly_factor.contract.v1`
+  - exchange context: `exchange_code`, `exchange_timezone_name`
+  - bucket-aligned values: `s_h` and `nu_h`
+  - UTC interval fields: `interval_indices`, `interval_start_utc_nanos`, `interval_end_utc_nanos`
+- Interval semantics:
+  - request range and buckets are half-open intervals `[start, end)`
+  - interval boundary policy identifier: `start_inclusive_end_exclusive.v1`
+  - interval alignment policy identifier: `utc_hour_aligned.v1`
+  - request boundaries must be exact UTC hour boundaries
+- Auditability metadata:
+  - `seasonality_materialization_method`
+  - `news_intensity_materialization_method`
+  - deterministic policy identifiers for interval boundary and alignment choices
+
 ## Developer Commands
 
 ```bash

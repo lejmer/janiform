@@ -5,6 +5,10 @@ use janiform_core::calendar::{
     TimestampEventPreprocessingError, TimestampEventPreprocessingOutput,
     TimestampEventSessionFilter,
 };
+use janiform_core::hourly_factors::{
+    DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, HourlyFactorContractError,
+    HourlyFactorContractOutput, build_hourly_factor_contract as build_hourly_factor_contract_core,
+};
 use janiform_core::seasonality::{
     DayOfWeekSeasonalityEstimateOutput, DayOfWeekSeasonalityEstimationError,
     DayOfWeekSeasonalityEstimatorSettings, DayOfYearSeasonalityEstimateOutput,
@@ -79,6 +83,12 @@ struct PyDayOfYearSeasonalityEstimateResult {
 #[derive(Clone)]
 struct PyDeterministicSeasonalityCompositionResult {
     output: DeterministicSeasonalityCompositionOutput,
+}
+
+#[pyclass(module = "janiform._native", name = "HourlyFactorContractResult")]
+#[derive(Clone)]
+struct PyHourlyFactorContractResult {
+    output: HourlyFactorContractOutput,
 }
 
 #[pymethods]
@@ -629,6 +639,104 @@ impl PyDeterministicSeasonalityCompositionResult {
 }
 
 #[pymethods]
+impl PyHourlyFactorContractResult {
+    #[getter]
+    fn schema_version(&self) -> &str {
+        self.output.schema_version
+    }
+
+    #[getter]
+    fn exchange_code(&self) -> &str {
+        &self.output.exchange_code
+    }
+
+    #[getter]
+    fn exchange_timezone_name(&self) -> &str {
+        &self.output.exchange_timezone_name
+    }
+
+    #[getter]
+    fn request_start_utc_nanos(&self) -> i64 {
+        self.output.request_start_utc_nanos
+    }
+
+    #[getter]
+    fn request_end_utc_nanos(&self) -> i64 {
+        self.output.request_end_utc_nanos
+    }
+
+    #[getter]
+    fn interval_indices(&self) -> Vec<u64> {
+        self.output.interval_indices.clone()
+    }
+
+    #[getter]
+    fn interval_start_utc_nanos(&self) -> Vec<i64> {
+        self.output.interval_start_utc_nanos.clone()
+    }
+
+    #[getter]
+    fn interval_end_utc_nanos(&self) -> Vec<i64> {
+        self.output.interval_end_utc_nanos.clone()
+    }
+
+    #[getter]
+    fn interval_start_exchange_local(&self) -> Vec<String> {
+        self.output.interval_start_exchange_local.clone()
+    }
+
+    #[getter]
+    fn interval_end_exchange_local(&self) -> Vec<String> {
+        self.output.interval_end_exchange_local.clone()
+    }
+
+    #[getter]
+    fn s_h(&self) -> Vec<f64> {
+        self.output.s_h.clone()
+    }
+
+    #[getter]
+    fn nu_h(&self) -> Vec<f64> {
+        self.output.nu_h.clone()
+    }
+
+    #[getter]
+    fn interval_count(&self) -> usize {
+        self.output.diagnostics.interval_count
+    }
+
+    #[getter]
+    fn first_interval_start_utc_nanos(&self) -> i64 {
+        self.output.diagnostics.first_interval_start_utc_nanos
+    }
+
+    #[getter]
+    fn last_interval_end_utc_nanos(&self) -> i64 {
+        self.output.diagnostics.last_interval_end_utc_nanos
+    }
+
+    #[getter]
+    fn interval_boundary_policy(&self) -> &str {
+        self.output.metadata.interval_boundary_policy
+    }
+
+    #[getter]
+    fn interval_alignment_policy(&self) -> &str {
+        self.output.metadata.interval_alignment_policy
+    }
+
+    #[getter]
+    fn seasonality_materialization_method(&self) -> &str {
+        &self.output.metadata.seasonality_materialization_method
+    }
+
+    #[getter]
+    fn news_intensity_materialization_method(&self) -> &str {
+        &self.output.metadata.news_intensity_materialization_method
+    }
+}
+
+#[pymethods]
 impl PyCalendarRegistry {
     #[new]
     fn new(registry_json: &str) -> PyResult<Self> {
@@ -934,6 +1042,52 @@ fn generate_seasonality_diagnostics_report(
             "failed to serialize seasonality diagnostics report to json",
         )
     })
+}
+
+#[pyfunction]
+#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, seasonality_hourly_factors, news_intensity_hourly_factors, *, seasonality_materialization_method = DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, news_intensity_materialization_method = DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD))]
+fn build_hourly_factor_contract(
+    py: Python<'_>,
+    calendar_registry: &PyCalendarRegistry,
+    exchange_code: &str,
+    range_start_utc: &str,
+    range_end_utc: &str,
+    seasonality_hourly_factors: &Bound<'_, PyAny>,
+    news_intensity_hourly_factors: &Bound<'_, PyAny>,
+    seasonality_materialization_method: &str,
+    news_intensity_materialization_method: &str,
+) -> PyResult<PyHourlyFactorContractResult> {
+    let parsed_range_start_utc = parse_timestamp_utc(range_start_utc)?;
+    let parsed_range_end_utc = parse_timestamp_utc(range_end_utc)?;
+    let parsed_seasonality_hourly_factors: Vec<f64> =
+        seasonality_hourly_factors.extract().map_err(|_| {
+            SeasonalityInputValidationError::new_err(
+                "seasonality_hourly_factors must be an iterable of float values",
+            )
+        })?;
+    let parsed_news_intensity_hourly_factors: Vec<f64> =
+        news_intensity_hourly_factors.extract().map_err(|_| {
+            SeasonalityInputValidationError::new_err(
+                "news_intensity_hourly_factors must be an iterable of float values",
+            )
+        })?;
+
+    let output = py
+        .allow_threads(|| {
+            build_hourly_factor_contract_core(
+                &calendar_registry.registry,
+                exchange_code,
+                parsed_range_start_utc,
+                parsed_range_end_utc,
+                &parsed_seasonality_hourly_factors,
+                &parsed_news_intensity_hourly_factors,
+                seasonality_materialization_method,
+                news_intensity_materialization_method,
+            )
+        })
+        .map_err(map_hourly_factor_contract_error)?;
+
+    Ok(PyHourlyFactorContractResult { output })
 }
 
 fn parse_scheduled_event_overlay_definitions(
@@ -1308,6 +1462,71 @@ fn map_deterministic_composition_error(error: DeterministicSeasonalityCompositio
     }
 }
 
+fn map_hourly_factor_contract_error(error: HourlyFactorContractError) -> PyErr {
+    match error {
+        HourlyFactorContractError::MissingExchangeId { exchange_code } => {
+            CalendarMissingExchangeError::new_err(format!(
+                "missing exchange id `{exchange_code}` in registry"
+            ))
+        }
+        HourlyFactorContractError::InvalidTimezoneName {
+            exchange_code,
+            timezone_name,
+        } => CalendarInvalidTimezoneError::new_err(format!(
+            "invalid timezone `{timezone_name}` configured for exchange `{exchange_code}`"
+        )),
+        HourlyFactorContractError::EmptyExchangeCode => {
+            SeasonalityInputValidationError::new_err("exchange_code must be a non-empty string")
+        }
+        HourlyFactorContractError::EmptySeasonalityMaterializationMethod => {
+            SeasonalityInputValidationError::new_err(
+                "seasonality_materialization_method must be a non-empty string",
+            )
+        }
+        HourlyFactorContractError::EmptyNewsIntensityMaterializationMethod => {
+            SeasonalityInputValidationError::new_err(
+                "news_intensity_materialization_method must be a non-empty string",
+            )
+        }
+        HourlyFactorContractError::TimestampOutOfRange { field } => {
+            SeasonalityInputValidationError::new_err(format!(
+                "{field} must be within the supported nanosecond timestamp range"
+            ))
+        }
+        HourlyFactorContractError::NonIncreasingRange {
+            range_start_utc_nanos,
+            range_end_utc_nanos,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "range_start_utc must be earlier than range_end_utc, received start={range_start_utc_nanos}, end={range_end_utc_nanos}"
+        )),
+        HourlyFactorContractError::RangeBoundaryNotHourAligned {
+            field,
+            timestamp_utc_nanos,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "{field} must be aligned to an exact UTC hour boundary, received {timestamp_utc_nanos}"
+        )),
+        HourlyFactorContractError::FactorLengthMismatch {
+            expected_interval_count,
+            seasonality_factor_count,
+            news_intensity_factor_count,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "hourly factor length mismatch, expected {expected_interval_count} intervals and received s_h={seasonality_factor_count}, nu_h={news_intensity_factor_count}"
+        )),
+        HourlyFactorContractError::InvalidSeasonalityFactor {
+            interval_index,
+            value,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "s_h must contain finite positive values, found {value} at interval index {interval_index}"
+        )),
+        HourlyFactorContractError::InvalidNewsIntensityFactor {
+            interval_index,
+            value,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "nu_h must contain finite non-negative values, found {value} at interval index {interval_index}"
+        )),
+    }
+}
+
 fn map_seasonality_diagnostics_report_error(error: SeasonalityDiagnosticsReportError) -> PyErr {
     match error {
         SeasonalityDiagnosticsReportError::EmptyDatasetId => {
@@ -1537,6 +1756,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyDayOfWeekSeasonalityEstimateResult>()?;
     module.add_class::<PyDayOfYearSeasonalityEstimateResult>()?;
     module.add_class::<PyDeterministicSeasonalityCompositionResult>()?;
+    module.add_class::<PyHourlyFactorContractResult>()?;
     module.add_function(pyo3::wrap_pyfunction!(
         estimate_intraday_seasonality,
         module
@@ -1555,6 +1775,10 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     module.add_function(pyo3::wrap_pyfunction!(
         generate_seasonality_diagnostics_report,
+        module
+    )?)?;
+    module.add_function(pyo3::wrap_pyfunction!(
+        build_hourly_factor_contract,
         module
     )?)?;
     Ok(())

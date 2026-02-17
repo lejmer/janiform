@@ -1,4 +1,4 @@
-## ISSUE-002: Seasonality To Hourly s_h Materializer
+## Seasonality To Hourly s_h Materializer
 
 ### Description
 Implement materialization from continuous or high-resolution seasonality signal `s(t)` into hourly piecewise-constant `s_h` values for each modeled interval.

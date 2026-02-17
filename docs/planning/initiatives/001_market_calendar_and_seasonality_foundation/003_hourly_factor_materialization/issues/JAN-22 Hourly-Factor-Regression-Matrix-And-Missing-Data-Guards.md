@@ -1,4 +1,4 @@
-## ISSUE-006: Hourly Factor Regression Matrix And Missing Data Guards
+## Hourly Factor Regression Matrix And Missing Data Guards
 
 ### Description
 Build regression fixtures and a validation matrix for hourly factor outputs, including missing-data guard behavior and boundary scenarios.
