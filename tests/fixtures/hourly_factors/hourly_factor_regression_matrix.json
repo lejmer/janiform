@@ -1,0 +1,379 @@
+{
+  "schema_version": "hourly.factor.regression.v1",
+  "fixture_set_id": "hourly_factor_regression_matrix_v1",
+  "calendar_fixture_set_id": "calendar_service_regression_matrix_v1",
+  "acceptance_thresholds": {
+    "s_h_absolute_tolerance": 1e-12,
+    "nu_h_absolute_tolerance": 1e-12
+  },
+  "canonical_output_cases": [
+    {
+      "fixture_id": "xnys_normal_session_materialized_baseline_case",
+      "exchange_code": "XNYS",
+      "range_start_utc": "2026-02-02T14:00:00Z",
+      "range_end_utc": "2026-02-02T17:00:00Z",
+      "seasonality_source": {
+        "source_kind": "materialized",
+        "source_timestamps_utc": [
+          "2026-02-02T14:05:00Z",
+          "2026-02-02T14:20:00Z",
+          "2026-02-02T15:10:00Z",
+          "2026-02-02T16:05:00Z"
+        ],
+        "source_seasonality_factors": [
+          1.2,
+          1.0,
+          0.8,
+          1.4
+        ],
+        "interpolation_method": "previous_observation_carry_forward.v1",
+        "aggregation_method": "mean_of_observations.v1",
+        "sparse_fallback_policy": "global_mean.v1",
+        "sparse_hour_minimum_observation_count": 1
+      },
+      "news_intensity_source": {
+        "source_kind": "materialized",
+        "closed_window_baseline_intensity": 0.6,
+        "open_window_override_by_interval_index": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      },
+      "expected_s_h": [
+        1.1,
+        0.8,
+        1.4
+      ],
+      "expected_nu_h": [
+        0.8,
+        1.0,
+        0.0
+      ],
+      "expected_skipped_local_hour_interval_count": 0,
+      "expected_repeated_local_hour_interval_count": 0,
+      "tags": [
+        "normal_session",
+        "boundary",
+        "canonical"
+      ],
+      "description": "Baseline mixed open-hour case with materialized seasonality and open-window overrides."
+    },
+    {
+      "fixture_id": "xnys_weekend_closed_hours_case",
+      "exchange_code": "XNYS",
+      "range_start_utc": "2026-02-07T00:00:00Z",
+      "range_end_utc": "2026-02-07T06:00:00Z",
+      "seasonality_source": {
+        "source_kind": "explicit",
+        "hourly_factors": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "materialization_method": "explicit_hourly_input.v1"
+      },
+      "news_intensity_source": {
+        "source_kind": "materialized",
+        "closed_window_baseline_intensity": 0.7,
+        "open_window_override_by_interval_index": {
+          "0": 2.5,
+          "1": 2.5
+        }
+      },
+      "expected_s_h": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "expected_nu_h": [
+        0.7,
+        0.7,
+        0.7,
+        0.7,
+        0.7,
+        0.7
+      ],
+      "expected_skipped_local_hour_interval_count": 0,
+      "expected_repeated_local_hour_interval_count": 0,
+      "tags": [
+        "weekend",
+        "canonical"
+      ],
+      "description": "Weekend closure case where overrides are configured but fully closed intervals dominate nu_h."
+    },
+    {
+      "fixture_id": "xnys_holiday_closed_hours_case",
+      "exchange_code": "XNYS",
+      "range_start_utc": "2026-02-03T14:00:00Z",
+      "range_end_utc": "2026-02-03T17:00:00Z",
+      "seasonality_source": {
+        "source_kind": "explicit",
+        "hourly_factors": [
+          0.9,
+          1.0,
+          1.1
+        ],
+        "materialization_method": "explicit_hourly_input.v1"
+      },
+      "news_intensity_source": {
+        "source_kind": "materialized",
+        "closed_window_baseline_intensity": 0.4,
+        "open_window_override_by_interval_index": {
+          "0": 1.5,
+          "1": 1.5,
+          "2": 1.5
+        }
+      },
+      "expected_s_h": [
+        0.9,
+        1.0,
+        1.1
+      ],
+      "expected_nu_h": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "expected_skipped_local_hour_interval_count": 0,
+      "expected_repeated_local_hour_interval_count": 0,
+      "tags": [
+        "holiday",
+        "canonical"
+      ],
+      "description": "Holiday closure case verifying full-day holiday precedence in hourly news intensity materialization."
+    },
+    {
+      "fixture_id": "xnys_spring_forward_transition_case",
+      "exchange_code": "XNYS",
+      "range_start_utc": "2026-03-08T06:00:00Z",
+      "range_end_utc": "2026-03-08T09:00:00Z",
+      "seasonality_source": {
+        "source_kind": "materialized",
+        "source_timestamps_utc": [
+          "2026-03-08T06:30:00Z",
+          "2026-03-08T07:00:00Z",
+          "2026-03-08T08:00:00Z"
+        ],
+        "source_seasonality_factors": [
+          1.0,
+          2.0,
+          3.0
+        ],
+        "interpolation_method": "previous_observation_carry_forward.v1",
+        "aggregation_method": "last_observation.v1",
+        "sparse_fallback_policy": "global_mean.v1",
+        "sparse_hour_minimum_observation_count": 1
+      },
+      "news_intensity_source": {
+        "source_kind": "materialized",
+        "closed_window_baseline_intensity": 0.5,
+        "open_window_override_by_interval_index": {}
+      },
+      "expected_s_h": [
+        1.0,
+        2.0,
+        3.0
+      ],
+      "expected_nu_h": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "expected_skipped_local_hour_interval_count": 1,
+      "expected_repeated_local_hour_interval_count": 0,
+      "tags": [
+        "daylight_saving_transition",
+        "boundary",
+        "spring_forward",
+        "canonical"
+      ],
+      "description": "Spring-forward transition case preserves UTC buckets and skips nonexistent local-hour labels."
+    },
+    {
+      "fixture_id": "xnys_fall_back_transition_case",
+      "exchange_code": "XNYS",
+      "range_start_utc": "2026-11-01T05:00:00Z",
+      "range_end_utc": "2026-11-01T08:00:00Z",
+      "seasonality_source": {
+        "source_kind": "materialized",
+        "source_timestamps_utc": [
+          "2026-11-01T05:00:00Z",
+          "2026-11-01T06:00:00Z",
+          "2026-11-01T07:00:00Z"
+        ],
+        "source_seasonality_factors": [
+          1.5,
+          2.5,
+          3.5
+        ],
+        "interpolation_method": "previous_observation_carry_forward.v1",
+        "aggregation_method": "last_observation.v1",
+        "sparse_fallback_policy": "global_mean.v1",
+        "sparse_hour_minimum_observation_count": 1
+      },
+      "news_intensity_source": {
+        "source_kind": "materialized",
+        "closed_window_baseline_intensity": 0.5,
+        "open_window_override_by_interval_index": {}
+      },
+      "expected_s_h": [
+        1.5,
+        2.5,
+        3.5
+      ],
+      "expected_nu_h": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "expected_skipped_local_hour_interval_count": 0,
+      "expected_repeated_local_hour_interval_count": 1,
+      "tags": [
+        "daylight_saving_transition",
+        "boundary",
+        "fall_back",
+        "canonical"
+      ],
+      "description": "Fall-back transition case preserves repeated local-hour labels with numeric UTC offsets."
+    }
+  ],
+  "missing_data_guard_cases": [
+    {
+      "fixture_id": "seasonality_sparse_previous_then_global_mean_case",
+      "exchange_code": "XNYS",
+      "range_start_utc": "2026-02-02T13:00:00Z",
+      "range_end_utc": "2026-02-02T18:00:00Z",
+      "source_timestamps_utc": [
+        "2026-02-02T14:05:00Z",
+        "2026-02-02T14:20:00Z",
+        "2026-02-02T15:10:00Z",
+        "2026-02-02T17:15:00Z"
+      ],
+      "source_seasonality_factors": [
+        1.2,
+        1.0,
+        0.8,
+        1.4
+      ],
+      "settings": {
+        "interpolation_method": "previous_observation_carry_forward.v1",
+        "aggregation_method": "mean_of_observations.v1",
+        "sparse_fallback_policy": "previous_materialized_then_global_mean.v1",
+        "sparse_hour_minimum_observation_count": 2
+      },
+      "expected_outcome": {
+        "outcome_kind": "success",
+        "expected_s_h": [
+          1.1,
+          1.1,
+          0.8,
+          0.8,
+          1.4
+        ],
+        "expected_sparse_interval_count": 4,
+        "expected_interpolated_interval_count": 3,
+        "expected_fallback_interval_count": 1
+      },
+      "tags": [
+        "missing_data_guard",
+        "deterministic_fallback",
+        "sparse_source"
+      ],
+      "description": "Sparse intervals interpolate when possible and fallback to previous materialized value when interpolation is unavailable."
+    },
+    {
+      "fixture_id": "seasonality_sparse_global_mean_leading_interval_case",
+      "exchange_code": "XNYS",
+      "range_start_utc": "2026-02-02T14:00:00Z",
+      "range_end_utc": "2026-02-02T16:00:00Z",
+      "source_timestamps_utc": [
+        "2026-02-02T15:20:00Z",
+        "2026-02-02T15:40:00Z"
+      ],
+      "source_seasonality_factors": [
+        4.0,
+        2.0
+      ],
+      "settings": {
+        "interpolation_method": "previous_observation_carry_forward.v1",
+        "aggregation_method": "mean_of_observations.v1",
+        "sparse_fallback_policy": "global_mean.v1",
+        "sparse_hour_minimum_observation_count": 3
+      },
+      "expected_outcome": {
+        "outcome_kind": "success",
+        "expected_s_h": [
+          3.0,
+          2.0
+        ],
+        "expected_sparse_interval_count": 2,
+        "expected_interpolated_interval_count": 1,
+        "expected_fallback_interval_count": 1
+      },
+      "tags": [
+        "missing_data_guard",
+        "deterministic_fallback",
+        "global_mean_fallback"
+      ],
+      "description": "Leading sparse interval without prior observations uses global-mean fallback, then carry-forward interpolation applies."
+    },
+    {
+      "fixture_id": "seasonality_missing_source_failure_case",
+      "exchange_code": "XNYS",
+      "range_start_utc": "2026-02-02T14:00:00Z",
+      "range_end_utc": "2026-02-02T16:00:00Z",
+      "source_timestamps_utc": [],
+      "source_seasonality_factors": [],
+      "settings": {
+        "interpolation_method": "previous_observation_carry_forward.v1",
+        "aggregation_method": "mean_of_observations.v1",
+        "sparse_fallback_policy": "global_mean.v1",
+        "sparse_hour_minimum_observation_count": 1
+      },
+      "expected_outcome": {
+        "outcome_kind": "failure",
+        "expected_error_variant": "EmptySeasonalitySourceSignal",
+        "expected_error_message_substring": "seasonality source must contain at least one timestamp and factor sample"
+      },
+      "tags": [
+        "missing_data_guard",
+        "failure_outcome",
+        "empty_source"
+      ],
+      "description": "Completely missing source input fails fast with deterministic validation error."
+    },
+    {
+      "fixture_id": "seasonality_source_length_mismatch_failure_case",
+      "exchange_code": "XNYS",
+      "range_start_utc": "2026-02-02T14:00:00Z",
+      "range_end_utc": "2026-02-02T16:00:00Z",
+      "source_timestamps_utc": [
+        "2026-02-02T14:10:00Z"
+      ],
+      "source_seasonality_factors": [],
+      "settings": {
+        "interpolation_method": "previous_observation_carry_forward.v1",
+        "aggregation_method": "mean_of_observations.v1",
+        "sparse_fallback_policy": "global_mean.v1",
+        "sparse_hour_minimum_observation_count": 1
+      },
+      "expected_outcome": {
+        "outcome_kind": "failure",
+        "expected_error_variant": "SourceLengthMismatch",
+        "expected_error_message_substring": "seasonality source length mismatch"
+      },
+      "tags": [
+        "missing_data_guard",
+        "failure_outcome",
+        "length_mismatch"
+      ],
+      "description": "Mismatched source timestamp and factor arrays fail with deterministic validation error."
+    }
+  ]
+}

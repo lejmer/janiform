@@ -1,0 +1,372 @@
+from datetime import UTC, datetime
+import re
+from typing import cast
+
+import pytest
+
+from janiform.calendar import CalendarRegistry
+from janiform.hourly_factors import (
+    HourlyNewsIntensityProviderExplicitSource,
+    HourlyNewsIntensityProviderMaterializedSource,
+    HourlySeasonalityMaterialization,
+    HourlySeasonalityMaterializationSettings,
+    HourlySeasonalityProviderExplicitSource,
+    HourlySeasonalityProviderMaterializedSource,
+    materialize_hourly_seasonality_factors,
+    provide_hourly_factor_contract,
+)
+from janiform.seasonality import SeasonalityInputValidationError
+
+type HourlyCanonicalOutputCase = dict[str, object]
+type HourlyMissingDataGuardCase = dict[str, object]
+
+REQUIRED_CASE_TAGS: set[str] = {
+    "normal_session",
+    "weekend",
+    "holiday",
+    "daylight_saving_transition",
+    "missing_data_guard",
+}
+
+EXPECTED_CANONICAL_FIXTURE_IDS: set[str] = {
+    "xnys_normal_session_materialized_baseline_case",
+    "xnys_weekend_closed_hours_case",
+    "xnys_holiday_closed_hours_case",
+    "xnys_spring_forward_transition_case",
+    "xnys_fall_back_transition_case",
+}
+
+EXPECTED_MISSING_DATA_GUARD_FIXTURE_IDS: set[str] = {
+    "seasonality_sparse_previous_then_global_mean_case",
+    "seasonality_sparse_global_mean_leading_interval_case",
+    "seasonality_missing_source_failure_case",
+    "seasonality_source_length_mismatch_failure_case",
+}
+
+
+def test_hourly_factor_regression_fixture_covers_required_case_tags(
+    hourly_factor_regression_canonical_cases: list[HourlyCanonicalOutputCase],
+    hourly_factor_regression_missing_data_guard_cases: list[HourlyMissingDataGuardCase],
+) -> None:
+    observed_tags: set[str] = {
+        cast(str, tag)
+        for regression_case in hourly_factor_regression_canonical_cases
+        for tag in cast(list[str], regression_case["tags"])
+    }
+    observed_tags.update(
+        cast(str, tag)
+        for regression_case in hourly_factor_regression_missing_data_guard_cases
+        for tag in cast(list[str], regression_case["tags"])
+    )
+
+    assert REQUIRED_CASE_TAGS <= observed_tags
+
+
+def test_hourly_factor_regression_fixture_identifiers_remain_stable(
+    hourly_factor_regression_canonical_cases: list[HourlyCanonicalOutputCase],
+    hourly_factor_regression_missing_data_guard_cases: list[HourlyMissingDataGuardCase],
+) -> None:
+    observed_canonical_fixture_ids: set[str] = {
+        _fixture_id(regression_case) for regression_case in hourly_factor_regression_canonical_cases
+    }
+    observed_missing_data_guard_fixture_ids: set[str] = {
+        _fixture_id(regression_case)
+        for regression_case in hourly_factor_regression_missing_data_guard_cases
+    }
+
+    assert observed_canonical_fixture_ids == EXPECTED_CANONICAL_FIXTURE_IDS
+    assert observed_missing_data_guard_fixture_ids == EXPECTED_MISSING_DATA_GUARD_FIXTURE_IDS
+
+
+def test_hourly_factor_canonical_output_cases_match_golden_matrix(
+    calendar_registry: CalendarRegistry,
+    hourly_factor_regression_fixture_document: dict[str, object],
+    hourly_factor_regression_canonical_cases: list[HourlyCanonicalOutputCase],
+) -> None:
+    acceptance_thresholds: dict[str, float] = cast(
+        dict[str, float],
+        hourly_factor_regression_fixture_document["acceptance_thresholds"],
+    )
+    seasonality_absolute_tolerance: float = acceptance_thresholds["s_h_absolute_tolerance"]
+    news_intensity_absolute_tolerance: float = acceptance_thresholds["nu_h_absolute_tolerance"]
+
+    for regression_case in hourly_factor_regression_canonical_cases:
+        fixture_id: str = _fixture_id(regression_case)
+        contract = _build_contract_for_canonical_case(calendar_registry, regression_case)
+
+        _assert_float_series_close(
+            observed_values=contract.s_h,
+            expected_values=cast(list[float], regression_case["expected_s_h"]),
+            absolute_tolerance=seasonality_absolute_tolerance,
+            fixture_id=fixture_id,
+            field_name="s_h",
+        )
+        _assert_float_series_close(
+            observed_values=contract.nu_h,
+            expected_values=cast(list[float], regression_case["expected_nu_h"]),
+            absolute_tolerance=news_intensity_absolute_tolerance,
+            fixture_id=fixture_id,
+            field_name="nu_h",
+        )
+
+        assert contract.skipped_local_hour_interval_count == cast(
+            int,
+            regression_case["expected_skipped_local_hour_interval_count"],
+        )
+        assert contract.repeated_local_hour_interval_count == cast(
+            int,
+            regression_case["expected_repeated_local_hour_interval_count"],
+        )
+
+
+def test_hourly_factor_missing_data_guard_cases_match_defined_outcomes(
+    calendar_registry: CalendarRegistry,
+    hourly_factor_regression_fixture_document: dict[str, object],
+    hourly_factor_regression_missing_data_guard_cases: list[HourlyMissingDataGuardCase],
+) -> None:
+    acceptance_thresholds: dict[str, float] = cast(
+        dict[str, float],
+        hourly_factor_regression_fixture_document["acceptance_thresholds"],
+    )
+    seasonality_absolute_tolerance: float = acceptance_thresholds["s_h_absolute_tolerance"]
+
+    for regression_case in hourly_factor_regression_missing_data_guard_cases:
+        fixture_id: str = _fixture_id(regression_case)
+        expected_outcome: dict[str, object] = cast(dict[str, object], regression_case["expected_outcome"])
+        outcome_kind: str = cast(str, expected_outcome["outcome_kind"])
+
+        match outcome_kind:
+            case "success":
+                first_materialization = _materialize_missing_data_guard_case(
+                    calendar_registry=calendar_registry,
+                    regression_case=regression_case,
+                )
+                second_materialization = _materialize_missing_data_guard_case(
+                    calendar_registry=calendar_registry,
+                    regression_case=regression_case,
+                )
+                expected_s_h: list[float] = cast(list[float], expected_outcome["expected_s_h"])
+
+                _assert_float_series_close(
+                    observed_values=first_materialization.s_h,
+                    expected_values=expected_s_h,
+                    absolute_tolerance=seasonality_absolute_tolerance,
+                    fixture_id=fixture_id,
+                    field_name="s_h",
+                )
+                assert first_materialization.sparse_interval_count == cast(
+                    int,
+                    expected_outcome["expected_sparse_interval_count"],
+                )
+                assert first_materialization.interpolated_interval_count == cast(
+                    int,
+                    expected_outcome["expected_interpolated_interval_count"],
+                )
+                assert first_materialization.fallback_interval_count == cast(
+                    int,
+                    expected_outcome["expected_fallback_interval_count"],
+                )
+                assert _seasonality_materialization_snapshot(
+                    first_materialization,
+                ) == _seasonality_materialization_snapshot(second_materialization)
+            case "failure":
+                expected_error_message_substring: str = cast(
+                    str,
+                    expected_outcome["expected_error_message_substring"],
+                )
+                with pytest.raises(
+                    SeasonalityInputValidationError,
+                    match=re.escape(expected_error_message_substring),
+                ):
+                    _materialize_missing_data_guard_case(
+                        calendar_registry=calendar_registry,
+                        regression_case=regression_case,
+                    )
+            case _:
+                raise ValueError(f"unexpected expected_outcome.outcome_kind value: {outcome_kind}")
+
+
+def test_hourly_factor_deterministic_fallback_cases_are_repeatable(
+    calendar_registry: CalendarRegistry,
+    hourly_factor_regression_missing_data_guard_cases: list[HourlyMissingDataGuardCase],
+) -> None:
+    deterministic_fallback_cases: list[HourlyMissingDataGuardCase] = [
+        regression_case
+        for regression_case in hourly_factor_regression_missing_data_guard_cases
+        if _case_has_tag(regression_case, "deterministic_fallback")
+    ]
+
+    assert deterministic_fallback_cases
+
+    for regression_case in deterministic_fallback_cases:
+        expected_outcome: dict[str, object] = cast(dict[str, object], regression_case["expected_outcome"])
+        if cast(str, expected_outcome["outcome_kind"]) == "success":
+            first_materialization = _materialize_missing_data_guard_case(
+                calendar_registry=calendar_registry,
+                regression_case=regression_case,
+            )
+            second_materialization = _materialize_missing_data_guard_case(
+                calendar_registry=calendar_registry,
+                regression_case=regression_case,
+            )
+
+            assert _seasonality_materialization_snapshot(
+                first_materialization,
+            ) == _seasonality_materialization_snapshot(second_materialization)
+
+
+def _build_contract_for_canonical_case(
+    calendar_registry: CalendarRegistry,
+    regression_case: HourlyCanonicalOutputCase,
+):
+    seasonality_source = _parse_seasonality_provider_source(
+        cast(dict[str, object], regression_case["seasonality_source"]),
+    )
+    news_intensity_source = _parse_news_intensity_provider_source(
+        cast(dict[str, object], regression_case["news_intensity_source"]),
+    )
+    range_start_utc = _parse_fixture_timestamp(cast(str, regression_case["range_start_utc"]))
+    range_end_utc = _parse_fixture_timestamp(cast(str, regression_case["range_end_utc"]))
+
+    return provide_hourly_factor_contract(
+        calendar_registry=calendar_registry,
+        exchange_code=cast(str, regression_case["exchange_code"]),
+        range_start_utc=range_start_utc,
+        range_end_utc=range_end_utc,
+        seasonality_source=seasonality_source,
+        news_intensity_source=news_intensity_source,
+    )
+
+
+def _parse_seasonality_provider_source(
+    raw_source: dict[str, object],
+) -> HourlySeasonalityProviderExplicitSource | HourlySeasonalityProviderMaterializedSource:
+    source_kind: str = cast(str, raw_source["source_kind"])
+
+    match source_kind:
+        case "explicit":
+            return HourlySeasonalityProviderExplicitSource(
+                hourly_factors=cast(list[float], raw_source["hourly_factors"]),
+                materialization_method=cast(str, raw_source["materialization_method"]),
+            )
+        case "materialized":
+            source_timestamps_utc: list[datetime] = [
+                _parse_fixture_timestamp(raw_timestamp)
+                for raw_timestamp in cast(list[str], raw_source["source_timestamps_utc"])
+            ]
+            return HourlySeasonalityProviderMaterializedSource(
+                source_timestamps_utc=source_timestamps_utc,
+                source_seasonality_factors=cast(list[float], raw_source["source_seasonality_factors"]),
+                interpolation_method=cast(str, raw_source["interpolation_method"]),
+                aggregation_method=cast(str, raw_source["aggregation_method"]),
+                sparse_fallback_policy=cast(str, raw_source["sparse_fallback_policy"]),
+                sparse_hour_minimum_observation_count=cast(
+                    int,
+                    raw_source["sparse_hour_minimum_observation_count"],
+                ),
+            )
+        case _:
+            raise ValueError(f"unexpected seasonality source_kind value: {source_kind}")
+
+
+def _parse_news_intensity_provider_source(
+    raw_source: dict[str, object],
+) -> HourlyNewsIntensityProviderExplicitSource | HourlyNewsIntensityProviderMaterializedSource:
+    source_kind: str = cast(str, raw_source["source_kind"])
+
+    match source_kind:
+        case "explicit":
+            return HourlyNewsIntensityProviderExplicitSource(
+                hourly_factors=cast(list[float], raw_source["hourly_factors"]),
+                materialization_method=cast(str, raw_source["materialization_method"]),
+            )
+        case "materialized":
+            raw_open_window_overrides = cast(dict[str, float], raw_source["open_window_override_by_interval_index"])
+            open_window_override_by_interval_index: dict[int, float] = {
+                int(raw_interval_index): float(raw_override_value)
+                for raw_interval_index, raw_override_value in raw_open_window_overrides.items()
+            }
+            return HourlyNewsIntensityProviderMaterializedSource(
+                closed_window_baseline_intensity=float(raw_source["closed_window_baseline_intensity"]),
+                open_window_override_by_interval_index=open_window_override_by_interval_index,
+            )
+        case _:
+            raise ValueError(f"unexpected news_intensity source_kind value: {source_kind}")
+
+
+def _materialize_missing_data_guard_case(
+    *,
+    calendar_registry: CalendarRegistry,
+    regression_case: HourlyMissingDataGuardCase,
+) -> HourlySeasonalityMaterialization:
+    range_start_utc: datetime = _parse_fixture_timestamp(cast(str, regression_case["range_start_utc"]))
+    range_end_utc: datetime = _parse_fixture_timestamp(cast(str, regression_case["range_end_utc"]))
+    settings = cast(dict[str, object], regression_case["settings"])
+    source_timestamps_utc: list[datetime] = [
+        _parse_fixture_timestamp(raw_timestamp)
+        for raw_timestamp in cast(list[str], regression_case["source_timestamps_utc"])
+    ]
+
+    return materialize_hourly_seasonality_factors(
+        calendar_registry=calendar_registry,
+        exchange_code=cast(str, regression_case["exchange_code"]),
+        range_start_utc=range_start_utc,
+        range_end_utc=range_end_utc,
+        source_timestamps_utc=source_timestamps_utc,
+        source_seasonality_factors=cast(list[float], regression_case["source_seasonality_factors"]),
+        settings=HourlySeasonalityMaterializationSettings(
+            interpolation_method=cast(str, settings["interpolation_method"]),
+            aggregation_method=cast(str, settings["aggregation_method"]),
+            sparse_fallback_policy=cast(str, settings["sparse_fallback_policy"]),
+            sparse_hour_minimum_observation_count=cast(
+                int,
+                settings["sparse_hour_minimum_observation_count"],
+            ),
+        ),
+    )
+
+
+def _seasonality_materialization_snapshot(
+    materialization: HourlySeasonalityMaterialization,
+) -> dict[str, object]:
+    return {
+        "s_h": list(materialization.s_h),
+        "sparse_interval_count": materialization.sparse_interval_count,
+        "interpolated_interval_count": materialization.interpolated_interval_count,
+        "fallback_interval_count": materialization.fallback_interval_count,
+        "skipped_local_hour_interval_count": materialization.skipped_local_hour_interval_count,
+        "repeated_local_hour_interval_count": materialization.repeated_local_hour_interval_count,
+    }
+
+
+def _assert_float_series_close(
+    *,
+    observed_values: list[float],
+    expected_values: list[float],
+    absolute_tolerance: float,
+    fixture_id: str,
+    field_name: str,
+) -> None:
+    assert len(observed_values) == len(expected_values), (
+        f"fixture {fixture_id} {field_name} length mismatch "
+        f"{len(observed_values)} != {len(expected_values)}"
+    )
+    for value_index, observed_value in enumerate(observed_values):
+        expected_value = expected_values[value_index]
+        absolute_difference = abs(observed_value - expected_value)
+        assert absolute_difference <= absolute_tolerance, (
+            f"fixture {fixture_id} {field_name}[{value_index}] expected {expected_value} "
+            f"observed {observed_value} with abs_diff {absolute_difference}"
+        )
+
+
+def _case_has_tag(regression_case: HourlyMissingDataGuardCase, tag: str) -> bool:
+    return tag in cast(list[str], regression_case["tags"])
+
+
+def _fixture_id(regression_case: HourlyCanonicalOutputCase | HourlyMissingDataGuardCase) -> str:
+    return cast(str, regression_case["fixture_id"])
+
+
+def _parse_fixture_timestamp(timestamp_utc: str) -> datetime:
+    return datetime.fromisoformat(timestamp_utc.replace("Z", "+00:00")).astimezone(UTC)
