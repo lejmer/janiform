@@ -4,16 +4,13 @@
 Define a canonical schema and versioning strategy for calendar and seasonality validation fixtures shared between Rust and Python tests.
 
 ### Acceptance Criteria
-- A documented fixture schema exists for sessions, holidays, event windows, and expected factor outputs.
-- Fixture format includes version metadata and exchange identifiers.
-- Schema validation rejects malformed fixtures with actionable errors.
-- Fixture loading behavior is deterministic across repeated runs.
+- Fixture loading behavior is deterministic across repeated runs
+- Output schema and metadata are machine-readable and documented
 
 ### Unit tests
-- Schema validation tests for missing required fields and invalid values.
-- Positive tests for valid fixture documents with multiple exchanges.
-- Determinism tests for fixture loading order and content hashing.
+- Positive tests for valid fixture documents with multiple exchanges and determinism tests for fixture loading order and content hashing
+- Schema validation tests for missing required fields and invalid values
 
 ### Notes/Constraints
-- Keep schema stable and forward-extensible for v0.x updates.
-- Avoid embedding language-specific fields that only one test stack can use.
+- Keep schema stable and forward-extensible for v0.x updates
+- Avoid embedding language-specific fields that only one test stack can use

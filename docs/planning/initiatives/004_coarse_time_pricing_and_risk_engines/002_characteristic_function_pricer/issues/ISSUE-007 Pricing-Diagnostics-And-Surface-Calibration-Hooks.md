@@ -4,16 +4,16 @@
 Expose intermediate pricing diagnostics and optional outputs needed to calibrate model parameters against option surfaces.
 
 ### Acceptance Criteria
-- Pricing run can emit intermediate diagnostics such as transform and integration quality metrics.
-- Diagnostic schema is machine-readable and documented.
-- Optional calibration hooks are available without altering base pricing semantics.
-- Diagnostics are consumable by calibration workflows.
+- Pricing run can emit intermediate diagnostics such as transform and integration quality metrics
+- Diagnostic schema is machine-readable and documented
+- Optional calibration hooks are available without altering base pricing semantics
+- Diagnostics are consumable by calibration workflows
 
 ### Unit tests
-- Tests for diagnostic payload schema and required fields.
-- Tests for toggled diagnostic output behavior.
-- Integration tests for calibration-consumer compatibility.
+- Toggled diagnostic output behavior
+- Diagnostic payload schema and required fields
+- Integration tests for calibration-consumer compatibility
 
 ### Notes/Constraints
-- Keep diagnostics optional to avoid overhead in default pricing runs.
-- Avoid exposing internal-only unstable structures through public APIs.
+- Keep diagnostics optional to avoid overhead in default pricing runs
+- Avoid exposing internal-only unstable structures through public APIs

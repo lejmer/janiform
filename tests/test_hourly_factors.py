@@ -4,11 +4,19 @@ import pytest
 
 from janiform.calendar import CalendarMissingExchangeError, CalendarRegistry
 from janiform.hourly_factors import (
+    DEFAULT_SEASONALITY_AGGREGATION_METHOD,
+    DEFAULT_SEASONALITY_INTERPOLATION_METHOD,
+    DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY,
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
     HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
     HOURLY_FACTOR_OUTPUT_SCHEMA,
+    HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA,
+    HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION,
     HourlyFactorContract,
+    HourlySeasonalityMaterialization,
+    HourlySeasonalityMaterializationSettings,
     build_hourly_factor_contract,
+    materialize_hourly_seasonality_factors,
 )
 from janiform.seasonality import SeasonalityInputValidationError
 
@@ -109,6 +117,90 @@ def test_build_hourly_factor_contract_rejects_unknown_exchange_identifier(
         )
 
 
+def test_materialize_hourly_seasonality_handles_sparse_and_missing_source_segments(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    materialization = materialize_hourly_seasonality_factors(
+        calendar_registry=calendar_registry,
+        exchange_code="XNYS",
+        range_start_utc=datetime(2026, 2, 2, 13, 0, 0, tzinfo=UTC),
+        range_end_utc=datetime(2026, 2, 2, 18, 0, 0, tzinfo=UTC),
+        source_timestamps_utc=[
+            datetime(2026, 2, 2, 14, 5, 0, tzinfo=UTC),
+            datetime(2026, 2, 2, 14, 20, 0, tzinfo=UTC),
+            datetime(2026, 2, 2, 15, 10, 0, tzinfo=UTC),
+            datetime(2026, 2, 2, 17, 15, 0, tzinfo=UTC),
+        ],
+        source_seasonality_factors=[1.2, 1.0, 0.8, 1.4],
+        settings=HourlySeasonalityMaterializationSettings(
+            interpolation_method=DEFAULT_SEASONALITY_INTERPOLATION_METHOD,
+            aggregation_method=DEFAULT_SEASONALITY_AGGREGATION_METHOD,
+            sparse_fallback_policy="previous_materialized_then_global_mean.v1",
+            sparse_hour_minimum_observation_count=2,
+        ),
+    )
+
+    assert materialization.schema_version == HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION
+    assert materialization.s_h == [1.1, 1.1, 0.8, 0.8, 1.4]
+    assert materialization.source_point_count == 4
+    assert materialization.interval_count == 5
+    assert materialization.sparse_interval_count == 4
+    assert materialization.interpolated_interval_count == 3
+    assert materialization.fallback_interval_count == 1
+    assert (
+        materialization.interval_boundary_policy
+        == HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA.interval_boundary_policy
+    )
+    assert (
+        materialization.interval_alignment_policy
+        == HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA.interval_alignment_policy
+    )
+
+
+def test_materialize_hourly_seasonality_is_deterministic_for_controlled_inputs(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    settings = HourlySeasonalityMaterializationSettings(
+        interpolation_method="linear_between_observations.v1",
+        aggregation_method="last_observation.v1",
+        sparse_fallback_policy=DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY,
+        sparse_hour_minimum_observation_count=2,
+    )
+    source_timestamps_utc = [
+        datetime(2026, 2, 2, 15, 5, 0, tzinfo=UTC),
+        datetime(2026, 2, 2, 14, 20, 0, tzinfo=UTC),
+        datetime(2026, 2, 2, 16, 10, 0, tzinfo=UTC),
+        datetime(2026, 2, 2, 15, 30, 0, tzinfo=UTC),
+        datetime(2026, 2, 2, 14, 5, 0, tzinfo=UTC),
+        datetime(2026, 2, 2, 16, 50, 0, tzinfo=UTC),
+    ]
+    source_seasonality_factors = [0.9, 1.2, 1.4, 1.1, 1.0, 1.6]
+
+    first_materialization = materialize_hourly_seasonality_factors(
+        calendar_registry=calendar_registry,
+        exchange_code="XNYS",
+        range_start_utc=datetime(2026, 2, 2, 14, 0, 0, tzinfo=UTC),
+        range_end_utc=datetime(2026, 2, 2, 17, 0, 0, tzinfo=UTC),
+        source_timestamps_utc=source_timestamps_utc,
+        source_seasonality_factors=source_seasonality_factors,
+        settings=settings,
+    )
+    second_materialization = materialize_hourly_seasonality_factors(
+        calendar_registry=calendar_registry,
+        exchange_code="XNYS",
+        range_start_utc=datetime(2026, 2, 2, 14, 0, 0, tzinfo=UTC),
+        range_end_utc=datetime(2026, 2, 2, 17, 0, 0, tzinfo=UTC),
+        source_timestamps_utc=source_timestamps_utc,
+        source_seasonality_factors=source_seasonality_factors,
+        settings=settings,
+    )
+    first_snapshot = _seasonality_materialization_snapshot(first_materialization)
+    second_snapshot = _seasonality_materialization_snapshot(second_materialization)
+
+    assert first_materialization.s_h == [1.2, 1.1, 1.6]
+    assert first_snapshot == second_snapshot
+
+
 def _contract_snapshot(contract: HourlyFactorContract) -> dict[str, object]:
     return {
         "schema_version": contract.schema_version,
@@ -130,4 +222,33 @@ def _contract_snapshot(contract: HourlyFactorContract) -> dict[str, object]:
         "interval_alignment_policy": contract.interval_alignment_policy,
         "seasonality_materialization_method": contract.seasonality_materialization_method,
         "news_intensity_materialization_method": contract.news_intensity_materialization_method,
+    }
+
+
+def _seasonality_materialization_snapshot(
+    materialization: HourlySeasonalityMaterialization,
+) -> dict[str, object]:
+    return {
+        "schema_version": materialization.schema_version,
+        "exchange_code": materialization.exchange_code,
+        "exchange_timezone_name": materialization.exchange_timezone_name,
+        "request_start_utc_nanos": materialization.request_start_utc_nanos,
+        "request_end_utc_nanos": materialization.request_end_utc_nanos,
+        "interval_indices": list(materialization.interval_indices),
+        "interval_start_utc_nanos": list(materialization.interval_start_utc_nanos),
+        "interval_end_utc_nanos": list(materialization.interval_end_utc_nanos),
+        "interval_start_exchange_local": list(materialization.interval_start_exchange_local),
+        "interval_end_exchange_local": list(materialization.interval_end_exchange_local),
+        "s_h": list(materialization.s_h),
+        "source_point_count": materialization.source_point_count,
+        "interval_count": materialization.interval_count,
+        "sparse_interval_count": materialization.sparse_interval_count,
+        "interpolated_interval_count": materialization.interpolated_interval_count,
+        "fallback_interval_count": materialization.fallback_interval_count,
+        "interpolation_method": materialization.interpolation_method,
+        "aggregation_method": materialization.aggregation_method,
+        "sparse_fallback_policy": materialization.sparse_fallback_policy,
+        "sparse_hour_minimum_observation_count": materialization.sparse_hour_minimum_observation_count,
+        "interval_boundary_policy": materialization.interval_boundary_policy,
+        "interval_alignment_policy": materialization.interval_alignment_policy,
     }

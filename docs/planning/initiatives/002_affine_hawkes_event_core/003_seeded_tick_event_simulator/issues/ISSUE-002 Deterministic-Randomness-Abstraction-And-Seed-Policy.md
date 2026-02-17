@@ -4,16 +4,15 @@
 Implement a deterministic randomness abstraction that provides reproducible streams for event simulation across Rust and Python entrypoints.
 
 ### Acceptance Criteria
-- Randomness layer supports explicit seeding with documented stream behavior.
-- Repeated runs with identical seed and inputs produce identical event output.
-- Seed policy for derived substreams is explicit and deterministic.
-- Randomness abstraction can be injected for tests and reference fixtures.
+- Randomness layer supports explicit seeding with documented stream behavior
+- Repeated runs with identical seed and inputs produce identical event output
+- Seed policy for derived substreams is explicit and deterministic
+- Randomness abstraction can be injected for tests and reference fixtures
 
 ### Unit tests
-- Repeatability tests for identical seeds and inputs.
-- Divergence tests for different seeds.
-- Tests for stable substream derivation behavior.
+- Stable substream derivation behavior
+- Repeatability tests for identical seeds and inputs and divergence tests for different seeds
 
 ### Notes/Constraints
-- Keep RNG usage centralized to avoid hidden nondeterminism.
-- Ensure seed behavior is independent of logging or debug mode.
+- Keep RNG usage centralized to avoid hidden nondeterminism
+- Ensure seed behavior is independent of logging or debug mode

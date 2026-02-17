@@ -4,17 +4,16 @@
 Build engine-level regression harness that compares coarse-time outputs against controlled fine-scale Monte Carlo references on bounded benchmark fixtures.
 
 ### Acceptance Criteria
-- Harness runs paired coarse and fine reference experiments on shared scenarios.
-- Output includes metric deltas for key pricing and risk statistics used by engine benchmarking.
-- Regression pass or fail decisions use versioned engine-level tolerance configuration.
-- Harness reports deterministic scenario identifiers and run metadata.
+- Harness runs paired coarse and fine reference experiments on shared scenarios
+- Output includes metric deltas for key pricing and risk statistics used by engine benchmarking
+- Regression pass or fail decisions use versioned engine-level tolerance configuration
+- Harness reports deterministic scenario identifiers and run metadata
 
 ### Unit tests
-- Tests for paired-experiment wiring and metric-delta calculations.
-- Tests for pass or fail behavior using controlled fixture thresholds.
-- Regression tests for deterministic harness report structure.
+- Paired-experiment wiring and metric-delta calculations and pass or fail behavior using controlled fixture thresholds
+- Deterministic harness report structure
 
 ### Notes/Constraints
-- Keep fine-scale references bounded to practical runtime budgets.
-- Use shared random controls where appropriate to reduce variance noise.
-- Keep model-level multi-regime consistency governance in Initiative 005 Project 003.
+- Keep fine-scale references bounded to practical runtime budgets
+- Keep model-level multi-regime consistency governance in Initiative 005 Project 003
+- Use shared random controls where appropriate to reduce variance noise

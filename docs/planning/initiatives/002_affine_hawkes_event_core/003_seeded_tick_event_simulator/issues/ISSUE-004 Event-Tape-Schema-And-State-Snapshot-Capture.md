@@ -4,16 +4,15 @@
 Define event tape schema and implement capture of per-event diagnostics fields including timestamp, side, and selected Hawkes state snapshot values.
 
 ### Acceptance Criteria
-- Event tape schema includes timestamp, side, and stable event identifier fields.
-- Optional state snapshot payload captures 4D excitation state at defined points.
-- Tape schema is consumable by diagnostics and calibration workflows.
-- Serialization format supports deterministic output ordering.
+- Optional state snapshot payload captures 4D excitation state at defined points
+- Serialization format supports deterministic output ordering
+- Output schema and metadata are machine-readable and documented
 
 ### Unit tests
-- Schema tests for required event fields and optional state snapshot fields.
-- Tests for snapshot correctness at event boundaries.
-- Serialization tests for deterministic output ordering.
+- Snapshot correctness at event boundaries
+- Schema tests for required event fields and optional state snapshot fields
+- Serialization tests for deterministic output ordering
 
 ### Notes/Constraints
-- Keep snapshot capture configurable to control runtime overhead.
-- Avoid introducing exchange-specific fields in the core tape schema.
+- Keep snapshot capture configurable to control runtime overhead
+- Avoid introducing exchange-specific fields in the core tape schema
