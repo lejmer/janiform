@@ -1,7 +1,8 @@
 # Calendar Service Regression Fixtures
 
-This directory contains the shared calendar regression fixture set for Initiative 001, Project 001, Issue JAN-10.
-Issue JAN-23 extends this fixture with a shared schema and deterministic manifest contract that is reused by both Rust and Python tests.
+This directory contains the shared calendar regression fixture set used by both Rust and Python tests.
+The fixture includes deterministic schema and content-hash metadata, plus anomaly coverage for early-close,
+delayed-open, and overlapping-rule precedence behavior.
 
 ## Files
 
@@ -69,8 +70,11 @@ The matrix must always include at least one case for each tag:
 - `early_close`
 - `boundary`
 - `timezone_sensitive`
+- `delayed_open`
+- `session_anomaly`
+- `precedence_conflict`
 
-Additional holiday-regression tags used by JAN-24:
+Additional holiday-regression tags:
 
 - `historical_holiday`
 - `holiday_intraday_open_boundary`
@@ -99,6 +103,20 @@ is preserved immediately before and after each holiday closure.
 - Exact close timestamps resolve `closed`.
 - Holiday rules override session windows.
 - Early-close windows override regular windows for their date.
+- Delayed-open anomalies are represented as date-specific override windows, and those windows override regular sessions for their date.
+
+## Session Anomaly Rationale
+
+The fixture includes timezone-aware RFC3339 UTC timestamps (`Z` offset) around anomaly transition boundaries:
+
+- `xnys_early_close_pre_boundary`: validates that one second before early-close remains open.
+- `xnys_early_close_at_boundary`: validates the exact half-open boundary close transition.
+- `xnys_early_close_post_boundary`: validates that one second after early-close stays closed.
+- `xnys_delayed_open_regular_open_conflict_at_regular_open`: validates deterministic precedence where date-specific delayed-open override wins over regular open.
+- `xnys_delayed_open_pre_boundary`: validates that one second before delayed-open remains closed.
+- `xnys_delayed_open_at_boundary`: validates exact delayed-open boundary transition to open.
+- `xnys_holiday_overrides_delayed_open_at_boundary`: validates overlap conflict where holiday precedence keeps the market closed at delayed-open boundary.
+- `xnys_holiday_overrides_delayed_open_mid_window`: validates overlap conflict where holiday precedence keeps the market closed inside delayed-open window.
 
 ## Update Process
 
@@ -108,6 +126,6 @@ is preserved immediately before and after each holiday closure.
 4. Run verification:
    - `cargo test -p janiform-core calendar_regression`
    - `pytest tests/test_calendar.py`
-5. When behavior changes by design, update this README and the related planning issue notes.
+5. When behavior changes by design, update this README.
 
 Downstream seasonality and gap-behavior test suites should reuse this matrix to avoid duplicate calendar fixtures.

@@ -22,6 +22,9 @@ REQUIRED_CASE_TAGS: set[str] = {
     "early_close",
     "boundary",
     "timezone_sensitive",
+    "delayed_open",
+    "session_anomaly",
+    "precedence_conflict",
 }
 
 EXPECTED_BOUNDARY_FIXTURE_IDS: set[str] = {
@@ -30,6 +33,11 @@ EXPECTED_BOUNDARY_FIXTURE_IDS: set[str] = {
     "xnys_regular_at_close",
     "xnys_early_close_pre_boundary",
     "xnys_early_close_at_boundary",
+    "xnys_early_close_post_boundary",
+    "xnys_delayed_open_regular_open_conflict_at_regular_open",
+    "xnys_delayed_open_pre_boundary",
+    "xnys_delayed_open_at_boundary",
+    "xnys_holiday_overrides_delayed_open_at_boundary",
     "xtks_before_utc_midnight_transition",
     "xtks_after_utc_midnight_transition",
 }
@@ -187,6 +195,91 @@ def test_resolve_market_state_holiday_adjacent_non_holiday_cases(
         assert calendar_registry.resolve_market_state(exchange_code, timestamp_utc) == MarketState.OPEN
 
 
+def test_resolve_market_state_early_close_transition_boundaries(
+    calendar_registry: CalendarRegistry,
+    calendar_regression_cases: list[CalendarRegressionCase],
+) -> None:
+    early_close_boundary_case_ids: list[str] = [
+        "xnys_early_close_pre_boundary",
+        "xnys_early_close_at_boundary",
+        "xnys_early_close_post_boundary",
+    ]
+    early_close_boundary_cases: list[CalendarRegressionCase] = _cases_by_fixture_id(
+        calendar_regression_cases,
+        early_close_boundary_case_ids,
+    )
+
+    assert len(early_close_boundary_cases) == len(early_close_boundary_case_ids)
+
+    for regression_case in early_close_boundary_cases:
+        exchange_code: str = cast(str, regression_case["exchange_code"])
+        timestamp_utc: datetime = _parse_fixture_timestamp(cast(str, regression_case["timestamp_utc"]))
+        expected_state: MarketState = _expected_market_state(cast(str, regression_case["expected_state"]))
+
+        assert calendar_registry.resolve_market_state(exchange_code, timestamp_utc) == expected_state
+
+
+def test_resolve_market_state_delayed_open_transition_boundaries(
+    calendar_registry: CalendarRegistry,
+    calendar_regression_cases: list[CalendarRegressionCase],
+) -> None:
+    delayed_open_transition_case_ids: list[str] = [
+        "xnys_delayed_open_regular_open_conflict_at_regular_open",
+        "xnys_delayed_open_pre_boundary",
+        "xnys_delayed_open_at_boundary",
+    ]
+    delayed_open_transition_cases: list[CalendarRegressionCase] = _cases_by_fixture_id(
+        calendar_regression_cases,
+        delayed_open_transition_case_ids,
+    )
+
+    assert len(delayed_open_transition_cases) == len(delayed_open_transition_case_ids)
+
+    for regression_case in delayed_open_transition_cases:
+        exchange_code: str = cast(str, regression_case["exchange_code"])
+        timestamp_utc: datetime = _parse_fixture_timestamp(cast(str, regression_case["timestamp_utc"]))
+        expected_state: MarketState = _expected_market_state(cast(str, regression_case["expected_state"]))
+
+        assert calendar_registry.resolve_market_state(exchange_code, timestamp_utc) == expected_state
+
+
+def test_resolve_market_state_anomaly_precedence_conflict_cases(
+    calendar_registry: CalendarRegistry,
+    calendar_regression_cases: list[CalendarRegressionCase],
+) -> None:
+    precedence_conflict_cases: list[CalendarRegressionCase] = [
+        regression_case
+        for regression_case in calendar_regression_cases
+        if _case_has_tag(regression_case, "precedence_conflict")
+    ]
+
+    assert precedence_conflict_cases
+
+    for regression_case in precedence_conflict_cases:
+        exchange_code: str = cast(str, regression_case["exchange_code"])
+        timestamp_utc: datetime = _parse_fixture_timestamp(cast(str, regression_case["timestamp_utc"]))
+
+        assert calendar_registry.resolve_market_state(exchange_code, timestamp_utc) == MarketState.CLOSED
+
+
+def test_anomaly_boundary_timestamps_are_timezone_aware_rfc3339(
+    calendar_regression_cases: list[CalendarRegressionCase],
+) -> None:
+    anomaly_boundary_cases: list[CalendarRegressionCase] = [
+        regression_case
+        for regression_case in calendar_regression_cases
+        if _case_has_tag(regression_case, "session_anomaly") and _case_has_tag(regression_case, "boundary")
+    ]
+
+    assert anomaly_boundary_cases
+
+    for regression_case in anomaly_boundary_cases:
+        timestamp_raw: str = cast(str, regression_case["timestamp_utc"])
+        parsed_timestamp: datetime = _parse_fixture_timestamp(timestamp_raw)
+        assert timestamp_raw.endswith("Z")
+        assert parsed_timestamp.tzinfo is not None
+
+
 def test_resolve_market_state_function_matches_registry_method(
     calendar_registry_json: str,
     calendar_registry: CalendarRegistry,
@@ -271,6 +364,16 @@ def _find_case_by_fixture_id(
             return regression_case
 
     raise ValueError(f"missing regression fixture case with id: {fixture_id}")
+
+
+def _cases_by_fixture_id(
+    calendar_regression_cases: list[CalendarRegressionCase],
+    fixture_ids: list[str],
+) -> list[CalendarRegressionCase]:
+    return [
+        _find_case_by_fixture_id(calendar_regression_cases, fixture_id)
+        for fixture_id in fixture_ids
+    ]
 
 
 def _fixture_id(regression_case: CalendarRegressionCase) -> str:
