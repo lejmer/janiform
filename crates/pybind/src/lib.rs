@@ -6,8 +6,12 @@ use janiform_core::calendar::{
     TimestampEventSessionFilter,
 };
 use janiform_core::hourly_factors::{
-    DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, HourlyFactorContractError,
-    HourlyFactorContractOutput, build_hourly_factor_contract as build_hourly_factor_contract_core,
+    DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_SEASONALITY_AGGREGATION_METHOD,
+    DEFAULT_SEASONALITY_INTERPOLATION_METHOD, DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY,
+    DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT, HourlyFactorContractError,
+    HourlyFactorContractOutput, HourlySeasonalityMaterializationOutput,
+    build_hourly_factor_contract as build_hourly_factor_contract_core,
+    materialize_hourly_seasonality_factors as materialize_hourly_seasonality_factors_core,
 };
 use janiform_core::seasonality::{
     DayOfWeekSeasonalityEstimateOutput, DayOfWeekSeasonalityEstimationError,
@@ -89,6 +93,15 @@ struct PyDeterministicSeasonalityCompositionResult {
 #[derive(Clone)]
 struct PyHourlyFactorContractResult {
     output: HourlyFactorContractOutput,
+}
+
+#[pyclass(
+    module = "janiform._native",
+    name = "HourlySeasonalityMaterializationResult"
+)]
+#[derive(Clone)]
+struct PyHourlySeasonalityMaterializationResult {
+    output: HourlySeasonalityMaterializationOutput,
 }
 
 #[pymethods]
@@ -737,6 +750,119 @@ impl PyHourlyFactorContractResult {
 }
 
 #[pymethods]
+impl PyHourlySeasonalityMaterializationResult {
+    #[getter]
+    fn schema_version(&self) -> &str {
+        self.output.schema_version
+    }
+
+    #[getter]
+    fn exchange_code(&self) -> &str {
+        &self.output.exchange_code
+    }
+
+    #[getter]
+    fn exchange_timezone_name(&self) -> &str {
+        &self.output.exchange_timezone_name
+    }
+
+    #[getter]
+    fn request_start_utc_nanos(&self) -> i64 {
+        self.output.request_start_utc_nanos
+    }
+
+    #[getter]
+    fn request_end_utc_nanos(&self) -> i64 {
+        self.output.request_end_utc_nanos
+    }
+
+    #[getter]
+    fn interval_indices(&self) -> Vec<u64> {
+        self.output.interval_indices.clone()
+    }
+
+    #[getter]
+    fn interval_start_utc_nanos(&self) -> Vec<i64> {
+        self.output.interval_start_utc_nanos.clone()
+    }
+
+    #[getter]
+    fn interval_end_utc_nanos(&self) -> Vec<i64> {
+        self.output.interval_end_utc_nanos.clone()
+    }
+
+    #[getter]
+    fn interval_start_exchange_local(&self) -> Vec<String> {
+        self.output.interval_start_exchange_local.clone()
+    }
+
+    #[getter]
+    fn interval_end_exchange_local(&self) -> Vec<String> {
+        self.output.interval_end_exchange_local.clone()
+    }
+
+    #[getter]
+    fn s_h(&self) -> Vec<f64> {
+        self.output.s_h.clone()
+    }
+
+    #[getter]
+    fn source_point_count(&self) -> usize {
+        self.output.diagnostics.source_point_count
+    }
+
+    #[getter]
+    fn interval_count(&self) -> usize {
+        self.output.diagnostics.interval_count
+    }
+
+    #[getter]
+    fn sparse_interval_count(&self) -> usize {
+        self.output.diagnostics.sparse_interval_count
+    }
+
+    #[getter]
+    fn interpolated_interval_count(&self) -> usize {
+        self.output.diagnostics.interpolated_interval_count
+    }
+
+    #[getter]
+    fn fallback_interval_count(&self) -> usize {
+        self.output.diagnostics.fallback_interval_count
+    }
+
+    #[getter]
+    fn interpolation_method(&self) -> &str {
+        self.output.metadata.interpolation_method
+    }
+
+    #[getter]
+    fn aggregation_method(&self) -> &str {
+        self.output.metadata.aggregation_method
+    }
+
+    #[getter]
+    fn sparse_fallback_policy(&self) -> &str {
+        self.output.metadata.sparse_fallback_policy
+    }
+
+    #[getter]
+    fn sparse_hour_minimum_observation_count(&self) -> usize {
+        self.output.metadata.sparse_hour_minimum_observation_count
+    }
+
+    #[getter]
+    fn interval_boundary_policy(&self) -> &str {
+        self.output.metadata.interval_boundary_policy
+    }
+
+    #[getter]
+    fn interval_alignment_policy(&self) -> &str {
+        self.output.metadata.interval_alignment_policy
+    }
+}
+
+#[pymethods]
 impl PyCalendarRegistry {
     #[new]
     fn new(registry_json: &str) -> PyResult<Self> {
@@ -1088,6 +1214,77 @@ fn build_hourly_factor_contract(
         .map_err(map_hourly_factor_contract_error)?;
 
     Ok(PyHourlyFactorContractResult { output })
+}
+
+#[pyfunction]
+#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, source_timestamp_utc, source_seasonality_factors, *, interpolation_method = DEFAULT_SEASONALITY_INTERPOLATION_METHOD, aggregation_method = DEFAULT_SEASONALITY_AGGREGATION_METHOD, sparse_fallback_policy = DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY, sparse_hour_minimum_observation_count = DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT))]
+fn materialize_hourly_seasonality_factors(
+    py: Python<'_>,
+    calendar_registry: &PyCalendarRegistry,
+    exchange_code: &str,
+    range_start_utc: &str,
+    range_end_utc: &str,
+    source_timestamp_utc: &Bound<'_, PyAny>,
+    source_seasonality_factors: &Bound<'_, PyAny>,
+    interpolation_method: &str,
+    aggregation_method: &str,
+    sparse_fallback_policy: &str,
+    sparse_hour_minimum_observation_count: usize,
+) -> PyResult<PyHourlySeasonalityMaterializationResult> {
+    let parsed_range_start_utc = parse_timestamp_utc(range_start_utc)?;
+    let parsed_range_end_utc = parse_timestamp_utc(range_end_utc)?;
+    let parsed_source_timestamp_utc: Vec<String> =
+        source_timestamp_utc.extract().map_err(|_| {
+            SeasonalityInputValidationError::new_err(
+                "source_timestamp_utc must be an iterable of RFC3339 timestamp strings",
+            )
+        })?;
+    let parsed_source_seasonality_factors: Vec<f64> =
+        source_seasonality_factors.extract().map_err(|_| {
+            SeasonalityInputValidationError::new_err(
+                "source_seasonality_factors must be an iterable of float values",
+            )
+        })?;
+
+    let mut parsed_source_timestamp_utc_nanos: Vec<i64> =
+        Vec::with_capacity(parsed_source_timestamp_utc.len());
+    for (source_position, raw_timestamp_utc) in parsed_source_timestamp_utc.iter().enumerate() {
+        let parsed_timestamp_utc = DateTime::parse_from_rfc3339(raw_timestamp_utc)
+            .map(|timestamp| timestamp.with_timezone(&Utc))
+            .map_err(|_| {
+                SeasonalityInputValidationError::new_err(format!(
+                    "source_timestamp_utc at position {source_position} must be a RFC3339 timestamp with UTC offset, received `{raw_timestamp_utc}`"
+                ))
+            })?;
+        let parsed_timestamp_utc_nanos =
+            parsed_timestamp_utc
+                .timestamp_nanos_opt()
+                .ok_or_else(|| {
+                    SeasonalityInputValidationError::new_err(format!(
+                        "source_timestamp_utc at position {source_position} is outside the supported nanosecond timestamp range"
+                    ))
+                })?;
+        parsed_source_timestamp_utc_nanos.push(parsed_timestamp_utc_nanos);
+    }
+
+    let output = py
+        .allow_threads(|| {
+            materialize_hourly_seasonality_factors_core(
+                &calendar_registry.registry,
+                exchange_code,
+                parsed_range_start_utc,
+                parsed_range_end_utc,
+                &parsed_source_timestamp_utc_nanos,
+                &parsed_source_seasonality_factors,
+                interpolation_method,
+                aggregation_method,
+                sparse_fallback_policy,
+                sparse_hour_minimum_observation_count,
+            )
+        })
+        .map_err(map_hourly_factor_contract_error)?;
+
+    Ok(PyHourlySeasonalityMaterializationResult { output })
 }
 
 fn parse_scheduled_event_overlay_definitions(
@@ -1524,6 +1721,43 @@ fn map_hourly_factor_contract_error(error: HourlyFactorContractError) -> PyErr {
         } => SeasonalityInputValidationError::new_err(format!(
             "nu_h must contain finite non-negative values, found {value} at interval index {interval_index}"
         )),
+        HourlyFactorContractError::SourceLengthMismatch {
+            source_timestamp_count,
+            source_factor_count,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "seasonality source length mismatch, received timestamp_count={source_timestamp_count}, factor_count={source_factor_count}"
+        )),
+        HourlyFactorContractError::EmptySeasonalitySourceSignal => {
+            SeasonalityInputValidationError::new_err(
+                "seasonality source must contain at least one timestamp and factor sample",
+            )
+        }
+        HourlyFactorContractError::InvalidSeasonalitySourceFactor {
+            source_position,
+            value,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "seasonality source factors must be finite positive values, found {value} at source position {source_position}"
+        )),
+        HourlyFactorContractError::InvalidSeasonalityInterpolationMethod { method } => {
+            SeasonalityInputValidationError::new_err(format!(
+                "invalid seasonality interpolation_method `{method}`, supported values are `previous_observation_carry_forward.v1` and `linear_between_observations.v1`"
+            ))
+        }
+        HourlyFactorContractError::InvalidSeasonalityAggregationMethod { method } => {
+            SeasonalityInputValidationError::new_err(format!(
+                "invalid seasonality aggregation_method `{method}`, supported values are `mean_of_observations.v1` and `last_observation.v1`"
+            ))
+        }
+        HourlyFactorContractError::InvalidSeasonalitySparseFallbackPolicy { policy } => {
+            SeasonalityInputValidationError::new_err(format!(
+                "invalid seasonality sparse_fallback_policy `{policy}`, supported values are `global_mean.v1` and `previous_materialized_then_global_mean.v1`"
+            ))
+        }
+        HourlyFactorContractError::InvalidSparseHourMinimumObservationCount {
+            sparse_hour_minimum_observation_count,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "sparse_hour_minimum_observation_count must be at least 1, received {sparse_hour_minimum_observation_count}"
+        )),
     }
 }
 
@@ -1757,6 +1991,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyDayOfYearSeasonalityEstimateResult>()?;
     module.add_class::<PyDeterministicSeasonalityCompositionResult>()?;
     module.add_class::<PyHourlyFactorContractResult>()?;
+    module.add_class::<PyHourlySeasonalityMaterializationResult>()?;
     module.add_function(pyo3::wrap_pyfunction!(
         estimate_intraday_seasonality,
         module
@@ -1779,6 +2014,10 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     module.add_function(pyo3::wrap_pyfunction!(
         build_hourly_factor_contract,
+        module
+    )?)?;
+    module.add_function(pyo3::wrap_pyfunction!(
+        materialize_hourly_seasonality_factors,
         module
     )?)?;
     Ok(())

@@ -14,7 +14,12 @@ from .calendar import (
 from .seasonality import SeasonalityInputValidationError
 
 HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION: str = "seasonality.hourly_factor.contract.v1"
+HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION: str = "seasonality.hourly_s_h.materialization.v1"
 DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD: str = "explicit_hourly_input.v1"
+DEFAULT_SEASONALITY_INTERPOLATION_METHOD: str = "previous_observation_carry_forward.v1"
+DEFAULT_SEASONALITY_AGGREGATION_METHOD: str = "mean_of_observations.v1"
+DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY: str = "global_mean.v1"
+DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,6 +150,163 @@ class HourlyFactorContract:
         return cast(str, self._native_result.news_intensity_materialization_method)
 
 
+@dataclass(frozen=True, slots=True)
+class HourlySeasonalityMaterializationOutputSchema:
+    """Describes required fields and policies of hourly seasonality materialization output."""
+
+    schema_version: str
+    required_fields: tuple[str, ...]
+    interval_boundary_policy: str
+    interval_alignment_policy: str
+    required_metadata_fields: tuple[str, ...]
+
+
+HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA: HourlySeasonalityMaterializationOutputSchema = (
+    HourlySeasonalityMaterializationOutputSchema(
+        schema_version=HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION,
+        required_fields=(
+            "schema_version",
+            "exchange_code",
+            "exchange_timezone_name",
+            "request_start_utc_nanos",
+            "request_end_utc_nanos",
+            "interval_indices",
+            "interval_start_utc_nanos",
+            "interval_end_utc_nanos",
+            "interval_start_exchange_local",
+            "interval_end_exchange_local",
+            "s_h",
+            "source_point_count",
+            "interval_count",
+            "sparse_interval_count",
+            "interpolated_interval_count",
+            "fallback_interval_count",
+            "interpolation_method",
+            "aggregation_method",
+            "sparse_fallback_policy",
+            "sparse_hour_minimum_observation_count",
+            "interval_boundary_policy",
+            "interval_alignment_policy",
+        ),
+        interval_boundary_policy="start_inclusive_end_exclusive.v1",
+        interval_alignment_policy="utc_hour_aligned.v1",
+        required_metadata_fields=(
+            "interpolation_method",
+            "aggregation_method",
+            "sparse_fallback_policy",
+            "sparse_hour_minimum_observation_count",
+            "interval_boundary_policy",
+            "interval_alignment_policy",
+        ),
+    )
+)
+
+
+@dataclass(frozen=True, slots=True)
+class HourlySeasonalityMaterializationSettings:
+    """Configuration for deterministic materialization from source seasonality samples to hourly `s_h`."""
+
+    interpolation_method: str = DEFAULT_SEASONALITY_INTERPOLATION_METHOD
+    aggregation_method: str = DEFAULT_SEASONALITY_AGGREGATION_METHOD
+    sparse_fallback_policy: str = DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY
+    sparse_hour_minimum_observation_count: int = DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT
+
+
+class HourlySeasonalityMaterialization:
+    """Hourly `s_h` values aligned to deterministic `[start, end)` UTC hour buckets."""
+
+    def __init__(self, native_result: object) -> None:
+        self._native_result: object = native_result
+
+    @property
+    def schema_version(self) -> str:
+        return cast(str, self._native_result.schema_version)
+
+    @property
+    def exchange_code(self) -> str:
+        return cast(str, self._native_result.exchange_code)
+
+    @property
+    def exchange_timezone_name(self) -> str:
+        return cast(str, self._native_result.exchange_timezone_name)
+
+    @property
+    def request_start_utc_nanos(self) -> int:
+        return cast(int, self._native_result.request_start_utc_nanos)
+
+    @property
+    def request_end_utc_nanos(self) -> int:
+        return cast(int, self._native_result.request_end_utc_nanos)
+
+    @property
+    def interval_indices(self) -> list[int]:
+        return cast(list[int], self._native_result.interval_indices)
+
+    @property
+    def interval_start_utc_nanos(self) -> list[int]:
+        return cast(list[int], self._native_result.interval_start_utc_nanos)
+
+    @property
+    def interval_end_utc_nanos(self) -> list[int]:
+        return cast(list[int], self._native_result.interval_end_utc_nanos)
+
+    @property
+    def interval_start_exchange_local(self) -> list[str]:
+        return cast(list[str], self._native_result.interval_start_exchange_local)
+
+    @property
+    def interval_end_exchange_local(self) -> list[str]:
+        return cast(list[str], self._native_result.interval_end_exchange_local)
+
+    @property
+    def s_h(self) -> list[float]:
+        return cast(list[float], self._native_result.s_h)
+
+    @property
+    def source_point_count(self) -> int:
+        return cast(int, self._native_result.source_point_count)
+
+    @property
+    def interval_count(self) -> int:
+        return cast(int, self._native_result.interval_count)
+
+    @property
+    def sparse_interval_count(self) -> int:
+        return cast(int, self._native_result.sparse_interval_count)
+
+    @property
+    def interpolated_interval_count(self) -> int:
+        return cast(int, self._native_result.interpolated_interval_count)
+
+    @property
+    def fallback_interval_count(self) -> int:
+        return cast(int, self._native_result.fallback_interval_count)
+
+    @property
+    def interpolation_method(self) -> str:
+        return cast(str, self._native_result.interpolation_method)
+
+    @property
+    def aggregation_method(self) -> str:
+        return cast(str, self._native_result.aggregation_method)
+
+    @property
+    def sparse_fallback_policy(self) -> str:
+        return cast(str, self._native_result.sparse_fallback_policy)
+
+    @property
+    def sparse_hour_minimum_observation_count(self) -> int:
+        return cast(int, self._native_result.sparse_hour_minimum_observation_count)
+
+    @property
+    def interval_boundary_policy(self) -> str:
+        return cast(str, self._native_result.interval_boundary_policy)
+
+    @property
+    def interval_alignment_policy(self) -> str:
+        return cast(str, self._native_result.interval_alignment_policy)
+
+
 def build_hourly_factor_contract(
     *,
     calendar_registry: CalendarRegistry,
@@ -190,6 +352,55 @@ def build_hourly_factor_contract(
     return HourlyFactorContract(native_result)
 
 
+def materialize_hourly_seasonality_factors(
+    *,
+    calendar_registry: CalendarRegistry,
+    exchange_code: str,
+    range_start_utc: datetime,
+    range_end_utc: datetime,
+    source_timestamps_utc: Sequence[datetime],
+    source_seasonality_factors: Sequence[float],
+    settings: HourlySeasonalityMaterializationSettings = HourlySeasonalityMaterializationSettings(),
+) -> HourlySeasonalityMaterialization:
+    """
+    Materialize source seasonality samples into hourly piecewise-constant `s_h`.
+
+    Source timestamps are interpreted in UTC and target buckets follow `[start, end)` semantics.
+    """
+
+    native: ModuleType = native_module()
+    normalized_range_start_utc = _normalize_utc_timestamp(range_start_utc, field_name="range_start_utc")
+    normalized_range_end_utc = _normalize_utc_timestamp(range_end_utc, field_name="range_end_utc")
+    normalized_source_timestamps_utc = [
+        _normalize_utc_timestamp(source_timestamp_utc, field_name="source_timestamps_utc")
+        for source_timestamp_utc in source_timestamps_utc
+    ]
+
+    try:
+        native_result: object = native.materialize_hourly_seasonality_factors(
+            calendar_registry._native_registry,
+            exchange_code,
+            normalized_range_start_utc.isoformat(),
+            normalized_range_end_utc.isoformat(),
+            [source_timestamp_utc.isoformat() for source_timestamp_utc in normalized_source_timestamps_utc],
+            list(source_seasonality_factors),
+            interpolation_method=settings.interpolation_method,
+            aggregation_method=settings.aggregation_method,
+            sparse_fallback_policy=settings.sparse_fallback_policy,
+            sparse_hour_minimum_observation_count=settings.sparse_hour_minimum_observation_count,
+        )
+    except native.SeasonalityInputValidationError as e:
+        raise SeasonalityInputValidationError(str(e)) from e
+    except native.CalendarMissingExchangeError as e:
+        raise CalendarMissingExchangeError(str(e)) from e
+    except native.CalendarInvalidTimezoneError as e:
+        raise CalendarInvalidTimezoneError(str(e)) from e
+    except native.CalendarTimestampParseError as e:
+        raise CalendarInvalidTimestampError(str(e)) from e
+
+    return HourlySeasonalityMaterialization(native_result)
+
+
 def _normalize_utc_timestamp(timestamp_utc: datetime, *, field_name: str) -> datetime:
     if not isinstance(timestamp_utc, datetime):
         raise CalendarInvalidTimestampError(
@@ -205,10 +416,20 @@ def _normalize_utc_timestamp(timestamp_utc: datetime, *, field_name: str) -> dat
 
 
 __all__ = [
+    "DEFAULT_SEASONALITY_AGGREGATION_METHOD",
     "DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD",
+    "DEFAULT_SEASONALITY_INTERPOLATION_METHOD",
+    "DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY",
+    "DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT",
     "HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION",
     "HOURLY_FACTOR_OUTPUT_SCHEMA",
+    "HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA",
+    "HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION",
     "HourlyFactorContract",
     "HourlyFactorOutputSchema",
+    "HourlySeasonalityMaterialization",
+    "HourlySeasonalityMaterializationOutputSchema",
+    "HourlySeasonalityMaterializationSettings",
     "build_hourly_factor_contract",
+    "materialize_hourly_seasonality_factors",
 ]

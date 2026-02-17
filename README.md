@@ -166,6 +166,22 @@ for one dataset, and `generate_seasonality_diagnostics_reports_batch(...)` to em
 
 ## Hourly Factor Contract And Interval Indexing
 
+Use `materialize_hourly_seasonality_factors(...)` to convert source seasonality samples into
+hourly `s_h` values on the canonical interval grid.
+
+- Materialization schema:
+  - schema version: `seasonality.hourly_s_h.materialization.v1`
+  - exchange context and UTC interval fields match the canonical hourly contract
+  - output values: `s_h`
+- Configurable deterministic policies:
+  - interpolation method: `previous_observation_carry_forward.v1` or `linear_between_observations.v1`
+  - aggregation method: `mean_of_observations.v1` or `last_observation.v1`
+  - sparse fallback policy: `global_mean.v1` or `previous_materialized_then_global_mean.v1`
+  - sparse interval threshold: `sparse_hour_minimum_observation_count`
+- Auditability metadata:
+  - materialization policy identifiers and sparse threshold are emitted with output
+  - sparse, interpolated, and fallback interval counts are emitted in diagnostics
+
 Use `build_hourly_factor_contract(...)` to emit the canonical hourly contract consumed by
 downstream engines.
 
