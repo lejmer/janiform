@@ -6,16 +6,16 @@ use std::fs;
 use serde_json::Value;
 
 use support::validation_fixture::{
+    CalendarRegressionFixtureDocument, ValidationFixtureManifestDocument, fixtures_root_path,
     load_calendar_regression_fixture_from_manifest, load_manifest_entry_payload,
     load_validation_fixture_manifest_document, sorted_manifest_entries,
-    validate_calendar_regression_fixture_document, CalendarRegressionFixtureDocument,
-    ValidationFixtureManifestDocument, fixtures_root_path,
+    validate_calendar_regression_fixture_document,
 };
 
 #[test]
 fn validation_fixture_manifest_loading_order_and_content_hashes_are_deterministic() {
-    let manifest =
-        load_validation_fixture_manifest_document().expect("validation fixture manifest should load");
+    let manifest = load_validation_fixture_manifest_document()
+        .expect("validation fixture manifest should load");
 
     let first_sorted_entries = sorted_manifest_entries(&manifest);
     let second_sorted_entries = sorted_manifest_entries(&manifest);
@@ -111,8 +111,9 @@ fn validation_fixture_manifest_rejects_invalid_domain_values() {
 fn calendar_regression_fixture_rejects_missing_required_fields() {
     let loaded_fixture = load_calendar_regression_fixture_from_manifest()
         .expect("calendar regression fixture should load from shared manifest");
-    let mut fixture_value: Value = serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
-        .expect("calendar regression fixture should be valid JSON");
+    let mut fixture_value: Value =
+        serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
+            .expect("calendar regression fixture should be valid JSON");
     fixture_value
         .as_object_mut()
         .expect("calendar fixture root should be an object")
@@ -127,12 +128,45 @@ fn calendar_regression_fixture_rejects_missing_required_fields() {
 fn calendar_regression_fixture_rejects_invalid_expected_state_values() {
     let loaded_fixture = load_calendar_regression_fixture_from_manifest()
         .expect("calendar regression fixture should load from shared manifest");
-    let mut fixture_value: Value = serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
-        .expect("calendar regression fixture should be valid JSON");
+    let mut fixture_value: Value =
+        serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
+            .expect("calendar regression fixture should be valid JSON");
     fixture_value["cases"][0]["expected_state"] = Value::String("invalid".to_string());
 
     let parsed_fixture = serde_json::from_value::<CalendarRegressionFixtureDocument>(fixture_value)
         .expect("calendar regression fixture with invalid expected_state should still parse");
+
+    let validation_result = validate_calendar_regression_fixture_document(&parsed_fixture);
+
+    assert!(validation_result.is_err());
+}
+
+#[test]
+fn calendar_regression_fixture_rejects_duplicate_exchange_timestamp_pairs() {
+    let loaded_fixture = load_calendar_regression_fixture_from_manifest()
+        .expect("calendar regression fixture should load from shared manifest");
+    let mut fixture_value: Value =
+        serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
+            .expect("calendar regression fixture should be valid JSON");
+
+    let duplicate_case = fixture_value["cases"][0].clone();
+    fixture_value["cases"]
+        .as_array_mut()
+        .expect("calendar fixture cases should be an array")
+        .push(duplicate_case);
+    fixture_value["cases"]
+        .as_array_mut()
+        .expect("calendar fixture cases should be an array")[0]["fixture_id"] =
+        Value::String("duplicate_exchange_timestamp_case_original".to_string());
+    fixture_value["cases"]
+        .as_array_mut()
+        .expect("calendar fixture cases should be an array")
+        .last_mut()
+        .expect("duplicate case should exist")["fixture_id"] =
+        Value::String("duplicate_exchange_timestamp_case_duplicate".to_string());
+
+    let parsed_fixture = serde_json::from_value::<CalendarRegressionFixtureDocument>(fixture_value)
+        .expect("calendar regression fixture with duplicate exchange timestamp should still parse");
 
     let validation_result = validate_calendar_regression_fixture_document(&parsed_fixture);
 

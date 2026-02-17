@@ -2,9 +2,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use janiform_core::calendar::{
-    ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact,
-};
+use janiform_core::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact};
 use serde::Deserialize;
 
 pub const VALIDATION_FIXTURE_MANIFEST_SCHEMA_VERSION: &str = "validation.fixture.manifest.v1";
@@ -119,8 +117,8 @@ pub struct LoadedCalendarRegressionFixture {
     pub fixture_document: CalendarRegressionFixtureDocument,
 }
 
-pub fn load_validation_fixture_manifest_document(
-) -> Result<ValidationFixtureManifestDocument, String> {
+pub fn load_validation_fixture_manifest_document()
+-> Result<ValidationFixtureManifestDocument, String> {
     let manifest_path = validation_fixture_manifest_path();
     let manifest_raw = fs::read_to_string(&manifest_path).map_err(|source| {
         format!(
@@ -203,9 +201,8 @@ pub fn sorted_manifest_entries(
     manifest: &ValidationFixtureManifestDocument,
 ) -> Vec<ValidationFixtureManifestEntry> {
     let mut sorted_entries = manifest.fixtures.clone();
-    sorted_entries.sort_by(|left_entry, right_entry| {
-        left_entry.fixture_id.cmp(&right_entry.fixture_id)
-    });
+    sorted_entries
+        .sort_by(|left_entry, right_entry| left_entry.fixture_id.cmp(&right_entry.fixture_id));
 
     sorted_entries
 }
@@ -240,10 +237,11 @@ pub fn load_manifest_entry_payload(
     })
 }
 
-pub fn load_calendar_regression_fixture_from_manifest(
-) -> Result<LoadedCalendarRegressionFixture, String> {
+pub fn load_calendar_regression_fixture_from_manifest()
+-> Result<LoadedCalendarRegressionFixture, String> {
     let manifest = load_validation_fixture_manifest_document()?;
-    let manifest_entry = find_manifest_entry_by_fixture_id(&manifest, CALENDAR_REGRESSION_FIXTURE_SET_ID)?;
+    let manifest_entry =
+        find_manifest_entry_by_fixture_id(&manifest, CALENDAR_REGRESSION_FIXTURE_SET_ID)?;
 
     if manifest_entry.fixture_schema_version != CALENDAR_REGRESSION_FIXTURE_SCHEMA_VERSION {
         return Err(format!(
@@ -253,7 +251,8 @@ pub fn load_calendar_regression_fixture_from_manifest(
     }
 
     let loaded_payload = load_manifest_entry_payload(&fixtures_root_path(), &manifest_entry)?;
-    let fixture_document = parse_calendar_regression_fixture_document(&loaded_payload.payload_bytes)?;
+    let fixture_document =
+        parse_calendar_regression_fixture_document(&loaded_payload.payload_bytes)?;
 
     validate_calendar_regression_fixture_document(&fixture_document)?;
 
@@ -268,11 +267,8 @@ pub fn load_calendar_regression_fixture_from_manifest(
 pub fn parse_calendar_regression_fixture_document(
     payload_bytes: &[u8],
 ) -> Result<CalendarRegressionFixtureDocument, String> {
-    serde_json::from_slice::<CalendarRegressionFixtureDocument>(payload_bytes).map_err(|source| {
-        format!(
-            "failed to parse calendar regression fixture document: {source}"
-        )
-    })
+    serde_json::from_slice::<CalendarRegressionFixtureDocument>(payload_bytes)
+        .map_err(|source| format!("failed to parse calendar regression fixture document: {source}"))
 }
 
 pub fn validate_calendar_regression_fixture_document(
@@ -327,8 +323,7 @@ pub fn validate_calendar_regression_fixture_document(
             fixture_document.determinism_metadata.content_hash_scope
         ));
     }
-    if fixture_document.determinism_metadata.content_hash_algorithm
-        != CONTENT_HASH_ALGORITHM_POLICY
+    if fixture_document.determinism_metadata.content_hash_algorithm != CONTENT_HASH_ALGORITHM_POLICY
     {
         return Err(format!(
             "unexpected calendar regression content hash algorithm policy: {}",
@@ -352,6 +347,7 @@ pub fn validate_calendar_regression_fixture_document(
     }
 
     let mut observed_fixture_case_ids: BTreeSet<&str> = BTreeSet::new();
+    let mut observed_exchange_timestamp_pairs: BTreeSet<(String, String)> = BTreeSet::new();
     for fixture_case in &fixture_document.cases {
         require_non_empty(&fixture_case.fixture_id, "cases.fixture_id")?;
         require_non_empty(&fixture_case.exchange_code, "cases.exchange_code")?;
@@ -369,6 +365,17 @@ pub fn validate_calendar_regression_fixture_document(
             return Err(format!(
                 "fixture case references unknown exchange code: {}",
                 fixture_case.exchange_code
+            ));
+        }
+
+        let exchange_timestamp_pair = (
+            fixture_case.exchange_code.clone(),
+            fixture_case.timestamp_utc.clone(),
+        );
+        if !observed_exchange_timestamp_pairs.insert(exchange_timestamp_pair.clone()) {
+            return Err(format!(
+                "duplicate fixture case exchange_code/timestamp_utc pair: {} at {}",
+                exchange_timestamp_pair.0, exchange_timestamp_pair.1
             ));
         }
 
@@ -394,12 +401,11 @@ pub fn validate_calendar_regression_fixture_document(
         }
     }
 
-    ExchangeCalendarRegistry::from_artifact(fixture_document.calendar_registry.clone())
-        .map_err(|source| {
-            format!(
-                "calendar regression fixture includes an invalid calendar registry: {source}"
-            )
-        })?;
+    ExchangeCalendarRegistry::from_artifact(fixture_document.calendar_registry.clone()).map_err(
+        |source| {
+            format!("calendar regression fixture includes an invalid calendar registry: {source}")
+        },
+    )?;
 
     Ok(())
 }
@@ -438,7 +444,10 @@ fn find_manifest_entry_by_fixture_id(
         .collect();
 
     if matching_entries.len() == 1 {
-        return Ok(matching_entries.into_iter().next().expect("single manifest entry"));
+        return Ok(matching_entries
+            .into_iter()
+            .next()
+            .expect("single manifest entry"));
     }
 
     Err(format!(
