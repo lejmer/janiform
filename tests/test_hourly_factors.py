@@ -9,8 +9,11 @@ from janiform.hourly_factors import (
     DEFAULT_SEASONALITY_INTERPOLATION_METHOD,
     DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY,
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+    HOURLY_FACTOR_FALL_BACK_POLICY,
     HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
     HOURLY_FACTOR_OUTPUT_SCHEMA,
+    HOURLY_FACTOR_SPRING_FORWARD_POLICY,
+    HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
     HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA,
     HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
     HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA,
@@ -56,8 +59,13 @@ def test_build_hourly_factor_contract_exposes_required_schema_fields_and_types(
     assert isinstance(contract.interval_start_exchange_local[0], str)
     assert isinstance(contract.s_h[0], float)
     assert isinstance(contract.nu_h[0], float)
+    assert isinstance(contract.skipped_local_hour_interval_count, int)
+    assert isinstance(contract.repeated_local_hour_interval_count, int)
     assert contract.interval_boundary_policy == HOURLY_FACTOR_OUTPUT_SCHEMA.interval_boundary_policy
     assert contract.interval_alignment_policy == HOURLY_FACTOR_OUTPUT_SCHEMA.interval_alignment_policy
+    assert contract.timezone_transition_policy == HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY
+    assert contract.spring_forward_policy == HOURLY_FACTOR_SPRING_FORWARD_POLICY
+    assert contract.fall_back_policy == HOURLY_FACTOR_FALL_BACK_POLICY
 
 
 def test_build_hourly_factor_contract_indexes_consecutive_non_overlapping_hours(
@@ -86,6 +94,60 @@ def test_build_hourly_factor_contract_indexes_consecutive_non_overlapping_hours(
         interval_end = contract.interval_end_utc_nanos[interval_position]
         assert interval_start < interval_end
         assert interval_end - interval_start == ONE_HOUR_NANOS
+
+
+def test_build_hourly_factor_contract_spring_forward_skips_nonexistent_local_hour(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    contract = build_hourly_factor_contract(
+        calendar_registry=calendar_registry,
+        exchange_code="XNYS",
+        range_start_utc=datetime(2026, 3, 8, 6, 0, 0, tzinfo=UTC),
+        range_end_utc=datetime(2026, 3, 8, 9, 0, 0, tzinfo=UTC),
+        seasonality_hourly_factors=[1.0, 1.0, 1.0],
+        news_intensity_hourly_factors=[0.0, 0.0, 0.0],
+    )
+
+    assert contract.interval_start_exchange_local == [
+        "2026-03-08T01:00:00-05:00",
+        "2026-03-08T03:00:00-04:00",
+        "2026-03-08T04:00:00-04:00",
+    ]
+    assert contract.interval_end_exchange_local == [
+        "2026-03-08T03:00:00-04:00",
+        "2026-03-08T04:00:00-04:00",
+        "2026-03-08T05:00:00-04:00",
+    ]
+    assert contract.skipped_local_hour_interval_count == 1
+    assert contract.repeated_local_hour_interval_count == 0
+    assert contract.spring_forward_policy == HOURLY_FACTOR_SPRING_FORWARD_POLICY
+
+
+def test_build_hourly_factor_contract_fall_back_preserves_repeated_local_hour_with_offset(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    contract = build_hourly_factor_contract(
+        calendar_registry=calendar_registry,
+        exchange_code="XNYS",
+        range_start_utc=datetime(2026, 11, 1, 5, 0, 0, tzinfo=UTC),
+        range_end_utc=datetime(2026, 11, 1, 8, 0, 0, tzinfo=UTC),
+        seasonality_hourly_factors=[1.0, 1.0, 1.0],
+        news_intensity_hourly_factors=[0.0, 0.0, 0.0],
+    )
+
+    assert contract.interval_start_exchange_local == [
+        "2026-11-01T01:00:00-04:00",
+        "2026-11-01T01:00:00-05:00",
+        "2026-11-01T02:00:00-05:00",
+    ]
+    assert contract.interval_end_exchange_local == [
+        "2026-11-01T01:00:00-05:00",
+        "2026-11-01T02:00:00-05:00",
+        "2026-11-01T03:00:00-05:00",
+    ]
+    assert contract.skipped_local_hour_interval_count == 0
+    assert contract.repeated_local_hour_interval_count == 1
+    assert contract.fall_back_policy == HOURLY_FACTOR_FALL_BACK_POLICY
 
 
 def test_build_hourly_factor_contract_rejects_invalid_date_range(
@@ -160,6 +222,9 @@ def test_materialize_hourly_seasonality_handles_sparse_and_missing_source_segmen
         materialization.interval_alignment_policy
         == HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA.interval_alignment_policy
     )
+    assert materialization.timezone_transition_policy == HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY
+    assert materialization.spring_forward_policy == HOURLY_FACTOR_SPRING_FORWARD_POLICY
+    assert materialization.fall_back_policy == HOURLY_FACTOR_FALL_BACK_POLICY
 
 
 def test_materialize_hourly_seasonality_is_deterministic_for_controlled_inputs(
@@ -206,6 +271,54 @@ def test_materialize_hourly_seasonality_is_deterministic_for_controlled_inputs(
     assert first_snapshot == second_snapshot
 
 
+def test_materialize_hourly_seasonality_transition_boundaries_assign_to_start_inclusive_bucket(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    spring_forward_materialization = materialize_hourly_seasonality_factors(
+        calendar_registry=calendar_registry,
+        exchange_code="XNYS",
+        range_start_utc=datetime(2026, 3, 8, 6, 0, 0, tzinfo=UTC),
+        range_end_utc=datetime(2026, 3, 8, 9, 0, 0, tzinfo=UTC),
+        source_timestamps_utc=[
+            datetime(2026, 3, 8, 6, 30, 0, tzinfo=UTC),
+            datetime(2026, 3, 8, 7, 0, 0, tzinfo=UTC),
+            datetime(2026, 3, 8, 8, 0, 0, tzinfo=UTC),
+        ],
+        source_seasonality_factors=[1.0, 2.0, 3.0],
+        settings=HourlySeasonalityMaterializationSettings(
+            interpolation_method=DEFAULT_SEASONALITY_INTERPOLATION_METHOD,
+            aggregation_method="last_observation.v1",
+            sparse_fallback_policy=DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY,
+            sparse_hour_minimum_observation_count=1,
+        ),
+    )
+    fall_back_materialization = materialize_hourly_seasonality_factors(
+        calendar_registry=calendar_registry,
+        exchange_code="XNYS",
+        range_start_utc=datetime(2026, 11, 1, 5, 0, 0, tzinfo=UTC),
+        range_end_utc=datetime(2026, 11, 1, 8, 0, 0, tzinfo=UTC),
+        source_timestamps_utc=[
+            datetime(2026, 11, 1, 5, 0, 0, tzinfo=UTC),
+            datetime(2026, 11, 1, 6, 0, 0, tzinfo=UTC),
+            datetime(2026, 11, 1, 7, 0, 0, tzinfo=UTC),
+        ],
+        source_seasonality_factors=[1.5, 2.5, 3.5],
+        settings=HourlySeasonalityMaterializationSettings(
+            interpolation_method=DEFAULT_SEASONALITY_INTERPOLATION_METHOD,
+            aggregation_method="last_observation.v1",
+            sparse_fallback_policy=DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY,
+            sparse_hour_minimum_observation_count=1,
+        ),
+    )
+
+    assert spring_forward_materialization.s_h == [1.0, 2.0, 3.0]
+    assert spring_forward_materialization.skipped_local_hour_interval_count == 1
+    assert spring_forward_materialization.repeated_local_hour_interval_count == 0
+    assert fall_back_materialization.s_h == [1.5, 2.5, 3.5]
+    assert fall_back_materialization.skipped_local_hour_interval_count == 0
+    assert fall_back_materialization.repeated_local_hour_interval_count == 1
+
+
 def test_materialize_hourly_news_intensity_applies_closed_baseline_and_open_overrides(
     calendar_registry: CalendarRegistry,
 ) -> None:
@@ -228,6 +341,8 @@ def test_materialize_hourly_news_intensity_applies_closed_baseline_and_open_over
     assert materialization.fully_open_interval_count == 2
     assert materialization.mixed_state_interval_count == 1
     assert materialization.open_window_override_interval_count == 2
+    assert materialization.skipped_local_hour_interval_count == 0
+    assert materialization.repeated_local_hour_interval_count == 0
     assert (
         materialization.interval_boundary_policy
         == HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA.interval_boundary_policy
@@ -236,6 +351,9 @@ def test_materialize_hourly_news_intensity_applies_closed_baseline_and_open_over
         materialization.interval_alignment_policy
         == HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA.interval_alignment_policy
     )
+    assert materialization.timezone_transition_policy == HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY
+    assert materialization.spring_forward_policy == HOURLY_FACTOR_SPRING_FORWARD_POLICY
+    assert materialization.fall_back_policy == HOURLY_FACTOR_FALL_BACK_POLICY
 
 
 def test_materialize_hourly_news_intensity_closed_logic_dominates_weekend_and_overnight(
@@ -353,8 +471,13 @@ def _contract_snapshot(contract: HourlyFactorContract) -> dict[str, object]:
         "interval_count": contract.interval_count,
         "first_interval_start_utc_nanos": contract.first_interval_start_utc_nanos,
         "last_interval_end_utc_nanos": contract.last_interval_end_utc_nanos,
+        "skipped_local_hour_interval_count": contract.skipped_local_hour_interval_count,
+        "repeated_local_hour_interval_count": contract.repeated_local_hour_interval_count,
         "interval_boundary_policy": contract.interval_boundary_policy,
         "interval_alignment_policy": contract.interval_alignment_policy,
+        "timezone_transition_policy": contract.timezone_transition_policy,
+        "spring_forward_policy": contract.spring_forward_policy,
+        "fall_back_policy": contract.fall_back_policy,
         "seasonality_materialization_method": contract.seasonality_materialization_method,
         "news_intensity_materialization_method": contract.news_intensity_materialization_method,
     }
@@ -380,10 +503,15 @@ def _seasonality_materialization_snapshot(
         "sparse_interval_count": materialization.sparse_interval_count,
         "interpolated_interval_count": materialization.interpolated_interval_count,
         "fallback_interval_count": materialization.fallback_interval_count,
+        "skipped_local_hour_interval_count": materialization.skipped_local_hour_interval_count,
+        "repeated_local_hour_interval_count": materialization.repeated_local_hour_interval_count,
         "interpolation_method": materialization.interpolation_method,
         "aggregation_method": materialization.aggregation_method,
         "sparse_fallback_policy": materialization.sparse_fallback_policy,
         "sparse_hour_minimum_observation_count": materialization.sparse_hour_minimum_observation_count,
         "interval_boundary_policy": materialization.interval_boundary_policy,
         "interval_alignment_policy": materialization.interval_alignment_policy,
+        "timezone_transition_policy": materialization.timezone_transition_policy,
+        "spring_forward_policy": materialization.spring_forward_policy,
+        "fall_back_policy": materialization.fall_back_policy,
     }

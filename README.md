@@ -210,7 +210,13 @@ downstream engines.
   - request range and buckets are half-open intervals `[start, end)`
   - interval boundary policy identifier: `start_inclusive_end_exclusive.v1`
   - interval alignment policy identifier: `utc_hour_aligned.v1`
+  - timezone transition policy identifier: `utc_hour_bucket_projected_to_exchange_local.v1`
+  - spring-forward policy identifier: `skip_nonexistent_local_hour_labels.v1`
+  - fall-back policy identifier: `preserve_repeated_local_hour_labels_with_numeric_utc_offset.v1`
   - request boundaries must be exact UTC hour boundaries
+  - local timestamp labels are projected from UTC bucket boundaries and include numeric UTC offsets
+  - missing local hours during spring-forward emit no local-hour bucket
+  - repeated local hours during fall-back are disambiguated by offset in labels
 - Auditability metadata:
   - `seasonality_materialization_method`
   - `news_intensity_materialization_method`

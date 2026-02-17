@@ -24,6 +24,11 @@ DEFAULT_SEASONALITY_INTERPOLATION_METHOD: str = "previous_observation_carry_forw
 DEFAULT_SEASONALITY_AGGREGATION_METHOD: str = "mean_of_observations.v1"
 DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY: str = "global_mean.v1"
 DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT: int = 1
+HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY: str = "utc_hour_bucket_projected_to_exchange_local.v1"
+HOURLY_FACTOR_SPRING_FORWARD_POLICY: str = "skip_nonexistent_local_hour_labels.v1"
+HOURLY_FACTOR_FALL_BACK_POLICY: str = (
+    "preserve_repeated_local_hour_labels_with_numeric_utc_offset.v1"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,8 +60,13 @@ HOURLY_FACTOR_OUTPUT_SCHEMA: HourlyFactorOutputSchema = HourlyFactorOutputSchema
         "interval_count",
         "first_interval_start_utc_nanos",
         "last_interval_end_utc_nanos",
+        "skipped_local_hour_interval_count",
+        "repeated_local_hour_interval_count",
         "interval_boundary_policy",
         "interval_alignment_policy",
+        "timezone_transition_policy",
+        "spring_forward_policy",
+        "fall_back_policy",
         "seasonality_materialization_method",
         "news_intensity_materialization_method",
     ),
@@ -67,6 +77,9 @@ HOURLY_FACTOR_OUTPUT_SCHEMA: HourlyFactorOutputSchema = HourlyFactorOutputSchema
         "news_intensity_materialization_method",
         "interval_boundary_policy",
         "interval_alignment_policy",
+        "timezone_transition_policy",
+        "spring_forward_policy",
+        "fall_back_policy",
     ),
 )
 
@@ -138,12 +151,32 @@ class HourlyFactorContract:
         return cast(int, self._native_result.last_interval_end_utc_nanos)
 
     @property
+    def skipped_local_hour_interval_count(self) -> int:
+        return cast(int, self._native_result.skipped_local_hour_interval_count)
+
+    @property
+    def repeated_local_hour_interval_count(self) -> int:
+        return cast(int, self._native_result.repeated_local_hour_interval_count)
+
+    @property
     def interval_boundary_policy(self) -> str:
         return cast(str, self._native_result.interval_boundary_policy)
 
     @property
     def interval_alignment_policy(self) -> str:
         return cast(str, self._native_result.interval_alignment_policy)
+
+    @property
+    def timezone_transition_policy(self) -> str:
+        return cast(str, self._native_result.timezone_transition_policy)
+
+    @property
+    def spring_forward_policy(self) -> str:
+        return cast(str, self._native_result.spring_forward_policy)
+
+    @property
+    def fall_back_policy(self) -> str:
+        return cast(str, self._native_result.fall_back_policy)
 
     @property
     def seasonality_materialization_method(self) -> str:
@@ -185,12 +218,17 @@ HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA: HourlySeasonalityMaterializati
             "sparse_interval_count",
             "interpolated_interval_count",
             "fallback_interval_count",
+            "skipped_local_hour_interval_count",
+            "repeated_local_hour_interval_count",
             "interpolation_method",
             "aggregation_method",
             "sparse_fallback_policy",
             "sparse_hour_minimum_observation_count",
             "interval_boundary_policy",
             "interval_alignment_policy",
+            "timezone_transition_policy",
+            "spring_forward_policy",
+            "fall_back_policy",
         ),
         interval_boundary_policy="start_inclusive_end_exclusive.v1",
         interval_alignment_policy="utc_hour_aligned.v1",
@@ -201,6 +239,9 @@ HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA: HourlySeasonalityMaterializati
             "sparse_hour_minimum_observation_count",
             "interval_boundary_policy",
             "interval_alignment_policy",
+            "timezone_transition_policy",
+            "spring_forward_policy",
+            "fall_back_policy",
         ),
     )
 )
@@ -237,12 +278,17 @@ HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA: HourlyNewsIntensityMaterial
             "fully_open_interval_count",
             "mixed_state_interval_count",
             "open_window_override_interval_count",
+            "skipped_local_hour_interval_count",
+            "repeated_local_hour_interval_count",
             "materialization_method",
             "calendar_market_state_dependency",
             "open_window_override_policy",
             "closed_window_baseline_intensity",
             "interval_boundary_policy",
             "interval_alignment_policy",
+            "timezone_transition_policy",
+            "spring_forward_policy",
+            "fall_back_policy",
         ),
         interval_boundary_policy="start_inclusive_end_exclusive.v1",
         interval_alignment_policy="utc_hour_aligned.v1",
@@ -253,6 +299,9 @@ HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA: HourlyNewsIntensityMaterial
             "closed_window_baseline_intensity",
             "interval_boundary_policy",
             "interval_alignment_policy",
+            "timezone_transition_policy",
+            "spring_forward_policy",
+            "fall_back_policy",
         ),
     )
 )
@@ -339,6 +388,14 @@ class HourlySeasonalityMaterialization:
         return cast(int, self._native_result.fallback_interval_count)
 
     @property
+    def skipped_local_hour_interval_count(self) -> int:
+        return cast(int, self._native_result.skipped_local_hour_interval_count)
+
+    @property
+    def repeated_local_hour_interval_count(self) -> int:
+        return cast(int, self._native_result.repeated_local_hour_interval_count)
+
+    @property
     def interpolation_method(self) -> str:
         return cast(str, self._native_result.interpolation_method)
 
@@ -361,6 +418,18 @@ class HourlySeasonalityMaterialization:
     @property
     def interval_alignment_policy(self) -> str:
         return cast(str, self._native_result.interval_alignment_policy)
+
+    @property
+    def timezone_transition_policy(self) -> str:
+        return cast(str, self._native_result.timezone_transition_policy)
+
+    @property
+    def spring_forward_policy(self) -> str:
+        return cast(str, self._native_result.spring_forward_policy)
+
+    @property
+    def fall_back_policy(self) -> str:
+        return cast(str, self._native_result.fall_back_policy)
 
 
 @dataclass(frozen=True, slots=True)
@@ -442,6 +511,14 @@ class HourlyNewsIntensityMaterialization:
         return cast(int, self._native_result.open_window_override_interval_count)
 
     @property
+    def skipped_local_hour_interval_count(self) -> int:
+        return cast(int, self._native_result.skipped_local_hour_interval_count)
+
+    @property
+    def repeated_local_hour_interval_count(self) -> int:
+        return cast(int, self._native_result.repeated_local_hour_interval_count)
+
+    @property
     def materialization_method(self) -> str:
         return cast(str, self._native_result.materialization_method)
 
@@ -465,6 +542,18 @@ class HourlyNewsIntensityMaterialization:
     def interval_alignment_policy(self) -> str:
         return cast(str, self._native_result.interval_alignment_policy)
 
+    @property
+    def timezone_transition_policy(self) -> str:
+        return cast(str, self._native_result.timezone_transition_policy)
+
+    @property
+    def spring_forward_policy(self) -> str:
+        return cast(str, self._native_result.spring_forward_policy)
+
+    @property
+    def fall_back_policy(self) -> str:
+        return cast(str, self._native_result.fall_back_policy)
+
 
 def build_hourly_factor_contract(
     *,
@@ -482,6 +571,8 @@ def build_hourly_factor_contract(
 
     The request range is interpreted as `[range_start_utc, range_end_utc)`.
     Both boundaries must be exact UTC hour boundaries.
+    Exchange-local labels are projected from UTC boundaries and include offsets so spring-forward
+    missing hours are skipped and fall-back repeated hours stay unambiguous.
     """
 
     native: ModuleType = native_module()
@@ -525,6 +616,7 @@ def materialize_hourly_seasonality_factors(
     Materialize source seasonality samples into hourly piecewise-constant `s_h`.
 
     Source timestamps are interpreted in UTC and target buckets follow `[start, end)` semantics.
+    UTC bucket boundaries remain authoritative through timezone offset transitions.
     """
 
     native: ModuleType = native_module()
@@ -573,6 +665,7 @@ def materialize_hourly_news_intensity_factors(
 
     Closed windows use the configured baseline intensity and optional open-window overrides can be injected
     by interval index for scenario analysis.
+    UTC bucket boundaries remain authoritative through timezone offset transitions.
     """
 
     native: ModuleType = native_module()
@@ -626,8 +719,11 @@ __all__ = [
     "DEFAULT_SEASONALITY_INTERPOLATION_METHOD",
     "DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY",
     "DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT",
+    "HOURLY_FACTOR_FALL_BACK_POLICY",
     "HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION",
     "HOURLY_FACTOR_OUTPUT_SCHEMA",
+    "HOURLY_FACTOR_SPRING_FORWARD_POLICY",
+    "HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY",
     "HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA",
     "HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION",
     "HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA",

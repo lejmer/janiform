@@ -19,6 +19,11 @@ use crate::calendar::{
 pub const HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION: &str = "seasonality.hourly_factor.contract.v1";
 pub const HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY: &str = "start_inclusive_end_exclusive.v1";
 pub const HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY: &str = "utc_hour_aligned.v1";
+pub const HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY: &str =
+    "utc_hour_bucket_projected_to_exchange_local.v1";
+pub const HOURLY_FACTOR_SPRING_FORWARD_POLICY: &str = "skip_nonexistent_local_hour_labels.v1";
+pub const HOURLY_FACTOR_FALL_BACK_POLICY: &str =
+    "preserve_repeated_local_hour_labels_with_numeric_utc_offset.v1";
 pub const DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD: &str = "explicit_hourly_input.v1";
 pub const HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION: &str =
     "seasonality.hourly_s_h.materialization.v1";
@@ -44,6 +49,9 @@ pub struct HourlyFactorMaterializationMetadata {
     pub news_intensity_materialization_method: String,
     pub interval_boundary_policy: &'static str,
     pub interval_alignment_policy: &'static str,
+    pub timezone_transition_policy: &'static str,
+    pub spring_forward_policy: &'static str,
+    pub fall_back_policy: &'static str,
 }
 
 /// Deterministic diagnostics for hourly factor interval coverage.
@@ -52,6 +60,8 @@ pub struct HourlyFactorContractDiagnostics {
     pub interval_count: usize,
     pub first_interval_start_utc_nanos: i64,
     pub last_interval_end_utc_nanos: i64,
+    pub skipped_local_hour_interval_count: usize,
+    pub repeated_local_hour_interval_count: usize,
 }
 
 /// Canonical hourly factor output contract for downstream engines.
@@ -82,6 +92,9 @@ pub struct HourlySeasonalityMaterializationMetadata {
     pub sparse_hour_minimum_observation_count: usize,
     pub interval_boundary_policy: &'static str,
     pub interval_alignment_policy: &'static str,
+    pub timezone_transition_policy: &'static str,
+    pub spring_forward_policy: &'static str,
+    pub fall_back_policy: &'static str,
 }
 
 /// Deterministic diagnostics for hourly seasonality materialization outputs.
@@ -92,6 +105,8 @@ pub struct HourlySeasonalityMaterializationDiagnostics {
     pub sparse_interval_count: usize,
     pub interpolated_interval_count: usize,
     pub fallback_interval_count: usize,
+    pub skipped_local_hour_interval_count: usize,
+    pub repeated_local_hour_interval_count: usize,
 }
 
 /// Canonical hourly seasonality output for downstream engines.
@@ -121,6 +136,9 @@ pub struct HourlyNewsIntensityMaterializationMetadata {
     pub closed_window_baseline_intensity: f64,
     pub interval_boundary_policy: &'static str,
     pub interval_alignment_policy: &'static str,
+    pub timezone_transition_policy: &'static str,
+    pub spring_forward_policy: &'static str,
+    pub fall_back_policy: &'static str,
 }
 
 /// Deterministic diagnostics for hourly news-intensity materialization outputs.
@@ -131,6 +149,8 @@ pub struct HourlyNewsIntensityMaterializationDiagnostics {
     pub fully_open_interval_count: usize,
     pub mixed_state_interval_count: usize,
     pub open_window_override_interval_count: usize,
+    pub skipped_local_hour_interval_count: usize,
+    pub repeated_local_hour_interval_count: usize,
 }
 
 /// Canonical hourly news-intensity output for downstream engines.
@@ -358,6 +378,9 @@ impl Error for HourlyFactorContractError {}
 /// - Both boundaries must be exact UTC hour boundaries.
 /// - Buckets are emitted as consecutive non-overlapping intervals `[start, end)`.
 /// - `interval_indices` are zero-based and strictly increasing by one.
+/// - Exchange-local interval labels are projections of UTC boundaries and include numeric offsets.
+/// - Spring-forward transitions skip nonexistent local-hour labels.
+/// - Fall-back transitions preserve repeated local-hour labels and disambiguate them by offset.
 pub fn build_hourly_factor_contract(
     calendar_registry: &ExchangeCalendarRegistry,
     exchange_code: &str,
@@ -430,11 +453,17 @@ pub fn build_hourly_factor_contract(
                 .to_string(),
             interval_boundary_policy: HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
             interval_alignment_policy: HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
+            timezone_transition_policy: HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
+            spring_forward_policy: HOURLY_FACTOR_SPRING_FORWARD_POLICY,
+            fall_back_policy: HOURLY_FACTOR_FALL_BACK_POLICY,
         },
         diagnostics: HourlyFactorContractDiagnostics {
             interval_count,
             first_interval_start_utc_nanos: interval_indexing.request_start_utc_nanos,
             last_interval_end_utc_nanos: interval_indexing.request_end_utc_nanos,
+            skipped_local_hour_interval_count: interval_indexing.skipped_local_hour_interval_count,
+            repeated_local_hour_interval_count: interval_indexing
+                .repeated_local_hour_interval_count,
         },
     })
 }
@@ -589,6 +618,22 @@ struct HourlyIntervalIndexing {
     interval_end_utc_nanos: Vec<i64>,
     interval_start_exchange_local: Vec<String>,
     interval_end_exchange_local: Vec<String>,
+    skipped_local_hour_interval_count: usize,
+    repeated_local_hour_interval_count: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExchangeLocalHourTransitionKind {
+    Standard,
+    Skipped,
+    Repeated,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ExchangeLocalIntervalBoundaryProjection {
+    interval_start_exchange_local: String,
+    interval_end_exchange_local: String,
+    transition_kind: ExchangeLocalHourTransitionKind,
 }
 
 /// Materialize a continuous or high-resolution seasonality signal into hourly `s_h`.
@@ -596,6 +641,7 @@ struct HourlyIntervalIndexing {
 /// Sparse or missing intervals use a deterministic fallback sequence:
 /// - Attempt interpolation using the configured interpolation method.
 /// - If interpolation is not possible, apply the configured sparse fallback policy.
+/// - UTC bucket boundaries are authoritative during timezone transitions.
 pub fn materialize_hourly_seasonality_factors(
     calendar_registry: &ExchangeCalendarRegistry,
     exchange_code: &str,
@@ -747,6 +793,9 @@ pub fn materialize_hourly_seasonality_factors(
             sparse_hour_minimum_observation_count: settings.sparse_hour_minimum_observation_count,
             interval_boundary_policy: HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
             interval_alignment_policy: HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
+            timezone_transition_policy: HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
+            spring_forward_policy: HOURLY_FACTOR_SPRING_FORWARD_POLICY,
+            fall_back_policy: HOURLY_FACTOR_FALL_BACK_POLICY,
         },
         diagnostics: HourlySeasonalityMaterializationDiagnostics {
             source_point_count: source_points.len(),
@@ -754,6 +803,9 @@ pub fn materialize_hourly_seasonality_factors(
             sparse_interval_count,
             interpolated_interval_count,
             fallback_interval_count,
+            skipped_local_hour_interval_count: interval_indexing.skipped_local_hour_interval_count,
+            repeated_local_hour_interval_count: interval_indexing
+                .repeated_local_hour_interval_count,
         },
     })
 }
@@ -764,6 +816,7 @@ pub fn materialize_hourly_seasonality_factors(
 /// - Closed windows receive `closed_window_baseline_intensity`.
 /// - Open windows receive `0.0` unless an explicit open-window override is provided.
 /// - Interval values are minute-sampled averages over `[start, end)` using market-state resolution.
+/// - UTC bucket boundaries are authoritative during timezone transitions.
 pub fn materialize_hourly_news_intensity_factors(
     calendar_registry: &ExchangeCalendarRegistry,
     exchange_code: &str,
@@ -878,6 +931,9 @@ pub fn materialize_hourly_news_intensity_factors(
             closed_window_baseline_intensity,
             interval_boundary_policy: HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
             interval_alignment_policy: HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
+            timezone_transition_policy: HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
+            spring_forward_policy: HOURLY_FACTOR_SPRING_FORWARD_POLICY,
+            fall_back_policy: HOURLY_FACTOR_FALL_BACK_POLICY,
         },
         diagnostics: HourlyNewsIntensityMaterializationDiagnostics {
             interval_count: interval_indexing.interval_count,
@@ -885,6 +941,9 @@ pub fn materialize_hourly_news_intensity_factors(
             fully_open_interval_count,
             mixed_state_interval_count,
             open_window_override_interval_count,
+            skipped_local_hour_interval_count: interval_indexing.skipped_local_hour_interval_count,
+            repeated_local_hour_interval_count: interval_indexing
+                .repeated_local_hour_interval_count,
         },
     })
 }
@@ -938,6 +997,8 @@ fn build_hourly_interval_indexing(
     let mut interval_end_utc_nanos: Vec<i64> = Vec::with_capacity(interval_count);
     let mut interval_start_exchange_local: Vec<String> = Vec::with_capacity(interval_count);
     let mut interval_end_exchange_local: Vec<String> = Vec::with_capacity(interval_count);
+    let mut skipped_local_hour_interval_count: usize = 0;
+    let mut repeated_local_hour_interval_count: usize = 0;
     for interval_index in 0..interval_count {
         let interval_offset_nanos = interval_index as i64 * ONE_HOUR_NANOS;
         let interval_start_nanos = range_start_utc_nanos + interval_offset_nanos;
@@ -945,11 +1006,19 @@ fn build_hourly_interval_indexing(
 
         let start_utc = utc_timestamp_from_nanos(interval_start_nanos, "range_start_utc")?;
         let end_utc = utc_timestamp_from_nanos(interval_end_nanos, "range_end_utc")?;
+        let local_boundary_projection =
+            project_interval_boundaries_to_exchange_local(start_utc, end_utc, &timezone);
+        match local_boundary_projection.transition_kind {
+            ExchangeLocalHourTransitionKind::Standard => {}
+            ExchangeLocalHourTransitionKind::Skipped => skipped_local_hour_interval_count += 1,
+            ExchangeLocalHourTransitionKind::Repeated => repeated_local_hour_interval_count += 1,
+        }
+
         interval_indices.push(interval_index as u64);
         interval_start_utc_nanos.push(interval_start_nanos);
         interval_end_utc_nanos.push(interval_end_nanos);
-        interval_start_exchange_local.push(start_utc.with_timezone(&timezone).to_rfc3339());
-        interval_end_exchange_local.push(end_utc.with_timezone(&timezone).to_rfc3339());
+        interval_start_exchange_local.push(local_boundary_projection.interval_start_exchange_local);
+        interval_end_exchange_local.push(local_boundary_projection.interval_end_exchange_local);
     }
 
     Ok(HourlyIntervalIndexing {
@@ -963,7 +1032,36 @@ fn build_hourly_interval_indexing(
         interval_end_utc_nanos,
         interval_start_exchange_local,
         interval_end_exchange_local,
+        skipped_local_hour_interval_count,
+        repeated_local_hour_interval_count,
     })
+}
+
+fn project_interval_boundaries_to_exchange_local(
+    interval_start_utc: DateTime<Utc>,
+    interval_end_utc: DateTime<Utc>,
+    timezone: &Tz,
+) -> ExchangeLocalIntervalBoundaryProjection {
+    let interval_start_exchange_local = interval_start_utc.with_timezone(timezone);
+    let interval_end_exchange_local = interval_end_utc.with_timezone(timezone);
+    let wall_clock_seconds_between_boundaries = interval_end_exchange_local
+        .naive_local()
+        .signed_duration_since(interval_start_exchange_local.naive_local())
+        .num_seconds();
+    let transition_kind =
+        if wall_clock_seconds_between_boundaries > ONE_HOUR_NANOS / ONE_SECOND_NANOS {
+            ExchangeLocalHourTransitionKind::Skipped
+        } else if wall_clock_seconds_between_boundaries < ONE_HOUR_NANOS / ONE_SECOND_NANOS {
+            ExchangeLocalHourTransitionKind::Repeated
+        } else {
+            ExchangeLocalHourTransitionKind::Standard
+        };
+
+    ExchangeLocalIntervalBoundaryProjection {
+        interval_start_exchange_local: interval_start_exchange_local.to_rfc3339(),
+        interval_end_exchange_local: interval_end_exchange_local.to_rfc3339(),
+        transition_kind,
+    }
 }
 
 fn aggregate_source_points_in_interval(
@@ -1138,7 +1236,9 @@ mod tests {
     use crate::hourly_factors::{
         DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
         DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD, HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
-        HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY, HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
+        HOURLY_FACTOR_FALL_BACK_POLICY, HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
+        HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY, HOURLY_FACTOR_SPRING_FORWARD_POLICY,
+        HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
         HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
         HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION, HourlyFactorContractError,
         build_hourly_factor_contract, materialize_hourly_news_intensity_factors,
@@ -1172,6 +1272,18 @@ mod tests {
             HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY
         );
         assert_eq!(
+            output.metadata.timezone_transition_policy,
+            HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY
+        );
+        assert_eq!(
+            output.metadata.spring_forward_policy,
+            HOURLY_FACTOR_SPRING_FORWARD_POLICY
+        );
+        assert_eq!(
+            output.metadata.fall_back_policy,
+            HOURLY_FACTOR_FALL_BACK_POLICY
+        );
+        assert_eq!(
             output.metadata.seasonality_materialization_method,
             DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD
         );
@@ -1180,6 +1292,8 @@ mod tests {
             "calendar_closed_window_baseline.v1"
         );
         assert_eq!(output.diagnostics.interval_count, 3);
+        assert_eq!(output.diagnostics.skipped_local_hour_interval_count, 0);
+        assert_eq!(output.diagnostics.repeated_local_hour_interval_count, 0);
     }
 
     #[test]
@@ -1210,6 +1324,84 @@ mod tests {
             assert!(interval_start < interval_end);
             assert_eq!(interval_end - interval_start, 3_600_000_000_000);
         }
+    }
+
+    #[test]
+    fn hourly_factor_contract_spring_forward_policy_skips_nonexistent_local_hour_labels() {
+        let registry = build_calendar_registry();
+        let output = build_hourly_factor_contract(
+            &registry,
+            "XNYS",
+            parse_timestamp("2026-03-08T06:00:00Z"),
+            parse_timestamp("2026-03-08T09:00:00Z"),
+            &[1.0, 1.0, 1.0],
+            &[0.0, 0.0, 0.0],
+            DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+            DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+        )
+        .expect("hourly factor contract build should succeed");
+
+        assert_eq!(
+            output.interval_start_exchange_local,
+            vec![
+                "2026-03-08T01:00:00-05:00",
+                "2026-03-08T03:00:00-04:00",
+                "2026-03-08T04:00:00-04:00",
+            ]
+        );
+        assert_eq!(
+            output.interval_end_exchange_local,
+            vec![
+                "2026-03-08T03:00:00-04:00",
+                "2026-03-08T04:00:00-04:00",
+                "2026-03-08T05:00:00-04:00",
+            ]
+        );
+        assert_eq!(
+            output.metadata.spring_forward_policy,
+            HOURLY_FACTOR_SPRING_FORWARD_POLICY
+        );
+        assert_eq!(output.diagnostics.skipped_local_hour_interval_count, 1);
+        assert_eq!(output.diagnostics.repeated_local_hour_interval_count, 0);
+    }
+
+    #[test]
+    fn hourly_factor_contract_fall_back_policy_preserves_repeated_local_hour_labels() {
+        let registry = build_calendar_registry();
+        let output = build_hourly_factor_contract(
+            &registry,
+            "XNYS",
+            parse_timestamp("2026-11-01T05:00:00Z"),
+            parse_timestamp("2026-11-01T08:00:00Z"),
+            &[1.0, 1.0, 1.0],
+            &[0.0, 0.0, 0.0],
+            DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+            DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+        )
+        .expect("hourly factor contract build should succeed");
+
+        assert_eq!(
+            output.interval_start_exchange_local,
+            vec![
+                "2026-11-01T01:00:00-04:00",
+                "2026-11-01T01:00:00-05:00",
+                "2026-11-01T02:00:00-05:00",
+            ]
+        );
+        assert_eq!(
+            output.interval_end_exchange_local,
+            vec![
+                "2026-11-01T01:00:00-05:00",
+                "2026-11-01T02:00:00-05:00",
+                "2026-11-01T03:00:00-05:00",
+            ]
+        );
+        assert_eq!(
+            output.metadata.fall_back_policy,
+            HOURLY_FACTOR_FALL_BACK_POLICY
+        );
+        assert_eq!(output.diagnostics.skipped_local_hour_interval_count, 0);
+        assert_eq!(output.diagnostics.repeated_local_hour_interval_count, 1);
     }
 
     #[test]
@@ -1310,6 +1502,12 @@ mod tests {
             output.metadata.sparse_fallback_policy,
             "previous_materialized_then_global_mean.v1"
         );
+        assert_eq!(
+            output.metadata.timezone_transition_policy,
+            HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY
+        );
+        assert_eq!(output.diagnostics.skipped_local_hour_interval_count, 0);
+        assert_eq!(output.diagnostics.repeated_local_hour_interval_count, 0);
     }
 
     #[test]
@@ -1369,6 +1567,85 @@ mod tests {
     }
 
     #[test]
+    fn seasonality_materializer_assigns_transition_boundary_observations_deterministically() {
+        let registry = build_calendar_registry();
+
+        let spring_forward_output = materialize_hourly_seasonality_factors(
+            &registry,
+            "XNYS",
+            parse_timestamp("2026-03-08T06:00:00Z"),
+            parse_timestamp("2026-03-08T09:00:00Z"),
+            &[
+                parse_timestamp("2026-03-08T06:30:00Z")
+                    .timestamp_nanos_opt()
+                    .expect("timestamp fixture must be in range"),
+                parse_timestamp("2026-03-08T07:00:00Z")
+                    .timestamp_nanos_opt()
+                    .expect("timestamp fixture must be in range"),
+                parse_timestamp("2026-03-08T08:00:00Z")
+                    .timestamp_nanos_opt()
+                    .expect("timestamp fixture must be in range"),
+            ],
+            &[1.0, 2.0, 3.0],
+            "previous_observation_carry_forward.v1",
+            "last_observation.v1",
+            "global_mean.v1",
+            1,
+        )
+        .expect("seasonality materialization should succeed");
+        assert_eq!(spring_forward_output.s_h, vec![1.0, 2.0, 3.0]);
+        assert_eq!(
+            spring_forward_output
+                .diagnostics
+                .skipped_local_hour_interval_count,
+            1
+        );
+        assert_eq!(
+            spring_forward_output
+                .diagnostics
+                .repeated_local_hour_interval_count,
+            0
+        );
+
+        let fall_back_output = materialize_hourly_seasonality_factors(
+            &registry,
+            "XNYS",
+            parse_timestamp("2026-11-01T05:00:00Z"),
+            parse_timestamp("2026-11-01T08:00:00Z"),
+            &[
+                parse_timestamp("2026-11-01T05:00:00Z")
+                    .timestamp_nanos_opt()
+                    .expect("timestamp fixture must be in range"),
+                parse_timestamp("2026-11-01T06:00:00Z")
+                    .timestamp_nanos_opt()
+                    .expect("timestamp fixture must be in range"),
+                parse_timestamp("2026-11-01T07:00:00Z")
+                    .timestamp_nanos_opt()
+                    .expect("timestamp fixture must be in range"),
+            ],
+            &[1.5, 2.5, 3.5],
+            "previous_observation_carry_forward.v1",
+            "last_observation.v1",
+            "global_mean.v1",
+            1,
+        )
+        .expect("seasonality materialization should succeed");
+        assert_eq!(fall_back_output.s_h, vec![1.5, 2.5, 3.5]);
+        assert_eq!(
+            fall_back_output
+                .diagnostics
+                .skipped_local_hour_interval_count,
+            0
+        );
+        assert_eq!(
+            fall_back_output
+                .diagnostics
+                .repeated_local_hour_interval_count,
+            1
+        );
+    }
+
+    #[test]
     fn news_intensity_materializer_applies_closed_window_baseline_and_open_window_overrides() {
         let registry = build_calendar_registry();
         let output = materialize_hourly_news_intensity_factors(
@@ -1395,6 +1672,12 @@ mod tests {
         assert_eq!(output.diagnostics.fully_open_interval_count, 2);
         assert_eq!(output.diagnostics.mixed_state_interval_count, 1);
         assert_eq!(output.diagnostics.open_window_override_interval_count, 2);
+        assert_eq!(
+            output.metadata.timezone_transition_policy,
+            HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY
+        );
+        assert_eq!(output.diagnostics.skipped_local_hour_interval_count, 0);
+        assert_eq!(output.diagnostics.repeated_local_hour_interval_count, 0);
     }
 
     #[test]
