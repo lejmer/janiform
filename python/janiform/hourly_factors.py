@@ -31,6 +31,54 @@ HOURLY_FACTOR_FALL_BACK_POLICY: str = (
 )
 
 
+class HourlyFactorProviderError(Exception):
+    """Base class for shared hourly factor provider failures."""
+
+
+class HourlyFactorProviderMissingInputError(HourlyFactorProviderError):
+    """Raised when required seasonality or news-intensity source input is missing."""
+
+
+class HourlyFactorProviderUnsupportedRangeError(HourlyFactorProviderError):
+    """Raised when the requested range is unsupported by hourly interval rules."""
+
+
+@dataclass(frozen=True, slots=True)
+class HourlySeasonalityProviderExplicitSource:
+    hourly_factors: Sequence[float]
+    materialization_method: str = DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD
+
+
+@dataclass(frozen=True, slots=True)
+class HourlySeasonalityProviderMaterializedSource:
+    source_timestamps_utc: Sequence[datetime]
+    source_seasonality_factors: Sequence[float]
+    interpolation_method: str = DEFAULT_SEASONALITY_INTERPOLATION_METHOD
+    aggregation_method: str = DEFAULT_SEASONALITY_AGGREGATION_METHOD
+    sparse_fallback_policy: str = DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY
+    sparse_hour_minimum_observation_count: int = DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT
+
+
+@dataclass(frozen=True, slots=True)
+class HourlyNewsIntensityProviderExplicitSource:
+    hourly_factors: Sequence[float]
+    materialization_method: str = DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD
+
+
+@dataclass(frozen=True, slots=True)
+class HourlyNewsIntensityProviderMaterializedSource:
+    closed_window_baseline_intensity: float
+    open_window_override_by_interval_index: Mapping[int, float] | None = None
+
+
+type HourlySeasonalityProviderSource = (
+    HourlySeasonalityProviderExplicitSource | HourlySeasonalityProviderMaterializedSource
+)
+type HourlyNewsIntensityProviderSource = (
+    HourlyNewsIntensityProviderExplicitSource | HourlyNewsIntensityProviderMaterializedSource
+)
+
+
 @dataclass(frozen=True, slots=True)
 class HourlyFactorOutputSchema:
     """Describes the required fields and policies of hourly factor outputs."""
@@ -555,6 +603,60 @@ class HourlyNewsIntensityMaterialization:
         return cast(str, self._native_result.fall_back_policy)
 
 
+def provide_hourly_factor_contract(
+    *,
+    calendar_registry: CalendarRegistry,
+    exchange_code: str,
+    range_start_utc: datetime,
+    range_end_utc: datetime,
+    seasonality_source: HourlySeasonalityProviderSource | None = None,
+    news_intensity_source: HourlyNewsIntensityProviderSource | None = None,
+) -> HourlyFactorContract:
+    """
+    Resolve one canonical hourly factor contract from shared seasonality and news-intensity sources.
+
+    The shared provider enforces one deterministic interval assignment path for pricing and simulation.
+    """
+
+    native: ModuleType = native_module()
+    normalized_range_start_utc = _normalize_utc_timestamp(range_start_utc, field_name="range_start_utc")
+    normalized_range_end_utc = _normalize_utc_timestamp(range_end_utc, field_name="range_end_utc")
+    serialized_seasonality_source = (
+        _serialize_seasonality_provider_source(seasonality_source)
+        if seasonality_source is not None
+        else None
+    )
+    serialized_news_intensity_source = (
+        _serialize_news_intensity_provider_source(news_intensity_source)
+        if news_intensity_source is not None
+        else None
+    )
+
+    try:
+        native_result: object = native.provide_hourly_factor_contract(
+            calendar_registry._native_registry,
+            exchange_code,
+            normalized_range_start_utc.isoformat(),
+            normalized_range_end_utc.isoformat(),
+            seasonality_source=serialized_seasonality_source,
+            news_intensity_source=serialized_news_intensity_source,
+        )
+    except native.HourlyFactorProviderMissingInputError as e:
+        raise HourlyFactorProviderMissingInputError(str(e)) from e
+    except native.HourlyFactorProviderUnsupportedRangeError as e:
+        raise HourlyFactorProviderUnsupportedRangeError(str(e)) from e
+    except native.SeasonalityInputValidationError as e:
+        raise SeasonalityInputValidationError(str(e)) from e
+    except native.CalendarMissingExchangeError as e:
+        raise CalendarMissingExchangeError(str(e)) from e
+    except native.CalendarInvalidTimezoneError as e:
+        raise CalendarInvalidTimezoneError(str(e)) from e
+    except native.CalendarTimestampParseError as e:
+        raise CalendarInvalidTimestampError(str(e)) from e
+
+    return HourlyFactorContract(native_result)
+
+
 def build_hourly_factor_contract(
     *,
     calendar_registry: CalendarRegistry,
@@ -600,6 +702,70 @@ def build_hourly_factor_contract(
         raise CalendarInvalidTimestampError(str(e)) from e
 
     return HourlyFactorContract(native_result)
+
+
+def _serialize_seasonality_provider_source(
+    seasonality_source: HourlySeasonalityProviderSource,
+) -> dict[str, object]:
+    match seasonality_source:
+        case HourlySeasonalityProviderExplicitSource():
+            return {
+                "source_kind": 'explicit',
+                "hourly_factors": list(seasonality_source.hourly_factors),
+                "materialization_method": seasonality_source.materialization_method,
+            }
+        case HourlySeasonalityProviderMaterializedSource():
+            normalized_source_timestamps_utc = [
+                _normalize_utc_timestamp(source_timestamp_utc, field_name="source_timestamps_utc")
+                for source_timestamp_utc in seasonality_source.source_timestamps_utc
+            ]
+            return {
+                "source_kind": 'materialized',
+                "source_timestamp_utc": [
+                    source_timestamp_utc.isoformat()
+                    for source_timestamp_utc in normalized_source_timestamps_utc
+                ],
+                "source_seasonality_factors": list(seasonality_source.source_seasonality_factors),
+                "interpolation_method": seasonality_source.interpolation_method,
+                "aggregation_method": seasonality_source.aggregation_method,
+                "sparse_fallback_policy": seasonality_source.sparse_fallback_policy,
+                "sparse_hour_minimum_observation_count": (
+                    seasonality_source.sparse_hour_minimum_observation_count
+                ),
+            }
+        case _:
+            raise SeasonalityInputValidationError(
+                "seasonality_source must be HourlySeasonalityProviderExplicitSource or "
+                "HourlySeasonalityProviderMaterializedSource",
+            )
+
+
+def _serialize_news_intensity_provider_source(
+    news_intensity_source: HourlyNewsIntensityProviderSource,
+) -> dict[str, object]:
+    match news_intensity_source:
+        case HourlyNewsIntensityProviderExplicitSource():
+            return {
+                "source_kind": 'explicit',
+                "hourly_factors": list(news_intensity_source.hourly_factors),
+                "materialization_method": news_intensity_source.materialization_method,
+            }
+        case HourlyNewsIntensityProviderMaterializedSource():
+            open_window_override_by_interval_index = (
+                dict(news_intensity_source.open_window_override_by_interval_index)
+                if news_intensity_source.open_window_override_by_interval_index is not None
+                else {}
+            )
+            return {
+                "source_kind": 'materialized',
+                "closed_window_baseline_intensity": news_intensity_source.closed_window_baseline_intensity,
+                "open_window_override_by_interval_index": open_window_override_by_interval_index,
+            }
+        case _:
+            raise SeasonalityInputValidationError(
+                "news_intensity_source must be HourlyNewsIntensityProviderExplicitSource or "
+                "HourlyNewsIntensityProviderMaterializedSource",
+            )
 
 
 def materialize_hourly_seasonality_factors(
@@ -729,14 +895,24 @@ __all__ = [
     "HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA",
     "HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION",
     "HourlyFactorContract",
+    "HourlyFactorProviderError",
+    "HourlyFactorProviderMissingInputError",
+    "HourlyFactorProviderUnsupportedRangeError",
     "HourlyFactorOutputSchema",
+    "HourlyNewsIntensityProviderExplicitSource",
+    "HourlyNewsIntensityProviderMaterializedSource",
+    "HourlyNewsIntensityProviderSource",
     "HourlyNewsIntensityMaterialization",
     "HourlyNewsIntensityMaterializationOutputSchema",
     "HourlyNewsIntensityMaterializationSettings",
+    "HourlySeasonalityProviderExplicitSource",
+    "HourlySeasonalityProviderMaterializedSource",
+    "HourlySeasonalityProviderSource",
     "HourlySeasonalityMaterialization",
     "HourlySeasonalityMaterializationOutputSchema",
     "HourlySeasonalityMaterializationSettings",
     "build_hourly_factor_contract",
     "materialize_hourly_news_intensity_factors",
     "materialize_hourly_seasonality_factors",
+    "provide_hourly_factor_contract",
 ]

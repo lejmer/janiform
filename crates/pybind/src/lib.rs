@@ -5,6 +5,11 @@ use janiform_core::calendar::{
     TimestampEventPreprocessingError, TimestampEventPreprocessingOutput,
     TimestampEventSessionFilter,
 };
+use janiform_core::hourly_factor_provider::{
+    HourlyFactorProviderError, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
+    HourlySeasonalityFactorSource,
+    provide_hourly_factor_contract as provide_hourly_factor_contract_core,
+};
 use janiform_core::hourly_factors::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_SEASONALITY_AGGREGATION_METHOD,
     DEFAULT_SEASONALITY_INTERPOLATION_METHOD, DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY,
@@ -40,6 +45,12 @@ create_exception!(_native, CalendarMissingExchangeError, PyException);
 create_exception!(_native, CalendarRegistryLoadError, PyException);
 create_exception!(_native, CalendarTimestampParseError, PyValueError);
 create_exception!(_native, SeasonalityInputValidationError, PyValueError);
+create_exception!(_native, HourlyFactorProviderMissingInputError, PyValueError);
+create_exception!(
+    _native,
+    HourlyFactorProviderUnsupportedRangeError,
+    PyValueError
+);
 
 #[pyclass(module = "janiform._native", name = "CalendarRegistry")]
 struct PyCalendarRegistry {
@@ -113,6 +124,32 @@ struct PyHourlySeasonalityMaterializationResult {
 #[derive(Clone)]
 struct PyHourlyNewsIntensityMaterializationResult {
     output: HourlyNewsIntensityMaterializationOutput,
+}
+
+enum ParsedHourlyProviderSeasonalitySource {
+    Explicit {
+        hourly_factors: Vec<f64>,
+        materialization_method: String,
+    },
+    Materialized {
+        source_timestamp_utc_nanos: Vec<i64>,
+        source_seasonality_factors: Vec<f64>,
+        interpolation_method: String,
+        aggregation_method: String,
+        sparse_fallback_policy: String,
+        sparse_hour_minimum_observation_count: usize,
+    },
+}
+
+enum ParsedHourlyProviderNewsIntensitySource {
+    Explicit {
+        hourly_factors: Vec<f64>,
+        materialization_method: String,
+    },
+    Materialized {
+        closed_window_baseline_intensity: f64,
+        open_window_override_by_interval_index: Vec<(u64, f64)>,
+    },
 }
 
 #[pymethods]
@@ -1537,6 +1574,372 @@ fn materialize_hourly_news_intensity_factors(
     Ok(PyHourlyNewsIntensityMaterializationResult { output })
 }
 
+#[pyfunction]
+#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, *, seasonality_source = None, news_intensity_source = None))]
+fn provide_hourly_factor_contract(
+    py: Python<'_>,
+    calendar_registry: &PyCalendarRegistry,
+    exchange_code: &str,
+    range_start_utc: &str,
+    range_end_utc: &str,
+    seasonality_source: Option<&Bound<'_, PyAny>>,
+    news_intensity_source: Option<&Bound<'_, PyAny>>,
+) -> PyResult<PyHourlyFactorContractResult> {
+    let parsed_range_start_utc = parse_timestamp_utc(range_start_utc)?;
+    let parsed_range_end_utc = parse_timestamp_utc(range_end_utc)?;
+    let parsed_seasonality_source = if let Some(raw_seasonality_source) = seasonality_source {
+        if raw_seasonality_source.is_none() {
+            None
+        } else {
+            Some(parse_hourly_provider_seasonality_source(
+                raw_seasonality_source,
+            )?)
+        }
+    } else {
+        None
+    };
+    let parsed_news_intensity_source =
+        if let Some(raw_news_intensity_source) = news_intensity_source {
+            if raw_news_intensity_source.is_none() {
+                None
+            } else {
+                Some(parse_hourly_provider_news_intensity_source(
+                    raw_news_intensity_source,
+                )?)
+            }
+        } else {
+            None
+        };
+
+    let output = py
+        .allow_threads(move || {
+            let provider_seasonality_source = match &parsed_seasonality_source {
+                Some(ParsedHourlyProviderSeasonalitySource::Explicit {
+                    hourly_factors,
+                    materialization_method,
+                }) => Some(HourlySeasonalityFactorSource::Explicit {
+                    hourly_factors,
+                    materialization_method,
+                }),
+                Some(ParsedHourlyProviderSeasonalitySource::Materialized {
+                    source_timestamp_utc_nanos,
+                    source_seasonality_factors,
+                    interpolation_method,
+                    aggregation_method,
+                    sparse_fallback_policy,
+                    sparse_hour_minimum_observation_count,
+                }) => Some(HourlySeasonalityFactorSource::Materialized {
+                    source_timestamp_utc_nanos,
+                    source_seasonality_factors,
+                    interpolation_method,
+                    aggregation_method,
+                    sparse_fallback_policy,
+                    sparse_hour_minimum_observation_count: *sparse_hour_minimum_observation_count,
+                }),
+                None => None,
+            };
+
+            let provider_news_intensity_source = match &parsed_news_intensity_source {
+                Some(ParsedHourlyProviderNewsIntensitySource::Explicit {
+                    hourly_factors,
+                    materialization_method,
+                }) => Some(HourlyNewsIntensityFactorSource::Explicit {
+                    hourly_factors,
+                    materialization_method,
+                }),
+                Some(ParsedHourlyProviderNewsIntensitySource::Materialized {
+                    closed_window_baseline_intensity,
+                    open_window_override_by_interval_index,
+                }) => Some(HourlyNewsIntensityFactorSource::Materialized {
+                    closed_window_baseline_intensity: *closed_window_baseline_intensity,
+                    open_window_override_by_interval_index,
+                }),
+                None => None,
+            };
+
+            provide_hourly_factor_contract_core(
+                &calendar_registry.registry,
+                HourlyFactorProviderRequest {
+                    exchange_code,
+                    range_start_utc: parsed_range_start_utc,
+                    range_end_utc: parsed_range_end_utc,
+                    seasonality_source: provider_seasonality_source,
+                    news_intensity_source: provider_news_intensity_source,
+                },
+            )
+        })
+        .map_err(map_hourly_factor_provider_error)?;
+
+    Ok(PyHourlyFactorContractResult { output })
+}
+
+fn parse_hourly_provider_seasonality_source(
+    raw_seasonality_source: &Bound<'_, PyAny>,
+) -> PyResult<ParsedHourlyProviderSeasonalitySource> {
+    let source_mapping = raw_seasonality_source
+        .downcast::<PyMapping>()
+        .map_err(|_| {
+            SeasonalityInputValidationError::new_err(
+                "seasonality_source must be a mapping with source_kind and source fields",
+            )
+        })?;
+
+    let source_kind_value = source_mapping
+        .contains("source_kind")?
+        .then(|| source_mapping.get_item("source_kind"))
+        .ok_or_else(|| {
+            SeasonalityInputValidationError::new_err(
+                "seasonality_source is missing required field 'source_kind'",
+            )
+        })??;
+    let source_kind: String = source_kind_value.extract().map_err(|_| {
+        SeasonalityInputValidationError::new_err(
+            "seasonality_source field 'source_kind' must be a string",
+        )
+    })?;
+
+    match source_kind.as_str() {
+        "explicit" => {
+            let hourly_factors_value = source_mapping
+                .contains("hourly_factors")?
+                .then(|| source_mapping.get_item("hourly_factors"))
+                .ok_or_else(|| {
+                    SeasonalityInputValidationError::new_err(
+                        "seasonality_source with source_kind='explicit' is missing required field 'hourly_factors'",
+                    )
+                })??;
+            let hourly_factors: Vec<f64> = hourly_factors_value.extract().map_err(|_| {
+                SeasonalityInputValidationError::new_err(
+                    "seasonality_source field 'hourly_factors' must be an iterable of float values",
+                )
+            })?;
+            let materialization_method = if source_mapping.contains("materialization_method")? {
+                let materialization_method_value =
+                    source_mapping.get_item("materialization_method")?;
+                materialization_method_value.extract().map_err(|_| {
+                    SeasonalityInputValidationError::new_err(
+                        "seasonality_source field 'materialization_method' must be a string",
+                    )
+                })?
+            } else {
+                DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD.to_string()
+            };
+
+            Ok(ParsedHourlyProviderSeasonalitySource::Explicit {
+                hourly_factors,
+                materialization_method,
+            })
+        }
+        "materialized" => {
+            let source_timestamp_utc_value = source_mapping
+                .contains("source_timestamp_utc")?
+                .then(|| source_mapping.get_item("source_timestamp_utc"))
+                .ok_or_else(|| {
+                    SeasonalityInputValidationError::new_err(
+                        "seasonality_source with source_kind='materialized' is missing required field 'source_timestamp_utc'",
+                    )
+                })??;
+            let source_timestamp_utc: Vec<String> = source_timestamp_utc_value.extract().map_err(|_| {
+                SeasonalityInputValidationError::new_err(
+                    "seasonality_source field 'source_timestamp_utc' must be an iterable of RFC3339 timestamp strings",
+                )
+            })?;
+            let mut source_timestamp_utc_nanos: Vec<i64> =
+                Vec::with_capacity(source_timestamp_utc.len());
+            for (source_position, raw_timestamp_utc) in source_timestamp_utc.iter().enumerate() {
+                let parsed_timestamp_utc = DateTime::parse_from_rfc3339(raw_timestamp_utc)
+                    .map(|timestamp| timestamp.with_timezone(&Utc))
+                    .map_err(|_| {
+                        SeasonalityInputValidationError::new_err(format!(
+                            "seasonality_source field 'source_timestamp_utc' at position {source_position} must be a RFC3339 timestamp with UTC offset, received `{raw_timestamp_utc}`",
+                        ))
+                    })?;
+                let parsed_timestamp_utc_nanos =
+                    parsed_timestamp_utc
+                        .timestamp_nanos_opt()
+                        .ok_or_else(|| {
+                            SeasonalityInputValidationError::new_err(format!(
+                                "seasonality_source field 'source_timestamp_utc' at position {source_position} is outside the supported nanosecond timestamp range",
+                            ))
+                        })?;
+                source_timestamp_utc_nanos.push(parsed_timestamp_utc_nanos);
+            }
+
+            let source_seasonality_factors_value = source_mapping
+                .contains("source_seasonality_factors")?
+                .then(|| source_mapping.get_item("source_seasonality_factors"))
+                .ok_or_else(|| {
+                    SeasonalityInputValidationError::new_err(
+                        "seasonality_source with source_kind='materialized' is missing required field 'source_seasonality_factors'",
+                    )
+                })??;
+            let source_seasonality_factors: Vec<f64> =
+                source_seasonality_factors_value.extract().map_err(|_| {
+                    SeasonalityInputValidationError::new_err(
+                        "seasonality_source field 'source_seasonality_factors' must be an iterable of float values",
+                    )
+                })?;
+
+            let interpolation_method = if source_mapping.contains("interpolation_method")? {
+                let interpolation_method_value = source_mapping.get_item("interpolation_method")?;
+                interpolation_method_value.extract().map_err(|_| {
+                    SeasonalityInputValidationError::new_err(
+                        "seasonality_source field 'interpolation_method' must be a string",
+                    )
+                })?
+            } else {
+                DEFAULT_SEASONALITY_INTERPOLATION_METHOD.to_string()
+            };
+            let aggregation_method = if source_mapping.contains("aggregation_method")? {
+                let aggregation_method_value = source_mapping.get_item("aggregation_method")?;
+                aggregation_method_value.extract().map_err(|_| {
+                    SeasonalityInputValidationError::new_err(
+                        "seasonality_source field 'aggregation_method' must be a string",
+                    )
+                })?
+            } else {
+                DEFAULT_SEASONALITY_AGGREGATION_METHOD.to_string()
+            };
+            let sparse_fallback_policy = if source_mapping.contains("sparse_fallback_policy")? {
+                let sparse_fallback_policy_value =
+                    source_mapping.get_item("sparse_fallback_policy")?;
+                sparse_fallback_policy_value.extract().map_err(|_| {
+                    SeasonalityInputValidationError::new_err(
+                        "seasonality_source field 'sparse_fallback_policy' must be a string",
+                    )
+                })?
+            } else {
+                DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY.to_string()
+            };
+            let sparse_hour_minimum_observation_count = if source_mapping
+                .contains("sparse_hour_minimum_observation_count")?
+            {
+                let sparse_threshold_value =
+                    source_mapping.get_item("sparse_hour_minimum_observation_count")?;
+                sparse_threshold_value.extract().map_err(|_| {
+                        SeasonalityInputValidationError::new_err(
+                            "seasonality_source field 'sparse_hour_minimum_observation_count' must be an integer",
+                        )
+                    })?
+            } else {
+                DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT
+            };
+
+            Ok(ParsedHourlyProviderSeasonalitySource::Materialized {
+                source_timestamp_utc_nanos,
+                source_seasonality_factors,
+                interpolation_method,
+                aggregation_method,
+                sparse_fallback_policy,
+                sparse_hour_minimum_observation_count,
+            })
+        }
+        _ => Err(SeasonalityInputValidationError::new_err(
+            "seasonality_source field 'source_kind' must be either 'explicit' or 'materialized'",
+        )),
+    }
+}
+
+fn parse_hourly_provider_news_intensity_source(
+    raw_news_intensity_source: &Bound<'_, PyAny>,
+) -> PyResult<ParsedHourlyProviderNewsIntensitySource> {
+    let source_mapping = raw_news_intensity_source
+        .downcast::<PyMapping>()
+        .map_err(|_| {
+            SeasonalityInputValidationError::new_err(
+                "news_intensity_source must be a mapping with source_kind and source fields",
+            )
+        })?;
+
+    let source_kind_value = source_mapping
+        .contains("source_kind")?
+        .then(|| source_mapping.get_item("source_kind"))
+        .ok_or_else(|| {
+            SeasonalityInputValidationError::new_err(
+                "news_intensity_source is missing required field 'source_kind'",
+            )
+        })??;
+    let source_kind: String = source_kind_value.extract().map_err(|_| {
+        SeasonalityInputValidationError::new_err(
+            "news_intensity_source field 'source_kind' must be a string",
+        )
+    })?;
+
+    match source_kind.as_str() {
+        "explicit" => {
+            let hourly_factors_value = source_mapping
+                .contains("hourly_factors")?
+                .then(|| source_mapping.get_item("hourly_factors"))
+                .ok_or_else(|| {
+                    SeasonalityInputValidationError::new_err(
+                        "news_intensity_source with source_kind='explicit' is missing required field 'hourly_factors'",
+                    )
+                })??;
+            let hourly_factors: Vec<f64> = hourly_factors_value.extract().map_err(|_| {
+                SeasonalityInputValidationError::new_err(
+                    "news_intensity_source field 'hourly_factors' must be an iterable of float values",
+                )
+            })?;
+            let materialization_method = if source_mapping.contains("materialization_method")? {
+                let materialization_method_value =
+                    source_mapping.get_item("materialization_method")?;
+                materialization_method_value.extract().map_err(|_| {
+                    SeasonalityInputValidationError::new_err(
+                        "news_intensity_source field 'materialization_method' must be a string",
+                    )
+                })?
+            } else {
+                DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD.to_string()
+            };
+
+            Ok(ParsedHourlyProviderNewsIntensitySource::Explicit {
+                hourly_factors,
+                materialization_method,
+            })
+        }
+        "materialized" => {
+            let closed_window_baseline_value = source_mapping
+                .contains("closed_window_baseline_intensity")?
+                .then(|| source_mapping.get_item("closed_window_baseline_intensity"))
+                .ok_or_else(|| {
+                    SeasonalityInputValidationError::new_err(
+                        "news_intensity_source with source_kind='materialized' is missing required field 'closed_window_baseline_intensity'",
+                    )
+                })??;
+            let closed_window_baseline_intensity: f64 =
+                closed_window_baseline_value.extract().map_err(|_| {
+                    SeasonalityInputValidationError::new_err(
+                        "news_intensity_source field 'closed_window_baseline_intensity' must be a float",
+                    )
+                })?;
+
+            let open_window_override_by_interval_index: Vec<(u64, f64)> = if source_mapping
+                .contains("open_window_override_by_interval_index")?
+            {
+                let open_window_override_value =
+                    source_mapping.get_item("open_window_override_by_interval_index")?;
+                let parsed_mapping: std::collections::BTreeMap<u64, f64> =
+                    open_window_override_value.extract().map_err(|_| {
+                        SeasonalityInputValidationError::new_err(
+                            "news_intensity_source field 'open_window_override_by_interval_index' must be a mapping of integer interval indices to float intensity values",
+                        )
+                    })?;
+                parsed_mapping.into_iter().collect()
+            } else {
+                Vec::new()
+            };
+
+            Ok(ParsedHourlyProviderNewsIntensitySource::Materialized {
+                closed_window_baseline_intensity,
+                open_window_override_by_interval_index,
+            })
+        }
+        _ => Err(SeasonalityInputValidationError::new_err(
+            "news_intensity_source field 'source_kind' must be either 'explicit' or 'materialized'",
+        )),
+    }
+}
+
 fn parse_scheduled_event_overlay_definitions(
     scheduled_event_overlays: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<Vec<ScheduledEventOverlayDefinition>> {
@@ -2028,6 +2431,23 @@ fn map_hourly_factor_contract_error(error: HourlyFactorContractError) -> PyErr {
     }
 }
 
+fn map_hourly_factor_provider_error(error: HourlyFactorProviderError) -> PyErr {
+    match error {
+        HourlyFactorProviderError::MissingSeasonalitySource
+        | HourlyFactorProviderError::MissingNewsIntensitySource => {
+            HourlyFactorProviderMissingInputError::new_err(error.to_string())
+        }
+        HourlyFactorProviderError::UnsupportedRange { source: _ } => {
+            HourlyFactorProviderUnsupportedRangeError::new_err(error.to_string())
+        }
+        HourlyFactorProviderError::SeasonalitySourceError { source }
+        | HourlyFactorProviderError::NewsIntensitySourceError { source }
+        | HourlyFactorProviderError::ContractValidationError { source } => {
+            map_hourly_factor_contract_error(source)
+        }
+    }
+}
+
 fn map_seasonality_diagnostics_report_error(error: SeasonalityDiagnosticsReportError) -> PyErr {
     match error {
         SeasonalityDiagnosticsReportError::EmptyDatasetId => {
@@ -2251,6 +2671,18 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
         "SeasonalityInputValidationError",
         module.py().get_type::<SeasonalityInputValidationError>(),
     )?;
+    module.add(
+        "HourlyFactorProviderMissingInputError",
+        module
+            .py()
+            .get_type::<HourlyFactorProviderMissingInputError>(),
+    )?;
+    module.add(
+        "HourlyFactorProviderUnsupportedRangeError",
+        module
+            .py()
+            .get_type::<HourlyFactorProviderUnsupportedRangeError>(),
+    )?;
     module.add_class::<PyCalendarRegistry>()?;
     module.add_class::<PyTimestampEventPreprocessingResult>()?;
     module.add_class::<PyIntradaySeasonalityEstimateResult>()?;
@@ -2290,6 +2722,10 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     module.add_function(pyo3::wrap_pyfunction!(
         materialize_hourly_news_intensity_factors,
+        module
+    )?)?;
+    module.add_function(pyo3::wrap_pyfunction!(
+        provide_hourly_factor_contract,
         module
     )?)?;
     Ok(())

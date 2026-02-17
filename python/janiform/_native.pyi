@@ -16,6 +16,12 @@ class CalendarTimestampParseError(ValueError): ...
 class SeasonalityInputValidationError(ValueError): ...
 
 
+class HourlyFactorProviderMissingInputError(ValueError): ...
+
+
+class HourlyFactorProviderUnsupportedRangeError(ValueError): ...
+
+
 class TimestampEventPreprocessingResult:
     @property
     def schema_version(self) -> str: ...
@@ -656,3 +662,14 @@ def materialize_hourly_news_intensity_factors(
     *,
     open_window_override_by_interval_index: object | None = None,
 ) -> HourlyNewsIntensityMaterializationResult: ...
+
+
+def provide_hourly_factor_contract(
+    calendar_registry: CalendarRegistry,
+    exchange_code: str,
+    range_start_utc: str,
+    range_end_utc: str,
+    *,
+    seasonality_source: object | None = None,
+    news_intensity_source: object | None = None,
+) -> HourlyFactorContractResult: ...
