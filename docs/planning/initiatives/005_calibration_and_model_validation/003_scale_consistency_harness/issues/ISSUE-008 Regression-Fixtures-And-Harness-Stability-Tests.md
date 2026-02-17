@@ -4,16 +4,16 @@
 Create regression fixtures and stability tests that lock down harness behavior and protect against unintended changes in consistency outcomes.
 
 ### Acceptance Criteria
-- Fixture set covers representative interval and parameter-regime combinations.
-- Regression suite validates pass-or-fail outcomes against versioned expectations.
-- Harness output remains stable across repeated runs on fixed fixtures.
-- Fixture-update workflow is documented.
+- Fixture set covers representative interval and parameter-regime combinations
+- Regression suite validates pass-or-fail outcomes against versioned expectations
+- Harness output remains stable across repeated runs on fixed fixtures
+- Fixture-update workflow is documented
 
 ### Unit tests
-- Regression tests for scenario outcomes on reference fixtures.
-- Tests for fixture-schema validation and metadata completeness.
-- Determinism tests for repeated harness executions.
+- Scenario outcomes on reference fixtures
+- Fixture-schema validation and metadata completeness
+- Determinism tests for repeated harness executions
 
 ### Notes/Constraints
-- Keep fixture suite compact enough for fast regression runs.
-- Separate deterministic fixture checks from large stochastic benchmark jobs.
+- Keep fixture suite compact enough for fast regression runs
+- Separate deterministic fixture checks from large stochastic benchmark jobs

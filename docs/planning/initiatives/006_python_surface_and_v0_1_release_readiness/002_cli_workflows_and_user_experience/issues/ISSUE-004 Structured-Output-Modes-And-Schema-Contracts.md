@@ -4,16 +4,14 @@
 Implement structured output modes for CLI commands so workflows can integrate reliably with automation pipelines.
 
 ### Acceptance Criteria
-- CLI supports machine-readable output mode for primary workflow commands.
-- Output schemas are documented and versioned for v0.1 stability.
-- Structured output includes run status, key result fields, and error metadata when applicable.
-- Output mode selection is consistent across commands.
+- Output mode selection is consistent across commands
+- Output schema and metadata are machine-readable and documented
 
 ### Unit tests
-- Tests for structured output schema validation per command.
-- Tests for deterministic field ordering or schema compliance.
-- Tests for compatibility of output mode flags across workflows.
+- Structured output schema validation per command
+- Deterministic field ordering or schema compliance
+- Compatibility of output mode flags across workflows
 
 ### Notes/Constraints
-- Keep human-readable and machine-readable outputs clearly separated.
-- Avoid including unstable internal fields in structured output.
+- Keep human-readable and machine-readable outputs clearly separated
+- Avoid including unstable internal fields in structured output

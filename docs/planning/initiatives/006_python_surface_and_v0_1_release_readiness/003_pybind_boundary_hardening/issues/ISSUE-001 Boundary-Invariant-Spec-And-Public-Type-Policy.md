@@ -4,15 +4,15 @@
 Define explicit boundary invariants and public-type policy for the PyO3 layer so only stable Python-facing types are exposed.
 
 ### Acceptance Criteria
-- Boundary invariant document defines ownership and conversion rules at the Rust-to-Python edge.
-- Public type policy lists allowed Python-facing types and disallowed internal leaks.
-- Policy is referenced by pybind module docs and implementation guidelines.
-- Violations are detectable via review checklist or automated checks where feasible.
+- Boundary invariant document defines ownership and conversion rules at the Rust-to-Python edge
+- Public type policy lists allowed Python-facing types and disallowed internal leaks
+- Policy is referenced by pybind module docs and implementation guidelines
+- Violations are detectable via review checklist or automated checks where feasible
 
 ### Unit tests
-- Tests ensuring exposed Python types match approved public contracts.
-- Tests that internal Rust structs are not directly exported.
+- Tests that internal Rust structs are not directly exported
+- Tests ensuring exposed Python types match approved public contracts
 
 ### Notes/Constraints
-- Keep policy minimal and actionable for v0.1.
-- Align naming with public Python API contracts.
+- Keep policy minimal and actionable for v0.1
+- Align naming with public Python API contracts

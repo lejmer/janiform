@@ -4,16 +4,15 @@
 Define and implement stability controls for numerical integration, including tolerance, truncation, and convergence policies for pricing accuracy and runtime balance.
 
 ### Acceptance Criteria
-- Integration policy supports configurable tolerance and truncation controls.
-- Convergence and failure conditions are explicit and documented.
-- Stability controls emit diagnostics when numeric quality is poor.
-- Policy can be tuned without code changes through structured configuration.
+- Integration policy supports configurable tolerance and truncation controls
+- Convergence and failure conditions are explicit and documented
+- Stability controls emit diagnostics when numeric quality is poor
+- Policy can be tuned without code changes through structured configuration
 
 ### Unit tests
-- Tests for convergence behavior on representative fixtures.
-- Tests for failure-path behavior under intentionally poor settings.
-- Tests for configuration validation and defaults.
+- Convergence behavior on representative fixtures and configuration validation and defaults
+- Failure-path behavior under intentionally poor settings
 
 ### Notes/Constraints
-- Keep policy aligned with oracle solver tolerance guidance.
-- Separate numeric quality diagnostics from business-level errors.
+- Keep policy aligned with oracle solver tolerance guidance
+- Separate numeric quality diagnostics from business-level errors

@@ -4,16 +4,14 @@
 Implement schema for diagnostics, metric outputs, and comparison results so calibration quality can be reviewed and replayed.
 
 ### Acceptance Criteria
-- Artifact schema supports stylized-fact metrics and scale-consistency comparison outputs.
-- Metric records include horizon, threshold, and pass or fail metadata.
-- Artifact links to run manifest and stage outputs.
-- Validation catches incomplete metric records and invalid references.
+- Artifact links to run manifest and stage outputs
+- Validation catches incomplete metric records and invalid references
+- Output schema and metadata are machine-readable and documented
 
 ### Unit tests
-- Tests for diagnostics artifact schema validation.
-- Tests for required threshold and status metadata.
-- Tests for artifact-reference integrity to manifest and stage outputs.
+- Required threshold and status metadata and artifact-reference integrity to manifest and stage outputs
+- Diagnostics artifact schema validation
 
 ### Notes/Constraints
-- Reuse metric naming conventions from diagnostics projects.
-- Keep artifact schema stable for downstream reporting tools.
+- Reuse metric naming conventions from diagnostics projects
+- Keep artifact schema stable for downstream reporting tools
