@@ -1,4 +1,4 @@
-## ISSUE-004: Boundary And Daylight Saving Semantics
+## Boundary And Daylight Saving Semantics
 
 ### Description
 Define and implement deterministic handling for hourly interval boundaries during daylight saving transitions and other timezone anomalies.

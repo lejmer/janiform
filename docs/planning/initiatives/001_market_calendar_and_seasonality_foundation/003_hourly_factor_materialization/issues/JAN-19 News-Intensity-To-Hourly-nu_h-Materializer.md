@@ -1,4 +1,4 @@
-## ISSUE-003: News Intensity To Hourly nu_h Materializer
+## News Intensity To Hourly nu_h Materializer
 
 ### Description
 Implement hourly materialization for news intensity `nu_news(t)` into `nu_h` values aligned with the same interval grid as `s_h`.
