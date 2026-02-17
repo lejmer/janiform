@@ -70,6 +70,28 @@ The matrix must always include at least one case for each tag:
 - `boundary`
 - `timezone_sensitive`
 
+Additional holiday-regression tags used by JAN-24:
+
+- `historical_holiday`
+- `holiday_intraday_open_boundary`
+- `holiday_intraday_mid_session`
+- `holiday_intraday_pre_close`
+- `holiday_adjacent_non_holiday`
+
+## Historical Holiday Provenance
+
+Historical holiday closure cases are curated from NYSE weekday full-close conventions and kept in
+the fixture as explicit `holiday_dates` plus timestamped regression cases. The current historical
+set spans 2024 to 2026 and focuses on holidays that are unambiguous full-day closures:
+
+- New Year's Day: `2025-01-01`, `2026-01-01`
+- Independence Day: `2024-07-04`
+
+Each historical holiday date includes key intraday timestamps covering regular-open boundary,
+mid-session, and pre-close windows, all expected to resolve `closed`.
+Adjacent weekday non-holiday timestamps are included to validate that normal `open` classification
+is preserved immediately before and after each holiday closure.
+
 ## Expected Output Semantics
 
 - Session boundaries use half-open semantics `[open, close)`.

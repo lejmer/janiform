@@ -5,6 +5,7 @@ import pytest
 
 from tests.fixture_validation import (
     CALENDAR_REGRESSION_FIXTURE_SET_ID,
+    CalendarRegressionCase,
     CalendarRegressionFixtureDocument,
     ValidationFixtureManifestDocument,
     ValidationFixtureManifestEntry,
@@ -106,6 +107,43 @@ def test_calendar_fixture_rejects_invalid_expected_state_values(
     regression_cases[0]["expected_state"] = "invalid"
 
     with pytest.raises(ValueError, match="unsupported expected_state"):
+        validate_calendar_regression_fixture_document(invalid_document)
+
+
+def test_calendar_fixture_historical_holiday_cases_have_unique_exchange_timestamp_pairs(
+    calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
+) -> None:
+    historical_holiday_cases: list[CalendarRegressionCase] = [
+        regression_case
+        for regression_case in calendar_regression_fixture_document["cases"]
+        if "historical_holiday" in regression_case["tags"]
+    ]
+
+    assert historical_holiday_cases
+
+    observed_pairs: set[tuple[str, str]] = set()
+    for regression_case in historical_holiday_cases:
+        exchange_code = regression_case["exchange_code"]
+        timestamp_utc = regression_case["timestamp_utc"]
+        assert regression_case["expected_state"] == "closed"
+        assert isinstance(exchange_code, str)
+        assert isinstance(timestamp_utc, str)
+
+        case_pair: tuple[str, str] = (exchange_code, timestamp_utc)
+        assert case_pair not in observed_pairs
+        observed_pairs.add(case_pair)
+
+
+def test_calendar_fixture_rejects_duplicate_exchange_timestamp_pairs(
+    calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
+) -> None:
+    invalid_document: dict[str, object] = _copy_document(calendar_regression_fixture_document)
+    regression_cases: list[dict[str, object]] = invalid_document["cases"]
+    duplicate_case: dict[str, object] = dict(regression_cases[0])
+    duplicate_case["fixture_id"] = "duplicate_exchange_timestamp_case"
+    regression_cases.append(duplicate_case)
+
+    with pytest.raises(ValueError, match="duplicate exchange_code and timestamp_utc pair"):
         validate_calendar_regression_fixture_document(invalid_document)
 
 

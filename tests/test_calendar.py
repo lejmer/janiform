@@ -34,6 +34,13 @@ EXPECTED_BOUNDARY_FIXTURE_IDS: set[str] = {
     "xtks_after_utc_midnight_transition",
 }
 
+HISTORICAL_HOLIDAY_YEARS: set[int] = {2024, 2025, 2026}
+HISTORICAL_HOLIDAY_INTRADAY_TAGS: set[str] = {
+    "holiday_intraday_open_boundary",
+    "holiday_intraday_mid_session",
+    "holiday_intraday_pre_close",
+}
+
 
 def test_calendar_regression_fixture_covers_required_case_tags(
     calendar_regression_cases: list[CalendarRegressionCase],
@@ -57,6 +64,32 @@ def test_calendar_boundary_fixture_identifiers_remain_stable(
     }
 
     assert observed_boundary_fixture_ids == EXPECTED_BOUNDARY_FIXTURE_IDS
+
+
+def test_historical_holiday_fixture_coverage_spans_years_and_intraday_slots(
+    calendar_regression_cases: list[CalendarRegressionCase],
+) -> None:
+    historical_holiday_cases: list[CalendarRegressionCase] = [
+        regression_case
+        for regression_case in calendar_regression_cases
+        if _case_has_tag(regression_case, "historical_holiday")
+    ]
+
+    assert historical_holiday_cases
+
+    observed_years: set[int] = {
+        _parse_fixture_timestamp(cast(str, regression_case["timestamp_utc"])).year
+        for regression_case in historical_holiday_cases
+    }
+    observed_intraday_tags: set[str] = {
+        tag
+        for regression_case in historical_holiday_cases
+        for tag in cast(list[str], regression_case["tags"])
+        if tag.startswith("holiday_intraday_")
+    }
+
+    assert observed_years == HISTORICAL_HOLIDAY_YEARS
+    assert observed_intraday_tags == HISTORICAL_HOLIDAY_INTRADAY_TAGS
 
 
 def test_resolve_market_state_matches_golden_regression_matrix(
@@ -114,6 +147,44 @@ def test_resolve_market_state_timezone_sensitive_regression_cases(
         expected_state: MarketState = _expected_market_state(cast(str, regression_case["expected_state"]))
 
         assert calendar_registry.resolve_market_state(exchange_code, timestamp_utc) == expected_state
+
+
+def test_resolve_market_state_historical_holiday_regression_cases(
+    calendar_registry: CalendarRegistry,
+    calendar_regression_cases: list[CalendarRegressionCase],
+) -> None:
+    historical_holiday_cases: list[CalendarRegressionCase] = [
+        regression_case
+        for regression_case in calendar_regression_cases
+        if _case_has_tag(regression_case, "historical_holiday")
+    ]
+
+    assert historical_holiday_cases
+
+    for regression_case in historical_holiday_cases:
+        exchange_code: str = cast(str, regression_case["exchange_code"])
+        timestamp_utc: datetime = _parse_fixture_timestamp(cast(str, regression_case["timestamp_utc"]))
+
+        assert calendar_registry.resolve_market_state(exchange_code, timestamp_utc) == MarketState.CLOSED
+
+
+def test_resolve_market_state_holiday_adjacent_non_holiday_cases(
+    calendar_registry: CalendarRegistry,
+    calendar_regression_cases: list[CalendarRegressionCase],
+) -> None:
+    adjacent_non_holiday_cases: list[CalendarRegressionCase] = [
+        regression_case
+        for regression_case in calendar_regression_cases
+        if _case_has_tag(regression_case, "holiday_adjacent_non_holiday")
+    ]
+
+    assert adjacent_non_holiday_cases
+
+    for regression_case in adjacent_non_holiday_cases:
+        exchange_code: str = cast(str, regression_case["exchange_code"])
+        timestamp_utc: datetime = _parse_fixture_timestamp(cast(str, regression_case["timestamp_utc"]))
+
+        assert calendar_registry.resolve_market_state(exchange_code, timestamp_utc) == MarketState.OPEN
 
 
 def test_resolve_market_state_function_matches_registry_method(

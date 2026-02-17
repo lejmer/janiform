@@ -258,6 +258,7 @@ def validate_calendar_regression_fixture_document(
         raise ValueError("calendar regression fixture requires at least one case")
 
     observed_fixture_ids: set[str] = set()
+    observed_exchange_timestamp_pairs: set[tuple[str, str]] = set()
     validated_cases: list[CalendarRegressionCase] = []
     for regression_case_value in cases:
         regression_case_map: JsonObject = _require_json_object(regression_case_value, "calendar regression case")
@@ -275,6 +276,16 @@ def validate_calendar_regression_fixture_document(
             raise ValueError(
                 f"calendar regression case references unknown exchange_code: {case_exchange_code}",
             )
+
+        case_timestamp_utc: str = validated_case["timestamp_utc"]
+        exchange_timestamp_pair: tuple[str, str] = (case_exchange_code, case_timestamp_utc)
+        if exchange_timestamp_pair in observed_exchange_timestamp_pairs:
+            raise ValueError(
+                "duplicate exchange_code and timestamp_utc pair in calendar regression fixture: "
+                f"{case_exchange_code} at {case_timestamp_utc}",
+            )
+
+        observed_exchange_timestamp_pairs.add(exchange_timestamp_pair)
 
     return {
         "schema_version": schema_version,
