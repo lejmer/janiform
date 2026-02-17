@@ -6,25 +6,33 @@ use chrono::{DateTime, Datelike, Utc};
 use janiform_core::calendar::{ExchangeCalendarRegistry, MarketState};
 
 use support::validation_fixture::{
-    CalendarRegressionCaseFixture, CalendarRegressionFixtureDocument,
-    load_calendar_regression_fixture_from_manifest,
+    load_calendar_regression_fixture_from_manifest, CalendarRegressionCaseFixture,
+    CalendarRegressionFixtureDocument,
 };
 
-const REQUIRED_CASE_TAGS: [&str; 6] = [
+const REQUIRED_CASE_TAGS: [&str; 9] = [
     "regular_session",
     "weekend",
     "holiday",
     "early_close",
     "boundary",
     "timezone_sensitive",
+    "delayed_open",
+    "session_anomaly",
+    "precedence_conflict",
 ];
 
-const EXPECTED_BOUNDARY_FIXTURE_IDS: [&str; 7] = [
+const EXPECTED_BOUNDARY_FIXTURE_IDS: [&str; 12] = [
     "xnys_regular_pre_open",
     "xnys_regular_at_open",
     "xnys_regular_at_close",
     "xnys_early_close_pre_boundary",
     "xnys_early_close_at_boundary",
+    "xnys_early_close_post_boundary",
+    "xnys_delayed_open_regular_open_conflict_at_regular_open",
+    "xnys_delayed_open_pre_boundary",
+    "xnys_delayed_open_at_boundary",
+    "xnys_holiday_overrides_delayed_open_at_boundary",
     "xtks_before_utc_midnight_transition",
     "xtks_after_utc_midnight_transition",
 ];
@@ -224,6 +232,112 @@ fn calendar_regression_holiday_adjacent_non_holiday_cases_resolve_open_market_st
     }
 }
 
+#[test]
+fn calendar_regression_early_close_transition_boundaries_resolve_expected_market_state() {
+    let fixture_document = load_calendar_regression_fixture_document();
+    let registry =
+        ExchangeCalendarRegistry::from_artifact(fixture_document.calendar_registry.clone())
+            .expect("calendar registry fixture should load");
+    let early_close_boundary_case_ids = [
+        "xnys_early_close_pre_boundary",
+        "xnys_early_close_at_boundary",
+        "xnys_early_close_post_boundary",
+    ];
+    let early_close_boundary_cases: Vec<&CalendarRegressionCaseFixture> =
+        early_close_boundary_case_ids
+            .iter()
+            .map(|fixture_id| find_fixture_case_by_id(&fixture_document, fixture_id))
+            .collect();
+
+    assert_eq!(
+        early_close_boundary_cases.len(),
+        early_close_boundary_case_ids.len()
+    );
+
+    for fixture_case in early_close_boundary_cases {
+        assert_fixture_case_matches_market_state(&registry, fixture_case);
+    }
+}
+
+#[test]
+fn calendar_regression_delayed_open_transition_boundaries_resolve_expected_market_state() {
+    let fixture_document = load_calendar_regression_fixture_document();
+    let registry =
+        ExchangeCalendarRegistry::from_artifact(fixture_document.calendar_registry.clone())
+            .expect("calendar registry fixture should load");
+    let delayed_open_transition_case_ids = [
+        "xnys_delayed_open_regular_open_conflict_at_regular_open",
+        "xnys_delayed_open_pre_boundary",
+        "xnys_delayed_open_at_boundary",
+    ];
+    let delayed_open_transition_cases: Vec<&CalendarRegressionCaseFixture> =
+        delayed_open_transition_case_ids
+            .iter()
+            .map(|fixture_id| find_fixture_case_by_id(&fixture_document, fixture_id))
+            .collect();
+
+    assert_eq!(
+        delayed_open_transition_cases.len(),
+        delayed_open_transition_case_ids.len()
+    );
+
+    for fixture_case in delayed_open_transition_cases {
+        assert_fixture_case_matches_market_state(&registry, fixture_case);
+    }
+}
+
+#[test]
+fn calendar_regression_anomaly_precedence_conflict_cases_resolve_closed_market_state() {
+    let fixture_document = load_calendar_regression_fixture_document();
+    let registry = ExchangeCalendarRegistry::from_artifact(fixture_document.calendar_registry)
+        .expect("calendar registry fixture should load");
+    let precedence_conflict_cases: Vec<&CalendarRegressionCaseFixture> = fixture_document
+        .cases
+        .iter()
+        .filter(|fixture_case| {
+            fixture_case
+                .tags
+                .iter()
+                .any(|tag| tag == "precedence_conflict")
+        })
+        .collect();
+
+    assert!(!precedence_conflict_cases.is_empty());
+
+    for fixture_case in precedence_conflict_cases {
+        let timestamp = DateTime::parse_from_rfc3339(&fixture_case.timestamp_utc)
+            .expect("timestamp fixture should use RFC3339 format")
+            .with_timezone(&Utc);
+        let resolved_market_state = registry
+            .resolve_market_state_at_utc(&fixture_case.exchange_code, timestamp)
+            .expect("exchange fixture should exist and include a valid timezone");
+
+        assert_eq!(resolved_market_state, MarketState::Closed);
+    }
+}
+
+#[test]
+fn calendar_regression_anomaly_boundary_timestamps_are_timezone_aware_rfc3339() {
+    let fixture_document = load_calendar_regression_fixture_document();
+    let anomaly_boundary_cases: Vec<&CalendarRegressionCaseFixture> = fixture_document
+        .cases
+        .iter()
+        .filter(|fixture_case| {
+            fixture_case.tags.iter().any(|tag| tag == "session_anomaly")
+                && fixture_case.tags.iter().any(|tag| tag == "boundary")
+        })
+        .collect();
+
+    assert!(!anomaly_boundary_cases.is_empty());
+
+    for fixture_case in anomaly_boundary_cases {
+        let parsed_timestamp = DateTime::parse_from_rfc3339(&fixture_case.timestamp_utc)
+            .expect("timestamp fixture should use RFC3339 format");
+        assert!(fixture_case.timestamp_utc.ends_with('Z'));
+        assert_eq!(parsed_timestamp.offset().local_minus_utc(), 0);
+    }
+}
+
 fn assert_fixture_case_matches_market_state(
     registry: &ExchangeCalendarRegistry,
     fixture_case: &CalendarRegressionCaseFixture,
@@ -255,4 +369,15 @@ fn load_calendar_regression_fixture_document() -> CalendarRegressionFixtureDocum
     load_calendar_regression_fixture_from_manifest()
         .expect("calendar regression fixture should load from shared manifest")
         .fixture_document
+}
+
+fn find_fixture_case_by_id<'fixture>(
+    fixture_document: &'fixture CalendarRegressionFixtureDocument,
+    fixture_id: &str,
+) -> &'fixture CalendarRegressionCaseFixture {
+    fixture_document
+        .cases
+        .iter()
+        .find(|fixture_case| fixture_case.fixture_id == fixture_id)
+        .unwrap_or_else(|| panic!("missing calendar regression fixture case: {fixture_id}"))
 }

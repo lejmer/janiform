@@ -84,7 +84,8 @@
           "2025-07-04",
           "2025-12-25",
           "2026-01-01",
-          "2026-02-03"
+          "2026-02-03",
+          "2026-02-10"
         ],
         "early_close_sessions": [
           {
@@ -93,6 +94,26 @@
               {
                 "label": "early_close",
                 "open_time": "09:30",
+                "close_time": "13:00"
+              }
+            ]
+          },
+          {
+            "date": "2026-02-09",
+            "windows": [
+              {
+                "label": "delayed_open",
+                "open_time": "10:15",
+                "close_time": "16:00"
+              }
+            ]
+          },
+          {
+            "date": "2026-02-10",
+            "windows": [
+              {
+                "label": "delayed_open_conflict",
+                "open_time": "10:15",
                 "close_time": "13:00"
               }
             ]
@@ -424,6 +445,82 @@
         "boundary"
       ],
       "description": "Exact early-close boundary resolves closed."
+    },
+    {
+      "fixture_id": "xnys_early_close_post_boundary",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-04T18:00:01Z",
+      "expected_state": "closed",
+      "tags": [
+        "early_close",
+        "boundary",
+        "session_anomaly"
+      ],
+      "description": "One second after early-close boundary remains closed."
+    },
+    {
+      "fixture_id": "xnys_delayed_open_regular_open_conflict_at_regular_open",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-09T14:30:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "delayed_open",
+        "boundary",
+        "session_anomaly",
+        "precedence_over_regular"
+      ],
+      "description": "At regular open on delayed-open date the market remains closed due to date override precedence."
+    },
+    {
+      "fixture_id": "xnys_delayed_open_pre_boundary",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-09T15:14:59Z",
+      "expected_state": "closed",
+      "tags": [
+        "delayed_open",
+        "boundary",
+        "session_anomaly"
+      ],
+      "description": "One second before delayed-open boundary remains closed."
+    },
+    {
+      "fixture_id": "xnys_delayed_open_at_boundary",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-09T15:15:00Z",
+      "expected_state": "open",
+      "tags": [
+        "delayed_open",
+        "boundary",
+        "session_anomaly"
+      ],
+      "description": "Exact delayed-open boundary resolves open."
+    },
+    {
+      "fixture_id": "xnys_holiday_overrides_delayed_open_at_boundary",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-10T15:15:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "holiday",
+        "delayed_open",
+        "boundary",
+        "session_anomaly",
+        "precedence_conflict"
+      ],
+      "description": "Holiday precedence keeps market closed at delayed-open boundary when both rules overlap."
+    },
+    {
+      "fixture_id": "xnys_holiday_overrides_delayed_open_mid_window",
+      "exchange_code": "XNYS",
+      "timestamp_utc": "2026-02-10T16:00:00Z",
+      "expected_state": "closed",
+      "tags": [
+        "holiday",
+        "delayed_open",
+        "session_anomaly",
+        "precedence_conflict"
+      ],
+      "description": "Holiday precedence keeps market closed inside delayed-open window overlap."
     },
     {
       "fixture_id": "xnys_timezone_same_utc_reference",
