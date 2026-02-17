@@ -1,0 +1,140 @@
+mod support;
+
+use std::collections::BTreeSet;
+use std::fs;
+
+use serde_json::Value;
+
+use support::validation_fixture::{
+    load_calendar_regression_fixture_from_manifest, load_manifest_entry_payload,
+    load_validation_fixture_manifest_document, sorted_manifest_entries,
+    validate_calendar_regression_fixture_document, CalendarRegressionFixtureDocument,
+    ValidationFixtureManifestDocument, fixtures_root_path,
+};
+
+#[test]
+fn validation_fixture_manifest_loading_order_and_content_hashes_are_deterministic() {
+    let manifest =
+        load_validation_fixture_manifest_document().expect("validation fixture manifest should load");
+
+    let first_sorted_entries = sorted_manifest_entries(&manifest);
+    let second_sorted_entries = sorted_manifest_entries(&manifest);
+
+    let fixtures_root = fixtures_root_path();
+    let first_snapshot: Vec<(String, String)> = first_sorted_entries
+        .iter()
+        .map(|manifest_entry| {
+            let loaded_payload = load_manifest_entry_payload(&fixtures_root, manifest_entry)
+                .expect("manifest fixture payload should load and pass hash checks");
+            (
+                loaded_payload.fixture_id,
+                loaded_payload.observed_content_hash,
+            )
+        })
+        .collect();
+    let second_snapshot: Vec<(String, String)> = second_sorted_entries
+        .iter()
+        .map(|manifest_entry| {
+            let loaded_payload = load_manifest_entry_payload(&fixtures_root, manifest_entry)
+                .expect("manifest fixture payload should load and pass hash checks");
+            (
+                loaded_payload.fixture_id,
+                loaded_payload.observed_content_hash,
+            )
+        })
+        .collect();
+
+    assert_eq!(first_snapshot, second_snapshot);
+}
+
+#[test]
+fn calendar_regression_fixture_document_is_valid_for_multiple_exchanges() {
+    let loaded_fixture = load_calendar_regression_fixture_from_manifest()
+        .expect("calendar regression fixture should load from shared manifest");
+
+    let exchange_codes: BTreeSet<String> = loaded_fixture
+        .fixture_document
+        .calendar_registry
+        .exchanges
+        .iter()
+        .map(|exchange| exchange.exchange_code.clone())
+        .collect();
+
+    assert!(exchange_codes.len() >= 2);
+    assert!(
+        loaded_fixture
+            .manifest_entry
+            .exchange_codes
+            .iter()
+            .all(|exchange_code| exchange_codes.contains(exchange_code))
+    );
+}
+
+#[test]
+fn validation_fixture_manifest_rejects_missing_required_fields() {
+    let fixtures_root = fixtures_root_path();
+    let manifest_path = fixtures_root
+        .join("validation")
+        .join("validation_fixture_manifest.json");
+    let manifest_raw =
+        fs::read_to_string(&manifest_path).expect("validation fixture manifest file should exist");
+    let mut manifest_value: Value =
+        serde_json::from_str(&manifest_raw).expect("manifest fixture should be valid JSON");
+    manifest_value
+        .as_object_mut()
+        .expect("manifest fixture root should be an object")
+        .remove("fixtures");
+
+    let parse_result = serde_json::from_value::<ValidationFixtureManifestDocument>(manifest_value);
+
+    assert!(parse_result.is_err());
+}
+
+#[test]
+fn validation_fixture_manifest_rejects_invalid_domain_values() {
+    let fixtures_root = fixtures_root_path();
+    let manifest_path = fixtures_root
+        .join("validation")
+        .join("validation_fixture_manifest.json");
+    let manifest_raw =
+        fs::read_to_string(&manifest_path).expect("validation fixture manifest file should exist");
+    let mut manifest_value: Value =
+        serde_json::from_str(&manifest_raw).expect("manifest fixture should be valid JSON");
+    manifest_value["fixtures"][0]["domain"] = Value::String("python_only".to_string());
+
+    let parse_result = serde_json::from_value::<ValidationFixtureManifestDocument>(manifest_value);
+
+    assert!(parse_result.is_err());
+}
+
+#[test]
+fn calendar_regression_fixture_rejects_missing_required_fields() {
+    let loaded_fixture = load_calendar_regression_fixture_from_manifest()
+        .expect("calendar regression fixture should load from shared manifest");
+    let mut fixture_value: Value = serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
+        .expect("calendar regression fixture should be valid JSON");
+    fixture_value
+        .as_object_mut()
+        .expect("calendar fixture root should be an object")
+        .remove("cases");
+
+    let parse_result = serde_json::from_value::<CalendarRegressionFixtureDocument>(fixture_value);
+
+    assert!(parse_result.is_err());
+}
+
+#[test]
+fn calendar_regression_fixture_rejects_invalid_expected_state_values() {
+    let loaded_fixture = load_calendar_regression_fixture_from_manifest()
+        .expect("calendar regression fixture should load from shared manifest");
+    let mut fixture_value: Value = serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
+        .expect("calendar regression fixture should be valid JSON");
+    fixture_value["cases"][0]["expected_state"] = Value::String("invalid".to_string());
+
+    let parsed_fixture = serde_json::from_value::<CalendarRegressionFixtureDocument>(fixture_value)
+        .expect("calendar regression fixture with invalid expected_state should still parse");
+
+    let validation_result = validate_calendar_regression_fixture_document(&parsed_fixture);
+
+    assert!(validation_result.is_err());
+}
