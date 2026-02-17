@@ -438,6 +438,74 @@ class HourlySeasonalityMaterializationResult:
     def interval_alignment_policy(self) -> str: ...
 
 
+class HourlyNewsIntensityMaterializationResult:
+    @property
+    def schema_version(self) -> str: ...
+
+    @property
+    def exchange_code(self) -> str: ...
+
+    @property
+    def exchange_timezone_name(self) -> str: ...
+
+    @property
+    def request_start_utc_nanos(self) -> int: ...
+
+    @property
+    def request_end_utc_nanos(self) -> int: ...
+
+    @property
+    def interval_indices(self) -> list[int]: ...
+
+    @property
+    def interval_start_utc_nanos(self) -> list[int]: ...
+
+    @property
+    def interval_end_utc_nanos(self) -> list[int]: ...
+
+    @property
+    def interval_start_exchange_local(self) -> list[str]: ...
+
+    @property
+    def interval_end_exchange_local(self) -> list[str]: ...
+
+    @property
+    def nu_h(self) -> list[float]: ...
+
+    @property
+    def interval_count(self) -> int: ...
+
+    @property
+    def fully_closed_interval_count(self) -> int: ...
+
+    @property
+    def fully_open_interval_count(self) -> int: ...
+
+    @property
+    def mixed_state_interval_count(self) -> int: ...
+
+    @property
+    def open_window_override_interval_count(self) -> int: ...
+
+    @property
+    def materialization_method(self) -> str: ...
+
+    @property
+    def calendar_market_state_dependency(self) -> str: ...
+
+    @property
+    def open_window_override_policy(self) -> str: ...
+
+    @property
+    def closed_window_baseline_intensity(self) -> float: ...
+
+    @property
+    def interval_boundary_policy(self) -> str: ...
+
+    @property
+    def interval_alignment_policy(self) -> str: ...
+
+
 class CalendarRegistry:
     def __init__(self, registry_json: str) -> None: ...
 
@@ -532,3 +600,14 @@ def materialize_hourly_seasonality_factors(
     sparse_fallback_policy: str = "global_mean.v1",
     sparse_hour_minimum_observation_count: int = 1,
 ) -> HourlySeasonalityMaterializationResult: ...
+
+
+def materialize_hourly_news_intensity_factors(
+    calendar_registry: CalendarRegistry,
+    exchange_code: str,
+    range_start_utc: str,
+    range_end_utc: str,
+    closed_window_baseline_intensity: float,
+    *,
+    open_window_override_by_interval_index: object | None = None,
+) -> HourlyNewsIntensityMaterializationResult: ...

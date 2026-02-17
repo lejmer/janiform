@@ -4,18 +4,23 @@ import pytest
 
 from janiform.calendar import CalendarMissingExchangeError, CalendarRegistry
 from janiform.hourly_factors import (
+    DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
     DEFAULT_SEASONALITY_AGGREGATION_METHOD,
     DEFAULT_SEASONALITY_INTERPOLATION_METHOD,
     DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY,
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
     HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
     HOURLY_FACTOR_OUTPUT_SCHEMA,
+    HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA,
+    HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
     HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA,
     HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION,
     HourlyFactorContract,
+    HourlyNewsIntensityMaterializationSettings,
     HourlySeasonalityMaterialization,
     HourlySeasonalityMaterializationSettings,
     build_hourly_factor_contract,
+    materialize_hourly_news_intensity_factors,
     materialize_hourly_seasonality_factors,
 )
 from janiform.seasonality import SeasonalityInputValidationError
@@ -199,6 +204,136 @@ def test_materialize_hourly_seasonality_is_deterministic_for_controlled_inputs(
 
     assert first_materialization.s_h == [1.2, 1.1, 1.6]
     assert first_snapshot == second_snapshot
+
+
+def test_materialize_hourly_news_intensity_applies_closed_baseline_and_open_overrides(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    materialization = materialize_hourly_news_intensity_factors(
+        calendar_registry=calendar_registry,
+        exchange_code="XNYS",
+        range_start_utc=datetime(2026, 2, 2, 14, 0, 0, tzinfo=UTC),
+        range_end_utc=datetime(2026, 2, 2, 17, 0, 0, tzinfo=UTC),
+        settings=HourlyNewsIntensityMaterializationSettings(
+            closed_window_baseline_intensity=0.6,
+            open_window_override_by_interval_index={0: 1.0, 1: 1.0},
+        ),
+    )
+
+    assert materialization.schema_version == HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION
+    assert materialization.nu_h == [0.8, 1.0, 0.0]
+    assert materialization.materialization_method == DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD
+    assert materialization.interval_count == 3
+    assert materialization.fully_closed_interval_count == 0
+    assert materialization.fully_open_interval_count == 2
+    assert materialization.mixed_state_interval_count == 1
+    assert materialization.open_window_override_interval_count == 2
+    assert (
+        materialization.interval_boundary_policy
+        == HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA.interval_boundary_policy
+    )
+    assert (
+        materialization.interval_alignment_policy
+        == HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA.interval_alignment_policy
+    )
+
+
+def test_materialize_hourly_news_intensity_closed_logic_dominates_weekend_and_overnight(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    weekend_materialization = materialize_hourly_news_intensity_factors(
+        calendar_registry=calendar_registry,
+        exchange_code="XNYS",
+        range_start_utc=datetime(2026, 2, 7, 0, 0, 0, tzinfo=UTC),
+        range_end_utc=datetime(2026, 2, 7, 6, 0, 0, tzinfo=UTC),
+        settings=HourlyNewsIntensityMaterializationSettings(
+            closed_window_baseline_intensity=0.7,
+            open_window_override_by_interval_index={0: 2.5, 1: 2.5},
+        ),
+    )
+    overnight_materialization = materialize_hourly_news_intensity_factors(
+        calendar_registry=calendar_registry,
+        exchange_code="XNYS",
+        range_start_utc=datetime(2026, 2, 3, 1, 0, 0, tzinfo=UTC),
+        range_end_utc=datetime(2026, 2, 3, 5, 0, 0, tzinfo=UTC),
+        settings=HourlyNewsIntensityMaterializationSettings(
+            closed_window_baseline_intensity=0.7,
+            open_window_override_by_interval_index={0: 2.5, 1: 2.5},
+        ),
+    )
+
+    assert weekend_materialization.nu_h == [0.7, 0.7, 0.7, 0.7, 0.7, 0.7]
+    assert weekend_materialization.fully_closed_interval_count == 6
+    assert weekend_materialization.open_window_override_interval_count == 0
+    assert overnight_materialization.nu_h == [0.7, 0.7, 0.7, 0.7]
+    assert overnight_materialization.fully_closed_interval_count == 4
+    assert overnight_materialization.open_window_override_interval_count == 0
+
+
+def test_materialize_hourly_news_intensity_aligns_one_to_one_with_seasonality_grid(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    seasonality_materialization = materialize_hourly_seasonality_factors(
+        calendar_registry=calendar_registry,
+        exchange_code="XNYS",
+        range_start_utc=datetime(2026, 2, 2, 14, 0, 0, tzinfo=UTC),
+        range_end_utc=datetime(2026, 2, 2, 18, 0, 0, tzinfo=UTC),
+        source_timestamps_utc=[
+            datetime(2026, 2, 2, 14, 5, 0, tzinfo=UTC),
+            datetime(2026, 2, 2, 15, 5, 0, tzinfo=UTC),
+            datetime(2026, 2, 2, 16, 5, 0, tzinfo=UTC),
+            datetime(2026, 2, 2, 17, 5, 0, tzinfo=UTC),
+        ],
+        source_seasonality_factors=[1.0, 1.1, 1.2, 1.3],
+    )
+    news_materialization = materialize_hourly_news_intensity_factors(
+        calendar_registry=calendar_registry,
+        exchange_code="XNYS",
+        range_start_utc=datetime(2026, 2, 2, 14, 0, 0, tzinfo=UTC),
+        range_end_utc=datetime(2026, 2, 2, 18, 0, 0, tzinfo=UTC),
+        settings=HourlyNewsIntensityMaterializationSettings(
+            closed_window_baseline_intensity=0.5,
+            open_window_override_by_interval_index={1: 0.25},
+        ),
+    )
+
+    assert news_materialization.interval_indices == seasonality_materialization.interval_indices
+    assert (
+        news_materialization.interval_start_utc_nanos
+        == seasonality_materialization.interval_start_utc_nanos
+    )
+    assert (
+        news_materialization.interval_end_utc_nanos
+        == seasonality_materialization.interval_end_utc_nanos
+    )
+    assert (
+        news_materialization.interval_start_exchange_local
+        == seasonality_materialization.interval_start_exchange_local
+    )
+    assert (
+        news_materialization.interval_end_exchange_local
+        == seasonality_materialization.interval_end_exchange_local
+    )
+    assert len(news_materialization.nu_h) == len(seasonality_materialization.s_h)
+
+
+def test_materialize_hourly_news_intensity_rejects_out_of_range_override_indices(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    with pytest.raises(
+        SeasonalityInputValidationError,
+        match="open_window_override_by_interval_index contains interval index 2",
+    ):
+        materialize_hourly_news_intensity_factors(
+            calendar_registry=calendar_registry,
+            exchange_code="XNYS",
+            range_start_utc=datetime(2026, 2, 2, 14, 0, 0, tzinfo=UTC),
+            range_end_utc=datetime(2026, 2, 2, 16, 0, 0, tzinfo=UTC),
+            settings=HourlyNewsIntensityMaterializationSettings(
+                closed_window_baseline_intensity=0.5,
+                open_window_override_by_interval_index={2: 1.0},
+            ),
+        )
 
 
 def _contract_snapshot(contract: HourlyFactorContract) -> dict[str, object]:
