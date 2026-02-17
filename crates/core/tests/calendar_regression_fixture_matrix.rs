@@ -1,10 +1,16 @@
+mod support;
+
 use std::collections::BTreeSet;
 
 use chrono::{DateTime, Utc};
 use janiform_core::calendar::{
-    ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact, MarketState,
+    ExchangeCalendarRegistry, MarketState,
 };
-use serde::Deserialize;
+
+use support::validation_fixture::{
+    load_calendar_regression_fixture_from_manifest, CalendarRegressionCaseFixture,
+    CalendarRegressionFixtureDocument,
+};
 
 const REQUIRED_CASE_TAGS: [&str; 6] = [
     "regular_session",
@@ -24,24 +30,6 @@ const EXPECTED_BOUNDARY_FIXTURE_IDS: [&str; 7] = [
     "xtks_before_utc_midnight_transition",
     "xtks_after_utc_midnight_transition",
 ];
-
-#[derive(Debug, Deserialize)]
-struct CalendarRegressionFixtureDocument {
-    schema_version: String,
-    fixture_set_id: String,
-    calendar_registry: ExchangeCalendarRegistryArtifact,
-    cases: Vec<CalendarRegressionCaseFixture>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CalendarRegressionCaseFixture {
-    fixture_id: String,
-    exchange_code: String,
-    timestamp_utc: String,
-    expected_state: String,
-    tags: Vec<String>,
-    description: String,
-}
 
 #[test]
 fn calendar_regression_fixture_covers_required_case_tags() {
@@ -156,19 +144,7 @@ fn parse_expected_market_state(raw_market_state: &str) -> MarketState {
 }
 
 fn load_calendar_regression_fixture_document() -> CalendarRegressionFixtureDocument {
-    let raw_fixture =
-        include_str!("../../../tests/fixtures/calendar/calendar_service_regression_matrix.json");
-    let fixture_document = serde_json::from_str::<CalendarRegressionFixtureDocument>(raw_fixture)
-        .expect("calendar regression fixture file should be valid JSON");
-
-    assert_eq!(
-        fixture_document.schema_version,
-        "calendar.service.regression.v1"
-    );
-    assert_eq!(
-        fixture_document.fixture_set_id,
-        "calendar_service_regression_matrix_v1"
-    );
-
-    fixture_document
+    load_calendar_regression_fixture_from_manifest()
+        .expect("calendar regression fixture should load from shared manifest")
+        .fixture_document
 }

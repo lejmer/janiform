@@ -1,4 +1,4 @@
-## ISSUE-006: Unknown Date Fallback Policy And Validation Docs
+## Unknown Date Fallback Policy And Validation Docs
 
 ### Description
 Document and encode fallback behavior for unknown dates and incomplete fixture coverage so validation outcomes remain explicit and auditable.

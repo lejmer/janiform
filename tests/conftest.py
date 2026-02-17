@@ -1,26 +1,20 @@
 import json
 from pathlib import Path
-from typing import TypedDict, cast
 
 import pytest
 
 from janiform.calendar import CalendarRegistry
-
-
-class CalendarRegressionCase(TypedDict):
-    fixture_id: str
-    exchange_code: str
-    timestamp_utc: str
-    expected_state: str
-    tags: list[str]
-    description: str
-
-
-class CalendarRegressionFixtureDocument(TypedDict):
-    schema_version: str
-    fixture_set_id: str
-    calendar_registry: dict[str, object]
-    cases: list[CalendarRegressionCase]
+from tests.fixture_validation import (
+    CALENDAR_REGRESSION_FIXTURE_SET_ID,
+    CalendarRegressionCase,
+    CalendarRegressionFixtureDocument,
+    ValidationFixtureManifestDocument,
+    ValidationFixtureManifestEntry,
+    load_calendar_regression_fixture_document,
+    load_manifest_entry_payload,
+    load_validation_fixture_manifest,
+    sorted_manifest_entries,
+)
 
 
 class HourlyFactorRegressionAcceptanceThresholds(TypedDict):
@@ -76,22 +70,63 @@ def python_source_root(project_root: Path) -> Path:
 
 
 @pytest.fixture(scope="session")
-def calendar_regression_fixture_path() -> Path:
+def validation_fixture_manifest_path() -> Path:
     return (
         Path(__file__).resolve().parent
         / "fixtures"
-        / "calendar"
-        / "calendar_service_regression_matrix.json"
+        / "validation"
+        / "validation_fixture_manifest.json"
     )
 
 
 @pytest.fixture(scope="session")
+def fixtures_root() -> Path:
+    return Path(__file__).resolve().parent / "fixtures"
+
+
+@pytest.fixture(scope="session")
+def validation_fixture_manifest_document(
+    validation_fixture_manifest_path: Path,
+) -> ValidationFixtureManifestDocument:
+    return load_validation_fixture_manifest(validation_fixture_manifest_path)
+
+
+@pytest.fixture(scope="session")
+def validation_fixture_manifest_entries(
+    validation_fixture_manifest_document: ValidationFixtureManifestDocument,
+) -> list[ValidationFixtureManifestEntry]:
+    return sorted_manifest_entries(validation_fixture_manifest_document)
+
+
+@pytest.fixture(scope="session")
+def calendar_regression_manifest_entry(
+    validation_fixture_manifest_entries: list[ValidationFixtureManifestEntry],
+) -> ValidationFixtureManifestEntry:
+    for manifest_entry in validation_fixture_manifest_entries:
+        if manifest_entry["fixture_id"] == CALENDAR_REGRESSION_FIXTURE_SET_ID:
+            return manifest_entry
+
+    raise ValueError(f"missing manifest fixture entry: {CALENDAR_REGRESSION_FIXTURE_SET_ID}")
+
+
+@pytest.fixture(scope="session")
+def calendar_regression_fixture_path(
+    fixtures_root: Path,
+    calendar_regression_manifest_entry: ValidationFixtureManifestEntry,
+) -> Path:
+    return fixtures_root / calendar_regression_manifest_entry["relative_path"]
+
+
+@pytest.fixture(scope="session")
 def calendar_regression_fixture_document(
-    calendar_regression_fixture_path: Path,
+    fixtures_root: Path,
+    calendar_regression_manifest_entry: ValidationFixtureManifestEntry,
 ) -> CalendarRegressionFixtureDocument:
-    fixture_text: str = calendar_regression_fixture_path.read_text(encoding="utf-8")
-    fixture_value: object = json.loads(fixture_text)
-    return cast(CalendarRegressionFixtureDocument, fixture_value)
+    fixture_payload_bytes: bytes = load_manifest_entry_payload(
+        fixtures_root,
+        calendar_regression_manifest_entry,
+    )
+    return load_calendar_regression_fixture_document(fixture_payload_bytes)
 
 
 @pytest.fixture(scope="session")

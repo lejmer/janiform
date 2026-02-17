@@ -1,10 +1,12 @@
 # Calendar Service Regression Fixtures
 
 This directory contains the shared calendar regression fixture set for Initiative 001, Project 001, Issue JAN-10.
+Issue JAN-23 extends this fixture with a shared schema and deterministic manifest contract that is reused by both Rust and Python tests.
 
 ## Files
 
 - `calendar_service_regression_matrix.json`: Canonical calendar registry artifact plus a regression matrix of timestamp cases and expected `open` or `closed` outputs.
+- `../validation/validation_fixture_manifest.json`: Canonical cross-language fixture manifest with deterministic loading and content-hash metadata.
 
 ## Fixture Schema
 
@@ -23,6 +25,39 @@ Each `cases` entry contains:
 - `expected_state`: Expected resolver output, either `open` or `closed`.
 - `tags`: Coverage classification labels used by regression tests.
 - `description`: Human-readable triage context.
+
+`calendar_service_regression_matrix.json` also includes machine-readable metadata blocks:
+
+- `schema_metadata`:
+  - `schema_family`
+  - `schema_generation`
+  - `forward_extension_policy`
+- `determinism_metadata`:
+  - `fixture_loading_order`
+  - `content_hash_scope`
+  - `content_hash_algorithm`
+
+The shared manifest defines:
+
+- `schema_version`, `manifest_id`, and `manifest_version`
+- `versioning_policy` metadata for v0.x update strategy
+- `determinism_policy` metadata for load-order and content-hash algorithms
+- ordered `fixtures` entries containing:
+  - `fixture_id`
+  - `domain`
+  - `fixture_schema_version`
+  - `relative_path`
+  - `exchange_codes`
+  - `content_hash`
+
+Rust and Python loaders sort manifest entries lexicographically by `fixture_id` and verify `content_hash` before fixture parsing.
+
+## Versioning Strategy
+
+- Breaking schema changes require a new `schema_version`.
+- During v0.x, additive fields are allowed only when they preserve current required fields and determinism semantics.
+- Fixture files remain immutable for a given `fixture_set_id`; any payload change must update `content_hash` in the shared manifest.
+- The manifest contract is language-neutral and must not include runtime-only fields that only one stack can consume.
 
 ## Required Coverage Tags
 

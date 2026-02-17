@@ -1,4 +1,4 @@
-## ISSUE-002: Historical Holiday Calendar Regression Fixtures
+## Historical Holiday Calendar Regression Fixtures
 
 ### Description
 Create a curated fixture set for historical holiday calendars so open and closed classification can be regression-tested against known exchange closures.
