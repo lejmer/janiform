@@ -30,9 +30,10 @@ For urgent fixes, run a lightweight version first, then run the full review imme
 4. Check determinism and reproducibility.
 5. Check observability and operability.
 6. Check performance and resource profile.
-7. Check test quality and coverage gaps.
-8. Record findings with severity.
-9. Implement fixes based on above findings.
+7. Check DRY and duplication risk.
+8. Check test quality and coverage gaps.
+9. Record findings with severity.
+10. Implement fixes based on above findings.
 
 ## Risk Categories And What To Check
 
@@ -107,6 +108,17 @@ Check for:
 - weak failure-path coverage
 - missing determinism tests for repeated runs
 - fixture drift not protected by content hash or schema checks
+
+### 9. DRY And Duplication Risk
+
+Check for:
+
+- repeated logic inside functions/methods that can become hard to maintain
+- repeated logic across Rust core, PyO3 bindings, and Python wrappers that can drift
+- duplicate validation rules implemented in multiple layers with inconsistent behavior
+- repeated constants or mapping tables that should have a single source of truth
+- copy-pasted test setup or fixtures that hide shared behavior changes
+- copy-pasted helpers that cause unnecessary code bloat
 
 ## Severity Policy
 
