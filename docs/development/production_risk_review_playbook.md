@@ -1,6 +1,6 @@
-# Production Risk Review Playbook
+# Production Risk Review and Implementation Playbook
 
-This playbook defines a general, stage-agnostic process for identifying production risk early. Use it for every meaningful change, regardless of current initiative, subsystem, or pain point.
+This playbook defines a general, stage-agnostic process for identifying and fixing production risk early. Use it for every meaningful change, regardless of current initiative, subsystem, or pain point.
 
 ## Objective
 
