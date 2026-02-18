@@ -6,8 +6,8 @@ use chrono::{DateTime, Datelike, Utc};
 use janiform_core::calendar::{ExchangeCalendarRegistry, MarketState};
 
 use support::validation_fixture::{
-    load_calendar_regression_fixture_from_manifest, CalendarRegressionCaseFixture,
-    CalendarRegressionFixtureDocument,
+    CalendarRegressionCaseFixture, CalendarRegressionFixtureDocument,
+    load_calendar_regression_fixture_from_manifest,
 };
 
 const REQUIRED_CASE_TAGS: [&str; 9] = [

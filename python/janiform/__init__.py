@@ -52,6 +52,15 @@ from .pricing import (
 from .simulation import (
     load_hourly_factor_contract_for_simulation,
 )
+from .validation import (
+    DETERMINISTIC_REGRESSION_HARNESS_DETERMINISM_POLICY,
+    DETERMINISTIC_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION,
+    DeterministicRegressionHarnessReport,
+    RegressionCaseReport,
+    RegressionHarnessSummary,
+    RegressionHarnessToleranceConfig,
+    run_deterministic_regression_harness,
+)
 from .seasonality import (
     DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
     DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
@@ -113,6 +122,8 @@ __all__ = [
     "DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY",
     "DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT",
     "DEFAULT_SEASONALITY_ESTIMATOR_VERSION",
+    "DETERMINISTIC_REGRESSION_HARNESS_DETERMINISM_POLICY",
+    "DETERMINISTIC_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION",
     "DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION",
     "HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION",
     "HOURLY_FACTOR_OUTPUT_SCHEMA",
@@ -128,6 +139,7 @@ __all__ = [
     "DayOfYearSeasonalityEstimate",
     "DayOfYearSeasonalityEstimatorSettings",
     "DeterministicSeasonalityComposition",
+    "DeterministicRegressionHarnessReport",
     "HourlyFactorContract",
     "HourlyFactorProviderError",
     "HourlyFactorProviderMissingInputError",
@@ -151,6 +163,9 @@ __all__ = [
     "MarketState",
     "PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION",
     "ScheduledEventOverlayDefinition",
+    "RegressionCaseReport",
+    "RegressionHarnessSummary",
+    "RegressionHarnessToleranceConfig",
     "SeasonalityDiagnosticsBatchInput",
     "SessionFilter",
     "SeasonalityInputValidationError",
@@ -174,4 +189,5 @@ __all__ = [
     "load_scheduled_event_overlay_definitions",
     "preprocess_timestamp_events",
     "resolve_market_state",
+    "run_deterministic_regression_harness",
 ]

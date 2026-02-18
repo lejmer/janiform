@@ -183,7 +183,10 @@ fn hourly_factor_regression_fixture_identifiers_remain_stable() {
             .map(ToString::to_string)
             .collect();
 
-    assert_eq!(observed_canonical_fixture_ids, expected_canonical_fixture_ids);
+    assert_eq!(
+        observed_canonical_fixture_ids,
+        expected_canonical_fixture_ids
+    );
     assert_eq!(
         observed_missing_data_guard_fixture_ids,
         expected_missing_data_guard_fixture_ids
@@ -194,12 +197,16 @@ fn hourly_factor_regression_fixture_identifiers_remain_stable() {
 fn hourly_factor_regression_canonical_output_cases_match_golden_matrix() {
     let fixture_document = load_hourly_factor_regression_fixture_document();
     let registry = load_calendar_registry_from_shared_fixture();
-    let seasonality_abs_tolerance = fixture_document.acceptance_thresholds.s_h_absolute_tolerance;
-    let news_abs_tolerance = fixture_document.acceptance_thresholds.nu_h_absolute_tolerance;
+    let seasonality_abs_tolerance = fixture_document
+        .acceptance_thresholds
+        .s_h_absolute_tolerance;
+    let news_abs_tolerance = fixture_document
+        .acceptance_thresholds
+        .nu_h_absolute_tolerance;
 
     for fixture_case in &fixture_document.canonical_output_cases {
-        let contract_output =
-            build_contract_for_canonical_case(&registry, fixture_case).unwrap_or_else(|error| {
+        let contract_output = build_contract_for_canonical_case(&registry, fixture_case)
+            .unwrap_or_else(|error| {
                 panic!(
                     "fixture {} ({}) failed unexpectedly: {error}",
                     fixture_case.fixture_id, fixture_case.description
@@ -221,14 +228,18 @@ fn hourly_factor_regression_canonical_output_cases_match_golden_matrix() {
             "nu_h",
         );
         assert_eq!(
-            contract_output.diagnostics.skipped_local_hour_interval_count,
+            contract_output
+                .diagnostics
+                .skipped_local_hour_interval_count,
             fixture_case.expected_skipped_local_hour_interval_count,
             "fixture {} ({}) skipped_local_hour_interval_count mismatch",
             fixture_case.fixture_id,
             fixture_case.description
         );
         assert_eq!(
-            contract_output.diagnostics.repeated_local_hour_interval_count,
+            contract_output
+                .diagnostics
+                .repeated_local_hour_interval_count,
             fixture_case.expected_repeated_local_hour_interval_count,
             "fixture {} ({}) repeated_local_hour_interval_count mismatch",
             fixture_case.fixture_id,
@@ -241,7 +252,9 @@ fn hourly_factor_regression_canonical_output_cases_match_golden_matrix() {
 fn hourly_factor_missing_data_guard_cases_match_defined_outcomes() {
     let fixture_document = load_hourly_factor_regression_fixture_document();
     let registry = load_calendar_registry_from_shared_fixture();
-    let seasonality_abs_tolerance = fixture_document.acceptance_thresholds.s_h_absolute_tolerance;
+    let seasonality_abs_tolerance = fixture_document
+        .acceptance_thresholds
+        .s_h_absolute_tolerance;
 
     for fixture_case in &fixture_document.missing_data_guard_cases {
         match &fixture_case.expected_outcome {
@@ -251,16 +264,14 @@ fn hourly_factor_missing_data_guard_cases_match_defined_outcomes() {
                 expected_interpolated_interval_count,
                 expected_fallback_interval_count,
             } => {
-                let first_output = materialize_seasonality_for_missing_data_case(
-                    &registry,
-                    fixture_case,
-                )
-                .unwrap_or_else(|error| {
-                    panic!(
-                        "fixture {} ({}) failed unexpectedly: {error}",
-                        fixture_case.fixture_id, fixture_case.description
-                    )
-                });
+                let first_output =
+                    materialize_seasonality_for_missing_data_case(&registry, fixture_case)
+                        .unwrap_or_else(|error| {
+                            panic!(
+                                "fixture {} ({}) failed unexpectedly: {error}",
+                                fixture_case.fixture_id, fixture_case.description
+                            )
+                        });
                 let second_output = materialize_seasonality_for_missing_data_case(
                     &registry,
                     fixture_case,
@@ -303,9 +314,7 @@ fn hourly_factor_missing_data_guard_cases_match_defined_outcomes() {
                     hourly_factor_error_variant_identifier(&error),
                     expected_error_variant
                 );
-                assert!(error
-                    .to_string()
-                    .contains(expected_error_message_substring));
+                assert!(error.to_string().contains(expected_error_message_substring));
             }
         }
     }
@@ -333,16 +342,12 @@ fn hourly_factor_deterministic_fallback_cases_are_repeatable() {
         if let HourlyMissingDataGuardExpectedOutcomeFixture::Success { .. } =
             fixture_case.expected_outcome
         {
-            let first_output = materialize_seasonality_for_missing_data_case(
-                &registry,
-                fixture_case,
-            )
-            .expect("deterministic fallback case should succeed");
-            let second_output = materialize_seasonality_for_missing_data_case(
-                &registry,
-                fixture_case,
-            )
-            .expect("deterministic fallback case should succeed on rerun");
+            let first_output =
+                materialize_seasonality_for_missing_data_case(&registry, fixture_case)
+                    .expect("deterministic fallback case should succeed");
+            let second_output =
+                materialize_seasonality_for_missing_data_case(&registry, fixture_case)
+                    .expect("deterministic fallback case should succeed on rerun");
 
             assert_eq!(first_output, second_output);
         }
@@ -393,32 +398,32 @@ fn build_contract_for_canonical_case(
             }
         };
 
-    let (news_hourly_factors, news_materialization_method) = match &fixture_case.news_intensity_source
-    {
-        HourlyNewsIntensitySourceFixture::Explicit {
-            hourly_factors,
-            materialization_method,
-        } => (hourly_factors.clone(), materialization_method.clone()),
-        HourlyNewsIntensitySourceFixture::Materialized {
-            closed_window_baseline_intensity,
-            open_window_override_by_interval_index,
-        } => {
-            let parsed_open_window_overrides =
-                parse_open_window_overrides(open_window_override_by_interval_index);
-            let news_output = materialize_hourly_news_intensity_factors(
-                registry,
-                &fixture_case.exchange_code,
-                range_start_utc,
-                range_end_utc,
-                *closed_window_baseline_intensity,
-                &parsed_open_window_overrides,
-            )?;
-            (
-                news_output.nu_h,
-                HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION.to_string(),
-            )
-        }
-    };
+    let (news_hourly_factors, news_materialization_method) =
+        match &fixture_case.news_intensity_source {
+            HourlyNewsIntensitySourceFixture::Explicit {
+                hourly_factors,
+                materialization_method,
+            } => (hourly_factors.clone(), materialization_method.clone()),
+            HourlyNewsIntensitySourceFixture::Materialized {
+                closed_window_baseline_intensity,
+                open_window_override_by_interval_index,
+            } => {
+                let parsed_open_window_overrides =
+                    parse_open_window_overrides(open_window_override_by_interval_index);
+                let news_output = materialize_hourly_news_intensity_factors(
+                    registry,
+                    &fixture_case.exchange_code,
+                    range_start_utc,
+                    range_end_utc,
+                    *closed_window_baseline_intensity,
+                    &parsed_open_window_overrides,
+                )?;
+                (
+                    news_output.nu_h,
+                    HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION.to_string(),
+                )
+            }
+        };
 
     build_hourly_factor_contract(
         registry,
@@ -435,8 +440,10 @@ fn build_contract_for_canonical_case(
 fn materialize_seasonality_for_missing_data_case(
     registry: &ExchangeCalendarRegistry,
     fixture_case: &HourlyFactorMissingDataGuardCaseFixture,
-) -> Result<janiform_core::hourly_factors::HourlySeasonalityMaterializationOutput, HourlyFactorContractError>
-{
+) -> Result<
+    janiform_core::hourly_factors::HourlySeasonalityMaterializationOutput,
+    HourlyFactorContractError,
+> {
     let source_timestamp_utc_nanos: Vec<i64> = fixture_case
         .source_timestamps_utc
         .iter()
@@ -455,9 +462,7 @@ fn materialize_seasonality_for_missing_data_case(
         &fixture_case.settings.interpolation_method,
         &fixture_case.settings.aggregation_method,
         &fixture_case.settings.sparse_fallback_policy,
-        fixture_case
-            .settings
-            .sparse_hour_minimum_observation_count,
+        fixture_case.settings.sparse_hour_minimum_observation_count,
     )
 }
 
@@ -517,14 +522,15 @@ fn parse_open_window_overrides(
             (interval_index, *override_value)
         })
         .collect();
-    parsed_open_window_overrides
-        .sort_by_key(|(interval_index, _)| *interval_index);
+    parsed_open_window_overrides.sort_by_key(|(interval_index, _)| *interval_index);
     parsed_open_window_overrides
 }
 
 fn parse_utc_timestamp(raw_timestamp: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(raw_timestamp)
-        .unwrap_or_else(|error| panic!("timestamp `{raw_timestamp}` should parse as RFC3339: {error}"))
+        .unwrap_or_else(|error| {
+            panic!("timestamp `{raw_timestamp}` should parse as RFC3339: {error}")
+        })
         .with_timezone(&Utc)
 }
 
