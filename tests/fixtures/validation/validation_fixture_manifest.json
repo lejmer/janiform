@@ -20,7 +20,17 @@
         "XNYS",
         "XTKS"
       ],
-      "content_hash": "f67f0e92ee446dba"
+      "content_hash": "4a34a859f12c9a46"
+    },
+    {
+      "fixture_id": "hourly_factor_regression_matrix_v1",
+      "domain": "hourly_factors",
+      "fixture_schema_version": "hourly.factor.regression.v1",
+      "relative_path": "hourly_factors/hourly_factor_regression_matrix.json",
+      "exchange_codes": [
+        "XNYS"
+      ],
+      "content_hash": "54f0df085056686d"
     }
   ]
 }

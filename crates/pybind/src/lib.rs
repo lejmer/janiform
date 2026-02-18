@@ -1458,14 +1458,14 @@ fn build_hourly_factor_contract(
 }
 
 #[pyfunction]
-#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, source_timestamp_utc, source_seasonality_factors, *, interpolation_method = DEFAULT_SEASONALITY_INTERPOLATION_METHOD, aggregation_method = DEFAULT_SEASONALITY_AGGREGATION_METHOD, sparse_fallback_policy = DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY, sparse_hour_minimum_observation_count = DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT))]
+#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, source_timestamps_utc, source_seasonality_factors, *, interpolation_method = DEFAULT_SEASONALITY_INTERPOLATION_METHOD, aggregation_method = DEFAULT_SEASONALITY_AGGREGATION_METHOD, sparse_fallback_policy = DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY, sparse_hour_minimum_observation_count = DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT))]
 fn materialize_hourly_seasonality_factors(
     py: Python<'_>,
     calendar_registry: &PyCalendarRegistry,
     exchange_code: &str,
     range_start_utc: &str,
     range_end_utc: &str,
-    source_timestamp_utc: &Bound<'_, PyAny>,
+    source_timestamps_utc: &Bound<'_, PyAny>,
     source_seasonality_factors: &Bound<'_, PyAny>,
     interpolation_method: &str,
     aggregation_method: &str,
@@ -1474,10 +1474,10 @@ fn materialize_hourly_seasonality_factors(
 ) -> PyResult<PyHourlySeasonalityMaterializationResult> {
     let parsed_range_start_utc = parse_timestamp_utc(range_start_utc)?;
     let parsed_range_end_utc = parse_timestamp_utc(range_end_utc)?;
-    let parsed_source_timestamp_utc: Vec<String> =
-        source_timestamp_utc.extract().map_err(|_| {
+    let parsed_source_timestamps_utc: Vec<String> =
+        source_timestamps_utc.extract().map_err(|_| {
             SeasonalityInputValidationError::new_err(
-                "source_timestamp_utc must be an iterable of RFC3339 timestamp strings",
+                "source_timestamps_utc must be an iterable of RFC3339 timestamp strings",
             )
         })?;
     let parsed_source_seasonality_factors: Vec<f64> =
@@ -1488,13 +1488,13 @@ fn materialize_hourly_seasonality_factors(
         })?;
 
     let mut parsed_source_timestamp_utc_nanos: Vec<i64> =
-        Vec::with_capacity(parsed_source_timestamp_utc.len());
-    for (source_position, raw_timestamp_utc) in parsed_source_timestamp_utc.iter().enumerate() {
+        Vec::with_capacity(parsed_source_timestamps_utc.len());
+    for (source_position, raw_timestamp_utc) in parsed_source_timestamps_utc.iter().enumerate() {
         let parsed_timestamp_utc = DateTime::parse_from_rfc3339(raw_timestamp_utc)
             .map(|timestamp| timestamp.with_timezone(&Utc))
             .map_err(|_| {
                 SeasonalityInputValidationError::new_err(format!(
-                    "source_timestamp_utc at position {source_position} must be a RFC3339 timestamp with UTC offset, received `{raw_timestamp_utc}`"
+                    "source_timestamps_utc at position {source_position} must be a RFC3339 timestamp with UTC offset, received `{raw_timestamp_utc}`"
                 ))
             })?;
         let parsed_timestamp_utc_nanos =
@@ -1502,7 +1502,7 @@ fn materialize_hourly_seasonality_factors(
                 .timestamp_nanos_opt()
                 .ok_or_else(|| {
                     SeasonalityInputValidationError::new_err(format!(
-                        "source_timestamp_utc at position {source_position} is outside the supported nanosecond timestamp range"
+                        "source_timestamps_utc at position {source_position} is outside the supported nanosecond timestamp range"
                     ))
                 })?;
         parsed_source_timestamp_utc_nanos.push(parsed_timestamp_utc_nanos);
@@ -1771,31 +1771,31 @@ fn parse_hourly_provider_seasonality_source(
             })
         }
         "materialized" => {
-            let source_timestamp_field_name = if source_mapping.contains("source_timestamp_utc")? {
-                "source_timestamp_utc"
-            } else if source_mapping.contains("source_timestamps_utc")? {
-                "source_timestamps_utc"
-            } else {
+            if source_mapping.contains("source_timestamp_utc")? {
                 return Err(SeasonalityInputValidationError::new_err(
-                    "seasonality_source with source_kind='materialized' is missing required field 'source_timestamp_utc' or 'source_timestamps_utc'",
+                    "seasonality_source with source_kind='materialized' uses unsupported field 'source_timestamp_utc'; use 'source_timestamps_utc'",
                 ));
-            };
-            let source_timestamp_utc_value =
-                source_mapping.get_item(source_timestamp_field_name)?;
-            let source_timestamp_utc: Vec<String> =
-                source_timestamp_utc_value.extract().map_err(|_| {
+            }
+            if !source_mapping.contains("source_timestamps_utc")? {
+                return Err(SeasonalityInputValidationError::new_err(
+                    "seasonality_source with source_kind='materialized' is missing required field 'source_timestamps_utc'",
+                ));
+            }
+            let source_timestamps_utc_value = source_mapping.get_item("source_timestamps_utc")?;
+            let source_timestamps_utc: Vec<String> =
+                source_timestamps_utc_value.extract().map_err(|_| {
                     SeasonalityInputValidationError::new_err(
-                        "seasonality_source field 'source_timestamp_utc' must be an iterable of RFC3339 timestamp strings",
+                        "seasonality_source field 'source_timestamps_utc' must be an iterable of RFC3339 timestamp strings",
                     )
                 })?;
             let mut source_timestamp_utc_nanos: Vec<i64> =
-                Vec::with_capacity(source_timestamp_utc.len());
-            for (source_position, raw_timestamp_utc) in source_timestamp_utc.iter().enumerate() {
+                Vec::with_capacity(source_timestamps_utc.len());
+            for (source_position, raw_timestamp_utc) in source_timestamps_utc.iter().enumerate() {
                 let parsed_timestamp_utc = DateTime::parse_from_rfc3339(raw_timestamp_utc)
                     .map(|timestamp| timestamp.with_timezone(&Utc))
                     .map_err(|_| {
                         SeasonalityInputValidationError::new_err(format!(
-                            "seasonality_source field 'source_timestamp_utc' at position {source_position} must be a RFC3339 timestamp with UTC offset, received `{raw_timestamp_utc}`",
+                            "seasonality_source field 'source_timestamps_utc' at position {source_position} must be a RFC3339 timestamp with UTC offset, received `{raw_timestamp_utc}`",
                         ))
                     })?;
                 let parsed_timestamp_utc_nanos =
@@ -1803,7 +1803,7 @@ fn parse_hourly_provider_seasonality_source(
                         .timestamp_nanos_opt()
                         .ok_or_else(|| {
                             SeasonalityInputValidationError::new_err(format!(
-                                "seasonality_source field 'source_timestamp_utc' at position {source_position} is outside the supported nanosecond timestamp range",
+                                "seasonality_source field 'source_timestamps_utc' at position {source_position} is outside the supported nanosecond timestamp range",
                             ))
                         })?;
                 source_timestamp_utc_nanos.push(parsed_timestamp_utc_nanos);

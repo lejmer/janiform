@@ -16,38 +16,26 @@ from janiform.hourly_factors import (
     provide_hourly_factor_contract,
 )
 from janiform.seasonality import SeasonalityInputValidationError
+from tests.fixture_validation import (
+    HourlyFactorRegressionCanonicalOutputCase,
+    HourlyFactorRegressionFixtureDocument,
+    HourlyFactorRegressionMissingDataGuardCase,
+)
 
-type HourlyCanonicalOutputCase = dict[str, object]
-type HourlyMissingDataGuardCase = dict[str, object]
-
-REQUIRED_CASE_TAGS: set[str] = {
-    "normal_session",
-    "weekend",
-    "holiday",
-    "daylight_saving_transition",
-    "missing_data_guard",
-}
-
-EXPECTED_CANONICAL_FIXTURE_IDS: set[str] = {
-    "xnys_normal_session_materialized_baseline_case",
-    "xnys_weekend_closed_hours_case",
-    "xnys_holiday_closed_hours_case",
-    "xnys_spring_forward_transition_case",
-    "xnys_fall_back_transition_case",
-}
-
-EXPECTED_MISSING_DATA_GUARD_FIXTURE_IDS: set[str] = {
-    "seasonality_sparse_previous_then_global_mean_case",
-    "seasonality_sparse_global_mean_leading_interval_case",
-    "seasonality_missing_source_failure_case",
-    "seasonality_source_length_mismatch_failure_case",
-}
+type HourlyCanonicalOutputCase = HourlyFactorRegressionCanonicalOutputCase
+type HourlyMissingDataGuardCase = HourlyFactorRegressionMissingDataGuardCase
 
 
 def test_hourly_factor_regression_fixture_covers_required_case_tags(
+    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
     hourly_factor_regression_canonical_cases: list[HourlyCanonicalOutputCase],
     hourly_factor_regression_missing_data_guard_cases: list[HourlyMissingDataGuardCase],
 ) -> None:
+    canonical_metadata: dict[str, object] = cast(
+        dict[str, object],
+        hourly_factor_regression_fixture_document["canonical_regression_metadata"],
+    )
+    required_case_tags: set[str] = set(cast(list[str], canonical_metadata["required_tags"]))
     observed_tags: set[str] = {
         cast(str, tag)
         for regression_case in hourly_factor_regression_canonical_cases
@@ -59,13 +47,18 @@ def test_hourly_factor_regression_fixture_covers_required_case_tags(
         for tag in cast(list[str], regression_case["tags"])
     )
 
-    assert REQUIRED_CASE_TAGS <= observed_tags
+    assert required_case_tags <= observed_tags
 
 
 def test_hourly_factor_regression_fixture_identifiers_remain_stable(
+    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
     hourly_factor_regression_canonical_cases: list[HourlyCanonicalOutputCase],
     hourly_factor_regression_missing_data_guard_cases: list[HourlyMissingDataGuardCase],
 ) -> None:
+    canonical_metadata: dict[str, object] = cast(
+        dict[str, object],
+        hourly_factor_regression_fixture_document["canonical_regression_metadata"],
+    )
     observed_canonical_fixture_ids: set[str] = {
         _fixture_id(regression_case) for regression_case in hourly_factor_regression_canonical_cases
     }
@@ -74,13 +67,20 @@ def test_hourly_factor_regression_fixture_identifiers_remain_stable(
         for regression_case in hourly_factor_regression_missing_data_guard_cases
     }
 
-    assert observed_canonical_fixture_ids == EXPECTED_CANONICAL_FIXTURE_IDS
-    assert observed_missing_data_guard_fixture_ids == EXPECTED_MISSING_DATA_GUARD_FIXTURE_IDS
+    expected_canonical_fixture_ids: set[str] = set(
+        cast(list[str], canonical_metadata["stable_canonical_output_fixture_ids"]),
+    )
+    expected_missing_data_guard_fixture_ids: set[str] = set(
+        cast(list[str], canonical_metadata["stable_missing_data_guard_fixture_ids"]),
+    )
+
+    assert observed_canonical_fixture_ids == expected_canonical_fixture_ids
+    assert observed_missing_data_guard_fixture_ids == expected_missing_data_guard_fixture_ids
 
 
 def test_hourly_factor_canonical_output_cases_match_golden_matrix(
     calendar_registry: CalendarRegistry,
-    hourly_factor_regression_fixture_document: dict[str, object],
+    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
     hourly_factor_regression_canonical_cases: list[HourlyCanonicalOutputCase],
 ) -> None:
     acceptance_thresholds: dict[str, float] = cast(
@@ -121,7 +121,7 @@ def test_hourly_factor_canonical_output_cases_match_golden_matrix(
 
 def test_hourly_factor_missing_data_guard_cases_match_defined_outcomes(
     calendar_registry: CalendarRegistry,
-    hourly_factor_regression_fixture_document: dict[str, object],
+    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
     hourly_factor_regression_missing_data_guard_cases: list[HourlyMissingDataGuardCase],
 ) -> None:
     acceptance_thresholds: dict[str, float] = cast(

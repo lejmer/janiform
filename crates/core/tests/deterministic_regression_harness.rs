@@ -1,7 +1,5 @@
 mod support;
 
-use std::collections::BTreeMap;
-
 use chrono::{DateTime, Utc};
 use janiform_core::calendar::{ExchangeCalendarRegistry, MarketState};
 use janiform_core::validation::{
@@ -9,63 +7,13 @@ use janiform_core::validation::{
     HourlySeasonalityRegressionSource, RegressionCaseFailure, RegressionCaseStatus,
     RegressionHarnessToleranceConfig, run_deterministic_regression_harness,
 };
-use serde::Deserialize;
 
-use support::validation_fixture::load_calendar_regression_fixture_from_manifest;
-
-#[derive(Debug, Deserialize)]
-struct HourlyFactorRegressionFixtureDocument {
-    acceptance_thresholds: HourlyFactorRegressionAcceptanceThresholds,
-    canonical_output_cases: Vec<HourlyFactorCanonicalOutputCaseFixture>,
-}
-
-#[derive(Debug, Deserialize)]
-struct HourlyFactorRegressionAcceptanceThresholds {
-    s_h_absolute_tolerance: f64,
-    nu_h_absolute_tolerance: f64,
-}
-
-#[derive(Debug, Deserialize)]
-struct HourlyFactorCanonicalOutputCaseFixture {
-    fixture_id: String,
-    exchange_code: String,
-    range_start_utc: String,
-    range_end_utc: String,
-    seasonality_source: HourlySeasonalitySourceFixture,
-    news_intensity_source: HourlyNewsIntensitySourceFixture,
-    expected_s_h: Vec<f64>,
-    expected_nu_h: Vec<f64>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "source_kind", rename_all = "snake_case")]
-enum HourlySeasonalitySourceFixture {
-    Explicit {
-        hourly_factors: Vec<f64>,
-        materialization_method: String,
-    },
-    Materialized {
-        source_timestamps_utc: Vec<String>,
-        source_seasonality_factors: Vec<f64>,
-        interpolation_method: String,
-        aggregation_method: String,
-        sparse_fallback_policy: String,
-        sparse_hour_minimum_observation_count: usize,
-    },
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "source_kind", rename_all = "snake_case")]
-enum HourlyNewsIntensitySourceFixture {
-    Explicit {
-        hourly_factors: Vec<f64>,
-        materialization_method: String,
-    },
-    Materialized {
-        closed_window_baseline_intensity: f64,
-        open_window_override_by_interval_index: BTreeMap<String, f64>,
-    },
-}
+use support::validation_fixture::{
+    CalendarRegressionCaseFixture, HourlyFactorCanonicalOutputCaseFixture,
+    HourlyFactorRegressionFixtureDocument, HourlyNewsIntensitySourceFixture,
+    HourlySeasonalitySourceFixture, load_calendar_regression_fixture_from_manifest,
+    load_hourly_factor_regression_fixture_from_manifest,
+};
 
 #[test]
 fn deterministic_regression_harness_matches_fixture_sets() {
@@ -235,7 +183,7 @@ fn deterministic_regression_harness_report_is_repeatable() {
 }
 
 fn build_calendar_case_inputs(
-    fixture_cases: &[support::validation_fixture::CalendarRegressionCaseFixture],
+    fixture_cases: &[CalendarRegressionCaseFixture],
 ) -> Vec<CalendarStateRegressionCase> {
     fixture_cases
         .iter()
@@ -364,8 +312,7 @@ fn parse_utc_timestamp_to_nanos(raw_timestamp: &str) -> i64 {
 }
 
 fn load_hourly_factor_fixture_document() -> HourlyFactorRegressionFixtureDocument {
-    let raw_fixture =
-        include_str!("../../../tests/fixtures/hourly_factors/hourly_factor_regression_matrix.json");
-    serde_json::from_str::<HourlyFactorRegressionFixtureDocument>(raw_fixture)
+    load_hourly_factor_regression_fixture_from_manifest()
         .expect("hourly factor fixture should parse as json")
+        .fixture_document
 }

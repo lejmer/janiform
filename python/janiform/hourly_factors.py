@@ -721,7 +721,7 @@ def _serialize_seasonality_provider_source(
             ]
             return {
                 "source_kind": 'materialized',
-                "source_timestamp_utc": [
+                "source_timestamps_utc": [
                     source_timestamp_utc.isoformat()
                     for source_timestamp_utc in normalized_source_timestamps_utc
                 ],

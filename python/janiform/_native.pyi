@@ -643,7 +643,7 @@ def materialize_hourly_seasonality_factors(
     exchange_code: str,
     range_start_utc: str,
     range_end_utc: str,
-    source_timestamp_utc: object,
+    source_timestamps_utc: object,
     source_seasonality_factors: object,
     *,
     interpolation_method: str = "previous_observation_carry_forward.v1",

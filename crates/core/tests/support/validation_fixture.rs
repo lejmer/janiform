@@ -1,4 +1,6 @@
-use std::collections::BTreeSet;
+#![allow(dead_code)]
+
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -8,6 +10,8 @@ use serde::Deserialize;
 pub const VALIDATION_FIXTURE_MANIFEST_SCHEMA_VERSION: &str = "validation.fixture.manifest.v1";
 pub const CALENDAR_REGRESSION_FIXTURE_SCHEMA_VERSION: &str = "calendar.service.regression.v1";
 pub const CALENDAR_REGRESSION_FIXTURE_SET_ID: &str = "calendar_service_regression_matrix_v1";
+pub const HOURLY_FACTOR_REGRESSION_FIXTURE_SCHEMA_VERSION: &str = "hourly.factor.regression.v1";
+pub const HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID: &str = "hourly_factor_regression_matrix_v1";
 pub const MANIFEST_SCHEMA_FAMILY: &str = "validation.fixture.manifest";
 pub const MANIFEST_V0_UPDATE_POLICY: &str = "additive_only_and_major_on_breaking_change.v1";
 pub const MANIFEST_LOADING_ORDER_POLICY: &str = "lexicographic_by_fixture_id.v1";
@@ -48,6 +52,7 @@ pub struct ValidationFixtureDeterminismPolicy {
 pub enum ValidationFixtureDomain {
     Calendar,
     Seasonality,
+    HourlyFactors,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -68,6 +73,7 @@ pub struct CalendarRegressionFixtureDocument {
     pub fixture_set_id: String,
     pub schema_metadata: CalendarRegressionSchemaMetadata,
     pub determinism_metadata: CalendarRegressionDeterminismMetadata,
+    pub canonical_regression_metadata: CalendarCanonicalRegressionMetadata,
     pub calendar_registry: ExchangeCalendarRegistryArtifact,
     pub cases: Vec<CalendarRegressionCaseFixture>,
 }
@@ -90,6 +96,15 @@ pub struct CalendarRegressionDeterminismMetadata {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct CalendarCanonicalRegressionMetadata {
+    pub required_tags: Vec<String>,
+    pub stable_fixture_ids_by_tag: BTreeMap<String, Vec<String>>,
+    pub historical_holiday_expected_years: Vec<i32>,
+    pub historical_holiday_expected_intraday_tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CalendarRegressionCaseFixture {
     pub fixture_id: String,
     pub exchange_code: String,
@@ -97,6 +112,119 @@ pub struct CalendarRegressionCaseFixture {
     pub expected_state: String,
     pub tags: Vec<String>,
     pub description: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HourlyFactorRegressionFixtureDocument {
+    pub schema_version: String,
+    pub fixture_set_id: String,
+    pub calendar_fixture_set_id: String,
+    pub acceptance_thresholds: HourlyFactorRegressionAcceptanceThresholds,
+    pub canonical_regression_metadata: HourlyFactorRegressionCanonicalMetadata,
+    pub canonical_output_cases: Vec<HourlyFactorCanonicalOutputCaseFixture>,
+    pub missing_data_guard_cases: Vec<HourlyFactorMissingDataGuardCaseFixture>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HourlyFactorRegressionAcceptanceThresholds {
+    pub s_h_absolute_tolerance: f64,
+    pub nu_h_absolute_tolerance: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HourlyFactorRegressionCanonicalMetadata {
+    pub required_tags: Vec<String>,
+    pub stable_canonical_output_fixture_ids: Vec<String>,
+    pub stable_missing_data_guard_fixture_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HourlyFactorCanonicalOutputCaseFixture {
+    pub fixture_id: String,
+    pub exchange_code: String,
+    pub range_start_utc: String,
+    pub range_end_utc: String,
+    pub seasonality_source: HourlySeasonalitySourceFixture,
+    pub news_intensity_source: HourlyNewsIntensitySourceFixture,
+    pub expected_s_h: Vec<f64>,
+    pub expected_nu_h: Vec<f64>,
+    pub expected_skipped_local_hour_interval_count: usize,
+    pub expected_repeated_local_hour_interval_count: usize,
+    pub tags: Vec<String>,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HourlyFactorMissingDataGuardCaseFixture {
+    pub fixture_id: String,
+    pub exchange_code: String,
+    pub range_start_utc: String,
+    pub range_end_utc: String,
+    pub source_timestamps_utc: Vec<String>,
+    pub source_seasonality_factors: Vec<f64>,
+    pub settings: HourlySeasonalitySettingsFixture,
+    pub expected_outcome: HourlyMissingDataGuardExpectedOutcomeFixture,
+    pub tags: Vec<String>,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HourlySeasonalitySettingsFixture {
+    pub interpolation_method: String,
+    pub aggregation_method: String,
+    pub sparse_fallback_policy: String,
+    pub sparse_hour_minimum_observation_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(tag = "source_kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum HourlySeasonalitySourceFixture {
+    Explicit {
+        hourly_factors: Vec<f64>,
+        materialization_method: String,
+    },
+    Materialized {
+        source_timestamps_utc: Vec<String>,
+        source_seasonality_factors: Vec<f64>,
+        interpolation_method: String,
+        aggregation_method: String,
+        sparse_fallback_policy: String,
+        sparse_hour_minimum_observation_count: usize,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(tag = "source_kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum HourlyNewsIntensitySourceFixture {
+    Explicit {
+        hourly_factors: Vec<f64>,
+        materialization_method: String,
+    },
+    Materialized {
+        closed_window_baseline_intensity: f64,
+        open_window_override_by_interval_index: BTreeMap<String, f64>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(tag = "outcome_kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum HourlyMissingDataGuardExpectedOutcomeFixture {
+    Success {
+        expected_s_h: Vec<f64>,
+        expected_sparse_interval_count: usize,
+        expected_interpolated_interval_count: usize,
+        expected_fallback_interval_count: usize,
+    },
+    Failure {
+        expected_error_variant: String,
+        expected_error_message_substring: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,6 +243,14 @@ pub struct LoadedCalendarRegressionFixture {
     pub manifest_entry: ValidationFixtureManifestEntry,
     pub loaded_payload: LoadedFixturePayload,
     pub fixture_document: CalendarRegressionFixtureDocument,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LoadedHourlyFactorRegressionFixture {
+    pub manifest: ValidationFixtureManifestDocument,
+    pub manifest_entry: ValidationFixtureManifestEntry,
+    pub loaded_payload: LoadedFixturePayload,
+    pub fixture_document: HourlyFactorRegressionFixtureDocument,
 }
 
 pub fn load_validation_fixture_manifest_document()
@@ -264,11 +400,46 @@ pub fn load_calendar_regression_fixture_from_manifest()
     })
 }
 
+pub fn load_hourly_factor_regression_fixture_from_manifest()
+-> Result<LoadedHourlyFactorRegressionFixture, String> {
+    let manifest = load_validation_fixture_manifest_document()?;
+    let manifest_entry =
+        find_manifest_entry_by_fixture_id(&manifest, HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID)?;
+
+    if manifest_entry.fixture_schema_version != HOURLY_FACTOR_REGRESSION_FIXTURE_SCHEMA_VERSION {
+        return Err(format!(
+            "unexpected hourly factor fixture schema version in manifest: {}",
+            manifest_entry.fixture_schema_version
+        ));
+    }
+
+    let loaded_payload = load_manifest_entry_payload(&fixtures_root_path(), &manifest_entry)?;
+    let fixture_document =
+        parse_hourly_factor_regression_fixture_document(&loaded_payload.payload_bytes)?;
+
+    validate_hourly_factor_regression_fixture_document(&fixture_document)?;
+
+    Ok(LoadedHourlyFactorRegressionFixture {
+        manifest,
+        manifest_entry,
+        loaded_payload,
+        fixture_document,
+    })
+}
+
 pub fn parse_calendar_regression_fixture_document(
     payload_bytes: &[u8],
 ) -> Result<CalendarRegressionFixtureDocument, String> {
     serde_json::from_slice::<CalendarRegressionFixtureDocument>(payload_bytes)
         .map_err(|source| format!("failed to parse calendar regression fixture document: {source}"))
+}
+
+pub fn parse_hourly_factor_regression_fixture_document(
+    payload_bytes: &[u8],
+) -> Result<HourlyFactorRegressionFixtureDocument, String> {
+    serde_json::from_slice::<HourlyFactorRegressionFixtureDocument>(payload_bytes).map_err(
+        |source| format!("failed to parse hourly factor regression fixture document: {source}"),
+    )
 }
 
 pub fn validate_calendar_regression_fixture_document(
@@ -348,6 +519,7 @@ pub fn validate_calendar_regression_fixture_document(
 
     let mut observed_fixture_case_ids: BTreeSet<&str> = BTreeSet::new();
     let mut observed_exchange_timestamp_pairs: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut observed_tags: BTreeSet<String> = BTreeSet::new();
     for fixture_case in &fixture_document.cases {
         require_non_empty(&fixture_case.fixture_id, "cases.fixture_id")?;
         require_non_empty(&fixture_case.exchange_code, "cases.exchange_code")?;
@@ -388,6 +560,7 @@ pub fn validate_calendar_regression_fixture_document(
 
         for case_tag in &fixture_case.tags {
             require_non_empty(case_tag, "cases.tags")?;
+            observed_tags.insert(case_tag.clone());
         }
 
         match fixture_case.expected_state.as_str() {
@@ -401,11 +574,148 @@ pub fn validate_calendar_regression_fixture_document(
         }
     }
 
+    validate_calendar_canonical_regression_metadata(fixture_document, &observed_tags)?;
+
     ExchangeCalendarRegistry::from_artifact(fixture_document.calendar_registry.clone()).map_err(
         |source| {
             format!("calendar regression fixture includes an invalid calendar registry: {source}")
         },
     )?;
+
+    Ok(())
+}
+
+pub fn validate_hourly_factor_regression_fixture_document(
+    fixture_document: &HourlyFactorRegressionFixtureDocument,
+) -> Result<(), String> {
+    if fixture_document.schema_version != HOURLY_FACTOR_REGRESSION_FIXTURE_SCHEMA_VERSION {
+        return Err(format!(
+            "unsupported hourly factor regression fixture schema version: {}",
+            fixture_document.schema_version
+        ));
+    }
+    if fixture_document.fixture_set_id != HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID {
+        return Err(format!(
+            "unexpected hourly factor regression fixture set id: {}",
+            fixture_document.fixture_set_id
+        ));
+    }
+    if fixture_document.calendar_fixture_set_id != CALENDAR_REGRESSION_FIXTURE_SET_ID {
+        return Err(format!(
+            "unexpected hourly factor regression calendar_fixture_set_id: {}",
+            fixture_document.calendar_fixture_set_id
+        ));
+    }
+    validate_finite_non_negative(
+        fixture_document
+            .acceptance_thresholds
+            .s_h_absolute_tolerance,
+        "acceptance_thresholds.s_h_absolute_tolerance",
+    )?;
+    validate_finite_non_negative(
+        fixture_document
+            .acceptance_thresholds
+            .nu_h_absolute_tolerance,
+        "acceptance_thresholds.nu_h_absolute_tolerance",
+    )?;
+
+    if fixture_document.canonical_output_cases.is_empty() {
+        return Err(
+            "hourly factor regression fixture must include canonical_output_cases".to_string(),
+        );
+    }
+    if fixture_document.missing_data_guard_cases.is_empty() {
+        return Err(
+            "hourly factor regression fixture must include missing_data_guard_cases".to_string(),
+        );
+    }
+
+    let mut observed_canonical_fixture_ids: BTreeSet<String> = BTreeSet::new();
+    let mut observed_missing_fixture_ids: BTreeSet<String> = BTreeSet::new();
+    let mut observed_tags: BTreeSet<String> = BTreeSet::new();
+
+    for fixture_case in &fixture_document.canonical_output_cases {
+        validate_hourly_canonical_output_case(fixture_case)?;
+        if !observed_canonical_fixture_ids.insert(fixture_case.fixture_id.clone()) {
+            return Err(format!(
+                "duplicate canonical_output_cases fixture_id: {}",
+                fixture_case.fixture_id
+            ));
+        }
+        for case_tag in &fixture_case.tags {
+            observed_tags.insert(case_tag.clone());
+        }
+    }
+
+    for fixture_case in &fixture_document.missing_data_guard_cases {
+        validate_hourly_missing_data_guard_case(fixture_case)?;
+        if !observed_missing_fixture_ids.insert(fixture_case.fixture_id.clone()) {
+            return Err(format!(
+                "duplicate missing_data_guard_cases fixture_id: {}",
+                fixture_case.fixture_id
+            ));
+        }
+        for case_tag in &fixture_case.tags {
+            observed_tags.insert(case_tag.clone());
+        }
+    }
+
+    let required_tags = &fixture_document.canonical_regression_metadata.required_tags;
+    if required_tags.is_empty() {
+        return Err(
+            "hourly canonical_regression_metadata.required_tags must not be empty".to_string(),
+        );
+    }
+    for required_tag in required_tags {
+        require_non_empty(required_tag, "canonical_regression_metadata.required_tags")?;
+    }
+
+    let expected_canonical_fixture_ids: BTreeSet<String> = fixture_document
+        .canonical_regression_metadata
+        .stable_canonical_output_fixture_ids
+        .iter()
+        .map(|fixture_id| fixture_id.to_string())
+        .collect();
+    if expected_canonical_fixture_ids.is_empty() {
+        return Err(
+            "hourly canonical_regression_metadata.stable_canonical_output_fixture_ids must not be empty"
+                .to_string(),
+        );
+    }
+    let expected_missing_fixture_ids: BTreeSet<String> = fixture_document
+        .canonical_regression_metadata
+        .stable_missing_data_guard_fixture_ids
+        .iter()
+        .map(|fixture_id| fixture_id.to_string())
+        .collect();
+    if expected_missing_fixture_ids.is_empty() {
+        return Err(
+            "hourly canonical_regression_metadata.stable_missing_data_guard_fixture_ids must not be empty"
+                .to_string(),
+        );
+    }
+
+    if !required_tags
+        .iter()
+        .all(|required_tag| observed_tags.contains(required_tag))
+    {
+        return Err(
+            "hourly canonical_regression_metadata.required_tags must be present in fixture cases"
+                .to_string(),
+        );
+    }
+    if observed_canonical_fixture_ids != expected_canonical_fixture_ids {
+        return Err(
+            "hourly canonical_regression_metadata.stable_canonical_output_fixture_ids does not match observed fixture ids"
+                .to_string(),
+        );
+    }
+    if observed_missing_fixture_ids != expected_missing_fixture_ids {
+        return Err(
+            "hourly canonical_regression_metadata.stable_missing_data_guard_fixture_ids does not match observed fixture ids"
+                .to_string(),
+        );
+    }
 
     Ok(())
 }
@@ -480,6 +790,328 @@ fn validate_manifest_entry(manifest_entry: &ValidationFixtureManifestEntry) -> R
             "manifest fixture entry {} has invalid content_hash: {}",
             manifest_entry.fixture_id, manifest_entry.content_hash
         ));
+    }
+
+    Ok(())
+}
+
+fn validate_calendar_canonical_regression_metadata(
+    fixture_document: &CalendarRegressionFixtureDocument,
+    observed_tags: &BTreeSet<String>,
+) -> Result<(), String> {
+    let canonical_metadata = &fixture_document.canonical_regression_metadata;
+    if canonical_metadata.required_tags.is_empty() {
+        return Err(
+            "calendar canonical_regression_metadata.required_tags must not be empty".to_string(),
+        );
+    }
+    for required_tag in &canonical_metadata.required_tags {
+        require_non_empty(required_tag, "canonical_regression_metadata.required_tags")?;
+        if !observed_tags.contains(required_tag) {
+            return Err(format!(
+                "calendar canonical_regression_metadata.required_tags contains `{required_tag}` which is missing from fixture cases"
+            ));
+        }
+    }
+
+    if canonical_metadata.stable_fixture_ids_by_tag.is_empty() {
+        return Err(
+            "calendar canonical_regression_metadata.stable_fixture_ids_by_tag must not be empty"
+                .to_string(),
+        );
+    }
+    for (tag, expected_fixture_ids) in &canonical_metadata.stable_fixture_ids_by_tag {
+        require_non_empty(
+            tag,
+            "canonical_regression_metadata.stable_fixture_ids_by_tag.key",
+        )?;
+        if expected_fixture_ids.is_empty() {
+            return Err(format!(
+                "calendar canonical_regression_metadata.stable_fixture_ids_by_tag[{tag}] must not be empty"
+            ));
+        }
+
+        let expected_fixture_id_set: BTreeSet<String> = expected_fixture_ids
+            .iter()
+            .map(|fixture_id| {
+                require_non_empty(
+                    fixture_id,
+                    "canonical_regression_metadata.stable_fixture_ids_by_tag.value",
+                )?;
+                Ok(fixture_id.to_string())
+            })
+            .collect::<Result<BTreeSet<String>, String>>()?;
+        let observed_fixture_id_set: BTreeSet<String> = fixture_document
+            .cases
+            .iter()
+            .filter(|fixture_case| fixture_case.tags.iter().any(|case_tag| case_tag == tag))
+            .map(|fixture_case| fixture_case.fixture_id.to_string())
+            .collect();
+        if observed_fixture_id_set != expected_fixture_id_set {
+            return Err(format!(
+                "calendar canonical_regression_metadata.stable_fixture_ids_by_tag does not match observed fixture ids for tag '{tag}'"
+            ));
+        }
+    }
+
+    if canonical_metadata
+        .historical_holiday_expected_years
+        .is_empty()
+    {
+        return Err(
+            "calendar canonical_regression_metadata.historical_holiday_expected_years must not be empty"
+                .to_string(),
+        );
+    }
+    if canonical_metadata
+        .historical_holiday_expected_intraday_tags
+        .is_empty()
+    {
+        return Err(
+            "calendar canonical_regression_metadata.historical_holiday_expected_intraday_tags must not be empty"
+                .to_string(),
+        );
+    }
+    for case_tag in &canonical_metadata.historical_holiday_expected_intraday_tags {
+        require_non_empty(
+            case_tag,
+            "canonical_regression_metadata.historical_holiday_expected_intraday_tags",
+        )?;
+    }
+
+    Ok(())
+}
+
+fn validate_hourly_canonical_output_case(
+    fixture_case: &HourlyFactorCanonicalOutputCaseFixture,
+) -> Result<(), String> {
+    require_non_empty(
+        &fixture_case.fixture_id,
+        "canonical_output_cases.fixture_id",
+    )?;
+    require_non_empty(
+        &fixture_case.exchange_code,
+        "canonical_output_cases.exchange_code",
+    )?;
+    require_non_empty(
+        &fixture_case.range_start_utc,
+        "canonical_output_cases.range_start_utc",
+    )?;
+    require_non_empty(
+        &fixture_case.range_end_utc,
+        "canonical_output_cases.range_end_utc",
+    )?;
+    require_non_empty(
+        &fixture_case.description,
+        "canonical_output_cases.description",
+    )?;
+    if fixture_case.tags.is_empty() {
+        return Err(format!(
+            "hourly canonical_output_case {} must include at least one tag",
+            fixture_case.fixture_id
+        ));
+    }
+    for case_tag in &fixture_case.tags {
+        require_non_empty(case_tag, "canonical_output_cases.tags")?;
+    }
+    if fixture_case.expected_s_h.is_empty() {
+        return Err(format!(
+            "hourly canonical_output_case {} expected_s_h must not be empty",
+            fixture_case.fixture_id
+        ));
+    }
+    if fixture_case.expected_nu_h.is_empty() {
+        return Err(format!(
+            "hourly canonical_output_case {} expected_nu_h must not be empty",
+            fixture_case.fixture_id
+        ));
+    }
+    for value in &fixture_case.expected_s_h {
+        validate_finite_non_negative(*value, "canonical_output_cases.expected_s_h")?;
+    }
+    for value in &fixture_case.expected_nu_h {
+        validate_finite_non_negative(*value, "canonical_output_cases.expected_nu_h")?;
+    }
+
+    match &fixture_case.seasonality_source {
+        HourlySeasonalitySourceFixture::Explicit {
+            hourly_factors,
+            materialization_method,
+        } => {
+            if hourly_factors.is_empty() {
+                return Err(format!(
+                    "hourly canonical_output_case {} explicit seasonality hourly_factors must not be empty",
+                    fixture_case.fixture_id
+                ));
+            }
+            require_non_empty(
+                materialization_method,
+                "canonical_output_cases.seasonality_source.materialization_method",
+            )?;
+        }
+        HourlySeasonalitySourceFixture::Materialized {
+            source_timestamps_utc,
+            source_seasonality_factors,
+            interpolation_method,
+            aggregation_method,
+            sparse_fallback_policy,
+            ..
+        } => {
+            if source_timestamps_utc.is_empty() {
+                return Err(format!(
+                    "hourly canonical_output_case {} materialized source_timestamps_utc must not be empty",
+                    fixture_case.fixture_id
+                ));
+            }
+            if source_seasonality_factors.is_empty() {
+                return Err(format!(
+                    "hourly canonical_output_case {} materialized source_seasonality_factors must not be empty",
+                    fixture_case.fixture_id
+                ));
+            }
+            for timestamp in source_timestamps_utc {
+                require_non_empty(
+                    timestamp,
+                    "canonical_output_cases.seasonality_source.source_timestamps_utc",
+                )?;
+            }
+            require_non_empty(
+                interpolation_method,
+                "canonical_output_cases.seasonality_source.interpolation_method",
+            )?;
+            require_non_empty(
+                aggregation_method,
+                "canonical_output_cases.seasonality_source.aggregation_method",
+            )?;
+            require_non_empty(
+                sparse_fallback_policy,
+                "canonical_output_cases.seasonality_source.sparse_fallback_policy",
+            )?;
+        }
+    }
+
+    match &fixture_case.news_intensity_source {
+        HourlyNewsIntensitySourceFixture::Explicit {
+            hourly_factors,
+            materialization_method,
+        } => {
+            if hourly_factors.is_empty() {
+                return Err(format!(
+                    "hourly canonical_output_case {} explicit news_intensity hourly_factors must not be empty",
+                    fixture_case.fixture_id
+                ));
+            }
+            require_non_empty(
+                materialization_method,
+                "canonical_output_cases.news_intensity_source.materialization_method",
+            )?;
+        }
+        HourlyNewsIntensitySourceFixture::Materialized {
+            closed_window_baseline_intensity,
+            open_window_override_by_interval_index,
+        } => {
+            validate_finite_non_negative(
+                *closed_window_baseline_intensity,
+                "canonical_output_cases.news_intensity_source.closed_window_baseline_intensity",
+            )?;
+            for raw_interval_index in open_window_override_by_interval_index.keys() {
+                require_non_empty(
+                    raw_interval_index,
+                    "canonical_output_cases.news_intensity_source.open_window_override_by_interval_index",
+                )?;
+                if raw_interval_index.parse::<u64>().is_err() {
+                    return Err(format!(
+                        "open_window_override_by_interval_index key `{raw_interval_index}` must parse as u64"
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_hourly_missing_data_guard_case(
+    fixture_case: &HourlyFactorMissingDataGuardCaseFixture,
+) -> Result<(), String> {
+    require_non_empty(
+        &fixture_case.fixture_id,
+        "missing_data_guard_cases.fixture_id",
+    )?;
+    require_non_empty(
+        &fixture_case.exchange_code,
+        "missing_data_guard_cases.exchange_code",
+    )?;
+    require_non_empty(
+        &fixture_case.range_start_utc,
+        "missing_data_guard_cases.range_start_utc",
+    )?;
+    require_non_empty(
+        &fixture_case.range_end_utc,
+        "missing_data_guard_cases.range_end_utc",
+    )?;
+    require_non_empty(
+        &fixture_case.description,
+        "missing_data_guard_cases.description",
+    )?;
+    if fixture_case.tags.is_empty() {
+        return Err(format!(
+            "hourly missing_data_guard_case {} must include at least one tag",
+            fixture_case.fixture_id
+        ));
+    }
+    for case_tag in &fixture_case.tags {
+        require_non_empty(case_tag, "missing_data_guard_cases.tags")?;
+    }
+    for timestamp in &fixture_case.source_timestamps_utc {
+        require_non_empty(timestamp, "missing_data_guard_cases.source_timestamps_utc")?;
+    }
+    require_non_empty(
+        &fixture_case.settings.interpolation_method,
+        "missing_data_guard_cases.settings.interpolation_method",
+    )?;
+    require_non_empty(
+        &fixture_case.settings.aggregation_method,
+        "missing_data_guard_cases.settings.aggregation_method",
+    )?;
+    require_non_empty(
+        &fixture_case.settings.sparse_fallback_policy,
+        "missing_data_guard_cases.settings.sparse_fallback_policy",
+    )?;
+
+    match &fixture_case.expected_outcome {
+        HourlyMissingDataGuardExpectedOutcomeFixture::Success { expected_s_h, .. } => {
+            if expected_s_h.is_empty() {
+                return Err(format!(
+                    "hourly missing_data_guard_case {} success expected_s_h must not be empty",
+                    fixture_case.fixture_id
+                ));
+            }
+        }
+        HourlyMissingDataGuardExpectedOutcomeFixture::Failure {
+            expected_error_variant,
+            expected_error_message_substring,
+        } => {
+            require_non_empty(
+                expected_error_variant,
+                "missing_data_guard_cases.expected_outcome.expected_error_variant",
+            )?;
+            require_non_empty(
+                expected_error_message_substring,
+                "missing_data_guard_cases.expected_outcome.expected_error_message_substring",
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_finite_non_negative(value: f64, field_name: &str) -> Result<(), String> {
+    if !value.is_finite() {
+        return Err(format!("field `{field_name}` must be finite"));
+    }
+    if value < 0.0 {
+        return Err(format!("field `{field_name}` must be non-negative"));
     }
 
     Ok(())
