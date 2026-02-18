@@ -673,3 +673,13 @@ def provide_hourly_factor_contract(
     seasonality_source: object | None = None,
     news_intensity_source: object | None = None,
 ) -> HourlyFactorContractResult: ...
+
+
+def run_deterministic_regression_harness(
+    calendar_registry: CalendarRegistry,
+    calendar_cases: object,
+    seasonality_cases: object,
+    *,
+    seasonality_absolute_tolerance: float = 1e-12,
+    news_intensity_absolute_tolerance: float = 1e-12,
+) -> str: ...

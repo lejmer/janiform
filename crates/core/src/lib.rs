@@ -8,3 +8,4 @@ pub mod hourly_factors;
 pub mod pricing;
 pub mod seasonality;
 pub mod simulation;
+pub mod validation;
