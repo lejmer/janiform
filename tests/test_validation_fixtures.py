@@ -124,6 +124,7 @@ def test_validation_manifest_rejects_invalid_domain_values(
     validation_fixture_manifest_document: ValidationFixtureManifestDocument,
 ) -> None:
     invalid_document: dict[str, object] = _copy_document(validation_fixture_manifest_document)
+
     fixture_entries: list[dict[str, object]] = invalid_document["fixtures"]
     fixture_entries[0]["domain"] = "python_only"
 
@@ -135,6 +136,7 @@ def test_validation_manifest_rejects_malformed_manifest_entry_content_hash(
     validation_fixture_manifest_document: ValidationFixtureManifestDocument,
 ) -> None:
     invalid_document: dict[str, object] = _copy_document(validation_fixture_manifest_document)
+
     fixture_entries: list[dict[str, object]] = invalid_document["fixtures"]
     fixture_entries[0]["content_hash"] = "ABCDEF0123456789"
 
@@ -156,6 +158,7 @@ def test_calendar_fixture_rejects_invalid_expected_state_values(
     calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
 ) -> None:
     invalid_document: dict[str, object] = _copy_document(calendar_regression_fixture_document)
+
     regression_cases: list[dict[str, object]] = invalid_document["cases"]
     regression_cases[0]["expected_state"] = "invalid"
 
@@ -178,12 +181,14 @@ def test_calendar_fixture_historical_holiday_cases_have_unique_exchange_timestam
     for regression_case in historical_holiday_cases:
         exchange_code = regression_case["exchange_code"]
         timestamp_utc = regression_case["timestamp_utc"]
+
         assert regression_case["expected_state"] == "closed"
         assert isinstance(exchange_code, str)
         assert isinstance(timestamp_utc, str)
 
         case_pair: tuple[str, str] = (exchange_code, timestamp_utc)
         assert case_pair not in observed_pairs
+
         observed_pairs.add(case_pair)
 
 
@@ -192,8 +197,10 @@ def test_calendar_fixture_rejects_duplicate_exchange_timestamp_pairs(
 ) -> None:
     invalid_document: dict[str, object] = _copy_document(calendar_regression_fixture_document)
     regression_cases: list[dict[str, object]] = invalid_document["cases"]
+
     duplicate_case: dict[str, object] = dict(regression_cases[0])
     duplicate_case["fixture_id"] = "duplicate_exchange_timestamp_case"
+
     regression_cases.append(duplicate_case)
 
     with pytest.raises(ValueError, match="duplicate exchange_code and timestamp_utc pair"):
@@ -205,6 +212,7 @@ def test_calendar_fixture_rejects_malformed_canonical_metadata(
 ) -> None:
     invalid_document: dict[str, object] = _copy_document(calendar_regression_fixture_document)
     canonical_metadata: dict[str, object] = invalid_document["canonical_regression_metadata"]
+
     stable_fixture_ids_by_tag: dict[str, object] = canonical_metadata["stable_fixture_ids_by_tag"]
     stable_fixture_ids_by_tag["boundary"] = [1]
 
@@ -226,6 +234,46 @@ def test_hourly_fixture_rejects_malformed_canonical_metadata(
         ValueError,
         match="stable_canonical_output_fixture_ids does not match observed fixture ids",
     ):
+        validate_hourly_factor_regression_fixture_document(invalid_document)
+
+
+def test_hourly_fixture_rejects_unsupported_state_classification_strictness_policy(
+    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
+) -> None:
+    invalid_document: dict[str, object] = _copy_document(hourly_factor_regression_fixture_document)
+
+    threshold_configuration: dict[str, object] = invalid_document["threshold_configuration"]
+    threshold_configuration["state_classification_strictness"] = "fuzzy_match.v1"
+
+    with pytest.raises(ValueError, match="unsupported state classification strictness policy"):
+        validate_hourly_factor_regression_fixture_document(invalid_document)
+
+
+def test_hourly_fixture_rejects_factor_range_policies_with_inverted_bounds(
+    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
+) -> None:
+    invalid_document: dict[str, object] = _copy_document(hourly_factor_regression_fixture_document)
+    threshold_configuration: dict[str, object] = invalid_document["threshold_configuration"]
+
+    factor_range_by_fixture_class: dict[str, dict[str, float]] = threshold_configuration[
+        "factor_range_by_fixture_class"
+    ]
+    factor_range_by_fixture_class["normal_session"]["s_h_min"] = 2.5
+    factor_range_by_fixture_class["normal_session"]["s_h_max"] = 2.0
+
+    with pytest.raises(ValueError, match="s_h_min greater than s_h_max"):
+        validate_hourly_factor_regression_fixture_document(invalid_document)
+
+
+def test_hourly_fixture_rejects_threshold_change_log_without_current_policy_version(
+    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
+) -> None:
+    invalid_document: dict[str, object] = _copy_document(hourly_factor_regression_fixture_document)
+
+    threshold_configuration: dict[str, object] = invalid_document["threshold_configuration"]
+    threshold_configuration["policy_version"] = "2.0.0"
+
+    with pytest.raises(ValueError, match="change_log must include an entry for policy_version"):
         validate_hourly_factor_regression_fixture_document(invalid_document)
 
 

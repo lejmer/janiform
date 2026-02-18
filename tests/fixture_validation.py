@@ -19,6 +19,8 @@ CALENDAR_FORWARD_EXTENSION_POLICY: str = "additive_fields_only.v1"
 
 HOURLY_FACTOR_REGRESSION_FIXTURE_SCHEMA_VERSION: str = "hourly.factor.regression.v1"
 HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID: str = "hourly_factor_regression_matrix_v1"
+HOURLY_FACTOR_THRESHOLD_CONFIGURATION_SCHEMA_VERSION: str = "validation.hourly_factor.thresholds.v1"
+STATE_CLASSIFICATION_STRICTNESS_POLICY: str = "exact_match_required.v1"
 SUPPORTED_MANIFEST_DOMAINS: set[str] = {"calendar", "seasonality", "hourly_factors"}
 
 
@@ -98,9 +100,31 @@ class HourlyFactorRegressionCanonicalMetadata(TypedDict):
     stable_missing_data_guard_fixture_ids: list[str]
 
 
-class HourlyFactorRegressionAcceptanceThresholds(TypedDict):
+class HourlyFactorRegressionToleranceConfig(TypedDict):
     s_h_absolute_tolerance: float
     nu_h_absolute_tolerance: float
+
+
+class HourlyFactorRegressionFactorRange(TypedDict):
+    s_h_min: float
+    s_h_max: float
+    nu_h_min: float
+    nu_h_max: float
+
+
+class HourlyFactorRegressionThresholdChangeLogEntry(TypedDict):
+    policy_version: str
+    recorded_at_utc: str
+    rationale: str
+
+
+class HourlyFactorRegressionThresholdConfiguration(TypedDict):
+    schema_version: str
+    policy_version: str
+    state_classification_strictness: str
+    tolerance_config: HourlyFactorRegressionToleranceConfig
+    factor_range_by_fixture_class: dict[str, HourlyFactorRegressionFactorRange]
+    change_log: list[HourlyFactorRegressionThresholdChangeLogEntry]
 
 
 class HourlyFactorRegressionCanonicalOutputCase(TypedDict):
@@ -135,7 +159,7 @@ class HourlyFactorRegressionFixtureDocument(TypedDict):
     schema_version: str
     fixture_set_id: str
     calendar_fixture_set_id: str
-    acceptance_thresholds: HourlyFactorRegressionAcceptanceThresholds
+    threshold_configuration: HourlyFactorRegressionThresholdConfiguration
     canonical_regression_metadata: HourlyFactorRegressionCanonicalMetadata
     canonical_output_cases: list[HourlyFactorRegressionCanonicalOutputCase]
     missing_data_guard_cases: list[HourlyFactorRegressionMissingDataGuardCase]
@@ -395,20 +419,13 @@ def validate_hourly_factor_regression_fixture_document(
             f"unexpected hourly factor calendar_fixture_set_id: {calendar_fixture_set_id}",
         )
 
-    acceptance_thresholds: JsonObject = _require_json_object_field(
-        document_map,
-        "acceptance_thresholds",
-        "hourly factor fixture",
-    )
-    seasonality_absolute_tolerance: float = _require_non_negative_float(
-        acceptance_thresholds,
-        "s_h_absolute_tolerance",
-        "acceptance_thresholds",
-    )
-    news_intensity_absolute_tolerance: float = _require_non_negative_float(
-        acceptance_thresholds,
-        "nu_h_absolute_tolerance",
-        "acceptance_thresholds",
+    threshold_configuration = _validate_hourly_factor_threshold_configuration(
+        _require_json_object_field(
+            document_map,
+            "threshold_configuration",
+            "hourly factor fixture",
+        ),
+        "hourly factor fixture.threshold_configuration",
     )
 
     canonical_output_cases_raw: JsonArray = _require_json_array_field(
@@ -463,10 +480,7 @@ def validate_hourly_factor_regression_fixture_document(
         "schema_version": schema_version,
         "fixture_set_id": fixture_set_id,
         "calendar_fixture_set_id": calendar_fixture_set_id,
-        "acceptance_thresholds": {
-            "s_h_absolute_tolerance": seasonality_absolute_tolerance,
-            "nu_h_absolute_tolerance": news_intensity_absolute_tolerance,
-        },
+        "threshold_configuration": threshold_configuration,
         "canonical_regression_metadata": canonical_regression_metadata,
         "canonical_output_cases": canonical_output_cases,
         "missing_data_guard_cases": missing_data_guard_cases,
@@ -674,6 +688,164 @@ def _validate_hourly_factor_canonical_output_case(
         "expected_repeated_local_hour_interval_count": expected_repeated_local_hour_interval_count,
         "tags": tags,
         "description": description,
+    }
+
+
+def _validate_hourly_factor_threshold_configuration(
+    raw_configuration: JsonObject,
+    context: str,
+) -> HourlyFactorRegressionThresholdConfiguration:
+    schema_version: str = _require_non_empty_string(raw_configuration, "schema_version", context)
+    if schema_version != HOURLY_FACTOR_THRESHOLD_CONFIGURATION_SCHEMA_VERSION:
+        raise ValueError(
+            f"unsupported threshold configuration schema version: {schema_version}",
+        )
+
+    policy_version: str = _require_non_empty_string(raw_configuration, "policy_version", context)
+    strictness_policy: str = _require_non_empty_string(
+        raw_configuration,
+        "state_classification_strictness",
+        context,
+    )
+    if strictness_policy != STATE_CLASSIFICATION_STRICTNESS_POLICY:
+        raise ValueError(f"unsupported state classification strictness policy: {strictness_policy}")
+
+    tolerance_config_raw: JsonObject = _require_json_object_field(
+        raw_configuration,
+        "tolerance_config",
+        context,
+    )
+    tolerance_config: HourlyFactorRegressionToleranceConfig = {
+        "s_h_absolute_tolerance": _require_non_negative_float(
+            tolerance_config_raw,
+            "s_h_absolute_tolerance",
+            f"{context}.tolerance_config",
+        ),
+        "nu_h_absolute_tolerance": _require_non_negative_float(
+            tolerance_config_raw,
+            "nu_h_absolute_tolerance",
+            f"{context}.tolerance_config",
+        ),
+    }
+
+    factor_range_map_raw: JsonObject = _require_json_object_field(
+        raw_configuration,
+        "factor_range_by_fixture_class",
+        context,
+    )
+    if not factor_range_map_raw:
+        raise ValueError(f"{context}.factor_range_by_fixture_class must not be empty")
+
+    factor_range_by_fixture_class: dict[str, HourlyFactorRegressionFactorRange] = {}
+    for raw_fixture_class, raw_range_policy in factor_range_map_raw.items():
+        if not isinstance(raw_fixture_class, str) or not raw_fixture_class.strip():
+            raise ValueError(f"{context}.factor_range_by_fixture_class keys must be non-empty strings")
+
+        fixture_class: str = raw_fixture_class.strip()
+        range_policy: JsonObject = _require_json_object(
+            raw_range_policy,
+            f"{context}.factor_range_by_fixture_class.{fixture_class}",
+        )
+        factor_range_by_fixture_class[fixture_class] = _validate_hourly_factor_range_policy(
+            range_policy,
+            fixture_class,
+            context,
+        )
+
+    change_log_raw: JsonArray = _require_json_array_field(raw_configuration, "change_log", context)
+    if not change_log_raw:
+        raise ValueError(f"{context}.change_log must include at least one entry")
+
+    change_log: list[HourlyFactorRegressionThresholdChangeLogEntry] = []
+    observed_policy_versions: set[str] = set()
+    has_current_policy_version = False
+    for change_entry_value in change_log_raw:
+        change_entry: JsonObject = _require_json_object(change_entry_value, f"{context}.change_log entry")
+        change_entry_policy_version: str = _require_non_empty_string(
+            change_entry,
+            "policy_version",
+            f"{context}.change_log entry",
+        )
+        if change_entry_policy_version in observed_policy_versions:
+            raise ValueError(
+                f"{context}.change_log contains duplicate policy_version: {change_entry_policy_version}",
+            )
+
+        observed_policy_versions.add(change_entry_policy_version)
+        has_current_policy_version = has_current_policy_version or (
+            change_entry_policy_version == policy_version
+        )
+        change_log.append(
+            {
+                "policy_version": change_entry_policy_version,
+                "recorded_at_utc": _require_non_empty_string(
+                    change_entry,
+                    "recorded_at_utc",
+                    f"{context}.change_log entry",
+                ),
+                "rationale": _require_non_empty_string(
+                    change_entry,
+                    "rationale",
+                    f"{context}.change_log entry",
+                ),
+            },
+        )
+
+    if not has_current_policy_version:
+        raise ValueError(
+            f"{context}.change_log must include an entry for policy_version '{policy_version}'",
+        )
+
+    return {
+        "schema_version": schema_version,
+        "policy_version": policy_version,
+        "state_classification_strictness": strictness_policy,
+        "tolerance_config": tolerance_config,
+        "factor_range_by_fixture_class": factor_range_by_fixture_class,
+        "change_log": change_log,
+    }
+
+
+def _validate_hourly_factor_range_policy(
+    raw_range_policy: JsonObject,
+    fixture_class: str,
+    context: str,
+) -> HourlyFactorRegressionFactorRange:
+    s_h_min: float = _require_non_negative_float(
+        raw_range_policy,
+        "s_h_min",
+        f"{context}.factor_range_by_fixture_class.{fixture_class}",
+    )
+    s_h_max: float = _require_non_negative_float(
+        raw_range_policy,
+        "s_h_max",
+        f"{context}.factor_range_by_fixture_class.{fixture_class}",
+    )
+    nu_h_min: float = _require_non_negative_float(
+        raw_range_policy,
+        "nu_h_min",
+        f"{context}.factor_range_by_fixture_class.{fixture_class}",
+    )
+    nu_h_max: float = _require_non_negative_float(
+        raw_range_policy,
+        "nu_h_max",
+        f"{context}.factor_range_by_fixture_class.{fixture_class}",
+    )
+
+    if s_h_min > s_h_max:
+        raise ValueError(
+            f"{context}.factor_range_by_fixture_class.{fixture_class} has s_h_min greater than s_h_max",
+        )
+    if nu_h_min > nu_h_max:
+        raise ValueError(
+            f"{context}.factor_range_by_fixture_class.{fixture_class} has nu_h_min greater than nu_h_max",
+        )
+
+    return {
+        "s_h_min": s_h_min,
+        "s_h_max": s_h_max,
+        "nu_h_min": nu_h_min,
+        "nu_h_max": nu_h_max,
     }
 
 
