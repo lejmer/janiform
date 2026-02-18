@@ -21,6 +21,9 @@ pub const CALENDAR_SCHEMA_GENERATION: &str = "v0.x";
 pub const CALENDAR_FORWARD_EXTENSION_POLICY: &str = "additive_fields_only.v1";
 pub const CALENDAR_CASE_ORDER_POLICY: &str = "preserve_declared_case_order.v1";
 pub const CALENDAR_CONTENT_HASH_SCOPE_POLICY: &str = "document_payload_bytes.v1";
+pub const HOURLY_FACTOR_THRESHOLD_CONFIGURATION_SCHEMA_VERSION: &str =
+    "validation.hourly_factor.thresholds.v1";
+pub const STATE_CLASSIFICATION_STRICTNESS_POLICY: &str = "exact_match_required.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -120,7 +123,7 @@ pub struct HourlyFactorRegressionFixtureDocument {
     pub schema_version: String,
     pub fixture_set_id: String,
     pub calendar_fixture_set_id: String,
-    pub acceptance_thresholds: HourlyFactorRegressionAcceptanceThresholds,
+    pub threshold_configuration: HourlyFactorRegressionThresholdConfiguration,
     pub canonical_regression_metadata: HourlyFactorRegressionCanonicalMetadata,
     pub canonical_output_cases: Vec<HourlyFactorCanonicalOutputCaseFixture>,
     pub missing_data_guard_cases: Vec<HourlyFactorMissingDataGuardCaseFixture>,
@@ -128,9 +131,37 @@ pub struct HourlyFactorRegressionFixtureDocument {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct HourlyFactorRegressionAcceptanceThresholds {
+pub struct HourlyFactorRegressionToleranceConfig {
     pub s_h_absolute_tolerance: f64,
     pub nu_h_absolute_tolerance: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HourlyFactorRegressionFactorRangePolicy {
+    pub s_h_min: f64,
+    pub s_h_max: f64,
+    pub nu_h_min: f64,
+    pub nu_h_max: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HourlyFactorThresholdChangeLogEntry {
+    pub policy_version: String,
+    pub recorded_at_utc: String,
+    pub rationale: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HourlyFactorRegressionThresholdConfiguration {
+    pub schema_version: String,
+    pub policy_version: String,
+    pub state_classification_strictness: String,
+    pub tolerance_config: HourlyFactorRegressionToleranceConfig,
+    pub factor_range_by_fixture_class: BTreeMap<String, HourlyFactorRegressionFactorRangePolicy>,
+    pub change_log: Vec<HourlyFactorThresholdChangeLogEntry>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -606,18 +637,7 @@ pub fn validate_hourly_factor_regression_fixture_document(
             fixture_document.calendar_fixture_set_id
         ));
     }
-    validate_finite_non_negative(
-        fixture_document
-            .acceptance_thresholds
-            .s_h_absolute_tolerance,
-        "acceptance_thresholds.s_h_absolute_tolerance",
-    )?;
-    validate_finite_non_negative(
-        fixture_document
-            .acceptance_thresholds
-            .nu_h_absolute_tolerance,
-        "acceptance_thresholds.nu_h_absolute_tolerance",
-    )?;
+    validate_threshold_configuration(&fixture_document.threshold_configuration)?;
 
     if fixture_document.canonical_output_cases.is_empty() {
         return Err(
@@ -715,6 +735,125 @@ pub fn validate_hourly_factor_regression_fixture_document(
             "hourly canonical_regression_metadata.stable_missing_data_guard_fixture_ids does not match observed fixture ids"
                 .to_string(),
         );
+    }
+
+    Ok(())
+}
+
+fn validate_threshold_configuration(
+    threshold_configuration: &HourlyFactorRegressionThresholdConfiguration,
+) -> Result<(), String> {
+    if threshold_configuration.schema_version
+        != HOURLY_FACTOR_THRESHOLD_CONFIGURATION_SCHEMA_VERSION
+    {
+        return Err(format!(
+            "unsupported threshold configuration schema version: {}",
+            threshold_configuration.schema_version
+        ));
+    }
+    require_non_empty(
+        &threshold_configuration.policy_version,
+        "threshold_configuration.policy_version",
+    )?;
+
+    if threshold_configuration.state_classification_strictness
+        != STATE_CLASSIFICATION_STRICTNESS_POLICY
+    {
+        return Err(format!(
+            "unsupported state classification strictness policy: {}",
+            threshold_configuration.state_classification_strictness
+        ));
+    }
+
+    validate_finite_non_negative(
+        threshold_configuration
+            .tolerance_config
+            .s_h_absolute_tolerance,
+        "threshold_configuration.tolerance_config.s_h_absolute_tolerance",
+    )?;
+    validate_finite_non_negative(
+        threshold_configuration
+            .tolerance_config
+            .nu_h_absolute_tolerance,
+        "threshold_configuration.tolerance_config.nu_h_absolute_tolerance",
+    )?;
+
+    if threshold_configuration
+        .factor_range_by_fixture_class
+        .is_empty()
+    {
+        return Err(
+            "threshold_configuration.factor_range_by_fixture_class must not be empty".to_string(),
+        );
+    }
+    for (fixture_class, factor_range_policy) in
+        &threshold_configuration.factor_range_by_fixture_class
+    {
+        require_non_empty(
+            fixture_class,
+            "threshold_configuration.factor_range_by_fixture_class.key",
+        )?;
+        validate_finite_non_negative(
+            factor_range_policy.s_h_min,
+            "threshold_configuration.factor_range_by_fixture_class.s_h_min",
+        )?;
+        validate_finite_non_negative(
+            factor_range_policy.s_h_max,
+            "threshold_configuration.factor_range_by_fixture_class.s_h_max",
+        )?;
+        validate_finite_non_negative(
+            factor_range_policy.nu_h_min,
+            "threshold_configuration.factor_range_by_fixture_class.nu_h_min",
+        )?;
+        validate_finite_non_negative(
+            factor_range_policy.nu_h_max,
+            "threshold_configuration.factor_range_by_fixture_class.nu_h_max",
+        )?;
+        if factor_range_policy.s_h_min > factor_range_policy.s_h_max {
+            return Err(format!(
+                "threshold_configuration.factor_range_by_fixture_class.{fixture_class} has s_h_min greater than s_h_max"
+            ));
+        }
+        if factor_range_policy.nu_h_min > factor_range_policy.nu_h_max {
+            return Err(format!(
+                "threshold_configuration.factor_range_by_fixture_class.{fixture_class} has nu_h_min greater than nu_h_max"
+            ));
+        }
+    }
+
+    if threshold_configuration.change_log.is_empty() {
+        return Err("threshold_configuration.change_log must not be empty".to_string());
+    }
+    let mut observed_policy_versions: BTreeSet<String> = BTreeSet::new();
+    let mut has_current_policy_version_entry = false;
+    for change_log_entry in &threshold_configuration.change_log {
+        require_non_empty(
+            &change_log_entry.policy_version,
+            "threshold_configuration.change_log.policy_version",
+        )?;
+        require_non_empty(
+            &change_log_entry.recorded_at_utc,
+            "threshold_configuration.change_log.recorded_at_utc",
+        )?;
+        require_non_empty(
+            &change_log_entry.rationale,
+            "threshold_configuration.change_log.rationale",
+        )?;
+        if !observed_policy_versions.insert(change_log_entry.policy_version.clone()) {
+            return Err(format!(
+                "threshold_configuration.change_log contains duplicate policy_version: {}",
+                change_log_entry.policy_version
+            ));
+        }
+        if change_log_entry.policy_version == threshold_configuration.policy_version {
+            has_current_policy_version_entry = true;
+        }
+    }
+    if !has_current_policy_version_entry {
+        return Err(format!(
+            "threshold_configuration.change_log must include an entry for policy_version '{}'",
+            threshold_configuration.policy_version
+        ));
     }
 
     Ok(())

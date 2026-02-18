@@ -13,8 +13,9 @@ use janiform_core::hourly_factors::{
 
 use support::validation_fixture::{
     HourlyFactorCanonicalOutputCaseFixture, HourlyFactorMissingDataGuardCaseFixture,
-    HourlyFactorRegressionFixtureDocument, HourlyMissingDataGuardExpectedOutcomeFixture,
-    HourlyNewsIntensitySourceFixture, HourlySeasonalitySourceFixture,
+    HourlyFactorRegressionFactorRangePolicy, HourlyFactorRegressionFixtureDocument,
+    HourlyMissingDataGuardExpectedOutcomeFixture, HourlyNewsIntensitySourceFixture,
+    HourlySeasonalitySourceFixture, STATE_CLASSIFICATION_STRICTNESS_POLICY,
     load_calendar_regression_fixture_from_manifest,
     load_hourly_factor_regression_fixture_from_manifest,
 };
@@ -84,10 +85,12 @@ fn hourly_factor_regression_canonical_output_cases_match_golden_matrix() {
     let fixture_document = load_hourly_factor_regression_fixture_document();
     let registry = load_calendar_registry_from_shared_fixture();
     let seasonality_abs_tolerance = fixture_document
-        .acceptance_thresholds
+        .threshold_configuration
+        .tolerance_config
         .s_h_absolute_tolerance;
     let news_abs_tolerance = fixture_document
-        .acceptance_thresholds
+        .threshold_configuration
+        .tolerance_config
         .nu_h_absolute_tolerance;
 
     for fixture_case in &fixture_document.canonical_output_cases {
@@ -139,7 +142,8 @@ fn hourly_factor_missing_data_guard_cases_match_defined_outcomes() {
     let fixture_document = load_hourly_factor_regression_fixture_document();
     let registry = load_calendar_registry_from_shared_fixture();
     let seasonality_abs_tolerance = fixture_document
-        .acceptance_thresholds
+        .threshold_configuration
+        .tolerance_config
         .s_h_absolute_tolerance;
 
     for fixture_case in &fixture_document.missing_data_guard_cases {
@@ -238,6 +242,56 @@ fn hourly_factor_deterministic_fallback_cases_are_repeatable() {
             assert_eq!(first_output, second_output);
         }
     }
+}
+
+#[test]
+fn hourly_factor_threshold_policy_applies_factor_ranges_to_canonical_cases() {
+    let fixture_document = load_hourly_factor_regression_fixture_document();
+    let registry = load_calendar_registry_from_shared_fixture();
+
+    assert_eq!(
+        fixture_document
+            .threshold_configuration
+            .state_classification_strictness,
+        STATE_CLASSIFICATION_STRICTNESS_POLICY
+    );
+
+    for fixture_case in &fixture_document.canonical_output_cases {
+        let contract_output = build_contract_for_canonical_case(&registry, fixture_case)
+            .unwrap_or_else(|error| {
+                panic!(
+                    "fixture {} ({}) failed unexpectedly: {error}",
+                    fixture_case.fixture_id, fixture_case.description
+                )
+            });
+        let range_policy = factor_range_policy_for_case(&fixture_document, fixture_case);
+
+        assert_float_vector_within_range(
+            &contract_output.s_h,
+            range_policy.s_h_min,
+            range_policy.s_h_max,
+            &fixture_case.fixture_id,
+            "s_h",
+        );
+        assert_float_vector_within_range(
+            &contract_output.nu_h,
+            range_policy.nu_h_min,
+            range_policy.nu_h_max,
+            &fixture_case.fixture_id,
+            "nu_h",
+        );
+    }
+}
+
+#[test]
+fn hourly_factor_threshold_policy_range_boundaries_are_inclusive() {
+    assert_float_vector_within_range(&[0.9, 1.2], 0.9, 1.2, "boundary_fixture", "s_h");
+}
+
+#[test]
+#[should_panic(expected = "outside allowed range")]
+fn hourly_factor_threshold_policy_range_check_fails_when_exceeded() {
+    assert_float_vector_within_range(&[1.2000000001], 0.9, 1.2, "boundary_fixture", "s_h");
 }
 
 fn build_contract_for_canonical_case(
@@ -386,6 +440,27 @@ fn assert_float_vectors_within_tolerance(
     }
 }
 
+fn assert_float_vector_within_range(
+    observed: &[f64],
+    minimum: f64,
+    maximum: f64,
+    fixture_id: &str,
+    field_name: &str,
+) {
+    for (value_index, observed_value) in observed.iter().enumerate() {
+        assert!(
+            *observed_value >= minimum && *observed_value <= maximum,
+            "fixture {} field {} index {} value {} is outside allowed range [{}, {}]",
+            fixture_id,
+            field_name,
+            value_index,
+            observed_value,
+            minimum,
+            maximum
+        );
+    }
+}
+
 fn hourly_factor_error_variant_identifier(error: &HourlyFactorContractError) -> &'static str {
     match error {
         HourlyFactorContractError::EmptySeasonalitySourceSignal => "EmptySeasonalitySourceSignal",
@@ -410,6 +485,36 @@ fn parse_open_window_overrides(
         .collect();
     parsed_open_window_overrides.sort_by_key(|(interval_index, _)| *interval_index);
     parsed_open_window_overrides
+}
+
+fn factor_range_policy_for_case<'a>(
+    fixture_document: &'a HourlyFactorRegressionFixtureDocument,
+    fixture_case: &HourlyFactorCanonicalOutputCaseFixture,
+) -> &'a HourlyFactorRegressionFactorRangePolicy {
+    let matched_fixture_classes: Vec<&str> = fixture_document
+        .threshold_configuration
+        .factor_range_by_fixture_class
+        .keys()
+        .filter_map(|fixture_class| {
+            if fixture_case.tags.iter().any(|tag| tag == fixture_class) {
+                Some(fixture_class.as_str())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(
+        matched_fixture_classes.len(),
+        1,
+        "fixture {} must match exactly one threshold fixture class, matched={:?}",
+        fixture_case.fixture_id,
+        matched_fixture_classes
+    );
+    fixture_document
+        .threshold_configuration
+        .factor_range_by_fixture_class
+        .get(matched_fixture_classes[0])
+        .expect("matched threshold fixture class should exist")
 }
 
 fn parse_utc_timestamp(raw_timestamp: &str) -> DateTime<Utc> {

@@ -20,6 +20,7 @@ from tests.fixture_validation import (
     HourlyFactorRegressionCanonicalOutputCase,
     HourlyFactorRegressionFixtureDocument,
     HourlyFactorRegressionMissingDataGuardCase,
+    STATE_CLASSIFICATION_STRICTNESS_POLICY,
 )
 
 type HourlyCanonicalOutputCase = HourlyFactorRegressionCanonicalOutputCase
@@ -83,12 +84,9 @@ def test_hourly_factor_canonical_output_cases_match_golden_matrix(
     hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
     hourly_factor_regression_canonical_cases: list[HourlyCanonicalOutputCase],
 ) -> None:
-    acceptance_thresholds: dict[str, float] = cast(
-        dict[str, float],
-        hourly_factor_regression_fixture_document["acceptance_thresholds"],
-    )
-    seasonality_absolute_tolerance: float = acceptance_thresholds["s_h_absolute_tolerance"]
-    news_intensity_absolute_tolerance: float = acceptance_thresholds["nu_h_absolute_tolerance"]
+    tolerance_config: dict[str, float] = _tolerance_config(hourly_factor_regression_fixture_document)
+    seasonality_absolute_tolerance: float = tolerance_config["s_h_absolute_tolerance"]
+    news_intensity_absolute_tolerance: float = tolerance_config["nu_h_absolute_tolerance"]
 
     for regression_case in hourly_factor_regression_canonical_cases:
         fixture_id: str = _fixture_id(regression_case)
@@ -124,11 +122,8 @@ def test_hourly_factor_missing_data_guard_cases_match_defined_outcomes(
     hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
     hourly_factor_regression_missing_data_guard_cases: list[HourlyMissingDataGuardCase],
 ) -> None:
-    acceptance_thresholds: dict[str, float] = cast(
-        dict[str, float],
-        hourly_factor_regression_fixture_document["acceptance_thresholds"],
-    )
-    seasonality_absolute_tolerance: float = acceptance_thresholds["s_h_absolute_tolerance"]
+    tolerance_config: dict[str, float] = _tolerance_config(hourly_factor_regression_fixture_document)
+    seasonality_absolute_tolerance: float = tolerance_config["s_h_absolute_tolerance"]
 
     for regression_case in hourly_factor_regression_missing_data_guard_cases:
         fixture_id: str = _fixture_id(regression_case)
@@ -213,6 +208,62 @@ def test_hourly_factor_deterministic_fallback_cases_are_repeatable(
             assert _seasonality_materialization_snapshot(
                 first_materialization,
             ) == _seasonality_materialization_snapshot(second_materialization)
+
+
+def test_hourly_factor_threshold_policy_applies_factor_ranges_to_canonical_cases(
+    calendar_registry: CalendarRegistry,
+    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
+    hourly_factor_regression_canonical_cases: list[HourlyCanonicalOutputCase],
+) -> None:
+    threshold_configuration = _threshold_configuration(hourly_factor_regression_fixture_document)
+    assert (
+        cast(str, threshold_configuration["state_classification_strictness"])
+        == STATE_CLASSIFICATION_STRICTNESS_POLICY
+    )
+
+    for regression_case in hourly_factor_regression_canonical_cases:
+        fixture_id: str = _fixture_id(regression_case)
+        contract = _build_contract_for_canonical_case(calendar_registry, regression_case)
+        range_policy = _factor_range_policy_for_case(
+            threshold_configuration=threshold_configuration,
+            regression_case=regression_case,
+        )
+
+        _assert_values_within_range(
+            observed_values=contract.s_h,
+            minimum=cast(float, range_policy["s_h_min"]),
+            maximum=cast(float, range_policy["s_h_max"]),
+            fixture_id=fixture_id,
+            field_name="s_h",
+        )
+        _assert_values_within_range(
+            observed_values=contract.nu_h,
+            minimum=cast(float, range_policy["nu_h_min"]),
+            maximum=cast(float, range_policy["nu_h_max"]),
+            fixture_id=fixture_id,
+            field_name="nu_h",
+        )
+
+
+def test_hourly_factor_threshold_policy_range_boundaries_are_inclusive() -> None:
+    _assert_values_within_range(
+        observed_values=[0.9, 1.2],
+        minimum=0.9,
+        maximum=1.2,
+        fixture_id="boundary_fixture",
+        field_name="s_h",
+    )
+
+
+def test_hourly_factor_threshold_policy_range_check_fails_when_exceeded() -> None:
+    with pytest.raises(AssertionError, match="outside allowed range"):
+        _assert_values_within_range(
+            observed_values=[1.2000000001],
+            minimum=0.9,
+            maximum=1.2,
+            fixture_id="boundary_fixture",
+            field_name="s_h",
+        )
 
 
 def _build_contract_for_canonical_case(
@@ -360,6 +411,21 @@ def _assert_float_series_close(
         )
 
 
+def _assert_values_within_range(
+    *,
+    observed_values: list[float],
+    minimum: float,
+    maximum: float,
+    fixture_id: str,
+    field_name: str,
+) -> None:
+    for value_index, observed_value in enumerate(observed_values):
+        assert minimum <= observed_value <= maximum, (
+            f"fixture {fixture_id} {field_name}[{value_index}] value {observed_value} "
+            f"is outside allowed range [{minimum}, {maximum}]"
+        )
+
+
 def _case_has_tag(regression_case: HourlyMissingDataGuardCase, tag: str) -> bool:
     return tag in cast(list[str], regression_case["tags"])
 
@@ -370,3 +436,42 @@ def _fixture_id(regression_case: HourlyCanonicalOutputCase | HourlyMissingDataGu
 
 def _parse_fixture_timestamp(timestamp_utc: str) -> datetime:
     return datetime.fromisoformat(timestamp_utc.replace("Z", "+00:00")).astimezone(UTC)
+
+
+def _threshold_configuration(
+    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
+) -> dict[str, object]:
+    return cast(
+        dict[str, object],
+        hourly_factor_regression_fixture_document["threshold_configuration"],
+    )
+
+
+def _tolerance_config(
+    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
+) -> dict[str, float]:
+    threshold_configuration = _threshold_configuration(hourly_factor_regression_fixture_document)
+    return cast(dict[str, float], threshold_configuration["tolerance_config"])
+
+
+def _factor_range_policy_for_case(
+    *,
+    threshold_configuration: dict[str, object],
+    regression_case: HourlyCanonicalOutputCase,
+) -> dict[str, float]:
+    factor_range_by_fixture_class: dict[str, dict[str, float]] = cast(
+        dict[str, dict[str, float]],
+        threshold_configuration["factor_range_by_fixture_class"],
+    )
+    matched_fixture_classes: list[str] = sorted(
+        fixture_class
+        for fixture_class in factor_range_by_fixture_class
+        if fixture_class in cast(list[str], regression_case["tags"])
+    )
+
+    assert len(matched_fixture_classes) == 1, (
+        f"fixture {_fixture_id(regression_case)} must match exactly one threshold fixture class, "
+        f"matched={matched_fixture_classes}"
+    )
+
+    return factor_range_by_fixture_class[matched_fixture_classes[0]]

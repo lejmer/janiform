@@ -248,3 +248,63 @@ fn hourly_factor_regression_fixture_rejects_malformed_canonical_metadata() {
 
     assert!(validation_result.is_err());
 }
+
+#[test]
+fn hourly_factor_regression_fixture_rejects_unsupported_state_classification_strictness_policy() {
+    let loaded_fixture = load_hourly_factor_regression_fixture_from_manifest()
+        .expect("hourly factor regression fixture should load from shared manifest");
+    let mut fixture_value: Value =
+        serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
+            .expect("hourly factor regression fixture should be valid JSON");
+    fixture_value["threshold_configuration"]["state_classification_strictness"] =
+        Value::String("fuzzy_match.v1".to_string());
+
+    let parsed_fixture = serde_json::from_value::<HourlyFactorRegressionFixtureDocument>(
+        fixture_value,
+    )
+    .expect("hourly factor regression fixture with unsupported strictness should still parse");
+
+    let validation_result = validate_hourly_factor_regression_fixture_document(&parsed_fixture);
+
+    assert!(validation_result.is_err());
+}
+
+#[test]
+fn hourly_factor_regression_fixture_rejects_factor_range_with_inverted_bounds() {
+    let loaded_fixture = load_hourly_factor_regression_fixture_from_manifest()
+        .expect("hourly factor regression fixture should load from shared manifest");
+    let mut fixture_value: Value =
+        serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
+            .expect("hourly factor regression fixture should be valid JSON");
+    fixture_value["threshold_configuration"]["factor_range_by_fixture_class"]["normal_session"]["s_h_min"] =
+        Value::from(2.5);
+    fixture_value["threshold_configuration"]["factor_range_by_fixture_class"]["normal_session"]["s_h_max"] =
+        Value::from(2.0);
+
+    let parsed_fixture =
+        serde_json::from_value::<HourlyFactorRegressionFixtureDocument>(fixture_value)
+            .expect("hourly factor regression fixture with inverted bounds should still parse");
+
+    let validation_result = validate_hourly_factor_regression_fixture_document(&parsed_fixture);
+
+    assert!(validation_result.is_err());
+}
+
+#[test]
+fn hourly_factor_regression_fixture_rejects_change_log_without_current_policy_version() {
+    let loaded_fixture = load_hourly_factor_regression_fixture_from_manifest()
+        .expect("hourly factor regression fixture should load from shared manifest");
+    let mut fixture_value: Value =
+        serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
+            .expect("hourly factor regression fixture should be valid JSON");
+    fixture_value["threshold_configuration"]["policy_version"] = Value::String("2.0.0".to_string());
+
+    let parsed_fixture = serde_json::from_value::<HourlyFactorRegressionFixtureDocument>(
+        fixture_value,
+    )
+    .expect("hourly factor regression fixture with missing current policy log should still parse");
+
+    let validation_result = validate_hourly_factor_regression_fixture_document(&parsed_fixture);
+
+    assert!(validation_result.is_err());
+}

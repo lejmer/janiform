@@ -2,9 +2,53 @@
   "schema_version": "hourly.factor.regression.v1",
   "fixture_set_id": "hourly_factor_regression_matrix_v1",
   "calendar_fixture_set_id": "calendar_service_regression_matrix_v1",
-  "acceptance_thresholds": {
-    "s_h_absolute_tolerance": 1e-12,
-    "nu_h_absolute_tolerance": 1e-12
+  "threshold_configuration": {
+    "schema_version": "validation.hourly_factor.thresholds.v1",
+    "policy_version": "1.0.0",
+    "state_classification_strictness": "exact_match_required.v1",
+    "tolerance_config": {
+      "s_h_absolute_tolerance": 1e-12,
+      "nu_h_absolute_tolerance": 1e-12
+    },
+    "factor_range_by_fixture_class": {
+      "normal_session": {
+        "s_h_min": 0.5,
+        "s_h_max": 2.0,
+        "nu_h_min": 0.0,
+        "nu_h_max": 1.5
+      },
+      "weekend": {
+        "s_h_min": 0.8,
+        "s_h_max": 1.2,
+        "nu_h_min": 0.0,
+        "nu_h_max": 1.0
+      },
+      "holiday": {
+        "s_h_min": 0.8,
+        "s_h_max": 1.2,
+        "nu_h_min": 0.0,
+        "nu_h_max": 0.8
+      },
+      "daylight_saving_transition": {
+        "s_h_min": 0.9,
+        "s_h_max": 4.0,
+        "nu_h_min": 0.0,
+        "nu_h_max": 0.8
+      },
+      "missing_data_guard": {
+        "s_h_min": 0.0,
+        "s_h_max": 5.0,
+        "nu_h_min": 0.0,
+        "nu_h_max": 2.0
+      }
+    },
+    "change_log": [
+      {
+        "policy_version": "1.0.0",
+        "recorded_at_utc": "2026-02-18T00:00:00Z",
+        "rationale": "Initial conservative threshold policy for deterministic regression tolerance and factor-range governance."
+      }
+    ]
   },
   "canonical_regression_metadata": {
     "required_tags": [

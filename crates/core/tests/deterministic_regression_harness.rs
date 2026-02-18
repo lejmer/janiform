@@ -11,7 +11,8 @@ use janiform_core::validation::{
 use support::validation_fixture::{
     CalendarRegressionCaseFixture, HourlyFactorCanonicalOutputCaseFixture,
     HourlyFactorRegressionFixtureDocument, HourlyNewsIntensitySourceFixture,
-    HourlySeasonalitySourceFixture, load_calendar_regression_fixture_from_manifest,
+    HourlySeasonalitySourceFixture, STATE_CLASSIFICATION_STRICTNESS_POLICY,
+    load_calendar_regression_fixture_from_manifest,
     load_hourly_factor_regression_fixture_from_manifest,
 };
 
@@ -29,14 +30,7 @@ fn deterministic_regression_harness_matches_fixture_sets() {
         build_calendar_case_inputs(&loaded_calendar_fixture.fixture_document.cases);
     let hourly_cases =
         build_hourly_factor_case_inputs(&hourly_fixture_document.canonical_output_cases);
-    let tolerance_config = RegressionHarnessToleranceConfig {
-        seasonality_absolute_tolerance: hourly_fixture_document
-            .acceptance_thresholds
-            .s_h_absolute_tolerance,
-        news_intensity_absolute_tolerance: hourly_fixture_document
-            .acceptance_thresholds
-            .nu_h_absolute_tolerance,
-    };
+    let tolerance_config = harness_tolerance_config(&hourly_fixture_document);
 
     let report = run_deterministic_regression_harness(
         &registry,
@@ -87,14 +81,14 @@ fn deterministic_regression_harness_reports_fixture_mismatches_with_diagnostics(
     let hourly_failure_fixture_id = hourly_cases[0].fixture_id.clone();
     hourly_cases[0].expected_s_h[0] += 0.25;
 
-    let tolerance_config = RegressionHarnessToleranceConfig {
-        seasonality_absolute_tolerance: hourly_fixture_document
-            .acceptance_thresholds
-            .s_h_absolute_tolerance,
-        news_intensity_absolute_tolerance: hourly_fixture_document
-            .acceptance_thresholds
-            .nu_h_absolute_tolerance,
-    };
+    assert_eq!(
+        hourly_fixture_document
+            .threshold_configuration
+            .state_classification_strictness,
+        STATE_CLASSIFICATION_STRICTNESS_POLICY
+    );
+
+    let tolerance_config = harness_tolerance_config(&hourly_fixture_document);
     let report = run_deterministic_regression_harness(
         &registry,
         &calendar_cases,
@@ -149,14 +143,7 @@ fn deterministic_regression_harness_report_is_repeatable() {
         build_calendar_case_inputs(&loaded_calendar_fixture.fixture_document.cases);
     let hourly_cases =
         build_hourly_factor_case_inputs(&hourly_fixture_document.canonical_output_cases);
-    let tolerance_config = RegressionHarnessToleranceConfig {
-        seasonality_absolute_tolerance: hourly_fixture_document
-            .acceptance_thresholds
-            .s_h_absolute_tolerance,
-        news_intensity_absolute_tolerance: hourly_fixture_document
-            .acceptance_thresholds
-            .nu_h_absolute_tolerance,
-    };
+    let tolerance_config = harness_tolerance_config(&hourly_fixture_document);
 
     let first_report = run_deterministic_regression_harness(
         &registry,
@@ -180,6 +167,64 @@ fn deterministic_regression_harness_report_is_repeatable() {
 
     assert_eq!(first_report, second_report);
     assert_eq!(first_report_json, second_report_json);
+}
+
+#[test]
+fn deterministic_regression_harness_threshold_boundary_is_inclusive() {
+    let loaded_calendar_fixture = load_calendar_regression_fixture_from_manifest()
+        .expect("calendar fixture should load from shared manifest");
+    let registry = ExchangeCalendarRegistry::from_artifact(
+        loaded_calendar_fixture.fixture_document.calendar_registry,
+    )
+    .expect("calendar registry fixture should load");
+    let hourly_fixture_document = load_hourly_factor_fixture_document();
+
+    let calendar_cases =
+        build_calendar_case_inputs(&loaded_calendar_fixture.fixture_document.cases);
+    let mut hourly_cases =
+        build_hourly_factor_case_inputs(&hourly_fixture_document.canonical_output_cases);
+    let mut tolerance_config = harness_tolerance_config(&hourly_fixture_document);
+    tolerance_config.seasonality_absolute_tolerance = 0.25;
+    hourly_cases[0].expected_s_h[0] += 0.25;
+
+    let report = run_deterministic_regression_harness(
+        &registry,
+        &calendar_cases,
+        &hourly_cases,
+        tolerance_config,
+    )
+    .expect("harness run should succeed");
+
+    assert_eq!(report.summary.failed_case_count, 0);
+}
+
+#[test]
+fn deterministic_regression_harness_threshold_boundary_fails_when_exceeded() {
+    let loaded_calendar_fixture = load_calendar_regression_fixture_from_manifest()
+        .expect("calendar fixture should load from shared manifest");
+    let registry = ExchangeCalendarRegistry::from_artifact(
+        loaded_calendar_fixture.fixture_document.calendar_registry,
+    )
+    .expect("calendar registry fixture should load");
+    let hourly_fixture_document = load_hourly_factor_fixture_document();
+
+    let calendar_cases =
+        build_calendar_case_inputs(&loaded_calendar_fixture.fixture_document.cases);
+    let mut hourly_cases =
+        build_hourly_factor_case_inputs(&hourly_fixture_document.canonical_output_cases);
+    let mut tolerance_config = harness_tolerance_config(&hourly_fixture_document);
+    tolerance_config.seasonality_absolute_tolerance = 0.25;
+    hourly_cases[0].expected_s_h[0] += 0.2501;
+
+    let report = run_deterministic_regression_harness(
+        &registry,
+        &calendar_cases,
+        &hourly_cases,
+        tolerance_config,
+    )
+    .expect("harness run should succeed");
+
+    assert_eq!(report.summary.failed_case_count, 1);
 }
 
 fn build_calendar_case_inputs(
@@ -315,4 +360,19 @@ fn load_hourly_factor_fixture_document() -> HourlyFactorRegressionFixtureDocumen
     load_hourly_factor_regression_fixture_from_manifest()
         .expect("hourly factor fixture should parse as json")
         .fixture_document
+}
+
+fn harness_tolerance_config(
+    fixture_document: &HourlyFactorRegressionFixtureDocument,
+) -> RegressionHarnessToleranceConfig {
+    RegressionHarnessToleranceConfig {
+        seasonality_absolute_tolerance: fixture_document
+            .threshold_configuration
+            .tolerance_config
+            .s_h_absolute_tolerance,
+        news_intensity_absolute_tolerance: fixture_document
+            .threshold_configuration
+            .tolerance_config
+            .nu_h_absolute_tolerance,
+    }
 }

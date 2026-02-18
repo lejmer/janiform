@@ -13,7 +13,7 @@ This directory contains the shared hourly factor regression matrix for Initiativ
 - `schema_version`: Fixture schema version string.
 - `fixture_set_id`: Stable fixture set identifier used in test diagnostics.
 - `calendar_fixture_set_id`: Reference to the shared calendar fixture set consumed by these tests.
-- `acceptance_thresholds`: Absolute tolerances used by golden comparisons.
+- `threshold_configuration`: Versioned validation threshold policy for deterministic tolerances, factor ranges, and state-classification strictness.
 - `canonical_regression_metadata`: Canonical required-tag and stable fixture-id expectations used by Rust and Python tests.
 - `canonical_output_cases`: Ordered canonical hourly output cases with expected `s_h` and `nu_h`.
 - `missing_data_guard_cases`: Ordered sparse or missing source cases with defined fallback or failure outcomes.
@@ -50,12 +50,18 @@ Each `missing_data_guard_cases` entry contains:
 - `stable_canonical_output_fixture_ids`: Stable case IDs expected in `canonical_output_cases`.
 - `stable_missing_data_guard_fixture_ids`: Stable case IDs expected in `missing_data_guard_cases`.
 
-## Acceptance Thresholds
+## Threshold Configuration
 
-- `s_h_absolute_tolerance`: Maximum absolute per-interval deviation allowed in `s_h` comparisons.
-- `nu_h_absolute_tolerance`: Maximum absolute per-interval deviation allowed in `nu_h` comparisons.
+`threshold_configuration` defines:
 
-Current thresholds are exact-equality friendly (`1e-12`) and intended to detect deterministic drift.
+- `schema_version`: Threshold configuration schema version.
+- `policy_version`: Current threshold policy version.
+- `state_classification_strictness`: Calendar state comparison strictness policy consumed by regression harness tests.
+- `tolerance_config`: Absolute tolerances for deterministic `s_h` and `nu_h` golden comparisons.
+- `factor_range_by_fixture_class`: Per-tag range bounds for `s_h` and `nu_h`.
+- `change_log`: Versioned threshold update records with rationale.
+
+The current tolerance values remain exact-equality friendly (`1e-12`) to catch deterministic drift while allowing explicit policy governance.
 
 ## Update Process
 
@@ -64,6 +70,7 @@ Current thresholds are exact-equality friendly (`1e-12`) and intended to detect 
 3. If behavior changes intentionally, update:
    - expected outputs or expected error outcomes in affected cases
    - `description` text for affected cases
+   - `threshold_configuration.policy_version` and `threshold_configuration.change_log` with rationale when thresholds change
    - this README if tolerance policy or fixture schema changed
 4. Run verification:
    - `cargo test -p janiform-core hourly_factor_regression`
