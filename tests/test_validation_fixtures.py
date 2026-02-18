@@ -223,10 +223,26 @@ def test_calendar_fixture_rejects_malformed_canonical_metadata(
         validate_calendar_regression_fixture_document(invalid_document)
 
 
+def test_calendar_fixture_rejects_incomplete_fixture_coverage_for_stable_tag_sets(
+    calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
+) -> None:
+    invalid_document: dict[str, object] = _copy_document(calendar_regression_fixture_document)
+
+    regression_cases: list[dict[str, object]] = invalid_document["cases"]
+    regression_cases.pop(0)
+
+    with pytest.raises(
+        ValueError,
+        match="stable_fixture_ids_by_tag does not match observed fixture ids",
+    ):
+        validate_calendar_regression_fixture_document(invalid_document)
+
+
 def test_hourly_fixture_rejects_malformed_canonical_metadata(
     hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
 ) -> None:
     invalid_document: dict[str, object] = _copy_document(hourly_factor_regression_fixture_document)
+
     canonical_metadata: dict[str, object] = invalid_document["canonical_regression_metadata"]
     canonical_metadata["stable_canonical_output_fixture_ids"] = ["missing_fixture_id"]
 
