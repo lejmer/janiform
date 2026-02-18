@@ -13,6 +13,16 @@ DETERMINISTIC_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION: str = (
 DETERMINISTIC_REGRESSION_HARNESS_DETERMINISM_POLICY: str = (
     "stable_input_order_and_first_mismatch_reporting.v1"
 )
+VALIDATION_FALLBACK_POLICY_SCHEMA_VERSION: str = "validation.fallback_policy.v1"
+VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY: str = (
+    "resolve_with_regular_sessions_when_no_date_override.v1"
+)
+VALIDATION_UNSUPPORTED_CALENDAR_SEGMENT_POLICY: str = (
+    "fail_case_with_explicit_calendar_resolution_error.v1"
+)
+VALIDATION_INCOMPLETE_FIXTURE_COVERAGE_POLICY: str = (
+    "fail_fast_on_fixture_contract_validation.v1"
+)
 
 
 class RegressionHarnessToleranceConfig(TypedDict):
@@ -26,6 +36,13 @@ class RegressionHarnessSummary(TypedDict):
     failed_case_count: int
 
 
+class RegressionHarnessFallbackPolicy(TypedDict):
+    schema_version: str
+    unknown_date_policy: str
+    unsupported_exchange_calendar_segment_policy: str
+    incomplete_fixture_coverage_policy: str
+
+
 class RegressionCaseReport(TypedDict):
     fixture_id: str
     case_kind: str
@@ -37,6 +54,7 @@ class RegressionCaseReport(TypedDict):
 class DeterministicRegressionHarnessReport(TypedDict):
     schema_version: str
     determinism_policy: str
+    fallback_policy: RegressionHarnessFallbackPolicy
     tolerance_config: RegressionHarnessToleranceConfig
     summary: RegressionHarnessSummary
     case_reports: list[RegressionCaseReport]
@@ -281,6 +299,66 @@ def _validate_harness_report_payload(raw_payload: object) -> DeterministicRegres
             f"unexpected deterministic regression harness determinism_policy: {determinism_policy}",
         )
 
+    fallback_policy_mapping: Mapping[str, object] = _require_mapping(
+        raw_payload,
+        "fallback_policy",
+        "deterministic regression harness report",
+    )
+    fallback_policy: RegressionHarnessFallbackPolicy = {
+        "schema_version": _require_non_empty_string(
+            fallback_policy_mapping,
+            "schema_version",
+            "deterministic regression harness report.fallback_policy",
+        ),
+        "unknown_date_policy": _require_non_empty_string(
+            fallback_policy_mapping,
+            "unknown_date_policy",
+            "deterministic regression harness report.fallback_policy",
+        ),
+        "unsupported_exchange_calendar_segment_policy": _require_non_empty_string(
+            fallback_policy_mapping,
+            "unsupported_exchange_calendar_segment_policy",
+            "deterministic regression harness report.fallback_policy",
+        ),
+        "incomplete_fixture_coverage_policy": _require_non_empty_string(
+            fallback_policy_mapping,
+            "incomplete_fixture_coverage_policy",
+            "deterministic regression harness report.fallback_policy",
+        ),
+    }
+
+    if fallback_policy["schema_version"] != VALIDATION_FALLBACK_POLICY_SCHEMA_VERSION:
+        raise SeasonalityInputValidationError(
+            "unexpected deterministic regression harness fallback_policy.schema_version: "
+            f"{fallback_policy['schema_version']}",
+        )
+
+    if fallback_policy["unknown_date_policy"] != VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY:
+        raise SeasonalityInputValidationError(
+            "unexpected deterministic regression harness fallback_policy.unknown_date_policy: "
+            f"{fallback_policy['unknown_date_policy']}",
+        )
+
+    if (
+        fallback_policy["unsupported_exchange_calendar_segment_policy"]
+        != VALIDATION_UNSUPPORTED_CALENDAR_SEGMENT_POLICY
+    ):
+        raise SeasonalityInputValidationError(
+            "unexpected deterministic regression harness "
+            "fallback_policy.unsupported_exchange_calendar_segment_policy: "
+            f"{fallback_policy['unsupported_exchange_calendar_segment_policy']}",
+        )
+
+    if (
+        fallback_policy["incomplete_fixture_coverage_policy"]
+        != VALIDATION_INCOMPLETE_FIXTURE_COVERAGE_POLICY
+    ):
+        raise SeasonalityInputValidationError(
+            "unexpected deterministic regression harness "
+            "fallback_policy.incomplete_fixture_coverage_policy: "
+            f"{fallback_policy['incomplete_fixture_coverage_policy']}",
+        )
+
     tolerance_config_mapping: Mapping[str, object] = _require_mapping(
         raw_payload,
         "tolerance_config",
@@ -379,6 +457,7 @@ def _validate_harness_report_payload(raw_payload: object) -> DeterministicRegres
     return {
         "schema_version": schema_version,
         "determinism_policy": determinism_policy,
+        "fallback_policy": fallback_policy,
         "tolerance_config": tolerance_config,
         "summary": summary,
         "case_reports": case_reports,
@@ -514,7 +593,12 @@ __all__ = [
     "DETERMINISTIC_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION",
     "DeterministicRegressionHarnessReport",
     "RegressionCaseReport",
+    "RegressionHarnessFallbackPolicy",
     "RegressionHarnessSummary",
     "RegressionHarnessToleranceConfig",
+    "VALIDATION_FALLBACK_POLICY_SCHEMA_VERSION",
+    "VALIDATION_INCOMPLETE_FIXTURE_COVERAGE_POLICY",
+    "VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY",
+    "VALIDATION_UNSUPPORTED_CALENDAR_SEGMENT_POLICY",
     "run_deterministic_regression_harness",
 ]

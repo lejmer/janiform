@@ -5,7 +5,9 @@ use janiform_core::calendar::{ExchangeCalendarRegistry, MarketState};
 use janiform_core::validation::{
     CalendarStateRegressionCase, HourlyFactorRegressionCase, HourlyNewsIntensityRegressionSource,
     HourlySeasonalityRegressionSource, RegressionCaseFailure, RegressionCaseStatus,
-    RegressionHarnessToleranceConfig, run_deterministic_regression_harness,
+    RegressionHarnessToleranceConfig, VALIDATION_FALLBACK_POLICY_SCHEMA_VERSION,
+    VALIDATION_INCOMPLETE_FIXTURE_COVERAGE_POLICY, VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY,
+    VALIDATION_UNSUPPORTED_CALENDAR_SEGMENT_POLICY, run_deterministic_regression_harness,
 };
 
 use support::validation_fixture::{
@@ -48,6 +50,24 @@ fn deterministic_regression_harness_matches_fixture_sets() {
     assert_eq!(
         report.summary.passed_case_count,
         report.summary.total_case_count
+    );
+    assert_eq!(
+        report.fallback_policy.schema_version,
+        VALIDATION_FALLBACK_POLICY_SCHEMA_VERSION
+    );
+    assert_eq!(
+        report.fallback_policy.unknown_date_policy,
+        VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY
+    );
+    assert_eq!(
+        report
+            .fallback_policy
+            .unsupported_exchange_calendar_segment_policy,
+        VALIDATION_UNSUPPORTED_CALENDAR_SEGMENT_POLICY
+    );
+    assert_eq!(
+        report.fallback_policy.incomplete_fixture_coverage_policy,
+        VALIDATION_INCOMPLETE_FIXTURE_COVERAGE_POLICY
     );
     assert!(
         report
@@ -233,6 +253,54 @@ fn deterministic_regression_harness_threshold_boundary_fails_when_exceeded() {
     .expect("harness run should succeed");
 
     assert_eq!(report.summary.failed_case_count, 1);
+}
+
+#[test]
+fn deterministic_regression_harness_unknown_date_uses_regular_schedule_policy() {
+    let loaded_calendar_fixture = load_calendar_regression_fixture_from_manifest()
+        .expect("calendar fixture should load from shared manifest");
+    let registry = ExchangeCalendarRegistry::from_artifact(
+        loaded_calendar_fixture.fixture_document.calendar_registry.clone(),
+    )
+    .expect("calendar registry fixture should load");
+
+    let xnys_exchange = loaded_calendar_fixture
+        .fixture_document
+        .calendar_registry
+        .exchanges
+        .iter()
+        .find(|exchange| exchange.exchange_code == "XNYS")
+        .expect("XNYS exchange should exist in calendar fixture");
+
+    assert!(!xnys_exchange.holiday_dates.iter().any(|date| date == "2027-02-02"));
+    assert!(
+        !xnys_exchange
+            .early_close_sessions
+            .iter()
+            .any(|session| session.date == "2027-02-02")
+    );
+
+    let unknown_date_case = CalendarStateRegressionCase {
+        fixture_id: "xnys_unknown_date_regular_schedule_case".to_string(),
+        exchange_code: "XNYS".to_string(),
+        timestamp_utc: parse_utc_timestamp("2027-02-02T14:30:00Z"),
+        expected_state: MarketState::Open,
+    };
+
+    let report = run_deterministic_regression_harness(
+        &registry,
+        &[unknown_date_case],
+        &[],
+        RegressionHarnessToleranceConfig::default(),
+    )
+    .expect("harness run should succeed");
+
+    assert_eq!(
+        report.fallback_policy.unknown_date_policy,
+        VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY
+    );
+    assert_eq!(report.summary.total_case_count, 1);
+    assert_eq!(report.summary.failed_case_count, 0);
 }
 
 fn build_calendar_case_inputs(

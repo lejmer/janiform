@@ -213,3 +213,14 @@ single integration point for hourly factor delivery.
   - shared provider entrypoint: `janiform.provide_hourly_factor_contract(...)`
   - pricing adapter: `janiform.load_hourly_factor_contract_for_pricing(...)`
   - simulation adapter: `janiform.load_hourly_factor_contract_for_simulation(...)`
+
+## Validation Fallback Policy
+
+Deterministic regression harness outputs include a machine-readable `fallback_policy` block
+that captures unknown-date, unsupported-segment, and incomplete-fixture handling rules.
+
+- Rust entrypoint: `janiform_core::validation::run_deterministic_regression_harness(...)`
+- Python entrypoint: `janiform.validation.run_deterministic_regression_harness(...)`
+
+See `docs/development/guides/validation_fallback_policy.md` for policy identifiers,
+failure modes, and triage workflow.

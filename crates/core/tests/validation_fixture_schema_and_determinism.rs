@@ -236,6 +236,27 @@ fn calendar_regression_fixture_rejects_malformed_canonical_metadata() {
 }
 
 #[test]
+fn calendar_regression_fixture_rejects_incomplete_fixture_coverage_for_stable_tag_sets() {
+    let loaded_fixture = load_calendar_regression_fixture_from_manifest()
+        .expect("calendar regression fixture should load from shared manifest");
+
+    let mut fixture_value: Value =
+        serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
+            .expect("calendar regression fixture should be valid JSON");
+    fixture_value["cases"]
+        .as_array_mut()
+        .expect("calendar fixture cases should be an array")
+        .remove(0);
+
+    let parsed_fixture = serde_json::from_value::<CalendarRegressionFixtureDocument>(fixture_value)
+        .expect("calendar regression fixture with missing stable case should still parse");
+
+    let validation_result = validate_calendar_regression_fixture_document(&parsed_fixture);
+
+    assert!(validation_result.is_err());
+}
+
+#[test]
 fn hourly_factor_regression_fixture_rejects_malformed_canonical_metadata() {
     let loaded_fixture = load_hourly_factor_regression_fixture_from_manifest()
         .expect("hourly factor regression fixture should load from shared manifest");

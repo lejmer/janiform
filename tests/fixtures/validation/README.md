@@ -31,3 +31,9 @@ Each fixture entry defines:
 - Entries are loaded in lexicographic order by `fixture_id`.
 - Fixture payloads must match `content_hash` before parsing.
 - Hash algorithm policy is declared in `determinism_policy.content_hash_algorithm`.
+
+## Fallback Policy Reference
+
+Shared validation fallback policy and triage guidance are documented in:
+
+- `docs/development/guides/validation_fallback_policy.md`

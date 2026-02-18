@@ -34,6 +34,7 @@ janiform --help
 
 - Design model and rationale: `docs/design/janiform_design_brainstorm_notes.md`
 - Calendar and seasonality API contracts: `docs/development/guides/calendar_and_seasonality_api_contracts.md`
+- Validation fallback policy: `docs/development/guides/validation_fallback_policy.md`
 - Python coding conventions: `docs/development/guides/python_style_guide.md`
 - Planning artifacts: `docs/planning/`
 

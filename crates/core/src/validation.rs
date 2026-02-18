@@ -16,6 +16,13 @@ pub const DETERMINISTIC_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION: &str =
     "validation.deterministic_regression_harness.report.v1";
 pub const DETERMINISTIC_REGRESSION_HARNESS_DETERMINISM_POLICY: &str =
     "stable_input_order_and_first_mismatch_reporting.v1";
+pub const VALIDATION_FALLBACK_POLICY_SCHEMA_VERSION: &str = "validation.fallback_policy.v1";
+pub const VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY: &str =
+    "resolve_with_regular_sessions_when_no_date_override.v1";
+pub const VALIDATION_UNSUPPORTED_CALENDAR_SEGMENT_POLICY: &str =
+    "fail_case_with_explicit_calendar_resolution_error.v1";
+pub const VALIDATION_INCOMPLETE_FIXTURE_COVERAGE_POLICY: &str =
+    "fail_fast_on_fixture_contract_validation.v1";
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RegressionHarnessToleranceConfig {
@@ -142,10 +149,19 @@ pub struct RegressionHarnessSummary {
     pub failed_case_count: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RegressionHarnessFallbackPolicy {
+    pub schema_version: &'static str,
+    pub unknown_date_policy: &'static str,
+    pub unsupported_exchange_calendar_segment_policy: &'static str,
+    pub incomplete_fixture_coverage_policy: &'static str,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RegressionHarnessReport {
     pub schema_version: &'static str,
     pub determinism_policy: &'static str,
+    pub fallback_policy: RegressionHarnessFallbackPolicy,
     pub tolerance_config: RegressionHarnessToleranceConfig,
     pub summary: RegressionHarnessSummary,
     pub case_reports: Vec<RegressionCaseReport>,
@@ -207,6 +223,13 @@ pub fn run_deterministic_regression_harness(
     Ok(RegressionHarnessReport {
         schema_version: DETERMINISTIC_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION,
         determinism_policy: DETERMINISTIC_REGRESSION_HARNESS_DETERMINISM_POLICY,
+        fallback_policy: RegressionHarnessFallbackPolicy {
+            schema_version: VALIDATION_FALLBACK_POLICY_SCHEMA_VERSION,
+            unknown_date_policy: VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY,
+            unsupported_exchange_calendar_segment_policy:
+                VALIDATION_UNSUPPORTED_CALENDAR_SEGMENT_POLICY,
+            incomplete_fixture_coverage_policy: VALIDATION_INCOMPLETE_FIXTURE_COVERAGE_POLICY,
+        },
         tolerance_config,
         summary: RegressionHarnessSummary {
             total_case_count,

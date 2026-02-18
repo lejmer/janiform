@@ -7,6 +7,10 @@ import janiform.validation as validation_module
 from janiform.seasonality import SeasonalityInputValidationError
 from janiform.validation import (
     DETERMINISTIC_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION,
+    VALIDATION_FALLBACK_POLICY_SCHEMA_VERSION,
+    VALIDATION_INCOMPLETE_FIXTURE_COVERAGE_POLICY,
+    VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY,
+    VALIDATION_UNSUPPORTED_CALENDAR_SEGMENT_POLICY,
     run_deterministic_regression_harness,
 )
 from tests.fixture_validation import (
@@ -37,8 +41,19 @@ def test_deterministic_regression_harness_matches_shared_fixtures(
 
     summary: dict[str, int] = cast(dict[str, int], report["summary"])
     case_reports: list[dict[str, object]] = cast(list[dict[str, object]], report["case_reports"])
+    fallback_policy: dict[str, str] = cast(dict[str, str], report["fallback_policy"])
 
     assert report["schema_version"] == DETERMINISTIC_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION
+    assert fallback_policy["schema_version"] == VALIDATION_FALLBACK_POLICY_SCHEMA_VERSION
+    assert fallback_policy["unknown_date_policy"] == VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY
+    assert (
+        fallback_policy["unsupported_exchange_calendar_segment_policy"]
+        == VALIDATION_UNSUPPORTED_CALENDAR_SEGMENT_POLICY
+    )
+    assert (
+        fallback_policy["incomplete_fixture_coverage_policy"]
+        == VALIDATION_INCOMPLETE_FIXTURE_COVERAGE_POLICY
+    )
     assert summary["total_case_count"] == len(calendar_regression_cases) + len(
         hourly_factor_regression_canonical_cases,
     )
@@ -187,6 +202,28 @@ def test_deterministic_regression_harness_threshold_boundary_fails_when_exceeded
     assert summary["failed_case_count"] == 1
 
 
+def test_deterministic_regression_harness_unknown_date_uses_regular_schedule_policy(
+    calendar_registry,
+) -> None:
+    unknown_date_case: dict[str, object] = {
+        "fixture_id": "xnys_unknown_date_regular_schedule_case",
+        "exchange_code": "XNYS",
+        "timestamp_utc": "2027-02-02T14:30:00Z",
+        "expected_state": "open",
+    }
+    report = run_deterministic_regression_harness(
+        calendar_registry=calendar_registry,
+        calendar_cases=[unknown_date_case],
+        seasonality_cases=[],
+    )
+
+    fallback_policy: dict[str, str] = cast(dict[str, str], report["fallback_policy"])
+    summary: dict[str, int] = cast(dict[str, int], report["summary"])
+    assert fallback_policy["unknown_date_policy"] == VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY
+    assert summary["total_case_count"] == 1
+    assert summary["failed_case_count"] == 0
+
+
 def test_deterministic_regression_harness_rejects_malformed_report_payload(
     monkeypatch: pytest.MonkeyPatch,
     calendar_registry,
@@ -207,6 +244,16 @@ def test_deterministic_regression_harness_rejects_malformed_report_payload(
                 {
                     "schema_version": DETERMINISTIC_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION,
                     "determinism_policy": "stable_input_order_and_first_mismatch_reporting.v1",
+                    "fallback_policy": {
+                        "schema_version": VALIDATION_FALLBACK_POLICY_SCHEMA_VERSION,
+                        "unknown_date_policy": VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY,
+                        "unsupported_exchange_calendar_segment_policy": (
+                            VALIDATION_UNSUPPORTED_CALENDAR_SEGMENT_POLICY
+                        ),
+                        "incomplete_fixture_coverage_policy": (
+                            VALIDATION_INCOMPLETE_FIXTURE_COVERAGE_POLICY
+                        ),
+                    },
                     "tolerance_config": {
                         "seasonality_absolute_tolerance": seasonality_absolute_tolerance,
                         "news_intensity_absolute_tolerance": news_intensity_absolute_tolerance,
