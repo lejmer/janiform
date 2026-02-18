@@ -5,15 +5,19 @@ import pytest
 
 from tests.fixture_validation import (
     CALENDAR_REGRESSION_FIXTURE_SET_ID,
+    HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID,
     CalendarRegressionCase,
     CalendarRegressionFixtureDocument,
+    HourlyFactorRegressionFixtureDocument,
     ValidationFixtureManifestDocument,
     ValidationFixtureManifestEntry,
     compute_content_hash_hex,
     load_calendar_regression_fixture_document,
+    load_hourly_factor_regression_fixture_document,
     load_manifest_entry_payload,
     sorted_manifest_entries,
     validate_calendar_regression_fixture_document,
+    validate_hourly_factor_regression_fixture_document,
     validate_validation_fixture_manifest_document,
 )
 
@@ -27,6 +31,18 @@ def test_manifest_calendar_fixture_entry_has_multiple_exchanges(
     )
 
     assert len(calendar_entry["exchange_codes"]) >= 2
+
+
+def test_manifest_hourly_fixture_entry_is_present(
+    validation_fixture_manifest_entries: list[ValidationFixtureManifestEntry],
+) -> None:
+    hourly_entry: ValidationFixtureManifestEntry = _find_entry_by_fixture_id(
+        validation_fixture_manifest_entries,
+        HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID,
+    )
+
+    assert hourly_entry["domain"] == "hourly_factors"
+    assert len(hourly_entry["exchange_codes"]) >= 1
 
 
 def test_manifest_loading_order_and_content_hashes_are_deterministic(
@@ -68,6 +84,32 @@ def test_calendar_fixture_loading_order_and_content_hash_are_deterministic(
     assert first_content_hash == second_content_hash
 
 
+def test_hourly_fixture_loading_order_and_content_hash_are_deterministic(
+    hourly_factor_regression_fixture_path: Path,
+) -> None:
+    fixture_payload_bytes: bytes = hourly_factor_regression_fixture_path.read_bytes()
+
+    first_document: HourlyFactorRegressionFixtureDocument = load_hourly_factor_regression_fixture_document(
+        fixture_payload_bytes,
+    )
+    second_document: HourlyFactorRegressionFixtureDocument = load_hourly_factor_regression_fixture_document(
+        fixture_payload_bytes,
+    )
+
+    first_canonical_case_order: list[str] = [
+        regression_case["fixture_id"] for regression_case in first_document["canonical_output_cases"]
+    ]
+    second_canonical_case_order: list[str] = [
+        regression_case["fixture_id"] for regression_case in second_document["canonical_output_cases"]
+    ]
+
+    first_content_hash: str = compute_content_hash_hex(fixture_payload_bytes)
+    second_content_hash: str = compute_content_hash_hex(fixture_payload_bytes)
+
+    assert first_canonical_case_order == second_canonical_case_order
+    assert first_content_hash == second_content_hash
+
+
 def test_validation_manifest_rejects_missing_required_fields(
     validation_fixture_manifest_document: ValidationFixtureManifestDocument,
 ) -> None:
@@ -86,6 +128,17 @@ def test_validation_manifest_rejects_invalid_domain_values(
     fixture_entries[0]["domain"] = "python_only"
 
     with pytest.raises(ValueError, match="unsupported fixture domain"):
+        validate_validation_fixture_manifest_document(invalid_document)
+
+
+def test_validation_manifest_rejects_malformed_manifest_entry_content_hash(
+    validation_fixture_manifest_document: ValidationFixtureManifestDocument,
+) -> None:
+    invalid_document: dict[str, object] = _copy_document(validation_fixture_manifest_document)
+    fixture_entries: list[dict[str, object]] = invalid_document["fixtures"]
+    fixture_entries[0]["content_hash"] = "ABCDEF0123456789"
+
+    with pytest.raises(ValueError, match="content_hash must be a lowercase fnv1a hex string"):
         validate_validation_fixture_manifest_document(invalid_document)
 
 
@@ -145,6 +198,35 @@ def test_calendar_fixture_rejects_duplicate_exchange_timestamp_pairs(
 
     with pytest.raises(ValueError, match="duplicate exchange_code and timestamp_utc pair"):
         validate_calendar_regression_fixture_document(invalid_document)
+
+
+def test_calendar_fixture_rejects_malformed_canonical_metadata(
+    calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
+) -> None:
+    invalid_document: dict[str, object] = _copy_document(calendar_regression_fixture_document)
+    canonical_metadata: dict[str, object] = invalid_document["canonical_regression_metadata"]
+    stable_fixture_ids_by_tag: dict[str, object] = canonical_metadata["stable_fixture_ids_by_tag"]
+    stable_fixture_ids_by_tag["boundary"] = [1]
+
+    with pytest.raises(
+        ValueError,
+        match="calendar canonical_regression_metadata.stable_fixture_ids_by_tag must only contain strings",
+    ):
+        validate_calendar_regression_fixture_document(invalid_document)
+
+
+def test_hourly_fixture_rejects_malformed_canonical_metadata(
+    hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
+) -> None:
+    invalid_document: dict[str, object] = _copy_document(hourly_factor_regression_fixture_document)
+    canonical_metadata: dict[str, object] = invalid_document["canonical_regression_metadata"]
+    canonical_metadata["stable_canonical_output_fixture_ids"] = ["missing_fixture_id"]
+
+    with pytest.raises(
+        ValueError,
+        match="stable_canonical_output_fixture_ids does not match observed fixture ids",
+    ):
+        validate_hourly_factor_regression_fixture_document(invalid_document)
 
 
 def _manifest_entry_content_hash_snapshot(

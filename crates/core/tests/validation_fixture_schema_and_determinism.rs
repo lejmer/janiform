@@ -6,10 +6,14 @@ use std::fs;
 use serde_json::Value;
 
 use support::validation_fixture::{
-    CalendarRegressionFixtureDocument, ValidationFixtureManifestDocument, fixtures_root_path,
-    load_calendar_regression_fixture_from_manifest, load_manifest_entry_payload,
+    CalendarRegressionFixtureDocument, HourlyFactorRegressionFixtureDocument,
+    ValidationFixtureManifestDocument, fixtures_root_path,
+    load_calendar_regression_fixture_from_manifest,
+    load_hourly_factor_regression_fixture_from_manifest, load_manifest_entry_payload,
     load_validation_fixture_manifest_document, sorted_manifest_entries,
     validate_calendar_regression_fixture_document,
+    validate_hourly_factor_regression_fixture_document,
+    validate_validation_fixture_manifest_document,
 };
 
 #[test]
@@ -71,6 +75,19 @@ fn calendar_regression_fixture_document_is_valid_for_multiple_exchanges() {
 }
 
 #[test]
+fn hourly_factor_regression_fixture_document_is_valid_for_manifest_exchange_coverage() {
+    let loaded_fixture = load_hourly_factor_regression_fixture_from_manifest()
+        .expect("hourly factor regression fixture should load from shared manifest");
+
+    assert!(
+        loaded_fixture
+            .manifest_entry
+            .exchange_codes
+            .contains(&"XNYS".to_string())
+    );
+}
+
+#[test]
 fn validation_fixture_manifest_rejects_missing_required_fields() {
     let fixtures_root = fixtures_root_path();
     let manifest_path = fixtures_root
@@ -105,6 +122,27 @@ fn validation_fixture_manifest_rejects_invalid_domain_values() {
     let parse_result = serde_json::from_value::<ValidationFixtureManifestDocument>(manifest_value);
 
     assert!(parse_result.is_err());
+}
+
+#[test]
+fn validation_fixture_manifest_rejects_malformed_content_hash_values() {
+    let fixtures_root = fixtures_root_path();
+    let manifest_path = fixtures_root
+        .join("validation")
+        .join("validation_fixture_manifest.json");
+    let manifest_raw =
+        fs::read_to_string(&manifest_path).expect("validation fixture manifest file should exist");
+    let mut manifest_value: Value =
+        serde_json::from_str(&manifest_raw).expect("manifest fixture should be valid JSON");
+    manifest_value["fixtures"][0]["content_hash"] = Value::String("ABCDEF0123456789".to_string());
+
+    let parsed_manifest =
+        serde_json::from_value::<ValidationFixtureManifestDocument>(manifest_value)
+            .expect("manifest with malformed content_hash should still parse");
+
+    let validation_result = validate_validation_fixture_manifest_document(&parsed_manifest);
+
+    assert!(validation_result.is_err());
 }
 
 #[test]
@@ -169,6 +207,44 @@ fn calendar_regression_fixture_rejects_duplicate_exchange_timestamp_pairs() {
         .expect("calendar regression fixture with duplicate exchange timestamp should still parse");
 
     let validation_result = validate_calendar_regression_fixture_document(&parsed_fixture);
+
+    assert!(validation_result.is_err());
+}
+
+#[test]
+fn calendar_regression_fixture_rejects_malformed_canonical_metadata() {
+    let loaded_fixture = load_calendar_regression_fixture_from_manifest()
+        .expect("calendar regression fixture should load from shared manifest");
+    let mut fixture_value: Value =
+        serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
+            .expect("calendar regression fixture should be valid JSON");
+    fixture_value["canonical_regression_metadata"]["stable_fixture_ids_by_tag"]["boundary"] =
+        Value::Array(vec![Value::String("missing_boundary_fixture".to_string())]);
+
+    let parsed_fixture = serde_json::from_value::<CalendarRegressionFixtureDocument>(fixture_value)
+        .expect("calendar regression fixture with malformed canonical metadata should still parse");
+
+    let validation_result = validate_calendar_regression_fixture_document(&parsed_fixture);
+
+    assert!(validation_result.is_err());
+}
+
+#[test]
+fn hourly_factor_regression_fixture_rejects_malformed_canonical_metadata() {
+    let loaded_fixture = load_hourly_factor_regression_fixture_from_manifest()
+        .expect("hourly factor regression fixture should load from shared manifest");
+    let mut fixture_value: Value =
+        serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
+            .expect("hourly factor regression fixture should be valid JSON");
+    fixture_value["canonical_regression_metadata"]["stable_canonical_output_fixture_ids"] =
+        Value::Array(vec![Value::String("missing_fixture".to_string())]);
+
+    let parsed_fixture =
+        serde_json::from_value::<HourlyFactorRegressionFixtureDocument>(fixture_value).expect(
+            "hourly factor regression fixture with malformed canonical metadata should still parse",
+        );
+
+    let validation_result = validate_hourly_factor_regression_fixture_document(&parsed_fixture);
 
     assert!(validation_result.is_err());
 }

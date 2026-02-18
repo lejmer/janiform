@@ -1,142 +1,23 @@
+mod support;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::{DateTime, Utc};
-use janiform_core::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact};
+use janiform_core::calendar::ExchangeCalendarRegistry;
 use janiform_core::hourly_factors::{
     HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
     HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION, HourlyFactorContractError,
     build_hourly_factor_contract, materialize_hourly_news_intensity_factors,
     materialize_hourly_seasonality_factors,
 };
-use serde::Deserialize;
 
-const REQUIRED_CASE_TAGS: [&str; 5] = [
-    "normal_session",
-    "weekend",
-    "holiday",
-    "daylight_saving_transition",
-    "missing_data_guard",
-];
-
-const EXPECTED_CANONICAL_FIXTURE_IDS: [&str; 5] = [
-    "xnys_normal_session_materialized_baseline_case",
-    "xnys_weekend_closed_hours_case",
-    "xnys_holiday_closed_hours_case",
-    "xnys_spring_forward_transition_case",
-    "xnys_fall_back_transition_case",
-];
-
-const EXPECTED_MISSING_DATA_GUARD_FIXTURE_IDS: [&str; 4] = [
-    "seasonality_sparse_previous_then_global_mean_case",
-    "seasonality_sparse_global_mean_leading_interval_case",
-    "seasonality_missing_source_failure_case",
-    "seasonality_source_length_mismatch_failure_case",
-];
-
-#[derive(Debug, Deserialize)]
-struct HourlyFactorRegressionFixtureDocument {
-    schema_version: String,
-    fixture_set_id: String,
-    calendar_fixture_set_id: String,
-    acceptance_thresholds: HourlyFactorRegressionAcceptanceThresholds,
-    canonical_output_cases: Vec<HourlyFactorCanonicalOutputCaseFixture>,
-    missing_data_guard_cases: Vec<HourlyFactorMissingDataGuardCaseFixture>,
-}
-
-#[derive(Debug, Deserialize)]
-struct HourlyFactorRegressionAcceptanceThresholds {
-    s_h_absolute_tolerance: f64,
-    nu_h_absolute_tolerance: f64,
-}
-
-#[derive(Debug, Deserialize)]
-struct HourlyFactorCanonicalOutputCaseFixture {
-    fixture_id: String,
-    exchange_code: String,
-    range_start_utc: String,
-    range_end_utc: String,
-    seasonality_source: HourlySeasonalitySourceFixture,
-    news_intensity_source: HourlyNewsIntensitySourceFixture,
-    expected_s_h: Vec<f64>,
-    expected_nu_h: Vec<f64>,
-    expected_skipped_local_hour_interval_count: usize,
-    expected_repeated_local_hour_interval_count: usize,
-    tags: Vec<String>,
-    description: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct HourlyFactorMissingDataGuardCaseFixture {
-    fixture_id: String,
-    exchange_code: String,
-    range_start_utc: String,
-    range_end_utc: String,
-    source_timestamps_utc: Vec<String>,
-    source_seasonality_factors: Vec<f64>,
-    settings: HourlySeasonalitySettingsFixture,
-    expected_outcome: HourlyMissingDataGuardExpectedOutcomeFixture,
-    tags: Vec<String>,
-    description: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct HourlySeasonalitySettingsFixture {
-    interpolation_method: String,
-    aggregation_method: String,
-    sparse_fallback_policy: String,
-    sparse_hour_minimum_observation_count: usize,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "source_kind", rename_all = "snake_case")]
-enum HourlySeasonalitySourceFixture {
-    Explicit {
-        hourly_factors: Vec<f64>,
-        materialization_method: String,
-    },
-    Materialized {
-        source_timestamps_utc: Vec<String>,
-        source_seasonality_factors: Vec<f64>,
-        interpolation_method: String,
-        aggregation_method: String,
-        sparse_fallback_policy: String,
-        sparse_hour_minimum_observation_count: usize,
-    },
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "source_kind", rename_all = "snake_case")]
-enum HourlyNewsIntensitySourceFixture {
-    Explicit {
-        hourly_factors: Vec<f64>,
-        materialization_method: String,
-    },
-    Materialized {
-        closed_window_baseline_intensity: f64,
-        open_window_override_by_interval_index: BTreeMap<String, f64>,
-    },
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "outcome_kind", rename_all = "snake_case")]
-enum HourlyMissingDataGuardExpectedOutcomeFixture {
-    Success {
-        expected_s_h: Vec<f64>,
-        expected_sparse_interval_count: usize,
-        expected_interpolated_interval_count: usize,
-        expected_fallback_interval_count: usize,
-    },
-    Failure {
-        expected_error_variant: String,
-        expected_error_message_substring: String,
-    },
-}
-
-#[derive(Debug, Deserialize)]
-struct CalendarRegressionFixtureDocument {
-    fixture_set_id: String,
-    calendar_registry: ExchangeCalendarRegistryArtifact,
-}
+use support::validation_fixture::{
+    HourlyFactorCanonicalOutputCaseFixture, HourlyFactorMissingDataGuardCaseFixture,
+    HourlyFactorRegressionFixtureDocument, HourlyMissingDataGuardExpectedOutcomeFixture,
+    HourlyNewsIntensitySourceFixture, HourlySeasonalitySourceFixture,
+    load_calendar_regression_fixture_from_manifest,
+    load_hourly_factor_regression_fixture_from_manifest,
+};
 
 #[test]
 fn hourly_factor_regression_fixture_covers_required_case_tags() {
@@ -152,8 +33,10 @@ fn hourly_factor_regression_fixture_covers_required_case_tags() {
                 .flat_map(|fixture_case| fixture_case.tags.iter().cloned()),
         )
         .collect();
-    let required_tags: BTreeSet<String> = REQUIRED_CASE_TAGS
-        .into_iter()
+    let required_tags: BTreeSet<String> = fixture_document
+        .canonical_regression_metadata
+        .required_tags
+        .iter()
         .map(ToString::to_string)
         .collect();
 
@@ -173,15 +56,18 @@ fn hourly_factor_regression_fixture_identifiers_remain_stable() {
         .iter()
         .map(|fixture_case| fixture_case.fixture_id.clone())
         .collect();
-    let expected_canonical_fixture_ids: BTreeSet<String> = EXPECTED_CANONICAL_FIXTURE_IDS
-        .into_iter()
+    let expected_canonical_fixture_ids: BTreeSet<String> = fixture_document
+        .canonical_regression_metadata
+        .stable_canonical_output_fixture_ids
+        .iter()
         .map(ToString::to_string)
         .collect();
-    let expected_missing_data_guard_fixture_ids: BTreeSet<String> =
-        EXPECTED_MISSING_DATA_GUARD_FIXTURE_IDS
-            .into_iter()
-            .map(ToString::to_string)
-            .collect();
+    let expected_missing_data_guard_fixture_ids: BTreeSet<String> = fixture_document
+        .canonical_regression_metadata
+        .stable_missing_data_guard_fixture_ids
+        .iter()
+        .map(ToString::to_string)
+        .collect();
 
     assert_eq!(
         observed_canonical_fixture_ids,
@@ -541,39 +427,15 @@ fn parse_utc_timestamp_to_nanos(raw_timestamp: &str) -> i64 {
 }
 
 fn load_hourly_factor_regression_fixture_document() -> HourlyFactorRegressionFixtureDocument {
-    let raw_fixture =
-        include_str!("../../../tests/fixtures/hourly_factors/hourly_factor_regression_matrix.json");
-    let fixture_document =
-        serde_json::from_str::<HourlyFactorRegressionFixtureDocument>(raw_fixture)
-            .expect("hourly factor regression fixture file should be valid JSON");
-
-    assert_eq!(
-        fixture_document.schema_version,
-        "hourly.factor.regression.v1"
-    );
-    assert_eq!(
-        fixture_document.fixture_set_id,
-        "hourly_factor_regression_matrix_v1"
-    );
-    assert_eq!(
-        fixture_document.calendar_fixture_set_id,
-        "calendar_service_regression_matrix_v1"
-    );
-
-    fixture_document
+    load_hourly_factor_regression_fixture_from_manifest()
+        .expect("hourly factor regression fixture should load from shared manifest")
+        .fixture_document
 }
 
 fn load_calendar_registry_from_shared_fixture() -> ExchangeCalendarRegistry {
-    let raw_calendar_fixture =
-        include_str!("../../../tests/fixtures/calendar/calendar_service_regression_matrix.json");
-    let calendar_fixture =
-        serde_json::from_str::<CalendarRegressionFixtureDocument>(raw_calendar_fixture)
-            .expect("shared calendar regression fixture should be valid JSON");
-    assert_eq!(
-        calendar_fixture.fixture_set_id,
-        "calendar_service_regression_matrix_v1"
-    );
+    let calendar_fixture = load_calendar_regression_fixture_from_manifest()
+        .expect("shared calendar regression fixture should load from manifest");
 
-    ExchangeCalendarRegistry::from_artifact(calendar_fixture.calendar_registry)
+    ExchangeCalendarRegistry::from_artifact(calendar_fixture.fixture_document.calendar_registry)
         .expect("shared calendar registry fixture should load")
 }

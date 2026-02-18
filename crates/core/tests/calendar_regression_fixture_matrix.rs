@@ -10,41 +10,6 @@ use support::validation_fixture::{
     load_calendar_regression_fixture_from_manifest,
 };
 
-const REQUIRED_CASE_TAGS: [&str; 9] = [
-    "regular_session",
-    "weekend",
-    "holiday",
-    "early_close",
-    "boundary",
-    "timezone_sensitive",
-    "delayed_open",
-    "session_anomaly",
-    "precedence_conflict",
-];
-
-const EXPECTED_BOUNDARY_FIXTURE_IDS: [&str; 12] = [
-    "xnys_regular_pre_open",
-    "xnys_regular_at_open",
-    "xnys_regular_at_close",
-    "xnys_early_close_pre_boundary",
-    "xnys_early_close_at_boundary",
-    "xnys_early_close_post_boundary",
-    "xnys_delayed_open_regular_open_conflict_at_regular_open",
-    "xnys_delayed_open_pre_boundary",
-    "xnys_delayed_open_at_boundary",
-    "xnys_holiday_overrides_delayed_open_at_boundary",
-    "xtks_before_utc_midnight_transition",
-    "xtks_after_utc_midnight_transition",
-];
-
-const HISTORICAL_HOLIDAY_INTRADAY_TAGS: [&str; 3] = [
-    "holiday_intraday_open_boundary",
-    "holiday_intraday_mid_session",
-    "holiday_intraday_pre_close",
-];
-
-const HISTORICAL_HOLIDAY_YEARS: [i32; 3] = [2024, 2025, 2026];
-
 #[test]
 fn calendar_regression_fixture_covers_required_case_tags() {
     let fixture_document = load_calendar_regression_fixture_document();
@@ -53,8 +18,10 @@ fn calendar_regression_fixture_covers_required_case_tags() {
         .iter()
         .flat_map(|fixture_case| fixture_case.tags.iter().cloned())
         .collect();
-    let required_tags: BTreeSet<String> = REQUIRED_CASE_TAGS
-        .into_iter()
+    let required_tags: BTreeSet<String> = fixture_document
+        .canonical_regression_metadata
+        .required_tags
+        .iter()
         .map(ToString::to_string)
         .collect();
 
@@ -70,8 +37,12 @@ fn calendar_boundary_fixture_identifiers_remain_stable() {
         .filter(|fixture_case| fixture_case.tags.iter().any(|tag| tag == "boundary"))
         .map(|fixture_case| fixture_case.fixture_id.clone())
         .collect();
-    let expected_boundary_fixture_ids: BTreeSet<String> = EXPECTED_BOUNDARY_FIXTURE_IDS
-        .into_iter()
+    let expected_boundary_fixture_ids: BTreeSet<String> = fixture_document
+        .canonical_regression_metadata
+        .stable_fixture_ids_by_tag
+        .get("boundary")
+        .expect("calendar canonical metadata should define stable boundary fixture ids")
+        .iter()
         .map(ToString::to_string)
         .collect();
 
@@ -103,7 +74,12 @@ fn historical_holiday_fixture_coverage_spans_years_and_intraday_slots() {
                 .year()
         })
         .collect();
-    let expected_years: BTreeSet<i32> = HISTORICAL_HOLIDAY_YEARS.into_iter().collect();
+    let expected_years: BTreeSet<i32> = fixture_document
+        .canonical_regression_metadata
+        .historical_holiday_expected_years
+        .iter()
+        .copied()
+        .collect();
 
     let observed_intraday_tags: BTreeSet<String> = historical_holiday_cases
         .iter()
@@ -111,8 +87,10 @@ fn historical_holiday_fixture_coverage_spans_years_and_intraday_slots() {
         .filter(|tag| tag.starts_with("holiday_intraday_"))
         .cloned()
         .collect();
-    let expected_intraday_tags: BTreeSet<String> = HISTORICAL_HOLIDAY_INTRADAY_TAGS
-        .into_iter()
+    let expected_intraday_tags: BTreeSet<String> = fixture_document
+        .canonical_regression_metadata
+        .historical_holiday_expected_intraday_tags
+        .iter()
         .map(ToString::to_string)
         .collect();
 

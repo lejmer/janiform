@@ -16,6 +16,7 @@ delayed-open, and overlapping-rule precedence behavior.
 - `schema_version`: Fixture schema version string.
 - `fixture_set_id`: Stable fixture set identifier used in test diagnostics.
 - `calendar_registry`: The registry artifact consumed by the Rust core and Python adapter tests.
+- `canonical_regression_metadata`: Canonical required-tag and stable fixture-id expectations used by Rust and Python tests.
 - `cases`: Ordered regression cases with stable identifiers.
 
 Each `cases` entry contains:
@@ -37,6 +38,11 @@ Each `cases` entry contains:
   - `fixture_loading_order`
   - `content_hash_scope`
   - `content_hash_algorithm`
+- `canonical_regression_metadata`:
+  - `required_tags`
+  - `stable_fixture_ids_by_tag`
+  - `historical_holiday_expected_years`
+  - `historical_holiday_expected_intraday_tags`
 
 The shared manifest defines:
 

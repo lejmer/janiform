@@ -6,6 +6,28 @@
     "s_h_absolute_tolerance": 1e-12,
     "nu_h_absolute_tolerance": 1e-12
   },
+  "canonical_regression_metadata": {
+    "required_tags": [
+      "normal_session",
+      "weekend",
+      "holiday",
+      "daylight_saving_transition",
+      "missing_data_guard"
+    ],
+    "stable_canonical_output_fixture_ids": [
+      "xnys_normal_session_materialized_baseline_case",
+      "xnys_weekend_closed_hours_case",
+      "xnys_holiday_closed_hours_case",
+      "xnys_spring_forward_transition_case",
+      "xnys_fall_back_transition_case"
+    ],
+    "stable_missing_data_guard_fixture_ids": [
+      "seasonality_sparse_previous_then_global_mean_case",
+      "seasonality_sparse_global_mean_leading_interval_case",
+      "seasonality_missing_source_failure_case",
+      "seasonality_source_length_mismatch_failure_case"
+    ]
+  },
   "canonical_output_cases": [
     {
       "fixture_id": "xnys_normal_session_materialized_baseline_case",

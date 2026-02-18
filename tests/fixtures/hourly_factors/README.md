@@ -14,6 +14,7 @@ This directory contains the shared hourly factor regression matrix for Initiativ
 - `fixture_set_id`: Stable fixture set identifier used in test diagnostics.
 - `calendar_fixture_set_id`: Reference to the shared calendar fixture set consumed by these tests.
 - `acceptance_thresholds`: Absolute tolerances used by golden comparisons.
+- `canonical_regression_metadata`: Canonical required-tag and stable fixture-id expectations used by Rust and Python tests.
 - `canonical_output_cases`: Ordered canonical hourly output cases with expected `s_h` and `nu_h`.
 - `missing_data_guard_cases`: Ordered sparse or missing source cases with defined fallback or failure outcomes.
 
@@ -41,15 +42,13 @@ Each `missing_data_guard_cases` entry contains:
 - `tags`: Coverage classification labels used by regression tests.
 - `description`: Human-readable triage context.
 
-## Required Coverage Tags
+## Canonical Metadata
 
-The matrix must always include at least one case for each tag:
+`canonical_regression_metadata` stores the canonical expectations consumed by both test stacks:
 
-- `normal_session`
-- `weekend`
-- `holiday`
-- `daylight_saving_transition`
-- `missing_data_guard`
+- `required_tags`: Tags that must be represented across canonical and missing-data guard cases.
+- `stable_canonical_output_fixture_ids`: Stable case IDs expected in `canonical_output_cases`.
+- `stable_missing_data_guard_fixture_ids`: Stable case IDs expected in `missing_data_guard_cases`.
 
 ## Acceptance Thresholds
 

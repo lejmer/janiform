@@ -1,19 +1,25 @@
 import json
+import math
 from pathlib import Path
 from typing import TypedDict, cast
 
 VALIDATION_FIXTURE_MANIFEST_SCHEMA_VERSION: str = "validation.fixture.manifest.v1"
-CALENDAR_REGRESSION_FIXTURE_SCHEMA_VERSION: str = "calendar.service.regression.v1"
-CALENDAR_REGRESSION_FIXTURE_SET_ID: str = "calendar_service_regression_matrix_v1"
 MANIFEST_DETERMINISM_ORDER_POLICY: str = "lexicographic_by_fixture_id.v1"
 CONTENT_HASH_ALGORITHM_POLICY: str = "fnv1a_64_hex_utf8.v1"
+MANIFEST_SCHEMA_FAMILY: str = "validation.fixture.manifest"
+MANIFEST_V0_UPDATE_POLICY: str = "additive_only_and_major_on_breaking_change.v1"
+
+CALENDAR_REGRESSION_FIXTURE_SCHEMA_VERSION: str = "calendar.service.regression.v1"
+CALENDAR_REGRESSION_FIXTURE_SET_ID: str = "calendar_service_regression_matrix_v1"
 CALENDAR_CASE_ORDER_POLICY: str = "preserve_declared_case_order.v1"
 CALENDAR_CONTENT_HASH_SCOPE_POLICY: str = "document_payload_bytes.v1"
 CALENDAR_SCHEMA_FAMILY: str = "validation.calendar.service.regression"
 CALENDAR_SCHEMA_GENERATION: str = "v0.x"
 CALENDAR_FORWARD_EXTENSION_POLICY: str = "additive_fields_only.v1"
-MANIFEST_SCHEMA_FAMILY: str = "validation.fixture.manifest"
-MANIFEST_V0_UPDATE_POLICY: str = "additive_only_and_major_on_breaking_change.v1"
+
+HOURLY_FACTOR_REGRESSION_FIXTURE_SCHEMA_VERSION: str = "hourly.factor.regression.v1"
+HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID: str = "hourly_factor_regression_matrix_v1"
+SUPPORTED_MANIFEST_DOMAINS: set[str] = {"calendar", "seasonality", "hourly_factors"}
 
 
 type JsonObject = dict[str, object]
@@ -69,13 +75,70 @@ class CalendarRegressionCase(TypedDict):
     description: str
 
 
+class CalendarCanonicalRegressionMetadata(TypedDict):
+    required_tags: list[str]
+    stable_fixture_ids_by_tag: dict[str, list[str]]
+    historical_holiday_expected_years: list[int]
+    historical_holiday_expected_intraday_tags: list[str]
+
+
 class CalendarRegressionFixtureDocument(TypedDict):
     schema_version: str
     fixture_set_id: str
     schema_metadata: CalendarRegressionSchemaMetadata
     determinism_metadata: CalendarRegressionDeterminismMetadata
+    canonical_regression_metadata: CalendarCanonicalRegressionMetadata
     calendar_registry: dict[str, object]
     cases: list[CalendarRegressionCase]
+
+
+class HourlyFactorRegressionCanonicalMetadata(TypedDict):
+    required_tags: list[str]
+    stable_canonical_output_fixture_ids: list[str]
+    stable_missing_data_guard_fixture_ids: list[str]
+
+
+class HourlyFactorRegressionAcceptanceThresholds(TypedDict):
+    s_h_absolute_tolerance: float
+    nu_h_absolute_tolerance: float
+
+
+class HourlyFactorRegressionCanonicalOutputCase(TypedDict):
+    fixture_id: str
+    exchange_code: str
+    range_start_utc: str
+    range_end_utc: str
+    seasonality_source: dict[str, object]
+    news_intensity_source: dict[str, object]
+    expected_s_h: list[float]
+    expected_nu_h: list[float]
+    expected_skipped_local_hour_interval_count: int
+    expected_repeated_local_hour_interval_count: int
+    tags: list[str]
+    description: str
+
+
+class HourlyFactorRegressionMissingDataGuardCase(TypedDict):
+    fixture_id: str
+    exchange_code: str
+    range_start_utc: str
+    range_end_utc: str
+    source_timestamps_utc: list[str]
+    source_seasonality_factors: list[float]
+    settings: dict[str, object]
+    expected_outcome: dict[str, object]
+    tags: list[str]
+    description: str
+
+
+class HourlyFactorRegressionFixtureDocument(TypedDict):
+    schema_version: str
+    fixture_set_id: str
+    calendar_fixture_set_id: str
+    acceptance_thresholds: HourlyFactorRegressionAcceptanceThresholds
+    canonical_regression_metadata: HourlyFactorRegressionCanonicalMetadata
+    canonical_output_cases: list[HourlyFactorRegressionCanonicalOutputCase]
+    missing_data_guard_cases: list[HourlyFactorRegressionMissingDataGuardCase]
 
 
 def compute_content_hash_hex(payload_bytes: bytes) -> str:
@@ -287,11 +350,17 @@ def validate_calendar_regression_fixture_document(
 
         observed_exchange_timestamp_pairs.add(exchange_timestamp_pair)
 
+    canonical_regression_metadata = _validate_calendar_canonical_regression_metadata(
+        _require_json_object_field(document_map, "canonical_regression_metadata", "calendar fixture"),
+        validated_cases,
+    )
+
     return {
         "schema_version": schema_version,
         "fixture_set_id": fixture_set_id,
         "schema_metadata": cast(CalendarRegressionSchemaMetadata, schema_metadata),
         "determinism_metadata": cast(CalendarRegressionDeterminismMetadata, determinism_metadata),
+        "canonical_regression_metadata": canonical_regression_metadata,
         "calendar_registry": cast(dict[str, object], calendar_registry),
         "cases": validated_cases,
     }
@@ -304,10 +373,117 @@ def load_calendar_regression_fixture_document(
     return validate_calendar_regression_fixture_document(payload_value)
 
 
+def validate_hourly_factor_regression_fixture_document(
+    raw_document: object,
+) -> HourlyFactorRegressionFixtureDocument:
+    document_map: JsonObject = _require_json_object(raw_document, "hourly factor regression fixture")
+    schema_version: str = _require_non_empty_string(document_map, "schema_version", "hourly factor fixture")
+    if schema_version != HOURLY_FACTOR_REGRESSION_FIXTURE_SCHEMA_VERSION:
+        raise ValueError(f"unsupported hourly factor fixture schema version: {schema_version}")
+
+    fixture_set_id: str = _require_non_empty_string(document_map, "fixture_set_id", "hourly factor fixture")
+    if fixture_set_id != HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID:
+        raise ValueError(f"unexpected hourly factor fixture set id: {fixture_set_id}")
+
+    calendar_fixture_set_id: str = _require_non_empty_string(
+        document_map,
+        "calendar_fixture_set_id",
+        "hourly factor fixture",
+    )
+    if calendar_fixture_set_id != CALENDAR_REGRESSION_FIXTURE_SET_ID:
+        raise ValueError(
+            f"unexpected hourly factor calendar_fixture_set_id: {calendar_fixture_set_id}",
+        )
+
+    acceptance_thresholds: JsonObject = _require_json_object_field(
+        document_map,
+        "acceptance_thresholds",
+        "hourly factor fixture",
+    )
+    seasonality_absolute_tolerance: float = _require_non_negative_float(
+        acceptance_thresholds,
+        "s_h_absolute_tolerance",
+        "acceptance_thresholds",
+    )
+    news_intensity_absolute_tolerance: float = _require_non_negative_float(
+        acceptance_thresholds,
+        "nu_h_absolute_tolerance",
+        "acceptance_thresholds",
+    )
+
+    canonical_output_cases_raw: JsonArray = _require_json_array_field(
+        document_map,
+        "canonical_output_cases",
+        "hourly factor fixture",
+    )
+    if not canonical_output_cases_raw:
+        raise ValueError("hourly factor fixture requires at least one canonical_output_cases entry")
+
+    missing_data_guard_cases_raw: JsonArray = _require_json_array_field(
+        document_map,
+        "missing_data_guard_cases",
+        "hourly factor fixture",
+    )
+    if not missing_data_guard_cases_raw:
+        raise ValueError("hourly factor fixture requires at least one missing_data_guard_cases entry")
+
+    canonical_output_cases: list[HourlyFactorRegressionCanonicalOutputCase] = [
+        _validate_hourly_factor_canonical_output_case(
+            _require_json_object(case_value, "hourly canonical output case"),
+        )
+        for case_value in canonical_output_cases_raw
+    ]
+    missing_data_guard_cases: list[HourlyFactorRegressionMissingDataGuardCase] = [
+        _validate_hourly_factor_missing_data_guard_case(
+            _require_json_object(case_value, "hourly missing data guard case"),
+        )
+        for case_value in missing_data_guard_cases_raw
+    ]
+
+    _require_unique_fixture_ids(
+        [fixture_case["fixture_id"] for fixture_case in canonical_output_cases],
+        "canonical_output_cases",
+    )
+    _require_unique_fixture_ids(
+        [fixture_case["fixture_id"] for fixture_case in missing_data_guard_cases],
+        "missing_data_guard_cases",
+    )
+
+    canonical_regression_metadata = _validate_hourly_canonical_regression_metadata(
+        _require_json_object_field(
+            document_map,
+            "canonical_regression_metadata",
+            "hourly factor fixture",
+        ),
+        canonical_output_cases,
+        missing_data_guard_cases,
+    )
+
+    return {
+        "schema_version": schema_version,
+        "fixture_set_id": fixture_set_id,
+        "calendar_fixture_set_id": calendar_fixture_set_id,
+        "acceptance_thresholds": {
+            "s_h_absolute_tolerance": seasonality_absolute_tolerance,
+            "nu_h_absolute_tolerance": news_intensity_absolute_tolerance,
+        },
+        "canonical_regression_metadata": canonical_regression_metadata,
+        "canonical_output_cases": canonical_output_cases,
+        "missing_data_guard_cases": missing_data_guard_cases,
+    }
+
+
+def load_hourly_factor_regression_fixture_document(
+    fixture_payload_bytes: bytes,
+) -> HourlyFactorRegressionFixtureDocument:
+    payload_value: object = json.loads(fixture_payload_bytes.decode("utf-8"))
+    return validate_hourly_factor_regression_fixture_document(payload_value)
+
+
 def _validate_manifest_fixture_entry(raw_entry: JsonObject) -> ValidationFixtureManifestEntry:
     fixture_id: str = _require_non_empty_string(raw_entry, "fixture_id", "manifest fixture entry")
     domain: str = _require_non_empty_string(raw_entry, "domain", "manifest fixture entry")
-    if domain not in {"calendar", "seasonality"}:
+    if domain not in SUPPORTED_MANIFEST_DOMAINS:
         raise ValueError(f"unsupported fixture domain: {domain}")
 
     fixture_schema_version: str = _require_non_empty_string(
@@ -354,6 +530,340 @@ def _validate_calendar_regression_case(raw_case: JsonObject) -> CalendarRegressi
     }
 
 
+def _validate_calendar_canonical_regression_metadata(
+    raw_metadata: JsonObject,
+    validated_cases: list[CalendarRegressionCase],
+) -> CalendarCanonicalRegressionMetadata:
+    required_tags: list[str] = _require_non_empty_string_list(
+        raw_metadata,
+        "required_tags",
+        "calendar canonical_regression_metadata",
+    )
+
+    stable_fixture_ids_by_tag_raw: JsonObject = _require_json_object_field(
+        raw_metadata,
+        "stable_fixture_ids_by_tag",
+        "calendar canonical_regression_metadata",
+    )
+    if not stable_fixture_ids_by_tag_raw:
+        raise ValueError("calendar canonical_regression_metadata.stable_fixture_ids_by_tag must not be empty")
+
+    stable_fixture_ids_by_tag: dict[str, list[str]] = {}
+    for raw_tag, raw_fixture_ids in stable_fixture_ids_by_tag_raw.items():
+        if not isinstance(raw_tag, str) or not raw_tag.strip():
+            raise ValueError(
+                "calendar canonical_regression_metadata.stable_fixture_ids_by_tag keys must be non-empty strings",
+            )
+        if not isinstance(raw_fixture_ids, list):
+            raise ValueError(
+                "calendar canonical_regression_metadata.stable_fixture_ids_by_tag values must be string arrays",
+            )
+
+        normalized_fixture_ids: list[str] = _normalize_non_empty_string_list(
+            raw_fixture_ids,
+            "calendar canonical_regression_metadata.stable_fixture_ids_by_tag",
+        )
+        _require_unique_fixture_ids(
+            normalized_fixture_ids,
+            f"calendar canonical_regression_metadata.stable_fixture_ids_by_tag.{raw_tag}",
+        )
+        stable_fixture_ids_by_tag[raw_tag.strip()] = normalized_fixture_ids
+
+    historical_holiday_expected_years_raw: JsonArray = _require_json_array_field(
+        raw_metadata,
+        "historical_holiday_expected_years",
+        "calendar canonical_regression_metadata",
+    )
+    if not historical_holiday_expected_years_raw:
+        raise ValueError(
+            "calendar canonical_regression_metadata.historical_holiday_expected_years must include at least one year",
+        )
+
+    historical_holiday_expected_years: list[int] = []
+    for raw_year in historical_holiday_expected_years_raw:
+        if not isinstance(raw_year, int) or isinstance(raw_year, bool):
+            raise ValueError(
+                "calendar canonical_regression_metadata.historical_holiday_expected_years must only include integers",
+            )
+        historical_holiday_expected_years.append(raw_year)
+
+    historical_holiday_expected_intraday_tags: list[str] = _require_non_empty_string_list(
+        raw_metadata,
+        "historical_holiday_expected_intraday_tags",
+        "calendar canonical_regression_metadata",
+    )
+
+    observed_tags: set[str] = {
+        tag
+        for fixture_case in validated_cases
+        for tag in fixture_case["tags"]
+    }
+    if not set(required_tags).issubset(observed_tags):
+        raise ValueError(
+            "calendar canonical_regression_metadata.required_tags must be present in fixture cases",
+        )
+
+    for tag, expected_fixture_ids in stable_fixture_ids_by_tag.items():
+        observed_fixture_ids: set[str] = {
+            fixture_case["fixture_id"]
+            for fixture_case in validated_cases
+            if tag in fixture_case["tags"]
+        }
+        if observed_fixture_ids != set(expected_fixture_ids):
+            raise ValueError(
+                "calendar canonical_regression_metadata.stable_fixture_ids_by_tag does not match "
+                f"observed fixture ids for tag '{tag}'",
+            )
+
+    return {
+        "required_tags": required_tags,
+        "stable_fixture_ids_by_tag": stable_fixture_ids_by_tag,
+        "historical_holiday_expected_years": historical_holiday_expected_years,
+        "historical_holiday_expected_intraday_tags": historical_holiday_expected_intraday_tags,
+    }
+
+
+def _validate_hourly_factor_canonical_output_case(
+    raw_case: JsonObject,
+) -> HourlyFactorRegressionCanonicalOutputCase:
+    fixture_id: str = _require_non_empty_string(raw_case, "fixture_id", "hourly canonical output case")
+    exchange_code: str = _require_non_empty_string(raw_case, "exchange_code", "hourly canonical output case")
+    range_start_utc: str = _require_non_empty_string(raw_case, "range_start_utc", "hourly canonical output case")
+    range_end_utc: str = _require_non_empty_string(raw_case, "range_end_utc", "hourly canonical output case")
+
+    seasonality_source: JsonObject = _require_json_object_field(
+        raw_case,
+        "seasonality_source",
+        "hourly canonical output case",
+    )
+    _validate_hourly_seasonality_source(seasonality_source, "hourly canonical output case.seasonality_source")
+
+    news_intensity_source: JsonObject = _require_json_object_field(
+        raw_case,
+        "news_intensity_source",
+        "hourly canonical output case",
+    )
+
+    _validate_hourly_news_intensity_source(news_intensity_source, "hourly canonical output case.news_intensity_source")
+
+    expected_s_h: list[float] = _require_float_list(raw_case, "expected_s_h", "hourly canonical output case")
+    expected_nu_h: list[float] = _require_float_list(raw_case, "expected_nu_h", "hourly canonical output case")
+    expected_skipped_local_hour_interval_count: int = _require_non_negative_int(
+        raw_case,
+        "expected_skipped_local_hour_interval_count",
+        "hourly canonical output case",
+    )
+    expected_repeated_local_hour_interval_count: int = _require_non_negative_int(
+        raw_case,
+        "expected_repeated_local_hour_interval_count",
+        "hourly canonical output case",
+    )
+    tags: list[str] = _require_non_empty_string_list(raw_case, "tags", "hourly canonical output case")
+    description: str = _require_non_empty_string(raw_case, "description", "hourly canonical output case")
+
+    return {
+        "fixture_id": fixture_id,
+        "exchange_code": exchange_code,
+        "range_start_utc": range_start_utc,
+        "range_end_utc": range_end_utc,
+        "seasonality_source": cast(dict[str, object], seasonality_source),
+        "news_intensity_source": cast(dict[str, object], news_intensity_source),
+        "expected_s_h": expected_s_h,
+        "expected_nu_h": expected_nu_h,
+        "expected_skipped_local_hour_interval_count": expected_skipped_local_hour_interval_count,
+        "expected_repeated_local_hour_interval_count": expected_repeated_local_hour_interval_count,
+        "tags": tags,
+        "description": description,
+    }
+
+
+def _validate_hourly_factor_missing_data_guard_case(
+    raw_case: JsonObject,
+) -> HourlyFactorRegressionMissingDataGuardCase:
+    fixture_id: str = _require_non_empty_string(raw_case, "fixture_id", "hourly missing data guard case")
+    exchange_code: str = _require_non_empty_string(raw_case, "exchange_code", "hourly missing data guard case")
+    range_start_utc: str = _require_non_empty_string(raw_case, "range_start_utc", "hourly missing data guard case")
+    range_end_utc: str = _require_non_empty_string(raw_case, "range_end_utc", "hourly missing data guard case")
+    source_timestamps_utc: list[str] = _require_string_list_allow_empty(
+        raw_case,
+        "source_timestamps_utc",
+        "hourly missing data guard case",
+    )
+    source_seasonality_factors: list[float] = _require_float_list_allow_empty(
+        raw_case,
+        "source_seasonality_factors",
+        "hourly missing data guard case",
+    )
+
+    settings: JsonObject = _require_json_object_field(raw_case, "settings", "hourly missing data guard case")
+    _require_non_empty_string(settings, "interpolation_method", "hourly missing data guard case.settings")
+    _require_non_empty_string(settings, "aggregation_method", "hourly missing data guard case.settings")
+    _require_non_empty_string(settings, "sparse_fallback_policy", "hourly missing data guard case.settings")
+    _require_non_negative_int(
+        settings,
+        "sparse_hour_minimum_observation_count",
+        "hourly missing data guard case.settings",
+    )
+
+    expected_outcome: JsonObject = _require_json_object_field(
+        raw_case,
+        "expected_outcome",
+        "hourly missing data guard case",
+    )
+
+    _validate_hourly_missing_data_expected_outcome(expected_outcome)
+
+    tags: list[str] = _require_non_empty_string_list(raw_case, "tags", "hourly missing data guard case")
+    description: str = _require_non_empty_string(raw_case, "description", "hourly missing data guard case")
+
+    return {
+        "fixture_id": fixture_id,
+        "exchange_code": exchange_code,
+        "range_start_utc": range_start_utc,
+        "range_end_utc": range_end_utc,
+        "source_timestamps_utc": source_timestamps_utc,
+        "source_seasonality_factors": source_seasonality_factors,
+        "settings": cast(dict[str, object], settings),
+        "expected_outcome": cast(dict[str, object], expected_outcome),
+        "tags": tags,
+        "description": description,
+    }
+
+
+def _validate_hourly_canonical_regression_metadata(
+    raw_metadata: JsonObject,
+    canonical_output_cases: list[HourlyFactorRegressionCanonicalOutputCase],
+    missing_data_guard_cases: list[HourlyFactorRegressionMissingDataGuardCase],
+) -> HourlyFactorRegressionCanonicalMetadata:
+    required_tags: list[str] = _require_non_empty_string_list(
+        raw_metadata,
+        "required_tags",
+        "hourly canonical_regression_metadata",
+    )
+    stable_canonical_output_fixture_ids: list[str] = _require_non_empty_string_list(
+        raw_metadata,
+        "stable_canonical_output_fixture_ids",
+        "hourly canonical_regression_metadata",
+    )
+    stable_missing_data_guard_fixture_ids: list[str] = _require_non_empty_string_list(
+        raw_metadata,
+        "stable_missing_data_guard_fixture_ids",
+        "hourly canonical_regression_metadata",
+    )
+
+    _require_unique_fixture_ids(
+        stable_canonical_output_fixture_ids,
+        "hourly canonical_regression_metadata.stable_canonical_output_fixture_ids",
+    )
+    _require_unique_fixture_ids(
+        stable_missing_data_guard_fixture_ids,
+        "hourly canonical_regression_metadata.stable_missing_data_guard_fixture_ids",
+    )
+
+    observed_tags: set[str] = {
+        tag
+        for fixture_case in canonical_output_cases
+        for tag in fixture_case["tags"]
+    }
+    observed_tags.update(
+        tag
+        for fixture_case in missing_data_guard_cases
+        for tag in fixture_case["tags"]
+    )
+
+    if not set(required_tags).issubset(observed_tags):
+        raise ValueError("hourly canonical_regression_metadata.required_tags must be present in fixture cases")
+
+    observed_canonical_output_fixture_ids: set[str] = {
+        fixture_case["fixture_id"] for fixture_case in canonical_output_cases
+    }
+    observed_missing_data_guard_fixture_ids: set[str] = {
+        fixture_case["fixture_id"] for fixture_case in missing_data_guard_cases
+    }
+
+    if observed_canonical_output_fixture_ids != set(stable_canonical_output_fixture_ids):
+        raise ValueError(
+            "hourly canonical_regression_metadata.stable_canonical_output_fixture_ids does not match observed fixture ids",
+        )
+    if observed_missing_data_guard_fixture_ids != set(stable_missing_data_guard_fixture_ids):
+        raise ValueError(
+            "hourly canonical_regression_metadata.stable_missing_data_guard_fixture_ids does not match observed fixture ids",
+        )
+
+    return {
+        "required_tags": required_tags,
+        "stable_canonical_output_fixture_ids": stable_canonical_output_fixture_ids,
+        "stable_missing_data_guard_fixture_ids": stable_missing_data_guard_fixture_ids,
+    }
+
+
+def _validate_hourly_missing_data_expected_outcome(expected_outcome: JsonObject) -> None:
+    outcome_kind: str = _require_non_empty_string(expected_outcome, "outcome_kind", "expected_outcome")
+
+    match outcome_kind:
+        case "success":
+            _require_float_list(expected_outcome, "expected_s_h", "expected_outcome")
+            _require_non_negative_int(expected_outcome, "expected_sparse_interval_count", "expected_outcome")
+            _require_non_negative_int(expected_outcome, "expected_interpolated_interval_count", "expected_outcome")
+            _require_non_negative_int(expected_outcome, "expected_fallback_interval_count", "expected_outcome")
+        case "failure":
+            _require_non_empty_string(expected_outcome, "expected_error_variant", "expected_outcome")
+            _require_non_empty_string(expected_outcome, "expected_error_message_substring", "expected_outcome")
+        case _:
+            raise ValueError(f"unsupported expected_outcome.outcome_kind: {outcome_kind}")
+
+
+def _validate_hourly_seasonality_source(raw_source: JsonObject, context: str) -> None:
+    source_kind: str = _require_non_empty_string(raw_source, "source_kind", context)
+
+    match source_kind:
+        case "explicit":
+            _require_float_list(raw_source, "hourly_factors", context)
+            _require_non_empty_string(raw_source, "materialization_method", context)
+        case "materialized":
+            if "source_timestamp_utc" in raw_source:
+                raise ValueError(
+                    f"{context} contains unsupported field 'source_timestamp_utc'; use 'source_timestamps_utc'",
+                )
+
+            _require_non_empty_string_list(raw_source, "source_timestamps_utc", context)
+            _require_float_list(raw_source, "source_seasonality_factors", context)
+            _require_non_empty_string(raw_source, "interpolation_method", context)
+            _require_non_empty_string(raw_source, "aggregation_method", context)
+            _require_non_empty_string(raw_source, "sparse_fallback_policy", context)
+            _require_non_negative_int(raw_source, "sparse_hour_minimum_observation_count", context)
+        case _:
+            raise ValueError(f"{context} contains unsupported source_kind value: {source_kind}")
+
+
+def _validate_hourly_news_intensity_source(raw_source: JsonObject, context: str) -> None:
+    source_kind: str = _require_non_empty_string(raw_source, "source_kind", context)
+
+    match source_kind:
+        case "explicit":
+            _require_float_list(raw_source, "hourly_factors", context)
+            _require_non_empty_string(raw_source, "materialization_method", context)
+        case "materialized":
+            _require_number(raw_source, "closed_window_baseline_intensity", context)
+
+            overrides: JsonObject = _require_json_object_field(
+                raw_source,
+                "open_window_override_by_interval_index",
+                context,
+            )
+
+            for raw_interval_index, raw_override in overrides.items():
+                if not isinstance(raw_interval_index, str) or not raw_interval_index.strip():
+                    raise ValueError(f"{context}.open_window_override_by_interval_index keys must be non-empty strings")
+                if not raw_interval_index.isdigit():
+                    raise ValueError(
+                        f"{context}.open_window_override_by_interval_index key '{raw_interval_index}' must be numeric",
+                    )
+                _require_float_like(raw_override, f"{context}.open_window_override_by_interval_index")
+        case _:
+            raise ValueError(f"{context} contains unsupported source_kind value: {source_kind}")
+
+
 def _extract_registry_exchange_codes(calendar_registry: JsonObject) -> set[str]:
     exchanges: JsonArray = _require_json_array_field(calendar_registry, "exchanges", "calendar_registry")
     if not exchanges:
@@ -391,6 +901,7 @@ def _require_json_array_field(parent: JsonObject, field_name: str, context: str)
     field_value: object = parent.get(field_name)
     if field_value is None:
         raise ValueError(f"missing required field '{field_name}' in {context}")
+
     if not isinstance(field_value, list):
         raise ValueError(f"field '{field_name}' in {context} must be an array")
 
@@ -401,6 +912,7 @@ def _require_non_empty_string(parent: JsonObject, field_name: str, context: str)
     field_value: object = parent.get(field_name)
     if field_value is None:
         raise ValueError(f"missing required field '{field_name}' in {context}")
+
     if not isinstance(field_value, str):
         raise ValueError(f"field '{field_name}' in {context} must be a string")
 
@@ -416,15 +928,99 @@ def _require_non_empty_string_list(parent: JsonObject, field_name: str, context:
     if not field_values:
         raise ValueError(f"field '{field_name}' in {context} must include at least one value")
 
-    validated_values: list[str] = []
-    for field_value in field_values:
-        if not isinstance(field_value, str):
-            raise ValueError(f"field '{field_name}' in {context} must only contain strings")
+    return _normalize_non_empty_string_list(field_values, context)
 
-        normalized_value: str = field_value.strip()
+
+def _normalize_non_empty_string_list(raw_values: JsonArray, context: str) -> list[str]:
+    validated_values: list[str] = []
+    for raw_value in raw_values:
+        if not isinstance(raw_value, str):
+            raise ValueError(f"{context} must only contain strings")
+
+        normalized_value: str = raw_value.strip()
         if not normalized_value:
-            raise ValueError(f"field '{field_name}' in {context} cannot contain empty strings")
+            raise ValueError(f"{context} cannot contain empty strings")
 
         validated_values.append(normalized_value)
 
     return validated_values
+
+
+def _require_string_list_allow_empty(parent: JsonObject, field_name: str, context: str) -> list[str]:
+    field_values: JsonArray = _require_json_array_field(parent, field_name, context)
+    return _normalize_non_empty_string_list(field_values, f"field '{field_name}' in {context}")
+
+
+def _require_float_list(parent: JsonObject, field_name: str, context: str) -> list[float]:
+    field_values: JsonArray = _require_json_array_field(parent, field_name, context)
+    if not field_values:
+        raise ValueError(f"field '{field_name}' in {context} must include at least one value")
+
+    return _normalize_float_list(field_values, f"field '{field_name}' in {context}")
+
+
+def _require_float_list_allow_empty(parent: JsonObject, field_name: str, context: str) -> list[float]:
+    field_values: JsonArray = _require_json_array_field(parent, field_name, context)
+    return _normalize_float_list(field_values, f"field '{field_name}' in {context}")
+
+
+def _normalize_float_list(raw_values: JsonArray, context: str) -> list[float]:
+    validated_values: list[float] = []
+    for raw_value in raw_values:
+        validated_values.append(_require_float_like(raw_value, context))
+
+    return validated_values
+
+
+def _require_non_negative_float(parent: JsonObject, field_name: str, context: str) -> float:
+    raw_value: object = parent.get(field_name)
+    if raw_value is None:
+        raise ValueError(f"missing required field '{field_name}' in {context}")
+
+    normalized_value: float = _require_float_like(raw_value, f"field '{field_name}' in {context}")
+    if normalized_value < 0.0:
+        raise ValueError(f"field '{field_name}' in {context} must be non-negative")
+
+    return normalized_value
+
+
+def _require_non_negative_int(parent: JsonObject, field_name: str, context: str) -> int:
+    raw_value: object = parent.get(field_name)
+    if raw_value is None:
+        raise ValueError(f"missing required field '{field_name}' in {context}")
+
+    if not isinstance(raw_value, int) or isinstance(raw_value, bool):
+        raise ValueError(f"field '{field_name}' in {context} must be an integer")
+
+    if raw_value < 0:
+        raise ValueError(f"field '{field_name}' in {context} must be non-negative")
+
+    return raw_value
+
+
+def _require_number(parent: JsonObject, field_name: str, context: str) -> float:
+    raw_value: object = parent.get(field_name)
+    if raw_value is None:
+        raise ValueError(f"missing required field '{field_name}' in {context}")
+
+    return _require_float_like(raw_value, f"field '{field_name}' in {context}")
+
+
+def _require_float_like(raw_value: object, context: str) -> float:
+    if not isinstance(raw_value, int | float) or isinstance(raw_value, bool):
+        raise ValueError(f"{context} must be a finite number")
+
+    normalized_value: float = float(raw_value)
+    if not math.isfinite(normalized_value):
+        raise ValueError(f"{context} must be a finite number")
+
+    return normalized_value
+
+
+def _require_unique_fixture_ids(fixture_ids: list[str], context: str) -> None:
+    observed_fixture_ids: set[str] = set()
+    for fixture_id in fixture_ids:
+        if fixture_id in observed_fixture_ids:
+            raise ValueError(f"duplicate fixture_id in {context}: {fixture_id}")
+
+        observed_fixture_ids.add(fixture_id)

@@ -12,71 +12,50 @@ from janiform.calendar import (
     MarketState,
     resolve_market_state,
 )
-
-type CalendarRegressionCase = dict[str, object]
-
-REQUIRED_CASE_TAGS: set[str] = {
-    "regular_session",
-    "weekend",
-    "holiday",
-    "early_close",
-    "boundary",
-    "timezone_sensitive",
-    "delayed_open",
-    "session_anomaly",
-    "precedence_conflict",
-}
-
-EXPECTED_BOUNDARY_FIXTURE_IDS: set[str] = {
-    "xnys_regular_pre_open",
-    "xnys_regular_at_open",
-    "xnys_regular_at_close",
-    "xnys_early_close_pre_boundary",
-    "xnys_early_close_at_boundary",
-    "xnys_early_close_post_boundary",
-    "xnys_delayed_open_regular_open_conflict_at_regular_open",
-    "xnys_delayed_open_pre_boundary",
-    "xnys_delayed_open_at_boundary",
-    "xnys_holiday_overrides_delayed_open_at_boundary",
-    "xtks_before_utc_midnight_transition",
-    "xtks_after_utc_midnight_transition",
-}
-
-HISTORICAL_HOLIDAY_YEARS: set[int] = {2024, 2025, 2026}
-HISTORICAL_HOLIDAY_INTRADAY_TAGS: set[str] = {
-    "holiday_intraday_open_boundary",
-    "holiday_intraday_mid_session",
-    "holiday_intraday_pre_close",
-}
+from tests.fixture_validation import CalendarRegressionCase, CalendarRegressionFixtureDocument
 
 
 def test_calendar_regression_fixture_covers_required_case_tags(
+    calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
     calendar_regression_cases: list[CalendarRegressionCase],
 ) -> None:
+    required_case_tags: set[str] = set(
+        calendar_regression_fixture_document["canonical_regression_metadata"]["required_tags"],
+    )
     observed_tags: set[str] = {
         cast(str, tag)
         for regression_case in calendar_regression_cases
         for tag in cast(list[str], regression_case["tags"])
     }
 
-    assert REQUIRED_CASE_TAGS <= observed_tags
+    assert required_case_tags <= observed_tags
 
 
 def test_calendar_boundary_fixture_identifiers_remain_stable(
+    calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
     calendar_regression_cases: list[CalendarRegressionCase],
 ) -> None:
+    stable_fixture_ids_by_tag: dict[str, list[str]] = calendar_regression_fixture_document[
+        "canonical_regression_metadata"
+    ]["stable_fixture_ids_by_tag"]
+    expected_boundary_fixture_ids: set[str] = set(stable_fixture_ids_by_tag["boundary"])
     observed_boundary_fixture_ids: set[str] = {
         _fixture_id(regression_case)
         for regression_case in calendar_regression_cases
         if _case_has_tag(regression_case, "boundary")
     }
 
-    assert observed_boundary_fixture_ids == EXPECTED_BOUNDARY_FIXTURE_IDS
+    assert observed_boundary_fixture_ids == expected_boundary_fixture_ids
 
 
 def test_historical_holiday_fixture_coverage_spans_years_and_intraday_slots(
+    calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
     calendar_regression_cases: list[CalendarRegressionCase],
 ) -> None:
+    canonical_metadata: dict[str, object] = cast(
+        dict[str, object],
+        calendar_regression_fixture_document["canonical_regression_metadata"],
+    )
     historical_holiday_cases: list[CalendarRegressionCase] = [
         regression_case
         for regression_case in calendar_regression_cases
@@ -95,9 +74,13 @@ def test_historical_holiday_fixture_coverage_spans_years_and_intraday_slots(
         for tag in cast(list[str], regression_case["tags"])
         if tag.startswith("holiday_intraday_")
     }
+    expected_years: set[int] = set(cast(list[int], canonical_metadata["historical_holiday_expected_years"]))
+    expected_intraday_tags: set[str] = set(
+        cast(list[str], canonical_metadata["historical_holiday_expected_intraday_tags"]),
+    )
 
-    assert observed_years == HISTORICAL_HOLIDAY_YEARS
-    assert observed_intraday_tags == HISTORICAL_HOLIDAY_INTRADAY_TAGS
+    assert observed_years == expected_years
+    assert observed_intraday_tags == expected_intraday_tags
 
 
 def test_resolve_market_state_matches_golden_regression_matrix(
