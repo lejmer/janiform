@@ -1489,6 +1489,7 @@ fn materialize_hourly_seasonality_factors(
 
     let mut parsed_source_timestamp_utc_nanos: Vec<i64> =
         Vec::with_capacity(parsed_source_timestamps_utc.len());
+
     for (source_position, raw_timestamp_utc) in parsed_source_timestamps_utc.iter().enumerate() {
         let parsed_timestamp_utc = DateTime::parse_from_rfc3339(raw_timestamp_utc)
             .map(|timestamp| timestamp.with_timezone(&Utc))
@@ -1497,6 +1498,7 @@ fn materialize_hourly_seasonality_factors(
                     "source_timestamps_utc at position {source_position} must be a RFC3339 timestamp with UTC offset, received `{raw_timestamp_utc}`"
                 ))
             })?;
+
         let parsed_timestamp_utc_nanos =
             parsed_timestamp_utc
                 .timestamp_nanos_opt()
@@ -1505,6 +1507,7 @@ fn materialize_hourly_seasonality_factors(
                         "source_timestamps_utc at position {source_position} is outside the supported nanosecond timestamp range"
                     ))
                 })?;
+
         parsed_source_timestamp_utc_nanos.push(parsed_timestamp_utc_nanos);
     }
 
@@ -1557,6 +1560,7 @@ fn materialize_hourly_news_intensity_factors(
                                 "open_window_override_by_interval_index must be a mapping of integer interval indices to float intensity values",
                             )
                         })?;
+
             parsed_mapping.into_iter().collect()
         }
     } else {
@@ -1603,6 +1607,7 @@ fn provide_hourly_factor_contract(
     } else {
         None
     };
+
     let parsed_news_intensity_source =
         if let Some(raw_news_intensity_source) = news_intensity_source {
             if raw_news_intensity_source.is_none() {
@@ -1732,6 +1737,7 @@ fn parse_hourly_provider_seasonality_source(
                 "seasonality_source is missing required field 'source_kind'",
             )
         })??;
+
     let source_kind: String = source_kind_value.extract().map_err(|_| {
         SeasonalityInputValidationError::new_err(
             "seasonality_source field 'source_kind' must be a string",
@@ -1748,11 +1754,13 @@ fn parse_hourly_provider_seasonality_source(
                         "seasonality_source with source_kind='explicit' is missing required field 'hourly_factors'",
                     )
                 })??;
+
             let hourly_factors: Vec<f64> = hourly_factors_value.extract().map_err(|_| {
                 SeasonalityInputValidationError::new_err(
                     "seasonality_source field 'hourly_factors' must be an iterable of float values",
                 )
             })?;
+
             let materialization_method = if source_mapping.contains("materialization_method")? {
                 let materialization_method_value =
                     source_mapping.get_item("materialization_method")?;
@@ -1776,11 +1784,13 @@ fn parse_hourly_provider_seasonality_source(
                     "seasonality_source with source_kind='materialized' uses unsupported field 'source_timestamp_utc'; use 'source_timestamps_utc'",
                 ));
             }
+
             if !source_mapping.contains("source_timestamps_utc")? {
                 return Err(SeasonalityInputValidationError::new_err(
                     "seasonality_source with source_kind='materialized' is missing required field 'source_timestamps_utc'",
                 ));
             }
+
             let source_timestamps_utc_value = source_mapping.get_item("source_timestamps_utc")?;
             let source_timestamps_utc: Vec<String> =
                 source_timestamps_utc_value.extract().map_err(|_| {
@@ -1788,8 +1798,10 @@ fn parse_hourly_provider_seasonality_source(
                         "seasonality_source field 'source_timestamps_utc' must be an iterable of RFC3339 timestamp strings",
                     )
                 })?;
+
             let mut source_timestamp_utc_nanos: Vec<i64> =
                 Vec::with_capacity(source_timestamps_utc.len());
+
             for (source_position, raw_timestamp_utc) in source_timestamps_utc.iter().enumerate() {
                 let parsed_timestamp_utc = DateTime::parse_from_rfc3339(raw_timestamp_utc)
                     .map(|timestamp| timestamp.with_timezone(&Utc))
@@ -1817,6 +1829,7 @@ fn parse_hourly_provider_seasonality_source(
                         "seasonality_source with source_kind='materialized' is missing required field 'source_seasonality_factors'",
                     )
                 })??;
+
             let source_seasonality_factors: Vec<f64> =
                 source_seasonality_factors_value.extract().map_err(|_| {
                     SeasonalityInputValidationError::new_err(
@@ -1834,6 +1847,7 @@ fn parse_hourly_provider_seasonality_source(
             } else {
                 DEFAULT_SEASONALITY_INTERPOLATION_METHOD.to_string()
             };
+
             let aggregation_method = if source_mapping.contains("aggregation_method")? {
                 let aggregation_method_value = source_mapping.get_item("aggregation_method")?;
                 aggregation_method_value.extract().map_err(|_| {
@@ -1844,6 +1858,7 @@ fn parse_hourly_provider_seasonality_source(
             } else {
                 DEFAULT_SEASONALITY_AGGREGATION_METHOD.to_string()
             };
+
             let sparse_fallback_policy = if source_mapping.contains("sparse_fallback_policy")? {
                 let sparse_fallback_policy_value =
                     source_mapping.get_item("sparse_fallback_policy")?;
@@ -1855,6 +1870,7 @@ fn parse_hourly_provider_seasonality_source(
             } else {
                 DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY.to_string()
             };
+
             let sparse_hour_minimum_observation_count = if source_mapping
                 .contains("sparse_hour_minimum_observation_count")?
             {
@@ -1903,6 +1919,7 @@ fn parse_hourly_provider_news_intensity_source(
                 "news_intensity_source is missing required field 'source_kind'",
             )
         })??;
+
     let source_kind: String = source_kind_value.extract().map_err(|_| {
         SeasonalityInputValidationError::new_err(
             "news_intensity_source field 'source_kind' must be a string",
@@ -1919,11 +1936,13 @@ fn parse_hourly_provider_news_intensity_source(
                         "news_intensity_source with source_kind='explicit' is missing required field 'hourly_factors'",
                     )
                 })??;
+
             let hourly_factors: Vec<f64> = hourly_factors_value.extract().map_err(|_| {
                 SeasonalityInputValidationError::new_err(
                     "news_intensity_source field 'hourly_factors' must be an iterable of float values",
                 )
             })?;
+
             let materialization_method = if source_mapping.contains("materialization_method")? {
                 let materialization_method_value =
                     source_mapping.get_item("materialization_method")?;
@@ -1950,6 +1969,7 @@ fn parse_hourly_provider_news_intensity_source(
                         "news_intensity_source with source_kind='materialized' is missing required field 'closed_window_baseline_intensity'",
                     )
                 })??;
+
             let closed_window_baseline_intensity: f64 =
                 closed_window_baseline_value.extract().map_err(|_| {
                     SeasonalityInputValidationError::new_err(
@@ -1962,6 +1982,7 @@ fn parse_hourly_provider_news_intensity_source(
             {
                 let open_window_override_value =
                     source_mapping.get_item("open_window_override_by_interval_index")?;
+
                 if let Ok(parsed_mapping) =
                     open_window_override_value.extract::<std::collections::BTreeMap<u64, f64>>()
                 {
@@ -1974,7 +1995,9 @@ fn parse_hourly_provider_news_intensity_source(
                                 "news_intensity_source field 'open_window_override_by_interval_index' must be a mapping of integer interval indices to float intensity values",
                             )
                         })?;
+
                     let mut parsed_mapping: Vec<(u64, f64)> = Vec::new();
+
                     for (raw_interval_index, intensity_value) in parsed_string_mapping {
                         let parsed_interval_index =
                             raw_interval_index.parse::<u64>().map_err(|_| {
@@ -1984,6 +2007,7 @@ fn parse_hourly_provider_news_intensity_source(
                             })?;
                         parsed_mapping.push((parsed_interval_index, intensity_value));
                     }
+
                     parsed_mapping.sort_by_key(|(interval_index, _)| *interval_index);
                     parsed_mapping
                 }
@@ -2014,29 +2038,34 @@ fn parse_regression_calendar_cases(
 
     for (case_position, raw_case) in calendar_case_iter.enumerate() {
         let raw_case = raw_case?;
+
         let case_mapping = raw_case.downcast::<PyMapping>().map_err(|_| {
             SeasonalityInputValidationError::new_err(format!(
                 "calendar_cases[{case_position}] must be a mapping",
             ))
         })?;
+
         let fixture_id = parse_required_string_field(
             &case_mapping,
             case_position,
             "calendar_cases",
             "fixture_id",
         )?;
+
         let exchange_code = parse_required_string_field(
             &case_mapping,
             case_position,
             "calendar_cases",
             "exchange_code",
         )?;
+
         let timestamp_text = parse_required_string_field(
             &case_mapping,
             case_position,
             "calendar_cases",
             "timestamp_utc",
         )?;
+
         let expected_state = parse_required_string_field(
             &case_mapping,
             case_position,
@@ -2066,57 +2095,67 @@ fn parse_regression_seasonality_cases(
             "seasonality_cases must be an iterable of mapping records",
         )
     })?;
+
     let mut parsed_seasonality_cases: Vec<HourlyFactorRegressionCase> = Vec::new();
 
     for (case_position, raw_case) in seasonality_case_iter.enumerate() {
         let raw_case = raw_case?;
+
         let case_mapping = raw_case.downcast::<PyMapping>().map_err(|_| {
             SeasonalityInputValidationError::new_err(format!(
                 "seasonality_cases[{case_position}] must be a mapping",
             ))
         })?;
+
         let fixture_id = parse_required_string_field(
             &case_mapping,
             case_position,
             "seasonality_cases",
             "fixture_id",
         )?;
+
         let exchange_code = parse_required_string_field(
             &case_mapping,
             case_position,
             "seasonality_cases",
             "exchange_code",
         )?;
+
         let range_start_utc_text = parse_required_string_field(
             &case_mapping,
             case_position,
             "seasonality_cases",
             "range_start_utc",
         )?;
+
         let range_end_utc_text = parse_required_string_field(
             &case_mapping,
             case_position,
             "seasonality_cases",
             "range_end_utc",
         )?;
+
         let seasonality_source_value = parse_required_field(
             &case_mapping,
             case_position,
             "seasonality_cases",
             "seasonality_source",
         )?;
+
         let news_intensity_source_value = parse_required_field(
             &case_mapping,
             case_position,
             "seasonality_cases",
             "news_intensity_source",
         )?;
+
         let expected_s_h_value = parse_required_field(
             &case_mapping,
             case_position,
             "seasonality_cases",
             "expected_s_h",
         )?;
+
         let expected_nu_h_value = parse_required_field(
             &case_mapping,
             case_position,
@@ -2128,11 +2167,13 @@ fn parse_regression_seasonality_cases(
             parse_hourly_provider_seasonality_source(&seasonality_source_value)?;
         let parsed_news_intensity_source =
             parse_hourly_provider_news_intensity_source(&news_intensity_source_value)?;
+
         let expected_s_h: Vec<f64> = expected_s_h_value.extract().map_err(|_| {
             SeasonalityInputValidationError::new_err(format!(
                 "seasonality_cases[{case_position}] field 'expected_s_h' must be an iterable of float values",
             ))
         })?;
+
         let expected_nu_h: Vec<f64> = expected_nu_h_value.extract().map_err(|_| {
             SeasonalityInputValidationError::new_err(format!(
                 "seasonality_cases[{case_position}] field 'expected_nu_h' must be an iterable of float values",
@@ -2252,6 +2293,7 @@ fn parse_scheduled_event_overlay_definitions(
     let Some(raw_scheduled_event_overlays) = scheduled_event_overlays else {
         return Ok(Vec::new());
     };
+
     if raw_scheduled_event_overlays.is_none() {
         return Ok(Vec::new());
     }
@@ -2263,6 +2305,7 @@ fn parse_scheduled_event_overlay_definitions(
     })?;
 
     let mut overlays: Vec<ScheduledEventOverlayDefinition> = Vec::new();
+
     for (overlay_position, overlay_record_result) in overlay_iterator.enumerate() {
         let overlay_record = overlay_record_result?;
         let overlay_mapping = overlay_record.downcast::<PyMapping>().map_err(|_| {
@@ -2279,6 +2322,7 @@ fn parse_scheduled_event_overlay_definitions(
                     "scheduled_event_overlay at position {overlay_position} is missing required field 'overlay_id'"
                 ))
             })??;
+
         let overlay_id: String = overlay_id_value.extract().map_err(|_| {
             SeasonalityInputValidationError::new_err(format!(
                 "scheduled_event_overlay at position {overlay_position} field 'overlay_id' must be a string"
@@ -2293,11 +2337,13 @@ fn parse_scheduled_event_overlay_definitions(
                     "scheduled_event_overlay at position {overlay_position} is missing required field 'start_timestamp_utc'"
                 ))
             })??;
+
         let start_timestamp_utc = parse_timestamp_utc_from_python(
             &start_timestamp_value,
             overlay_position,
             "start_timestamp_utc",
         )?;
+
         let start_timestamp_utc_nanos =
             start_timestamp_utc
                 .timestamp_nanos_opt()
@@ -2315,11 +2361,13 @@ fn parse_scheduled_event_overlay_definitions(
                     "scheduled_event_overlay at position {overlay_position} is missing required field 'end_timestamp_utc'"
                 ))
             })??;
+
         let end_timestamp_utc = parse_timestamp_utc_from_python(
             &end_timestamp_value,
             overlay_position,
             "end_timestamp_utc",
         )?;
+
         let end_timestamp_utc_nanos = end_timestamp_utc.timestamp_nanos_opt().ok_or_else(|| {
             SeasonalityInputValidationError::new_err(format!(
                 "scheduled_event_overlay at position {overlay_position} field 'end_timestamp_utc' is outside the supported nanosecond range"
@@ -2334,6 +2382,7 @@ fn parse_scheduled_event_overlay_definitions(
                     "scheduled_event_overlay at position {overlay_position} is missing required field 'log_adjustment'"
                 ))
             })??;
+
         let log_adjustment: f64 = log_adjustment_value.extract().map_err(|_| {
             SeasonalityInputValidationError::new_err(format!(
                 "scheduled_event_overlay at position {overlay_position} field 'log_adjustment' must be a float"
@@ -2350,6 +2399,7 @@ fn parse_scheduled_event_overlay_definitions(
         } else {
             0_u16
         };
+
         let enabled = if overlay_mapping.contains("enabled")? {
             let enabled_value = overlay_mapping.get_item("enabled")?;
             enabled_value.extract::<bool>().map_err(|_| {
@@ -2360,6 +2410,7 @@ fn parse_scheduled_event_overlay_definitions(
         } else {
             true
         };
+
         let source_label = if overlay_mapping.contains("source_label")? {
             let source_label_value = overlay_mapping.get_item("source_label")?;
             source_label_value.extract::<String>().map_err(|_| {
@@ -2873,7 +2924,9 @@ fn parse_timestamp_event_records(
             "event_records must be an iterable of mapping records",
         )
     })?;
+
     let mut parsed_records: Vec<TimestampEventInputRecord> = Vec::new();
+
     for (record_position, record_value_result) in iterator.enumerate() {
         let record_value = record_value_result?;
         let record_mapping = record_value.downcast::<PyMapping>().map_err(|_| {
@@ -2881,6 +2934,7 @@ fn parse_timestamp_event_records(
                 "event record at position {record_position} must be a mapping"
             ))
         })?;
+
         let timestamp_value = record_mapping
             .contains(timestamp_field_name)?
             .then(|| record_mapping.get_item(timestamp_field_name))
@@ -2889,11 +2943,13 @@ fn parse_timestamp_event_records(
                     "event record at position {record_position} is missing required field '{timestamp_field_name}'"
                 ))
             })??;
+
         let timestamp_utc = parse_timestamp_utc_from_python(
             &timestamp_value,
             record_position,
             timestamp_field_name,
         )?;
+
         parsed_records.push(TimestampEventInputRecord {
             source_record_position: record_position as u64,
             timestamp_utc,
@@ -2993,6 +3049,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
             .py()
             .get_type::<HourlyFactorProviderUnsupportedRangeError>(),
     )?;
+
     module.add_class::<PyCalendarRegistry>()?;
     module.add_class::<PyTimestampEventPreprocessingResult>()?;
     module.add_class::<PyIntradaySeasonalityEstimateResult>()?;
@@ -3002,6 +3059,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyHourlyFactorContractResult>()?;
     module.add_class::<PyHourlySeasonalityMaterializationResult>()?;
     module.add_class::<PyHourlyNewsIntensityMaterializationResult>()?;
+
     module.add_function(pyo3::wrap_pyfunction!(
         estimate_intraday_seasonality,
         module
@@ -3042,5 +3100,6 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
         run_deterministic_regression_harness,
         module
     )?)?;
+
     Ok(())
 }

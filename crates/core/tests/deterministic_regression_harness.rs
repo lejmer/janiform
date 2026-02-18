@@ -108,6 +108,7 @@ fn deterministic_regression_harness_reports_fixture_mismatches_with_diagnostics(
         .iter()
         .find(|case_report| case_report.fixture_id == calendar_failure_fixture_id)
         .expect("calendar mismatch fixture should be present in report");
+
     assert_eq!(calendar_failure_report.status, RegressionCaseStatus::Fail);
     assert!(matches!(
         calendar_failure_report.failure,
@@ -137,6 +138,7 @@ fn deterministic_regression_harness_report_is_repeatable() {
         loaded_calendar_fixture.fixture_document.calendar_registry,
     )
     .expect("calendar registry fixture should load");
+
     let hourly_fixture_document = load_hourly_factor_fixture_document();
 
     let calendar_cases =
@@ -152,6 +154,7 @@ fn deterministic_regression_harness_report_is_repeatable() {
         tolerance_config.clone(),
     )
     .expect("first harness run should succeed");
+
     let second_report = run_deterministic_regression_harness(
         &registry,
         &calendar_cases,
@@ -173,16 +176,19 @@ fn deterministic_regression_harness_report_is_repeatable() {
 fn deterministic_regression_harness_threshold_boundary_is_inclusive() {
     let loaded_calendar_fixture = load_calendar_regression_fixture_from_manifest()
         .expect("calendar fixture should load from shared manifest");
+
     let registry = ExchangeCalendarRegistry::from_artifact(
         loaded_calendar_fixture.fixture_document.calendar_registry,
     )
     .expect("calendar registry fixture should load");
+
     let hourly_fixture_document = load_hourly_factor_fixture_document();
 
     let calendar_cases =
         build_calendar_case_inputs(&loaded_calendar_fixture.fixture_document.cases);
     let mut hourly_cases =
         build_hourly_factor_case_inputs(&hourly_fixture_document.canonical_output_cases);
+
     let mut tolerance_config = harness_tolerance_config(&hourly_fixture_document);
     tolerance_config.seasonality_absolute_tolerance = 0.25;
     hourly_cases[0].expected_s_h[0] += 0.25;
@@ -206,12 +212,14 @@ fn deterministic_regression_harness_threshold_boundary_fails_when_exceeded() {
         loaded_calendar_fixture.fixture_document.calendar_registry,
     )
     .expect("calendar registry fixture should load");
+
     let hourly_fixture_document = load_hourly_factor_fixture_document();
 
     let calendar_cases =
         build_calendar_case_inputs(&loaded_calendar_fixture.fixture_document.cases);
     let mut hourly_cases =
         build_hourly_factor_case_inputs(&hourly_fixture_document.canonical_output_cases);
+
     let mut tolerance_config = harness_tolerance_config(&hourly_fixture_document);
     tolerance_config.seasonality_absolute_tolerance = 0.25;
     hourly_cases[0].expected_s_h[0] += 0.2501;
@@ -284,6 +292,7 @@ fn parse_hourly_seasonality_source(
                 .iter()
                 .map(|timestamp| parse_utc_timestamp_to_nanos(timestamp))
                 .collect();
+
             HourlySeasonalityRegressionSource::Materialized {
                 source_timestamp_utc_nanos,
                 source_seasonality_factors: source_seasonality_factors.clone(),
@@ -323,8 +332,10 @@ fn parse_hourly_news_intensity_source(
                         (parsed_interval_index, *intensity_value)
                     })
                     .collect();
+
             parsed_open_window_override_by_interval_index
                 .sort_by_key(|(interval_index, _)| *interval_index);
+
             HourlyNewsIntensityRegressionSource::Materialized {
                 closed_window_baseline_intensity: *closed_window_baseline_intensity,
                 open_window_override_by_interval_index:

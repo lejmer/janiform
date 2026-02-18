@@ -229,6 +229,7 @@ fn validate_tolerance_config(
             },
         );
     }
+
     if !tolerance_config
         .news_intensity_absolute_tolerance
         .is_finite()

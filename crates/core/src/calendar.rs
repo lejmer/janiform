@@ -354,6 +354,7 @@ impl ExchangeCalendarDefinition {
 
         let mut grouped_windows: BTreeMap<TradingWeekday, Vec<SessionWindowDefinition>> =
             BTreeMap::new();
+
         for weekday_sessions in artifact.regular_sessions {
             if weekday_sessions.windows.is_empty() {
                 return Err(ExchangeCalendarValidationError::MissingSessionWindows {
@@ -362,6 +363,7 @@ impl ExchangeCalendarDefinition {
             }
 
             let weekday = weekday_sessions.weekday;
+
             for window in weekday_sessions.windows {
                 let label = require_non_empty(window.label, "regular_sessions.windows.label")?;
                 let open_time = SessionTime::parse(&window.open_time).map_err(|parse_reason| {
@@ -379,6 +381,7 @@ impl ExchangeCalendarDefinition {
                             reason: parse_reason,
                         }
                     })?;
+
                 if open_time >= close_time {
                     return Err(ExchangeCalendarValidationError::InvalidSessionWindow {
                         weekday,
@@ -408,15 +411,19 @@ impl ExchangeCalendarDefinition {
                     .then(left_window.close_time.cmp(&right_window.close_time))
                     .then(left_window.label.cmp(&right_window.label))
             });
+
             for window_pair in weekday_windows.windows(2) {
                 let first_window = &window_pair[0];
                 let second_window = &window_pair[1];
+
                 if first_window.close_time > second_window.open_time {
                     return Err(
                         ExchangeCalendarValidationError::OverlappingRegularSessions {
                             weekday: *weekday,
+
                             first_label: first_window.label.clone(),
                             second_label: second_window.label.clone(),
+
                             first_window: format!(
                                 "{}-{}",
                                 first_window.open_time, first_window.close_time
@@ -493,9 +500,11 @@ impl ExchangeCalendarDefinition {
         if self.holiday_dates.contains(&local_date) {
             return MarketState::Closed;
         }
+
         if let Some(early_close_windows) = self.early_close_sessions_by_date.get(&local_date) {
             return resolve_market_state_for_session_windows(early_close_windows, local_clock);
         }
+
         self.resolve_regular_market_state_for_local_clock(weekday, local_clock)
     }
 
@@ -604,6 +613,7 @@ fn resolve_market_state_for_session_windows(
     {
         return MarketState::Open;
     }
+
     MarketState::Closed
 }
 
@@ -627,6 +637,7 @@ impl SessionTime {
         let minute_segment = parts
             .next()
             .ok_or("clock time must be in HH:MM format with two digits per component")?;
+
         if parts.next().is_some() {
             return Err("clock time must be in HH:MM format with two digits per component");
         }
@@ -640,6 +651,7 @@ impl SessionTime {
         let minute = minute_segment
             .parse::<u8>()
             .map_err(|_| "minute must be a numeric value")?;
+
         if hour > 23 {
             return Err("hour must be between 00 and 23");
         }
@@ -843,6 +855,7 @@ impl ExchangeCalendarRegistry {
 
         let mut definitions_by_exchange: BTreeMap<String, ExchangeCalendarDefinition> =
             BTreeMap::new();
+
         for exchange_artifact in artifact.exchanges {
             let exchange_code = exchange_artifact.exchange_code.trim().to_string();
             let definition =
@@ -900,6 +913,7 @@ impl ExchangeCalendarRegistry {
         timestamp_utc: DateTime<Utc>,
     ) -> Result<MarketState, ExchangeCalendarResolveError> {
         let (definition, timezone) = self.required_definition_and_timezone(exchange_code)?;
+
         Ok(resolve_market_state_for_definition_at_utc(
             definition,
             timezone,
@@ -931,6 +945,7 @@ impl ExchangeCalendarRegistry {
         let input_record_count = input_records.len();
         let validated_record_count = input_record_count;
         let mut accepted_rows: Vec<AcceptedPreprocessedTimestampEventRow> = Vec::new();
+
         for input_record in input_records {
             let timestamp_utc_nanos = input_record
                 .timestamp_utc
@@ -941,6 +956,7 @@ impl ExchangeCalendarRegistry {
             let timestamp_local = input_record.timestamp_utc.with_timezone(&timezone);
             let market_state =
                 resolve_market_state_for_definition_at_local(definition, timestamp_local);
+
             if !session_filter.includes_market_state(market_state) {
                 continue;
             }
@@ -977,6 +993,7 @@ impl ExchangeCalendarRegistry {
         let mut exchange_local_day_of_week: Vec<u8> = Vec::with_capacity(accepted_record_count);
         let mut exchange_local_day_of_year: Vec<u16> = Vec::with_capacity(accepted_record_count);
         let mut market_state_codes: Vec<u8> = Vec::with_capacity(accepted_record_count);
+
         for accepted_row in accepted_rows {
             source_record_positions.push(accepted_row.source_record_position);
             timestamp_utc_nanos.push(accepted_row.timestamp_utc_nanos);
@@ -993,6 +1010,7 @@ impl ExchangeCalendarRegistry {
             last_event_timestamp_utc_nanos,
             hour_bucket_count,
         ) = build_hour_bucket_diagnostics(&timestamp_utc_nanos, sparse_hour_event_threshold);
+
         let diagnostics = TimestampEventPreprocessingDiagnostics {
             input_record_count,
             validated_record_count,
@@ -1036,6 +1054,7 @@ impl ExchangeCalendarRegistry {
                 timezone_name: timezone_name.to_string(),
             }
         })?;
+
         Ok((definition, timezone))
     }
 }
@@ -1122,12 +1141,15 @@ fn build_hour_bucket_diagnostics(
     let mut sparse_hour_bucket_utc_nanos: Vec<i64> = Vec::new();
     let mut hour_bucket_count: usize = 0;
     let mut current_bucket_utc_nanos = first_hour_bucket_utc_nanos;
+
     while current_bucket_utc_nanos <= last_hour_bucket_utc_nanos {
         hour_bucket_count += 1;
+
         let observed_count = observed_bucket_counts
             .get(&current_bucket_utc_nanos)
             .copied()
             .unwrap_or(0);
+
         if observed_count == 0 {
             missing_hour_bucket_utc_nanos.push(current_bucket_utc_nanos);
         } else if observed_count < sparse_hour_event_threshold {
@@ -1390,6 +1412,7 @@ fn build_holiday_dates(
     holiday_date_values: Vec<String>,
 ) -> Result<BTreeSet<CalendarDate>, ExchangeCalendarValidationError> {
     let mut holiday_dates: BTreeSet<CalendarDate> = BTreeSet::new();
+
     for holiday_date_value in holiday_date_values {
         let raw_date = require_non_empty(holiday_date_value, "holiday_dates")?;
         let date = CalendarDate::parse(&raw_date).map_err(|reason| {
@@ -1399,12 +1422,14 @@ fn build_holiday_dates(
                 reason,
             }
         })?;
+
         if !holiday_dates.insert(date) {
             return Err(ExchangeCalendarValidationError::DuplicateHolidayDate {
                 date: date.to_string(),
             });
         }
     }
+
     Ok(holiday_dates)
 }
 
@@ -1424,6 +1449,7 @@ fn build_early_close_sessions(
                 reason,
             }
         })?;
+
         if early_close_session.windows.is_empty() {
             return Err(
                 ExchangeCalendarValidationError::MissingEarlyCloseSessionWindows {
@@ -1433,8 +1459,10 @@ fn build_early_close_sessions(
         }
 
         let mut windows = Vec::with_capacity(early_close_session.windows.len());
+
         for window in early_close_session.windows {
             let label = require_non_empty(window.label, "early_close_sessions.windows.label")?;
+
             let open_time = SessionTime::parse(&window.open_time).map_err(|parse_reason| {
                 ExchangeCalendarValidationError::InvalidClockTime {
                     field: "early_close_sessions.windows.open_time",
@@ -1449,6 +1477,7 @@ fn build_early_close_sessions(
                     reason: parse_reason,
                 }
             })?;
+
             if open_time >= close_time {
                 return Err(
                     ExchangeCalendarValidationError::InvalidEarlyCloseSessionWindow {
@@ -1460,6 +1489,7 @@ fn build_early_close_sessions(
                     },
                 );
             }
+
             windows.push(SessionWindowDefinition {
                 label,
                 open_time,
@@ -1474,9 +1504,11 @@ fn build_early_close_sessions(
                 .then(left_window.close_time.cmp(&right_window.close_time))
                 .then(left_window.label.cmp(&right_window.label))
         });
+
         for window_pair in windows.windows(2) {
             let first_window = &window_pair[0];
             let second_window = &window_pair[1];
+
             if first_window.close_time > second_window.open_time {
                 return Err(
                     ExchangeCalendarValidationError::OverlappingEarlyCloseSessions {
@@ -1514,9 +1546,11 @@ fn require_non_empty(
     field: &'static str,
 ) -> Result<String, ExchangeCalendarValidationError> {
     let trimmed_value = value.trim();
+
     if trimmed_value.is_empty() {
         return Err(ExchangeCalendarValidationError::MissingField { field });
     }
+
     Ok(trimmed_value.to_string())
 }
 
@@ -1530,6 +1564,7 @@ fn parse_unknown_field_name(error_message: &str) -> Option<String> {
     let unknown_field_prefix = "unknown field `";
     let after_prefix = error_message.split_once(unknown_field_prefix)?.1;
     let field_name = after_prefix.split('`').next()?;
+
     Some(field_name.to_string())
 }
 
@@ -1607,7 +1642,6 @@ mod tests {
         artifact.timezone_name = None;
 
         let result = ExchangeCalendarDefinition::from_artifact(artifact);
-
         assert_eq!(
             result,
             Err(ExchangeCalendarValidationError::MissingField {
@@ -1640,7 +1674,6 @@ mod tests {
         };
 
         let result = ExchangeCalendarDefinition::from_artifact(artifact);
-
         match result {
             Err(ExchangeCalendarValidationError::InvalidSessionWindow {
                 weekday,
@@ -1690,7 +1723,6 @@ mod tests {
         };
 
         let result = ExchangeCalendarDefinition::from_artifact(artifact);
-
         match result {
             Err(ExchangeCalendarValidationError::OverlappingRegularSessions {
                 weekday,
@@ -1902,7 +1934,6 @@ mod tests {
         "#;
 
         let result = ExchangeCalendarRegistryLoader::load_from_json(artifact_json);
-
         assert_eq!(
             result,
             Err(ExchangeCalendarRegistryLoadError::UnknownField {
@@ -1945,7 +1976,6 @@ mod tests {
         "#;
 
         let result = ExchangeCalendarRegistryLoader::load_from_json(artifact_json);
-
         match result {
             Err(ExchangeCalendarRegistryLoadError::MalformedDate {
                 field,
@@ -2016,7 +2046,6 @@ mod tests {
         "#;
 
         let result = ExchangeCalendarRegistryLoader::load_from_json(artifact_json);
-
         assert_eq!(
             result,
             Err(ExchangeCalendarRegistryLoadError::DuplicateExchangeId {
@@ -2057,6 +2086,7 @@ mod tests {
             ]
         }
         "#;
+
         let registry = ExchangeCalendarRegistryLoader::load_from_json(artifact_json)
             .expect("valid artifact should load");
 
@@ -2116,6 +2146,7 @@ mod tests {
     fn resolver_returns_closed_for_holiday_during_regular_weekday_session() {
         let mut artifact = xnys_full_week_artifact();
         artifact.holiday_dates = vec!["2026-02-03".to_string()];
+
         let registry = single_exchange_registry(artifact);
         let holiday_timestamp = timestamp_utc(2026, 2, 3, 15, 0, 0);
 
@@ -2136,6 +2167,7 @@ mod tests {
                 close_time: "13:00".to_string(),
             }],
         }];
+
         let registry = single_exchange_registry(artifact);
         let before_early_close = timestamp_utc(2026, 2, 4, 17, 59, 59);
         let at_early_close = timestamp_utc(2026, 2, 4, 18, 0, 0);
@@ -2167,6 +2199,7 @@ mod tests {
                 close_time: "13:00".to_string(),
             }],
         }];
+
         let registry = single_exchange_registry(artifact);
         let timestamp_inside_early_close_window = timestamp_utc(2026, 2, 5, 16, 0, 0);
 
@@ -2207,6 +2240,7 @@ mod tests {
     #[test]
     fn resolver_handles_cross_day_transition_for_ahead_timezone_exchange() {
         let registry = resolver_test_registry();
+
         let before_utc_midnight = timestamp_utc(2026, 2, 2, 23, 59, 0);
         let after_utc_midnight = timestamp_utc(2026, 2, 3, 0, 30, 0);
 
@@ -2239,6 +2273,7 @@ mod tests {
                 early_close_sessions: vec![],
             }],
         };
+
         let registry = ExchangeCalendarRegistry::from_artifact(artifact)
             .expect("registry artifact should validate before timezone resolution");
         let timestamp = timestamp_utc(2026, 2, 2, 14, 30, 0);
@@ -2255,6 +2290,7 @@ mod tests {
     #[test]
     fn preprocessing_applies_session_filter_and_local_context() {
         let registry = resolver_test_registry();
+
         let input_records = vec![
             timestamp_input_record(0, 2026, 2, 2, 14, 30, 0),
             timestamp_input_record(1, 2026, 2, 2, 3, 0, 0),
@@ -2289,6 +2325,7 @@ mod tests {
     #[test]
     fn preprocessing_is_deterministic_and_emits_sparse_hour_diagnostics() {
         let registry = resolver_test_registry();
+
         let input_records = vec![
             timestamp_input_record(0, 2026, 2, 2, 16, 30, 0),
             timestamp_input_record(1, 2026, 2, 2, 14, 30, 0),
@@ -2402,6 +2439,7 @@ mod tests {
             artifact_date: "2026-01-31".to_string(),
             exchanges: vec![xnys_full_week_artifact(), xtks_full_week_artifact()],
         };
+
         ExchangeCalendarRegistry::from_artifact(artifact)
             .expect("resolver test registry artifact should be valid")
     }
@@ -2414,6 +2452,7 @@ mod tests {
             artifact_date: "2026-01-31".to_string(),
             exchanges: vec![exchange_artifact],
         };
+
         ExchangeCalendarRegistry::from_artifact(artifact)
             .expect("single-exchange registry artifact should be valid")
     }

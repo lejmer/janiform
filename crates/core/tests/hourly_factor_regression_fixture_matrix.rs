@@ -331,6 +331,7 @@ fn build_contract_for_canonical_case(
                     sparse_fallback_policy,
                     *sparse_hour_minimum_observation_count,
                 )?;
+
                 (
                     seasonality_output.s_h,
                     HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION.to_string(),
@@ -358,6 +359,7 @@ fn build_contract_for_canonical_case(
                     *closed_window_baseline_intensity,
                     &parsed_open_window_overrides,
                 )?;
+
                 (
                     news_output.nu_h,
                     HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION.to_string(),
@@ -483,6 +485,7 @@ fn parse_open_window_overrides(
             (interval_index, *override_value)
         })
         .collect();
+
     parsed_open_window_overrides.sort_by_key(|(interval_index, _)| *interval_index);
     parsed_open_window_overrides
 }
@@ -503,6 +506,7 @@ fn factor_range_policy_for_case<'a>(
             }
         })
         .collect();
+
     assert_eq!(
         matched_fixture_classes.len(),
         1,
@@ -510,6 +514,7 @@ fn factor_range_policy_for_case<'a>(
         fixture_case.fixture_id,
         matched_fixture_classes
     );
+
     fixture_document
         .threshold_configuration
         .factor_range_by_fixture_class

@@ -95,6 +95,7 @@ fn validation_fixture_manifest_rejects_missing_required_fields() {
         .join("validation_fixture_manifest.json");
     let manifest_raw =
         fs::read_to_string(&manifest_path).expect("validation fixture manifest file should exist");
+
     let mut manifest_value: Value =
         serde_json::from_str(&manifest_raw).expect("manifest fixture should be valid JSON");
     manifest_value
@@ -115,6 +116,7 @@ fn validation_fixture_manifest_rejects_invalid_domain_values() {
         .join("validation_fixture_manifest.json");
     let manifest_raw =
         fs::read_to_string(&manifest_path).expect("validation fixture manifest file should exist");
+
     let mut manifest_value: Value =
         serde_json::from_str(&manifest_raw).expect("manifest fixture should be valid JSON");
     manifest_value["fixtures"][0]["domain"] = Value::String("python_only".to_string());
@@ -132,6 +134,7 @@ fn validation_fixture_manifest_rejects_malformed_content_hash_values() {
         .join("validation_fixture_manifest.json");
     let manifest_raw =
         fs::read_to_string(&manifest_path).expect("validation fixture manifest file should exist");
+
     let mut manifest_value: Value =
         serde_json::from_str(&manifest_raw).expect("manifest fixture should be valid JSON");
     manifest_value["fixtures"][0]["content_hash"] = Value::String("ABCDEF0123456789".to_string());
@@ -149,6 +152,7 @@ fn validation_fixture_manifest_rejects_malformed_content_hash_values() {
 fn calendar_regression_fixture_rejects_missing_required_fields() {
     let loaded_fixture = load_calendar_regression_fixture_from_manifest()
         .expect("calendar regression fixture should load from shared manifest");
+
     let mut fixture_value: Value =
         serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
             .expect("calendar regression fixture should be valid JSON");
@@ -166,6 +170,7 @@ fn calendar_regression_fixture_rejects_missing_required_fields() {
 fn calendar_regression_fixture_rejects_invalid_expected_state_values() {
     let loaded_fixture = load_calendar_regression_fixture_from_manifest()
         .expect("calendar regression fixture should load from shared manifest");
+
     let mut fixture_value: Value =
         serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
             .expect("calendar regression fixture should be valid JSON");
@@ -186,8 +191,8 @@ fn calendar_regression_fixture_rejects_duplicate_exchange_timestamp_pairs() {
     let mut fixture_value: Value =
         serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
             .expect("calendar regression fixture should be valid JSON");
-
     let duplicate_case = fixture_value["cases"][0].clone();
+
     fixture_value["cases"]
         .as_array_mut()
         .expect("calendar fixture cases should be an array")
@@ -215,6 +220,7 @@ fn calendar_regression_fixture_rejects_duplicate_exchange_timestamp_pairs() {
 fn calendar_regression_fixture_rejects_malformed_canonical_metadata() {
     let loaded_fixture = load_calendar_regression_fixture_from_manifest()
         .expect("calendar regression fixture should load from shared manifest");
+
     let mut fixture_value: Value =
         serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
             .expect("calendar regression fixture should be valid JSON");
@@ -233,6 +239,7 @@ fn calendar_regression_fixture_rejects_malformed_canonical_metadata() {
 fn hourly_factor_regression_fixture_rejects_malformed_canonical_metadata() {
     let loaded_fixture = load_hourly_factor_regression_fixture_from_manifest()
         .expect("hourly factor regression fixture should load from shared manifest");
+
     let mut fixture_value: Value =
         serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
             .expect("hourly factor regression fixture should be valid JSON");
@@ -253,6 +260,7 @@ fn hourly_factor_regression_fixture_rejects_malformed_canonical_metadata() {
 fn hourly_factor_regression_fixture_rejects_unsupported_state_classification_strictness_policy() {
     let loaded_fixture = load_hourly_factor_regression_fixture_from_manifest()
         .expect("hourly factor regression fixture should load from shared manifest");
+
     let mut fixture_value: Value =
         serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
             .expect("hourly factor regression fixture should be valid JSON");
@@ -273,6 +281,7 @@ fn hourly_factor_regression_fixture_rejects_unsupported_state_classification_str
 fn hourly_factor_regression_fixture_rejects_factor_range_with_inverted_bounds() {
     let loaded_fixture = load_hourly_factor_regression_fixture_from_manifest()
         .expect("hourly factor regression fixture should load from shared manifest");
+
     let mut fixture_value: Value =
         serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
             .expect("hourly factor regression fixture should be valid JSON");
@@ -294,6 +303,7 @@ fn hourly_factor_regression_fixture_rejects_factor_range_with_inverted_bounds() 
 fn hourly_factor_regression_fixture_rejects_change_log_without_current_policy_version() {
     let loaded_fixture = load_hourly_factor_regression_fixture_from_manifest()
         .expect("hourly factor regression fixture should load from shared manifest");
+
     let mut fixture_value: Value =
         serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
             .expect("hourly factor regression fixture should be valid JSON");

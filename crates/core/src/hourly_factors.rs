@@ -423,6 +423,7 @@ pub fn build_hourly_factor_contract(
             });
         }
     }
+
     for (interval_index, news_intensity_factor) in
         news_intensity_factors.iter().copied().enumerate()
     {
@@ -673,6 +674,7 @@ pub fn materialize_hourly_seasonality_factors(
 
     let mut source_points: Vec<SourceSeasonalityPoint> =
         Vec::with_capacity(source_timestamp_utc_nanos.len());
+
     for (source_position, (timestamp_utc_nanos, seasonality_factor)) in source_timestamp_utc_nanos
         .iter()
         .copied()
@@ -699,6 +701,7 @@ pub fn materialize_hourly_seasonality_factors(
             source_point.source_position,
         )
     });
+
     let source_factor_sum: f64 = source_points
         .iter()
         .map(|source_point| source_point.seasonality_factor)
@@ -728,9 +731,11 @@ pub fn materialize_hourly_seasonality_factors(
         {
             source_window_start += 1;
         }
+
         if source_window_end < source_window_start {
             source_window_end = source_window_start;
         }
+
         while source_window_end < source_points.len()
             && source_points[source_window_end].timestamp_utc_nanos < interval_end_utc_nanos
         {
@@ -771,6 +776,7 @@ pub fn materialize_hourly_seasonality_factors(
                 value: interval_factor,
             });
         }
+
         materialized_s_h.push(interval_factor);
     }
 
@@ -842,6 +848,7 @@ pub fn materialize_hourly_news_intensity_factors(
 
     let mut open_window_overrides_by_interval_index: Vec<Option<f64>> =
         vec![None; interval_indexing.interval_count];
+
     for &(interval_index, open_window_override_intensity) in open_window_override_by_interval_index
     {
         if !open_window_override_intensity.is_finite() || open_window_override_intensity < 0.0 {
@@ -909,6 +916,7 @@ pub fn materialize_hourly_news_intensity_factors(
                 value: interval_nu_h,
             });
         }
+
         materialized_nu_h.push(interval_nu_h);
     }
 
@@ -960,6 +968,7 @@ fn build_hourly_interval_indexing(
 
     let range_start_utc_nanos = timestamp_to_utc_nanos(range_start_utc, "range_start_utc")?;
     let range_end_utc_nanos = timestamp_to_utc_nanos(range_end_utc, "range_end_utc")?;
+
     if range_start_utc_nanos >= range_end_utc_nanos {
         return Err(HourlyFactorContractError::NonIncreasingRange {
             range_start_utc_nanos,
@@ -999,6 +1008,7 @@ fn build_hourly_interval_indexing(
     let mut interval_end_exchange_local: Vec<String> = Vec::with_capacity(interval_count);
     let mut skipped_local_hour_interval_count: usize = 0;
     let mut repeated_local_hour_interval_count: usize = 0;
+
     for interval_index in 0..interval_count {
         let interval_offset_nanos = interval_index as i64 * ONE_HOUR_NANOS;
         let interval_start_nanos = range_start_utc_nanos + interval_offset_nanos;
@@ -1008,6 +1018,7 @@ fn build_hourly_interval_indexing(
         let end_utc = utc_timestamp_from_nanos(interval_end_nanos, "range_end_utc")?;
         let local_boundary_projection =
             project_interval_boundaries_to_exchange_local(start_utc, end_utc, &timezone);
+
         match local_boundary_projection.transition_kind {
             ExchangeLocalHourTransitionKind::Standard => {}
             ExchangeLocalHourTransitionKind::Skipped => skipped_local_hour_interval_count += 1,
@@ -1094,6 +1105,7 @@ fn interpolate_sparse_interval(
             let prior_source_count = sorted_source_points.partition_point(|source_point| {
                 source_point.timestamp_utc_nanos < interval_end_utc_nanos
             });
+
             if prior_source_count == 0 {
                 None
             } else {
@@ -1115,12 +1127,14 @@ fn interpolate_sparse_interval(
             {
                 return Some(sorted_source_points[right_source_index].seasonality_factor);
             }
+
             if right_source_index == 0 || right_source_index >= sorted_source_points.len() {
                 return None;
             }
 
             let left_source_point = sorted_source_points[right_source_index - 1];
             let right_source_point = sorted_source_points[right_source_index];
+
             let linear_denominator = (right_source_point.timestamp_utc_nanos
                 - left_source_point.timestamp_utc_nanos)
                 as f64;
@@ -1134,6 +1148,7 @@ fn interpolate_sparse_interval(
             let midpoint_weight = (interval_midpoint_utc_nanos
                 - left_source_point.timestamp_utc_nanos) as f64
                 / linear_denominator;
+
             Some(
                 left_source_point.seasonality_factor
                     + (right_source_point.seasonality_factor
@@ -1168,6 +1183,7 @@ fn count_closed_samples_in_interval(
 ) -> Result<usize, HourlyFactorContractError> {
     let minute_sample_count = (interval_length_utc_nanos / ONE_MINUTE_NANOS) as usize;
     let mut closed_sample_count: usize = 0;
+
     for sample_index in 0..minute_sample_count {
         let sample_offset_utc_nanos =
             sample_index as i64 * ONE_MINUTE_NANOS + (ONE_MINUTE_NANOS / 2);
@@ -1177,10 +1193,12 @@ fn count_closed_samples_in_interval(
         let market_state = calendar_registry
             .resolve_market_state_at_utc(exchange_code, sample_timestamp_utc)
             .map_err(map_calendar_resolve_error)?;
+
         if market_state == MarketState::Closed {
             closed_sample_count += 1;
         }
     }
+
     Ok(closed_sample_count)
 }
 
@@ -1224,6 +1242,7 @@ fn utc_timestamp_from_nanos(
 ) -> Result<DateTime<Utc>, HourlyFactorContractError> {
     let seconds = timestamp_utc_nanos.div_euclid(ONE_SECOND_NANOS);
     let subsecond_nanos = timestamp_utc_nanos.rem_euclid(ONE_SECOND_NANOS) as u32;
+
     DateTime::from_timestamp(seconds, subsecond_nanos)
         .ok_or(HourlyFactorContractError::TimestampOutOfRange { field })
 }
@@ -1248,6 +1267,7 @@ mod tests {
     #[test]
     fn hourly_factor_contract_builds_expected_schema_and_metadata() {
         let registry = build_calendar_registry();
+
         let output = build_hourly_factor_contract(
             &registry,
             "XNYS",
@@ -1299,6 +1319,7 @@ mod tests {
     #[test]
     fn hourly_factor_contract_intervals_are_consecutive_and_non_overlapping() {
         let registry = build_calendar_registry();
+
         let output = build_hourly_factor_contract(
             &registry,
             "XNYS",
@@ -1312,12 +1333,14 @@ mod tests {
         .expect("hourly factor contract build should succeed");
 
         assert_eq!(output.interval_indices, vec![0, 1, 2, 3]);
+
         for interval_position in 1..output.interval_start_utc_nanos.len() {
             assert_eq!(
                 output.interval_start_utc_nanos[interval_position],
                 output.interval_end_utc_nanos[interval_position - 1]
             );
         }
+
         for interval_position in 0..output.interval_start_utc_nanos.len() {
             let interval_start = output.interval_start_utc_nanos[interval_position];
             let interval_end = output.interval_end_utc_nanos[interval_position];
@@ -1329,6 +1352,7 @@ mod tests {
     #[test]
     fn hourly_factor_contract_spring_forward_policy_skips_nonexistent_local_hour_labels() {
         let registry = build_calendar_registry();
+
         let output = build_hourly_factor_contract(
             &registry,
             "XNYS",
@@ -1368,6 +1392,7 @@ mod tests {
     #[test]
     fn hourly_factor_contract_fall_back_policy_preserves_repeated_local_hour_labels() {
         let registry = build_calendar_registry();
+
         let output = build_hourly_factor_contract(
             &registry,
             "XNYS",
@@ -1419,6 +1444,7 @@ mod tests {
             DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
         )
         .expect_err("non-increasing range must fail");
+
         assert!(matches!(
             non_increasing_range_error,
             HourlyFactorContractError::NonIncreasingRange { .. }
@@ -1435,6 +1461,7 @@ mod tests {
             DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
         )
         .expect_err("hour-unaligned range must fail");
+
         assert!(matches!(
             unaligned_range_error,
             HourlyFactorContractError::RangeBoundaryNotHourAligned { .. }
@@ -1451,6 +1478,7 @@ mod tests {
             DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
         )
         .expect_err("missing exchange id must fail");
+
         assert!(matches!(
             missing_exchange_error,
             HourlyFactorContractError::MissingExchangeId { .. }
@@ -1513,6 +1541,7 @@ mod tests {
     #[test]
     fn seasonality_materializer_is_deterministic_for_identical_inputs() {
         let registry = build_calendar_registry();
+
         let source_timestamp_utc_nanos = vec![
             parse_timestamp("2026-02-02T15:05:00Z")
                 .timestamp_nanos_opt()
@@ -1548,6 +1577,7 @@ mod tests {
             2,
         )
         .expect("seasonality materialization should succeed");
+
         let second_output = materialize_hourly_seasonality_factors(
             &registry,
             "XNYS",
@@ -1593,6 +1623,7 @@ mod tests {
             1,
         )
         .expect("seasonality materialization should succeed");
+
         assert_eq!(spring_forward_output.s_h, vec![1.0, 2.0, 3.0]);
         assert_eq!(
             spring_forward_output
@@ -1630,6 +1661,7 @@ mod tests {
             1,
         )
         .expect("seasonality materialization should succeed");
+
         assert_eq!(fall_back_output.s_h, vec![1.5, 2.5, 3.5]);
         assert_eq!(
             fall_back_output
@@ -1648,6 +1680,7 @@ mod tests {
     #[test]
     fn news_intensity_materializer_applies_closed_window_baseline_and_open_window_overrides() {
         let registry = build_calendar_registry();
+
         let output = materialize_hourly_news_intensity_factors(
             &registry,
             "XNYS",
@@ -1711,6 +1744,7 @@ mod tests {
             &[(0, 3.0), (1, 3.0)],
         )
         .expect("overnight news intensity materialization should succeed");
+
         assert_eq!(overnight_output.nu_h, vec![0.7, 0.7, 0.7, 0.7]);
         assert_eq!(overnight_output.diagnostics.fully_closed_interval_count, 4);
         assert_eq!(
@@ -1751,6 +1785,7 @@ mod tests {
             1,
         )
         .expect("seasonality materialization should succeed");
+
         let news_output = materialize_hourly_news_intensity_factors(
             &registry,
             "XNYS",
@@ -1787,6 +1822,7 @@ mod tests {
     #[test]
     fn news_intensity_materializer_rejects_invalid_override_interval_indices() {
         let registry = build_calendar_registry();
+
         let error = materialize_hourly_news_intensity_factors(
             &registry,
             "XNYS",

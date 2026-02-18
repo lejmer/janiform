@@ -101,6 +101,7 @@ pub fn estimate_intraday_seasonality(
     if exchange_local_minute_of_day.is_empty() {
         return Err(IntradaySeasonalityEstimationError::EmptyInputEvents);
     }
+
     if settings.minutes_per_bin == 0
         || usize::from(settings.minutes_per_bin) > MINUTES_PER_DAY
         || !MINUTES_PER_DAY.is_multiple_of(usize::from(settings.minutes_per_bin))
@@ -109,6 +110,7 @@ pub fn estimate_intraday_seasonality(
             minutes_per_bin: settings.minutes_per_bin,
         });
     }
+
     if !settings.smoothing_bandwidth_bins.is_finite() || settings.smoothing_bandwidth_bins <= 0.0 {
         return Err(
             IntradaySeasonalityEstimationError::InvalidSmoothingBandwidthBins {
@@ -116,6 +118,7 @@ pub fn estimate_intraday_seasonality(
             },
         );
     }
+
     if settings.minimum_bin_events < 1 {
         return Err(
             IntradaySeasonalityEstimationError::InvalidMinimumBinEvents {
@@ -123,6 +126,7 @@ pub fn estimate_intraday_seasonality(
             },
         );
     }
+
     if !settings.pseudocount.is_finite() || settings.pseudocount <= 0.0 {
         return Err(IntradaySeasonalityEstimationError::InvalidPseudocount {
             pseudocount: settings.pseudocount,
@@ -131,6 +135,7 @@ pub fn estimate_intraday_seasonality(
 
     let bin_count: usize = MINUTES_PER_DAY / usize::from(settings.minutes_per_bin);
     let mut event_count_by_bin: Vec<u64> = vec![0; bin_count];
+
     for (record_position, minute_of_day) in exchange_local_minute_of_day.iter().copied().enumerate()
     {
         if usize::from(minute_of_day) >= MINUTES_PER_DAY {
@@ -177,6 +182,7 @@ pub fn estimate_intraday_seasonality(
     let smoothed_count_by_bin =
         circular_smooth_values(&baseline_count_by_bin, &kernel_offsets, &kernel_weights);
     let total_smoothed_count: f64 = smoothed_count_by_bin.iter().sum();
+
     if !total_smoothed_count.is_finite() || total_smoothed_count <= 0.0 {
         return Err(IntradaySeasonalityEstimationError::UnstableNormalization);
     }
@@ -231,12 +237,14 @@ fn build_intraday_smoothing_kernel(
         IntradaySmoothingKernel::Uniform => smoothing_bandwidth_bins.floor() as isize,
     };
     let radius = raw_radius.max(0).min(max_radius);
+
     if radius == 0 {
         return (vec![0], vec![1.0]);
     }
 
     let mut offsets: Vec<isize> = Vec::with_capacity((radius * 2 + 1) as usize);
     let mut weights: Vec<f64> = Vec::with_capacity((radius * 2 + 1) as usize);
+
     for offset in -radius..=radius {
         offsets.push(offset);
         let weight = match smoothing_kernel {
@@ -266,15 +274,19 @@ fn circular_smooth_values(
 ) -> Vec<f64> {
     let mut smoothed_values: Vec<f64> = vec![0.0; values.len()];
     let value_count = values.len() as isize;
+
     for target_position in 0..values.len() {
         let mut smoothed_value = 0.0;
+
         for (kernel_position, kernel_offset) in kernel_offsets.iter().enumerate() {
             let source_position =
                 (target_position as isize + *kernel_offset).rem_euclid(value_count) as usize;
             smoothed_value += values[source_position] * kernel_weights[kernel_position];
         }
+
         smoothed_values[target_position] = smoothed_value;
     }
+
     smoothed_values
 }
 
@@ -393,6 +405,7 @@ pub fn estimate_day_of_week_seasonality(
     if exchange_local_day_of_week.is_empty() {
         return Err(DayOfWeekSeasonalityEstimationError::EmptyInputEvents);
     }
+
     if settings.minimum_bucket_events < 1 {
         return Err(
             DayOfWeekSeasonalityEstimationError::InvalidMinimumBucketEvents {
@@ -400,6 +413,7 @@ pub fn estimate_day_of_week_seasonality(
             },
         );
     }
+
     if !settings.pseudocount.is_finite() || settings.pseudocount <= 0.0 {
         return Err(DayOfWeekSeasonalityEstimationError::InvalidPseudocount {
             pseudocount: settings.pseudocount,
@@ -415,6 +429,7 @@ pub fn estimate_day_of_week_seasonality(
                 day_of_week,
             });
         }
+
         bucket_index_by_event.push((day_of_week - 1) as usize);
     }
 
@@ -497,6 +512,7 @@ pub fn estimate_day_of_year_seasonality(
     if exchange_local_day_of_year.is_empty() {
         return Err(DayOfYearSeasonalityEstimationError::EmptyInputEvents);
     }
+
     if settings.minimum_bucket_events < 1 {
         return Err(
             DayOfYearSeasonalityEstimationError::InvalidMinimumBucketEvents {
@@ -504,6 +520,7 @@ pub fn estimate_day_of_year_seasonality(
             },
         );
     }
+
     if !settings.pseudocount.is_finite() || settings.pseudocount <= 0.0 {
         return Err(DayOfYearSeasonalityEstimationError::InvalidPseudocount {
             pseudocount: settings.pseudocount,
@@ -519,6 +536,7 @@ pub fn estimate_day_of_year_seasonality(
                 day_of_year,
             });
         }
+
         bucket_index_by_event.push((day_of_year - 1) as usize);
     }
 
@@ -629,7 +647,9 @@ pub fn compose_deterministic_seasonality_signal(
     if timestamp_utc_nanos.is_empty() {
         return Err(DeterministicSeasonalityCompositionError::EmptyInputEvents);
     }
+
     let input_event_count = timestamp_utc_nanos.len();
+
     if exchange_local_day_of_week.len() != input_event_count
         || exchange_local_day_of_year.len() != input_event_count
         || exchange_local_minute_of_day.len() != input_event_count
@@ -643,6 +663,7 @@ pub fn compose_deterministic_seasonality_signal(
             },
         );
     }
+
     if intraday_minutes_per_bin == 0
         || usize::from(intraday_minutes_per_bin) > MINUTES_PER_DAY
         || !MINUTES_PER_DAY.is_multiple_of(usize::from(intraday_minutes_per_bin))
@@ -655,6 +676,7 @@ pub fn compose_deterministic_seasonality_signal(
     }
 
     let intraday_bin_count = MINUTES_PER_DAY / usize::from(intraday_minutes_per_bin);
+
     if intraday_log_component_by_bin.len() != intraday_bin_count {
         return Err(
             DeterministicSeasonalityCompositionError::InvalidIntradayComponentLength {
@@ -663,6 +685,7 @@ pub fn compose_deterministic_seasonality_signal(
             },
         );
     }
+
     if day_of_week_log_component.len() != DAYS_PER_WEEK {
         return Err(
             DeterministicSeasonalityCompositionError::InvalidDayOfWeekComponentLength {
@@ -671,6 +694,7 @@ pub fn compose_deterministic_seasonality_signal(
             },
         );
     }
+
     if day_of_year_log_component.len() != DAYS_PER_YEAR {
         return Err(
             DeterministicSeasonalityCompositionError::InvalidDayOfYearComponentLength {
@@ -686,12 +710,14 @@ pub fn compose_deterministic_seasonality_signal(
         Vec::with_capacity(scheduled_event_overlays.len());
     let mut observed_overlay_ids: BTreeSet<String> = BTreeSet::new();
     let mut enabled_overlay_count = 0_usize;
+
     for (overlay_position, overlay) in scheduled_event_overlays.iter().enumerate() {
         if overlay.overlay_id.trim().is_empty() {
             return Err(DeterministicSeasonalityCompositionError::EmptyOverlayId {
                 overlay_position,
             });
         }
+
         if !observed_overlay_ids.insert(overlay.overlay_id.clone()) {
             return Err(
                 DeterministicSeasonalityCompositionError::DuplicateOverlayId {
@@ -699,6 +725,7 @@ pub fn compose_deterministic_seasonality_signal(
                 },
             );
         }
+
         if !overlay.log_adjustment.is_finite() {
             return Err(
                 DeterministicSeasonalityCompositionError::InvalidOverlayLogAdjustment {
@@ -706,6 +733,7 @@ pub fn compose_deterministic_seasonality_signal(
                 },
             );
         }
+
         if overlay.start_timestamp_utc_nanos >= overlay.end_timestamp_utc_nanos {
             return Err(
                 DeterministicSeasonalityCompositionError::InvalidOverlayWindow {
@@ -715,9 +743,11 @@ pub fn compose_deterministic_seasonality_signal(
                 },
             );
         }
+
         if overlay.enabled {
             enabled_overlay_count += 1;
         }
+
         configured_overlay_ids_in_order.push(overlay.overlay_id.clone());
         overlay_source_labels_in_order.push(overlay.source_label.clone());
     }
@@ -744,6 +774,7 @@ pub fn compose_deterministic_seasonality_signal(
                 },
             );
         }
+
         let day_of_week = exchange_local_day_of_week[record_position];
         if !(1..=7).contains(&day_of_week) {
             return Err(DeterministicSeasonalityCompositionError::InvalidDayOfWeek {
@@ -751,6 +782,7 @@ pub fn compose_deterministic_seasonality_signal(
                 day_of_week,
             });
         }
+
         let day_of_year = exchange_local_day_of_year[record_position];
         if !(1..=366).contains(&day_of_year) {
             return Err(DeterministicSeasonalityCompositionError::InvalidDayOfYear {
@@ -767,15 +799,18 @@ pub fn compose_deterministic_seasonality_signal(
         let mut selected_overlay_indices: Vec<usize> = Vec::new();
         let mut selected_overlay_precedence: Option<u16> = None;
         let mut special_log_component = 0.0;
+
         for (overlay_index, overlay) in scheduled_event_overlays.iter().enumerate() {
             if !overlay.enabled {
                 continue;
             }
+
             if event_timestamp_utc_nanos < overlay.start_timestamp_utc_nanos
                 || event_timestamp_utc_nanos >= overlay.end_timestamp_utc_nanos
             {
                 continue;
             }
+
             match selected_overlay_precedence {
                 None => {
                     selected_overlay_precedence = Some(overlay.precedence);
@@ -795,6 +830,7 @@ pub fn compose_deterministic_seasonality_signal(
                 Some(_) => {}
             }
         }
+
         if !special_log_component.is_finite() {
             return Err(
                 DeterministicSeasonalityCompositionError::InvalidSpecialOverlayLogComponent {
@@ -805,17 +841,20 @@ pub fn compose_deterministic_seasonality_signal(
 
         let mut active_overlay_ids_for_event: Vec<String> =
             Vec::with_capacity(selected_overlay_indices.len());
+
         if selected_overlay_indices.is_empty() {
             special_overlay_active_flags_by_event.push(0);
             active_overlay_ids_by_event.push(String::new());
         } else {
             special_overlay_active_flags_by_event.push(1);
             active_overlay_event_count += 1;
+
             for selected_overlay_index in selected_overlay_indices {
                 let selected_overlay = &scheduled_event_overlays[selected_overlay_index];
                 active_overlay_ids_for_event.push(selected_overlay.overlay_id.clone());
                 overlay_application_count_by_index[selected_overlay_index] += 1;
             }
+
             active_overlay_ids_for_event.sort_unstable();
             active_overlay_ids_by_event.push(active_overlay_ids_for_event.join(","));
         }
@@ -824,6 +863,7 @@ pub fn compose_deterministic_seasonality_signal(
             + day_of_week_log_component_value
             + day_of_year_log_component_value
             + special_log_component;
+
         if !combined_log_component.is_finite() {
             return Err(
                 DeterministicSeasonalityCompositionError::InvalidCombinedLogComponent {
@@ -831,6 +871,7 @@ pub fn compose_deterministic_seasonality_signal(
                 },
             );
         }
+
         let combined_factor = combined_log_component.exp();
         if !combined_factor.is_finite() || combined_factor <= 0.0 {
             return Err(
@@ -1239,12 +1280,13 @@ pub fn generate_seasonality_diagnostics_report(
     if report_input.exchange_timezone_name.trim().is_empty() {
         return Err(SeasonalityDiagnosticsReportError::EmptyExchangeTimezoneName);
     }
-
     if report_input.timestamp_utc_nanos.is_empty() {
         return Err(SeasonalityDiagnosticsReportError::EmptyInputEvents);
     }
+
     let input_event_count = report_input.timestamp_utc_nanos.len();
     let composed_input_event_count = report_input.composition.diagnostics.input_event_count;
+
     if report_input.source_record_positions.len() != input_event_count
         || report_input.exchange_local_minute_of_day.len() != input_event_count
         || report_input.exchange_local_day_of_week.len() != input_event_count
@@ -1302,6 +1344,7 @@ pub fn generate_seasonality_diagnostics_report(
         0,
         report_input.intraday_estimate.pseudocount,
     )?;
+
     let day_of_week_summary = build_component_summary(
         "day_of_week",
         report_input.day_of_week_estimate.schema_version,
@@ -1322,6 +1365,7 @@ pub fn generate_seasonality_diagnostics_report(
             .fallback_bucket_count,
         report_input.day_of_week_estimate.pseudocount,
     )?;
+
     let day_of_year_summary = build_component_summary(
         "day_of_year",
         report_input.day_of_year_estimate.schema_version,
@@ -1379,13 +1423,16 @@ pub fn generate_seasonality_diagnostics_batch_report(
     let mut dataset_ids_in_order: Vec<String> = Vec::with_capacity(report_inputs.len());
     let mut reports: Vec<SeasonalityDiagnosticsReportOutput> =
         Vec::with_capacity(report_inputs.len());
+
     for report_input in report_inputs {
         if !seen_dataset_ids.insert(report_input.dataset_id.to_string()) {
             return Err(SeasonalityDiagnosticsReportError::DuplicateDatasetId {
                 dataset_id: report_input.dataset_id.to_string(),
             });
         }
+
         let report = generate_seasonality_diagnostics_report(*report_input)?;
+
         dataset_ids_in_order.push(report.dataset_id.clone());
         reports.push(report);
     }
@@ -1416,6 +1463,7 @@ fn build_component_summary(
             actual_input_event_count: component_input_event_count,
         });
     }
+
     if event_count_by_bucket.len() != factor_by_bucket.len() {
         return Err(SeasonalityDiagnosticsReportError::ComponentLengthMismatch {
             component_name,
@@ -1423,6 +1471,7 @@ fn build_component_summary(
             actual_bucket_count: factor_by_bucket.len(),
         });
     }
+
     if !pseudocount.is_finite() || pseudocount <= 0.0 {
         return Err(
             SeasonalityDiagnosticsReportError::InvalidComponentPseudocount {
@@ -1496,6 +1545,7 @@ fn build_observed_factor_by_bucket(
         .collect();
     let adjusted_event_count_total: f64 = adjusted_event_count_by_bucket.iter().sum();
     let bucket_count_float = bucket_count as f64;
+
     adjusted_event_count_by_bucket
         .iter()
         .map(|adjusted_event_count| *adjusted_event_count / adjusted_event_count_total)
@@ -1510,10 +1560,12 @@ fn calculate_component_fit_error_metrics(
 ) -> Result<ComponentFitErrorMetrics, SeasonalityDiagnosticsReportError> {
     let mut absolute_error_sum = 0.0;
     let mut squared_error_sum = 0.0;
+
     let bucket_count = factor_by_bucket.len();
     for bucket_position in 0..bucket_count {
         let factor = factor_by_bucket[bucket_position];
         let observed_factor = observed_factor_by_bucket[bucket_position];
+
         if !factor.is_finite()
             || factor <= 0.0
             || !observed_factor.is_finite()
@@ -1524,12 +1576,15 @@ fn calculate_component_fit_error_metrics(
                 bucket_position,
             });
         }
+
         let error = factor - observed_factor;
+
         absolute_error_sum += error.abs();
         squared_error_sum += error.powi(2);
     }
 
     let bucket_count_float = bucket_count as f64;
+
     Ok(ComponentFitErrorMetrics {
         mean_absolute_factor_error: absolute_error_sum / bucket_count_float,
         root_mean_squared_factor_error: (squared_error_sum / bucket_count_float).sqrt(),
@@ -1579,6 +1634,7 @@ fn build_overlay_component_summary(
     } else {
         let event_count_float = active_overlay_log_adjustments.len() as f64;
         let mean_value = active_overlay_log_adjustments.iter().sum::<f64>() / event_count_float;
+
         let min_value = active_overlay_log_adjustments
             .iter()
             .copied()
@@ -1587,6 +1643,7 @@ fn build_overlay_component_summary(
             .iter()
             .copied()
             .fold(f64::NEG_INFINITY, f64::max);
+
         (mean_value, min_value, max_value)
     };
 
@@ -1635,25 +1692,30 @@ fn build_fit_quality_metrics(
     let mut combined_factor_min = f64::INFINITY;
     let mut combined_factor_max = f64::NEG_INFINITY;
     let mut combined_log_component_sum = 0.0;
+
     for record_position in 0..composition_output.combined_factor_by_event.len() {
         let combined_factor = composition_output.combined_factor_by_event[record_position];
         let combined_log_component =
             composition_output.combined_log_component_by_event[record_position];
+
         if !combined_factor.is_finite() || combined_factor <= 0.0 {
             return Err(SeasonalityDiagnosticsReportError::InvalidCombinedFactor {
                 record_position,
             });
         }
+
         if !combined_log_component.is_finite() {
             return Err(
                 SeasonalityDiagnosticsReportError::InvalidCombinedLogComponent { record_position },
             );
         }
+
         combined_factor_sum += combined_factor;
         combined_log_component_sum += combined_log_component;
         combined_factor_min = combined_factor_min.min(combined_factor);
         combined_factor_max = combined_factor_max.max(combined_factor);
     }
+
     let input_event_count = composition_output.combined_factor_by_event.len();
     let input_event_count_float = input_event_count as f64;
     let combined_factor_mean = combined_factor_sum / input_event_count_float;
@@ -1761,6 +1823,7 @@ fn build_input_snapshot_fingerprint(
     hash_with_text(&mut hash, report_input.preprocessed_schema_version);
     hash_with_text(&mut hash, report_input.exchange_code);
     hash_with_text(&mut hash, report_input.exchange_timezone_name);
+
     for source_record_position in report_input.source_record_positions {
         hash_with_u64(&mut hash, *source_record_position);
     }
@@ -2144,6 +2207,7 @@ fn normalize_seasonality_factors_for_identifiability(
     if factor_by_event.is_empty() {
         return Err(SeasonalityNormalizationError::EmptyFitWindow);
     }
+
     if log_component_by_event.len() != factor_by_event.len() {
         return Err(SeasonalityNormalizationError::UnstableNormalizationConstant);
     }
@@ -2153,6 +2217,7 @@ fn normalize_seasonality_factors_for_identifiability(
             return Err(SeasonalityNormalizationError::InvalidInputFactor { record_position });
         }
     }
+
     for (record_position, log_component_value) in log_component_by_event.iter().copied().enumerate()
     {
         if !log_component_value.is_finite() {
@@ -2172,6 +2237,7 @@ fn normalize_seasonality_factors_for_identifiability(
     if !normalization_constant.is_finite() || normalization_constant <= 0.0 {
         return Err(SeasonalityNormalizationError::UnstableNormalizationConstant);
     }
+
     let normalization_log_offset = normalization_constant.ln();
     if !normalization_log_offset.is_finite() {
         return Err(SeasonalityNormalizationError::UnstableNormalizationConstant);
@@ -2193,6 +2259,7 @@ fn normalize_seasonality_factors_for_identifiability(
             return Err(SeasonalityNormalizationError::InvalidInputFactor { record_position });
         }
     }
+
     for (record_position, normalized_log_component) in normalized_log_component_by_event
         .iter()
         .copied()
@@ -2301,6 +2368,7 @@ fn estimate_discrete_seasonality_by_bucket(
             }
         })
         .collect();
+
     let adjusted_event_count_total: f64 = adjusted_event_count_by_bucket.iter().sum();
     if !adjusted_event_count_total.is_finite() || adjusted_event_count_total <= 0.0 {
         return Err(DiscreteSeasonalityByBucketEstimationError::UnstableNormalization);
@@ -2349,6 +2417,7 @@ mod tests {
     #[test]
     fn intraday_estimator_recovers_non_parametric_bimodal_pattern() {
         let mut minute_of_day_events: Vec<u16> = Vec::new();
+
         for _ in 0..80 {
             minute_of_day_events.push(570);
         }
@@ -2370,6 +2439,7 @@ mod tests {
             },
         )
         .expect("intraday estimation should succeed");
+
         let open_bin = 570_usize / 30;
         let midday_bin = 720_usize / 30;
         let close_bin = 930_usize / 30;
@@ -2428,6 +2498,7 @@ mod tests {
             minimum_bin_events: 1,
             pseudocount: 1e-6,
         };
+
         let first_estimate = estimate_intraday_seasonality(&minute_of_day_events, settings)
             .expect("intraday estimation should succeed");
         let second_estimate = estimate_intraday_seasonality(&minute_of_day_events, settings)
@@ -2458,6 +2529,7 @@ mod tests {
     #[test]
     fn day_of_week_estimator_recovers_synthetic_weekday_pattern() {
         let mut day_of_week_events: Vec<u8> = Vec::new();
+
         for _ in 0..60 {
             day_of_week_events.push(1);
         }
@@ -2490,6 +2562,7 @@ mod tests {
 
         let mean_factor = estimate.day_of_week_factor.iter().sum::<f64>()
             / estimate.day_of_week_factor.len() as f64;
+
         assert!((mean_factor - 1.0).abs() < 1e-12);
         assert_eq!(
             estimate.diagnostics.input_event_count,
@@ -2500,12 +2573,14 @@ mod tests {
     #[test]
     fn day_of_year_estimator_handles_sparse_day_buckets_with_defined_fallback() {
         let mut day_of_year_events: Vec<u16> = Vec::new();
+
         for _ in 0..60 {
             day_of_year_events.push(60);
         }
         for _ in 0..20 {
             day_of_year_events.push(200);
         }
+
         day_of_year_events.push(330);
 
         let estimate = estimate_day_of_year_seasonality(
@@ -2526,6 +2601,7 @@ mod tests {
 
         let mean_factor = estimate.day_of_year_factor.iter().sum::<f64>()
             / estimate.day_of_year_factor.len() as f64;
+
         assert!((mean_factor - 1.0).abs() < 1e-12);
         assert!(estimate.diagnostics.fallback_bucket_count > 300);
     }
@@ -2535,9 +2611,11 @@ mod tests {
         let mut intraday_log_component_by_bin: Vec<f64> = vec![0.0; 24];
         intraday_log_component_by_bin[9] = 2.0_f64.ln();
         intraday_log_component_by_bin[15] = 1.5_f64.ln();
+
         let mut day_of_week_log_component: Vec<f64> = vec![0.0; 7];
         day_of_week_log_component[0] = 1.2_f64.ln();
         day_of_week_log_component[4] = 0.8_f64.ln();
+
         let mut day_of_year_log_component: Vec<f64> = vec![0.0; 366];
         day_of_year_log_component[31] = 1.1_f64.ln();
         day_of_year_log_component[200] = 0.9_f64.ln();
@@ -2554,6 +2632,7 @@ mod tests {
             &[],
         )
         .expect("composition should succeed");
+
         let second_output = compose_deterministic_seasonality_signal(
             &[1_000, 2_000],
             &[570, 930],
@@ -2823,6 +2902,7 @@ mod tests {
     fn deterministic_seasonality_composition_rejects_non_finite_log_components() {
         let mut intraday_log_component_by_bin: Vec<f64> = vec![0.0; 24];
         intraday_log_component_by_bin[9] = f64::NAN;
+
         let error = compose_deterministic_seasonality_signal(
             &[1_000],
             &[570],
@@ -2848,11 +2928,13 @@ mod tests {
     fn seasonality_normalization_anchors_mean_and_emits_metadata() {
         let factors = vec![2.64, 1.08];
         let logs = vec![2.64_f64.ln(), 1.08_f64.ln()];
+
         let normalized = normalize_seasonality_factors_for_identifiability(&factors, &logs)
             .expect("normalization should succeed");
 
         let anchored_mean = normalized.normalized_factor_by_event.iter().sum::<f64>()
             / normalized.normalized_factor_by_event.len() as f64;
+
         assert!((anchored_mean - 1.0).abs() < 1e-12);
         assert_eq!(
             normalized.normalization_metadata.normalization_policy,
@@ -2924,6 +3006,7 @@ mod tests {
         let overlay_summary = report
             .overlay_component_summary
             .expect("overlay summary should exist when overlays are configured");
+
         assert_eq!(overlay_summary.configured_overlay_count, 1);
         assert_eq!(overlay_summary.active_overlay_event_count, 3);
 
@@ -2958,6 +3041,7 @@ mod tests {
     #[test]
     fn diagnostics_report_rejects_missing_required_metadata_fields() {
         let fixture = build_diagnostics_fixture();
+
         let error = generate_seasonality_diagnostics_report(SeasonalityDiagnosticsReportInput {
             dataset_id: "",
             input_schema_version: "seasonality.timestamp_event.v1",
@@ -2984,6 +3068,7 @@ mod tests {
     #[test]
     fn diagnostics_report_is_deterministic_for_fixed_inputs() {
         let fixture = build_diagnostics_fixture();
+
         let first_report =
             generate_seasonality_diagnostics_report(SeasonalityDiagnosticsReportInput {
                 dataset_id: "dataset_alpha",
@@ -3004,6 +3089,7 @@ mod tests {
                 estimator_version: "seasonality_estimator.v1",
             })
             .expect("first diagnostics report generation should succeed");
+
         let second_report =
             generate_seasonality_diagnostics_report(SeasonalityDiagnosticsReportInput {
                 dataset_id: "dataset_alpha",
@@ -3031,6 +3117,7 @@ mod tests {
     #[test]
     fn diagnostics_batch_report_supports_multiple_datasets_and_duplicate_guards() {
         let fixture = build_diagnostics_fixture();
+
         let first_input = SeasonalityDiagnosticsReportInput {
             dataset_id: "dataset_alpha",
             input_schema_version: "seasonality.timestamp_event.v1",
@@ -3049,6 +3136,7 @@ mod tests {
             composition: &fixture.composition,
             estimator_version: "seasonality_estimator.v1",
         };
+
         let second_input = SeasonalityDiagnosticsReportInput {
             dataset_id: "dataset_beta",
             ..first_input
@@ -3057,6 +3145,7 @@ mod tests {
         let batch_report =
             generate_seasonality_diagnostics_batch_report(&[first_input, second_input])
                 .expect("batch diagnostics report generation should succeed");
+
         assert_eq!(
             batch_report.schema_version,
             "seasonality.diagnostics.batch.v1"
@@ -3070,6 +3159,7 @@ mod tests {
         let duplicate_dataset_error =
             generate_seasonality_diagnostics_batch_report(&[first_input, first_input])
                 .expect_err("batch diagnostics should reject duplicate dataset ids");
+
         assert_eq!(
             duplicate_dataset_error,
             SeasonalityDiagnosticsReportError::DuplicateDatasetId {
@@ -3098,6 +3188,7 @@ mod tests {
         let exchange_local_day_of_week = vec![1, 1, 2, 2, 5, 5];
         let exchange_local_day_of_year = vec![32, 32, 33, 33, 36, 36];
         let market_state_codes = vec![1, 1, 1, 1, 1, 1];
+
         let intraday_estimate = estimate_intraday_seasonality(
             &exchange_local_minute_of_day,
             IntradaySeasonalityEstimatorSettings {
@@ -3109,6 +3200,7 @@ mod tests {
             },
         )
         .expect("intraday estimation should succeed for diagnostics fixture");
+
         let day_of_week_estimate = estimate_day_of_week_seasonality(
             &exchange_local_day_of_week,
             DayOfWeekSeasonalityEstimatorSettings {
@@ -3117,6 +3209,7 @@ mod tests {
             },
         )
         .expect("day-of-week estimation should succeed for diagnostics fixture");
+
         let day_of_year_estimate = estimate_day_of_year_seasonality(
             &exchange_local_day_of_year,
             DayOfYearSeasonalityEstimatorSettings {
@@ -3125,6 +3218,7 @@ mod tests {
             },
         )
         .expect("day-of-year estimation should succeed for diagnostics fixture");
+
         let composition = compose_deterministic_seasonality_signal(
             &timestamp_utc_nanos,
             &exchange_local_minute_of_day,

@@ -32,6 +32,7 @@ pub enum HourlySeasonalityFactorSource<'a> {
         hourly_factors: &'a [f64],
         materialization_method: &'a str,
     },
+
     /// Materialize hourly values from timestamped seasonality samples.
     Materialized {
         source_timestamp_utc_nanos: &'a [i64],
@@ -51,6 +52,7 @@ pub enum HourlyNewsIntensityFactorSource<'a> {
         hourly_factors: &'a [f64],
         materialization_method: &'a str,
     },
+
     /// Materialize hourly values from calendar policy and optional open-window overrides.
     Materialized {
         closed_window_baseline_intensity: f64,
@@ -259,6 +261,7 @@ mod tests {
     #[test]
     fn provider_returns_structured_error_for_missing_seasonality_source() {
         let registry = build_calendar_registry();
+
         let request = HourlyFactorProviderRequest {
             exchange_code: "XNYS",
             range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
@@ -272,6 +275,7 @@ mod tests {
 
         let error = provide_hourly_factor_contract(&registry, request)
             .expect_err("missing seasonality source must fail");
+
         assert!(matches!(
             error,
             HourlyFactorProviderError::MissingSeasonalitySource
@@ -281,6 +285,7 @@ mod tests {
     #[test]
     fn provider_returns_structured_error_for_missing_news_intensity_source() {
         let registry = build_calendar_registry();
+
         let request = HourlyFactorProviderRequest {
             exchange_code: "XNYS",
             range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
@@ -294,6 +299,7 @@ mod tests {
 
         let error = provide_hourly_factor_contract(&registry, request)
             .expect_err("missing news intensity source must fail");
+
         assert!(matches!(
             error,
             HourlyFactorProviderError::MissingNewsIntensitySource
@@ -303,6 +309,7 @@ mod tests {
     #[test]
     fn provider_returns_structured_error_for_unsupported_range_requests() {
         let registry = build_calendar_registry();
+
         let request = HourlyFactorProviderRequest {
             exchange_code: "XNYS",
             range_start_utc: parse_timestamp("2026-02-02T14:30:00Z"),
@@ -319,6 +326,7 @@ mod tests {
 
         let error = provide_hourly_factor_contract(&registry, request)
             .expect_err("hour-unaligned range must fail");
+
         assert!(matches!(
             error,
             HourlyFactorProviderError::UnsupportedRange {
@@ -330,6 +338,7 @@ mod tests {
     #[test]
     fn pricing_path_consumes_shared_hourly_factor_provider() {
         let registry = build_calendar_registry();
+
         let request = HourlyFactorProviderRequest {
             exchange_code: "XNYS",
             range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
@@ -363,6 +372,7 @@ mod tests {
 
         let output = load_hourly_factor_contract_for_pricing(&registry, request)
             .expect("pricing path should resolve hourly factors from provider");
+
         assert_eq!(output.s_h, vec![1.1, 0.8, 1.4]);
         assert_eq!(output.nu_h, vec![0.8, 1.0, 0.0]);
         assert_eq!(
@@ -378,6 +388,7 @@ mod tests {
     #[test]
     fn simulation_path_consumes_shared_hourly_factor_provider() {
         let registry = build_calendar_registry();
+
         let request = HourlyFactorProviderRequest {
             exchange_code: "XNYS",
             range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
@@ -394,6 +405,7 @@ mod tests {
 
         let output = load_hourly_factor_contract_for_simulation(&registry, request)
             .expect("simulation path should resolve hourly factors from provider");
+
         assert_eq!(output.s_h, vec![1.0, 0.9, 1.1]);
         assert_eq!(output.nu_h, vec![0.2, 0.0, 0.3]);
         assert_eq!(

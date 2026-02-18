@@ -325,6 +325,7 @@ pub fn validate_validation_fixture_manifest_document(
             manifest.versioning_policy.schema_family
         ));
     }
+
     if manifest.versioning_policy.v0_update_policy != MANIFEST_V0_UPDATE_POLICY {
         return Err(format!(
             "unexpected manifest v0 update policy: {}",
@@ -338,6 +339,7 @@ pub fn validate_validation_fixture_manifest_document(
             manifest.determinism_policy.fixture_loading_order
         ));
     }
+
     if manifest.determinism_policy.content_hash_algorithm != CONTENT_HASH_ALGORITHM_POLICY {
         return Err(format!(
             "unexpected manifest content hash algorithm policy: {}",
@@ -386,6 +388,7 @@ pub fn load_manifest_entry_payload(
             payload_path.display()
         )
     })?;
+
     let observed_content_hash = compute_content_hash_hex(&payload_bytes);
     if observed_content_hash != manifest_entry.content_hash {
         return Err(format!(
@@ -496,12 +499,14 @@ pub fn validate_calendar_regression_fixture_document(
             fixture_document.schema_metadata.schema_family
         ));
     }
+
     if fixture_document.schema_metadata.schema_generation != CALENDAR_SCHEMA_GENERATION {
         return Err(format!(
             "unexpected calendar regression schema generation: {}",
             fixture_document.schema_metadata.schema_generation
         ));
     }
+
     if fixture_document.schema_metadata.forward_extension_policy
         != CALENDAR_FORWARD_EXTENSION_POLICY
     {
@@ -517,6 +522,7 @@ pub fn validate_calendar_regression_fixture_document(
             fixture_document.determinism_metadata.fixture_loading_order
         ));
     }
+
     if fixture_document.determinism_metadata.content_hash_scope
         != CALENDAR_CONTENT_HASH_SCOPE_POLICY
     {
@@ -525,6 +531,7 @@ pub fn validate_calendar_regression_fixture_document(
             fixture_document.determinism_metadata.content_hash_scope
         ));
     }
+
     if fixture_document.determinism_metadata.content_hash_algorithm != CONTENT_HASH_ALGORITHM_POLICY
     {
         return Err(format!(
@@ -551,6 +558,7 @@ pub fn validate_calendar_regression_fixture_document(
     let mut observed_fixture_case_ids: BTreeSet<&str> = BTreeSet::new();
     let mut observed_exchange_timestamp_pairs: BTreeSet<(String, String)> = BTreeSet::new();
     let mut observed_tags: BTreeSet<String> = BTreeSet::new();
+
     for fixture_case in &fixture_document.cases {
         require_non_empty(&fixture_case.fixture_id, "cases.fixture_id")?;
         require_non_empty(&fixture_case.exchange_code, "cases.exchange_code")?;
@@ -625,18 +633,21 @@ pub fn validate_hourly_factor_regression_fixture_document(
             fixture_document.schema_version
         ));
     }
+
     if fixture_document.fixture_set_id != HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID {
         return Err(format!(
             "unexpected hourly factor regression fixture set id: {}",
             fixture_document.fixture_set_id
         ));
     }
+
     if fixture_document.calendar_fixture_set_id != CALENDAR_REGRESSION_FIXTURE_SET_ID {
         return Err(format!(
             "unexpected hourly factor regression calendar_fixture_set_id: {}",
             fixture_document.calendar_fixture_set_id
         ));
     }
+
     validate_threshold_configuration(&fixture_document.threshold_configuration)?;
 
     if fixture_document.canonical_output_cases.is_empty() {
@@ -644,6 +655,7 @@ pub fn validate_hourly_factor_regression_fixture_document(
             "hourly factor regression fixture must include canonical_output_cases".to_string(),
         );
     }
+
     if fixture_document.missing_data_guard_cases.is_empty() {
         return Err(
             "hourly factor regression fixture must include missing_data_guard_cases".to_string(),
@@ -656,12 +668,14 @@ pub fn validate_hourly_factor_regression_fixture_document(
 
     for fixture_case in &fixture_document.canonical_output_cases {
         validate_hourly_canonical_output_case(fixture_case)?;
+
         if !observed_canonical_fixture_ids.insert(fixture_case.fixture_id.clone()) {
             return Err(format!(
                 "duplicate canonical_output_cases fixture_id: {}",
                 fixture_case.fixture_id
             ));
         }
+
         for case_tag in &fixture_case.tags {
             observed_tags.insert(case_tag.clone());
         }
@@ -669,12 +683,14 @@ pub fn validate_hourly_factor_regression_fixture_document(
 
     for fixture_case in &fixture_document.missing_data_guard_cases {
         validate_hourly_missing_data_guard_case(fixture_case)?;
+
         if !observed_missing_fixture_ids.insert(fixture_case.fixture_id.clone()) {
             return Err(format!(
                 "duplicate missing_data_guard_cases fixture_id: {}",
                 fixture_case.fixture_id
             ));
         }
+
         for case_tag in &fixture_case.tags {
             observed_tags.insert(case_tag.clone());
         }
@@ -686,6 +702,7 @@ pub fn validate_hourly_factor_regression_fixture_document(
             "hourly canonical_regression_metadata.required_tags must not be empty".to_string(),
         );
     }
+
     for required_tag in required_tags {
         require_non_empty(required_tag, "canonical_regression_metadata.required_tags")?;
     }
@@ -702,6 +719,7 @@ pub fn validate_hourly_factor_regression_fixture_document(
                 .to_string(),
         );
     }
+
     let expected_missing_fixture_ids: BTreeSet<String> = fixture_document
         .canonical_regression_metadata
         .stable_missing_data_guard_fixture_ids
@@ -724,12 +742,14 @@ pub fn validate_hourly_factor_regression_fixture_document(
                 .to_string(),
         );
     }
+
     if observed_canonical_fixture_ids != expected_canonical_fixture_ids {
         return Err(
             "hourly canonical_regression_metadata.stable_canonical_output_fixture_ids does not match observed fixture ids"
                 .to_string(),
         );
     }
+
     if observed_missing_fixture_ids != expected_missing_fixture_ids {
         return Err(
             "hourly canonical_regression_metadata.stable_missing_data_guard_fixture_ids does not match observed fixture ids"
@@ -751,6 +771,7 @@ fn validate_threshold_configuration(
             threshold_configuration.schema_version
         ));
     }
+
     require_non_empty(
         &threshold_configuration.policy_version,
         "threshold_configuration.policy_version",
@@ -793,6 +814,7 @@ fn validate_threshold_configuration(
             fixture_class,
             "threshold_configuration.factor_range_by_fixture_class.key",
         )?;
+
         validate_finite_non_negative(
             factor_range_policy.s_h_min,
             "threshold_configuration.factor_range_by_fixture_class.s_h_min",
@@ -809,11 +831,13 @@ fn validate_threshold_configuration(
             factor_range_policy.nu_h_max,
             "threshold_configuration.factor_range_by_fixture_class.nu_h_max",
         )?;
+
         if factor_range_policy.s_h_min > factor_range_policy.s_h_max {
             return Err(format!(
                 "threshold_configuration.factor_range_by_fixture_class.{fixture_class} has s_h_min greater than s_h_max"
             ));
         }
+
         if factor_range_policy.nu_h_min > factor_range_policy.nu_h_max {
             return Err(format!(
                 "threshold_configuration.factor_range_by_fixture_class.{fixture_class} has nu_h_min greater than nu_h_max"
@@ -824,8 +848,10 @@ fn validate_threshold_configuration(
     if threshold_configuration.change_log.is_empty() {
         return Err("threshold_configuration.change_log must not be empty".to_string());
     }
+
     let mut observed_policy_versions: BTreeSet<String> = BTreeSet::new();
     let mut has_current_policy_version_entry = false;
+
     for change_log_entry in &threshold_configuration.change_log {
         require_non_empty(
             &change_log_entry.policy_version,
@@ -839,16 +865,19 @@ fn validate_threshold_configuration(
             &change_log_entry.rationale,
             "threshold_configuration.change_log.rationale",
         )?;
+
         if !observed_policy_versions.insert(change_log_entry.policy_version.clone()) {
             return Err(format!(
                 "threshold_configuration.change_log contains duplicate policy_version: {}",
                 change_log_entry.policy_version
             ));
         }
+
         if change_log_entry.policy_version == threshold_configuration.policy_version {
             has_current_policy_version_entry = true;
         }
     }
+
     if !has_current_policy_version_entry {
         return Err(format!(
             "threshold_configuration.change_log must include an entry for policy_version '{}'",
@@ -861,6 +890,7 @@ fn validate_threshold_configuration(
 
 pub fn compute_content_hash_hex(payload_bytes: &[u8]) -> String {
     let mut hash_state: u64 = 0xcbf29ce484222325;
+
     for payload_byte in payload_bytes {
         hash_state ^= u64::from(*payload_byte);
         hash_state = hash_state.wrapping_mul(0x100000001b3);
@@ -919,11 +949,13 @@ fn validate_manifest_entry(manifest_entry: &ValidationFixtureManifestEntry) -> R
             manifest_entry.fixture_id
         ));
     }
+
     for exchange_code in &manifest_entry.exchange_codes {
         require_non_empty(exchange_code, "fixtures.exchange_codes")?;
     }
 
     require_non_empty(&manifest_entry.content_hash, "fixtures.content_hash")?;
+
     if !is_lowercase_fnv1a_hex(&manifest_entry.content_hash) {
         return Err(format!(
             "manifest fixture entry {} has invalid content_hash: {}",
@@ -944,6 +976,7 @@ fn validate_calendar_canonical_regression_metadata(
             "calendar canonical_regression_metadata.required_tags must not be empty".to_string(),
         );
     }
+
     for required_tag in &canonical_metadata.required_tags {
         require_non_empty(required_tag, "canonical_regression_metadata.required_tags")?;
         if !observed_tags.contains(required_tag) {
@@ -959,11 +992,13 @@ fn validate_calendar_canonical_regression_metadata(
                 .to_string(),
         );
     }
+
     for (tag, expected_fixture_ids) in &canonical_metadata.stable_fixture_ids_by_tag {
         require_non_empty(
             tag,
             "canonical_regression_metadata.stable_fixture_ids_by_tag.key",
         )?;
+
         if expected_fixture_ids.is_empty() {
             return Err(format!(
                 "calendar canonical_regression_metadata.stable_fixture_ids_by_tag[{tag}] must not be empty"
@@ -986,6 +1021,7 @@ fn validate_calendar_canonical_regression_metadata(
             .filter(|fixture_case| fixture_case.tags.iter().any(|case_tag| case_tag == tag))
             .map(|fixture_case| fixture_case.fixture_id.to_string())
             .collect();
+
         if observed_fixture_id_set != expected_fixture_id_set {
             return Err(format!(
                 "calendar canonical_regression_metadata.stable_fixture_ids_by_tag does not match observed fixture ids for tag '{tag}'"
@@ -1002,6 +1038,7 @@ fn validate_calendar_canonical_regression_metadata(
                 .to_string(),
         );
     }
+
     if canonical_metadata
         .historical_holiday_expected_intraday_tags
         .is_empty()
@@ -1011,6 +1048,7 @@ fn validate_calendar_canonical_regression_metadata(
                 .to_string(),
         );
     }
+
     for case_tag in &canonical_metadata.historical_holiday_expected_intraday_tags {
         require_non_empty(
             case_tag,
@@ -1044,27 +1082,32 @@ fn validate_hourly_canonical_output_case(
         &fixture_case.description,
         "canonical_output_cases.description",
     )?;
+
     if fixture_case.tags.is_empty() {
         return Err(format!(
             "hourly canonical_output_case {} must include at least one tag",
             fixture_case.fixture_id
         ));
     }
+
     for case_tag in &fixture_case.tags {
         require_non_empty(case_tag, "canonical_output_cases.tags")?;
     }
+
     if fixture_case.expected_s_h.is_empty() {
         return Err(format!(
             "hourly canonical_output_case {} expected_s_h must not be empty",
             fixture_case.fixture_id
         ));
     }
+
     if fixture_case.expected_nu_h.is_empty() {
         return Err(format!(
             "hourly canonical_output_case {} expected_nu_h must not be empty",
             fixture_case.fixture_id
         ));
     }
+
     for value in &fixture_case.expected_s_h {
         validate_finite_non_negative(*value, "canonical_output_cases.expected_s_h")?;
     }
@@ -1083,6 +1126,7 @@ fn validate_hourly_canonical_output_case(
                     fixture_case.fixture_id
                 ));
             }
+
             require_non_empty(
                 materialization_method,
                 "canonical_output_cases.seasonality_source.materialization_method",
@@ -1102,18 +1146,21 @@ fn validate_hourly_canonical_output_case(
                     fixture_case.fixture_id
                 ));
             }
+
             if source_seasonality_factors.is_empty() {
                 return Err(format!(
                     "hourly canonical_output_case {} materialized source_seasonality_factors must not be empty",
                     fixture_case.fixture_id
                 ));
             }
+
             for timestamp in source_timestamps_utc {
                 require_non_empty(
                     timestamp,
                     "canonical_output_cases.seasonality_source.source_timestamps_utc",
                 )?;
             }
+
             require_non_empty(
                 interpolation_method,
                 "canonical_output_cases.seasonality_source.interpolation_method",
@@ -1140,6 +1187,7 @@ fn validate_hourly_canonical_output_case(
                     fixture_case.fixture_id
                 ));
             }
+
             require_non_empty(
                 materialization_method,
                 "canonical_output_cases.news_intensity_source.materialization_method",
@@ -1153,11 +1201,13 @@ fn validate_hourly_canonical_output_case(
                 *closed_window_baseline_intensity,
                 "canonical_output_cases.news_intensity_source.closed_window_baseline_intensity",
             )?;
+
             for raw_interval_index in open_window_override_by_interval_index.keys() {
                 require_non_empty(
                     raw_interval_index,
                     "canonical_output_cases.news_intensity_source.open_window_override_by_interval_index",
                 )?;
+
                 if raw_interval_index.parse::<u64>().is_err() {
                     return Err(format!(
                         "open_window_override_by_interval_index key `{raw_interval_index}` must parse as u64"
@@ -1193,18 +1243,21 @@ fn validate_hourly_missing_data_guard_case(
         &fixture_case.description,
         "missing_data_guard_cases.description",
     )?;
+
     if fixture_case.tags.is_empty() {
         return Err(format!(
             "hourly missing_data_guard_case {} must include at least one tag",
             fixture_case.fixture_id
         ));
     }
+
     for case_tag in &fixture_case.tags {
         require_non_empty(case_tag, "missing_data_guard_cases.tags")?;
     }
     for timestamp in &fixture_case.source_timestamps_utc {
         require_non_empty(timestamp, "missing_data_guard_cases.source_timestamps_utc")?;
     }
+
     require_non_empty(
         &fixture_case.settings.interpolation_method,
         "missing_data_guard_cases.settings.interpolation_method",
