@@ -531,6 +531,61 @@ impl HawkesStructuredAlphaParameterization {
     }
 }
 
+/// Structured base-plus-delta parameterization for exogenous loading `rho`.
+///
+/// Mapping:
+/// - `rho_++ = r_self`
+/// - `rho_+- = r_cross`
+/// - `rho_-+ = r_cross + delta_cross_r`
+/// - `rho_-- = r_self + delta_self_r`
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HawkesStructuredRhoParameterization {
+    pub r_self: f64,
+    pub r_cross: f64,
+    pub delta_self_r: f64,
+    pub delta_cross_r: f64,
+}
+
+impl HawkesStructuredRhoParameterization {
+    pub const fn new(r_self: f64, r_cross: f64, delta_self_r: f64, delta_cross_r: f64) -> Self {
+        Self {
+            r_self,
+            r_cross,
+            delta_self_r,
+            delta_cross_r,
+        }
+    }
+}
+
+/// Optional self-dominance policy for structured `rho` validation.
+///
+/// A policy value `m` enforces:
+/// - `rho_++ / rho_+- >= m`
+/// - `rho_-- / rho_-+ >= m`
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HawkesStructuredRhoSelfDominancePolicy {
+    pub minimum_self_to_cross_ratio: f64,
+}
+
+impl HawkesStructuredRhoSelfDominancePolicy {
+    pub const fn new(minimum_self_to_cross_ratio: f64) -> Self {
+        Self {
+            minimum_self_to_cross_ratio,
+        }
+    }
+}
+
+/// Machine-readable validation output for structured `rho` derivation.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct HawkesStructuredRhoValidationOutput {
+    pub derived_rho: HawkesKernelLoadings,
+    pub target_plus_self_to_cross_ratio: f64,
+    pub target_minus_self_to_cross_ratio: f64,
+    pub applied_self_dominance_policy: Option<HawkesStructuredRhoSelfDominancePolicy>,
+}
+
 /// Structured validation failures for structured base-plus-delta `alpha` inputs.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HawkesStructuredAlphaParameterError {
@@ -602,6 +657,98 @@ impl Display for HawkesStructuredAlphaParameterError {
 }
 
 impl Error for HawkesStructuredAlphaParameterError {}
+
+/// Structured validation failures for structured base-plus-delta `rho` inputs.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HawkesStructuredRhoParameterError {
+    InvalidRSelf {
+        value: f64,
+    },
+    InvalidRCross {
+        value: f64,
+    },
+    InvalidDeltaSelfR {
+        value: f64,
+    },
+    InvalidDeltaCrossR {
+        value: f64,
+    },
+    InvalidDerivedComponent {
+        field: &'static str,
+        value: f64,
+    },
+    InvalidSelfAsymmetry {
+        rho_minus_minus: f64,
+        rho_plus_plus: f64,
+    },
+    InvalidCrossAsymmetry {
+        rho_minus_plus: f64,
+        rho_plus_minus: f64,
+    },
+    InvalidSelfDominanceRatioThreshold {
+        value: f64,
+    },
+    SelfDominancePolicyViolation {
+        minimum_self_to_cross_ratio: f64,
+        target_plus_self_to_cross_ratio: f64,
+        target_minus_self_to_cross_ratio: f64,
+    },
+}
+
+impl Display for HawkesStructuredRhoParameterError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidRSelf { value } => write!(
+                formatter,
+                "r_self must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidRCross { value } => write!(
+                formatter,
+                "r_cross must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidDeltaSelfR { value } => write!(
+                formatter,
+                "delta_self_r must be finite and non-negative to satisfy rho_-- >= rho_++, found {value}"
+            ),
+            Self::InvalidDeltaCrossR { value } => write!(
+                formatter,
+                "delta_cross_r must be finite and non-negative to satisfy rho_-+ >= rho_+-, found {value}"
+            ),
+            Self::InvalidDerivedComponent { field, value } => write!(
+                formatter,
+                "derived rho component {field} must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidSelfAsymmetry {
+                rho_minus_minus,
+                rho_plus_plus,
+            } => write!(
+                formatter,
+                "structured rho must satisfy rho_-- >= rho_++, found rho_--={rho_minus_minus} and rho_++={rho_plus_plus}"
+            ),
+            Self::InvalidCrossAsymmetry {
+                rho_minus_plus,
+                rho_plus_minus,
+            } => write!(
+                formatter,
+                "structured rho must satisfy rho_-+ >= rho_+-, found rho_-+={rho_minus_plus} and rho_+-={rho_plus_minus}"
+            ),
+            Self::InvalidSelfDominanceRatioThreshold { value } => write!(
+                formatter,
+                "minimum_self_to_cross_ratio must be finite and at least 1.0, found {value}"
+            ),
+            Self::SelfDominancePolicyViolation {
+                minimum_self_to_cross_ratio,
+                target_plus_self_to_cross_ratio,
+                target_minus_self_to_cross_ratio,
+            } => write!(
+                formatter,
+                "structured rho self-dominance policy failed with minimum_self_to_cross_ratio={minimum_self_to_cross_ratio}, target_plus_self_to_cross_ratio={target_plus_self_to_cross_ratio}, target_minus_self_to_cross_ratio={target_minus_self_to_cross_ratio}"
+            ),
+        }
+    }
+}
+
+impl Error for HawkesStructuredRhoParameterError {}
 
 impl HawkesKernelLoadings {
     /// Build loadings from explicit target/source component groups.
@@ -719,6 +866,126 @@ impl HawkesKernelLoadings {
         }
 
         Ok(derived_loadings)
+    }
+
+    /// Validate and derive canonical `rho` loadings from base-plus-delta inputs.
+    ///
+    /// The returned output includes derived loadings and machine-readable ratio
+    /// diagnostics for optional self-dominance policy enforcement.
+    pub fn validate_structured_rho(
+        structured_rho: HawkesStructuredRhoParameterization,
+        self_dominance_policy: Option<HawkesStructuredRhoSelfDominancePolicy>,
+    ) -> Result<HawkesStructuredRhoValidationOutput, HawkesStructuredRhoParameterError> {
+        if !structured_rho.r_self.is_finite() || structured_rho.r_self <= 0.0 {
+            return Err(HawkesStructuredRhoParameterError::InvalidRSelf {
+                value: structured_rho.r_self,
+            });
+        }
+
+        if !structured_rho.r_cross.is_finite() || structured_rho.r_cross < 0.0 {
+            return Err(HawkesStructuredRhoParameterError::InvalidRCross {
+                value: structured_rho.r_cross,
+            });
+        }
+
+        if !structured_rho.delta_self_r.is_finite() || structured_rho.delta_self_r < 0.0 {
+            return Err(HawkesStructuredRhoParameterError::InvalidDeltaSelfR {
+                value: structured_rho.delta_self_r,
+            });
+        }
+
+        if !structured_rho.delta_cross_r.is_finite() || structured_rho.delta_cross_r < 0.0 {
+            return Err(HawkesStructuredRhoParameterError::InvalidDeltaCrossR {
+                value: structured_rho.delta_cross_r,
+            });
+        }
+
+        let rho_plus_plus = structured_rho.r_self;
+        let rho_plus_minus = structured_rho.r_cross;
+        let rho_minus_plus = structured_rho.r_cross + structured_rho.delta_cross_r;
+        let rho_minus_minus = structured_rho.r_self + structured_rho.delta_self_r;
+
+        let derived_rho = Self {
+            plus_plus: rho_plus_plus,
+            plus_minus: rho_plus_minus,
+            minus_plus: rho_minus_plus,
+            minus_minus: rho_minus_minus,
+        };
+
+        validate_non_negative_loadings(
+            derived_rho,
+            [
+                "rho.plus_plus",
+                "rho.plus_minus",
+                "rho.minus_plus",
+                "rho.minus_minus",
+            ],
+        )
+        .map_err(|error| match error {
+            HawkesKernelParameterError::InvalidLoadingComponent { field, value } => {
+                HawkesStructuredRhoParameterError::InvalidDerivedComponent { field, value }
+            }
+            _ => unreachable!("structured rho derivation only validates loading components"),
+        })?;
+
+        if derived_rho.minus_minus < derived_rho.plus_plus {
+            return Err(HawkesStructuredRhoParameterError::InvalidSelfAsymmetry {
+                rho_minus_minus: derived_rho.minus_minus,
+                rho_plus_plus: derived_rho.plus_plus,
+            });
+        }
+
+        if derived_rho.minus_plus < derived_rho.plus_minus {
+            return Err(HawkesStructuredRhoParameterError::InvalidCrossAsymmetry {
+                rho_minus_plus: derived_rho.minus_plus,
+                rho_plus_minus: derived_rho.plus_minus,
+            });
+        }
+
+        let target_plus_self_to_cross_ratio =
+            derive_self_to_cross_ratio(derived_rho.plus_plus, derived_rho.plus_minus);
+        let target_minus_self_to_cross_ratio =
+            derive_self_to_cross_ratio(derived_rho.minus_minus, derived_rho.minus_plus);
+
+        if let Some(policy) = self_dominance_policy {
+            if !policy.minimum_self_to_cross_ratio.is_finite()
+                || policy.minimum_self_to_cross_ratio < 1.0
+            {
+                return Err(
+                    HawkesStructuredRhoParameterError::InvalidSelfDominanceRatioThreshold {
+                        value: policy.minimum_self_to_cross_ratio,
+                    },
+                );
+            }
+
+            if target_plus_self_to_cross_ratio < policy.minimum_self_to_cross_ratio
+                || target_minus_self_to_cross_ratio < policy.minimum_self_to_cross_ratio
+            {
+                return Err(
+                    HawkesStructuredRhoParameterError::SelfDominancePolicyViolation {
+                        minimum_self_to_cross_ratio: policy.minimum_self_to_cross_ratio,
+                        target_plus_self_to_cross_ratio,
+                        target_minus_self_to_cross_ratio,
+                    },
+                );
+            }
+        }
+
+        Ok(HawkesStructuredRhoValidationOutput {
+            derived_rho,
+            target_plus_self_to_cross_ratio,
+            target_minus_self_to_cross_ratio,
+            applied_self_dominance_policy: self_dominance_policy,
+        })
+    }
+
+    /// Validate and derive canonical `rho` loadings from base-plus-delta inputs.
+    pub fn try_from_structured_rho(
+        structured_rho: HawkesStructuredRhoParameterization,
+        self_dominance_policy: Option<HawkesStructuredRhoSelfDominancePolicy>,
+    ) -> Result<Self, HawkesStructuredRhoParameterError> {
+        Self::validate_structured_rho(structured_rho, self_dominance_policy)
+            .map(|validation_output| validation_output.derived_rho)
     }
 }
 
@@ -879,6 +1146,14 @@ fn validate_non_negative_loadings(
     Ok(())
 }
 
+fn derive_self_to_cross_ratio(self_loading: f64, cross_loading: f64) -> f64 {
+    if cross_loading == 0.0 {
+        return f64::INFINITY;
+    }
+
+    self_loading / cross_loading
+}
+
 #[cfg(test)]
 mod tests {
     use crate::hawkes::{
@@ -886,7 +1161,8 @@ mod tests {
         HawkesKernelParameterError, HawkesKernelParameters, HawkesNewsSeverityMarkError,
         HawkesSeasonalityIntervalError, HawkesSourceComponents,
         HawkesStructuredAlphaParameterError, HawkesStructuredAlphaParameterization,
-        HawkesTransitionError, HawkesTransitionStep,
+        HawkesStructuredRhoParameterError, HawkesStructuredRhoParameterization,
+        HawkesStructuredRhoSelfDominancePolicy, HawkesTransitionError, HawkesTransitionStep,
     };
     use crate::hourly_factors::{
         HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
@@ -1806,6 +2082,161 @@ mod tests {
                 field: "alpha.minus_minus",
                 value: f64::INFINITY,
             }
+        );
+    }
+
+    #[test]
+    fn structured_rho_validation_builds_expected_canonical_matrix_and_ratios() {
+        let structured_rho = HawkesStructuredRhoParameterization::new(1.2, 0.3, 0.4, 0.2);
+
+        let validation_output = HawkesKernelLoadings::validate_structured_rho(structured_rho, None)
+            .expect("valid structured rho must produce machine-readable validation output");
+
+        assert_eq!(
+            validation_output.derived_rho,
+            HawkesKernelLoadings {
+                plus_plus: 1.2,
+                plus_minus: 0.3,
+                minus_plus: 0.5,
+                minus_minus: 1.6,
+            }
+        );
+        assert_within_tolerance(
+            validation_output.target_plus_self_to_cross_ratio,
+            4.0,
+            DECAY_TOLERANCE,
+            "target_plus_self_to_cross_ratio",
+        );
+        assert_within_tolerance(
+            validation_output.target_minus_self_to_cross_ratio,
+            3.2,
+            DECAY_TOLERANCE,
+            "target_minus_self_to_cross_ratio",
+        );
+        assert_eq!(validation_output.applied_self_dominance_policy, None);
+
+        let derived_rho = HawkesKernelLoadings::try_from_structured_rho(structured_rho, None)
+            .expect("valid structured rho should derive canonical loadings");
+        assert_eq!(derived_rho, validation_output.derived_rho);
+        assert_eq!(derived_rho.as_model_ordered_array(), [1.2, 0.3, 0.5, 1.6]);
+    }
+
+    #[test]
+    fn structured_rho_validation_accepts_configurable_self_dominance_policy() {
+        let structured_rho = HawkesStructuredRhoParameterization::new(2.0, 0.5, 0.4, 0.0);
+        let policy = HawkesStructuredRhoSelfDominancePolicy::new(3.5);
+
+        let validation_output =
+            HawkesKernelLoadings::validate_structured_rho(structured_rho, Some(policy))
+                .expect("rho ratios above threshold should satisfy policy");
+
+        assert_eq!(
+            validation_output.applied_self_dominance_policy,
+            Some(policy)
+        );
+        assert_within_tolerance(
+            validation_output.target_plus_self_to_cross_ratio,
+            4.0,
+            DECAY_TOLERANCE,
+            "target_plus_self_to_cross_ratio",
+        );
+        assert_within_tolerance(
+            validation_output.target_minus_self_to_cross_ratio,
+            4.8,
+            DECAY_TOLERANCE,
+            "target_minus_self_to_cross_ratio",
+        );
+    }
+
+    #[test]
+    fn structured_rho_validation_rejects_self_dominance_policy_violation() {
+        let structured_rho = HawkesStructuredRhoParameterization::new(0.8, 0.5, 0.2, 0.3);
+        let policy = HawkesStructuredRhoSelfDominancePolicy::new(1.3);
+
+        let error = HawkesKernelLoadings::validate_structured_rho(structured_rho, Some(policy))
+            .expect_err("ratio below configured threshold must fail");
+
+        assert_eq!(
+            error,
+            HawkesStructuredRhoParameterError::SelfDominancePolicyViolation {
+                minimum_self_to_cross_ratio: 1.3,
+                target_plus_self_to_cross_ratio: 1.6,
+                target_minus_self_to_cross_ratio: 1.25,
+            }
+        );
+    }
+
+    #[test]
+    fn structured_rho_derivation_rejects_invalid_base_and_delta_values() {
+        let invalid_r_self_error = HawkesKernelLoadings::validate_structured_rho(
+            HawkesStructuredRhoParameterization::new(0.0, 0.1, 0.1, 0.1),
+            None,
+        )
+        .expect_err("r_self must be strictly positive");
+        assert_eq!(
+            invalid_r_self_error,
+            HawkesStructuredRhoParameterError::InvalidRSelf { value: 0.0 }
+        );
+
+        let invalid_r_cross_error = HawkesKernelLoadings::validate_structured_rho(
+            HawkesStructuredRhoParameterization::new(0.2, -0.1, 0.1, 0.1),
+            None,
+        )
+        .expect_err("r_cross must be non-negative");
+        assert_eq!(
+            invalid_r_cross_error,
+            HawkesStructuredRhoParameterError::InvalidRCross { value: -0.1 }
+        );
+
+        let invalid_delta_self_r_error = HawkesKernelLoadings::validate_structured_rho(
+            HawkesStructuredRhoParameterization::new(0.2, 0.1, -0.001, 0.0),
+            None,
+        )
+        .expect_err("delta_self_r must be non-negative");
+        assert_eq!(
+            invalid_delta_self_r_error,
+            HawkesStructuredRhoParameterError::InvalidDeltaSelfR { value: -0.001 }
+        );
+
+        let invalid_delta_cross_r_error = HawkesKernelLoadings::validate_structured_rho(
+            HawkesStructuredRhoParameterization::new(0.2, 0.1, 0.0, -0.002),
+            None,
+        )
+        .expect_err("delta_cross_r must be non-negative");
+        assert_eq!(
+            invalid_delta_cross_r_error,
+            HawkesStructuredRhoParameterError::InvalidDeltaCrossR { value: -0.002 }
+        );
+    }
+
+    #[test]
+    fn structured_rho_validation_rejects_derived_component_overflow() {
+        let error = HawkesKernelLoadings::validate_structured_rho(
+            HawkesStructuredRhoParameterization::new(f64::MAX, 0.1, f64::MAX, 0.2),
+            None,
+        )
+        .expect_err("overflowed derived rho component must fail");
+
+        assert_eq!(
+            error,
+            HawkesStructuredRhoParameterError::InvalidDerivedComponent {
+                field: "rho.minus_minus",
+                value: f64::INFINITY,
+            }
+        );
+    }
+
+    #[test]
+    fn structured_rho_validation_rejects_invalid_self_dominance_policy_threshold() {
+        let error = HawkesKernelLoadings::validate_structured_rho(
+            HawkesStructuredRhoParameterization::new(0.5, 0.25, 0.1, 0.1),
+            Some(HawkesStructuredRhoSelfDominancePolicy::new(0.99)),
+        )
+        .expect_err("minimum_self_to_cross_ratio < 1.0 must fail");
+
+        assert_eq!(
+            error,
+            HawkesStructuredRhoParameterError::InvalidSelfDominanceRatioThreshold { value: 0.99 }
         );
     }
 
