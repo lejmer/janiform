@@ -1,4 +1,4 @@
-## ISSUE-003: Buy Sell Event Jump Operators
+## Buy & Sell Event Jump Operators
 
 ### Description
 Implement event-driven jump operators for buy and sell arrivals that apply endogenous excitation increments to the correct state components.

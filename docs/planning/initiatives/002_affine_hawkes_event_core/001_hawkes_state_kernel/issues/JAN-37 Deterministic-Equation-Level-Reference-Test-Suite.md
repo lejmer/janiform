@@ -1,4 +1,4 @@
-## ISSUE-007: Deterministic Equation Level Reference Test Suite
+## Deterministic Equation Level Reference Test Suite
 
 ### Description
 Build a deterministic reference test suite for equation-level correctness of Hawkes state evolution under seeded scenarios and fixed transition schedules.

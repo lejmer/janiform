@@ -1,4 +1,4 @@
-## ISSUE-006: Canonical Transition API And Engine Adoption
+## Canonical Transition API And Engine Adoption
 
 ### Description
 Create one canonical state-transition API that composes drift, endogenous jumps, and exogenous jumps, then integrate it across simulator, calibration, and transform entrypoints.

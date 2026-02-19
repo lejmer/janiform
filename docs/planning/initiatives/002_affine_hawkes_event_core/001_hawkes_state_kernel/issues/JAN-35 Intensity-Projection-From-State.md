@@ -1,4 +1,4 @@
-## ISSUE-005: Intensity Projection From State
+## Intensity Projection From State
 
 ### Description
 Implement deterministic mapping from Hawkes state to de-seasonalized and seasonality-scaled buy and sell intensities.

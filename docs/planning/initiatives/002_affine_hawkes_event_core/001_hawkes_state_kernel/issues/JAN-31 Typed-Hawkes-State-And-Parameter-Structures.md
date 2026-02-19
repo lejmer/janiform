@@ -1,4 +1,4 @@
-## ISSUE-001: Typed Hawkes State And Parameter Structures
+## Typed Hawkes State And Parameter Structures
 
 ### Description
 Define explicit core-domain structures for the 4D Hawkes excitation state and its kernel parameters, including shared decay and per-component excitation loadings.
