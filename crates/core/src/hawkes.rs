@@ -18,6 +18,9 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use serde::Deserialize;
+use serde::Serialize;
+
 use crate::hourly_factors::HourlyFactorContractOutput;
 
 /// Per-target source components with explicit buy/sell naming.
@@ -485,7 +488,8 @@ impl HawkesExcitationState {
 }
 
 /// Canonical 4-component loading map used for `alpha_ij` and `rho_ij`.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct HawkesKernelLoadings {
     /// `w++`: buy-target loading from buy-source events.
     pub plus_plus: f64,
@@ -546,11 +550,13 @@ impl HawkesKernelLoadings {
 /// Shared-kernel parameter payload for the 4D Hawkes excitation dynamics.
 ///
 /// Mapping to equations:
+/// - `lambda_bar` is the shared de-seasonalized baseline intensity for buy and sell
 /// - `beta` is shared exponential decay in `dY_t^{ij} = -beta * Y_t^{ij} dt + ...`
 /// - `alpha` stores endogenous excitation loadings `alpha_ij`
 /// - `rho` stores exogenous loading terms `rho_ij`
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct HawkesKernelParameters {
+    pub lambda_bar: f64,
     pub beta: f64,
     pub alpha: HawkesKernelLoadings,
     pub rho: HawkesKernelLoadings,
@@ -560,14 +566,19 @@ impl HawkesKernelParameters {
     /// Validate and construct kernel parameters.
     ///
     /// Domain checks:
+    /// - `lambda_bar > 0` and finite
     /// - `beta > 0` and finite
     /// - all `alpha_ij >= 0` and finite
     /// - all `rho_ij >= 0` and finite
     pub fn try_new(
+        lambda_bar: f64,
         beta: f64,
         alpha: HawkesKernelLoadings,
         rho: HawkesKernelLoadings,
     ) -> Result<Self, HawkesKernelParameterError> {
+        if !lambda_bar.is_finite() || lambda_bar <= 0.0 {
+            return Err(HawkesKernelParameterError::InvalidLambdaBar { value: lambda_bar });
+        }
         if !beta.is_finite() || beta <= 0.0 {
             return Err(HawkesKernelParameterError::InvalidBeta { value: beta });
         }
@@ -591,13 +602,39 @@ impl HawkesKernelParameters {
             ],
         )?;
 
-        Ok(Self { beta, alpha, rho })
+        Ok(Self {
+            lambda_bar,
+            beta,
+            alpha,
+            rho,
+        })
+    }
+
+    /// Validate and construct parameters from typed target/source component groups.
+    ///
+    /// This builder removes 4-value positional ambiguity when constructing `alpha`
+    /// and `rho`.
+    pub fn try_new_from_target_components(
+        lambda_bar: f64,
+        beta: f64,
+        alpha_target_plus: HawkesSourceComponents,
+        alpha_target_minus: HawkesSourceComponents,
+        rho_target_plus: HawkesSourceComponents,
+        rho_target_minus: HawkesSourceComponents,
+    ) -> Result<Self, HawkesKernelParameterError> {
+        Self::try_new(
+            lambda_bar,
+            beta,
+            HawkesKernelLoadings::from_target_components(alpha_target_plus, alpha_target_minus),
+            HawkesKernelLoadings::from_target_components(rho_target_plus, rho_target_minus),
+        )
     }
 }
 
 /// Structured validation failures for `HawkesKernelParameters::try_new`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HawkesKernelParameterError {
+    InvalidLambdaBar { value: f64 },
     InvalidBeta { value: f64 },
     InvalidLoadingComponent { field: &'static str, value: f64 },
 }
@@ -605,6 +642,12 @@ pub enum HawkesKernelParameterError {
 impl Display for HawkesKernelParameterError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::InvalidLambdaBar { value } => {
+                write!(
+                    formatter,
+                    "lambda_bar must be finite and strictly positive, found {value}"
+                )
+            }
             Self::InvalidBeta { value } => {
                 write!(
                     formatter,
@@ -620,6 +663,26 @@ impl Display for HawkesKernelParameterError {
 }
 
 impl Error for HawkesKernelParameterError {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HawkesKernelParametersPayload {
+    lambda_bar: f64,
+    beta: f64,
+    alpha: HawkesKernelLoadings,
+    rho: HawkesKernelLoadings,
+}
+
+impl<'de> Deserialize<'de> for HawkesKernelParameters {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let payload = HawkesKernelParametersPayload::deserialize(deserializer)?;
+        Self::try_new(payload.lambda_bar, payload.beta, payload.alpha, payload.rho)
+            .map_err(serde::de::Error::custom)
+    }
+}
 
 fn validate_non_negative_loadings(
     loadings: HawkesKernelLoadings,
@@ -653,6 +716,7 @@ mod tests {
         HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
         HourlyFactorMaterializationMetadata,
     };
+    use serde_json::json;
 
     const DECAY_TOLERANCE: f64 = 1e-12;
 
@@ -1271,6 +1335,7 @@ mod tests {
             y_minus_minus: 4.0,
         };
         let kernel_parameters = HawkesKernelParameters::try_new(
+            0.75,
             1.0,
             HawkesKernelLoadings {
                 plus_plus: 0.3,
@@ -1316,6 +1381,7 @@ mod tests {
         };
 
         let kernel_parameters = HawkesKernelParameters::try_new(
+            0.60,
             1.2,
             HawkesKernelLoadings {
                 plus_plus: 0.15,
@@ -1382,6 +1448,7 @@ mod tests {
         };
 
         let kernel_parameters = HawkesKernelParameters::try_new(
+            0.60,
             1.0,
             HawkesKernelLoadings {
                 plus_plus: 0.0,
@@ -1487,12 +1554,38 @@ mod tests {
             minus_minus: 0.0,
         };
 
-        let parameters = HawkesKernelParameters::try_new(1.25, alpha, rho)
+        let parameters = HawkesKernelParameters::try_new(0.85, 1.25, alpha, rho)
             .expect("valid Hawkes kernel payload should construct");
 
+        assert_eq!(parameters.lambda_bar, 0.85);
         assert_eq!(parameters.beta, 1.25);
         assert_eq!(parameters.alpha, alpha);
         assert_eq!(parameters.rho, rho);
+    }
+
+    #[test]
+    fn kernel_parameter_construction_rejects_non_positive_or_non_finite_lambda_bar() {
+        let loadings = HawkesKernelLoadings {
+            plus_plus: 0.0,
+            plus_minus: 0.0,
+            minus_plus: 0.0,
+            minus_minus: 0.0,
+        };
+
+        let zero_lambda_bar_error = HawkesKernelParameters::try_new(0.0, 1.0, loadings, loadings)
+            .expect_err("lambda_bar=0 must fail");
+        assert_eq!(
+            zero_lambda_bar_error,
+            HawkesKernelParameterError::InvalidLambdaBar { value: 0.0 }
+        );
+
+        let nan_lambda_bar_error =
+            HawkesKernelParameters::try_new(f64::NAN, 1.0, loadings, loadings)
+                .expect_err("non-finite lambda_bar must fail");
+        assert!(matches!(
+            nan_lambda_bar_error,
+            HawkesKernelParameterError::InvalidLambdaBar { value } if value.is_nan()
+        ));
     }
 
     #[test]
@@ -1504,14 +1597,14 @@ mod tests {
             minus_minus: 0.0,
         };
 
-        let zero_beta_error =
-            HawkesKernelParameters::try_new(0.0, loadings, loadings).expect_err("beta=0 must fail");
+        let zero_beta_error = HawkesKernelParameters::try_new(1.0, 0.0, loadings, loadings)
+            .expect_err("beta=0 must fail");
         assert_eq!(
             zero_beta_error,
             HawkesKernelParameterError::InvalidBeta { value: 0.0 }
         );
 
-        let nan_beta_error = HawkesKernelParameters::try_new(f64::NAN, loadings, loadings)
+        let nan_beta_error = HawkesKernelParameters::try_new(1.0, f64::NAN, loadings, loadings)
             .expect_err("non-finite beta must fail");
         assert!(matches!(
             nan_beta_error,
@@ -1534,8 +1627,8 @@ mod tests {
             minus_minus: 0.0,
         };
 
-        let error =
-            HawkesKernelParameters::try_new(0.9, alpha, rho).expect_err("negative alpha must fail");
+        let error = HawkesKernelParameters::try_new(1.0, 0.9, alpha, rho)
+            .expect_err("negative alpha must fail");
 
         assert_eq!(
             error,
@@ -1561,8 +1654,8 @@ mod tests {
             minus_minus: f64::INFINITY,
         };
 
-        let error =
-            HawkesKernelParameters::try_new(0.9, alpha, rho).expect_err("non-finite rho must fail");
+        let error = HawkesKernelParameters::try_new(1.0, 0.9, alpha, rho)
+            .expect_err("non-finite rho must fail");
 
         assert_eq!(
             error,
@@ -1570,6 +1663,114 @@ mod tests {
                 field: "rho.minus_minus",
                 value: f64::INFINITY,
             }
+        );
+    }
+
+    #[test]
+    fn kernel_parameter_builder_from_target_components_preserves_mapping() {
+        let parameters = HawkesKernelParameters::try_new_from_target_components(
+            0.85,
+            1.25,
+            HawkesSourceComponents::new(0.6, 0.1),
+            HawkesSourceComponents::new(0.2, 0.7),
+            HawkesSourceComponents::new(0.0, 0.05),
+            HawkesSourceComponents::new(0.12, 0.0),
+        )
+        .expect("typed component groups must construct canonical parameters");
+
+        assert_eq!(parameters.lambda_bar, 0.85);
+        assert_eq!(parameters.beta, 1.25);
+        assert_eq!(
+            parameters.alpha,
+            HawkesKernelLoadings {
+                plus_plus: 0.6,
+                plus_minus: 0.1,
+                minus_plus: 0.2,
+                minus_minus: 0.7,
+            }
+        );
+        assert_eq!(
+            parameters.rho,
+            HawkesKernelLoadings {
+                plus_plus: 0.0,
+                plus_minus: 0.05,
+                minus_plus: 0.12,
+                minus_minus: 0.0,
+            }
+        );
+    }
+
+    #[test]
+    fn kernel_parameter_serialization_round_trip_preserves_canonical_payload() {
+        let parameters = HawkesKernelParameters::try_new_from_target_components(
+            0.85,
+            1.25,
+            HawkesSourceComponents::new(0.6, 0.1),
+            HawkesSourceComponents::new(0.2, 0.7),
+            HawkesSourceComponents::new(0.0, 0.05),
+            HawkesSourceComponents::new(0.12, 0.0),
+        )
+        .expect("valid typed parameters must serialize");
+
+        let serialized = serde_json::to_string(&parameters)
+            .expect("canonical parameter payload should serialize");
+        let parsed: HawkesKernelParameters =
+            serde_json::from_str(&serialized).expect("serialized payload should deserialize");
+
+        assert_eq!(parsed, parameters);
+    }
+
+    #[test]
+    fn kernel_parameter_deserialization_reports_missing_required_field() {
+        let payload = json!({
+            "lambda_bar": 0.85,
+            "beta": 1.25,
+            "alpha": {
+                "plus_plus": 0.6,
+                "plus_minus": 0.1,
+                "minus_plus": 0.2,
+                "minus_minus": 0.7
+            }
+        });
+
+        let parse_result = serde_json::from_value::<HawkesKernelParameters>(payload);
+        let error_text = parse_result
+            .expect_err("missing rho field must fail")
+            .to_string();
+
+        assert!(
+            error_text.contains("missing field `rho`"),
+            "unexpected error message: {error_text}"
+        );
+    }
+
+    #[test]
+    fn kernel_parameter_deserialization_reports_malformed_field_type() {
+        let payload = json!({
+            "lambda_bar": 0.85,
+            "beta": "fast",
+            "alpha": {
+                "plus_plus": 0.6,
+                "plus_minus": 0.1,
+                "minus_plus": 0.2,
+                "minus_minus": 0.7
+            },
+            "rho": {
+                "plus_plus": 0.0,
+                "plus_minus": 0.05,
+                "minus_plus": 0.12,
+                "minus_minus": 0.0
+            }
+        });
+
+        let parse_result = serde_json::from_value::<HawkesKernelParameters>(payload);
+        let error_text = parse_result
+            .expect_err("malformed beta field type must fail")
+            .to_string();
+
+        assert!(
+            error_text.contains("invalid type"),
+            "unexpected error message: {error_text}"
         );
     }
 }

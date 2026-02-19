@@ -21,12 +21,12 @@ pub fn load_hourly_factor_contract_for_pricing(
 /// Project state to interval intensities for coarse-time sufficient-statistics paths.
 pub fn project_hawkes_intensities_for_coarse_interval(
     state: HawkesExcitationState,
-    lambda_bar: f64,
+    parameters: HawkesKernelParameters,
     hourly_factor_contract: &HourlyFactorContractOutput,
     interval_index: usize,
 ) -> Result<HawkesIntensityProjection, HawkesSeasonalityIntervalError> {
     state.project_intensities_for_hourly_interval(
-        lambda_bar,
+        parameters.lambda_bar,
         hourly_factor_contract,
         interval_index,
     )

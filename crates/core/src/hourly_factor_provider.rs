@@ -482,20 +482,42 @@ mod tests {
             y_minus_minus: 0.05,
         };
 
+        let parameters = HawkesKernelParameters::try_new(
+            0.50,
+            1.1,
+            HawkesKernelLoadings {
+                plus_plus: 0.25,
+                plus_minus: 0.20,
+                minus_plus: 0.12,
+                minus_minus: 0.30,
+            },
+            HawkesKernelLoadings {
+                plus_plus: 0.05,
+                plus_minus: 0.10,
+                minus_plus: 0.08,
+                minus_minus: 0.04,
+            },
+        )
+        .expect("parameter fixture must be valid");
+
         let simulation_projection = project_hawkes_intensities_for_simulation_interval(
             state,
-            0.50,
+            parameters,
             &hourly_factor_contract,
             1,
         )
         .expect("simulation projection should resolve interval seasonality");
 
-        let coarse_projection =
-            project_hawkes_intensities_for_coarse_interval(state, 0.50, &hourly_factor_contract, 1)
-                .expect("coarse projection should resolve interval seasonality");
+        let coarse_projection = project_hawkes_intensities_for_coarse_interval(
+            state,
+            parameters,
+            &hourly_factor_contract,
+            1,
+        )
+        .expect("coarse projection should resolve interval seasonality");
         let calibration_projection = project_hawkes_intensities_for_calibration_interval(
             state,
-            0.50,
+            parameters,
             &hourly_factor_contract,
             1,
         )
@@ -519,6 +541,7 @@ mod tests {
         };
 
         let kernel_parameters = HawkesKernelParameters::try_new(
+            0.50,
             1.1,
             HawkesKernelLoadings {
                 plus_plus: 0.25,
