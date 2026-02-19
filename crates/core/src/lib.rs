@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 pub mod calendar;
+pub mod calibration;
 pub mod hawkes;
 pub mod hourly_factor_provider;
 pub mod hourly_factors;
