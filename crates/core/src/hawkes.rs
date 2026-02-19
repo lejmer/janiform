@@ -504,6 +504,105 @@ pub struct HawkesKernelLoadings {
     pub minus_minus: f64,
 }
 
+/// Structured base-plus-delta parameterization for endogenous `alpha`.
+///
+/// Mapping:
+/// - `alpha_++ = a_self`
+/// - `alpha_+- = a_cross`
+/// - `alpha_-+ = a_cross + delta_cross`
+/// - `alpha_-- = a_self + delta_self`
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HawkesStructuredAlphaParameterization {
+    pub a_self: f64,
+    pub a_cross: f64,
+    pub delta_self: f64,
+    pub delta_cross: f64,
+}
+
+impl HawkesStructuredAlphaParameterization {
+    pub const fn new(a_self: f64, a_cross: f64, delta_self: f64, delta_cross: f64) -> Self {
+        Self {
+            a_self,
+            a_cross,
+            delta_self,
+            delta_cross,
+        }
+    }
+}
+
+/// Structured validation failures for structured base-plus-delta `alpha` inputs.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HawkesStructuredAlphaParameterError {
+    InvalidASelf {
+        value: f64,
+    },
+    InvalidACross {
+        value: f64,
+    },
+    InvalidDeltaSelf {
+        value: f64,
+    },
+    InvalidDeltaCross {
+        value: f64,
+    },
+    InvalidDerivedComponent {
+        field: &'static str,
+        value: f64,
+    },
+    InvalidSelfAsymmetry {
+        alpha_minus_minus: f64,
+        alpha_plus_plus: f64,
+    },
+    InvalidCrossAsymmetry {
+        alpha_minus_plus: f64,
+        alpha_plus_minus: f64,
+    },
+}
+
+impl Display for HawkesStructuredAlphaParameterError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidASelf { value } => write!(
+                formatter,
+                "a_self must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidACross { value } => write!(
+                formatter,
+                "a_cross must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidDeltaSelf { value } => write!(
+                formatter,
+                "delta_self must be finite and non-negative to satisfy alpha_-- >= alpha_++, found {value}"
+            ),
+            Self::InvalidDeltaCross { value } => write!(
+                formatter,
+                "delta_cross must be finite and non-negative to satisfy alpha_-+ >= alpha_+-, found {value}"
+            ),
+            Self::InvalidDerivedComponent { field, value } => write!(
+                formatter,
+                "derived alpha component {field} must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidSelfAsymmetry {
+                alpha_minus_minus,
+                alpha_plus_plus,
+            } => write!(
+                formatter,
+                "structured alpha must satisfy alpha_-- >= alpha_++, found alpha_--={alpha_minus_minus} and alpha_++={alpha_plus_plus}"
+            ),
+            Self::InvalidCrossAsymmetry {
+                alpha_minus_plus,
+                alpha_plus_minus,
+            } => write!(
+                formatter,
+                "structured alpha must satisfy alpha_-+ >= alpha_+-, found alpha_-+={alpha_minus_plus} and alpha_+-={alpha_plus_minus}"
+            ),
+        }
+    }
+}
+
+impl Error for HawkesStructuredAlphaParameterError {}
+
 impl HawkesKernelLoadings {
     /// Build loadings from explicit target/source component groups.
     ///
@@ -544,6 +643,82 @@ impl HawkesKernelLoadings {
             self.minus_plus,
             self.minus_minus,
         ]
+    }
+
+    /// Validate and derive canonical `alpha` loadings from base-plus-delta inputs.
+    ///
+    /// The returned loadings preserve canonical model ordering `[++, +-, -+, --]`
+    /// through `HawkesKernelLoadings::as_model_ordered_array`.
+    pub fn try_from_structured_alpha(
+        structured_alpha: HawkesStructuredAlphaParameterization,
+    ) -> Result<Self, HawkesStructuredAlphaParameterError> {
+        if !structured_alpha.a_self.is_finite() || structured_alpha.a_self <= 0.0 {
+            return Err(HawkesStructuredAlphaParameterError::InvalidASelf {
+                value: structured_alpha.a_self,
+            });
+        }
+
+        if !structured_alpha.a_cross.is_finite() || structured_alpha.a_cross < 0.0 {
+            return Err(HawkesStructuredAlphaParameterError::InvalidACross {
+                value: structured_alpha.a_cross,
+            });
+        }
+
+        if !structured_alpha.delta_self.is_finite() || structured_alpha.delta_self < 0.0 {
+            return Err(HawkesStructuredAlphaParameterError::InvalidDeltaSelf {
+                value: structured_alpha.delta_self,
+            });
+        }
+
+        if !structured_alpha.delta_cross.is_finite() || structured_alpha.delta_cross < 0.0 {
+            return Err(HawkesStructuredAlphaParameterError::InvalidDeltaCross {
+                value: structured_alpha.delta_cross,
+            });
+        }
+
+        let alpha_plus_plus = structured_alpha.a_self;
+        let alpha_plus_minus = structured_alpha.a_cross;
+        let alpha_minus_plus = structured_alpha.a_cross + structured_alpha.delta_cross;
+        let alpha_minus_minus = structured_alpha.a_self + structured_alpha.delta_self;
+
+        let derived_loadings = Self {
+            plus_plus: alpha_plus_plus,
+            plus_minus: alpha_plus_minus,
+            minus_plus: alpha_minus_plus,
+            minus_minus: alpha_minus_minus,
+        };
+
+        validate_non_negative_loadings(
+            derived_loadings,
+            [
+                "alpha.plus_plus",
+                "alpha.plus_minus",
+                "alpha.minus_plus",
+                "alpha.minus_minus",
+            ],
+        )
+        .map_err(|error| match error {
+            HawkesKernelParameterError::InvalidLoadingComponent { field, value } => {
+                HawkesStructuredAlphaParameterError::InvalidDerivedComponent { field, value }
+            }
+            _ => unreachable!("structured alpha derivation only validates loading components"),
+        })?;
+
+        if derived_loadings.minus_minus < derived_loadings.plus_plus {
+            return Err(HawkesStructuredAlphaParameterError::InvalidSelfAsymmetry {
+                alpha_minus_minus: derived_loadings.minus_minus,
+                alpha_plus_plus: derived_loadings.plus_plus,
+            });
+        }
+
+        if derived_loadings.minus_plus < derived_loadings.plus_minus {
+            return Err(HawkesStructuredAlphaParameterError::InvalidCrossAsymmetry {
+                alpha_minus_plus: derived_loadings.minus_plus,
+                alpha_plus_minus: derived_loadings.plus_minus,
+            });
+        }
+
+        Ok(derived_loadings)
     }
 }
 
@@ -709,8 +884,9 @@ mod tests {
     use crate::hawkes::{
         HawkesEventSide, HawkesEventSidePayloadError, HawkesExcitationState, HawkesKernelLoadings,
         HawkesKernelParameterError, HawkesKernelParameters, HawkesNewsSeverityMarkError,
-        HawkesSeasonalityIntervalError, HawkesSourceComponents, HawkesTransitionError,
-        HawkesTransitionStep,
+        HawkesSeasonalityIntervalError, HawkesSourceComponents,
+        HawkesStructuredAlphaParameterError, HawkesStructuredAlphaParameterization,
+        HawkesTransitionError, HawkesTransitionStep,
     };
     use crate::hourly_factors::{
         HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
@@ -1537,6 +1713,100 @@ mod tests {
         assert_eq!(loadings.target_plus_components(), target_plus);
         assert_eq!(loadings.target_minus_components(), target_minus);
         assert_eq!(loadings.as_model_ordered_array(), [0.1, 0.2, 0.3, 0.4]);
+    }
+
+    #[test]
+    fn structured_alpha_derivation_builds_expected_canonical_matrix() {
+        let structured_alpha = HawkesStructuredAlphaParameterization::new(0.75, 0.25, 0.5, 0.5);
+
+        let alpha = HawkesKernelLoadings::try_from_structured_alpha(structured_alpha)
+            .expect("valid structured alpha must derive canonical loadings");
+
+        assert_eq!(
+            alpha,
+            HawkesKernelLoadings {
+                plus_plus: 0.75,
+                plus_minus: 0.25,
+                minus_plus: 0.75,
+                minus_minus: 1.25,
+            }
+        );
+        assert_eq!(alpha.as_model_ordered_array(), [0.75, 0.25, 0.75, 1.25]);
+    }
+
+    #[test]
+    fn structured_alpha_derivation_accepts_zero_delta_boundary_case() {
+        let structured_alpha = HawkesStructuredAlphaParameterization::new(0.5, 0.25, 0.0, 0.0);
+
+        let alpha = HawkesKernelLoadings::try_from_structured_alpha(structured_alpha)
+            .expect("zero deltas should be valid boundary values");
+
+        assert_eq!(
+            alpha,
+            HawkesKernelLoadings {
+                plus_plus: 0.5,
+                plus_minus: 0.25,
+                minus_plus: 0.25,
+                minus_minus: 0.5,
+            }
+        );
+        assert_eq!(alpha.minus_minus, alpha.plus_plus);
+        assert_eq!(alpha.minus_plus, alpha.plus_minus);
+    }
+
+    #[test]
+    fn structured_alpha_derivation_rejects_invalid_base_and_delta_values() {
+        let invalid_a_self_error = HawkesKernelLoadings::try_from_structured_alpha(
+            HawkesStructuredAlphaParameterization::new(0.0, 0.1, 0.1, 0.1),
+        )
+        .expect_err("a_self must be strictly positive");
+        assert_eq!(
+            invalid_a_self_error,
+            HawkesStructuredAlphaParameterError::InvalidASelf { value: 0.0 }
+        );
+
+        let invalid_a_cross_error = HawkesKernelLoadings::try_from_structured_alpha(
+            HawkesStructuredAlphaParameterization::new(0.2, -0.1, 0.1, 0.1),
+        )
+        .expect_err("a_cross must be non-negative");
+        assert_eq!(
+            invalid_a_cross_error,
+            HawkesStructuredAlphaParameterError::InvalidACross { value: -0.1 }
+        );
+
+        let invalid_delta_self_error = HawkesKernelLoadings::try_from_structured_alpha(
+            HawkesStructuredAlphaParameterization::new(0.2, 0.1, -0.001, 0.0),
+        )
+        .expect_err("delta_self must be non-negative");
+        assert_eq!(
+            invalid_delta_self_error,
+            HawkesStructuredAlphaParameterError::InvalidDeltaSelf { value: -0.001 }
+        );
+
+        let invalid_delta_cross_error = HawkesKernelLoadings::try_from_structured_alpha(
+            HawkesStructuredAlphaParameterization::new(0.2, 0.1, 0.0, -0.002),
+        )
+        .expect_err("delta_cross must be non-negative");
+        assert_eq!(
+            invalid_delta_cross_error,
+            HawkesStructuredAlphaParameterError::InvalidDeltaCross { value: -0.002 }
+        );
+    }
+
+    #[test]
+    fn structured_alpha_derivation_rejects_derived_component_overflow() {
+        let error = HawkesKernelLoadings::try_from_structured_alpha(
+            HawkesStructuredAlphaParameterization::new(f64::MAX, 0.1, f64::MAX, 0.2),
+        )
+        .expect_err("overflowed derived alpha component must fail");
+
+        assert_eq!(
+            error,
+            HawkesStructuredAlphaParameterError::InvalidDerivedComponent {
+                field: "alpha.minus_minus",
+                value: f64::INFINITY,
+            }
+        );
     }
 
     #[test]
