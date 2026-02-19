@@ -76,6 +76,24 @@ impl Display for HawkesEventSidePayloadError {
 
 impl Error for HawkesEventSidePayloadError {}
 
+/// Structured validation failure for exogenous news severity marks.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HawkesNewsSeverityMarkError {
+    pub value: f64,
+}
+
+impl Display for HawkesNewsSeverityMarkError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "news severity mark must be finite and non-negative, found {}",
+            self.value
+        )
+    }
+}
+
+impl Error for HawkesNewsSeverityMarkError {}
+
 /// Canonical 4D Hawkes excitation state with explicit `Yij` components.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HawkesExcitationState {
@@ -219,6 +237,37 @@ impl HawkesExcitationState {
     ) -> Result<Self, HawkesEventSidePayloadError> {
         let side = HawkesEventSide::try_from(side_payload)?;
         Ok(self.apply_endogenous_event_jump(side, alpha))
+    }
+
+    /// Apply an exogenous news loading jump using `rho * U`.
+    ///
+    /// Mapping:
+    /// - `delta_y_ij = rho_ij * severity_mark`
+    ///
+    /// Input semantics:
+    /// - `severity_mark` must be finite and non-negative
+    /// - `severity_mark == 0.0` returns the input state unchanged exactly
+    pub fn apply_exogenous_news_loading_jump(
+        self,
+        rho: HawkesKernelLoadings,
+        severity_mark: f64,
+    ) -> Result<Self, HawkesNewsSeverityMarkError> {
+        if !severity_mark.is_finite() || severity_mark < 0.0 {
+            return Err(HawkesNewsSeverityMarkError {
+                value: severity_mark,
+            });
+        }
+
+        if severity_mark == 0.0 {
+            return Ok(self);
+        }
+
+        Ok(Self {
+            y_plus_plus: self.y_plus_plus + rho.plus_plus * severity_mark,
+            y_plus_minus: self.y_plus_minus + rho.plus_minus * severity_mark,
+            y_minus_plus: self.y_minus_plus + rho.minus_plus * severity_mark,
+            y_minus_minus: self.y_minus_minus + rho.minus_minus * severity_mark,
+        })
     }
 }
 
@@ -383,7 +432,8 @@ fn validate_non_negative_loadings(
 mod tests {
     use crate::hawkes::{
         HawkesEventSide, HawkesEventSidePayloadError, HawkesExcitationState, HawkesKernelLoadings,
-        HawkesKernelParameterError, HawkesKernelParameters, HawkesSourceComponents,
+        HawkesKernelParameterError, HawkesKernelParameters, HawkesNewsSeverityMarkError,
+        HawkesSourceComponents,
     };
 
     const DECAY_TOLERANCE: f64 = 1e-12;
@@ -603,6 +653,156 @@ mod tests {
         assert_within_tolerance(
             updated_state.y_minus_minus,
             4.0 * decay_factor + 0.7,
+            DECAY_TOLERANCE,
+            "y_minus_minus",
+        );
+    }
+
+    #[test]
+    fn exogenous_news_loading_jump_applies_component_wise_rho_scaled_by_severity_mark() {
+        let state = HawkesExcitationState {
+            y_plus_plus: 1.0,
+            y_plus_minus: 1.5,
+            y_minus_plus: 2.0,
+            y_minus_minus: 2.5,
+        };
+        let rho = HawkesKernelLoadings {
+            plus_plus: 0.2,
+            plus_minus: 0.1,
+            minus_plus: 0.05,
+            minus_minus: 0.3,
+        };
+        let severity_mark = 2.5;
+
+        let updated_state = state
+            .apply_exogenous_news_loading_jump(rho, severity_mark)
+            .expect("valid non-negative severity mark must succeed");
+
+        assert_within_tolerance(
+            updated_state.y_plus_plus,
+            1.0 + 0.2 * severity_mark,
+            DECAY_TOLERANCE,
+            "y_plus_plus",
+        );
+        assert_within_tolerance(
+            updated_state.y_plus_minus,
+            1.5 + 0.1 * severity_mark,
+            DECAY_TOLERANCE,
+            "y_plus_minus",
+        );
+        assert_within_tolerance(
+            updated_state.y_minus_plus,
+            2.0 + 0.05 * severity_mark,
+            DECAY_TOLERANCE,
+            "y_minus_plus",
+        );
+        assert_within_tolerance(
+            updated_state.y_minus_minus,
+            2.5 + 0.3 * severity_mark,
+            DECAY_TOLERANCE,
+            "y_minus_minus",
+        );
+    }
+
+    #[test]
+    fn exogenous_news_loading_jump_with_zero_severity_preserves_state_exactly() {
+        let state = HawkesExcitationState {
+            y_plus_plus: 0.8,
+            y_plus_minus: 0.7,
+            y_minus_plus: 0.6,
+            y_minus_minus: 0.5,
+        };
+        let rho = HawkesKernelLoadings {
+            plus_plus: 0.2,
+            plus_minus: 0.1,
+            minus_plus: 0.3,
+            minus_minus: 0.4,
+        };
+
+        let updated_state = state
+            .apply_exogenous_news_loading_jump(rho, 0.0)
+            .expect("zero severity mark is valid and deterministic");
+
+        assert_eq!(updated_state, state);
+    }
+
+    #[test]
+    fn exogenous_news_loading_jump_rejects_negative_severity_mark() {
+        let state = HawkesExcitationState {
+            y_plus_plus: 0.1,
+            y_plus_minus: 0.2,
+            y_minus_plus: 0.3,
+            y_minus_minus: 0.4,
+        };
+        let rho = HawkesKernelLoadings {
+            plus_plus: 0.0,
+            plus_minus: 0.0,
+            minus_plus: 0.0,
+            minus_minus: 0.0,
+        };
+
+        let error = state
+            .apply_exogenous_news_loading_jump(rho, -0.000_1)
+            .expect_err("negative severity mark must fail");
+
+        assert_eq!(error, HawkesNewsSeverityMarkError { value: -0.000_1 });
+        assert_eq!(
+            error.to_string(),
+            "news severity mark must be finite and non-negative, found -0.0001"
+        );
+    }
+
+    #[test]
+    fn exogenous_and_endogenous_jumps_compose_with_drift() {
+        let state = HawkesExcitationState {
+            y_plus_plus: 1.0,
+            y_plus_minus: 2.0,
+            y_minus_plus: 3.0,
+            y_minus_minus: 4.0,
+        };
+        let alpha = HawkesKernelLoadings {
+            plus_plus: 0.3,
+            plus_minus: 0.7,
+            minus_plus: 0.5,
+            minus_minus: 0.9,
+        };
+        let rho = HawkesKernelLoadings {
+            plus_plus: 0.2,
+            plus_minus: 0.1,
+            minus_plus: 0.05,
+            minus_minus: 0.12,
+        };
+        let severity_mark = 1.5;
+        let decay_factor = (-0.4f64).exp();
+
+        let updated_state = state
+            .apply_shared_decay_drift(1.0, 0.4)
+            .apply_endogenous_event_jump(HawkesEventSide::Buy, alpha)
+            .apply_exogenous_news_loading_jump(rho, severity_mark)
+            .expect("valid non-negative severity mark must succeed")
+            .apply_endogenous_event_jump(HawkesEventSide::Sell, alpha);
+
+        assert_within_tolerance(
+            updated_state.y_plus_plus,
+            1.0 * decay_factor + 0.3 + 0.2 * severity_mark,
+            DECAY_TOLERANCE,
+            "y_plus_plus",
+        );
+        assert_within_tolerance(
+            updated_state.y_plus_minus,
+            2.0 * decay_factor + 0.1 * severity_mark + 0.7,
+            DECAY_TOLERANCE,
+            "y_plus_minus",
+        );
+        assert_within_tolerance(
+            updated_state.y_minus_plus,
+            3.0 * decay_factor + 0.5 + 0.05 * severity_mark,
+            DECAY_TOLERANCE,
+            "y_minus_plus",
+        );
+        assert_within_tolerance(
+            updated_state.y_minus_minus,
+            4.0 * decay_factor + 0.12 * severity_mark + 0.9,
             DECAY_TOLERANCE,
             "y_minus_minus",
         );
