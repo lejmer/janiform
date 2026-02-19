@@ -1,4 +1,4 @@
-## ISSUE-005: Spectral Radius Stability Guard
+## Spectral Radius Stability Guard
 
 ### Description
 Implement the de-seasonalized Hawkes stability guard using spectral radius of `Alpha / beta` and expose deterministic pass or fail results.

@@ -1,4 +1,4 @@
-## ISSUE-003: Structured Rho Parameterization Validation
+## Structured Rho Parameterization Validation
 
 ### Description
 Implement structured base-plus-delta parameterization for exogenous loading `rho` and enforce non-negativity plus asymmetry constraints required by the design.

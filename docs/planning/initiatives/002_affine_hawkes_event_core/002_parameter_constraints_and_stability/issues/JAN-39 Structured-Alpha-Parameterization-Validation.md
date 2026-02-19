@@ -1,4 +1,4 @@
-## ISSUE-002: Structured Alpha Parameterization Validation
+## Structured Alpha Parameterization Validation
 
 ### Description
 Implement structured base-plus-delta parameterization for endogenous excitation `alpha` and validate model-implied asymmetry constraints.

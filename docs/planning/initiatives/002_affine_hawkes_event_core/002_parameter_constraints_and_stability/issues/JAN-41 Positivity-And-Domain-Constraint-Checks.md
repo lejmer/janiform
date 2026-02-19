@@ -1,4 +1,4 @@
-## ISSUE-004: Positivity And Domain Constraint Checks
+## Positivity And Domain Constraint Checks
 
 ### Description
 Implement domain checks for baseline and decay positivity and element-wise non-negativity for excitation and loading parameters.

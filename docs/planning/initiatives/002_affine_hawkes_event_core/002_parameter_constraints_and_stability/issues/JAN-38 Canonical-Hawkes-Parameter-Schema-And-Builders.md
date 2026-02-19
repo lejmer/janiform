@@ -1,4 +1,4 @@
-## ISSUE-001: Canonical Hawkes Parameter Schema And Builders
+## Canonical Hawkes Parameter Schema And Builders
 
 ### Description
 Define a canonical schema for Hawkes kernel parameters and construction builders used by simulation, calibration, and transform workflows.

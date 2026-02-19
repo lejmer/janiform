@@ -1,4 +1,4 @@
-## ISSUE-006: Calibration Facing Validation Report And Error Taxonomy
+## Calibration Facing Validation Report And Error Taxonomy
 
 ### Description
 Create a unified validation report that aggregates constraint and stability checks into optimizer-friendly outputs and human-readable diagnostics.
