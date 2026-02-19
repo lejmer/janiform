@@ -1,4 +1,4 @@
-## ISSUE-004: Exogenous News Loading Jump Operator
+## Exogenous News Loading Jump Operator
 
 ### Description
 Implement exogenous jump updates that load news-shock severity into Hawkes state using `rho_ij` coefficients and marked severity `U`.

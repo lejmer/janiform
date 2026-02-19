@@ -1,4 +1,4 @@
-## ISSUE-002: Shared Decay Drift Transition Operator
+## Shared Decay Drift Transition Operator
 
 ### Description
 Implement deterministic drift evolution for the Hawkes state under shared exponential decay over a finite time step.
