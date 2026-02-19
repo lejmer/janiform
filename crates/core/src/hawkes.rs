@@ -94,6 +94,42 @@ impl HawkesExcitationState {
             self.y_minus_minus,
         ]
     }
+
+    /// Apply closed-form shared-decay drift over `delta_t`.
+    ///
+    /// The drift equation is:
+    /// `Y_{t + delta_t}^{ij} = exp(-beta * delta_t) * Y_t^{ij}`.
+    ///
+    /// Edge-case semantics:
+    /// - `delta_t == 0.0` returns the input state unchanged.
+    /// - Large `delta_t` drives all components toward `0.0` and may underflow to
+    ///   exact `0.0` based on IEEE-754 floating-point behavior.
+    ///
+    /// This operator handles drift only and intentionally excludes event-jump or
+    /// exogenous loading updates.
+    pub fn apply_shared_decay_drift(self, beta: f64, delta_t: f64) -> Self {
+        debug_assert!(
+            beta.is_finite() && beta > 0.0,
+            "beta must be finite and strictly positive"
+        );
+        debug_assert!(
+            delta_t.is_finite() && delta_t >= 0.0,
+            "delta_t must be finite and non-negative"
+        );
+
+        if delta_t == 0.0 {
+            return self;
+        }
+
+        let shared_decay_factor = (-beta * delta_t).exp();
+
+        Self {
+            y_plus_plus: self.y_plus_plus * shared_decay_factor,
+            y_plus_minus: self.y_plus_minus * shared_decay_factor,
+            y_minus_plus: self.y_minus_plus * shared_decay_factor,
+            y_minus_minus: self.y_minus_minus * shared_decay_factor,
+        }
+    }
 }
 
 /// Canonical 4-component loading map used for `alpha_ij` and `rho_ij`.
@@ -260,6 +296,16 @@ mod tests {
         HawkesKernelParameters, HawkesSourceComponents,
     };
 
+    const DECAY_TOLERANCE: f64 = 1e-12;
+
+    fn assert_within_tolerance(actual: f64, expected: f64, tolerance: f64, field_name: &str) {
+        let absolute_difference = (actual - expected).abs();
+        assert!(
+            absolute_difference <= tolerance,
+            "{field_name} mismatch expected {expected}, found {actual}, absolute_difference={absolute_difference}, tolerance={tolerance}"
+        );
+    }
+
     #[test]
     fn excitation_state_from_target_components_preserves_component_mapping() {
         let target_plus = HawkesSourceComponents::new(1.0, 2.0);
@@ -274,6 +320,82 @@ mod tests {
         assert_eq!(state.target_plus_components(), target_plus);
         assert_eq!(state.target_minus_components(), target_minus);
         assert_eq!(state.as_model_ordered_array(), [1.0, 2.0, 3.0, 4.0]);
+    }
+
+    #[test]
+    fn shared_decay_drift_matches_closed_form_per_component() {
+        let state = HawkesExcitationState {
+            y_plus_plus: 0.75,
+            y_plus_minus: 1.2,
+            y_minus_plus: 0.05,
+            y_minus_minus: 2.8,
+        };
+        let beta = 1.7;
+        let delta_t = 0.35;
+
+        let drifted_state = state.apply_shared_decay_drift(beta, delta_t);
+        let decay_factor = (-beta * delta_t).exp();
+
+        assert_within_tolerance(
+            drifted_state.y_plus_plus,
+            state.y_plus_plus * decay_factor,
+            DECAY_TOLERANCE,
+            "y_plus_plus",
+        );
+        assert_within_tolerance(
+            drifted_state.y_plus_minus,
+            state.y_plus_minus * decay_factor,
+            DECAY_TOLERANCE,
+            "y_plus_minus",
+        );
+        assert_within_tolerance(
+            drifted_state.y_minus_plus,
+            state.y_minus_plus * decay_factor,
+            DECAY_TOLERANCE,
+            "y_minus_plus",
+        );
+        assert_within_tolerance(
+            drifted_state.y_minus_minus,
+            state.y_minus_minus * decay_factor,
+            DECAY_TOLERANCE,
+            "y_minus_minus",
+        );
+    }
+
+    #[test]
+    fn shared_decay_drift_with_zero_delta_t_preserves_state_exactly() {
+        let state = HawkesExcitationState {
+            y_plus_plus: 0.9,
+            y_plus_minus: 0.4,
+            y_minus_plus: 0.8,
+            y_minus_minus: 1.1,
+        };
+
+        let drifted_state = state.apply_shared_decay_drift(1.25, 0.0);
+
+        assert_eq!(drifted_state, state);
+    }
+
+    #[test]
+    fn shared_decay_drift_with_large_delta_t_underflows_to_zero() {
+        let state = HawkesExcitationState {
+            y_plus_plus: 0.9,
+            y_plus_minus: 0.4,
+            y_minus_plus: 0.8,
+            y_minus_minus: 1.1,
+        };
+
+        let drifted_state = state.apply_shared_decay_drift(1.0, 1_000.0);
+
+        assert_eq!(
+            drifted_state,
+            HawkesExcitationState {
+                y_plus_plus: 0.0,
+                y_plus_minus: 0.0,
+                y_minus_plus: 0.0,
+                y_minus_minus: 0.0,
+            }
+        );
     }
 
     #[test]
