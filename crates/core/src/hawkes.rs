@@ -18,6 +18,8 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use crate::hourly_factors::HourlyFactorContractOutput;
+
 /// Per-target source components with explicit buy/sell naming.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HawkesSourceComponents {
@@ -36,6 +38,48 @@ impl HawkesSourceComponents {
         }
     }
 }
+
+/// Buy and sell intensity pair with explicit side naming.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HawkesSideIntensities {
+    pub lambda_plus: f64,
+    pub lambda_minus: f64,
+}
+
+impl HawkesSideIntensities {
+    pub const fn scale(self, seasonality_factor: f64) -> Self {
+        Self {
+            lambda_plus: self.lambda_plus * seasonality_factor,
+            lambda_minus: self.lambda_minus * seasonality_factor,
+        }
+    }
+}
+
+/// Full state-to-intensity projection output.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HawkesIntensityProjection {
+    pub deseasonalized: HawkesSideIntensities,
+    pub seasonality_scaled: HawkesSideIntensities,
+}
+
+/// Structured failure when resolving seasonality from hourly contract intervals.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HawkesSeasonalityIntervalError {
+    pub interval_index: usize,
+    pub interval_count: usize,
+}
+
+impl Display for HawkesSeasonalityIntervalError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "interval_index {} is out of range for hourly seasonality factor count {}",
+            self.interval_index, self.interval_count
+        )
+    }
+}
+
+impl Error for HawkesSeasonalityIntervalError {}
 
 /// Side label for endogenous buy/sell event jumps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,6 +194,58 @@ impl HawkesExcitationState {
             self.y_minus_plus,
             self.y_minus_minus,
         ]
+    }
+
+    /// Project de-seasonalized intensities from the 4D excitation state.
+    ///
+    /// Equations:
+    /// - `tilde_lambda_plus = lambda_bar + Y++ + Y+-`
+    /// - `tilde_lambda_minus = lambda_bar + Y-+ + Y--`
+    pub const fn project_deseasonalized_intensities(
+        self,
+        lambda_bar: f64,
+    ) -> HawkesSideIntensities {
+        HawkesSideIntensities {
+            lambda_plus: lambda_bar + self.y_plus_plus + self.y_plus_minus,
+            lambda_minus: lambda_bar + self.y_minus_plus + self.y_minus_minus,
+        }
+    }
+
+    /// Project both de-seasonalized and seasonality-scaled intensities.
+    ///
+    /// Scaling equations:
+    /// - `lambda_plus = s(t) * tilde_lambda_plus`
+    /// - `lambda_minus = s(t) * tilde_lambda_minus`
+    pub const fn project_intensities(
+        self,
+        lambda_bar: f64,
+        seasonality_factor: f64,
+    ) -> HawkesIntensityProjection {
+        let deseasonalized = self.project_deseasonalized_intensities(lambda_bar);
+        HawkesIntensityProjection {
+            deseasonalized,
+            seasonality_scaled: deseasonalized.scale(seasonality_factor),
+        }
+    }
+
+    /// Project intensities for an interval index using shared hourly factor contract `s_h`.
+    pub fn project_intensities_for_hourly_interval(
+        self,
+        lambda_bar: f64,
+        hourly_factor_contract: &HourlyFactorContractOutput,
+        interval_index: usize,
+    ) -> Result<HawkesIntensityProjection, HawkesSeasonalityIntervalError> {
+        let interval_count = hourly_factor_contract.s_h.len();
+        let seasonality_factor = hourly_factor_contract
+            .s_h
+            .get(interval_index)
+            .copied()
+            .ok_or(HawkesSeasonalityIntervalError {
+                interval_index,
+                interval_count,
+            })?;
+
+        Ok(self.project_intensities(lambda_bar, seasonality_factor))
     }
 
     /// Apply closed-form shared-decay drift over `delta_t`.
@@ -433,7 +529,11 @@ mod tests {
     use crate::hawkes::{
         HawkesEventSide, HawkesEventSidePayloadError, HawkesExcitationState, HawkesKernelLoadings,
         HawkesKernelParameterError, HawkesKernelParameters, HawkesNewsSeverityMarkError,
-        HawkesSourceComponents,
+        HawkesSeasonalityIntervalError, HawkesSourceComponents,
+    };
+    use crate::hourly_factors::{
+        HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
+        HourlyFactorMaterializationMetadata,
     };
 
     const DECAY_TOLERANCE: f64 = 1e-12;
@@ -444,6 +544,69 @@ mod tests {
             absolute_difference <= tolerance,
             "{field_name} mismatch expected {expected}, found {actual}, absolute_difference={absolute_difference}, tolerance={tolerance}"
         );
+    }
+
+    fn build_hourly_factor_contract_with_seasonality(
+        seasonality_factors: Vec<f64>,
+    ) -> HourlyFactorContractOutput {
+        let interval_count = seasonality_factors.len();
+        let interval_indices = (0..interval_count)
+            .map(|interval_index| {
+                u64::try_from(interval_index).expect("test interval index must fit in u64")
+            })
+            .collect::<Vec<_>>();
+        let interval_start_utc_nanos = (0..interval_count)
+            .map(|interval_index| {
+                i64::try_from(interval_index).expect("test interval index must fit in i64")
+                    * 3_600_000_000_000
+            })
+            .collect::<Vec<_>>();
+        let interval_end_utc_nanos = interval_start_utc_nanos
+            .iter()
+            .copied()
+            .map(|interval_start| interval_start + 3_600_000_000_000)
+            .collect::<Vec<_>>();
+        let interval_start_exchange_local = (0..interval_count)
+            .map(|hour| format!("2026-02-02 {hour:02}:00:00-05:00"))
+            .collect::<Vec<_>>();
+        let interval_end_exchange_local = (0..interval_count)
+            .map(|hour| format!("2026-02-02 {:02}:00:00-05:00", hour + 1))
+            .collect::<Vec<_>>();
+
+        HourlyFactorContractOutput {
+            schema_version: "test.hourly_factor.contract.v1",
+            exchange_code: "XNYS".to_string(),
+            exchange_timezone_name: "America/New_York".to_string(),
+            request_start_utc_nanos: 0,
+            request_end_utc_nanos: i64::try_from(interval_count)
+                .expect("test interval count must fit in i64")
+                * 3_600_000_000_000,
+            interval_indices,
+            interval_start_utc_nanos,
+            interval_end_utc_nanos,
+            interval_start_exchange_local,
+            interval_end_exchange_local,
+            s_h: seasonality_factors,
+            nu_h: vec![0.0; interval_count],
+            metadata: HourlyFactorMaterializationMetadata {
+                seasonality_materialization_method: "test.seasonality.v1".to_string(),
+                news_intensity_materialization_method: "test.news.v1".to_string(),
+                interval_boundary_policy: "test.interval_boundary_policy.v1",
+                interval_alignment_policy: "test.interval_alignment_policy.v1",
+                timezone_transition_policy: "test.timezone_transition_policy.v1",
+                spring_forward_policy: "test.spring_forward_policy.v1",
+                fall_back_policy: "test.fall_back_policy.v1",
+            },
+            diagnostics: HourlyFactorContractDiagnostics {
+                interval_count,
+                first_interval_start_utc_nanos: 0,
+                last_interval_end_utc_nanos: i64::try_from(interval_count)
+                    .expect("test interval count must fit in i64")
+                    * 3_600_000_000_000,
+                skipped_local_hour_interval_count: 0,
+                repeated_local_hour_interval_count: 0,
+            },
+        }
     }
 
     #[test]
@@ -499,6 +662,179 @@ mod tests {
             state.y_minus_minus * decay_factor,
             DECAY_TOLERANCE,
             "y_minus_minus",
+        );
+    }
+
+    #[test]
+    fn intensity_projection_matches_deseasonalized_and_scaled_equations() {
+        let state = HawkesExcitationState {
+            y_plus_plus: 1.2,
+            y_plus_minus: 0.4,
+            y_minus_plus: 0.3,
+            y_minus_minus: 0.5,
+        };
+
+        let projection = state.project_intensities(0.8, 1.25);
+
+        assert_within_tolerance(
+            projection.deseasonalized.lambda_plus,
+            2.4,
+            DECAY_TOLERANCE,
+            "deseasonalized.lambda_plus",
+        );
+        assert_within_tolerance(
+            projection.deseasonalized.lambda_minus,
+            1.6,
+            DECAY_TOLERANCE,
+            "deseasonalized.lambda_minus",
+        );
+        assert_within_tolerance(
+            projection.seasonality_scaled.lambda_plus,
+            3.0,
+            DECAY_TOLERANCE,
+            "seasonality_scaled.lambda_plus",
+        );
+        assert_within_tolerance(
+            projection.seasonality_scaled.lambda_minus,
+            2.0,
+            DECAY_TOLERANCE,
+            "seasonality_scaled.lambda_minus",
+        );
+    }
+
+    #[test]
+    fn intensity_projection_handles_hourly_piecewise_seasonality_edge_values() {
+        let state = HawkesExcitationState {
+            y_plus_plus: 0.15,
+            y_plus_minus: 0.05,
+            y_minus_plus: 0.10,
+            y_minus_minus: 0.20,
+        };
+        let lambda_bar = 0.40;
+        let seasonality_factors = [0.25, 1.0, 3.5];
+        let expected_scaled_plus = [0.15, 0.60, 2.10];
+        let expected_scaled_minus = [0.175, 0.70, 2.45];
+
+        for (position, seasonality_factor) in seasonality_factors.iter().copied().enumerate() {
+            let projection = state.project_intensities(lambda_bar, seasonality_factor);
+
+            assert_within_tolerance(
+                projection.deseasonalized.lambda_plus,
+                0.60,
+                DECAY_TOLERANCE,
+                "deseasonalized.lambda_plus",
+            );
+            assert_within_tolerance(
+                projection.deseasonalized.lambda_minus,
+                0.70,
+                DECAY_TOLERANCE,
+                "deseasonalized.lambda_minus",
+            );
+            assert_within_tolerance(
+                projection.seasonality_scaled.lambda_plus,
+                expected_scaled_plus[position],
+                DECAY_TOLERANCE,
+                "seasonality_scaled.lambda_plus",
+            );
+            assert_within_tolerance(
+                projection.seasonality_scaled.lambda_minus,
+                expected_scaled_minus[position],
+                DECAY_TOLERANCE,
+                "seasonality_scaled.lambda_minus",
+            );
+        }
+    }
+
+    #[test]
+    fn intensity_projection_is_symmetric_when_side_state_components_match() {
+        let symmetric_state = HawkesExcitationState {
+            y_plus_plus: 1.1,
+            y_plus_minus: 0.9,
+            y_minus_plus: 1.1,
+            y_minus_minus: 0.9,
+        };
+
+        let projection = symmetric_state.project_intensities(0.7, 1.4);
+
+        assert_within_tolerance(
+            projection.deseasonalized.lambda_plus,
+            projection.deseasonalized.lambda_minus,
+            DECAY_TOLERANCE,
+            "deseasonalized symmetry",
+        );
+        assert_within_tolerance(
+            projection.seasonality_scaled.lambda_plus,
+            projection.seasonality_scaled.lambda_minus,
+            DECAY_TOLERANCE,
+            "seasonality_scaled symmetry",
+        );
+    }
+
+    #[test]
+    fn hourly_interval_projection_reads_seasonality_from_shared_contract() {
+        let state = HawkesExcitationState {
+            y_plus_plus: 0.2,
+            y_plus_minus: 0.1,
+            y_minus_plus: 0.4,
+            y_minus_minus: 0.3,
+        };
+        let hourly_factor_contract =
+            build_hourly_factor_contract_with_seasonality(vec![0.8, 1.3, 0.6]);
+
+        let projection = state
+            .project_intensities_for_hourly_interval(0.5, &hourly_factor_contract, 1)
+            .expect("interval 1 must resolve from shared hourly contract");
+
+        assert_within_tolerance(
+            projection.deseasonalized.lambda_plus,
+            0.8,
+            DECAY_TOLERANCE,
+            "deseasonalized.lambda_plus",
+        );
+        assert_within_tolerance(
+            projection.deseasonalized.lambda_minus,
+            1.2,
+            DECAY_TOLERANCE,
+            "deseasonalized.lambda_minus",
+        );
+        assert_within_tolerance(
+            projection.seasonality_scaled.lambda_plus,
+            1.04,
+            DECAY_TOLERANCE,
+            "seasonality_scaled.lambda_plus",
+        );
+        assert_within_tolerance(
+            projection.seasonality_scaled.lambda_minus,
+            1.56,
+            DECAY_TOLERANCE,
+            "seasonality_scaled.lambda_minus",
+        );
+    }
+
+    #[test]
+    fn hourly_interval_projection_rejects_out_of_range_interval_index() {
+        let state = HawkesExcitationState {
+            y_plus_plus: 0.2,
+            y_plus_minus: 0.1,
+            y_minus_plus: 0.4,
+            y_minus_minus: 0.3,
+        };
+        let hourly_factor_contract = build_hourly_factor_contract_with_seasonality(vec![1.0, 0.9]);
+
+        let error = state
+            .project_intensities_for_hourly_interval(0.5, &hourly_factor_contract, 2)
+            .expect_err("out-of-range interval index must fail");
+
+        assert_eq!(
+            error,
+            HawkesSeasonalityIntervalError {
+                interval_index: 2,
+                interval_count: 2,
+            }
+        );
+        assert_eq!(
+            error.to_string(),
+            "interval_index 2 is out of range for hourly seasonality factor count 2"
         );
     }
 

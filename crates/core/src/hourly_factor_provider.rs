@@ -248,6 +248,7 @@ mod tests {
     use chrono::{DateTime, Utc};
 
     use crate::calendar::ExchangeCalendarRegistryLoader;
+    use crate::hawkes::HawkesExcitationState;
     use crate::hourly_factor_provider::{
         HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_MATERIALIZATION_METHOD,
         HOURLY_FACTOR_PROVIDER_SEASONALITY_MATERIALIZATION_METHOD, HourlyFactorProviderError,
@@ -255,8 +256,13 @@ mod tests {
         HourlySeasonalityFactorSource, provide_hourly_factor_contract,
     };
     use crate::hourly_factors::HourlyFactorContractError;
-    use crate::pricing::load_hourly_factor_contract_for_pricing;
-    use crate::simulation::load_hourly_factor_contract_for_simulation;
+    use crate::pricing::{
+        load_hourly_factor_contract_for_pricing, project_hawkes_intensities_for_coarse_interval,
+    };
+    use crate::simulation::{
+        load_hourly_factor_contract_for_simulation,
+        project_hawkes_intensities_for_simulation_interval,
+    };
 
     #[test]
     fn provider_returns_structured_error_for_missing_seasonality_source() {
@@ -416,6 +422,50 @@ mod tests {
             output.metadata.news_intensity_materialization_method,
             "shared_precomputed_hourly_nu_h.v1"
         );
+    }
+
+    #[test]
+    fn simulation_and_coarse_paths_share_one_hawkes_intensity_projection_api() {
+        let registry = build_calendar_registry();
+        let request = HourlyFactorProviderRequest {
+            exchange_code: "XNYS",
+            range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
+            range_end_utc: parse_timestamp("2026-02-02T17:00:00Z"),
+            seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
+                hourly_factors: &[1.0, 0.9, 1.1],
+                materialization_method: "shared_precomputed_hourly_s_h.v1",
+            }),
+            news_intensity_source: Some(HourlyNewsIntensityFactorSource::Explicit {
+                hourly_factors: &[0.2, 0.0, 0.3],
+                materialization_method: "shared_precomputed_hourly_nu_h.v1",
+            }),
+        };
+        let hourly_factor_contract = load_hourly_factor_contract_for_simulation(&registry, request)
+            .expect("shared provider output should be valid for projection use");
+        let state = HawkesExcitationState {
+            y_plus_plus: 0.20,
+            y_plus_minus: 0.10,
+            y_minus_plus: 0.30,
+            y_minus_minus: 0.05,
+        };
+
+        let simulation_projection = project_hawkes_intensities_for_simulation_interval(
+            state,
+            0.50,
+            &hourly_factor_contract,
+            1,
+        )
+        .expect("simulation projection should resolve interval seasonality");
+
+        let coarse_projection =
+            project_hawkes_intensities_for_coarse_interval(state, 0.50, &hourly_factor_contract, 1)
+                .expect("coarse projection should resolve interval seasonality");
+
+        assert_eq!(simulation_projection, coarse_projection);
+        assert!((simulation_projection.deseasonalized.lambda_plus - 0.8).abs() <= 1e-12);
+        assert!((simulation_projection.deseasonalized.lambda_minus - 0.85).abs() <= 1e-12);
+        assert!((simulation_projection.seasonality_scaled.lambda_plus - 0.72).abs() <= 1e-12);
+        assert!((simulation_projection.seasonality_scaled.lambda_minus - 0.765).abs() <= 1e-12);
     }
 
     fn build_calendar_registry() -> crate::calendar::ExchangeCalendarRegistry {
