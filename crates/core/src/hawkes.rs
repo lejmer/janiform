@@ -37,6 +37,45 @@ impl HawkesSourceComponents {
     }
 }
 
+/// Side label for endogenous buy/sell event jumps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HawkesEventSide {
+    Buy,
+    Sell,
+}
+
+impl TryFrom<&str> for HawkesEventSide {
+    type Error = HawkesEventSidePayloadError;
+
+    fn try_from(side_payload: &str) -> Result<Self, Self::Error> {
+        match side_payload {
+            "buy" => Ok(Self::Buy),
+            "sell" => Ok(Self::Sell),
+            _ => Err(HawkesEventSidePayloadError {
+                value: side_payload.to_owned(),
+            }),
+        }
+    }
+}
+
+/// Structured parse failure for event-side payloads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HawkesEventSidePayloadError {
+    pub value: String,
+}
+
+impl Display for HawkesEventSidePayloadError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "unsupported event side '{}', expected one of: buy, sell",
+            self.value
+        )
+    }
+}
+
+impl Error for HawkesEventSidePayloadError {}
+
 /// Canonical 4D Hawkes excitation state with explicit `Yij` components.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HawkesExcitationState {
@@ -129,6 +168,57 @@ impl HawkesExcitationState {
             y_minus_plus: self.y_minus_plus * shared_decay_factor,
             y_minus_minus: self.y_minus_minus * shared_decay_factor,
         }
+    }
+
+    /// Apply a buy-event endogenous jump using `k_plus`.
+    ///
+    /// Mapping:
+    /// - `k_plus = (alpha_++, 0, alpha_-+, 0)`
+    pub const fn apply_buy_event_jump(self, alpha: HawkesKernelLoadings) -> Self {
+        self.apply_endogenous_event_jump(HawkesEventSide::Buy, alpha)
+    }
+
+    /// Apply a sell-event endogenous jump using `k_minus`.
+    ///
+    /// Mapping:
+    /// - `k_minus = (0, alpha_+-, 0, alpha_--)`
+    pub const fn apply_sell_event_jump(self, alpha: HawkesKernelLoadings) -> Self {
+        self.apply_endogenous_event_jump(HawkesEventSide::Sell, alpha)
+    }
+
+    /// Apply an endogenous event jump by explicit side value.
+    ///
+    /// This operator handles endogenous `alpha` increments only.
+    /// Exogenous `rho` loading is intentionally excluded.
+    pub const fn apply_endogenous_event_jump(
+        self,
+        side: HawkesEventSide,
+        alpha: HawkesKernelLoadings,
+    ) -> Self {
+        match side {
+            HawkesEventSide::Buy => Self {
+                y_plus_plus: self.y_plus_plus + alpha.plus_plus,
+                y_plus_minus: self.y_plus_minus,
+                y_minus_plus: self.y_minus_plus + alpha.minus_plus,
+                y_minus_minus: self.y_minus_minus,
+            },
+            HawkesEventSide::Sell => Self {
+                y_plus_plus: self.y_plus_plus,
+                y_plus_minus: self.y_plus_minus + alpha.plus_minus,
+                y_minus_plus: self.y_minus_plus,
+                y_minus_minus: self.y_minus_minus + alpha.minus_minus,
+            },
+        }
+    }
+
+    /// Parse a string event-side payload and apply endogenous jump routing.
+    pub fn apply_endogenous_event_jump_from_payload(
+        self,
+        side_payload: &str,
+        alpha: HawkesKernelLoadings,
+    ) -> Result<Self, HawkesEventSidePayloadError> {
+        let side = HawkesEventSide::try_from(side_payload)?;
+        Ok(self.apply_endogenous_event_jump(side, alpha))
     }
 }
 
@@ -292,8 +382,8 @@ fn validate_non_negative_loadings(
 #[cfg(test)]
 mod tests {
     use crate::hawkes::{
-        HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameterError,
-        HawkesKernelParameters, HawkesSourceComponents,
+        HawkesEventSide, HawkesEventSidePayloadError, HawkesExcitationState, HawkesKernelLoadings,
+        HawkesKernelParameterError, HawkesKernelParameters, HawkesSourceComponents,
     };
 
     const DECAY_TOLERANCE: f64 = 1e-12;
@@ -394,6 +484,169 @@ mod tests {
                 y_plus_minus: 0.0,
                 y_minus_plus: 0.0,
                 y_minus_minus: 0.0,
+            }
+        );
+    }
+
+    #[test]
+    fn buy_event_jump_applies_k_plus_component_mapping() {
+        let state = HawkesExcitationState {
+            y_plus_plus: 0.5,
+            y_plus_minus: 0.7,
+            y_minus_plus: 0.9,
+            y_minus_minus: 1.1,
+        };
+        let alpha = HawkesKernelLoadings {
+            plus_plus: 0.2,
+            plus_minus: 0.3,
+            minus_plus: 0.4,
+            minus_minus: 0.6,
+        };
+
+        let updated_state = state.apply_buy_event_jump(alpha);
+
+        assert_eq!(
+            updated_state,
+            HawkesExcitationState {
+                y_plus_plus: 0.7,
+                y_plus_minus: 0.7,
+                y_minus_plus: 1.3,
+                y_minus_minus: 1.1,
+            }
+        );
+    }
+
+    #[test]
+    fn sell_event_jump_applies_k_minus_component_mapping() {
+        let state = HawkesExcitationState {
+            y_plus_plus: 0.5,
+            y_plus_minus: 0.7,
+            y_minus_plus: 0.9,
+            y_minus_minus: 1.1,
+        };
+        let alpha = HawkesKernelLoadings {
+            plus_plus: 0.2,
+            plus_minus: 0.3,
+            minus_plus: 0.4,
+            minus_minus: 0.6,
+        };
+
+        let updated_state = state.apply_sell_event_jump(alpha);
+
+        assert_within_tolerance(
+            updated_state.y_plus_plus,
+            0.5,
+            DECAY_TOLERANCE,
+            "y_plus_plus",
+        );
+        assert_within_tolerance(
+            updated_state.y_plus_minus,
+            1.0,
+            DECAY_TOLERANCE,
+            "y_plus_minus",
+        );
+        assert_within_tolerance(
+            updated_state.y_minus_plus,
+            0.9,
+            DECAY_TOLERANCE,
+            "y_minus_plus",
+        );
+        assert_within_tolerance(
+            updated_state.y_minus_minus,
+            1.7,
+            DECAY_TOLERANCE,
+            "y_minus_minus",
+        );
+    }
+
+    #[test]
+    fn interleaved_event_jump_sequence_composes_with_drift() {
+        let state = HawkesExcitationState {
+            y_plus_plus: 1.0,
+            y_plus_minus: 2.0,
+            y_minus_plus: 3.0,
+            y_minus_minus: 4.0,
+        };
+        let alpha = HawkesKernelLoadings {
+            plus_plus: 0.6,
+            plus_minus: 0.1,
+            minus_plus: 0.2,
+            minus_minus: 0.7,
+        };
+
+        let updated_state = state
+            .apply_shared_decay_drift(1.0, 0.5)
+            .apply_endogenous_event_jump(HawkesEventSide::Buy, alpha)
+            .apply_endogenous_event_jump(HawkesEventSide::Sell, alpha)
+            .apply_endogenous_event_jump(HawkesEventSide::Buy, alpha);
+
+        let decay_factor = (-0.5f64).exp();
+
+        assert_within_tolerance(
+            updated_state.y_plus_plus,
+            1.0 * decay_factor + 1.2,
+            DECAY_TOLERANCE,
+            "y_plus_plus",
+        );
+        assert_within_tolerance(
+            updated_state.y_plus_minus,
+            2.0 * decay_factor + 0.1,
+            DECAY_TOLERANCE,
+            "y_plus_minus",
+        );
+        assert_within_tolerance(
+            updated_state.y_minus_plus,
+            3.0 * decay_factor + 0.4,
+            DECAY_TOLERANCE,
+            "y_minus_plus",
+        );
+        assert_within_tolerance(
+            updated_state.y_minus_minus,
+            4.0 * decay_factor + 0.7,
+            DECAY_TOLERANCE,
+            "y_minus_minus",
+        );
+    }
+
+    #[test]
+    fn event_side_payload_parsing_rejects_unsupported_value() {
+        let error =
+            HawkesEventSide::try_from("neutral").expect_err("unsupported side payload must fail");
+
+        assert_eq!(
+            error,
+            HawkesEventSidePayloadError {
+                value: "neutral".to_owned(),
+            }
+        );
+        assert_eq!(
+            error.to_string(),
+            "unsupported event side 'neutral', expected one of: buy, sell"
+        );
+    }
+
+    #[test]
+    fn payload_based_event_jump_returns_error_for_unsupported_side() {
+        let state = HawkesExcitationState {
+            y_plus_plus: 0.0,
+            y_plus_minus: 0.0,
+            y_minus_plus: 0.0,
+            y_minus_minus: 0.0,
+        };
+        let alpha = HawkesKernelLoadings {
+            plus_plus: 0.2,
+            plus_minus: 0.3,
+            minus_plus: 0.4,
+            minus_minus: 0.6,
+        };
+
+        let error = state
+            .apply_endogenous_event_jump_from_payload("BUY", alpha)
+            .expect_err("unsupported payload must fail");
+        assert_eq!(
+            error,
+            HawkesEventSidePayloadError {
+                value: "BUY".to_owned(),
             }
         );
     }
