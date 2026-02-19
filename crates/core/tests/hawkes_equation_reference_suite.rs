@@ -41,6 +41,7 @@ struct StateMismatchDiagnostic {
 
 fn reference_kernel_parameters() -> HawkesKernelParameters {
     HawkesKernelParameters::try_new(
+        0.5,
         std::f64::consts::LN_2,
         HawkesKernelLoadings {
             plus_plus: 0.30,
