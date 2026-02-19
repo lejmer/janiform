@@ -2,7 +2,8 @@
 
 use crate::calendar::ExchangeCalendarRegistry;
 use crate::hawkes::{
-    HawkesExcitationState, HawkesIntensityProjection, HawkesSeasonalityIntervalError,
+    HawkesExcitationState, HawkesIntensityProjection, HawkesKernelParameters,
+    HawkesSeasonalityIntervalError, HawkesTransitionError, HawkesTransitionStep,
 };
 use crate::hourly_factor_provider::{
     HourlyFactorProviderError, HourlyFactorProviderRequest, provide_hourly_factor_contract,
@@ -29,4 +30,16 @@ pub fn project_hawkes_intensities_for_simulation_interval(
         hourly_factor_contract,
         interval_index,
     )
+}
+
+/// Apply one simulation-path Hawkes state transition using canonical call order.
+///
+/// Call order is delegated to `HawkesExcitationState::apply_transition_step`:
+/// drift, then optional endogenous jump, then optional exogenous jump.
+pub fn evolve_hawkes_state_for_simulation_step(
+    state: HawkesExcitationState,
+    kernel_parameters: HawkesKernelParameters,
+    transition_step: HawkesTransitionStep,
+) -> Result<HawkesExcitationState, HawkesTransitionError> {
+    state.apply_transition_step(kernel_parameters, transition_step)
 }

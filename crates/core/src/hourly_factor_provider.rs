@@ -248,7 +248,14 @@ mod tests {
     use chrono::{DateTime, Utc};
 
     use crate::calendar::ExchangeCalendarRegistryLoader;
-    use crate::hawkes::HawkesExcitationState;
+    use crate::calibration::{
+        evolve_hawkes_state_for_calibration_step, load_hourly_factor_contract_for_calibration,
+        project_hawkes_intensities_for_calibration_interval,
+    };
+    use crate::hawkes::{
+        HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
+        HawkesTransitionStep,
+    };
     use crate::hourly_factor_provider::{
         HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_MATERIALIZATION_METHOD,
         HOURLY_FACTOR_PROVIDER_SEASONALITY_MATERIALIZATION_METHOD, HourlyFactorProviderError,
@@ -257,10 +264,11 @@ mod tests {
     };
     use crate::hourly_factors::HourlyFactorContractError;
     use crate::pricing::{
-        load_hourly_factor_contract_for_pricing, project_hawkes_intensities_for_coarse_interval,
+        evolve_hawkes_state_for_coarse_interval_step, load_hourly_factor_contract_for_pricing,
+        project_hawkes_intensities_for_coarse_interval,
     };
     use crate::simulation::{
-        load_hourly_factor_contract_for_simulation,
+        evolve_hawkes_state_for_simulation_step, load_hourly_factor_contract_for_simulation,
         project_hawkes_intensities_for_simulation_interval,
     };
 
@@ -425,7 +433,32 @@ mod tests {
     }
 
     #[test]
-    fn simulation_and_coarse_paths_share_one_hawkes_intensity_projection_api() {
+    fn calibration_path_consumes_shared_hourly_factor_provider() {
+        let registry = build_calendar_registry();
+
+        let request = HourlyFactorProviderRequest {
+            exchange_code: "XNYS",
+            range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
+            range_end_utc: parse_timestamp("2026-02-02T17:00:00Z"),
+            seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
+                hourly_factors: &[1.3, 0.95, 1.05],
+                materialization_method: "shared_precomputed_hourly_s_h.v1",
+            }),
+            news_intensity_source: Some(HourlyNewsIntensityFactorSource::Explicit {
+                hourly_factors: &[0.0, 0.4, 0.1],
+                materialization_method: "shared_precomputed_hourly_nu_h.v1",
+            }),
+        };
+
+        let output = load_hourly_factor_contract_for_calibration(&registry, request)
+            .expect("calibration path should resolve hourly factors from provider");
+
+        assert_eq!(output.s_h, vec![1.3, 0.95, 1.05]);
+        assert_eq!(output.nu_h, vec![0.0, 0.4, 0.1]);
+    }
+
+    #[test]
+    fn simulation_coarse_and_calibration_paths_share_one_hawkes_intensity_projection_api() {
         let registry = build_calendar_registry();
         let request = HourlyFactorProviderRequest {
             exchange_code: "XNYS",
@@ -460,12 +493,78 @@ mod tests {
         let coarse_projection =
             project_hawkes_intensities_for_coarse_interval(state, 0.50, &hourly_factor_contract, 1)
                 .expect("coarse projection should resolve interval seasonality");
+        let calibration_projection = project_hawkes_intensities_for_calibration_interval(
+            state,
+            0.50,
+            &hourly_factor_contract,
+            1,
+        )
+        .expect("calibration projection should resolve interval seasonality");
 
         assert_eq!(simulation_projection, coarse_projection);
+        assert_eq!(simulation_projection, calibration_projection);
         assert!((simulation_projection.deseasonalized.lambda_plus - 0.8).abs() <= 1e-12);
         assert!((simulation_projection.deseasonalized.lambda_minus - 0.85).abs() <= 1e-12);
         assert!((simulation_projection.seasonality_scaled.lambda_plus - 0.72).abs() <= 1e-12);
         assert!((simulation_projection.seasonality_scaled.lambda_minus - 0.765).abs() <= 1e-12);
+    }
+
+    #[test]
+    fn simulation_coarse_and_calibration_paths_share_one_hawkes_transition_api() {
+        let initial_state = HawkesExcitationState {
+            y_plus_plus: 0.20,
+            y_plus_minus: 0.10,
+            y_minus_plus: 0.30,
+            y_minus_minus: 0.05,
+        };
+
+        let kernel_parameters = HawkesKernelParameters::try_new(
+            1.1,
+            HawkesKernelLoadings {
+                plus_plus: 0.25,
+                plus_minus: 0.20,
+                minus_plus: 0.12,
+                minus_minus: 0.30,
+            },
+            HawkesKernelLoadings {
+                plus_plus: 0.05,
+                plus_minus: 0.10,
+                minus_plus: 0.08,
+                minus_minus: 0.04,
+            },
+        )
+        .expect("kernel fixture must be valid");
+
+        let transition_step =
+            HawkesTransitionStep::new(0.25, Some(HawkesEventSide::Buy), Some(1.5));
+
+        let reference_state = initial_state
+            .apply_transition_step(kernel_parameters, transition_step)
+            .expect("reference transition must succeed");
+        let simulation_state = evolve_hawkes_state_for_simulation_step(
+            initial_state,
+            kernel_parameters,
+            transition_step,
+        )
+        .expect("simulation transition must use canonical transition API");
+
+        let coarse_state = evolve_hawkes_state_for_coarse_interval_step(
+            initial_state,
+            kernel_parameters,
+            transition_step,
+        )
+        .expect("coarse transition must use canonical transition API");
+
+        let calibration_state = evolve_hawkes_state_for_calibration_step(
+            initial_state,
+            kernel_parameters,
+            transition_step,
+        )
+        .expect("calibration transition must use canonical transition API");
+
+        assert_eq!(simulation_state, reference_state);
+        assert_eq!(coarse_state, reference_state);
+        assert_eq!(calibration_state, reference_state);
     }
 
     fn build_calendar_registry() -> crate::calendar::ExchangeCalendarRegistry {

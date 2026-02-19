@@ -138,6 +138,66 @@ impl Display for HawkesNewsSeverityMarkError {
 
 impl Error for HawkesNewsSeverityMarkError {}
 
+/// Canonical transition step that composes drift and optional jumps.
+///
+/// Call-order policy is explicit and deterministic:
+/// 1. shared-decay drift over `delta_t`
+/// 2. optional endogenous jump by `endogenous_event_side`
+/// 3. optional exogenous jump by `exogenous_news_severity_mark`
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HawkesTransitionStep {
+    pub delta_t: f64,
+    pub endogenous_event_side: Option<HawkesEventSide>,
+    pub exogenous_news_severity_mark: Option<f64>,
+}
+
+impl HawkesTransitionStep {
+    pub const fn new(
+        delta_t: f64,
+        endogenous_event_side: Option<HawkesEventSide>,
+        exogenous_news_severity_mark: Option<f64>,
+    ) -> Self {
+        Self {
+            delta_t,
+            endogenous_event_side,
+            exogenous_news_severity_mark,
+        }
+    }
+}
+
+/// Structured validation failures for canonical transition composition helpers.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HawkesTransitionError {
+    InvalidDeltaT { value: f64 },
+    InvalidBeta { value: f64 },
+    InvalidNewsSeverityMark { source: HawkesNewsSeverityMarkError },
+}
+
+impl Display for HawkesTransitionError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidDeltaT { value } => write!(
+                formatter,
+                "delta_t must be finite and non-negative for transition composition, found {value}"
+            ),
+            Self::InvalidBeta { value } => write!(
+                formatter,
+                "beta must be finite and strictly positive for transition composition, found {value}"
+            ),
+            Self::InvalidNewsSeverityMark { source } => write!(formatter, "{source}"),
+        }
+    }
+}
+
+impl Error for HawkesTransitionError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidNewsSeverityMark { source } => Some(source),
+            _ => None,
+        }
+    }
+}
+
 /// Canonical 4D Hawkes excitation state with explicit `Yij` components.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HawkesExcitationState {
@@ -365,6 +425,63 @@ impl HawkesExcitationState {
             y_minus_minus: self.y_minus_minus + rho.minus_minus * severity_mark,
         })
     }
+
+    /// Apply one canonical transition step using deterministic call order.
+    ///
+    /// Call order:
+    /// 1. shared-decay drift over `transition_step.delta_t`
+    /// 2. optional endogenous jump using `kernel_parameters.alpha`
+    /// 3. optional exogenous jump using `kernel_parameters.rho`
+    pub fn apply_transition_step(
+        self,
+        kernel_parameters: HawkesKernelParameters,
+        transition_step: HawkesTransitionStep,
+    ) -> Result<Self, HawkesTransitionError> {
+        if !transition_step.delta_t.is_finite() || transition_step.delta_t < 0.0 {
+            return Err(HawkesTransitionError::InvalidDeltaT {
+                value: transition_step.delta_t,
+            });
+        }
+        if !kernel_parameters.beta.is_finite() || kernel_parameters.beta <= 0.0 {
+            return Err(HawkesTransitionError::InvalidBeta {
+                value: kernel_parameters.beta,
+            });
+        }
+
+        let mut next_state =
+            self.apply_shared_decay_drift(kernel_parameters.beta, transition_step.delta_t);
+
+        if let Some(endogenous_event_side) = transition_step.endogenous_event_side {
+            next_state = next_state
+                .apply_endogenous_event_jump(endogenous_event_side, kernel_parameters.alpha);
+        }
+
+        if let Some(exogenous_news_severity_mark) = transition_step.exogenous_news_severity_mark {
+            return next_state
+                .apply_exogenous_news_loading_jump(
+                    kernel_parameters.rho,
+                    exogenous_news_severity_mark,
+                )
+                .map_err(|source| HawkesTransitionError::InvalidNewsSeverityMark { source });
+        }
+
+        Ok(next_state)
+    }
+
+    /// Apply a transition sequence step-by-step using `apply_transition_step`.
+    pub fn apply_transition_sequence(
+        self,
+        kernel_parameters: HawkesKernelParameters,
+        transition_steps: &[HawkesTransitionStep],
+    ) -> Result<Self, HawkesTransitionError> {
+        let mut next_state = self;
+
+        for transition_step in transition_steps {
+            next_state = next_state.apply_transition_step(kernel_parameters, *transition_step)?;
+        }
+
+        Ok(next_state)
+    }
 }
 
 /// Canonical 4-component loading map used for `alpha_ij` and `rho_ij`.
@@ -529,7 +646,8 @@ mod tests {
     use crate::hawkes::{
         HawkesEventSide, HawkesEventSidePayloadError, HawkesExcitationState, HawkesKernelLoadings,
         HawkesKernelParameterError, HawkesKernelParameters, HawkesNewsSeverityMarkError,
-        HawkesSeasonalityIntervalError, HawkesSourceComponents,
+        HawkesSeasonalityIntervalError, HawkesSourceComponents, HawkesTransitionError,
+        HawkesTransitionStep,
     };
     use crate::hourly_factors::{
         HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
@@ -1142,6 +1260,152 @@ mod tests {
             DECAY_TOLERANCE,
             "y_minus_minus",
         );
+    }
+
+    #[test]
+    fn composed_transition_step_matches_reference_call_order_sequence() {
+        let state = HawkesExcitationState {
+            y_plus_plus: 1.0,
+            y_plus_minus: 2.0,
+            y_minus_plus: 3.0,
+            y_minus_minus: 4.0,
+        };
+        let kernel_parameters = HawkesKernelParameters::try_new(
+            1.0,
+            HawkesKernelLoadings {
+                plus_plus: 0.3,
+                plus_minus: 0.7,
+                minus_plus: 0.5,
+                minus_minus: 0.9,
+            },
+            HawkesKernelLoadings {
+                plus_plus: 0.2,
+                plus_minus: 0.1,
+                minus_plus: 0.05,
+                minus_minus: 0.12,
+            },
+        )
+        .expect("kernel fixture must be valid");
+        let transition_step = HawkesTransitionStep::new(0.4, Some(HawkesEventSide::Buy), Some(1.5));
+
+        let expected_state = state
+            .apply_shared_decay_drift(kernel_parameters.beta, transition_step.delta_t)
+            .apply_endogenous_event_jump(HawkesEventSide::Buy, kernel_parameters.alpha)
+            .apply_exogenous_news_loading_jump(
+                kernel_parameters.rho,
+                transition_step
+                    .exogenous_news_severity_mark
+                    .expect("fixture must define exogenous severity mark"),
+            )
+            .expect("fixture severity mark must be valid");
+
+        let composed_state = state
+            .apply_transition_step(kernel_parameters, transition_step)
+            .expect("canonical transition composition should succeed");
+
+        assert_eq!(composed_state, expected_state);
+    }
+
+    #[test]
+    fn composed_transition_sequence_matches_manual_step_iteration() {
+        let state = HawkesExcitationState {
+            y_plus_plus: 0.8,
+            y_plus_minus: 0.4,
+            y_minus_plus: 0.2,
+            y_minus_minus: 0.5,
+        };
+
+        let kernel_parameters = HawkesKernelParameters::try_new(
+            1.2,
+            HawkesKernelLoadings {
+                plus_plus: 0.15,
+                plus_minus: 0.05,
+                minus_plus: 0.25,
+                minus_minus: 0.2,
+            },
+            HawkesKernelLoadings {
+                plus_plus: 0.2,
+                plus_minus: 0.15,
+                minus_plus: 0.1,
+                minus_minus: 0.05,
+            },
+        )
+        .expect("kernel fixture must be valid");
+
+        let transition_steps = [
+            HawkesTransitionStep::new(0.3, Some(HawkesEventSide::Sell), None),
+            HawkesTransitionStep::new(0.1, None, Some(0.75)),
+            HawkesTransitionStep::new(0.0, Some(HawkesEventSide::Buy), Some(0.0)),
+        ];
+
+        let expected_state = transition_steps
+            .into_iter()
+            .try_fold(state, |next_state, transition_step| {
+                let mut manual_state = next_state
+                    .apply_shared_decay_drift(kernel_parameters.beta, transition_step.delta_t);
+                if let Some(endogenous_event_side) = transition_step.endogenous_event_side {
+                    manual_state = manual_state.apply_endogenous_event_jump(
+                        endogenous_event_side,
+                        kernel_parameters.alpha,
+                    );
+                }
+                if let Some(exogenous_news_severity_mark) =
+                    transition_step.exogenous_news_severity_mark
+                {
+                    return manual_state
+                        .apply_exogenous_news_loading_jump(
+                            kernel_parameters.rho,
+                            exogenous_news_severity_mark,
+                        )
+                        .map_err(|source| HawkesTransitionError::InvalidNewsSeverityMark {
+                            source,
+                        });
+                }
+                Ok(manual_state)
+            })
+            .expect("manual transition sequence should succeed");
+
+        let composed_state = state
+            .apply_transition_sequence(kernel_parameters, &transition_steps)
+            .expect("canonical transition sequence should succeed");
+
+        assert_eq!(composed_state, expected_state);
+    }
+
+    #[test]
+    fn composed_transition_step_rejects_negative_drift_duration() {
+        let state = HawkesExcitationState {
+            y_plus_plus: 0.0,
+            y_plus_minus: 0.0,
+            y_minus_plus: 0.0,
+            y_minus_minus: 0.0,
+        };
+
+        let kernel_parameters = HawkesKernelParameters::try_new(
+            1.0,
+            HawkesKernelLoadings {
+                plus_plus: 0.0,
+                plus_minus: 0.0,
+                minus_plus: 0.0,
+                minus_minus: 0.0,
+            },
+            HawkesKernelLoadings {
+                plus_plus: 0.0,
+                plus_minus: 0.0,
+                minus_plus: 0.0,
+                minus_minus: 0.0,
+            },
+        )
+        .expect("kernel fixture must be valid");
+
+        let error = state
+            .apply_transition_step(
+                kernel_parameters,
+                HawkesTransitionStep::new(-0.01, None, None),
+            )
+            .expect_err("negative drift duration must fail");
+
+        assert_eq!(error, HawkesTransitionError::InvalidDeltaT { value: -0.01 });
     }
 
     #[test]
