@@ -8,6 +8,7 @@ pub mod hawkes;
 pub mod hourly_factor_provider;
 pub mod hourly_factors;
 pub mod pricing;
+pub mod randomness;
 pub mod seasonality;
 pub mod simulation;
 pub mod validation;
