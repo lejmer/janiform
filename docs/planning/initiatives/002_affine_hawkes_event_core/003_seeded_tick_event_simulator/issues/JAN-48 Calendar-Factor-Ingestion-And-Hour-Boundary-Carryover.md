@@ -9,7 +9,7 @@ Integrate simulator with hourly calendar factors and enforce deterministic state
 - Boundary transitions at interval edges are deterministic and documented
 - Missing factor intervals trigger explicit failure or defined fallback behavior
 - Factor intervals act as calendar and seasonality controls only and do not impose a fixed event-time grid inside intervals
-- Intrainterval event scheduling semantics are documented as event-time updates with sequential Hawkes state transitions
+- Intra-interval event scheduling semantics are documented as event-time updates with sequential Hawkes state transitions
 
 ### Unit tests
 - Multi-hour simulations verifying boundary carryover consistency and missing factor intervals with expected failure or fallback outcomes
