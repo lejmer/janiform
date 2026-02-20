@@ -2,8 +2,9 @@
 
 use crate::calendar::ExchangeCalendarRegistry;
 use crate::hawkes::{
-    HawkesExcitationState, HawkesIntensityProjection, HawkesKernelParameters,
-    HawkesSeasonalityIntervalError, HawkesTransitionError, HawkesTransitionStep,
+    HawkesExcitationState, HawkesIntensityProjection, HawkesKernelLoadings,
+    HawkesKernelParameterValidationReport, HawkesKernelParameters, HawkesSeasonalityIntervalError,
+    HawkesTransitionError, HawkesTransitionStep,
 };
 use crate::hourly_factor_provider::{
     HourlyFactorProviderError, HourlyFactorProviderRequest, provide_hourly_factor_contract,
@@ -16,6 +17,16 @@ pub fn load_hourly_factor_contract_for_calibration(
     provider_request: HourlyFactorProviderRequest<'_>,
 ) -> Result<HourlyFactorContractOutput, HourlyFactorProviderError> {
     provide_hourly_factor_contract(calendar_registry, provider_request)
+}
+
+/// Run pure Hawkes kernel-domain checks before expensive calibration loops.
+pub fn precheck_hawkes_kernel_parameter_domain(
+    lambda_bar: f64,
+    beta: f64,
+    alpha: HawkesKernelLoadings,
+    rho: HawkesKernelLoadings,
+) -> HawkesKernelParameterValidationReport {
+    HawkesKernelParameters::validate_domain(lambda_bar, beta, alpha, rho)
 }
 
 /// Project state to interval intensities for calibration objective evaluation.

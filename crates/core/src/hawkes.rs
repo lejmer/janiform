@@ -1005,6 +1005,58 @@ pub struct HawkesKernelParameters {
 }
 
 impl HawkesKernelParameters {
+    /// Run pure domain validation without constructing a kernel payload.
+    ///
+    /// This helper is intended for pre-checking candidate vectors before
+    /// expensive calibration loops.
+    pub fn validate_domain(
+        lambda_bar: f64,
+        beta: f64,
+        alpha: HawkesKernelLoadings,
+        rho: HawkesKernelLoadings,
+    ) -> HawkesKernelParameterValidationReport {
+        let mut violations: Vec<HawkesKernelParameterViolation> = Vec::new();
+
+        if !lambda_bar.is_finite() || lambda_bar <= 0.0 {
+            violations.push(HawkesKernelParameterViolation {
+                field: "lambda_bar",
+                constraint: HawkesKernelParameterConstraint::FiniteAndStrictlyPositive,
+                value: lambda_bar,
+            });
+        }
+
+        if !beta.is_finite() || beta <= 0.0 {
+            violations.push(HawkesKernelParameterViolation {
+                field: "beta",
+                constraint: HawkesKernelParameterConstraint::FiniteAndStrictlyPositive,
+                value: beta,
+            });
+        }
+
+        collect_non_negative_loading_violations(
+            alpha,
+            [
+                "alpha.plus_plus",
+                "alpha.plus_minus",
+                "alpha.minus_plus",
+                "alpha.minus_minus",
+            ],
+            &mut violations,
+        );
+        collect_non_negative_loading_violations(
+            rho,
+            [
+                "rho.plus_plus",
+                "rho.plus_minus",
+                "rho.minus_plus",
+                "rho.minus_minus",
+            ],
+            &mut violations,
+        );
+
+        HawkesKernelParameterValidationReport { violations }
+    }
+
     /// Validate and construct kernel parameters.
     ///
     /// Domain checks:
@@ -1018,31 +1070,10 @@ impl HawkesKernelParameters {
         alpha: HawkesKernelLoadings,
         rho: HawkesKernelLoadings,
     ) -> Result<Self, HawkesKernelParameterError> {
-        if !lambda_bar.is_finite() || lambda_bar <= 0.0 {
-            return Err(HawkesKernelParameterError::InvalidLambdaBar { value: lambda_bar });
+        let validation_report = Self::validate_domain(lambda_bar, beta, alpha, rho);
+        if let Some(violation) = validation_report.first_violation() {
+            return Err(map_parameter_violation_to_error(violation));
         }
-        if !beta.is_finite() || beta <= 0.0 {
-            return Err(HawkesKernelParameterError::InvalidBeta { value: beta });
-        }
-
-        validate_non_negative_loadings(
-            alpha,
-            [
-                "alpha.plus_plus",
-                "alpha.plus_minus",
-                "alpha.minus_plus",
-                "alpha.minus_minus",
-            ],
-        )?;
-        validate_non_negative_loadings(
-            rho,
-            [
-                "rho.plus_plus",
-                "rho.plus_minus",
-                "rho.minus_plus",
-                "rho.minus_minus",
-            ],
-        )?;
 
         Ok(Self {
             lambda_bar,
@@ -1070,6 +1101,48 @@ impl HawkesKernelParameters {
             HawkesKernelLoadings::from_target_components(alpha_target_plus, alpha_target_minus),
             HawkesKernelLoadings::from_target_components(rho_target_plus, rho_target_minus),
         )
+    }
+}
+
+/// Machine-readable constraint labels for kernel domain checks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum HawkesKernelParameterConstraint {
+    FiniteAndStrictlyPositive,
+    FiniteAndNonNegative,
+}
+
+impl Display for HawkesKernelParameterConstraint {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FiniteAndStrictlyPositive => {
+                write!(formatter, "finite_and_strictly_positive")
+            }
+            Self::FiniteAndNonNegative => write!(formatter, "finite_and_non_negative"),
+        }
+    }
+}
+
+/// Structured machine-readable violation payload for domain pre-checks.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct HawkesKernelParameterViolation {
+    pub field: &'static str,
+    pub constraint: HawkesKernelParameterConstraint,
+    pub value: f64,
+}
+
+/// Full report for standalone kernel-domain pre-check calls.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HawkesKernelParameterValidationReport {
+    pub violations: Vec<HawkesKernelParameterViolation>,
+}
+
+impl HawkesKernelParameterValidationReport {
+    pub fn is_valid(&self) -> bool {
+        self.violations.is_empty()
+    }
+
+    pub fn first_violation(&self) -> Option<HawkesKernelParameterViolation> {
+        self.violations.first().copied()
     }
 }
 
@@ -1130,20 +1203,50 @@ fn validate_non_negative_loadings(
     loadings: HawkesKernelLoadings,
     component_fields: [&'static str; 4],
 ) -> Result<(), HawkesKernelParameterError> {
-    let component_values = loadings.as_model_ordered_array();
+    let mut violations: Vec<HawkesKernelParameterViolation> = Vec::new();
+    collect_non_negative_loading_violations(loadings, component_fields, &mut violations);
 
-    for (component_field_name, component_value) in
-        component_fields.into_iter().zip(component_values)
+    if let Some(violation) = violations.first().copied() {
+        return Err(map_parameter_violation_to_error(violation));
+    }
+
+    Ok(())
+}
+
+fn collect_non_negative_loading_violations(
+    loadings: HawkesKernelLoadings,
+    component_fields: [&'static str; 4],
+    violations: &mut Vec<HawkesKernelParameterViolation>,
+) {
+    for (component_field_name, component_value) in component_fields
+        .into_iter()
+        .zip(loadings.as_model_ordered_array())
     {
         if !component_value.is_finite() || component_value < 0.0 {
-            return Err(HawkesKernelParameterError::InvalidLoadingComponent {
+            violations.push(HawkesKernelParameterViolation {
                 field: component_field_name,
+                constraint: HawkesKernelParameterConstraint::FiniteAndNonNegative,
                 value: component_value,
             });
         }
     }
+}
 
-    Ok(())
+fn map_parameter_violation_to_error(
+    violation: HawkesKernelParameterViolation,
+) -> HawkesKernelParameterError {
+    match violation.field {
+        "lambda_bar" => HawkesKernelParameterError::InvalidLambdaBar {
+            value: violation.value,
+        },
+        "beta" => HawkesKernelParameterError::InvalidBeta {
+            value: violation.value,
+        },
+        _ => HawkesKernelParameterError::InvalidLoadingComponent {
+            field: violation.field,
+            value: violation.value,
+        },
+    }
 }
 
 fn derive_self_to_cross_ratio(self_loading: f64, cross_loading: f64) -> f64 {
@@ -1158,7 +1261,8 @@ fn derive_self_to_cross_ratio(self_loading: f64, cross_loading: f64) -> f64 {
 mod tests {
     use crate::hawkes::{
         HawkesEventSide, HawkesEventSidePayloadError, HawkesExcitationState, HawkesKernelLoadings,
-        HawkesKernelParameterError, HawkesKernelParameters, HawkesNewsSeverityMarkError,
+        HawkesKernelParameterConstraint, HawkesKernelParameterError,
+        HawkesKernelParameterViolation, HawkesKernelParameters, HawkesNewsSeverityMarkError,
         HawkesSeasonalityIntervalError, HawkesSourceComponents,
         HawkesStructuredAlphaParameterError, HawkesStructuredAlphaParameterization,
         HawkesStructuredRhoParameterError, HawkesStructuredRhoParameterization,
@@ -2262,6 +2366,92 @@ mod tests {
         assert_eq!(parameters.beta, 1.25);
         assert_eq!(parameters.alpha, alpha);
         assert_eq!(parameters.rho, rho);
+    }
+
+    #[test]
+    fn kernel_parameter_domain_precheck_accepts_interior_and_boundary_adjacent_values() {
+        let alpha = HawkesKernelLoadings {
+            plus_plus: f64::EPSILON,
+            plus_minus: 0.0,
+            minus_plus: 0.15,
+            minus_minus: 0.45,
+        };
+        let rho = HawkesKernelLoadings {
+            plus_plus: 0.0,
+            plus_minus: 0.0,
+            minus_plus: 0.25,
+            minus_minus: 0.0,
+        };
+
+        let interior_report = HawkesKernelParameters::validate_domain(0.85, 1.25, alpha, rho);
+        assert!(interior_report.is_valid());
+        assert_eq!(
+            interior_report.first_violation(),
+            None,
+            "valid interior payload should not report violations"
+        );
+
+        let boundary_adjacent_report =
+            HawkesKernelParameters::validate_domain(f64::EPSILON, f64::EPSILON, alpha, rho);
+        assert!(boundary_adjacent_report.is_valid());
+        assert_eq!(
+            boundary_adjacent_report.violations,
+            Vec::<HawkesKernelParameterViolation>::new(),
+            "strict positivity must accept tiny positive values at the boundary"
+        );
+    }
+
+    #[test]
+    fn kernel_parameter_domain_precheck_reports_exact_violation_payload_structure() {
+        let alpha = HawkesKernelLoadings {
+            plus_plus: 0.6,
+            plus_minus: -0.01,
+            minus_plus: 0.2,
+            minus_minus: 0.7,
+        };
+        let rho = HawkesKernelLoadings {
+            plus_plus: 0.0,
+            plus_minus: 0.05,
+            minus_plus: 0.12,
+            minus_minus: -0.001,
+        };
+
+        let report = HawkesKernelParameters::validate_domain(0.0, -0.5, alpha, rho);
+
+        assert!(!report.is_valid());
+        assert_eq!(
+            report.violations,
+            vec![
+                HawkesKernelParameterViolation {
+                    field: "lambda_bar",
+                    constraint: HawkesKernelParameterConstraint::FiniteAndStrictlyPositive,
+                    value: 0.0,
+                },
+                HawkesKernelParameterViolation {
+                    field: "beta",
+                    constraint: HawkesKernelParameterConstraint::FiniteAndStrictlyPositive,
+                    value: -0.5,
+                },
+                HawkesKernelParameterViolation {
+                    field: "alpha.plus_minus",
+                    constraint: HawkesKernelParameterConstraint::FiniteAndNonNegative,
+                    value: -0.01,
+                },
+                HawkesKernelParameterViolation {
+                    field: "rho.minus_minus",
+                    constraint: HawkesKernelParameterConstraint::FiniteAndNonNegative,
+                    value: -0.001,
+                },
+            ]
+        );
+        assert_eq!(
+            report.first_violation(),
+            Some(HawkesKernelParameterViolation {
+                field: "lambda_bar",
+                constraint: HawkesKernelParameterConstraint::FiniteAndStrictlyPositive,
+                value: 0.0,
+            })
+        );
     }
 
     #[test]
