@@ -46,6 +46,14 @@ pub const SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY: &str =
 pub const SEEDED_TICK_EVENT_SIDE_ENCODING_POLICY: &str = "lowercase_buy_or_sell.v1";
 pub const SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY: &str =
     "post_event_transition_pre_following_same_timestamp_updates.v1";
+pub const SEEDED_TICK_EVENT_INTERVAL_BOUNDARY_POLICY: &str =
+    "hourly_factor_start_inclusive_end_exclusive_with_strict_consecutive_coverage.v1";
+pub const SEEDED_TICK_EVENT_STATE_CARRYOVER_POLICY: &str =
+    "full_4d_hawkes_excitation_state_carryover_across_interval_boundaries.v1";
+pub const SEEDED_TICK_EVENT_FACTOR_CONTROL_POLICY: &str =
+    "interval_aligned_s_h_nu_h_control_intensity_only_without_intra_interval_grid.v1";
+pub const SEEDED_TICK_EVENT_INTRA_INTERVAL_SCHEDULING_POLICY: &str =
+    "event_time_updates_with_sequential_hawkes_transition_composition.v1";
 
 pub const SEEDED_TICK_EVENT_RANDOMNESS_STREAM_POLICY: &str = SIMULATION_RANDOMNESS_STREAM_POLICY;
 pub const SEEDED_TICK_EVENT_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY: &str =
@@ -137,6 +145,7 @@ impl SeededTickSimulationRunConfig {
     /// - invalid horizon value (`horizon_interval_count == 0`)
     /// - missing or incomplete hourly factor interval vectors
     /// - mismatched hourly factor diagnostics interval count
+    /// - non-consecutive or invalid hourly factor interval bounds in simulated horizon
     /// - start time not aligned to first hourly factor interval start
     /// - requested horizon exceeds available factor intervals
     pub fn try_new(
@@ -224,6 +233,12 @@ impl SeededTickSimulationRunConfig {
                 },
             );
         }
+
+        validate_hourly_factor_interval_coverage(
+            &hourly_factor_contract.interval_start_utc_nanos,
+            &hourly_factor_contract.interval_end_utc_nanos,
+            self.horizon_interval_count,
+        )?;
 
         Ok(())
     }
@@ -361,6 +376,12 @@ pub enum SeededTickSimulationRunError {
         interval_start_utc_nanos: i64,
         interval_end_utc_nanos: i64,
     },
+    NonConsecutiveHourlyFactorCoverage {
+        previous_interval_index: usize,
+        previous_interval_end_utc_nanos: i64,
+        current_interval_index: usize,
+        current_interval_start_utc_nanos: i64,
+    },
     InvalidGeneratedNewsSeverityMark {
         value: f64,
     },
@@ -420,6 +441,15 @@ impl Display for SeededTickSimulationRunError {
             } => write!(
                 formatter,
                 "hourly_factor_contract interval {interval_index} has invalid bounds, start={interval_start_utc_nanos}, end={interval_end_utc_nanos}"
+            ),
+            Self::NonConsecutiveHourlyFactorCoverage {
+                previous_interval_index,
+                previous_interval_end_utc_nanos,
+                current_interval_index,
+                current_interval_start_utc_nanos,
+            } => write!(
+                formatter,
+                "hourly_factor_contract interval coverage must be consecutive, interval {previous_interval_index} end ({previous_interval_end_utc_nanos}) must equal interval {current_interval_index} start ({current_interval_start_utc_nanos})"
             ),
             Self::InvalidGeneratedNewsSeverityMark { value } => write!(
                 formatter,
@@ -513,6 +543,8 @@ where
 
         let mut previous_timestamp_utc_nanos = interval_start_utc_nanos;
         for interval_update in interval_updates {
+            // Intra-interval updates are processed in event time and each update composes
+            // one canonical transition step onto the carried Hawkes state.
             let elapsed_hours_since_previous_update = derive_elapsed_hours(
                 previous_timestamp_utc_nanos,
                 interval_update.timestamp_utc_nanos(),
@@ -900,6 +932,46 @@ fn validate_hourly_factor_field_length(
     Ok(())
 }
 
+fn validate_hourly_factor_interval_coverage(
+    interval_start_utc_nanos: &[i64],
+    interval_end_utc_nanos: &[i64],
+    simulated_interval_count: usize,
+) -> Result<(), SeededTickSimulationRunError> {
+    for interval_index in 0..simulated_interval_count {
+        let current_interval_start_utc_nanos = interval_start_utc_nanos[interval_index];
+        let current_interval_end_utc_nanos = interval_end_utc_nanos[interval_index];
+
+        if current_interval_end_utc_nanos <= current_interval_start_utc_nanos {
+            return Err(
+                SeededTickSimulationRunError::InvalidHourlyFactorIntervalBounds {
+                    interval_index,
+                    interval_start_utc_nanos: current_interval_start_utc_nanos,
+                    interval_end_utc_nanos: current_interval_end_utc_nanos,
+                },
+            );
+        }
+
+        if interval_index == 0 {
+            continue;
+        }
+
+        let previous_interval_index = interval_index - 1;
+        let previous_interval_end_utc_nanos = interval_end_utc_nanos[previous_interval_index];
+        if current_interval_start_utc_nanos != previous_interval_end_utc_nanos {
+            return Err(
+                SeededTickSimulationRunError::NonConsecutiveHourlyFactorCoverage {
+                    previous_interval_index,
+                    previous_interval_end_utc_nanos,
+                    current_interval_index: interval_index,
+                    current_interval_start_utc_nanos: current_interval_start_utc_nanos,
+                },
+            );
+        }
+    }
+
+    Ok(())
+}
+
 /// Resolve interval-aligned hourly factors for the simulation path.
 pub fn load_hourly_factor_contract_for_simulation(
     calendar_registry: &ExchangeCalendarRegistry,
@@ -939,7 +1011,9 @@ mod tests {
     use chrono::{DateTime, Utc};
     use serde_json::Value;
 
-    use crate::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
+    use crate::hawkes::{
+        HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters, HawkesTransitionStep,
+    };
     use crate::hourly_factors::{
         DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
         DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD, HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
@@ -1151,6 +1225,139 @@ mod tests {
     }
 
     #[test]
+    fn seeded_simulation_run_rejects_non_consecutive_hourly_factor_coverage() {
+        let mut model_inputs = valid_model_inputs();
+        let start_utc_nanos = 1_704_067_200_000_000_000;
+
+        model_inputs.hourly_factor_contract.interval_start_utc_nanos[1] += ONE_HOUR_NANOS;
+        model_inputs.hourly_factor_contract.interval_end_utc_nanos[1] += ONE_HOUR_NANOS;
+        model_inputs.hourly_factor_contract.request_end_utc_nanos += ONE_HOUR_NANOS;
+        model_inputs
+            .hourly_factor_contract
+            .diagnostics
+            .last_interval_end_utc_nanos += ONE_HOUR_NANOS;
+
+        let error = SeededTickSimulationRunConfig::try_new(
+            88,
+            DateTime::<Utc>::from_timestamp_nanos(start_utc_nanos),
+            2,
+            model_inputs,
+            None,
+        )
+        .expect_err("non-consecutive interval coverage must fail");
+
+        assert!(matches!(
+            error,
+            SeededTickSimulationRunError::NonConsecutiveHourlyFactorCoverage {
+                previous_interval_index: 0,
+                previous_interval_end_utc_nanos,
+                current_interval_index: 1,
+                current_interval_start_utc_nanos,
+            } if previous_interval_end_utc_nanos == start_utc_nanos + ONE_HOUR_NANOS
+                && current_interval_start_utc_nanos == start_utc_nanos + 2 * ONE_HOUR_NANOS
+        ));
+    }
+
+    #[test]
+    fn seeded_simulation_preserves_full_state_carryover_across_hour_boundaries() {
+        let start_utc_nanos = 1_704_067_200_000_000_000;
+        let model_inputs = two_interval_zero_event_carryover_model_inputs();
+        let kernel_parameters = model_inputs.kernel_parameters;
+
+        let one_hour_config = SeededTickSimulationRunConfig::try_new(
+            10_052,
+            DateTime::<Utc>::from_timestamp_nanos(start_utc_nanos),
+            1,
+            model_inputs.clone(),
+            None,
+        )
+        .expect("one-hour carryover run config should initialize");
+
+        let two_hour_config = SeededTickSimulationRunConfig::try_new(
+            10_052,
+            DateTime::<Utc>::from_timestamp_nanos(start_utc_nanos),
+            2,
+            model_inputs,
+            None,
+        )
+        .expect("two-hour carryover run config should initialize");
+
+        let one_hour_result = run_seeded_tick_event_simulation(one_hour_config)
+            .expect("one-hour carryover run should complete");
+        let two_hour_result = run_seeded_tick_event_simulation(two_hour_config)
+            .expect("two-hour carryover run should complete");
+
+        let expected_two_hour_final_state = super::evolve_hawkes_state_for_simulation_step(
+            one_hour_result.final_excitation_state,
+            kernel_parameters,
+            HawkesTransitionStep::new(1.0, None, None),
+        )
+        .expect("deterministic carryover drift step should succeed");
+
+        assert!(one_hour_result.event_path.is_empty());
+        assert!(two_hour_result.event_path.is_empty());
+        assert_float_close(
+            two_hour_result.final_excitation_state.y_plus_plus,
+            expected_two_hour_final_state.y_plus_plus,
+        );
+        assert_float_close(
+            two_hour_result.final_excitation_state.y_plus_minus,
+            expected_two_hour_final_state.y_plus_minus,
+        );
+        assert_float_close(
+            two_hour_result.final_excitation_state.y_minus_plus,
+            expected_two_hour_final_state.y_minus_plus,
+        );
+        assert_float_close(
+            two_hour_result.final_excitation_state.y_minus_minus,
+            expected_two_hour_final_state.y_minus_minus,
+        );
+    }
+
+    #[test]
+    fn seeded_simulation_factor_changes_apply_on_hour_boundaries_only() {
+        let start_utc_nanos = 1_704_067_200_000_000_000;
+        let boundary_utc_nanos = start_utc_nanos + ONE_HOUR_NANOS;
+
+        let baseline_run_config = SeededTickSimulationRunConfig::try_new(
+            10_053,
+            DateTime::<Utc>::from_timestamp_nanos(start_utc_nanos),
+            2,
+            two_interval_constant_intensity_model_inputs(1.0),
+            None,
+        )
+        .expect("baseline boundary-factor run config should initialize");
+
+        let muted_second_hour_run_config = SeededTickSimulationRunConfig::try_new(
+            10_053,
+            DateTime::<Utc>::from_timestamp_nanos(start_utc_nanos),
+            2,
+            two_interval_constant_intensity_model_inputs(0.0),
+            None,
+        )
+        .expect("muted boundary-factor run config should initialize");
+
+        let baseline_result = run_seeded_tick_event_simulation(baseline_run_config)
+            .expect("baseline boundary-factor run should complete");
+        let muted_second_hour_result =
+            run_seeded_tick_event_simulation(muted_second_hour_run_config)
+                .expect("muted boundary-factor run should complete");
+
+        assert_eq!(baseline_result.event_path.len(), 8);
+        assert_eq!(muted_second_hour_result.event_path.len(), 4);
+        assert!(
+            muted_second_hour_result
+                .event_path
+                .iter()
+                .all(|event_record| event_record.timestamp_utc_nanos < boundary_utc_nanos)
+        );
+        assert_eq!(
+            &baseline_result.event_path[..muted_second_hour_result.event_path.len()],
+            muted_second_hour_result.event_path.as_slice()
+        );
+    }
+
+    #[test]
     fn seeded_simulation_scheduler_interleaves_buy_and_sell_arrivals() {
         let run_config = SeededTickSimulationRunConfig::try_new(
             1_007,
@@ -1239,6 +1446,39 @@ mod tests {
             run_result.event_ordering_policy,
             SEEDED_TICK_EVENT_ORDERING_POLICY
         );
+    }
+
+    #[test]
+    fn seeded_simulation_boundary_adjacent_event_times_are_not_snapped_to_hour_edges() {
+        let start_utc_nanos = 1_704_067_200_000_000_000;
+        let boundary_utc_nanos = start_utc_nanos + ONE_HOUR_NANOS;
+
+        let run_config = SeededTickSimulationRunConfig::try_new(
+            10_054,
+            DateTime::<Utc>::from_timestamp_nanos(start_utc_nanos),
+            2,
+            two_interval_boundary_adjacent_model_inputs(),
+            None,
+        )
+        .expect("boundary-adjacent run config should initialize");
+
+        let run_result = run_seeded_tick_event_simulation_with_randomness_factory(
+            run_config,
+            &BoundaryAdjacentRandomnessFactory,
+        )
+        .expect("boundary-adjacent run should complete");
+
+        assert_eq!(run_result.event_path.len(), 2);
+
+        let first_timestamp_utc_nanos = run_result.event_path[0].timestamp_utc_nanos;
+        let second_timestamp_utc_nanos = run_result.event_path[1].timestamp_utc_nanos;
+
+        assert!(first_timestamp_utc_nanos < boundary_utc_nanos);
+        assert!(boundary_utc_nanos - first_timestamp_utc_nanos <= 4);
+        assert!(second_timestamp_utc_nanos > boundary_utc_nanos);
+        assert!(second_timestamp_utc_nanos - boundary_utc_nanos <= 4);
+        assert_ne!(first_timestamp_utc_nanos, boundary_utc_nanos);
+        assert_ne!(second_timestamp_utc_nanos, boundary_utc_nanos);
     }
 
     #[test]
@@ -1751,6 +1991,38 @@ mod tests {
         }
     }
 
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct BoundaryAdjacentRandomnessFactory;
+
+    impl SimulationRandomnessFactory for BoundaryAdjacentRandomnessFactory {
+        type Stream = ScriptedRandomnessStream;
+
+        fn create_substream(
+            &self,
+            _root_seed: u64,
+            substream_domain: SimulationRandomnessSubstreamDomain,
+            substream_index: u64,
+        ) -> Self::Stream {
+            let draws = match substream_domain {
+                SimulationRandomnessSubstreamDomain::EndogenousBuyEventCount => vec![0.0],
+                SimulationRandomnessSubstreamDomain::EndogenousSellEventCount => vec![0.0],
+                SimulationRandomnessSubstreamDomain::EndogenousBuyEventTimestamp => {
+                    if substream_index == 0 {
+                        vec![0.999_999_999_999]
+                    } else {
+                        vec![0.000_000_000_001]
+                    }
+                }
+                SimulationRandomnessSubstreamDomain::EndogenousSellEventTimestamp => vec![],
+                SimulationRandomnessSubstreamDomain::ExogenousNewsCount => vec![0.0],
+                SimulationRandomnessSubstreamDomain::ExogenousNewsTimestamp => vec![],
+                SimulationRandomnessSubstreamDomain::ExogenousNewsSeverity => vec![],
+            };
+
+            ScriptedRandomnessStream::new(draws)
+        }
+    }
+
     fn one_interval_model_inputs(
         lambda_plus: f64,
         lambda_minus: f64,
@@ -1817,6 +2089,110 @@ mod tests {
                 },
             },
         }
+    }
+
+    fn two_interval_zero_event_carryover_model_inputs() -> SeededTickSimulationModelInputs {
+        let mut model_inputs = valid_model_inputs();
+
+        model_inputs.kernel_parameters = HawkesKernelParameters::try_new(
+            0.5,
+            1.25,
+            HawkesKernelLoadings {
+                plus_plus: 0.0,
+                plus_minus: 0.0,
+                minus_plus: 0.0,
+                minus_minus: 0.0,
+            },
+            HawkesKernelLoadings {
+                plus_plus: 0.0,
+                plus_minus: 0.0,
+                minus_plus: 0.0,
+                minus_minus: 0.0,
+            },
+        )
+        .expect("zero-event carryover kernel parameter fixture should be valid");
+
+        model_inputs.initial_excitation_state = HawkesExcitationState {
+            y_plus_plus: 1.6,
+            y_plus_minus: 0.8,
+            y_minus_plus: 1.2,
+            y_minus_minus: 0.4,
+        };
+
+        model_inputs.hourly_factor_contract.s_h = vec![0.0, 0.0];
+        model_inputs.hourly_factor_contract.nu_h = vec![0.0, 0.0];
+
+        model_inputs
+    }
+
+    fn two_interval_constant_intensity_model_inputs(
+        second_interval_seasonality_factor: f64,
+    ) -> SeededTickSimulationModelInputs {
+        let mut model_inputs = valid_model_inputs();
+
+        model_inputs.kernel_parameters = HawkesKernelParameters::try_new(
+            2.0,
+            1.0,
+            HawkesKernelLoadings {
+                plus_plus: 0.0,
+                plus_minus: 0.0,
+                minus_plus: 0.0,
+                minus_minus: 0.0,
+            },
+            HawkesKernelLoadings {
+                plus_plus: 0.0,
+                plus_minus: 0.0,
+                minus_plus: 0.0,
+                minus_minus: 0.0,
+            },
+        )
+        .expect("constant-intensity kernel parameter fixture should be valid");
+
+        model_inputs.initial_excitation_state = HawkesExcitationState {
+            y_plus_plus: 0.0,
+            y_plus_minus: 0.0,
+            y_minus_plus: 0.0,
+            y_minus_minus: 0.0,
+        };
+
+        model_inputs.hourly_factor_contract.s_h = vec![1.0, second_interval_seasonality_factor];
+        model_inputs.hourly_factor_contract.nu_h = vec![0.0, 0.0];
+
+        model_inputs
+    }
+
+    fn two_interval_boundary_adjacent_model_inputs() -> SeededTickSimulationModelInputs {
+        let mut model_inputs = valid_model_inputs();
+
+        model_inputs.kernel_parameters = HawkesKernelParameters::try_new(
+            1.0,
+            1.0,
+            HawkesKernelLoadings {
+                plus_plus: 0.0,
+                plus_minus: 0.0,
+                minus_plus: 0.0,
+                minus_minus: 0.0,
+            },
+            HawkesKernelLoadings {
+                plus_plus: 0.0,
+                plus_minus: 0.0,
+                minus_plus: 0.0,
+                minus_minus: 0.0,
+            },
+        )
+        .expect("boundary-adjacent kernel parameter fixture should be valid");
+
+        model_inputs.initial_excitation_state = HawkesExcitationState {
+            y_plus_plus: 0.0,
+            y_plus_minus: 0.0,
+            y_minus_plus: -10.0,
+            y_minus_minus: 0.0,
+        };
+
+        model_inputs.hourly_factor_contract.s_h = vec![1.0, 1.0];
+        model_inputs.hourly_factor_contract.nu_h = vec![0.0, 0.0];
+
+        model_inputs
     }
 
     fn valid_model_inputs() -> SeededTickSimulationModelInputs {
