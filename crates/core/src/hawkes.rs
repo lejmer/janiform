@@ -1004,6 +1004,19 @@ pub struct HawkesKernelParameters {
     pub rho: HawkesKernelLoadings,
 }
 
+pub const HAWKES_STRICT_STATIONARITY_THRESHOLD: f64 = 1.0;
+pub const HAWKES_DEFAULT_STABILITY_NUMERIC_TOLERANCE: f64 = 0.0;
+
+/// Machine-readable stability output for the de-seasonalized `Alpha / beta` kernel.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct HawkesSpectralRadiusStabilityCheck {
+    pub spectral_radius_alpha_over_beta: f64,
+    pub strict_stationarity_threshold: f64,
+    pub numeric_tolerance: f64,
+    pub effective_stationarity_threshold: f64,
+    pub is_stable: bool,
+}
+
 impl HawkesKernelParameters {
     /// Run pure domain validation without constructing a kernel payload.
     ///
@@ -1014,6 +1027,24 @@ impl HawkesKernelParameters {
         beta: f64,
         alpha: HawkesKernelLoadings,
         rho: HawkesKernelLoadings,
+    ) -> HawkesKernelParameterValidationReport {
+        Self::validate_domain_with_stability_tolerance(
+            lambda_bar,
+            beta,
+            alpha,
+            rho,
+            HAWKES_DEFAULT_STABILITY_NUMERIC_TOLERANCE,
+        )
+    }
+
+    /// Run domain validation with an explicit numerical tolerance around
+    /// the strict stationarity threshold for `rho(Alpha / beta) < 1`.
+    pub fn validate_domain_with_stability_tolerance(
+        lambda_bar: f64,
+        beta: f64,
+        alpha: HawkesKernelLoadings,
+        rho: HawkesKernelLoadings,
+        stability_numeric_tolerance: f64,
     ) -> HawkesKernelParameterValidationReport {
         let mut violations: Vec<HawkesKernelParameterViolation> = Vec::new();
 
@@ -1033,6 +1064,7 @@ impl HawkesKernelParameters {
             });
         }
 
+        let alpha_violation_count_before = violations.len();
         collect_non_negative_loading_violations(
             alpha,
             [
@@ -1043,6 +1075,8 @@ impl HawkesKernelParameters {
             ],
             &mut violations,
         );
+        let alpha_is_valid = violations.len() == alpha_violation_count_before;
+
         collect_non_negative_loading_violations(
             rho,
             [
@@ -1054,7 +1088,65 @@ impl HawkesKernelParameters {
             &mut violations,
         );
 
+        if !stability_numeric_tolerance.is_finite() || stability_numeric_tolerance < 0.0 {
+            violations.push(HawkesKernelParameterViolation {
+                field: "stability.numeric_tolerance",
+                constraint: HawkesKernelParameterConstraint::FiniteAndNonNegative,
+                value: stability_numeric_tolerance,
+            });
+        } else if beta.is_finite() && beta > 0.0 && alpha_is_valid {
+            let stability_check =
+                compute_spectral_radius_stability_check(alpha, beta, stability_numeric_tolerance);
+
+            if !stability_check.is_stable {
+                violations.push(HawkesKernelParameterViolation {
+                    field: "alpha_over_beta.spectral_radius",
+                    constraint: HawkesKernelParameterConstraint::SpectralRadiusStrictlyBelowOne,
+                    value: stability_check.spectral_radius_alpha_over_beta,
+                });
+            }
+        }
+
         HawkesKernelParameterValidationReport { violations }
+    }
+
+    /// Evaluate de-seasonalized Hawkes stationarity via
+    /// `spectral_radius(Alpha / beta) < 1 - numeric_tolerance`.
+    ///
+    /// The tolerance policy is intentionally strict and one-sided:
+    /// larger tolerance values tighten acceptance near the threshold.
+    pub fn check_spectral_radius_stability(
+        beta: f64,
+        alpha: HawkesKernelLoadings,
+        numeric_tolerance: f64,
+    ) -> Result<HawkesSpectralRadiusStabilityCheck, HawkesKernelParameterError> {
+        if !beta.is_finite() || beta <= 0.0 {
+            return Err(HawkesKernelParameterError::InvalidBeta { value: beta });
+        }
+
+        validate_non_negative_loadings(
+            alpha,
+            [
+                "alpha.plus_plus",
+                "alpha.plus_minus",
+                "alpha.minus_plus",
+                "alpha.minus_minus",
+            ],
+        )?;
+
+        if !numeric_tolerance.is_finite() || numeric_tolerance < 0.0 {
+            return Err(
+                HawkesKernelParameterError::InvalidStabilityNumericTolerance {
+                    value: numeric_tolerance,
+                },
+            );
+        }
+
+        Ok(compute_spectral_radius_stability_check(
+            alpha,
+            beta,
+            numeric_tolerance,
+        ))
     }
 
     /// Validate and construct kernel parameters.
@@ -1064,15 +1156,43 @@ impl HawkesKernelParameters {
     /// - `beta > 0` and finite
     /// - all `alpha_ij >= 0` and finite
     /// - all `rho_ij >= 0` and finite
+    /// - `spectral_radius(Alpha / beta) < 1`
     pub fn try_new(
         lambda_bar: f64,
         beta: f64,
         alpha: HawkesKernelLoadings,
         rho: HawkesKernelLoadings,
     ) -> Result<Self, HawkesKernelParameterError> {
-        let validation_report = Self::validate_domain(lambda_bar, beta, alpha, rho);
+        Self::try_new_with_stability_tolerance(
+            lambda_bar,
+            beta,
+            alpha,
+            rho,
+            HAWKES_DEFAULT_STABILITY_NUMERIC_TOLERANCE,
+        )
+    }
+
+    /// Validate and construct kernel parameters using an explicit stationarity
+    /// tolerance around the strict threshold.
+    pub fn try_new_with_stability_tolerance(
+        lambda_bar: f64,
+        beta: f64,
+        alpha: HawkesKernelLoadings,
+        rho: HawkesKernelLoadings,
+        stability_numeric_tolerance: f64,
+    ) -> Result<Self, HawkesKernelParameterError> {
+        let validation_report = Self::validate_domain_with_stability_tolerance(
+            lambda_bar,
+            beta,
+            alpha,
+            rho,
+            stability_numeric_tolerance,
+        );
         if let Some(violation) = validation_report.first_violation() {
-            return Err(map_parameter_violation_to_error(violation));
+            return Err(map_parameter_violation_to_error_with_stability_tolerance(
+                violation,
+                stability_numeric_tolerance,
+            ));
         }
 
         Ok(Self {
@@ -1109,6 +1229,7 @@ impl HawkesKernelParameters {
 pub enum HawkesKernelParameterConstraint {
     FiniteAndStrictlyPositive,
     FiniteAndNonNegative,
+    SpectralRadiusStrictlyBelowOne,
 }
 
 impl Display for HawkesKernelParameterConstraint {
@@ -1118,6 +1239,9 @@ impl Display for HawkesKernelParameterConstraint {
                 write!(formatter, "finite_and_strictly_positive")
             }
             Self::FiniteAndNonNegative => write!(formatter, "finite_and_non_negative"),
+            Self::SpectralRadiusStrictlyBelowOne => {
+                write!(formatter, "spectral_radius_strictly_below_one")
+            }
         }
     }
 }
@@ -1149,9 +1273,25 @@ impl HawkesKernelParameterValidationReport {
 /// Structured validation failures for `HawkesKernelParameters::try_new`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HawkesKernelParameterError {
-    InvalidLambdaBar { value: f64 },
-    InvalidBeta { value: f64 },
-    InvalidLoadingComponent { field: &'static str, value: f64 },
+    InvalidLambdaBar {
+        value: f64,
+    },
+    InvalidBeta {
+        value: f64,
+    },
+    InvalidLoadingComponent {
+        field: &'static str,
+        value: f64,
+    },
+    InvalidStabilityNumericTolerance {
+        value: f64,
+    },
+    UnstableSpectralRadius {
+        spectral_radius_alpha_over_beta: f64,
+        strict_stationarity_threshold: f64,
+        numeric_tolerance: f64,
+        effective_stationarity_threshold: f64,
+    },
 }
 
 impl Display for HawkesKernelParameterError {
@@ -1172,6 +1312,19 @@ impl Display for HawkesKernelParameterError {
             Self::InvalidLoadingComponent { field, value } => write!(
                 formatter,
                 "{field} must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidStabilityNumericTolerance { value } => write!(
+                formatter,
+                "stability numeric tolerance must be finite and non-negative, found {value}"
+            ),
+            Self::UnstableSpectralRadius {
+                spectral_radius_alpha_over_beta,
+                strict_stationarity_threshold,
+                numeric_tolerance,
+                effective_stationarity_threshold,
+            } => write!(
+                formatter,
+                "spectral radius stability failed with spectral_radius_alpha_over_beta={spectral_radius_alpha_over_beta}, strict_stationarity_threshold={strict_stationarity_threshold}, numeric_tolerance={numeric_tolerance}, effective_stationarity_threshold={effective_stationarity_threshold}"
             ),
         }
     }
@@ -1235,6 +1388,16 @@ fn collect_non_negative_loading_violations(
 fn map_parameter_violation_to_error(
     violation: HawkesKernelParameterViolation,
 ) -> HawkesKernelParameterError {
+    map_parameter_violation_to_error_with_stability_tolerance(
+        violation,
+        HAWKES_DEFAULT_STABILITY_NUMERIC_TOLERANCE,
+    )
+}
+
+fn map_parameter_violation_to_error_with_stability_tolerance(
+    violation: HawkesKernelParameterViolation,
+    stability_numeric_tolerance: f64,
+) -> HawkesKernelParameterError {
     match violation.field {
         "lambda_bar" => HawkesKernelParameterError::InvalidLambdaBar {
             value: violation.value,
@@ -1242,11 +1405,58 @@ fn map_parameter_violation_to_error(
         "beta" => HawkesKernelParameterError::InvalidBeta {
             value: violation.value,
         },
+        "stability.numeric_tolerance" => {
+            HawkesKernelParameterError::InvalidStabilityNumericTolerance {
+                value: violation.value,
+            }
+        }
+        "alpha_over_beta.spectral_radius" => HawkesKernelParameterError::UnstableSpectralRadius {
+            spectral_radius_alpha_over_beta: violation.value,
+            strict_stationarity_threshold: HAWKES_STRICT_STATIONARITY_THRESHOLD,
+            numeric_tolerance: stability_numeric_tolerance,
+            effective_stationarity_threshold: HAWKES_STRICT_STATIONARITY_THRESHOLD
+                - stability_numeric_tolerance,
+        },
         _ => HawkesKernelParameterError::InvalidLoadingComponent {
             field: violation.field,
             value: violation.value,
         },
     }
+}
+
+fn compute_spectral_radius_stability_check(
+    alpha: HawkesKernelLoadings,
+    beta: f64,
+    numeric_tolerance: f64,
+) -> HawkesSpectralRadiusStabilityCheck {
+    let spectral_radius_alpha_over_beta = compute_spectral_radius_alpha_over_beta(alpha, beta);
+    let effective_stationarity_threshold = HAWKES_STRICT_STATIONARITY_THRESHOLD - numeric_tolerance;
+
+    HawkesSpectralRadiusStabilityCheck {
+        spectral_radius_alpha_over_beta,
+        strict_stationarity_threshold: HAWKES_STRICT_STATIONARITY_THRESHOLD,
+        numeric_tolerance,
+        effective_stationarity_threshold,
+        is_stable: spectral_radius_alpha_over_beta < effective_stationarity_threshold,
+    }
+}
+
+fn compute_spectral_radius_alpha_over_beta(alpha: HawkesKernelLoadings, beta: f64) -> f64 {
+    let scaled_plus_plus = alpha.plus_plus / beta;
+    let scaled_plus_minus = alpha.plus_minus / beta;
+    let scaled_minus_plus = alpha.minus_plus / beta;
+    let scaled_minus_minus = alpha.minus_minus / beta;
+
+    let trace = scaled_plus_plus + scaled_minus_minus;
+    let discriminant = ((scaled_plus_plus - scaled_minus_minus).powi(2)
+        + 4.0 * scaled_plus_minus * scaled_minus_plus)
+        .max(0.0);
+    let square_root_discriminant = discriminant.sqrt();
+
+    let first_eigenvalue = 0.5 * (trace + square_root_discriminant);
+    let second_eigenvalue = 0.5 * (trace - square_root_discriminant);
+
+    first_eigenvalue.abs().max(second_eigenvalue.abs())
 }
 
 fn derive_self_to_cross_ratio(self_loading: f64, cross_loading: f64) -> f64 {
@@ -1260,10 +1470,10 @@ fn derive_self_to_cross_ratio(self_loading: f64, cross_loading: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use crate::hawkes::{
-        HawkesEventSide, HawkesEventSidePayloadError, HawkesExcitationState, HawkesKernelLoadings,
-        HawkesKernelParameterConstraint, HawkesKernelParameterError,
-        HawkesKernelParameterViolation, HawkesKernelParameters, HawkesNewsSeverityMarkError,
-        HawkesSeasonalityIntervalError, HawkesSourceComponents,
+        HAWKES_STRICT_STATIONARITY_THRESHOLD, HawkesEventSide, HawkesEventSidePayloadError,
+        HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameterConstraint,
+        HawkesKernelParameterError, HawkesKernelParameterViolation, HawkesKernelParameters,
+        HawkesNewsSeverityMarkError, HawkesSeasonalityIntervalError, HawkesSourceComponents,
         HawkesStructuredAlphaParameterError, HawkesStructuredAlphaParameterization,
         HawkesStructuredRhoParameterError, HawkesStructuredRhoParameterization,
         HawkesStructuredRhoSelfDominancePolicy, HawkesTransitionError, HawkesTransitionStep,
@@ -1895,9 +2105,9 @@ mod tests {
             1.0,
             HawkesKernelLoadings {
                 plus_plus: 0.3,
-                plus_minus: 0.7,
-                minus_plus: 0.5,
-                minus_minus: 0.9,
+                plus_minus: 0.2,
+                minus_plus: 0.1,
+                minus_minus: 0.4,
             },
             HawkesKernelLoadings {
                 plus_plus: 0.2,
@@ -2371,10 +2581,10 @@ mod tests {
     #[test]
     fn kernel_parameter_domain_precheck_accepts_interior_and_boundary_adjacent_values() {
         let alpha = HawkesKernelLoadings {
-            plus_plus: f64::EPSILON,
+            plus_plus: f64::EPSILON * 0.5,
             plus_minus: 0.0,
-            minus_plus: 0.15,
-            minus_minus: 0.45,
+            minus_plus: f64::EPSILON * 0.5,
+            minus_minus: f64::EPSILON * 0.5,
         };
         let rho = HawkesKernelLoadings {
             plus_plus: 0.0,
@@ -2399,6 +2609,93 @@ mod tests {
             Vec::<HawkesKernelParameterViolation>::new(),
             "strict positivity must accept tiny positive values at the boundary"
         );
+    }
+
+    #[test]
+    fn kernel_parameter_domain_precheck_reports_stability_violation_and_spectral_radius() {
+        let alpha = HawkesKernelLoadings {
+            plus_plus: 0.9,
+            plus_minus: 0.2,
+            minus_plus: 0.1,
+            minus_minus: 0.8,
+        };
+        let rho = HawkesKernelLoadings {
+            plus_plus: 0.0,
+            plus_minus: 0.0,
+            minus_plus: 0.0,
+            minus_minus: 0.0,
+        };
+
+        let report = HawkesKernelParameters::validate_domain(0.85, 0.8, alpha, rho);
+
+        assert!(!report.is_valid());
+        assert_eq!(
+            report.violations,
+            vec![HawkesKernelParameterViolation {
+                field: "alpha_over_beta.spectral_radius",
+                constraint: HawkesKernelParameterConstraint::SpectralRadiusStrictlyBelowOne,
+                value: 1.25,
+            }]
+        );
+    }
+
+    #[test]
+    fn spectral_radius_stability_checker_supports_tolerance_policy_near_threshold() {
+        let alpha = HawkesKernelLoadings {
+            plus_plus: 0.999_999_999_6,
+            plus_minus: 0.0,
+            minus_plus: 0.0,
+            minus_minus: 0.2,
+        };
+
+        let strict_check = HawkesKernelParameters::check_spectral_radius_stability(1.0, alpha, 0.0)
+            .expect("strict threshold check should evaluate");
+        assert_eq!(
+            strict_check.spectral_radius_alpha_over_beta,
+            0.999_999_999_6
+        );
+        assert!(strict_check.is_stable);
+
+        let tolerant_check =
+            HawkesKernelParameters::check_spectral_radius_stability(1.0, alpha, 1e-9)
+                .expect("tightened tolerance policy should evaluate");
+        assert_eq!(
+            tolerant_check.spectral_radius_alpha_over_beta,
+            0.999_999_999_6
+        );
+        assert_eq!(
+            tolerant_check.effective_stationarity_threshold,
+            HAWKES_STRICT_STATIONARITY_THRESHOLD - 1e-9
+        );
+        assert!(!tolerant_check.is_stable);
+    }
+
+    #[test]
+    fn spectral_radius_stability_checker_reports_deterministic_numeric_output() {
+        let alpha = HawkesKernelLoadings {
+            plus_plus: 0.6,
+            plus_minus: 0.1,
+            minus_plus: 0.2,
+            minus_minus: 0.7,
+        };
+
+        let reference_check =
+            HawkesKernelParameters::check_spectral_radius_stability(1.25, alpha, 0.0)
+                .expect("valid payload should evaluate deterministic spectral radius");
+        assert!(reference_check.is_stable);
+        assert_eq!(reference_check.spectral_radius_alpha_over_beta, 0.64);
+
+        for _ in 0..16 {
+            let repeated_check =
+                HawkesKernelParameters::check_spectral_radius_stability(1.25, alpha, 0.0)
+                    .expect("repeated checks should not fail");
+
+            assert_eq!(
+                repeated_check.spectral_radius_alpha_over_beta.to_bits(),
+                reference_check.spectral_radius_alpha_over_beta.to_bits()
+            );
+            assert_eq!(repeated_check, reference_check);
+        }
     }
 
     #[test]
@@ -2501,6 +2798,35 @@ mod tests {
             nan_beta_error,
             HawkesKernelParameterError::InvalidBeta { value } if value.is_nan()
         ));
+    }
+
+    #[test]
+    fn kernel_parameter_construction_rejects_unstable_spectral_radius() {
+        let alpha = HawkesKernelLoadings {
+            plus_plus: 0.9,
+            plus_minus: 0.2,
+            minus_plus: 0.1,
+            minus_minus: 0.8,
+        };
+        let rho = HawkesKernelLoadings {
+            plus_plus: 0.0,
+            plus_minus: 0.0,
+            minus_plus: 0.0,
+            minus_minus: 0.0,
+        };
+
+        let error = HawkesKernelParameters::try_new(1.0, 0.8, alpha, rho)
+            .expect_err("unstable spectral radius must fail construction");
+
+        assert_eq!(
+            error,
+            HawkesKernelParameterError::UnstableSpectralRadius {
+                spectral_radius_alpha_over_beta: 1.25,
+                strict_stationarity_threshold: 1.0,
+                numeric_tolerance: 0.0,
+                effective_stationarity_threshold: 1.0,
+            }
+        );
     }
 
     #[test]
