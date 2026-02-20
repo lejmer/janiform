@@ -1,4 +1,4 @@
-## ISSUE-001: Simulator Run Config And Public API
+## Simulator Run Config And Public API
 
 ### Description
 Define the public simulator API and run configuration contract for seeded tick-event generation. The contract should include seed, horizon, calendar factors, and model parameters.

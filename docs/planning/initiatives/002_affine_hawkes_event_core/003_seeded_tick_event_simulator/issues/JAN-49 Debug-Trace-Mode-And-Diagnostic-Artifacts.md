@@ -1,4 +1,4 @@
-## ISSUE-006: Debug Trace Mode And Diagnostic Artifacts
+## Debug Trace Mode And Diagnostic Artifacts
 
 ### Description
 Add a debug simulation mode that emits trace artifacts useful for calibration and troubleshooting without changing simulation semantics.

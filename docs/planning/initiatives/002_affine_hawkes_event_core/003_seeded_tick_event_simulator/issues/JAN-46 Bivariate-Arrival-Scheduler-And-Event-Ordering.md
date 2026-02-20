@@ -1,4 +1,4 @@
-## ISSUE-003: Bivariate Arrival Scheduler And Event Ordering
+## Bivariate Arrival Scheduler And Event Ordering
 
 ### Description
 Implement the event scheduler for buy and sell arrivals under Hawkes intensities, with deterministic ordering guarantees for closely spaced or tied events.
