@@ -1,4 +1,4 @@
-## ISSUE-002: Deterministic Randomness Abstraction And Seed Policy
+## Deterministic Randomness Abstraction And Seed Policy
 
 ### Description
 Implement a deterministic randomness abstraction that provides reproducible streams for event simulation across Rust and Python entrypoints.

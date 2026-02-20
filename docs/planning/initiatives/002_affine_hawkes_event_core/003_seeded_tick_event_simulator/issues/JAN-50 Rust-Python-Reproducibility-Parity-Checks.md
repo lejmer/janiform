@@ -1,4 +1,4 @@
-## ISSUE-007: Rust Python Reproducibility Parity Checks
+## Rust Python Reproducibility Parity Checks
 
 ### Description
 Add parity checks that verify equivalent seeded simulation behavior across Rust core and Python-exposed entrypoints.

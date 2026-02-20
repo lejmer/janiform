@@ -1,4 +1,4 @@
-## ISSUE-008: Seeded Behavior And Clustering Property Validation
+## Seeded Behavior And Clustering Property Validation
 
 ### Description
 Create validation tests that confirm deterministic seeded behavior and expected clustering and asymmetry signatures under representative parameter regimes.

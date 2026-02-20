@@ -1,4 +1,4 @@
-## ISSUE-005: Calendar Factor Ingestion And Hour Boundary Carryover
+## Calendar Factor Ingestion And Hour Boundary Carryover
 
 ### Description
 Integrate simulator with hourly calendar factors and enforce deterministic state carryover across hour boundaries and market state transitions.

@@ -1,4 +1,4 @@
-## ISSUE-004: Event Tape Schema And State Snapshot Capture
+## Event Tape Schema And State Snapshot Capture
 
 ### Description
 Define event tape schema and implement capture of per-event diagnostics fields including timestamp, side, and selected Hawkes state snapshot values.
