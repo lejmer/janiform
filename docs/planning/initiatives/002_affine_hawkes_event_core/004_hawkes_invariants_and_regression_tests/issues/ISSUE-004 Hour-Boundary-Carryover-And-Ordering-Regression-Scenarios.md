@@ -8,6 +8,7 @@ Add regression scenarios focused on event ordering and full 4D state carryover a
 - Carryover checks assert exact transfer of `Y++`, `Y+-`, `Y-+`, and `Y--` across hour boundaries
 - Event ordering policy is verified in tied or near-tied timestamp scenarios
 - Scenario outputs are stable under repeated seeded execution
+- Scenarios verify that boundary-adjacent events are preserved in event time and not snapped to interval boundaries
 
 ### Unit tests
 - Boundary carryover tests for multi-hour fixed-seed runs and determinism tests for repeated boundary scenarios

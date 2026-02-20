@@ -8,6 +8,7 @@ Define the canonical invariant catalog for Hawkes dynamics and classify tests in
 - Invariants are grouped by category such as constraints, dynamics, boundary behavior, and sampling properties
 - Test classification rules are defined for deterministic versus stochastic checks
 - Catalog is referenced by all regression and invariant test suites in this project
+- Catalog explicitly includes invariant classes for non-grid event-time semantics and coarse-vs-aggregated scale consistency
 
 ### Unit tests
 - Tests ensuring every implemented invariant test references a catalog ID

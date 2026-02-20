@@ -8,6 +8,7 @@ Build invariant tests that enforce non-negativity and stability conditions under
 - Tests verify intensity projections remain valid under positive baseline and seasonality inputs
 - Stability-oriented scenarios include parameter sets near and within valid spectral-radius bounds
 - Failures clearly identify whether the violation is parameter, transition, or projection related
+- Invariant fixtures avoid hidden fixed-grid assumptions in event-time scheduling inputs
 
 ### Unit tests
 - Projection sanity tests for de-seasonalized and scaled intensities
