@@ -13,12 +13,13 @@ const SUBSTREAM_INDEX_MIXER: u64 = 0x9FB2_1C65_1E98_DF25;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u64)]
 pub enum SimulationRandomnessSubstreamDomain {
-    EndogenousEventCount = 1,
-    EndogenousEventSide = 2,
-    EndogenousEventTimestamp = 3,
-    ExogenousNewsCount = 4,
-    ExogenousNewsTimestamp = 5,
-    ExogenousNewsSeverity = 6,
+    EndogenousBuyEventCount = 1,
+    EndogenousSellEventCount = 2,
+    EndogenousBuyEventTimestamp = 3,
+    EndogenousSellEventTimestamp = 4,
+    ExogenousNewsCount = 5,
+    ExogenousNewsTimestamp = 6,
+    ExogenousNewsSeverity = 7,
 }
 
 impl SimulationRandomnessSubstreamDomain {
@@ -140,7 +141,7 @@ mod tests {
     fn substream_seed_derivation_is_stable_for_fixed_inputs() {
         let derived_seed = derive_simulation_substream_seed(
             19_942,
-            SimulationRandomnessSubstreamDomain::EndogenousEventCount,
+            SimulationRandomnessSubstreamDomain::EndogenousBuyEventCount,
             7,
         );
 
@@ -153,21 +154,21 @@ mod tests {
 
         let count_seed = derive_simulation_substream_seed(
             root_seed,
-            SimulationRandomnessSubstreamDomain::EndogenousEventCount,
+            SimulationRandomnessSubstreamDomain::EndogenousBuyEventCount,
             0,
         );
-        let side_seed = derive_simulation_substream_seed(
+        let sell_count_seed = derive_simulation_substream_seed(
             root_seed,
-            SimulationRandomnessSubstreamDomain::EndogenousEventSide,
+            SimulationRandomnessSubstreamDomain::EndogenousSellEventCount,
             0,
         );
         let next_interval_count_seed = derive_simulation_substream_seed(
             root_seed,
-            SimulationRandomnessSubstreamDomain::EndogenousEventCount,
+            SimulationRandomnessSubstreamDomain::EndogenousBuyEventCount,
             1,
         );
 
-        assert_ne!(count_seed, side_seed);
+        assert_ne!(count_seed, sell_count_seed);
         assert_ne!(count_seed, next_interval_count_seed);
     }
 
