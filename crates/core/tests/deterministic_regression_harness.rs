@@ -260,7 +260,10 @@ fn deterministic_regression_harness_unknown_date_uses_regular_schedule_policy() 
     let loaded_calendar_fixture = load_calendar_regression_fixture_from_manifest()
         .expect("calendar fixture should load from shared manifest");
     let registry = ExchangeCalendarRegistry::from_artifact(
-        loaded_calendar_fixture.fixture_document.calendar_registry.clone(),
+        loaded_calendar_fixture
+            .fixture_document
+            .calendar_registry
+            .clone(),
     )
     .expect("calendar registry fixture should load");
 
@@ -272,7 +275,12 @@ fn deterministic_regression_harness_unknown_date_uses_regular_schedule_policy() 
         .find(|exchange| exchange.exchange_code == "XNYS")
         .expect("XNYS exchange should exist in calendar fixture");
 
-    assert!(!xnys_exchange.holiday_dates.iter().any(|date| date == "2027-02-02"));
+    assert!(
+        !xnys_exchange
+            .holiday_dates
+            .iter()
+            .any(|date| date == "2027-02-02")
+    );
     assert!(
         !xnys_exchange
             .early_close_sessions
