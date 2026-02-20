@@ -25,6 +25,26 @@ The canonical serialized payload contains:
 - `state_snapshot_capture`: snapshot capture mode (`disabled`, `post_event_transition`)
 - `state_snapshot_capture_point_policy` (optional): populated when snapshots are enabled
 
+## Hourly boundary semantics
+
+The simulator consumes interval-aligned `s_h` and `nu_h` factors from the shared hourly factor contract.
+
+- Interval boundary policy:
+  - `hourly_factor_start_inclusive_end_exclusive_with_strict_consecutive_coverage.v1`
+- State carryover policy:
+  - `full_4d_hawkes_excitation_state_carryover_across_interval_boundaries.v1`
+- Factor control policy:
+  - `interval_aligned_s_h_nu_h_control_intensity_only_without_intra_interval_grid.v1`
+- Intra-interval scheduling policy:
+  - `event_time_updates_with_sequential_hawkes_transition_composition.v1`
+
+Validation behavior:
+
+- Hourly interval coverage must be consecutive and non-overlapping across the simulated horizon.
+- Missing hourly intervals (gaps) and interval overlaps fail fast during run-config validation.
+- Factor intervals control intensity scaling and news intensity only.
+- Event timestamps are sampled in event time inside each interval and are never snapped to a fixed intra-interval lattice.
+
 ## Event record fields
 
 Required:
