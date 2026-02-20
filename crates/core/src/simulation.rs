@@ -4,6 +4,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 
 use crate::calendar::ExchangeCalendarRegistry;
 use crate::hawkes::{
@@ -23,6 +24,11 @@ use crate::randomness::{
 pub const SEEDED_TICK_EVENT_RUN_CONFIG_SCHEMA_VERSION: &str =
     "simulation.seeded_tick_event.run_config.v1";
 pub const SEEDED_TICK_EVENT_PATH_SCHEMA_VERSION: &str = "simulation.seeded_tick_event.path.v1";
+pub const SEEDED_TICK_EVENT_RECORD_SCHEMA_VERSION: &str = "simulation.seeded_tick_event.record.v1";
+pub const SEEDED_TICK_EVENT_TAPE_METADATA_SCHEMA_VERSION: &str =
+    "simulation.seeded_tick_event.tape_metadata.v1";
+pub const SEEDED_TICK_EVENT_STATE_SNAPSHOT_SCHEMA_VERSION: &str =
+    "simulation.seeded_tick_event.state_snapshot.v1";
 pub const SEEDED_TICK_EVENT_DETERMINISM_POLICY: &str =
     "stable_seed_and_run_config_with_ordered_event_path.v1";
 
@@ -35,6 +41,11 @@ pub const SEEDED_TICK_EVENT_DETERMINISM_POLICY: &str =
 /// 4. generation order fallback for exact key collisions
 pub const SEEDED_TICK_EVENT_ORDERING_POLICY: &str =
     "timestamp_then_endogenous_before_exogenous_then_buy_before_sell_then_generation_order.v1";
+pub const SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY: &str =
+    "event_time_timestamp_utc_nanos_without_bucket_identifier.v1";
+pub const SEEDED_TICK_EVENT_SIDE_ENCODING_POLICY: &str = "lowercase_buy_or_sell.v1";
+pub const SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY: &str =
+    "post_event_transition_pre_following_same_timestamp_updates.v1";
 
 pub const SEEDED_TICK_EVENT_RANDOMNESS_STREAM_POLICY: &str = SIMULATION_RANDOMNESS_STREAM_POLICY;
 pub const SEEDED_TICK_EVENT_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY: &str =
@@ -43,17 +54,46 @@ pub const SEEDED_TICK_EVENT_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY: &str =
 const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
 const MAX_STOCHASTIC_UPDATES_PER_INTERVAL: u64 = 1_000_000;
 
+/// State snapshot capture mode for per-event diagnostics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SeededTickEventStateSnapshotCapture {
+    Disabled,
+    PostEventTransition,
+}
+
+impl SeededTickEventStateSnapshotCapture {
+    const fn capture_point_policy(self) -> Option<&'static str> {
+        match self {
+            Self::Disabled => None,
+            Self::PostEventTransition => {
+                Some(SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY)
+            }
+        }
+    }
+}
+
+impl Default for SeededTickEventStateSnapshotCapture {
+    fn default() -> Self {
+        Self::Disabled
+    }
+}
+
 /// Optional run settings for seeded tick-event simulation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SeededTickSimulationRunOptions {
     /// Enable optional debug trace emission in future simulator stages.
     pub debug_trace_enabled: bool,
+
+    /// Control optional Hawkes state snapshot capture on each event tape record.
+    pub state_snapshot_capture: SeededTickEventStateSnapshotCapture,
 }
 
 impl Default for SeededTickSimulationRunOptions {
     fn default() -> Self {
         Self {
             debug_trace_enabled: false,
+            state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
         }
     }
 }
@@ -190,18 +230,69 @@ impl SeededTickSimulationRunConfig {
 }
 
 /// Side label for one simulated buy or sell event.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SeededTickEventSide {
     Buy,
     Sell,
 }
 
+/// Optional Hawkes state snapshot attached to one event tape record.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct SeededTickEventStateSnapshot {
+    pub y_plus_plus: f64,
+    pub y_plus_minus: f64,
+    pub y_minus_plus: f64,
+    pub y_minus_minus: f64,
+    pub deseasonalized_lambda_plus: f64,
+    pub deseasonalized_lambda_minus: f64,
+}
+
+impl SeededTickEventStateSnapshot {
+    const fn from_state(state: HawkesExcitationState, lambda_bar: f64) -> Self {
+        let deseasonalized_intensities = state.project_deseasonalized_intensities(lambda_bar);
+
+        Self {
+            y_plus_plus: state.y_plus_plus,
+            y_plus_minus: state.y_plus_minus,
+            y_minus_plus: state.y_minus_plus,
+            y_minus_minus: state.y_minus_minus,
+            deseasonalized_lambda_plus: deseasonalized_intensities.lambda_plus,
+            deseasonalized_lambda_minus: deseasonalized_intensities.lambda_minus,
+        }
+    }
+}
+
 /// One deterministic event-path record.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SeededTickEventRecord {
     pub event_index: u64,
     pub timestamp_utc_nanos: i64,
     pub side: SeededTickEventSide,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state_snapshot: Option<SeededTickEventStateSnapshot>,
+}
+
+/// Machine-readable event tape metadata for deterministic serialization and diagnostics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct SeededTickEventTapeMetadata {
+    pub schema_version: &'static str,
+    pub event_record_schema_version: &'static str,
+    pub state_snapshot_schema_version: &'static str,
+    pub event_ordering_policy: &'static str,
+    pub timestamp_representation_policy: &'static str,
+    pub side_encoding_policy: &'static str,
+    pub state_snapshot_capture: SeededTickEventStateSnapshotCapture,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state_snapshot_capture_point_policy: Option<&'static str>,
+}
+
+/// Canonical serializable event tape payload for deterministic run outputs.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SeededTickEventTapeOutput<'a> {
+    pub schema_version: &'static str,
+    pub metadata: SeededTickEventTapeMetadata,
+    pub event_tape: &'a [SeededTickEventRecord],
 }
 
 /// Deterministic seeded event-path output object.
@@ -216,9 +307,26 @@ pub struct SeededTickSimulationRunResult {
     pub start_time_utc: DateTime<Utc>,
     pub end_time_utc: DateTime<Utc>,
     pub simulated_interval_count: usize,
+    pub event_tape_metadata: SeededTickEventTapeMetadata,
     pub event_path: Vec<SeededTickEventRecord>,
     pub final_excitation_state: HawkesExcitationState,
     pub debug_trace_enabled: bool,
+}
+
+impl SeededTickSimulationRunResult {
+    /// Build the canonical machine-readable event tape payload.
+    pub fn event_tape_output(&self) -> SeededTickEventTapeOutput<'_> {
+        SeededTickEventTapeOutput {
+            schema_version: self.schema_version,
+            metadata: self.event_tape_metadata,
+            event_tape: &self.event_path,
+        }
+    }
+
+    /// Serialize the canonical event tape payload to deterministic JSON.
+    pub fn serialize_event_tape_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(&self.event_tape_output())
+    }
 }
 
 /// Structured simulator run failure with explicit validation diagnostics.
@@ -357,6 +465,9 @@ where
 {
     run_config.validate()?;
 
+    let state_snapshot_capture = run_config.options.state_snapshot_capture;
+    let lambda_bar = run_config.model_inputs.kernel_parameters.lambda_bar;
+    let event_tape_metadata = build_seeded_tick_event_tape_metadata(state_snapshot_capture);
     let mut event_path: Vec<SeededTickEventRecord> = Vec::new();
     let mut next_event_index: u64 = 0;
     let mut next_state = run_config.model_inputs.initial_excitation_state;
@@ -426,6 +537,11 @@ where
                         event_index: next_event_index,
                         timestamp_utc_nanos,
                         side,
+                        state_snapshot: build_event_state_snapshot(
+                            next_state,
+                            lambda_bar,
+                            state_snapshot_capture,
+                        ),
                     });
                     next_event_index = next_event_index.saturating_add(1);
                     previous_timestamp_utc_nanos = timestamp_utc_nanos;
@@ -466,6 +582,7 @@ where
         start_time_utc: run_config.start_time_utc,
         end_time_utc: DateTime::<Utc>::from_timestamp_nanos(horizon_end_utc_nanos),
         simulated_interval_count: run_config.horizon_interval_count,
+        event_tape_metadata,
         event_path,
         final_excitation_state: next_state,
         debug_trace_enabled: run_config.options.debug_trace_enabled,
@@ -675,6 +792,34 @@ fn map_transition_error_to_seeded_simulation_run_error(
     }
 }
 
+const fn build_event_state_snapshot(
+    state: HawkesExcitationState,
+    lambda_bar: f64,
+    snapshot_capture: SeededTickEventStateSnapshotCapture,
+) -> Option<SeededTickEventStateSnapshot> {
+    match snapshot_capture {
+        SeededTickEventStateSnapshotCapture::Disabled => None,
+        SeededTickEventStateSnapshotCapture::PostEventTransition => {
+            Some(SeededTickEventStateSnapshot::from_state(state, lambda_bar))
+        }
+    }
+}
+
+const fn build_seeded_tick_event_tape_metadata(
+    state_snapshot_capture: SeededTickEventStateSnapshotCapture,
+) -> SeededTickEventTapeMetadata {
+    SeededTickEventTapeMetadata {
+        schema_version: SEEDED_TICK_EVENT_TAPE_METADATA_SCHEMA_VERSION,
+        event_record_schema_version: SEEDED_TICK_EVENT_RECORD_SCHEMA_VERSION,
+        state_snapshot_schema_version: SEEDED_TICK_EVENT_STATE_SNAPSHOT_SCHEMA_VERSION,
+        event_ordering_policy: SEEDED_TICK_EVENT_ORDERING_POLICY,
+        timestamp_representation_policy: SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY,
+        side_encoding_policy: SEEDED_TICK_EVENT_SIDE_ENCODING_POLICY,
+        state_snapshot_capture,
+        state_snapshot_capture_point_policy: state_snapshot_capture.capture_point_policy(),
+    }
+}
+
 fn derive_elapsed_hours(previous_timestamp_utc_nanos: i64, timestamp_utc_nanos: i64) -> f64 {
     (timestamp_utc_nanos - previous_timestamp_utc_nanos) as f64 / ONE_HOUR_NANOS as f64
 }
@@ -792,8 +937,9 @@ pub fn evolve_hawkes_state_for_simulation_step(
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, Utc};
+    use serde_json::Value;
 
-    use crate::hawkes::{HawkesKernelLoadings, HawkesKernelParameters};
+    use crate::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
     use crate::hourly_factors::{
         DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
         DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD, HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
@@ -809,10 +955,16 @@ mod tests {
     use crate::simulation::{
         SEEDED_TICK_EVENT_DETERMINISM_POLICY, SEEDED_TICK_EVENT_ORDERING_POLICY,
         SEEDED_TICK_EVENT_PATH_SCHEMA_VERSION, SEEDED_TICK_EVENT_RANDOMNESS_STREAM_POLICY,
-        SEEDED_TICK_EVENT_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY, SeededTickEventSide,
-        SeededTickSimulationModelInputs, SeededTickSimulationRunConfig,
-        SeededTickSimulationRunError, SeededTickSimulationRunOptions,
-        run_seeded_tick_event_simulation, run_seeded_tick_event_simulation_with_randomness_factory,
+        SEEDED_TICK_EVENT_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY,
+        SEEDED_TICK_EVENT_RECORD_SCHEMA_VERSION, SEEDED_TICK_EVENT_SIDE_ENCODING_POLICY,
+        SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY,
+        SEEDED_TICK_EVENT_STATE_SNAPSHOT_SCHEMA_VERSION,
+        SEEDED_TICK_EVENT_TAPE_METADATA_SCHEMA_VERSION,
+        SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY, SeededTickEventSide,
+        SeededTickEventStateSnapshotCapture, SeededTickSimulationModelInputs,
+        SeededTickSimulationRunConfig, SeededTickSimulationRunError,
+        SeededTickSimulationRunOptions, run_seeded_tick_event_simulation,
+        run_seeded_tick_event_simulation_with_randomness_factory,
     };
 
     const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
@@ -826,6 +978,7 @@ mod tests {
             valid_model_inputs(),
             Some(SeededTickSimulationRunOptions {
                 debug_trace_enabled: true,
+                state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
             }),
         )
         .expect("valid run config should initialize");
@@ -899,6 +1052,7 @@ mod tests {
             valid_model_inputs(),
             Some(SeededTickSimulationRunOptions {
                 debug_trace_enabled: false,
+                state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
             }),
         )
         .expect("run config without debug trace should initialize");
@@ -909,6 +1063,7 @@ mod tests {
             valid_model_inputs(),
             Some(SeededTickSimulationRunOptions {
                 debug_trace_enabled: true,
+                state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
             }),
         )
         .expect("run config with debug trace should initialize");
@@ -1086,10 +1241,370 @@ mod tests {
         );
     }
 
+    #[test]
+    fn seeded_simulation_state_snapshot_captures_post_event_transition_boundary() {
+        let mut model_inputs = one_interval_model_inputs(0.5, 0.5, 0.0);
+        model_inputs.kernel_parameters = HawkesKernelParameters::try_new(
+            0.5,
+            1.5,
+            HawkesKernelLoadings {
+                plus_plus: 0.4,
+                plus_minus: 0.0,
+                minus_plus: 0.2,
+                minus_minus: 0.0,
+            },
+            HawkesKernelLoadings {
+                plus_plus: 0.0,
+                plus_minus: 0.0,
+                minus_plus: 0.0,
+                minus_minus: 0.0,
+            },
+        )
+        .expect("snapshot boundary kernel fixture should be valid");
+        model_inputs.initial_excitation_state = HawkesExcitationState {
+            y_plus_plus: 0.0,
+            y_plus_minus: 0.0,
+            y_minus_plus: 0.0,
+            y_minus_minus: 0.0,
+        };
+
+        let run_config = SeededTickSimulationRunConfig::try_new(
+            7_047,
+            DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+            1,
+            model_inputs,
+            Some(SeededTickSimulationRunOptions {
+                debug_trace_enabled: false,
+                state_snapshot_capture: SeededTickEventStateSnapshotCapture::PostEventTransition,
+            }),
+        )
+        .expect("snapshot boundary run config should initialize");
+        let scripted_factory = ScriptedRandomnessFactory::new(
+            vec![0.0],
+            vec![1.0],
+            vec![0.0],
+            vec![],
+            vec![0.0],
+            vec![],
+            vec![],
+        );
+        let run_result =
+            run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
+                .expect("snapshot boundary run should complete");
+
+        assert_eq!(run_result.event_path.len(), 1);
+        assert_eq!(
+            run_result.event_tape_metadata.state_snapshot_capture,
+            SeededTickEventStateSnapshotCapture::PostEventTransition
+        );
+        assert_eq!(
+            run_result
+                .event_tape_metadata
+                .state_snapshot_capture_point_policy,
+            Some(SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY)
+        );
+
+        let snapshot = run_result.event_path[0]
+            .state_snapshot
+            .expect("snapshot capture must populate state_snapshot");
+
+        assert_float_close(snapshot.y_plus_plus, 0.4);
+        assert_float_close(snapshot.y_plus_minus, 0.0);
+        assert_float_close(snapshot.y_minus_plus, 0.2);
+        assert_float_close(snapshot.y_minus_minus, 0.0);
+        assert_float_close(snapshot.deseasonalized_lambda_plus, 0.9);
+        assert_float_close(snapshot.deseasonalized_lambda_minus, 0.7);
+    }
+
+    #[test]
+    fn seeded_simulation_event_tape_schema_exposes_required_and_optional_fields() {
+        let run_config_without_snapshot = SeededTickSimulationRunConfig::try_new(
+            8_048,
+            DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+            1,
+            one_interval_model_inputs(1.0, 0.5, 0.0),
+            None,
+        )
+        .expect("schema run config without snapshot should initialize");
+
+        let scripted_factory = ScriptedRandomnessFactory::new(
+            vec![0.0],
+            vec![1.0],
+            vec![0.25],
+            vec![],
+            vec![0.0],
+            vec![],
+            vec![],
+        );
+
+        let run_result_without_snapshot = run_seeded_tick_event_simulation_with_randomness_factory(
+            run_config_without_snapshot,
+            &scripted_factory,
+        )
+        .expect("schema run without snapshot should complete");
+
+        let serialized_without_snapshot = run_result_without_snapshot
+            .serialize_event_tape_json()
+            .expect("event tape serialization without snapshot should succeed");
+        let payload_without_snapshot: Value = serde_json::from_str(&serialized_without_snapshot)
+            .expect("serialized event tape payload should parse");
+
+        assert_eq!(
+            payload_without_snapshot["schema_version"],
+            SEEDED_TICK_EVENT_PATH_SCHEMA_VERSION
+        );
+        assert_eq!(
+            payload_without_snapshot["metadata"]["schema_version"],
+            SEEDED_TICK_EVENT_TAPE_METADATA_SCHEMA_VERSION
+        );
+        assert_eq!(
+            payload_without_snapshot["metadata"]["event_record_schema_version"],
+            SEEDED_TICK_EVENT_RECORD_SCHEMA_VERSION
+        );
+        assert_eq!(
+            payload_without_snapshot["metadata"]["state_snapshot_schema_version"],
+            SEEDED_TICK_EVENT_STATE_SNAPSHOT_SCHEMA_VERSION
+        );
+        assert_eq!(
+            payload_without_snapshot["metadata"]["timestamp_representation_policy"],
+            SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY
+        );
+        assert_eq!(
+            payload_without_snapshot["metadata"]["side_encoding_policy"],
+            SEEDED_TICK_EVENT_SIDE_ENCODING_POLICY
+        );
+        assert_eq!(
+            payload_without_snapshot["metadata"]["state_snapshot_capture"],
+            "disabled"
+        );
+        assert!(
+            payload_without_snapshot["metadata"]
+                .get("state_snapshot_capture_point_policy")
+                .is_none()
+        );
+
+        let serialized_events_without_snapshot = payload_without_snapshot["event_tape"]
+            .as_array()
+            .expect("event_tape must serialize as an array");
+        assert_eq!(serialized_events_without_snapshot.len(), 1);
+
+        let first_event_without_snapshot = serialized_events_without_snapshot[0]
+            .as_object()
+            .expect("event record must serialize as an object");
+
+        for required_field in ["event_index", "timestamp_utc_nanos", "side"] {
+            assert!(first_event_without_snapshot.contains_key(required_field));
+        }
+
+        assert!(!first_event_without_snapshot.contains_key("state_snapshot"));
+        assert!(!first_event_without_snapshot.contains_key("interval_index"));
+
+        let run_config_with_snapshot = SeededTickSimulationRunConfig::try_new(
+            8_048,
+            DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+            1,
+            one_interval_model_inputs(1.0, 0.5, 0.0),
+            Some(SeededTickSimulationRunOptions {
+                debug_trace_enabled: false,
+                state_snapshot_capture: SeededTickEventStateSnapshotCapture::PostEventTransition,
+            }),
+        )
+        .expect("schema run config with snapshot should initialize");
+
+        let run_result_with_snapshot = run_seeded_tick_event_simulation_with_randomness_factory(
+            run_config_with_snapshot,
+            &scripted_factory,
+        )
+        .expect("schema run with snapshot should complete");
+
+        let serialized_with_snapshot = run_result_with_snapshot
+            .serialize_event_tape_json()
+            .expect("event tape serialization with snapshot should succeed");
+        let payload_with_snapshot: Value = serde_json::from_str(&serialized_with_snapshot)
+            .expect("serialized event tape payload should parse");
+
+        assert_eq!(
+            payload_with_snapshot["metadata"]["state_snapshot_capture"],
+            "post_event_transition"
+        );
+        assert_eq!(
+            payload_with_snapshot["metadata"]["state_snapshot_capture_point_policy"],
+            SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY
+        );
+
+        let first_event_with_snapshot = payload_with_snapshot["event_tape"][0]
+            .as_object()
+            .expect("event record with snapshot must serialize as an object");
+        let state_snapshot = first_event_with_snapshot
+            .get("state_snapshot")
+            .expect("event record must include state_snapshot when capture is enabled")
+            .as_object()
+            .expect("state_snapshot must serialize as an object");
+
+        for required_snapshot_field in [
+            "y_plus_plus",
+            "y_plus_minus",
+            "y_minus_plus",
+            "y_minus_minus",
+            "deseasonalized_lambda_plus",
+            "deseasonalized_lambda_minus",
+        ] {
+            assert!(state_snapshot.contains_key(required_snapshot_field));
+        }
+    }
+
+    #[test]
+    fn seeded_simulation_event_tape_serialization_is_deterministic() {
+        let run_config = SeededTickSimulationRunConfig::try_new(
+            9_049,
+            DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+            2,
+            valid_model_inputs(),
+            Some(SeededTickSimulationRunOptions {
+                debug_trace_enabled: false,
+                state_snapshot_capture: SeededTickEventStateSnapshotCapture::PostEventTransition,
+            }),
+        )
+        .expect("serialization determinism run config should initialize");
+
+        let first_result = run_seeded_tick_event_simulation(run_config.clone())
+            .expect("first serialization determinism run should complete");
+        let second_result = run_seeded_tick_event_simulation(run_config)
+            .expect("second serialization determinism run should complete");
+
+        let first_json = first_result
+            .serialize_event_tape_json()
+            .expect("first event tape serialization should succeed");
+        let second_json = second_result
+            .serialize_event_tape_json()
+            .expect("second event tape serialization should succeed");
+
+        assert_eq!(first_json, second_json);
+    }
+
+    #[test]
+    fn seeded_simulation_tied_and_near_tied_timestamps_serialize_deterministically() {
+        let tie_run_config = SeededTickSimulationRunConfig::try_new(
+            10_050,
+            DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+            1,
+            one_interval_model_inputs(1.0, 1.0, 0.0),
+            None,
+        )
+        .expect("tie serialization run config should initialize");
+
+        let tie_scripted_factory = ScriptedRandomnessFactory::new(
+            vec![0.0],
+            vec![0.0],
+            vec![0.3],
+            vec![0.3],
+            vec![0.0],
+            vec![],
+            vec![],
+        );
+
+        let tie_result = run_seeded_tick_event_simulation_with_randomness_factory(
+            tie_run_config,
+            &tie_scripted_factory,
+        )
+        .expect("tie serialization run should complete");
+
+        let tie_payload: Value = serde_json::from_str(
+            &tie_result
+                .serialize_event_tape_json()
+                .expect("tie event tape serialization should succeed"),
+        )
+        .expect("tie serialized payload should parse");
+
+        let tie_events = tie_payload["event_tape"]
+            .as_array()
+            .expect("tie event_tape must serialize as an array");
+
+        assert_eq!(tie_events.len(), 2);
+        assert_eq!(
+            tie_events[0]["timestamp_utc_nanos"],
+            tie_events[1]["timestamp_utc_nanos"]
+        );
+        assert_eq!(tie_events[0]["side"], "buy");
+        assert_eq!(tie_events[1]["side"], "sell");
+        assert_eq!(
+            tie_payload["metadata"]["timestamp_representation_policy"],
+            SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY
+        );
+        assert!(tie_events[0].get("interval_index").is_none());
+        assert!(tie_events[1].get("interval_index").is_none());
+
+        let near_tie_run_config = SeededTickSimulationRunConfig::try_new(
+            10_051,
+            DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+            1,
+            one_interval_model_inputs(1.0, 1.0, 0.0),
+            None,
+        )
+        .expect("near-tie serialization run config should initialize");
+
+        let near_tie_scripted_factory = ScriptedRandomnessFactory::new(
+            vec![0.0],
+            vec![0.0],
+            vec![0.300000001],
+            vec![0.3],
+            vec![0.0],
+            vec![],
+            vec![],
+        );
+
+        let near_tie_result = run_seeded_tick_event_simulation_with_randomness_factory(
+            near_tie_run_config,
+            &near_tie_scripted_factory,
+        )
+        .expect("near-tie serialization run should complete");
+
+        let near_tie_payload: Value = serde_json::from_str(
+            &near_tie_result
+                .serialize_event_tape_json()
+                .expect("near-tie event tape serialization should succeed"),
+        )
+        .expect("near-tie serialized payload should parse");
+
+        let near_tie_events = near_tie_payload["event_tape"]
+            .as_array()
+            .expect("near-tie event_tape must serialize as an array");
+
+        assert_eq!(near_tie_events.len(), 2);
+
+        let first_timestamp = near_tie_events[0]["timestamp_utc_nanos"]
+            .as_i64()
+            .expect("first near-tie timestamp should parse");
+        let second_timestamp = near_tie_events[1]["timestamp_utc_nanos"]
+            .as_i64()
+            .expect("second near-tie timestamp should parse");
+
+        assert!(first_timestamp < second_timestamp);
+        assert_eq!(near_tie_events[0]["side"], "sell");
+        assert_eq!(near_tie_events[1]["side"], "buy");
+        assert!(
+            !near_tie_events[0]
+                .as_object()
+                .is_some_and(|entry| entry.contains_key("bucket"))
+        );
+        assert!(
+            !near_tie_events[1]
+                .as_object()
+                .is_some_and(|entry| entry.contains_key("bucket"))
+        );
+    }
+
     fn is_non_decreasing_timestamp_path(run_result: &super::SeededTickSimulationRunResult) -> bool {
         run_result.event_path.windows(2).all(|event_window| {
             event_window[0].timestamp_utc_nanos <= event_window[1].timestamp_utc_nanos
         })
+    }
+
+    fn assert_float_close(observed: f64, expected: f64) {
+        assert!(
+            (observed - expected).abs() <= 1e-12,
+            "float mismatch, expected {expected}, observed {observed}"
+        );
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
