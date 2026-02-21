@@ -10,9 +10,15 @@ use janiform_core::hourly_factors::{
     HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
     HourlyFactorMaterializationMetadata,
 };
+use janiform_core::randomness::{
+    SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
+};
 use janiform_core::simulation::{
-    SeededTickEventRecord, SeededTickEventSide, SeededTickSimulationModelInputs,
-    SeededTickSimulationRunConfig, run_seeded_tick_event_simulation,
+    SEEDED_TICK_EVENT_ORDERING_POLICY, SeededTickEventDebugTraceRecord,
+    SeededTickEventDebugTraceTransitionKind, SeededTickEventRecord, SeededTickEventSide,
+    SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
+    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions, SeededTickSimulationRunResult,
+    run_seeded_tick_event_simulation, run_seeded_tick_event_simulation_with_randomness_factory,
 };
 use support::hawkes_invariant_catalog::{
     HawkesInvariantCheckClass, assert_hawkes_invariant_catalog_ids_have_check_class,
@@ -22,6 +28,7 @@ const START_TIME_UTC_NANOS: i64 = 1_704_067_200_000_000_000;
 const FIFTEEN_MINUTE_NANOS: i64 = 900_000_000_000;
 const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
 const ONE_DAY_NANOS: i64 = 86_400_000_000_000;
+const FLOAT_TOLERANCE: f64 = 1e-12;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct ClusteringMetrics {
@@ -106,6 +113,273 @@ fn seeded_behavior_validation_is_strictly_deterministic_for_repeated_seeded_runs
         first_run_result.final_excitation_state, second_run_result.final_excitation_state,
         "determinism failure for repeated seeded final states"
     );
+}
+
+#[test]
+fn seeded_behavior_validation_preserves_full_4d_state_carryover_across_multi_hour_boundaries() {
+    assert_hawkes_invariant_catalog_ids_have_check_class(
+        &["HK-BND-003"],
+        HawkesInvariantCheckClass::DeterministicEquation,
+    );
+
+    let run_config = SeededTickSimulationRunConfig::try_new(
+        91_007,
+        DateTime::<Utc>::from_timestamp_nanos(START_TIME_UTC_NANOS),
+        3,
+        build_multi_hour_zero_event_carryover_model_inputs(3),
+        Some(SeededTickSimulationRunOptions {
+            debug_trace_enabled: true,
+            debug_trace_options: SeededTickSimulationDebugTraceOptions {
+                sample_every_nth_transition: 4,
+                max_records_per_chunk: 16,
+            },
+            ..SeededTickSimulationRunOptions::default()
+        }),
+    )
+    .expect("multi-hour carryover run config should initialize");
+
+    let run_result = run_seeded_tick_event_simulation(run_config)
+        .expect("multi-hour carryover run should complete");
+    assert!(run_result.event_path.is_empty());
+
+    let trace_records = collect_debug_trace_records(&run_result);
+    let boundary_records: Vec<&SeededTickEventDebugTraceRecord> = trace_records
+        .iter()
+        .copied()
+        .filter(|trace_record| {
+            trace_record.transition_kind
+                == SeededTickEventDebugTraceTransitionKind::IntervalBoundaryDrift
+        })
+        .collect();
+    assert_eq!(boundary_records.len(), 3);
+
+    for boundary_record_window in boundary_records.windows(2) {
+        let preceding_boundary_record = boundary_record_window[0];
+        let following_boundary_record = boundary_record_window[1];
+
+        assert_eq!(
+            preceding_boundary_record.interval_index + 1,
+            following_boundary_record.interval_index
+        );
+        assert_float_close(
+            preceding_boundary_record.state_after_transition.y_plus_plus,
+            following_boundary_record
+                .state_before_transition
+                .y_plus_plus,
+        );
+        assert_float_close(
+            preceding_boundary_record
+                .state_after_transition
+                .y_plus_minus,
+            following_boundary_record
+                .state_before_transition
+                .y_plus_minus,
+        );
+        assert_float_close(
+            preceding_boundary_record
+                .state_after_transition
+                .y_minus_plus,
+            following_boundary_record
+                .state_before_transition
+                .y_minus_plus,
+        );
+        assert_float_close(
+            preceding_boundary_record
+                .state_after_transition
+                .y_minus_minus,
+            following_boundary_record
+                .state_before_transition
+                .y_minus_minus,
+        );
+    }
+}
+
+#[test]
+fn seeded_behavior_validation_boundary_adjacent_scenarios_are_repeatable_with_fixed_seed() {
+    assert_hawkes_invariant_catalog_ids_have_check_class(
+        &["HK-BND-003"],
+        HawkesInvariantCheckClass::DeterministicEquation,
+    );
+
+    let boundary_utc_nanos = START_TIME_UTC_NANOS + ONE_HOUR_NANOS;
+    let run_config = SeededTickSimulationRunConfig::try_new(
+        91_008,
+        DateTime::<Utc>::from_timestamp_nanos(START_TIME_UTC_NANOS),
+        2,
+        build_two_interval_boundary_adjacent_model_inputs(),
+        None,
+    )
+    .expect("boundary-adjacent run config should initialize");
+
+    let first_run_result = run_seeded_tick_event_simulation_with_randomness_factory(
+        run_config.clone(),
+        &BoundaryAdjacentRandomnessFactory,
+    )
+    .expect("first boundary-adjacent run should complete");
+    let second_run_result = run_seeded_tick_event_simulation_with_randomness_factory(
+        run_config,
+        &BoundaryAdjacentRandomnessFactory,
+    )
+    .expect("second boundary-adjacent run should complete");
+
+    assert_eq!(first_run_result.event_path, second_run_result.event_path);
+    assert_eq!(
+        first_run_result.final_excitation_state,
+        second_run_result.final_excitation_state
+    );
+
+    assert_eq!(first_run_result.event_path.len(), 2);
+
+    let first_timestamp_utc_nanos = first_run_result.event_path[0].timestamp_utc_nanos;
+    let second_timestamp_utc_nanos = first_run_result.event_path[1].timestamp_utc_nanos;
+
+    assert!(first_timestamp_utc_nanos < boundary_utc_nanos);
+    assert!(boundary_utc_nanos - first_timestamp_utc_nanos <= 4);
+    assert!(second_timestamp_utc_nanos > boundary_utc_nanos);
+    assert!(second_timestamp_utc_nanos - boundary_utc_nanos <= 4);
+    assert_ne!(first_timestamp_utc_nanos, boundary_utc_nanos);
+    assert_ne!(second_timestamp_utc_nanos, boundary_utc_nanos);
+    assert!(has_non_grid_event_time(
+        &first_run_result.event_path,
+        START_TIME_UTC_NANOS,
+        ONE_HOUR_NANOS,
+    ));
+}
+
+#[test]
+fn seeded_behavior_validation_tied_timestamps_follow_documented_event_ordering_policy() {
+    assert_hawkes_invariant_catalog_ids_have_check_class(
+        &["HK-BND-004"],
+        HawkesInvariantCheckClass::DeterministicEquation,
+    );
+
+    let run_config = SeededTickSimulationRunConfig::try_new(
+        91_009,
+        DateTime::<Utc>::from_timestamp_nanos(START_TIME_UTC_NANOS),
+        1,
+        build_one_interval_ordering_model_inputs(1.0),
+        Some(SeededTickSimulationRunOptions {
+            debug_trace_enabled: true,
+            debug_trace_options: SeededTickSimulationDebugTraceOptions {
+                sample_every_nth_transition: 1,
+                max_records_per_chunk: 8,
+            },
+            ..SeededTickSimulationRunOptions::default()
+        }),
+    )
+    .expect("tied-ordering run config should initialize");
+
+    let scripted_factory = ScriptedRandomnessFactory::new(
+        vec![0.0],
+        vec![0.0],
+        vec![0.3],
+        vec![0.3],
+        vec![0.0],
+        vec![0.3],
+        vec![0.5],
+    );
+
+    let first_run_result = run_seeded_tick_event_simulation_with_randomness_factory(
+        run_config.clone(),
+        &scripted_factory,
+    )
+    .expect("first tied-ordering run should complete");
+    let second_run_result =
+        run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
+            .expect("second tied-ordering run should complete");
+
+    assert_eq!(first_run_result.event_path, second_run_result.event_path);
+    assert_eq!(
+        first_run_result.event_ordering_policy,
+        SEEDED_TICK_EVENT_ORDERING_POLICY
+    );
+    assert_eq!(first_run_result.event_path.len(), 2);
+    assert_eq!(
+        first_run_result.event_path[0].timestamp_utc_nanos,
+        first_run_result.event_path[1].timestamp_utc_nanos
+    );
+    assert_eq!(
+        first_run_result.event_path[0].side,
+        SeededTickEventSide::Buy
+    );
+    assert_eq!(
+        first_run_result.event_path[1].side,
+        SeededTickEventSide::Sell
+    );
+
+    let trace_records = collect_debug_trace_records(&first_run_result);
+    assert_eq!(trace_records.len(), 4);
+
+    assert_eq!(
+        trace_records[0].transition_kind,
+        SeededTickEventDebugTraceTransitionKind::EndogenousBuyEvent
+    );
+    assert_eq!(
+        trace_records[1].transition_kind,
+        SeededTickEventDebugTraceTransitionKind::EndogenousSellEvent
+    );
+    assert_eq!(
+        trace_records[2].transition_kind,
+        SeededTickEventDebugTraceTransitionKind::ExogenousNews
+    );
+    assert_eq!(
+        trace_records[3].transition_kind,
+        SeededTickEventDebugTraceTransitionKind::IntervalBoundaryDrift
+    );
+
+    let tied_timestamp_utc_nanos = trace_records[0].timestamp_utc_nanos;
+    assert_eq!(
+        trace_records[1].timestamp_utc_nanos,
+        tied_timestamp_utc_nanos
+    );
+    assert_eq!(
+        trace_records[2].timestamp_utc_nanos,
+        tied_timestamp_utc_nanos
+    );
+}
+
+#[test]
+fn seeded_behavior_validation_near_tied_timestamps_follow_timestamp_priority_ordering() {
+    assert_hawkes_invariant_catalog_ids_have_check_class(
+        &["HK-BND-004"],
+        HawkesInvariantCheckClass::DeterministicEquation,
+    );
+
+    let run_config = SeededTickSimulationRunConfig::try_new(
+        91_010,
+        DateTime::<Utc>::from_timestamp_nanos(START_TIME_UTC_NANOS),
+        1,
+        build_one_interval_ordering_model_inputs(0.0),
+        None,
+    )
+    .expect("near-tie ordering run config should initialize");
+
+    let scripted_factory = ScriptedRandomnessFactory::new(
+        vec![0.0],
+        vec![0.0],
+        vec![0.300_000_001],
+        vec![0.3],
+        vec![0.0],
+        vec![],
+        vec![],
+    );
+
+    let run_result =
+        run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
+            .expect("near-tie ordering run should complete");
+    assert_eq!(run_result.event_path.len(), 2);
+
+    let first_timestamp_utc_nanos = run_result.event_path[0].timestamp_utc_nanos;
+    let second_timestamp_utc_nanos = run_result.event_path[1].timestamp_utc_nanos;
+
+    assert!(first_timestamp_utc_nanos < second_timestamp_utc_nanos);
+    assert_eq!(run_result.event_path[0].side, SeededTickEventSide::Sell);
+    assert_eq!(run_result.event_path[1].side, SeededTickEventSide::Buy);
+    assert_eq!(
+        run_result.event_ordering_policy,
+        SEEDED_TICK_EVENT_ORDERING_POLICY
+    );
+    assert!(second_timestamp_utc_nanos - first_timestamp_utc_nanos > 0);
 }
 
 #[test]
@@ -702,6 +976,28 @@ fn build_run_config(
     seasonality_factor: f64,
     news_intensity: f64,
 ) -> SeededTickSimulationRunConfig {
+    build_run_config_with_options(
+        seed,
+        interval_duration_nanos,
+        interval_count,
+        kernel_parameters,
+        initial_excitation_state,
+        seasonality_factor,
+        news_intensity,
+        None,
+    )
+}
+
+fn build_run_config_with_options(
+    seed: u64,
+    interval_duration_nanos: i64,
+    interval_count: usize,
+    kernel_parameters: HawkesKernelParameters,
+    initial_excitation_state: HawkesExcitationState,
+    seasonality_factor: f64,
+    news_intensity: f64,
+    options: Option<SeededTickSimulationRunOptions>,
+) -> SeededTickSimulationRunConfig {
     SeededTickSimulationRunConfig::try_new(
         seed,
         DateTime::<Utc>::from_timestamp_nanos(START_TIME_UTC_NANOS),
@@ -716,7 +1012,7 @@ fn build_run_config(
                 news_intensity,
             ),
         },
-        None,
+        options,
     )
     .expect("seeded run config should initialize")
 }
@@ -852,4 +1148,252 @@ fn seed_values(start_seed: u64, seed_count: usize) -> Vec<u64> {
     (0..seed_count)
         .map(|seed_offset| start_seed + seed_offset as u64)
         .collect()
+}
+
+fn collect_debug_trace_records(
+    run_result: &SeededTickSimulationRunResult,
+) -> Vec<&SeededTickEventDebugTraceRecord> {
+    run_result
+        .debug_trace_output
+        .as_ref()
+        .expect("debug trace output should exist")
+        .trace_chunks
+        .iter()
+        .flat_map(|trace_chunk| trace_chunk.records.iter())
+        .collect()
+}
+
+fn build_multi_hour_zero_event_carryover_model_inputs(
+    interval_count: usize,
+) -> SeededTickSimulationModelInputs {
+    SeededTickSimulationModelInputs {
+        kernel_parameters: HawkesKernelParameters::try_new(
+            0.5,
+            1.25,
+            HawkesKernelLoadings {
+                plus_plus: 0.0,
+                plus_minus: 0.0,
+                minus_plus: 0.0,
+                minus_minus: 0.0,
+            },
+            HawkesKernelLoadings {
+                plus_plus: 0.0,
+                plus_minus: 0.0,
+                minus_plus: 0.0,
+                minus_minus: 0.0,
+            },
+        )
+        .expect("carryover kernel parameter fixture should be valid"),
+        initial_excitation_state: HawkesExcitationState {
+            y_plus_plus: 1.6,
+            y_plus_minus: 0.8,
+            y_minus_plus: 1.2,
+            y_minus_minus: 0.4,
+        },
+        hourly_factor_contract: build_uniform_factor_contract(
+            ONE_HOUR_NANOS,
+            interval_count,
+            0.0,
+            0.0,
+        ),
+    }
+}
+
+fn build_one_interval_ordering_model_inputs(
+    news_intensity: f64,
+) -> SeededTickSimulationModelInputs {
+    SeededTickSimulationModelInputs {
+        kernel_parameters: HawkesKernelParameters::try_new(
+            0.5,
+            1.5,
+            HawkesKernelLoadings {
+                plus_plus: 0.0,
+                plus_minus: 0.0,
+                minus_plus: 0.0,
+                minus_minus: 0.0,
+            },
+            HawkesKernelLoadings {
+                plus_plus: 0.0,
+                plus_minus: 0.0,
+                minus_plus: 0.0,
+                minus_minus: 0.0,
+            },
+        )
+        .expect("ordering kernel parameter fixture should be valid"),
+        initial_excitation_state: HawkesExcitationState {
+            y_plus_plus: 0.5,
+            y_plus_minus: 0.0,
+            y_minus_plus: 0.5,
+            y_minus_minus: 0.0,
+        },
+        hourly_factor_contract: build_uniform_factor_contract(
+            ONE_HOUR_NANOS,
+            1,
+            1.0,
+            news_intensity,
+        ),
+    }
+}
+
+fn build_two_interval_boundary_adjacent_model_inputs() -> SeededTickSimulationModelInputs {
+    SeededTickSimulationModelInputs {
+        kernel_parameters: HawkesKernelParameters::try_new(
+            0.5,
+            1.0,
+            HawkesKernelLoadings {
+                plus_plus: 0.0,
+                plus_minus: 0.0,
+                minus_plus: 0.0,
+                minus_minus: 0.0,
+            },
+            HawkesKernelLoadings {
+                plus_plus: 0.0,
+                plus_minus: 0.0,
+                minus_plus: 0.0,
+                minus_minus: 0.0,
+            },
+        )
+        .expect("boundary-adjacent kernel parameter fixture should be valid"),
+        initial_excitation_state: HawkesExcitationState {
+            y_plus_plus: 0.5,
+            y_plus_minus: 0.0,
+            y_minus_plus: -10.0,
+            y_minus_minus: 0.0,
+        },
+        hourly_factor_contract: build_uniform_factor_contract(ONE_HOUR_NANOS, 2, 1.0, 0.0),
+    }
+}
+
+fn assert_float_close(observed: f64, expected: f64) {
+    assert!(
+        (observed - expected).abs() <= FLOAT_TOLERANCE,
+        "float mismatch, expected {expected}, observed {observed}",
+    );
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct ScriptedRandomnessFactory {
+    buy_count_draws: Vec<f64>,
+    sell_count_draws: Vec<f64>,
+    buy_timestamp_draws: Vec<f64>,
+    sell_timestamp_draws: Vec<f64>,
+    news_count_draws: Vec<f64>,
+    news_timestamp_draws: Vec<f64>,
+    news_severity_draws: Vec<f64>,
+}
+
+impl ScriptedRandomnessFactory {
+    fn new(
+        buy_count_draws: Vec<f64>,
+        sell_count_draws: Vec<f64>,
+        buy_timestamp_draws: Vec<f64>,
+        sell_timestamp_draws: Vec<f64>,
+        news_count_draws: Vec<f64>,
+        news_timestamp_draws: Vec<f64>,
+        news_severity_draws: Vec<f64>,
+    ) -> Self {
+        Self {
+            buy_count_draws,
+            sell_count_draws,
+            buy_timestamp_draws,
+            sell_timestamp_draws,
+            news_count_draws,
+            news_timestamp_draws,
+            news_severity_draws,
+        }
+    }
+}
+
+impl SimulationRandomnessFactory for ScriptedRandomnessFactory {
+    type Stream = ScriptedRandomnessStream;
+
+    fn create_substream(
+        &self,
+        _root_seed: u64,
+        substream_domain: SimulationRandomnessSubstreamDomain,
+        _substream_index: u64,
+    ) -> Self::Stream {
+        let draws = match substream_domain {
+            SimulationRandomnessSubstreamDomain::EndogenousBuyEventCount => {
+                self.buy_count_draws.clone()
+            }
+            SimulationRandomnessSubstreamDomain::EndogenousSellEventCount => {
+                self.sell_count_draws.clone()
+            }
+            SimulationRandomnessSubstreamDomain::EndogenousBuyEventTimestamp => {
+                self.buy_timestamp_draws.clone()
+            }
+            SimulationRandomnessSubstreamDomain::EndogenousSellEventTimestamp => {
+                self.sell_timestamp_draws.clone()
+            }
+            SimulationRandomnessSubstreamDomain::ExogenousNewsCount => {
+                self.news_count_draws.clone()
+            }
+            SimulationRandomnessSubstreamDomain::ExogenousNewsTimestamp => {
+                self.news_timestamp_draws.clone()
+            }
+            SimulationRandomnessSubstreamDomain::ExogenousNewsSeverity => {
+                self.news_severity_draws.clone()
+            }
+        };
+
+        ScriptedRandomnessStream::new(draws)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct ScriptedRandomnessStream {
+    draws: Vec<f64>,
+    position: usize,
+}
+
+impl ScriptedRandomnessStream {
+    fn new(draws: Vec<f64>) -> Self {
+        Self { draws, position: 0 }
+    }
+}
+
+impl SimulationRandomnessStream for ScriptedRandomnessStream {
+    fn next_u64(&mut self) -> u64 {
+        let unit_interval_draw = self.next_unit_interval_f64();
+        (unit_interval_draw.clamp(0.0, 1.0) * u64::MAX as f64).floor() as u64
+    }
+
+    fn next_unit_interval_f64(&mut self) -> f64 {
+        let next_draw = self.draws.get(self.position).copied().unwrap_or(0.0);
+        self.position = self.position.saturating_add(1);
+        next_draw.clamp(0.0, 1.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct BoundaryAdjacentRandomnessFactory;
+
+impl SimulationRandomnessFactory for BoundaryAdjacentRandomnessFactory {
+    type Stream = ScriptedRandomnessStream;
+
+    fn create_substream(
+        &self,
+        _root_seed: u64,
+        substream_domain: SimulationRandomnessSubstreamDomain,
+        substream_index: u64,
+    ) -> Self::Stream {
+        let draws = match substream_domain {
+            SimulationRandomnessSubstreamDomain::EndogenousBuyEventCount => vec![0.0],
+            SimulationRandomnessSubstreamDomain::EndogenousSellEventCount => vec![0.0],
+            SimulationRandomnessSubstreamDomain::EndogenousBuyEventTimestamp => {
+                if substream_index == 0 {
+                    vec![0.999_999_999_999]
+                } else {
+                    vec![0.000_000_000_001]
+                }
+            }
+            SimulationRandomnessSubstreamDomain::EndogenousSellEventTimestamp => vec![],
+            SimulationRandomnessSubstreamDomain::ExogenousNewsCount => vec![0.0],
+            SimulationRandomnessSubstreamDomain::ExogenousNewsTimestamp => vec![],
+            SimulationRandomnessSubstreamDomain::ExogenousNewsSeverity => vec![],
+        };
+
+        ScriptedRandomnessStream::new(draws)
+    }
 }

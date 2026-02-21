@@ -51,10 +51,30 @@ const HAWKES_EQUATION_TEST_REFERENCES: [SuiteTestCatalogReference; 4] = [
     },
 ];
 
-const SEEDED_BEHAVIOR_TEST_REFERENCES: [SuiteTestCatalogReference; 4] = [
+const SEEDED_BEHAVIOR_TEST_REFERENCES: [SuiteTestCatalogReference; 8] = [
     SuiteTestCatalogReference {
         test_name: "seeded_behavior_validation_is_strictly_deterministic_for_repeated_seeded_runs",
         catalog_invariant_ids: &["HK-BND-002"],
+        check_class: HawkesInvariantCheckClass::DeterministicEquation,
+    },
+    SuiteTestCatalogReference {
+        test_name: "seeded_behavior_validation_preserves_full_4d_state_carryover_across_multi_hour_boundaries",
+        catalog_invariant_ids: &["HK-BND-003"],
+        check_class: HawkesInvariantCheckClass::DeterministicEquation,
+    },
+    SuiteTestCatalogReference {
+        test_name: "seeded_behavior_validation_boundary_adjacent_scenarios_are_repeatable_with_fixed_seed",
+        catalog_invariant_ids: &["HK-BND-003"],
+        check_class: HawkesInvariantCheckClass::DeterministicEquation,
+    },
+    SuiteTestCatalogReference {
+        test_name: "seeded_behavior_validation_tied_timestamps_follow_documented_event_ordering_policy",
+        catalog_invariant_ids: &["HK-BND-004"],
+        check_class: HawkesInvariantCheckClass::DeterministicEquation,
+    },
+    SuiteTestCatalogReference {
+        test_name: "seeded_behavior_validation_near_tied_timestamps_follow_timestamp_priority_ordering",
+        catalog_invariant_ids: &["HK-BND-004"],
         check_class: HawkesInvariantCheckClass::DeterministicEquation,
     },
     SuiteTestCatalogReference {
@@ -188,8 +208,16 @@ fn hawkes_invariant_catalog_rejects_missing_required_invariant_classes() {
     let fixture_document = load_hawkes_invariant_catalog_fixture_as_value();
 
     let mut mutated_fixture_document = fixture_document;
-    mutated_fixture_document["invariants"][5]["invariant_class"] =
-        Value::String("clustering_signature".to_string());
+
+    let invariant_entries = mutated_fixture_document["invariants"]
+        .as_array_mut()
+        .expect("invariants should serialize as an array");
+    let non_grid_invariant_entry = invariant_entries
+        .iter_mut()
+        .find(|invariant_entry| invariant_entry["invariant_id"].as_str() == Some("HK-SAMP-001"))
+        .expect("fixture should include HK-SAMP-001");
+
+    non_grid_invariant_entry["invariant_class"] = Value::String("clustering_signature".to_string());
 
     let parsed_fixture_document =
         serde_json::from_value::<HawkesInvariantCatalogDocument>(mutated_fixture_document)

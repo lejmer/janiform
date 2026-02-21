@@ -1,7 +1,7 @@
 {
   "schema_version": "hawkes.invariant.catalog.v1",
   "catalog_id": "affine_hawkes_invariant_catalog_v1",
-  "catalog_version": "1.0.0",
+  "catalog_version": "1.1.0",
   "classification_rules": [
     {
       "check_class": "deterministic_equation",
@@ -118,6 +118,42 @@
         {
           "suite_id": "seeded_tick_behavior_validation",
           "test_name": "seeded_behavior_validation_is_strictly_deterministic_for_repeated_seeded_runs"
+        }
+      ]
+    },
+    {
+      "invariant_id": "HK-BND-003",
+      "title": "Hour-boundary carryover preserves full 4D Hawkes state",
+      "category_id": "boundary_behavior",
+      "invariant_class": "hour_boundary_full_state_carryover",
+      "check_class": "deterministic_equation",
+      "rationale": "Boundary carryover must transfer Y++, Y+-, Y-+, and Y-- exactly across interval transitions in multi-hour deterministic runs.",
+      "suite_references": [
+        {
+          "suite_id": "seeded_tick_behavior_validation",
+          "test_name": "seeded_behavior_validation_preserves_full_4d_state_carryover_across_multi_hour_boundaries"
+        },
+        {
+          "suite_id": "seeded_tick_behavior_validation",
+          "test_name": "seeded_behavior_validation_boundary_adjacent_scenarios_are_repeatable_with_fixed_seed"
+        }
+      ]
+    },
+    {
+      "invariant_id": "HK-BND-004",
+      "title": "Tie and near-tie event ordering follows policy without timestamp snapping",
+      "category_id": "boundary_behavior",
+      "invariant_class": "event_ordering_tie_and_near_tie_semantics",
+      "check_class": "deterministic_equation",
+      "rationale": "Tied and near-tied event-time updates must follow documented ordering policy while preserving event-time timestamps near interval boundaries.",
+      "suite_references": [
+        {
+          "suite_id": "seeded_tick_behavior_validation",
+          "test_name": "seeded_behavior_validation_tied_timestamps_follow_documented_event_ordering_policy"
+        },
+        {
+          "suite_id": "seeded_tick_behavior_validation",
+          "test_name": "seeded_behavior_validation_near_tied_timestamps_follow_timestamp_priority_ordering"
         }
       ]
     },
