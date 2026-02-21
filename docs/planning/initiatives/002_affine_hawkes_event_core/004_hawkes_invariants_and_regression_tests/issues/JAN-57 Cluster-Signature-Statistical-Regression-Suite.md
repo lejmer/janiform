@@ -1,4 +1,4 @@
-## ISSUE-006: Cluster Signature Statistical Regression Suite
+## Cluster Signature Statistical Regression Suite
 
 ### Description
 Implement statistical regression checks for clustered-event signatures to guard against accidental erosion of Hawkes burst dynamics.

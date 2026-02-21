@@ -1,4 +1,4 @@
-## ISSUE-002: Deterministic State Transition Invariant Tests
+## Deterministic State Transition Invariant Tests
 
 ### Description
 Implement deterministic invariant tests for Hawkes state transitions covering drift, endogenous jumps, and exogenous loading updates.
