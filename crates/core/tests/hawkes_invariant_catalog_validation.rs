@@ -27,6 +27,8 @@ struct SuiteTestCatalogReference {
 const HAWKES_EQUATION_SUITE_ID: &str = "hawkes_equation_reference_suite";
 const HAWKES_CONSTRAINTS_SUITE_ID: &str = "hawkes_constraints_invariant_suite";
 const SEEDED_BEHAVIOR_SUITE_ID: &str = "seeded_tick_behavior_validation";
+const CLUSTER_SIGNATURE_STATISTICAL_SUITE_ID: &str =
+    "hawkes_cluster_signature_statistical_regression";
 
 const HAWKES_EQUATION_TEST_REFERENCES: [SuiteTestCatalogReference; 4] = [
     SuiteTestCatalogReference {
@@ -89,6 +91,39 @@ const SEEDED_BEHAVIOR_TEST_REFERENCES: [SuiteTestCatalogReference; 8] = [
     },
     SuiteTestCatalogReference {
         test_name: "seeded_behavior_validation_compares_aggregated_fine_and_direct_coarse_summaries",
+        catalog_invariant_ids: &["HK-SCALE-001"],
+        check_class: HawkesInvariantCheckClass::StatisticalProperty,
+    },
+];
+
+const CLUSTER_SIGNATURE_STATISTICAL_TEST_REFERENCES: [SuiteTestCatalogReference; 6] = [
+    SuiteTestCatalogReference {
+        test_name: "cluster_signature_metric_calculation_distinguishes_synthetic_clustered_and_non_clustered_fixtures",
+        catalog_invariant_ids: &["HK-SAMP-001"],
+        check_class: HawkesInvariantCheckClass::StatisticalProperty,
+    },
+    SuiteTestCatalogReference {
+        test_name: "cluster_signature_batch_metrics_are_reproducible_with_fixed_seed_batches",
+        catalog_invariant_ids: &["HK-SAMP-001"],
+        check_class: HawkesInvariantCheckClass::StatisticalProperty,
+    },
+    SuiteTestCatalogReference {
+        test_name: "cluster_signature_regression_reference_bands_pass_for_seeded_batches",
+        catalog_invariant_ids: &["HK-SAMP-001"],
+        check_class: HawkesInvariantCheckClass::StatisticalProperty,
+    },
+    SuiteTestCatalogReference {
+        test_name: "cluster_signature_regression_reports_metric_deltas_when_bands_are_violated",
+        catalog_invariant_ids: &["HK-SAMP-001"],
+        check_class: HawkesInvariantCheckClass::StatisticalProperty,
+    },
+    SuiteTestCatalogReference {
+        test_name: "cluster_signature_scale_consistency_reference_bands_pass_for_seeded_horizon_panel",
+        catalog_invariant_ids: &["HK-SCALE-001"],
+        check_class: HawkesInvariantCheckClass::StatisticalProperty,
+    },
+    SuiteTestCatalogReference {
+        test_name: "cluster_signature_scale_consistency_reports_metric_deltas_when_bands_are_violated",
         catalog_invariant_ids: &["HK-SCALE-001"],
         check_class: HawkesInvariantCheckClass::StatisticalProperty,
     },
@@ -249,6 +284,12 @@ fn hawkes_suite_test_reference_matrix_is_complete_and_catalog_linked() {
         SEEDED_BEHAVIOR_SUITE_ID,
         &SEEDED_BEHAVIOR_TEST_REFERENCES,
         test_suite_source_path("seeded_tick_behavior_validation.rs"),
+    );
+    assert_suite_reference_matrix_covers_all_suite_tests(
+        &catalog_document,
+        CLUSTER_SIGNATURE_STATISTICAL_SUITE_ID,
+        &CLUSTER_SIGNATURE_STATISTICAL_TEST_REFERENCES,
+        test_suite_source_path("hawkes_cluster_signature_statistical_regression.rs"),
     );
 }
 
