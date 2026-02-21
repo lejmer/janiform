@@ -1,10 +1,13 @@
 mod support;
 
-use std::fmt::Write;
-
 use janiform_core::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
     HawkesTransitionError, HawkesTransitionStep,
+};
+use support::hawkes_failure_diagnostics::{
+    HawkesFailureDiagnosticCategory, HawkesFailureDiagnosticReport,
+    HawkesFailureDiagnosticViolation, build_hawkes_failure_diagnostic_report,
+    render_hawkes_failure_diagnostic_report,
 };
 use support::hawkes_invariant_catalog::{
     HawkesInvariantCheckClass, assert_hawkes_invariant_catalog_ids_have_check_class,
@@ -427,25 +430,42 @@ fn collect_checkpoint_mismatches(
     mismatches
 }
 
-fn format_mismatch_diagnostics(mismatches: &[StateMismatchDiagnostic]) -> String {
-    let mut output = String::new();
+fn render_transition_mismatch_diagnostics(
+    test_name: &str,
+    invariant_ids: &[&str],
+    mismatches: &[StateMismatchDiagnostic],
+) -> String {
+    let violations: Vec<HawkesFailureDiagnosticViolation> = mismatches
+        .iter()
+        .map(|mismatch| HawkesFailureDiagnosticViolation {
+            category: HawkesFailureDiagnosticCategory::Transition,
+            scope: format!(
+                "scenario={} step={} component={}",
+                mismatch.scenario_id, mismatch.step_index, mismatch.component_identifier
+            ),
+            detail: format!(
+                "expected={} actual={} absolute_difference={} tolerance={}",
+                mismatch.expected_value,
+                mismatch.actual_value,
+                mismatch.absolute_difference,
+                mismatch.tolerance
+            ),
+            observed_value: Some(mismatch.actual_value),
+            reference_lower_bound: Some(mismatch.expected_value - mismatch.tolerance),
+            reference_upper_bound: Some(mismatch.expected_value + mismatch.tolerance),
+            delta_relative_to_reference: Some(mismatch.actual_value - mismatch.expected_value),
+        })
+        .collect();
 
-    for mismatch in mismatches {
-        writeln!(
-            output,
-            "scenario={} step={} component={} expected={} actual={} absolute_difference={} tolerance={}",
-            mismatch.scenario_id,
-            mismatch.step_index,
-            mismatch.component_identifier,
-            mismatch.expected_value,
-            mismatch.actual_value,
-            mismatch.absolute_difference,
-            mismatch.tolerance
-        )
-        .expect("in-memory write should never fail");
-    }
+    let report = build_hawkes_failure_diagnostic_report(
+        "hawkes_equation_reference_suite",
+        test_name,
+        HawkesInvariantCheckClass::DeterministicEquation,
+        invariant_ids,
+        violations,
+    );
 
-    output
+    render_hawkes_failure_diagnostic_report(&report)
 }
 
 fn seeded_transition_schedule(seed: u64, step_count: usize) -> Vec<HawkesTransitionStep> {
@@ -519,7 +539,11 @@ fn hawkes_reference_scenarios_match_expected_checkpoints() {
     assert!(
         all_mismatches.is_empty(),
         "equation-level reference checkpoints diverged\n{}",
-        format_mismatch_diagnostics(&all_mismatches)
+        render_transition_mismatch_diagnostics(
+            "hawkes_reference_scenarios_match_expected_checkpoints",
+            &["HK-DYN-001"],
+            &all_mismatches,
+        )
     );
 }
 
@@ -553,10 +577,60 @@ fn hawkes_reference_mismatch_diagnostics_include_step_and_component_identifiers(
     assert_eq!(mismatches[0].step_index, 3);
     assert_eq!(mismatches[0].component_identifier, "y_plus_minus");
 
-    let rendered_diagnostics = format_mismatch_diagnostics(&mismatches);
-    assert!(rendered_diagnostics.contains("scenario=mixed_update_path"));
-    assert!(rendered_diagnostics.contains("step=3"));
-    assert!(rendered_diagnostics.contains("component=y_plus_minus"));
+    let rendered_diagnostics = render_transition_mismatch_diagnostics(
+        "hawkes_reference_mismatch_diagnostics_include_step_and_component_identifiers",
+        &["HK-DYN-002"],
+        &mismatches,
+    );
+    let parsed_diagnostic_report: HawkesFailureDiagnosticReport =
+        serde_json::from_str(&rendered_diagnostics)
+            .expect("rendered mismatch diagnostics should be valid JSON");
+
+    assert_eq!(
+        parsed_diagnostic_report.schema_version,
+        "hawkes.failure_diagnostic_report.v1"
+    );
+    assert_eq!(
+        parsed_diagnostic_report.suite_id,
+        "hawkes_equation_reference_suite"
+    );
+    assert_eq!(
+        parsed_diagnostic_report.test_name,
+        "hawkes_reference_mismatch_diagnostics_include_step_and_component_identifiers"
+    );
+    assert_eq!(
+        parsed_diagnostic_report.check_class,
+        HawkesInvariantCheckClass::DeterministicEquation
+    );
+    assert_eq!(
+        parsed_diagnostic_report.invariant_ids,
+        vec!["HK-DYN-002".to_string()]
+    );
+    assert_eq!(parsed_diagnostic_report.summary.violation_count, 1);
+    assert_eq!(
+        parsed_diagnostic_report.summary.category_counts.len(),
+        1,
+        "single mismatch should emit exactly one category count"
+    );
+    assert_eq!(
+        parsed_diagnostic_report.summary.category_counts[0].category,
+        HawkesFailureDiagnosticCategory::Transition
+    );
+    assert!(
+        parsed_diagnostic_report.violations[0]
+            .scope
+            .contains("scenario=mixed_update_path")
+    );
+    assert!(
+        parsed_diagnostic_report.violations[0]
+            .scope
+            .contains("step=3")
+    );
+    assert!(
+        parsed_diagnostic_report.violations[0]
+            .scope
+            .contains("component=y_plus_minus")
+    );
 }
 
 #[test]
@@ -610,7 +684,11 @@ fn irregular_timestamp_transition_schedule_matches_expected_checkpoints() {
     assert!(
         mismatches.is_empty(),
         "irregular timestamp checkpoints diverged\n{}",
-        format_mismatch_diagnostics(&mismatches)
+        render_transition_mismatch_diagnostics(
+            "irregular_timestamp_transition_schedule_matches_expected_checkpoints",
+            &["HK-DYN-001"],
+            &mismatches,
+        )
     );
 }
 

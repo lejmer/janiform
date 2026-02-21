@@ -1,10 +1,12 @@
 mod support;
 
-use std::fmt::Write;
-
 use janiform_core::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
     HawkesTransitionStep,
+};
+use support::hawkes_failure_diagnostics::{
+    HawkesFailureDiagnosticViolation, build_hawkes_failure_diagnostic_report,
+    classify_constraint_or_transition_violation_category, render_hawkes_failure_diagnostic_report,
 };
 use support::hawkes_invariant_catalog::{
     HawkesInvariantCheckClass, assert_hawkes_invariant_catalog_ids_have_check_class,
@@ -172,7 +174,11 @@ fn constraint_projection_sanity_preserves_positive_intensity_domains() {
     assert!(
         violations.is_empty(),
         "projection invariants failed\n{}",
-        render_violation_diagnostics(&violations)
+        render_violation_diagnostics(
+            "constraint_projection_sanity_preserves_positive_intensity_domains",
+            &["HK-CON-001"],
+            &violations,
+        )
     );
 }
 
@@ -309,7 +315,11 @@ fn constraint_stability_boundary_regimes_remain_constructible_and_stable() {
     assert!(
         violations.is_empty(),
         "stability invariants failed\n{}",
-        render_violation_diagnostics(&violations)
+        render_violation_diagnostics(
+            "constraint_stability_boundary_regimes_remain_constructible_and_stable",
+            &["HK-CON-001"],
+            &violations,
+        )
     );
 }
 
@@ -451,7 +461,11 @@ fn constraint_transition_steps_preserve_non_negative_state_increments() {
     assert!(
         violations.is_empty(),
         "transition invariants failed\n{}",
-        render_violation_diagnostics(&violations)
+        render_violation_diagnostics(
+            "constraint_transition_steps_preserve_non_negative_state_increments",
+            &["HK-CON-001"],
+            &violations,
+        )
     );
 }
 
@@ -525,17 +539,36 @@ fn state_components(state: HawkesExcitationState) -> [(&'static str, f64); 4] {
     ]
 }
 
-fn render_violation_diagnostics(violations: &[InvariantViolationDiagnostic]) -> String {
-    let mut diagnostics = String::new();
+fn render_violation_diagnostics(
+    test_name: &str,
+    invariant_ids: &[&str],
+    violations: &[InvariantViolationDiagnostic],
+) -> String {
+    let mapped_violations: Vec<HawkesFailureDiagnosticViolation> = violations
+        .iter()
+        .map(|violation| HawkesFailureDiagnosticViolation {
+            category: classify_constraint_or_transition_violation_category(
+                violation.violation_kind,
+            ),
+            scope: format!(
+                "violation_kind={} scenario_id={}",
+                violation.violation_kind, violation.scenario_id
+            ),
+            detail: violation.detail.clone(),
+            observed_value: None,
+            reference_lower_bound: None,
+            reference_upper_bound: None,
+            delta_relative_to_reference: None,
+        })
+        .collect();
 
-    for violation in violations {
-        writeln!(
-            diagnostics,
-            "violation_kind={} scenario_id={} detail={}",
-            violation.violation_kind, violation.scenario_id, violation.detail
-        )
-        .expect("in-memory write should never fail");
-    }
+    let report = build_hawkes_failure_diagnostic_report(
+        "hawkes_constraints_invariant_suite",
+        test_name,
+        HawkesInvariantCheckClass::DeterministicEquation,
+        invariant_ids,
+        mapped_violations,
+    );
 
-    diagnostics
+    render_hawkes_failure_diagnostic_report(&report)
 }
