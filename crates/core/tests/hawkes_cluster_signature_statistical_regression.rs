@@ -18,6 +18,11 @@ use janiform_core::simulation::{
     SeededTickSimulationRunConfig, run_seeded_tick_event_simulation,
 };
 use serde::Deserialize;
+use support::hawkes_failure_diagnostics::{
+    HawkesFailureDiagnosticCategory, HawkesFailureDiagnosticReport,
+    HawkesFailureDiagnosticViolation, build_hawkes_failure_diagnostic_report,
+    classify_statistical_violation_category, render_hawkes_failure_diagnostic_report,
+};
 use support::hawkes_invariant_catalog::{
     HawkesInvariantCheckClass, assert_hawkes_invariant_catalog_ids_have_check_class,
 };
@@ -255,7 +260,12 @@ fn cluster_signature_regression_reference_bands_pass_for_seeded_batches() {
         clustered_metrics,
     );
 
-    assert_no_band_violations(&band_violations, "clustering panel");
+    assert_no_band_violations(
+        &band_violations,
+        "clustering panel",
+        "cluster_signature_regression_reference_bands_pass_for_seeded_batches",
+        &["HK-SAMP-001"],
+    );
 }
 
 #[test]
@@ -300,6 +310,54 @@ fn cluster_signature_regression_reports_metric_deltas_when_bands_are_violated() 
             .iter()
             .all(|band_violation| band_violation.delta_relative_to_band != 0.0)
     );
+
+    let diagnostic_payload = build_band_violation_diagnostic_payload(
+        "cluster_signature_regression_reports_metric_deltas_when_bands_are_violated",
+        &["HK-SAMP-001"],
+        &band_violations,
+    );
+    let parsed_diagnostic_report: HawkesFailureDiagnosticReport =
+        serde_json::from_str(&diagnostic_payload)
+            .expect("clustering mismatch diagnostics should parse as valid JSON");
+
+    assert_eq!(
+        parsed_diagnostic_report.suite_id,
+        "hawkes_cluster_signature_statistical_regression"
+    );
+    assert_eq!(
+        parsed_diagnostic_report.test_name,
+        "cluster_signature_regression_reports_metric_deltas_when_bands_are_violated"
+    );
+    assert_eq!(
+        parsed_diagnostic_report.check_class,
+        HawkesInvariantCheckClass::StatisticalProperty
+    );
+    assert_eq!(
+        parsed_diagnostic_report.invariant_ids,
+        vec!["HK-SAMP-001".to_string()]
+    );
+    assert_eq!(
+        parsed_diagnostic_report.summary.violation_count,
+        band_violations.len()
+    );
+    assert!(
+        parsed_diagnostic_report
+            .summary
+            .category_counts
+            .iter()
+            .any(|category_count| {
+                category_count.category == HawkesFailureDiagnosticCategory::StatisticalDrift
+            })
+    );
+    assert!(
+        parsed_diagnostic_report
+            .summary
+            .category_counts
+            .iter()
+            .any(|category_count| {
+                category_count.category == HawkesFailureDiagnosticCategory::EventTimeGridLeakage
+            })
+    );
 }
 
 #[test]
@@ -335,7 +393,12 @@ fn cluster_signature_scale_consistency_reference_bands_pass_for_seeded_horizon_p
         all_band_violations.extend(horizon_violations);
     }
 
-    assert_no_band_violations(&all_band_violations, "scale-consistency panel");
+    assert_no_band_violations(
+        &all_band_violations,
+        "scale-consistency panel",
+        "cluster_signature_scale_consistency_reference_bands_pass_for_seeded_horizon_panel",
+        &["HK-SCALE-001"],
+    );
 }
 
 #[test]
@@ -399,6 +462,43 @@ fn cluster_signature_scale_consistency_reports_metric_deltas_when_bands_are_viol
         band_violations
             .iter()
             .all(|band_violation| band_violation.delta_relative_to_band > 0.0)
+    );
+
+    let diagnostic_payload = build_band_violation_diagnostic_payload(
+        "cluster_signature_scale_consistency_reports_metric_deltas_when_bands_are_violated",
+        &["HK-SCALE-001"],
+        &band_violations,
+    );
+    let parsed_diagnostic_report: HawkesFailureDiagnosticReport =
+        serde_json::from_str(&diagnostic_payload)
+            .expect("scale-consistency mismatch diagnostics should parse as valid JSON");
+
+    assert_eq!(
+        parsed_diagnostic_report.suite_id,
+        "hawkes_cluster_signature_statistical_regression"
+    );
+    assert_eq!(
+        parsed_diagnostic_report.test_name,
+        "cluster_signature_scale_consistency_reports_metric_deltas_when_bands_are_violated"
+    );
+    assert_eq!(
+        parsed_diagnostic_report.invariant_ids,
+        vec!["HK-SCALE-001".to_string()]
+    );
+    assert!(
+        parsed_diagnostic_report
+            .summary
+            .category_counts
+            .iter()
+            .any(|category_count| {
+                category_count.category == HawkesFailureDiagnosticCategory::ScaleConsistencyDrift
+            })
+    );
+    assert!(
+        parsed_diagnostic_report
+            .violations
+            .iter()
+            .all(|violation| violation.scope.contains("horizon=1h"))
     );
 }
 
@@ -708,32 +808,66 @@ fn push_band_violation_if_outside(
     });
 }
 
-fn assert_no_band_violations(band_violations: &[BandViolation], panel_label: &str) {
+fn assert_no_band_violations(
+    band_violations: &[BandViolation],
+    panel_label: &str,
+    test_name: &str,
+    invariant_ids: &[&str],
+) {
     if band_violations.is_empty() {
         return;
     }
 
-    let formatted_violations = band_violations
+    let diagnostic_payload =
+        build_band_violation_diagnostic_payload(test_name, invariant_ids, band_violations);
+
+    panic!(
+        "{panel_label} reference-band regression failed with {} violations:\n{diagnostic_payload}",
+        band_violations.len(),
+    );
+}
+
+fn build_band_violation_diagnostic_payload(
+    test_name: &str,
+    invariant_ids: &[&str],
+    band_violations: &[BandViolation],
+) -> String {
+    let violations: Vec<HawkesFailureDiagnosticViolation> = band_violations
         .iter()
-        .map(|band_violation| {
-            format!(
-                "panel={} horizon={} metric={} observed={:.6} band=[{:.6}, {:.6}] delta_to_band={:+.6}",
+        .map(|band_violation| HawkesFailureDiagnosticViolation {
+            category: classify_statistical_violation_category(
+                band_violation.panel_id,
+                band_violation.metric_id,
+            ),
+            scope: format!(
+                "panel={} horizon={} metric={}",
                 band_violation.panel_id,
                 band_violation.horizon_label.as_deref().unwrap_or("n/a"),
-                band_violation.metric_id,
+                band_violation.metric_id
+            ),
+            detail: format!(
+                "observed={} reference_band=[{}, {}] delta_relative_to_band={}",
                 band_violation.observed_value,
                 band_violation.lower_bound,
                 band_violation.upper_bound,
-                band_violation.delta_relative_to_band,
-            )
+                band_violation.delta_relative_to_band
+            ),
+            observed_value: Some(band_violation.observed_value),
+            reference_lower_bound: Some(band_violation.lower_bound),
+            reference_upper_bound: Some(band_violation.upper_bound),
+            delta_relative_to_reference: Some(band_violation.delta_relative_to_band),
         })
-        .collect::<Vec<String>>()
-        .join(" | ");
+        .collect();
 
-    panic!(
-        "{panel_label} reference-band regression failed with {} violations: {formatted_violations}",
-        band_violations.len()
+    let report = build_hawkes_failure_diagnostic_report(
+        "hawkes_cluster_signature_statistical_regression",
+        test_name,
+        HawkesInvariantCheckClass::StatisticalProperty,
+        invariant_ids,
+        violations,
     );
+
+    render_hawkes_failure_diagnostic_report(&report)
 }
 
 fn compute_clustering_metrics_from_interval_count_runs(

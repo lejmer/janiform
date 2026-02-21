@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
 use serde::Deserialize;
+use serde::Serialize;
 
 use crate::support::validation_fixture::fixtures_root_path;
 
@@ -23,7 +24,7 @@ pub const HAWKES_REQUIRED_INVARIANT_CLASS_NON_GRID_EVENT_TIME_SEMANTICS: &str =
 pub const HAWKES_REQUIRED_INVARIANT_CLASS_COARSE_AGGREGATED_SCALE_CONSISTENCY: &str =
     "coarse_vs_aggregated_scale_consistency";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HawkesInvariantCheckClass {
     DeterministicEquation,
