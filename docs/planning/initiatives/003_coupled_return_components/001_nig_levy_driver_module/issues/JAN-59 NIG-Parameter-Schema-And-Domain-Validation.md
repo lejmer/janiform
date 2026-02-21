@@ -1,4 +1,4 @@
-## ISSUE-001: NIG Parameter Schema And Domain Validation
+## NIG Parameter Schema And Domain Validation
 
 ### Description
 Define the canonical parameter schema for NIG drivers and implement domain validation for all parameter inputs used by simulation and pricing workflows.
@@ -14,5 +14,6 @@ Define the canonical parameter schema for NIG drivers and implement domain valid
 - Invalid boundary and out-of-domain parameter sets
 
 ### Notes/Constraints
+- See `docs/janiform_design_brainstorm_notes.md` for the model spec itself.
 - Keep parameter validation in one canonical module
 - Do not duplicate validation logic across pricing and simulation paths

@@ -1,4 +1,4 @@
-## ISSUE-007: Cross Engine Interface And Reference Regression Suite
+## Cross Engine Interface And Reference Regression Suite
 
 ### Description
 Finalize shared NIG driver interfaces used by pricing and simulation engines and add a reference regression suite to prevent implementation drift.
@@ -15,5 +15,6 @@ Finalize shared NIG driver interfaces used by pricing and simulation engines and
 - Integration tests confirming both engines consume the same driver interface
 
 ### Notes/Constraints
+- See `docs/janiform_design_brainstorm_notes.md` for the model spec itself.
 - Keep fixture set compact and versioned for long-term maintainability
 - Separate deterministic numeric checks from statistical tolerance checks

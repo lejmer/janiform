@@ -1,4 +1,4 @@
-## ISSUE-005: Sign Convention Helpers For Return Composition
+## Sign Convention Helpers For Return Composition
 
 ### Description
 Provide helper functions for correct buy and sell characteristic-function contribution wiring, including sell-side `psi_minus(-u)` usage in return composition.
@@ -14,5 +14,6 @@ Provide helper functions for correct buy and sell characteristic-function contri
 - Integration-oriented tests for combined buy and sell contribution assembly
 
 ### Notes/Constraints
+- See `docs/janiform_design_brainstorm_notes.md` for the model spec itself.
 - Keep sign-convention logic in one module
 - Avoid embedding sign handling separately in each engine

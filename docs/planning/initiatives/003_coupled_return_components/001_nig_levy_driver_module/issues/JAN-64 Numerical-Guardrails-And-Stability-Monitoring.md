@@ -1,4 +1,4 @@
-## ISSUE-006: Numerical Guardrails And Stability Monitoring
+## Numerical Guardrails And Stability Monitoring
 
 ### Description
 Add numerical guardrails for near-boundary NIG parameter regimes and transform arguments, with diagnostics that help identify unstable evaluations.
@@ -14,5 +14,6 @@ Add numerical guardrails for near-boundary NIG parameter regimes and transform a
 - Guardrail triggers near `alpha` and `beta` boundary conditions
 
 ### Notes/Constraints
+- See `docs/janiform_design_brainstorm_notes.md` for the model spec itself.
 - Keep guardrail behavior deterministic
 - Do not silently clip invalid inputs without reporting
