@@ -59,6 +59,10 @@
         {
           "suite_id": "hawkes_equation_reference_suite",
           "test_name": "hawkes_reference_scenarios_match_expected_checkpoints"
+        },
+        {
+          "suite_id": "hawkes_equation_reference_suite",
+          "test_name": "irregular_timestamp_transition_schedule_matches_expected_checkpoints"
         }
       ]
     },

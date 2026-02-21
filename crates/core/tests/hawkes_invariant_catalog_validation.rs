@@ -27,7 +27,7 @@ struct SuiteTestCatalogReference {
 const HAWKES_EQUATION_SUITE_ID: &str = "hawkes_equation_reference_suite";
 const SEEDED_BEHAVIOR_SUITE_ID: &str = "seeded_tick_behavior_validation";
 
-const HAWKES_EQUATION_TEST_REFERENCES: [SuiteTestCatalogReference; 3] = [
+const HAWKES_EQUATION_TEST_REFERENCES: [SuiteTestCatalogReference; 4] = [
     SuiteTestCatalogReference {
         test_name: "hawkes_reference_scenarios_match_expected_checkpoints",
         catalog_invariant_ids: &["HK-DYN-001"],
@@ -36,6 +36,11 @@ const HAWKES_EQUATION_TEST_REFERENCES: [SuiteTestCatalogReference; 3] = [
     SuiteTestCatalogReference {
         test_name: "hawkes_reference_mismatch_diagnostics_include_step_and_component_identifiers",
         catalog_invariant_ids: &["HK-DYN-002"],
+        check_class: HawkesInvariantCheckClass::DeterministicEquation,
+    },
+    SuiteTestCatalogReference {
+        test_name: "irregular_timestamp_transition_schedule_matches_expected_checkpoints",
+        catalog_invariant_ids: &["HK-DYN-001"],
         check_class: HawkesInvariantCheckClass::DeterministicEquation,
     },
     SuiteTestCatalogReference {
