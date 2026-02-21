@@ -25,6 +25,7 @@ struct SuiteTestCatalogReference {
 }
 
 const HAWKES_EQUATION_SUITE_ID: &str = "hawkes_equation_reference_suite";
+const HAWKES_CONSTRAINTS_SUITE_ID: &str = "hawkes_constraints_invariant_suite";
 const SEEDED_BEHAVIOR_SUITE_ID: &str = "seeded_tick_behavior_validation";
 
 const HAWKES_EQUATION_TEST_REFERENCES: [SuiteTestCatalogReference; 4] = [
@@ -70,6 +71,24 @@ const SEEDED_BEHAVIOR_TEST_REFERENCES: [SuiteTestCatalogReference; 4] = [
         test_name: "seeded_behavior_validation_compares_aggregated_fine_and_direct_coarse_summaries",
         catalog_invariant_ids: &["HK-SCALE-001"],
         check_class: HawkesInvariantCheckClass::StatisticalProperty,
+    },
+];
+
+const HAWKES_CONSTRAINTS_TEST_REFERENCES: [SuiteTestCatalogReference; 3] = [
+    SuiteTestCatalogReference {
+        test_name: "constraint_projection_sanity_preserves_positive_intensity_domains",
+        catalog_invariant_ids: &["HK-CON-001"],
+        check_class: HawkesInvariantCheckClass::DeterministicEquation,
+    },
+    SuiteTestCatalogReference {
+        test_name: "constraint_stability_boundary_regimes_remain_constructible_and_stable",
+        catalog_invariant_ids: &["HK-CON-001"],
+        check_class: HawkesInvariantCheckClass::DeterministicEquation,
+    },
+    SuiteTestCatalogReference {
+        test_name: "constraint_transition_steps_preserve_non_negative_state_increments",
+        catalog_invariant_ids: &["HK-CON-001"],
+        check_class: HawkesInvariantCheckClass::DeterministicEquation,
     },
 ];
 
@@ -190,6 +209,12 @@ fn hawkes_suite_test_reference_matrix_is_complete_and_catalog_linked() {
         HAWKES_EQUATION_SUITE_ID,
         &HAWKES_EQUATION_TEST_REFERENCES,
         test_suite_source_path("hawkes_equation_reference_suite.rs"),
+    );
+    assert_suite_reference_matrix_covers_all_suite_tests(
+        &catalog_document,
+        HAWKES_CONSTRAINTS_SUITE_ID,
+        &HAWKES_CONSTRAINTS_TEST_REFERENCES,
+        test_suite_source_path("hawkes_constraints_invariant_suite.rs"),
     );
     assert_suite_reference_matrix_covers_all_suite_tests(
         &catalog_document,

@@ -46,7 +46,20 @@
       "invariant_class": "parameter_constraints_and_stability",
       "check_class": "deterministic_equation",
       "rationale": "Finite and non-negative loadings with spectral-radius stability are required for safe Hawkes evolution.",
-      "suite_references": []
+      "suite_references": [
+        {
+          "suite_id": "hawkes_constraints_invariant_suite",
+          "test_name": "constraint_projection_sanity_preserves_positive_intensity_domains"
+        },
+        {
+          "suite_id": "hawkes_constraints_invariant_suite",
+          "test_name": "constraint_stability_boundary_regimes_remain_constructible_and_stable"
+        },
+        {
+          "suite_id": "hawkes_constraints_invariant_suite",
+          "test_name": "constraint_transition_steps_preserve_non_negative_state_increments"
+        }
+      ]
     },
     {
       "invariant_id": "HK-DYN-001",
