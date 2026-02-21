@@ -29,6 +29,14 @@ pub const SEEDED_TICK_EVENT_TAPE_METADATA_SCHEMA_VERSION: &str =
     "simulation.seeded_tick_event.tape_metadata.v1";
 pub const SEEDED_TICK_EVENT_STATE_SNAPSHOT_SCHEMA_VERSION: &str =
     "simulation.seeded_tick_event.state_snapshot.v1";
+pub const SEEDED_TICK_EVENT_DEBUG_TRACE_SCHEMA_VERSION: &str =
+    "simulation.seeded_tick_event.debug_trace.v1";
+pub const SEEDED_TICK_EVENT_DEBUG_TRACE_METADATA_SCHEMA_VERSION: &str =
+    "simulation.seeded_tick_event.debug_trace_metadata.v1";
+pub const SEEDED_TICK_EVENT_DEBUG_TRACE_RECORD_SCHEMA_VERSION: &str =
+    "simulation.seeded_tick_event.debug_trace_record.v1";
+pub const SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNK_SCHEMA_VERSION: &str =
+    "simulation.seeded_tick_event.debug_trace_chunk.v1";
 pub const SEEDED_TICK_EVENT_DETERMINISM_POLICY: &str =
     "stable_seed_and_run_config_with_ordered_event_path.v1";
 
@@ -54,6 +62,10 @@ pub const SEEDED_TICK_EVENT_FACTOR_CONTROL_POLICY: &str =
     "interval_aligned_s_h_nu_h_control_intensity_only_without_intra_interval_grid.v1";
 pub const SEEDED_TICK_EVENT_INTRA_INTERVAL_SCHEDULING_POLICY: &str =
     "event_time_updates_with_sequential_hawkes_transition_composition.v1";
+pub const SEEDED_TICK_EVENT_DEBUG_TRACE_SAMPLING_POLICY: &str =
+    "capture_every_nth_transition_with_mandatory_interval_boundary_drift_records.v1";
+pub const SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNKING_POLICY: &str =
+    "fixed_max_records_per_chunk_preserving_transition_order.v1";
 
 pub const SEEDED_TICK_EVENT_RANDOMNESS_STREAM_POLICY: &str = SIMULATION_RANDOMNESS_STREAM_POLICY;
 pub const SEEDED_TICK_EVENT_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY: &str =
@@ -61,6 +73,8 @@ pub const SEEDED_TICK_EVENT_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY: &str =
 
 const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
 const MAX_STOCHASTIC_UPDATES_PER_INTERVAL: u64 = 1_000_000;
+const DEFAULT_DEBUG_TRACE_SAMPLE_EVERY_NTH_TRANSITION: u64 = 1;
+const DEFAULT_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK: usize = 1_024;
 
 /// State snapshot capture mode for per-event diagnostics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -87,11 +101,55 @@ impl Default for SeededTickEventStateSnapshotCapture {
     }
 }
 
+/// Optional debug trace controls for seeded simulation diagnostics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SeededTickSimulationDebugTraceOptions {
+    /// Capture every Nth transition record in deterministic transition order.
+    ///
+    /// Interval-boundary drift transitions are always recorded.
+    pub sample_every_nth_transition: u64,
+
+    /// Maximum number of records in each trace chunk.
+    pub max_records_per_chunk: usize,
+}
+
+impl SeededTickSimulationDebugTraceOptions {
+    fn validate(self) -> Result<(), SeededTickSimulationRunError> {
+        if self.sample_every_nth_transition == 0 {
+            return Err(
+                SeededTickSimulationRunError::InvalidDebugTraceSamplingStride {
+                    value: self.sample_every_nth_transition,
+                },
+            );
+        }
+
+        if self.max_records_per_chunk == 0 {
+            return Err(SeededTickSimulationRunError::InvalidDebugTraceChunkSize {
+                value: self.max_records_per_chunk,
+            });
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for SeededTickSimulationDebugTraceOptions {
+    fn default() -> Self {
+        Self {
+            sample_every_nth_transition: DEFAULT_DEBUG_TRACE_SAMPLE_EVERY_NTH_TRANSITION,
+            max_records_per_chunk: DEFAULT_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK,
+        }
+    }
+}
+
 /// Optional run settings for seeded tick-event simulation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SeededTickSimulationRunOptions {
-    /// Enable optional debug trace emission in future simulator stages.
+    /// Enable optional debug trace artifact emission.
     pub debug_trace_enabled: bool,
+
+    /// Optional debug trace sampling and chunking controls.
+    pub debug_trace_options: SeededTickSimulationDebugTraceOptions,
 
     /// Control optional Hawkes state snapshot capture on each event tape record.
     pub state_snapshot_capture: SeededTickEventStateSnapshotCapture,
@@ -101,6 +159,7 @@ impl Default for SeededTickSimulationRunOptions {
     fn default() -> Self {
         Self {
             debug_trace_enabled: false,
+            debug_trace_options: SeededTickSimulationDebugTraceOptions::default(),
             state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
         }
     }
@@ -240,6 +299,10 @@ impl SeededTickSimulationRunConfig {
             self.horizon_interval_count,
         )?;
 
+        if self.options.debug_trace_enabled {
+            self.options.debug_trace_options.validate()?;
+        }
+
         Ok(())
     }
 }
@@ -310,6 +373,71 @@ pub struct SeededTickEventTapeOutput<'a> {
     pub event_tape: &'a [SeededTickEventRecord],
 }
 
+/// Transition kind emitted by debug trace records.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SeededTickEventDebugTraceTransitionKind {
+    EndogenousBuyEvent,
+    EndogenousSellEvent,
+    ExogenousNews,
+    IntervalBoundaryDrift,
+}
+
+/// Per-transition diagnostic record emitted in debug trace mode.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SeededTickEventDebugTraceRecord {
+    pub transition_index: u64,
+    pub interval_index: usize,
+    pub previous_timestamp_utc_nanos: i64,
+    pub timestamp_utc_nanos: i64,
+    pub elapsed_hours_since_previous_update: f64,
+    pub transition_kind: SeededTickEventDebugTraceTransitionKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generation_order: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_index: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exogenous_news_severity_mark: Option<f64>,
+    pub seasonality_factor: f64,
+    pub interval_news_intensity: f64,
+    pub state_before_transition: SeededTickEventStateSnapshot,
+    pub state_after_transition: SeededTickEventStateSnapshot,
+}
+
+/// Chunk container for bounded-size debug trace payloads.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SeededTickEventDebugTraceChunk {
+    pub schema_version: &'static str,
+    pub chunk_index: usize,
+    pub start_transition_index: u64,
+    pub end_transition_index: u64,
+    pub records: Vec<SeededTickEventDebugTraceRecord>,
+}
+
+/// Machine-readable debug trace metadata.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct SeededTickEventDebugTraceMetadata {
+    pub schema_version: &'static str,
+    pub trace_record_schema_version: &'static str,
+    pub trace_chunk_schema_version: &'static str,
+    pub transition_ordering_policy: &'static str,
+    pub state_carryover_policy: &'static str,
+    pub sampling_policy: &'static str,
+    pub chunking_policy: &'static str,
+    pub sample_every_nth_transition: u64,
+    pub max_records_per_chunk: usize,
+    pub interval_boundary_drift_always_captured: bool,
+}
+
+/// Canonical serializable debug trace payload.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SeededTickEventDebugTraceOutput {
+    pub schema_version: &'static str,
+    pub metadata: SeededTickEventDebugTraceMetadata,
+    pub captured_transition_count: usize,
+    pub trace_chunks: Vec<SeededTickEventDebugTraceChunk>,
+}
+
 /// Deterministic seeded event-path output object.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeededTickSimulationRunResult {
@@ -326,6 +454,7 @@ pub struct SeededTickSimulationRunResult {
     pub event_path: Vec<SeededTickEventRecord>,
     pub final_excitation_state: HawkesExcitationState,
     pub debug_trace_enabled: bool,
+    pub debug_trace_output: Option<SeededTickEventDebugTraceOutput>,
 }
 
 impl SeededTickSimulationRunResult {
@@ -341,6 +470,14 @@ impl SeededTickSimulationRunResult {
     /// Serialize the canonical event tape payload to deterministic JSON.
     pub fn serialize_event_tape_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(&self.event_tape_output())
+    }
+
+    /// Serialize the optional debug trace artifact to deterministic JSON.
+    pub fn serialize_debug_trace_json(&self) -> Result<Option<String>, serde_json::Error> {
+        self.debug_trace_output
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
     }
 }
 
@@ -381,6 +518,12 @@ pub enum SeededTickSimulationRunError {
         previous_interval_end_utc_nanos: i64,
         current_interval_index: usize,
         current_interval_start_utc_nanos: i64,
+    },
+    InvalidDebugTraceSamplingStride {
+        value: u64,
+    },
+    InvalidDebugTraceChunkSize {
+        value: usize,
     },
     InvalidGeneratedNewsSeverityMark {
         value: f64,
@@ -451,6 +594,14 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "hourly_factor_contract interval coverage must be consecutive, interval {previous_interval_index} end ({previous_interval_end_utc_nanos}) must equal interval {current_interval_index} start ({current_interval_start_utc_nanos})"
             ),
+            Self::InvalidDebugTraceSamplingStride { value } => write!(
+                formatter,
+                "debug trace sample_every_nth_transition must be greater than 0, found {value}"
+            ),
+            Self::InvalidDebugTraceChunkSize { value } => write!(
+                formatter,
+                "debug trace max_records_per_chunk must be greater than 0, found {value}"
+            ),
             Self::InvalidGeneratedNewsSeverityMark { value } => write!(
                 formatter,
                 "generated exogenous news severity mark must be finite and non-negative, found {value}"
@@ -500,7 +651,11 @@ where
     let event_tape_metadata = build_seeded_tick_event_tape_metadata(state_snapshot_capture);
     let mut event_path: Vec<SeededTickEventRecord> = Vec::new();
     let mut next_event_index: u64 = 0;
+    let mut next_transition_index: u64 = 0;
     let mut next_state = run_config.model_inputs.initial_excitation_state;
+    let mut debug_trace_collector = run_config.options.debug_trace_enabled.then(|| {
+        SeededTickEventDebugTraceCollector::new(run_config.options.debug_trace_options, lambda_bar)
+    });
 
     for interval_index in 0..run_config.horizon_interval_count {
         let interval_start_utc_nanos = run_config
@@ -524,9 +679,11 @@ where
 
         let interval_duration_nanos = interval_end_utc_nanos - interval_start_utc_nanos;
         let interval_duration_in_hours = interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64;
+        let interval_seasonality_factor =
+            run_config.model_inputs.hourly_factor_contract.s_h[interval_index];
         let interval_projection = next_state.project_intensities(
             run_config.model_inputs.kernel_parameters.lambda_bar,
-            run_config.model_inputs.hourly_factor_contract.s_h[interval_index],
+            interval_seasonality_factor,
         );
         let interval_news_intensity =
             run_config.model_inputs.hourly_factor_contract.nu_h[interval_index].max(0.0);
@@ -551,6 +708,11 @@ where
             );
             let transition_step =
                 interval_update.transition_step(elapsed_hours_since_previous_update);
+            let event_index_for_update = match interval_update {
+                IntervalStochasticUpdate::EndogenousEvent { .. } => Some(next_event_index),
+                IntervalStochasticUpdate::ExogenousNews { .. } => None,
+            };
+            let previous_state = next_state;
 
             next_state = evolve_hawkes_state_for_simulation_step(
                 next_state,
@@ -558,6 +720,26 @@ where
                 transition_step,
             )
             .map_err(map_transition_error_to_seeded_simulation_run_error)?;
+
+            if let Some(trace_collector) = debug_trace_collector.as_mut() {
+                trace_collector.capture_transition(SeededTickEventDebugTraceCaptureInput {
+                    transition_index: next_transition_index,
+                    interval_index,
+                    previous_timestamp_utc_nanos,
+                    timestamp_utc_nanos: interval_update.timestamp_utc_nanos(),
+                    elapsed_hours_since_previous_update,
+                    transition_kind: interval_update.transition_kind(),
+                    generation_order: Some(interval_update.generation_order()),
+                    event_index: event_index_for_update,
+                    exogenous_news_severity_mark: interval_update.exogenous_news_severity_mark(),
+                    seasonality_factor: interval_seasonality_factor,
+                    interval_news_intensity,
+                    state_before_transition: previous_state,
+                    state_after_transition: next_state,
+                });
+            }
+
+            next_transition_index = next_transition_index.saturating_add(1);
 
             match interval_update {
                 IntervalStochasticUpdate::EndogenousEvent {
@@ -589,6 +771,7 @@ where
 
         let elapsed_hours_to_interval_end =
             derive_elapsed_hours(previous_timestamp_utc_nanos, interval_end_utc_nanos);
+        let previous_state = next_state;
 
         next_state = evolve_hawkes_state_for_simulation_step(
             next_state,
@@ -596,6 +779,26 @@ where
             HawkesTransitionStep::new(elapsed_hours_to_interval_end, None, None),
         )
         .map_err(map_transition_error_to_seeded_simulation_run_error)?;
+
+        if let Some(trace_collector) = debug_trace_collector.as_mut() {
+            trace_collector.capture_transition(SeededTickEventDebugTraceCaptureInput {
+                transition_index: next_transition_index,
+                interval_index,
+                previous_timestamp_utc_nanos,
+                timestamp_utc_nanos: interval_end_utc_nanos,
+                elapsed_hours_since_previous_update: elapsed_hours_to_interval_end,
+                transition_kind: SeededTickEventDebugTraceTransitionKind::IntervalBoundaryDrift,
+                generation_order: None,
+                event_index: None,
+                exogenous_news_severity_mark: None,
+                seasonality_factor: interval_seasonality_factor,
+                interval_news_intensity,
+                state_before_transition: previous_state,
+                state_after_transition: next_state,
+            });
+        }
+
+        next_transition_index = next_transition_index.saturating_add(1);
     }
 
     let horizon_end_utc_nanos = run_config
@@ -618,6 +821,7 @@ where
         event_path,
         final_excitation_state: next_state,
         debug_trace_enabled: run_config.options.debug_trace_enabled,
+        debug_trace_output: debug_trace_collector.map(SeededTickEventDebugTraceCollector::finish),
     })
 }
 
@@ -688,6 +892,166 @@ impl IntervalStochasticUpdate {
                 Some(severity_mark),
             ),
         }
+    }
+
+    const fn generation_order(&self) -> u64 {
+        match *self {
+            Self::EndogenousEvent {
+                generation_order, ..
+            } => generation_order,
+            Self::ExogenousNews {
+                generation_order, ..
+            } => generation_order,
+        }
+    }
+
+    const fn transition_kind(&self) -> SeededTickEventDebugTraceTransitionKind {
+        match *self {
+            Self::EndogenousEvent { side, .. } => match side {
+                SeededTickEventSide::Buy => {
+                    SeededTickEventDebugTraceTransitionKind::EndogenousBuyEvent
+                }
+                SeededTickEventSide::Sell => {
+                    SeededTickEventDebugTraceTransitionKind::EndogenousSellEvent
+                }
+            },
+            Self::ExogenousNews { .. } => SeededTickEventDebugTraceTransitionKind::ExogenousNews,
+        }
+    }
+
+    const fn exogenous_news_severity_mark(&self) -> Option<f64> {
+        match *self {
+            Self::EndogenousEvent { .. } => None,
+            Self::ExogenousNews { severity_mark, .. } => Some(severity_mark),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SeededTickEventDebugTraceCaptureInput {
+    transition_index: u64,
+    interval_index: usize,
+    previous_timestamp_utc_nanos: i64,
+    timestamp_utc_nanos: i64,
+    elapsed_hours_since_previous_update: f64,
+    transition_kind: SeededTickEventDebugTraceTransitionKind,
+    generation_order: Option<u64>,
+    event_index: Option<u64>,
+    exogenous_news_severity_mark: Option<f64>,
+    seasonality_factor: f64,
+    interval_news_intensity: f64,
+    state_before_transition: HawkesExcitationState,
+    state_after_transition: HawkesExcitationState,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct SeededTickEventDebugTraceCollector {
+    lambda_bar: f64,
+    options: SeededTickSimulationDebugTraceOptions,
+    trace_chunks: Vec<SeededTickEventDebugTraceChunk>,
+    pending_chunk_records: Vec<SeededTickEventDebugTraceRecord>,
+}
+
+impl SeededTickEventDebugTraceCollector {
+    fn new(options: SeededTickSimulationDebugTraceOptions, lambda_bar: f64) -> Self {
+        Self {
+            lambda_bar,
+            options,
+            trace_chunks: Vec::new(),
+            pending_chunk_records: Vec::with_capacity(options.max_records_per_chunk),
+        }
+    }
+
+    fn capture_transition(&mut self, input: SeededTickEventDebugTraceCaptureInput) {
+        if !self.should_capture_transition(input.transition_index, input.transition_kind) {
+            return;
+        }
+
+        self.pending_chunk_records
+            .push(SeededTickEventDebugTraceRecord {
+                transition_index: input.transition_index,
+                interval_index: input.interval_index,
+                previous_timestamp_utc_nanos: input.previous_timestamp_utc_nanos,
+                timestamp_utc_nanos: input.timestamp_utc_nanos,
+                elapsed_hours_since_previous_update: input.elapsed_hours_since_previous_update,
+                transition_kind: input.transition_kind,
+                generation_order: input.generation_order,
+                event_index: input.event_index,
+                exogenous_news_severity_mark: input.exogenous_news_severity_mark,
+                seasonality_factor: input.seasonality_factor,
+                interval_news_intensity: input.interval_news_intensity,
+                state_before_transition: SeededTickEventStateSnapshot::from_state(
+                    input.state_before_transition,
+                    self.lambda_bar,
+                ),
+                state_after_transition: SeededTickEventStateSnapshot::from_state(
+                    input.state_after_transition,
+                    self.lambda_bar,
+                ),
+            });
+
+        if self.pending_chunk_records.len() >= self.options.max_records_per_chunk {
+            self.flush_pending_chunk();
+        }
+    }
+
+    fn finish(mut self) -> SeededTickEventDebugTraceOutput {
+        self.flush_pending_chunk();
+
+        let captured_transition_count = self
+            .trace_chunks
+            .iter()
+            .map(|trace_chunk| trace_chunk.records.len())
+            .sum();
+
+        SeededTickEventDebugTraceOutput {
+            schema_version: SEEDED_TICK_EVENT_DEBUG_TRACE_SCHEMA_VERSION,
+            metadata: build_seeded_tick_event_debug_trace_metadata(self.options),
+            captured_transition_count,
+            trace_chunks: self.trace_chunks,
+        }
+    }
+
+    fn should_capture_transition(
+        &self,
+        transition_index: u64,
+        transition_kind: SeededTickEventDebugTraceTransitionKind,
+    ) -> bool {
+        if matches!(
+            transition_kind,
+            SeededTickEventDebugTraceTransitionKind::IntervalBoundaryDrift
+        ) {
+            return true;
+        }
+
+        transition_index % self.options.sample_every_nth_transition == 0
+    }
+
+    fn flush_pending_chunk(&mut self) {
+        if self.pending_chunk_records.is_empty() {
+            return;
+        }
+
+        let start_transition_index = self
+            .pending_chunk_records
+            .first()
+            .expect("non-empty trace chunk should contain first record")
+            .transition_index;
+        let end_transition_index = self
+            .pending_chunk_records
+            .last()
+            .expect("non-empty trace chunk should contain last record")
+            .transition_index;
+        let records = std::mem::take(&mut self.pending_chunk_records);
+        let chunk_index = self.trace_chunks.len();
+
+        self.trace_chunks.push(SeededTickEventDebugTraceChunk {
+            schema_version: SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNK_SCHEMA_VERSION,
+            chunk_index,
+            start_transition_index,
+            end_transition_index,
+            records,
+        });
     }
 }
 
@@ -849,6 +1213,23 @@ const fn build_seeded_tick_event_tape_metadata(
         side_encoding_policy: SEEDED_TICK_EVENT_SIDE_ENCODING_POLICY,
         state_snapshot_capture,
         state_snapshot_capture_point_policy: state_snapshot_capture.capture_point_policy(),
+    }
+}
+
+const fn build_seeded_tick_event_debug_trace_metadata(
+    debug_trace_options: SeededTickSimulationDebugTraceOptions,
+) -> SeededTickEventDebugTraceMetadata {
+    SeededTickEventDebugTraceMetadata {
+        schema_version: SEEDED_TICK_EVENT_DEBUG_TRACE_METADATA_SCHEMA_VERSION,
+        trace_record_schema_version: SEEDED_TICK_EVENT_DEBUG_TRACE_RECORD_SCHEMA_VERSION,
+        trace_chunk_schema_version: SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNK_SCHEMA_VERSION,
+        transition_ordering_policy: SEEDED_TICK_EVENT_ORDERING_POLICY,
+        state_carryover_policy: SEEDED_TICK_EVENT_STATE_CARRYOVER_POLICY,
+        sampling_policy: SEEDED_TICK_EVENT_DEBUG_TRACE_SAMPLING_POLICY,
+        chunking_policy: SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNKING_POLICY,
+        sample_every_nth_transition: debug_trace_options.sample_every_nth_transition,
+        max_records_per_chunk: debug_trace_options.max_records_per_chunk,
+        interval_boundary_drift_always_captured: true,
     }
 }
 
@@ -1027,15 +1408,22 @@ mod tests {
         SimulationRandomnessSubstreamDomain,
     };
     use crate::simulation::{
-        SEEDED_TICK_EVENT_DETERMINISM_POLICY, SEEDED_TICK_EVENT_ORDERING_POLICY,
-        SEEDED_TICK_EVENT_PATH_SCHEMA_VERSION, SEEDED_TICK_EVENT_RANDOMNESS_STREAM_POLICY,
+        SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNK_SCHEMA_VERSION,
+        SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNKING_POLICY,
+        SEEDED_TICK_EVENT_DEBUG_TRACE_METADATA_SCHEMA_VERSION,
+        SEEDED_TICK_EVENT_DEBUG_TRACE_RECORD_SCHEMA_VERSION,
+        SEEDED_TICK_EVENT_DEBUG_TRACE_SAMPLING_POLICY,
+        SEEDED_TICK_EVENT_DEBUG_TRACE_SCHEMA_VERSION, SEEDED_TICK_EVENT_DETERMINISM_POLICY,
+        SEEDED_TICK_EVENT_ORDERING_POLICY, SEEDED_TICK_EVENT_PATH_SCHEMA_VERSION,
+        SEEDED_TICK_EVENT_RANDOMNESS_STREAM_POLICY,
         SEEDED_TICK_EVENT_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY,
         SEEDED_TICK_EVENT_RECORD_SCHEMA_VERSION, SEEDED_TICK_EVENT_SIDE_ENCODING_POLICY,
         SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY,
         SEEDED_TICK_EVENT_STATE_SNAPSHOT_SCHEMA_VERSION,
         SEEDED_TICK_EVENT_TAPE_METADATA_SCHEMA_VERSION,
-        SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY, SeededTickEventSide,
-        SeededTickEventStateSnapshotCapture, SeededTickSimulationModelInputs,
+        SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY, SeededTickEventDebugTraceTransitionKind,
+        SeededTickEventSide, SeededTickEventStateSnapshotCapture,
+        SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
         SeededTickSimulationRunConfig, SeededTickSimulationRunError,
         SeededTickSimulationRunOptions, run_seeded_tick_event_simulation,
         run_seeded_tick_event_simulation_with_randomness_factory,
@@ -1052,6 +1440,7 @@ mod tests {
             valid_model_inputs(),
             Some(SeededTickSimulationRunOptions {
                 debug_trace_enabled: true,
+                debug_trace_options: SeededTickSimulationDebugTraceOptions::default(),
                 state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
             }),
         )
@@ -1126,6 +1515,7 @@ mod tests {
             valid_model_inputs(),
             Some(SeededTickSimulationRunOptions {
                 debug_trace_enabled: false,
+                debug_trace_options: SeededTickSimulationDebugTraceOptions::default(),
                 state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
             }),
         )
@@ -1137,6 +1527,7 @@ mod tests {
             valid_model_inputs(),
             Some(SeededTickSimulationRunOptions {
                 debug_trace_enabled: true,
+                debug_trace_options: SeededTickSimulationDebugTraceOptions::default(),
                 state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
             }),
         )
@@ -1155,6 +1546,363 @@ mod tests {
             result_without_debug.final_excitation_state,
             result_with_debug.final_excitation_state
         );
+        assert!(!result_without_debug.debug_trace_enabled);
+        assert!(result_with_debug.debug_trace_enabled);
+        assert!(result_without_debug.debug_trace_output.is_none());
+        assert!(
+            result_with_debug
+                .debug_trace_output
+                .as_ref()
+                .is_some_and(
+                    |debug_trace_output| debug_trace_output.captured_transition_count >= 2
+                )
+        );
+    }
+
+    #[test]
+    fn seeded_simulation_run_rejects_invalid_debug_trace_sampling_stride() {
+        let error = SeededTickSimulationRunConfig::try_new(
+            8_011,
+            DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+            1,
+            valid_model_inputs(),
+            Some(SeededTickSimulationRunOptions {
+                debug_trace_enabled: true,
+                debug_trace_options: SeededTickSimulationDebugTraceOptions {
+                    sample_every_nth_transition: 0,
+                    max_records_per_chunk: 128,
+                },
+                state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
+            }),
+        )
+        .expect_err("debug trace with zero sampling stride must fail");
+
+        assert!(matches!(
+            error,
+            SeededTickSimulationRunError::InvalidDebugTraceSamplingStride { value: 0 }
+        ));
+    }
+
+    #[test]
+    fn seeded_simulation_run_rejects_invalid_debug_trace_chunk_size() {
+        let error = SeededTickSimulationRunConfig::try_new(
+            8_012,
+            DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+            1,
+            valid_model_inputs(),
+            Some(SeededTickSimulationRunOptions {
+                debug_trace_enabled: true,
+                debug_trace_options: SeededTickSimulationDebugTraceOptions {
+                    sample_every_nth_transition: 1,
+                    max_records_per_chunk: 0,
+                },
+                state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
+            }),
+        )
+        .expect_err("debug trace with zero chunk size must fail");
+
+        assert!(matches!(
+            error,
+            SeededTickSimulationRunError::InvalidDebugTraceChunkSize { value: 0 }
+        ));
+    }
+
+    #[test]
+    fn seeded_simulation_debug_trace_schema_exposes_required_fields() {
+        let run_config = SeededTickSimulationRunConfig::try_new(
+            8_013,
+            DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+            1,
+            one_interval_model_inputs(1.0, 1.0, 0.0),
+            Some(SeededTickSimulationRunOptions {
+                debug_trace_enabled: true,
+                debug_trace_options: SeededTickSimulationDebugTraceOptions {
+                    sample_every_nth_transition: 1,
+                    max_records_per_chunk: 1,
+                },
+                state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
+            }),
+        )
+        .expect("debug trace schema run config should initialize");
+
+        let scripted_factory = ScriptedRandomnessFactory::new(
+            vec![0.0],
+            vec![0.0],
+            vec![0.25],
+            vec![0.5],
+            vec![0.0],
+            vec![],
+            vec![],
+        );
+
+        let run_result =
+            run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
+                .expect("debug trace schema run should complete");
+
+        let serialized_debug_trace = run_result
+            .serialize_debug_trace_json()
+            .expect("debug trace serialization should succeed")
+            .expect("debug trace payload should exist when debug mode is enabled");
+
+        let debug_trace_payload: Value =
+            serde_json::from_str(&serialized_debug_trace).expect("debug trace JSON should parse");
+
+        assert_eq!(
+            debug_trace_payload["schema_version"],
+            SEEDED_TICK_EVENT_DEBUG_TRACE_SCHEMA_VERSION
+        );
+        assert_eq!(
+            debug_trace_payload["metadata"]["schema_version"],
+            SEEDED_TICK_EVENT_DEBUG_TRACE_METADATA_SCHEMA_VERSION
+        );
+        assert_eq!(
+            debug_trace_payload["metadata"]["trace_record_schema_version"],
+            SEEDED_TICK_EVENT_DEBUG_TRACE_RECORD_SCHEMA_VERSION
+        );
+        assert_eq!(
+            debug_trace_payload["metadata"]["trace_chunk_schema_version"],
+            SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNK_SCHEMA_VERSION
+        );
+        assert_eq!(
+            debug_trace_payload["metadata"]["sampling_policy"],
+            SEEDED_TICK_EVENT_DEBUG_TRACE_SAMPLING_POLICY
+        );
+        assert_eq!(
+            debug_trace_payload["metadata"]["chunking_policy"],
+            SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNKING_POLICY
+        );
+        assert_eq!(
+            debug_trace_payload["metadata"]["sample_every_nth_transition"],
+            1
+        );
+        assert_eq!(debug_trace_payload["metadata"]["max_records_per_chunk"], 1);
+        assert_eq!(
+            debug_trace_payload["metadata"]["interval_boundary_drift_always_captured"],
+            true
+        );
+
+        let trace_chunks = debug_trace_payload["trace_chunks"]
+            .as_array()
+            .expect("trace_chunks should serialize as an array");
+
+        assert!(!trace_chunks.is_empty());
+
+        let first_chunk = trace_chunks[0]
+            .as_object()
+            .expect("trace chunk should serialize as an object");
+
+        for required_chunk_field in [
+            "schema_version",
+            "chunk_index",
+            "start_transition_index",
+            "end_transition_index",
+            "records",
+        ] {
+            assert!(first_chunk.contains_key(required_chunk_field));
+        }
+
+        let first_record = first_chunk["records"][0]
+            .as_object()
+            .expect("trace record should serialize as an object");
+
+        for required_record_field in [
+            "transition_index",
+            "interval_index",
+            "previous_timestamp_utc_nanos",
+            "timestamp_utc_nanos",
+            "elapsed_hours_since_previous_update",
+            "transition_kind",
+            "seasonality_factor",
+            "interval_news_intensity",
+            "state_before_transition",
+            "state_after_transition",
+        ] {
+            assert!(first_record.contains_key(required_record_field));
+        }
+    }
+
+    #[test]
+    fn seeded_simulation_debug_trace_captures_transition_ordering_and_carryover_context() {
+        let start_utc_nanos = 1_704_067_200_000_000_000;
+
+        let run_config = SeededTickSimulationRunConfig::try_new(
+            8_014,
+            DateTime::<Utc>::from_timestamp_nanos(start_utc_nanos),
+            1,
+            one_interval_model_inputs(1.0, 1.0, 1.0),
+            Some(SeededTickSimulationRunOptions {
+                debug_trace_enabled: true,
+                debug_trace_options: SeededTickSimulationDebugTraceOptions {
+                    sample_every_nth_transition: 1,
+                    max_records_per_chunk: 8,
+                },
+                state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
+            }),
+        )
+        .expect("debug trace correctness run config should initialize");
+
+        let scripted_factory = ScriptedRandomnessFactory::new(
+            vec![0.0],
+            vec![0.0],
+            vec![0.3],
+            vec![0.3],
+            vec![0.0],
+            vec![0.3],
+            vec![0.5],
+        );
+
+        let run_result =
+            run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
+                .expect("debug trace correctness run should complete");
+
+        let debug_trace_output = run_result
+            .debug_trace_output
+            .as_ref()
+            .expect("debug trace output should exist");
+
+        let trace_records: Vec<_> = debug_trace_output
+            .trace_chunks
+            .iter()
+            .flat_map(|trace_chunk| trace_chunk.records.iter())
+            .collect();
+
+        assert_eq!(trace_records.len(), 4);
+        assert_eq!(
+            trace_records[0].transition_kind,
+            SeededTickEventDebugTraceTransitionKind::EndogenousBuyEvent
+        );
+        assert_eq!(
+            trace_records[1].transition_kind,
+            SeededTickEventDebugTraceTransitionKind::EndogenousSellEvent
+        );
+        assert_eq!(
+            trace_records[2].transition_kind,
+            SeededTickEventDebugTraceTransitionKind::ExogenousNews
+        );
+        assert_eq!(
+            trace_records[3].transition_kind,
+            SeededTickEventDebugTraceTransitionKind::IntervalBoundaryDrift
+        );
+
+        let expected_update_timestamp_utc_nanos =
+            start_utc_nanos + ((ONE_HOUR_NANOS as f64 * 0.3).floor() as i64);
+        let expected_interval_end_utc_nanos = start_utc_nanos + ONE_HOUR_NANOS;
+        let expected_elapsed_hours_to_update =
+            super::derive_elapsed_hours(start_utc_nanos, expected_update_timestamp_utc_nanos);
+        let expected_elapsed_hours_to_interval_end = super::derive_elapsed_hours(
+            expected_update_timestamp_utc_nanos,
+            expected_interval_end_utc_nanos,
+        );
+
+        assert_eq!(
+            trace_records[0].timestamp_utc_nanos,
+            expected_update_timestamp_utc_nanos
+        );
+        assert_eq!(
+            trace_records[1].timestamp_utc_nanos,
+            expected_update_timestamp_utc_nanos
+        );
+        assert_eq!(
+            trace_records[2].timestamp_utc_nanos,
+            expected_update_timestamp_utc_nanos
+        );
+        assert_eq!(
+            trace_records[3].timestamp_utc_nanos,
+            expected_interval_end_utc_nanos
+        );
+        assert_float_close(
+            trace_records[0].elapsed_hours_since_previous_update,
+            expected_elapsed_hours_to_update,
+        );
+        assert_float_close(trace_records[1].elapsed_hours_since_previous_update, 0.0);
+        assert_float_close(trace_records[2].elapsed_hours_since_previous_update, 0.0);
+        assert_float_close(
+            trace_records[3].elapsed_hours_since_previous_update,
+            expected_elapsed_hours_to_interval_end,
+        );
+
+        assert_eq!(trace_records[0].generation_order, Some(0));
+        assert_eq!(trace_records[1].generation_order, Some(1));
+        assert_eq!(trace_records[2].generation_order, Some(2));
+        assert_eq!(trace_records[3].generation_order, None);
+        assert_eq!(trace_records[0].event_index, Some(0));
+        assert_eq!(trace_records[1].event_index, Some(1));
+        assert_eq!(trace_records[2].event_index, None);
+        assert_eq!(trace_records[3].event_index, None);
+        assert_float_close(
+            trace_records[2]
+                .exogenous_news_severity_mark
+                .expect("exogenous transition should include news severity mark"),
+            -(1.0 - 0.5_f64).ln(),
+        );
+        assert!(trace_records[0].exogenous_news_severity_mark.is_none());
+        assert!(trace_records[1].exogenous_news_severity_mark.is_none());
+        assert!(trace_records[3].exogenous_news_severity_mark.is_none());
+
+        for trace_window in trace_records.windows(2) {
+            assert_state_snapshot_close(
+                trace_window[0].state_after_transition,
+                trace_window[1].state_before_transition,
+            );
+        }
+
+        assert_eq!(run_result.event_path.len(), 2);
+        assert_eq!(run_result.event_path[0].event_index, 0);
+        assert_eq!(run_result.event_path[0].side, SeededTickEventSide::Buy);
+        assert_eq!(run_result.event_path[1].event_index, 1);
+        assert_eq!(run_result.event_path[1].side, SeededTickEventSide::Sell);
+    }
+
+    #[test]
+    fn seeded_simulation_debug_trace_sampling_and_chunking_controls_limit_payload_size() {
+        let run_config = SeededTickSimulationRunConfig::try_new(
+            8_015,
+            DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+            1,
+            one_interval_model_inputs(3.0, 3.0, 0.0),
+            Some(SeededTickSimulationRunOptions {
+                debug_trace_enabled: true,
+                debug_trace_options: SeededTickSimulationDebugTraceOptions {
+                    sample_every_nth_transition: 2,
+                    max_records_per_chunk: 2,
+                },
+                state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
+            }),
+        )
+        .expect("debug trace sampling and chunking run config should initialize");
+
+        let scripted_factory = ScriptedRandomnessFactory::new(
+            vec![0.0],
+            vec![0.0],
+            vec![0.1, 0.2, 0.3],
+            vec![0.4, 0.5, 0.6],
+            vec![0.0],
+            vec![],
+            vec![],
+        );
+
+        let run_result =
+            run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
+                .expect("debug trace sampling and chunking run should complete");
+
+        let debug_trace_output = run_result
+            .debug_trace_output
+            .as_ref()
+            .expect("debug trace output should exist");
+
+        assert_eq!(debug_trace_output.captured_transition_count, 4);
+        assert_eq!(debug_trace_output.trace_chunks.len(), 2);
+        assert_eq!(debug_trace_output.trace_chunks[0].records.len(), 2);
+        assert_eq!(debug_trace_output.trace_chunks[1].records.len(), 2);
+
+        let sampled_transition_indices: Vec<u64> = debug_trace_output
+            .trace_chunks
+            .iter()
+            .flat_map(|trace_chunk| trace_chunk.records.iter())
+            .map(|trace_record| trace_record.transition_index)
+            .collect();
+
+        assert_eq!(sampled_transition_indices, vec![0, 2, 4, 6]);
     }
 
     #[test]
@@ -1167,6 +1915,7 @@ mod tests {
             None,
         )
         .expect("run config should initialize");
+
         let fixture_factory = FixtureRandomnessFactory;
 
         let first_result = run_seeded_tick_event_simulation_with_randomness_factory(
@@ -1174,6 +1923,7 @@ mod tests {
             &fixture_factory,
         )
         .expect("injected fixture randomness run should complete");
+
         let second_result =
             run_seeded_tick_event_simulation_with_randomness_factory(run_config, &fixture_factory)
                 .expect("second injected fixture randomness run should complete");
@@ -1515,6 +2265,7 @@ mod tests {
             model_inputs,
             Some(SeededTickSimulationRunOptions {
                 debug_trace_enabled: false,
+                debug_trace_options: SeededTickSimulationDebugTraceOptions::default(),
                 state_snapshot_capture: SeededTickEventStateSnapshotCapture::PostEventTransition,
             }),
         )
@@ -1646,6 +2397,7 @@ mod tests {
             one_interval_model_inputs(1.0, 0.5, 0.0),
             Some(SeededTickSimulationRunOptions {
                 debug_trace_enabled: false,
+                debug_trace_options: SeededTickSimulationDebugTraceOptions::default(),
                 state_snapshot_capture: SeededTickEventStateSnapshotCapture::PostEventTransition,
             }),
         )
@@ -1702,6 +2454,7 @@ mod tests {
             valid_model_inputs(),
             Some(SeededTickSimulationRunOptions {
                 debug_trace_enabled: false,
+                debug_trace_options: SeededTickSimulationDebugTraceOptions::default(),
                 state_snapshot_capture: SeededTickEventStateSnapshotCapture::PostEventTransition,
             }),
         )
@@ -1838,6 +2591,24 @@ mod tests {
         run_result.event_path.windows(2).all(|event_window| {
             event_window[0].timestamp_utc_nanos <= event_window[1].timestamp_utc_nanos
         })
+    }
+
+    fn assert_state_snapshot_close(
+        observed: super::SeededTickEventStateSnapshot,
+        expected: super::SeededTickEventStateSnapshot,
+    ) {
+        assert_float_close(observed.y_plus_plus, expected.y_plus_plus);
+        assert_float_close(observed.y_plus_minus, expected.y_plus_minus);
+        assert_float_close(observed.y_minus_plus, expected.y_minus_plus);
+        assert_float_close(observed.y_minus_minus, expected.y_minus_minus);
+        assert_float_close(
+            observed.deseasonalized_lambda_plus,
+            expected.deseasonalized_lambda_plus,
+        );
+        assert_float_close(
+            observed.deseasonalized_lambda_minus,
+            expected.deseasonalized_lambda_minus,
+        );
     }
 
     fn assert_float_close(observed: f64, expected: f64) {
