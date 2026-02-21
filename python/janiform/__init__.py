@@ -50,7 +50,12 @@ from .pricing import (
     load_hourly_factor_contract_for_pricing,
 )
 from .simulation import (
+    HawkesExcitationState,
+    HawkesKernelLoadings,
+    HawkesKernelParameters,
+    SeededTickEventTape,
     load_hourly_factor_contract_for_simulation,
+    run_seeded_tick_event_simulation,
 )
 from .validation import (
     DETERMINISTIC_REGRESSION_HARNESS_DETERMINISM_POLICY,
@@ -131,6 +136,9 @@ __all__ = [
     "HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION",
     "HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA",
     "HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION",
+    "HawkesExcitationState",
+    "HawkesKernelLoadings",
+    "HawkesKernelParameters",
     "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
     "SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION",
     "SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION",
@@ -166,6 +174,7 @@ __all__ = [
     "RegressionCaseReport",
     "RegressionHarnessSummary",
     "RegressionHarnessToleranceConfig",
+    "SeededTickEventTape",
     "SeasonalityDiagnosticsBatchInput",
     "SessionFilter",
     "SeasonalityInputValidationError",
@@ -181,6 +190,7 @@ __all__ = [
     "provide_hourly_factor_contract",
     "load_hourly_factor_contract_for_pricing",
     "load_hourly_factor_contract_for_simulation",
+    "run_seeded_tick_event_simulation",
     "estimate_day_of_week_seasonality",
     "estimate_day_of_year_seasonality",
     "estimate_intraday_seasonality",

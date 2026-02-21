@@ -9,15 +9,18 @@ from tests.fixture_validation import (
     CalendarRegressionCase,
     CalendarRegressionFixtureDocument,
     HourlyFactorRegressionFixtureDocument,
+    SeededTickSimulationParityFixtureDocument,
     ValidationFixtureManifestDocument,
     ValidationFixtureManifestEntry,
     compute_content_hash_hex,
     load_calendar_regression_fixture_document,
     load_hourly_factor_regression_fixture_document,
     load_manifest_entry_payload,
+    load_seeded_tick_simulation_parity_fixture_document,
     sorted_manifest_entries,
     validate_calendar_regression_fixture_document,
     validate_hourly_factor_regression_fixture_document,
+    validate_seeded_tick_simulation_parity_fixture_document,
     validate_validation_fixture_manifest_document,
 )
 
@@ -107,6 +110,32 @@ def test_hourly_fixture_loading_order_and_content_hash_are_deterministic(
     second_content_hash: str = compute_content_hash_hex(fixture_payload_bytes)
 
     assert first_canonical_case_order == second_canonical_case_order
+    assert first_content_hash == second_content_hash
+
+
+def test_seeded_tick_simulation_parity_fixture_loading_order_and_content_hash_are_deterministic(
+    seeded_tick_simulation_parity_fixture_path: Path,
+) -> None:
+    fixture_payload_bytes: bytes = seeded_tick_simulation_parity_fixture_path.read_bytes()
+
+    first_document: SeededTickSimulationParityFixtureDocument = (
+        load_seeded_tick_simulation_parity_fixture_document(
+            fixture_payload_bytes,
+        )
+    )
+    second_document: SeededTickSimulationParityFixtureDocument = (
+        load_seeded_tick_simulation_parity_fixture_document(
+            fixture_payload_bytes,
+        )
+    )
+
+    first_case_order: list[str] = [regression_case["fixture_id"] for regression_case in first_document["cases"]]
+    second_case_order: list[str] = [regression_case["fixture_id"] for regression_case in second_document["cases"]]
+
+    first_content_hash: str = compute_content_hash_hex(fixture_payload_bytes)
+    second_content_hash: str = compute_content_hash_hex(fixture_payload_bytes)
+
+    assert first_case_order == second_case_order
     assert first_content_hash == second_content_hash
 
 
@@ -291,6 +320,26 @@ def test_hourly_fixture_rejects_threshold_change_log_without_current_policy_vers
 
     with pytest.raises(ValueError, match="change_log must include an entry for policy_version"):
         validate_hourly_factor_regression_fixture_document(invalid_document)
+
+
+def test_seeded_tick_simulation_parity_fixture_rejects_invalid_side_values(
+    seeded_tick_simulation_parity_fixture_document: SeededTickSimulationParityFixtureDocument,
+) -> None:
+    invalid_document: dict[str, object] = _copy_document(seeded_tick_simulation_parity_fixture_document)
+    invalid_document["cases"][0]["expected_side_sequence"][0] = "hold"
+
+    with pytest.raises(ValueError, match="contains unsupported side"):
+        validate_seeded_tick_simulation_parity_fixture_document(invalid_document)
+
+
+def test_seeded_tick_simulation_parity_fixture_rejects_inconsistent_event_count(
+    seeded_tick_simulation_parity_fixture_document: SeededTickSimulationParityFixtureDocument,
+) -> None:
+    invalid_document: dict[str, object] = _copy_document(seeded_tick_simulation_parity_fixture_document)
+    invalid_document["cases"][0]["expected_total_event_count"] = 999
+
+    with pytest.raises(ValueError, match="expected_total_event_count must match"):
+        validate_seeded_tick_simulation_parity_fixture_document(invalid_document)
 
 
 def _manifest_entry_content_hash_snapshot(
