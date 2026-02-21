@@ -49,19 +49,47 @@ struct ClusteringThresholds {
 struct AsymmetryMetrics {
     mean_sell_share: f64,
     mean_log_sell_to_buy_ratio: f64,
+    mean_signed_sell_minus_buy_per_interval: f64,
+    mean_buy_fano_factor: f64,
+    mean_sell_fano_factor: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct AsymmetryThresholds {
     symmetric_sell_share_tolerance: f64,
+    symmetric_signed_drift_tolerance: f64,
+    symmetric_side_fano_factor_gap_tolerance: f64,
     minimum_sell_share_gap: f64,
     minimum_sell_to_buy_log_ratio_gap: f64,
+    minimum_sell_minus_buy_signed_drift_gap: f64,
+    minimum_sell_side_fano_factor_gap: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AsymmetryExpectedQualitativeBehavior {
+    NearSymmetricControl,
+    SellSideStress,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AsymmetryScenarioMetadata {
+    scenario_id: &'static str,
+    regime_intent: &'static str,
+    expected_qualitative_behavior: AsymmetryExpectedQualitativeBehavior,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct AsymmetryRegressionScenario {
+    metadata: AsymmetryScenarioMetadata,
+    kernel_parameters: HawkesKernelParameters,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct HorizonSummary {
     mean_total_event_count: f64,
     mean_buy_share: f64,
+    mean_sell_share: f64,
+    mean_log_sell_to_buy_ratio: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -70,12 +98,16 @@ struct ScaleConsistencyMetrics {
     direct_summary: HorizonSummary,
     relative_total_event_count_delta: f64,
     absolute_buy_share_delta: f64,
+    absolute_sell_share_delta: f64,
+    absolute_log_sell_to_buy_ratio_delta: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct ScaleConsistencyThresholds {
     maximum_relative_total_event_count_delta: f64,
     maximum_absolute_buy_share_delta: f64,
+    maximum_absolute_sell_share_delta: f64,
+    maximum_absolute_log_sell_to_buy_ratio_delta: f64,
 }
 
 #[test]
@@ -451,26 +483,61 @@ fn seeded_behavior_validation_exhibits_expected_buy_sell_asymmetry() {
     let seed_values = seed_values(30_000, 32);
     let asymmetry_thresholds = AsymmetryThresholds {
         symmetric_sell_share_tolerance: 0.04,
+        symmetric_signed_drift_tolerance: 0.15,
+        symmetric_side_fano_factor_gap_tolerance: 0.20,
         minimum_sell_share_gap: 0.08,
         minimum_sell_to_buy_log_ratio_gap: 0.20,
+        minimum_sell_minus_buy_signed_drift_gap: 0.30,
+        minimum_sell_side_fano_factor_gap: 0.04,
     };
 
-    let symmetric_metrics = compute_batch_asymmetry_metrics(
-        &seed_values,
-        symmetric_kernel_parameters(),
-        72,
-        ONE_HOUR_NANOS,
-        1.0,
-        0.01,
-    );
-    let sell_asymmetric_metrics = compute_batch_asymmetry_metrics(
-        &seed_values,
-        sell_asymmetric_kernel_parameters(),
-        72,
-        ONE_HOUR_NANOS,
-        1.0,
-        0.01,
-    );
+    let scenarios = asymmetry_regression_scenarios();
+    let mut observed_metrics: Vec<(AsymmetryScenarioMetadata, AsymmetryMetrics)> =
+        Vec::with_capacity(scenarios.len());
+
+    for scenario in scenarios {
+        let first_metrics = compute_batch_asymmetry_metrics(
+            &seed_values,
+            scenario.kernel_parameters.clone(),
+            72,
+            ONE_HOUR_NANOS,
+            1.0,
+            0.01,
+        );
+        let second_metrics = compute_batch_asymmetry_metrics(
+            &seed_values,
+            scenario.kernel_parameters,
+            72,
+            ONE_HOUR_NANOS,
+            1.0,
+            0.01,
+        );
+
+        assert_eq!(
+            first_metrics, second_metrics,
+            "asymmetry scenario replay mismatch for metadata={:?}",
+            scenario.metadata,
+        );
+
+        observed_metrics.push((scenario.metadata, first_metrics));
+    }
+
+    let symmetric_metrics = observed_metrics
+        .iter()
+        .find_map(|(metadata, metrics)| {
+            (metadata.expected_qualitative_behavior
+                == AsymmetryExpectedQualitativeBehavior::NearSymmetricControl)
+                .then_some(*metrics)
+        })
+        .expect("asymmetry scenario set must include near-symmetric control");
+    let sell_asymmetric_metrics = observed_metrics
+        .iter()
+        .find_map(|(metadata, metrics)| {
+            (metadata.expected_qualitative_behavior
+                == AsymmetryExpectedQualitativeBehavior::SellSideStress)
+                .then_some(*metrics)
+        })
+        .expect("asymmetry scenario set must include sell-side stress regime");
 
     let symmetric_distance_from_half = (symmetric_metrics.mean_sell_share - 0.5).abs();
     let sell_share_gap =
@@ -495,6 +562,39 @@ fn seeded_behavior_validation_exhibits_expected_buy_sell_asymmetry() {
          thresholds={asymmetry_thresholds:?}, symmetric_metrics={symmetric_metrics:?}, \
          sell_asymmetric_metrics={sell_asymmetric_metrics:?}",
     );
+    assert!(
+        symmetric_metrics
+            .mean_signed_sell_minus_buy_per_interval
+            .abs()
+            <= asymmetry_thresholds.symmetric_signed_drift_tolerance,
+        "symmetric side-specific drift exceeded tolerance: thresholds={asymmetry_thresholds:?}, \
+         symmetric_metrics={symmetric_metrics:?}",
+    );
+    assert!(
+        (symmetric_metrics.mean_sell_fano_factor - symmetric_metrics.mean_buy_fano_factor).abs()
+            <= asymmetry_thresholds.symmetric_side_fano_factor_gap_tolerance,
+        "symmetric side-specific clustering gap exceeded tolerance: thresholds={asymmetry_thresholds:?}, \
+         symmetric_metrics={symmetric_metrics:?}",
+    );
+    assert!(
+        sell_asymmetric_metrics.mean_sell_share > 0.5,
+        "sell-side stress scenario inverted expected side bias: \
+         sell_asymmetric_metrics={sell_asymmetric_metrics:?}, symmetric_metrics={symmetric_metrics:?}",
+    );
+    assert!(
+        sell_asymmetric_metrics.mean_signed_sell_minus_buy_per_interval
+            > symmetric_metrics.mean_signed_sell_minus_buy_per_interval
+                + asymmetry_thresholds.minimum_sell_minus_buy_signed_drift_gap,
+        "sell-side stress scenario drift dampening detected: thresholds={asymmetry_thresholds:?}, \
+         symmetric_metrics={symmetric_metrics:?}, sell_asymmetric_metrics={sell_asymmetric_metrics:?}",
+    );
+    assert!(
+        sell_asymmetric_metrics.mean_sell_fano_factor
+            > sell_asymmetric_metrics.mean_buy_fano_factor
+                + asymmetry_thresholds.minimum_sell_side_fano_factor_gap,
+        "sell-side clustering signature dampened under stress scenario: thresholds={asymmetry_thresholds:?}, \
+         symmetric_metrics={symmetric_metrics:?}, sell_asymmetric_metrics={sell_asymmetric_metrics:?}",
+    );
 }
 
 #[test]
@@ -507,9 +607,6 @@ fn seeded_behavior_validation_compares_aggregated_fine_and_direct_coarse_summari
     let seed_values = seed_values(40_000, 24);
     let total_duration_nanos = ONE_DAY_NANOS;
     let fine_interval_duration_nanos = FIFTEEN_MINUTE_NANOS;
-    let fine_interval_count = usize::try_from(total_duration_nanos / fine_interval_duration_nanos)
-        .expect("fifteen-minute interval count should fit in usize");
-    let kernel_parameters = symmetric_kernel_parameters();
 
     let horizons = [
         (
@@ -518,6 +615,8 @@ fn seeded_behavior_validation_compares_aggregated_fine_and_direct_coarse_summari
             ScaleConsistencyThresholds {
                 maximum_relative_total_event_count_delta: 0.0,
                 maximum_absolute_buy_share_delta: 0.0,
+                maximum_absolute_sell_share_delta: 0.0,
+                maximum_absolute_log_sell_to_buy_ratio_delta: 0.0,
             },
         ),
         (
@@ -526,6 +625,8 @@ fn seeded_behavior_validation_compares_aggregated_fine_and_direct_coarse_summari
             ScaleConsistencyThresholds {
                 maximum_relative_total_event_count_delta: 0.15,
                 maximum_absolute_buy_share_delta: 0.08,
+                maximum_absolute_sell_share_delta: 0.08,
+                maximum_absolute_log_sell_to_buy_ratio_delta: 0.25,
             },
         ),
         (
@@ -534,63 +635,22 @@ fn seeded_behavior_validation_compares_aggregated_fine_and_direct_coarse_summari
             ScaleConsistencyThresholds {
                 maximum_relative_total_event_count_delta: 0.65,
                 maximum_absolute_buy_share_delta: 0.12,
+                maximum_absolute_sell_share_delta: 0.12,
+                maximum_absolute_log_sell_to_buy_ratio_delta: 0.60,
             },
         ),
     ];
 
     for (horizon_label, coarse_interval_duration_nanos, thresholds) in horizons {
-        let coarse_interval_count =
-            usize::try_from(total_duration_nanos / coarse_interval_duration_nanos)
-                .expect("coarse interval count should fit in usize");
-        let mut aggregated_summaries: Vec<HorizonSummary> = Vec::with_capacity(seed_values.len());
-        let mut direct_summaries: Vec<HorizonSummary> = Vec::with_capacity(seed_values.len());
-
-        for seed in &seed_values {
-            let fine_run_result = run_seeded_tick_event_simulation(build_run_config(
-                *seed,
-                fine_interval_duration_nanos,
-                fine_interval_count,
-                kernel_parameters,
-                HawkesExcitationState {
-                    y_plus_plus: 0.0,
-                    y_plus_minus: 0.0,
-                    y_minus_plus: 0.0,
-                    y_minus_minus: 0.0,
-                },
-                1.0,
-                0.01,
-            ))
-            .expect("fine run should complete");
-
-            let direct_coarse_run_result = run_seeded_tick_event_simulation(build_run_config(
-                *seed,
-                coarse_interval_duration_nanos,
-                coarse_interval_count,
-                kernel_parameters,
-                HawkesExcitationState {
-                    y_plus_plus: 0.0,
-                    y_plus_minus: 0.0,
-                    y_minus_plus: 0.0,
-                    y_minus_minus: 0.0,
-                },
-                1.0,
-                0.01,
-            ))
-            .expect("direct coarse run should complete");
-
-            aggregated_summaries.push(summarize_event_path(
-                &fine_run_result.event_path,
-                START_TIME_UTC_NANOS,
-                coarse_interval_duration_nanos,
-                coarse_interval_count,
-            ));
-            direct_summaries.push(summarize_event_path(
-                &direct_coarse_run_result.event_path,
-                START_TIME_UTC_NANOS,
-                coarse_interval_duration_nanos,
-                coarse_interval_count,
-            ));
-        }
+        let (aggregated_summaries, direct_summaries) = collect_scale_consistency_summaries(
+            &seed_values,
+            symmetric_kernel_parameters(),
+            total_duration_nanos,
+            fine_interval_duration_nanos,
+            coarse_interval_duration_nanos,
+            1.0,
+            0.01,
+        );
 
         let metrics = compute_scale_consistency_metrics(&aggregated_summaries, &direct_summaries);
 
@@ -605,7 +665,71 @@ fn seeded_behavior_validation_compares_aggregated_fine_and_direct_coarse_summari
             "coarse consistency buy-share delta exceeded threshold for {horizon_label}: \
              thresholds={thresholds:?}, metrics={metrics:?}",
         );
+        assert!(
+            metrics.absolute_sell_share_delta <= thresholds.maximum_absolute_sell_share_delta,
+            "coarse consistency sell-share delta exceeded threshold for {horizon_label}: \
+             thresholds={thresholds:?}, metrics={metrics:?}",
+        );
+        assert!(
+            metrics.absolute_log_sell_to_buy_ratio_delta
+                <= thresholds.maximum_absolute_log_sell_to_buy_ratio_delta,
+            "coarse consistency sell-to-buy log-ratio delta exceeded threshold for {horizon_label}: \
+             thresholds={thresholds:?}, metrics={metrics:?}",
+        );
     }
+
+    let coarse_asymmetry_thresholds = ScaleConsistencyThresholds {
+        maximum_relative_total_event_count_delta: 0.20,
+        maximum_absolute_buy_share_delta: 0.10,
+        maximum_absolute_sell_share_delta: 0.10,
+        maximum_absolute_log_sell_to_buy_ratio_delta: 0.30,
+    };
+
+    let (aggregated_summaries, direct_summaries) = collect_scale_consistency_summaries(
+        &seed_values,
+        sell_asymmetric_kernel_parameters(),
+        total_duration_nanos,
+        fine_interval_duration_nanos,
+        ONE_HOUR_NANOS,
+        1.0,
+        0.01,
+    );
+
+    let asymmetry_metrics =
+        compute_scale_consistency_metrics(&aggregated_summaries, &direct_summaries);
+
+    assert!(
+        asymmetry_metrics.direct_summary.mean_sell_share > 0.5,
+        "direct coarse asymmetry summary lost expected sell-side bias: metrics={asymmetry_metrics:?}",
+    );
+    assert!(
+        asymmetry_metrics.aggregated_summary.mean_sell_share > 0.5,
+        "aggregated fine asymmetry summary lost expected sell-side bias: metrics={asymmetry_metrics:?}",
+    );
+    assert!(
+        asymmetry_metrics.relative_total_event_count_delta
+            <= coarse_asymmetry_thresholds.maximum_relative_total_event_count_delta,
+        "coarse asymmetry consistency total-event delta exceeded threshold: \
+         thresholds={coarse_asymmetry_thresholds:?}, metrics={asymmetry_metrics:?}",
+    );
+    assert!(
+        asymmetry_metrics.absolute_buy_share_delta
+            <= coarse_asymmetry_thresholds.maximum_absolute_buy_share_delta,
+        "coarse asymmetry consistency buy-share delta exceeded threshold: \
+         thresholds={coarse_asymmetry_thresholds:?}, metrics={asymmetry_metrics:?}",
+    );
+    assert!(
+        asymmetry_metrics.absolute_sell_share_delta
+            <= coarse_asymmetry_thresholds.maximum_absolute_sell_share_delta,
+        "coarse asymmetry consistency sell-share delta exceeded threshold: \
+         thresholds={coarse_asymmetry_thresholds:?}, metrics={asymmetry_metrics:?}",
+    );
+    assert!(
+        asymmetry_metrics.absolute_log_sell_to_buy_ratio_delta
+            <= coarse_asymmetry_thresholds.maximum_absolute_log_sell_to_buy_ratio_delta,
+        "coarse asymmetry consistency sell-to-buy log-ratio delta exceeded threshold: \
+         thresholds={coarse_asymmetry_thresholds:?}, metrics={asymmetry_metrics:?}",
+    );
 }
 
 fn compute_batch_clustering_metrics(
@@ -673,6 +797,9 @@ fn compute_batch_asymmetry_metrics(
 ) -> AsymmetryMetrics {
     let mut sell_shares: Vec<f64> = Vec::with_capacity(seed_values.len());
     let mut log_sell_to_buy_ratios: Vec<f64> = Vec::with_capacity(seed_values.len());
+    let mut signed_sell_minus_buy_drifts: Vec<f64> = Vec::with_capacity(seed_values.len());
+    let mut buy_fano_factors: Vec<f64> = Vec::with_capacity(seed_values.len());
+    let mut sell_fano_factors: Vec<f64> = Vec::with_capacity(seed_values.len());
 
     for seed in seed_values {
         let run_result = run_seeded_tick_event_simulation(build_run_config(
@@ -710,12 +837,104 @@ fn compute_batch_asymmetry_metrics(
         sell_shares.push(sell_event_count as f64 / total_event_count as f64);
         log_sell_to_buy_ratios
             .push(((sell_event_count as f64 + 1.0) / (buy_event_count as f64 + 1.0)).ln());
+
+        signed_sell_minus_buy_drifts
+            .push((sell_event_count as f64 - buy_event_count as f64) / interval_count as f64);
+
+        let interval_side_event_counts = collect_interval_buy_event_counts(
+            &run_result.event_path,
+            START_TIME_UTC_NANOS,
+            interval_duration_nanos,
+            interval_count,
+        );
+        let interval_buy_counts: Vec<usize> = interval_side_event_counts
+            .iter()
+            .map(|(buy_event_count, _sell_event_count)| *buy_event_count)
+            .collect();
+        let interval_sell_counts: Vec<usize> = interval_side_event_counts
+            .iter()
+            .map(|(_buy_event_count, sell_event_count)| *sell_event_count)
+            .collect();
+
+        buy_fano_factors.push(calculate_fano_factor(&interval_buy_counts));
+        sell_fano_factors.push(calculate_fano_factor(&interval_sell_counts));
     }
 
     AsymmetryMetrics {
         mean_sell_share: calculate_mean_f64(&sell_shares),
         mean_log_sell_to_buy_ratio: calculate_mean_f64(&log_sell_to_buy_ratios),
+        mean_signed_sell_minus_buy_per_interval: calculate_mean_f64(&signed_sell_minus_buy_drifts),
+        mean_buy_fano_factor: calculate_mean_f64(&buy_fano_factors),
+        mean_sell_fano_factor: calculate_mean_f64(&sell_fano_factors),
     }
+}
+
+fn collect_scale_consistency_summaries(
+    seed_values: &[u64],
+    kernel_parameters: HawkesKernelParameters,
+    total_duration_nanos: i64,
+    fine_interval_duration_nanos: i64,
+    coarse_interval_duration_nanos: i64,
+    seasonality_factor: f64,
+    news_intensity: f64,
+) -> (Vec<HorizonSummary>, Vec<HorizonSummary>) {
+    let fine_interval_count = usize::try_from(total_duration_nanos / fine_interval_duration_nanos)
+        .expect("fine interval count should fit in usize");
+    let coarse_interval_count =
+        usize::try_from(total_duration_nanos / coarse_interval_duration_nanos)
+            .expect("coarse interval count should fit in usize");
+
+    let mut aggregated_summaries: Vec<HorizonSummary> = Vec::with_capacity(seed_values.len());
+    let mut direct_summaries: Vec<HorizonSummary> = Vec::with_capacity(seed_values.len());
+
+    for seed in seed_values {
+        let fine_run_result = run_seeded_tick_event_simulation(build_run_config(
+            *seed,
+            fine_interval_duration_nanos,
+            fine_interval_count,
+            kernel_parameters.clone(),
+            HawkesExcitationState {
+                y_plus_plus: 0.0,
+                y_plus_minus: 0.0,
+                y_minus_plus: 0.0,
+                y_minus_minus: 0.0,
+            },
+            seasonality_factor,
+            news_intensity,
+        ))
+        .expect("fine run should complete");
+
+        let direct_coarse_run_result = run_seeded_tick_event_simulation(build_run_config(
+            *seed,
+            coarse_interval_duration_nanos,
+            coarse_interval_count,
+            kernel_parameters.clone(),
+            HawkesExcitationState {
+                y_plus_plus: 0.0,
+                y_plus_minus: 0.0,
+                y_minus_plus: 0.0,
+                y_minus_minus: 0.0,
+            },
+            seasonality_factor,
+            news_intensity,
+        ))
+        .expect("direct coarse run should complete");
+
+        aggregated_summaries.push(summarize_event_path(
+            &fine_run_result.event_path,
+            START_TIME_UTC_NANOS,
+            coarse_interval_duration_nanos,
+            coarse_interval_count,
+        ));
+        direct_summaries.push(summarize_event_path(
+            &direct_coarse_run_result.event_path,
+            START_TIME_UTC_NANOS,
+            coarse_interval_duration_nanos,
+            coarse_interval_count,
+        ));
+    }
+
+    (aggregated_summaries, direct_summaries)
 }
 
 fn summarize_event_path(
@@ -739,16 +958,23 @@ fn summarize_event_path(
         .iter()
         .map(|(buy_event_count, _sell_event_count)| *buy_event_count)
         .sum();
+    let sell_event_count = total_event_count.saturating_sub(buy_event_count);
 
-    let buy_share = if total_event_count == 0 {
-        0.0
+    let (buy_share, sell_share, log_sell_to_buy_ratio) = if total_event_count == 0 {
+        (0.0, 0.0, 0.0)
     } else {
-        buy_event_count as f64 / total_event_count as f64
+        (
+            buy_event_count as f64 / total_event_count as f64,
+            sell_event_count as f64 / total_event_count as f64,
+            ((sell_event_count as f64 + 1.0) / (buy_event_count as f64 + 1.0)).ln(),
+        )
     };
 
     HorizonSummary {
         mean_total_event_count: total_event_count as f64,
         mean_buy_share: buy_share,
+        mean_sell_share: sell_share,
+        mean_log_sell_to_buy_ratio: log_sell_to_buy_ratio,
     }
 }
 
@@ -769,6 +995,18 @@ fn compute_scale_consistency_metrics(
                 .map(|summary| summary.mean_buy_share)
                 .collect::<Vec<f64>>(),
         ),
+        mean_sell_share: calculate_mean_f64(
+            &aggregated_summaries
+                .iter()
+                .map(|summary| summary.mean_sell_share)
+                .collect::<Vec<f64>>(),
+        ),
+        mean_log_sell_to_buy_ratio: calculate_mean_f64(
+            &aggregated_summaries
+                .iter()
+                .map(|summary| summary.mean_log_sell_to_buy_ratio)
+                .collect::<Vec<f64>>(),
+        ),
     };
 
     let direct_summary = HorizonSummary {
@@ -784,6 +1022,18 @@ fn compute_scale_consistency_metrics(
                 .map(|summary| summary.mean_buy_share)
                 .collect::<Vec<f64>>(),
         ),
+        mean_sell_share: calculate_mean_f64(
+            &direct_summaries
+                .iter()
+                .map(|summary| summary.mean_sell_share)
+                .collect::<Vec<f64>>(),
+        ),
+        mean_log_sell_to_buy_ratio: calculate_mean_f64(
+            &direct_summaries
+                .iter()
+                .map(|summary| summary.mean_log_sell_to_buy_ratio)
+                .collect::<Vec<f64>>(),
+        ),
     };
 
     let relative_total_event_count_delta = if direct_summary.mean_total_event_count <= 0.0 {
@@ -795,12 +1045,19 @@ fn compute_scale_consistency_metrics(
 
     let absolute_buy_share_delta =
         (aggregated_summary.mean_buy_share - direct_summary.mean_buy_share).abs();
+    let absolute_sell_share_delta =
+        (aggregated_summary.mean_sell_share - direct_summary.mean_sell_share).abs();
+    let absolute_log_sell_to_buy_ratio_delta = (aggregated_summary.mean_log_sell_to_buy_ratio
+        - direct_summary.mean_log_sell_to_buy_ratio)
+        .abs();
 
     ScaleConsistencyMetrics {
         aggregated_summary,
         direct_summary,
         relative_total_event_count_delta,
         absolute_buy_share_delta,
+        absolute_sell_share_delta,
+        absolute_log_sell_to_buy_ratio_delta,
     }
 }
 
@@ -1142,6 +1399,28 @@ fn sell_asymmetric_kernel_parameters() -> HawkesKernelParameters {
         },
     )
     .expect("sell-asymmetric kernel parameters should be valid")
+}
+
+fn asymmetry_regression_scenarios() -> Vec<AsymmetryRegressionScenario> {
+    vec![
+        AsymmetryRegressionScenario {
+            metadata: AsymmetryScenarioMetadata {
+                scenario_id: "symmetric_baseline_control",
+                regime_intent: "control_fixture_for_near_symmetric_buy_sell_balance",
+                expected_qualitative_behavior:
+                    AsymmetryExpectedQualitativeBehavior::NearSymmetricControl,
+            },
+            kernel_parameters: symmetric_kernel_parameters(),
+        },
+        AsymmetryRegressionScenario {
+            metadata: AsymmetryScenarioMetadata {
+                scenario_id: "sell_side_stress_regime",
+                regime_intent: "stress_fixture_with_structured_sell_side_excitation",
+                expected_qualitative_behavior: AsymmetryExpectedQualitativeBehavior::SellSideStress,
+            },
+            kernel_parameters: sell_asymmetric_kernel_parameters(),
+        },
+    ]
 }
 
 fn seed_values(start_seed: u64, seed_count: usize) -> Vec<u64> {
