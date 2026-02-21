@@ -5,6 +5,7 @@ This fixture stores the canonical, machine-readable Hawkes invariant catalog use
 ## File
 
 - `hawkes_invariant_catalog.json`
+- `cluster_signature_reference_bands.json`
 
 ## Contract
 
@@ -13,6 +14,8 @@ This fixture stores the canonical, machine-readable Hawkes invariant catalog use
 - `classification_rules`: deterministic equation vs statistical-property classification policy
 - `categories`: invariant grouping taxonomy
 - `invariants`: unique invariant IDs, rationale, and suite test references
+- `cluster_signature_reference_bands`: versioned tolerance bands for cluster-signature
+  statistical regression and scale-consistency panel checks
 
 ## Coverage
 

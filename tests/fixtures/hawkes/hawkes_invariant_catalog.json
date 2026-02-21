@@ -168,6 +168,22 @@
         {
           "suite_id": "seeded_tick_behavior_validation",
           "test_name": "seeded_behavior_validation_exhibits_clustering_and_non_grid_event_time_signatures"
+        },
+        {
+          "suite_id": "hawkes_cluster_signature_statistical_regression",
+          "test_name": "cluster_signature_metric_calculation_distinguishes_synthetic_clustered_and_non_clustered_fixtures"
+        },
+        {
+          "suite_id": "hawkes_cluster_signature_statistical_regression",
+          "test_name": "cluster_signature_batch_metrics_are_reproducible_with_fixed_seed_batches"
+        },
+        {
+          "suite_id": "hawkes_cluster_signature_statistical_regression",
+          "test_name": "cluster_signature_regression_reference_bands_pass_for_seeded_batches"
+        },
+        {
+          "suite_id": "hawkes_cluster_signature_statistical_regression",
+          "test_name": "cluster_signature_regression_reports_metric_deltas_when_bands_are_violated"
         }
       ]
     },
@@ -196,6 +212,14 @@
         {
           "suite_id": "seeded_tick_behavior_validation",
           "test_name": "seeded_behavior_validation_compares_aggregated_fine_and_direct_coarse_summaries"
+        },
+        {
+          "suite_id": "hawkes_cluster_signature_statistical_regression",
+          "test_name": "cluster_signature_scale_consistency_reference_bands_pass_for_seeded_horizon_panel"
+        },
+        {
+          "suite_id": "hawkes_cluster_signature_statistical_regression",
+          "test_name": "cluster_signature_scale_consistency_reports_metric_deltas_when_bands_are_violated"
         }
       ]
     }
