@@ -24,6 +24,13 @@ struct ReferenceCheckpoint {
     expected_state: HawkesExcitationState,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct TimestampedTransitionFixtureStep {
+    event_time: f64,
+    endogenous_event_side: Option<HawkesEventSide>,
+    exogenous_news_severity_mark: Option<f64>,
+}
+
 #[derive(Debug, Clone)]
 struct ReferenceScenarioFixture {
     scenario_id: &'static str,
@@ -253,6 +260,118 @@ fn mixed_update_path_fixture() -> ReferenceScenarioFixture {
     }
 }
 
+fn transition_steps_from_timestamped_schedule(
+    timestamped_steps: &[TimestampedTransitionFixtureStep],
+) -> Vec<HawkesTransitionStep> {
+    let mut previous_event_time = 0.0;
+    let mut transition_steps = Vec::with_capacity(timestamped_steps.len());
+
+    for timestamped_step in timestamped_steps {
+        assert!(
+            timestamped_step.event_time >= previous_event_time,
+            "timestamped transition schedule must be non-decreasing"
+        );
+
+        transition_steps.push(HawkesTransitionStep::new(
+            timestamped_step.event_time - previous_event_time,
+            timestamped_step.endogenous_event_side,
+            timestamped_step.exogenous_news_severity_mark,
+        ));
+        previous_event_time = timestamped_step.event_time;
+    }
+
+    transition_steps
+}
+
+fn irregular_timestamp_schedule_fixture() -> ReferenceScenarioFixture {
+    let timestamped_steps = vec![
+        TimestampedTransitionFixtureStep {
+            event_time: 0.999_999_5,
+            endogenous_event_side: Some(HawkesEventSide::Buy),
+            exogenous_news_severity_mark: None,
+        },
+        TimestampedTransitionFixtureStep {
+            event_time: 1.0,
+            endogenous_event_side: None,
+            exogenous_news_severity_mark: Some(0.4),
+        },
+        TimestampedTransitionFixtureStep {
+            event_time: 1.000_000_25,
+            endogenous_event_side: Some(HawkesEventSide::Sell),
+            exogenous_news_severity_mark: Some(0.2),
+        },
+        TimestampedTransitionFixtureStep {
+            event_time: 1.375_125,
+            endogenous_event_side: None,
+            exogenous_news_severity_mark: None,
+        },
+        TimestampedTransitionFixtureStep {
+            event_time: 2.625_875,
+            endogenous_event_side: Some(HawkesEventSide::Buy),
+            exogenous_news_severity_mark: Some(0.05),
+        },
+    ];
+
+    ReferenceScenarioFixture {
+        scenario_id: "irregular_timestamp_schedule",
+        initial_state: HawkesExcitationState {
+            y_plus_plus: 0.8,
+            y_plus_minus: 0.3,
+            y_minus_plus: 0.5,
+            y_minus_minus: 0.2,
+        },
+        kernel_parameters: reference_kernel_parameters(),
+        transition_steps: transition_steps_from_timestamped_schedule(&timestamped_steps),
+        checkpoints: vec![
+            ReferenceCheckpoint {
+                step_index: 1,
+                expected_state: HawkesExcitationState {
+                    y_plus_plus: 0.700_000_138_629_460_2,
+                    y_plus_minus: 0.150_000_051_986_047_57,
+                    y_minus_plus: 0.450_000_086_643_412_6,
+                    y_minus_minus: 0.100_000_034_657_365_05,
+                },
+            },
+            ReferenceCheckpoint {
+                step_index: 2,
+                expected_state: HawkesExcitationState {
+                    y_plus_plus: 0.719_999_896_027_941,
+                    y_plus_minus: 0.158_000_000_000_000_03,
+                    y_minus_plus: 0.461_999_930_685_294,
+                    y_minus_minus: 0.116_000_000_000_000_02,
+                },
+            },
+            ReferenceCheckpoint {
+                step_index: 3,
+                expected_state: HawkesExcitationState {
+                    y_plus_plus: 0.729_999_771_261_477_3,
+                    y_plus_minus: 0.261_999_972_620_688_75,
+                    y_minus_plus: 0.467_999_850_626_813_6,
+                    y_minus_minus: 0.523_999_979_898_733_6,
+                },
+            },
+            ReferenceCheckpoint {
+                step_index: 4,
+                expected_state: HawkesExcitationState {
+                    y_plus_plus: 0.562_858_102_385_593_5,
+                    y_plus_minus: 0.202_012_128_249_745_35,
+                    y_minus_plus: 0.360_846_014_219_087_3,
+                    y_minus_minus: 0.404_024_283_221_654_8,
+                },
+            },
+            ReferenceCheckpoint {
+                step_index: 5,
+                expected_state: HawkesExcitationState {
+                    y_plus_plus: 0.539_029_685_915_410_5,
+                    y_plus_minus: 0.085_891_494_043_524_11,
+                    y_minus_plus: 0.353_138_208_716_053_56,
+                    y_minus_minus: 0.171_782_999_316_494_96,
+                },
+            },
+        ],
+    }
+}
+
 fn run_transition_schedule(
     initial_state: HawkesExcitationState,
     kernel_parameters: HawkesKernelParameters,
@@ -438,6 +557,61 @@ fn hawkes_reference_mismatch_diagnostics_include_step_and_component_identifiers(
     assert!(rendered_diagnostics.contains("scenario=mixed_update_path"));
     assert!(rendered_diagnostics.contains("step=3"));
     assert!(rendered_diagnostics.contains("component=y_plus_minus"));
+}
+
+#[test]
+fn irregular_timestamp_transition_schedule_matches_expected_checkpoints() {
+    assert_hawkes_invariant_catalog_ids_have_check_class(
+        &["HK-DYN-001"],
+        HawkesInvariantCheckClass::DeterministicEquation,
+    );
+
+    let fixture = irregular_timestamp_schedule_fixture();
+
+    let first_trajectory = run_transition_schedule(
+        fixture.initial_state,
+        fixture.kernel_parameters,
+        &fixture.transition_steps,
+    )
+    .expect("irregular transition schedule should succeed");
+    let second_trajectory = run_transition_schedule(
+        fixture.initial_state,
+        fixture.kernel_parameters,
+        &fixture.transition_steps,
+    )
+    .expect("repeat irregular transition schedule should succeed");
+
+    assert_eq!(first_trajectory, second_trajectory);
+
+    let has_boundary_adjacent_gap = fixture
+        .transition_steps
+        .iter()
+        .any(|transition_step| transition_step.delta_t > 0.0 && transition_step.delta_t < 1e-6);
+    assert!(
+        has_boundary_adjacent_gap,
+        "irregular timestamp fixture must include boundary-adjacent event-time gaps"
+    );
+
+    let has_non_grid_gap = fixture
+        .transition_steps
+        .iter()
+        .any(|transition_step| (transition_step.delta_t - 0.375_124_75).abs() <= f64::EPSILON);
+    assert!(
+        has_non_grid_gap,
+        "irregular timestamp fixture must include non-grid event-time gaps"
+    );
+
+    let mismatches = collect_checkpoint_mismatches(
+        fixture.scenario_id,
+        &fixture.checkpoints,
+        &first_trajectory,
+        STATE_TOLERANCE,
+    );
+    assert!(
+        mismatches.is_empty(),
+        "irregular timestamp checkpoints diverged\n{}",
+        format_mismatch_diagnostics(&mismatches)
+    );
 }
 
 #[test]
