@@ -683,3 +683,18 @@ def run_deterministic_regression_harness(
     seasonality_absolute_tolerance: float = 1e-12,
     news_intensity_absolute_tolerance: float = 1e-12,
 ) -> str: ...
+
+
+def run_seeded_tick_event_simulation(
+    seed: int,
+    start_time_utc: str,
+    horizon_interval_count: int,
+    kernel_parameters: object,
+    initial_excitation_state: object,
+    hourly_factor_contract: HourlyFactorContractResult,
+    *,
+    debug_trace_enabled: bool = False,
+    sample_every_nth_transition: int = 1,
+    max_records_per_chunk: int = 1024,
+    state_snapshot_capture: str = "disabled",
+) -> str: ...

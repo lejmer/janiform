@@ -21,6 +21,15 @@ HOURLY_FACTOR_REGRESSION_FIXTURE_SCHEMA_VERSION: str = "hourly.factor.regression
 HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID: str = "hourly_factor_regression_matrix_v1"
 HOURLY_FACTOR_THRESHOLD_CONFIGURATION_SCHEMA_VERSION: str = "validation.hourly_factor.thresholds.v1"
 STATE_CLASSIFICATION_STRICTNESS_POLICY: str = "exact_match_required.v1"
+SEEDED_TICK_SIMULATION_PARITY_FIXTURE_SCHEMA_VERSION: str = (
+    "simulation.seeded_tick.parity_fixture.v1"
+)
+SEEDED_TICK_SIMULATION_PARITY_FIXTURE_SET_ID: str = "seeded_tick_simulation_parity_fixture_v1"
+SEEDED_TICK_SIMULATION_CASE_ORDER_POLICY: str = "preserve_declared_case_order.v1"
+SEEDED_TICK_SIMULATION_CONTENT_HASH_SCOPE_POLICY: str = "document_payload_bytes.v1"
+SEEDED_TICK_SIMULATION_EVENT_ORDERING_POLICY: str = (
+    "timestamp_then_endogenous_before_exogenous_then_buy_before_sell_then_generation_order.v1"
+)
 SUPPORTED_MANIFEST_DOMAINS: set[str] = {"calendar", "seasonality", "hourly_factors"}
 
 
@@ -163,6 +172,71 @@ class HourlyFactorRegressionFixtureDocument(TypedDict):
     canonical_regression_metadata: HourlyFactorRegressionCanonicalMetadata
     canonical_output_cases: list[HourlyFactorRegressionCanonicalOutputCase]
     missing_data_guard_cases: list[HourlyFactorRegressionMissingDataGuardCase]
+
+
+class SeededTickSimulationParityDeterminismMetadata(TypedDict):
+    fixture_loading_order: str
+    event_ordering_policy: str
+    content_hash_scope: str
+    content_hash_algorithm: str
+
+
+class SeededTickSimulationParityCanonicalMetadata(TypedDict):
+    required_tags: list[str]
+    stable_fixture_ids: list[str]
+
+
+class SeededTickSimulationParityKernelLoadings(TypedDict):
+    plus_plus: float
+    plus_minus: float
+    minus_plus: float
+    minus_minus: float
+
+
+class SeededTickSimulationParityKernelParameters(TypedDict):
+    lambda_bar: float
+    beta: float
+    alpha: SeededTickSimulationParityKernelLoadings
+    rho: SeededTickSimulationParityKernelLoadings
+
+
+class SeededTickSimulationParityInitialExcitationState(TypedDict):
+    y_plus_plus: float
+    y_plus_minus: float
+    y_minus_plus: float
+    y_minus_minus: float
+
+
+class SeededTickSimulationParityCase(TypedDict):
+    fixture_id: str
+    seed: int
+    exchange_code: str
+    range_start_utc: str
+    range_end_utc: str
+    horizon_interval_count: int
+    kernel_parameters: SeededTickSimulationParityKernelParameters
+    initial_excitation_state: SeededTickSimulationParityInitialExcitationState
+    seasonality_hourly_factors: list[float]
+    news_intensity_hourly_factors: list[float]
+    expected_timestamps_utc_nanos: list[int]
+    expected_side_sequence: list[str]
+    expected_total_event_count: int
+    expected_interval_event_counts: list[int]
+    expected_interval_buy_counts: list[int]
+    expected_interval_sell_counts: list[int]
+    expected_min_positive_timestamp_gap_nanos: int
+    expected_has_non_grid_arrival: bool
+    tags: list[str]
+    description: str
+
+
+class SeededTickSimulationParityFixtureDocument(TypedDict):
+    schema_version: str
+    fixture_set_id: str
+    fixture_set_version: str
+    determinism_metadata: SeededTickSimulationParityDeterminismMetadata
+    canonical_regression_metadata: SeededTickSimulationParityCanonicalMetadata
+    cases: list[SeededTickSimulationParityCase]
 
 
 def compute_content_hash_hex(payload_bytes: bytes) -> str:
@@ -492,6 +566,145 @@ def load_hourly_factor_regression_fixture_document(
 ) -> HourlyFactorRegressionFixtureDocument:
     payload_value: object = json.loads(fixture_payload_bytes.decode("utf-8"))
     return validate_hourly_factor_regression_fixture_document(payload_value)
+
+
+def validate_seeded_tick_simulation_parity_fixture_document(
+    raw_document: object,
+) -> SeededTickSimulationParityFixtureDocument:
+    document_map: JsonObject = _require_json_object(raw_document, "seeded tick simulation parity fixture")
+    schema_version: str = _require_non_empty_string(
+        document_map,
+        "schema_version",
+        "seeded tick simulation parity fixture",
+    )
+    if schema_version != SEEDED_TICK_SIMULATION_PARITY_FIXTURE_SCHEMA_VERSION:
+        raise ValueError(f"unsupported seeded tick simulation parity schema version: {schema_version}")
+
+    fixture_set_id: str = _require_non_empty_string(
+        document_map,
+        "fixture_set_id",
+        "seeded tick simulation parity fixture",
+    )
+    if fixture_set_id != SEEDED_TICK_SIMULATION_PARITY_FIXTURE_SET_ID:
+        raise ValueError(f"unexpected seeded tick simulation parity fixture set id: {fixture_set_id}")
+
+    fixture_set_version: str = _require_non_empty_string(
+        document_map,
+        "fixture_set_version",
+        "seeded tick simulation parity fixture",
+    )
+
+    determinism_metadata: JsonObject = _require_json_object_field(
+        document_map,
+        "determinism_metadata",
+        "seeded tick simulation parity fixture",
+    )
+    fixture_loading_order: str = _require_non_empty_string(
+        determinism_metadata,
+        "fixture_loading_order",
+        "seeded tick simulation parity fixture determinism_metadata",
+    )
+    if fixture_loading_order != SEEDED_TICK_SIMULATION_CASE_ORDER_POLICY:
+        raise ValueError(f"unexpected seeded simulation case order policy: {fixture_loading_order}")
+
+    event_ordering_policy: str = _require_non_empty_string(
+        determinism_metadata,
+        "event_ordering_policy",
+        "seeded tick simulation parity fixture determinism_metadata",
+    )
+    if event_ordering_policy != SEEDED_TICK_SIMULATION_EVENT_ORDERING_POLICY:
+        raise ValueError(f"unexpected seeded simulation event ordering policy: {event_ordering_policy}")
+
+    content_hash_scope: str = _require_non_empty_string(
+        determinism_metadata,
+        "content_hash_scope",
+        "seeded tick simulation parity fixture determinism_metadata",
+    )
+    if content_hash_scope != SEEDED_TICK_SIMULATION_CONTENT_HASH_SCOPE_POLICY:
+        raise ValueError(f"unexpected seeded simulation content hash scope policy: {content_hash_scope}")
+
+    content_hash_algorithm: str = _require_non_empty_string(
+        determinism_metadata,
+        "content_hash_algorithm",
+        "seeded tick simulation parity fixture determinism_metadata",
+    )
+    if content_hash_algorithm != CONTENT_HASH_ALGORITHM_POLICY:
+        raise ValueError(f"unexpected seeded simulation content hash algorithm: {content_hash_algorithm}")
+
+    cases_raw: JsonArray = _require_json_array_field(
+        document_map,
+        "cases",
+        "seeded tick simulation parity fixture",
+    )
+    if not cases_raw:
+        raise ValueError("seeded tick simulation parity fixture must include at least one case")
+
+    validated_cases: list[SeededTickSimulationParityCase] = []
+    observed_fixture_ids: set[str] = set()
+    observed_tags: set[str] = set()
+    for raw_case in cases_raw:
+        validated_case = _validate_seeded_tick_simulation_parity_case(
+            _require_json_object(raw_case, "seeded tick simulation parity case"),
+        )
+        fixture_id = validated_case["fixture_id"]
+        if fixture_id in observed_fixture_ids:
+            raise ValueError(f"duplicate seeded tick simulation parity fixture_id: {fixture_id}")
+
+        observed_fixture_ids.add(fixture_id)
+        observed_tags.update(validated_case["tags"])
+        validated_cases.append(validated_case)
+
+    canonical_regression_metadata_raw: JsonObject = _require_json_object_field(
+        document_map,
+        "canonical_regression_metadata",
+        "seeded tick simulation parity fixture",
+    )
+    required_tags: list[str] = _require_non_empty_string_list(
+        canonical_regression_metadata_raw,
+        "required_tags",
+        "seeded tick simulation parity canonical_regression_metadata",
+    )
+    stable_fixture_ids: list[str] = _require_non_empty_string_list(
+        canonical_regression_metadata_raw,
+        "stable_fixture_ids",
+        "seeded tick simulation parity canonical_regression_metadata",
+    )
+    _require_unique_fixture_ids(
+        stable_fixture_ids,
+        "seeded tick simulation parity canonical_regression_metadata.stable_fixture_ids",
+    )
+
+    if not set(required_tags).issubset(observed_tags):
+        raise ValueError(
+            "seeded tick simulation parity canonical_regression_metadata.required_tags must be present in case tags",
+        )
+
+    if set(stable_fixture_ids) != observed_fixture_ids:
+        raise ValueError(
+            "seeded tick simulation parity canonical_regression_metadata.stable_fixture_ids does not match observed case fixture ids",
+        )
+
+    return {
+        "schema_version": schema_version,
+        "fixture_set_id": fixture_set_id,
+        "fixture_set_version": fixture_set_version,
+        "determinism_metadata": cast(
+            SeededTickSimulationParityDeterminismMetadata,
+            determinism_metadata,
+        ),
+        "canonical_regression_metadata": {
+            "required_tags": required_tags,
+            "stable_fixture_ids": stable_fixture_ids,
+        },
+        "cases": validated_cases,
+    }
+
+
+def load_seeded_tick_simulation_parity_fixture_document(
+    fixture_payload_bytes: bytes,
+) -> SeededTickSimulationParityFixtureDocument:
+    payload_value: object = json.loads(fixture_payload_bytes.decode("utf-8"))
+    return validate_seeded_tick_simulation_parity_fixture_document(payload_value)
 
 
 def _validate_manifest_fixture_entry(raw_entry: JsonObject) -> ValidationFixtureManifestEntry:
@@ -985,6 +1198,227 @@ def _validate_hourly_missing_data_expected_outcome(expected_outcome: JsonObject)
             raise ValueError(f"unsupported expected_outcome.outcome_kind: {outcome_kind}")
 
 
+def _validate_seeded_tick_simulation_parity_case(
+    raw_case: JsonObject,
+) -> SeededTickSimulationParityCase:
+    fixture_id: str = _require_non_empty_string(raw_case, "fixture_id", "seeded tick simulation parity case")
+    seed: int = _require_non_negative_int(raw_case, "seed", "seeded tick simulation parity case")
+    exchange_code: str = _require_non_empty_string(raw_case, "exchange_code", "seeded tick simulation parity case")
+    range_start_utc: str = _require_non_empty_string(
+        raw_case,
+        "range_start_utc",
+        "seeded tick simulation parity case",
+    )
+    range_end_utc: str = _require_non_empty_string(
+        raw_case,
+        "range_end_utc",
+        "seeded tick simulation parity case",
+    )
+    horizon_interval_count: int = _require_non_negative_int(
+        raw_case,
+        "horizon_interval_count",
+        "seeded tick simulation parity case",
+    )
+    if horizon_interval_count == 0:
+        raise ValueError("seeded tick simulation parity case.horizon_interval_count must be greater than 0")
+
+    kernel_parameters = _validate_seeded_tick_simulation_kernel_parameters(
+        _require_json_object_field(raw_case, "kernel_parameters", "seeded tick simulation parity case"),
+        "seeded tick simulation parity case.kernel_parameters",
+    )
+    initial_excitation_state = _validate_seeded_tick_simulation_initial_excitation_state(
+        _require_json_object_field(raw_case, "initial_excitation_state", "seeded tick simulation parity case"),
+        "seeded tick simulation parity case.initial_excitation_state",
+    )
+
+    seasonality_hourly_factors: list[float] = _require_float_list(
+        raw_case,
+        "seasonality_hourly_factors",
+        "seeded tick simulation parity case",
+    )
+    news_intensity_hourly_factors: list[float] = _require_float_list(
+        raw_case,
+        "news_intensity_hourly_factors",
+        "seeded tick simulation parity case",
+    )
+
+    if len(seasonality_hourly_factors) != horizon_interval_count:
+        raise ValueError(
+            "seeded tick simulation parity case seasonality_hourly_factors length must match horizon_interval_count",
+        )
+    if len(news_intensity_hourly_factors) != horizon_interval_count:
+        raise ValueError(
+            "seeded tick simulation parity case news_intensity_hourly_factors length must match horizon_interval_count",
+        )
+
+    expected_timestamps_utc_nanos_raw: JsonArray = _require_json_array_field(
+        raw_case,
+        "expected_timestamps_utc_nanos",
+        "seeded tick simulation parity case",
+    )
+    expected_timestamps_utc_nanos: list[int] = []
+    for timestamp_position, raw_timestamp in enumerate(expected_timestamps_utc_nanos_raw):
+        if not isinstance(raw_timestamp, int) or isinstance(raw_timestamp, bool):
+            raise ValueError(
+                "seeded tick simulation parity case.expected_timestamps_utc_nanos must only contain integers",
+            )
+        if timestamp_position > 0 and raw_timestamp < expected_timestamps_utc_nanos[timestamp_position - 1]:
+            raise ValueError(
+                "seeded tick simulation parity case.expected_timestamps_utc_nanos must be non-decreasing",
+            )
+        expected_timestamps_utc_nanos.append(raw_timestamp)
+
+    expected_side_sequence_raw: JsonArray = _require_json_array_field(
+        raw_case,
+        "expected_side_sequence",
+        "seeded tick simulation parity case",
+    )
+    expected_side_sequence: list[str] = []
+    for raw_side in expected_side_sequence_raw:
+        if not isinstance(raw_side, str):
+            raise ValueError("seeded tick simulation parity case.expected_side_sequence must only contain strings")
+
+        normalized_side = raw_side.strip()
+        if normalized_side not in {"buy", "sell"}:
+            raise ValueError(
+                f"seeded tick simulation parity case.expected_side_sequence contains unsupported side: {raw_side}",
+            )
+        expected_side_sequence.append(normalized_side)
+
+    if len(expected_side_sequence) != len(expected_timestamps_utc_nanos):
+        raise ValueError(
+            "seeded tick simulation parity case expected_timestamps_utc_nanos and expected_side_sequence must have equal lengths",
+        )
+
+    expected_total_event_count: int = _require_non_negative_int(
+        raw_case,
+        "expected_total_event_count",
+        "seeded tick simulation parity case",
+    )
+    if expected_total_event_count != len(expected_timestamps_utc_nanos):
+        raise ValueError(
+            "seeded tick simulation parity case expected_total_event_count must match expected_timestamps_utc_nanos length",
+        )
+
+    expected_interval_event_counts = _require_non_negative_int_list(
+        raw_case,
+        "expected_interval_event_counts",
+        "seeded tick simulation parity case",
+    )
+    expected_interval_buy_counts = _require_non_negative_int_list(
+        raw_case,
+        "expected_interval_buy_counts",
+        "seeded tick simulation parity case",
+    )
+    expected_interval_sell_counts = _require_non_negative_int_list(
+        raw_case,
+        "expected_interval_sell_counts",
+        "seeded tick simulation parity case",
+    )
+    if len(expected_interval_event_counts) != horizon_interval_count:
+        raise ValueError(
+            "seeded tick simulation parity case expected_interval_event_counts length must match horizon_interval_count",
+        )
+    if len(expected_interval_buy_counts) != horizon_interval_count:
+        raise ValueError(
+            "seeded tick simulation parity case expected_interval_buy_counts length must match horizon_interval_count",
+        )
+    if len(expected_interval_sell_counts) != horizon_interval_count:
+        raise ValueError(
+            "seeded tick simulation parity case expected_interval_sell_counts length must match horizon_interval_count",
+        )
+    if sum(expected_interval_event_counts) != expected_total_event_count:
+        raise ValueError(
+            "seeded tick simulation parity case expected_interval_event_counts sum must match expected_total_event_count",
+        )
+    if sum(expected_interval_buy_counts) + sum(expected_interval_sell_counts) != expected_total_event_count:
+        raise ValueError(
+            "seeded tick simulation parity case expected_interval_buy_counts and expected_interval_sell_counts sums must match expected_total_event_count",
+        )
+
+    expected_min_positive_timestamp_gap_nanos: int = _require_non_negative_int(
+        raw_case,
+        "expected_min_positive_timestamp_gap_nanos",
+        "seeded tick simulation parity case",
+    )
+    expected_has_non_grid_arrival: bool = _require_bool(
+        raw_case,
+        "expected_has_non_grid_arrival",
+        "seeded tick simulation parity case",
+    )
+
+    tags: list[str] = _require_non_empty_string_list(raw_case, "tags", "seeded tick simulation parity case")
+    description: str = _require_non_empty_string(raw_case, "description", "seeded tick simulation parity case")
+
+    return {
+        "fixture_id": fixture_id,
+        "seed": seed,
+        "exchange_code": exchange_code,
+        "range_start_utc": range_start_utc,
+        "range_end_utc": range_end_utc,
+        "horizon_interval_count": horizon_interval_count,
+        "kernel_parameters": kernel_parameters,
+        "initial_excitation_state": initial_excitation_state,
+        "seasonality_hourly_factors": seasonality_hourly_factors,
+        "news_intensity_hourly_factors": news_intensity_hourly_factors,
+        "expected_timestamps_utc_nanos": expected_timestamps_utc_nanos,
+        "expected_side_sequence": expected_side_sequence,
+        "expected_total_event_count": expected_total_event_count,
+        "expected_interval_event_counts": expected_interval_event_counts,
+        "expected_interval_buy_counts": expected_interval_buy_counts,
+        "expected_interval_sell_counts": expected_interval_sell_counts,
+        "expected_min_positive_timestamp_gap_nanos": expected_min_positive_timestamp_gap_nanos,
+        "expected_has_non_grid_arrival": expected_has_non_grid_arrival,
+        "tags": tags,
+        "description": description,
+    }
+
+
+def _validate_seeded_tick_simulation_kernel_parameters(
+    raw_kernel_parameters: JsonObject,
+    context: str,
+) -> SeededTickSimulationParityKernelParameters:
+    alpha = _validate_seeded_tick_simulation_kernel_loadings(
+        _require_json_object_field(raw_kernel_parameters, "alpha", context),
+        f"{context}.alpha",
+    )
+    rho = _validate_seeded_tick_simulation_kernel_loadings(
+        _require_json_object_field(raw_kernel_parameters, "rho", context),
+        f"{context}.rho",
+    )
+
+    return {
+        "lambda_bar": _require_number(raw_kernel_parameters, "lambda_bar", context),
+        "beta": _require_number(raw_kernel_parameters, "beta", context),
+        "alpha": alpha,
+        "rho": rho,
+    }
+
+
+def _validate_seeded_tick_simulation_kernel_loadings(
+    raw_loadings: JsonObject,
+    context: str,
+) -> SeededTickSimulationParityKernelLoadings:
+    return {
+        "plus_plus": _require_number(raw_loadings, "plus_plus", context),
+        "plus_minus": _require_number(raw_loadings, "plus_minus", context),
+        "minus_plus": _require_number(raw_loadings, "minus_plus", context),
+        "minus_minus": _require_number(raw_loadings, "minus_minus", context),
+    }
+
+
+def _validate_seeded_tick_simulation_initial_excitation_state(
+    raw_state: JsonObject,
+    context: str,
+) -> SeededTickSimulationParityInitialExcitationState:
+    return {
+        "y_plus_plus": _require_number(raw_state, "y_plus_plus", context),
+        "y_plus_minus": _require_number(raw_state, "y_plus_minus", context),
+        "y_minus_plus": _require_number(raw_state, "y_minus_plus", context),
+        "y_minus_minus": _require_number(raw_state, "y_minus_minus", context),
+    }
+
+
 def _validate_hourly_seasonality_source(raw_source: JsonObject, context: str) -> None:
     source_kind: str = _require_non_empty_string(raw_source, "source_kind", context)
 
@@ -1166,6 +1600,33 @@ def _require_non_negative_int(parent: JsonObject, field_name: str, context: str)
 
     if raw_value < 0:
         raise ValueError(f"field '{field_name}' in {context} must be non-negative")
+
+    return raw_value
+
+
+def _require_non_negative_int_list(parent: JsonObject, field_name: str, context: str) -> list[int]:
+    field_values: JsonArray = _require_json_array_field(parent, field_name, context)
+    if not field_values:
+        raise ValueError(f"field '{field_name}' in {context} must include at least one value")
+
+    normalized_values: list[int] = []
+    for raw_value in field_values:
+        if not isinstance(raw_value, int) or isinstance(raw_value, bool):
+            raise ValueError(f"field '{field_name}' in {context} must only contain integers")
+        if raw_value < 0:
+            raise ValueError(f"field '{field_name}' in {context} must only contain non-negative integers")
+        normalized_values.append(raw_value)
+
+    return normalized_values
+
+
+def _require_bool(parent: JsonObject, field_name: str, context: str) -> bool:
+    raw_value: object = parent.get(field_name)
+    if raw_value is None:
+        raise ValueError(f"missing required field '{field_name}' in {context}")
+
+    if not isinstance(raw_value, bool):
+        raise ValueError(f"field '{field_name}' in {context} must be a boolean")
 
     return raw_value
 
