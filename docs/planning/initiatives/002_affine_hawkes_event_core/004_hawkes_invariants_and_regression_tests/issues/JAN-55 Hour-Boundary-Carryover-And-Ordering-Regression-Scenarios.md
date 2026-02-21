@@ -1,4 +1,4 @@
-## ISSUE-004: Hour Boundary Carryover And Ordering Regression Scenarios
+## Hour Boundary Carryover And Ordering Regression Scenarios
 
 ### Description
 Add regression scenarios focused on event ordering and full 4D state carryover across hour boundaries and interval transitions.

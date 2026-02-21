@@ -1,4 +1,4 @@
-## ISSUE-005: Asymmetry Behavior Regression Pack
+## Asymmetry Behavior Regression Pack
 
 ### Description
 Create regression scenarios that lock down expected buy and sell asymmetry behavior implied by structured `alpha` and `rho` parameterizations.

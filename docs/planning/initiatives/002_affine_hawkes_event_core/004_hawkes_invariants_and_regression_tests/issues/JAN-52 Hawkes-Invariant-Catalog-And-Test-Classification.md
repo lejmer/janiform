@@ -1,4 +1,4 @@
-## ISSUE-001: Hawkes Invariant Catalog And Test Classification
+## Hawkes Invariant Catalog And Test Classification
 
 ### Description
 Define the canonical invariant catalog for Hawkes dynamics and classify tests into deterministic equation checks versus statistical-property checks.

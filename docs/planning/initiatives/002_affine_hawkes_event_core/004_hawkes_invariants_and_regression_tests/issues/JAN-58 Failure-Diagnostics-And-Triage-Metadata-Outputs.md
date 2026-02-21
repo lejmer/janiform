@@ -1,4 +1,4 @@
-## ISSUE-007: Failure Diagnostics And Triage Metadata Outputs
+## Failure Diagnostics And Triage Metadata Outputs
 
 ### Description
 Build structured diagnostics output for invariant and regression failures so root-cause isolation is fast across constraints, dynamics, and random sampling paths.

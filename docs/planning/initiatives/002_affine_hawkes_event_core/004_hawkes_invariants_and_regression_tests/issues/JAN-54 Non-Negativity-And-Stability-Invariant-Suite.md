@@ -1,4 +1,4 @@
-## ISSUE-003: Non Negativity And Stability Invariant Suite
+## Non Negativity And Stability Invariant Suite
 
 ### Description
 Build invariant tests that enforce non-negativity and stability conditions under valid parameter regimes and state updates.

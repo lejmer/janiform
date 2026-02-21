@@ -1,0 +1,150 @@
+{
+  "schema_version": "hawkes.invariant.catalog.v1",
+  "catalog_id": "affine_hawkes_invariant_catalog_v1",
+  "catalog_version": "1.0.0",
+  "classification_rules": [
+    {
+      "check_class": "deterministic_equation",
+      "rule_id": "deterministic_equation_rule_v1",
+      "summary": "Deterministic checks assert exact equations and fixed-seed replay equivalence.",
+      "evaluation_guidance": "Use strict equality or tight numeric tolerances with no randomness-dependent thresholds."
+    },
+    {
+      "check_class": "statistical_property",
+      "rule_id": "statistical_property_rule_v1",
+      "summary": "Statistical checks assert distributional signatures across repeated seeded runs.",
+      "evaluation_guidance": "Use aggregate metrics and explicit thresholds over a defined seed batch."
+    }
+  ],
+  "categories": [
+    {
+      "category_id": "constraints",
+      "description": "Input-domain and stability invariants that prevent invalid Hawkes configurations."
+    },
+    {
+      "category_id": "dynamics",
+      "description": "State transition equations and diagnostic expectations for deterministic kernel dynamics."
+    },
+    {
+      "category_id": "boundary_behavior",
+      "description": "Carry-over and replay invariants that must remain deterministic at interval boundaries."
+    },
+    {
+      "category_id": "sampling_properties",
+      "description": "Statistical behavior invariants for event-time arrivals and buy/sell outcome distributions."
+    },
+    {
+      "category_id": "scale_consistency",
+      "description": "Consistency invariants comparing aggregated fine simulation with direct coarse simulation."
+    }
+  ],
+  "invariants": [
+    {
+      "invariant_id": "HK-CON-001",
+      "title": "Kernel parameter domain and stability validation",
+      "category_id": "constraints",
+      "invariant_class": "parameter_constraints_and_stability",
+      "check_class": "deterministic_equation",
+      "rationale": "Finite and non-negative loadings with spectral-radius stability are required for safe Hawkes evolution.",
+      "suite_references": []
+    },
+    {
+      "invariant_id": "HK-DYN-001",
+      "title": "Equation checkpoints match canonical transition outputs",
+      "category_id": "dynamics",
+      "invariant_class": "deterministic_transition_equations",
+      "check_class": "deterministic_equation",
+      "rationale": "Drift, endogenous jumps, and exogenous jumps must compose into exact known reference states.",
+      "suite_references": [
+        {
+          "suite_id": "hawkes_equation_reference_suite",
+          "test_name": "hawkes_reference_scenarios_match_expected_checkpoints"
+        }
+      ]
+    },
+    {
+      "invariant_id": "HK-DYN-002",
+      "title": "Equation mismatch diagnostics include component metadata",
+      "category_id": "dynamics",
+      "invariant_class": "deterministic_transition_equations",
+      "check_class": "deterministic_equation",
+      "rationale": "Regression failures must include scenario, step, and component identifiers for fast triage.",
+      "suite_references": [
+        {
+          "suite_id": "hawkes_equation_reference_suite",
+          "test_name": "hawkes_reference_mismatch_diagnostics_include_step_and_component_identifiers"
+        }
+      ]
+    },
+    {
+      "invariant_id": "HK-BND-001",
+      "title": "Seeded transition schedules are replay-stable",
+      "category_id": "boundary_behavior",
+      "invariant_class": "deterministic_boundary_replay",
+      "check_class": "deterministic_equation",
+      "rationale": "The same seed and inputs must generate identical transition schedules and trajectories.",
+      "suite_references": [
+        {
+          "suite_id": "hawkes_equation_reference_suite",
+          "test_name": "seeded_hawkes_transition_schedule_and_state_path_are_repeatable"
+        }
+      ]
+    },
+    {
+      "invariant_id": "HK-BND-002",
+      "title": "Seeded tick simulation path replay is deterministic",
+      "category_id": "boundary_behavior",
+      "invariant_class": "deterministic_boundary_replay",
+      "check_class": "deterministic_equation",
+      "rationale": "Repeated seeded runs must produce identical event paths and final excitation states.",
+      "suite_references": [
+        {
+          "suite_id": "seeded_tick_behavior_validation",
+          "test_name": "seeded_behavior_validation_is_strictly_deterministic_for_repeated_seeded_runs"
+        }
+      ]
+    },
+    {
+      "invariant_id": "HK-SAMP-001",
+      "title": "Clustered paths and non-grid event-time semantics",
+      "category_id": "sampling_properties",
+      "invariant_class": "non_grid_event_time_semantics",
+      "check_class": "statistical_property",
+      "rationale": "Clustered settings should increase burstiness while preserving non-grid event-time arrivals.",
+      "suite_references": [
+        {
+          "suite_id": "seeded_tick_behavior_validation",
+          "test_name": "seeded_behavior_validation_exhibits_clustering_and_non_grid_event_time_signatures"
+        }
+      ]
+    },
+    {
+      "invariant_id": "HK-SAMP-002",
+      "title": "Sell-side asymmetry under asymmetric excitation",
+      "category_id": "sampling_properties",
+      "invariant_class": "buy_sell_asymmetry_signature",
+      "check_class": "statistical_property",
+      "rationale": "Structured sell-side excitation should increase sell share and sell-to-buy ratio over symmetric settings.",
+      "suite_references": [
+        {
+          "suite_id": "seeded_tick_behavior_validation",
+          "test_name": "seeded_behavior_validation_exhibits_expected_buy_sell_asymmetry"
+        }
+      ]
+    },
+    {
+      "invariant_id": "HK-SCALE-001",
+      "title": "Aggregated fine and direct coarse consistency",
+      "category_id": "scale_consistency",
+      "invariant_class": "coarse_vs_aggregated_scale_consistency",
+      "check_class": "statistical_property",
+      "rationale": "Aggregating fine event paths should remain close to direct coarse simulation summaries under shared inputs.",
+      "suite_references": [
+        {
+          "suite_id": "seeded_tick_behavior_validation",
+          "test_name": "seeded_behavior_validation_compares_aggregated_fine_and_direct_coarse_summaries"
+        }
+      ]
+    }
+  ]
+}
