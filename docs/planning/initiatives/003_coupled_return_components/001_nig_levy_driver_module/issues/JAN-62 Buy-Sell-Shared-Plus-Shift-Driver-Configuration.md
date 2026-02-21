@@ -1,4 +1,4 @@
-## ISSUE-004: Buy Sell Shared Plus Shift Driver Configuration
+## Buy Sell Shared Plus Shift Driver Configuration
 
 ### Description
 Implement buy and sell driver configuration using shared core NIG parameters plus one sell-side skew shift parameter.
@@ -15,5 +15,6 @@ Implement buy and sell driver configuration using shared core NIG parameters plu
 - Deterministic configuration output structure
 
 ### Notes/Constraints
+- See `docs/janiform_design_brainstorm_notes.md` for the model spec itself.
 - Keep shared-plus-shift mapping centralized to avoid drift
 - Do not create separate unrelated buy and sell parameter models

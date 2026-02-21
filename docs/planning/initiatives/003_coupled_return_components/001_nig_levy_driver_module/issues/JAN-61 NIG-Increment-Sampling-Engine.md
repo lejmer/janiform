@@ -1,4 +1,4 @@
-## ISSUE-003: NIG Increment Sampling Engine
+## NIG Increment Sampling Engine
 
 ### Description
 Implement sampling utilities for NIG increments in business time so path simulation can generate return moves conditional on integrated intensity.
@@ -15,5 +15,6 @@ Implement sampling utilities for NIG increments in business time so path simulat
 - Seed reproducibility tests for repeated sampling runs
 
 ### Notes/Constraints
+- See `docs/janiform_design_brainstorm_notes.md` for the model spec itself.
 - Reuse project-wide RNG abstractions for reproducibility
 - Keep sampling implementation isolated from pricing-only code
