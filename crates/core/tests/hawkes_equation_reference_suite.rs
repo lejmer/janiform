@@ -1,8 +1,13 @@
+mod support;
+
 use std::fmt::Write;
 
 use janiform_core::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
     HawkesTransitionError, HawkesTransitionStep,
+};
+use support::hawkes_invariant_catalog::{
+    HawkesInvariantCheckClass, assert_hawkes_invariant_catalog_ids_have_check_class,
 };
 
 const STATE_TOLERANCE: f64 = 1e-12;
@@ -360,6 +365,11 @@ fn seeded_transition_schedule(seed: u64, step_count: usize) -> Vec<HawkesTransit
 
 #[test]
 fn hawkes_reference_scenarios_match_expected_checkpoints() {
+    assert_hawkes_invariant_catalog_ids_have_check_class(
+        &["HK-DYN-001"],
+        HawkesInvariantCheckClass::DeterministicEquation,
+    );
+
     let fixtures = vec![
         drift_only_fixture(),
         endogenous_event_only_fixture(),
@@ -396,6 +406,11 @@ fn hawkes_reference_scenarios_match_expected_checkpoints() {
 
 #[test]
 fn hawkes_reference_mismatch_diagnostics_include_step_and_component_identifiers() {
+    assert_hawkes_invariant_catalog_ids_have_check_class(
+        &["HK-DYN-002"],
+        HawkesInvariantCheckClass::DeterministicEquation,
+    );
+
     let fixture = mixed_update_path_fixture();
     let trajectory = run_transition_schedule(
         fixture.initial_state,
@@ -427,6 +442,11 @@ fn hawkes_reference_mismatch_diagnostics_include_step_and_component_identifiers(
 
 #[test]
 fn seeded_hawkes_transition_schedule_and_state_path_are_repeatable() {
+    assert_hawkes_invariant_catalog_ids_have_check_class(
+        &["HK-BND-001"],
+        HawkesInvariantCheckClass::DeterministicEquation,
+    );
+
     let seed = 2026_02_19_u64;
     let step_count = 16;
 

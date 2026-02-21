@@ -1,3 +1,5 @@
+mod support;
+
 use chrono::{DateTime, Utc};
 use janiform_core::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
 use janiform_core::hourly_factors::{
@@ -11,6 +13,9 @@ use janiform_core::hourly_factors::{
 use janiform_core::simulation::{
     SeededTickEventRecord, SeededTickEventSide, SeededTickSimulationModelInputs,
     SeededTickSimulationRunConfig, run_seeded_tick_event_simulation,
+};
+use support::hawkes_invariant_catalog::{
+    HawkesInvariantCheckClass, assert_hawkes_invariant_catalog_ids_have_check_class,
 };
 
 const START_TIME_UTC_NANOS: i64 = 1_704_067_200_000_000_000;
@@ -68,6 +73,11 @@ struct ScaleConsistencyThresholds {
 
 #[test]
 fn seeded_behavior_validation_is_strictly_deterministic_for_repeated_seeded_runs() {
+    assert_hawkes_invariant_catalog_ids_have_check_class(
+        &["HK-BND-002"],
+        HawkesInvariantCheckClass::DeterministicEquation,
+    );
+
     let run_config = build_run_config(
         91_006,
         FIFTEEN_MINUTE_NANOS,
@@ -100,6 +110,11 @@ fn seeded_behavior_validation_is_strictly_deterministic_for_repeated_seeded_runs
 
 #[test]
 fn seeded_behavior_validation_exhibits_clustering_and_non_grid_event_time_signatures() {
+    assert_hawkes_invariant_catalog_ids_have_check_class(
+        &["HK-SAMP-001"],
+        HawkesInvariantCheckClass::StatisticalProperty,
+    );
+
     let seed_values = seed_values(20_000, 32);
     let clustering_thresholds = ClusteringThresholds {
         minimum_fano_factor_gap: 0.35,
@@ -154,6 +169,11 @@ fn seeded_behavior_validation_exhibits_clustering_and_non_grid_event_time_signat
 
 #[test]
 fn seeded_behavior_validation_exhibits_expected_buy_sell_asymmetry() {
+    assert_hawkes_invariant_catalog_ids_have_check_class(
+        &["HK-SAMP-002"],
+        HawkesInvariantCheckClass::StatisticalProperty,
+    );
+
     let seed_values = seed_values(30_000, 32);
     let asymmetry_thresholds = AsymmetryThresholds {
         symmetric_sell_share_tolerance: 0.04,
@@ -205,6 +225,11 @@ fn seeded_behavior_validation_exhibits_expected_buy_sell_asymmetry() {
 
 #[test]
 fn seeded_behavior_validation_compares_aggregated_fine_and_direct_coarse_summaries() {
+    assert_hawkes_invariant_catalog_ids_have_check_class(
+        &["HK-SCALE-001"],
+        HawkesInvariantCheckClass::StatisticalProperty,
+    );
+
     let seed_values = seed_values(40_000, 24);
     let total_duration_nanos = ONE_DAY_NANOS;
     let fine_interval_duration_nanos = FIFTEEN_MINUTE_NANOS;
