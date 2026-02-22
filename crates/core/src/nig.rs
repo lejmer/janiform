@@ -9,10 +9,16 @@ use std::fmt::{Display, Formatter};
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::randomness::SimulationRandomnessStream;
+
 pub const NIG_PARAMETER_VALIDATION_REPORT_SCHEMA_VERSION: &str =
     "validation.nig.parameter_report.v1";
 pub const NIG_PARAMETER_VALIDATION_DETERMINISM_POLICY: &str =
     "stable_check_order_and_aggregated_failures.v1";
+pub const NIG_INCREMENT_SAMPLING_POLICY: &str =
+    "normal_inverse_gaussian_via_inverse_gaussian_subordinator_with_box_muller_standard_normal.v1";
+pub const NIG_INCREMENT_NEAR_ZERO_SCALE_POLICY: &str =
+    "zero_business_time_scale_returns_zero_without_random_draws.v1";
 
 /// Minimal deterministic complex scalar used by transform-side APIs.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -169,6 +175,92 @@ impl NigParameters {
         location_term.add(shape_term)
     }
 
+    /// Sample one business-time increment from the NIG Lévy driver.
+    ///
+    /// Input semantics:
+    /// - `business_time_increment_scale` is the Lévy clock increment and must be finite and
+    ///   non-negative.
+    /// - The method consumes randomness from the shared simulation randomness stream so seeded
+    ///   reproducibility follows the project-wide seed and substream contracts.
+    ///
+    /// Edge behavior:
+    /// - When `business_time_increment_scale == 0`, this method returns `0.0` and consumes no
+    ///   random draws.
+    pub fn sample_increment<R>(
+        self,
+        business_time_increment_scale: f64,
+        randomness_stream: &mut R,
+    ) -> Result<f64, NigIncrementSamplingError>
+    where
+        R: SimulationRandomnessStream,
+    {
+        if !business_time_increment_scale.is_finite() || business_time_increment_scale < 0.0 {
+            return Err(
+                NigIncrementSamplingError::InvalidBusinessTimeIncrementScale {
+                    value: business_time_increment_scale,
+                },
+            );
+        }
+
+        if business_time_increment_scale == 0.0 {
+            return Ok(0.0);
+        }
+
+        let scaled_delta = self.delta * business_time_increment_scale;
+        let scaled_mu = self.mu * business_time_increment_scale;
+        let gamma = stable_gamma(self.alpha, self.beta);
+        let inverse_gaussian_mean = scaled_delta / gamma;
+        let inverse_gaussian_shape = scaled_delta * scaled_delta;
+
+        let business_clock_increment = sample_inverse_gaussian_increment(
+            inverse_gaussian_mean,
+            inverse_gaussian_shape,
+            randomness_stream,
+        )
+        .ok_or(NigIncrementSamplingError::NonFiniteSubordinatorDraw {
+            business_time_increment_scale,
+        })?;
+
+        let standard_normal_draw = sample_standard_normal_draw(randomness_stream);
+        if !standard_normal_draw.is_finite() {
+            return Err(NigIncrementSamplingError::NonFiniteStandardNormalDraw {
+                business_time_increment_scale,
+            });
+        }
+
+        let sampled_increment = scaled_mu
+            + self.beta * business_clock_increment
+            + business_clock_increment.sqrt() * standard_normal_draw;
+        if !sampled_increment.is_finite() {
+            return Err(NigIncrementSamplingError::NonFiniteIncrementDraw {
+                business_time_increment_scale,
+            });
+        }
+
+        Ok(sampled_increment)
+    }
+
+    /// Sample a vector of NIG increments for one sequence of business-time scales.
+    pub fn sample_increment_path<R>(
+        self,
+        business_time_increment_scale_path: &[f64],
+        randomness_stream: &mut R,
+    ) -> Result<Vec<f64>, NigIncrementSamplingError>
+    where
+        R: SimulationRandomnessStream,
+    {
+        let mut sampled_increments: Vec<f64> =
+            Vec::with_capacity(business_time_increment_scale_path.len());
+
+        for business_time_increment_scale in business_time_increment_scale_path {
+            let sampled_increment =
+                self.sample_increment(*business_time_increment_scale, randomness_stream)?;
+            sampled_increments.push(sampled_increment);
+        }
+
+        Ok(sampled_increments)
+    }
+
     /// Run pure domain validation without constructing a parameter payload.
     pub fn validate_domain(
         alpha: f64,
@@ -281,6 +373,46 @@ impl Display for NigParameterError {
 
 impl Error for NigParameterError {}
 
+/// Structured failure modes for NIG increment sampling.
+#[derive(Debug, Clone, PartialEq)]
+pub enum NigIncrementSamplingError {
+    InvalidBusinessTimeIncrementScale { value: f64 },
+    NonFiniteSubordinatorDraw { business_time_increment_scale: f64 },
+    NonFiniteStandardNormalDraw { business_time_increment_scale: f64 },
+    NonFiniteIncrementDraw { business_time_increment_scale: f64 },
+}
+
+impl Display for NigIncrementSamplingError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidBusinessTimeIncrementScale { value } => write!(
+                formatter,
+                "business_time_increment_scale must be finite and non-negative, found {value}"
+            ),
+            Self::NonFiniteSubordinatorDraw {
+                business_time_increment_scale,
+            } => write!(
+                formatter,
+                "inverse-gaussian subordinator sampling produced a non-finite value for business_time_increment_scale={business_time_increment_scale}"
+            ),
+            Self::NonFiniteStandardNormalDraw {
+                business_time_increment_scale,
+            } => write!(
+                formatter,
+                "standard-normal draw produced a non-finite value for business_time_increment_scale={business_time_increment_scale}"
+            ),
+            Self::NonFiniteIncrementDraw {
+                business_time_increment_scale,
+            } => write!(
+                formatter,
+                "NIG increment sampling produced a non-finite value for business_time_increment_scale={business_time_increment_scale}"
+            ),
+        }
+    }
+}
+
+impl Error for NigIncrementSamplingError {}
+
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct NigParametersPayload {
@@ -329,6 +461,78 @@ fn principal_branch_square_root(value: ComplexScalar) -> ComplexScalar {
     ComplexScalar::new(real_component, imaginary_component)
 }
 
+fn sample_inverse_gaussian_increment<R>(
+    mean: f64,
+    shape: f64,
+    randomness_stream: &mut R,
+) -> Option<f64>
+where
+    R: SimulationRandomnessStream,
+{
+    if !mean.is_finite() || !shape.is_finite() || mean <= 0.0 || shape <= 0.0 {
+        return Some(0.0);
+    }
+
+    let standard_normal_draw = sample_standard_normal_draw(randomness_stream);
+    if !standard_normal_draw.is_finite() {
+        return None;
+    }
+
+    let squared_standard_normal_draw = standard_normal_draw * standard_normal_draw;
+    if squared_standard_normal_draw <= f64::MIN_POSITIVE {
+        return Some(mean);
+    }
+
+    let four_shape_over_mean_draw = 4.0 * shape / (mean * squared_standard_normal_draw);
+    if !four_shape_over_mean_draw.is_finite() {
+        return Some(mean);
+    }
+
+    let square_root_term = (1.0 + four_shape_over_mean_draw).sqrt();
+    if !square_root_term.is_finite() || square_root_term <= 0.0 {
+        return None;
+    }
+
+    let candidate_draw = mean * (square_root_term - 1.0) / (square_root_term + 1.0);
+    if !candidate_draw.is_finite() || candidate_draw <= 0.0 {
+        return Some(mean);
+    }
+
+    let acceptance_threshold = mean / (mean + candidate_draw);
+    if !acceptance_threshold.is_finite() || acceptance_threshold <= 0.0 {
+        return None;
+    }
+
+    let acceptance_draw = randomness_stream.next_unit_interval_f64().clamp(0.0, 1.0);
+    if acceptance_draw <= acceptance_threshold {
+        return Some(candidate_draw);
+    }
+
+    let reflected_draw = mean * mean / candidate_draw;
+    if reflected_draw.is_finite() && reflected_draw > 0.0 {
+        Some(reflected_draw)
+    } else {
+        None
+    }
+}
+
+fn sample_standard_normal_draw<R>(randomness_stream: &mut R) -> f64
+where
+    R: SimulationRandomnessStream,
+{
+    let first_uniform_draw = randomness_stream
+        .next_unit_interval_f64()
+        .clamp(f64::MIN_POSITIVE, 1.0 - f64::EPSILON);
+    let second_uniform_draw = randomness_stream
+        .next_unit_interval_f64()
+        .clamp(0.0, 1.0 - f64::EPSILON);
+
+    let radius = (-2.0 * first_uniform_draw.ln()).sqrt();
+    let angle = 2.0 * std::f64::consts::PI * second_uniform_draw;
+
+    radius * angle.cos()
+}
+
 fn collect_finite_violation(
     field: &'static str,
     value: f64,
@@ -364,9 +568,11 @@ fn collect_positive_violation(
 #[cfg(test)]
 mod tests {
     use super::{
-        ComplexScalar, NigParameterConstraint, NigParameterError, NigParameters,
-        NigValidationStatus,
+        ComplexScalar, NIG_INCREMENT_NEAR_ZERO_SCALE_POLICY, NIG_INCREMENT_SAMPLING_POLICY,
+        NigIncrementSamplingError, NigParameterConstraint, NigParameterError, NigParameters,
+        NigValidationStatus, stable_gamma,
     };
+    use crate::randomness::{SimulationRandomnessStream, SplitMix64SimulationRandomnessStream};
 
     #[test]
     fn valid_interior_parameter_payload_constructs_and_validates() {
@@ -532,11 +738,182 @@ mod tests {
         }
     }
 
+    #[test]
+    fn increment_sampling_policies_are_stable() {
+        assert_eq!(
+            NIG_INCREMENT_SAMPLING_POLICY,
+            "normal_inverse_gaussian_via_inverse_gaussian_subordinator_with_box_muller_standard_normal.v1"
+        );
+        assert_eq!(
+            NIG_INCREMENT_NEAR_ZERO_SCALE_POLICY,
+            "zero_business_time_scale_returns_zero_without_random_draws.v1"
+        );
+    }
+
+    #[test]
+    fn increment_sampling_rejects_invalid_business_time_increment_scale() {
+        let parameters = NigParameters::try_new(2.3, -0.8, 0.7, 0.1)
+            .expect("interior NIG parameters should construct");
+        let mut randomness_stream = DrawCountRandomnessStream::default();
+
+        for invalid_scale in [f64::NAN, f64::INFINITY, -0.5] {
+            let error = parameters
+                .sample_increment(invalid_scale, &mut randomness_stream)
+                .expect_err("invalid business-time scale should fail sampling");
+
+            match error {
+                NigIncrementSamplingError::InvalidBusinessTimeIncrementScale { value } => {
+                    if invalid_scale.is_nan() {
+                        assert!(value.is_nan());
+                    } else {
+                        assert_eq!(value, invalid_scale);
+                    }
+                }
+                _ => panic!("unexpected error variant: {error}"),
+            }
+        }
+    }
+
+    #[test]
+    fn increment_sampling_zero_business_time_returns_zero_without_random_draws() {
+        let parameters = NigParameters::try_new(2.3, -0.8, 0.7, 0.1)
+            .expect("interior NIG parameters should construct");
+        let mut randomness_stream = DrawCountRandomnessStream::default();
+
+        let sampled_increment = parameters
+            .sample_increment(0.0, &mut randomness_stream)
+            .expect("zero business-time increment should sample");
+
+        assert_eq!(sampled_increment, 0.0);
+        assert_eq!(randomness_stream.draw_count, 0);
+    }
+
+    #[test]
+    fn increment_sampling_small_and_moderate_business_time_scales_remain_finite() {
+        let parameters = NigParameters::try_new(2.3, -0.8, 0.7, 0.1)
+            .expect("interior NIG parameters should construct");
+        let mut small_scale_stream = SplitMix64SimulationRandomnessStream::from_seed(11_009);
+        let mut small_scale_maximum_absolute_sample = 0.0_f64;
+
+        for _sample_number in 0..2_000 {
+            let sampled_increment = parameters
+                .sample_increment(1.0e-12, &mut small_scale_stream)
+                .expect("small business-time increment should sample");
+            assert!(sampled_increment.is_finite());
+            small_scale_maximum_absolute_sample =
+                small_scale_maximum_absolute_sample.max(sampled_increment.abs());
+        }
+
+        assert!(
+            small_scale_maximum_absolute_sample < 1.0e-3,
+            "very small business-time increments should stay numerically near zero, observed max abs sample={small_scale_maximum_absolute_sample}"
+        );
+
+        let mut moderate_scale_stream = SplitMix64SimulationRandomnessStream::from_seed(11_010);
+        let moderate_scale_path = [0.25, 0.5, 1.0, 1.5];
+        let sampled_path = parameters
+            .sample_increment_path(&moderate_scale_path, &mut moderate_scale_stream)
+            .expect("moderate business-time increment path should sample");
+
+        assert_eq!(sampled_path.len(), moderate_scale_path.len());
+        assert!(sampled_path.iter().all(|sample| sample.is_finite()));
+
+        let path_span = sampled_path.iter().copied().fold(
+            (f64::INFINITY, f64::NEG_INFINITY),
+            |(minimum, maximum), value| (minimum.min(value), maximum.max(value)),
+        );
+        assert!(
+            path_span.1 - path_span.0 > 1.0e-10,
+            "moderate-scale path should contain non-identical sampled increments"
+        );
+    }
+
+    #[test]
+    fn increment_sampling_is_seed_reproducible_for_splitmix_streams() {
+        let parameters = NigParameters::try_new(2.3, -0.8, 0.7, 0.1)
+            .expect("interior NIG parameters should construct");
+        let business_time_scale_path = [0.4, 0.2, 1.0e-8, 0.0, 0.75, 1.25, 0.05];
+
+        let mut first_stream = SplitMix64SimulationRandomnessStream::from_seed(4_711);
+        let mut second_stream = SplitMix64SimulationRandomnessStream::from_seed(4_711);
+        let mut third_stream = SplitMix64SimulationRandomnessStream::from_seed(4_712);
+
+        let first_samples = parameters
+            .sample_increment_path(&business_time_scale_path, &mut first_stream)
+            .expect("first seeded path should sample");
+        let second_samples = parameters
+            .sample_increment_path(&business_time_scale_path, &mut second_stream)
+            .expect("second seeded path should sample");
+        let third_samples = parameters
+            .sample_increment_path(&business_time_scale_path, &mut third_stream)
+            .expect("different-seed path should sample");
+
+        assert_eq!(first_samples, second_samples);
+        assert_ne!(first_samples, third_samples);
+    }
+
+    #[test]
+    fn increment_sampling_distribution_sanity_matches_expected_moments() {
+        let parameters = NigParameters::try_new(2.3, -0.8, 0.7, 0.1)
+            .expect("interior NIG parameters should construct");
+        let business_time_increment_scale = 0.75;
+        let sample_count = 40_000_usize;
+        let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(91_177);
+
+        let gamma = stable_gamma(parameters.alpha, parameters.beta);
+        let expected_mean = business_time_increment_scale
+            * (parameters.mu + parameters.delta * parameters.beta / gamma);
+        let expected_variance = business_time_increment_scale
+            * (parameters.delta * parameters.alpha * parameters.alpha / gamma.powi(3));
+
+        let mut running_mean = 0.0;
+        let mut running_squared_error = 0.0;
+
+        for sample_number in 1..=sample_count {
+            let sampled_increment = parameters
+                .sample_increment(business_time_increment_scale, &mut randomness_stream)
+                .expect("distribution sanity sampling should succeed");
+            let sample_number_as_float = sample_number as f64;
+
+            let delta_from_running_mean = sampled_increment - running_mean;
+            running_mean += delta_from_running_mean / sample_number_as_float;
+
+            let updated_delta = sampled_increment - running_mean;
+
+            running_squared_error += delta_from_running_mean * updated_delta;
+        }
+
+        let sample_variance = running_squared_error / (sample_count as f64 - 1.0);
+        let mean_tolerance = 8.0 * (expected_variance / sample_count as f64).sqrt() + 5.0e-3;
+        let variance_tolerance = expected_variance * 0.30 + 5.0e-3;
+
+        assert!(
+            (running_mean - expected_mean).abs() <= mean_tolerance,
+            "sample mean deviated from expected mean beyond tolerance, expected={expected_mean}, observed={running_mean}, tolerance={mean_tolerance}"
+        );
+        assert!(
+            (sample_variance - expected_variance).abs() <= variance_tolerance,
+            "sample variance deviated from expected variance beyond tolerance, expected={expected_variance}, observed={sample_variance}, tolerance={variance_tolerance}"
+        );
+    }
+
     fn assert_complex_close(observed: ComplexScalar, expected: ComplexScalar, tolerance: f64) {
         let difference = observed.subtract(expected).norm();
         assert!(
             difference <= tolerance,
             "difference {difference} exceeded tolerance {tolerance} for observed {observed} and expected {expected}"
         );
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    struct DrawCountRandomnessStream {
+        draw_count: u64,
+    }
+
+    impl SimulationRandomnessStream for DrawCountRandomnessStream {
+        fn next_u64(&mut self) -> u64 {
+            self.draw_count = self.draw_count.saturating_add(1);
+            self.draw_count
+        }
     }
 }
