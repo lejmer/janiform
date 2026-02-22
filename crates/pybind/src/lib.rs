@@ -2975,6 +2975,18 @@ fn map_hourly_factor_contract_error(error: HourlyFactorContractError) -> PyErr {
         } => SeasonalityInputValidationError::new_err(format!(
             "open_window_override_by_interval_index value at interval index {interval_index} must be finite and non-negative, found {value}"
         )),
+        HourlyFactorContractError::DeterministicTimeMultiplierIntervalOutOfRange {
+            interval_index,
+            interval_count,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "deterministic_time_multiplier_by_interval_index contains interval index {interval_index}, expected a value in [0, {interval_count})"
+        )),
+        HourlyFactorContractError::InvalidDeterministicTimeMultiplier {
+            interval_index,
+            value,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "deterministic_time_multiplier_by_interval_index value at interval index {interval_index} must be finite and non-negative, found {value}"
+        )),
         HourlyFactorContractError::SourceLengthMismatch {
             source_timestamp_count,
             source_factor_count,
