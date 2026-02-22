@@ -7,6 +7,7 @@ pub mod calibration;
 pub mod hawkes;
 pub mod hourly_factor_provider;
 pub mod hourly_factors;
+pub mod news;
 pub mod nig;
 pub mod pricing;
 pub mod randomness;
