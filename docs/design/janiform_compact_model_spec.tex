@@ -29,6 +29,9 @@ For \(i,j\in\{+,-\}\):
 \[
 dY_t^{ij} = -\beta Y_t^{ij}\,dt + \alpha_{ij}\,dN_t^{j} + \rho_{ij}\,dJ_t.
 \]
+\[
+Y_0^{ij}\ge 0,\qquad i,j\in\{+,-\}.
+\]
 \(N_t^\pm\) are counting processes with intensities \(\lambda_t^\pm\).
 
 \section*{3. Deterministic Seasonality and News Intensity}
@@ -41,7 +44,7 @@ f_{\mathrm{intra}}(\mathrm{tod}(t))
 \Big).
 \]
 
-Let \(N_t^{\mathrm{news}}\) be Poisson with deterministic intensity
+Let \(N_t^{\mathrm{news}}\) be an inhomogeneous Poisson with deterministic intensity
 \[
 \nu_{\mathrm{news}}(t)
 =
@@ -60,6 +63,7 @@ U_m\sim\Gamma(k_U,\theta_U),\qquad
 \varepsilon_m\sim\text{Kou}(p,\eta_+,\eta_-),\qquad
 Z_m=\sigma_G\sqrt{U_m}\,\varepsilon_m.
 \]
+Here \(\Gamma(k_U,\theta_U)\) is the shape-scale parameterization (shape \(k_U\), scale \(\theta_U\)).
 
 Kou base-shock density:
 \[
@@ -138,8 +142,16 @@ impose Hawkes stability:
 \rho\!\left(\mathbf{A}_{\alpha}/\beta\right)<1,
 \]
 where \(\rho(\cdot)\) denotes spectral radius.
+This is a local stationarity condition in business time (on intervals where \(s(t)\) is treated as locally constant), not a global calendar-time stationarity assumption.
 
-\section*{7. Affine One-Interval Transform}
+\section*{7. Layer Independence Assumption}
+\[
+\mathcal{L}\ \perp\!\!\!\perp\ \mathcal{H}\ \perp\!\!\!\perp\ \mathcal{N},
+\]
+where \(\mathcal{L}\) is the Lévy layer \((L^+,L^-)\), \(\mathcal{H}\) is the Hawkes-layer primitive innovation source for \(N^\pm\), and \(\mathcal{N}\) is the news layer \(\big(N^{\mathrm{news}},\{U_m,\varepsilon_m\}_{m\ge1}\big)\).
+No additional cross-layer dependence is introduced beyond the explicit coupling through \(dJ_t\) in \(dY_t^{ij}\).
+
+\section*{8. Affine One-Interval Transform}
 For piecewise-constant \(s_h,\nu_h\) on \([0,\Delta]\), define
 \[
 F(u_+,u_-,z_+,z_-\mid \mathbf{Y}_0)
@@ -188,11 +200,28 @@ and domain condition
 \mathbf{D}(\tau)\cdot\mathbf{r}<\frac{1}{\theta_U}\quad\forall\tau\in[0,\Delta].
 \]
 
-\section*{8. Optional Risk-Neutral Esscher Tilt}
+\section*{9. Optional Risk-Neutral Esscher Tilt}
 \[
 \psi_Q(u)=\psi_P(u+i\theta)-\psi_P(i\theta),
 \qquad
 \mathbb{E}^Q\!\left[e^{X_{t+\Delta}-X_t}\mid\mathcal{F}_t\right]=e^{(r-q)\Delta}.
+\]
+
+\section*{10. Final Price Process}
+\[
+X_t=\log\!\left(\frac{S_t}{S_0}\right),
+\qquad
+S_t=S_0\,e^{X_t}.
+\]
+\[
+dS_t
+=
+S_{t-}\,dX_t
++\frac{1}{2}S_{t-}\,d[X^c]_t
++S_{t-}\!\int_{\mathbb{R}}\!\big(e^{z}-1-z\big)\,\mu^X(dt,dz),
+\]
+\[
+\Delta S_t = S_{t-}\big(e^{\Delta X_t}-1\big).
 \]
 
 \end{document}
