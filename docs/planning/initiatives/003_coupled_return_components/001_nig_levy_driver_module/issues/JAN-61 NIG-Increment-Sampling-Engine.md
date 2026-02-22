@@ -15,6 +15,6 @@ Implement sampling utilities for NIG increments in business time so path simulat
 - Seed reproducibility tests for repeated sampling runs
 
 ### Notes/Constraints
-- See `docs/janiform_design_brainstorm_notes.md` for the model spec itself.
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Reuse project-wide RNG abstractions for reproducibility
 - Keep sampling implementation isolated from pricing-only code

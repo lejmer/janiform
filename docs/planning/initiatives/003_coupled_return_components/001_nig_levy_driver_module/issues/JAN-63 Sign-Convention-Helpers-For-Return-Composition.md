@@ -14,6 +14,6 @@ Provide helper functions for correct buy and sell characteristic-function contri
 - Integration-oriented tests for combined buy and sell contribution assembly
 
 ### Notes/Constraints
-- See `docs/janiform_design_brainstorm_notes.md` for the model spec itself.
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Keep sign-convention logic in one module
 - Avoid embedding sign handling separately in each engine
