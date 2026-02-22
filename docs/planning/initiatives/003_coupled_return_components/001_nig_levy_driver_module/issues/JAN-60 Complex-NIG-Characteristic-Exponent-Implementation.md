@@ -14,6 +14,6 @@ Implement the NIG characteristic exponent `psi_NIG(u)` for complex arguments wit
 - Determinism tests across repeated calls
 
 ### Notes/Constraints
-- See `docs/janiform_design_brainstorm_notes.md` for the model spec itself.
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Keep branch handling for complex square-root operations explicit
 - Avoid ad hoc approximations unless they are documented and tested

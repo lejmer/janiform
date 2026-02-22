@@ -14,6 +14,6 @@ Define the canonical parameter schema for NIG drivers and implement domain valid
 - Invalid boundary and out-of-domain parameter sets
 
 ### Notes/Constraints
-- See `docs/janiform_design_brainstorm_notes.md` for the model spec itself.
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Keep parameter validation in one canonical module
 - Do not duplicate validation logic across pricing and simulation paths

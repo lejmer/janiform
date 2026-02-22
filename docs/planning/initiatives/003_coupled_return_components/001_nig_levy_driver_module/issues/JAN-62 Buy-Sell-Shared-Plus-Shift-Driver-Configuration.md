@@ -15,6 +15,6 @@ Implement buy and sell driver configuration using shared core NIG parameters plu
 - Deterministic configuration output structure
 
 ### Notes/Constraints
-- See `docs/janiform_design_brainstorm_notes.md` for the model spec itself.
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Keep shared-plus-shift mapping centralized to avoid drift
 - Do not create separate unrelated buy and sell parameter models

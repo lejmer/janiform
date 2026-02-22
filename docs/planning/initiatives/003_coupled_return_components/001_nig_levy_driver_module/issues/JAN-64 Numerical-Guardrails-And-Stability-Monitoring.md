@@ -14,6 +14,6 @@ Add numerical guardrails for near-boundary NIG parameter regimes and transform a
 - Guardrail triggers near `alpha` and `beta` boundary conditions
 
 ### Notes/Constraints
-- See `docs/janiform_design_brainstorm_notes.md` for the model spec itself.
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Keep guardrail behavior deterministic
 - Do not silently clip invalid inputs without reporting
