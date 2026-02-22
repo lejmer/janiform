@@ -19,6 +19,8 @@ pub const NIG_INCREMENT_SAMPLING_POLICY: &str =
     "normal_inverse_gaussian_via_inverse_gaussian_subordinator_with_box_muller_standard_normal.v1";
 pub const NIG_INCREMENT_NEAR_ZERO_SCALE_POLICY: &str =
     "zero_business_time_scale_returns_zero_without_random_draws.v1";
+pub const NIG_SHARED_PLUS_SHIFT_CONFIGURATION_POLICY: &str =
+    "buy_beta_equals_beta_0_and_sell_beta_equals_beta_0_plus_delta_beta.v1";
 
 /// Minimal deterministic complex scalar used by transform-side APIs.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -329,6 +331,94 @@ impl NigParameters {
     }
 }
 
+/// Shared-plus-shift NIG driver configuration for buy and sell trading-time components.
+///
+/// Parameter mapping:
+/// - buy driver uses `(alpha, beta_0, delta, mu)`
+/// - sell driver uses `(alpha, beta_0 + delta_beta, delta, mu)`
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct NigSharedPlusShiftConfiguration {
+    pub alpha: f64,
+    pub beta_0: f64,
+    pub delta: f64,
+    pub mu: f64,
+    pub delta_beta: f64,
+}
+
+impl NigSharedPlusShiftConfiguration {
+    /// Validate and build one canonical shared-plus-shift configuration payload.
+    pub fn try_new(
+        alpha: f64,
+        beta_0: f64,
+        delta: f64,
+        mu: f64,
+        delta_beta: f64,
+    ) -> Result<Self, NigSharedPlusShiftConfigurationError> {
+        let _buy_side_parameters =
+            NigParameters::try_new(alpha, beta_0, delta, mu).map_err(|source| {
+                NigSharedPlusShiftConfigurationError::BuySideParameterDomainViolation { source }
+            })?;
+        let derived_sell_beta = beta_0 + delta_beta;
+        let _sell_side_parameters = NigParameters::try_new(alpha, derived_sell_beta, delta, mu)
+            .map_err(|source| {
+                NigSharedPlusShiftConfigurationError::SellSideParameterDomainViolation {
+                    beta_0,
+                    delta_beta,
+                    derived_sell_beta,
+                    source,
+                }
+            })?;
+
+        Ok(Self {
+            alpha,
+            beta_0,
+            delta,
+            mu,
+            delta_beta,
+        })
+    }
+
+    /// Return the derived sell-side skew parameter `beta_0 + delta_beta`.
+    pub fn derived_sell_beta(self) -> f64 {
+        self.beta_0 + self.delta_beta
+    }
+
+    /// Build both buy and sell driver parameter payloads from one shared source.
+    pub fn derive_driver_parameters(
+        self,
+    ) -> Result<NigBuySellDriverParameters, NigSharedPlusShiftConfigurationError> {
+        let buy_side_parameters =
+            NigParameters::try_new(self.alpha, self.beta_0, self.delta, self.mu).map_err(
+                |source| NigSharedPlusShiftConfigurationError::BuySideParameterDomainViolation {
+                    source,
+                },
+            )?;
+        let derived_sell_beta = self.derived_sell_beta();
+        let sell_side_parameters =
+            NigParameters::try_new(self.alpha, derived_sell_beta, self.delta, self.mu).map_err(
+                |source| NigSharedPlusShiftConfigurationError::SellSideParameterDomainViolation {
+                    beta_0: self.beta_0,
+                    delta_beta: self.delta_beta,
+                    derived_sell_beta,
+                    source,
+                },
+            )?;
+
+        Ok(NigBuySellDriverParameters {
+            buy_side_parameters,
+            sell_side_parameters,
+            policy: NIG_SHARED_PLUS_SHIFT_CONFIGURATION_POLICY,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct NigBuySellDriverParameters {
+    pub buy_side_parameters: NigParameters,
+    pub sell_side_parameters: NigParameters,
+    pub policy: &'static str,
+}
+
 /// Structured validation failure for `NigParameters::try_new`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum NigParameterError {
@@ -372,6 +462,48 @@ impl Display for NigParameterError {
 }
 
 impl Error for NigParameterError {}
+
+/// Structured validation failure for `NigSharedPlusShiftConfiguration::try_new`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum NigSharedPlusShiftConfigurationError {
+    BuySideParameterDomainViolation {
+        source: NigParameterError,
+    },
+    SellSideParameterDomainViolation {
+        beta_0: f64,
+        delta_beta: f64,
+        derived_sell_beta: f64,
+        source: NigParameterError,
+    },
+}
+
+impl Display for NigSharedPlusShiftConfigurationError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BuySideParameterDomainViolation { source } => {
+                write!(formatter, "buy-side NIG parameters are invalid: {source}")
+            }
+            Self::SellSideParameterDomainViolation {
+                beta_0,
+                delta_beta,
+                derived_sell_beta,
+                source,
+            } => write!(
+                formatter,
+                "sell-side NIG parameters are invalid for beta_0={beta_0}, delta_beta={delta_beta}, derived_sell_beta={derived_sell_beta}: {source}"
+            ),
+        }
+    }
+}
+
+impl Error for NigSharedPlusShiftConfigurationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::BuySideParameterDomainViolation { source } => Some(source),
+            Self::SellSideParameterDomainViolation { source, .. } => Some(source),
+        }
+    }
+}
 
 /// Structured failure modes for NIG increment sampling.
 #[derive(Debug, Clone, PartialEq)]
@@ -430,6 +562,33 @@ impl<'de> Deserialize<'de> for NigParameters {
         let payload = NigParametersPayload::deserialize(deserializer)?;
         Self::try_new(payload.alpha, payload.beta, payload.delta, payload.mu)
             .map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NigSharedPlusShiftConfigurationPayload {
+    alpha: f64,
+    beta_0: f64,
+    delta: f64,
+    mu: f64,
+    delta_beta: f64,
+}
+
+impl<'de> Deserialize<'de> for NigSharedPlusShiftConfiguration {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let payload = NigSharedPlusShiftConfigurationPayload::deserialize(deserializer)?;
+        Self::try_new(
+            payload.alpha,
+            payload.beta_0,
+            payload.delta,
+            payload.mu,
+            payload.delta_beta,
+        )
+        .map_err(serde::de::Error::custom)
     }
 }
 
@@ -569,8 +728,9 @@ fn collect_positive_violation(
 mod tests {
     use super::{
         ComplexScalar, NIG_INCREMENT_NEAR_ZERO_SCALE_POLICY, NIG_INCREMENT_SAMPLING_POLICY,
-        NigIncrementSamplingError, NigParameterConstraint, NigParameterError, NigParameters,
-        NigValidationStatus, stable_gamma,
+        NIG_SHARED_PLUS_SHIFT_CONFIGURATION_POLICY, NigIncrementSamplingError,
+        NigParameterConstraint, NigParameterError, NigParameters, NigSharedPlusShiftConfiguration,
+        NigSharedPlusShiftConfigurationError, NigValidationStatus, stable_gamma,
     };
     use crate::randomness::{SimulationRandomnessStream, SplitMix64SimulationRandomnessStream};
 
@@ -600,6 +760,111 @@ mod tests {
             serde_json::from_str(&serialized).expect("serialized payload should deserialize");
 
         assert_eq!(parsed, parameters);
+    }
+
+    #[test]
+    fn shared_plus_shift_configuration_derives_expected_buy_and_sell_parameters() {
+        let configuration = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("valid shared-plus-shift payload should construct");
+
+        let derived_driver_parameters = configuration
+            .derive_driver_parameters()
+            .expect("valid shared-plus-shift payload should derive drivers");
+
+        assert_eq!(
+            derived_driver_parameters.buy_side_parameters,
+            NigParameters::try_new(2.3, -0.8, 0.7, 0.1)
+                .expect("buy-side expected payload should be valid")
+        );
+        assert_eq!(
+            derived_driver_parameters.sell_side_parameters,
+            NigParameters::try_new(2.3, -1.0, 0.7, 0.1)
+                .expect("sell-side expected payload should be valid")
+        );
+        assert_eq!(configuration.derived_sell_beta(), -1.0);
+        assert_eq!(
+            derived_driver_parameters.policy,
+            NIG_SHARED_PLUS_SHIFT_CONFIGURATION_POLICY
+        );
+    }
+
+    #[test]
+    fn shared_plus_shift_configuration_rejects_invalid_derived_sell_side_domain() {
+        let error = NigSharedPlusShiftConfiguration::try_new(1.0, 0.2, 0.3, 0.0, 0.9)
+            .expect_err("derived sell-side beta at alpha boundary should fail");
+
+        match error {
+            NigSharedPlusShiftConfigurationError::SellSideParameterDomainViolation {
+                beta_0,
+                delta_beta,
+                derived_sell_beta,
+                source,
+            } => {
+                assert_eq!(beta_0, 0.2);
+                assert_eq!(delta_beta, 0.9);
+                assert_eq!(derived_sell_beta, 1.1);
+                assert_eq!(
+                    source,
+                    NigParameterError::DomainViolation {
+                        field: "alpha",
+                        constraint:
+                            NigParameterConstraint::StrictlyGreaterThanAbsoluteComparisonField,
+                        value: 1.0,
+                        comparison_field: Some("beta"),
+                        comparison_value: Some(1.1),
+                    }
+                );
+            }
+            _ => panic!("unexpected error variant: {error}"),
+        }
+    }
+
+    #[test]
+    fn shared_plus_shift_configuration_rejects_invalid_buy_side_domain() {
+        let error = NigSharedPlusShiftConfiguration::try_new(0.6, 0.8, 0.3, 0.0, -0.4)
+            .expect_err("invalid buy-side domain should fail before sell-side checks");
+
+        match error {
+            NigSharedPlusShiftConfigurationError::BuySideParameterDomainViolation { source } => {
+                assert_eq!(
+                    source,
+                    NigParameterError::DomainViolation {
+                        field: "alpha",
+                        constraint:
+                            NigParameterConstraint::StrictlyGreaterThanAbsoluteComparisonField,
+                        value: 0.6,
+                        comparison_field: Some("beta"),
+                        comparison_value: Some(0.8),
+                    }
+                );
+            }
+            _ => panic!("unexpected error variant: {error}"),
+        }
+    }
+
+    #[test]
+    fn shared_plus_shift_configuration_output_is_deterministic() {
+        let configuration =
+            NigSharedPlusShiftConfiguration::try_new(2.4, -0.65, 0.55, -0.03, -0.12)
+                .expect("valid shared-plus-shift payload should construct");
+
+        let first_derived_driver_parameters = configuration
+            .derive_driver_parameters()
+            .expect("first derivation should succeed");
+        let second_derived_driver_parameters = configuration
+            .derive_driver_parameters()
+            .expect("second derivation should succeed");
+
+        assert_eq!(
+            first_derived_driver_parameters,
+            second_derived_driver_parameters
+        );
+
+        let first_serialized_payload = serde_json::to_string(&first_derived_driver_parameters)
+            .expect("first derived payload should serialize");
+        let second_serialized_payload = serde_json::to_string(&second_derived_driver_parameters)
+            .expect("second derived payload should serialize");
+        assert_eq!(first_serialized_payload, second_serialized_payload);
     }
 
     #[test]
