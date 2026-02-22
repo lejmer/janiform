@@ -1,0 +1,198 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,mathtools,bm}
+
+\title{Janiform Model Math Summary}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section*{1. Return Process}
+\[
+X_t = L^+_{A_t^+} - L^-_{A_t^-} + G_t,
+\qquad
+A_t^\pm = \int_0^t \lambda_u^\pm\,du.
+\]
+
+\section*{2. Trade Intensities and Hawkes State}
+\[
+\lambda_t^\pm = s(t)\,\tilde{\lambda}_t^\pm,
+\]
+\[
+\tilde{\lambda}_t^+ = \bar{\lambda} + Y_t^{++} + Y_t^{+-},
+\qquad
+\tilde{\lambda}_t^- = \bar{\lambda} + Y_t^{-+} + Y_t^{--}.
+\]
+For \(i,j\in\{+,-\}\):
+\[
+dY_t^{ij} = -\beta Y_t^{ij}\,dt + \alpha_{ij}\,dN_t^{j} + \rho_{ij}\,dJ_t.
+\]
+\(N_t^\pm\) are counting processes with intensities \(\lambda_t^\pm\).
+
+\section*{3. Deterministic Seasonality and News Intensity}
+\[
+s(t)=\exp\!\Big(
+f_{\mathrm{intra}}(\mathrm{tod}(t))
++f_{\mathrm{dow}}(\mathrm{dow}(t))
++f_{\mathrm{doy}}(\mathrm{doy}(t))
++f_{\mathrm{special}}(t)
+\Big).
+\]
+
+Let \(N_t^{\mathrm{news}}\) be Poisson with deterministic intensity
+\[
+\nu_{\mathrm{news}}(t)
+=
+\mathbf{1}_{\mathrm{closed}}(t)\,
+\exp\!\Big(
+g_{\mathrm{dow}}(\mathrm{dow}(t))
++g_{\mathrm{doy}}(\mathrm{doy}(t))
++g_{\mathrm{holiday}}(t)
+\Big).
+\]
+
+\section*{4. News Marks, Activity Shock, and Gap Process}
+At news times \(\tau_m\):
+\[
+U_m\sim\Gamma(k_U,\theta_U),\qquad
+\varepsilon_m\sim\text{Kou}(p,\eta_+,\eta_-),\qquad
+Z_m=\sigma_G\sqrt{U_m}\,\varepsilon_m.
+\]
+
+Kou base-shock density:
+\[
+f_{\varepsilon}(x)=
+\begin{cases}
+p\,\eta_+e^{-\eta_+ x}, & x\ge 0,\\
+(1-p)\,\eta_-e^{\eta_- x}, & x<0,
+\end{cases}
+\qquad
+\eta_+,\eta_->0,\quad p\in(0,1).
+\]
+
+\[
+J_t=\sum_{\tau_m\le t} U_m,
+\qquad
+G_t=\sum_{\tau_m\le t}\mathbf{1}_{\mathrm{closed}}(\tau_m)\,Z_m.
+\]
+
+\section*{5. NIG Business-Time Drivers}
+For \(L^\pm\), define exponents \(\psi_\pm\) by
+\[
+\mathbb{E}\!\left[e^{iuL_t^\pm}\right]=\exp\!\left(t\,\psi_\pm(u)\right).
+\]
+With shared NIG core and one skew shift:
+\[
+\psi_+(u)=\psi_{\mathrm{NIG}}(u;\alpha,\beta_0,\delta,\mu),
+\]
+\[
+\psi_-(u)=\psi_{\mathrm{NIG}}(u;\alpha,\beta_0+\Delta_\beta,\delta,\mu),
+\qquad
+\Delta_\beta<0.
+\]
+Conditional characteristic function of \(\Delta X_t=X_{t+\Delta}-X_t\):
+\[
+\mathbb{E}\!\left[e^{iu\Delta X_t}\mid A^+,A^-\right]
+=
+\exp\!\Big(A^+\psi_+(u)+A^-\psi_-(-u)\Big)\,\varphi_{\Delta G}(u).
+\]
+
+\section*{6. Structured Asymmetry and Constraints}
+\[
+\alpha_{++}=a_{\mathrm{self}},
+\quad
+\alpha_{--}=a_{\mathrm{self}}+\Delta_{\mathrm{self}},
+\quad
+\alpha_{+-}=a_{\mathrm{cross}},
+\quad
+\alpha_{-+}=a_{\mathrm{cross}}+\Delta_{\mathrm{cross}}.
+\]
+\[
+\rho_{++}=r_{\mathrm{self}},
+\quad
+\rho_{--}=r_{\mathrm{self}}+\Delta^{(r)}_{\mathrm{self}},
+\quad
+\rho_{+-}=r_{\mathrm{cross}},
+\quad
+\rho_{-+}=r_{\mathrm{cross}}+\Delta^{(r)}_{\mathrm{cross}}.
+\]
+
+\[
+\bar{\lambda}>0,\quad
+\beta>0,\quad
+\alpha_{ij}\ge 0,\quad
+\rho_{ij}\ge 0.
+\]
+With
+\[
+\mathbf{A}_{\alpha}=
+\begin{pmatrix}
+\alpha_{++} & \alpha_{+-}\\
+\alpha_{-+} & \alpha_{--}
+\end{pmatrix},
+\]
+impose Hawkes stability:
+\[
+\rho\!\left(\mathbf{A}_{\alpha}/\beta\right)<1,
+\]
+where \(\rho(\cdot)\) denotes spectral radius.
+
+\section*{7. Affine One-Interval Transform}
+For piecewise-constant \(s_h,\nu_h\) on \([0,\Delta]\), define
+\[
+F(u_+,u_-,z_+,z_-\mid \mathbf{Y}_0)
+=
+\mathbb{E}\!\left[
+e^{-u_+A^+-u_-A^-}\,
+z_+^{N^+}z_-^{N^-}
+\mid \mathbf{Y}_0
+\right]
+=
+\exp\!\big(C(\Delta)+\mathbf{D}(\Delta)\cdot\mathbf{y}_0\big),
+\]
+with \(C(0)=0,\ \mathbf{D}(0)=\mathbf{0}\), and
+\[
+\mathbf{y}_t=(Y_t^{++},Y_t^{+-},Y_t^{-+},Y_t^{--}),
+\quad
+\mathbf{k}_+=(\alpha_{++},0,\alpha_{-+},0),
+\quad
+\mathbf{k}_-=(0,\alpha_{+-},0,\alpha_{--}),
+\]
+\[
+\mathbf{r}=(\rho_{++},\rho_{+-},\rho_{-+},\rho_{--}),
+\]
+\[
+H_+(\mathbf{D})=z_+\exp(\mathbf{D}\cdot\mathbf{k}_+)-1-u_+,
+\quad
+H_-(\mathbf{D})=z_-\exp(\mathbf{D}\cdot\mathbf{k}_-)-1-u_-.
+\]
+
+\[
+\begin{aligned}
+D_{++}'(\tau) &= -\beta D_{++}(\tau) + s_h H_+(\mathbf{D}(\tau)),\\
+D_{+-}'(\tau) &= -\beta D_{+-}(\tau) + s_h H_+(\mathbf{D}(\tau)),\\
+D_{-+}'(\tau) &= -\beta D_{-+}(\tau) + s_h H_-(\mathbf{D}(\tau)),\\
+D_{--}'(\tau) &= -\beta D_{--}(\tau) + s_h H_-(\mathbf{D}(\tau)),
+\end{aligned}
+\]
+\[
+C'(\tau)
+=
+s_h\bar{\lambda}\big(H_+(\mathbf{D}(\tau))+H_-(\mathbf{D}(\tau))\big)
++\nu_h\Big(\big(1-\theta_U(\mathbf{D}(\tau)\cdot\mathbf{r})\big)^{-k_U}-1\Big),
+\]
+and domain condition
+\[
+\mathbf{D}(\tau)\cdot\mathbf{r}<\frac{1}{\theta_U}\quad\forall\tau\in[0,\Delta].
+\]
+
+\section*{8. Optional Risk-Neutral Esscher Tilt}
+\[
+\psi_Q(u)=\psi_P(u+i\theta)-\psi_P(i\theta),
+\qquad
+\mathbb{E}^Q\!\left[e^{X_{t+\Delta}-X_t}\mid\mathcal{F}_t\right]=e^{(r-q)\Delta}.
+\]
+
+\end{document}
