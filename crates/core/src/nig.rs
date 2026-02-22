@@ -21,6 +21,8 @@ pub const NIG_INCREMENT_NEAR_ZERO_SCALE_POLICY: &str =
     "zero_business_time_scale_returns_zero_without_random_draws.v1";
 pub const NIG_SHARED_PLUS_SHIFT_CONFIGURATION_POLICY: &str =
     "buy_beta_equals_beta_0_and_sell_beta_equals_beta_0_plus_delta_beta.v1";
+pub const NIG_TRADING_TIME_RETURN_SIGN_CONVENTION_POLICY: &str =
+    "buy_side_uses_psi_plus_of_u_and_sell_side_uses_psi_minus_of_negative_u.v1";
 
 /// Minimal deterministic complex scalar used by transform-side APIs.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -419,6 +421,73 @@ pub struct NigBuySellDriverParameters {
     pub policy: &'static str,
 }
 
+/// Trading-time characteristic exponent contributions for one return argument.
+///
+/// Equation reference:
+/// - `docs/design/janiform_compact_model_spec.tex`, Section 5
+/// - `docs/design/janiform_design_brainstorm_notes.md`, Section 2.1
+///
+/// The canonical return composition sign convention is:
+/// \f[
+/// A^+\psi_+(u) + A^-\psi_-(-u).
+/// \f]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NigTradingTimeCharacteristicExponentContributions {
+    pub buy_side_weighted_exponent: ComplexScalar,
+    pub sell_side_weighted_exponent: ComplexScalar,
+    pub combined_weighted_exponent: ComplexScalar,
+    pub policy: &'static str,
+}
+
+impl NigBuySellDriverParameters {
+    /// Evaluate buy-side NIG exponent with the direct argument \f$u\f$, i.e. \f$\psi_+(u)\f$.
+    pub fn buy_side_characteristic_exponent(self, argument: ComplexScalar) -> ComplexScalar {
+        self.buy_side_parameters.characteristic_exponent(argument)
+    }
+
+    /// Evaluate sell-side NIG exponent with the negated argument, i.e. \f$\psi_-(-u)\f$.
+    ///
+    /// This sign convention matches the model equation
+    /// \f[
+    /// X_t = L_{A_t^+}^+ - L_{A_t^-}^- + G_t,
+    /// \f]
+    /// which yields the characteristic-function term
+    /// \f[
+    /// \exp\!\left(A^+\psi_+(u) + A^-\psi_-(-u)\right).
+    /// \f]
+    pub fn sell_side_characteristic_exponent_for_return_composition(
+        self,
+        argument: ComplexScalar,
+    ) -> ComplexScalar {
+        self.sell_side_parameters
+            .characteristic_exponent(argument.scale(-1.0))
+    }
+
+    /// Assemble trading-time weighted characteristic exponents with canonical sign handling.
+    pub fn compose_trading_time_weighted_characteristic_exponent(
+        self,
+        argument: ComplexScalar,
+        integrated_buy_intensity: f64,
+        integrated_sell_intensity: f64,
+    ) -> NigTradingTimeCharacteristicExponentContributions {
+        let buy_side_weighted_exponent = self
+            .buy_side_characteristic_exponent(argument)
+            .scale(integrated_buy_intensity);
+        let sell_side_weighted_exponent = self
+            .sell_side_characteristic_exponent_for_return_composition(argument)
+            .scale(integrated_sell_intensity);
+        let combined_weighted_exponent =
+            buy_side_weighted_exponent.add(sell_side_weighted_exponent);
+
+        NigTradingTimeCharacteristicExponentContributions {
+            buy_side_weighted_exponent,
+            sell_side_weighted_exponent,
+            combined_weighted_exponent,
+            policy: NIG_TRADING_TIME_RETURN_SIGN_CONVENTION_POLICY,
+        }
+    }
+}
+
 /// Structured validation failure for `NigParameters::try_new`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum NigParameterError {
@@ -728,9 +797,10 @@ fn collect_positive_violation(
 mod tests {
     use super::{
         ComplexScalar, NIG_INCREMENT_NEAR_ZERO_SCALE_POLICY, NIG_INCREMENT_SAMPLING_POLICY,
-        NIG_SHARED_PLUS_SHIFT_CONFIGURATION_POLICY, NigIncrementSamplingError,
-        NigParameterConstraint, NigParameterError, NigParameters, NigSharedPlusShiftConfiguration,
-        NigSharedPlusShiftConfigurationError, NigValidationStatus, stable_gamma,
+        NIG_SHARED_PLUS_SHIFT_CONFIGURATION_POLICY, NIG_TRADING_TIME_RETURN_SIGN_CONVENTION_POLICY,
+        NigIncrementSamplingError, NigParameterConstraint, NigParameterError, NigParameters,
+        NigSharedPlusShiftConfiguration, NigSharedPlusShiftConfigurationError, NigValidationStatus,
+        stable_gamma,
     };
     use crate::randomness::{SimulationRandomnessStream, SplitMix64SimulationRandomnessStream};
 
@@ -1001,6 +1071,96 @@ mod tests {
                 assert!(value.imaginary.is_finite());
             }
         }
+    }
+
+    #[test]
+    fn buy_and_sell_sign_convention_helpers_match_equation_mapping() {
+        let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("valid shared-plus-shift payload should construct")
+            .derive_driver_parameters()
+            .expect("valid shared-plus-shift payload should derive drivers");
+        let argument = ComplexScalar::new(0.9, -0.15);
+
+        let observed_buy_side = driver_parameters.buy_side_characteristic_exponent(argument);
+        let expected_buy_side = driver_parameters
+            .buy_side_parameters
+            .characteristic_exponent(argument);
+        assert_complex_close(observed_buy_side, expected_buy_side, 1.0e-13);
+
+        let observed_sell_side =
+            driver_parameters.sell_side_characteristic_exponent_for_return_composition(argument);
+        let expected_sell_side = driver_parameters
+            .sell_side_parameters
+            .characteristic_exponent(argument.scale(-1.0));
+        assert_complex_close(observed_sell_side, expected_sell_side, 1.0e-13);
+    }
+
+    #[test]
+    fn sell_side_sign_convention_regression_guard_rejects_positive_u_wiring() {
+        let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("valid shared-plus-shift payload should construct")
+            .derive_driver_parameters()
+            .expect("valid shared-plus-shift payload should derive drivers");
+        let argument = ComplexScalar::new(1.1, 0.0);
+
+        let correct_sell_side =
+            driver_parameters.sell_side_characteristic_exponent_for_return_composition(argument);
+        let incorrect_sell_side = driver_parameters
+            .sell_side_parameters
+            .characteristic_exponent(argument);
+
+        let regression_distance = correct_sell_side.subtract(incorrect_sell_side).norm();
+        assert!(
+            regression_distance > 1.0e-6,
+            "sell-side sign regression guard requires psi_minus(-u) to differ from psi_minus(u), observed distance={regression_distance}"
+        );
+    }
+
+    #[test]
+    fn trading_time_weighted_exponent_composition_matches_manual_assembly() {
+        let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("valid shared-plus-shift payload should construct")
+            .derive_driver_parameters()
+            .expect("valid shared-plus-shift payload should derive drivers");
+        let argument = ComplexScalar::new(-0.6, 0.35);
+        let integrated_buy_intensity = 1.7;
+        let integrated_sell_intensity = 0.9;
+
+        let observed = driver_parameters.compose_trading_time_weighted_characteristic_exponent(
+            argument,
+            integrated_buy_intensity,
+            integrated_sell_intensity,
+        );
+
+        let expected_buy_side = driver_parameters
+            .buy_side_parameters
+            .characteristic_exponent(argument)
+            .scale(integrated_buy_intensity);
+        let expected_sell_side = driver_parameters
+            .sell_side_parameters
+            .characteristic_exponent(argument.scale(-1.0))
+            .scale(integrated_sell_intensity);
+        let expected_combined = expected_buy_side.add(expected_sell_side);
+
+        assert_complex_close(
+            observed.buy_side_weighted_exponent,
+            expected_buy_side,
+            1.0e-13,
+        );
+        assert_complex_close(
+            observed.sell_side_weighted_exponent,
+            expected_sell_side,
+            1.0e-13,
+        );
+        assert_complex_close(
+            observed.combined_weighted_exponent,
+            expected_combined,
+            1.0e-13,
+        );
+        assert_eq!(
+            observed.policy,
+            NIG_TRADING_TIME_RETURN_SIGN_CONVENTION_POLICY
+        );
     }
 
     #[test]
