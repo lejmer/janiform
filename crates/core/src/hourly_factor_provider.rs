@@ -12,9 +12,12 @@ use crate::calendar::ExchangeCalendarRegistry;
 use crate::hourly_factors::{
     HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
     HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION, HourlyFactorContractError,
-    HourlyFactorContractOutput, build_hourly_factor_contract,
-    materialize_hourly_news_intensity_factors, materialize_hourly_seasonality_factors,
+    HourlyFactorContractOutput, NEWS_INTENSITY_WITH_DETERMINISTIC_INPUTS_MATERIALIZATION_METHOD,
+    build_hourly_factor_contract, materialize_hourly_news_intensity_factors,
+    materialize_hourly_news_intensity_factors_with_deterministic_inputs,
+    materialize_hourly_seasonality_factors,
 };
+use crate::news::NewsIntensityConfiguration;
 
 /// Stable provider method identifier when `s_h` is materialized from source samples.
 pub const HOURLY_FACTOR_PROVIDER_SEASONALITY_MATERIALIZATION_METHOD: &str =
@@ -23,6 +26,8 @@ pub const HOURLY_FACTOR_PROVIDER_SEASONALITY_MATERIALIZATION_METHOD: &str =
 /// Stable provider method identifier when `nu_h` is materialized from calendar policy.
 pub const HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_MATERIALIZATION_METHOD: &str =
     HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION;
+pub const HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_DETERMINISTIC_MATERIALIZATION_METHOD: &str =
+    NEWS_INTENSITY_WITH_DETERMINISTIC_INPUTS_MATERIALIZATION_METHOD;
 
 /// Seasonality source accepted by the shared hourly factor provider.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -56,6 +61,14 @@ pub enum HourlyNewsIntensityFactorSource<'a> {
     /// Materialize hourly values from calendar policy and optional open-window overrides.
     Materialized {
         closed_window_baseline_intensity: f64,
+        open_window_override_by_interval_index: &'a [(u64, f64)],
+    },
+
+    /// Materialize hourly values from closed-window baseline policy with
+    /// deterministic interval multipliers and optional open-window overrides.
+    MaterializedWithDeterministicInputs {
+        intensity_configuration: NewsIntensityConfiguration,
+        deterministic_time_multiplier_by_interval_index: &'a [(u64, f64)],
         open_window_override_by_interval_index: &'a [(u64, f64)],
     },
 }
@@ -195,6 +208,28 @@ pub fn provide_hourly_factor_contract(
                     HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_MATERIALIZATION_METHOD.to_string(),
                 )
             }
+            HourlyNewsIntensityFactorSource::MaterializedWithDeterministicInputs {
+                intensity_configuration,
+                deterministic_time_multiplier_by_interval_index,
+                open_window_override_by_interval_index,
+            } => {
+                let news_materialization_output =
+                    materialize_hourly_news_intensity_factors_with_deterministic_inputs(
+                        calendar_registry,
+                        exchange_code,
+                        range_start_utc,
+                        range_end_utc,
+                        intensity_configuration,
+                        deterministic_time_multiplier_by_interval_index,
+                        open_window_override_by_interval_index,
+                    )
+                    .map_err(map_news_source_error)?;
+                (
+                    news_materialization_output.nu_h,
+                    HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_DETERMINISTIC_MATERIALIZATION_METHOD
+                        .to_string(),
+                )
+            }
         };
 
     build_hourly_factor_contract(
@@ -257,12 +292,14 @@ mod tests {
         HawkesTransitionStep,
     };
     use crate::hourly_factor_provider::{
+        HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_DETERMINISTIC_MATERIALIZATION_METHOD,
         HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_MATERIALIZATION_METHOD,
         HOURLY_FACTOR_PROVIDER_SEASONALITY_MATERIALIZATION_METHOD, HourlyFactorProviderError,
         HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
         HourlySeasonalityFactorSource, provide_hourly_factor_contract,
     };
     use crate::hourly_factors::HourlyFactorContractError;
+    use crate::news::NewsIntensityConfiguration;
     use crate::pricing::{
         evolve_hawkes_state_for_coarse_interval_step, load_hourly_factor_contract_for_pricing,
         project_hawkes_intensities_for_coarse_interval,
@@ -396,6 +433,75 @@ mod tests {
         assert_eq!(
             output.metadata.news_intensity_materialization_method,
             HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_MATERIALIZATION_METHOD
+        );
+    }
+
+    #[test]
+    fn provider_supports_deterministic_news_intensity_inputs_for_pricing_and_simulation_paths() {
+        let registry = build_calendar_registry();
+
+        let pricing_request = HourlyFactorProviderRequest {
+            exchange_code: "XNYS",
+            range_start_utc: parse_timestamp("2026-02-07T00:00:00Z"),
+            range_end_utc: parse_timestamp("2026-02-07T03:00:00Z"),
+            seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
+                hourly_factors: &[1.0, 1.0, 1.0],
+                materialization_method: "shared_precomputed_hourly_s_h.v1",
+            }),
+            news_intensity_source: Some(
+                HourlyNewsIntensityFactorSource::MaterializedWithDeterministicInputs {
+                    intensity_configuration: NewsIntensityConfiguration::new(0.4),
+                    deterministic_time_multiplier_by_interval_index: &[
+                        (0, 1.0),
+                        (1, 0.5),
+                        (2, 2.0),
+                    ],
+                    open_window_override_by_interval_index: &[],
+                },
+            ),
+        };
+
+        let pricing_output = load_hourly_factor_contract_for_pricing(&registry, pricing_request)
+            .expect("deterministic news-intensity source should resolve for pricing");
+
+        assert_eq!(pricing_output.nu_h, vec![0.4, 0.2, 0.8]);
+        assert_eq!(
+            pricing_output
+                .metadata
+                .news_intensity_materialization_method,
+            HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_DETERMINISTIC_MATERIALIZATION_METHOD
+        );
+
+        let simulation_request = HourlyFactorProviderRequest {
+            exchange_code: "XNYS",
+            range_start_utc: parse_timestamp("2026-02-07T00:00:00Z"),
+            range_end_utc: parse_timestamp("2026-02-07T03:00:00Z"),
+            seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
+                hourly_factors: &[1.0, 1.0, 1.0],
+                materialization_method: "shared_precomputed_hourly_s_h.v1",
+            }),
+            news_intensity_source: Some(
+                HourlyNewsIntensityFactorSource::MaterializedWithDeterministicInputs {
+                    intensity_configuration: NewsIntensityConfiguration::new(0.4),
+                    deterministic_time_multiplier_by_interval_index: &[
+                        (0, 1.0),
+                        (1, 0.5),
+                        (2, 2.0),
+                    ],
+                    open_window_override_by_interval_index: &[],
+                },
+            ),
+        };
+        let simulation_output =
+            load_hourly_factor_contract_for_simulation(&registry, simulation_request)
+                .expect("deterministic news-intensity source should resolve for simulation");
+
+        assert_eq!(simulation_output.nu_h, vec![0.4, 0.2, 0.8]);
+        assert_eq!(
+            simulation_output
+                .metadata
+                .news_intensity_materialization_method,
+            HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_DETERMINISTIC_MATERIALIZATION_METHOD
         );
     }
 

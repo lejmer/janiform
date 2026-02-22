@@ -15,6 +15,7 @@ use crate::calendar::{
     ExchangeCalendarRegistry, ExchangeCalendarRegistryLookupError, ExchangeCalendarResolveError,
     MarketState,
 };
+use crate::news::{NewsDeterministicIntensityEvaluationError, NewsIntensityConfiguration};
 
 pub const HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION: &str = "seasonality.hourly_factor.contract.v1";
 pub const HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY: &str = "start_inclusive_end_exclusive.v1";
@@ -35,6 +36,8 @@ pub const DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY: &str = "global_mean.v1";
 pub const DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT: usize = 1;
 pub const DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD: &str =
     "calendar_closed_window_baseline_with_optional_open_window_overrides.v1";
+pub const NEWS_INTENSITY_WITH_DETERMINISTIC_INPUTS_MATERIALIZATION_METHOD: &str =
+    "calendar_closed_window_baseline_with_interval_deterministic_time_multipliers.v1";
 pub const DEFAULT_NEWS_INTENSITY_CALENDAR_DEPENDENCY: &str = "resolve_market_state_at_utc.v1";
 pub const DEFAULT_OPEN_WINDOW_OVERRIDE_POLICY: &str = "interval_indexed_open_share_override.v1";
 
@@ -219,6 +222,14 @@ pub enum HourlyFactorContractError {
         interval_index: u64,
         value: f64,
     },
+    DeterministicTimeMultiplierIntervalOutOfRange {
+        interval_index: u64,
+        interval_count: usize,
+    },
+    InvalidDeterministicTimeMultiplier {
+        interval_index: u64,
+        value: f64,
+    },
     SourceLengthMismatch {
         source_timestamp_count: usize,
         source_factor_count: usize,
@@ -328,6 +339,20 @@ impl Display for HourlyFactorContractError {
             } => write!(
                 formatter,
                 "open_window_override_by_interval_index value at interval index {interval_index} must be finite and non-negative, found {value}"
+            ),
+            Self::DeterministicTimeMultiplierIntervalOutOfRange {
+                interval_index,
+                interval_count,
+            } => write!(
+                formatter,
+                "deterministic_time_multiplier_by_interval_index contains interval index {interval_index}, expected a value in [0, {interval_count})"
+            ),
+            Self::InvalidDeterministicTimeMultiplier {
+                interval_index,
+                value,
+            } => write!(
+                formatter,
+                "deterministic_time_multiplier_by_interval_index value at interval index {interval_index} must be finite and non-negative, found {value}"
             ),
             Self::SourceLengthMismatch {
                 source_timestamp_count,
@@ -831,13 +856,66 @@ pub fn materialize_hourly_news_intensity_factors(
     closed_window_baseline_intensity: f64,
     open_window_override_by_interval_index: &[(u64, f64)],
 ) -> Result<HourlyNewsIntensityMaterializationOutput, HourlyFactorContractError> {
-    if !closed_window_baseline_intensity.is_finite() || closed_window_baseline_intensity < 0.0 {
-        return Err(
-            HourlyFactorContractError::InvalidClosedWindowBaselineIntensity {
-                value: closed_window_baseline_intensity,
-            },
-        );
-    }
+    let intensity_configuration =
+        NewsIntensityConfiguration::try_new(closed_window_baseline_intensity)
+            .map_err(map_news_intensity_configuration_error)?;
+
+    materialize_hourly_news_intensity_factors_internal(
+        calendar_registry,
+        exchange_code,
+        range_start_utc,
+        range_end_utc,
+        intensity_configuration,
+        &[],
+        open_window_override_by_interval_index,
+        DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
+    )
+}
+
+/// Materialize hourly `nu_h` from baseline closed-window policy and deterministic multipliers.
+///
+/// Deterministic input policy:
+/// - `deterministic_time_multiplier_by_interval_index` is optional and defaults to `1.0`.
+/// - Multipliers are applied only through the closed-window intensity channel.
+/// - Open-window overrides remain available for explicit injected-news scenarios.
+pub fn materialize_hourly_news_intensity_factors_with_deterministic_inputs(
+    calendar_registry: &ExchangeCalendarRegistry,
+    exchange_code: &str,
+    range_start_utc: DateTime<Utc>,
+    range_end_utc: DateTime<Utc>,
+    intensity_configuration: NewsIntensityConfiguration,
+    deterministic_time_multiplier_by_interval_index: &[(u64, f64)],
+    open_window_override_by_interval_index: &[(u64, f64)],
+) -> Result<HourlyNewsIntensityMaterializationOutput, HourlyFactorContractError> {
+    intensity_configuration
+        .validate()
+        .map_err(map_news_intensity_configuration_error)?;
+
+    materialize_hourly_news_intensity_factors_internal(
+        calendar_registry,
+        exchange_code,
+        range_start_utc,
+        range_end_utc,
+        intensity_configuration,
+        deterministic_time_multiplier_by_interval_index,
+        open_window_override_by_interval_index,
+        NEWS_INTENSITY_WITH_DETERMINISTIC_INPUTS_MATERIALIZATION_METHOD,
+    )
+}
+
+fn materialize_hourly_news_intensity_factors_internal(
+    calendar_registry: &ExchangeCalendarRegistry,
+    exchange_code: &str,
+    range_start_utc: DateTime<Utc>,
+    range_end_utc: DateTime<Utc>,
+    intensity_configuration: NewsIntensityConfiguration,
+    deterministic_time_multiplier_by_interval_index: &[(u64, f64)],
+    open_window_override_by_interval_index: &[(u64, f64)],
+    materialization_method: &'static str,
+) -> Result<HourlyNewsIntensityMaterializationOutput, HourlyFactorContractError> {
+    intensity_configuration
+        .validate()
+        .map_err(map_news_intensity_configuration_error)?;
 
     let interval_indexing = build_hourly_interval_indexing(
         calendar_registry,
@@ -845,6 +923,32 @@ pub fn materialize_hourly_news_intensity_factors(
         range_start_utc,
         range_end_utc,
     )?;
+
+    let mut deterministic_time_multipliers: Vec<f64> = vec![1.0; interval_indexing.interval_count];
+    for &(interval_index, deterministic_time_multiplier) in
+        deterministic_time_multiplier_by_interval_index
+    {
+        if !deterministic_time_multiplier.is_finite() || deterministic_time_multiplier < 0.0 {
+            return Err(
+                HourlyFactorContractError::InvalidDeterministicTimeMultiplier {
+                    interval_index,
+                    value: deterministic_time_multiplier,
+                },
+            );
+        }
+
+        let interval_position = interval_index as usize;
+        if interval_position >= interval_indexing.interval_count {
+            return Err(
+                HourlyFactorContractError::DeterministicTimeMultiplierIntervalOutOfRange {
+                    interval_index,
+                    interval_count: interval_indexing.interval_count,
+                },
+            );
+        }
+
+        deterministic_time_multipliers[interval_position] = deterministic_time_multiplier;
+    }
 
     let mut open_window_overrides_by_interval_index: Vec<Option<f64>> =
         vec![None; interval_indexing.interval_count];
@@ -900,7 +1004,15 @@ pub fn materialize_hourly_news_intensity_factors(
             mixed_state_interval_count += 1;
         }
 
-        let mut interval_nu_h = closed_window_baseline_intensity * closed_share;
+        let mut interval_nu_h = intensity_configuration
+            .evaluate_with_deterministic_time_multiplier(
+                closed_share,
+                deterministic_time_multipliers[interval_index],
+            )
+            .map_err(|source| {
+                map_news_deterministic_intensity_evaluation_error(interval_index, source)
+            })?;
+
         if let Some(open_window_override_intensity) =
             open_window_overrides_by_interval_index[interval_index]
         {
@@ -933,10 +1045,11 @@ pub fn materialize_hourly_news_intensity_factors(
         interval_end_exchange_local: interval_indexing.interval_end_exchange_local,
         nu_h: materialized_nu_h,
         metadata: HourlyNewsIntensityMaterializationMetadata {
-            materialization_method: DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
+            materialization_method,
             calendar_market_state_dependency: DEFAULT_NEWS_INTENSITY_CALENDAR_DEPENDENCY,
             open_window_override_policy: DEFAULT_OPEN_WINDOW_OVERRIDE_POLICY,
-            closed_window_baseline_intensity,
+            closed_window_baseline_intensity: intensity_configuration
+                .closed_window_baseline_intensity,
             interval_boundary_policy: HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
             interval_alignment_policy: HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
             timezone_transition_policy: HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
@@ -954,6 +1067,42 @@ pub fn materialize_hourly_news_intensity_factors(
                 .repeated_local_hour_interval_count,
         },
     })
+}
+
+fn map_news_intensity_configuration_error(
+    source: crate::news::NewsIntensityError,
+) -> HourlyFactorContractError {
+    match source {
+        crate::news::NewsIntensityError::InvalidClosedWindowBaselineIntensity { value } => {
+            HourlyFactorContractError::InvalidClosedWindowBaselineIntensity { value }
+        }
+    }
+}
+
+fn map_news_deterministic_intensity_evaluation_error(
+    interval_index: usize,
+    source: NewsDeterministicIntensityEvaluationError,
+) -> HourlyFactorContractError {
+    match source {
+        NewsDeterministicIntensityEvaluationError::InvalidClosedWindowShare { value } => {
+            HourlyFactorContractError::InvalidNewsIntensityFactor {
+                interval_index,
+                value,
+            }
+        }
+        NewsDeterministicIntensityEvaluationError::InvalidDeterministicTimeMultiplier { value } => {
+            HourlyFactorContractError::InvalidDeterministicTimeMultiplier {
+                interval_index: interval_index as u64,
+                value,
+            }
+        }
+        NewsDeterministicIntensityEvaluationError::InvalidEvaluatedIntensity { value } => {
+            HourlyFactorContractError::InvalidNewsIntensityFactor {
+                interval_index,
+                value,
+            }
+        }
+    }
 }
 
 fn build_hourly_interval_indexing(
@@ -1260,9 +1409,12 @@ mod tests {
         HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
         HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
         HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION, HourlyFactorContractError,
+        NEWS_INTENSITY_WITH_DETERMINISTIC_INPUTS_MATERIALIZATION_METHOD,
         build_hourly_factor_contract, materialize_hourly_news_intensity_factors,
+        materialize_hourly_news_intensity_factors_with_deterministic_inputs,
         materialize_hourly_seasonality_factors,
     };
+    use crate::news::NewsIntensityConfiguration;
 
     #[test]
     fn hourly_factor_contract_builds_expected_schema_and_metadata() {
@@ -1752,6 +1904,52 @@ mod tests {
                 .diagnostics
                 .open_window_override_interval_count,
             0
+        );
+    }
+
+    #[test]
+    fn news_intensity_materializer_supports_deterministic_time_multipliers() {
+        let registry = build_calendar_registry();
+
+        let output = materialize_hourly_news_intensity_factors_with_deterministic_inputs(
+            &registry,
+            "XNYS",
+            parse_timestamp("2026-02-07T00:00:00Z"),
+            parse_timestamp("2026-02-07T03:00:00Z"),
+            NewsIntensityConfiguration::new(0.4),
+            &[(0, 1.0), (1, 0.5), (2, 2.0)],
+            &[],
+        )
+        .expect("deterministic multipliers should materialize");
+
+        assert_eq!(output.nu_h, vec![0.4, 0.2, 0.8]);
+        assert_eq!(
+            output.metadata.materialization_method,
+            NEWS_INTENSITY_WITH_DETERMINISTIC_INPUTS_MATERIALIZATION_METHOD
+        );
+    }
+
+    #[test]
+    fn news_intensity_materializer_rejects_invalid_deterministic_multiplier_input() {
+        let registry = build_calendar_registry();
+
+        let error = materialize_hourly_news_intensity_factors_with_deterministic_inputs(
+            &registry,
+            "XNYS",
+            parse_timestamp("2026-02-07T00:00:00Z"),
+            parse_timestamp("2026-02-07T02:00:00Z"),
+            NewsIntensityConfiguration::new(0.4),
+            &[(0, -0.2)],
+            &[],
+        )
+        .expect_err("negative deterministic multiplier must fail");
+
+        assert_eq!(
+            error,
+            HourlyFactorContractError::InvalidDeterministicTimeMultiplier {
+                interval_index: 0,
+                value: -0.2,
+            }
         );
     }
 

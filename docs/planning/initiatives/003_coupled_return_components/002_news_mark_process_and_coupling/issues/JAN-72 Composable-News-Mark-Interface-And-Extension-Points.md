@@ -1,4 +1,4 @@
-## ISSUE-007: Composable News Mark Interface And Extension Points
+## Composable News Mark Interface And Extension Points
 
 ### Description
 Create composable interfaces for news-arrival intensity, severity sampler, base-shock sampler, and coupled-mark constructor so alternative distributions can be introduced later without rewiring core flow.
@@ -14,5 +14,6 @@ Create composable interfaces for news-arrival intensity, severity sampler, base-
 - Contract tests for interface-level invariants and required outputs
 
 ### Notes/Constraints
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Keep interfaces minimal to avoid accidental over-abstraction
 - Preserve deterministic behavior regardless of implementation choice

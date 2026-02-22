@@ -1,4 +1,4 @@
-## ISSUE-001: News Process Configuration And Intensity Model
+## News Process Configuration And Intensity Model
 
 ### Description
 Define configuration schema for the shared exogenous news process and implement deterministic intensity model wiring for `nu_news(t)` inputs.
@@ -14,6 +14,7 @@ Define configuration schema for the shared exogenous news process and implement 
 - Deterministic intensity model output given fixed inputs
 
 ### Notes/Constraints
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Keep intensity model independent from specific calendar implementation details
 - Keep baseline behavior aligned with closed-window intensity policy from the design specification
 - Avoid duplicated config structs across modules

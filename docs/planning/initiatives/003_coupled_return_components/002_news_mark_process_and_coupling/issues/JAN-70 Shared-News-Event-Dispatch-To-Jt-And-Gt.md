@@ -1,4 +1,4 @@
-## ISSUE-005: Shared News Event Dispatch To Jt And Gt
+## Shared News Event Dispatch To Jt And Gt
 
 ### Description
 Implement a shared dispatch pipeline where each news event updates Hawkes shock accumulator `J_t` and, conditionally, gap process `G_t` without duplicated event handling.
@@ -14,5 +14,6 @@ Implement a shared dispatch pipeline where each news event updates Hawkes shock 
 - Deterministic dispatch ordering under seeded scenarios
 
 ### Notes/Constraints
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Keep dispatch logic free of pricing-only concerns
 - Avoid separate code paths that could desynchronize `J_t` and `G_t` coupling

@@ -1,4 +1,4 @@
-## ISSUE-006: Open Closed Gating Semantics For Gap Application
+## Open Closed Gating Semantics For Gap Application
 
 ### Description
 Implement and document market-state gating semantics where explicit gap increments apply only during closed windows, and any open-window injected news scenarios affect returns through activity coupling only.
@@ -15,5 +15,6 @@ Implement and document market-state gating semantics where explicit gap incremen
 - Boundary tests for events at session-open and session-close edges
 
 ### Notes/Constraints
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Reuse market-state resolver from calendar foundation project
 - Keep gating policy centralized to prevent drift across engines

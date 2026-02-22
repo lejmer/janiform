@@ -1,4 +1,4 @@
-## ISSUE-003: Double Exponential Base Shock Sampler
+## Double Exponential Base Shock Sampler
 
 ### Description
 Implement Kou-style double-exponential base shock sampler for `epsilon` marks, including constant mixture probability `p` and side-specific decay parameters.
@@ -15,5 +15,6 @@ Implement Kou-style double-exponential base shock sampler for `epsilon` marks, i
 - Seed reproducibility tests for repeated base-shock sampling
 
 ### Notes/Constraints
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Keep this sampler independent from severity-mark generation
 - Do not introduce dynamic `p` behavior in v0.1

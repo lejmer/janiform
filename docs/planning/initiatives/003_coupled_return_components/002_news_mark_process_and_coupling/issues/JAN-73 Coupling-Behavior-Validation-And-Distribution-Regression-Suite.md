@@ -1,4 +1,4 @@
-## ISSUE-008: Coupling Behavior Validation And Distribution Regression Suite
+## Coupling Behavior Validation And Distribution Regression Suite
 
 ### Description
 Build a validation and regression suite for coupled news primitives, covering mark-distribution sanity and shared-mark consistency across `J_t` and `G_t` wiring.
@@ -16,5 +16,6 @@ Build a validation and regression suite for coupled news primitives, covering ma
 - Shared-mark coupling behavior across fixed seeds
 
 ### Notes/Constraints
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Keep stochastic checks tolerance-based to reduce flakiness
 - Separate strict deterministic coupling checks from statistical distribution checks

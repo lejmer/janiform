@@ -1,4 +1,4 @@
-## ISSUE-004: Coupled Mark Construction For U And Z
+## Coupled Mark Construction For U And Z
 
 ### Description
 Implement coupled mark construction that derives gap jump marks `Z = sigma_G * sqrt(U) * epsilon` from shared severity and base-shock marks.
@@ -15,5 +15,6 @@ Implement coupled mark construction that derives gap jump marks `Z = sigma_G * s
 - Regression tests ensuring shared `U` usage across coupled consumers
 
 ### Notes/Constraints
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Keep coupling logic composable for future alternative mark families
 - Do not recompute `U` independently per consumer
