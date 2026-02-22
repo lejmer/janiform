@@ -18,6 +18,8 @@ pub const NEWS_INTENSITY_DETERMINISTIC_INPUT_POLICY: &str =
     "interval_indexed_non_negative_multiplier_with_default_one.v1";
 pub const GAMMA_SEVERITY_MARK_SAMPLING_POLICY: &str =
     "marsaglia_tsang_shape_scale_with_shape_less_than_one_boost.v1";
+pub const DOUBLE_EXPONENTIAL_BASE_SHOCK_SAMPLING_POLICY: &str =
+    "kou_two_sided_exponential_with_constant_mixture_probability.v1";
 
 /// Deterministic intensity policy configuration for `nu_news(t)`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -168,6 +170,16 @@ impl DoubleExponentialBaseShockConfiguration {
         }
     }
 
+    pub fn try_new(
+        probability_positive: f64,
+        eta_plus: f64,
+        eta_minus: f64,
+    ) -> Result<Self, NewsMarkConfigurationError> {
+        let configuration = Self::new(probability_positive, eta_plus, eta_minus);
+        configuration.validate()?;
+        Ok(configuration)
+    }
+
     fn validate(self) -> Result<(), NewsMarkConfigurationError> {
         if !self.probability_positive.is_finite()
             || self.probability_positive <= 0.0
@@ -189,6 +201,46 @@ impl DoubleExponentialBaseShockConfiguration {
         }
 
         Ok(())
+    }
+
+    /// Sample one Kou-style base shock mark `epsilon`.
+    ///
+    /// Policy for v0.1:
+    /// - The mixture probability `p` is constant and equals `probability_positive`
+    /// - Positive shocks follow `+Exp(eta_plus)`
+    /// - Negative shocks follow `-Exp(eta_minus)`
+    ///
+    /// This sampler remains independent from severity-mark generation so callers can
+    /// reuse `epsilon` in closed-market gap mark construction `Z = sigma_g * sqrt(U) * epsilon`.
+    pub fn sample_base_shock_mark<R>(
+        self,
+        randomness_stream: &mut R,
+    ) -> Result<f64, DoubleExponentialBaseShockSamplingError>
+    where
+        R: SimulationRandomnessStream,
+    {
+        self.validate().map_err(|source| {
+            DoubleExponentialBaseShockSamplingError::InvalidConfiguration { source }
+        })?;
+
+        let acceptance_draw = randomness_stream
+            .next_unit_interval_f64()
+            .clamp(0.0, 1.0 - f64::EPSILON);
+        let sampled_mark = if acceptance_draw < self.probability_positive {
+            sample_exponential_with_rate(self.eta_plus, randomness_stream)
+        } else {
+            -sample_exponential_with_rate(self.eta_minus, randomness_stream)
+        };
+
+        if !sampled_mark.is_finite() {
+            return Err(
+                DoubleExponentialBaseShockSamplingError::InvalidSampledMark {
+                    value: sampled_mark,
+                },
+            );
+        }
+
+        Ok(sampled_mark)
     }
 }
 
@@ -478,6 +530,38 @@ impl Error for GammaSeverityMarkSamplingError {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum DoubleExponentialBaseShockSamplingError {
+    InvalidConfiguration { source: NewsMarkConfigurationError },
+    InvalidSampledMark { value: f64 },
+}
+
+impl Display for DoubleExponentialBaseShockSamplingError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidConfiguration { source } => {
+                write!(
+                    formatter,
+                    "double-exponential base-shock configuration is invalid for sampling: {source}"
+                )
+            }
+            Self::InvalidSampledMark { value } => write!(
+                formatter,
+                "double-exponential base-shock sampling produced a non-finite mark, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for DoubleExponentialBaseShockSamplingError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidConfiguration { source } => Some(source),
+            Self::InvalidSampledMark { .. } => None,
+        }
+    }
+}
+
 fn sample_gamma_shape_scale<R>(shape_k: f64, scale_theta: f64, randomness_stream: &mut R) -> f64
 where
     R: SimulationRandomnessStream,
@@ -548,10 +632,22 @@ where
     radius * angle.cos()
 }
 
+fn sample_exponential_with_rate<R>(rate: f64, randomness_stream: &mut R) -> f64
+where
+    R: SimulationRandomnessStream,
+{
+    let uniform_draw = randomness_stream
+        .next_unit_interval_f64()
+        .clamp(f64::MIN_POSITIVE, 1.0 - f64::EPSILON);
+
+    -uniform_draw.ln() / rate
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
+        CoupledGapMarkConfiguration, DOUBLE_EXPONENTIAL_BASE_SHOCK_SAMPLING_POLICY,
+        DoubleExponentialBaseShockConfiguration, DoubleExponentialBaseShockSamplingError,
         GAMMA_SEVERITY_MARK_SAMPLING_POLICY, GammaSeverityMarkConfiguration,
         GammaSeverityMarkSamplingError, NEWS_INTENSITY_BASELINE_POLICY,
         NEWS_INTENSITY_DETERMINISTIC_INPUT_POLICY, NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION,
@@ -800,5 +896,158 @@ mod tests {
             relative_error <= 0.03,
             "sample mean should stay close to expectation, expected_mean={expected_mean}, sample_mean={sample_mean}, relative_error={relative_error}"
         );
+    }
+
+    #[test]
+    fn double_exponential_base_shock_try_new_rejects_invalid_parameters() {
+        let invalid_probability_low =
+            DoubleExponentialBaseShockConfiguration::try_new(0.0, 2.1, 3.0)
+                .expect_err("probability_positive must be strictly between 0 and 1");
+        assert!(matches!(
+            invalid_probability_low,
+            NewsMarkConfigurationError::InvalidPositiveJumpProbability { value } if value == 0.0
+        ));
+
+        let invalid_probability_high =
+            DoubleExponentialBaseShockConfiguration::try_new(1.0, 2.1, 3.0)
+                .expect_err("probability_positive must be strictly between 0 and 1");
+        assert!(matches!(
+            invalid_probability_high,
+            NewsMarkConfigurationError::InvalidPositiveJumpProbability { value } if value == 1.0
+        ));
+
+        let invalid_eta_plus = DoubleExponentialBaseShockConfiguration::try_new(0.35, -0.2, 3.0)
+            .expect_err("eta_plus must be strictly positive");
+        assert!(matches!(
+            invalid_eta_plus,
+            NewsMarkConfigurationError::InvalidEtaPlus { value } if value == -0.2
+        ));
+
+        let invalid_eta_minus = DoubleExponentialBaseShockConfiguration::try_new(0.35, 2.1, 0.0)
+            .expect_err("eta_minus must be strictly positive");
+        assert!(matches!(
+            invalid_eta_minus,
+            NewsMarkConfigurationError::InvalidEtaMinus { value } if value == 0.0
+        ));
+    }
+
+    #[test]
+    fn double_exponential_base_shock_sampler_rejects_invalid_configuration_at_sampling_time() {
+        let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(44_102);
+        let invalid_configuration = DoubleExponentialBaseShockConfiguration::new(1.2, 2.1, 3.0);
+
+        let sampling_error = invalid_configuration
+            .sample_base_shock_mark(&mut randomness_stream)
+            .expect_err("invalid p parameter must fail fast before sampling");
+
+        assert!(matches!(
+            sampling_error,
+            DoubleExponentialBaseShockSamplingError::InvalidConfiguration {
+                source: NewsMarkConfigurationError::InvalidPositiveJumpProbability { value },
+            } if value == 1.2
+        ));
+    }
+
+    #[test]
+    fn double_exponential_base_shock_sampler_outputs_two_sided_tail_shape() {
+        let probability_positive = 0.35;
+        let eta_plus = 1.2;
+        let eta_minus = 2.4;
+        let sample_count = 80_000;
+        let expected_positive_mean = 1.0 / eta_plus;
+        let expected_negative_absolute_mean = 1.0 / eta_minus;
+
+        let configuration = DoubleExponentialBaseShockConfiguration::try_new(
+            probability_positive,
+            eta_plus,
+            eta_minus,
+        )
+        .expect("valid base-shock configuration should construct");
+        let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(98_113);
+
+        let mut positive_count = 0_usize;
+        let mut negative_count = 0_usize;
+        let mut positive_sum = 0.0;
+        let mut negative_absolute_sum = 0.0;
+
+        for _sample_index in 0..sample_count {
+            let sampled_mark = configuration
+                .sample_base_shock_mark(&mut randomness_stream)
+                .expect("sampling with valid base-shock parameters should succeed");
+            assert!(sampled_mark.is_finite());
+
+            if sampled_mark >= 0.0 {
+                positive_count += 1;
+                positive_sum += sampled_mark;
+            } else {
+                negative_count += 1;
+                negative_absolute_sum += -sampled_mark;
+            }
+        }
+
+        assert!(positive_count > 0);
+        assert!(negative_count > 0);
+
+        let positive_frequency = positive_count as f64 / sample_count as f64;
+        let positive_mean = positive_sum / positive_count as f64;
+        let negative_absolute_mean = negative_absolute_sum / negative_count as f64;
+
+        assert!(
+            (positive_frequency - probability_positive).abs() <= 0.015,
+            "positive-frequency sanity check failed, expected_probability={probability_positive}, observed_probability={positive_frequency}"
+        );
+        assert!(
+            (positive_mean - expected_positive_mean).abs() / expected_positive_mean <= 0.06,
+            "positive-tail mean sanity check failed, expected_mean={expected_positive_mean}, observed_mean={positive_mean}"
+        );
+        assert!(
+            (negative_absolute_mean - expected_negative_absolute_mean).abs()
+                / expected_negative_absolute_mean
+                <= 0.06,
+            "negative-tail mean sanity check failed, expected_mean={expected_negative_absolute_mean}, observed_mean={negative_absolute_mean}"
+        );
+        assert!(
+            positive_mean > negative_absolute_mean,
+            "tail-shape sanity check failed, expected positive tail to be heavier for eta_plus={eta_plus} and eta_minus={eta_minus}, observed positive_mean={positive_mean}, negative_absolute_mean={negative_absolute_mean}"
+        );
+        assert_eq!(
+            DOUBLE_EXPONENTIAL_BASE_SHOCK_SAMPLING_POLICY,
+            "kou_two_sided_exponential_with_constant_mixture_probability.v1"
+        );
+    }
+
+    #[test]
+    fn double_exponential_base_shock_sampler_is_seed_reproducible() {
+        let configuration = DoubleExponentialBaseShockConfiguration::try_new(0.35, 1.8, 2.7)
+            .expect("valid base-shock configuration should construct");
+
+        let mut first_stream = SplitMix64SimulationRandomnessStream::from_seed(66_777);
+        let mut second_stream = SplitMix64SimulationRandomnessStream::from_seed(66_777);
+        let mut different_seed_stream = SplitMix64SimulationRandomnessStream::from_seed(66_778);
+
+        let first_draws: Vec<f64> = (0..64)
+            .map(|_| {
+                configuration
+                    .sample_base_shock_mark(&mut first_stream)
+                    .expect("first seeded stream should sample")
+            })
+            .collect();
+        let second_draws: Vec<f64> = (0..64)
+            .map(|_| {
+                configuration
+                    .sample_base_shock_mark(&mut second_stream)
+                    .expect("second seeded stream should sample")
+            })
+            .collect();
+        let different_seed_draws: Vec<f64> = (0..64)
+            .map(|_| {
+                configuration
+                    .sample_base_shock_mark(&mut different_seed_stream)
+                    .expect("different seeded stream should sample")
+            })
+            .collect();
+
+        assert_eq!(first_draws, second_draws);
+        assert_ne!(first_draws, different_seed_draws);
     }
 }
