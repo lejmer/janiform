@@ -15,6 +15,10 @@ use crate::hourly_factor_provider::{
     HourlyFactorProviderError, HourlyFactorProviderRequest, provide_hourly_factor_contract,
 };
 use crate::hourly_factors::HourlyFactorContractOutput;
+use crate::nig::{
+    NigBuySellDriverParameters, NigTradingTimeIncrementContributions,
+    NigTradingTimeIncrementSamplingError,
+};
 use crate::randomness::{
     SIMULATION_RANDOMNESS_STREAM_POLICY, SIMULATION_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY,
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
@@ -1372,6 +1376,23 @@ pub fn project_hawkes_intensities_for_simulation_interval(
         parameters.lambda_bar,
         hourly_factor_contract,
         interval_index,
+    )
+}
+
+/// Sample one trading-time return increment for simulation through the shared NIG driver API.
+pub fn sample_nig_trading_time_increment_for_simulation<R>(
+    driver_parameters: NigBuySellDriverParameters,
+    integrated_buy_intensity: f64,
+    integrated_sell_intensity: f64,
+    randomness_stream: &mut R,
+) -> Result<NigTradingTimeIncrementContributions, NigTradingTimeIncrementSamplingError>
+where
+    R: SimulationRandomnessStream,
+{
+    driver_parameters.sample_trading_time_return_increment(
+        integrated_buy_intensity,
+        integrated_sell_intensity,
+        randomness_stream,
     )
 }
 

@@ -21,8 +21,12 @@ pub const NIG_INCREMENT_NEAR_ZERO_SCALE_POLICY: &str =
     "zero_business_time_scale_returns_zero_without_random_draws.v1";
 pub const NIG_SHARED_PLUS_SHIFT_CONFIGURATION_POLICY: &str =
     "buy_beta_equals_beta_0_and_sell_beta_equals_beta_0_plus_delta_beta.v1";
+pub const NIG_TRADING_TIME_DRIVER_INTERFACE_POLICY: &str =
+    "shared_buy_sell_driver_parameters_interface_for_pricing_and_simulation.v1";
 pub const NIG_TRADING_TIME_RETURN_SIGN_CONVENTION_POLICY: &str =
     "buy_side_uses_psi_plus_of_u_and_sell_side_uses_psi_minus_of_negative_u.v1";
+pub const NIG_TRADING_TIME_INCREMENT_COMPOSITION_POLICY: &str =
+    "buy_side_increment_minus_sell_side_increment.v1";
 pub const NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_REPORT_SCHEMA_VERSION: &str =
     "nig.characteristic_exponent.guardrail_report.v1";
 pub const NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_DETERMINISM_POLICY: &str =
@@ -778,6 +782,20 @@ pub struct NigTradingTimeCharacteristicExponentContributions {
     pub policy: &'static str,
 }
 
+/// Trading-time sampled return increment contributions for one business-time interval.
+///
+/// Equation reference:
+/// \f[
+/// \Delta X_{\mathrm{trading}} = \Delta L_{A^+}^+ - \Delta L_{A^-}^-.
+/// \f]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NigTradingTimeIncrementContributions {
+    pub buy_side_increment: f64,
+    pub sell_side_increment: f64,
+    pub combined_increment: f64,
+    pub policy: &'static str,
+}
+
 impl NigBuySellDriverParameters {
     /// Evaluate buy-side NIG exponent with the direct argument \f$u\f$, i.e. \f$\psi_+(u)\f$.
     pub fn buy_side_characteristic_exponent(self, argument: ComplexScalar) -> ComplexScalar {
@@ -824,6 +842,48 @@ impl NigBuySellDriverParameters {
             combined_weighted_exponent,
             policy: NIG_TRADING_TIME_RETURN_SIGN_CONVENTION_POLICY,
         }
+    }
+
+    /// Sample one trading-time return increment using the canonical buy-minus-sell composition.
+    ///
+    /// Sampling path:
+    /// - buy-side increment uses `integrated_buy_intensity`
+    /// - sell-side increment uses `integrated_sell_intensity`
+    /// - combined trading-time increment is `buy_side_increment - sell_side_increment`
+    pub fn sample_trading_time_return_increment<R>(
+        self,
+        integrated_buy_intensity: f64,
+        integrated_sell_intensity: f64,
+        randomness_stream: &mut R,
+    ) -> Result<NigTradingTimeIncrementContributions, NigTradingTimeIncrementSamplingError>
+    where
+        R: SimulationRandomnessStream,
+    {
+        let buy_side_increment = self
+            .buy_side_parameters
+            .sample_increment(integrated_buy_intensity, randomness_stream)
+            .map_err(
+                |source| NigTradingTimeIncrementSamplingError::BuySideSamplingFailure {
+                    integrated_buy_intensity,
+                    source,
+                },
+            )?;
+        let sell_side_increment = self
+            .sell_side_parameters
+            .sample_increment(integrated_sell_intensity, randomness_stream)
+            .map_err(
+                |source| NigTradingTimeIncrementSamplingError::SellSideSamplingFailure {
+                    integrated_sell_intensity,
+                    source,
+                },
+            )?;
+
+        Ok(NigTradingTimeIncrementContributions {
+            buy_side_increment,
+            sell_side_increment,
+            combined_increment: buy_side_increment - sell_side_increment,
+            policy: NIG_TRADING_TIME_INCREMENT_COMPOSITION_POLICY,
+        })
     }
 }
 
@@ -952,6 +1012,49 @@ impl Display for NigIncrementSamplingError {
 }
 
 impl Error for NigIncrementSamplingError {}
+
+/// Structured failure modes for trading-time increment composition sampling.
+#[derive(Debug, Clone, PartialEq)]
+pub enum NigTradingTimeIncrementSamplingError {
+    BuySideSamplingFailure {
+        integrated_buy_intensity: f64,
+        source: NigIncrementSamplingError,
+    },
+    SellSideSamplingFailure {
+        integrated_sell_intensity: f64,
+        source: NigIncrementSamplingError,
+    },
+}
+
+impl Display for NigTradingTimeIncrementSamplingError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BuySideSamplingFailure {
+                integrated_buy_intensity,
+                source,
+            } => write!(
+                formatter,
+                "buy-side trading-time increment sampling failed for integrated_buy_intensity={integrated_buy_intensity}: {source}"
+            ),
+            Self::SellSideSamplingFailure {
+                integrated_sell_intensity,
+                source,
+            } => write!(
+                formatter,
+                "sell-side trading-time increment sampling failed for integrated_sell_intensity={integrated_sell_intensity}: {source}"
+            ),
+        }
+    }
+}
+
+impl Error for NigTradingTimeIncrementSamplingError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::BuySideSamplingFailure { source, .. } => Some(source),
+            Self::SellSideSamplingFailure { source, .. } => Some(source),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1207,10 +1310,12 @@ mod tests {
         NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_REPORT_SCHEMA_VERSION,
         NIG_CHARACTERISTIC_EXPONENT_STABILITY_POLICY, NIG_INCREMENT_NEAR_ZERO_SCALE_POLICY,
         NIG_INCREMENT_SAMPLING_POLICY, NIG_SHARED_PLUS_SHIFT_CONFIGURATION_POLICY,
+        NIG_TRADING_TIME_INCREMENT_COMPOSITION_POLICY,
         NIG_TRADING_TIME_RETURN_SIGN_CONVENTION_POLICY, NigCharacteristicExponentGuardrailCode,
         NigIncrementSamplingError, NigNumericalGuardrailStatus, NigParameterConstraint,
         NigParameterError, NigParameters, NigSharedPlusShiftConfiguration,
-        NigSharedPlusShiftConfigurationError, NigValidationStatus, stable_gamma,
+        NigSharedPlusShiftConfigurationError, NigTradingTimeIncrementSamplingError,
+        NigValidationStatus, stable_gamma,
     };
     use crate::randomness::{SimulationRandomnessStream, SplitMix64SimulationRandomnessStream};
 
@@ -1665,6 +1770,83 @@ mod tests {
     }
 
     #[test]
+    fn trading_time_increment_sampling_composition_matches_manual_buy_minus_sell() {
+        let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("valid shared-plus-shift payload should construct")
+            .derive_driver_parameters()
+            .expect("valid shared-plus-shift payload should derive drivers");
+        let integrated_buy_intensity = 0.75;
+        let integrated_sell_intensity = 0.45;
+
+        let mut shared_stream = SplitMix64SimulationRandomnessStream::from_seed(88_101);
+        let sampled_contributions = driver_parameters
+            .sample_trading_time_return_increment(
+                integrated_buy_intensity,
+                integrated_sell_intensity,
+                &mut shared_stream,
+            )
+            .expect("shared sampling interface should succeed");
+
+        let mut manual_buy_stream = SplitMix64SimulationRandomnessStream::from_seed(88_101);
+        let expected_buy_increment = driver_parameters
+            .buy_side_parameters
+            .sample_increment(integrated_buy_intensity, &mut manual_buy_stream)
+            .expect("buy-side manual sampling should succeed");
+        let expected_sell_increment = driver_parameters
+            .sell_side_parameters
+            .sample_increment(integrated_sell_intensity, &mut manual_buy_stream)
+            .expect("sell-side manual sampling should succeed");
+        let expected_combined_increment = expected_buy_increment - expected_sell_increment;
+
+        assert_float_close(
+            sampled_contributions.buy_side_increment,
+            expected_buy_increment,
+            1.0e-13,
+        );
+        assert_float_close(
+            sampled_contributions.sell_side_increment,
+            expected_sell_increment,
+            1.0e-13,
+        );
+        assert_float_close(
+            sampled_contributions.combined_increment,
+            expected_combined_increment,
+            1.0e-13,
+        );
+        assert_eq!(
+            sampled_contributions.policy,
+            NIG_TRADING_TIME_INCREMENT_COMPOSITION_POLICY
+        );
+    }
+
+    #[test]
+    fn trading_time_increment_sampling_reports_side_specific_error_context() {
+        let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("valid shared-plus-shift payload should construct")
+            .derive_driver_parameters()
+            .expect("valid shared-plus-shift payload should derive drivers");
+        let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(88_102);
+
+        let error = driver_parameters
+            .sample_trading_time_return_increment(-0.25, 0.2, &mut randomness_stream)
+            .expect_err("invalid buy-side intensity should fail");
+
+        match error {
+            NigTradingTimeIncrementSamplingError::BuySideSamplingFailure {
+                integrated_buy_intensity,
+                source,
+            } => {
+                assert_eq!(integrated_buy_intensity, -0.25);
+                assert_eq!(
+                    source,
+                    NigIncrementSamplingError::InvalidBusinessTimeIncrementScale { value: -0.25 }
+                );
+            }
+            _ => panic!("unexpected error variant: {error}"),
+        }
+    }
+
+    #[test]
     fn increment_sampling_policies_are_stable() {
         assert_eq!(
             NIG_INCREMENT_SAMPLING_POLICY,
@@ -1825,6 +2007,14 @@ mod tests {
 
     fn assert_complex_close(observed: ComplexScalar, expected: ComplexScalar, tolerance: f64) {
         let difference = observed.subtract(expected).norm();
+        assert!(
+            difference <= tolerance,
+            "difference {difference} exceeded tolerance {tolerance} for observed {observed} and expected {expected}"
+        );
+    }
+
+    fn assert_float_close(observed: f64, expected: f64, tolerance: f64) {
+        let difference = (observed - expected).abs();
         assert!(
             difference <= tolerance,
             "difference {difference} exceeded tolerance {tolerance} for observed {observed} and expected {expected}"

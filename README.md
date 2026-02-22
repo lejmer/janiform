@@ -42,6 +42,7 @@ janiform --help
 - Hawkes parameter validation report: `docs/development/guides/hawkes_parameter_validation_report.md`
 - Hawkes failure diagnostics report: `docs/development/guides/hawkes_failure_diagnostics_report.md`
 - NIG characteristic exponent guardrails: `docs/development/guides/nig_characteristic_exponent_guardrails.md`
+- NIG cross-engine interface and reference fixtures: `docs/development/guides/nig_cross_engine_interface_and_reference_fixtures.md`
 - Seeded tick event tape schema: `docs/development/guides/seeded_tick_event_tape_schema.md`
 - Validation fallback policy: `docs/development/guides/validation_fallback_policy.md`
 - Python coding conventions: `docs/development/guides/python_style_guide.md`
