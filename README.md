@@ -1,8 +1,13 @@
 # Janiform
 
-Janiform is a calibrator and generator of a new affine Hawkes–NIG model with coupled news gaps.
-The Rust core provides the computation engine.
-The Python package exposes an importable API and CLI via PyO3 bindings.
+Janiform is a calibrator and generator of a new affine Hawkes–NIG model with coupled news gaps. The Rust core provides the computation engine. The Python package exposes an importable API and CLI via PyO3 bindings.
+
+The name *Janiform* comes from the Roman god *Janus* who is a god with two faces (one looking forward, one backward). Janus is also the god of transitions and duality. Asymmetry is built into the model:
+- Two Lévy clocks
+- Two intensities
+- Two excitation channels
+
+It's Jani*form* because it's about form: a system whose geometry is essentially bifacial.
 
 ## Baseline Support
 
@@ -41,8 +46,7 @@ janiform --help
 - Python coding conventions: `docs/development/guides/python_style_guide.md`
 - Planning artifacts: `docs/planning/`
 
-The detailed calendar and seasonality sections were moved out of this README into the
-development guide above to keep the repo root documentation concise.
+The detailed calendar and seasonality sections were moved out of this README into the development guide above to keep the repo root documentation concise.
 
 ## Developer Commands
 
