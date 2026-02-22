@@ -20,6 +20,8 @@ pub const GAMMA_SEVERITY_MARK_SAMPLING_POLICY: &str =
     "marsaglia_tsang_shape_scale_with_shape_less_than_one_boost.v1";
 pub const DOUBLE_EXPONENTIAL_BASE_SHOCK_SAMPLING_POLICY: &str =
     "kou_two_sided_exponential_with_constant_mixture_probability.v1";
+pub const COUPLED_GAP_MARK_CONSTRUCTION_POLICY: &str =
+    "sigma_g_times_square_root_shared_severity_mark_times_shared_base_shock_mark.v1";
 
 /// Deterministic intensity policy configuration for `nu_news(t)`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -264,6 +266,58 @@ impl CoupledGapMarkConfiguration {
 
         Ok(())
     }
+
+    /// Construct one coupled gap jump mark from shared severity and base-shock marks.
+    ///
+    /// Formula:
+    /// `Z = sigma_g * sqrt(U) * epsilon`
+    ///
+    /// The output keeps all construction inputs so diagnostics and deterministic replay can
+    /// recover the exact mark-construction payload without re-sampling `U` or `epsilon`.
+    pub fn construct_gap_jump_mark(
+        self,
+        shared_severity_mark: f64,
+        shared_base_shock_mark: f64,
+    ) -> Result<CoupledGapMarkConstruction, CoupledGapMarkConstructionError> {
+        self.validate()
+            .map_err(|source| CoupledGapMarkConstructionError::InvalidConfiguration { source })?;
+
+        if !shared_severity_mark.is_finite() || shared_severity_mark < 0.0 {
+            return Err(CoupledGapMarkConstructionError::InvalidSharedSeverityMark {
+                value: shared_severity_mark,
+            });
+        }
+        if !shared_base_shock_mark.is_finite() {
+            return Err(CoupledGapMarkConstructionError::InvalidSharedBaseShockMark {
+                value: shared_base_shock_mark,
+            });
+        }
+
+        let gap_jump_mark = self.sigma_g * shared_severity_mark.sqrt() * shared_base_shock_mark;
+        if !gap_jump_mark.is_finite() {
+            return Err(CoupledGapMarkConstructionError::InvalidConstructedGapMark {
+                value: gap_jump_mark,
+            });
+        }
+
+        Ok(CoupledGapMarkConstruction {
+            shared_severity_mark,
+            shared_base_shock_mark,
+            sigma_g: self.sigma_g,
+            gap_jump_mark,
+            construction_policy: COUPLED_GAP_MARK_CONSTRUCTION_POLICY,
+        })
+    }
+}
+
+/// Deterministic output for coupled gap-mark construction from shared `U` and `epsilon`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct CoupledGapMarkConstruction {
+    pub shared_severity_mark: f64,
+    pub shared_base_shock_mark: f64,
+    pub sigma_g: f64,
+    pub gap_jump_mark: f64,
+    pub construction_policy: &'static str,
 }
 
 /// Canonical shared news process configuration.
@@ -562,6 +616,50 @@ impl Error for DoubleExponentialBaseShockSamplingError {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum CoupledGapMarkConstructionError {
+    InvalidConfiguration { source: NewsMarkConfigurationError },
+    InvalidSharedSeverityMark { value: f64 },
+    InvalidSharedBaseShockMark { value: f64 },
+    InvalidConstructedGapMark { value: f64 },
+}
+
+impl Display for CoupledGapMarkConstructionError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidConfiguration { source } => {
+                write!(
+                    formatter,
+                    "coupled gap-mark configuration is invalid for construction: {source}"
+                )
+            }
+            Self::InvalidSharedSeverityMark { value } => write!(
+                formatter,
+                "shared severity mark must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidSharedBaseShockMark { value } => write!(
+                formatter,
+                "shared base-shock mark must be finite, found {value}"
+            ),
+            Self::InvalidConstructedGapMark { value } => write!(
+                formatter,
+                "constructed coupled gap mark must be finite, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for CoupledGapMarkConstructionError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidConfiguration { source } => Some(source),
+            Self::InvalidSharedSeverityMark { .. }
+            | Self::InvalidSharedBaseShockMark { .. }
+            | Self::InvalidConstructedGapMark { .. } => None,
+        }
+    }
+}
+
 fn sample_gamma_shape_scale<R>(shape_k: f64, scale_theta: f64, randomness_stream: &mut R) -> f64
 where
     R: SimulationRandomnessStream,
@@ -646,7 +744,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        CoupledGapMarkConfiguration, DOUBLE_EXPONENTIAL_BASE_SHOCK_SAMPLING_POLICY,
+        COUPLED_GAP_MARK_CONSTRUCTION_POLICY, CoupledGapMarkConfiguration,
+        CoupledGapMarkConstructionError, DOUBLE_EXPONENTIAL_BASE_SHOCK_SAMPLING_POLICY,
         DoubleExponentialBaseShockConfiguration, DoubleExponentialBaseShockSamplingError,
         GAMMA_SEVERITY_MARK_SAMPLING_POLICY, GammaSeverityMarkConfiguration,
         GammaSeverityMarkSamplingError, NEWS_INTENSITY_BASELINE_POLICY,
@@ -1049,5 +1148,66 @@ mod tests {
 
         assert_eq!(first_draws, second_draws);
         assert_ne!(first_draws, different_seed_draws);
+    }
+
+    #[test]
+    fn coupled_gap_mark_constructor_rejects_invalid_sigma_configuration() {
+        let construction_error = CoupledGapMarkConfiguration::new(-0.01)
+            .construct_gap_jump_mark(1.25, -0.5)
+            .expect_err("negative sigma_g must fail gap-mark construction");
+        assert!(matches!(
+            construction_error,
+            CoupledGapMarkConstructionError::InvalidConfiguration {
+                source: NewsMarkConfigurationError::InvalidSigmaG { value }
+            } if value == -0.01
+        ));
+
+        let non_finite_configuration_error = CoupledGapMarkConfiguration::new(f64::INFINITY)
+            .construct_gap_jump_mark(1.25, -0.5)
+            .expect_err("non-finite sigma_g must fail gap-mark construction");
+        assert!(matches!(
+            non_finite_configuration_error,
+            CoupledGapMarkConstructionError::InvalidConfiguration {
+                source: NewsMarkConfigurationError::InvalidSigmaG { value }
+            } if value.is_infinite()
+        ));
+    }
+
+    #[test]
+    fn coupled_gap_mark_constructor_deterministically_scales_shared_marks() {
+        let construction = CoupledGapMarkConfiguration::new(0.3)
+            .construct_gap_jump_mark(4.0, -1.25)
+            .expect("valid coupled-mark payload must construct");
+
+        assert!((construction.gap_jump_mark - (-0.75)).abs() <= 1e-12);
+        assert_eq!(construction.shared_severity_mark, 4.0);
+        assert_eq!(construction.shared_base_shock_mark, -1.25);
+        assert_eq!(construction.sigma_g, 0.3);
+        assert_eq!(
+            construction.construction_policy,
+            COUPLED_GAP_MARK_CONSTRUCTION_POLICY
+        );
+    }
+
+    #[test]
+    fn coupled_gap_mark_constructor_preserves_shared_severity_for_hawkes_and_gap_consumers() {
+        let shared_severity_mark = 2.25;
+        let shared_base_shock_mark = 0.8;
+        let sigma_g = 0.4;
+
+        let construction = CoupledGapMarkConfiguration::new(sigma_g)
+            .construct_gap_jump_mark(shared_severity_mark, shared_base_shock_mark)
+            .expect("valid shared marks must construct");
+
+        let hawkes_consumer_severity_mark = construction.shared_severity_mark;
+        let replayed_gap_jump_mark = construction.sigma_g
+            * hawkes_consumer_severity_mark.sqrt()
+            * construction.shared_base_shock_mark;
+
+        assert_eq!(hawkes_consumer_severity_mark, shared_severity_mark);
+        assert!(
+            (construction.gap_jump_mark - replayed_gap_jump_mark).abs() <= 1e-12,
+            "gap consumer must use the same shared severity mark used by Hawkes loading"
+        );
     }
 }
