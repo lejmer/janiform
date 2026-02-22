@@ -23,9 +23,20 @@ pub const NIG_SHARED_PLUS_SHIFT_CONFIGURATION_POLICY: &str =
     "buy_beta_equals_beta_0_and_sell_beta_equals_beta_0_plus_delta_beta.v1";
 pub const NIG_TRADING_TIME_RETURN_SIGN_CONVENTION_POLICY: &str =
     "buy_side_uses_psi_plus_of_u_and_sell_side_uses_psi_minus_of_negative_u.v1";
+pub const NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_REPORT_SCHEMA_VERSION: &str =
+    "nig.characteristic_exponent.guardrail_report.v1";
+pub const NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_DETERMINISM_POLICY: &str =
+    "stable_check_order_with_explicit_threshold_metadata.v1";
+pub const NIG_CHARACTERISTIC_EXPONENT_STABILITY_POLICY: &str =
+    "gamma_minus_sqrt_term_uses_rationalized_difference_when_cancellation_risk_is_detected.v1";
+
+const NIG_ALPHA_BETA_MARGIN_WARNING_RELATIVE_THRESHOLD: f64 = 1.0e-10;
+const NIG_RADICAND_WARNING_RELATIVE_THRESHOLD: f64 = 1.0e-12;
+const NIG_CANCELLATION_WARNING_THRESHOLD: f64 = 1.0e-10;
+const NIG_COMPLEX_DIVISION_MIN_DENOMINATOR_NORM: f64 = 1.0e-24;
 
 /// Minimal deterministic complex scalar used by transform-side APIs.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct ComplexScalar {
     pub real: f64,
     pub imaginary: f64,
@@ -62,6 +73,37 @@ impl ComplexScalar {
 
     pub fn scale(self, value: f64) -> Self {
         Self::new(self.real * value, self.imaginary * value)
+    }
+
+    pub fn divide(self, denominator: Self) -> Option<Self> {
+        let denominator_norm_squared = denominator.real.mul_add(
+            denominator.real,
+            denominator.imaginary * denominator.imaginary,
+        );
+        if !denominator_norm_squared.is_finite()
+            || denominator_norm_squared <= NIG_COMPLEX_DIVISION_MIN_DENOMINATOR_NORM
+        {
+            return None;
+        }
+
+        let real_numerator = self
+            .real
+            .mul_add(denominator.real, self.imaginary * denominator.imaginary);
+        let imaginary_numerator = self
+            .imaginary
+            .mul_add(denominator.real, -(self.real * denominator.imaginary));
+
+        let real_component = real_numerator / denominator_norm_squared;
+        let imaginary_component = imaginary_numerator / denominator_norm_squared;
+        if !real_component.is_finite() || !imaginary_component.is_finite() {
+            return None;
+        }
+
+        Some(Self::new(real_component, imaginary_component))
+    }
+
+    pub fn is_finite(self) -> bool {
+        self.real.is_finite() && self.imaginary.is_finite()
     }
 }
 
@@ -130,6 +172,66 @@ impl NigParameterValidationReport {
     }
 }
 
+/// Pass, warning, or failure status for numerical guardrails.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NigNumericalGuardrailStatus {
+    Pass,
+    Warning,
+    Fail,
+}
+
+/// Severity for one numerical guardrail event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NigNumericalGuardrailSeverity {
+    Warning,
+    Error,
+}
+
+/// Machine-readable event code for one guardrail hit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NigCharacteristicExponentGuardrailCode {
+    NonFiniteInput,
+    AlphaBetaBoundaryProximity,
+    AlphaBetaDomainViolation,
+    TransformRadicandProximity,
+    CancellationSensitiveDifference,
+    RationalizedDifferenceFallback,
+    NonFiniteEvaluationOutput,
+}
+
+/// One deterministic guardrail event emitted during exponent evaluation.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct NigCharacteristicExponentGuardrailEvent {
+    pub code: NigCharacteristicExponentGuardrailCode,
+    pub severity: NigNumericalGuardrailSeverity,
+    pub metric: &'static str,
+    pub observed_value: Option<f64>,
+    pub threshold_value: Option<f64>,
+    pub detail: &'static str,
+}
+
+/// Machine-readable exponent value plus guardrail metadata.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct NigCharacteristicExponentEvaluationReport {
+    pub schema_version: &'static str,
+    pub determinism_policy: &'static str,
+    pub stability_policy: &'static str,
+    pub status: NigNumericalGuardrailStatus,
+    pub argument: ComplexScalar,
+    pub alpha_beta_margin: f64,
+    pub alpha_beta_margin_warning_threshold: f64,
+    pub radicand_norm: f64,
+    pub radicand_warning_threshold: f64,
+    pub cancellation_ratio: f64,
+    pub cancellation_warning_threshold: f64,
+    pub used_rationalized_difference: bool,
+    pub events: Vec<NigCharacteristicExponentGuardrailEvent>,
+    pub value: Option<ComplexScalar>,
+}
+
 /// Canonical NIG parameter payload used by pricing and simulation drivers.
 ///
 /// Domain constraints:
@@ -161,22 +263,259 @@ impl NigParameters {
     /// The complex square root uses the principal branch with a positive
     /// imaginary value on the negative real axis to keep branch handling explicit.
     pub fn characteristic_exponent(self, argument: ComplexScalar) -> ComplexScalar {
+        self.characteristic_exponent_with_guardrails(argument)
+            .value
+            .unwrap_or(ComplexScalar::new(f64::NAN, f64::NAN))
+    }
+
+    /// Evaluate the characteristic exponent and emit deterministic numerical diagnostics.
+    pub fn characteristic_exponent_with_guardrails(
+        self,
+        argument: ComplexScalar,
+    ) -> NigCharacteristicExponentEvaluationReport {
+        let mut status = NigNumericalGuardrailStatus::Pass;
+        let mut events: Vec<NigCharacteristicExponentGuardrailEvent> = Vec::new();
+
+        let alpha_beta_margin = self.alpha - self.beta.abs();
+        let alpha_beta_margin_warning_threshold =
+            alpha_beta_margin_warning_threshold(self.alpha, self.beta);
+
+        let mut radicand_norm = f64::NAN;
+        let mut radicand_warning_threshold = f64::NAN;
+        let mut cancellation_ratio = f64::NAN;
+        let mut used_rationalized_difference = false;
+
+        collect_non_finite_guardrail_event(
+            &mut status,
+            "alpha",
+            self.alpha,
+            &mut events,
+            "alpha must be finite for characteristic exponent evaluation",
+        );
+        collect_non_finite_guardrail_event(
+            &mut status,
+            "beta",
+            self.beta,
+            &mut events,
+            "beta must be finite for characteristic exponent evaluation",
+        );
+        collect_non_finite_guardrail_event(
+            &mut status,
+            "delta",
+            self.delta,
+            &mut events,
+            "delta must be finite for characteristic exponent evaluation",
+        );
+        collect_non_finite_guardrail_event(
+            &mut status,
+            "mu",
+            self.mu,
+            &mut events,
+            "mu must be finite for characteristic exponent evaluation",
+        );
+        collect_non_finite_guardrail_event(
+            &mut status,
+            "argument_real",
+            argument.real,
+            &mut events,
+            "argument.real must be finite for characteristic exponent evaluation",
+        );
+        collect_non_finite_guardrail_event(
+            &mut status,
+            "argument_imaginary",
+            argument.imaginary,
+            &mut events,
+            "argument.imaginary must be finite for characteristic exponent evaluation",
+        );
+
+        if status == NigNumericalGuardrailStatus::Fail {
+            return NigCharacteristicExponentEvaluationReport {
+                schema_version: NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_REPORT_SCHEMA_VERSION,
+                determinism_policy: NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_DETERMINISM_POLICY,
+                stability_policy: NIG_CHARACTERISTIC_EXPONENT_STABILITY_POLICY,
+                status,
+                argument,
+                alpha_beta_margin,
+                alpha_beta_margin_warning_threshold,
+                radicand_norm,
+                radicand_warning_threshold,
+                cancellation_ratio,
+                cancellation_warning_threshold: NIG_CANCELLATION_WARNING_THRESHOLD,
+                used_rationalized_difference,
+                events,
+                value: None,
+            };
+        }
+
+        if alpha_beta_margin <= 0.0 {
+            push_guardrail_event(
+                &mut status,
+                &mut events,
+                NigCharacteristicExponentGuardrailCode::AlphaBetaDomainViolation,
+                NigNumericalGuardrailSeverity::Error,
+                "alpha_minus_abs_beta",
+                Some(alpha_beta_margin),
+                Some(0.0),
+                "alpha must be strictly greater than abs(beta)",
+            );
+
+            return NigCharacteristicExponentEvaluationReport {
+                schema_version: NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_REPORT_SCHEMA_VERSION,
+                determinism_policy: NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_DETERMINISM_POLICY,
+                stability_policy: NIG_CHARACTERISTIC_EXPONENT_STABILITY_POLICY,
+                status,
+                argument,
+                alpha_beta_margin,
+                alpha_beta_margin_warning_threshold,
+                radicand_norm,
+                radicand_warning_threshold,
+                cancellation_ratio,
+                cancellation_warning_threshold: NIG_CANCELLATION_WARNING_THRESHOLD,
+                used_rationalized_difference,
+                events,
+                value: None,
+            };
+        }
+
+        if alpha_beta_margin <= alpha_beta_margin_warning_threshold {
+            push_guardrail_event(
+                &mut status,
+                &mut events,
+                NigCharacteristicExponentGuardrailCode::AlphaBetaBoundaryProximity,
+                NigNumericalGuardrailSeverity::Warning,
+                "alpha_minus_abs_beta",
+                Some(alpha_beta_margin),
+                Some(alpha_beta_margin_warning_threshold),
+                "alpha is near the abs(beta) boundary and may amplify floating-point sensitivity",
+            );
+        }
+
         let beta_plus_imaginary_argument =
             ComplexScalar::new(self.beta - argument.imaginary, argument.real);
-
         let alpha_squared = self.alpha * self.alpha;
         let radicand =
             ComplexScalar::new(alpha_squared, 0.0).subtract(beta_plus_imaginary_argument.square());
-        let square_root_term = principal_branch_square_root(radicand);
 
+        radicand_norm = radicand.norm();
+        radicand_warning_threshold =
+            compute_radicand_warning_threshold(self.alpha, beta_plus_imaginary_argument);
+
+        if radicand_norm <= radicand_warning_threshold {
+            push_guardrail_event(
+                &mut status,
+                &mut events,
+                NigCharacteristicExponentGuardrailCode::TransformRadicandProximity,
+                NigNumericalGuardrailSeverity::Warning,
+                "radicand_norm",
+                Some(radicand_norm),
+                Some(radicand_warning_threshold),
+                "transform radicand is near zero and branch sensitivity may increase",
+            );
+        }
+
+        let square_root_term = principal_branch_square_root(radicand);
         let gamma = stable_gamma(self.alpha, self.beta);
+        if !gamma.is_finite() {
+            push_guardrail_event(
+                &mut status,
+                &mut events,
+                NigCharacteristicExponentGuardrailCode::NonFiniteEvaluationOutput,
+                NigNumericalGuardrailSeverity::Error,
+                "gamma",
+                Some(gamma),
+                None,
+                "gamma term became non-finite during characteristic exponent evaluation",
+            );
+
+            return NigCharacteristicExponentEvaluationReport {
+                schema_version: NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_REPORT_SCHEMA_VERSION,
+                determinism_policy: NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_DETERMINISM_POLICY,
+                stability_policy: NIG_CHARACTERISTIC_EXPONENT_STABILITY_POLICY,
+                status,
+                argument,
+                alpha_beta_margin,
+                alpha_beta_margin_warning_threshold,
+                radicand_norm,
+                radicand_warning_threshold,
+                cancellation_ratio,
+                cancellation_warning_threshold: NIG_CANCELLATION_WARNING_THRESHOLD,
+                used_rationalized_difference,
+                events,
+                value: None,
+            };
+        }
+
+        let direct_difference = ComplexScalar::new(gamma, 0.0).subtract(square_root_term);
+        let cancellation_scale = (gamma.abs() + square_root_term.norm()).max(f64::MIN_POSITIVE);
+        cancellation_ratio = direct_difference.norm() / cancellation_scale;
+        let mut gamma_minus_square_root = direct_difference;
+
+        if cancellation_ratio <= NIG_CANCELLATION_WARNING_THRESHOLD {
+            push_guardrail_event(
+                &mut status,
+                &mut events,
+                NigCharacteristicExponentGuardrailCode::CancellationSensitiveDifference,
+                NigNumericalGuardrailSeverity::Warning,
+                "cancellation_ratio",
+                Some(cancellation_ratio),
+                Some(NIG_CANCELLATION_WARNING_THRESHOLD),
+                "gamma minus square-root term is cancellation-sensitive and uses stable rationalization",
+            );
+
+            let numerator = ComplexScalar::new(gamma * gamma, 0.0).subtract(radicand);
+            let denominator = ComplexScalar::new(gamma, 0.0).add(square_root_term);
+
+            if let Some(rationalized_difference) = numerator.divide(denominator) {
+                gamma_minus_square_root = rationalized_difference;
+                used_rationalized_difference = true;
+            } else {
+                push_guardrail_event(
+                    &mut status,
+                    &mut events,
+                    NigCharacteristicExponentGuardrailCode::RationalizedDifferenceFallback,
+                    NigNumericalGuardrailSeverity::Warning,
+                    "rationalized_denominator_norm",
+                    Some(denominator.norm()),
+                    Some(NIG_COMPLEX_DIVISION_MIN_DENOMINATOR_NORM),
+                    "rationalized difference was unstable and evaluation used direct subtraction",
+                );
+            }
+        }
+
         let location_term =
             ComplexScalar::new(-self.mu * argument.imaginary, self.mu * argument.real);
-        let shape_term = ComplexScalar::new(gamma, 0.0)
-            .subtract(square_root_term)
-            .scale(self.delta);
+        let shape_term = gamma_minus_square_root.scale(self.delta);
+        let value = location_term.add(shape_term);
 
-        location_term.add(shape_term)
+        if !value.is_finite() {
+            push_guardrail_event(
+                &mut status,
+                &mut events,
+                NigCharacteristicExponentGuardrailCode::NonFiniteEvaluationOutput,
+                NigNumericalGuardrailSeverity::Error,
+                "characteristic_exponent_norm",
+                Some(value.norm()),
+                None,
+                "characteristic exponent result became non-finite",
+            );
+        }
+
+        NigCharacteristicExponentEvaluationReport {
+            schema_version: NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_REPORT_SCHEMA_VERSION,
+            determinism_policy: NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_DETERMINISM_POLICY,
+            stability_policy: NIG_CHARACTERISTIC_EXPONENT_STABILITY_POLICY,
+            status,
+            argument,
+            alpha_beta_margin,
+            alpha_beta_margin_warning_threshold,
+            radicand_norm,
+            radicand_warning_threshold,
+            cancellation_ratio,
+            cancellation_warning_threshold: NIG_CANCELLATION_WARNING_THRESHOLD,
+            used_rationalized_difference,
+            events,
+            value: if value.is_finite() { Some(value) } else { None },
+        }
     }
 
     /// Sample one business-time increment from the NIG Lévy driver.
@@ -793,14 +1132,85 @@ fn collect_positive_violation(
     }
 }
 
+fn alpha_beta_margin_warning_threshold(alpha: f64, beta: f64) -> f64 {
+    let scale = alpha.abs().max(beta.abs()).max(1.0);
+    scale * NIG_ALPHA_BETA_MARGIN_WARNING_RELATIVE_THRESHOLD
+}
+
+fn compute_radicand_warning_threshold(
+    alpha: f64,
+    beta_plus_imaginary_argument: ComplexScalar,
+) -> f64 {
+    let transform_scale = alpha
+        .abs()
+        .max(beta_plus_imaginary_argument.norm())
+        .max(1.0);
+    transform_scale * transform_scale * NIG_RADICAND_WARNING_RELATIVE_THRESHOLD
+}
+
+fn push_guardrail_event(
+    status: &mut NigNumericalGuardrailStatus,
+    events: &mut Vec<NigCharacteristicExponentGuardrailEvent>,
+    code: NigCharacteristicExponentGuardrailCode,
+    severity: NigNumericalGuardrailSeverity,
+    metric: &'static str,
+    observed_value: Option<f64>,
+    threshold_value: Option<f64>,
+    detail: &'static str,
+) {
+    match severity {
+        NigNumericalGuardrailSeverity::Warning => {
+            if *status == NigNumericalGuardrailStatus::Pass {
+                *status = NigNumericalGuardrailStatus::Warning;
+            }
+        }
+        NigNumericalGuardrailSeverity::Error => {
+            *status = NigNumericalGuardrailStatus::Fail;
+        }
+    }
+
+    events.push(NigCharacteristicExponentGuardrailEvent {
+        code,
+        severity,
+        metric,
+        observed_value,
+        threshold_value,
+        detail,
+    });
+}
+
+fn collect_non_finite_guardrail_event(
+    status: &mut NigNumericalGuardrailStatus,
+    metric: &'static str,
+    observed_value: f64,
+    events: &mut Vec<NigCharacteristicExponentGuardrailEvent>,
+    detail: &'static str,
+) {
+    if !observed_value.is_finite() {
+        push_guardrail_event(
+            status,
+            events,
+            NigCharacteristicExponentGuardrailCode::NonFiniteInput,
+            NigNumericalGuardrailSeverity::Error,
+            metric,
+            Some(observed_value),
+            None,
+            detail,
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        ComplexScalar, NIG_INCREMENT_NEAR_ZERO_SCALE_POLICY, NIG_INCREMENT_SAMPLING_POLICY,
-        NIG_SHARED_PLUS_SHIFT_CONFIGURATION_POLICY, NIG_TRADING_TIME_RETURN_SIGN_CONVENTION_POLICY,
-        NigIncrementSamplingError, NigParameterConstraint, NigParameterError, NigParameters,
-        NigSharedPlusShiftConfiguration, NigSharedPlusShiftConfigurationError, NigValidationStatus,
-        stable_gamma,
+        ComplexScalar, NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_DETERMINISM_POLICY,
+        NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_REPORT_SCHEMA_VERSION,
+        NIG_CHARACTERISTIC_EXPONENT_STABILITY_POLICY, NIG_INCREMENT_NEAR_ZERO_SCALE_POLICY,
+        NIG_INCREMENT_SAMPLING_POLICY, NIG_SHARED_PLUS_SHIFT_CONFIGURATION_POLICY,
+        NIG_TRADING_TIME_RETURN_SIGN_CONVENTION_POLICY, NigCharacteristicExponentGuardrailCode,
+        NigIncrementSamplingError, NigNumericalGuardrailStatus, NigParameterConstraint,
+        NigParameterError, NigParameters, NigSharedPlusShiftConfiguration,
+        NigSharedPlusShiftConfigurationError, NigValidationStatus, stable_gamma,
     };
     use crate::randomness::{SimulationRandomnessStream, SplitMix64SimulationRandomnessStream};
 
@@ -1067,6 +1477,97 @@ mod tests {
             for imaginary_argument in imaginary_argument_grid {
                 let value = parameters
                     .characteristic_exponent(ComplexScalar::new(real_argument, imaginary_argument));
+                assert!(value.real.is_finite());
+                assert!(value.imaginary.is_finite());
+            }
+        }
+    }
+
+    #[test]
+    fn characteristic_exponent_guardrail_report_schema_is_machine_readable() {
+        let parameters = NigParameters::try_new(1.00000000005, 1.0, 0.2, -0.03)
+            .expect("near-boundary but valid parameters should construct");
+        let report =
+            parameters.characteristic_exponent_with_guardrails(ComplexScalar::new(0.0, 0.0));
+
+        let serialized_report =
+            serde_json::to_value(&report).expect("guardrail report should serialize");
+
+        assert_eq!(
+            serialized_report["schema_version"],
+            serde_json::Value::String(
+                NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_REPORT_SCHEMA_VERSION.to_string()
+            )
+        );
+        assert_eq!(
+            serialized_report["determinism_policy"],
+            serde_json::Value::String(
+                NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_DETERMINISM_POLICY.to_string()
+            )
+        );
+        assert_eq!(
+            serialized_report["stability_policy"],
+            serde_json::Value::String(NIG_CHARACTERISTIC_EXPONENT_STABILITY_POLICY.to_string())
+        );
+        assert!(serialized_report.get("status").is_some());
+        assert!(serialized_report.get("argument").is_some());
+        assert!(serialized_report.get("events").is_some());
+        assert!(serialized_report.get("value").is_some());
+    }
+
+    #[test]
+    fn characteristic_exponent_guardrails_trigger_near_alpha_beta_boundary() {
+        let parameters = NigParameters::try_new(1.00000000005, 1.0, 0.2, -0.03)
+            .expect("near-boundary but valid parameters should construct");
+        let report =
+            parameters.characteristic_exponent_with_guardrails(ComplexScalar::new(0.0, 0.0));
+
+        assert_eq!(report.status, NigNumericalGuardrailStatus::Warning);
+        assert!(report.value.is_some());
+        assert!(report.events.iter().any(|event| event.code
+            == NigCharacteristicExponentGuardrailCode::AlphaBetaBoundaryProximity));
+    }
+
+    #[test]
+    fn characteristic_exponent_guardrails_fail_on_alpha_beta_domain_violation() {
+        let invalid_parameters = NigParameters {
+            alpha: 1.0,
+            beta: 1.0,
+            delta: 0.2,
+            mu: -0.03,
+        };
+        let report = invalid_parameters
+            .characteristic_exponent_with_guardrails(ComplexScalar::new(0.3, 0.0));
+
+        assert_eq!(report.status, NigNumericalGuardrailStatus::Fail);
+        assert!(report.value.is_none());
+        assert!(
+            report.events.iter().any(|event| event.code
+                == NigCharacteristicExponentGuardrailCode::AlphaBetaDomainViolation)
+        );
+    }
+
+    #[test]
+    fn characteristic_exponent_guardrail_path_is_stable_for_extreme_argument_ranges() {
+        let parameters = NigParameters::try_new(1.00000000005, 1.0, 0.2, -0.03)
+            .expect("near-boundary but valid parameters should construct");
+
+        let real_argument_grid = [-250.0, -100.0, -20.0, 0.0, 20.0, 100.0, 250.0];
+        let imaginary_argument_grid = [-6.0, -2.0, 0.0, 2.0, 6.0];
+
+        for real_argument in real_argument_grid {
+            for imaginary_argument in imaginary_argument_grid {
+                let report = parameters.characteristic_exponent_with_guardrails(
+                    ComplexScalar::new(real_argument, imaginary_argument),
+                );
+
+                assert_ne!(report.status, NigNumericalGuardrailStatus::Fail);
+                assert!(report.value.is_some());
+
+                let value = report
+                    .value
+                    .expect("successful guardrail evaluation should include a value");
+
                 assert!(value.real.is_finite());
                 assert!(value.imaginary.is_finite());
             }
