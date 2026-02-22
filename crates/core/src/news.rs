@@ -9,11 +9,15 @@ use std::fmt::{Display, Formatter};
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::randomness::SimulationRandomnessStream;
+
 pub const NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION: &str = "news.process.configuration.v1";
 pub const NEWS_INTENSITY_BASELINE_POLICY: &str =
     "closed_window_share_times_baseline_intensity_times_deterministic_multiplier.v1";
 pub const NEWS_INTENSITY_DETERMINISTIC_INPUT_POLICY: &str =
     "interval_indexed_non_negative_multiplier_with_default_one.v1";
+pub const GAMMA_SEVERITY_MARK_SAMPLING_POLICY: &str =
+    "marsaglia_tsang_shape_scale_with_shape_less_than_one_boost.v1";
 
 /// Deterministic intensity policy configuration for `nu_news(t)`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -100,7 +104,13 @@ impl GammaSeverityMarkConfiguration {
         }
     }
 
-    fn validate(self) -> Result<(), NewsMarkConfigurationError> {
+    pub fn try_new(shape_k: f64, scale_theta: f64) -> Result<Self, NewsMarkConfigurationError> {
+        let configuration = Self::new(shape_k, scale_theta);
+        configuration.validate()?;
+        Ok(configuration)
+    }
+
+    pub fn validate(self) -> Result<(), NewsMarkConfigurationError> {
         if !self.shape_k.is_finite() || self.shape_k <= 0.0 {
             return Err(NewsMarkConfigurationError::InvalidGammaShapeK {
                 value: self.shape_k,
@@ -113,6 +123,31 @@ impl GammaSeverityMarkConfiguration {
         }
 
         Ok(())
+    }
+
+    /// Sample one severity mark `U ~ Gamma(k_U, theta_U)` using shape-scale parameters.
+    ///
+    /// This API is intentionally independent from news-arrival generation so downstream
+    /// consumers can reuse one sampled mark across Hawkes loading and coupled gap construction.
+    pub fn sample_severity_mark<R>(
+        self,
+        randomness_stream: &mut R,
+    ) -> Result<f64, GammaSeverityMarkSamplingError>
+    where
+        R: SimulationRandomnessStream,
+    {
+        self.validate()
+            .map_err(|source| GammaSeverityMarkSamplingError::InvalidConfiguration { source })?;
+
+        let sampled_mark =
+            sample_gamma_shape_scale(self.shape_k, self.scale_theta, randomness_stream);
+        if !sampled_mark.is_finite() || sampled_mark < 0.0 {
+            return Err(GammaSeverityMarkSamplingError::InvalidSampledMark {
+                value: sampled_mark,
+            });
+        }
+
+        Ok(sampled_mark)
     }
 }
 
@@ -411,14 +446,118 @@ impl Display for NewsDeterministicIntensityEvaluationError {
 
 impl Error for NewsDeterministicIntensityEvaluationError {}
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum GammaSeverityMarkSamplingError {
+    InvalidConfiguration { source: NewsMarkConfigurationError },
+    InvalidSampledMark { value: f64 },
+}
+
+impl Display for GammaSeverityMarkSamplingError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidConfiguration { source } => {
+                write!(
+                    formatter,
+                    "gamma severity mark configuration is invalid for sampling: {source}"
+                )
+            }
+            Self::InvalidSampledMark { value } => write!(
+                formatter,
+                "gamma severity sampling produced a non-finite or negative mark, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for GammaSeverityMarkSamplingError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidConfiguration { source } => Some(source),
+            Self::InvalidSampledMark { .. } => None,
+        }
+    }
+}
+
+fn sample_gamma_shape_scale<R>(shape_k: f64, scale_theta: f64, randomness_stream: &mut R) -> f64
+where
+    R: SimulationRandomnessStream,
+{
+    sample_gamma_unit_scale(shape_k, randomness_stream) * scale_theta
+}
+
+fn sample_gamma_unit_scale<R>(shape_k: f64, randomness_stream: &mut R) -> f64
+where
+    R: SimulationRandomnessStream,
+{
+    if shape_k < 1.0 {
+        let boosted_sample = sample_gamma_shape_at_least_one(shape_k + 1.0, randomness_stream);
+        let uniform_draw = randomness_stream
+            .next_unit_interval_f64()
+            .clamp(f64::MIN_POSITIVE, 1.0 - f64::EPSILON);
+        return boosted_sample * uniform_draw.powf(1.0 / shape_k);
+    }
+
+    sample_gamma_shape_at_least_one(shape_k, randomness_stream)
+}
+
+fn sample_gamma_shape_at_least_one<R>(shape_k: f64, randomness_stream: &mut R) -> f64
+where
+    R: SimulationRandomnessStream,
+{
+    let d = shape_k - (1.0 / 3.0);
+    let c = (9.0 * d).sqrt().recip();
+
+    loop {
+        let standard_normal_draw = sample_standard_normal_draw(randomness_stream);
+        let one_plus_cx = 1.0 + c * standard_normal_draw;
+        if one_plus_cx <= 0.0 {
+            continue;
+        }
+
+        let v = one_plus_cx * one_plus_cx * one_plus_cx;
+        let uniform_draw = randomness_stream
+            .next_unit_interval_f64()
+            .clamp(f64::MIN_POSITIVE, 1.0 - f64::EPSILON);
+
+        if uniform_draw < 1.0 - 0.0331 * standard_normal_draw.powi(4) {
+            return d * v;
+        }
+
+        if uniform_draw.ln()
+            < 0.5 * standard_normal_draw * standard_normal_draw + d * (1.0 - v + v.ln())
+        {
+            return d * v;
+        }
+    }
+}
+
+fn sample_standard_normal_draw<R>(randomness_stream: &mut R) -> f64
+where
+    R: SimulationRandomnessStream,
+{
+    let first_uniform_draw = randomness_stream
+        .next_unit_interval_f64()
+        .clamp(f64::MIN_POSITIVE, 1.0 - f64::EPSILON);
+    let second_uniform_draw = randomness_stream
+        .next_unit_interval_f64()
+        .clamp(0.0, 1.0 - f64::EPSILON);
+
+    let radius = (-2.0 * first_uniform_draw.ln()).sqrt();
+    let angle = 2.0 * std::f64::consts::PI * second_uniform_draw;
+
+    radius * angle.cos()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
-        GammaSeverityMarkConfiguration, NEWS_INTENSITY_BASELINE_POLICY,
+        GAMMA_SEVERITY_MARK_SAMPLING_POLICY, GammaSeverityMarkConfiguration,
+        GammaSeverityMarkSamplingError, NEWS_INTENSITY_BASELINE_POLICY,
         NEWS_INTENSITY_DETERMINISTIC_INPUT_POLICY, NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION,
-        NewsIntensityConfiguration, NewsProcessConfiguration,
+        NewsIntensityConfiguration, NewsMarkConfigurationError, NewsProcessConfiguration,
     };
+    use crate::randomness::SplitMix64SimulationRandomnessStream;
     use serde_json::json;
 
     #[test]
@@ -544,6 +683,122 @@ mod tests {
         assert_eq!(
             multiplier_error.to_string(),
             "deterministic_time_multiplier must be finite and non-negative, found -0.2"
+        );
+    }
+
+    #[test]
+    fn gamma_severity_configuration_try_new_rejects_invalid_parameters() {
+        let invalid_shape_error = GammaSeverityMarkConfiguration::try_new(0.0, 1.0)
+            .expect_err("shape_k must be strictly positive");
+        assert!(matches!(
+            invalid_shape_error,
+            NewsMarkConfigurationError::InvalidGammaShapeK { value } if value == 0.0
+        ));
+
+        let invalid_scale_error = GammaSeverityMarkConfiguration::try_new(1.0, -0.5)
+            .expect_err("scale_theta must be strictly positive");
+        assert!(matches!(
+            invalid_scale_error,
+            NewsMarkConfigurationError::InvalidGammaScaleTheta { value } if value == -0.5
+        ));
+    }
+
+    #[test]
+    fn gamma_severity_sampler_rejects_invalid_configuration_at_sampling_time() {
+        let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(44_101);
+        let invalid_configuration = GammaSeverityMarkConfiguration::new(-1.0, 0.8);
+
+        let sampling_error = invalid_configuration
+            .sample_severity_mark(&mut randomness_stream)
+            .expect_err("invalid shape parameter must fail fast before sampling");
+
+        assert!(matches!(
+            sampling_error,
+            GammaSeverityMarkSamplingError::InvalidConfiguration {
+                source: NewsMarkConfigurationError::InvalidGammaShapeK { value },
+            } if value == -1.0
+        ));
+    }
+
+    #[test]
+    fn gamma_severity_sampler_outputs_finite_non_negative_marks() {
+        let configuration = GammaSeverityMarkConfiguration::try_new(2.25, 0.6)
+            .expect("valid gamma severity configuration should construct");
+        let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(55_101);
+
+        let mut sampled_marks: Vec<f64> = Vec::with_capacity(2_048);
+        for _sample_index in 0..2_048 {
+            let sampled_mark = configuration
+                .sample_severity_mark(&mut randomness_stream)
+                .expect("sampling with valid parameters should succeed");
+            sampled_marks.push(sampled_mark);
+        }
+
+        assert!(sampled_marks.iter().all(|sample| sample.is_finite()));
+        assert!(sampled_marks.iter().all(|sample| *sample >= 0.0));
+    }
+
+    #[test]
+    fn gamma_severity_sampler_is_seed_reproducible() {
+        let configuration = GammaSeverityMarkConfiguration::try_new(1.7, 1.2)
+            .expect("valid gamma severity configuration should construct");
+        let mut first_stream = SplitMix64SimulationRandomnessStream::from_seed(77_201);
+        let mut second_stream = SplitMix64SimulationRandomnessStream::from_seed(77_201);
+        let mut different_seed_stream = SplitMix64SimulationRandomnessStream::from_seed(77_202);
+
+        let first_draws: Vec<f64> = (0..64)
+            .map(|_| {
+                configuration
+                    .sample_severity_mark(&mut first_stream)
+                    .expect("first seeded stream should sample")
+            })
+            .collect();
+        let second_draws: Vec<f64> = (0..64)
+            .map(|_| {
+                configuration
+                    .sample_severity_mark(&mut second_stream)
+                    .expect("second seeded stream should sample")
+            })
+            .collect();
+        let different_seed_draws: Vec<f64> = (0..64)
+            .map(|_| {
+                configuration
+                    .sample_severity_mark(&mut different_seed_stream)
+                    .expect("different seeded stream should sample")
+            })
+            .collect();
+
+        assert_eq!(first_draws, second_draws);
+        assert_ne!(first_draws, different_seed_draws);
+        assert_eq!(
+            GAMMA_SEVERITY_MARK_SAMPLING_POLICY,
+            "marsaglia_tsang_shape_scale_with_shape_less_than_one_boost.v1"
+        );
+    }
+
+    #[test]
+    fn gamma_severity_sampler_mean_tracks_shape_scale_expectation() {
+        let shape_k = 2.4;
+        let scale_theta = 0.75;
+        let expected_mean = shape_k * scale_theta;
+        let sample_count = 40_000;
+
+        let configuration = GammaSeverityMarkConfiguration::try_new(shape_k, scale_theta)
+            .expect("valid gamma severity configuration should construct");
+        let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(91_502);
+
+        let mut sample_sum = 0.0;
+        for _sample_index in 0..sample_count {
+            sample_sum += configuration
+                .sample_severity_mark(&mut randomness_stream)
+                .expect("sampling with valid parameters should succeed");
+        }
+        let sample_mean = sample_sum / sample_count as f64;
+
+        let relative_error = (sample_mean - expected_mean).abs() / expected_mean;
+        assert!(
+            relative_error <= 0.03,
+            "sample mean should stay close to expectation, expected_mean={expected_mean}, sample_mean={sample_mean}, relative_error={relative_error}"
         );
     }
 }
