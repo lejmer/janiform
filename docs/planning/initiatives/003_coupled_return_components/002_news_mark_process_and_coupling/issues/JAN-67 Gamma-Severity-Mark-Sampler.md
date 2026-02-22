@@ -1,4 +1,4 @@
-## ISSUE-002: Gamma Severity Mark Sampler
+## Gamma Severity Mark Sampler
 
 ### Description
 Implement severity mark sampling `U ~ Gamma(k_U, theta_U)` for news arrivals with deterministic seeded behavior and domain validation.
@@ -15,5 +15,6 @@ Implement severity mark sampling `U ~ Gamma(k_U, theta_U)` for news arrivals wit
 - Seed reproducibility tests for repeated sampling runs
 
 ### Notes/Constraints
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Reuse shared RNG abstraction for cross-module determinism
 - Keep sampler implementation decoupled from arrival-process logic
