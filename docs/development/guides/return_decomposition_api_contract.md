@@ -34,6 +34,8 @@ Pricing and simulation use this contract in their public NIG adapter entrypoints
 
 - `pricing::compose_nig_trading_time_exponent_for_pricing`
 - `pricing::compose_nig_trading_time_exponent_for_coarse_transform_integration`
+- `pricing::compose_total_return_characteristic_function_for_pricing`
+- `pricing::compose_total_return_characteristic_function_for_coarse_transform_integration`
 - `simulation::sample_nig_trading_time_increment_for_simulation`
 
 This keeps component wiring explicit and prevents anonymous tuple-style passing.
