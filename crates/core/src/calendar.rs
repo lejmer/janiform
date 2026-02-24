@@ -92,6 +92,8 @@ const CALENDAR_REGISTRY_SCHEMA_VERSION: &str = "calendar.registry.v1";
 pub const TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION: &str = "seasonality.timestamp_event.v1";
 pub const PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION: &str =
     "seasonality.timestamp_event.preprocessed.v1";
+pub const MARKET_STATE_RESOLUTION_POLICY: &str = "resolve_market_state_at_utc.v1";
+pub const SESSION_WINDOW_BOUNDARY_POLICY: &str = "open_inclusive_close_exclusive.v1";
 pub use crate::seasonality::{
     DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
     DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
