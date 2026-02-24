@@ -10,6 +10,7 @@ use janiform_core::nig::{
 };
 use janiform_core::pricing::compose_nig_trading_time_exponent_for_pricing;
 use janiform_core::randomness::SplitMix64SimulationRandomnessStream;
+use janiform_core::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
 use janiform_core::simulation::sample_nig_trading_time_increment_for_simulation;
 use serde::Deserialize;
 
@@ -205,11 +206,14 @@ fn exponent_reference_cases_match_pricing_interface_values() {
     let driver_parameters = derive_driver_parameters(fixture_document.driver_configuration);
 
     for fixture_case in &fixture_document.exponent_cases {
+        let return_decomposition = fixture_return_decomposition(
+            fixture_case.integrated_buy_intensity,
+            fixture_case.integrated_sell_intensity,
+        );
         let observed = compose_nig_trading_time_exponent_for_pricing(
             driver_parameters,
             fixture_case.argument.into_core(),
-            fixture_case.integrated_buy_intensity,
-            fixture_case.integrated_sell_intensity,
+            return_decomposition,
         );
 
         assert_eq!(
@@ -247,11 +251,14 @@ fn seeded_sampling_sanity_cases_match_expected_statistics_and_pricing_cf() {
     for fixture_case in &fixture_document.sampling_sanity_cases {
         let observed_summary = run_sampling_sanity_summary(driver_parameters, fixture_case);
 
+        let return_decomposition = fixture_return_decomposition(
+            fixture_case.integrated_buy_intensity,
+            fixture_case.integrated_sell_intensity,
+        );
         let expected_exponent_contributions = compose_nig_trading_time_exponent_for_pricing(
             driver_parameters,
             ComplexScalar::new(fixture_case.characteristic_function_argument_real, 0.0),
-            fixture_case.integrated_buy_intensity,
-            fixture_case.integrated_sell_intensity,
+            return_decomposition,
         );
         let expected_characteristic_function =
             complex_exponential(expected_exponent_contributions.combined_weighted_exponent);
@@ -359,13 +366,17 @@ fn run_sampling_sanity_summary(
     let mut characteristic_function_imaginary_sum = 0.0_f64;
 
     for sample_number in 1..=fixture_case.sample_count {
-        let sampled_increment_contributions = sample_nig_trading_time_increment_for_simulation(
-            driver_parameters,
+        let return_decomposition = fixture_return_decomposition(
             fixture_case.integrated_buy_intensity,
             fixture_case.integrated_sell_intensity,
+        );
+        let sampled_increment_contributions = sample_nig_trading_time_increment_for_simulation(
+            driver_parameters,
+            return_decomposition,
             &mut randomness_stream,
         )
         .expect("fixture sampling case should succeed");
+
         assert_eq!(
             sampled_increment_contributions.policy,
             NIG_TRADING_TIME_INCREMENT_COMPOSITION_POLICY
@@ -394,6 +405,18 @@ fn run_sampling_sanity_summary(
             characteristic_function_imaginary_sum / sample_count_as_float,
         ),
     }
+}
+
+fn fixture_return_decomposition(
+    integrated_buy_intensity: f64,
+    integrated_sell_intensity: f64,
+) -> ReturnDecomposition {
+    ReturnDecomposition::try_new(ReturnDecompositionInput {
+        a_plus: integrated_buy_intensity,
+        a_minus: integrated_sell_intensity,
+        gap: 0.0,
+    })
+    .expect("fixture decomposition components should be valid")
 }
 
 fn complex_exponential(value: ComplexScalar) -> ComplexScalar {

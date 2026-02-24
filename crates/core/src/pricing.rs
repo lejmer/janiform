@@ -12,6 +12,7 @@ use crate::hourly_factors::HourlyFactorContractOutput;
 use crate::nig::{
     ComplexScalar, NigBuySellDriverParameters, NigTradingTimeCharacteristicExponentContributions,
 };
+use crate::return_decomposition::ReturnDecomposition;
 
 /// Resolve interval-aligned hourly factors for the pricing path.
 pub fn load_hourly_factor_contract_for_pricing(
@@ -44,13 +45,12 @@ pub fn project_hawkes_intensities_for_coarse_interval(
 pub fn compose_nig_trading_time_exponent_for_pricing(
     driver_parameters: NigBuySellDriverParameters,
     argument: ComplexScalar,
-    integrated_buy_intensity: f64,
-    integrated_sell_intensity: f64,
+    return_decomposition: ReturnDecomposition,
 ) -> NigTradingTimeCharacteristicExponentContributions {
     driver_parameters.compose_trading_time_weighted_characteristic_exponent(
         argument,
-        integrated_buy_intensity,
-        integrated_sell_intensity,
+        return_decomposition.integrated_buy_intensity(),
+        return_decomposition.integrated_sell_intensity(),
     )
 }
 
@@ -61,13 +61,12 @@ pub fn compose_nig_trading_time_exponent_for_pricing(
 pub fn compose_nig_trading_time_exponent_for_coarse_transform_integration(
     driver_parameters: NigBuySellDriverParameters,
     argument: ComplexScalar,
-    integrated_buy_intensity: f64,
-    integrated_sell_intensity: f64,
+    return_decomposition: ReturnDecomposition,
 ) -> NigTradingTimeCharacteristicExponentContributions {
     driver_parameters.compose_trading_time_weighted_characteristic_exponent(
         argument,
-        integrated_buy_intensity,
-        integrated_sell_intensity,
+        return_decomposition.integrated_buy_intensity(),
+        return_decomposition.integrated_sell_intensity(),
     )
 }
 
@@ -86,6 +85,7 @@ pub fn evolve_hawkes_state_for_coarse_interval_step(
 #[cfg(test)]
 mod tests {
     use crate::nig::{ComplexScalar, NigSharedPlusShiftConfiguration};
+    use crate::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
 
     use super::{
         compose_nig_trading_time_exponent_for_coarse_transform_integration,
@@ -99,15 +99,23 @@ mod tests {
             .derive_driver_parameters()
             .expect("valid shared-plus-shift payload should derive drivers");
         let argument = ComplexScalar::new(0.7, 0.2);
+        let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 1.3,
+            a_minus: 0.9,
+            gap: 0.0,
+        })
+        .expect("valid return decomposition payload should construct");
 
-        let pricing_contributions =
-            compose_nig_trading_time_exponent_for_pricing(driver_parameters, argument, 1.3, 0.9);
+        let pricing_contributions = compose_nig_trading_time_exponent_for_pricing(
+            driver_parameters,
+            argument,
+            return_decomposition,
+        );
         let coarse_transform_contributions =
             compose_nig_trading_time_exponent_for_coarse_transform_integration(
                 driver_parameters,
                 argument,
-                1.3,
-                0.9,
+                return_decomposition,
             );
 
         assert_eq!(pricing_contributions, coarse_transform_contributions);
@@ -120,9 +128,18 @@ mod tests {
             .derive_driver_parameters()
             .expect("valid shared-plus-shift payload should derive drivers");
         let argument = ComplexScalar::new(1.1, 0.0);
+        let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 0.0,
+            a_minus: 1.0,
+            gap: 0.0,
+        })
+        .expect("valid return decomposition payload should construct");
 
-        let composed =
-            compose_nig_trading_time_exponent_for_pricing(driver_parameters, argument, 0.0, 1.0);
+        let composed = compose_nig_trading_time_exponent_for_pricing(
+            driver_parameters,
+            argument,
+            return_decomposition,
+        );
 
         let expected_sell_side_minus_u = driver_parameters
             .sell_side_parameters
