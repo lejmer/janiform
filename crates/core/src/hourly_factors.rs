@@ -13,7 +13,7 @@ use serde::Serialize;
 
 use crate::calendar::{
     ExchangeCalendarRegistry, ExchangeCalendarRegistryLookupError, ExchangeCalendarResolveError,
-    MarketState,
+    MARKET_STATE_RESOLUTION_POLICY, MarketState,
 };
 use crate::news::{NewsDeterministicIntensityEvaluationError, NewsIntensityConfiguration};
 
@@ -38,7 +38,7 @@ pub const DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD: &str =
     "calendar_closed_window_baseline_with_optional_open_window_overrides.v1";
 pub const NEWS_INTENSITY_WITH_DETERMINISTIC_INPUTS_MATERIALIZATION_METHOD: &str =
     "calendar_closed_window_baseline_with_interval_deterministic_time_multipliers.v1";
-pub const DEFAULT_NEWS_INTENSITY_CALENDAR_DEPENDENCY: &str = "resolve_market_state_at_utc.v1";
+pub const DEFAULT_NEWS_INTENSITY_CALENDAR_DEPENDENCY: &str = MARKET_STATE_RESOLUTION_POLICY;
 pub const DEFAULT_OPEN_WINDOW_OVERRIDE_POLICY: &str = "interval_indexed_open_share_override.v1";
 
 const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;

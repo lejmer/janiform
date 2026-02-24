@@ -6,10 +6,14 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::calendar::MarketState;
+use crate::calendar::{
+    ExchangeCalendarRegistry, ExchangeCalendarResolveError, MARKET_STATE_RESOLUTION_POLICY,
+    MarketState, SESSION_WINDOW_BOUNDARY_POLICY,
+};
 use crate::randomness::SimulationRandomnessStream;
 
 pub const NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION: &str = "news.process.configuration.v1";
@@ -29,6 +33,10 @@ pub const SHARED_NEWS_EVENT_DISPATCH_JT_UPDATE_POLICY: &str =
     "every_news_event_adds_shared_severity_mark_to_jt.v1";
 pub const SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY: &str =
     "apply_shared_gap_mark_only_for_closed_market_state.v1";
+pub const SHARED_NEWS_EVENT_MARKET_STATE_DEPENDENCY: &str = MARKET_STATE_RESOLUTION_POLICY;
+pub const SHARED_NEWS_EVENT_BOUNDARY_POLICY: &str = SESSION_WINDOW_BOUNDARY_POLICY;
+
+const ONE_SECOND_NANOS: i64 = 1_000_000_000;
 
 /// Deterministic intensity policy configuration for `nu_news(t)`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -350,6 +358,7 @@ impl SharedNewsAccumulatorState {
 ///
 /// Every event contributes to `J_t` using `shared_severity_mark`.
 /// `coupled_gap_jump_mark` contributes to `G_t` only when `market_state == closed`.
+/// `market_state` should come from canonical calendar resolver output.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SharedNewsEventDispatchInput {
     pub event_timestamp_utc_nanos: i64,
@@ -363,6 +372,58 @@ impl SharedNewsEventDispatchInput {
     const fn ordering_key(self) -> (i64, u64) {
         (self.event_timestamp_utc_nanos, self.event_generation_order)
     }
+}
+
+/// Shared news-event payload where market state is resolved from the canonical
+/// calendar service before dispatch.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SharedNewsEventTimestampedInput {
+    pub event_timestamp_utc_nanos: i64,
+    pub event_generation_order: u64,
+    pub shared_severity_mark: f64,
+    pub coupled_gap_jump_mark: f64,
+}
+
+/// Resolve market state for shared news events from the canonical calendar service.
+///
+/// The resolver uses `resolve_market_state_at_utc` and inherits
+/// `SESSION_WINDOW_BOUNDARY_POLICY`, where session windows are `[open, close)`.
+pub fn resolve_shared_news_event_market_states(
+    calendar_registry: &ExchangeCalendarRegistry,
+    exchange_code: &str,
+    event_inputs: &[SharedNewsEventTimestampedInput],
+) -> Result<Vec<SharedNewsEventDispatchInput>, SharedNewsEventDispatchError> {
+    let mut resolved_event_inputs: Vec<SharedNewsEventDispatchInput> =
+        Vec::with_capacity(event_inputs.len());
+
+    for event_input in event_inputs {
+        let event_timestamp_utc = utc_timestamp_from_nanos(event_input.event_timestamp_utc_nanos)
+            .ok_or(
+            SharedNewsEventDispatchError::InvalidEventTimestampUtcNanos {
+                event_generation_order: event_input.event_generation_order,
+                value: event_input.event_timestamp_utc_nanos,
+            },
+        )?;
+        let market_state = calendar_registry
+            .resolve_market_state_at_utc(exchange_code, event_timestamp_utc)
+            .map_err(
+                |source| SharedNewsEventDispatchError::MarketStateResolutionFailed {
+                    event_generation_order: event_input.event_generation_order,
+                    exchange_code: exchange_code.to_string(),
+                    source,
+                },
+            )?;
+
+        resolved_event_inputs.push(SharedNewsEventDispatchInput {
+            event_timestamp_utc_nanos: event_input.event_timestamp_utc_nanos,
+            event_generation_order: event_input.event_generation_order,
+            market_state,
+            shared_severity_mark: event_input.shared_severity_mark,
+            coupled_gap_jump_mark: event_input.coupled_gap_jump_mark,
+        });
+    }
+
+    Ok(resolved_event_inputs)
 }
 
 /// Per-event dispatch record produced by shared `J_t` and `G_t` updates.
@@ -385,6 +446,8 @@ pub struct SharedNewsEventDispatchOutput {
     pub ordering_policy: &'static str,
     pub j_t_update_policy: &'static str,
     pub g_t_gating_policy: &'static str,
+    pub market_state_dependency: &'static str,
+    pub market_state_boundary_policy: &'static str,
     pub records: Vec<SharedNewsEventDispatchRecord>,
     pub final_state: SharedNewsAccumulatorState,
 }
@@ -397,6 +460,15 @@ pub enum SharedNewsEventDispatchError {
     },
     InvalidInitialGtAccumulator {
         value: f64,
+    },
+    InvalidEventTimestampUtcNanos {
+        event_generation_order: u64,
+        value: i64,
+    },
+    MarketStateResolutionFailed {
+        event_generation_order: u64,
+        exchange_code: String,
+        source: ExchangeCalendarResolveError,
     },
     InvalidSeverityMark {
         event_generation_order: u64,
@@ -426,6 +498,21 @@ impl Display for SharedNewsEventDispatchError {
             Self::InvalidInitialGtAccumulator { value } => write!(
                 formatter,
                 "initial G_t accumulator must be finite, found {value}"
+            ),
+            Self::InvalidEventTimestampUtcNanos {
+                event_generation_order,
+                value,
+            } => write!(
+                formatter,
+                "event timestamp nanos for generation order {event_generation_order} must map to a valid UTC timestamp, found {value}"
+            ),
+            Self::MarketStateResolutionFailed {
+                event_generation_order,
+                exchange_code,
+                source,
+            } => write!(
+                formatter,
+                "failed to resolve market state for exchange `{exchange_code}` at event generation order {event_generation_order}: {source}"
             ),
             Self::InvalidSeverityMark {
                 event_generation_order,
@@ -459,7 +546,14 @@ impl Display for SharedNewsEventDispatchError {
     }
 }
 
-impl Error for SharedNewsEventDispatchError {}
+impl Error for SharedNewsEventDispatchError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::MarketStateResolutionFailed { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
 
 /// Dispatch shared news events through one canonical `J_t` plus `G_t` update path.
 ///
@@ -487,9 +581,23 @@ pub fn dispatch_shared_news_events(
         ordering_policy: SHARED_NEWS_EVENT_DISPATCH_ORDERING_POLICY,
         j_t_update_policy: SHARED_NEWS_EVENT_DISPATCH_JT_UPDATE_POLICY,
         g_t_gating_policy: SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY,
+        market_state_dependency: SHARED_NEWS_EVENT_MARKET_STATE_DEPENDENCY,
+        market_state_boundary_policy: SHARED_NEWS_EVENT_BOUNDARY_POLICY,
         records: dispatch_records,
         final_state: next_state,
     })
+}
+
+/// Resolve canonical market states and dispatch shared news events through one path.
+pub fn dispatch_shared_news_events_with_resolved_market_states(
+    calendar_registry: &ExchangeCalendarRegistry,
+    exchange_code: &str,
+    initial_state: SharedNewsAccumulatorState,
+    event_inputs: &[SharedNewsEventTimestampedInput],
+) -> Result<SharedNewsEventDispatchOutput, SharedNewsEventDispatchError> {
+    let resolved_event_inputs =
+        resolve_shared_news_event_market_states(calendar_registry, exchange_code, event_inputs)?;
+    dispatch_shared_news_events(initial_state, &resolved_event_inputs)
 }
 
 fn validate_initial_dispatch_state(
@@ -983,6 +1091,14 @@ where
     -uniform_draw.ln() / rate
 }
 
+fn utc_timestamp_from_nanos(timestamp_utc_nanos: i64) -> Option<DateTime<Utc>> {
+    let seconds = timestamp_utc_nanos.div_euclid(ONE_SECOND_NANOS);
+    let subsecond_nanos = timestamp_utc_nanos.rem_euclid(ONE_SECOND_NANOS) as u32;
+
+    DateTime::from_timestamp(seconds, subsecond_nanos)
+        .map(|timestamp| timestamp.with_timezone(&Utc))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -993,12 +1109,16 @@ mod tests {
         GammaSeverityMarkSamplingError, NEWS_INTENSITY_BASELINE_POLICY,
         NEWS_INTENSITY_DETERMINISTIC_INPUT_POLICY, NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION,
         NewsIntensityConfiguration, NewsMarkConfigurationError, NewsProcessConfiguration,
-        SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY, SHARED_NEWS_EVENT_DISPATCH_JT_UPDATE_POLICY,
-        SHARED_NEWS_EVENT_DISPATCH_ORDERING_POLICY, SharedNewsAccumulatorState,
-        SharedNewsEventDispatchInput, dispatch_shared_news_events,
+        SHARED_NEWS_EVENT_BOUNDARY_POLICY, SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY,
+        SHARED_NEWS_EVENT_DISPATCH_JT_UPDATE_POLICY, SHARED_NEWS_EVENT_DISPATCH_ORDERING_POLICY,
+        SHARED_NEWS_EVENT_MARKET_STATE_DEPENDENCY, SharedNewsAccumulatorState,
+        SharedNewsEventDispatchInput, SharedNewsEventTimestampedInput, dispatch_shared_news_events,
+        dispatch_shared_news_events_with_resolved_market_states,
+        resolve_shared_news_event_market_states,
     };
-    use crate::calendar::MarketState;
+    use crate::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, MarketState};
     use crate::randomness::{SimulationRandomnessStream, SplitMix64SimulationRandomnessStream};
+    use chrono::{DateTime, Utc};
     use serde_json::json;
 
     #[test]
@@ -1581,6 +1701,14 @@ mod tests {
             first_output.g_t_gating_policy,
             SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY
         );
+        assert_eq!(
+            first_output.market_state_dependency,
+            SHARED_NEWS_EVENT_MARKET_STATE_DEPENDENCY
+        );
+        assert_eq!(
+            first_output.market_state_boundary_policy,
+            SHARED_NEWS_EVENT_BOUNDARY_POLICY
+        );
 
         assert!(first_output.records.windows(2).all(|record_pair| {
             let first_record = &record_pair[0];
@@ -1593,6 +1721,76 @@ mod tests {
                 second_record.event_generation_order,
             )
         }));
+    }
+
+    #[test]
+    fn shared_news_event_market_state_resolution_uses_canonical_service_outputs() {
+        let registry = build_news_dispatch_calendar_registry();
+        let event_inputs = vec![
+            SharedNewsEventTimestampedInput {
+                event_timestamp_utc_nanos: timestamp_utc_nanos("2026-02-02T14:30:00Z"),
+                event_generation_order: 0,
+                shared_severity_mark: 0.5,
+                coupled_gap_jump_mark: 0.2,
+            },
+            SharedNewsEventTimestampedInput {
+                event_timestamp_utc_nanos: timestamp_utc_nanos("2026-02-02T21:00:00Z"),
+                event_generation_order: 1,
+                shared_severity_mark: 0.7,
+                coupled_gap_jump_mark: -0.3,
+            },
+        ];
+
+        let resolved_event_inputs =
+            resolve_shared_news_event_market_states(&registry, "XNYS", &event_inputs)
+                .expect("market states should resolve from calendar service");
+
+        assert_eq!(resolved_event_inputs.len(), 2);
+        assert_eq!(resolved_event_inputs[0].market_state, MarketState::Open);
+        assert_eq!(resolved_event_inputs[1].market_state, MarketState::Closed);
+    }
+
+    #[test]
+    fn shared_news_event_dispatch_with_resolved_market_states_applies_open_close_boundaries() {
+        let registry = build_news_dispatch_calendar_registry();
+        let event_inputs = vec![
+            SharedNewsEventTimestampedInput {
+                event_timestamp_utc_nanos: timestamp_utc_nanos("2026-02-02T14:30:00Z"),
+                event_generation_order: 0,
+                shared_severity_mark: 0.6,
+                coupled_gap_jump_mark: 1.1,
+            },
+            SharedNewsEventTimestampedInput {
+                event_timestamp_utc_nanos: timestamp_utc_nanos("2026-02-02T21:00:00Z"),
+                event_generation_order: 1,
+                shared_severity_mark: 0.9,
+                coupled_gap_jump_mark: -0.35,
+            },
+        ];
+
+        let dispatch_output = dispatch_shared_news_events_with_resolved_market_states(
+            &registry,
+            "XNYS",
+            SharedNewsAccumulatorState::new(0.0, 0.0),
+            &event_inputs,
+        )
+        .expect("dispatch should resolve market states and apply canonical gating");
+
+        assert_eq!(dispatch_output.records.len(), 2);
+        assert_eq!(dispatch_output.records[0].market_state, MarketState::Open);
+        assert_eq!(dispatch_output.records[0].g_t_increment, 0.0);
+        assert_eq!(dispatch_output.records[1].market_state, MarketState::Closed);
+        assert_eq!(dispatch_output.records[1].g_t_increment, -0.35);
+        assert!((dispatch_output.final_state.j_t - 1.5).abs() <= 1e-12);
+        assert!((dispatch_output.final_state.g_t - (-0.35)).abs() <= 1e-12);
+        assert_eq!(
+            dispatch_output.market_state_dependency,
+            SHARED_NEWS_EVENT_MARKET_STATE_DEPENDENCY
+        );
+        assert_eq!(
+            dispatch_output.market_state_boundary_policy,
+            SHARED_NEWS_EVENT_BOUNDARY_POLICY
+        );
     }
 
     fn build_seeded_dispatch_inputs(
@@ -1639,5 +1837,75 @@ mod tests {
         }
 
         event_inputs
+    }
+
+    fn timestamp_utc_nanos(raw_timestamp_utc: &str) -> i64 {
+        parse_timestamp(raw_timestamp_utc)
+            .timestamp_nanos_opt()
+            .expect("timestamp fixture must be in nanosecond range")
+    }
+
+    fn parse_timestamp(raw_timestamp_utc: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(raw_timestamp_utc)
+            .expect("fixture timestamp must be RFC3339")
+            .with_timezone(&Utc)
+    }
+
+    fn build_news_dispatch_calendar_registry() -> ExchangeCalendarRegistry {
+        ExchangeCalendarRegistryLoader::load_from_json(
+            r#"
+            {
+              "schema_version": "calendar.registry.v1",
+              "artifact_date": "2026-01-31",
+              "exchanges": [
+                {
+                  "schema_version": "calendar.v1",
+                  "exchange_code": "XNYS",
+                  "exchange_name": "New York Stock Exchange",
+                  "timezone_name": "America/New_York",
+                  "rule_metadata": {
+                    "holiday_calendar_code": "US_EQUITIES",
+                    "early_close_rule_set": "US_EQUITIES_EARLY_CLOSE"
+                  },
+                  "regular_sessions": [
+                    {
+                      "weekday": "Monday",
+                      "windows": [
+                        {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                      ]
+                    },
+                    {
+                      "weekday": "Tuesday",
+                      "windows": [
+                        {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                      ]
+                    },
+                    {
+                      "weekday": "Wednesday",
+                      "windows": [
+                        {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                      ]
+                    },
+                    {
+                      "weekday": "Thursday",
+                      "windows": [
+                        {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                      ]
+                    },
+                    {
+                      "weekday": "Friday",
+                      "windows": [
+                        {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                      ]
+                    }
+                  ],
+                  "holiday_dates": [],
+                  "early_close_sessions": []
+                }
+              ]
+            }
+            "#,
+        )
+        .expect("calendar registry fixture should load")
     }
 }
