@@ -1,4 +1,4 @@
-## ISSUE-002: Calendar Fixture Reuse And State Resolution Integration
+## Calendar Fixture Reuse And State Resolution Integration
 
 ### Description
 Integrate calendar fixtures from Initiative 001 into this validation suite so market state resolution is consistent and not duplicated.

@@ -1,4 +1,4 @@
-## ISSUE-005: Overnight Weekend Intraday Boundary Scenario Suite
+## Overnight Weekend Intraday Boundary Scenario Suite
 
 ### Description
 Build scenario coverage for overnight, weekend, and intraday boundaries to verify correct open versus closed behavior at session edges.

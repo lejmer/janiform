@@ -1,4 +1,4 @@
-## ISSUE-003: Open Window Behavior No Direct Gap Increments
+## Open Window Behavior No Direct Gap Increments
 
 ### Description
 Implement targeted validation checks that ensure news during market-open windows affects activity coupling but does not add direct gap increments.
