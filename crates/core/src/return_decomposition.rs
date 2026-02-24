@@ -14,6 +14,43 @@ use serde::Serialize;
 pub const RETURN_DECOMPOSITION_INTERFACE_POLICY: &str =
     "explicit_a_plus_a_minus_and_gap_component_fields_without_tuple_passing.v1";
 pub const RETURN_DECOMPOSITION_UNITS_POLICY: &str = "a_plus_and_a_minus_are_integrated_intensity_expected_event_counts_and_gap_is_log_return_increment.v1";
+pub const RETURN_DECOMPOSITION_EDGE_MODE_POLICY: &str = "explicit_opt_in_buy_only_sell_only_gap_only_component_disable_modes_for_debug_and_test_workflows.v1";
+
+/// Explicit component-disable modes for test and debug workflows.
+///
+/// `Disabled` preserves the canonical decomposition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReturnDecompositionEdgeMode {
+    Disabled,
+    BuyOnly,
+    SellOnly,
+    GapOnly,
+}
+
+impl ReturnDecompositionEdgeMode {
+    pub const fn policy() -> &'static str {
+        RETURN_DECOMPOSITION_EDGE_MODE_POLICY
+    }
+
+    pub const fn buy_component_enabled(self) -> bool {
+        matches!(self, Self::Disabled | Self::BuyOnly)
+    }
+
+    pub const fn sell_component_enabled(self) -> bool {
+        matches!(self, Self::Disabled | Self::SellOnly)
+    }
+
+    pub const fn gap_component_enabled(self) -> bool {
+        matches!(self, Self::Disabled | Self::GapOnly)
+    }
+}
+
+impl Default for ReturnDecompositionEdgeMode {
+    fn default() -> Self {
+        Self::Disabled
+    }
+}
 
 /// Explicit field assignment payload for constructing `ReturnDecomposition`.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -83,6 +120,33 @@ impl ReturnDecomposition {
 
     pub const fn integrated_sell_intensity(self) -> f64 {
         self.a_minus
+    }
+
+    /// Apply one explicit edge mode by zeroing disabled decomposition components.
+    pub fn with_edge_mode(self, edge_mode: ReturnDecompositionEdgeMode) -> Self {
+        let a_plus = if edge_mode.buy_component_enabled() {
+            self.a_plus
+        } else {
+            0.0
+        };
+
+        let a_minus = if edge_mode.sell_component_enabled() {
+            self.a_minus
+        } else {
+            0.0
+        };
+
+        let gap = if edge_mode.gap_component_enabled() {
+            self.gap
+        } else {
+            0.0
+        };
+
+        Self {
+            a_plus,
+            a_minus,
+            gap,
+        }
     }
 }
 
@@ -190,8 +254,9 @@ fn validate_finite(
 #[cfg(test)]
 mod tests {
     use super::{
-        RETURN_DECOMPOSITION_INTERFACE_POLICY, RETURN_DECOMPOSITION_UNITS_POLICY,
-        ReturnDecomposition, ReturnDecompositionInput, ReturnDecompositionValidationError,
+        RETURN_DECOMPOSITION_EDGE_MODE_POLICY, RETURN_DECOMPOSITION_INTERFACE_POLICY,
+        RETURN_DECOMPOSITION_UNITS_POLICY, ReturnDecomposition, ReturnDecompositionEdgeMode,
+        ReturnDecompositionInput, ReturnDecompositionValidationError,
     };
 
     #[test]
@@ -289,5 +354,48 @@ mod tests {
                 .expect_err("unknown fields must fail deserialization");
 
         assert!(unknown_field_error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn edge_mode_zeroing_is_explicit_and_deterministic() {
+        let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 1.5,
+            a_minus: 0.8,
+            gap: -0.4,
+        })
+        .expect("test decomposition payload should construct");
+
+        assert_eq!(
+            ReturnDecompositionEdgeMode::policy(),
+            RETURN_DECOMPOSITION_EDGE_MODE_POLICY
+        );
+        assert_eq!(
+            decomposition.with_edge_mode(ReturnDecompositionEdgeMode::Disabled),
+            decomposition
+        );
+        assert_eq!(
+            decomposition.with_edge_mode(ReturnDecompositionEdgeMode::BuyOnly),
+            ReturnDecomposition {
+                a_plus: 1.5,
+                a_minus: 0.0,
+                gap: 0.0,
+            }
+        );
+        assert_eq!(
+            decomposition.with_edge_mode(ReturnDecompositionEdgeMode::SellOnly),
+            ReturnDecomposition {
+                a_plus: 0.0,
+                a_minus: 0.8,
+                gap: 0.0,
+            }
+        );
+        assert_eq!(
+            decomposition.with_edge_mode(ReturnDecompositionEdgeMode::GapOnly),
+            ReturnDecomposition {
+                a_plus: 0.0,
+                a_minus: 0.0,
+                gap: -0.4,
+            }
+        );
     }
 }

@@ -24,7 +24,7 @@ use crate::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
     SplitMix64SimulationRandomnessFactory,
 };
-use crate::return_decomposition::ReturnDecomposition;
+use crate::return_decomposition::{ReturnDecomposition, ReturnDecompositionEdgeMode};
 
 pub const SEEDED_TICK_EVENT_RUN_CONFIG_SCHEMA_VERSION: &str =
     "simulation.seeded_tick_event.run_config.v1";
@@ -1389,9 +1389,29 @@ pub fn sample_nig_trading_time_increment_for_simulation<R>(
 where
     R: SimulationRandomnessStream,
 {
+    sample_nig_trading_time_increment_for_simulation_with_edge_mode(
+        driver_parameters,
+        return_decomposition,
+        ReturnDecompositionEdgeMode::Disabled,
+        randomness_stream,
+    )
+}
+
+/// Sample one simulation trading-time increment with optional decomposition edge-mode gating.
+pub fn sample_nig_trading_time_increment_for_simulation_with_edge_mode<R>(
+    driver_parameters: NigBuySellDriverParameters,
+    return_decomposition: ReturnDecomposition,
+    edge_mode: ReturnDecompositionEdgeMode,
+    randomness_stream: &mut R,
+) -> Result<NigTradingTimeIncrementContributions, NigTradingTimeIncrementSamplingError>
+where
+    R: SimulationRandomnessStream,
+{
+    let effective_decomposition = return_decomposition.with_edge_mode(edge_mode);
+
     driver_parameters.sample_trading_time_return_increment(
-        return_decomposition.integrated_buy_intensity(),
-        return_decomposition.integrated_sell_intensity(),
+        effective_decomposition.integrated_buy_intensity(),
+        effective_decomposition.integrated_sell_intensity(),
         randomness_stream,
     )
 }
@@ -1431,7 +1451,9 @@ mod tests {
         SimulationRandomnessFactory, SimulationRandomnessStream,
         SimulationRandomnessSubstreamDomain, SplitMix64SimulationRandomnessStream,
     };
-    use crate::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
+    use crate::return_decomposition::{
+        ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionInput,
+    };
     use crate::simulation::{
         SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNK_SCHEMA_VERSION,
         SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNKING_POLICY,
@@ -1453,24 +1475,26 @@ mod tests {
         SeededTickSimulationRunOptions, run_seeded_tick_event_simulation,
         run_seeded_tick_event_simulation_with_randomness_factory,
         sample_nig_trading_time_increment_for_simulation,
+        sample_nig_trading_time_increment_for_simulation_with_edge_mode,
     };
 
     const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
 
     #[test]
-    fn trading_time_assembler_buy_only_path_keeps_sell_component_zero() {
+    fn trading_time_assembler_buy_only_edge_mode_keeps_sell_and_gap_components_zero() {
         let driver_parameters = valid_nig_driver_parameters();
         let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 0.9,
-            a_minus: 0.0,
-            gap: 0.0,
+            a_minus: 0.7,
+            gap: -0.2,
         })
         .expect("buy-only decomposition should be valid");
         let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(42_101);
 
-        let contributions = sample_nig_trading_time_increment_for_simulation(
+        let contributions = sample_nig_trading_time_increment_for_simulation_with_edge_mode(
             driver_parameters,
             decomposition,
+            ReturnDecompositionEdgeMode::BuyOnly,
             &mut randomness_stream,
         )
         .expect("buy-only assembly should sample successfully");
@@ -1487,19 +1511,20 @@ mod tests {
     }
 
     #[test]
-    fn trading_time_assembler_sell_only_path_applies_minus_sign_to_combined_increment() {
+    fn trading_time_assembler_sell_only_edge_mode_applies_minus_sign_to_combined_increment() {
         let driver_parameters = valid_nig_driver_parameters();
         let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
-            a_plus: 0.0,
+            a_plus: 0.6,
             a_minus: 0.9,
-            gap: 0.0,
+            gap: -0.1,
         })
         .expect("sell-only decomposition should be valid");
         let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(42_102);
 
-        let contributions = sample_nig_trading_time_increment_for_simulation(
+        let contributions = sample_nig_trading_time_increment_for_simulation_with_edge_mode(
             driver_parameters,
             decomposition,
+            ReturnDecompositionEdgeMode::SellOnly,
             &mut randomness_stream,
         )
         .expect("sell-only assembly should sample successfully");
@@ -1513,6 +1538,34 @@ mod tests {
             contributions.combined_increment,
             -contributions.sell_side_increment,
         );
+    }
+
+    #[test]
+    fn trading_time_assembler_gap_only_edge_mode_zeroes_trading_components() {
+        let driver_parameters = valid_nig_driver_parameters();
+        let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 0.9,
+            a_minus: 0.8,
+            gap: -0.3,
+        })
+        .expect("gap-only decomposition should be valid");
+        let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(42_104);
+
+        let contributions = sample_nig_trading_time_increment_for_simulation_with_edge_mode(
+            driver_parameters,
+            decomposition,
+            ReturnDecompositionEdgeMode::GapOnly,
+            &mut randomness_stream,
+        )
+        .expect("gap-only assembly should sample successfully");
+
+        assert_eq!(
+            contributions.policy,
+            NIG_TRADING_TIME_INCREMENT_COMPOSITION_POLICY
+        );
+        assert_float_close(contributions.buy_side_increment, 0.0);
+        assert_float_close(contributions.sell_side_increment, 0.0);
+        assert_float_close(contributions.combined_increment, 0.0);
     }
 
     #[test]
