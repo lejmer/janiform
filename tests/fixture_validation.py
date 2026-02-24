@@ -21,6 +21,17 @@ HOURLY_FACTOR_REGRESSION_FIXTURE_SCHEMA_VERSION: str = "hourly.factor.regression
 HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID: str = "hourly_factor_regression_matrix_v1"
 HOURLY_FACTOR_THRESHOLD_CONFIGURATION_SCHEMA_VERSION: str = "validation.hourly_factor.thresholds.v1"
 STATE_CLASSIFICATION_STRICTNESS_POLICY: str = "exact_match_required.v1"
+OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SCHEMA_VERSION: str = "gap.behavior.open_closed.scenario_fixture.v1"
+OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SET_ID: str = "open_closed_gap_behavior_scenarios_v1"
+OPEN_CLOSED_GAP_BEHAVIOR_SCHEMA_FAMILY: str = "validation.gap_behavior.open_closed"
+OPEN_CLOSED_GAP_BEHAVIOR_SCHEMA_GENERATION: str = "v0.x"
+OPEN_CLOSED_GAP_BEHAVIOR_FORWARD_EXTENSION_POLICY: str = "additive_fields_only.v1"
+OPEN_CLOSED_GAP_BEHAVIOR_CASE_ORDER_POLICY: str = "preserve_declared_case_order.v1"
+OPEN_CLOSED_GAP_BEHAVIOR_EVENT_ORDER_POLICY: str = "preserve_declared_event_order.v1"
+OPEN_CLOSED_GAP_BEHAVIOR_CONTENT_HASH_SCOPE_POLICY: str = "document_payload_bytes.v1"
+OPEN_CLOSED_GAP_BEHAVIOR_OUTPUT_SCHEMA_VERSION: str = (
+    "validation.gap_behavior.open_closed.case_output.v1"
+)
 SEEDED_TICK_SIMULATION_PARITY_FIXTURE_SCHEMA_VERSION: str = (
     "simulation.seeded_tick.parity_fixture.v1"
 )
@@ -30,7 +41,7 @@ SEEDED_TICK_SIMULATION_CONTENT_HASH_SCOPE_POLICY: str = "document_payload_bytes.
 SEEDED_TICK_SIMULATION_EVENT_ORDERING_POLICY: str = (
     "timestamp_then_endogenous_before_exogenous_then_buy_before_sell_then_generation_order.v1"
 )
-SUPPORTED_MANIFEST_DOMAINS: set[str] = {"calendar", "seasonality", "hourly_factors"}
+SUPPORTED_MANIFEST_DOMAINS: set[str] = {"calendar", "seasonality", "hourly_factors", "gap_behavior"}
 
 
 type JsonObject = dict[str, object]
@@ -172,6 +183,87 @@ class HourlyFactorRegressionFixtureDocument(TypedDict):
     canonical_regression_metadata: HourlyFactorRegressionCanonicalMetadata
     canonical_output_cases: list[HourlyFactorRegressionCanonicalOutputCase]
     missing_data_guard_cases: list[HourlyFactorRegressionMissingDataGuardCase]
+
+
+class OpenClosedGapBehaviorSchemaMetadata(TypedDict):
+    schema_family: str
+    schema_generation: str
+    forward_extension_policy: str
+
+
+class OpenClosedGapBehaviorDeterminismMetadata(TypedDict):
+    fixture_loading_order: str
+    event_loading_order: str
+    content_hash_scope: str
+    content_hash_algorithm: str
+
+
+class OpenClosedGapBehaviorOutputSchemaMetadata(TypedDict):
+    schema_version: str
+    required_case_output_fields: list[str]
+    required_summary_fields: list[str]
+
+
+class OpenClosedGapBehaviorCanonicalMetadata(TypedDict):
+    required_tags: list[str]
+    stable_fixture_ids_by_tag: dict[str, list[str]]
+
+
+class OpenClosedGapBehaviorAccumulatorState(TypedDict):
+    j_t: float
+    g_t: float
+
+
+class OpenClosedGapBehaviorInjectedEvent(TypedDict):
+    event_id: str
+    timestamp_utc: str
+    shared_severity_mark: float
+    coupled_gap_jump_mark: float
+
+
+class OpenClosedGapBehaviorEventOutcome(TypedDict):
+    event_id: str
+    expected_market_state: str
+    expected_j_t_increment: float
+    expected_g_t_increment: float
+    expected_direct_gap_applied: bool
+
+
+class OpenClosedGapBehaviorSummary(TypedDict):
+    expected_open_event_count: int
+    expected_closed_event_count: int
+    expected_total_j_t_increment: float
+    expected_total_g_t_increment: float
+    expected_open_window_direct_gap_increment_count: int
+
+
+class OpenClosedGapBehaviorExpectedOutcome(TypedDict):
+    event_outcomes: list[OpenClosedGapBehaviorEventOutcome]
+    summary: OpenClosedGapBehaviorSummary
+
+
+class OpenClosedGapBehaviorCase(TypedDict):
+    fixture_id: str
+    exchange_code: str
+    calendar_fixture_set_id: str
+    range_start_utc: str
+    range_end_utc: str
+    initial_accumulator_state: OpenClosedGapBehaviorAccumulatorState
+    injected_events: list[OpenClosedGapBehaviorInjectedEvent]
+    expected_outcome: OpenClosedGapBehaviorExpectedOutcome
+    tags: list[str]
+    description: str
+
+
+class OpenClosedGapBehaviorFixtureDocument(TypedDict):
+    schema_version: str
+    fixture_set_id: str
+    fixture_set_version: str
+    schema_metadata: OpenClosedGapBehaviorSchemaMetadata
+    determinism_metadata: OpenClosedGapBehaviorDeterminismMetadata
+    output_schema_metadata: OpenClosedGapBehaviorOutputSchemaMetadata
+    canonical_regression_metadata: OpenClosedGapBehaviorCanonicalMetadata
+    cases: list[OpenClosedGapBehaviorCase]
 
 
 class SeededTickSimulationParityDeterminismMetadata(TypedDict):
@@ -566,6 +658,155 @@ def load_hourly_factor_regression_fixture_document(
 ) -> HourlyFactorRegressionFixtureDocument:
     payload_value: object = json.loads(fixture_payload_bytes.decode("utf-8"))
     return validate_hourly_factor_regression_fixture_document(payload_value)
+
+
+def validate_open_closed_gap_behavior_fixture_document(
+    raw_document: object,
+) -> OpenClosedGapBehaviorFixtureDocument:
+    document_map: JsonObject = _require_json_object(raw_document, "open and closed gap behavior fixture")
+    schema_version: str = _require_non_empty_string(document_map, "schema_version", "open and closed gap fixture")
+    if schema_version != OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SCHEMA_VERSION:
+        raise ValueError(f"unsupported open and closed gap fixture schema version: {schema_version}")
+
+    fixture_set_id: str = _require_non_empty_string(document_map, "fixture_set_id", "open and closed gap fixture")
+    if fixture_set_id != OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SET_ID:
+        raise ValueError(f"unexpected open and closed gap fixture set id: {fixture_set_id}")
+
+    fixture_set_version: str = _require_non_empty_string(
+        document_map,
+        "fixture_set_version",
+        "open and closed gap fixture",
+    )
+
+    schema_metadata: JsonObject = _require_json_object_field(document_map, "schema_metadata", "open and closed gap")
+    schema_family: str = _require_non_empty_string(schema_metadata, "schema_family", "open and closed gap schema")
+    if schema_family != OPEN_CLOSED_GAP_BEHAVIOR_SCHEMA_FAMILY:
+        raise ValueError(f"unexpected open and closed gap schema family: {schema_family}")
+
+    schema_generation: str = _require_non_empty_string(
+        schema_metadata,
+        "schema_generation",
+        "open and closed gap schema",
+    )
+    if schema_generation != OPEN_CLOSED_GAP_BEHAVIOR_SCHEMA_GENERATION:
+        raise ValueError(f"unexpected open and closed gap schema generation: {schema_generation}")
+
+    forward_extension_policy: str = _require_non_empty_string(
+        schema_metadata,
+        "forward_extension_policy",
+        "open and closed gap schema",
+    )
+    if forward_extension_policy != OPEN_CLOSED_GAP_BEHAVIOR_FORWARD_EXTENSION_POLICY:
+        raise ValueError(
+            f"unexpected open and closed gap forward extension policy: {forward_extension_policy}",
+        )
+
+    determinism_metadata: JsonObject = _require_json_object_field(
+        document_map,
+        "determinism_metadata",
+        "open and closed gap fixture",
+    )
+    fixture_loading_order: str = _require_non_empty_string(
+        determinism_metadata,
+        "fixture_loading_order",
+        "open and closed gap determinism metadata",
+    )
+    if fixture_loading_order != OPEN_CLOSED_GAP_BEHAVIOR_CASE_ORDER_POLICY:
+        raise ValueError(f"unexpected open and closed gap fixture_loading_order: {fixture_loading_order}")
+
+    event_loading_order: str = _require_non_empty_string(
+        determinism_metadata,
+        "event_loading_order",
+        "open and closed gap determinism metadata",
+    )
+    if event_loading_order != OPEN_CLOSED_GAP_BEHAVIOR_EVENT_ORDER_POLICY:
+        raise ValueError(f"unexpected open and closed gap event_loading_order: {event_loading_order}")
+
+    content_hash_scope: str = _require_non_empty_string(
+        determinism_metadata,
+        "content_hash_scope",
+        "open and closed gap determinism metadata",
+    )
+    if content_hash_scope != OPEN_CLOSED_GAP_BEHAVIOR_CONTENT_HASH_SCOPE_POLICY:
+        raise ValueError(f"unexpected open and closed gap content_hash_scope: {content_hash_scope}")
+
+    content_hash_algorithm: str = _require_non_empty_string(
+        determinism_metadata,
+        "content_hash_algorithm",
+        "open and closed gap determinism metadata",
+    )
+    if content_hash_algorithm != CONTENT_HASH_ALGORITHM_POLICY:
+        raise ValueError(f"unexpected open and closed gap content_hash_algorithm: {content_hash_algorithm}")
+
+    output_schema_metadata = _validate_open_closed_gap_behavior_output_schema_metadata(
+        _require_json_object_field(
+            document_map,
+            "output_schema_metadata",
+            "open and closed gap fixture",
+        ),
+    )
+
+    canonical_metadata = _validate_open_closed_gap_behavior_canonical_metadata(
+        _require_json_object_field(
+            document_map,
+            "canonical_regression_metadata",
+            "open and closed gap fixture",
+        ),
+    )
+
+    cases_raw: JsonArray = _require_json_array_field(document_map, "cases", "open and closed gap fixture")
+    if not cases_raw:
+        raise ValueError("open and closed gap fixture requires at least one case")
+
+    validated_cases: list[OpenClosedGapBehaviorCase] = [
+        _validate_open_closed_gap_behavior_case(
+            _require_json_object(raw_case, "open and closed gap case"),
+            f"open and closed gap case[{case_index}]",
+        )
+        for case_index, raw_case in enumerate(cases_raw)
+    ]
+
+    _require_unique_fixture_ids(
+        [fixture_case["fixture_id"] for fixture_case in validated_cases],
+        "open and closed gap fixture cases",
+    )
+
+    observed_tags: set[str] = {tag for fixture_case in validated_cases for tag in fixture_case["tags"]}
+    required_tags = set(canonical_metadata["required_tags"])
+    if not required_tags.issubset(observed_tags):
+        raise ValueError(
+            "open and closed gap canonical_regression_metadata.required_tags must be present in case tags",
+        )
+
+    for tag, stable_fixture_ids in canonical_metadata["stable_fixture_ids_by_tag"].items():
+        observed_fixture_ids_for_tag: set[str] = {
+            fixture_case["fixture_id"]
+            for fixture_case in validated_cases
+            if tag in fixture_case["tags"]
+        }
+        if observed_fixture_ids_for_tag != set(stable_fixture_ids):
+            raise ValueError(
+                "open and closed gap canonical_regression_metadata.stable_fixture_ids_by_tag does not match "
+                f"observed fixture ids for tag '{tag}'",
+            )
+
+    return {
+        "schema_version": schema_version,
+        "fixture_set_id": fixture_set_id,
+        "fixture_set_version": fixture_set_version,
+        "schema_metadata": cast(OpenClosedGapBehaviorSchemaMetadata, schema_metadata),
+        "determinism_metadata": cast(OpenClosedGapBehaviorDeterminismMetadata, determinism_metadata),
+        "output_schema_metadata": output_schema_metadata,
+        "canonical_regression_metadata": canonical_metadata,
+        "cases": validated_cases,
+    }
+
+
+def load_open_closed_gap_behavior_fixture_document(
+    fixture_payload_bytes: bytes,
+) -> OpenClosedGapBehaviorFixtureDocument:
+    payload_value: object = json.loads(fixture_payload_bytes.decode("utf-8"))
+    return validate_open_closed_gap_behavior_fixture_document(payload_value)
 
 
 def validate_seeded_tick_simulation_parity_fixture_document(
@@ -1196,6 +1437,327 @@ def _validate_hourly_missing_data_expected_outcome(expected_outcome: JsonObject)
             _require_non_empty_string(expected_outcome, "expected_error_message_substring", "expected_outcome")
         case _:
             raise ValueError(f"unsupported expected_outcome.outcome_kind: {outcome_kind}")
+
+
+def _validate_open_closed_gap_behavior_output_schema_metadata(
+    raw_metadata: JsonObject,
+) -> OpenClosedGapBehaviorOutputSchemaMetadata:
+    schema_version: str = _require_non_empty_string(
+        raw_metadata,
+        "schema_version",
+        "open and closed gap output_schema_metadata",
+    )
+    if schema_version != OPEN_CLOSED_GAP_BEHAVIOR_OUTPUT_SCHEMA_VERSION:
+        raise ValueError(f"unexpected open and closed gap output schema version: {schema_version}")
+
+    required_case_output_fields: list[str] = _require_non_empty_string_list(
+        raw_metadata,
+        "required_case_output_fields",
+        "open and closed gap output_schema_metadata",
+    )
+    required_summary_fields: list[str] = _require_non_empty_string_list(
+        raw_metadata,
+        "required_summary_fields",
+        "open and closed gap output_schema_metadata",
+    )
+
+    return {
+        "schema_version": schema_version,
+        "required_case_output_fields": required_case_output_fields,
+        "required_summary_fields": required_summary_fields,
+    }
+
+
+def _validate_open_closed_gap_behavior_canonical_metadata(
+    raw_metadata: JsonObject,
+) -> OpenClosedGapBehaviorCanonicalMetadata:
+    required_tags: list[str] = _require_non_empty_string_list(
+        raw_metadata,
+        "required_tags",
+        "open and closed gap canonical_regression_metadata",
+    )
+    _require_unique_fixture_ids(required_tags, "open and closed gap canonical_regression_metadata.required_tags")
+
+    stable_fixture_ids_by_tag_raw: JsonObject = _require_json_object_field(
+        raw_metadata,
+        "stable_fixture_ids_by_tag",
+        "open and closed gap canonical_regression_metadata",
+    )
+    if not stable_fixture_ids_by_tag_raw:
+        raise ValueError("open and closed gap canonical_regression_metadata.stable_fixture_ids_by_tag must not be empty")
+
+    stable_fixture_ids_by_tag: dict[str, list[str]] = {}
+    for raw_tag, raw_fixture_ids in stable_fixture_ids_by_tag_raw.items():
+        if not isinstance(raw_tag, str) or not raw_tag.strip():
+            raise ValueError(
+                "open and closed gap canonical_regression_metadata.stable_fixture_ids_by_tag keys must be non-empty strings",
+            )
+        if not isinstance(raw_fixture_ids, list):
+            raise ValueError(
+                "open and closed gap canonical_regression_metadata.stable_fixture_ids_by_tag values must be string arrays",
+            )
+
+        tag = raw_tag.strip()
+        normalized_fixture_ids = _normalize_non_empty_string_list(
+            raw_fixture_ids,
+            "open and closed gap canonical_regression_metadata.stable_fixture_ids_by_tag values",
+        )
+        _require_unique_fixture_ids(
+            normalized_fixture_ids,
+            f"open and closed gap canonical_regression_metadata.stable_fixture_ids_by_tag.{tag}",
+        )
+        stable_fixture_ids_by_tag[tag] = normalized_fixture_ids
+
+    return {
+        "required_tags": required_tags,
+        "stable_fixture_ids_by_tag": stable_fixture_ids_by_tag,
+    }
+
+
+def _validate_open_closed_gap_behavior_case(
+    raw_case: JsonObject,
+    context: str,
+) -> OpenClosedGapBehaviorCase:
+    fixture_id: str = _require_non_empty_string(raw_case, "fixture_id", context)
+    exchange_code: str = _require_non_empty_string(raw_case, "exchange_code", context)
+    calendar_fixture_set_id: str = _require_non_empty_string(raw_case, "calendar_fixture_set_id", context)
+    if calendar_fixture_set_id != CALENDAR_REGRESSION_FIXTURE_SET_ID:
+        raise ValueError(
+            f"{context}.calendar_fixture_set_id must be {CALENDAR_REGRESSION_FIXTURE_SET_ID}, found {calendar_fixture_set_id}",
+        )
+
+    range_start_utc: str = _require_non_empty_string(raw_case, "range_start_utc", context)
+    range_end_utc: str = _require_non_empty_string(raw_case, "range_end_utc", context)
+    initial_accumulator_state: JsonObject = _require_json_object_field(raw_case, "initial_accumulator_state", context)
+    initial_state: OpenClosedGapBehaviorAccumulatorState = {
+        "j_t": _require_number(initial_accumulator_state, "j_t", f"{context}.initial_accumulator_state"),
+        "g_t": _require_number(initial_accumulator_state, "g_t", f"{context}.initial_accumulator_state"),
+    }
+
+    injected_events_raw: JsonArray = _require_json_array_field(raw_case, "injected_events", context)
+    if not injected_events_raw:
+        raise ValueError(f"{context}.injected_events must include at least one event")
+
+    injected_events: list[OpenClosedGapBehaviorInjectedEvent] = []
+    for event_index, raw_event in enumerate(injected_events_raw):
+        event_map: JsonObject = _require_json_object(raw_event, f"{context}.injected_events[{event_index}]")
+        injected_events.append(
+            {
+                "event_id": _require_non_empty_string(event_map, "event_id", f"{context}.injected_events[{event_index}]"),
+                "timestamp_utc": _require_non_empty_string(
+                    event_map,
+                    "timestamp_utc",
+                    f"{context}.injected_events[{event_index}]",
+                ),
+                "shared_severity_mark": _require_non_negative_float(
+                    event_map,
+                    "shared_severity_mark",
+                    f"{context}.injected_events[{event_index}]",
+                ),
+                "coupled_gap_jump_mark": _require_number(
+                    event_map,
+                    "coupled_gap_jump_mark",
+                    f"{context}.injected_events[{event_index}]",
+                ),
+            },
+        )
+
+    _require_unique_fixture_ids(
+        [injected_event["event_id"] for injected_event in injected_events],
+        f"{context}.injected_events",
+    )
+
+    expected_outcome = _validate_open_closed_gap_behavior_expected_outcome(
+        _require_json_object_field(raw_case, "expected_outcome", context),
+        context,
+        injected_events,
+    )
+
+    tags: list[str] = _require_non_empty_string_list(raw_case, "tags", context)
+    description: str = _require_non_empty_string(raw_case, "description", context)
+
+    return {
+        "fixture_id": fixture_id,
+        "exchange_code": exchange_code,
+        "calendar_fixture_set_id": calendar_fixture_set_id,
+        "range_start_utc": range_start_utc,
+        "range_end_utc": range_end_utc,
+        "initial_accumulator_state": initial_state,
+        "injected_events": injected_events,
+        "expected_outcome": expected_outcome,
+        "tags": tags,
+        "description": description,
+    }
+
+
+def _validate_open_closed_gap_behavior_expected_outcome(
+    raw_expected_outcome: JsonObject,
+    case_context: str,
+    injected_events: list[OpenClosedGapBehaviorInjectedEvent],
+) -> OpenClosedGapBehaviorExpectedOutcome:
+    event_outcomes_raw: JsonArray = _require_json_array_field(
+        raw_expected_outcome,
+        "event_outcomes",
+        f"{case_context}.expected_outcome",
+    )
+    if not event_outcomes_raw:
+        raise ValueError(f"{case_context}.expected_outcome.event_outcomes must include at least one outcome")
+
+    event_outcomes: list[OpenClosedGapBehaviorEventOutcome] = []
+    for event_index, raw_event_outcome in enumerate(event_outcomes_raw):
+        event_outcome: JsonObject = _require_json_object(
+            raw_event_outcome,
+            f"{case_context}.expected_outcome.event_outcomes[{event_index}]",
+        )
+        expected_market_state: str = _require_non_empty_string(
+            event_outcome,
+            "expected_market_state",
+            f"{case_context}.expected_outcome.event_outcomes[{event_index}]",
+        )
+        if expected_market_state not in {"open", "closed"}:
+            raise ValueError(
+                f"{case_context}.expected_outcome.event_outcomes[{event_index}].expected_market_state "
+                "must be either 'open' or 'closed'",
+            )
+
+        expected_g_t_increment: float = _require_number(
+            event_outcome,
+            "expected_g_t_increment",
+            f"{case_context}.expected_outcome.event_outcomes[{event_index}]",
+        )
+        expected_direct_gap_applied: bool = _require_bool(
+            event_outcome,
+            "expected_direct_gap_applied",
+            f"{case_context}.expected_outcome.event_outcomes[{event_index}]",
+        )
+        if expected_market_state == "open" and expected_direct_gap_applied:
+            raise ValueError(
+                f"{case_context}.expected_outcome.event_outcomes[{event_index}] cannot set expected_direct_gap_applied=true for open market state",
+            )
+        if expected_market_state == "open" and expected_g_t_increment != 0.0:
+            raise ValueError(
+                f"{case_context}.expected_outcome.event_outcomes[{event_index}] must set expected_g_t_increment=0.0 for open market state",
+            )
+
+        event_outcomes.append(
+            {
+                "event_id": _require_non_empty_string(
+                    event_outcome,
+                    "event_id",
+                    f"{case_context}.expected_outcome.event_outcomes[{event_index}]",
+                ),
+                "expected_market_state": expected_market_state,
+                "expected_j_t_increment": _require_non_negative_float(
+                    event_outcome,
+                    "expected_j_t_increment",
+                    f"{case_context}.expected_outcome.event_outcomes[{event_index}]",
+                ),
+                "expected_g_t_increment": expected_g_t_increment,
+                "expected_direct_gap_applied": expected_direct_gap_applied,
+            },
+        )
+
+    _require_unique_fixture_ids(
+        [event_outcome["event_id"] for event_outcome in event_outcomes],
+        f"{case_context}.expected_outcome.event_outcomes",
+    )
+
+    injected_event_ids: set[str] = {injected_event["event_id"] for injected_event in injected_events}
+    expected_event_ids: set[str] = {event_outcome["event_id"] for event_outcome in event_outcomes}
+    if injected_event_ids != expected_event_ids:
+        raise ValueError(
+            f"{case_context}.expected_outcome.event_outcomes event_id set must match injected_events event_id set",
+        )
+
+    summary = _validate_open_closed_gap_behavior_summary(
+        _require_json_object_field(
+            raw_expected_outcome,
+            "summary",
+            f"{case_context}.expected_outcome",
+        ),
+        event_outcomes,
+        case_context,
+    )
+
+    return {
+        "event_outcomes": event_outcomes,
+        "summary": summary,
+    }
+
+
+def _validate_open_closed_gap_behavior_summary(
+    raw_summary: JsonObject,
+    event_outcomes: list[OpenClosedGapBehaviorEventOutcome],
+    case_context: str,
+) -> OpenClosedGapBehaviorSummary:
+    summary: OpenClosedGapBehaviorSummary = {
+        "expected_open_event_count": _require_non_negative_int(
+            raw_summary,
+            "expected_open_event_count",
+            f"{case_context}.expected_outcome.summary",
+        ),
+        "expected_closed_event_count": _require_non_negative_int(
+            raw_summary,
+            "expected_closed_event_count",
+            f"{case_context}.expected_outcome.summary",
+        ),
+        "expected_total_j_t_increment": _require_number(
+            raw_summary,
+            "expected_total_j_t_increment",
+            f"{case_context}.expected_outcome.summary",
+        ),
+        "expected_total_g_t_increment": _require_number(
+            raw_summary,
+            "expected_total_g_t_increment",
+            f"{case_context}.expected_outcome.summary",
+        ),
+        "expected_open_window_direct_gap_increment_count": _require_non_negative_int(
+            raw_summary,
+            "expected_open_window_direct_gap_increment_count",
+            f"{case_context}.expected_outcome.summary",
+        ),
+    }
+
+    observed_open_event_count: int = sum(
+        1 for event_outcome in event_outcomes if event_outcome["expected_market_state"] == "open"
+    )
+    observed_closed_event_count: int = sum(
+        1 for event_outcome in event_outcomes if event_outcome["expected_market_state"] == "closed"
+    )
+    observed_open_window_direct_gap_increment_count: int = sum(
+        1
+        for event_outcome in event_outcomes
+        if event_outcome["expected_market_state"] == "open" and event_outcome["expected_direct_gap_applied"]
+    )
+    observed_total_j_t_increment: float = sum(event_outcome["expected_j_t_increment"] for event_outcome in event_outcomes)
+    observed_total_g_t_increment: float = sum(event_outcome["expected_g_t_increment"] for event_outcome in event_outcomes)
+
+    if summary["expected_open_event_count"] != observed_open_event_count:
+        raise ValueError(
+            f"{case_context}.expected_outcome.summary.expected_open_event_count must match event_outcomes",
+        )
+    if summary["expected_closed_event_count"] != observed_closed_event_count:
+        raise ValueError(
+            f"{case_context}.expected_outcome.summary.expected_closed_event_count must match event_outcomes",
+        )
+    if summary["expected_open_window_direct_gap_increment_count"] != observed_open_window_direct_gap_increment_count:
+        raise ValueError(
+            f"{case_context}.expected_outcome.summary.expected_open_window_direct_gap_increment_count must match event_outcomes",
+        )
+    if summary["expected_open_event_count"] + summary["expected_closed_event_count"] != len(event_outcomes):
+        raise ValueError(
+            f"{case_context}.expected_outcome.summary open and closed event counts must sum to event_outcomes length",
+        )
+    if not math.isclose(summary["expected_total_j_t_increment"], observed_total_j_t_increment, rel_tol=0.0, abs_tol=1e-12):
+        raise ValueError(
+            f"{case_context}.expected_outcome.summary.expected_total_j_t_increment must match event_outcomes",
+        )
+    if not math.isclose(summary["expected_total_g_t_increment"], observed_total_g_t_increment, rel_tol=0.0, abs_tol=1e-12):
+        raise ValueError(
+            f"{case_context}.expected_outcome.summary.expected_total_g_t_increment must match event_outcomes",
+        )
+
+    return summary
 
 
 def _validate_seeded_tick_simulation_parity_case(

@@ -6,20 +6,24 @@ import pytest
 from tests.fixture_validation import (
     CALENDAR_REGRESSION_FIXTURE_SET_ID,
     HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID,
+    OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SET_ID,
     CalendarRegressionCase,
     CalendarRegressionFixtureDocument,
     HourlyFactorRegressionFixtureDocument,
+    OpenClosedGapBehaviorFixtureDocument,
     SeededTickSimulationParityFixtureDocument,
     ValidationFixtureManifestDocument,
     ValidationFixtureManifestEntry,
     compute_content_hash_hex,
     load_calendar_regression_fixture_document,
     load_hourly_factor_regression_fixture_document,
+    load_open_closed_gap_behavior_fixture_document,
     load_manifest_entry_payload,
     load_seeded_tick_simulation_parity_fixture_document,
     sorted_manifest_entries,
     validate_calendar_regression_fixture_document,
     validate_hourly_factor_regression_fixture_document,
+    validate_open_closed_gap_behavior_fixture_document,
     validate_seeded_tick_simulation_parity_fixture_document,
     validate_validation_fixture_manifest_document,
 )
@@ -46,6 +50,18 @@ def test_manifest_hourly_fixture_entry_is_present(
 
     assert hourly_entry["domain"] == "hourly_factors"
     assert len(hourly_entry["exchange_codes"]) >= 1
+
+
+def test_manifest_open_closed_gap_fixture_entry_is_present(
+    validation_fixture_manifest_entries: list[ValidationFixtureManifestEntry],
+) -> None:
+    open_closed_gap_entry: ValidationFixtureManifestEntry = _find_entry_by_fixture_id(
+        validation_fixture_manifest_entries,
+        OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SET_ID,
+    )
+
+    assert open_closed_gap_entry["domain"] == "gap_behavior"
+    assert len(open_closed_gap_entry["exchange_codes"]) >= 2
 
 
 def test_manifest_loading_order_and_content_hashes_are_deterministic(
@@ -110,6 +126,40 @@ def test_hourly_fixture_loading_order_and_content_hash_are_deterministic(
     second_content_hash: str = compute_content_hash_hex(fixture_payload_bytes)
 
     assert first_canonical_case_order == second_canonical_case_order
+    assert first_content_hash == second_content_hash
+
+
+def test_open_closed_gap_fixture_loading_order_and_content_hash_are_deterministic(
+    open_closed_gap_behavior_fixture_path: Path,
+) -> None:
+    fixture_payload_bytes: bytes = open_closed_gap_behavior_fixture_path.read_bytes()
+
+    first_document: OpenClosedGapBehaviorFixtureDocument = load_open_closed_gap_behavior_fixture_document(
+        fixture_payload_bytes,
+    )
+    second_document: OpenClosedGapBehaviorFixtureDocument = load_open_closed_gap_behavior_fixture_document(
+        fixture_payload_bytes,
+    )
+
+    first_case_order: list[str] = [fixture_case["fixture_id"] for fixture_case in first_document["cases"]]
+    second_case_order: list[str] = [fixture_case["fixture_id"] for fixture_case in second_document["cases"]]
+
+    first_event_order: list[str] = [
+        injected_event["event_id"]
+        for fixture_case in first_document["cases"]
+        for injected_event in fixture_case["injected_events"]
+    ]
+    second_event_order: list[str] = [
+        injected_event["event_id"]
+        for fixture_case in second_document["cases"]
+        for injected_event in fixture_case["injected_events"]
+    ]
+
+    first_content_hash: str = compute_content_hash_hex(fixture_payload_bytes)
+    second_content_hash: str = compute_content_hash_hex(fixture_payload_bytes)
+
+    assert first_case_order == second_case_order
+    assert first_event_order == second_event_order
     assert first_content_hash == second_content_hash
 
 
@@ -320,6 +370,36 @@ def test_hourly_fixture_rejects_threshold_change_log_without_current_policy_vers
 
     with pytest.raises(ValueError, match="change_log must include an entry for policy_version"):
         validate_hourly_factor_regression_fixture_document(invalid_document)
+
+
+def test_open_closed_gap_fixture_rejects_missing_required_fields(
+    open_closed_gap_behavior_fixture_document: OpenClosedGapBehaviorFixtureDocument,
+) -> None:
+    invalid_document: dict[str, object] = _copy_document(open_closed_gap_behavior_fixture_document)
+    invalid_document.pop("cases")
+
+    with pytest.raises(ValueError, match="missing required field 'cases'"):
+        validate_open_closed_gap_behavior_fixture_document(invalid_document)
+
+
+def test_open_closed_gap_fixture_rejects_open_window_direct_gap_application(
+    open_closed_gap_behavior_fixture_document: OpenClosedGapBehaviorFixtureDocument,
+) -> None:
+    invalid_document: dict[str, object] = _copy_document(open_closed_gap_behavior_fixture_document)
+    invalid_document["cases"][0]["expected_outcome"]["event_outcomes"][0]["expected_direct_gap_applied"] = True
+
+    with pytest.raises(ValueError, match="cannot set expected_direct_gap_applied=true"):
+        validate_open_closed_gap_behavior_fixture_document(invalid_document)
+
+
+def test_open_closed_gap_fixture_rejects_event_mapping_mismatch(
+    open_closed_gap_behavior_fixture_document: OpenClosedGapBehaviorFixtureDocument,
+) -> None:
+    invalid_document: dict[str, object] = _copy_document(open_closed_gap_behavior_fixture_document)
+    invalid_document["cases"][0]["expected_outcome"]["event_outcomes"][0]["event_id"] = "unknown_event_id"
+
+    with pytest.raises(ValueError, match="event_id set must match injected_events event_id set"):
+        validate_open_closed_gap_behavior_fixture_document(invalid_document)
 
 
 def test_seeded_tick_simulation_parity_fixture_rejects_invalid_side_values(
