@@ -31,3 +31,7 @@ Example structure:
   - Name of Another Issue Without Any Issue ID
   - Name of Yet Another Issue Without Any Issue ID
 ```
+
+Do not include validation commands you have run in the PR. Those are implied, and do not need to be explicit.
+
+Only list the Issue the task was referencing. One Issue is generally one PR. Sometimes a bugfix requires listing multiple Issues, but generally this is not required.
