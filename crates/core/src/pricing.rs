@@ -15,7 +15,9 @@ use crate::hourly_factors::HourlyFactorContractOutput;
 use crate::nig::{
     ComplexScalar, NigBuySellDriverParameters, NigTradingTimeCharacteristicExponentContributions,
 };
-use crate::return_decomposition::{ReturnDecomposition, ReturnDecompositionValidationError};
+use crate::return_decomposition::{
+    ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionValidationError,
+};
 
 pub const RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY: &str =
     "exp_of_trading_time_weighted_exponent_times_explicit_gap_characteristic_factor.v1";
@@ -135,10 +137,27 @@ pub fn compose_nig_trading_time_exponent_for_pricing(
     argument: ComplexScalar,
     return_decomposition: ReturnDecomposition,
 ) -> NigTradingTimeCharacteristicExponentContributions {
+    compose_nig_trading_time_exponent_for_pricing_with_edge_mode(
+        driver_parameters,
+        argument,
+        return_decomposition,
+        ReturnDecompositionEdgeMode::Disabled,
+    )
+}
+
+/// Compose trading-time characteristic exponent for pricing with optional edge-mode gating.
+pub fn compose_nig_trading_time_exponent_for_pricing_with_edge_mode(
+    driver_parameters: NigBuySellDriverParameters,
+    argument: ComplexScalar,
+    return_decomposition: ReturnDecomposition,
+    edge_mode: ReturnDecompositionEdgeMode,
+) -> NigTradingTimeCharacteristicExponentContributions {
+    let effective_decomposition = return_decomposition.with_edge_mode(edge_mode);
+
     driver_parameters.compose_trading_time_weighted_characteristic_exponent(
         argument,
-        return_decomposition.integrated_buy_intensity(),
-        return_decomposition.integrated_sell_intensity(),
+        effective_decomposition.integrated_buy_intensity(),
+        effective_decomposition.integrated_sell_intensity(),
     )
 }
 
@@ -151,10 +170,27 @@ pub fn compose_nig_trading_time_exponent_for_coarse_transform_integration(
     argument: ComplexScalar,
     return_decomposition: ReturnDecomposition,
 ) -> NigTradingTimeCharacteristicExponentContributions {
+    compose_nig_trading_time_exponent_for_coarse_transform_integration_with_edge_mode(
+        driver_parameters,
+        argument,
+        return_decomposition,
+        ReturnDecompositionEdgeMode::Disabled,
+    )
+}
+
+/// Compose coarse-transform trading-time exponent with optional edge-mode gating.
+pub fn compose_nig_trading_time_exponent_for_coarse_transform_integration_with_edge_mode(
+    driver_parameters: NigBuySellDriverParameters,
+    argument: ComplexScalar,
+    return_decomposition: ReturnDecomposition,
+    edge_mode: ReturnDecompositionEdgeMode,
+) -> NigTradingTimeCharacteristicExponentContributions {
+    let effective_decomposition = return_decomposition.with_edge_mode(edge_mode);
+
     driver_parameters.compose_trading_time_weighted_characteristic_exponent(
         argument,
-        return_decomposition.integrated_buy_intensity(),
-        return_decomposition.integrated_sell_intensity(),
+        effective_decomposition.integrated_buy_intensity(),
+        effective_decomposition.integrated_sell_intensity(),
     )
 }
 
@@ -168,11 +204,29 @@ pub fn compose_total_return_characteristic_function_for_pricing(
     return_decomposition: ReturnDecomposition,
     gap_characteristic_factor: ComplexScalar,
 ) -> Result<ReturnCharacteristicFunctionAssembly, ReturnCharacteristicFunctionAssemblyError> {
+    compose_total_return_characteristic_function_for_pricing_with_edge_mode(
+        driver_parameters,
+        argument,
+        return_decomposition,
+        gap_characteristic_factor,
+        ReturnDecompositionEdgeMode::Disabled,
+    )
+}
+
+/// Compose full return characteristic function for pricing with optional edge-mode gating.
+pub fn compose_total_return_characteristic_function_for_pricing_with_edge_mode(
+    driver_parameters: NigBuySellDriverParameters,
+    argument: ComplexScalar,
+    return_decomposition: ReturnDecomposition,
+    gap_characteristic_factor: ComplexScalar,
+    edge_mode: ReturnDecompositionEdgeMode,
+) -> Result<ReturnCharacteristicFunctionAssembly, ReturnCharacteristicFunctionAssemblyError> {
     compose_total_return_characteristic_function_shared(
         driver_parameters,
         argument,
         return_decomposition,
         gap_characteristic_factor,
+        edge_mode,
     )
 }
 
@@ -185,11 +239,29 @@ pub fn compose_total_return_characteristic_function_for_coarse_transform_integra
     return_decomposition: ReturnDecomposition,
     gap_characteristic_factor: ComplexScalar,
 ) -> Result<ReturnCharacteristicFunctionAssembly, ReturnCharacteristicFunctionAssemblyError> {
+    compose_total_return_characteristic_function_for_coarse_transform_integration_with_edge_mode(
+        driver_parameters,
+        argument,
+        return_decomposition,
+        gap_characteristic_factor,
+        ReturnDecompositionEdgeMode::Disabled,
+    )
+}
+
+/// Compose full return characteristic function for coarse transform with edge-mode gating.
+pub fn compose_total_return_characteristic_function_for_coarse_transform_integration_with_edge_mode(
+    driver_parameters: NigBuySellDriverParameters,
+    argument: ComplexScalar,
+    return_decomposition: ReturnDecomposition,
+    gap_characteristic_factor: ComplexScalar,
+    edge_mode: ReturnDecompositionEdgeMode,
+) -> Result<ReturnCharacteristicFunctionAssembly, ReturnCharacteristicFunctionAssemblyError> {
     compose_total_return_characteristic_function_shared(
         driver_parameters,
         argument,
         return_decomposition,
         gap_characteristic_factor,
+        edge_mode,
     )
 }
 
@@ -210,6 +282,7 @@ fn compose_total_return_characteristic_function_shared(
     argument: ComplexScalar,
     return_decomposition: ReturnDecomposition,
     gap_characteristic_factor: ComplexScalar,
+    edge_mode: ReturnDecompositionEdgeMode,
 ) -> Result<ReturnCharacteristicFunctionAssembly, ReturnCharacteristicFunctionAssemblyError> {
     if !argument.is_finite() {
         return Err(
@@ -219,23 +292,30 @@ fn compose_total_return_characteristic_function_shared(
         );
     }
 
-    if !gap_characteristic_factor.is_finite() {
+    let effective_decomposition = return_decomposition.with_edge_mode(edge_mode);
+    let effective_gap_characteristic_factor = if edge_mode.gap_component_enabled() {
+        gap_characteristic_factor
+    } else {
+        ComplexScalar::new(1.0, 0.0)
+    };
+
+    if !effective_gap_characteristic_factor.is_finite() {
         return Err(
             ReturnCharacteristicFunctionAssemblyError::InvalidGapCharacteristicFactor {
-                value: gap_characteristic_factor,
+                value: effective_gap_characteristic_factor,
             },
         );
     }
 
-    return_decomposition.validate().map_err(|source| {
+    effective_decomposition.validate().map_err(|source| {
         ReturnCharacteristicFunctionAssemblyError::InvalidReturnDecomposition { source }
     })?;
 
     let trading_time_exponent_contributions = driver_parameters
         .compose_trading_time_weighted_characteristic_exponent(
             argument,
-            return_decomposition.integrated_buy_intensity(),
-            return_decomposition.integrated_sell_intensity(),
+            effective_decomposition.integrated_buy_intensity(),
+            effective_decomposition.integrated_sell_intensity(),
         );
     let combined_weighted_exponent = trading_time_exponent_contributions.combined_weighted_exponent;
     if !combined_weighted_exponent.is_finite() {
@@ -257,7 +337,7 @@ fn compose_total_return_characteristic_function_shared(
 
     let combined_characteristic_factor = complex_multiply(
         trading_time_characteristic_factor,
-        gap_characteristic_factor,
+        effective_gap_characteristic_factor,
     );
     if !combined_characteristic_factor.is_finite() {
         return Err(
@@ -270,7 +350,7 @@ fn compose_total_return_characteristic_function_shared(
     Ok(ReturnCharacteristicFunctionAssembly {
         trading_time_exponent_contributions,
         trading_time_characteristic_factor,
-        gap_characteristic_factor,
+        gap_characteristic_factor: effective_gap_characteristic_factor,
         combined_characteristic_factor,
         composition_policy: RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
         domain_guard_policy: RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY,
@@ -303,8 +383,11 @@ mod tests {
         ReturnCharacteristicFunctionAssemblyError,
         compose_total_return_characteristic_function_for_coarse_transform_integration,
         compose_total_return_characteristic_function_for_pricing,
+        compose_total_return_characteristic_function_for_pricing_with_edge_mode,
     };
-    use crate::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
+    use crate::return_decomposition::{
+        ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionInput,
+    };
 
     use super::{
         compose_nig_trading_time_exponent_for_coarse_transform_integration,
@@ -508,6 +591,167 @@ mod tests {
             .expect("coarse full CF assembly should succeed");
 
         assert_eq!(pricing_assembled, coarse_assembled);
+    }
+
+    #[test]
+    fn edge_mode_buy_only_disables_sell_and_gap_components_in_full_cf_assembly() {
+        let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("valid shared-plus-shift payload should construct")
+            .derive_driver_parameters()
+            .expect("valid shared-plus-shift payload should derive drivers");
+        let argument = ComplexScalar::new(-0.25, 0.1);
+
+        let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 1.2,
+            a_minus: 0.9,
+            gap: -0.35,
+        })
+        .expect("valid return decomposition payload should construct");
+
+        let assembled = compose_total_return_characteristic_function_for_pricing_with_edge_mode(
+            driver_parameters,
+            argument,
+            return_decomposition,
+            ComplexScalar::new(0.8, -0.1),
+            ReturnDecompositionEdgeMode::BuyOnly,
+        )
+        .expect("buy-only edge mode CF assembly should succeed");
+
+        let expected_buy = driver_parameters
+            .buy_side_parameters
+            .characteristic_exponent(argument)
+            .scale(1.2);
+        let expected_trading = super::complex_exponential(expected_buy);
+
+        assert_complex_close(
+            assembled
+                .trading_time_exponent_contributions
+                .buy_side_weighted_exponent,
+            expected_buy,
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled
+                .trading_time_exponent_contributions
+                .sell_side_weighted_exponent,
+            ComplexScalar::new(0.0, 0.0),
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled.gap_characteristic_factor,
+            ComplexScalar::new(1.0, 0.0),
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled.combined_characteristic_factor,
+            expected_trading,
+            1.0e-13,
+        );
+    }
+
+    #[test]
+    fn edge_mode_sell_only_preserves_minus_u_sign_and_disables_gap_component() {
+        let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("valid shared-plus-shift payload should construct")
+            .derive_driver_parameters()
+            .expect("valid shared-plus-shift payload should derive drivers");
+        let argument = ComplexScalar::new(0.9, -0.2);
+
+        let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 0.4,
+            a_minus: 1.1,
+            gap: -0.1,
+        })
+        .expect("valid return decomposition payload should construct");
+
+        let assembled = compose_total_return_characteristic_function_for_pricing_with_edge_mode(
+            driver_parameters,
+            argument,
+            return_decomposition,
+            ComplexScalar::new(0.7, 0.05),
+            ReturnDecompositionEdgeMode::SellOnly,
+        )
+        .expect("sell-only edge mode CF assembly should succeed");
+
+        let expected_sell = driver_parameters
+            .sell_side_parameters
+            .characteristic_exponent(argument.scale(-1.0))
+            .scale(1.1);
+        let expected_trading = super::complex_exponential(expected_sell);
+
+        assert_complex_close(
+            assembled
+                .trading_time_exponent_contributions
+                .buy_side_weighted_exponent,
+            ComplexScalar::new(0.0, 0.0),
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled
+                .trading_time_exponent_contributions
+                .sell_side_weighted_exponent,
+            expected_sell,
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled.gap_characteristic_factor,
+            ComplexScalar::new(1.0, 0.0),
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled.combined_characteristic_factor,
+            expected_trading,
+            1.0e-13,
+        );
+    }
+
+    #[test]
+    fn edge_mode_gap_only_isolates_gap_factor_in_full_cf_assembly() {
+        let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("valid shared-plus-shift payload should construct")
+            .derive_driver_parameters()
+            .expect("valid shared-plus-shift payload should derive drivers");
+        let argument = ComplexScalar::new(0.35, 0.25);
+
+        let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 0.9,
+            a_minus: 0.7,
+            gap: 0.6,
+        })
+        .expect("valid return decomposition payload should construct");
+        let gap_characteristic_factor = ComplexScalar::new(0.65, -0.35);
+
+        let assembled = compose_total_return_characteristic_function_for_pricing_with_edge_mode(
+            driver_parameters,
+            argument,
+            return_decomposition,
+            gap_characteristic_factor,
+            ReturnDecompositionEdgeMode::GapOnly,
+        )
+        .expect("gap-only edge mode CF assembly should succeed");
+
+        assert_complex_close(
+            assembled
+                .trading_time_exponent_contributions
+                .combined_weighted_exponent,
+            ComplexScalar::new(0.0, 0.0),
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled.trading_time_characteristic_factor,
+            ComplexScalar::new(1.0, 0.0),
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled.gap_characteristic_factor,
+            gap_characteristic_factor,
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled.combined_characteristic_factor,
+            gap_characteristic_factor,
+            1.0e-13,
+        );
     }
 
     #[test]
