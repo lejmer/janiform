@@ -9,6 +9,7 @@ use std::fmt::{Display, Formatter};
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::calendar::MarketState;
 use crate::randomness::SimulationRandomnessStream;
 
 pub const NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION: &str = "news.process.configuration.v1";
@@ -22,6 +23,12 @@ pub const DOUBLE_EXPONENTIAL_BASE_SHOCK_SAMPLING_POLICY: &str =
     "kou_two_sided_exponential_with_constant_mixture_probability.v1";
 pub const COUPLED_GAP_MARK_CONSTRUCTION_POLICY: &str =
     "sigma_g_times_square_root_shared_severity_mark_times_shared_base_shock_mark.v1";
+pub const SHARED_NEWS_EVENT_DISPATCH_ORDERING_POLICY: &str =
+    "event_timestamp_then_generation_order.v1";
+pub const SHARED_NEWS_EVENT_DISPATCH_JT_UPDATE_POLICY: &str =
+    "every_news_event_adds_shared_severity_mark_to_jt.v1";
+pub const SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY: &str =
+    "apply_shared_gap_mark_only_for_closed_market_state.v1";
 
 /// Deterministic intensity policy configuration for `nu_news(t)`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -288,9 +295,11 @@ impl CoupledGapMarkConfiguration {
             });
         }
         if !shared_base_shock_mark.is_finite() {
-            return Err(CoupledGapMarkConstructionError::InvalidSharedBaseShockMark {
-                value: shared_base_shock_mark,
-            });
+            return Err(
+                CoupledGapMarkConstructionError::InvalidSharedBaseShockMark {
+                    value: shared_base_shock_mark,
+                },
+            );
         }
 
         let gap_jump_mark = self.sigma_g * shared_severity_mark.sqrt() * shared_base_shock_mark;
@@ -318,6 +327,239 @@ pub struct CoupledGapMarkConstruction {
     pub sigma_g: f64,
     pub gap_jump_mark: f64,
     pub construction_policy: &'static str,
+}
+
+/// Running shared-news accumulators for Hawkes shock loading `J_t` and gap process `G_t`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SharedNewsAccumulatorState {
+    pub j_t: f64,
+    pub g_t: f64,
+}
+
+impl SharedNewsAccumulatorState {
+    pub const fn new(j_t: f64, g_t: f64) -> Self {
+        Self { j_t, g_t }
+    }
+}
+
+/// Shared dispatch input for one exogenous news event.
+///
+/// Dispatch ordering is deterministic and follows:
+/// 1. lower `event_timestamp_utc_nanos`
+/// 2. lower `event_generation_order`
+///
+/// Every event contributes to `J_t` using `shared_severity_mark`.
+/// `coupled_gap_jump_mark` contributes to `G_t` only when `market_state == closed`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SharedNewsEventDispatchInput {
+    pub event_timestamp_utc_nanos: i64,
+    pub event_generation_order: u64,
+    pub market_state: MarketState,
+    pub shared_severity_mark: f64,
+    pub coupled_gap_jump_mark: f64,
+}
+
+impl SharedNewsEventDispatchInput {
+    const fn ordering_key(self) -> (i64, u64) {
+        (self.event_timestamp_utc_nanos, self.event_generation_order)
+    }
+}
+
+/// Per-event dispatch record produced by shared `J_t` and `G_t` updates.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SharedNewsEventDispatchRecord {
+    pub event_timestamp_utc_nanos: i64,
+    pub event_generation_order: u64,
+    pub market_state: MarketState,
+    pub shared_severity_mark: f64,
+    pub coupled_gap_jump_mark: f64,
+    pub j_t_increment: f64,
+    pub g_t_increment: f64,
+    pub j_t_after_event: f64,
+    pub g_t_after_event: f64,
+}
+
+/// Shared dispatch output reusable by simulation and coarse-time engines.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SharedNewsEventDispatchOutput {
+    pub ordering_policy: &'static str,
+    pub j_t_update_policy: &'static str,
+    pub g_t_gating_policy: &'static str,
+    pub records: Vec<SharedNewsEventDispatchRecord>,
+    pub final_state: SharedNewsAccumulatorState,
+}
+
+/// Structured failures emitted by shared news-event dispatch.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SharedNewsEventDispatchError {
+    InvalidInitialJtAccumulator {
+        value: f64,
+    },
+    InvalidInitialGtAccumulator {
+        value: f64,
+    },
+    InvalidSeverityMark {
+        event_generation_order: u64,
+        value: f64,
+    },
+    InvalidGapJumpMark {
+        event_generation_order: u64,
+        value: f64,
+    },
+    InvalidAccumulatedJt {
+        event_generation_order: u64,
+        value: f64,
+    },
+    InvalidAccumulatedGt {
+        event_generation_order: u64,
+        value: f64,
+    },
+}
+
+impl Display for SharedNewsEventDispatchError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidInitialJtAccumulator { value } => write!(
+                formatter,
+                "initial J_t accumulator must be finite, found {value}"
+            ),
+            Self::InvalidInitialGtAccumulator { value } => write!(
+                formatter,
+                "initial G_t accumulator must be finite, found {value}"
+            ),
+            Self::InvalidSeverityMark {
+                event_generation_order,
+                value,
+            } => write!(
+                formatter,
+                "shared severity mark for event generation order {event_generation_order} must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidGapJumpMark {
+                event_generation_order,
+                value,
+            } => write!(
+                formatter,
+                "shared gap jump mark for event generation order {event_generation_order} must be finite, found {value}"
+            ),
+            Self::InvalidAccumulatedJt {
+                event_generation_order,
+                value,
+            } => write!(
+                formatter,
+                "accumulated J_t after event generation order {event_generation_order} must be finite, found {value}"
+            ),
+            Self::InvalidAccumulatedGt {
+                event_generation_order,
+                value,
+            } => write!(
+                formatter,
+                "accumulated G_t after event generation order {event_generation_order} must be finite, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for SharedNewsEventDispatchError {}
+
+/// Dispatch shared news events through one canonical `J_t` plus `G_t` update path.
+///
+/// Event processing order is deterministic and documented by
+/// `SHARED_NEWS_EVENT_DISPATCH_ORDERING_POLICY`.
+pub fn dispatch_shared_news_events(
+    initial_state: SharedNewsAccumulatorState,
+    event_inputs: &[SharedNewsEventDispatchInput],
+) -> Result<SharedNewsEventDispatchOutput, SharedNewsEventDispatchError> {
+    validate_initial_dispatch_state(initial_state)?;
+
+    let mut ordered_event_inputs: Vec<SharedNewsEventDispatchInput> = event_inputs.to_vec();
+    ordered_event_inputs.sort_by_key(|event_input| event_input.ordering_key());
+
+    let mut next_state = initial_state;
+    let mut dispatch_records: Vec<SharedNewsEventDispatchRecord> =
+        Vec::with_capacity(ordered_event_inputs.len());
+
+    for event_input in ordered_event_inputs {
+        let dispatch_record = dispatch_one_shared_news_event(event_input, &mut next_state)?;
+        dispatch_records.push(dispatch_record);
+    }
+
+    Ok(SharedNewsEventDispatchOutput {
+        ordering_policy: SHARED_NEWS_EVENT_DISPATCH_ORDERING_POLICY,
+        j_t_update_policy: SHARED_NEWS_EVENT_DISPATCH_JT_UPDATE_POLICY,
+        g_t_gating_policy: SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY,
+        records: dispatch_records,
+        final_state: next_state,
+    })
+}
+
+fn validate_initial_dispatch_state(
+    initial_state: SharedNewsAccumulatorState,
+) -> Result<(), SharedNewsEventDispatchError> {
+    if !initial_state.j_t.is_finite() {
+        return Err(SharedNewsEventDispatchError::InvalidInitialJtAccumulator {
+            value: initial_state.j_t,
+        });
+    }
+
+    if !initial_state.g_t.is_finite() {
+        return Err(SharedNewsEventDispatchError::InvalidInitialGtAccumulator {
+            value: initial_state.g_t,
+        });
+    }
+
+    Ok(())
+}
+
+fn dispatch_one_shared_news_event(
+    event_input: SharedNewsEventDispatchInput,
+    next_state: &mut SharedNewsAccumulatorState,
+) -> Result<SharedNewsEventDispatchRecord, SharedNewsEventDispatchError> {
+    if !event_input.shared_severity_mark.is_finite() || event_input.shared_severity_mark < 0.0 {
+        return Err(SharedNewsEventDispatchError::InvalidSeverityMark {
+            event_generation_order: event_input.event_generation_order,
+            value: event_input.shared_severity_mark,
+        });
+    }
+    if !event_input.coupled_gap_jump_mark.is_finite() {
+        return Err(SharedNewsEventDispatchError::InvalidGapJumpMark {
+            event_generation_order: event_input.event_generation_order,
+            value: event_input.coupled_gap_jump_mark,
+        });
+    }
+
+    let j_t_increment = event_input.shared_severity_mark;
+    let g_t_increment = match event_input.market_state {
+        MarketState::Open => 0.0,
+        MarketState::Closed => event_input.coupled_gap_jump_mark,
+    };
+
+    next_state.j_t += j_t_increment;
+    if !next_state.j_t.is_finite() {
+        return Err(SharedNewsEventDispatchError::InvalidAccumulatedJt {
+            event_generation_order: event_input.event_generation_order,
+            value: next_state.j_t,
+        });
+    }
+
+    next_state.g_t += g_t_increment;
+    if !next_state.g_t.is_finite() {
+        return Err(SharedNewsEventDispatchError::InvalidAccumulatedGt {
+            event_generation_order: event_input.event_generation_order,
+            value: next_state.g_t,
+        });
+    }
+
+    Ok(SharedNewsEventDispatchRecord {
+        event_timestamp_utc_nanos: event_input.event_timestamp_utc_nanos,
+        event_generation_order: event_input.event_generation_order,
+        market_state: event_input.market_state,
+        shared_severity_mark: event_input.shared_severity_mark,
+        coupled_gap_jump_mark: event_input.coupled_gap_jump_mark,
+        j_t_increment,
+        g_t_increment,
+        j_t_after_event: next_state.j_t,
+        g_t_after_event: next_state.g_t,
+    })
 }
 
 /// Canonical shared news process configuration.
@@ -751,8 +993,12 @@ mod tests {
         GammaSeverityMarkSamplingError, NEWS_INTENSITY_BASELINE_POLICY,
         NEWS_INTENSITY_DETERMINISTIC_INPUT_POLICY, NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION,
         NewsIntensityConfiguration, NewsMarkConfigurationError, NewsProcessConfiguration,
+        SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY, SHARED_NEWS_EVENT_DISPATCH_JT_UPDATE_POLICY,
+        SHARED_NEWS_EVENT_DISPATCH_ORDERING_POLICY, SharedNewsAccumulatorState,
+        SharedNewsEventDispatchInput, dispatch_shared_news_events,
     };
-    use crate::randomness::SplitMix64SimulationRandomnessStream;
+    use crate::calendar::MarketState;
+    use crate::randomness::{SimulationRandomnessStream, SplitMix64SimulationRandomnessStream};
     use serde_json::json;
 
     #[test]
@@ -1209,5 +1455,189 @@ mod tests {
             (construction.gap_jump_mark - replayed_gap_jump_mark).abs() <= 1e-12,
             "gap consumer must use the same shared severity mark used by Hawkes loading"
         );
+    }
+
+    #[test]
+    fn shared_news_event_dispatch_maps_each_news_event_to_one_jt_increment() {
+        let event_inputs = vec![
+            SharedNewsEventDispatchInput {
+                event_timestamp_utc_nanos: 300,
+                event_generation_order: 2,
+                market_state: MarketState::Open,
+                shared_severity_mark: 1.25,
+                coupled_gap_jump_mark: -0.3,
+            },
+            SharedNewsEventDispatchInput {
+                event_timestamp_utc_nanos: 100,
+                event_generation_order: 0,
+                market_state: MarketState::Closed,
+                shared_severity_mark: 0.4,
+                coupled_gap_jump_mark: -0.2,
+            },
+            SharedNewsEventDispatchInput {
+                event_timestamp_utc_nanos: 200,
+                event_generation_order: 1,
+                market_state: MarketState::Closed,
+                shared_severity_mark: 0.8,
+                coupled_gap_jump_mark: 0.1,
+            },
+        ];
+
+        let dispatch_output =
+            dispatch_shared_news_events(SharedNewsAccumulatorState::new(0.0, 0.0), &event_inputs)
+                .expect("valid shared dispatch inputs should dispatch");
+
+        assert_eq!(dispatch_output.records.len(), event_inputs.len());
+
+        let mut expected_pairs: Vec<(u64, f64)> = event_inputs
+            .iter()
+            .map(|event_input| {
+                (
+                    event_input.event_generation_order,
+                    event_input.shared_severity_mark,
+                )
+            })
+            .collect();
+        expected_pairs.sort_by_key(|pair| pair.0);
+
+        let observed_pairs: Vec<(u64, f64)> = dispatch_output
+            .records
+            .iter()
+            .map(|record| (record.event_generation_order, record.j_t_increment))
+            .collect();
+        assert_eq!(observed_pairs, expected_pairs);
+
+        let mut running_j_t = 0.0;
+        for record in &dispatch_output.records {
+            running_j_t += record.shared_severity_mark;
+            assert_eq!(record.j_t_increment, record.shared_severity_mark);
+            assert!((record.j_t_after_event - running_j_t).abs() <= 1e-12);
+        }
+    }
+
+    #[test]
+    fn shared_news_event_dispatch_couples_jt_with_closed_window_gt_updates() {
+        let event_inputs = vec![
+            SharedNewsEventDispatchInput {
+                event_timestamp_utc_nanos: 10,
+                event_generation_order: 0,
+                market_state: MarketState::Open,
+                shared_severity_mark: 0.6,
+                coupled_gap_jump_mark: 1.1,
+            },
+            SharedNewsEventDispatchInput {
+                event_timestamp_utc_nanos: 20,
+                event_generation_order: 1,
+                market_state: MarketState::Closed,
+                shared_severity_mark: 0.9,
+                coupled_gap_jump_mark: -0.35,
+            },
+        ];
+
+        let initial_state = SharedNewsAccumulatorState::new(1.2, 0.8);
+        let dispatch_output = dispatch_shared_news_events(initial_state, &event_inputs)
+            .expect("valid shared dispatch inputs should dispatch");
+
+        assert_eq!(
+            dispatch_output.records[0].g_t_increment, 0.0,
+            "open-window event must not emit a direct gap increment"
+        );
+        assert_eq!(
+            dispatch_output.records[1].g_t_increment, -0.35,
+            "closed-window event should emit the coupled gap increment"
+        );
+
+        assert!((dispatch_output.final_state.j_t - (1.2 + 0.6 + 0.9)).abs() <= 1e-12);
+        assert!((dispatch_output.final_state.g_t - (0.8 - 0.35)).abs() <= 1e-12);
+    }
+
+    #[test]
+    fn shared_news_event_dispatch_is_deterministic_under_seeded_tie_ordering_inputs() {
+        let first_seeded_inputs = build_seeded_dispatch_inputs(8_110_222, 32);
+        let mut reversed_inputs = first_seeded_inputs.clone();
+        reversed_inputs.reverse();
+
+        let first_output = dispatch_shared_news_events(
+            SharedNewsAccumulatorState::new(0.0, 0.0),
+            &first_seeded_inputs,
+        )
+        .expect("first seeded dispatch should succeed");
+        let second_output = dispatch_shared_news_events(
+            SharedNewsAccumulatorState::new(0.0, 0.0),
+            &reversed_inputs,
+        )
+        .expect("second seeded dispatch should succeed");
+
+        assert_eq!(first_output, second_output);
+        assert_eq!(
+            first_output.ordering_policy,
+            SHARED_NEWS_EVENT_DISPATCH_ORDERING_POLICY
+        );
+        assert_eq!(
+            first_output.j_t_update_policy,
+            SHARED_NEWS_EVENT_DISPATCH_JT_UPDATE_POLICY
+        );
+        assert_eq!(
+            first_output.g_t_gating_policy,
+            SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY
+        );
+
+        assert!(first_output.records.windows(2).all(|record_pair| {
+            let first_record = &record_pair[0];
+            let second_record = &record_pair[1];
+            (
+                first_record.event_timestamp_utc_nanos,
+                first_record.event_generation_order,
+            ) <= (
+                second_record.event_timestamp_utc_nanos,
+                second_record.event_generation_order,
+            )
+        }));
+    }
+
+    fn build_seeded_dispatch_inputs(
+        seed: u64,
+        event_count: usize,
+    ) -> Vec<SharedNewsEventDispatchInput> {
+        let gamma_configuration = GammaSeverityMarkConfiguration::try_new(1.6, 0.9)
+            .expect("gamma configuration should be valid");
+        let base_shock_configuration =
+            DoubleExponentialBaseShockConfiguration::try_new(0.4, 1.7, 2.5)
+                .expect("base-shock configuration should be valid");
+        let coupled_gap_configuration = CoupledGapMarkConfiguration::new(0.35);
+        let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(seed);
+
+        let mut event_inputs: Vec<SharedNewsEventDispatchInput> = Vec::with_capacity(event_count);
+        for event_position in 0..event_count {
+            let timestamp_bucket =
+                (randomness_stream.next_unit_interval_f64() * 4.0).floor() as i64;
+            let event_timestamp_utc_nanos = 1_700_000_000_000_000_000_i64 + timestamp_bucket;
+            let market_state = if randomness_stream.next_unit_interval_f64() < 0.5 {
+                MarketState::Closed
+            } else {
+                MarketState::Open
+            };
+
+            let shared_severity_mark = gamma_configuration
+                .sample_severity_mark(&mut randomness_stream)
+                .expect("severity mark should sample from valid configuration");
+            let shared_base_shock_mark = base_shock_configuration
+                .sample_base_shock_mark(&mut randomness_stream)
+                .expect("base-shock mark should sample from valid configuration");
+            let coupled_gap_jump_mark = coupled_gap_configuration
+                .construct_gap_jump_mark(shared_severity_mark, shared_base_shock_mark)
+                .expect("coupled gap mark should construct from sampled marks")
+                .gap_jump_mark;
+
+            event_inputs.push(SharedNewsEventDispatchInput {
+                event_timestamp_utc_nanos,
+                event_generation_order: (event_count - event_position - 1) as u64,
+                market_state,
+                shared_severity_mark,
+                coupled_gap_jump_mark,
+            });
+        }
+
+        event_inputs
     }
 }
