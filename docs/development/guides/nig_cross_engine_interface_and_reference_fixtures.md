@@ -16,11 +16,15 @@ The canonical driver payload is `NigBuySellDriverParameters`, derived from one
 Pricing and simulation consume this shared interface through thin adapters:
 
 - `pricing::compose_nig_trading_time_exponent_for_pricing`
-  - Uses `NigBuySellDriverParameters::compose_trading_time_weighted_characteristic_exponent`
+  - Uses `ReturnDecomposition::compose_nig_trading_time_exponent_with_edge_mode`
+  - Shared decomposition adapter then calls
+    `NigBuySellDriverParameters::compose_trading_time_weighted_characteristic_exponent`
   - Enforces sell-side sign convention through `psi_-(-u)` and publishes
     `buy_side_uses_psi_plus_of_u_and_sell_side_uses_psi_minus_of_negative_u.v1`
 - `simulation::sample_nig_trading_time_increment_for_simulation`
-  - Uses `NigBuySellDriverParameters::sample_trading_time_return_increment`
+  - Uses `ReturnDecomposition::sample_nig_trading_time_increment_with_edge_mode`
+  - Shared decomposition adapter then calls
+    `NigBuySellDriverParameters::sample_trading_time_return_increment`
   - Enforces trading-time increment composition through
     `buy_side_increment_minus_sell_side_increment.v1`
 

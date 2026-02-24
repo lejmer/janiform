@@ -11,10 +11,17 @@ use std::fmt::{Display, Formatter};
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::nig::{
+    ComplexScalar, NigBuySellDriverParameters, NigTradingTimeCharacteristicExponentContributions,
+    NigTradingTimeIncrementContributions, NigTradingTimeIncrementSamplingError,
+};
+use crate::randomness::SimulationRandomnessStream;
+
 pub const RETURN_DECOMPOSITION_INTERFACE_POLICY: &str =
     "explicit_a_plus_a_minus_and_gap_component_fields_without_tuple_passing.v1";
 pub const RETURN_DECOMPOSITION_UNITS_POLICY: &str = "a_plus_and_a_minus_are_integrated_intensity_expected_event_counts_and_gap_is_log_return_increment.v1";
 pub const RETURN_DECOMPOSITION_EDGE_MODE_POLICY: &str = "explicit_opt_in_buy_only_sell_only_gap_only_component_disable_modes_for_debug_and_test_workflows.v1";
+pub const RETURN_DECOMPOSITION_INTERFACE_EVOLUTION_POLICY: &str = "v0_1_additive_only_changes_for_existing_fields_and_behavior_breaking_changes_require_new_policy_identifier.v1";
 
 /// Explicit component-disable modes for test and debug workflows.
 ///
@@ -114,12 +121,81 @@ impl ReturnDecomposition {
         RETURN_DECOMPOSITION_UNITS_POLICY
     }
 
+    /// Return the canonical v0.1 interface evolution policy identifier.
+    pub const fn interface_evolution_policy() -> &'static str {
+        RETURN_DECOMPOSITION_INTERFACE_EVOLUTION_POLICY
+    }
+
     pub const fn integrated_buy_intensity(self) -> f64 {
         self.a_plus
     }
 
     pub const fn integrated_sell_intensity(self) -> f64 {
         self.a_minus
+    }
+
+    /// Compose trading-time weighted characteristic exponents through one shared decomposition map.
+    pub fn compose_nig_trading_time_exponent(
+        self,
+        driver_parameters: NigBuySellDriverParameters,
+        argument: ComplexScalar,
+    ) -> NigTradingTimeCharacteristicExponentContributions {
+        self.compose_nig_trading_time_exponent_with_edge_mode(
+            driver_parameters,
+            argument,
+            ReturnDecompositionEdgeMode::Disabled,
+        )
+    }
+
+    /// Compose trading-time weighted characteristic exponents with optional edge-mode gating.
+    pub fn compose_nig_trading_time_exponent_with_edge_mode(
+        self,
+        driver_parameters: NigBuySellDriverParameters,
+        argument: ComplexScalar,
+        edge_mode: ReturnDecompositionEdgeMode,
+    ) -> NigTradingTimeCharacteristicExponentContributions {
+        let effective_decomposition = self.with_edge_mode(edge_mode);
+
+        driver_parameters.compose_trading_time_weighted_characteristic_exponent(
+            argument,
+            effective_decomposition.integrated_buy_intensity(),
+            effective_decomposition.integrated_sell_intensity(),
+        )
+    }
+
+    /// Sample one trading-time return increment through the shared decomposition map.
+    pub fn sample_nig_trading_time_increment<R>(
+        self,
+        driver_parameters: NigBuySellDriverParameters,
+        randomness_stream: &mut R,
+    ) -> Result<NigTradingTimeIncrementContributions, NigTradingTimeIncrementSamplingError>
+    where
+        R: SimulationRandomnessStream,
+    {
+        self.sample_nig_trading_time_increment_with_edge_mode(
+            driver_parameters,
+            ReturnDecompositionEdgeMode::Disabled,
+            randomness_stream,
+        )
+    }
+
+    /// Sample one trading-time return increment with optional edge-mode gating.
+    pub fn sample_nig_trading_time_increment_with_edge_mode<R>(
+        self,
+        driver_parameters: NigBuySellDriverParameters,
+        edge_mode: ReturnDecompositionEdgeMode,
+        randomness_stream: &mut R,
+    ) -> Result<NigTradingTimeIncrementContributions, NigTradingTimeIncrementSamplingError>
+    where
+        R: SimulationRandomnessStream,
+    {
+        let effective_decomposition = self.with_edge_mode(edge_mode);
+
+        driver_parameters.sample_trading_time_return_increment(
+            effective_decomposition.integrated_buy_intensity(),
+            effective_decomposition.integrated_sell_intensity(),
+            randomness_stream,
+        )
     }
 
     /// Apply one explicit edge mode by zeroing disabled decomposition components.
@@ -253,10 +329,14 @@ fn validate_finite(
 
 #[cfg(test)]
 mod tests {
+    use crate::nig::{ComplexScalar, NigSharedPlusShiftConfiguration};
+    use crate::randomness::SplitMix64SimulationRandomnessStream;
+
     use super::{
-        RETURN_DECOMPOSITION_EDGE_MODE_POLICY, RETURN_DECOMPOSITION_INTERFACE_POLICY,
-        RETURN_DECOMPOSITION_UNITS_POLICY, ReturnDecomposition, ReturnDecompositionEdgeMode,
-        ReturnDecompositionInput, ReturnDecompositionValidationError,
+        RETURN_DECOMPOSITION_EDGE_MODE_POLICY, RETURN_DECOMPOSITION_INTERFACE_EVOLUTION_POLICY,
+        RETURN_DECOMPOSITION_INTERFACE_POLICY, RETURN_DECOMPOSITION_UNITS_POLICY,
+        ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionInput,
+        ReturnDecompositionValidationError,
     };
 
     #[test]
@@ -397,5 +477,73 @@ mod tests {
                 gap: -0.4,
             }
         );
+    }
+
+    #[test]
+    fn shared_trading_time_exponent_adapter_matches_direct_driver_composition() {
+        let driver_parameters = valid_nig_driver_parameters();
+        let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 1.2,
+            a_minus: 0.7,
+            gap: -0.3,
+        })
+        .expect("test decomposition should be valid");
+        let argument = ComplexScalar::new(0.25, -0.4);
+
+        let observed = decomposition.compose_nig_trading_time_exponent_with_edge_mode(
+            driver_parameters,
+            argument,
+            ReturnDecompositionEdgeMode::SellOnly,
+        );
+        let expected = driver_parameters
+            .compose_trading_time_weighted_characteristic_exponent(argument, 0.0, 0.7);
+
+        assert_eq!(observed, expected);
+    }
+
+    #[test]
+    fn shared_trading_time_increment_adapter_matches_direct_driver_composition() {
+        let driver_parameters = valid_nig_driver_parameters();
+        let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 0.9,
+            a_minus: 0.4,
+            gap: 0.1,
+        })
+        .expect("test decomposition should be valid");
+
+        let mut observed_stream = SplitMix64SimulationRandomnessStream::from_seed(981_220);
+        let mut expected_stream = SplitMix64SimulationRandomnessStream::from_seed(981_220);
+
+        let observed = decomposition
+            .sample_nig_trading_time_increment_with_edge_mode(
+                driver_parameters,
+                ReturnDecompositionEdgeMode::BuyOnly,
+                &mut observed_stream,
+            )
+            .expect("adapter sampling should succeed");
+        let expected = driver_parameters
+            .sample_trading_time_return_increment(0.9, 0.0, &mut expected_stream)
+            .expect("direct driver sampling should succeed");
+
+        assert_eq!(observed, expected);
+    }
+
+    #[test]
+    fn interface_evolution_policy_identifier_is_stable_for_v0_1() {
+        assert_eq!(
+            ReturnDecomposition::interface_evolution_policy(),
+            "v0_1_additive_only_changes_for_existing_fields_and_behavior_breaking_changes_require_new_policy_identifier.v1"
+        );
+        assert_eq!(
+            ReturnDecomposition::interface_evolution_policy(),
+            RETURN_DECOMPOSITION_INTERFACE_EVOLUTION_POLICY
+        );
+    }
+
+    fn valid_nig_driver_parameters() -> crate::nig::NigBuySellDriverParameters {
+        NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("test shared-plus-shift payload should construct")
+            .derive_driver_parameters()
+            .expect("test shared-plus-shift payload should derive drivers")
     }
 }

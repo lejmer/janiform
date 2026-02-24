@@ -1407,11 +1407,9 @@ pub fn sample_nig_trading_time_increment_for_simulation_with_edge_mode<R>(
 where
     R: SimulationRandomnessStream,
 {
-    let effective_decomposition = return_decomposition.with_edge_mode(edge_mode);
-
-    driver_parameters.sample_trading_time_return_increment(
-        effective_decomposition.integrated_buy_intensity(),
-        effective_decomposition.integrated_sell_intensity(),
+    return_decomposition.sample_nig_trading_time_increment_with_edge_mode(
+        driver_parameters,
+        edge_mode,
         randomness_stream,
     )
 }
@@ -1566,6 +1564,39 @@ mod tests {
         assert_float_close(contributions.buy_side_increment, 0.0);
         assert_float_close(contributions.sell_side_increment, 0.0);
         assert_float_close(contributions.combined_increment, 0.0);
+    }
+
+    #[test]
+    fn simulation_adapter_matches_shared_return_decomposition_interface() {
+        let driver_parameters = valid_nig_driver_parameters();
+
+        let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 0.85,
+            a_minus: 0.35,
+            gap: -0.2,
+        })
+        .expect("test decomposition should be valid");
+
+        let mut simulation_stream = SplitMix64SimulationRandomnessStream::from_seed(42_105);
+        let mut shared_stream = SplitMix64SimulationRandomnessStream::from_seed(42_105);
+
+        let observed = sample_nig_trading_time_increment_for_simulation_with_edge_mode(
+            driver_parameters,
+            decomposition,
+            ReturnDecompositionEdgeMode::BuyOnly,
+            &mut simulation_stream,
+        )
+        .expect("simulation adapter sampling should succeed");
+
+        let expected = decomposition
+            .sample_nig_trading_time_increment_with_edge_mode(
+                driver_parameters,
+                ReturnDecompositionEdgeMode::BuyOnly,
+                &mut shared_stream,
+            )
+            .expect("shared decomposition adapter sampling should succeed");
+
+        assert_eq!(observed, expected);
     }
 
     #[test]

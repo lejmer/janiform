@@ -152,12 +152,10 @@ pub fn compose_nig_trading_time_exponent_for_pricing_with_edge_mode(
     return_decomposition: ReturnDecomposition,
     edge_mode: ReturnDecompositionEdgeMode,
 ) -> NigTradingTimeCharacteristicExponentContributions {
-    let effective_decomposition = return_decomposition.with_edge_mode(edge_mode);
-
-    driver_parameters.compose_trading_time_weighted_characteristic_exponent(
+    return_decomposition.compose_nig_trading_time_exponent_with_edge_mode(
+        driver_parameters,
         argument,
-        effective_decomposition.integrated_buy_intensity(),
-        effective_decomposition.integrated_sell_intensity(),
+        edge_mode,
     )
 }
 
@@ -185,12 +183,10 @@ pub fn compose_nig_trading_time_exponent_for_coarse_transform_integration_with_e
     return_decomposition: ReturnDecomposition,
     edge_mode: ReturnDecompositionEdgeMode,
 ) -> NigTradingTimeCharacteristicExponentContributions {
-    let effective_decomposition = return_decomposition.with_edge_mode(edge_mode);
-
-    driver_parameters.compose_trading_time_weighted_characteristic_exponent(
+    return_decomposition.compose_nig_trading_time_exponent_with_edge_mode(
+        driver_parameters,
         argument,
-        effective_decomposition.integrated_buy_intensity(),
-        effective_decomposition.integrated_sell_intensity(),
+        edge_mode,
     )
 }
 
@@ -311,12 +307,8 @@ fn compose_total_return_characteristic_function_shared(
         ReturnCharacteristicFunctionAssemblyError::InvalidReturnDecomposition { source }
     })?;
 
-    let trading_time_exponent_contributions = driver_parameters
-        .compose_trading_time_weighted_characteristic_exponent(
-            argument,
-            effective_decomposition.integrated_buy_intensity(),
-            effective_decomposition.integrated_sell_intensity(),
-        );
+    let trading_time_exponent_contributions =
+        effective_decomposition.compose_nig_trading_time_exponent(driver_parameters, argument);
     let combined_weighted_exponent = trading_time_exponent_contributions.combined_weighted_exponent;
     if !combined_weighted_exponent.is_finite() {
         return Err(
@@ -391,7 +383,9 @@ mod tests {
 
     use super::{
         compose_nig_trading_time_exponent_for_coarse_transform_integration,
+        compose_nig_trading_time_exponent_for_coarse_transform_integration_with_edge_mode,
         compose_nig_trading_time_exponent_for_pricing,
+        compose_nig_trading_time_exponent_for_pricing_with_edge_mode,
     };
 
     #[test]
@@ -421,6 +415,44 @@ mod tests {
             );
 
         assert_eq!(pricing_contributions, coarse_transform_contributions);
+    }
+
+    #[test]
+    fn pricing_and_coarse_adapters_match_shared_return_decomposition_interface() {
+        let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("valid shared-plus-shift payload should construct")
+            .derive_driver_parameters()
+            .expect("valid shared-plus-shift payload should derive drivers");
+        let argument = ComplexScalar::new(0.45, -0.15);
+        let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 1.8,
+            a_minus: 0.6,
+            gap: -0.25,
+        })
+        .expect("valid return decomposition payload should construct");
+
+        let pricing_observed = compose_nig_trading_time_exponent_for_pricing_with_edge_mode(
+            driver_parameters,
+            argument,
+            return_decomposition,
+            ReturnDecompositionEdgeMode::SellOnly,
+        );
+        let coarse_observed =
+            compose_nig_trading_time_exponent_for_coarse_transform_integration_with_edge_mode(
+                driver_parameters,
+                argument,
+                return_decomposition,
+                ReturnDecompositionEdgeMode::SellOnly,
+            );
+        let shared_expected = return_decomposition
+            .compose_nig_trading_time_exponent_with_edge_mode(
+                driver_parameters,
+                argument,
+                ReturnDecompositionEdgeMode::SellOnly,
+            );
+
+        assert_eq!(pricing_observed, shared_expected);
+        assert_eq!(coarse_observed, shared_expected);
     }
 
     #[test]
