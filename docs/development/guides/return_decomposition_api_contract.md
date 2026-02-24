@@ -116,3 +116,22 @@ Each case stores machine-readable expected outputs for:
 - combined trading-time exponent
 - trading-time and full characteristic factors
 - positive-`u` sell-side regression reference and minimum distance threshold
+
+## Regression diagnostics report
+
+Decomposition regression diagnostics in the Rust test suite emit a structured
+failure report with this schema id:
+
+- `return_decomposition.failure_diagnostic_report.v1`
+
+Each violation entry includes:
+
+- `scenario_id`
+- `seed`
+- `edge_mode`
+- `check_id`
+- categorized failure type: `mapping`, `sign`, or `component_disable_mode`
+- `expected` and `observed` component contribution payloads
+
+This format is deterministic and machine-readable so CI failures can be triaged
+without ad-hoc log parsing.
