@@ -98,3 +98,21 @@ Simulation call flow:
 - breaking changes must ship behind a new policy identifier
 
 This keeps component wiring explicit and prevents anonymous tuple-style passing.
+
+## Analytic sign fixture
+
+Deterministic sign-validation references live in
+`tests/fixtures/return_decomposition/return_decomposition_sign_analytic_fixture.json`.
+
+Schema contract:
+
+- `schema_version`: `return.decomposition.sign_analytic_fixture.v1`
+- Fixture set id: `return_decomposition_sign_analytic_fixture_v1`
+- Scenario intents: `buy_only`, `sell_only`, `combined`
+
+Each case stores machine-readable expected outputs for:
+
+- weighted buy and sell exponents
+- combined trading-time exponent
+- trading-time and full characteristic factors
+- positive-`u` sell-side regression reference and minimum distance threshold
