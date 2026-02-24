@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -12,6 +14,10 @@ pub const CALENDAR_REGRESSION_FIXTURE_SCHEMA_VERSION: &str = "calendar.service.r
 pub const CALENDAR_REGRESSION_FIXTURE_SET_ID: &str = "calendar_service_regression_matrix_v1";
 pub const HOURLY_FACTOR_REGRESSION_FIXTURE_SCHEMA_VERSION: &str = "hourly.factor.regression.v1";
 pub const HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID: &str = "hourly_factor_regression_matrix_v1";
+pub const OPEN_CLOSED_GAP_BEHAVIOR_SCENARIO_FIXTURE_SCHEMA_VERSION: &str =
+    "gap.behavior.open_closed.scenario_fixture.v1";
+pub const OPEN_CLOSED_GAP_BEHAVIOR_SCENARIO_FIXTURE_SET_ID: &str =
+    "open_closed_gap_behavior_scenarios_v1";
 pub const MANIFEST_SCHEMA_FAMILY: &str = "validation.fixture.manifest";
 pub const MANIFEST_V0_UPDATE_POLICY: &str = "additive_only_and_major_on_breaking_change.v1";
 pub const MANIFEST_LOADING_ORDER_POLICY: &str = "lexicographic_by_fixture_id.v1";
@@ -24,6 +30,14 @@ pub const CALENDAR_CONTENT_HASH_SCOPE_POLICY: &str = "document_payload_bytes.v1"
 pub const HOURLY_FACTOR_THRESHOLD_CONFIGURATION_SCHEMA_VERSION: &str =
     "validation.hourly_factor.thresholds.v1";
 pub const STATE_CLASSIFICATION_STRICTNESS_POLICY: &str = "exact_match_required.v1";
+pub const OPEN_CLOSED_GAP_BEHAVIOR_SCHEMA_FAMILY: &str = "validation.gap_behavior.open_closed";
+pub const OPEN_CLOSED_GAP_BEHAVIOR_SCHEMA_GENERATION: &str = "v0.x";
+pub const OPEN_CLOSED_GAP_BEHAVIOR_FORWARD_EXTENSION_POLICY: &str = "additive_fields_only.v1";
+pub const OPEN_CLOSED_GAP_BEHAVIOR_CASE_ORDER_POLICY: &str = "preserve_declared_case_order.v1";
+pub const OPEN_CLOSED_GAP_BEHAVIOR_EVENT_ORDER_POLICY: &str = "preserve_declared_event_order.v1";
+pub const OPEN_CLOSED_GAP_BEHAVIOR_CONTENT_HASH_SCOPE_POLICY: &str = "document_payload_bytes.v1";
+pub const OPEN_CLOSED_GAP_BEHAVIOR_OUTPUT_SCHEMA_VERSION: &str =
+    "validation.gap_behavior.open_closed.case_output.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -56,6 +70,7 @@ pub enum ValidationFixtureDomain {
     Calendar,
     Seasonality,
     HourlyFactors,
+    GapBehavior,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -258,6 +273,109 @@ pub enum HourlyMissingDataGuardExpectedOutcomeFixture {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpenClosedGapBehaviorScenarioFixtureDocument {
+    pub schema_version: String,
+    pub fixture_set_id: String,
+    pub fixture_set_version: String,
+    pub schema_metadata: OpenClosedGapBehaviorScenarioSchemaMetadata,
+    pub determinism_metadata: OpenClosedGapBehaviorScenarioDeterminismMetadata,
+    pub output_schema_metadata: OpenClosedGapBehaviorOutputSchemaMetadata,
+    pub canonical_regression_metadata: OpenClosedGapBehaviorCanonicalMetadata,
+    pub cases: Vec<OpenClosedGapBehaviorScenarioCaseFixture>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpenClosedGapBehaviorScenarioSchemaMetadata {
+    pub schema_family: String,
+    pub schema_generation: String,
+    pub forward_extension_policy: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpenClosedGapBehaviorScenarioDeterminismMetadata {
+    pub fixture_loading_order: String,
+    pub event_loading_order: String,
+    pub content_hash_scope: String,
+    pub content_hash_algorithm: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpenClosedGapBehaviorOutputSchemaMetadata {
+    pub schema_version: String,
+    pub required_case_output_fields: Vec<String>,
+    pub required_summary_fields: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpenClosedGapBehaviorCanonicalMetadata {
+    pub required_tags: Vec<String>,
+    pub stable_fixture_ids_by_tag: BTreeMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpenClosedGapBehaviorScenarioCaseFixture {
+    pub fixture_id: String,
+    pub exchange_code: String,
+    pub calendar_fixture_set_id: String,
+    pub range_start_utc: String,
+    pub range_end_utc: String,
+    pub initial_accumulator_state: OpenClosedGapBehaviorAccumulatorStateFixture,
+    pub injected_events: Vec<OpenClosedGapBehaviorInjectedEventFixture>,
+    pub expected_outcome: OpenClosedGapBehaviorExpectedOutcomeFixture,
+    pub tags: Vec<String>,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpenClosedGapBehaviorAccumulatorStateFixture {
+    pub j_t: f64,
+    pub g_t: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpenClosedGapBehaviorInjectedEventFixture {
+    pub event_id: String,
+    pub timestamp_utc: String,
+    pub shared_severity_mark: f64,
+    pub coupled_gap_jump_mark: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpenClosedGapBehaviorExpectedOutcomeFixture {
+    pub event_outcomes: Vec<OpenClosedGapBehaviorEventExpectationFixture>,
+    pub summary: OpenClosedGapBehaviorExpectedSummaryFixture,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpenClosedGapBehaviorEventExpectationFixture {
+    pub event_id: String,
+    pub expected_market_state: String,
+    pub expected_j_t_increment: f64,
+    pub expected_g_t_increment: f64,
+    pub expected_direct_gap_applied: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpenClosedGapBehaviorExpectedSummaryFixture {
+    pub expected_open_event_count: usize,
+    pub expected_closed_event_count: usize,
+    pub expected_total_j_t_increment: f64,
+    pub expected_total_g_t_increment: f64,
+    pub expected_open_window_direct_gap_increment_count: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoadedFixturePayload {
     pub fixture_id: String,
@@ -284,8 +402,71 @@ pub struct LoadedHourlyFactorRegressionFixture {
     pub fixture_document: HourlyFactorRegressionFixtureDocument,
 }
 
-pub fn load_validation_fixture_manifest_document()
--> Result<ValidationFixtureManifestDocument, String> {
+#[derive(Debug, Clone, PartialEq)]
+pub struct LoadedOpenClosedGapBehaviorScenarioFixture {
+    pub manifest: ValidationFixtureManifestDocument,
+    pub manifest_entry: ValidationFixtureManifestEntry,
+    pub loaded_payload: LoadedFixturePayload,
+    pub fixture_document: OpenClosedGapBehaviorScenarioFixtureDocument,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenClosedGapBehaviorScenarioValidationError {
+    pub code: &'static str,
+    pub field_path: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OpenClosedGapBehaviorScenarioLoaderError {
+    Manifest(String),
+    InvalidManifestEntry {
+        expected_fixture_schema_version: String,
+        observed_fixture_schema_version: String,
+    },
+    PayloadLoad(String),
+    Parse(String),
+    Validation {
+        errors: Vec<OpenClosedGapBehaviorScenarioValidationError>,
+    },
+}
+
+impl Display for OpenClosedGapBehaviorScenarioLoaderError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Manifest(message) => write!(
+                formatter,
+                "failed to load open/closed gap behavior scenario fixture manifest metadata: {message}"
+            ),
+            Self::InvalidManifestEntry {
+                expected_fixture_schema_version,
+                observed_fixture_schema_version,
+            } => write!(
+                formatter,
+                "unexpected open/closed gap behavior fixture schema version in manifest: expected {}, observed {}",
+                expected_fixture_schema_version, observed_fixture_schema_version
+            ),
+            Self::PayloadLoad(message) => write!(
+                formatter,
+                "failed to load open/closed gap behavior scenario fixture payload: {message}"
+            ),
+            Self::Parse(message) => write!(
+                formatter,
+                "failed to parse open/closed gap behavior scenario fixture payload: {message}"
+            ),
+            Self::Validation { errors } => write!(
+                formatter,
+                "open/closed gap behavior scenario fixture payload failed validation with {} error(s)",
+                errors.len()
+            ),
+        }
+    }
+}
+
+impl Error for OpenClosedGapBehaviorScenarioLoaderError {}
+
+pub fn load_validation_fixture_manifest_document(
+) -> Result<ValidationFixtureManifestDocument, String> {
     let manifest_path = validation_fixture_manifest_path();
     let manifest_raw = fs::read_to_string(&manifest_path).map_err(|source| {
         format!(
@@ -407,8 +588,8 @@ pub fn load_manifest_entry_payload(
     })
 }
 
-pub fn load_calendar_regression_fixture_from_manifest()
--> Result<LoadedCalendarRegressionFixture, String> {
+pub fn load_calendar_regression_fixture_from_manifest(
+) -> Result<LoadedCalendarRegressionFixture, String> {
     let manifest = load_validation_fixture_manifest_document()?;
     let manifest_entry =
         find_manifest_entry_by_fixture_id(&manifest, CALENDAR_REGRESSION_FIXTURE_SET_ID)?;
@@ -434,8 +615,8 @@ pub fn load_calendar_regression_fixture_from_manifest()
     })
 }
 
-pub fn load_hourly_factor_regression_fixture_from_manifest()
--> Result<LoadedHourlyFactorRegressionFixture, String> {
+pub fn load_hourly_factor_regression_fixture_from_manifest(
+) -> Result<LoadedHourlyFactorRegressionFixture, String> {
     let manifest = load_validation_fixture_manifest_document()?;
     let manifest_entry =
         find_manifest_entry_by_fixture_id(&manifest, HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID)?;
@@ -461,6 +642,44 @@ pub fn load_hourly_factor_regression_fixture_from_manifest()
     })
 }
 
+pub fn load_open_closed_gap_behavior_scenario_fixture_from_manifest(
+) -> Result<LoadedOpenClosedGapBehaviorScenarioFixture, OpenClosedGapBehaviorScenarioLoaderError> {
+    let manifest = load_validation_fixture_manifest_document()
+        .map_err(OpenClosedGapBehaviorScenarioLoaderError::Manifest)?;
+    let manifest_entry = find_manifest_entry_by_fixture_id(
+        &manifest,
+        OPEN_CLOSED_GAP_BEHAVIOR_SCENARIO_FIXTURE_SET_ID,
+    )
+    .map_err(OpenClosedGapBehaviorScenarioLoaderError::Manifest)?;
+
+    if manifest_entry.fixture_schema_version
+        != OPEN_CLOSED_GAP_BEHAVIOR_SCENARIO_FIXTURE_SCHEMA_VERSION
+    {
+        return Err(
+            OpenClosedGapBehaviorScenarioLoaderError::InvalidManifestEntry {
+                expected_fixture_schema_version:
+                    OPEN_CLOSED_GAP_BEHAVIOR_SCENARIO_FIXTURE_SCHEMA_VERSION.to_string(),
+                observed_fixture_schema_version: manifest_entry.fixture_schema_version.clone(),
+            },
+        );
+    }
+
+    let loaded_payload = load_manifest_entry_payload(&fixtures_root_path(), &manifest_entry)
+        .map_err(OpenClosedGapBehaviorScenarioLoaderError::PayloadLoad)?;
+    let fixture_document =
+        parse_open_closed_gap_behavior_scenario_fixture_document(&loaded_payload.payload_bytes)?;
+
+    validate_open_closed_gap_behavior_scenario_fixture_document(&fixture_document)
+        .map_err(|errors| OpenClosedGapBehaviorScenarioLoaderError::Validation { errors })?;
+
+    Ok(LoadedOpenClosedGapBehaviorScenarioFixture {
+        manifest,
+        manifest_entry,
+        loaded_payload,
+        fixture_document,
+    })
+}
+
 pub fn parse_calendar_regression_fixture_document(
     payload_bytes: &[u8],
 ) -> Result<CalendarRegressionFixtureDocument, String> {
@@ -474,6 +693,14 @@ pub fn parse_hourly_factor_regression_fixture_document(
     serde_json::from_slice::<HourlyFactorRegressionFixtureDocument>(payload_bytes).map_err(
         |source| format!("failed to parse hourly factor regression fixture document: {source}"),
     )
+}
+
+pub fn parse_open_closed_gap_behavior_scenario_fixture_document(
+    payload_bytes: &[u8],
+) -> Result<OpenClosedGapBehaviorScenarioFixtureDocument, OpenClosedGapBehaviorScenarioLoaderError>
+{
+    serde_json::from_slice::<OpenClosedGapBehaviorScenarioFixtureDocument>(payload_bytes)
+        .map_err(|source| OpenClosedGapBehaviorScenarioLoaderError::Parse(source.to_string()))
 }
 
 pub fn validate_calendar_regression_fixture_document(
@@ -758,6 +985,774 @@ pub fn validate_hourly_factor_regression_fixture_document(
     }
 
     Ok(())
+}
+
+pub fn validate_open_closed_gap_behavior_scenario_fixture_document(
+    fixture_document: &OpenClosedGapBehaviorScenarioFixtureDocument,
+) -> Result<(), Vec<OpenClosedGapBehaviorScenarioValidationError>> {
+    let mut errors: Vec<OpenClosedGapBehaviorScenarioValidationError> = Vec::new();
+    validate_open_closed_gap_behavior_document_headers(fixture_document, &mut errors);
+    validate_open_closed_gap_behavior_output_schema_metadata(fixture_document, &mut errors);
+    let required_tag_set = validate_open_closed_gap_behavior_canonical_metadata_declarations(
+        fixture_document,
+        &mut errors,
+    );
+    let observed_coverage =
+        validate_open_closed_gap_behavior_cases_and_collect_coverage(fixture_document, &mut errors);
+    validate_open_closed_gap_behavior_canonical_coverage(
+        fixture_document,
+        &required_tag_set,
+        &observed_coverage,
+        &mut errors,
+    );
+
+    if errors.is_empty() {
+        return Ok(());
+    }
+
+    Err(errors)
+}
+
+#[derive(Debug, Default)]
+struct OpenClosedGapBehaviorObservedCoverage {
+    observed_tags: BTreeSet<String>,
+    observed_case_ids_by_tag: BTreeMap<String, BTreeSet<String>>,
+}
+
+fn validate_open_closed_gap_behavior_document_headers(
+    fixture_document: &OpenClosedGapBehaviorScenarioFixtureDocument,
+    errors: &mut Vec<OpenClosedGapBehaviorScenarioValidationError>,
+) {
+    if fixture_document.schema_version != OPEN_CLOSED_GAP_BEHAVIOR_SCENARIO_FIXTURE_SCHEMA_VERSION {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "schema_version_mismatch",
+            "schema_version",
+            format!(
+                "expected `{}`, found `{}`",
+                OPEN_CLOSED_GAP_BEHAVIOR_SCENARIO_FIXTURE_SCHEMA_VERSION,
+                fixture_document.schema_version
+            ),
+        );
+    }
+
+    if fixture_document.fixture_set_id != OPEN_CLOSED_GAP_BEHAVIOR_SCENARIO_FIXTURE_SET_ID {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "fixture_set_id_mismatch",
+            "fixture_set_id",
+            format!(
+                "expected `{}`, found `{}`",
+                OPEN_CLOSED_GAP_BEHAVIOR_SCENARIO_FIXTURE_SET_ID, fixture_document.fixture_set_id
+            ),
+        );
+    }
+
+    validate_open_closed_gap_behavior_non_empty(
+        &fixture_document.fixture_set_version,
+        "fixture_set_version",
+        errors,
+    );
+
+    if fixture_document.schema_metadata.schema_family != OPEN_CLOSED_GAP_BEHAVIOR_SCHEMA_FAMILY {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "schema_family_mismatch",
+            "schema_metadata.schema_family",
+            format!(
+                "expected `{}`, found `{}`",
+                OPEN_CLOSED_GAP_BEHAVIOR_SCHEMA_FAMILY,
+                fixture_document.schema_metadata.schema_family
+            ),
+        );
+    }
+
+    if fixture_document.schema_metadata.schema_generation
+        != OPEN_CLOSED_GAP_BEHAVIOR_SCHEMA_GENERATION
+    {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "schema_generation_mismatch",
+            "schema_metadata.schema_generation",
+            format!(
+                "expected `{}`, found `{}`",
+                OPEN_CLOSED_GAP_BEHAVIOR_SCHEMA_GENERATION,
+                fixture_document.schema_metadata.schema_generation
+            ),
+        );
+    }
+
+    if fixture_document.schema_metadata.forward_extension_policy
+        != OPEN_CLOSED_GAP_BEHAVIOR_FORWARD_EXTENSION_POLICY
+    {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "forward_extension_policy_mismatch",
+            "schema_metadata.forward_extension_policy",
+            format!(
+                "expected `{}`, found `{}`",
+                OPEN_CLOSED_GAP_BEHAVIOR_FORWARD_EXTENSION_POLICY,
+                fixture_document.schema_metadata.forward_extension_policy
+            ),
+        );
+    }
+
+    if fixture_document.determinism_metadata.fixture_loading_order
+        != OPEN_CLOSED_GAP_BEHAVIOR_CASE_ORDER_POLICY
+    {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "fixture_loading_order_policy_mismatch",
+            "determinism_metadata.fixture_loading_order",
+            format!(
+                "expected `{}`, found `{}`",
+                OPEN_CLOSED_GAP_BEHAVIOR_CASE_ORDER_POLICY,
+                fixture_document.determinism_metadata.fixture_loading_order
+            ),
+        );
+    }
+
+    if fixture_document.determinism_metadata.event_loading_order
+        != OPEN_CLOSED_GAP_BEHAVIOR_EVENT_ORDER_POLICY
+    {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "event_loading_order_policy_mismatch",
+            "determinism_metadata.event_loading_order",
+            format!(
+                "expected `{}`, found `{}`",
+                OPEN_CLOSED_GAP_BEHAVIOR_EVENT_ORDER_POLICY,
+                fixture_document.determinism_metadata.event_loading_order
+            ),
+        );
+    }
+
+    if fixture_document.determinism_metadata.content_hash_scope
+        != OPEN_CLOSED_GAP_BEHAVIOR_CONTENT_HASH_SCOPE_POLICY
+    {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "content_hash_scope_policy_mismatch",
+            "determinism_metadata.content_hash_scope",
+            format!(
+                "expected `{}`, found `{}`",
+                OPEN_CLOSED_GAP_BEHAVIOR_CONTENT_HASH_SCOPE_POLICY,
+                fixture_document.determinism_metadata.content_hash_scope
+            ),
+        );
+    }
+
+    if fixture_document.determinism_metadata.content_hash_algorithm != CONTENT_HASH_ALGORITHM_POLICY
+    {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "content_hash_algorithm_policy_mismatch",
+            "determinism_metadata.content_hash_algorithm",
+            format!(
+                "expected `{}`, found `{}`",
+                CONTENT_HASH_ALGORITHM_POLICY,
+                fixture_document.determinism_metadata.content_hash_algorithm
+            ),
+        );
+    }
+}
+
+fn validate_open_closed_gap_behavior_output_schema_metadata(
+    fixture_document: &OpenClosedGapBehaviorScenarioFixtureDocument,
+    errors: &mut Vec<OpenClosedGapBehaviorScenarioValidationError>,
+) {
+    if fixture_document.output_schema_metadata.schema_version
+        != OPEN_CLOSED_GAP_BEHAVIOR_OUTPUT_SCHEMA_VERSION
+    {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "output_schema_version_mismatch",
+            "output_schema_metadata.schema_version",
+            format!(
+                "expected `{}`, found `{}`",
+                OPEN_CLOSED_GAP_BEHAVIOR_OUTPUT_SCHEMA_VERSION,
+                fixture_document.output_schema_metadata.schema_version
+            ),
+        );
+    }
+
+    if fixture_document
+        .output_schema_metadata
+        .required_case_output_fields
+        .is_empty()
+    {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "required_case_output_fields_empty",
+            "output_schema_metadata.required_case_output_fields",
+            "must include at least one field",
+        );
+    }
+
+    for (field_index, required_field) in fixture_document
+        .output_schema_metadata
+        .required_case_output_fields
+        .iter()
+        .enumerate()
+    {
+        validate_open_closed_gap_behavior_non_empty(
+            required_field,
+            &format!("output_schema_metadata.required_case_output_fields[{field_index}]"),
+            errors,
+        );
+    }
+
+    if fixture_document
+        .output_schema_metadata
+        .required_summary_fields
+        .is_empty()
+    {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "required_summary_fields_empty",
+            "output_schema_metadata.required_summary_fields",
+            "must include at least one field",
+        );
+    }
+
+    for (field_index, required_field) in fixture_document
+        .output_schema_metadata
+        .required_summary_fields
+        .iter()
+        .enumerate()
+    {
+        validate_open_closed_gap_behavior_non_empty(
+            required_field,
+            &format!("output_schema_metadata.required_summary_fields[{field_index}]"),
+            errors,
+        );
+    }
+}
+
+fn validate_open_closed_gap_behavior_canonical_metadata_declarations(
+    fixture_document: &OpenClosedGapBehaviorScenarioFixtureDocument,
+    errors: &mut Vec<OpenClosedGapBehaviorScenarioValidationError>,
+) -> BTreeSet<String> {
+    if fixture_document
+        .canonical_regression_metadata
+        .required_tags
+        .is_empty()
+    {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "required_tags_empty",
+            "canonical_regression_metadata.required_tags",
+            "must include at least one required tag",
+        );
+    }
+
+    let mut required_tag_set: BTreeSet<String> = BTreeSet::new();
+    for (required_tag_index, required_tag) in fixture_document
+        .canonical_regression_metadata
+        .required_tags
+        .iter()
+        .enumerate()
+    {
+        validate_open_closed_gap_behavior_non_empty(
+            required_tag,
+            &format!("canonical_regression_metadata.required_tags[{required_tag_index}]"),
+            errors,
+        );
+        if !required_tag_set.insert(required_tag.clone()) {
+            add_open_closed_gap_behavior_validation_error(
+                errors,
+                "required_tag_duplicate",
+                format!("canonical_regression_metadata.required_tags[{required_tag_index}]"),
+                format!("duplicate required tag `{required_tag}`"),
+            );
+        }
+    }
+
+    if fixture_document
+        .canonical_regression_metadata
+        .stable_fixture_ids_by_tag
+        .is_empty()
+    {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "stable_fixture_ids_by_tag_empty",
+            "canonical_regression_metadata.stable_fixture_ids_by_tag",
+            "must include at least one tag mapping",
+        );
+    }
+
+    required_tag_set
+}
+
+fn validate_open_closed_gap_behavior_cases_and_collect_coverage(
+    fixture_document: &OpenClosedGapBehaviorScenarioFixtureDocument,
+    errors: &mut Vec<OpenClosedGapBehaviorScenarioValidationError>,
+) -> OpenClosedGapBehaviorObservedCoverage {
+    if fixture_document.cases.is_empty() {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "cases_empty",
+            "cases",
+            "must include at least one scenario case",
+        );
+    }
+
+    let mut observed_case_ids: BTreeSet<String> = BTreeSet::new();
+    let mut observed_coverage = OpenClosedGapBehaviorObservedCoverage::default();
+    for (case_index, fixture_case) in fixture_document.cases.iter().enumerate() {
+        validate_open_closed_gap_behavior_case(
+            fixture_case,
+            case_index,
+            &mut observed_case_ids,
+            &mut observed_coverage,
+            errors,
+        );
+    }
+
+    observed_coverage
+}
+
+fn validate_open_closed_gap_behavior_case(
+    fixture_case: &OpenClosedGapBehaviorScenarioCaseFixture,
+    case_index: usize,
+    observed_case_ids: &mut BTreeSet<String>,
+    observed_coverage: &mut OpenClosedGapBehaviorObservedCoverage,
+    errors: &mut Vec<OpenClosedGapBehaviorScenarioValidationError>,
+) {
+    let case_field_path_prefix = format!("cases[{case_index}]");
+    validate_open_closed_gap_behavior_non_empty(
+        &fixture_case.fixture_id,
+        &format!("{case_field_path_prefix}.fixture_id"),
+        errors,
+    );
+    validate_open_closed_gap_behavior_non_empty(
+        &fixture_case.exchange_code,
+        &format!("{case_field_path_prefix}.exchange_code"),
+        errors,
+    );
+    validate_open_closed_gap_behavior_non_empty(
+        &fixture_case.calendar_fixture_set_id,
+        &format!("{case_field_path_prefix}.calendar_fixture_set_id"),
+        errors,
+    );
+    validate_open_closed_gap_behavior_non_empty(
+        &fixture_case.range_start_utc,
+        &format!("{case_field_path_prefix}.range_start_utc"),
+        errors,
+    );
+    validate_open_closed_gap_behavior_non_empty(
+        &fixture_case.range_end_utc,
+        &format!("{case_field_path_prefix}.range_end_utc"),
+        errors,
+    );
+    validate_open_closed_gap_behavior_non_empty(
+        &fixture_case.description,
+        &format!("{case_field_path_prefix}.description"),
+        errors,
+    );
+
+    if !observed_case_ids.insert(fixture_case.fixture_id.clone()) {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "fixture_id_duplicate",
+            format!("{case_field_path_prefix}.fixture_id"),
+            format!("duplicate fixture_id `{}`", fixture_case.fixture_id),
+        );
+    }
+
+    if fixture_case.calendar_fixture_set_id != CALENDAR_REGRESSION_FIXTURE_SET_ID {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "calendar_fixture_set_id_mismatch",
+            format!("{case_field_path_prefix}.calendar_fixture_set_id"),
+            format!(
+                "expected `{}`, found `{}`",
+                CALENDAR_REGRESSION_FIXTURE_SET_ID, fixture_case.calendar_fixture_set_id
+            ),
+        );
+    }
+
+    validate_open_closed_gap_behavior_finite(
+        fixture_case.initial_accumulator_state.j_t,
+        &format!("{case_field_path_prefix}.initial_accumulator_state.j_t"),
+        errors,
+    );
+    validate_open_closed_gap_behavior_finite(
+        fixture_case.initial_accumulator_state.g_t,
+        &format!("{case_field_path_prefix}.initial_accumulator_state.g_t"),
+        errors,
+    );
+
+    if fixture_case.injected_events.is_empty() {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "injected_events_empty",
+            format!("{case_field_path_prefix}.injected_events"),
+            "must include at least one injected event",
+        );
+    }
+
+    if fixture_case.tags.is_empty() {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "case_tags_empty",
+            format!("{case_field_path_prefix}.tags"),
+            "must include at least one case tag",
+        );
+    }
+
+    for (tag_index, case_tag) in fixture_case.tags.iter().enumerate() {
+        validate_open_closed_gap_behavior_non_empty(
+            case_tag,
+            &format!("{case_field_path_prefix}.tags[{tag_index}]"),
+            errors,
+        );
+        observed_coverage.observed_tags.insert(case_tag.clone());
+        observed_coverage
+            .observed_case_ids_by_tag
+            .entry(case_tag.clone())
+            .or_default()
+            .insert(fixture_case.fixture_id.clone());
+    }
+
+    let mut injected_event_ids: BTreeSet<String> = BTreeSet::new();
+    for (event_index, injected_event) in fixture_case.injected_events.iter().enumerate() {
+        let injected_event_field_path_prefix =
+            format!("{case_field_path_prefix}.injected_events[{event_index}]");
+
+        validate_open_closed_gap_behavior_non_empty(
+            &injected_event.event_id,
+            &format!("{injected_event_field_path_prefix}.event_id"),
+            errors,
+        );
+        validate_open_closed_gap_behavior_non_empty(
+            &injected_event.timestamp_utc,
+            &format!("{injected_event_field_path_prefix}.timestamp_utc"),
+            errors,
+        );
+        validate_open_closed_gap_behavior_finite_non_negative(
+            injected_event.shared_severity_mark,
+            &format!("{injected_event_field_path_prefix}.shared_severity_mark"),
+            errors,
+        );
+        validate_open_closed_gap_behavior_finite(
+            injected_event.coupled_gap_jump_mark,
+            &format!("{injected_event_field_path_prefix}.coupled_gap_jump_mark"),
+            errors,
+        );
+
+        if !injected_event_ids.insert(injected_event.event_id.clone()) {
+            add_open_closed_gap_behavior_validation_error(
+                errors,
+                "event_id_duplicate",
+                format!("{injected_event_field_path_prefix}.event_id"),
+                format!("duplicate event_id `{}`", injected_event.event_id),
+            );
+        }
+    }
+
+    validate_open_closed_gap_behavior_case_expected_outcome(
+        fixture_case,
+        &case_field_path_prefix,
+        &injected_event_ids,
+        errors,
+    );
+}
+
+fn validate_open_closed_gap_behavior_case_expected_outcome(
+    fixture_case: &OpenClosedGapBehaviorScenarioCaseFixture,
+    case_field_path_prefix: &str,
+    injected_event_ids: &BTreeSet<String>,
+    errors: &mut Vec<OpenClosedGapBehaviorScenarioValidationError>,
+) {
+    if fixture_case.expected_outcome.event_outcomes.is_empty() {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "event_outcomes_empty",
+            format!("{case_field_path_prefix}.expected_outcome.event_outcomes"),
+            "must include at least one event expectation",
+        );
+    }
+
+    let mut expected_event_ids: BTreeSet<String> = BTreeSet::new();
+    let mut expected_open_event_count = 0_usize;
+    let mut expected_closed_event_count = 0_usize;
+    let mut expected_open_window_direct_gap_increment_count = 0_usize;
+    let mut expected_total_j_t_increment = 0.0_f64;
+    let mut expected_total_g_t_increment = 0.0_f64;
+
+    for (expectation_index, event_expectation) in fixture_case
+        .expected_outcome
+        .event_outcomes
+        .iter()
+        .enumerate()
+    {
+        let expected_event_field_path_prefix = format!(
+            "{case_field_path_prefix}.expected_outcome.event_outcomes[{expectation_index}]"
+        );
+
+        validate_open_closed_gap_behavior_non_empty(
+            &event_expectation.event_id,
+            &format!("{expected_event_field_path_prefix}.event_id"),
+            errors,
+        );
+
+        if !expected_event_ids.insert(event_expectation.event_id.clone()) {
+            add_open_closed_gap_behavior_validation_error(
+                errors,
+                "event_expectation_id_duplicate",
+                format!("{expected_event_field_path_prefix}.event_id"),
+                format!(
+                    "duplicate expected event_id `{}`",
+                    event_expectation.event_id
+                ),
+            );
+        }
+
+        validate_open_closed_gap_behavior_finite_non_negative(
+            event_expectation.expected_j_t_increment,
+            &format!("{expected_event_field_path_prefix}.expected_j_t_increment"),
+            errors,
+        );
+        validate_open_closed_gap_behavior_finite(
+            event_expectation.expected_g_t_increment,
+            &format!("{expected_event_field_path_prefix}.expected_g_t_increment"),
+            errors,
+        );
+
+        match event_expectation.expected_market_state.as_str() {
+            "open" => {
+                expected_open_event_count = expected_open_event_count.saturating_add(1);
+                if event_expectation.expected_direct_gap_applied {
+                    expected_open_window_direct_gap_increment_count =
+                        expected_open_window_direct_gap_increment_count.saturating_add(1);
+                    add_open_closed_gap_behavior_validation_error(
+                        errors,
+                        "open_window_direct_gap_not_allowed",
+                        format!("{expected_event_field_path_prefix}.expected_direct_gap_applied"),
+                        "open-window event expectations must keep expected_direct_gap_applied=false",
+                    );
+                }
+                if event_expectation.expected_g_t_increment.abs() > 0.0 {
+                    add_open_closed_gap_behavior_validation_error(
+                        errors,
+                        "open_window_gap_increment_not_allowed",
+                        format!("{expected_event_field_path_prefix}.expected_g_t_increment"),
+                        "open-window event expectations must set expected_g_t_increment=0.0",
+                    );
+                }
+            }
+            "closed" => {
+                expected_closed_event_count = expected_closed_event_count.saturating_add(1);
+            }
+            _ => {
+                add_open_closed_gap_behavior_validation_error(
+                    errors,
+                    "unsupported_expected_market_state",
+                    format!("{expected_event_field_path_prefix}.expected_market_state"),
+                    format!(
+                        "expected_market_state must be either `open` or `closed`, found `{}`",
+                        event_expectation.expected_market_state
+                    ),
+                );
+            }
+        }
+
+        expected_total_j_t_increment += event_expectation.expected_j_t_increment;
+        expected_total_g_t_increment += event_expectation.expected_g_t_increment;
+    }
+
+    if injected_event_ids != &expected_event_ids {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "event_id_mapping_mismatch",
+            format!("{case_field_path_prefix}.expected_outcome.event_outcomes"),
+            format!(
+                "event expectation ids {:?} must match injected event ids {:?}",
+                expected_event_ids, injected_event_ids
+            ),
+        );
+    }
+
+    let expected_summary = fixture_case.expected_outcome.summary;
+    if expected_summary.expected_open_event_count != expected_open_event_count {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "summary_open_event_count_mismatch",
+            format!("{case_field_path_prefix}.expected_outcome.summary.expected_open_event_count"),
+            format!(
+                "expected {}, observed {} from event_outcomes",
+                expected_summary.expected_open_event_count, expected_open_event_count
+            ),
+        );
+    }
+
+    if expected_summary.expected_closed_event_count != expected_closed_event_count {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "summary_closed_event_count_mismatch",
+            format!(
+                "{case_field_path_prefix}.expected_outcome.summary.expected_closed_event_count"
+            ),
+            format!(
+                "expected {}, observed {} from event_outcomes",
+                expected_summary.expected_closed_event_count, expected_closed_event_count
+            ),
+        );
+    }
+
+    if expected_summary.expected_open_window_direct_gap_increment_count
+        != expected_open_window_direct_gap_increment_count
+    {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "summary_open_window_direct_gap_increment_count_mismatch",
+            format!("{case_field_path_prefix}.expected_outcome.summary.expected_open_window_direct_gap_increment_count"),
+            format!(
+                "expected {}, observed {} from event_outcomes",
+                expected_summary.expected_open_window_direct_gap_increment_count,
+                expected_open_window_direct_gap_increment_count
+            ),
+        );
+    }
+
+    let expected_total_event_count = expected_summary
+        .expected_open_event_count
+        .saturating_add(expected_summary.expected_closed_event_count);
+    if expected_total_event_count != fixture_case.expected_outcome.event_outcomes.len() {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "summary_total_event_count_mismatch",
+            format!("{case_field_path_prefix}.expected_outcome.summary"),
+            format!(
+                "expected_open_event_count + expected_closed_event_count = {} but event_outcomes has length {}",
+                expected_total_event_count,
+                fixture_case.expected_outcome.event_outcomes.len()
+            ),
+        );
+    }
+
+    if !open_closed_gap_behavior_float_close(
+        expected_summary.expected_total_j_t_increment,
+        expected_total_j_t_increment,
+    ) {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "summary_total_j_t_increment_mismatch",
+            format!(
+                "{case_field_path_prefix}.expected_outcome.summary.expected_total_j_t_increment"
+            ),
+            format!(
+                "expected {}, observed {} from event_outcomes",
+                expected_summary.expected_total_j_t_increment, expected_total_j_t_increment
+            ),
+        );
+    }
+
+    if !open_closed_gap_behavior_float_close(
+        expected_summary.expected_total_g_t_increment,
+        expected_total_g_t_increment,
+    ) {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "summary_total_g_t_increment_mismatch",
+            format!(
+                "{case_field_path_prefix}.expected_outcome.summary.expected_total_g_t_increment"
+            ),
+            format!(
+                "expected {}, observed {} from event_outcomes",
+                expected_summary.expected_total_g_t_increment, expected_total_g_t_increment
+            ),
+        );
+    }
+
+    if expected_summary.expected_open_window_direct_gap_increment_count
+        > expected_summary.expected_open_event_count
+    {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "summary_open_window_direct_gap_increment_count_invalid",
+            format!("{case_field_path_prefix}.expected_outcome.summary.expected_open_window_direct_gap_increment_count"),
+            "expected_open_window_direct_gap_increment_count cannot exceed expected_open_event_count",
+        );
+    }
+}
+
+fn validate_open_closed_gap_behavior_canonical_coverage(
+    fixture_document: &OpenClosedGapBehaviorScenarioFixtureDocument,
+    required_tag_set: &BTreeSet<String>,
+    observed_coverage: &OpenClosedGapBehaviorObservedCoverage,
+    errors: &mut Vec<OpenClosedGapBehaviorScenarioValidationError>,
+) {
+    for required_tag in required_tag_set {
+        if !observed_coverage.observed_tags.contains(required_tag) {
+            add_open_closed_gap_behavior_validation_error(
+                errors,
+                "required_tag_missing_from_cases",
+                "canonical_regression_metadata.required_tags",
+                format!("required tag `{required_tag}` is not present in any scenario case"),
+            );
+        }
+    }
+
+    for (tag, stable_fixture_ids) in &fixture_document
+        .canonical_regression_metadata
+        .stable_fixture_ids_by_tag
+    {
+        validate_open_closed_gap_behavior_non_empty(
+            tag,
+            "canonical_regression_metadata.stable_fixture_ids_by_tag.key",
+            errors,
+        );
+
+        if stable_fixture_ids.is_empty() {
+            add_open_closed_gap_behavior_validation_error(
+                errors,
+                "stable_fixture_ids_empty",
+                format!("canonical_regression_metadata.stable_fixture_ids_by_tag.{tag}"),
+                "must include at least one fixture id",
+            );
+            continue;
+        }
+
+        let mut stable_fixture_id_set: BTreeSet<String> = BTreeSet::new();
+        for (fixture_id_index, fixture_id) in stable_fixture_ids.iter().enumerate() {
+            validate_open_closed_gap_behavior_non_empty(
+                fixture_id,
+                &format!(
+                    "canonical_regression_metadata.stable_fixture_ids_by_tag.{tag}[{fixture_id_index}]"
+                ),
+                errors,
+            );
+            if !stable_fixture_id_set.insert(fixture_id.clone()) {
+                add_open_closed_gap_behavior_validation_error(
+                    errors,
+                    "stable_fixture_id_duplicate",
+                    format!(
+                        "canonical_regression_metadata.stable_fixture_ids_by_tag.{tag}[{fixture_id_index}]"
+                    ),
+                    format!("duplicate stable fixture id `{fixture_id}` for tag `{tag}`"),
+                );
+            }
+        }
+
+        let observed_fixture_id_set = observed_coverage
+            .observed_case_ids_by_tag
+            .get(tag)
+            .cloned()
+            .unwrap_or_default();
+        if observed_fixture_id_set != stable_fixture_id_set {
+            add_open_closed_gap_behavior_validation_error(
+                errors,
+                "stable_fixture_ids_mismatch",
+                format!("canonical_regression_metadata.stable_fixture_ids_by_tag.{tag}"),
+                format!(
+                    "expected fixture ids {:?}, observed fixture ids {:?}",
+                    stable_fixture_id_set, observed_fixture_id_set
+                ),
+            );
+        }
+    }
 }
 
 fn validate_threshold_configuration(
@@ -1296,6 +2291,78 @@ fn validate_hourly_missing_data_guard_case(
     }
 
     Ok(())
+}
+
+fn add_open_closed_gap_behavior_validation_error(
+    errors: &mut Vec<OpenClosedGapBehaviorScenarioValidationError>,
+    code: &'static str,
+    field_path: impl Into<String>,
+    message: impl Into<String>,
+) {
+    errors.push(OpenClosedGapBehaviorScenarioValidationError {
+        code,
+        field_path: field_path.into(),
+        message: message.into(),
+    });
+}
+
+fn validate_open_closed_gap_behavior_non_empty(
+    value: &str,
+    field_path: &str,
+    errors: &mut Vec<OpenClosedGapBehaviorScenarioValidationError>,
+) {
+    if value.trim().is_empty() {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "required_field_empty",
+            field_path.to_string(),
+            "field must be non-empty",
+        );
+    }
+}
+
+fn validate_open_closed_gap_behavior_finite(
+    value: f64,
+    field_path: &str,
+    errors: &mut Vec<OpenClosedGapBehaviorScenarioValidationError>,
+) {
+    if !value.is_finite() {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "non_finite_number",
+            field_path.to_string(),
+            format!("field must be finite, found {value}"),
+        );
+    }
+}
+
+fn validate_open_closed_gap_behavior_finite_non_negative(
+    value: f64,
+    field_path: &str,
+    errors: &mut Vec<OpenClosedGapBehaviorScenarioValidationError>,
+) {
+    if !value.is_finite() {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "non_finite_number",
+            field_path.to_string(),
+            format!("field must be finite, found {value}"),
+        );
+        return;
+    }
+    if value < 0.0 {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "negative_number_not_allowed",
+            field_path.to_string(),
+            format!("field must be non-negative, found {value}"),
+        );
+    }
+}
+
+fn open_closed_gap_behavior_float_close(expected: f64, observed: f64) -> bool {
+    let tolerance = 1.0e-12_f64;
+    (expected - observed).abs() <= tolerance
 }
 
 fn validate_finite_non_negative(value: f64, field_name: &str) -> Result<(), String> {

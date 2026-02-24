@@ -31,6 +31,17 @@
         "XNYS"
       ],
       "content_hash": "1d01b77596f09757"
+    },
+    {
+      "fixture_id": "open_closed_gap_behavior_scenarios_v1",
+      "domain": "gap_behavior",
+      "fixture_schema_version": "gap.behavior.open_closed.scenario_fixture.v1",
+      "relative_path": "gap_behavior/open_closed_gap_behavior_scenarios.json",
+      "exchange_codes": [
+        "XNYS",
+        "XTKS"
+      ],
+      "content_hash": "756b20ba3b769691"
     }
   ]
 }

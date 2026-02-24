@@ -7,17 +7,21 @@ from janiform.calendar import CalendarRegistry
 from tests.fixture_validation import (
     CALENDAR_REGRESSION_FIXTURE_SET_ID,
     HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID,
+    OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SET_ID,
     CalendarRegressionCase,
     CalendarRegressionFixtureDocument,
     HourlyFactorRegressionCanonicalOutputCase,
     HourlyFactorRegressionFixtureDocument,
     HourlyFactorRegressionMissingDataGuardCase,
+    OpenClosedGapBehaviorCase,
+    OpenClosedGapBehaviorFixtureDocument,
     SeededTickSimulationParityCase,
     SeededTickSimulationParityFixtureDocument,
     ValidationFixtureManifestDocument,
     ValidationFixtureManifestEntry,
     load_calendar_regression_fixture_document,
     load_hourly_factor_regression_fixture_document,
+    load_open_closed_gap_behavior_fixture_document,
     load_seeded_tick_simulation_parity_fixture_document,
     load_manifest_entry_payload,
     load_validation_fixture_manifest,
@@ -95,6 +99,17 @@ def hourly_factor_regression_manifest_entry(
 
 
 @pytest.fixture(scope="session")
+def open_closed_gap_behavior_manifest_entry(
+    validation_fixture_manifest_entries: list[ValidationFixtureManifestEntry],
+) -> ValidationFixtureManifestEntry:
+    for manifest_entry in validation_fixture_manifest_entries:
+        if manifest_entry["fixture_id"] == OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SET_ID:
+            return manifest_entry
+
+    raise ValueError(f"missing manifest fixture entry: {OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SET_ID}")
+
+
+@pytest.fixture(scope="session")
 def calendar_regression_fixture_document(
     fixtures_root: Path,
     calendar_regression_manifest_entry: ValidationFixtureManifestEntry,
@@ -158,6 +173,33 @@ def hourly_factor_regression_missing_data_guard_cases(
     hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
 ) -> list[HourlyFactorRegressionMissingDataGuardCase]:
     return list(hourly_factor_regression_fixture_document["missing_data_guard_cases"])
+
+
+@pytest.fixture(scope="session")
+def open_closed_gap_behavior_fixture_path(
+    fixtures_root: Path,
+    open_closed_gap_behavior_manifest_entry: ValidationFixtureManifestEntry,
+) -> Path:
+    return fixtures_root / open_closed_gap_behavior_manifest_entry["relative_path"]
+
+
+@pytest.fixture(scope="session")
+def open_closed_gap_behavior_fixture_document(
+    fixtures_root: Path,
+    open_closed_gap_behavior_manifest_entry: ValidationFixtureManifestEntry,
+) -> OpenClosedGapBehaviorFixtureDocument:
+    fixture_payload_bytes: bytes = load_manifest_entry_payload(
+        fixtures_root,
+        open_closed_gap_behavior_manifest_entry,
+    )
+    return load_open_closed_gap_behavior_fixture_document(fixture_payload_bytes)
+
+
+@pytest.fixture(scope="session")
+def open_closed_gap_behavior_cases(
+    open_closed_gap_behavior_fixture_document: OpenClosedGapBehaviorFixtureDocument,
+) -> list[OpenClosedGapBehaviorCase]:
+    return list(open_closed_gap_behavior_fixture_document["cases"])
 
 
 @pytest.fixture(scope="session")

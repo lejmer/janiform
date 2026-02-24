@@ -1,4 +1,4 @@
-## ISSUE-004: Closed Window Behavior Explicit Gap Emission
+## Closed Window Behavior Explicit Gap Emission
 
 ### Description
 Implement targeted validation checks that confirm explicit gap increments are emitted for closed-window news events and coupled correctly with activity updates.

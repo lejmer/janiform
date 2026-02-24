@@ -1,4 +1,4 @@
-## ISSUE-006: Gap Leakage Regression Harness And CI Gates
+## Gap Leakage Regression Harness And CI Gates
 
 ### Description
 Create an automated regression harness that detects any gap-component leakage into open windows and enforces this behavior in CI checks.

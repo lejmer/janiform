@@ -20,7 +20,7 @@ Top-level fields:
 Each fixture entry defines:
 
 - `fixture_id`: Stable fixture set identifier.
-- `domain`: Fixture domain, currently `calendar`, `hourly_factors`, and forward-extensible to `seasonality`.
+- `domain`: Fixture domain, currently `calendar`, `hourly_factors`, `gap_behavior`, and forward-extensible to `seasonality`.
 - `fixture_schema_version`: Target fixture document schema version.
 - `relative_path`: Fixture document path relative to `tests/fixtures`.
 - `exchange_codes`: Exchanges covered by the fixture.

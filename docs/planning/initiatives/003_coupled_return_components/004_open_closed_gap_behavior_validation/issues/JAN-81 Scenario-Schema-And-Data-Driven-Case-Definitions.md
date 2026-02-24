@@ -1,4 +1,4 @@
-## ISSUE-001: Scenario Schema And Data Driven Case Definitions
+## Scenario Schema And Data Driven Case Definitions
 
 ### Description
 Define a data-driven scenario schema for open and closed gap validation cases, including inputs, expected outcomes, and exchange context.

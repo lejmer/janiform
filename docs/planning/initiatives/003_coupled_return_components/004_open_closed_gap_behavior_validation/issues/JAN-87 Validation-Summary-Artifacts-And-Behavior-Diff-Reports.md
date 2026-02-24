@@ -1,4 +1,4 @@
-## ISSUE-007: Validation Summary Artifacts And Behavior Diff Reports
+## Validation Summary Artifacts And Behavior Diff Reports
 
 ### Description
 Generate summary artifacts and behavior-diff reports that make open and closed outcome differences easy to inspect and audit.
