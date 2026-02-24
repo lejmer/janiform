@@ -1,7 +1,7 @@
 ## ISSUE-002: CI Workflow For Build Type And Core Verification
 
 ### Description
-Implement CI workflow jobs for Rust build verification, Python importability checks, and core repository verification commands.
+Implement CI workflow jobs (GitHub Actions workflows) for Rust build verification, Python importability checks, and core repository verification commands.
 
 ### Acceptance Criteria
 - CI runs build and verification commands required by v0.1 gate policy
