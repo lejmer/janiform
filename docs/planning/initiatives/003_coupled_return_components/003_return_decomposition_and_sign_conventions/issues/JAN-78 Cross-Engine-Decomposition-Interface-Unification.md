@@ -1,4 +1,4 @@
-## ISSUE-005: Cross Engine Decomposition Interface Unification
+## Cross Engine Decomposition Interface Unification
 
 ### Description
 Unify decomposition interfaces so simulation and pricing engines consume one shared composition API and component model.
@@ -14,5 +14,6 @@ Unify decomposition interfaces so simulation and pricing engines consume one sha
 - Integration tests confirming both engines use shared decomposition interfaces and tests verifying equivalent component mapping across engine call paths
 
 ### Notes/Constraints
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Keep interface minimal but explicit
 - Avoid engine-local forks of composition helpers

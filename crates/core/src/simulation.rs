@@ -24,6 +24,7 @@ use crate::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
     SplitMix64SimulationRandomnessFactory,
 };
+use crate::return_decomposition::ReturnDecomposition;
 
 pub const SEEDED_TICK_EVENT_RUN_CONFIG_SCHEMA_VERSION: &str =
     "simulation.seeded_tick_event.run_config.v1";
@@ -1382,16 +1383,15 @@ pub fn project_hawkes_intensities_for_simulation_interval(
 /// Sample one trading-time return increment for simulation through the shared NIG driver API.
 pub fn sample_nig_trading_time_increment_for_simulation<R>(
     driver_parameters: NigBuySellDriverParameters,
-    integrated_buy_intensity: f64,
-    integrated_sell_intensity: f64,
+    return_decomposition: ReturnDecomposition,
     randomness_stream: &mut R,
 ) -> Result<NigTradingTimeIncrementContributions, NigTradingTimeIncrementSamplingError>
 where
     R: SimulationRandomnessStream,
 {
     driver_parameters.sample_trading_time_return_increment(
-        integrated_buy_intensity,
-        integrated_sell_intensity,
+        return_decomposition.integrated_buy_intensity(),
+        return_decomposition.integrated_sell_intensity(),
         randomness_stream,
     )
 }

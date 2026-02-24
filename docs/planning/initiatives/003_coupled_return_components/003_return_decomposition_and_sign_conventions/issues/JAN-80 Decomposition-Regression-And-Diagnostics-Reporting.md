@@ -1,4 +1,4 @@
-## ISSUE-007: Decomposition Regression And Diagnostics Reporting
+## Decomposition Regression And Diagnostics Reporting
 
 ### Description
 Build regression and diagnostics reporting for decomposition outputs so sign and component regressions are quickly attributable.
@@ -15,5 +15,6 @@ Build regression and diagnostics reporting for decomposition outputs so sign and
 - Failure-classification tests for known injected sign and mapping errors
 
 ### Notes/Constraints
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Keep diagnostics concise and actionable
 - Avoid environment-specific data in emitted reports
