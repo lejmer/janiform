@@ -1,7 +1,10 @@
 import json
 import math
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypedDict, cast
+
+from janiform.calendar import CalendarRegistry
 
 VALIDATION_FIXTURE_MANIFEST_SCHEMA_VERSION: str = "validation.fixture.manifest.v1"
 MANIFEST_DETERMINISM_ORDER_POLICY: str = "lexicographic_by_fixture_id.v1"
@@ -246,6 +249,7 @@ class OpenClosedGapBehaviorCase(TypedDict):
     fixture_id: str
     exchange_code: str
     calendar_fixture_set_id: str
+    calendar_state_fixture_references: list[str]
     range_start_utc: str
     range_end_utc: str
     initial_accumulator_state: OpenClosedGapBehaviorAccumulatorState
@@ -807,6 +811,67 @@ def load_open_closed_gap_behavior_fixture_document(
 ) -> OpenClosedGapBehaviorFixtureDocument:
     payload_value: object = json.loads(fixture_payload_bytes.decode("utf-8"))
     return validate_open_closed_gap_behavior_fixture_document(payload_value)
+
+
+def validate_open_closed_gap_behavior_calendar_integration(
+    open_closed_gap_behavior_fixture_document: OpenClosedGapBehaviorFixtureDocument,
+    calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
+) -> None:
+    expected_calendar_fixture_set_id = calendar_regression_fixture_document["fixture_set_id"]
+    calendar_fixture_ids: set[str] = {
+        calendar_case["fixture_id"] for calendar_case in calendar_regression_fixture_document["cases"]
+    }
+    calendar_registry_json = json.dumps(calendar_regression_fixture_document["calendar_registry"])
+    calendar_registry = CalendarRegistry(calendar_registry_json)
+
+    observed_window_tags: set[str] = set()
+    required_window_tags: set[str] = {"intraday", "overnight", "weekend"}
+    for case_index, fixture_case in enumerate(open_closed_gap_behavior_fixture_document["cases"]):
+        case_context = f"open and closed gap case[{case_index}]"
+
+        if fixture_case["calendar_fixture_set_id"] != expected_calendar_fixture_set_id:
+            raise ValueError(
+                f"{case_context}.calendar_fixture_set_id must match loaded calendar fixture set id "
+                f"{expected_calendar_fixture_set_id}, found {fixture_case['calendar_fixture_set_id']}",
+            )
+
+        observed_window_tags.update(
+            case_tag
+            for case_tag in fixture_case["tags"]
+            if case_tag in required_window_tags
+        )
+        for reference_index, referenced_fixture_id in enumerate(fixture_case["calendar_state_fixture_references"]):
+            if referenced_fixture_id not in calendar_fixture_ids:
+                raise ValueError(
+                    f"{case_context}.calendar_state_fixture_references[{reference_index}] references "
+                    f"missing calendar fixture id: {referenced_fixture_id}",
+                )
+
+        expected_market_state_by_event_id: dict[str, str] = {
+            expected_event["event_id"]: expected_event["expected_market_state"]
+            for expected_event in fixture_case["expected_outcome"]["event_outcomes"]
+        }
+        for event_index, injected_event in enumerate(fixture_case["injected_events"]):
+            event_context = f"{case_context}.injected_events[{event_index}]"
+            timestamp_utc = _parse_utc_timestamp(injected_event["timestamp_utc"])
+            resolved_market_state = calendar_registry.resolve_market_state(
+                fixture_case["exchange_code"],
+                timestamp_utc,
+            )
+            expected_market_state = expected_market_state_by_event_id[injected_event["event_id"]]
+            if resolved_market_state.value != expected_market_state:
+                raise ValueError(
+                    f"{event_context} expected_market_state={expected_market_state} but "
+                    f"calendar resolved {resolved_market_state.value}",
+                )
+
+    missing_window_tags = required_window_tags - observed_window_tags
+    if missing_window_tags:
+        sorted_missing_tags = ", ".join(sorted(missing_window_tags))
+        raise ValueError(
+            "open and closed gap fixture calendar_state_fixture_references must cover intraday, "
+            f"overnight, and weekend windows, missing tags: {sorted_missing_tags}",
+        )
 
 
 def validate_seeded_tick_simulation_parity_fixture_document(
@@ -1526,6 +1591,16 @@ def _validate_open_closed_gap_behavior_case(
             f"{context}.calendar_fixture_set_id must be {CALENDAR_REGRESSION_FIXTURE_SET_ID}, found {calendar_fixture_set_id}",
         )
 
+    calendar_state_fixture_references: list[str] = _require_non_empty_string_list(
+        raw_case,
+        "calendar_state_fixture_references",
+        context,
+    )
+    _require_unique_fixture_ids(
+        calendar_state_fixture_references,
+        f"{context}.calendar_state_fixture_references",
+    )
+
     range_start_utc: str = _require_non_empty_string(raw_case, "range_start_utc", context)
     range_end_utc: str = _require_non_empty_string(raw_case, "range_end_utc", context)
     initial_accumulator_state: JsonObject = _require_json_object_field(raw_case, "initial_accumulator_state", context)
@@ -1580,6 +1655,7 @@ def _validate_open_closed_gap_behavior_case(
         "fixture_id": fixture_id,
         "exchange_code": exchange_code,
         "calendar_fixture_set_id": calendar_fixture_set_id,
+        "calendar_state_fixture_references": calendar_state_fixture_references,
         "range_start_utc": range_start_utc,
         "range_end_utc": range_end_utc,
         "initial_accumulator_state": initial_state,
@@ -2219,3 +2295,11 @@ def _require_unique_fixture_ids(fixture_ids: list[str], context: str) -> None:
             raise ValueError(f"duplicate fixture_id in {context}: {fixture_id}")
 
         observed_fixture_ids.add(fixture_id)
+
+
+def _parse_utc_timestamp(raw_timestamp_utc: str) -> datetime:
+    parsed_timestamp = datetime.fromisoformat(raw_timestamp_utc.replace("Z", "+00:00"))
+    if parsed_timestamp.tzinfo is None:
+        raise ValueError(f"timestamp must include timezone offset: {raw_timestamp_utc}")
+
+    return parsed_timestamp.astimezone(UTC)

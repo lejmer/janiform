@@ -57,6 +57,11 @@
       "fixture_id": "xnys_intraday_open_window_gap_suppression",
       "exchange_code": "XNYS",
       "calendar_fixture_set_id": "calendar_service_regression_matrix_v1",
+      "calendar_state_fixture_references": [
+        "xnys_regular_at_open",
+        "xnys_regular_mid_session",
+        "xnys_regular_at_close"
+      ],
       "range_start_utc": "2024-03-18T13:30:00Z",
       "range_end_utc": "2024-03-18T20:00:00Z",
       "initial_accumulator_state": {
@@ -113,6 +118,11 @@
       "fixture_id": "xnys_overnight_closed_window_gap_emission",
       "exchange_code": "XNYS",
       "calendar_fixture_set_id": "calendar_service_regression_matrix_v1",
+      "calendar_state_fixture_references": [
+        "xnys_regular_at_close",
+        "xnys_regular_pre_open",
+        "xnys_weekend_sunday"
+      ],
       "range_start_utc": "2024-03-15T20:00:00Z",
       "range_end_utc": "2024-03-18T13:30:00Z",
       "initial_accumulator_state": {
@@ -183,6 +193,11 @@
       "fixture_id": "xtks_weekend_closed_window_gap_emission",
       "exchange_code": "XTKS",
       "calendar_fixture_set_id": "calendar_service_regression_matrix_v1",
+      "calendar_state_fixture_references": [
+        "xnys_weekend_sunday",
+        "xtks_before_utc_midnight_transition",
+        "xtks_after_utc_midnight_transition"
+      ],
       "range_start_utc": "2024-03-22T06:00:00Z",
       "range_end_utc": "2024-03-25T00:00:00Z",
       "initial_accumulator_state": {

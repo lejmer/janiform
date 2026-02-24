@@ -6,7 +6,10 @@ use std::fmt::{Display, Formatter};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use janiform_core::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact};
+use chrono::{DateTime, Utc};
+use janiform_core::calendar::{
+    ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact, MarketState,
+};
 use serde::Deserialize;
 
 pub const VALIDATION_FIXTURE_MANIFEST_SCHEMA_VERSION: &str = "validation.fixture.manifest.v1";
@@ -324,6 +327,7 @@ pub struct OpenClosedGapBehaviorScenarioCaseFixture {
     pub fixture_id: String,
     pub exchange_code: String,
     pub calendar_fixture_set_id: String,
+    pub calendar_state_fixture_references: Vec<String>,
     pub range_start_utc: String,
     pub range_end_utc: String,
     pub initial_accumulator_state: OpenClosedGapBehaviorAccumulatorStateFixture,
@@ -465,8 +469,8 @@ impl Display for OpenClosedGapBehaviorScenarioLoaderError {
 
 impl Error for OpenClosedGapBehaviorScenarioLoaderError {}
 
-pub fn load_validation_fixture_manifest_document(
-) -> Result<ValidationFixtureManifestDocument, String> {
+pub fn load_validation_fixture_manifest_document()
+-> Result<ValidationFixtureManifestDocument, String> {
     let manifest_path = validation_fixture_manifest_path();
     let manifest_raw = fs::read_to_string(&manifest_path).map_err(|source| {
         format!(
@@ -588,8 +592,8 @@ pub fn load_manifest_entry_payload(
     })
 }
 
-pub fn load_calendar_regression_fixture_from_manifest(
-) -> Result<LoadedCalendarRegressionFixture, String> {
+pub fn load_calendar_regression_fixture_from_manifest()
+-> Result<LoadedCalendarRegressionFixture, String> {
     let manifest = load_validation_fixture_manifest_document()?;
     let manifest_entry =
         find_manifest_entry_by_fixture_id(&manifest, CALENDAR_REGRESSION_FIXTURE_SET_ID)?;
@@ -615,8 +619,8 @@ pub fn load_calendar_regression_fixture_from_manifest(
     })
 }
 
-pub fn load_hourly_factor_regression_fixture_from_manifest(
-) -> Result<LoadedHourlyFactorRegressionFixture, String> {
+pub fn load_hourly_factor_regression_fixture_from_manifest()
+-> Result<LoadedHourlyFactorRegressionFixture, String> {
     let manifest = load_validation_fixture_manifest_document()?;
     let manifest_entry =
         find_manifest_entry_by_fixture_id(&manifest, HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID)?;
@@ -642,8 +646,8 @@ pub fn load_hourly_factor_regression_fixture_from_manifest(
     })
 }
 
-pub fn load_open_closed_gap_behavior_scenario_fixture_from_manifest(
-) -> Result<LoadedOpenClosedGapBehaviorScenarioFixture, OpenClosedGapBehaviorScenarioLoaderError> {
+pub fn load_open_closed_gap_behavior_scenario_fixture_from_manifest()
+-> Result<LoadedOpenClosedGapBehaviorScenarioFixture, OpenClosedGapBehaviorScenarioLoaderError> {
     let manifest = load_validation_fixture_manifest_document()
         .map_err(OpenClosedGapBehaviorScenarioLoaderError::Manifest)?;
     let manifest_entry = find_manifest_entry_by_fixture_id(
@@ -991,20 +995,196 @@ pub fn validate_open_closed_gap_behavior_scenario_fixture_document(
     fixture_document: &OpenClosedGapBehaviorScenarioFixtureDocument,
 ) -> Result<(), Vec<OpenClosedGapBehaviorScenarioValidationError>> {
     let mut errors: Vec<OpenClosedGapBehaviorScenarioValidationError> = Vec::new();
+    
     validate_open_closed_gap_behavior_document_headers(fixture_document, &mut errors);
     validate_open_closed_gap_behavior_output_schema_metadata(fixture_document, &mut errors);
+    
     let required_tag_set = validate_open_closed_gap_behavior_canonical_metadata_declarations(
         fixture_document,
         &mut errors,
     );
+    
     let observed_coverage =
         validate_open_closed_gap_behavior_cases_and_collect_coverage(fixture_document, &mut errors);
+    
     validate_open_closed_gap_behavior_canonical_coverage(
         fixture_document,
         &required_tag_set,
         &observed_coverage,
         &mut errors,
     );
+
+    if errors.is_empty() {
+        return Ok(());
+    }
+
+    Err(errors)
+}
+
+pub fn validate_open_closed_gap_behavior_calendar_integration(
+    open_closed_fixture_document: &OpenClosedGapBehaviorScenarioFixtureDocument,
+    calendar_fixture_document: &CalendarRegressionFixtureDocument,
+) -> Result<(), Vec<OpenClosedGapBehaviorScenarioValidationError>> {
+    let mut errors: Vec<OpenClosedGapBehaviorScenarioValidationError> = Vec::new();
+    let calendar_case_ids: BTreeSet<&str> = calendar_fixture_document
+        .cases
+        .iter()
+        .map(|fixture_case| fixture_case.fixture_id.as_str())
+        .collect();
+
+    let calendar_registry = match ExchangeCalendarRegistry::from_artifact(
+        calendar_fixture_document.calendar_registry.clone(),
+    ) {
+        Ok(registry) => registry,
+        Err(source) => {
+            add_open_closed_gap_behavior_validation_error(
+                &mut errors,
+                "calendar_registry_invalid",
+                "calendar_registry",
+                format!("calendar fixture registry failed to load: {source}"),
+            );
+            return Err(errors);
+        }
+    };
+
+    let mut observed_window_tag_set: BTreeSet<&str> = BTreeSet::new();
+    for (case_index, fixture_case) in open_closed_fixture_document.cases.iter().enumerate() {
+        let case_field_path_prefix = format!("cases[{case_index}]");
+
+        if fixture_case.calendar_fixture_set_id != calendar_fixture_document.fixture_set_id {
+            add_open_closed_gap_behavior_validation_error(
+                &mut errors,
+                "calendar_fixture_set_id_integration_mismatch",
+                format!("{case_field_path_prefix}.calendar_fixture_set_id"),
+                format!(
+                    "scenario references `{}` but loaded calendar fixture id is `{}`",
+                    fixture_case.calendar_fixture_set_id, calendar_fixture_document.fixture_set_id
+                ),
+            );
+        }
+
+        for case_tag in &fixture_case.tags {
+            if case_tag == "intraday" || case_tag == "overnight" || case_tag == "weekend" {
+                observed_window_tag_set.insert(case_tag);
+            }
+        }
+
+        for (reference_index, referenced_fixture_id) in fixture_case
+            .calendar_state_fixture_references
+            .iter()
+            .enumerate()
+        {
+            if !calendar_case_ids.contains(referenced_fixture_id.as_str()) {
+                add_open_closed_gap_behavior_validation_error(
+                    &mut errors,
+                    "calendar_fixture_reference_missing",
+                    format!(
+                        "{case_field_path_prefix}.calendar_state_fixture_references[{reference_index}]"
+                    ),
+                    format!("references missing calendar fixture id `{referenced_fixture_id}`"),
+                );
+            }
+        }
+
+        let expected_market_state_by_event_id: BTreeMap<&str, &str> = fixture_case
+            .expected_outcome
+            .event_outcomes
+            .iter()
+            .map(|event_expectation| {
+                (
+                    event_expectation.event_id.as_str(),
+                    event_expectation.expected_market_state.as_str(),
+                )
+            })
+            .collect();
+
+        for (event_index, injected_event) in fixture_case.injected_events.iter().enumerate() {
+            let expected_market_state = match expected_market_state_by_event_id
+                .get(injected_event.event_id.as_str())
+            {
+                Some(expected_market_state) => *expected_market_state,
+                None => {
+                    add_open_closed_gap_behavior_validation_error(
+                        &mut errors,
+                        "event_id_mapping_missing_in_expected_outcome",
+                        format!("{case_field_path_prefix}.injected_events[{event_index}].event_id"),
+                        format!(
+                            "event id `{}` is missing from expected_outcome.event_outcomes",
+                            injected_event.event_id
+                        ),
+                    );
+                    continue;
+                }
+            };
+            
+            let timestamp_utc = match DateTime::parse_from_rfc3339(&injected_event.timestamp_utc) {
+                Ok(timestamp) => timestamp.with_timezone(&Utc),
+                Err(source) => {
+                    add_open_closed_gap_behavior_validation_error(
+                        &mut errors,
+                        "injected_event_timestamp_parse_failed",
+                        format!(
+                            "{case_field_path_prefix}.injected_events[{event_index}].timestamp_utc"
+                        ),
+                        format!("failed to parse RFC3339 timestamp: {source}"),
+                    );
+                    continue;
+                }
+            };
+            
+            let resolved_market_state = match calendar_registry
+                .resolve_market_state_at_utc(&fixture_case.exchange_code, timestamp_utc)
+            {
+                Ok(resolved_market_state) => resolved_market_state,
+                Err(source) => {
+                    add_open_closed_gap_behavior_validation_error(
+                        &mut errors,
+                        "market_state_resolution_failed",
+                        format!("{case_field_path_prefix}.injected_events[{event_index}]"),
+                        format!(
+                            "failed to resolve market state for exchange `{}` at `{}`: {source}",
+                            fixture_case.exchange_code, injected_event.timestamp_utc
+                        ),
+                    );
+                    continue;
+                }
+            };
+            
+            let expected_market_state = match expected_market_state {
+                "open" => MarketState::Open,
+                "closed" => MarketState::Closed,
+                _ => continue,
+            };
+
+            if resolved_market_state != expected_market_state {
+                add_open_closed_gap_behavior_validation_error(
+                    &mut errors,
+                    "market_state_classification_mismatch",
+                    format!(
+                        "{case_field_path_prefix}.expected_outcome.event_outcomes[{}].expected_market_state",
+                        event_index
+                    ),
+                    format!(
+                        "expected `{}`, resolved `{}` for event `{}`",
+                        expected_market_state, resolved_market_state, injected_event.event_id
+                    ),
+                );
+            }
+        }
+    }
+
+    for required_window_tag in ["intraday", "overnight", "weekend"] {
+        if !observed_window_tag_set.contains(required_window_tag) {
+            add_open_closed_gap_behavior_validation_error(
+                &mut errors,
+                "calendar_window_tag_missing",
+                "cases.tags",
+                format!(
+                    "calendar integration requires `{required_window_tag}` window coverage in scenario tags"
+                ),
+            );
+        }
+    }
 
     if errors.is_empty() {
         return Ok(());
@@ -1335,6 +1515,43 @@ fn validate_open_closed_gap_behavior_case(
         &format!("{case_field_path_prefix}.calendar_fixture_set_id"),
         errors,
     );
+    
+    if fixture_case.calendar_state_fixture_references.is_empty() {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "calendar_state_fixture_references_empty",
+            format!("{case_field_path_prefix}.calendar_state_fixture_references"),
+            "must include at least one calendar fixture reference",
+        );
+    }
+    
+    let mut observed_calendar_state_fixture_references: BTreeSet<&str> = BTreeSet::new();
+    
+    for (reference_index, referenced_fixture_id) in fixture_case
+        .calendar_state_fixture_references
+        .iter()
+        .enumerate()
+    {
+        validate_open_closed_gap_behavior_non_empty(
+            referenced_fixture_id,
+            &format!(
+                "{case_field_path_prefix}.calendar_state_fixture_references[{reference_index}]"
+            ),
+            errors,
+        );
+        
+        if !observed_calendar_state_fixture_references.insert(referenced_fixture_id.as_str()) {
+            add_open_closed_gap_behavior_validation_error(
+                errors,
+                "calendar_state_fixture_reference_duplicate",
+                format!(
+                    "{case_field_path_prefix}.calendar_state_fixture_references[{reference_index}]"
+                ),
+                format!("duplicate calendar fixture reference `{referenced_fixture_id}`"),
+            );
+        }
+    }
+    
     validate_open_closed_gap_behavior_non_empty(
         &fixture_case.range_start_utc,
         &format!("{case_field_path_prefix}.range_start_utc"),
@@ -1607,7 +1824,9 @@ fn validate_open_closed_gap_behavior_case_expected_outcome(
         add_open_closed_gap_behavior_validation_error(
             errors,
             "summary_open_window_direct_gap_increment_count_mismatch",
-            format!("{case_field_path_prefix}.expected_outcome.summary.expected_open_window_direct_gap_increment_count"),
+            format!(
+                "{case_field_path_prefix}.expected_outcome.summary.expected_open_window_direct_gap_increment_count"
+            ),
             format!(
                 "expected {}, observed {} from event_outcomes",
                 expected_summary.expected_open_window_direct_gap_increment_count,
@@ -1672,7 +1891,9 @@ fn validate_open_closed_gap_behavior_case_expected_outcome(
         add_open_closed_gap_behavior_validation_error(
             errors,
             "summary_open_window_direct_gap_increment_count_invalid",
-            format!("{case_field_path_prefix}.expected_outcome.summary.expected_open_window_direct_gap_increment_count"),
+            format!(
+                "{case_field_path_prefix}.expected_outcome.summary.expected_open_window_direct_gap_increment_count"
+            ),
             "expected_open_window_direct_gap_increment_count cannot exceed expected_open_event_count",
         );
     }

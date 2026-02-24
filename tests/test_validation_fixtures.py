@@ -22,6 +22,7 @@ from tests.fixture_validation import (
     load_seeded_tick_simulation_parity_fixture_document,
     sorted_manifest_entries,
     validate_calendar_regression_fixture_document,
+    validate_open_closed_gap_behavior_calendar_integration,
     validate_hourly_factor_regression_fixture_document,
     validate_open_closed_gap_behavior_fixture_document,
     validate_seeded_tick_simulation_parity_fixture_document,
@@ -400,6 +401,57 @@ def test_open_closed_gap_fixture_rejects_event_mapping_mismatch(
 
     with pytest.raises(ValueError, match="event_id set must match injected_events event_id set"):
         validate_open_closed_gap_behavior_fixture_document(invalid_document)
+
+
+def test_open_closed_gap_fixture_calendar_state_classification_matches_calendar_fixture(
+    open_closed_gap_behavior_fixture_document: OpenClosedGapBehaviorFixtureDocument,
+    calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
+) -> None:
+    validate_open_closed_gap_behavior_calendar_integration(
+        open_closed_gap_behavior_fixture_document,
+        calendar_regression_fixture_document,
+    )
+
+
+def test_open_closed_gap_fixture_calendar_integration_rejects_missing_fixture_reference(
+    open_closed_gap_behavior_fixture_document: OpenClosedGapBehaviorFixtureDocument,
+    calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
+) -> None:
+    invalid_document: dict[str, object] = _copy_document(open_closed_gap_behavior_fixture_document)
+    invalid_document["cases"][0]["calendar_state_fixture_references"][0] = "missing_calendar_fixture_case"
+    validated_document = validate_open_closed_gap_behavior_fixture_document(invalid_document)
+
+    with pytest.raises(
+        ValueError,
+        match="references missing calendar fixture id: missing_calendar_fixture_case",
+    ):
+        validate_open_closed_gap_behavior_calendar_integration(
+            validated_document,
+            calendar_regression_fixture_document,
+        )
+
+
+def test_open_closed_gap_fixture_calendar_integration_rejects_missing_window_tag_coverage(
+    open_closed_gap_behavior_fixture_document: OpenClosedGapBehaviorFixtureDocument,
+    calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
+) -> None:
+    invalid_document: dict[str, object] = _copy_document(open_closed_gap_behavior_fixture_document)
+    for fixture_case in invalid_document["cases"]:
+        fixture_case["tags"] = [
+            case_tag
+            for case_tag in fixture_case["tags"]
+            if case_tag != "weekend"
+        ]
+    validated_document = validate_open_closed_gap_behavior_fixture_document(invalid_document)
+
+    with pytest.raises(
+        ValueError,
+        match="must cover intraday, overnight, and weekend windows",
+    ):
+        validate_open_closed_gap_behavior_calendar_integration(
+            validated_document,
+            calendar_regression_fixture_document,
+        )
 
 
 def test_seeded_tick_simulation_parity_fixture_rejects_invalid_side_values(
