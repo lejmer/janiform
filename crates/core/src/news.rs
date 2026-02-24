@@ -35,8 +35,269 @@ pub const SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY: &str =
     "apply_shared_gap_mark_only_for_closed_market_state.v1";
 pub const SHARED_NEWS_EVENT_MARKET_STATE_DEPENDENCY: &str = MARKET_STATE_RESOLUTION_POLICY;
 pub const SHARED_NEWS_EVENT_BOUNDARY_POLICY: &str = SESSION_WINDOW_BOUNDARY_POLICY;
+pub const COMPOSABLE_NEWS_MARK_INTERFACE_POLICY: &str =
+    "arrival_intensity_then_shared_mark_sampling_then_coupled_mark_construction.v1";
 
 const ONE_SECOND_NANOS: i64 = 1_000_000_000;
+
+/// Explicit component stages in the composable news-mark generation lifecycle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NewsMarkInterfaceStage {
+    ArrivalIntensityGeneration,
+    SeverityMarkSampling,
+    BaseShockMarkSampling,
+    CoupledMarkConstruction,
+}
+
+/// Stable interface error for composable arrival and mark-generation components.
+#[derive(Debug, Clone, PartialEq)]
+pub enum NewsMarkInterfaceError {
+    ComponentRejected {
+        stage: NewsMarkInterfaceStage,
+        reason: String,
+    },
+    InvalidGeneratedArrivalIntensity {
+        value: f64,
+    },
+    InvalidSampledSeverityMark {
+        value: f64,
+    },
+    InvalidSampledBaseShockMark {
+        value: f64,
+    },
+    InvalidConstructedGapMark {
+        value: f64,
+    },
+    ConstructedSeverityMarkMismatch {
+        expected: f64,
+        observed: f64,
+    },
+    ConstructedBaseShockMarkMismatch {
+        expected: f64,
+        observed: f64,
+    },
+}
+
+impl NewsMarkInterfaceError {
+    fn component_rejected(
+        stage: NewsMarkInterfaceStage,
+        reason: impl Into<String>,
+    ) -> NewsMarkInterfaceError {
+        Self::ComponentRejected {
+            stage,
+            reason: reason.into(),
+        }
+    }
+}
+
+impl Display for NewsMarkInterfaceError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ComponentRejected { stage, reason } => {
+                write!(
+                    formatter,
+                    "composable news-mark component at stage `{stage:?}` rejected input: {reason}"
+                )
+            }
+            Self::InvalidGeneratedArrivalIntensity { value } => write!(
+                formatter,
+                "composable news arrival-intensity output must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidSampledSeverityMark { value } => write!(
+                formatter,
+                "composable news severity sample must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidSampledBaseShockMark { value } => write!(
+                formatter,
+                "composable news base-shock sample must be finite, found {value}"
+            ),
+            Self::InvalidConstructedGapMark { value } => write!(
+                formatter,
+                "composable coupled gap mark must be finite, found {value}"
+            ),
+            Self::ConstructedSeverityMarkMismatch { expected, observed } => write!(
+                formatter,
+                "composable coupled-mark constructor must preserve the shared severity mark, expected {expected} and observed {observed}"
+            ),
+            Self::ConstructedBaseShockMarkMismatch { expected, observed } => write!(
+                formatter,
+                "composable coupled-mark constructor must preserve the shared base-shock mark, expected {expected} and observed {observed}"
+            ),
+        }
+    }
+}
+
+impl Error for NewsMarkInterfaceError {}
+
+/// Interface boundary for deterministic news-arrival intensity generation.
+pub trait NewsArrivalIntensityGenerator {
+    fn generate_arrival_intensity(
+        &self,
+        closed_window_share: f64,
+        deterministic_time_multiplier: f64,
+    ) -> Result<f64, NewsMarkInterfaceError>;
+}
+
+/// Interface boundary for shared severity-mark sampling.
+pub trait NewsSeverityMarkSampler {
+    fn sample_shared_severity_mark(
+        &self,
+        randomness_stream: &mut dyn SimulationRandomnessStream,
+    ) -> Result<f64, NewsMarkInterfaceError>;
+}
+
+/// Interface boundary for shared base-shock sampling.
+pub trait NewsBaseShockMarkSampler {
+    fn sample_shared_base_shock_mark(
+        &self,
+        randomness_stream: &mut dyn SimulationRandomnessStream,
+    ) -> Result<f64, NewsMarkInterfaceError>;
+}
+
+/// Interface boundary for coupled mark construction from shared severity and base-shock marks.
+pub trait NewsCoupledMarkConstructor {
+    fn construct_coupled_mark(
+        &self,
+        shared_severity_mark: f64,
+        shared_base_shock_mark: f64,
+    ) -> Result<CoupledGapMarkConstruction, NewsMarkInterfaceError>;
+}
+
+/// Fully composed mark payload for one exogenous news arrival.
+///
+/// Ownership and lifecycle:
+/// - This payload owns plain values only and does not borrow from any generator component.
+/// - Callers may persist it for replay or diagnostics independent from generator lifetime.
+/// - `shared_severity_mark` is the same value used by both Hawkes loading and gap construction.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ComposableNewsMarkPayload {
+    pub shared_severity_mark: f64,
+    pub shared_base_shock_mark: f64,
+    pub coupled_gap_mark_construction: CoupledGapMarkConstruction,
+}
+
+/// Minimal composable pipeline for arrival intensity and coupled news-mark generation.
+///
+/// This struct owns component implementations and orchestrates one deterministic flow:
+/// 1. Arrival intensity generation
+/// 2. Shared severity-mark sampling
+/// 3. Shared base-shock sampling
+/// 4. Coupled mark construction
+///
+/// The pipeline enforces output invariants even for alternative component implementations.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ComposableNewsMarkPipeline<
+    ArrivalIntensityGenerator,
+    SeverityMarkSampler,
+    BaseShockMarkSampler,
+    CoupledMarkConstructor,
+> {
+    arrival_intensity_generator: ArrivalIntensityGenerator,
+    severity_mark_sampler: SeverityMarkSampler,
+    base_shock_mark_sampler: BaseShockMarkSampler,
+    coupled_mark_constructor: CoupledMarkConstructor,
+}
+
+impl<ArrivalIntensityGenerator, SeverityMarkSampler, BaseShockMarkSampler, CoupledMarkConstructor>
+    ComposableNewsMarkPipeline<
+        ArrivalIntensityGenerator,
+        SeverityMarkSampler,
+        BaseShockMarkSampler,
+        CoupledMarkConstructor,
+    >
+where
+    ArrivalIntensityGenerator: NewsArrivalIntensityGenerator,
+    SeverityMarkSampler: NewsSeverityMarkSampler,
+    BaseShockMarkSampler: NewsBaseShockMarkSampler,
+    CoupledMarkConstructor: NewsCoupledMarkConstructor,
+{
+    pub const fn new(
+        arrival_intensity_generator: ArrivalIntensityGenerator,
+        severity_mark_sampler: SeverityMarkSampler,
+        base_shock_mark_sampler: BaseShockMarkSampler,
+        coupled_mark_constructor: CoupledMarkConstructor,
+    ) -> Self {
+        Self {
+            arrival_intensity_generator,
+            severity_mark_sampler,
+            base_shock_mark_sampler,
+            coupled_mark_constructor,
+        }
+    }
+
+    pub fn generate_arrival_intensity(
+        &self,
+        closed_window_share: f64,
+        deterministic_time_multiplier: f64,
+    ) -> Result<f64, NewsMarkInterfaceError> {
+        let generated_arrival_intensity = self
+            .arrival_intensity_generator
+            .generate_arrival_intensity(closed_window_share, deterministic_time_multiplier)?;
+        if !generated_arrival_intensity.is_finite() || generated_arrival_intensity < 0.0 {
+            return Err(NewsMarkInterfaceError::InvalidGeneratedArrivalIntensity {
+                value: generated_arrival_intensity,
+            });
+        }
+
+        Ok(generated_arrival_intensity)
+    }
+
+    pub fn sample_coupled_marks(
+        &self,
+        randomness_stream: &mut dyn SimulationRandomnessStream,
+    ) -> Result<ComposableNewsMarkPayload, NewsMarkInterfaceError> {
+        let shared_severity_mark = self
+            .severity_mark_sampler
+            .sample_shared_severity_mark(randomness_stream)?;
+        if !shared_severity_mark.is_finite() || shared_severity_mark < 0.0 {
+            return Err(NewsMarkInterfaceError::InvalidSampledSeverityMark {
+                value: shared_severity_mark,
+            });
+        }
+
+        let shared_base_shock_mark = self
+            .base_shock_mark_sampler
+            .sample_shared_base_shock_mark(randomness_stream)?;
+        if !shared_base_shock_mark.is_finite() {
+            return Err(NewsMarkInterfaceError::InvalidSampledBaseShockMark {
+                value: shared_base_shock_mark,
+            });
+        }
+
+        let coupled_gap_mark_construction = self
+            .coupled_mark_constructor
+            .construct_coupled_mark(shared_severity_mark, shared_base_shock_mark)?;
+        if coupled_gap_mark_construction.shared_severity_mark.to_bits()
+            != shared_severity_mark.to_bits()
+        {
+            return Err(NewsMarkInterfaceError::ConstructedSeverityMarkMismatch {
+                expected: shared_severity_mark,
+                observed: coupled_gap_mark_construction.shared_severity_mark,
+            });
+        }
+        if coupled_gap_mark_construction
+            .shared_base_shock_mark
+            .to_bits()
+            != shared_base_shock_mark.to_bits()
+        {
+            return Err(NewsMarkInterfaceError::ConstructedBaseShockMarkMismatch {
+                expected: shared_base_shock_mark,
+                observed: coupled_gap_mark_construction.shared_base_shock_mark,
+            });
+        }
+        if !coupled_gap_mark_construction.gap_jump_mark.is_finite() {
+            return Err(NewsMarkInterfaceError::InvalidConstructedGapMark {
+                value: coupled_gap_mark_construction.gap_jump_mark,
+            });
+        }
+
+        Ok(ComposableNewsMarkPayload {
+            shared_severity_mark,
+            shared_base_shock_mark,
+            coupled_gap_mark_construction,
+        })
+    }
+}
 
 /// Deterministic intensity policy configuration for `nu_news(t)`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -108,6 +369,25 @@ impl NewsIntensityConfiguration {
     }
 }
 
+impl NewsArrivalIntensityGenerator for NewsIntensityConfiguration {
+    fn generate_arrival_intensity(
+        &self,
+        closed_window_share: f64,
+        deterministic_time_multiplier: f64,
+    ) -> Result<f64, NewsMarkInterfaceError> {
+        self.evaluate_with_deterministic_time_multiplier(
+            closed_window_share,
+            deterministic_time_multiplier,
+        )
+        .map_err(|source| {
+            NewsMarkInterfaceError::component_rejected(
+                NewsMarkInterfaceStage::ArrivalIntensityGeneration,
+                source.to_string(),
+            )
+        })
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GammaSeverityMarkConfiguration {
@@ -153,7 +433,7 @@ impl GammaSeverityMarkConfiguration {
         randomness_stream: &mut R,
     ) -> Result<f64, GammaSeverityMarkSamplingError>
     where
-        R: SimulationRandomnessStream,
+        R: SimulationRandomnessStream + ?Sized,
     {
         self.validate()
             .map_err(|source| GammaSeverityMarkSamplingError::InvalidConfiguration { source })?;
@@ -167,6 +447,21 @@ impl GammaSeverityMarkConfiguration {
         }
 
         Ok(sampled_mark)
+    }
+}
+
+impl NewsSeverityMarkSampler for GammaSeverityMarkConfiguration {
+    fn sample_shared_severity_mark(
+        &self,
+        randomness_stream: &mut dyn SimulationRandomnessStream,
+    ) -> Result<f64, NewsMarkInterfaceError> {
+        self.sample_severity_mark(randomness_stream)
+            .map_err(|source| {
+                NewsMarkInterfaceError::component_rejected(
+                    NewsMarkInterfaceStage::SeverityMarkSampling,
+                    source.to_string(),
+                )
+            })
     }
 }
 
@@ -234,7 +529,7 @@ impl DoubleExponentialBaseShockConfiguration {
         randomness_stream: &mut R,
     ) -> Result<f64, DoubleExponentialBaseShockSamplingError>
     where
-        R: SimulationRandomnessStream,
+        R: SimulationRandomnessStream + ?Sized,
     {
         self.validate().map_err(|source| {
             DoubleExponentialBaseShockSamplingError::InvalidConfiguration { source }
@@ -258,6 +553,21 @@ impl DoubleExponentialBaseShockConfiguration {
         }
 
         Ok(sampled_mark)
+    }
+}
+
+impl NewsBaseShockMarkSampler for DoubleExponentialBaseShockConfiguration {
+    fn sample_shared_base_shock_mark(
+        &self,
+        randomness_stream: &mut dyn SimulationRandomnessStream,
+    ) -> Result<f64, NewsMarkInterfaceError> {
+        self.sample_base_shock_mark(randomness_stream)
+            .map_err(|source| {
+                NewsMarkInterfaceError::component_rejected(
+                    NewsMarkInterfaceStage::BaseShockMarkSampling,
+                    source.to_string(),
+                )
+            })
     }
 }
 
@@ -324,6 +634,22 @@ impl CoupledGapMarkConfiguration {
             gap_jump_mark,
             construction_policy: COUPLED_GAP_MARK_CONSTRUCTION_POLICY,
         })
+    }
+}
+
+impl NewsCoupledMarkConstructor for CoupledGapMarkConfiguration {
+    fn construct_coupled_mark(
+        &self,
+        shared_severity_mark: f64,
+        shared_base_shock_mark: f64,
+    ) -> Result<CoupledGapMarkConstruction, NewsMarkInterfaceError> {
+        self.construct_gap_jump_mark(shared_severity_mark, shared_base_shock_mark)
+            .map_err(|source| {
+                NewsMarkInterfaceError::component_rejected(
+                    NewsMarkInterfaceStage::CoupledMarkConstruction,
+                    source.to_string(),
+                )
+            })
     }
 }
 
@@ -680,6 +1006,13 @@ pub struct NewsProcessConfiguration {
     pub coupled_gap_marks: CoupledGapMarkConfiguration,
 }
 
+pub type DefaultNewsMarkPipeline = ComposableNewsMarkPipeline<
+    NewsIntensityConfiguration,
+    GammaSeverityMarkConfiguration,
+    DoubleExponentialBaseShockConfiguration,
+    CoupledGapMarkConfiguration,
+>;
+
 impl NewsProcessConfiguration {
     pub fn try_new(
         intensity: NewsIntensityConfiguration,
@@ -729,6 +1062,22 @@ impl NewsProcessConfiguration {
             double_exponential_base_shock,
             coupled_gap_marks,
         })
+    }
+
+    /// Build the default v0.1 composable interface wiring.
+    ///
+    /// Component mapping:
+    /// - arrival intensity: deterministic closed-window intensity model
+    /// - severity sampler: Gamma(shape, scale)
+    /// - base-shock sampler: Kou double-exponential
+    /// - coupled constructor: `sigma_g * sqrt(U) * epsilon`
+    pub fn default_v0_1_mark_pipeline(&self) -> DefaultNewsMarkPipeline {
+        DefaultNewsMarkPipeline::new(
+            self.intensity,
+            self.gamma_severity_marks,
+            self.double_exponential_base_shock,
+            self.coupled_gap_marks,
+        )
     }
 }
 
@@ -1012,14 +1361,14 @@ impl Error for CoupledGapMarkConstructionError {
 
 fn sample_gamma_shape_scale<R>(shape_k: f64, scale_theta: f64, randomness_stream: &mut R) -> f64
 where
-    R: SimulationRandomnessStream,
+    R: SimulationRandomnessStream + ?Sized,
 {
     sample_gamma_unit_scale(shape_k, randomness_stream) * scale_theta
 }
 
 fn sample_gamma_unit_scale<R>(shape_k: f64, randomness_stream: &mut R) -> f64
 where
-    R: SimulationRandomnessStream,
+    R: SimulationRandomnessStream + ?Sized,
 {
     if shape_k < 1.0 {
         let boosted_sample = sample_gamma_shape_at_least_one(shape_k + 1.0, randomness_stream);
@@ -1034,7 +1383,7 @@ where
 
 fn sample_gamma_shape_at_least_one<R>(shape_k: f64, randomness_stream: &mut R) -> f64
 where
-    R: SimulationRandomnessStream,
+    R: SimulationRandomnessStream + ?Sized,
 {
     let d = shape_k - (1.0 / 3.0);
     let c = (9.0 * d).sqrt().recip();
@@ -1065,7 +1414,7 @@ where
 
 fn sample_standard_normal_draw<R>(randomness_stream: &mut R) -> f64
 where
-    R: SimulationRandomnessStream,
+    R: SimulationRandomnessStream + ?Sized,
 {
     let first_uniform_draw = randomness_stream
         .next_unit_interval_f64()
@@ -1082,7 +1431,7 @@ where
 
 fn sample_exponential_with_rate<R>(rate: f64, randomness_stream: &mut R) -> f64
 where
-    R: SimulationRandomnessStream,
+    R: SimulationRandomnessStream + ?Sized,
 {
     let uniform_draw = randomness_stream
         .next_unit_interval_f64()
@@ -1102,24 +1451,121 @@ fn utc_timestamp_from_nanos(timestamp_utc_nanos: i64) -> Option<DateTime<Utc>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        COUPLED_GAP_MARK_CONSTRUCTION_POLICY, CoupledGapMarkConfiguration,
+        COMPOSABLE_NEWS_MARK_INTERFACE_POLICY, COUPLED_GAP_MARK_CONSTRUCTION_POLICY,
+        ComposableNewsMarkPipeline, CoupledGapMarkConfiguration, CoupledGapMarkConstruction,
         CoupledGapMarkConstructionError, DOUBLE_EXPONENTIAL_BASE_SHOCK_SAMPLING_POLICY,
-        DoubleExponentialBaseShockConfiguration, DoubleExponentialBaseShockSamplingError,
-        GAMMA_SEVERITY_MARK_SAMPLING_POLICY, GammaSeverityMarkConfiguration,
-        GammaSeverityMarkSamplingError, NEWS_INTENSITY_BASELINE_POLICY,
-        NEWS_INTENSITY_DETERMINISTIC_INPUT_POLICY, NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION,
-        NewsIntensityConfiguration, NewsMarkConfigurationError, NewsProcessConfiguration,
-        SHARED_NEWS_EVENT_BOUNDARY_POLICY, SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY,
-        SHARED_NEWS_EVENT_DISPATCH_JT_UPDATE_POLICY, SHARED_NEWS_EVENT_DISPATCH_ORDERING_POLICY,
-        SHARED_NEWS_EVENT_MARKET_STATE_DEPENDENCY, SharedNewsAccumulatorState,
-        SharedNewsEventDispatchInput, SharedNewsEventTimestampedInput, dispatch_shared_news_events,
-        dispatch_shared_news_events_with_resolved_market_states,
+        DefaultNewsMarkPipeline, DoubleExponentialBaseShockConfiguration,
+        DoubleExponentialBaseShockSamplingError, GAMMA_SEVERITY_MARK_SAMPLING_POLICY,
+        GammaSeverityMarkConfiguration, GammaSeverityMarkSamplingError,
+        NEWS_INTENSITY_BASELINE_POLICY, NEWS_INTENSITY_DETERMINISTIC_INPUT_POLICY,
+        NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION, NewsArrivalIntensityGenerator,
+        NewsBaseShockMarkSampler, NewsCoupledMarkConstructor, NewsIntensityConfiguration,
+        NewsMarkConfigurationError, NewsMarkInterfaceError, NewsMarkInterfaceStage,
+        NewsProcessConfiguration, NewsSeverityMarkSampler, SHARED_NEWS_EVENT_BOUNDARY_POLICY,
+        SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY, SHARED_NEWS_EVENT_DISPATCH_JT_UPDATE_POLICY,
+        SHARED_NEWS_EVENT_DISPATCH_ORDERING_POLICY, SHARED_NEWS_EVENT_MARKET_STATE_DEPENDENCY,
+        SharedNewsAccumulatorState, SharedNewsEventDispatchInput, SharedNewsEventTimestampedInput,
+        dispatch_shared_news_events, dispatch_shared_news_events_with_resolved_market_states,
         resolve_shared_news_event_market_states,
     };
     use crate::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, MarketState};
     use crate::randomness::{SimulationRandomnessStream, SplitMix64SimulationRandomnessStream};
     use chrono::{DateTime, Utc};
     use serde_json::json;
+
+    const MOCK_COUPLED_MARK_POLICY: &str = "test.mock.coupled.mark.policy.v1";
+
+    #[derive(Debug, Clone, Copy)]
+    struct MockArrivalIntensityGenerator {
+        generated_arrival_intensity: f64,
+    }
+
+    impl NewsArrivalIntensityGenerator for MockArrivalIntensityGenerator {
+        fn generate_arrival_intensity(
+            &self,
+            _closed_window_share: f64,
+            _deterministic_time_multiplier: f64,
+        ) -> Result<f64, NewsMarkInterfaceError> {
+            Ok(self.generated_arrival_intensity)
+        }
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct MockSeverityMarkSampler {
+        sampled_severity_mark: f64,
+    }
+
+    impl NewsSeverityMarkSampler for MockSeverityMarkSampler {
+        fn sample_shared_severity_mark(
+            &self,
+            _randomness_stream: &mut dyn SimulationRandomnessStream,
+        ) -> Result<f64, NewsMarkInterfaceError> {
+            Ok(self.sampled_severity_mark)
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    struct RejectingSeverityMarkSampler {
+        rejection_reason: String,
+    }
+
+    impl NewsSeverityMarkSampler for RejectingSeverityMarkSampler {
+        fn sample_shared_severity_mark(
+            &self,
+            _randomness_stream: &mut dyn SimulationRandomnessStream,
+        ) -> Result<f64, NewsMarkInterfaceError> {
+            Err(NewsMarkInterfaceError::component_rejected(
+                NewsMarkInterfaceStage::SeverityMarkSampling,
+                self.rejection_reason.clone(),
+            ))
+        }
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct MockBaseShockMarkSampler {
+        sampled_base_shock_mark: f64,
+    }
+
+    impl NewsBaseShockMarkSampler for MockBaseShockMarkSampler {
+        fn sample_shared_base_shock_mark(
+            &self,
+            _randomness_stream: &mut dyn SimulationRandomnessStream,
+        ) -> Result<f64, NewsMarkInterfaceError> {
+            Ok(self.sampled_base_shock_mark)
+        }
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct MockCoupledMarkConstructor {
+        severity_mark_override: Option<f64>,
+        base_shock_mark_override: Option<f64>,
+        gap_jump_mark_override: Option<f64>,
+    }
+
+    impl NewsCoupledMarkConstructor for MockCoupledMarkConstructor {
+        fn construct_coupled_mark(
+            &self,
+            shared_severity_mark: f64,
+            shared_base_shock_mark: f64,
+        ) -> Result<CoupledGapMarkConstruction, NewsMarkInterfaceError> {
+            let constructed_severity_mark =
+                self.severity_mark_override.unwrap_or(shared_severity_mark);
+            let constructed_base_shock_mark = self
+                .base_shock_mark_override
+                .unwrap_or(shared_base_shock_mark);
+            let gap_jump_mark = self
+                .gap_jump_mark_override
+                .unwrap_or(constructed_severity_mark.sqrt() * constructed_base_shock_mark);
+
+            Ok(CoupledGapMarkConstruction {
+                shared_severity_mark: constructed_severity_mark,
+                shared_base_shock_mark: constructed_base_shock_mark,
+                sigma_g: 1.0,
+                gap_jump_mark,
+                construction_policy: MOCK_COUPLED_MARK_POLICY,
+            })
+        }
+    }
 
     #[test]
     fn news_process_configuration_round_trip_preserves_payload() {
@@ -1245,6 +1691,283 @@ mod tests {
             multiplier_error.to_string(),
             "deterministic_time_multiplier must be finite and non-negative, found -0.2"
         );
+    }
+
+    #[test]
+    fn default_v0_1_composable_pipeline_wires_gamma_and_double_exponential_components() {
+        let configuration = NewsProcessConfiguration::try_new(
+            NewsIntensityConfiguration::try_new(0.75)
+                .expect("valid intensity payload should construct"),
+            GammaSeverityMarkConfiguration::new(1.8, 0.9),
+            DoubleExponentialBaseShockConfiguration::new(0.35, 2.1, 3.0),
+            CoupledGapMarkConfiguration::new(0.6),
+        )
+        .expect("valid process configuration should construct");
+        let pipeline: DefaultNewsMarkPipeline = configuration.default_v0_1_mark_pipeline();
+
+        let generated_arrival_intensity = pipeline
+            .generate_arrival_intensity(0.4, 1.25)
+            .expect("default pipeline should evaluate arrival intensity");
+        let expected_arrival_intensity = configuration
+            .intensity
+            .evaluate_with_deterministic_time_multiplier(0.4, 1.25)
+            .expect("deterministic intensity inputs should evaluate");
+
+        assert!((generated_arrival_intensity - expected_arrival_intensity).abs() <= 1e-12);
+        assert_eq!(
+            COMPOSABLE_NEWS_MARK_INTERFACE_POLICY,
+            "arrival_intensity_then_shared_mark_sampling_then_coupled_mark_construction.v1"
+        );
+
+        let mut pipeline_stream = SplitMix64SimulationRandomnessStream::from_seed(90_011);
+        let sampled_payload = pipeline
+            .sample_coupled_marks(&mut pipeline_stream)
+            .expect("default pipeline should sample coupled marks");
+
+        let mut expected_stream = SplitMix64SimulationRandomnessStream::from_seed(90_011);
+        let expected_severity_mark = configuration
+            .gamma_severity_marks
+            .sample_severity_mark(&mut expected_stream)
+            .expect("gamma severity sampler should succeed");
+        let expected_base_shock_mark = configuration
+            .double_exponential_base_shock
+            .sample_base_shock_mark(&mut expected_stream)
+            .expect("double-exponential base-shock sampler should succeed");
+        let expected_construction = configuration
+            .coupled_gap_marks
+            .construct_gap_jump_mark(expected_severity_mark, expected_base_shock_mark)
+            .expect("coupled gap-mark constructor should succeed");
+
+        assert_eq!(sampled_payload.shared_severity_mark, expected_severity_mark);
+        assert_eq!(
+            sampled_payload.shared_base_shock_mark,
+            expected_base_shock_mark
+        );
+        assert_eq!(
+            sampled_payload.coupled_gap_mark_construction,
+            expected_construction
+        );
+    }
+
+    #[test]
+    fn composable_pipeline_supports_pluggable_component_implementations() {
+        let pipeline = ComposableNewsMarkPipeline::new(
+            MockArrivalIntensityGenerator {
+                generated_arrival_intensity: 1.4,
+            },
+            MockSeverityMarkSampler {
+                sampled_severity_mark: 2.25,
+            },
+            MockBaseShockMarkSampler {
+                sampled_base_shock_mark: -0.8,
+            },
+            MockCoupledMarkConstructor {
+                severity_mark_override: None,
+                base_shock_mark_override: None,
+                gap_jump_mark_override: Some(-1.2),
+            },
+        );
+        let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(10);
+
+        let generated_arrival_intensity = pipeline
+            .generate_arrival_intensity(0.2, 0.3)
+            .expect("mock arrival generator should produce intensity");
+        let sampled_payload = pipeline
+            .sample_coupled_marks(&mut randomness_stream)
+            .expect("mock component wiring should generate coupled marks");
+
+        assert_eq!(generated_arrival_intensity, 1.4);
+        assert_eq!(sampled_payload.shared_severity_mark, 2.25);
+        assert_eq!(sampled_payload.shared_base_shock_mark, -0.8);
+        assert_eq!(
+            sampled_payload.coupled_gap_mark_construction.gap_jump_mark,
+            -1.2
+        );
+        assert_eq!(
+            sampled_payload
+                .coupled_gap_mark_construction
+                .construction_policy,
+            MOCK_COUPLED_MARK_POLICY
+        );
+    }
+
+    #[test]
+    fn composable_pipeline_contract_rejects_invalid_arrival_intensity_output() {
+        let pipeline = ComposableNewsMarkPipeline::new(
+            MockArrivalIntensityGenerator {
+                generated_arrival_intensity: f64::NAN,
+            },
+            MockSeverityMarkSampler {
+                sampled_severity_mark: 1.0,
+            },
+            MockBaseShockMarkSampler {
+                sampled_base_shock_mark: 1.0,
+            },
+            MockCoupledMarkConstructor {
+                severity_mark_override: None,
+                base_shock_mark_override: None,
+                gap_jump_mark_override: None,
+            },
+        );
+
+        let error = pipeline
+            .generate_arrival_intensity(0.5, 1.0)
+            .expect_err("non-finite arrival intensity must fail contract validation");
+        assert!(matches!(
+            error,
+            NewsMarkInterfaceError::InvalidGeneratedArrivalIntensity { value }
+            if value.is_nan()
+        ));
+    }
+
+    #[test]
+    fn composable_pipeline_contract_rejects_invalid_severity_and_base_shock_outputs() {
+        let severity_violation_pipeline = ComposableNewsMarkPipeline::new(
+            MockArrivalIntensityGenerator {
+                generated_arrival_intensity: 1.0,
+            },
+            MockSeverityMarkSampler {
+                sampled_severity_mark: -0.01,
+            },
+            MockBaseShockMarkSampler {
+                sampled_base_shock_mark: 1.0,
+            },
+            MockCoupledMarkConstructor {
+                severity_mark_override: None,
+                base_shock_mark_override: None,
+                gap_jump_mark_override: None,
+            },
+        );
+
+        let mut first_stream = SplitMix64SimulationRandomnessStream::from_seed(11);
+        let severity_error = severity_violation_pipeline
+            .sample_coupled_marks(&mut first_stream)
+            .expect_err("negative severity mark must fail contract validation");
+
+        assert!(matches!(
+            severity_error,
+            NewsMarkInterfaceError::InvalidSampledSeverityMark { value } if value == -0.01
+        ));
+
+        let base_shock_violation_pipeline = ComposableNewsMarkPipeline::new(
+            MockArrivalIntensityGenerator {
+                generated_arrival_intensity: 1.0,
+            },
+            MockSeverityMarkSampler {
+                sampled_severity_mark: 1.0,
+            },
+            MockBaseShockMarkSampler {
+                sampled_base_shock_mark: f64::INFINITY,
+            },
+            MockCoupledMarkConstructor {
+                severity_mark_override: None,
+                base_shock_mark_override: None,
+                gap_jump_mark_override: None,
+            },
+        );
+
+        let mut second_stream = SplitMix64SimulationRandomnessStream::from_seed(12);
+        let base_shock_error = base_shock_violation_pipeline
+            .sample_coupled_marks(&mut second_stream)
+            .expect_err("non-finite base-shock mark must fail contract validation");
+
+        assert!(matches!(
+            base_shock_error,
+            NewsMarkInterfaceError::InvalidSampledBaseShockMark { value }
+            if value.is_infinite()
+        ));
+    }
+
+    #[test]
+    fn composable_pipeline_contract_rejects_coupled_mark_output_violations() {
+        let severity_mismatch_pipeline = ComposableNewsMarkPipeline::new(
+            MockArrivalIntensityGenerator {
+                generated_arrival_intensity: 1.0,
+            },
+            MockSeverityMarkSampler {
+                sampled_severity_mark: 2.0,
+            },
+            MockBaseShockMarkSampler {
+                sampled_base_shock_mark: -0.5,
+            },
+            MockCoupledMarkConstructor {
+                severity_mark_override: Some(3.0),
+                base_shock_mark_override: None,
+                gap_jump_mark_override: Some(-0.75),
+            },
+        );
+
+        let mut first_stream = SplitMix64SimulationRandomnessStream::from_seed(13);
+        let severity_mismatch_error = severity_mismatch_pipeline
+            .sample_coupled_marks(&mut first_stream)
+            .expect_err("severity mismatch must fail contract validation");
+
+        assert!(matches!(
+            severity_mismatch_error,
+            NewsMarkInterfaceError::ConstructedSeverityMarkMismatch { expected, observed }
+            if expected == 2.0 && observed == 3.0
+        ));
+
+        let non_finite_gap_pipeline = ComposableNewsMarkPipeline::new(
+            MockArrivalIntensityGenerator {
+                generated_arrival_intensity: 1.0,
+            },
+            MockSeverityMarkSampler {
+                sampled_severity_mark: 2.0,
+            },
+            MockBaseShockMarkSampler {
+                sampled_base_shock_mark: -0.5,
+            },
+            MockCoupledMarkConstructor {
+                severity_mark_override: None,
+                base_shock_mark_override: None,
+                gap_jump_mark_override: Some(f64::NAN),
+            },
+        );
+
+        let mut second_stream = SplitMix64SimulationRandomnessStream::from_seed(14);
+        let non_finite_gap_error = non_finite_gap_pipeline
+            .sample_coupled_marks(&mut second_stream)
+            .expect_err("non-finite coupled gap mark must fail contract validation");
+
+        assert!(matches!(
+            non_finite_gap_error,
+            NewsMarkInterfaceError::InvalidConstructedGapMark { value } if value.is_nan()
+        ));
+    }
+
+    #[test]
+    fn composable_pipeline_propagates_component_rejections_from_pluggable_components() {
+        let pipeline = ComposableNewsMarkPipeline::new(
+            MockArrivalIntensityGenerator {
+                generated_arrival_intensity: 1.0,
+            },
+            RejectingSeverityMarkSampler {
+                rejection_reason: "mock rejection for severity stage".to_string(),
+            },
+            MockBaseShockMarkSampler {
+                sampled_base_shock_mark: 1.0,
+            },
+            MockCoupledMarkConstructor {
+                severity_mark_override: None,
+                base_shock_mark_override: None,
+                gap_jump_mark_override: None,
+            },
+        );
+
+        let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(15);
+
+        let error = pipeline
+            .sample_coupled_marks(&mut randomness_stream)
+            .expect_err("component rejection should propagate");
+
+        assert!(matches!(
+            error,
+            NewsMarkInterfaceError::ComponentRejected {
+                stage: NewsMarkInterfaceStage::SeverityMarkSampling,
+                reason,
+            } if reason == "mock rejection for severity stage"
+        ));
     }
 
     #[test]
