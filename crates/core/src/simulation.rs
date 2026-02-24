@@ -1424,10 +1424,14 @@ mod tests {
         HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY, HourlyFactorContractDiagnostics,
         HourlyFactorContractOutput, HourlyFactorMaterializationMetadata,
     };
+    use crate::nig::{
+        NIG_TRADING_TIME_INCREMENT_COMPOSITION_POLICY, NigSharedPlusShiftConfiguration,
+    };
     use crate::randomness::{
         SimulationRandomnessFactory, SimulationRandomnessStream,
-        SimulationRandomnessSubstreamDomain,
+        SimulationRandomnessSubstreamDomain, SplitMix64SimulationRandomnessStream,
     };
+    use crate::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
     use crate::simulation::{
         SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNK_SCHEMA_VERSION,
         SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNKING_POLICY,
@@ -1448,9 +1452,103 @@ mod tests {
         SeededTickSimulationRunConfig, SeededTickSimulationRunError,
         SeededTickSimulationRunOptions, run_seeded_tick_event_simulation,
         run_seeded_tick_event_simulation_with_randomness_factory,
+        sample_nig_trading_time_increment_for_simulation,
     };
 
     const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
+
+    #[test]
+    fn trading_time_assembler_buy_only_path_keeps_sell_component_zero() {
+        let driver_parameters = valid_nig_driver_parameters();
+        let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 0.9,
+            a_minus: 0.0,
+            gap: 0.0,
+        })
+        .expect("buy-only decomposition should be valid");
+        let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(42_101);
+
+        let contributions = sample_nig_trading_time_increment_for_simulation(
+            driver_parameters,
+            decomposition,
+            &mut randomness_stream,
+        )
+        .expect("buy-only assembly should sample successfully");
+
+        assert_eq!(
+            contributions.policy,
+            NIG_TRADING_TIME_INCREMENT_COMPOSITION_POLICY
+        );
+        assert_float_close(contributions.sell_side_increment, 0.0);
+        assert_float_close(
+            contributions.combined_increment,
+            contributions.buy_side_increment,
+        );
+    }
+
+    #[test]
+    fn trading_time_assembler_sell_only_path_applies_minus_sign_to_combined_increment() {
+        let driver_parameters = valid_nig_driver_parameters();
+        let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 0.0,
+            a_minus: 0.9,
+            gap: 0.0,
+        })
+        .expect("sell-only decomposition should be valid");
+        let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(42_102);
+
+        let contributions = sample_nig_trading_time_increment_for_simulation(
+            driver_parameters,
+            decomposition,
+            &mut randomness_stream,
+        )
+        .expect("sell-only assembly should sample successfully");
+
+        assert_eq!(
+            contributions.policy,
+            NIG_TRADING_TIME_INCREMENT_COMPOSITION_POLICY
+        );
+        assert_float_close(contributions.buy_side_increment, 0.0);
+        assert_float_close(
+            contributions.combined_increment,
+            -contributions.sell_side_increment,
+        );
+    }
+
+    #[test]
+    fn trading_time_assembler_is_seed_deterministic() {
+        let driver_parameters = valid_nig_driver_parameters();
+        let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 0.8,
+            a_minus: 0.5,
+            gap: 0.0,
+        })
+        .expect("mixed decomposition should be valid");
+        let mut first_stream = SplitMix64SimulationRandomnessStream::from_seed(42_103);
+        let mut second_stream = SplitMix64SimulationRandomnessStream::from_seed(42_103);
+
+        let first_contributions = sample_nig_trading_time_increment_for_simulation(
+            driver_parameters,
+            decomposition,
+            &mut first_stream,
+        )
+        .expect("first seeded assembly should sample successfully");
+        let second_contributions = sample_nig_trading_time_increment_for_simulation(
+            driver_parameters,
+            decomposition,
+            &mut second_stream,
+        )
+        .expect("second seeded assembly should sample successfully");
+
+        assert_eq!(first_contributions, second_contributions);
+    }
+
+    fn valid_nig_driver_parameters() -> crate::nig::NigBuySellDriverParameters {
+        NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("test shared-plus-shift payload should construct")
+            .derive_driver_parameters()
+            .expect("test shared-plus-shift payload should derive drivers")
+    }
 
     #[test]
     fn seeded_simulation_run_executes_with_valid_config() {
