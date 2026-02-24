@@ -1,4 +1,4 @@
-## ISSUE-004: Disabled Component Edge Case Modes
+## Disabled Component Edge Case Modes
 
 ### Description
 Implement explicit edge-case modes where one decomposition component is disabled to isolate correctness and simplify debugging.
@@ -13,5 +13,6 @@ Implement explicit edge-case modes where one decomposition component is disabled
 - Buy-only mode with zero sell and gap contributions, sell-only mode with correct negative sign behavior, and gap-only mode isolating `G` contribution
 
 ### Notes/Constraints
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Keep edge modes behind explicit configuration to avoid accidental production use
 - Ensure mode behavior is deterministic under fixed seeds and inputs

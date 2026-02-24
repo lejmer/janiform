@@ -1,4 +1,4 @@
-## ISSUE-001: Return Decomposition Domain Model And API Contract
+## Return Decomposition Domain Model And API Contract
 
 ### Description
 Define the canonical domain model and API contract for return decomposition `X = L_plus(A_plus) - L_minus(A_minus) + G`, with explicit fields for each component.
@@ -14,5 +14,6 @@ Define the canonical domain model and API contract for return decomposition `X =
 - Invalid or incomplete component payloads
 
 ### Notes/Constraints
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Keep model independent from engine-specific internals
 - Avoid tuple-based anonymous component passing in public interfaces

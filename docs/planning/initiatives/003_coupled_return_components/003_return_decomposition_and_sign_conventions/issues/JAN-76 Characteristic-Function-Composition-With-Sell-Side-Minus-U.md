@@ -1,4 +1,4 @@
-## ISSUE-003: Characteristic Function Composition With Sell Side Minus U
+## Characteristic Function Composition With Sell Side Minus U
 
 ### Description
 Implement pricing-side characteristic-function composition that applies sell-side exponent with `-u` argument and combines with gap characteristic factor.
@@ -14,5 +14,6 @@ Implement pricing-side characteristic-function composition that applies sell-sid
 - Regression tests that fail on sign-convention inversion
 
 ### Notes/Constraints
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Keep sign handling centralized in one helper module
 - Do not duplicate CF wiring logic in multiple engines
