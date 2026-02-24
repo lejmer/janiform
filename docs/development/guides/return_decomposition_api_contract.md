@@ -28,6 +28,7 @@ Policy constants:
 - `RETURN_DECOMPOSITION_INTERFACE_POLICY`
 - `RETURN_DECOMPOSITION_UNITS_POLICY`
 - `RETURN_DECOMPOSITION_EDGE_MODE_POLICY`
+- `RETURN_DECOMPOSITION_INTERFACE_EVOLUTION_POLICY`
 
 ## Edge modes for debug and test workflows
 
@@ -42,14 +43,26 @@ Explicit opt-in component-disable modes are exposed through
 `ReturnDecomposition::with_edge_mode` applies deterministic zeroing so disabled
 components contribute exactly zero.
 
+## Shared composition interface
+
+The decomposition-to-driver mapping lives in `return_decomposition` and is the
+single source for both engines:
+
+- `ReturnDecomposition::compose_nig_trading_time_exponent`
+- `ReturnDecomposition::compose_nig_trading_time_exponent_with_edge_mode`
+- `ReturnDecomposition::sample_nig_trading_time_increment`
+- `ReturnDecomposition::sample_nig_trading_time_increment_with_edge_mode`
+
+These methods map `a_plus` and `a_minus` to the NIG buy and sell drivers after
+optional edge-mode zeroing, so adapters do not duplicate component wiring math.
+
 ## Engine reuse
 
-Pricing and simulation use this contract in their public NIG adapter entrypoints:
+Pricing and simulation expose thin adapters over the shared decomposition
+methods:
 
 - `pricing::compose_nig_trading_time_exponent_for_pricing`
 - `pricing::compose_nig_trading_time_exponent_for_coarse_transform_integration`
-- `pricing::compose_total_return_characteristic_function_for_pricing`
-- `pricing::compose_total_return_characteristic_function_for_coarse_transform_integration`
 - `simulation::sample_nig_trading_time_increment_for_simulation`
 
 Edge-mode-aware debug and test entrypoints:
@@ -59,5 +72,29 @@ Edge-mode-aware debug and test entrypoints:
 - `pricing::compose_total_return_characteristic_function_for_pricing_with_edge_mode`
 - `pricing::compose_total_return_characteristic_function_for_coarse_transform_integration_with_edge_mode`
 - `simulation::sample_nig_trading_time_increment_for_simulation_with_edge_mode`
+
+## Integration call flow map
+
+Pricing call flow:
+
+1. Entry adapter receives `ReturnDecomposition`.
+2. Adapter delegates trading-time mapping to
+   `ReturnDecomposition::compose_nig_trading_time_exponent_with_edge_mode`.
+3. Full CF assembly multiplies `exp(weighted_trading_exponent)` and gap factor.
+
+Simulation call flow:
+
+1. Entry adapter receives `ReturnDecomposition`.
+2. Adapter delegates increment mapping to
+   `ReturnDecomposition::sample_nig_trading_time_increment_with_edge_mode`.
+3. Simulation uses returned buy, sell, and combined contributions as-is.
+
+## Interface evolution policy for v0.1
+
+`RETURN_DECOMPOSITION_INTERFACE_EVOLUTION_POLICY` defines v0.1 stability:
+
+- additive fields or additive APIs may be introduced without changing policy id
+- existing field semantics and existing method behavior remain stable
+- breaking changes must ship behind a new policy identifier
 
 This keeps component wiring explicit and prevents anonymous tuple-style passing.
