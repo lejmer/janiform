@@ -4,6 +4,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use crate::calendar::ExchangeCalendarRegistry;
+use crate::complex_math::{complex_exponential, complex_multiply};
 use crate::hawkes::{
     HawkesExcitationState, HawkesIntensityProjection, HawkesKernelParameters,
     HawkesSeasonalityIntervalError, HawkesTransitionError, HawkesTransitionStep,
@@ -347,23 +348,6 @@ fn compose_total_return_characteristic_function_shared(
         composition_policy: RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
         domain_guard_policy: RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY,
     })
-}
-
-fn complex_exponential(value: ComplexScalar) -> ComplexScalar {
-    let real_exponential = value.real.exp();
-    ComplexScalar::new(
-        real_exponential * value.imaginary.cos(),
-        real_exponential * value.imaginary.sin(),
-    )
-}
-
-fn complex_multiply(left: ComplexScalar, right: ComplexScalar) -> ComplexScalar {
-    ComplexScalar::new(
-        left.real
-            .mul_add(right.real, -(left.imaginary * right.imaginary)),
-        left.real
-            .mul_add(right.imaginary, left.imaginary * right.real),
-    )
 }
 
 #[cfg(test)]
