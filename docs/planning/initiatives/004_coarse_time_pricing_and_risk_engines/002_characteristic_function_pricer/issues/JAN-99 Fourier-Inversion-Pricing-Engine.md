@@ -1,4 +1,4 @@
-## ISSUE-004: Fourier Inversion Pricing Engine
+## Fourier Inversion Pricing Engine
 
 ### Description
 Implement the core Fourier inversion engine that maps characteristic functions to vanilla option prices with configurable integration settings.

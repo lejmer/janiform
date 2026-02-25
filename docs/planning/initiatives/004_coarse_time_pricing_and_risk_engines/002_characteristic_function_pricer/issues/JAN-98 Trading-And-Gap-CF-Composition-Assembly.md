@@ -1,4 +1,4 @@
-## ISSUE-003: Trading And Gap CF Composition Assembly
+## Trading And Gap CF Composition Assembly
 
 ### Description
 Implement assembly of total return characteristic function from oracle-derived trading-time CF and gap contribution for the pricing interval.

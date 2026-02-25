@@ -1,4 +1,4 @@
-## ISSUE-006: Interval Parametric Pricing With Hourly Default
+## Interval Parametric Pricing With Hourly Default
 
 ### Description
 Ensure pricing flow is interval-parametric in `Delta` while keeping hourly boundaries as the v0.1 intraday default configuration for option workflows.
