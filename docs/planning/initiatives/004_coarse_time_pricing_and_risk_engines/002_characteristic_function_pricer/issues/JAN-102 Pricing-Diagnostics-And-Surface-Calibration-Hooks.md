@@ -1,4 +1,4 @@
-## ISSUE-007: Pricing Diagnostics And Surface Calibration Hooks
+## Pricing Diagnostics And Surface Calibration Hooks
 
 ### Description
 Expose intermediate pricing diagnostics and optional outputs needed to calibrate model parameters against option surfaces.

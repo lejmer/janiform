@@ -1,4 +1,4 @@
-## ISSUE-002: Esscher Tilt Risk Neutral Transformation Module
+## Esscher Tilt Risk Neutral Transformation Module
 
 ### Description
 Implement Esscher-tilt transformation utilities for Levy components under the risk-neutral setup and enforce martingale-condition wiring for pricing runs.

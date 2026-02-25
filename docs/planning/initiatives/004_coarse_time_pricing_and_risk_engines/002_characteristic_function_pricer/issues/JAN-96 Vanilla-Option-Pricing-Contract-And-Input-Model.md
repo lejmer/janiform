@@ -1,4 +1,4 @@
-## ISSUE-001: Vanilla Option Pricing Contract And Input Model
+## Vanilla Option Pricing Contract And Input Model
 
 ### Description
 Define the public input and output contract for vanilla option pricing, including model state, market inputs, and requested payoff configuration.

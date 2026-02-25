@@ -1,4 +1,4 @@
-## ISSUE-005: Numerical Integration Stability And Tuning Policy
+## Numerical Integration Stability And Tuning Policy
 
 ### Description
 Define and implement stability controls for numerical integration, including tolerance, truncation, and convergence policies for pricing accuracy and runtime balance.

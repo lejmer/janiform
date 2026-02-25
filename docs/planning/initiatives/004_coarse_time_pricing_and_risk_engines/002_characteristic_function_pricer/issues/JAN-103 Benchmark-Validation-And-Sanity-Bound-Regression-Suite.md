@@ -1,4 +1,4 @@
-## ISSUE-008: Benchmark Validation And Sanity Bound Regression Suite
+## Benchmark Validation And Sanity Bound Regression Suite
 
 ### Description
 Create benchmark and regression validation suite for pricer outputs against reference scenarios and sanity bounds.
