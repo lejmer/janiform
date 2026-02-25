@@ -202,7 +202,8 @@ impl Error for HawkesTransitionError {
 }
 
 /// Canonical 4D Hawkes excitation state with explicit `Yij` components.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct HawkesExcitationState {
     /// `Y++`: buy-target intensity excitation from buy-source events.
     pub y_plus_plus: f64,
