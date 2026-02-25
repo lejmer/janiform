@@ -1,4 +1,4 @@
-## ISSUE-002: Hamiltonian And ODE RHS Implementation
+## Hamiltonian And ODE RHS Implementation
 
 ### Description
 Implement Hamiltonian functions and right-hand-side ODE evaluation for `D_ij` and `C` dynamics based on the formal system in the design notes.

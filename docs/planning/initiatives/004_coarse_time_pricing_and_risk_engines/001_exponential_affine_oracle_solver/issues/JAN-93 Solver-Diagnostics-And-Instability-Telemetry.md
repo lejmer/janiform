@@ -1,4 +1,4 @@
-## ISSUE-006: Solver Diagnostics And Instability Telemetry
+## Solver Diagnostics And Instability Telemetry
 
 ### Description
 Add diagnostics and telemetry outputs that help identify numerical instability, guard-trigger events, and integration quality issues.

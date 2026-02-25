@@ -1,4 +1,4 @@
-## ISSUE-003: Integrator Abstraction And Default Method
+## Integrator Abstraction And Default Method
 
 ### Description
 Create an integrator abstraction for solving the transform ODE system with a default stable method and configurable solver settings.
