@@ -685,6 +685,14 @@ def run_deterministic_regression_harness(
 ) -> str: ...
 
 
+def run_open_closed_gap_leakage_regression_harness(
+    calendar_registry: CalendarRegistry,
+    gap_behavior_cases: object,
+    *,
+    direct_gap_absolute_tolerance: float = 1e-12,
+) -> str: ...
+
+
 def run_seeded_tick_event_simulation(
     seed: int,
     start_time_utc: str,

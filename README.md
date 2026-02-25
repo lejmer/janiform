@@ -56,4 +56,5 @@ The detailed calendar and seasonality sections were moved out of this README int
 ```bash
 python3 -m py_compile python/janiform/*.py tests/conftest.py
 cargo check --workspace
+python3 -m janiform regression open-closed-gap-leakage
 ```
