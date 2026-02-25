@@ -2845,7 +2845,11 @@ mod tests {
         for required_guard_failure_field in
             EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_GUARD_FAILURE_FIELDS
         {
-            assert_ne!(serialized_guard_failure[required_guard_failure_field], Value::Null, "guard failure field '{required_guard_failure_field}' must be present");
+            assert_ne!(
+                serialized_guard_failure[required_guard_failure_field],
+                Value::Null,
+                "guard failure field '{required_guard_failure_field}' must be present"
+            );
         }
     }
 }
