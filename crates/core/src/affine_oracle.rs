@@ -31,6 +31,10 @@ use crate::nig::ComplexScalar;
 
 pub const EXPONENTIAL_AFFINE_TRANSFORM_EQUATION_MAPPING_POLICY: &str =
     "compact_model_spec_section_8_named_component_mapping.v1";
+pub const EXPONENTIAL_AFFINE_TRANSFORM_DEFAULT_SOLVER_POLICY: &str =
+    "fourth_order_runge_kutta_fixed_step.v1";
+
+const DEFAULT_EXPONENTIAL_AFFINE_TRANSFORM_SOLVER_STEP_COUNT: usize = 64;
 
 /// Canonical equation specification shared by pricing and risk solver consumers.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -346,6 +350,26 @@ impl ExponentialAffineTransformDVector {
         Ok(())
     }
 
+    /// Componentwise addition in model order `[++, +-, -+, --]`.
+    pub fn add(self, other: Self) -> Self {
+        Self::new(
+            self.plus_plus.add(other.plus_plus),
+            self.plus_minus.add(other.plus_minus),
+            self.minus_plus.add(other.minus_plus),
+            self.minus_minus.add(other.minus_minus),
+        )
+    }
+
+    /// Uniform scalar multiplication across all components.
+    pub fn scale(self, value: f64) -> Self {
+        Self::new(
+            self.plus_plus.scale(value),
+            self.plus_minus.scale(value),
+            self.minus_plus.scale(value),
+            self.minus_minus.scale(value),
+        )
+    }
+
     /// Compute `D(Delta) · y_0`.
     pub fn dot_state(self, state: HawkesExcitationState) -> ComplexScalar {
         let mut total = ComplexScalar::new(0.0, 0.0);
@@ -579,6 +603,359 @@ pub fn evaluate_exponential_affine_transform_ode_rhs(
     ExponentialAffineTransformOdeRhs::new(d_derivative, trading_term.add(news_term))
 }
 
+/// Supported one-step numerical integration methods for affine transform ODE solving.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExponentialAffineTransformIntegratorMethod {
+    FourthOrderRungeKutta,
+    ForwardEuler,
+}
+
+impl Default for ExponentialAffineTransformIntegratorMethod {
+    fn default() -> Self {
+        Self::FourthOrderRungeKutta
+    }
+}
+
+/// Solver settings for one-interval affine transform integration.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct ExponentialAffineTransformSolverSettings {
+    pub integrator_method: ExponentialAffineTransformIntegratorMethod,
+    pub step_count: usize,
+}
+
+impl Default for ExponentialAffineTransformSolverSettings {
+    fn default() -> Self {
+        Self {
+            integrator_method: ExponentialAffineTransformIntegratorMethod::default(),
+            step_count: DEFAULT_EXPONENTIAL_AFFINE_TRANSFORM_SOLVER_STEP_COUNT,
+        }
+    }
+}
+
+impl ExponentialAffineTransformSolverSettings {
+    pub fn new(
+        integrator_method: ExponentialAffineTransformIntegratorMethod,
+        step_count: usize,
+    ) -> Self {
+        Self {
+            integrator_method,
+            step_count,
+        }
+    }
+
+    pub fn try_new(
+        integrator_method: ExponentialAffineTransformIntegratorMethod,
+        step_count: usize,
+    ) -> Result<Self, ExponentialAffineTransformSolverSettingsError> {
+        let settings = Self::new(integrator_method, step_count);
+        settings.validate()?;
+        Ok(settings)
+    }
+
+    pub fn validate(self) -> Result<(), ExponentialAffineTransformSolverSettingsError> {
+        if self.step_count == 0 {
+            return Err(
+                ExponentialAffineTransformSolverSettingsError::InvalidStepCount {
+                    value: self.step_count,
+                },
+            );
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExponentialAffineTransformSolverSettingsError {
+    InvalidStepCount { value: usize },
+}
+
+impl Display for ExponentialAffineTransformSolverSettingsError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidStepCount { value } => write!(
+                formatter,
+                "solver step_count must be strictly positive, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for ExponentialAffineTransformSolverSettingsError {}
+
+/// Structured integration status for one affine transform solve call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExponentialAffineTransformIntegrationStatus {
+    Completed,
+}
+
+/// Metadata describing one completed affine transform integration run.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct ExponentialAffineTransformIntegrationMetadata {
+    pub integrator_method: ExponentialAffineTransformIntegratorMethod,
+    pub configured_step_count: usize,
+    pub completed_step_count: usize,
+    pub step_size: f64,
+    pub rhs_evaluation_count: usize,
+}
+
+/// Result payload for one affine transform solve call.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct ExponentialAffineTransformIntegrationResult {
+    pub status: ExponentialAffineTransformIntegrationStatus,
+    pub metadata: ExponentialAffineTransformIntegrationMetadata,
+    pub output: ExponentialAffineTransformOutput,
+}
+
+/// Structured failure modes for affine transform solver execution.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExponentialAffineTransformSolverError {
+    InvalidInput {
+        source: ExponentialAffineTransformInputError,
+    },
+    InvalidSolverSettings {
+        source: ExponentialAffineTransformSolverSettingsError,
+    },
+    InvalidOutput {
+        source: ExponentialAffineTransformOutputError,
+    },
+}
+
+impl Display for ExponentialAffineTransformSolverError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidInput { source } => {
+                write!(
+                    formatter,
+                    "affine transform solver input is invalid: {source}"
+                )
+            }
+            Self::InvalidSolverSettings { source } => write!(
+                formatter,
+                "affine transform solver settings are invalid: {source}"
+            ),
+            Self::InvalidOutput { source } => write!(
+                formatter,
+                "affine transform solver produced invalid output: {source}"
+            ),
+        }
+    }
+}
+
+impl Error for ExponentialAffineTransformSolverError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidInput { source } => Some(source),
+            Self::InvalidSolverSettings { source } => Some(source),
+            Self::InvalidOutput { source } => Some(source),
+        }
+    }
+}
+
+/// Solve one-interval affine transform ODE system using default stable settings.
+pub fn solve_exponential_affine_transform(
+    transform_input: ExponentialAffineTransformInput,
+) -> Result<ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError> {
+    solve_exponential_affine_transform_with_settings(
+        transform_input,
+        ExponentialAffineTransformSolverSettings::default(),
+    )
+}
+
+/// Solve one-interval affine transform ODE system with explicit solver settings.
+pub fn solve_exponential_affine_transform_with_settings(
+    transform_input: ExponentialAffineTransformInput,
+    solver_settings: ExponentialAffineTransformSolverSettings,
+) -> Result<ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError> {
+    transform_input
+        .validate()
+        .map_err(|source| ExponentialAffineTransformSolverError::InvalidInput { source })?;
+    solver_settings.validate().map_err(|source| {
+        ExponentialAffineTransformSolverError::InvalidSolverSettings { source }
+    })?;
+
+    match solver_settings.integrator_method {
+        ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta => {
+            run_affine_transform_integration_with_integrator(
+                transform_input,
+                solver_settings,
+                FourthOrderRungeKuttaIntegrator,
+            )
+        }
+        ExponentialAffineTransformIntegratorMethod::ForwardEuler => {
+            run_affine_transform_integration_with_integrator(
+                transform_input,
+                solver_settings,
+                ForwardEulerIntegrator,
+            )
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ExponentialAffineTransformIntegrationState {
+    d_vector: ExponentialAffineTransformDVector,
+    c_value: ComplexScalar,
+}
+
+impl ExponentialAffineTransformIntegrationState {
+    fn initial() -> Self {
+        Self {
+            d_vector: ExponentialAffineTransformDVector::new(
+                ComplexScalar::new(0.0, 0.0),
+                ComplexScalar::new(0.0, 0.0),
+                ComplexScalar::new(0.0, 0.0),
+                ComplexScalar::new(0.0, 0.0),
+            ),
+            c_value: ComplexScalar::new(0.0, 0.0),
+        }
+    }
+
+    fn add_scaled_rhs(self, rhs: ExponentialAffineTransformOdeRhs, scale: f64) -> Self {
+        Self {
+            d_vector: self.d_vector.add(rhs.d_derivative.scale(scale)),
+            c_value: self.c_value.add(rhs.c_derivative.scale(scale)),
+        }
+    }
+}
+
+type ExponentialAffineTransformOdeRhsEvaluator = fn(
+    ExponentialAffineTransformInput,
+    ExponentialAffineTransformDVector,
+) -> ExponentialAffineTransformOdeRhs;
+
+trait ExponentialAffineTransformIntegrator {
+    fn method(&self) -> ExponentialAffineTransformIntegratorMethod;
+    fn rhs_evaluations_per_step(&self) -> usize;
+    fn advance_one_step(
+        &self,
+        transform_input: ExponentialAffineTransformInput,
+        step_size: f64,
+        state: ExponentialAffineTransformIntegrationState,
+        rhs_evaluator: ExponentialAffineTransformOdeRhsEvaluator,
+    ) -> ExponentialAffineTransformIntegrationState;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ForwardEulerIntegrator;
+
+impl ExponentialAffineTransformIntegrator for ForwardEulerIntegrator {
+    fn method(&self) -> ExponentialAffineTransformIntegratorMethod {
+        ExponentialAffineTransformIntegratorMethod::ForwardEuler
+    }
+
+    fn rhs_evaluations_per_step(&self) -> usize {
+        1
+    }
+
+    fn advance_one_step(
+        &self,
+        transform_input: ExponentialAffineTransformInput,
+        step_size: f64,
+        state: ExponentialAffineTransformIntegrationState,
+        rhs_evaluator: ExponentialAffineTransformOdeRhsEvaluator,
+    ) -> ExponentialAffineTransformIntegrationState {
+        let first_derivative = rhs_evaluator(transform_input, state.d_vector);
+        state.add_scaled_rhs(first_derivative, step_size)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FourthOrderRungeKuttaIntegrator;
+
+impl ExponentialAffineTransformIntegrator for FourthOrderRungeKuttaIntegrator {
+    fn method(&self) -> ExponentialAffineTransformIntegratorMethod {
+        ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta
+    }
+
+    fn rhs_evaluations_per_step(&self) -> usize {
+        4
+    }
+
+    fn advance_one_step(
+        &self,
+        transform_input: ExponentialAffineTransformInput,
+        step_size: f64,
+        state: ExponentialAffineTransformIntegrationState,
+        rhs_evaluator: ExponentialAffineTransformOdeRhsEvaluator,
+    ) -> ExponentialAffineTransformIntegrationState {
+        let k1 = rhs_evaluator(transform_input, state.d_vector);
+        let k2 = rhs_evaluator(
+            transform_input,
+            state.add_scaled_rhs(k1, 0.5 * step_size).d_vector,
+        );
+        let k3 = rhs_evaluator(
+            transform_input,
+            state.add_scaled_rhs(k2, 0.5 * step_size).d_vector,
+        );
+        let k4 = rhs_evaluator(
+            transform_input,
+            state.add_scaled_rhs(k3, step_size).d_vector,
+        );
+
+        let d_increment = k1
+            .d_derivative
+            .add(k2.d_derivative.scale(2.0))
+            .add(k3.d_derivative.scale(2.0))
+            .add(k4.d_derivative)
+            .scale(step_size / 6.0);
+        let c_increment = k1
+            .c_derivative
+            .add(k2.c_derivative.scale(2.0))
+            .add(k3.c_derivative.scale(2.0))
+            .add(k4.c_derivative)
+            .scale(step_size / 6.0);
+
+        ExponentialAffineTransformIntegrationState {
+            d_vector: state.d_vector.add(d_increment),
+            c_value: state.c_value.add(c_increment),
+        }
+    }
+}
+
+fn run_affine_transform_integration_with_integrator<TIntegrator>(
+    transform_input: ExponentialAffineTransformInput,
+    solver_settings: ExponentialAffineTransformSolverSettings,
+    integrator: TIntegrator,
+) -> Result<ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError>
+where
+    TIntegrator: ExponentialAffineTransformIntegrator,
+{
+    let step_size = transform_input.delta / solver_settings.step_count as f64;
+    let mut integration_state = ExponentialAffineTransformIntegrationState::initial();
+
+    for _ in 0..solver_settings.step_count {
+        integration_state = integrator.advance_one_step(
+            transform_input,
+            step_size,
+            integration_state,
+            evaluate_exponential_affine_transform_ode_rhs,
+        );
+    }
+
+    let c_at_delta = integration_state.c_value;
+    let d_at_delta = integration_state.d_vector;
+    let transform_exponent = c_at_delta.add(d_at_delta.dot_state(transform_input.initial_state));
+    let transform_value = complex_exponential(transform_exponent);
+    let output = ExponentialAffineTransformOutput::try_new(c_at_delta, d_at_delta, transform_value)
+        .map_err(|source| ExponentialAffineTransformSolverError::InvalidOutput { source })?;
+
+    Ok(ExponentialAffineTransformIntegrationResult {
+        status: ExponentialAffineTransformIntegrationStatus::Completed,
+        metadata: ExponentialAffineTransformIntegrationMetadata {
+            integrator_method: integrator.method(),
+            configured_step_count: solver_settings.step_count,
+            completed_step_count: solver_settings.step_count,
+            step_size,
+            rhs_evaluation_count: solver_settings
+                .step_count
+                .saturating_mul(integrator.rhs_evaluations_per_step()),
+        },
+        output,
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ExponentialAffineTransformEquationSpecificationPayload {
@@ -797,10 +1174,15 @@ mod tests {
     use serde_json::json;
 
     use super::{
+        EXPONENTIAL_AFFINE_TRANSFORM_DEFAULT_SOLVER_POLICY,
         EXPONENTIAL_AFFINE_TRANSFORM_EQUATION_MAPPING_POLICY, ExponentialAffineTransformDVector,
         ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
-        ExponentialAffineTransformOutput, evaluate_exponential_affine_transform_hamiltonians,
-        evaluate_exponential_affine_transform_ode_rhs,
+        ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformIntegratorMethod,
+        ExponentialAffineTransformOutput, ExponentialAffineTransformSolverError,
+        ExponentialAffineTransformSolverSettings,
+        evaluate_exponential_affine_transform_hamiltonians,
+        evaluate_exponential_affine_transform_ode_rhs, solve_exponential_affine_transform,
+        solve_exponential_affine_transform_with_settings,
     };
     use crate::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
     use crate::news::GammaSeverityMarkConfiguration;
@@ -864,6 +1246,47 @@ mod tests {
             ComplexScalar::new(0.98, -0.04),
         )
         .expect("valid output should construct")
+    }
+
+    fn linear_closed_form_fixture_input() -> ExponentialAffineTransformInput {
+        ExponentialAffineTransformInput::try_new(
+            ExponentialAffineTransformEquationSpecification::try_new(
+                HawkesKernelParameters::try_new(
+                    0.8,
+                    1.2,
+                    HawkesKernelLoadings {
+                        plus_plus: 0.0,
+                        plus_minus: 0.0,
+                        minus_plus: 0.0,
+                        minus_minus: 0.0,
+                    },
+                    HawkesKernelLoadings {
+                        plus_plus: 0.0,
+                        plus_minus: 0.0,
+                        minus_plus: 0.0,
+                        minus_minus: 0.0,
+                    },
+                )
+                .expect("closed-form fixture kernel payload should construct"),
+                GammaSeverityMarkConfiguration::try_new(1.8, 0.9)
+                    .expect("closed-form fixture gamma payload should construct"),
+            )
+            .expect("closed-form fixture equation specification should construct"),
+            ComplexScalar::new(0.2, 0.0),
+            ComplexScalar::new(0.3, 0.0),
+            ComplexScalar::new(1.0, 0.0),
+            ComplexScalar::new(1.0, 0.0),
+            1.1,
+            0.0,
+            1.0,
+            HawkesExcitationState {
+                y_plus_plus: 0.4,
+                y_plus_minus: 0.2,
+                y_minus_plus: 0.3,
+                y_minus_minus: 0.5,
+            },
+        )
+        .expect("closed-form fixture input should construct")
     }
 
     fn assert_complex_close(
@@ -1152,6 +1575,10 @@ mod tests {
             EXPONENTIAL_AFFINE_TRANSFORM_EQUATION_MAPPING_POLICY,
             "compact_model_spec_section_8_named_component_mapping.v1"
         );
+        assert_eq!(
+            EXPONENTIAL_AFFINE_TRANSFORM_DEFAULT_SOLVER_POLICY,
+            "fourth_order_runge_kutta_fixed_step.v1"
+        );
     }
 
     #[test]
@@ -1255,5 +1682,183 @@ mod tests {
         let second = evaluate_exponential_affine_transform_ode_rhs(transform_input, d_vector);
 
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn solver_settings_validation_rejects_zero_step_count() {
+        let settings_error = ExponentialAffineTransformSolverSettings::try_new(
+            ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
+            0,
+        )
+        .expect_err("zero step_count must be rejected during settings construction");
+        assert!(
+            settings_error
+                .to_string()
+                .contains("step_count must be strictly positive"),
+            "unexpected settings error: {settings_error}"
+        );
+
+        let solver_error = solve_exponential_affine_transform_with_settings(
+            valid_input(),
+            ExponentialAffineTransformSolverSettings::new(
+                ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
+                0,
+            ),
+        )
+        .expect_err("solver execution must reject invalid settings before runtime");
+        assert!(
+            matches!(
+                solver_error,
+                ExponentialAffineTransformSolverError::InvalidSolverSettings { .. }
+            ),
+            "unexpected solver error variant: {solver_error}"
+        );
+    }
+
+    #[test]
+    fn solver_integrator_selection_wiring_uses_requested_method() {
+        let transform_input = linear_closed_form_fixture_input();
+        let euler_settings = ExponentialAffineTransformSolverSettings::try_new(
+            ExponentialAffineTransformIntegratorMethod::ForwardEuler,
+            1,
+        )
+        .expect("valid Euler settings should construct");
+        let runge_kutta_settings = ExponentialAffineTransformSolverSettings::try_new(
+            ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
+            1,
+        )
+        .expect("valid Runge-Kutta settings should construct");
+
+        let euler_result =
+            solve_exponential_affine_transform_with_settings(transform_input, euler_settings)
+                .expect("Euler integration should succeed");
+        let runge_kutta_result =
+            solve_exponential_affine_transform_with_settings(transform_input, runge_kutta_settings)
+                .expect("Runge-Kutta integration should succeed");
+
+        assert_eq!(
+            euler_result.metadata.integrator_method,
+            ExponentialAffineTransformIntegratorMethod::ForwardEuler
+        );
+        assert_eq!(
+            euler_result.metadata.rhs_evaluation_count,
+            euler_result.metadata.configured_step_count
+        );
+        assert_eq!(
+            runge_kutta_result.metadata.integrator_method,
+            ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta
+        );
+        assert_eq!(
+            runge_kutta_result.metadata.rhs_evaluation_count,
+            runge_kutta_result
+                .metadata
+                .configured_step_count
+                .saturating_mul(4)
+        );
+
+        let method_difference = euler_result
+            .output
+            .transform_value
+            .subtract(runge_kutta_result.output.transform_value)
+            .norm();
+        assert!(
+            method_difference > 1.0e-6,
+            "integrator selection wiring regression detected because methods produced near-identical output under one-step fixture"
+        );
+    }
+
+    #[test]
+    fn default_solver_executes_deterministic_closed_form_fixture() {
+        let transform_input = linear_closed_form_fixture_input();
+        let solve_result = solve_exponential_affine_transform(transform_input)
+            .expect("default solver should succeed");
+
+        assert_eq!(
+            solve_result.status,
+            ExponentialAffineTransformIntegrationStatus::Completed
+        );
+        assert_eq!(
+            solve_result.metadata.integrator_method,
+            ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta
+        );
+        assert_eq!(
+            solve_result.metadata.completed_step_count,
+            solve_result.metadata.configured_step_count
+        );
+        assert!(
+            solve_result.metadata.step_size > 0.0 && solve_result.metadata.step_size.is_finite(),
+            "default solver step size must be finite and positive"
+        );
+
+        let decay = (-transform_input
+            .equation_specification
+            .hawkes_kernel_parameters
+            .beta
+            * transform_input.delta)
+            .exp();
+        let h_plus = -transform_input.u_plus.real;
+        let h_minus = -transform_input.u_minus.real;
+
+        let expected_d_plus = transform_input.s_h * h_plus * (1.0 - decay)
+            / transform_input
+                .equation_specification
+                .hawkes_kernel_parameters
+                .beta;
+        let expected_d_minus = transform_input.s_h * h_minus * (1.0 - decay)
+            / transform_input
+                .equation_specification
+                .hawkes_kernel_parameters
+                .beta;
+        let expected_c = transform_input.s_h
+            * transform_input
+                .equation_specification
+                .hawkes_kernel_parameters
+                .lambda_bar
+            * (h_plus + h_minus)
+            * transform_input.delta;
+        let expected_exponent = expected_c
+            + expected_d_plus
+                * (transform_input.initial_state.y_plus_plus
+                    + transform_input.initial_state.y_plus_minus)
+            + expected_d_minus
+                * (transform_input.initial_state.y_minus_plus
+                    + transform_input.initial_state.y_minus_minus);
+
+        assert_complex_close(
+            solve_result.output.c_at_delta,
+            ComplexScalar::new(expected_c, 0.0),
+            1.0e-9,
+            "C(delta)",
+        );
+        assert_complex_close(
+            solve_result.output.d_at_delta.plus_plus,
+            ComplexScalar::new(expected_d_plus, 0.0),
+            1.0e-9,
+            "D_++(delta)",
+        );
+        assert_complex_close(
+            solve_result.output.d_at_delta.plus_minus,
+            ComplexScalar::new(expected_d_plus, 0.0),
+            1.0e-9,
+            "D_+-(delta)",
+        );
+        assert_complex_close(
+            solve_result.output.d_at_delta.minus_plus,
+            ComplexScalar::new(expected_d_minus, 0.0),
+            1.0e-9,
+            "D_-+(delta)",
+        );
+        assert_complex_close(
+            solve_result.output.d_at_delta.minus_minus,
+            ComplexScalar::new(expected_d_minus, 0.0),
+            1.0e-9,
+            "D_--(delta)",
+        );
+        assert_complex_close(
+            solve_result.output.transform_value,
+            ComplexScalar::new(expected_exponent.exp(), 0.0),
+            1.0e-9,
+            "F",
+        );
     }
 }
