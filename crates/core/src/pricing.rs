@@ -30,6 +30,12 @@ use crate::nig::{
 use crate::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionValidationError,
 };
+use crate::risk_neutral::{
+    EsscherMartingaleConditionError, EsscherMartingaleConditionInput,
+    EsscherMartingaleConditionReport, EsscherTransformError, NigEsscherTransformationInput,
+    evaluate_esscher_martingale_condition,
+    transform_nig_characteristic_exponent_under_esscher_tilt,
+};
 
 pub const RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY: &str =
     "exp_of_trading_time_weighted_exponent_times_explicit_gap_characteristic_factor.v1";
@@ -40,6 +46,7 @@ pub const VANILLA_OPTION_REQUEST_VALIDATION_POLICY: &str =
     "validate_market_inputs_boundary_state_and_model_parameter_domains_before_engine_dispatch.v1";
 pub const VANILLA_OPTION_RESPONSE_VALIDATION_POLICY: &str =
     "validate_non_negative_price_and_finite_diagnostics_payload_before_response_publication.v1";
+pub const PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY: &str = "trading_time_log_moment_under_esscher_tilt_must_match_r_minus_q_maturity_target_within_tolerance.v1";
 
 /// Baseline vanilla payoff kind supported for v0.1 pricing workflows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -641,6 +648,94 @@ impl Error for ReturnCharacteristicFunctionAssemblyError {
     }
 }
 
+/// Deterministic diagnostics for one pricing-path martingale-condition validation run.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PricingMartingaleConditionValidationReport {
+    pub theta: f64,
+    pub buy_side_log_moment_exponent: ComplexScalar,
+    pub sell_side_log_moment_exponent: ComplexScalar,
+    pub combined_trading_log_moment_exponent: ComplexScalar,
+    pub martingale_condition: EsscherMartingaleConditionReport,
+    pub policy: &'static str,
+}
+
+/// Structured failure modes for pricing-path martingale-condition validation.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PricingMartingaleConditionValidationError {
+    InvalidMarketInputs {
+        source: VanillaOptionPricingMarketInputsError,
+    },
+    InvalidReturnDecomposition {
+        source: ReturnDecompositionValidationError,
+    },
+    BuySideEsscherTransformFailure {
+        source: EsscherTransformError,
+    },
+    SellSideEsscherTransformFailure {
+        source: EsscherTransformError,
+    },
+    InvalidMartingaleInput {
+        source: EsscherMartingaleConditionError,
+    },
+    MartingaleConditionViolation {
+        observed_log_moment_exponent: ComplexScalar,
+        target_log_moment_exponent: f64,
+        residual_norm: f64,
+        tolerance: f64,
+    },
+}
+
+impl Display for PricingMartingaleConditionValidationError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidMarketInputs { source } => {
+                write!(formatter, "market_inputs payload is invalid: {source}")
+            }
+            Self::InvalidReturnDecomposition { source } => write!(
+                formatter,
+                "return decomposition payload is invalid for martingale validation: {source}"
+            ),
+            Self::BuySideEsscherTransformFailure { source } => {
+                write!(
+                    formatter,
+                    "buy-side Esscher transform failed during martingale validation: {source}"
+                )
+            }
+            Self::SellSideEsscherTransformFailure { source } => {
+                write!(
+                    formatter,
+                    "sell-side Esscher transform failed during martingale validation: {source}"
+                )
+            }
+            Self::InvalidMartingaleInput { source } => {
+                write!(formatter, "martingale input is invalid: {source}")
+            }
+            Self::MartingaleConditionViolation {
+                observed_log_moment_exponent,
+                target_log_moment_exponent,
+                residual_norm,
+                tolerance,
+            } => write!(
+                formatter,
+                "pricing martingale condition failed with observed={observed_log_moment_exponent:?}, target={target_log_moment_exponent}, residual_norm={residual_norm}, tolerance={tolerance}"
+            ),
+        }
+    }
+}
+
+impl Error for PricingMartingaleConditionValidationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidMarketInputs { source } => Some(source),
+            Self::InvalidReturnDecomposition { source } => Some(source),
+            Self::BuySideEsscherTransformFailure { source } => Some(source),
+            Self::SellSideEsscherTransformFailure { source } => Some(source),
+            Self::InvalidMartingaleInput { source } => Some(source),
+            _ => None,
+        }
+    }
+}
+
 /// Resolve interval-aligned hourly factors for the pricing path.
 pub fn load_hourly_factor_contract_for_pricing(
     calendar_registry: &ExchangeCalendarRegistry,
@@ -817,6 +912,86 @@ pub fn compose_total_return_characteristic_function_for_coarse_transform_integra
         gap_characteristic_factor,
         edge_mode,
     )
+}
+
+/// Validate pricing-path martingale wiring for Esscher-tilted NIG components.
+///
+/// This check is trading-time only.
+/// Gap martingale adjustments are intentionally left to the gap-pricing path.
+pub fn validate_pricing_martingale_condition_under_esscher_tilt(
+    driver_parameters: NigBuySellDriverParameters,
+    return_decomposition: ReturnDecomposition,
+    market_inputs: VanillaOptionPricingMarketInputs,
+    theta: f64,
+    tolerance: f64,
+) -> Result<PricingMartingaleConditionValidationReport, PricingMartingaleConditionValidationError> {
+    market_inputs.validate().map_err(|source| {
+        PricingMartingaleConditionValidationError::InvalidMarketInputs { source }
+    })?;
+    return_decomposition.validate().map_err(|source| {
+        PricingMartingaleConditionValidationError::InvalidReturnDecomposition { source }
+    })?;
+
+    let buy_side_log_moment_exponent =
+        transform_nig_characteristic_exponent_under_esscher_tilt(
+            NigEsscherTransformationInput::new(
+                driver_parameters.buy_side_parameters,
+                ComplexScalar::new(0.0, -1.0),
+                theta,
+            ),
+        )
+        .map_err(|source| {
+            PricingMartingaleConditionValidationError::BuySideEsscherTransformFailure { source }
+        })?
+        .transformed_exponent;
+
+    let sell_side_log_moment_exponent =
+        transform_nig_characteristic_exponent_under_esscher_tilt(
+            NigEsscherTransformationInput::new(
+                driver_parameters.sell_side_parameters,
+                ComplexScalar::new(0.0, 1.0),
+                theta,
+            ),
+        )
+        .map_err(|source| {
+            PricingMartingaleConditionValidationError::SellSideEsscherTransformFailure { source }
+        })?
+        .transformed_exponent;
+
+    let combined_trading_log_moment_exponent = buy_side_log_moment_exponent
+        .scale(return_decomposition.a_plus)
+        .add(sell_side_log_moment_exponent.scale(return_decomposition.a_minus));
+    let target_log_moment_exponent = (market_inputs.risk_free_rate - market_inputs.dividend_yield)
+        * market_inputs.maturity_interval;
+    let martingale_condition =
+        evaluate_esscher_martingale_condition(EsscherMartingaleConditionInput::new(
+            combined_trading_log_moment_exponent,
+            target_log_moment_exponent,
+            tolerance,
+        ))
+        .map_err(|source| {
+            PricingMartingaleConditionValidationError::InvalidMartingaleInput { source }
+        })?;
+
+    if !martingale_condition.is_satisfied {
+        return Err(
+            PricingMartingaleConditionValidationError::MartingaleConditionViolation {
+                observed_log_moment_exponent: combined_trading_log_moment_exponent,
+                target_log_moment_exponent,
+                residual_norm: martingale_condition.residual_norm,
+                tolerance: martingale_condition.tolerance,
+            },
+        );
+    }
+
+    Ok(PricingMartingaleConditionValidationReport {
+        theta,
+        buy_side_log_moment_exponent,
+        sell_side_log_moment_exponent,
+        combined_trading_log_moment_exponent,
+        martingale_condition,
+        policy: PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY,
+    })
 }
 
 /// Apply one coarse-time transform-path Hawkes state transition using canonical call order.
@@ -1056,6 +1231,7 @@ mod tests {
     use crate::news::GammaSeverityMarkConfiguration;
     use crate::nig::{ComplexScalar, NigSharedPlusShiftConfiguration};
     use crate::pricing::{
+        PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY, PricingMartingaleConditionValidationError,
         RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
         RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY,
         ReturnCharacteristicFunctionAssemblyError, VanillaOptionPayoffConfiguration,
@@ -1067,9 +1243,13 @@ mod tests {
         compose_total_return_characteristic_function_for_coarse_transform_integration,
         compose_total_return_characteristic_function_for_pricing,
         compose_total_return_characteristic_function_for_pricing_with_edge_mode,
+        validate_pricing_martingale_condition_under_esscher_tilt,
     };
     use crate::return_decomposition::{
         ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionInput,
+    };
+    use crate::risk_neutral::{
+        NigEsscherTransformationInput, transform_nig_characteristic_exponent_under_esscher_tilt,
     };
 
     use super::{
@@ -1571,6 +1751,135 @@ mod tests {
             regression_distance > 1.0e-6,
             "sell-side sign-convention regression detected in full CF assembly with distance={regression_distance}"
         );
+    }
+
+    #[test]
+    fn pricing_martingale_validation_accepts_matching_esscher_target() {
+        let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("valid shared-plus-shift payload should construct")
+            .derive_driver_parameters()
+            .expect("valid shared-plus-shift payload should derive drivers");
+        let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 1.1,
+            a_minus: 0.7,
+            gap: 0.0,
+        })
+        .expect("valid return decomposition payload should construct");
+
+        let theta = -0.05;
+        let maturity_interval = 0.5;
+
+        let buy_side_log_moment_exponent =
+            transform_nig_characteristic_exponent_under_esscher_tilt(
+                NigEsscherTransformationInput::new(
+                    driver_parameters.buy_side_parameters,
+                    ComplexScalar::new(0.0, -1.0),
+                    theta,
+                ),
+            )
+            .expect("buy-side transformed exponent should construct")
+            .transformed_exponent;
+        let sell_side_log_moment_exponent =
+            transform_nig_characteristic_exponent_under_esscher_tilt(
+                NigEsscherTransformationInput::new(
+                    driver_parameters.sell_side_parameters,
+                    ComplexScalar::new(0.0, 1.0),
+                    theta,
+                ),
+            )
+            .expect("sell-side transformed exponent should construct")
+            .transformed_exponent;
+        let combined = buy_side_log_moment_exponent
+            .scale(return_decomposition.a_plus)
+            .add(sell_side_log_moment_exponent.scale(return_decomposition.a_minus));
+
+        let market_inputs = VanillaOptionPricingMarketInputs::try_new(
+            101.0,
+            100.0,
+            maturity_interval,
+            combined.real / maturity_interval,
+            0.0,
+        )
+        .expect("market inputs should construct");
+        let tolerance = combined.imaginary.abs() + 1.0e-12;
+
+        let report = validate_pricing_martingale_condition_under_esscher_tilt(
+            driver_parameters,
+            return_decomposition,
+            market_inputs,
+            theta,
+            tolerance,
+        )
+        .expect("matching target should satisfy martingale validation");
+
+        assert_eq!(
+            report.policy,
+            PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY
+        );
+        assert!(report.martingale_condition.is_satisfied);
+        assert!(report.martingale_condition.residual_norm <= report.martingale_condition.tolerance);
+    }
+
+    #[test]
+    fn pricing_martingale_validation_rejects_mismatched_target() {
+        let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("valid shared-plus-shift payload should construct")
+            .derive_driver_parameters()
+            .expect("valid shared-plus-shift payload should derive drivers");
+        let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 0.9,
+            a_minus: 1.2,
+            gap: 0.0,
+        })
+        .expect("valid return decomposition payload should construct");
+
+        let error = validate_pricing_martingale_condition_under_esscher_tilt(
+            driver_parameters,
+            return_decomposition,
+            VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 0.5, 0.25, 0.01)
+                .expect("market inputs should construct"),
+            -0.05,
+            1.0e-8,
+        )
+        .expect_err("mismatched target should fail martingale validation");
+
+        assert!(matches!(
+            error,
+            PricingMartingaleConditionValidationError::MartingaleConditionViolation {
+                residual_norm,
+                tolerance,
+                ..
+            } if residual_norm > tolerance
+        ));
+    }
+
+    #[test]
+    fn pricing_martingale_validation_rejects_invalid_transform_parameter() {
+        let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("valid shared-plus-shift payload should construct")
+            .derive_driver_parameters()
+            .expect("valid shared-plus-shift payload should derive drivers");
+        let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 1.0,
+            a_minus: 1.0,
+            gap: 0.0,
+        })
+        .expect("valid return decomposition payload should construct");
+
+        let error = validate_pricing_martingale_condition_under_esscher_tilt(
+            driver_parameters,
+            return_decomposition,
+            VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 0.5, 0.03, 0.01)
+                .expect("market inputs should construct"),
+            f64::NAN,
+            1.0e-6,
+        )
+        .expect_err("non-finite theta should fail transform validation");
+
+        assert!(matches!(
+            error,
+            PricingMartingaleConditionValidationError::BuySideEsscherTransformFailure { .. }
+        ));
     }
 
     #[test]
