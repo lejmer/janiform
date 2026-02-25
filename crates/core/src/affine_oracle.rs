@@ -33,6 +33,10 @@ pub const EXPONENTIAL_AFFINE_TRANSFORM_EQUATION_MAPPING_POLICY: &str =
     "compact_model_spec_section_8_named_component_mapping.v1";
 pub const EXPONENTIAL_AFFINE_TRANSFORM_DEFAULT_SOLVER_POLICY: &str =
     "fourth_order_runge_kutta_fixed_step.v1";
+pub const EXPONENTIAL_AFFINE_TRANSFORM_DOMAIN_GUARD_POLICY: &str =
+    "enforce_d_dot_r_real_strict_upper_bound_at_runtime_checkpoints.v1";
+pub const EXPONENTIAL_AFFINE_TRANSFORM_BLOWUP_TERMINATION_POLICY: &str =
+    "terminate_on_non_finite_state_or_guard_metric_without_clamping.v1";
 
 const DEFAULT_EXPONENTIAL_AFFINE_TRANSFORM_SOLVER_STEP_COUNT: usize = 64;
 
@@ -688,6 +692,27 @@ impl Error for ExponentialAffineTransformSolverSettingsError {}
 #[serde(rename_all = "snake_case")]
 pub enum ExponentialAffineTransformIntegrationStatus {
     Completed,
+    DomainGuardViolation,
+    BlowupTerminated,
+}
+
+/// Machine-readable reason code for guard-triggered integration termination.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExponentialAffineTransformGuardFailureCode {
+    DomainUpperBoundViolation,
+    NonFiniteState,
+    NonFiniteDomainMetric,
+}
+
+/// Guard-trigger metadata captured at deterministic integration checkpoints.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct ExponentialAffineTransformGuardFailure {
+    pub code: ExponentialAffineTransformGuardFailureCode,
+    pub step_index: usize,
+    pub time: f64,
+    pub d_dot_r: ComplexScalar,
+    pub d_dot_r_upper_bound: f64,
 }
 
 /// Metadata describing one completed affine transform integration run.
@@ -698,6 +723,9 @@ pub struct ExponentialAffineTransformIntegrationMetadata {
     pub completed_step_count: usize,
     pub step_size: f64,
     pub rhs_evaluation_count: usize,
+    pub domain_guard_policy: &'static str,
+    pub blowup_termination_policy: &'static str,
+    pub guard_failure: Option<ExponentialAffineTransformGuardFailure>,
 }
 
 /// Result payload for one affine transform solve call.
@@ -705,7 +733,7 @@ pub struct ExponentialAffineTransformIntegrationMetadata {
 pub struct ExponentialAffineTransformIntegrationResult {
     pub status: ExponentialAffineTransformIntegrationStatus,
     pub metadata: ExponentialAffineTransformIntegrationMetadata,
-    pub output: ExponentialAffineTransformOutput,
+    pub output: Option<ExponentialAffineTransformOutput>,
 }
 
 /// Structured failure modes for affine transform solver execution.
@@ -924,6 +952,25 @@ where
 {
     let step_size = transform_input.delta / solver_settings.step_count as f64;
     let mut integration_state = ExponentialAffineTransformIntegrationState::initial();
+    let mut completed_step_count = 0_usize;
+    let mut rhs_evaluation_count = 0_usize;
+
+    if let Some(guard_failure) = evaluate_integration_guard_checkpoint(
+        transform_input,
+        integration_state,
+        completed_step_count,
+        step_size,
+    ) {
+        return Ok(terminated_result_from_guard_failure(
+            transform_input,
+            solver_settings,
+            integrator,
+            completed_step_count,
+            rhs_evaluation_count,
+            step_size,
+            guard_failure,
+        ));
+    }
 
     for _ in 0..solver_settings.step_count {
         integration_state = integrator.advance_one_step(
@@ -932,6 +979,26 @@ where
             integration_state,
             evaluate_exponential_affine_transform_ode_rhs,
         );
+        completed_step_count += 1;
+        rhs_evaluation_count =
+            rhs_evaluation_count.saturating_add(integrator.rhs_evaluations_per_step());
+
+        if let Some(guard_failure) = evaluate_integration_guard_checkpoint(
+            transform_input,
+            integration_state,
+            completed_step_count,
+            step_size,
+        ) {
+            return Ok(terminated_result_from_guard_failure(
+                transform_input,
+                solver_settings,
+                integrator,
+                completed_step_count,
+                rhs_evaluation_count,
+                step_size,
+                guard_failure,
+            ));
+        }
     }
 
     let c_at_delta = integration_state.c_value;
@@ -946,14 +1013,102 @@ where
         metadata: ExponentialAffineTransformIntegrationMetadata {
             integrator_method: integrator.method(),
             configured_step_count: solver_settings.step_count,
-            completed_step_count: solver_settings.step_count,
+            completed_step_count,
             step_size,
-            rhs_evaluation_count: solver_settings
-                .step_count
-                .saturating_mul(integrator.rhs_evaluations_per_step()),
+            rhs_evaluation_count,
+            domain_guard_policy: EXPONENTIAL_AFFINE_TRANSFORM_DOMAIN_GUARD_POLICY,
+            blowup_termination_policy: EXPONENTIAL_AFFINE_TRANSFORM_BLOWUP_TERMINATION_POLICY,
+            guard_failure: None,
         },
-        output,
+        output: Some(output),
     })
+}
+
+fn evaluate_integration_guard_checkpoint(
+    transform_input: ExponentialAffineTransformInput,
+    integration_state: ExponentialAffineTransformIntegrationState,
+    completed_step_count: usize,
+    step_size: f64,
+) -> Option<ExponentialAffineTransformGuardFailure> {
+    let d_dot_r_upper_bound = 1.0
+        / transform_input
+            .equation_specification
+            .gamma_severity_mark_configuration
+            .scale_theta;
+    let checkpoint_time = completed_step_count as f64 * step_size;
+
+    if !integration_state.c_value.is_finite() || integration_state.d_vector.validate().is_err() {
+        return Some(ExponentialAffineTransformGuardFailure {
+            code: ExponentialAffineTransformGuardFailureCode::NonFiniteState,
+            step_index: completed_step_count,
+            time: checkpoint_time,
+            d_dot_r: ComplexScalar::new(f64::NAN, f64::NAN),
+            d_dot_r_upper_bound,
+        });
+    }
+
+    let d_dot_r = integration_state
+        .d_vector
+        .dot_loadings(transform_input.equation_specification.r());
+    if !d_dot_r.is_finite() {
+        return Some(ExponentialAffineTransformGuardFailure {
+            code: ExponentialAffineTransformGuardFailureCode::NonFiniteDomainMetric,
+            step_index: completed_step_count,
+            time: checkpoint_time,
+            d_dot_r,
+            d_dot_r_upper_bound,
+        });
+    }
+
+    if d_dot_r.real >= d_dot_r_upper_bound {
+        return Some(ExponentialAffineTransformGuardFailure {
+            code: ExponentialAffineTransformGuardFailureCode::DomainUpperBoundViolation,
+            step_index: completed_step_count,
+            time: checkpoint_time,
+            d_dot_r,
+            d_dot_r_upper_bound,
+        });
+    }
+
+    None
+}
+
+fn terminated_result_from_guard_failure<TIntegrator>(
+    _transform_input: ExponentialAffineTransformInput,
+    solver_settings: ExponentialAffineTransformSolverSettings,
+    integrator: TIntegrator,
+    completed_step_count: usize,
+    rhs_evaluation_count: usize,
+    step_size: f64,
+    guard_failure: ExponentialAffineTransformGuardFailure,
+) -> ExponentialAffineTransformIntegrationResult
+where
+    TIntegrator: ExponentialAffineTransformIntegrator,
+{
+    let status = match guard_failure.code {
+        ExponentialAffineTransformGuardFailureCode::DomainUpperBoundViolation => {
+            ExponentialAffineTransformIntegrationStatus::DomainGuardViolation
+        }
+        ExponentialAffineTransformGuardFailureCode::NonFiniteState
+        | ExponentialAffineTransformGuardFailureCode::NonFiniteDomainMetric => {
+            ExponentialAffineTransformIntegrationStatus::BlowupTerminated
+        }
+    };
+
+    ExponentialAffineTransformIntegrationResult {
+        status,
+        metadata: ExponentialAffineTransformIntegrationMetadata {
+            integrator_method: integrator.method(),
+            configured_step_count: solver_settings.step_count,
+            completed_step_count,
+            step_size,
+            rhs_evaluation_count,
+            domain_guard_policy: EXPONENTIAL_AFFINE_TRANSFORM_DOMAIN_GUARD_POLICY,
+            blowup_termination_policy: EXPONENTIAL_AFFINE_TRANSFORM_BLOWUP_TERMINATION_POLICY,
+            guard_failure: Some(guard_failure),
+        },
+        output: None,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
@@ -1174,9 +1329,12 @@ mod tests {
     use serde_json::json;
 
     use super::{
+        EXPONENTIAL_AFFINE_TRANSFORM_BLOWUP_TERMINATION_POLICY,
         EXPONENTIAL_AFFINE_TRANSFORM_DEFAULT_SOLVER_POLICY,
+        EXPONENTIAL_AFFINE_TRANSFORM_DOMAIN_GUARD_POLICY,
         EXPONENTIAL_AFFINE_TRANSFORM_EQUATION_MAPPING_POLICY, ExponentialAffineTransformDVector,
-        ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
+        ExponentialAffineTransformEquationSpecification,
+        ExponentialAffineTransformGuardFailureCode, ExponentialAffineTransformInput,
         ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformIntegratorMethod,
         ExponentialAffineTransformOutput, ExponentialAffineTransformSolverError,
         ExponentialAffineTransformSolverSettings,
@@ -1287,6 +1445,88 @@ mod tests {
             },
         )
         .expect("closed-form fixture input should construct")
+    }
+
+    fn domain_violation_fixture_input() -> ExponentialAffineTransformInput {
+        ExponentialAffineTransformInput::try_new(
+            ExponentialAffineTransformEquationSpecification::try_new(
+                HawkesKernelParameters::try_new(
+                    0.8,
+                    1.2,
+                    HawkesKernelLoadings {
+                        plus_plus: 0.0,
+                        plus_minus: 0.0,
+                        minus_plus: 0.0,
+                        minus_minus: 0.0,
+                    },
+                    HawkesKernelLoadings {
+                        plus_plus: 1.0,
+                        plus_minus: 1.0,
+                        minus_plus: 1.0,
+                        minus_minus: 1.0,
+                    },
+                )
+                .expect("domain violation fixture kernel payload should construct"),
+                GammaSeverityMarkConfiguration::try_new(1.8, 0.9)
+                    .expect("domain violation fixture gamma payload should construct"),
+            )
+            .expect("domain violation fixture equation specification should construct"),
+            ComplexScalar::new(-10.0, 0.0),
+            ComplexScalar::new(-10.0, 0.0),
+            ComplexScalar::new(1.0, 0.0),
+            ComplexScalar::new(1.0, 0.0),
+            2.0,
+            0.0,
+            0.5,
+            HawkesExcitationState {
+                y_plus_plus: 0.4,
+                y_plus_minus: 0.2,
+                y_minus_plus: 0.3,
+                y_minus_minus: 0.5,
+            },
+        )
+        .expect("domain violation fixture input should construct")
+    }
+
+    fn blowup_fixture_input() -> ExponentialAffineTransformInput {
+        ExponentialAffineTransformInput::try_new(
+            ExponentialAffineTransformEquationSpecification::try_new(
+                HawkesKernelParameters::try_new(
+                    0.8,
+                    1.2,
+                    HawkesKernelLoadings {
+                        plus_plus: 0.0,
+                        plus_minus: 0.0,
+                        minus_plus: 0.0,
+                        minus_minus: 0.0,
+                    },
+                    HawkesKernelLoadings {
+                        plus_plus: 0.01,
+                        plus_minus: 0.02,
+                        minus_plus: 0.03,
+                        minus_minus: 0.04,
+                    },
+                )
+                .expect("blowup fixture kernel payload should construct"),
+                GammaSeverityMarkConfiguration::try_new(1.8, 0.9)
+                    .expect("blowup fixture gamma payload should construct"),
+            )
+            .expect("blowup fixture equation specification should construct"),
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(1.0e308, 0.0),
+            ComplexScalar::new(1.0e308, 0.0),
+            1.0,
+            0.0,
+            2.0,
+            HawkesExcitationState {
+                y_plus_plus: 0.4,
+                y_plus_minus: 0.2,
+                y_minus_plus: 0.3,
+                y_minus_minus: 0.5,
+            },
+        )
+        .expect("blowup fixture input should construct")
     }
 
     fn assert_complex_close(
@@ -1579,6 +1819,14 @@ mod tests {
             EXPONENTIAL_AFFINE_TRANSFORM_DEFAULT_SOLVER_POLICY,
             "fourth_order_runge_kutta_fixed_step.v1"
         );
+        assert_eq!(
+            EXPONENTIAL_AFFINE_TRANSFORM_DOMAIN_GUARD_POLICY,
+            "enforce_d_dot_r_real_strict_upper_bound_at_runtime_checkpoints.v1"
+        );
+        assert_eq!(
+            EXPONENTIAL_AFFINE_TRANSFORM_BLOWUP_TERMINATION_POLICY,
+            "terminate_on_non_finite_state_or_guard_metric_without_clamping.v1"
+        );
     }
 
     #[test]
@@ -1744,6 +1992,7 @@ mod tests {
             euler_result.metadata.rhs_evaluation_count,
             euler_result.metadata.configured_step_count
         );
+        assert_eq!(euler_result.metadata.guard_failure, None);
         assert_eq!(
             runge_kutta_result.metadata.integrator_method,
             ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta
@@ -1755,11 +2004,20 @@ mod tests {
                 .configured_step_count
                 .saturating_mul(4)
         );
+        assert_eq!(runge_kutta_result.metadata.guard_failure, None);
 
         let method_difference = euler_result
             .output
+            .expect("Euler integration should produce output when status is completed")
             .transform_value
-            .subtract(runge_kutta_result.output.transform_value)
+            .subtract(
+                runge_kutta_result
+                    .output
+                    .expect(
+                        "Runge-Kutta integration should produce output when status is completed",
+                    )
+                    .transform_value,
+            )
             .norm();
         assert!(
             method_difference > 1.0e-6,
@@ -1772,6 +2030,9 @@ mod tests {
         let transform_input = linear_closed_form_fixture_input();
         let solve_result = solve_exponential_affine_transform(transform_input)
             .expect("default solver should succeed");
+        let output = solve_result
+            .output
+            .expect("default solver should emit output when status is completed");
 
         assert_eq!(
             solve_result.status,
@@ -1788,6 +2049,15 @@ mod tests {
         assert!(
             solve_result.metadata.step_size > 0.0 && solve_result.metadata.step_size.is_finite(),
             "default solver step size must be finite and positive"
+        );
+        assert_eq!(solve_result.metadata.guard_failure, None);
+        assert_eq!(
+            solve_result.metadata.domain_guard_policy,
+            EXPONENTIAL_AFFINE_TRANSFORM_DOMAIN_GUARD_POLICY
+        );
+        assert_eq!(
+            solve_result.metadata.blowup_termination_policy,
+            EXPONENTIAL_AFFINE_TRANSFORM_BLOWUP_TERMINATION_POLICY
         );
 
         let decay = (-transform_input
@@ -1825,40 +2095,117 @@ mod tests {
                     + transform_input.initial_state.y_minus_minus);
 
         assert_complex_close(
-            solve_result.output.c_at_delta,
+            output.c_at_delta,
             ComplexScalar::new(expected_c, 0.0),
             1.0e-9,
             "C(delta)",
         );
         assert_complex_close(
-            solve_result.output.d_at_delta.plus_plus,
+            output.d_at_delta.plus_plus,
             ComplexScalar::new(expected_d_plus, 0.0),
             1.0e-9,
             "D_++(delta)",
         );
         assert_complex_close(
-            solve_result.output.d_at_delta.plus_minus,
+            output.d_at_delta.plus_minus,
             ComplexScalar::new(expected_d_plus, 0.0),
             1.0e-9,
             "D_+-(delta)",
         );
         assert_complex_close(
-            solve_result.output.d_at_delta.minus_plus,
+            output.d_at_delta.minus_plus,
             ComplexScalar::new(expected_d_minus, 0.0),
             1.0e-9,
             "D_-+(delta)",
         );
         assert_complex_close(
-            solve_result.output.d_at_delta.minus_minus,
+            output.d_at_delta.minus_minus,
             ComplexScalar::new(expected_d_minus, 0.0),
             1.0e-9,
             "D_--(delta)",
         );
         assert_complex_close(
-            solve_result.output.transform_value,
+            output.transform_value,
             ComplexScalar::new(expected_exponent.exp(), 0.0),
             1.0e-9,
             "F",
         );
+    }
+
+    #[test]
+    fn solver_domain_guard_violation_terminates_with_deterministic_metadata() {
+        let transform_input = domain_violation_fixture_input();
+        let solver_settings = ExponentialAffineTransformSolverSettings::try_new(
+            ExponentialAffineTransformIntegratorMethod::ForwardEuler,
+            2,
+        )
+        .expect("domain-violation settings should construct");
+
+        let solve_result =
+            solve_exponential_affine_transform_with_settings(transform_input, solver_settings)
+                .expect("domain-violation run should return guarded termination result");
+        assert_eq!(
+            solve_result.status,
+            ExponentialAffineTransformIntegrationStatus::DomainGuardViolation
+        );
+        assert!(solve_result.output.is_none());
+
+        let guard_failure = solve_result
+            .metadata
+            .guard_failure
+            .expect("guarded run should include guard failure metadata");
+        assert_eq!(
+            guard_failure.code,
+            ExponentialAffineTransformGuardFailureCode::DomainUpperBoundViolation
+        );
+        assert_eq!(guard_failure.step_index, 1);
+        assert!(
+            (guard_failure.time - 0.25).abs() <= 1.0e-15,
+            "unexpected guard failure time: {}",
+            guard_failure.time
+        );
+        assert!(
+            guard_failure.d_dot_r.real > guard_failure.d_dot_r_upper_bound,
+            "domain guard trigger should require d_dot_r.real > upper bound"
+        );
+        assert_eq!(
+            solve_result.metadata.completed_step_count,
+            guard_failure.step_index
+        );
+        assert_eq!(solve_result.metadata.rhs_evaluation_count, 1);
+    }
+
+    #[test]
+    fn solver_blowup_detection_terminates_without_output() {
+        let transform_input = blowup_fixture_input();
+        let solver_settings = ExponentialAffineTransformSolverSettings::try_new(
+            ExponentialAffineTransformIntegratorMethod::ForwardEuler,
+            1,
+        )
+        .expect("blowup settings should construct");
+
+        let solve_result =
+            solve_exponential_affine_transform_with_settings(transform_input, solver_settings)
+                .expect("blowup run should return guarded termination result");
+        assert_eq!(
+            solve_result.status,
+            ExponentialAffineTransformIntegrationStatus::BlowupTerminated
+        );
+        assert!(solve_result.output.is_none());
+
+        let guard_failure = solve_result
+            .metadata
+            .guard_failure
+            .expect("blowup run should include guard failure metadata");
+        assert_eq!(
+            guard_failure.code,
+            ExponentialAffineTransformGuardFailureCode::NonFiniteState
+        );
+        assert_eq!(guard_failure.step_index, 1);
+        assert!(
+            guard_failure.d_dot_r.real.is_nan() && guard_failure.d_dot_r.imaginary.is_nan(),
+            "non-finite-state guard marker should use NaN d_dot_r sentinel"
+        );
+        assert_eq!(solve_result.metadata.rhs_evaluation_count, 1);
     }
 }
