@@ -469,8 +469,8 @@ impl Display for OpenClosedGapBehaviorScenarioLoaderError {
 
 impl Error for OpenClosedGapBehaviorScenarioLoaderError {}
 
-pub fn load_validation_fixture_manifest_document()
--> Result<ValidationFixtureManifestDocument, String> {
+pub fn load_validation_fixture_manifest_document(
+) -> Result<ValidationFixtureManifestDocument, String> {
     let manifest_path = validation_fixture_manifest_path();
     let manifest_raw = fs::read_to_string(&manifest_path).map_err(|source| {
         format!(
@@ -592,8 +592,8 @@ pub fn load_manifest_entry_payload(
     })
 }
 
-pub fn load_calendar_regression_fixture_from_manifest()
--> Result<LoadedCalendarRegressionFixture, String> {
+pub fn load_calendar_regression_fixture_from_manifest(
+) -> Result<LoadedCalendarRegressionFixture, String> {
     let manifest = load_validation_fixture_manifest_document()?;
     let manifest_entry =
         find_manifest_entry_by_fixture_id(&manifest, CALENDAR_REGRESSION_FIXTURE_SET_ID)?;
@@ -619,8 +619,8 @@ pub fn load_calendar_regression_fixture_from_manifest()
     })
 }
 
-pub fn load_hourly_factor_regression_fixture_from_manifest()
--> Result<LoadedHourlyFactorRegressionFixture, String> {
+pub fn load_hourly_factor_regression_fixture_from_manifest(
+) -> Result<LoadedHourlyFactorRegressionFixture, String> {
     let manifest = load_validation_fixture_manifest_document()?;
     let manifest_entry =
         find_manifest_entry_by_fixture_id(&manifest, HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID)?;
@@ -646,8 +646,8 @@ pub fn load_hourly_factor_regression_fixture_from_manifest()
     })
 }
 
-pub fn load_open_closed_gap_behavior_scenario_fixture_from_manifest()
--> Result<LoadedOpenClosedGapBehaviorScenarioFixture, OpenClosedGapBehaviorScenarioLoaderError> {
+pub fn load_open_closed_gap_behavior_scenario_fixture_from_manifest(
+) -> Result<LoadedOpenClosedGapBehaviorScenarioFixture, OpenClosedGapBehaviorScenarioLoaderError> {
     let manifest = load_validation_fixture_manifest_document()
         .map_err(OpenClosedGapBehaviorScenarioLoaderError::Manifest)?;
     let manifest_entry = find_manifest_entry_by_fixture_id(
@@ -995,18 +995,18 @@ pub fn validate_open_closed_gap_behavior_scenario_fixture_document(
     fixture_document: &OpenClosedGapBehaviorScenarioFixtureDocument,
 ) -> Result<(), Vec<OpenClosedGapBehaviorScenarioValidationError>> {
     let mut errors: Vec<OpenClosedGapBehaviorScenarioValidationError> = Vec::new();
-    
+
     validate_open_closed_gap_behavior_document_headers(fixture_document, &mut errors);
     validate_open_closed_gap_behavior_output_schema_metadata(fixture_document, &mut errors);
-    
+
     let required_tag_set = validate_open_closed_gap_behavior_canonical_metadata_declarations(
         fixture_document,
         &mut errors,
     );
-    
+
     let observed_coverage =
         validate_open_closed_gap_behavior_cases_and_collect_coverage(fixture_document, &mut errors);
-    
+
     validate_open_closed_gap_behavior_canonical_coverage(
         fixture_document,
         &required_tag_set,
@@ -1116,7 +1116,7 @@ pub fn validate_open_closed_gap_behavior_calendar_integration(
                     continue;
                 }
             };
-            
+
             let timestamp_utc = match DateTime::parse_from_rfc3339(&injected_event.timestamp_utc) {
                 Ok(timestamp) => timestamp.with_timezone(&Utc),
                 Err(source) => {
@@ -1131,7 +1131,7 @@ pub fn validate_open_closed_gap_behavior_calendar_integration(
                     continue;
                 }
             };
-            
+
             let resolved_market_state = match calendar_registry
                 .resolve_market_state_at_utc(&fixture_case.exchange_code, timestamp_utc)
             {
@@ -1149,7 +1149,7 @@ pub fn validate_open_closed_gap_behavior_calendar_integration(
                     continue;
                 }
             };
-            
+
             let expected_market_state = match expected_market_state {
                 "open" => MarketState::Open,
                 "closed" => MarketState::Closed,
@@ -1515,7 +1515,7 @@ fn validate_open_closed_gap_behavior_case(
         &format!("{case_field_path_prefix}.calendar_fixture_set_id"),
         errors,
     );
-    
+
     if fixture_case.calendar_state_fixture_references.is_empty() {
         add_open_closed_gap_behavior_validation_error(
             errors,
@@ -1524,9 +1524,9 @@ fn validate_open_closed_gap_behavior_case(
             "must include at least one calendar fixture reference",
         );
     }
-    
+
     let mut observed_calendar_state_fixture_references: BTreeSet<&str> = BTreeSet::new();
-    
+
     for (reference_index, referenced_fixture_id) in fixture_case
         .calendar_state_fixture_references
         .iter()
@@ -1539,7 +1539,7 @@ fn validate_open_closed_gap_behavior_case(
             ),
             errors,
         );
-        
+
         if !observed_calendar_state_fixture_references.insert(referenced_fixture_id.as_str()) {
             add_open_closed_gap_behavior_validation_error(
                 errors,
@@ -1551,7 +1551,7 @@ fn validate_open_closed_gap_behavior_case(
             );
         }
     }
-    
+
     validate_open_closed_gap_behavior_non_empty(
         &fixture_case.range_start_utc,
         &format!("{case_field_path_prefix}.range_start_utc"),
