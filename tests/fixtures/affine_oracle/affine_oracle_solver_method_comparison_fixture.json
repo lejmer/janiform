@@ -1,0 +1,250 @@
+{
+  "schema_version": "affine_oracle.method_comparison.fixture.v1",
+  "fixture_set_id": "affine_oracle_solver_method_comparison_fixture_v1",
+  "policy": {
+    "schema_version": "affine_oracle.method_comparison.tolerance_policy.v1",
+    "policy_version": "1.0.0",
+    "baseline_solver_settings": {
+      "integrator_method": "fourth_order_runge_kutta",
+      "step_count": 64
+    },
+    "alternative_solver_settings": [
+      {
+        "integrator_method": "fourth_order_runge_kutta",
+        "step_count": 32
+      },
+      {
+        "integrator_method": "forward_euler",
+        "step_count": 32
+      }
+    ],
+    "interval_tolerance_bands": [
+      {
+        "interval_grid_label": "subhour_grid",
+        "delta_upper_bound": 0.5,
+        "tolerance_window": {
+          "c_at_delta_absolute_tolerance": 0.00025,
+          "d_component_absolute_tolerance": 0.00025,
+          "transform_value_absolute_tolerance": 0.00025
+        }
+      },
+      {
+        "interval_grid_label": "hourly_grid",
+        "delta_upper_bound": 1.0,
+        "tolerance_window": {
+          "c_at_delta_absolute_tolerance": 0.00050,
+          "d_component_absolute_tolerance": 0.00050,
+          "transform_value_absolute_tolerance": 0.00050
+        }
+      }
+    ],
+    "change_log": [
+      {
+        "policy_version": "1.0.0",
+        "recorded_at_utc": "2026-02-25T00:00:00Z",
+        "rationale": "Initial interval-dependent method comparison tolerance policy for affine-oracle solver checks."
+      }
+    ]
+  },
+  "canonical_regression_metadata": {
+    "required_tags": [
+      "method_comparison",
+      "deterministic_numeric",
+      "one_interval_solver"
+    ],
+    "stable_fixture_ids": [
+      "nonlinear_complex_hourly_method_comparison",
+      "nonlinear_complex_subhour_method_comparison"
+    ]
+  },
+  "cases": [
+    {
+      "fixture_id": "nonlinear_complex_hourly_method_comparison",
+      "input": {
+        "equation_specification": {
+          "hawkes_kernel_parameters": {
+            "lambda_bar": 0.8,
+            "beta": 1.2,
+            "alpha": {
+              "plus_plus": 0.2,
+              "plus_minus": 0.08,
+              "minus_plus": 0.1,
+              "minus_minus": 0.24
+            },
+            "rho": {
+              "plus_plus": 0.03,
+              "plus_minus": 0.02,
+              "minus_plus": 0.01,
+              "minus_minus": 0.04
+            }
+          },
+          "gamma_severity_mark_configuration": {
+            "shape_k": 1.8,
+            "scale_theta": 0.9
+          }
+        },
+        "u_plus": {
+          "real": 0.2,
+          "imaginary": -0.1
+        },
+        "u_minus": {
+          "real": 0.3,
+          "imaginary": 0.05
+        },
+        "z_plus": {
+          "real": 1.0,
+          "imaginary": 0.0
+        },
+        "z_minus": {
+          "real": 0.95,
+          "imaginary": 0.02
+        },
+        "s_h": 1.1,
+        "nu_h": 0.08,
+        "delta": 1.0,
+        "initial_state": {
+          "y_plus_plus": 0.4,
+          "y_plus_minus": 0.2,
+          "y_minus_plus": 0.3,
+          "y_minus_minus": 0.5
+        }
+      },
+      "expected": {
+        "expected_all_checks_passed": false,
+        "expected_tolerance_band_label": "hourly_grid",
+        "expected_alternative_runs": [
+          {
+            "integrator_method": "fourth_order_runge_kutta",
+            "step_count": 32,
+            "expected_status": "completed",
+            "expected_passed": true,
+            "expected_failure_codes": [],
+            "expected_output_difference": {
+              "c_at_delta_absolute_difference": 2.6188096e-10,
+              "d_component_absolute_difference": 8.6661756e-10,
+              "transform_value_absolute_difference": 2.6329411e-10,
+              "absolute_tolerance": 1.0e-10
+            }
+          },
+          {
+            "integrator_method": "forward_euler",
+            "step_count": 32,
+            "expected_status": "completed",
+            "expected_passed": false,
+            "expected_failure_codes": [
+              "c_at_delta_tolerance_exceeded",
+              "d_component_tolerance_exceeded",
+              "transform_value_tolerance_exceeded"
+            ],
+            "expected_output_difference": {
+              "c_at_delta_absolute_difference": 0.00108771218030934,
+              "d_component_absolute_difference": 0.00222565418071058,
+              "transform_value_absolute_difference": 0.00062948124879203,
+              "absolute_tolerance": 1.0e-10
+            }
+          }
+        ]
+      },
+      "tags": [
+        "method_comparison",
+        "deterministic_numeric",
+        "one_interval_solver"
+      ],
+      "description": "Nonlinear hourly case verifying pass and fail behavior across method and step-size alternatives."
+    },
+    {
+      "fixture_id": "nonlinear_complex_subhour_method_comparison",
+      "input": {
+        "equation_specification": {
+          "hawkes_kernel_parameters": {
+            "lambda_bar": 0.8,
+            "beta": 1.2,
+            "alpha": {
+              "plus_plus": 0.2,
+              "plus_minus": 0.08,
+              "minus_plus": 0.1,
+              "minus_minus": 0.24
+            },
+            "rho": {
+              "plus_plus": 0.03,
+              "plus_minus": 0.02,
+              "minus_plus": 0.01,
+              "minus_minus": 0.04
+            }
+          },
+          "gamma_severity_mark_configuration": {
+            "shape_k": 1.8,
+            "scale_theta": 0.9
+          }
+        },
+        "u_plus": {
+          "real": 0.2,
+          "imaginary": -0.1
+        },
+        "u_minus": {
+          "real": 0.3,
+          "imaginary": 0.05
+        },
+        "z_plus": {
+          "real": 1.0,
+          "imaginary": 0.0
+        },
+        "z_minus": {
+          "real": 0.95,
+          "imaginary": 0.02
+        },
+        "s_h": 1.1,
+        "nu_h": 0.08,
+        "delta": 0.5,
+        "initial_state": {
+          "y_plus_plus": 0.4,
+          "y_plus_minus": 0.2,
+          "y_minus_plus": 0.3,
+          "y_minus_minus": 0.5
+        }
+      },
+      "expected": {
+        "expected_all_checks_passed": false,
+        "expected_tolerance_band_label": "subhour_grid",
+        "expected_alternative_runs": [
+          {
+            "integrator_method": "fourth_order_runge_kutta",
+            "step_count": 32,
+            "expected_status": "completed",
+            "expected_passed": true,
+            "expected_failure_codes": [],
+            "expected_output_difference": {
+              "c_at_delta_absolute_difference": 1.289591e-11,
+              "d_component_absolute_difference": 4.22086e-11,
+              "transform_value_absolute_difference": 1.829559e-11,
+              "absolute_tolerance": 1.0e-10
+            }
+          },
+          {
+            "integrator_method": "forward_euler",
+            "step_count": 32,
+            "expected_status": "completed",
+            "expected_passed": false,
+            "expected_failure_codes": [
+              "c_at_delta_tolerance_exceeded",
+              "d_component_tolerance_exceeded",
+              "transform_value_tolerance_exceeded"
+            ],
+            "expected_output_difference": {
+              "c_at_delta_absolute_difference": 0.00042211394618397,
+              "d_component_absolute_difference": 0.0008723698208391,
+              "transform_value_absolute_difference": 0.00035969284725335,
+              "absolute_tolerance": 1.0e-10
+            }
+          }
+        ]
+      },
+      "tags": [
+        "method_comparison",
+        "deterministic_numeric",
+        "one_interval_solver"
+      ],
+      "description": "Nonlinear subhour case validating interval-band selection and deterministic comparison outputs."
+    }
+  ]
+}

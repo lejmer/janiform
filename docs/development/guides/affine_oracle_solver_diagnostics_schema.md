@@ -95,3 +95,92 @@ When enabled, `telemetry` includes:
 - `required_telemetry_fields`
 
 This payload is environment-agnostic and contains no machine-specific paths.
+
+## Method Comparison Policy
+
+Method-comparison checks are configured through
+`ExponentialAffineTransformMethodComparisonTolerancePolicy`.
+
+Schema version:
+
+- `affine_oracle.method_comparison.tolerance_policy.v1`
+
+Policy payload fields:
+
+- `schema_version`
+- `policy_version`
+- `baseline_solver_settings`
+- `alternative_solver_settings`
+- `interval_tolerance_bands`
+- `change_log`
+
+Validation requirements:
+
+- `baseline_solver_settings` and each `alternative_solver_settings` entry must use a strictly positive
+  `step_count`
+- `alternative_solver_settings` must be non-empty, unique, and different from baseline settings
+- `interval_tolerance_bands` must be non-empty with strictly increasing `delta_upper_bound`
+- each tolerance value in a band must be finite and strictly positive
+- `change_log` must be non-empty and include the current `policy_version`
+
+## Interval-Dependent Tolerance Guidance
+
+Tolerance bands are selected by `Delta` using:
+
+- `first_band_with_delta_upper_bound_greater_or_equal_to_delta.v1`
+
+Each band defines:
+
+- `interval_grid_label`
+- `delta_upper_bound`
+- `tolerance_window`
+
+`tolerance_window` includes:
+
+- `c_at_delta_absolute_tolerance`
+- `d_component_absolute_tolerance`
+- `transform_value_absolute_tolerance`
+
+This gives explicit, machine-readable guidance for changing tolerance strictness as `Delta` moves
+across supported grids.
+
+## Method Comparison Report Schema
+
+Method-comparison runs emit `ExponentialAffineTransformMethodComparisonReport`.
+
+Schema versions:
+
+- Report schema: `affine_oracle.method_comparison.report.v1`
+- Output-schema-metadata schema: `affine_oracle.method_comparison.output_schema_metadata.v1`
+
+Top-level report fields:
+
+- `schema_version`
+- `output_schema_metadata`
+- `policy_schema_version`
+- `policy_version`
+- `agreement_policy`
+- `interval_selection_policy`
+- `reference_fixture_policy`
+- `input_delta`
+- `tolerance_band`
+- `baseline_run`
+- `alternative_runs`
+- `all_checks_passed`
+
+Agreement policy:
+
+- `require_completed_status_and_absolute_tolerance_agreement.v1`
+
+Reference-fixture relationship:
+
+- `method_comparison_checks_are_complementary_to_reference_fixtures.v1`
+
+`output_schema_metadata` includes machine-readable required-field lists for:
+
+- report fields
+- tolerance band fields
+- tolerance window fields
+- run summary fields
+- alternative run fields
+- output difference fields
