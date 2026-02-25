@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from types import ModuleType
-from typing import Optional, Self, cast
+from typing import Optional, cast
 
 from .api import native_module
 from .calendar import (
@@ -87,7 +89,7 @@ class ScheduledEventOverlayDefinition:
     @staticmethod
     def from_config_record(
         config_record: Mapping[str, object],
-    ) -> Self:
+    ) -> ScheduledEventOverlayDefinition:
         if "overlay_id" not in config_record:
             raise SeasonalityInputValidationError(
                 "scheduled event overlay configuration record is missing required field 'overlay_id'"
