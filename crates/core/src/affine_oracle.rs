@@ -785,10 +785,7 @@ impl Error for ExponentialAffineTransformSolverError {
 pub fn solve_exponential_affine_transform(
     transform_input: ExponentialAffineTransformInput,
 ) -> Result<ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError> {
-    solve_exponential_affine_transform_with_settings(
-        transform_input,
-        ExponentialAffineTransformSolverSettings::default(),
-    )
+    solve_exponential_affine_transform_with_optional_settings(transform_input, None)
 }
 
 /// Solve one-interval affine transform ODE system with explicit solver settings.
@@ -796,25 +793,67 @@ pub fn solve_exponential_affine_transform_with_settings(
     transform_input: ExponentialAffineTransformInput,
     solver_settings: ExponentialAffineTransformSolverSettings,
 ) -> Result<ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError> {
+    solve_exponential_affine_transform_with_optional_settings(
+        transform_input,
+        Some(solver_settings),
+    )
+}
+
+/// Solve one-interval affine transform ODE system through one consumer-neutral entrypoint.
+///
+/// Pricing and risk adapters call this function so solver behavior stays unified.
+///
+/// Pass `None` for `solver_settings` to use the default stable method.
+///
+/// # Examples
+///
+/// Pricing consumer
+/// ```ignore
+/// use janiform_core::pricing::solve_exponential_affine_transform_for_pricing;
+///
+/// let pricing_input = build_pricing_transform_input();
+/// let solve_result = solve_exponential_affine_transform_for_pricing(pricing_input)?;
+/// # Ok::<(), janiform_core::affine_oracle::ExponentialAffineTransformSolverError>(())
+/// ```
+///
+/// Risk-sampling consumer with explicit settings
+/// ```ignore
+/// use janiform_core::affine_oracle::ExponentialAffineTransformSolverSettings;
+/// use janiform_core::risk::solve_exponential_affine_transform_for_risk_sampling_with_settings;
+///
+/// let risk_input = build_risk_sampling_transform_input();
+/// let solver_settings = ExponentialAffineTransformSolverSettings::default();
+/// let solve_result = solve_exponential_affine_transform_for_risk_sampling_with_settings(
+///     risk_input,
+///     solver_settings,
+/// )?;
+/// # Ok::<(), janiform_core::affine_oracle::ExponentialAffineTransformSolverError>(())
+/// ```
+pub fn solve_exponential_affine_transform_with_optional_settings(
+    transform_input: ExponentialAffineTransformInput,
+    solver_settings: Option<ExponentialAffineTransformSolverSettings>,
+) -> Result<ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError> {
+    let effective_solver_settings = solver_settings.unwrap_or_default();
+
     transform_input
         .validate()
         .map_err(|source| ExponentialAffineTransformSolverError::InvalidInput { source })?;
-    solver_settings.validate().map_err(|source| {
+    effective_solver_settings.validate().map_err(|source| {
         ExponentialAffineTransformSolverError::InvalidSolverSettings { source }
     })?;
 
-    match solver_settings.integrator_method {
+    match effective_solver_settings.integrator_method {
         ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta => {
             run_affine_transform_integration_with_integrator(
                 transform_input,
-                solver_settings,
+                effective_solver_settings,
                 FourthOrderRungeKuttaIntegrator,
             )
         }
         ExponentialAffineTransformIntegratorMethod::ForwardEuler => {
             run_affine_transform_integration_with_integrator(
                 transform_input,
-                solver_settings,
+                effective_solver_settings,
                 ForwardEulerIntegrator,
             )
         }

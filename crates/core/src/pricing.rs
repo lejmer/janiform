@@ -3,6 +3,11 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use crate::affine_oracle::{
+    ExponentialAffineTransformInput, ExponentialAffineTransformIntegrationResult,
+    ExponentialAffineTransformSolverError, ExponentialAffineTransformSolverSettings,
+    solve_exponential_affine_transform_with_optional_settings,
+};
 use crate::calendar::ExchangeCalendarRegistry;
 use crate::complex_math::{complex_exponential, complex_multiply};
 use crate::hawkes::{
@@ -124,6 +129,27 @@ pub fn project_hawkes_intensities_for_coarse_interval(
         parameters.lambda_bar,
         hourly_factor_contract,
         interval_index,
+    )
+}
+
+/// Solve one-interval exponential-affine transform for pricing workflows.
+///
+/// This adapter keeps the pricing layer conversion-focused and delegates to the
+/// shared solver entrypoint in `affine_oracle`.
+pub fn solve_exponential_affine_transform_for_pricing(
+    transform_input: ExponentialAffineTransformInput,
+) -> Result<ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError> {
+    solve_exponential_affine_transform_with_optional_settings(transform_input, None)
+}
+
+/// Solve one-interval exponential-affine transform for pricing workflows with explicit settings.
+pub fn solve_exponential_affine_transform_for_pricing_with_settings(
+    transform_input: ExponentialAffineTransformInput,
+    solver_settings: ExponentialAffineTransformSolverSettings,
+) -> Result<ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError> {
+    solve_exponential_affine_transform_with_optional_settings(
+        transform_input,
+        Some(solver_settings),
     )
 }
 
