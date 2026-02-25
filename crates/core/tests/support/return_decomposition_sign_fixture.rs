@@ -104,8 +104,8 @@ impl ComplexScalarFixture {
     }
 }
 
-pub fn load_return_decomposition_sign_analytic_fixture_document()
--> Result<ReturnDecompositionSignAnalyticFixtureDocument, String> {
+pub fn load_return_decomposition_sign_analytic_fixture_document(
+) -> Result<ReturnDecompositionSignAnalyticFixtureDocument, String> {
     let fixture_path = fixtures_root_path()
         .join("return_decomposition")
         .join("return_decomposition_sign_analytic_fixture.json");
