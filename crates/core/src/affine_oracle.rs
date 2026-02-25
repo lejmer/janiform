@@ -1,4 +1,4 @@
-//! Exponential-affine one-interval transform equation models.
+//! Exponential-affine one-interval transform equation models and RHS evaluation.
 //!
 //! Equation reference from `docs/design/janiform_compact_model_spec.tex` Section 8:
 //! - `F(u_+, u_-, z_+, z_- | Y_0) = exp(C(Delta) + D(Delta) · y_0)`
@@ -20,6 +20,9 @@ use std::fmt::{Display, Formatter};
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::complex_math::{
+    complex_exponential, complex_multiply, complex_pow_real_exponent_principal,
+};
 use crate::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameterError, HawkesKernelParameters,
 };
@@ -472,6 +475,110 @@ impl Error for ExponentialAffineTransformOutputError {
     }
 }
 
+/// Shared Hamiltonian values evaluated at one ODE state vector `D`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ExponentialAffineTransformHamiltonians {
+    pub h_plus: ComplexScalar,
+    pub h_minus: ComplexScalar,
+}
+
+impl ExponentialAffineTransformHamiltonians {
+    pub const fn new(h_plus: ComplexScalar, h_minus: ComplexScalar) -> Self {
+        Self { h_plus, h_minus }
+    }
+}
+
+/// One RHS evaluation for the exponential-affine ODE system.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ExponentialAffineTransformOdeRhs {
+    pub d_derivative: ExponentialAffineTransformDVector,
+    pub c_derivative: ComplexScalar,
+}
+
+impl ExponentialAffineTransformOdeRhs {
+    pub const fn new(
+        d_derivative: ExponentialAffineTransformDVector,
+        c_derivative: ComplexScalar,
+    ) -> Self {
+        Self {
+            d_derivative,
+            c_derivative,
+        }
+    }
+}
+
+/// Evaluate shared `H_plus` and `H_minus` Hamiltonians at one `D` state.
+///
+/// Equation reference:
+/// - `H_plus(D) = z_plus * exp(D · k_plus) - 1 - u_plus`
+/// - `H_minus(D) = z_minus * exp(D · k_minus) - 1 - u_minus`
+pub fn evaluate_exponential_affine_transform_hamiltonians(
+    transform_input: ExponentialAffineTransformInput,
+    d_vector: ExponentialAffineTransformDVector,
+) -> ExponentialAffineTransformHamiltonians {
+    let equation_specification = transform_input.equation_specification;
+    let d_dot_k_plus = d_vector.dot_loadings(equation_specification.k_plus());
+    let d_dot_k_minus = d_vector.dot_loadings(equation_specification.k_minus());
+
+    ExponentialAffineTransformHamiltonians::new(
+        evaluate_hamiltonian_component(
+            transform_input.u_plus,
+            transform_input.z_plus,
+            d_dot_k_plus,
+        ),
+        evaluate_hamiltonian_component(
+            transform_input.u_minus,
+            transform_input.z_minus,
+            d_dot_k_minus,
+        ),
+    )
+}
+
+/// Evaluate the ODE RHS for the 4 `D_ij` equations and `C` equation.
+///
+/// Equation reference from compact model spec section 8:
+/// - `D_++' = -beta * D_++ + s_h * H_plus`
+/// - `D_+-' = -beta * D_+- + s_h * H_plus`
+/// - `D_-+' = -beta * D_-+ + s_h * H_minus`
+/// - `D_--' = -beta * D_-- + s_h * H_minus`
+/// - `C' = s_h * lambda_bar * (H_plus + H_minus) + nu_h * ((1 - theta_U * (D · r))^(-k_U) - 1)`
+pub fn evaluate_exponential_affine_transform_ode_rhs(
+    transform_input: ExponentialAffineTransformInput,
+    d_vector: ExponentialAffineTransformDVector,
+) -> ExponentialAffineTransformOdeRhs {
+    let equation_specification = transform_input.equation_specification;
+    let hamiltonians =
+        evaluate_exponential_affine_transform_hamiltonians(transform_input, d_vector);
+    let beta = equation_specification.hawkes_kernel_parameters.beta;
+
+    let d_derivative = ExponentialAffineTransformDVector::new(
+        d_vector
+            .plus_plus
+            .scale(-beta)
+            .add(hamiltonians.h_plus.scale(transform_input.s_h)),
+        d_vector
+            .plus_minus
+            .scale(-beta)
+            .add(hamiltonians.h_plus.scale(transform_input.s_h)),
+        d_vector
+            .minus_plus
+            .scale(-beta)
+            .add(hamiltonians.h_minus.scale(transform_input.s_h)),
+        d_vector
+            .minus_minus
+            .scale(-beta)
+            .add(hamiltonians.h_minus.scale(transform_input.s_h)),
+    );
+
+    let trading_term = hamiltonians
+        .h_plus
+        .add(hamiltonians.h_minus)
+        .scale(transform_input.s_h * equation_specification.hawkes_kernel_parameters.lambda_bar);
+    let news_term = evaluate_gamma_moment_news_term(transform_input, d_vector);
+
+    ExponentialAffineTransformOdeRhs::new(d_derivative, trading_term.add(news_term))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ExponentialAffineTransformEquationSpecificationPayload {
@@ -656,6 +763,35 @@ fn validate_initial_state_component(
     Ok(())
 }
 
+fn evaluate_hamiltonian_component(
+    u_component: ComplexScalar,
+    z_component: ComplexScalar,
+    d_dot_k_component: ComplexScalar,
+) -> ComplexScalar {
+    complex_multiply(z_component, complex_exponential(d_dot_k_component))
+        .subtract(ComplexScalar::new(1.0, 0.0))
+        .subtract(u_component)
+}
+
+fn evaluate_gamma_moment_news_term(
+    transform_input: ExponentialAffineTransformInput,
+    d_vector: ExponentialAffineTransformDVector,
+) -> ComplexScalar {
+    let equation_specification = transform_input.equation_specification;
+    let gamma_configuration = equation_specification.gamma_severity_mark_configuration;
+
+    let one_minus_theta_d_dot_r = ComplexScalar::new(1.0, 0.0).subtract(
+        d_vector
+            .dot_loadings(equation_specification.r())
+            .scale(gamma_configuration.scale_theta),
+    );
+    let gamma_moment =
+        complex_pow_real_exponent_principal(one_minus_theta_d_dot_r, -gamma_configuration.shape_k);
+    gamma_moment
+        .subtract(ComplexScalar::new(1.0, 0.0))
+        .scale(transform_input.nu_h)
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -663,7 +799,8 @@ mod tests {
     use super::{
         EXPONENTIAL_AFFINE_TRANSFORM_EQUATION_MAPPING_POLICY, ExponentialAffineTransformDVector,
         ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
-        ExponentialAffineTransformOutput,
+        ExponentialAffineTransformOutput, evaluate_exponential_affine_transform_hamiltonians,
+        evaluate_exponential_affine_transform_ode_rhs,
     };
     use crate::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
     use crate::news::GammaSeverityMarkConfiguration;
@@ -727,6 +864,26 @@ mod tests {
             ComplexScalar::new(0.98, -0.04),
         )
         .expect("valid output should construct")
+    }
+
+    fn assert_complex_close(
+        observed: ComplexScalar,
+        expected: ComplexScalar,
+        tolerance: f64,
+        context: &str,
+    ) {
+        assert!(
+            (observed.real - expected.real).abs() <= tolerance,
+            "{context}: real mismatch, observed={} expected={}",
+            observed.real,
+            expected.real
+        );
+        assert!(
+            (observed.imaginary - expected.imaginary).abs() <= tolerance,
+            "{context}: imaginary mismatch, observed={} expected={}",
+            observed.imaginary,
+            expected.imaginary
+        );
     }
 
     #[test]
@@ -995,5 +1152,108 @@ mod tests {
             EXPONENTIAL_AFFINE_TRANSFORM_EQUATION_MAPPING_POLICY,
             "compact_model_spec_section_8_named_component_mapping.v1"
         );
+    }
+
+    #[test]
+    fn hamiltonians_match_hand_checked_complex_fixture() {
+        let transform_input = valid_input();
+        let d_vector = ExponentialAffineTransformDVector::new(
+            ComplexScalar::new(0.10, -0.02),
+            ComplexScalar::new(0.08, 0.01),
+            ComplexScalar::new(0.07, -0.03),
+            ComplexScalar::new(0.09, 0.00),
+        );
+
+        let hamiltonians =
+            evaluate_exponential_affine_transform_hamiltonians(transform_input, d_vector);
+
+        assert_complex_close(
+            hamiltonians.h_plus,
+            ComplexScalar::new(-0.17265736764489886, 0.09280848411170442),
+            1.0e-12,
+            "H_plus",
+        );
+        assert_complex_close(
+            hamiltonians.h_minus,
+            ComplexScalar::new(-0.32304086676111327, -0.028650512256511856),
+            1.0e-12,
+            "H_minus",
+        );
+    }
+
+    #[test]
+    fn ode_rhs_matches_hand_checked_real_fixture() {
+        let transform_input = ExponentialAffineTransformInput::try_new(
+            valid_equation_specification(),
+            ComplexScalar::new(0.2, 0.0),
+            ComplexScalar::new(0.3, 0.0),
+            ComplexScalar::new(0.9, 0.0),
+            ComplexScalar::new(1.1, 0.0),
+            1.1,
+            0.08,
+            1.0,
+            HawkesExcitationState {
+                y_plus_plus: 0.4,
+                y_plus_minus: 0.2,
+                y_minus_plus: 0.3,
+                y_minus_minus: 0.5,
+            },
+        )
+        .expect("fixture input should construct");
+        let d_vector = ExponentialAffineTransformDVector::new(
+            ComplexScalar::new(0.4, 0.0),
+            ComplexScalar::new(0.2, 0.0),
+            ComplexScalar::new(0.3, 0.0),
+            ComplexScalar::new(0.1, 0.0),
+        );
+
+        let rhs = evaluate_exponential_affine_transform_ode_rhs(transform_input, d_vector);
+
+        assert_complex_close(
+            rhs.d_derivative.plus_plus,
+            ComplexScalar::new(-0.6948847102457174, 0.0),
+            1.0e-12,
+            "D_++'",
+        );
+        assert_complex_close(
+            rhs.d_derivative.plus_minus,
+            ComplexScalar::new(-0.45488471024571747, 0.0),
+            1.0e-12,
+            "D_+-'",
+        );
+        assert_complex_close(
+            rhs.d_derivative.minus_plus,
+            ComplexScalar::new(-0.5306189632272101, 0.0),
+            1.0e-12,
+            "D_-+'",
+        );
+        assert_complex_close(
+            rhs.d_derivative.minus_minus,
+            ComplexScalar::new(-0.29061896322721015, 0.0),
+            1.0e-12,
+            "D_--'",
+        );
+        assert_complex_close(
+            rhs.c_derivative,
+            ComplexScalar::new(-0.3053334325713209, 0.0),
+            1.0e-12,
+            "C'",
+        );
+    }
+
+    #[test]
+    fn ode_rhs_is_deterministic_for_identical_inputs() {
+        let transform_input = valid_input();
+        let d_vector = ExponentialAffineTransformDVector::new(
+            ComplexScalar::new(0.14, -0.02),
+            ComplexScalar::new(0.05, 0.04),
+            ComplexScalar::new(0.09, -0.01),
+            ComplexScalar::new(0.11, 0.03),
+        );
+
+        let first = evaluate_exponential_affine_transform_ode_rhs(transform_input, d_vector);
+        let second = evaluate_exponential_affine_transform_ode_rhs(transform_input, d_vector);
+
+        assert_eq!(first, second);
     }
 }

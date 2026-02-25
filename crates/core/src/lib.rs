@@ -5,6 +5,7 @@
 pub mod affine_oracle;
 pub mod calendar;
 pub mod calibration;
+pub mod complex_math;
 pub mod hawkes;
 pub mod hourly_factor_provider;
 pub mod hourly_factors;
