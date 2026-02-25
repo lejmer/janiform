@@ -37,6 +37,55 @@ pub const EXPONENTIAL_AFFINE_TRANSFORM_DOMAIN_GUARD_POLICY: &str =
     "enforce_d_dot_r_real_strict_upper_bound_at_runtime_checkpoints.v1";
 pub const EXPONENTIAL_AFFINE_TRANSFORM_BLOWUP_TERMINATION_POLICY: &str =
     "terminate_on_non_finite_state_or_guard_metric_without_clamping.v1";
+pub const EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_RESULT_SCHEMA_VERSION: &str =
+    "affine_oracle.integration_result.v1";
+pub const EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_METADATA_SCHEMA_VERSION: &str =
+    "affine_oracle.integration_metadata.v1";
+pub const EXPONENTIAL_AFFINE_TRANSFORM_GUARD_FAILURE_SCHEMA_VERSION: &str =
+    "affine_oracle.integration_guard_failure.v1";
+pub const EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_TELEMETRY_SCHEMA_VERSION: &str =
+    "affine_oracle.integration_telemetry.v1";
+pub const EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_OUTPUT_SCHEMA_METADATA_VERSION: &str =
+    "affine_oracle.integration_output_schema_metadata.v1";
+pub const EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_RESULT_FIELDS: [&str; 6] = [
+    "schema_version",
+    "output_schema_metadata",
+    "status",
+    "metadata",
+    "output",
+    "telemetry",
+];
+pub const EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_METADATA_FIELDS: [&str; 11] = [
+    "schema_version",
+    "integrator_method",
+    "telemetry_mode",
+    "status_flags",
+    "configured_step_count",
+    "completed_step_count",
+    "step_size",
+    "rhs_evaluation_count",
+    "domain_guard_policy",
+    "blowup_termination_policy",
+    "guard_failure",
+];
+pub const EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_GUARD_FAILURE_FIELDS: [&str; 6] = [
+    "schema_version",
+    "code",
+    "step_index",
+    "time",
+    "d_dot_r",
+    "d_dot_r_upper_bound",
+];
+pub const EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_TELEMETRY_FIELDS: [&str; 8] = [
+    "schema_version",
+    "checkpoint_count",
+    "max_abs_c_value",
+    "max_abs_d_component",
+    "max_d_dot_r_real",
+    "min_domain_margin",
+    "guard_triggered",
+    "guard_trigger",
+];
 
 const DEFAULT_EXPONENTIAL_AFFINE_TRANSFORM_SOLVER_STEP_COUNT: usize = 64;
 
@@ -621,11 +670,26 @@ impl Default for ExponentialAffineTransformIntegratorMethod {
     }
 }
 
+/// Debug telemetry emission mode for one-interval affine transform integration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExponentialAffineTransformTelemetryMode {
+    Disabled,
+    Enabled,
+}
+
+impl Default for ExponentialAffineTransformTelemetryMode {
+    fn default() -> Self {
+        Self::Disabled
+    }
+}
+
 /// Solver settings for one-interval affine transform integration.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct ExponentialAffineTransformSolverSettings {
     pub integrator_method: ExponentialAffineTransformIntegratorMethod,
     pub step_count: usize,
+    pub telemetry_mode: ExponentialAffineTransformTelemetryMode,
 }
 
 impl Default for ExponentialAffineTransformSolverSettings {
@@ -633,6 +697,7 @@ impl Default for ExponentialAffineTransformSolverSettings {
         Self {
             integrator_method: ExponentialAffineTransformIntegratorMethod::default(),
             step_count: DEFAULT_EXPONENTIAL_AFFINE_TRANSFORM_SOLVER_STEP_COUNT,
+            telemetry_mode: ExponentialAffineTransformTelemetryMode::default(),
         }
     }
 }
@@ -645,6 +710,7 @@ impl ExponentialAffineTransformSolverSettings {
         Self {
             integrator_method,
             step_count,
+            telemetry_mode: ExponentialAffineTransformTelemetryMode::Disabled,
         }
     }
 
@@ -655,6 +721,39 @@ impl ExponentialAffineTransformSolverSettings {
         let settings = Self::new(integrator_method, step_count);
         settings.validate()?;
         Ok(settings)
+    }
+
+    pub fn new_with_telemetry(
+        integrator_method: ExponentialAffineTransformIntegratorMethod,
+        step_count: usize,
+        telemetry_mode: ExponentialAffineTransformTelemetryMode,
+    ) -> Self {
+        Self {
+            integrator_method,
+            step_count,
+            telemetry_mode,
+        }
+    }
+
+    pub fn try_new_with_telemetry(
+        integrator_method: ExponentialAffineTransformIntegratorMethod,
+        step_count: usize,
+        telemetry_mode: ExponentialAffineTransformTelemetryMode,
+    ) -> Result<Self, ExponentialAffineTransformSolverSettingsError> {
+        let settings = Self::new_with_telemetry(integrator_method, step_count, telemetry_mode);
+        settings.validate()?;
+        Ok(settings)
+    }
+
+    pub fn with_telemetry_mode(
+        self,
+        telemetry_mode: ExponentialAffineTransformTelemetryMode,
+    ) -> Self {
+        Self {
+            integrator_method: self.integrator_method,
+            step_count: self.step_count,
+            telemetry_mode,
+        }
     }
 
     pub fn validate(self) -> Result<(), ExponentialAffineTransformSolverSettingsError> {
@@ -708,6 +807,7 @@ pub enum ExponentialAffineTransformGuardFailureCode {
 /// Guard-trigger metadata captured at deterministic integration checkpoints.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct ExponentialAffineTransformGuardFailure {
+    pub schema_version: &'static str,
     pub code: ExponentialAffineTransformGuardFailureCode,
     pub step_index: usize,
     pub time: f64,
@@ -715,10 +815,86 @@ pub struct ExponentialAffineTransformGuardFailure {
     pub d_dot_r_upper_bound: f64,
 }
 
+/// Deterministic boolean status flags mirroring the integration status enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct ExponentialAffineTransformIntegrationStatusFlags {
+    pub completed: bool,
+    pub domain_guard_violation: bool,
+    pub blowup_terminated: bool,
+}
+
+impl ExponentialAffineTransformIntegrationStatusFlags {
+    pub const fn from_status(status: ExponentialAffineTransformIntegrationStatus) -> Self {
+        match status {
+            ExponentialAffineTransformIntegrationStatus::Completed => Self {
+                completed: true,
+                domain_guard_violation: false,
+                blowup_terminated: false,
+            },
+            ExponentialAffineTransformIntegrationStatus::DomainGuardViolation => Self {
+                completed: false,
+                domain_guard_violation: true,
+                blowup_terminated: false,
+            },
+            ExponentialAffineTransformIntegrationStatus::BlowupTerminated => Self {
+                completed: false,
+                domain_guard_violation: false,
+                blowup_terminated: true,
+            },
+        }
+    }
+}
+
+/// Machine-readable diagnostics schema metadata for integration outputs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct ExponentialAffineTransformIntegrationOutputSchemaMetadata {
+    pub schema_version: &'static str,
+    pub integration_metadata_schema_version: &'static str,
+    pub guard_failure_schema_version: &'static str,
+    pub telemetry_schema_version: &'static str,
+    pub required_result_fields: &'static [&'static str],
+    pub required_metadata_fields: &'static [&'static str],
+    pub required_guard_failure_fields: &'static [&'static str],
+    pub required_telemetry_fields: &'static [&'static str],
+}
+
+pub const EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_OUTPUT_SCHEMA_METADATA:
+    ExponentialAffineTransformIntegrationOutputSchemaMetadata =
+    ExponentialAffineTransformIntegrationOutputSchemaMetadata {
+        schema_version: EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_OUTPUT_SCHEMA_METADATA_VERSION,
+        integration_metadata_schema_version:
+            EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_METADATA_SCHEMA_VERSION,
+        guard_failure_schema_version: EXPONENTIAL_AFFINE_TRANSFORM_GUARD_FAILURE_SCHEMA_VERSION,
+        telemetry_schema_version: EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_TELEMETRY_SCHEMA_VERSION,
+        required_result_fields: &EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_RESULT_FIELDS,
+        required_metadata_fields:
+            &EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_METADATA_FIELDS,
+        required_guard_failure_fields:
+            &EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_GUARD_FAILURE_FIELDS,
+        required_telemetry_fields:
+            &EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_TELEMETRY_FIELDS,
+    };
+
+/// Optional debug telemetry payload for integration quality triage.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct ExponentialAffineTransformIntegrationTelemetry {
+    pub schema_version: &'static str,
+    pub checkpoint_count: usize,
+    pub max_abs_c_value: Option<f64>,
+    pub max_abs_d_component: Option<f64>,
+    pub max_d_dot_r_real: Option<f64>,
+    pub min_domain_margin: Option<f64>,
+    pub guard_triggered: bool,
+    pub guard_trigger: Option<ExponentialAffineTransformGuardFailure>,
+}
+
 /// Metadata describing one completed affine transform integration run.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct ExponentialAffineTransformIntegrationMetadata {
+    pub schema_version: &'static str,
     pub integrator_method: ExponentialAffineTransformIntegratorMethod,
+    pub telemetry_mode: ExponentialAffineTransformTelemetryMode,
+    pub status_flags: ExponentialAffineTransformIntegrationStatusFlags,
     pub configured_step_count: usize,
     pub completed_step_count: usize,
     pub step_size: f64,
@@ -731,9 +907,12 @@ pub struct ExponentialAffineTransformIntegrationMetadata {
 /// Result payload for one affine transform solve call.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct ExponentialAffineTransformIntegrationResult {
+    pub schema_version: &'static str,
+    pub output_schema_metadata: ExponentialAffineTransformIntegrationOutputSchemaMetadata,
     pub status: ExponentialAffineTransformIntegrationStatus,
     pub metadata: ExponentialAffineTransformIntegrationMetadata,
     pub output: Option<ExponentialAffineTransformOutput>,
+    pub telemetry: Option<ExponentialAffineTransformIntegrationTelemetry>,
 }
 
 /// Structured failure modes for affine transform solver execution.
@@ -993,21 +1172,31 @@ where
     let mut integration_state = ExponentialAffineTransformIntegrationState::initial();
     let mut completed_step_count = 0_usize;
     let mut rhs_evaluation_count = 0_usize;
+    let mut telemetry_accumulator =
+        ExponentialAffineTransformTelemetryAccumulator::enabled_or_none(solver_settings);
 
-    if let Some(guard_failure) = evaluate_integration_guard_checkpoint(
+    let initial_checkpoint = evaluate_integration_guard_checkpoint(
         transform_input,
         integration_state,
         completed_step_count,
         step_size,
-    ) {
+    );
+
+    if let Some(telemetry_accumulator) = telemetry_accumulator.as_mut() {
+        telemetry_accumulator.record_checkpoint(integration_state, initial_checkpoint);
+    }
+
+    if let Some(guard_failure) = initial_checkpoint.guard_failure {
+        let telemetry =
+            telemetry_accumulator.map(ExponentialAffineTransformTelemetryAccumulator::to_payload);
         return Ok(terminated_result_from_guard_failure(
-            transform_input,
             solver_settings,
             integrator,
             completed_step_count,
             rhs_evaluation_count,
             step_size,
             guard_failure,
+            telemetry,
         ));
     }
 
@@ -1022,20 +1211,28 @@ where
         rhs_evaluation_count =
             rhs_evaluation_count.saturating_add(integrator.rhs_evaluations_per_step());
 
-        if let Some(guard_failure) = evaluate_integration_guard_checkpoint(
+        let checkpoint = evaluate_integration_guard_checkpoint(
             transform_input,
             integration_state,
             completed_step_count,
             step_size,
-        ) {
+        );
+
+        if let Some(telemetry_accumulator) = telemetry_accumulator.as_mut() {
+            telemetry_accumulator.record_checkpoint(integration_state, checkpoint);
+        }
+
+        if let Some(guard_failure) = checkpoint.guard_failure {
+            let telemetry = telemetry_accumulator
+                .map(ExponentialAffineTransformTelemetryAccumulator::to_payload);
             return Ok(terminated_result_from_guard_failure(
-                transform_input,
                 solver_settings,
                 integrator,
                 completed_step_count,
                 rhs_evaluation_count,
                 step_size,
                 guard_failure,
+                telemetry,
             ));
         }
     }
@@ -1046,21 +1243,104 @@ where
     let transform_value = complex_exponential(transform_exponent);
     let output = ExponentialAffineTransformOutput::try_new(c_at_delta, d_at_delta, transform_value)
         .map_err(|source| ExponentialAffineTransformSolverError::InvalidOutput { source })?;
+    let status = ExponentialAffineTransformIntegrationStatus::Completed;
+    let telemetry =
+        telemetry_accumulator.map(ExponentialAffineTransformTelemetryAccumulator::to_payload);
 
     Ok(ExponentialAffineTransformIntegrationResult {
-        status: ExponentialAffineTransformIntegrationStatus::Completed,
-        metadata: ExponentialAffineTransformIntegrationMetadata {
-            integrator_method: integrator.method(),
-            configured_step_count: solver_settings.step_count,
+        schema_version: EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_RESULT_SCHEMA_VERSION,
+        output_schema_metadata: EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_OUTPUT_SCHEMA_METADATA,
+        status,
+        metadata: build_integration_metadata(
+            solver_settings,
+            integrator.method(),
+            status,
             completed_step_count,
             step_size,
             rhs_evaluation_count,
-            domain_guard_policy: EXPONENTIAL_AFFINE_TRANSFORM_DOMAIN_GUARD_POLICY,
-            blowup_termination_policy: EXPONENTIAL_AFFINE_TRANSFORM_BLOWUP_TERMINATION_POLICY,
-            guard_failure: None,
-        },
+            None,
+        ),
         output: Some(output),
+        telemetry,
     })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ExponentialAffineTransformGuardCheckpointEvaluation {
+    guard_failure: Option<ExponentialAffineTransformGuardFailure>,
+    d_dot_r: ComplexScalar,
+    d_dot_r_upper_bound: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ExponentialAffineTransformTelemetryAccumulator {
+    checkpoint_count: usize,
+    max_abs_c_value: Option<f64>,
+    max_abs_d_component: Option<f64>,
+    max_d_dot_r_real: Option<f64>,
+    min_domain_margin: Option<f64>,
+    guard_trigger: Option<ExponentialAffineTransformGuardFailure>,
+}
+
+impl ExponentialAffineTransformTelemetryAccumulator {
+    fn enabled_or_none(solver_settings: ExponentialAffineTransformSolverSettings) -> Option<Self> {
+        match solver_settings.telemetry_mode {
+            ExponentialAffineTransformTelemetryMode::Disabled => None,
+            ExponentialAffineTransformTelemetryMode::Enabled => Some(Self {
+                checkpoint_count: 0,
+                max_abs_c_value: None,
+                max_abs_d_component: None,
+                max_d_dot_r_real: None,
+                min_domain_margin: None,
+                guard_trigger: None,
+            }),
+        }
+    }
+
+    fn record_checkpoint(
+        &mut self,
+        integration_state: ExponentialAffineTransformIntegrationState,
+        checkpoint: ExponentialAffineTransformGuardCheckpointEvaluation,
+    ) {
+        self.checkpoint_count = self.checkpoint_count.saturating_add(1);
+
+        if integration_state.c_value.is_finite() {
+            self.max_abs_c_value =
+                update_optional_max(self.max_abs_c_value, integration_state.c_value.norm());
+        }
+
+        if let Some(max_abs_d_component) = evaluate_max_abs_d_component(integration_state.d_vector)
+        {
+            self.max_abs_d_component =
+                update_optional_max(self.max_abs_d_component, max_abs_d_component);
+        }
+
+        if checkpoint.d_dot_r.is_finite() {
+            self.max_d_dot_r_real =
+                update_optional_max(self.max_d_dot_r_real, checkpoint.d_dot_r.real);
+            self.min_domain_margin = update_optional_min(
+                self.min_domain_margin,
+                checkpoint.d_dot_r_upper_bound - checkpoint.d_dot_r.real,
+            );
+        }
+
+        if self.guard_trigger.is_none() {
+            self.guard_trigger = checkpoint.guard_failure;
+        }
+    }
+
+    fn to_payload(self) -> ExponentialAffineTransformIntegrationTelemetry {
+        ExponentialAffineTransformIntegrationTelemetry {
+            schema_version: EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_TELEMETRY_SCHEMA_VERSION,
+            checkpoint_count: self.checkpoint_count,
+            max_abs_c_value: self.max_abs_c_value,
+            max_abs_d_component: self.max_abs_d_component,
+            max_d_dot_r_real: self.max_d_dot_r_real,
+            min_domain_margin: self.min_domain_margin,
+            guard_triggered: self.guard_trigger.is_some(),
+            guard_trigger: self.guard_trigger,
+        }
+    }
 }
 
 fn evaluate_integration_guard_checkpoint(
@@ -1068,7 +1348,7 @@ fn evaluate_integration_guard_checkpoint(
     integration_state: ExponentialAffineTransformIntegrationState,
     completed_step_count: usize,
     step_size: f64,
-) -> Option<ExponentialAffineTransformGuardFailure> {
+) -> ExponentialAffineTransformGuardCheckpointEvaluation {
     let d_dot_r_upper_bound = 1.0
         / transform_input
             .equation_specification
@@ -1077,54 +1357,134 @@ fn evaluate_integration_guard_checkpoint(
     let checkpoint_time = completed_step_count as f64 * step_size;
 
     if !integration_state.c_value.is_finite() || integration_state.d_vector.validate().is_err() {
-        return Some(ExponentialAffineTransformGuardFailure {
-            code: ExponentialAffineTransformGuardFailureCode::NonFiniteState,
-            step_index: completed_step_count,
-            time: checkpoint_time,
+        return ExponentialAffineTransformGuardCheckpointEvaluation {
+            guard_failure: Some(build_guard_failure(
+                ExponentialAffineTransformGuardFailureCode::NonFiniteState,
+                completed_step_count,
+                checkpoint_time,
+                ComplexScalar::new(f64::NAN, f64::NAN),
+                d_dot_r_upper_bound,
+            )),
             d_dot_r: ComplexScalar::new(f64::NAN, f64::NAN),
             d_dot_r_upper_bound,
-        });
+        };
     }
 
     let d_dot_r = integration_state
         .d_vector
         .dot_loadings(transform_input.equation_specification.r());
     if !d_dot_r.is_finite() {
-        return Some(ExponentialAffineTransformGuardFailure {
-            code: ExponentialAffineTransformGuardFailureCode::NonFiniteDomainMetric,
-            step_index: completed_step_count,
-            time: checkpoint_time,
+        return ExponentialAffineTransformGuardCheckpointEvaluation {
+            guard_failure: Some(build_guard_failure(
+                ExponentialAffineTransformGuardFailureCode::NonFiniteDomainMetric,
+                completed_step_count,
+                checkpoint_time,
+                d_dot_r,
+                d_dot_r_upper_bound,
+            )),
             d_dot_r,
             d_dot_r_upper_bound,
-        });
+        };
     }
 
     if d_dot_r.real >= d_dot_r_upper_bound {
-        return Some(ExponentialAffineTransformGuardFailure {
-            code: ExponentialAffineTransformGuardFailureCode::DomainUpperBoundViolation,
-            step_index: completed_step_count,
-            time: checkpoint_time,
+        return ExponentialAffineTransformGuardCheckpointEvaluation {
+            guard_failure: Some(build_guard_failure(
+                ExponentialAffineTransformGuardFailureCode::DomainUpperBoundViolation,
+                completed_step_count,
+                checkpoint_time,
+                d_dot_r,
+                d_dot_r_upper_bound,
+            )),
             d_dot_r,
             d_dot_r_upper_bound,
-        });
+        };
     }
 
-    None
+    ExponentialAffineTransformGuardCheckpointEvaluation {
+        guard_failure: None,
+        d_dot_r,
+        d_dot_r_upper_bound,
+    }
 }
 
 fn terminated_result_from_guard_failure<TIntegrator>(
-    _transform_input: ExponentialAffineTransformInput,
     solver_settings: ExponentialAffineTransformSolverSettings,
     integrator: TIntegrator,
     completed_step_count: usize,
     rhs_evaluation_count: usize,
     step_size: f64,
     guard_failure: ExponentialAffineTransformGuardFailure,
+    telemetry: Option<ExponentialAffineTransformIntegrationTelemetry>,
 ) -> ExponentialAffineTransformIntegrationResult
 where
     TIntegrator: ExponentialAffineTransformIntegrator,
 {
-    let status = match guard_failure.code {
+    let status = status_from_guard_failure_code(guard_failure.code);
+
+    ExponentialAffineTransformIntegrationResult {
+        schema_version: EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_RESULT_SCHEMA_VERSION,
+        output_schema_metadata: EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_OUTPUT_SCHEMA_METADATA,
+        status,
+        metadata: build_integration_metadata(
+            solver_settings,
+            integrator.method(),
+            status,
+            completed_step_count,
+            step_size,
+            rhs_evaluation_count,
+            Some(guard_failure),
+        ),
+        output: None,
+        telemetry,
+    }
+}
+
+fn build_guard_failure(
+    code: ExponentialAffineTransformGuardFailureCode,
+    step_index: usize,
+    time: f64,
+    d_dot_r: ComplexScalar,
+    d_dot_r_upper_bound: f64,
+) -> ExponentialAffineTransformGuardFailure {
+    ExponentialAffineTransformGuardFailure {
+        schema_version: EXPONENTIAL_AFFINE_TRANSFORM_GUARD_FAILURE_SCHEMA_VERSION,
+        code,
+        step_index,
+        time,
+        d_dot_r,
+        d_dot_r_upper_bound,
+    }
+}
+
+fn build_integration_metadata(
+    solver_settings: ExponentialAffineTransformSolverSettings,
+    integrator_method: ExponentialAffineTransformIntegratorMethod,
+    status: ExponentialAffineTransformIntegrationStatus,
+    completed_step_count: usize,
+    step_size: f64,
+    rhs_evaluation_count: usize,
+    guard_failure: Option<ExponentialAffineTransformGuardFailure>,
+) -> ExponentialAffineTransformIntegrationMetadata {
+    ExponentialAffineTransformIntegrationMetadata {
+        schema_version: EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_METADATA_SCHEMA_VERSION,
+        integrator_method,
+        telemetry_mode: solver_settings.telemetry_mode,
+        status_flags: ExponentialAffineTransformIntegrationStatusFlags::from_status(status),
+        configured_step_count: solver_settings.step_count,
+        completed_step_count,
+        step_size,
+        rhs_evaluation_count,
+        domain_guard_policy: EXPONENTIAL_AFFINE_TRANSFORM_DOMAIN_GUARD_POLICY,
+        blowup_termination_policy: EXPONENTIAL_AFFINE_TRANSFORM_BLOWUP_TERMINATION_POLICY,
+        guard_failure,
+    }
+}
+
+fn status_from_guard_failure_code(
+    guard_failure_code: ExponentialAffineTransformGuardFailureCode,
+) -> ExponentialAffineTransformIntegrationStatus {
+    match guard_failure_code {
         ExponentialAffineTransformGuardFailureCode::DomainUpperBoundViolation => {
             ExponentialAffineTransformIntegrationStatus::DomainGuardViolation
         }
@@ -1132,22 +1492,36 @@ where
         | ExponentialAffineTransformGuardFailureCode::NonFiniteDomainMetric => {
             ExponentialAffineTransformIntegrationStatus::BlowupTerminated
         }
-    };
-
-    ExponentialAffineTransformIntegrationResult {
-        status,
-        metadata: ExponentialAffineTransformIntegrationMetadata {
-            integrator_method: integrator.method(),
-            configured_step_count: solver_settings.step_count,
-            completed_step_count,
-            step_size,
-            rhs_evaluation_count,
-            domain_guard_policy: EXPONENTIAL_AFFINE_TRANSFORM_DOMAIN_GUARD_POLICY,
-            blowup_termination_policy: EXPONENTIAL_AFFINE_TRANSFORM_BLOWUP_TERMINATION_POLICY,
-            guard_failure: Some(guard_failure),
-        },
-        output: None,
     }
+}
+
+fn update_optional_max(current_value: Option<f64>, candidate_value: f64) -> Option<f64> {
+    match current_value {
+        Some(current_value) if candidate_value <= current_value => Some(current_value),
+        _ => Some(candidate_value),
+    }
+}
+
+fn update_optional_min(current_value: Option<f64>, candidate_value: f64) -> Option<f64> {
+    match current_value {
+        Some(current_value) if candidate_value >= current_value => Some(current_value),
+        _ => Some(candidate_value),
+    }
+}
+
+fn evaluate_max_abs_d_component(d_vector: ExponentialAffineTransformDVector) -> Option<f64> {
+    if d_vector.validate().is_err() {
+        return None;
+    }
+
+    Some(
+        d_vector
+            .plus_plus
+            .norm()
+            .max(d_vector.plus_minus.norm())
+            .max(d_vector.minus_plus.norm())
+            .max(d_vector.minus_minus.norm()),
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
@@ -1365,18 +1739,27 @@ fn evaluate_gamma_moment_news_term(
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use serde_json::{Value, json};
 
     use super::{
         EXPONENTIAL_AFFINE_TRANSFORM_BLOWUP_TERMINATION_POLICY,
         EXPONENTIAL_AFFINE_TRANSFORM_DEFAULT_SOLVER_POLICY,
         EXPONENTIAL_AFFINE_TRANSFORM_DOMAIN_GUARD_POLICY,
-        EXPONENTIAL_AFFINE_TRANSFORM_EQUATION_MAPPING_POLICY, ExponentialAffineTransformDVector,
-        ExponentialAffineTransformEquationSpecification,
+        EXPONENTIAL_AFFINE_TRANSFORM_EQUATION_MAPPING_POLICY,
+        EXPONENTIAL_AFFINE_TRANSFORM_GUARD_FAILURE_SCHEMA_VERSION,
+        EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_METADATA_SCHEMA_VERSION,
+        EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_OUTPUT_SCHEMA_METADATA_VERSION,
+        EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_GUARD_FAILURE_FIELDS,
+        EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_METADATA_FIELDS,
+        EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_RESULT_FIELDS,
+        EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_TELEMETRY_FIELDS,
+        EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_RESULT_SCHEMA_VERSION,
+        EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_TELEMETRY_SCHEMA_VERSION,
+        ExponentialAffineTransformDVector, ExponentialAffineTransformEquationSpecification,
         ExponentialAffineTransformGuardFailureCode, ExponentialAffineTransformInput,
         ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformIntegratorMethod,
         ExponentialAffineTransformOutput, ExponentialAffineTransformSolverError,
-        ExponentialAffineTransformSolverSettings,
+        ExponentialAffineTransformSolverSettings, ExponentialAffineTransformTelemetryMode,
         evaluate_exponential_affine_transform_hamiltonians,
         evaluate_exponential_affine_transform_ode_rhs, solve_exponential_affine_transform,
         solve_exponential_affine_transform_with_settings,
@@ -1866,6 +2249,26 @@ mod tests {
             EXPONENTIAL_AFFINE_TRANSFORM_BLOWUP_TERMINATION_POLICY,
             "terminate_on_non_finite_state_or_guard_metric_without_clamping.v1"
         );
+        assert_eq!(
+            EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_RESULT_SCHEMA_VERSION,
+            "affine_oracle.integration_result.v1"
+        );
+        assert_eq!(
+            EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_METADATA_SCHEMA_VERSION,
+            "affine_oracle.integration_metadata.v1"
+        );
+        assert_eq!(
+            EXPONENTIAL_AFFINE_TRANSFORM_GUARD_FAILURE_SCHEMA_VERSION,
+            "affine_oracle.integration_guard_failure.v1"
+        );
+        assert_eq!(
+            EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_TELEMETRY_SCHEMA_VERSION,
+            "affine_oracle.integration_telemetry.v1"
+        );
+        assert_eq!(
+            EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_OUTPUT_SCHEMA_METADATA_VERSION,
+            "affine_oracle.integration_output_schema_metadata.v1"
+        );
     }
 
     #[test]
@@ -2098,6 +2501,7 @@ mod tests {
             solve_result.metadata.blowup_termination_policy,
             EXPONENTIAL_AFFINE_TRANSFORM_BLOWUP_TERMINATION_POLICY
         );
+        assert!(solve_result.telemetry.is_none());
 
         let decay = (-transform_input
             .equation_specification
@@ -2197,6 +2601,10 @@ mod tests {
             guard_failure.code,
             ExponentialAffineTransformGuardFailureCode::DomainUpperBoundViolation
         );
+        assert_eq!(
+            guard_failure.schema_version,
+            EXPONENTIAL_AFFINE_TRANSFORM_GUARD_FAILURE_SCHEMA_VERSION
+        );
         assert_eq!(guard_failure.step_index, 1);
         assert!(
             (guard_failure.time - 0.25).abs() <= 1.0e-15,
@@ -2240,11 +2648,204 @@ mod tests {
             guard_failure.code,
             ExponentialAffineTransformGuardFailureCode::NonFiniteState
         );
+        assert_eq!(
+            guard_failure.schema_version,
+            EXPONENTIAL_AFFINE_TRANSFORM_GUARD_FAILURE_SCHEMA_VERSION
+        );
         assert_eq!(guard_failure.step_index, 1);
         assert!(
             guard_failure.d_dot_r.real.is_nan() && guard_failure.d_dot_r.imaginary.is_nan(),
             "non-finite-state guard marker should use NaN d_dot_r sentinel"
         );
         assert_eq!(solve_result.metadata.rhs_evaluation_count, 1);
+    }
+
+    #[test]
+    fn telemetry_toggle_preserves_solver_semantics() {
+        let transform_input = linear_closed_form_fixture_input();
+
+        let telemetry_disabled_settings = ExponentialAffineTransformSolverSettings::try_new(
+            ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
+            8,
+        )
+        .expect("telemetry-disabled settings should construct");
+
+        let telemetry_enabled_settings = telemetry_disabled_settings
+            .with_telemetry_mode(ExponentialAffineTransformTelemetryMode::Enabled);
+
+        let telemetry_disabled_result = solve_exponential_affine_transform_with_settings(
+            transform_input,
+            telemetry_disabled_settings,
+        )
+        .expect("telemetry-disabled solve should succeed");
+
+        let telemetry_enabled_result = solve_exponential_affine_transform_with_settings(
+            transform_input,
+            telemetry_enabled_settings,
+        )
+        .expect("telemetry-enabled solve should succeed");
+
+        assert_eq!(
+            telemetry_disabled_result.status,
+            telemetry_enabled_result.status
+        );
+        assert_eq!(
+            telemetry_disabled_result.output,
+            telemetry_enabled_result.output
+        );
+        assert_eq!(
+            telemetry_disabled_result.metadata.status_flags,
+            telemetry_enabled_result.metadata.status_flags
+        );
+        assert_eq!(
+            telemetry_disabled_result.metadata.telemetry_mode,
+            ExponentialAffineTransformTelemetryMode::Disabled
+        );
+        assert_eq!(
+            telemetry_enabled_result.metadata.telemetry_mode,
+            ExponentialAffineTransformTelemetryMode::Enabled
+        );
+        assert!(telemetry_disabled_result.telemetry.is_none());
+
+        let telemetry = telemetry_enabled_result
+            .telemetry
+            .expect("telemetry-enabled solve should emit telemetry payload");
+
+        assert!(!telemetry.guard_triggered);
+        assert_eq!(telemetry.guard_trigger, None);
+        assert_eq!(telemetry.checkpoint_count, 9);
+    }
+
+    #[test]
+    fn diagnostics_payload_schema_contains_required_fields() {
+        let solve_result = solve_exponential_affine_transform(linear_closed_form_fixture_input())
+            .expect("solve should succeed");
+
+        let serialized_payload =
+            serde_json::to_value(solve_result).expect("solver payload should serialize");
+        let serialized_payload_object = serialized_payload
+            .as_object()
+            .expect("serialized payload should be an object");
+
+        for required_result_field in EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_RESULT_FIELDS
+        {
+            assert!(
+                serialized_payload_object.contains_key(required_result_field),
+                "missing required result field '{required_result_field}'"
+            );
+        }
+
+        assert_eq!(
+            serialized_payload["schema_version"],
+            Value::String(
+                EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_RESULT_SCHEMA_VERSION.to_string()
+            )
+        );
+
+        let output_schema_metadata = &serialized_payload["output_schema_metadata"];
+
+        assert_eq!(
+            output_schema_metadata["schema_version"],
+            Value::String(
+                EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_OUTPUT_SCHEMA_METADATA_VERSION.to_string()
+            )
+        );
+        assert_eq!(
+            output_schema_metadata["required_result_fields"],
+            serde_json::to_value(EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_RESULT_FIELDS)
+                .expect("required result fields should serialize")
+        );
+        assert_eq!(
+            output_schema_metadata["required_metadata_fields"],
+            serde_json::to_value(EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_METADATA_FIELDS)
+                .expect("required metadata fields should serialize")
+        );
+        assert_eq!(
+            output_schema_metadata["required_guard_failure_fields"],
+            serde_json::to_value(
+                EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_GUARD_FAILURE_FIELDS
+            )
+            .expect("required guard failure fields should serialize")
+        );
+        assert_eq!(
+            output_schema_metadata["required_telemetry_fields"],
+            serde_json::to_value(
+                EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_TELEMETRY_FIELDS
+            )
+            .expect("required telemetry fields should serialize")
+        );
+
+        let metadata = &serialized_payload["metadata"];
+        let metadata_object = metadata
+            .as_object()
+            .expect("serialized metadata should be an object");
+
+        for required_metadata_field in
+            EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_METADATA_FIELDS
+        {
+            assert!(
+                metadata_object.contains_key(required_metadata_field),
+                "missing required metadata field '{required_metadata_field}'"
+            );
+        }
+
+        assert_eq!(
+            metadata["schema_version"],
+            Value::String(
+                EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_METADATA_SCHEMA_VERSION.to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn telemetry_payload_reports_guarded_failure_context() {
+        let transform_input = domain_violation_fixture_input();
+        let solver_settings = ExponentialAffineTransformSolverSettings::try_new_with_telemetry(
+            ExponentialAffineTransformIntegratorMethod::ForwardEuler,
+            2,
+            ExponentialAffineTransformTelemetryMode::Enabled,
+        )
+        .expect("guarded-failure telemetry settings should construct");
+
+        let solve_result =
+            solve_exponential_affine_transform_with_settings(transform_input, solver_settings)
+                .expect("guarded-failure solve should return deterministic result");
+        assert_eq!(
+            solve_result.status,
+            ExponentialAffineTransformIntegrationStatus::DomainGuardViolation
+        );
+
+        let guard_failure = solve_result
+            .metadata
+            .guard_failure
+            .expect("guarded-failure solve should include guard metadata");
+        let telemetry = solve_result
+            .telemetry
+            .expect("guarded-failure solve should emit telemetry when enabled");
+
+        assert_eq!(
+            telemetry.schema_version,
+            EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_TELEMETRY_SCHEMA_VERSION
+        );
+        assert!(telemetry.guard_triggered);
+        assert_eq!(telemetry.guard_trigger, Some(guard_failure));
+        assert!(
+            telemetry.checkpoint_count >= 2,
+            "telemetry must include at least initial and first-step checkpoints"
+        );
+        assert!(
+            telemetry
+                .min_domain_margin
+                .expect("domain-violation telemetry must include a domain margin")
+                <= 0.0
+        );
+
+        let serialized_guard_failure =
+            serde_json::to_value(guard_failure).expect("guard failure payload should serialize");
+        for required_guard_failure_field in
+            EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_GUARD_FAILURE_FIELDS
+        {
+            assert_ne!(serialized_guard_failure[required_guard_failure_field], Value::Null, "guard failure field '{required_guard_failure_field}' must be present");
+        }
     }
 }
