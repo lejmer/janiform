@@ -42,8 +42,11 @@ use janiform_core::simulation::{
 };
 use janiform_core::validation::{
     CalendarStateRegressionCase, HourlyFactorRegressionCase, HourlyNewsIntensityRegressionSource,
-    HourlySeasonalityRegressionSource, RegressionHarnessToleranceConfig,
+    HourlySeasonalityRegressionSource, OpenClosedGapLeakageRegressionCase,
+    OpenClosedGapLeakageRegressionEventInput, OpenClosedGapLeakageRegressionHarnessToleranceConfig,
+    RegressionHarnessToleranceConfig,
     run_deterministic_regression_harness as run_deterministic_regression_harness_core,
+    run_open_closed_gap_leakage_regression_harness as run_open_closed_gap_leakage_regression_harness_core,
 };
 use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyValueError};
@@ -1725,6 +1728,37 @@ fn run_deterministic_regression_harness(
 }
 
 #[pyfunction]
+#[pyo3(signature = (calendar_registry, gap_behavior_cases, *, direct_gap_absolute_tolerance = 1e-12))]
+fn run_open_closed_gap_leakage_regression_harness(
+    py: Python<'_>,
+    calendar_registry: &PyCalendarRegistry,
+    gap_behavior_cases: &Bound<'_, PyAny>,
+    direct_gap_absolute_tolerance: f64,
+) -> PyResult<String> {
+    let parsed_gap_behavior_cases =
+        parse_open_closed_gap_leakage_regression_cases(gap_behavior_cases)?;
+    let tolerance_config = OpenClosedGapLeakageRegressionHarnessToleranceConfig {
+        direct_gap_absolute_tolerance,
+    };
+
+    let report = py
+        .allow_threads(|| {
+            run_open_closed_gap_leakage_regression_harness_core(
+                &calendar_registry.registry,
+                &parsed_gap_behavior_cases,
+                tolerance_config,
+            )
+        })
+        .map_err(map_open_closed_gap_leakage_regression_harness_error)?;
+
+    serialize_to_json_string(&report).map_err(|_| {
+        SeasonalityInputValidationError::new_err(
+            "failed to serialize open closed gap leakage regression harness report to json",
+        )
+    })
+}
+
+#[pyfunction]
 #[pyo3(signature = (seed, start_time_utc, horizon_interval_count, kernel_parameters, initial_excitation_state, hourly_factor_contract, *, debug_trace_enabled = false, sample_every_nth_transition = 1, max_records_per_chunk = 1024, state_snapshot_capture = "disabled"))]
 fn run_seeded_tick_event_simulation(
     py: Python<'_>,
@@ -2424,6 +2458,167 @@ fn parse_regression_seasonality_cases(
     Ok(parsed_seasonality_cases)
 }
 
+fn parse_open_closed_gap_leakage_regression_cases(
+    raw_gap_behavior_cases: &Bound<'_, PyAny>,
+) -> PyResult<Vec<OpenClosedGapLeakageRegressionCase>> {
+    let gap_behavior_case_iter = raw_gap_behavior_cases.try_iter().map_err(|_| {
+        SeasonalityInputValidationError::new_err(
+            "gap_behavior_cases must be an iterable of mapping records",
+        )
+    })?;
+    let mut parsed_gap_behavior_cases: Vec<OpenClosedGapLeakageRegressionCase> = Vec::new();
+
+    for (case_position, raw_case) in gap_behavior_case_iter.enumerate() {
+        let raw_case = raw_case?;
+        let case_mapping = raw_case.downcast::<PyMapping>().map_err(|_| {
+            SeasonalityInputValidationError::new_err(format!(
+                "gap_behavior_cases[{case_position}] must be a mapping",
+            ))
+        })?;
+
+        let fixture_id = parse_required_string_field(
+            &case_mapping,
+            case_position,
+            "gap_behavior_cases",
+            "fixture_id",
+        )?;
+        let exchange_code = parse_required_string_field(
+            &case_mapping,
+            case_position,
+            "gap_behavior_cases",
+            "exchange_code",
+        )?;
+
+        let initial_j_t_value = parse_required_field(
+            &case_mapping,
+            case_position,
+            "gap_behavior_cases",
+            "initial_j_t",
+        )?;
+        let initial_j_t = initial_j_t_value.extract::<f64>().map_err(|_| {
+            SeasonalityInputValidationError::new_err(format!(
+                "gap_behavior_cases[{case_position}] field 'initial_j_t' must be a float",
+            ))
+        })?;
+        if !initial_j_t.is_finite() {
+            return Err(SeasonalityInputValidationError::new_err(format!(
+                "gap_behavior_cases[{case_position}] field 'initial_j_t' must be finite"
+            )));
+        }
+
+        let initial_g_t_value = parse_required_field(
+            &case_mapping,
+            case_position,
+            "gap_behavior_cases",
+            "initial_g_t",
+        )?;
+        let initial_g_t = initial_g_t_value.extract::<f64>().map_err(|_| {
+            SeasonalityInputValidationError::new_err(format!(
+                "gap_behavior_cases[{case_position}] field 'initial_g_t' must be a float",
+            ))
+        })?;
+        if !initial_g_t.is_finite() {
+            return Err(SeasonalityInputValidationError::new_err(format!(
+                "gap_behavior_cases[{case_position}] field 'initial_g_t' must be finite"
+            )));
+        }
+
+        let injected_events_value = parse_required_field(
+            &case_mapping,
+            case_position,
+            "gap_behavior_cases",
+            "injected_events",
+        )?;
+        let injected_event_iter = injected_events_value.try_iter().map_err(|_| {
+            SeasonalityInputValidationError::new_err(format!(
+                "gap_behavior_cases[{case_position}] field 'injected_events' must be an iterable of mapping records",
+            ))
+        })?;
+        let mut injected_events: Vec<OpenClosedGapLeakageRegressionEventInput> = Vec::new();
+
+        for (event_position, raw_event) in injected_event_iter.enumerate() {
+            let raw_event = raw_event?;
+            let event_mapping = raw_event.downcast::<PyMapping>().map_err(|_| {
+                SeasonalityInputValidationError::new_err(format!(
+                    "gap_behavior_cases[{case_position}].injected_events[{event_position}] must be a mapping"
+                ))
+            })?;
+
+            let event_id = parse_required_string_field(
+                &event_mapping,
+                event_position,
+                &format!("gap_behavior_cases[{case_position}].injected_events"),
+                "event_id",
+            )?;
+            let timestamp_utc_text = parse_required_string_field(
+                &event_mapping,
+                event_position,
+                &format!("gap_behavior_cases[{case_position}].injected_events"),
+                "timestamp_utc",
+            )?;
+            let shared_severity_mark_value = parse_required_field(
+                &event_mapping,
+                event_position,
+                &format!("gap_behavior_cases[{case_position}].injected_events"),
+                "shared_severity_mark",
+            )?;
+            let shared_severity_mark = shared_severity_mark_value.extract::<f64>().map_err(|_| {
+                SeasonalityInputValidationError::new_err(format!(
+                    "gap_behavior_cases[{case_position}].injected_events[{event_position}] field 'shared_severity_mark' must be a float"
+                ))
+            })?;
+            
+            if !shared_severity_mark.is_finite() || shared_severity_mark < 0.0 {
+                return Err(SeasonalityInputValidationError::new_err(format!(
+                    "gap_behavior_cases[{case_position}].injected_events[{event_position}] field 'shared_severity_mark' must be finite and non-negative"
+                )));
+            }
+
+            let coupled_gap_jump_mark_value = parse_required_field(
+                &event_mapping,
+                event_position,
+                &format!("gap_behavior_cases[{case_position}].injected_events"),
+                "coupled_gap_jump_mark",
+            )?;
+            let coupled_gap_jump_mark = coupled_gap_jump_mark_value.extract::<f64>().map_err(|_| {
+                SeasonalityInputValidationError::new_err(format!(
+                    "gap_behavior_cases[{case_position}].injected_events[{event_position}] field 'coupled_gap_jump_mark' must be a float"
+                ))
+            })?;
+            
+            if !coupled_gap_jump_mark.is_finite() {
+                return Err(SeasonalityInputValidationError::new_err(format!(
+                    "gap_behavior_cases[{case_position}].injected_events[{event_position}] field 'coupled_gap_jump_mark' must be finite"
+                )));
+            }
+
+            let observed_direct_gap_increment_override = parse_optional_f64_field(
+                &event_mapping,
+                "observed_direct_gap_increment_override",
+                &format!("gap_behavior_cases[{case_position}].injected_events[{event_position}]"),
+            )?;
+
+            injected_events.push(OpenClosedGapLeakageRegressionEventInput {
+                event_id,
+                event_timestamp_utc: parse_timestamp_utc(&timestamp_utc_text)?,
+                shared_severity_mark,
+                coupled_gap_jump_mark,
+                observed_direct_gap_increment_override,
+            });
+        }
+
+        parsed_gap_behavior_cases.push(OpenClosedGapLeakageRegressionCase {
+            fixture_id,
+            exchange_code,
+            initial_j_t,
+            initial_g_t,
+            injected_events,
+        });
+    }
+
+    Ok(parsed_gap_behavior_cases)
+}
+
 fn parse_required_field<'py>(
     mapping: &Bound<'py, PyMapping>,
     case_position: usize,
@@ -2452,6 +2647,34 @@ fn parse_required_string_field(
             "{field_group_name}[{case_position}] field '{field_name}' must be a string",
         ))
     })
+}
+
+fn parse_optional_f64_field(
+    mapping: &Bound<'_, PyMapping>,
+    field_name: &str,
+    field_context: &str,
+) -> PyResult<Option<f64>> {
+    if !mapping.contains(field_name)? {
+        return Ok(None);
+    }
+    
+    let field_value = mapping.get_item(field_name)?;
+    if field_value.is_none() {
+        return Ok(None);
+    }
+
+    let field_value = field_value.extract::<f64>().map_err(|_| {
+        SeasonalityInputValidationError::new_err(format!(
+            "{field_context} field '{field_name}' must be a float when provided"
+        ))
+    })?;
+    if !field_value.is_finite() {
+        return Err(SeasonalityInputValidationError::new_err(format!(
+            "{field_context} field '{field_name}' must be finite when provided"
+        )));
+    }
+
+    Ok(Some(field_value))
 }
 
 fn parse_expected_market_state(raw_expected_state: &str) -> PyResult<MarketState> {
@@ -3048,6 +3271,12 @@ fn map_regression_harness_error(error: janiform_core::validation::RegressionHarn
     SeasonalityInputValidationError::new_err(error.to_string())
 }
 
+fn map_open_closed_gap_leakage_regression_harness_error(
+    error: janiform_core::validation::OpenClosedGapLeakageRegressionHarnessError,
+) -> PyErr {
+    SeasonalityInputValidationError::new_err(error.to_string())
+}
+
 fn map_seeded_tick_simulation_run_error(
     error: janiform_core::simulation::SeededTickSimulationRunError,
 ) -> PyErr {
@@ -3343,6 +3572,10 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     module.add_function(pyo3::wrap_pyfunction!(
         run_deterministic_regression_harness,
+        module
+    )?)?;
+    module.add_function(pyo3::wrap_pyfunction!(
+        run_open_closed_gap_leakage_regression_harness,
         module
     )?)?;
     module.add_function(pyo3::wrap_pyfunction!(
