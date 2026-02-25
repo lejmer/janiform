@@ -11,6 +11,12 @@ use crate::hourly_factor_provider::{
     HourlyFactorProviderError, HourlyFactorProviderRequest, provide_hourly_factor_contract,
 };
 use crate::hourly_factors::HourlyFactorContractOutput;
+use crate::risk_neutral::{
+    EsscherMartingaleConditionError, EsscherMartingaleConditionInput,
+    EsscherMartingaleConditionReport, EsscherTransformError, NigEsscherTransformationInput,
+    NigEsscherTransformedExponent, evaluate_esscher_martingale_condition,
+    transform_nig_characteristic_exponent_under_esscher_tilt,
+};
 
 /// Resolve interval-aligned hourly factors for the calibration path.
 pub fn load_hourly_factor_contract_for_calibration(
@@ -75,16 +81,35 @@ pub fn evolve_hawkes_state_for_calibration_step(
     state.apply_transition_step(kernel_parameters, transition_step)
 }
 
+/// Evaluate one Esscher-transformed NIG exponent for calibration-side objectives.
+pub fn transform_nig_exponent_for_calibration_under_esscher_tilt(
+    input: NigEsscherTransformationInput,
+) -> Result<NigEsscherTransformedExponent, EsscherTransformError> {
+    transform_nig_characteristic_exponent_under_esscher_tilt(input)
+}
+
+/// Evaluate one Esscher martingale-condition residual for calibration-side objectives.
+pub fn evaluate_calibration_martingale_condition_under_esscher_tilt(
+    input: EsscherMartingaleConditionInput,
+) -> Result<EsscherMartingaleConditionReport, EsscherMartingaleConditionError> {
+    evaluate_esscher_martingale_condition(input)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::calibration::{
-        precheck_hawkes_kernel_parameter_domain, precheck_structured_hawkes_kernel_parameter_domain,
+        evaluate_calibration_martingale_condition_under_esscher_tilt,
+        precheck_hawkes_kernel_parameter_domain,
+        precheck_structured_hawkes_kernel_parameter_domain,
+        transform_nig_exponent_for_calibration_under_esscher_tilt,
     };
     use crate::hawkes::{
         HAWKES_KERNEL_PARAMETER_VALIDATION_REPORT_SCHEMA_VERSION, HawkesKernelLoadings,
         HawkesKernelValidationStatus, HawkesStructuredAlphaParameterization,
         HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
     };
+    use crate::nig::{ComplexScalar, NigParameters};
+    use crate::risk_neutral::{EsscherMartingaleConditionInput, NigEsscherTransformationInput};
 
     #[test]
     fn calibration_domain_precheck_report_shape_is_compatible_with_optimizer_consumers() {
@@ -157,5 +182,29 @@ mod tests {
                 "stability.numeric_tolerance",
             ]
         );
+    }
+
+    #[test]
+    fn calibration_esscher_transform_adapter_delegates_to_shared_module() {
+        let parameters = NigParameters::try_new(2.3, -0.8, 0.7, 0.1)
+            .expect("fixture parameters should construct");
+
+        let transformed = transform_nig_exponent_for_calibration_under_esscher_tilt(
+            NigEsscherTransformationInput::new(parameters, ComplexScalar::new(0.4, -0.2), -0.05),
+        )
+        .expect("Esscher transform should evaluate");
+
+        assert!(transformed.transformed_exponent.is_finite());
+    }
+
+    #[test]
+    fn calibration_martingale_adapter_delegates_to_shared_module() {
+        let report = evaluate_calibration_martingale_condition_under_esscher_tilt(
+            EsscherMartingaleConditionInput::new(ComplexScalar::new(0.12, 0.0), 0.1, 0.03),
+        )
+        .expect("martingale condition input should validate");
+
+        assert!(report.is_satisfied);
+        assert!(report.residual_norm <= report.tolerance);
     }
 }

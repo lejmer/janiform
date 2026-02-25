@@ -15,6 +15,7 @@ pub mod pricing;
 pub mod randomness;
 pub mod return_decomposition;
 pub mod risk;
+pub mod risk_neutral;
 pub mod seasonality;
 pub mod simulation;
 pub mod validation;

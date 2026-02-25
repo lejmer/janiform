@@ -28,6 +28,7 @@ Validation entrypoints:
 
 - `VanillaOptionPricingRequest::try_new`
 - `VanillaOptionPricingResponse::try_new`
+- `validate_pricing_martingale_condition_under_esscher_tilt`
 
 Structured request validation errors:
 
@@ -41,6 +42,16 @@ Structured response validation errors:
 - `VanillaOptionPricingResponseError`
   - `InvalidPrice`
   - `InvalidDiagnostics`
+
+Risk-neutral martingale validation errors:
+
+- `PricingMartingaleConditionValidationError`
+  - `InvalidMarketInputs`
+  - `InvalidReturnDecomposition`
+  - `BuySideEsscherTransformFailure`
+  - `SellSideEsscherTransformFailure`
+  - `InvalidMartingaleInput`
+  - `MartingaleConditionViolation`
 
 All request and response payloads are serializable and deserializable through `serde`.
 Deserialization is validation-aware and rejects malformed or incomplete payloads.
