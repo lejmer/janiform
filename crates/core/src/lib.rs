@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod affine_oracle;
 pub mod calendar;
 pub mod calibration;
 pub mod hawkes;
