@@ -2567,7 +2567,7 @@ fn parse_open_closed_gap_leakage_regression_cases(
                     "gap_behavior_cases[{case_position}].injected_events[{event_position}] field 'shared_severity_mark' must be a float"
                 ))
             })?;
-            
+
             if !shared_severity_mark.is_finite() || shared_severity_mark < 0.0 {
                 return Err(SeasonalityInputValidationError::new_err(format!(
                     "gap_behavior_cases[{case_position}].injected_events[{event_position}] field 'shared_severity_mark' must be finite and non-negative"
@@ -2585,7 +2585,7 @@ fn parse_open_closed_gap_leakage_regression_cases(
                     "gap_behavior_cases[{case_position}].injected_events[{event_position}] field 'coupled_gap_jump_mark' must be a float"
                 ))
             })?;
-            
+
             if !coupled_gap_jump_mark.is_finite() {
                 return Err(SeasonalityInputValidationError::new_err(format!(
                     "gap_behavior_cases[{case_position}].injected_events[{event_position}] field 'coupled_gap_jump_mark' must be finite"
@@ -2657,7 +2657,7 @@ fn parse_optional_f64_field(
     if !mapping.contains(field_name)? {
         return Ok(None);
     }
-    
+
     let field_value = mapping.get_item(field_name)?;
     if field_value.is_none() {
         return Ok(None);

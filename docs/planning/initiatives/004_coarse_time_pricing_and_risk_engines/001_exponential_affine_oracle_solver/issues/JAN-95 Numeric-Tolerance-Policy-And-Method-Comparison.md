@@ -1,4 +1,4 @@
-## ISSUE-008: Numeric Tolerance Policy And Method Comparison
+## Numeric Tolerance Policy And Method Comparison
 
 ### Description
 Define numeric tolerance policy and comparison checks across supported integration methods to ensure solver outputs remain reliable and interpretable.

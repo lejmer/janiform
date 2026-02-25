@@ -1,4 +1,4 @@
-## ISSUE-005: Solver API For Pricing And Risk Consumers
+## Solver API For Pricing And Risk Consumers
 
 ### Description
 Expose a single solver API usable by both characteristic-function pricing and sufficient-statistics risk sampling consumers.

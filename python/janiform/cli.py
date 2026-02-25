@@ -97,11 +97,16 @@ def _run_open_closed_gap_leakage_regression_command(parsed_arguments: Namespace)
         return 1
 
     summary = report["summary"]
+    behavior_diff_report_summary = cast(
+        dict[str, int],
+        cast(dict[str, object], report["behavior_diff_report"])["summary"],
+    )
     if summary["failed_case_count"] == 0:
         sys.stdout.write(
             "open closed gap leakage regression passed: "
             f"{summary['passed_case_count']}/{summary['total_case_count']} scenarios, "
-            f"open_window_events={summary['total_open_window_event_count']}\n",
+            f"open_window_events={summary['total_open_window_event_count']}, "
+            f"diff_regression_cases={behavior_diff_report_summary['regression_case_count']}\n",
         )
         return 0
 
@@ -120,6 +125,31 @@ def _run_open_closed_gap_leakage_regression_command(parsed_arguments: Namespace)
             f"leakage_failure_count={case_report['leakage_failure_count']} "
             f"max_absolute_leakage_magnitude={case_report['max_absolute_leakage_magnitude']}\n",
         )
+
+        contribution_summary = cast(dict[str, object], case_report["contribution_summary"])
+
+        sys.stderr.write(
+            "  contributions "
+            f"activity_expected={contribution_summary['expected_activity_coupling_j_t_increment_total']} "
+            f"activity_observed={contribution_summary['observed_activity_coupling_j_t_increment_total']} "
+            f"open_gap_expected={contribution_summary['expected_open_window_direct_gap_g_t_increment_total']} "
+            f"open_gap_observed={contribution_summary['observed_open_window_direct_gap_g_t_increment_total']} "
+            f"closed_gap_expected={contribution_summary['expected_closed_window_direct_gap_g_t_increment_total']} "
+            f"closed_gap_observed={contribution_summary['observed_closed_window_direct_gap_g_t_increment_total']}\n",
+        )
+
+        behavior_diff = cast(dict[str, object], case_report["behavior_diff"])
+        for diff_metric in cast(list[dict[str, object]], behavior_diff["metrics"]):
+            if not cast(bool, diff_metric["regression_detected"]):
+                continue
+            sys.stderr.write(
+                "  diff_regression "
+                f"metric_id={diff_metric['metric_id']} "
+                f"expected={diff_metric['expected_value']} "
+                f"observed={diff_metric['observed_value']} "
+                f"absolute_difference={diff_metric['absolute_difference']} "
+                f"absolute_tolerance={diff_metric['absolute_tolerance']}\n",
+            )
 
         for failure in case_report["failures"]:
             failure_kind = cast(str, failure["failure_kind"])

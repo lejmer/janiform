@@ -1,4 +1,4 @@
-## ISSUE-007: Deterministic Reference Fixtures And Regression Suite
+## Deterministic Reference Fixtures And Regression Suite
 
 ### Description
 Create deterministic reference fixtures for solver inputs and expected outputs, then build a regression suite that protects against equation and integration drift.

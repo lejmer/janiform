@@ -1,4 +1,4 @@
-## ISSUE-004: Domain Guard And Blowup Detection
+## Domain Guard And Blowup Detection
 
 ### Description
 Implement domain guard checks for transform validity, including enforcement of `D dot r < 1 / theta_U` across the integration interval and controlled handling of blowup conditions.

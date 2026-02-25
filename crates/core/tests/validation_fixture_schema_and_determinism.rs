@@ -6,7 +6,10 @@ use std::fs;
 use serde_json::Value;
 
 use support::validation_fixture::{
-    fixtures_root_path, load_calendar_regression_fixture_from_manifest,
+    CalendarRegressionFixtureDocument, HourlyFactorRegressionFixtureDocument,
+    OPEN_CLOSED_GAP_BEHAVIOR_SCENARIO_FIXTURE_SET_ID, OpenClosedGapBehaviorScenarioFixtureDocument,
+    ValidationFixtureManifestDocument, fixtures_root_path,
+    load_calendar_regression_fixture_from_manifest,
     load_hourly_factor_regression_fixture_from_manifest, load_manifest_entry_payload,
     load_open_closed_gap_behavior_scenario_fixture_from_manifest,
     load_validation_fixture_manifest_document, sorted_manifest_entries,
@@ -14,9 +17,7 @@ use support::validation_fixture::{
     validate_hourly_factor_regression_fixture_document,
     validate_open_closed_gap_behavior_calendar_integration,
     validate_open_closed_gap_behavior_scenario_fixture_document,
-    validate_validation_fixture_manifest_document, CalendarRegressionFixtureDocument,
-    HourlyFactorRegressionFixtureDocument, OpenClosedGapBehaviorScenarioFixtureDocument,
-    ValidationFixtureManifestDocument, OPEN_CLOSED_GAP_BEHAVIOR_SCENARIO_FIXTURE_SET_ID,
+    validate_validation_fixture_manifest_document,
 };
 
 #[test]
@@ -68,11 +69,13 @@ fn calendar_regression_fixture_document_is_valid_for_multiple_exchanges() {
         .collect();
 
     assert!(exchange_codes.len() >= 2);
-    assert!(loaded_fixture
-        .manifest_entry
-        .exchange_codes
-        .iter()
-        .all(|exchange_code| exchange_codes.contains(exchange_code)));
+    assert!(
+        loaded_fixture
+            .manifest_entry
+            .exchange_codes
+            .iter()
+            .all(|exchange_code| exchange_codes.contains(exchange_code))
+    );
 }
 
 #[test]
@@ -80,10 +83,12 @@ fn hourly_factor_regression_fixture_document_is_valid_for_manifest_exchange_cove
     let loaded_fixture = load_hourly_factor_regression_fixture_from_manifest()
         .expect("hourly factor regression fixture should load from shared manifest");
 
-    assert!(loaded_fixture
-        .manifest_entry
-        .exchange_codes
-        .contains(&"XNYS".to_string()));
+    assert!(
+        loaded_fixture
+            .manifest_entry
+            .exchange_codes
+            .contains(&"XNYS".to_string())
+    );
 }
 
 #[test]
@@ -95,14 +100,18 @@ fn open_closed_gap_behavior_fixture_document_is_valid_for_manifest_exchange_cove
         loaded_fixture.manifest_entry.fixture_id,
         OPEN_CLOSED_GAP_BEHAVIOR_SCENARIO_FIXTURE_SET_ID
     );
-    assert!(loaded_fixture
-        .manifest_entry
-        .exchange_codes
-        .contains(&"XNYS".to_string()));
-    assert!(loaded_fixture
-        .manifest_entry
-        .exchange_codes
-        .contains(&"XTKS".to_string()));
+    assert!(
+        loaded_fixture
+            .manifest_entry
+            .exchange_codes
+            .contains(&"XNYS".to_string())
+    );
+    assert!(
+        loaded_fixture
+            .manifest_entry
+            .exchange_codes
+            .contains(&"XTKS".to_string())
+    );
 }
 
 #[test]
@@ -378,10 +387,10 @@ fn hourly_factor_regression_fixture_rejects_factor_range_with_inverted_bounds() 
     let mut fixture_value: Value =
         serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
             .expect("hourly factor regression fixture should be valid JSON");
-    fixture_value["threshold_configuration"]["factor_range_by_fixture_class"]["normal_session"]
-        ["s_h_min"] = Value::from(2.5);
-    fixture_value["threshold_configuration"]["factor_range_by_fixture_class"]["normal_session"]
-        ["s_h_max"] = Value::from(2.0);
+    fixture_value["threshold_configuration"]["factor_range_by_fixture_class"]["normal_session"]["s_h_min"] =
+        Value::from(2.5);
+    fixture_value["threshold_configuration"]["factor_range_by_fixture_class"]["normal_session"]["s_h_max"] =
+        Value::from(2.0);
 
     let parsed_fixture =
         serde_json::from_value::<HourlyFactorRegressionFixtureDocument>(fixture_value)
@@ -439,8 +448,8 @@ fn open_closed_gap_behavior_fixture_rejects_open_window_direct_gap_application()
     let mut fixture_value: Value =
         serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
             .expect("open and closed gap behavior fixture should be valid JSON");
-    fixture_value["cases"][0]["expected_outcome"]["event_outcomes"][0]
-        ["expected_direct_gap_applied"] = Value::Bool(true);
+    fixture_value["cases"][0]["expected_outcome"]["event_outcomes"][0]["expected_direct_gap_applied"] =
+        Value::Bool(true);
 
     let parsed_fixture =
         serde_json::from_value::<OpenClosedGapBehaviorScenarioFixtureDocument>(fixture_value)

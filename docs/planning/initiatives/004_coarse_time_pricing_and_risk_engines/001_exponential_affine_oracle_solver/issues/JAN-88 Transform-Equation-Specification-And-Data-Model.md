@@ -1,4 +1,4 @@
-## ISSUE-001: Transform Equation Specification And Data Model
+## Transform Equation Specification And Data Model
 
 ### Description
 Define the canonical equation specification and data model for the exponential affine transform over one interval, including `C(t)`, `D(t)`, inputs, and outputs.
