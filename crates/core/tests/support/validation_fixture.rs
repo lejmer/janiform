@@ -469,8 +469,8 @@ impl Display for OpenClosedGapBehaviorScenarioLoaderError {
 
 impl Error for OpenClosedGapBehaviorScenarioLoaderError {}
 
-pub fn load_validation_fixture_manifest_document(
-) -> Result<ValidationFixtureManifestDocument, String> {
+pub fn load_validation_fixture_manifest_document()
+-> Result<ValidationFixtureManifestDocument, String> {
     let manifest_path = validation_fixture_manifest_path();
     let manifest_raw = fs::read_to_string(&manifest_path).map_err(|source| {
         format!(
@@ -592,8 +592,8 @@ pub fn load_manifest_entry_payload(
     })
 }
 
-pub fn load_calendar_regression_fixture_from_manifest(
-) -> Result<LoadedCalendarRegressionFixture, String> {
+pub fn load_calendar_regression_fixture_from_manifest()
+-> Result<LoadedCalendarRegressionFixture, String> {
     let manifest = load_validation_fixture_manifest_document()?;
     let manifest_entry =
         find_manifest_entry_by_fixture_id(&manifest, CALENDAR_REGRESSION_FIXTURE_SET_ID)?;
@@ -619,8 +619,8 @@ pub fn load_calendar_regression_fixture_from_manifest(
     })
 }
 
-pub fn load_hourly_factor_regression_fixture_from_manifest(
-) -> Result<LoadedHourlyFactorRegressionFixture, String> {
+pub fn load_hourly_factor_regression_fixture_from_manifest()
+-> Result<LoadedHourlyFactorRegressionFixture, String> {
     let manifest = load_validation_fixture_manifest_document()?;
     let manifest_entry =
         find_manifest_entry_by_fixture_id(&manifest, HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID)?;
@@ -646,8 +646,8 @@ pub fn load_hourly_factor_regression_fixture_from_manifest(
     })
 }
 
-pub fn load_open_closed_gap_behavior_scenario_fixture_from_manifest(
-) -> Result<LoadedOpenClosedGapBehaviorScenarioFixture, OpenClosedGapBehaviorScenarioLoaderError> {
+pub fn load_open_closed_gap_behavior_scenario_fixture_from_manifest()
+-> Result<LoadedOpenClosedGapBehaviorScenarioFixture, OpenClosedGapBehaviorScenarioLoaderError> {
     let manifest = load_validation_fixture_manifest_document()
         .map_err(OpenClosedGapBehaviorScenarioLoaderError::Manifest)?;
     let manifest_entry = find_manifest_entry_by_fixture_id(

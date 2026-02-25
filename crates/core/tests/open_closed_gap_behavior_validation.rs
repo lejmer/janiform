@@ -5,14 +5,14 @@ use std::collections::BTreeMap;
 use chrono::DateTime;
 use janiform_core::calendar::{ExchangeCalendarRegistry, MarketState};
 use janiform_core::news::{
-    dispatch_shared_news_events_with_resolved_market_states, SharedNewsAccumulatorState,
-    SharedNewsEventTimestampedInput,
+    SharedNewsAccumulatorState, SharedNewsEventTimestampedInput,
+    dispatch_shared_news_events_with_resolved_market_states,
 };
 
 use support::validation_fixture::{
+    OpenClosedGapBehaviorEventExpectationFixture, OpenClosedGapBehaviorScenarioCaseFixture,
     load_calendar_regression_fixture_from_manifest,
     load_open_closed_gap_behavior_scenario_fixture_from_manifest,
-    OpenClosedGapBehaviorEventExpectationFixture, OpenClosedGapBehaviorScenarioCaseFixture,
 };
 
 const OPEN_WINDOW_SCENARIO_ID: &str = "xnys_intraday_open_window_gap_suppression";
@@ -448,7 +448,7 @@ fn weekend_boundary_scenario_keeps_market_closed_until_exact_session_open() {
 #[test]
 fn boundary_tagged_scenarios_verify_exact_session_transition_events() {
     let (calendar_registry, fixture_cases) = load_gap_behavior_test_inputs();
-    
+
     let boundary_cases = scenario_cases_with_tag(&fixture_cases, BOUNDARY_TAG);
     assert!(
         !boundary_cases.is_empty(),
@@ -510,9 +510,9 @@ fn load_gap_behavior_test_inputs() -> (
     )
 }
 
-fn open_window_only_cases<'a>(
-    fixture_cases: &'a [OpenClosedGapBehaviorScenarioCaseFixture],
-) -> Vec<&'a OpenClosedGapBehaviorScenarioCaseFixture> {
+fn open_window_only_cases(
+    fixture_cases: &[OpenClosedGapBehaviorScenarioCaseFixture],
+) -> Vec<&OpenClosedGapBehaviorScenarioCaseFixture> {
     fixture_cases
         .iter()
         .filter(|fixture_case| {
@@ -525,9 +525,9 @@ fn open_window_only_cases<'a>(
         .collect()
 }
 
-fn closed_window_cases<'a>(
-    fixture_cases: &'a [OpenClosedGapBehaviorScenarioCaseFixture],
-) -> Vec<&'a OpenClosedGapBehaviorScenarioCaseFixture> {
+fn closed_window_cases(
+    fixture_cases: &[OpenClosedGapBehaviorScenarioCaseFixture],
+) -> Vec<&OpenClosedGapBehaviorScenarioCaseFixture> {
     fixture_cases
         .iter()
         .filter(|fixture_case| {
