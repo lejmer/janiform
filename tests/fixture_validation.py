@@ -825,7 +825,7 @@ def validate_open_closed_gap_behavior_calendar_integration(
     calendar_registry = CalendarRegistry(calendar_registry_json)
 
     observed_window_tags: set[str] = set()
-    required_window_tags: set[str] = {"intraday", "overnight", "weekend"}
+    required_window_tags: set[str] = {"intraday", "overnight", "weekend", "boundary"}
     for case_index, fixture_case in enumerate(open_closed_gap_behavior_fixture_document["cases"]):
         case_context = f"open and closed gap case[{case_index}]"
 
@@ -870,7 +870,7 @@ def validate_open_closed_gap_behavior_calendar_integration(
         sorted_missing_tags = ", ".join(sorted(missing_window_tags))
         raise ValueError(
             "open and closed gap fixture calendar_state_fixture_references must cover intraday, "
-            f"overnight, and weekend windows, missing tags: {sorted_missing_tags}",
+            f"overnight, weekend, and boundary windows, missing tags: {sorted_missing_tags}",
         )
 
 

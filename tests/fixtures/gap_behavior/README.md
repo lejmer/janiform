@@ -43,6 +43,23 @@ Window coverage is intentional and explicit:
 - `xnys_intraday_open_window_gap_suppression` maps to intraday references
 - `xnys_overnight_closed_window_gap_emission` maps to overnight references
 - `xtks_weekend_closed_window_gap_emission` maps to weekend references
+- `xnys_overnight_close_open_boundary_transition` maps to overnight session-edge references
+- `xnys_weekend_close_open_boundary_transition` maps to weekend session-edge references
+
+Boundary coverage is required in addition to intraday, overnight, and weekend.
+
+## Boundary Semantics
+
+Session windows follow the canonical calendar boundary policy:
+
+- Session open is inclusive
+- Session close is exclusive
+- Exact session-open timestamps resolve `open`
+- Exact session-close timestamps resolve `closed`
+
+The boundary transition scenarios include data-driven `event_pre_*`, `event_at_*`, and
+`event_post_*` event IDs around close and open transitions so regression tests can validate
+edge behavior without hardcoded timestamp logic.
 
 ## Determinism Rules
 
