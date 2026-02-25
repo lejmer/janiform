@@ -16,6 +16,7 @@ use support::validation_fixture::{
 };
 
 const OPEN_WINDOW_SCENARIO_ID: &str = "xnys_intraday_open_window_gap_suppression";
+const CLOSED_WINDOW_SCENARIO_ID: &str = "xnys_overnight_closed_window_gap_emission";
 const FLOAT_TOLERANCE: f64 = 1.0e-12;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -23,7 +24,12 @@ struct OpenWindowEventValidationOutput {
     scenario_id: String,
     event_id: String,
     event_timestamp_utc: String,
+    expected_market_state: MarketState,
     observed_market_state: MarketState,
+    expected_shared_severity_mark: f64,
+    observed_shared_severity_mark: f64,
+    expected_coupled_gap_jump_mark: f64,
+    observed_coupled_gap_jump_mark: f64,
     activity_coupling_j_t_increment: f64,
     direct_gap_g_t_increment: f64,
     expected_activity_coupling_j_t_increment: f64,
@@ -37,14 +43,20 @@ struct OpenWindowScenarioSummaryOutput {
     scenario_id: String,
     initial_j_t: f64,
     final_j_t: f64,
+    initial_g_t: f64,
+    final_g_t: f64,
     expected_total_activity_coupling_j_t_increment: f64,
     observed_total_activity_coupling_j_t_increment: f64,
     expected_total_direct_gap_g_t_increment: f64,
     observed_total_direct_gap_g_t_increment: f64,
     expected_open_event_count: usize,
     observed_open_event_count: usize,
+    expected_closed_event_count: usize,
+    observed_closed_event_count: usize,
     expected_open_window_direct_gap_increment_count: usize,
     observed_open_window_direct_gap_increment_count: usize,
+    expected_closed_window_direct_gap_increment_count: usize,
+    observed_closed_window_direct_gap_increment_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -63,11 +75,22 @@ struct OpenWindowGapValidationFailure {
     detail: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ClosedWindowGapValidationFailure {
+    check_id: &'static str,
+    scenario_id: String,
+    event_id: String,
+    event_timestamp_utc: String,
+    detail: String,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 struct ExpectedEventMetadata {
     event_id: String,
     event_timestamp_utc: String,
     expected_market_state: MarketState,
+    expected_shared_severity_mark: f64,
+    expected_coupled_gap_jump_mark: f64,
     expected_activity_coupling_j_t_increment: f64,
     expected_direct_gap_g_t_increment: f64,
     expected_direct_gap_applied: bool,
@@ -190,6 +213,155 @@ fn open_window_gap_leakage_regression_reports_scenario_id_and_event_timestamp() 
     );
 }
 
+#[test]
+fn closed_window_marked_events_emit_direct_gap_and_share_dispatch_updates() {
+    let (calendar_registry, fixture_cases) = load_gap_behavior_test_inputs();
+
+    let closed_window_cases = closed_window_cases(&fixture_cases);
+    assert!(
+        !closed_window_cases.is_empty(),
+        "fixture suite must include at least one closed-window scenario"
+    );
+
+    for fixture_case in closed_window_cases {
+        let output = evaluate_open_window_scenario(&calendar_registry, fixture_case);
+        let failures = collect_closed_window_validation_failures(&output);
+        assert!(
+            failures.is_empty(),
+            "closed-window scenario validation failed:\n{}",
+            render_closed_window_failures(&failures)
+        );
+
+        let has_closed_event_with_non_zero_coupled_gap_mark =
+            output.event_outputs.iter().any(|event_output| {
+                event_output.expected_market_state == MarketState::Closed
+                    && event_output.expected_coupled_gap_jump_mark.abs() > FLOAT_TOLERANCE
+            });
+        assert!(
+            has_closed_event_with_non_zero_coupled_gap_mark,
+            "scenario {} must include at least one closed-window event with non-zero coupled gap mark",
+            fixture_case.fixture_id
+        );
+
+        let has_non_zero_observed_closed_gap_increment =
+            output.event_outputs.iter().any(|event_output| {
+                event_output.observed_market_state == MarketState::Closed
+                    && event_output.direct_gap_g_t_increment.abs() > FLOAT_TOLERANCE
+            });
+        assert!(
+            has_non_zero_observed_closed_gap_increment,
+            "scenario {} must emit at least one non-zero closed-window direct gap increment",
+            fixture_case.fixture_id
+        );
+
+        assert!(
+            float_close(
+                output.summary.final_j_t - output.summary.initial_j_t,
+                output
+                    .summary
+                    .expected_total_activity_coupling_j_t_increment,
+            ),
+            "scenario {} must apply expected total J_t increment",
+            fixture_case.fixture_id
+        );
+        assert!(
+            float_close(
+                output.summary.final_g_t - output.summary.initial_g_t,
+                output.summary.expected_total_direct_gap_g_t_increment,
+            ),
+            "scenario {} must apply expected total G_t increment",
+            fixture_case.fixture_id
+        );
+    }
+}
+
+#[test]
+fn closed_window_scenario_outputs_are_deterministic_and_match_expected_gap_emission() {
+    let (calendar_registry, fixture_cases) = load_gap_behavior_test_inputs();
+
+    let closed_window_case = fixture_case_by_id(&fixture_cases, CLOSED_WINDOW_SCENARIO_ID);
+
+    let first_output = evaluate_open_window_scenario(&calendar_registry, closed_window_case);
+    let second_output = evaluate_open_window_scenario(&calendar_registry, closed_window_case);
+
+    assert_eq!(first_output, second_output);
+    assert_eq!(
+        first_output.summary.observed_closed_event_count,
+        first_output.summary.expected_closed_event_count
+    );
+    assert_eq!(
+        first_output
+            .summary
+            .observed_closed_window_direct_gap_increment_count,
+        first_output
+            .summary
+            .expected_closed_window_direct_gap_increment_count
+    );
+
+    for event_output in &first_output.event_outputs {
+        assert!(
+            float_close(
+                event_output.activity_coupling_j_t_increment,
+                event_output.observed_shared_severity_mark,
+            ),
+            "scenario {} event {} must route shared severity mark into J_t increment",
+            first_output.scenario_id,
+            event_output.event_id
+        );
+
+        if event_output.observed_market_state == MarketState::Closed {
+            assert!(
+                float_close(
+                    event_output.direct_gap_g_t_increment,
+                    event_output.observed_coupled_gap_jump_mark,
+                ),
+                "scenario {} event {} must route coupled gap mark into G_t increment in closed windows",
+                first_output.scenario_id,
+                event_output.event_id
+            );
+        }
+    }
+}
+
+#[test]
+fn closed_window_gap_emission_mismatch_reports_event_level_diagnostics() {
+    let (calendar_registry, fixture_cases) = load_gap_behavior_test_inputs();
+
+    let closed_window_case = fixture_case_by_id(&fixture_cases, CLOSED_WINDOW_SCENARIO_ID);
+    let mut output = evaluate_open_window_scenario(&calendar_registry, closed_window_case);
+
+    let mutated_event = output
+        .event_outputs
+        .iter_mut()
+        .find(|event_output| {
+            event_output.expected_market_state == MarketState::Closed
+                && event_output.expected_direct_gap_applied
+        })
+        .expect("closed-window scenario must include at least one expected direct gap event");
+    let mutated_event_id = mutated_event.event_id.clone();
+    let mutated_event_timestamp = mutated_event.event_timestamp_utc.clone();
+    mutated_event.direct_gap_g_t_increment = 0.0;
+    mutated_event.observed_direct_gap_applied = false;
+
+    let failures = collect_closed_window_validation_failures(&output);
+    assert!(
+        !failures.is_empty(),
+        "injected closed-window mismatch must trigger validation failures"
+    );
+
+    let gap_emission_failure = failures
+        .iter()
+        .find(|failure| failure.check_id == "closed_window_expected_gap_not_emitted")
+        .expect("injected mismatch must emit a missing closed-window gap diagnostics failure");
+
+    assert_eq!(gap_emission_failure.scenario_id, output.scenario_id);
+    assert_eq!(gap_emission_failure.event_id, mutated_event_id);
+    assert_eq!(
+        gap_emission_failure.event_timestamp_utc,
+        mutated_event_timestamp
+    );
+}
+
 fn load_gap_behavior_test_inputs() -> (
     ExchangeCalendarRegistry,
     Vec<OpenClosedGapBehaviorScenarioCaseFixture>,
@@ -223,6 +395,21 @@ fn open_window_only_cases<'a>(
                 .summary
                 .expected_closed_event_count
                 == 0
+        })
+        .collect()
+}
+
+fn closed_window_cases<'a>(
+    fixture_cases: &'a [OpenClosedGapBehaviorScenarioCaseFixture],
+) -> Vec<&'a OpenClosedGapBehaviorScenarioCaseFixture> {
+    fixture_cases
+        .iter()
+        .filter(|fixture_case| {
+            fixture_case
+                .expected_outcome
+                .summary
+                .expected_closed_event_count
+                > 0
         })
         .collect()
 }
@@ -272,6 +459,8 @@ fn evaluate_open_window_scenario(
                     expected_market_state: parse_market_state(
                         &expected_outcome.expected_market_state,
                     ),
+                    expected_shared_severity_mark: injected_event.shared_severity_mark,
+                    expected_coupled_gap_jump_mark: injected_event.coupled_gap_jump_mark,
                     expected_activity_coupling_j_t_increment: expected_outcome
                         .expected_j_t_increment,
                     expected_direct_gap_g_t_increment: expected_outcome.expected_g_t_increment,
@@ -318,7 +507,12 @@ fn evaluate_open_window_scenario(
                 scenario_id: fixture_case.fixture_id.clone(),
                 event_id: expected_metadata.event_id.clone(),
                 event_timestamp_utc: expected_metadata.event_timestamp_utc.clone(),
+                expected_market_state: expected_metadata.expected_market_state,
                 observed_market_state: dispatch_record.market_state,
+                expected_shared_severity_mark: expected_metadata.expected_shared_severity_mark,
+                observed_shared_severity_mark: dispatch_record.shared_severity_mark,
+                expected_coupled_gap_jump_mark: expected_metadata.expected_coupled_gap_jump_mark,
+                observed_coupled_gap_jump_mark: dispatch_record.coupled_gap_jump_mark,
                 activity_coupling_j_t_increment: dispatch_record.j_t_increment,
                 direct_gap_g_t_increment: dispatch_record.g_t_increment,
                 expected_activity_coupling_j_t_increment: expected_metadata
@@ -335,11 +529,29 @@ fn evaluate_open_window_scenario(
         .iter()
         .filter(|event_output| event_output.observed_market_state == MarketState::Open)
         .count();
+    let observed_closed_event_count = event_outputs
+        .iter()
+        .filter(|event_output| event_output.observed_market_state == MarketState::Closed)
+        .count();
     let observed_open_window_direct_gap_increment_count = event_outputs
         .iter()
         .filter(|event_output| {
             event_output.observed_market_state == MarketState::Open
                 && event_output.observed_direct_gap_applied
+        })
+        .count();
+    let observed_closed_window_direct_gap_increment_count = event_outputs
+        .iter()
+        .filter(|event_output| {
+            event_output.observed_market_state == MarketState::Closed
+                && event_output.observed_direct_gap_applied
+        })
+        .count();
+    let expected_closed_window_direct_gap_increment_count = event_outputs
+        .iter()
+        .filter(|event_output| {
+            event_output.expected_market_state == MarketState::Closed
+                && event_output.expected_direct_gap_applied
         })
         .count();
     let observed_total_activity_coupling_j_t_increment = event_outputs
@@ -358,6 +570,8 @@ fn evaluate_open_window_scenario(
             scenario_id: fixture_case.fixture_id.clone(),
             initial_j_t: fixture_case.initial_accumulator_state.j_t,
             final_j_t: dispatch_output.final_state.j_t,
+            initial_g_t: fixture_case.initial_accumulator_state.g_t,
+            final_g_t: dispatch_output.final_state.g_t,
             expected_total_activity_coupling_j_t_increment: fixture_case
                 .expected_outcome
                 .summary
@@ -373,11 +587,18 @@ fn evaluate_open_window_scenario(
                 .summary
                 .expected_open_event_count,
             observed_open_event_count,
+            expected_closed_event_count: fixture_case
+                .expected_outcome
+                .summary
+                .expected_closed_event_count,
+            observed_closed_event_count,
             expected_open_window_direct_gap_increment_count: fixture_case
                 .expected_outcome
                 .summary
                 .expected_open_window_direct_gap_increment_count,
             observed_open_window_direct_gap_increment_count,
+            expected_closed_window_direct_gap_increment_count,
+            observed_closed_window_direct_gap_increment_count,
         },
     }
 }
@@ -462,7 +683,168 @@ fn collect_open_window_validation_failures(
     failures
 }
 
+fn collect_closed_window_validation_failures(
+    output: &OpenWindowScenarioValidationOutput,
+) -> Vec<ClosedWindowGapValidationFailure> {
+    let mut failures: Vec<ClosedWindowGapValidationFailure> = Vec::new();
+    for event_output in &output.event_outputs {
+        if !float_close(
+            event_output.observed_shared_severity_mark,
+            event_output.expected_shared_severity_mark,
+        ) {
+            failures.push(ClosedWindowGapValidationFailure {
+                check_id: "closed_window_shared_severity_mark_mismatch",
+                scenario_id: event_output.scenario_id.clone(),
+                event_id: event_output.event_id.clone(),
+                event_timestamp_utc: event_output.event_timestamp_utc.clone(),
+                detail: format!(
+                    "shared severity mark mismatch expected={} observed={}",
+                    event_output.expected_shared_severity_mark,
+                    event_output.observed_shared_severity_mark
+                ),
+            });
+        }
+
+        if !float_close(
+            event_output.observed_coupled_gap_jump_mark,
+            event_output.expected_coupled_gap_jump_mark,
+        ) {
+            failures.push(ClosedWindowGapValidationFailure {
+                check_id: "closed_window_coupled_gap_mark_mismatch",
+                scenario_id: event_output.scenario_id.clone(),
+                event_id: event_output.event_id.clone(),
+                event_timestamp_utc: event_output.event_timestamp_utc.clone(),
+                detail: format!(
+                    "coupled gap jump mark mismatch expected={} observed={}",
+                    event_output.expected_coupled_gap_jump_mark,
+                    event_output.observed_coupled_gap_jump_mark
+                ),
+            });
+        }
+
+        if !float_close(
+            event_output.activity_coupling_j_t_increment,
+            event_output.expected_activity_coupling_j_t_increment,
+        ) {
+            failures.push(ClosedWindowGapValidationFailure {
+                check_id: "closed_window_activity_path_mismatch",
+                scenario_id: event_output.scenario_id.clone(),
+                event_id: event_output.event_id.clone(),
+                event_timestamp_utc: event_output.event_timestamp_utc.clone(),
+                detail: format!(
+                    "activity coupling increment mismatch expected={} observed={}",
+                    event_output.expected_activity_coupling_j_t_increment,
+                    event_output.activity_coupling_j_t_increment
+                ),
+            });
+        }
+
+        if !float_close(
+            event_output.direct_gap_g_t_increment,
+            event_output.expected_direct_gap_g_t_increment,
+        ) {
+            failures.push(ClosedWindowGapValidationFailure {
+                check_id: "closed_window_direct_gap_increment_mismatch",
+                scenario_id: event_output.scenario_id.clone(),
+                event_id: event_output.event_id.clone(),
+                event_timestamp_utc: event_output.event_timestamp_utc.clone(),
+                detail: format!(
+                    "direct gap increment mismatch expected={} observed={}",
+                    event_output.expected_direct_gap_g_t_increment,
+                    event_output.direct_gap_g_t_increment
+                ),
+            });
+        }
+
+        if !float_close(
+            event_output.activity_coupling_j_t_increment,
+            event_output.observed_shared_severity_mark,
+        ) {
+            failures.push(ClosedWindowGapValidationFailure {
+                check_id: "closed_window_jt_shared_mark_coupling_mismatch",
+                scenario_id: event_output.scenario_id.clone(),
+                event_id: event_output.event_id.clone(),
+                event_timestamp_utc: event_output.event_timestamp_utc.clone(),
+                detail: format!(
+                    "J_t increment {} must match shared severity mark {}",
+                    event_output.activity_coupling_j_t_increment,
+                    event_output.observed_shared_severity_mark
+                ),
+            });
+        }
+
+        match event_output.expected_market_state {
+            MarketState::Open => {
+                if event_output.observed_direct_gap_applied {
+                    failures.push(ClosedWindowGapValidationFailure {
+                        check_id: "closed_window_mixed_case_open_gap_leakage",
+                        scenario_id: event_output.scenario_id.clone(),
+                        event_id: event_output.event_id.clone(),
+                        event_timestamp_utc: event_output.event_timestamp_utc.clone(),
+                        detail: format!(
+                            "open-window event leaked direct gap increment with observed g_t_increment={}",
+                            event_output.direct_gap_g_t_increment
+                        ),
+                    });
+                }
+            }
+            MarketState::Closed => {
+                if !float_close(
+                    event_output.direct_gap_g_t_increment,
+                    event_output.observed_coupled_gap_jump_mark,
+                ) {
+                    failures.push(ClosedWindowGapValidationFailure {
+                        check_id: "closed_window_gt_coupled_mark_mismatch",
+                        scenario_id: event_output.scenario_id.clone(),
+                        event_id: event_output.event_id.clone(),
+                        event_timestamp_utc: event_output.event_timestamp_utc.clone(),
+                        detail: format!(
+                            "closed-window G_t increment {} must match coupled gap mark {}",
+                            event_output.direct_gap_g_t_increment,
+                            event_output.observed_coupled_gap_jump_mark
+                        ),
+                    });
+                }
+
+                if event_output.expected_direct_gap_applied
+                    && !event_output.observed_direct_gap_applied
+                {
+                    failures.push(ClosedWindowGapValidationFailure {
+                        check_id: "closed_window_expected_gap_not_emitted",
+                        scenario_id: event_output.scenario_id.clone(),
+                        event_id: event_output.event_id.clone(),
+                        event_timestamp_utc: event_output.event_timestamp_utc.clone(),
+                        detail: format!(
+                            "closed-window event expected direct gap emission but observed g_t_increment={}",
+                            event_output.direct_gap_g_t_increment
+                        ),
+                    });
+                }
+            }
+        }
+    }
+
+    failures
+}
+
 fn render_failures(failures: &[OpenWindowGapValidationFailure]) -> String {
+    failures
+        .iter()
+        .map(|failure| {
+            format!(
+                "check_id={} scenario_id={} event_id={} event_timestamp_utc={} detail={}",
+                failure.check_id,
+                failure.scenario_id,
+                failure.event_id,
+                failure.event_timestamp_utc,
+                failure.detail
+            )
+        })
+        .collect::<Vec<String>>()
+        .join("\n")
+}
+
+fn render_closed_window_failures(failures: &[ClosedWindowGapValidationFailure]) -> String {
     failures
         .iter()
         .map(|failure| {
