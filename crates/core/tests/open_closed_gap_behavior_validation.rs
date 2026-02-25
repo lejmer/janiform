@@ -17,6 +17,9 @@ use support::validation_fixture::{
 
 const OPEN_WINDOW_SCENARIO_ID: &str = "xnys_intraday_open_window_gap_suppression";
 const CLOSED_WINDOW_SCENARIO_ID: &str = "xnys_overnight_closed_window_gap_emission";
+const OVERNIGHT_BOUNDARY_SCENARIO_ID: &str = "xnys_overnight_close_open_boundary_transition";
+const WEEKEND_BOUNDARY_SCENARIO_ID: &str = "xnys_weekend_close_open_boundary_transition";
+const BOUNDARY_TAG: &str = "boundary";
 const FLOAT_TOLERANCE: f64 = 1.0e-12;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -362,6 +365,129 @@ fn closed_window_gap_emission_mismatch_reports_event_level_diagnostics() {
     );
 }
 
+#[test]
+fn overnight_boundary_scenario_enforces_close_to_open_transition_semantics() {
+    let (calendar_registry, fixture_cases) = load_gap_behavior_test_inputs();
+    let boundary_case = fixture_case_by_id(&fixture_cases, OVERNIGHT_BOUNDARY_SCENARIO_ID);
+    let output = evaluate_open_window_scenario(&calendar_registry, boundary_case);
+
+    let failures = collect_closed_window_validation_failures(&output);
+    assert!(
+        failures.is_empty(),
+        "overnight boundary scenario validation failed:\n{}",
+        render_closed_window_failures(&failures)
+    );
+
+    let pre_close_event = event_output_by_id(&output, "event_pre_close");
+    assert_eq!(pre_close_event.observed_market_state, MarketState::Open);
+    assert!(!pre_close_event.observed_direct_gap_applied);
+
+    let at_close_event = event_output_by_id(&output, "event_at_close");
+    assert_eq!(at_close_event.observed_market_state, MarketState::Closed);
+    assert!(at_close_event.observed_direct_gap_applied);
+
+    let post_close_event = event_output_by_id(&output, "event_post_close");
+    assert_eq!(post_close_event.observed_market_state, MarketState::Closed);
+    assert!(post_close_event.observed_direct_gap_applied);
+
+    let pre_open_event = event_output_by_id(&output, "event_pre_open");
+    assert_eq!(pre_open_event.observed_market_state, MarketState::Closed);
+    assert!(pre_open_event.observed_direct_gap_applied);
+
+    let at_open_event = event_output_by_id(&output, "event_at_open");
+    assert_eq!(at_open_event.observed_market_state, MarketState::Open);
+    assert!(!at_open_event.observed_direct_gap_applied);
+
+    let post_open_event = event_output_by_id(&output, "event_post_open");
+    assert_eq!(post_open_event.observed_market_state, MarketState::Open);
+    assert!(!post_open_event.observed_direct_gap_applied);
+}
+
+#[test]
+fn weekend_boundary_scenario_keeps_market_closed_until_exact_session_open() {
+    let (calendar_registry, fixture_cases) = load_gap_behavior_test_inputs();
+    let boundary_case = fixture_case_by_id(&fixture_cases, WEEKEND_BOUNDARY_SCENARIO_ID);
+    let output = evaluate_open_window_scenario(&calendar_registry, boundary_case);
+
+    let failures = collect_closed_window_validation_failures(&output);
+    assert!(
+        failures.is_empty(),
+        "weekend boundary scenario validation failed:\n{}",
+        render_closed_window_failures(&failures)
+    );
+
+    let at_close_event = event_output_by_id(&output, "event_at_close");
+    let saturday_event = event_output_by_id(&output, "event_saturday_mid_window");
+    let sunday_event = event_output_by_id(&output, "event_sunday_mid_window");
+    let pre_open_event = event_output_by_id(&output, "event_pre_open");
+    let at_open_event = event_output_by_id(&output, "event_at_open");
+    let post_open_event = event_output_by_id(&output, "event_post_open");
+
+    for closed_window_event in [at_close_event, saturday_event, sunday_event, pre_open_event] {
+        assert_eq!(
+            closed_window_event.observed_market_state,
+            MarketState::Closed
+        );
+        assert!(
+            closed_window_event.observed_direct_gap_applied,
+            "scenario {} event {} must emit direct gap increment while market is closed",
+            output.scenario_id, closed_window_event.event_id
+        );
+    }
+
+    for open_window_event in [at_open_event, post_open_event] {
+        assert_eq!(open_window_event.observed_market_state, MarketState::Open);
+        assert!(
+            !open_window_event.observed_direct_gap_applied,
+            "scenario {} event {} must keep direct gap increment disabled at and after open",
+            output.scenario_id, open_window_event.event_id
+        );
+    }
+}
+
+#[test]
+fn boundary_tagged_scenarios_verify_exact_session_transition_events() {
+    let (calendar_registry, fixture_cases) = load_gap_behavior_test_inputs();
+    
+    let boundary_cases = scenario_cases_with_tag(&fixture_cases, BOUNDARY_TAG);
+    assert!(
+        !boundary_cases.is_empty(),
+        "fixture suite must include at least one boundary-tagged scenario"
+    );
+
+    for boundary_case in boundary_cases {
+        let output = evaluate_open_window_scenario(&calendar_registry, boundary_case);
+        let at_close_event = event_output_by_id_suffix(&output, "_at_close")
+            .expect("boundary scenario must define *_at_close event");
+        let at_open_event = event_output_by_id_suffix(&output, "_at_open")
+            .expect("boundary scenario must define *_at_open event");
+
+        assert_eq!(
+            at_close_event.observed_market_state,
+            MarketState::Closed,
+            "scenario {} exact close boundary must resolve closed",
+            output.scenario_id
+        );
+        assert!(
+            at_close_event.observed_direct_gap_applied,
+            "scenario {} exact close boundary must emit closed-window direct gap increment",
+            output.scenario_id
+        );
+
+        assert_eq!(
+            at_open_event.observed_market_state,
+            MarketState::Open,
+            "scenario {} exact open boundary must resolve open",
+            output.scenario_id
+        );
+        assert!(
+            !at_open_event.observed_direct_gap_applied,
+            "scenario {} exact open boundary must suppress direct gap increment",
+            output.scenario_id
+        );
+    }
+}
+
 fn load_gap_behavior_test_inputs() -> (
     ExchangeCalendarRegistry,
     Vec<OpenClosedGapBehaviorScenarioCaseFixture>,
@@ -422,6 +548,37 @@ fn fixture_case_by_id<'a>(
         .iter()
         .find(|fixture_case| fixture_case.fixture_id == scenario_id)
         .expect("requested fixture_id must exist")
+}
+
+fn scenario_cases_with_tag<'a>(
+    fixture_cases: &'a [OpenClosedGapBehaviorScenarioCaseFixture],
+    tag: &str,
+) -> Vec<&'a OpenClosedGapBehaviorScenarioCaseFixture> {
+    fixture_cases
+        .iter()
+        .filter(|fixture_case| fixture_case.tags.iter().any(|case_tag| case_tag == tag))
+        .collect()
+}
+
+fn event_output_by_id<'a>(
+    output: &'a OpenWindowScenarioValidationOutput,
+    event_id: &str,
+) -> &'a OpenWindowEventValidationOutput {
+    output
+        .event_outputs
+        .iter()
+        .find(|event_output| event_output.event_id == event_id)
+        .expect("requested event_id must exist in scenario output")
+}
+
+fn event_output_by_id_suffix<'a>(
+    output: &'a OpenWindowScenarioValidationOutput,
+    event_id_suffix: &str,
+) -> Option<&'a OpenWindowEventValidationOutput> {
+    output
+        .event_outputs
+        .iter()
+        .find(|event_output| event_output.event_id.ends_with(event_id_suffix))
 }
 
 fn evaluate_open_window_scenario(

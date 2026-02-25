@@ -32,7 +32,8 @@
     "required_tags": [
       "open_window",
       "closed_window",
-      "deterministic"
+      "deterministic",
+      "boundary"
     ],
     "stable_fixture_ids_by_tag": {
       "open_window": [
@@ -40,15 +41,33 @@
       ],
       "closed_window": [
         "xnys_overnight_closed_window_gap_emission",
-        "xtks_weekend_closed_window_gap_emission"
+        "xtks_weekend_closed_window_gap_emission",
+        "xnys_overnight_close_open_boundary_transition",
+        "xnys_weekend_close_open_boundary_transition"
       ],
       "mixed_window": [
-        "xnys_overnight_closed_window_gap_emission"
+        "xnys_overnight_closed_window_gap_emission",
+        "xnys_overnight_close_open_boundary_transition",
+        "xnys_weekend_close_open_boundary_transition"
       ],
       "deterministic": [
         "xnys_intraday_open_window_gap_suppression",
         "xnys_overnight_closed_window_gap_emission",
-        "xtks_weekend_closed_window_gap_emission"
+        "xtks_weekend_closed_window_gap_emission",
+        "xnys_overnight_close_open_boundary_transition",
+        "xnys_weekend_close_open_boundary_transition"
+      ],
+      "boundary": [
+        "xnys_overnight_close_open_boundary_transition",
+        "xnys_weekend_close_open_boundary_transition"
+      ],
+      "overnight": [
+        "xnys_overnight_closed_window_gap_emission",
+        "xnys_overnight_close_open_boundary_transition"
+      ],
+      "weekend": [
+        "xtks_weekend_closed_window_gap_emission",
+        "xnys_weekend_close_open_boundary_transition"
       ]
     }
   },
@@ -249,6 +268,256 @@
         "weekend"
       ],
       "description": "Weekend closed-window events on XTKS emit direct gap increments and shared severity loads."
+    },
+    {
+      "fixture_id": "xnys_overnight_close_open_boundary_transition",
+      "exchange_code": "XNYS",
+      "calendar_fixture_set_id": "calendar_service_regression_matrix_v1",
+      "calendar_state_fixture_references": [
+        "xnys_regular_mid_session",
+        "xnys_regular_at_close",
+        "xnys_regular_pre_open",
+        "xnys_regular_at_open"
+      ],
+      "range_start_utc": "2026-02-05T20:59:59Z",
+      "range_end_utc": "2026-02-06T14:30:01Z",
+      "initial_accumulator_state": {
+        "j_t": 0.3,
+        "g_t": -0.05
+      },
+      "injected_events": [
+        {
+          "event_id": "event_pre_close",
+          "timestamp_utc": "2026-02-05T20:59:59Z",
+          "shared_severity_mark": 0.45,
+          "coupled_gap_jump_mark": -0.11
+        },
+        {
+          "event_id": "event_at_close",
+          "timestamp_utc": "2026-02-05T21:00:00Z",
+          "shared_severity_mark": 0.6,
+          "coupled_gap_jump_mark": -0.27
+        },
+        {
+          "event_id": "event_post_close",
+          "timestamp_utc": "2026-02-05T21:00:01Z",
+          "shared_severity_mark": 0.25,
+          "coupled_gap_jump_mark": 0.14
+        },
+        {
+          "event_id": "event_pre_open",
+          "timestamp_utc": "2026-02-06T14:29:59Z",
+          "shared_severity_mark": 0.8,
+          "coupled_gap_jump_mark": -0.31
+        },
+        {
+          "event_id": "event_at_open",
+          "timestamp_utc": "2026-02-06T14:30:00Z",
+          "shared_severity_mark": 0.5,
+          "coupled_gap_jump_mark": 0.2
+        },
+        {
+          "event_id": "event_post_open",
+          "timestamp_utc": "2026-02-06T14:30:01Z",
+          "shared_severity_mark": 0.3,
+          "coupled_gap_jump_mark": -0.09
+        }
+      ],
+      "expected_outcome": {
+        "event_outcomes": [
+          {
+            "event_id": "event_pre_close",
+            "expected_market_state": "open",
+            "expected_j_t_increment": 0.45,
+            "expected_g_t_increment": 0.0,
+            "expected_direct_gap_applied": false
+          },
+          {
+            "event_id": "event_at_close",
+            "expected_market_state": "closed",
+            "expected_j_t_increment": 0.6,
+            "expected_g_t_increment": -0.27,
+            "expected_direct_gap_applied": true
+          },
+          {
+            "event_id": "event_post_close",
+            "expected_market_state": "closed",
+            "expected_j_t_increment": 0.25,
+            "expected_g_t_increment": 0.14,
+            "expected_direct_gap_applied": true
+          },
+          {
+            "event_id": "event_pre_open",
+            "expected_market_state": "closed",
+            "expected_j_t_increment": 0.8,
+            "expected_g_t_increment": -0.31,
+            "expected_direct_gap_applied": true
+          },
+          {
+            "event_id": "event_at_open",
+            "expected_market_state": "open",
+            "expected_j_t_increment": 0.5,
+            "expected_g_t_increment": 0.0,
+            "expected_direct_gap_applied": false
+          },
+          {
+            "event_id": "event_post_open",
+            "expected_market_state": "open",
+            "expected_j_t_increment": 0.3,
+            "expected_g_t_increment": 0.0,
+            "expected_direct_gap_applied": false
+          }
+        ],
+        "summary": {
+          "expected_open_event_count": 3,
+          "expected_closed_event_count": 3,
+          "expected_total_j_t_increment": 2.9,
+          "expected_total_g_t_increment": -0.44,
+          "expected_open_window_direct_gap_increment_count": 0
+        }
+      },
+      "tags": [
+        "closed_window",
+        "mixed_window",
+        "deterministic",
+        "overnight",
+        "boundary",
+        "session_edge",
+        "exact_transition"
+      ],
+      "description": "Boundary-adjacent overnight case with pre, at, and post session-close and session-open events following open-inclusive close-exclusive calendar semantics."
+    },
+    {
+      "fixture_id": "xnys_weekend_close_open_boundary_transition",
+      "exchange_code": "XNYS",
+      "calendar_fixture_set_id": "calendar_service_regression_matrix_v1",
+      "calendar_state_fixture_references": [
+        "xnys_regular_mid_session",
+        "xnys_regular_at_close",
+        "xnys_weekend_sunday",
+        "xnys_regular_pre_open",
+        "xnys_regular_at_open"
+      ],
+      "range_start_utc": "2026-01-30T20:59:59Z",
+      "range_end_utc": "2026-02-02T14:30:01Z",
+      "initial_accumulator_state": {
+        "j_t": 0.0,
+        "g_t": 0.0
+      },
+      "injected_events": [
+        {
+          "event_id": "event_pre_close",
+          "timestamp_utc": "2026-01-30T20:59:59Z",
+          "shared_severity_mark": 0.3,
+          "coupled_gap_jump_mark": 0.08
+        },
+        {
+          "event_id": "event_at_close",
+          "timestamp_utc": "2026-01-30T21:00:00Z",
+          "shared_severity_mark": 0.55,
+          "coupled_gap_jump_mark": -0.24
+        },
+        {
+          "event_id": "event_saturday_mid_window",
+          "timestamp_utc": "2026-01-31T15:00:00Z",
+          "shared_severity_mark": 0.7,
+          "coupled_gap_jump_mark": 0.18
+        },
+        {
+          "event_id": "event_sunday_mid_window",
+          "timestamp_utc": "2026-02-01T03:00:00Z",
+          "shared_severity_mark": 0.9,
+          "coupled_gap_jump_mark": -0.33
+        },
+        {
+          "event_id": "event_pre_open",
+          "timestamp_utc": "2026-02-02T14:29:59Z",
+          "shared_severity_mark": 0.4,
+          "coupled_gap_jump_mark": 0.22
+        },
+        {
+          "event_id": "event_at_open",
+          "timestamp_utc": "2026-02-02T14:30:00Z",
+          "shared_severity_mark": 0.5,
+          "coupled_gap_jump_mark": -0.19
+        },
+        {
+          "event_id": "event_post_open",
+          "timestamp_utc": "2026-02-02T14:30:01Z",
+          "shared_severity_mark": 0.2,
+          "coupled_gap_jump_mark": 0.11
+        }
+      ],
+      "expected_outcome": {
+        "event_outcomes": [
+          {
+            "event_id": "event_pre_close",
+            "expected_market_state": "open",
+            "expected_j_t_increment": 0.3,
+            "expected_g_t_increment": 0.0,
+            "expected_direct_gap_applied": false
+          },
+          {
+            "event_id": "event_at_close",
+            "expected_market_state": "closed",
+            "expected_j_t_increment": 0.55,
+            "expected_g_t_increment": -0.24,
+            "expected_direct_gap_applied": true
+          },
+          {
+            "event_id": "event_saturday_mid_window",
+            "expected_market_state": "closed",
+            "expected_j_t_increment": 0.7,
+            "expected_g_t_increment": 0.18,
+            "expected_direct_gap_applied": true
+          },
+          {
+            "event_id": "event_sunday_mid_window",
+            "expected_market_state": "closed",
+            "expected_j_t_increment": 0.9,
+            "expected_g_t_increment": -0.33,
+            "expected_direct_gap_applied": true
+          },
+          {
+            "event_id": "event_pre_open",
+            "expected_market_state": "closed",
+            "expected_j_t_increment": 0.4,
+            "expected_g_t_increment": 0.22,
+            "expected_direct_gap_applied": true
+          },
+          {
+            "event_id": "event_at_open",
+            "expected_market_state": "open",
+            "expected_j_t_increment": 0.5,
+            "expected_g_t_increment": 0.0,
+            "expected_direct_gap_applied": false
+          },
+          {
+            "event_id": "event_post_open",
+            "expected_market_state": "open",
+            "expected_j_t_increment": 0.2,
+            "expected_g_t_increment": 0.0,
+            "expected_direct_gap_applied": false
+          }
+        ],
+        "summary": {
+          "expected_open_event_count": 3,
+          "expected_closed_event_count": 4,
+          "expected_total_j_t_increment": 3.55,
+          "expected_total_g_t_increment": -0.17,
+          "expected_open_window_direct_gap_increment_count": 0
+        }
+      },
+      "tags": [
+        "closed_window",
+        "mixed_window",
+        "deterministic",
+        "weekend",
+        "boundary",
+        "session_edge",
+        "exact_transition"
+      ],
+      "description": "Weekend boundary case keeps the market closed from Friday close through weekend and Monday pre-open, then switches to open at the exact Monday session-open timestamp."
     }
   ]
 }

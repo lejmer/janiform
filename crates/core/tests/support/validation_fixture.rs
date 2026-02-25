@@ -1064,7 +1064,11 @@ pub fn validate_open_closed_gap_behavior_calendar_integration(
         }
 
         for case_tag in &fixture_case.tags {
-            if case_tag == "intraday" || case_tag == "overnight" || case_tag == "weekend" {
+            if case_tag == "intraday"
+                || case_tag == "overnight"
+                || case_tag == "weekend"
+                || case_tag == "boundary"
+            {
                 observed_window_tag_set.insert(case_tag);
             }
         }
@@ -1173,7 +1177,7 @@ pub fn validate_open_closed_gap_behavior_calendar_integration(
         }
     }
 
-    for required_window_tag in ["intraday", "overnight", "weekend"] {
+    for required_window_tag in ["intraday", "overnight", "weekend", "boundary"] {
         if !observed_window_tag_set.contains(required_window_tag) {
             add_open_closed_gap_behavior_validation_error(
                 &mut errors,

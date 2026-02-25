@@ -442,11 +442,50 @@ def test_open_closed_gap_fixture_calendar_integration_rejects_missing_window_tag
             for case_tag in fixture_case["tags"]
             if case_tag != "weekend"
         ]
+    
+    canonical_metadata: dict[str, object] = invalid_document["canonical_regression_metadata"]
+    stable_fixture_ids_by_tag: dict[str, object] = canonical_metadata["stable_fixture_ids_by_tag"]
+    stable_fixture_ids_by_tag.pop("weekend", None)
+    
     validated_document = validate_open_closed_gap_behavior_fixture_document(invalid_document)
 
     with pytest.raises(
         ValueError,
-        match="must cover intraday, overnight, and weekend windows",
+        match="must cover intraday, overnight, weekend, and boundary windows",
+    ):
+        validate_open_closed_gap_behavior_calendar_integration(
+            validated_document,
+            calendar_regression_fixture_document,
+        )
+
+
+def test_open_closed_gap_fixture_calendar_integration_rejects_missing_boundary_tag_coverage(
+    open_closed_gap_behavior_fixture_document: OpenClosedGapBehaviorFixtureDocument,
+    calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
+) -> None:
+    invalid_document: dict[str, object] = _copy_document(open_closed_gap_behavior_fixture_document)
+    for fixture_case in invalid_document["cases"]:
+        fixture_case["tags"] = [
+            case_tag
+            for case_tag in fixture_case["tags"]
+            if case_tag != "boundary"
+        ]
+    
+    canonical_metadata: dict[str, object] = invalid_document["canonical_regression_metadata"]
+    required_tags: list[str] = canonical_metadata["required_tags"]
+    canonical_metadata["required_tags"] = [
+        required_tag
+        for required_tag in required_tags
+        if required_tag != "boundary"
+    ]
+    
+    stable_fixture_ids_by_tag: dict[str, object] = canonical_metadata["stable_fixture_ids_by_tag"]
+    stable_fixture_ids_by_tag.pop("boundary", None)
+    validated_document = validate_open_closed_gap_behavior_fixture_document(invalid_document)
+
+    with pytest.raises(
+        ValueError,
+        match="must cover intraday, overnight, weekend, and boundary windows",
     ):
         validate_open_closed_gap_behavior_calendar_integration(
             validated_document,
