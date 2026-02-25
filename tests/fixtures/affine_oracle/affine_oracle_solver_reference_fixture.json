@@ -1,0 +1,314 @@
+{
+  "schema_version": "affine_oracle.solver.reference_fixture.v1",
+  "fixture_set_id": "affine_oracle_solver_reference_fixture_v1",
+  "equation_mapping_policy": "compact_model_spec_section_8_named_component_mapping.v1",
+  "default_solver_policy": "fourth_order_runge_kutta_fixed_step.v1",
+  "determinism_metadata": {
+    "fixture_loading_order": "preserve_declared_case_order.v1",
+    "content_hash_scope": "document_payload_bytes.v1",
+    "content_hash_algorithm": "fnv1a_64_hex_utf8.v1",
+    "solver_output_determinism": "fixed_solver_settings_and_inputs.v1"
+  },
+  "canonical_regression_metadata": {
+    "required_tags": [
+      "deterministic_numeric",
+      "one_interval_solver",
+      "reference_regression"
+    ],
+    "stable_fixture_ids": [
+      "linear_closed_form_hourly_real",
+      "nonlinear_complex_hourly_reference",
+      "nonlinear_complex_subhour_reference"
+    ]
+  },
+  "cases": [
+    {
+      "fixture_id": "linear_closed_form_hourly_real",
+      "solver_settings": {
+        "integrator_method": "fourth_order_runge_kutta",
+        "step_count": 64
+      },
+      "input": {
+        "equation_specification": {
+          "hawkes_kernel_parameters": {
+            "lambda_bar": 0.8,
+            "beta": 1.2,
+            "alpha": {
+              "plus_plus": 0.0,
+              "plus_minus": 0.0,
+              "minus_plus": 0.0,
+              "minus_minus": 0.0
+            },
+            "rho": {
+              "plus_plus": 0.0,
+              "plus_minus": 0.0,
+              "minus_plus": 0.0,
+              "minus_minus": 0.0
+            }
+          },
+          "gamma_severity_mark_configuration": {
+            "shape_k": 1.8,
+            "scale_theta": 0.9
+          }
+        },
+        "u_plus": {
+          "real": 0.2,
+          "imaginary": 0.0
+        },
+        "u_minus": {
+          "real": 0.3,
+          "imaginary": 0.0
+        },
+        "z_plus": {
+          "real": 1.0,
+          "imaginary": 0.0
+        },
+        "z_minus": {
+          "real": 1.0,
+          "imaginary": 0.0
+        },
+        "s_h": 1.1,
+        "nu_h": 0.0,
+        "delta": 1.0,
+        "initial_state": {
+          "y_plus_plus": 0.4,
+          "y_plus_minus": 0.2,
+          "y_minus_plus": 0.3,
+          "y_minus_minus": 0.5
+        }
+      },
+      "expected_status": "completed",
+      "expected_output": {
+        "c_at_delta": {
+          "real": -0.44000000000000006,
+          "imaginary": 0.0
+        },
+        "d_at_delta": {
+          "plus_plus": {
+            "real": -0.12811439448276296,
+            "imaginary": 0.0
+          },
+          "plus_minus": {
+            "real": -0.12811439448276296,
+            "imaginary": 0.0
+          },
+          "minus_plus": {
+            "real": -0.1921715917241444,
+            "imaginary": 0.0
+          },
+          "minus_minus": {
+            "real": -0.1921715917241444,
+            "imaginary": 0.0
+          }
+        },
+        "transform_value": {
+          "real": 0.5113986223189336,
+          "imaginary": 0.0
+        }
+      },
+      "tolerances": {
+        "c_at_delta_absolute_tolerance": 5.0e-10,
+        "d_component_absolute_tolerance": 5.0e-10,
+        "transform_value_absolute_tolerance": 5.0e-10
+      },
+      "tags": [
+        "deterministic_numeric",
+        "one_interval_solver",
+        "reference_regression"
+      ],
+      "description": "Analytic linear-reference case with zero alpha and rho to anchor solver drift checks."
+    },
+    {
+      "fixture_id": "nonlinear_complex_hourly_reference",
+      "solver_settings": {
+        "integrator_method": "fourth_order_runge_kutta",
+        "step_count": 64
+      },
+      "input": {
+        "equation_specification": {
+          "hawkes_kernel_parameters": {
+            "lambda_bar": 0.8,
+            "beta": 1.2,
+            "alpha": {
+              "plus_plus": 0.2,
+              "plus_minus": 0.08,
+              "minus_plus": 0.1,
+              "minus_minus": 0.24
+            },
+            "rho": {
+              "plus_plus": 0.03,
+              "plus_minus": 0.02,
+              "minus_plus": 0.01,
+              "minus_minus": 0.04
+            }
+          },
+          "gamma_severity_mark_configuration": {
+            "shape_k": 1.8,
+            "scale_theta": 0.9
+          }
+        },
+        "u_plus": {
+          "real": 0.2,
+          "imaginary": -0.1
+        },
+        "u_minus": {
+          "real": 0.3,
+          "imaginary": 0.05
+        },
+        "z_plus": {
+          "real": 1.0,
+          "imaginary": 0.0
+        },
+        "z_minus": {
+          "real": 0.95,
+          "imaginary": 0.02
+        },
+        "s_h": 1.1,
+        "nu_h": 0.08,
+        "delta": 1.0,
+        "initial_state": {
+          "y_plus_plus": 0.4,
+          "y_plus_minus": 0.2,
+          "y_minus_plus": 0.3,
+          "y_minus_minus": 0.5
+        }
+      },
+      "expected_status": "completed",
+      "expected_output": {
+        "c_at_delta": {
+          "real": -0.5468705375036489,
+          "imaginary": 0.06723555928704061
+        },
+        "d_at_delta": {
+          "plus_plus": {
+            "real": -0.15131708705547525,
+            "imaginary": 0.06897154273951159
+          },
+          "plus_minus": {
+            "real": -0.15131708705547525,
+            "imaginary": 0.06897154273951159
+          },
+          "minus_plus": {
+            "real": -0.2530028213926669,
+            "imaginary": -0.01952750677108098
+          },
+          "minus_minus": {
+            "real": -0.2530028213926669,
+            "imaginary": -0.01952750677108098
+          }
+        },
+        "transform_value": {
+          "real": 0.429817978087629,
+          "imaginary": 0.04008718809080439
+        }
+      },
+      "tolerances": {
+        "c_at_delta_absolute_tolerance": 1.0e-11,
+        "d_component_absolute_tolerance": 1.0e-11,
+        "transform_value_absolute_tolerance": 1.0e-11
+      },
+      "tags": [
+        "deterministic_numeric",
+        "one_interval_solver",
+        "reference_regression"
+      ],
+      "description": "Nonlinear complex-valued one-hour run with non-zero alpha, rho, and nu_h for high-signal equation drift detection."
+    },
+    {
+      "fixture_id": "nonlinear_complex_subhour_reference",
+      "solver_settings": {
+        "integrator_method": "fourth_order_runge_kutta",
+        "step_count": 96
+      },
+      "input": {
+        "equation_specification": {
+          "hawkes_kernel_parameters": {
+            "lambda_bar": 0.8,
+            "beta": 1.2,
+            "alpha": {
+              "plus_plus": 0.2,
+              "plus_minus": 0.08,
+              "minus_plus": 0.1,
+              "minus_minus": 0.24
+            },
+            "rho": {
+              "plus_plus": 0.03,
+              "plus_minus": 0.02,
+              "minus_plus": 0.01,
+              "minus_minus": 0.04
+            }
+          },
+          "gamma_severity_mark_configuration": {
+            "shape_k": 1.8,
+            "scale_theta": 0.9
+          }
+        },
+        "u_plus": {
+          "real": 0.2,
+          "imaginary": -0.1
+        },
+        "u_minus": {
+          "real": 0.3,
+          "imaginary": 0.05
+        },
+        "z_plus": {
+          "real": 1.0,
+          "imaginary": 0.0
+        },
+        "z_minus": {
+          "real": 0.95,
+          "imaginary": 0.02
+        },
+        "s_h": 1.1,
+        "nu_h": 0.08,
+        "delta": 0.5,
+        "initial_state": {
+          "y_plus_plus": 0.4,
+          "y_plus_minus": 0.2,
+          "y_minus_plus": 0.3,
+          "y_minus_minus": 0.5
+        }
+      },
+      "expected_status": "completed",
+      "expected_output": {
+        "c_at_delta": {
+          "real": -0.2600766041073922,
+          "imaginary": 0.03245118229134845
+        },
+        "d_at_delta": {
+          "plus_plus": {
+            "real": -0.09075714821057886,
+            "imaginary": 0.04311605886869983
+          },
+          "plus_minus": {
+            "real": -0.09075714821057886,
+            "imaginary": 0.04311605886869983
+          },
+          "minus_plus": {
+            "real": -0.15482774305845548,
+            "imaginary": -0.01252652643520976
+          },
+          "minus_minus": {
+            "real": -0.15482774305845548,
+            "imaginary": -0.01252652643520976
+          }
+        },
+        "transform_value": {
+          "real": 0.6443198808592454,
+          "imaginary": 0.03114461258728484
+        }
+      },
+      "tolerances": {
+        "c_at_delta_absolute_tolerance": 1.0e-11,
+        "d_component_absolute_tolerance": 1.0e-11,
+        "transform_value_absolute_tolerance": 1.0e-11
+      },
+      "tags": [
+        "deterministic_numeric",
+        "one_interval_solver",
+        "reference_regression"
+      ],
+      "description": "Nonlinear sub-hour run for interval-parametric Delta coverage without stochastic dependence."
+    }
+  ]
+}
