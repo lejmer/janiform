@@ -134,8 +134,7 @@ Check for:
 Mitigation actions:
 
 - remove thin wrappers and call shared functions directly when no boundary value exists
-- prefer non-duplicative re-exports when naming stability is needed without extra behavior
-- if a public wrapper removal would be breaking, create a planned deprecation or cleanup issue instead of silent removal
+- if a public wrapper removal would be breaking, refactor so the callsites use the updated API
 - keep one canonical implementation path and document boundary responsibilities explicitly
 
 ## Severity Policy
