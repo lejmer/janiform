@@ -50,12 +50,24 @@ pub const FOURIER_INVERSION_CONTOUR_POLICY: &str =
     "single_damping_factor_contour_shift_with_positive_alpha_requirement.v1";
 pub const FOURIER_INVERSION_NUMERIC_SETTINGS_POLICY: &str =
     "bounded_frequency_quadrature_with_explicit_rule_selection_and_step_count.v1";
+pub const FOURIER_INVERSION_INTEGRATION_STABILITY_POLICY: &str =
+    "interval_tolerance_and_tail_truncation_quality_controls_with_tunable_quality_gate.v1";
+pub const FOURIER_INVERSION_CONVERGENCE_CHECK_POLICY: &str =
+    "half_resolution_integral_agreement_with_absolute_and_relative_tolerance.v1";
+pub const FOURIER_INVERSION_TRUNCATION_CHECK_POLICY: &str =
+    "terminal_integrand_absolute_and_peak_ratio_tail_checks.v1";
+pub const FOURIER_INVERSION_NUMERIC_QUALITY_GATE_POLICY: &str =
+    "diagnostics_only_or_explicit_quality_gate_failure_based_on_stability_controls.v1";
 pub const FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION: &str =
     "pricing.fourier_inversion.diagnostics.v1";
 
 const DEFAULT_FOURIER_INVERSION_DAMPING_FACTOR: f64 = 1.5;
 const DEFAULT_FOURIER_INVERSION_UPPER_INTEGRATION_BOUND: f64 = 150.0;
 const DEFAULT_FOURIER_INVERSION_STEP_COUNT: usize = 4_096;
+const DEFAULT_FOURIER_INVERSION_CONVERGENCE_ABSOLUTE_TOLERANCE: f64 = 1.0e-5;
+const DEFAULT_FOURIER_INVERSION_CONVERGENCE_RELATIVE_TOLERANCE: f64 = 1.0e-4;
+const DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_ABSOLUTE_TOLERANCE: f64 = 5.0e-4;
+const DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_RATIO_TOLERANCE: f64 = 1.0e-2;
 const FOURIER_NON_NEGATIVE_PRICE_CLAMP_TOLERANCE: f64 = 1.0e-12;
 
 /// Baseline vanilla payoff kind supported for v0.1 pricing workflows.
@@ -736,11 +748,159 @@ impl Display for FourierInversionNumericSettingsError {
 
 impl Error for FourierInversionNumericSettingsError {}
 
+/// Quality-gate behavior for numerical stability checks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FourierInversionNumericQualityGate {
+    DiagnosticsOnly,
+    EnforceFailure,
+}
+
+impl Default for FourierInversionNumericQualityGate {
+    fn default() -> Self {
+        Self::DiagnosticsOnly
+    }
+}
+
+/// Tuning controls for convergence and truncation quality checks.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct FourierInversionIntegrationStabilityControls {
+    pub convergence_absolute_tolerance: f64,
+    pub convergence_relative_tolerance: f64,
+    pub terminal_integrand_absolute_tolerance: f64,
+    pub terminal_integrand_ratio_tolerance: f64,
+    pub quality_gate: FourierInversionNumericQualityGate,
+}
+
+impl FourierInversionIntegrationStabilityControls {
+    pub const fn new(
+        convergence_absolute_tolerance: f64,
+        convergence_relative_tolerance: f64,
+        terminal_integrand_absolute_tolerance: f64,
+        terminal_integrand_ratio_tolerance: f64,
+        quality_gate: FourierInversionNumericQualityGate,
+    ) -> Self {
+        Self {
+            convergence_absolute_tolerance,
+            convergence_relative_tolerance,
+            terminal_integrand_absolute_tolerance,
+            terminal_integrand_ratio_tolerance,
+            quality_gate,
+        }
+    }
+
+    pub fn try_new(
+        convergence_absolute_tolerance: f64,
+        convergence_relative_tolerance: f64,
+        terminal_integrand_absolute_tolerance: f64,
+        terminal_integrand_ratio_tolerance: f64,
+        quality_gate: FourierInversionNumericQualityGate,
+    ) -> Result<Self, FourierInversionIntegrationStabilityControlsError> {
+        let controls = Self::new(
+            convergence_absolute_tolerance,
+            convergence_relative_tolerance,
+            terminal_integrand_absolute_tolerance,
+            terminal_integrand_ratio_tolerance,
+            quality_gate,
+        );
+        controls.validate()?;
+        Ok(controls)
+    }
+
+    pub fn validate(self) -> Result<(), FourierInversionIntegrationStabilityControlsError> {
+        validate_positive_finite_tolerance(self.convergence_absolute_tolerance)
+        .map_err(|value| {
+            FourierInversionIntegrationStabilityControlsError::InvalidConvergenceAbsoluteTolerance {
+                value,
+            }
+        })?;
+        validate_positive_finite_tolerance(self.convergence_relative_tolerance)
+        .map_err(|value| {
+            FourierInversionIntegrationStabilityControlsError::InvalidConvergenceRelativeTolerance {
+                value,
+            }
+        })?;
+        validate_positive_finite_tolerance(self.terminal_integrand_absolute_tolerance)
+        .map_err(|value| {
+            FourierInversionIntegrationStabilityControlsError::InvalidTerminalIntegrandAbsoluteTolerance {
+                value,
+            }
+        })?;
+        validate_positive_finite_tolerance(self.terminal_integrand_ratio_tolerance)
+        .map_err(|value| {
+            FourierInversionIntegrationStabilityControlsError::InvalidTerminalIntegrandRatioTolerance {
+                value,
+            }
+        })?;
+
+        Ok(())
+    }
+
+    pub const fn policy() -> &'static str {
+        FOURIER_INVERSION_INTEGRATION_STABILITY_POLICY
+    }
+}
+
+impl Default for FourierInversionIntegrationStabilityControls {
+    fn default() -> Self {
+        Self::new(
+            DEFAULT_FOURIER_INVERSION_CONVERGENCE_ABSOLUTE_TOLERANCE,
+            DEFAULT_FOURIER_INVERSION_CONVERGENCE_RELATIVE_TOLERANCE,
+            DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_ABSOLUTE_TOLERANCE,
+            DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_RATIO_TOLERANCE,
+            FourierInversionNumericQualityGate::default(),
+        )
+    }
+}
+
+/// Validation errors for integration stability controls.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FourierInversionIntegrationStabilityControlsError {
+    InvalidConvergenceAbsoluteTolerance { value: f64 },
+    InvalidConvergenceRelativeTolerance { value: f64 },
+    InvalidTerminalIntegrandAbsoluteTolerance { value: f64 },
+    InvalidTerminalIntegrandRatioTolerance { value: f64 },
+}
+
+impl Display for FourierInversionIntegrationStabilityControlsError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidConvergenceAbsoluteTolerance { value } => write!(
+                formatter,
+                "convergence_absolute_tolerance must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidConvergenceRelativeTolerance { value } => write!(
+                formatter,
+                "convergence_relative_tolerance must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidTerminalIntegrandAbsoluteTolerance { value } => write!(
+                formatter,
+                "terminal_integrand_absolute_tolerance must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidTerminalIntegrandRatioTolerance { value } => write!(
+                formatter,
+                "terminal_integrand_ratio_tolerance must be finite and strictly positive, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for FourierInversionIntegrationStabilityControlsError {}
+
+fn validate_positive_finite_tolerance(value: f64) -> Result<(), f64> {
+    if !value.is_finite() || value <= 0.0 {
+        return Err(value);
+    }
+
+    Ok(())
+}
+
 /// Full configuration payload for vanilla-option Fourier inversion.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct FourierInversionEngineSettings {
     pub contour: FourierInversionContour,
     pub numeric_settings: FourierInversionNumericSettings,
+    pub stability_controls: FourierInversionIntegrationStabilityControls,
 }
 
 impl FourierInversionEngineSettings {
@@ -748,9 +908,28 @@ impl FourierInversionEngineSettings {
         contour: FourierInversionContour,
         numeric_settings: FourierInversionNumericSettings,
     ) -> Self {
+        Self::new_with_stability_controls(
+            contour,
+            numeric_settings,
+            FourierInversionIntegrationStabilityControls::new(
+                DEFAULT_FOURIER_INVERSION_CONVERGENCE_ABSOLUTE_TOLERANCE,
+                DEFAULT_FOURIER_INVERSION_CONVERGENCE_RELATIVE_TOLERANCE,
+                DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_ABSOLUTE_TOLERANCE,
+                DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_RATIO_TOLERANCE,
+                FourierInversionNumericQualityGate::DiagnosticsOnly,
+            ),
+        )
+    }
+
+    pub const fn new_with_stability_controls(
+        contour: FourierInversionContour,
+        numeric_settings: FourierInversionNumericSettings,
+        stability_controls: FourierInversionIntegrationStabilityControls,
+    ) -> Self {
         Self {
             contour,
             numeric_settings,
+            stability_controls,
         }
     }
 
@@ -763,12 +942,26 @@ impl FourierInversionEngineSettings {
         Ok(settings)
     }
 
+    pub fn try_new_with_stability_controls(
+        contour: FourierInversionContour,
+        numeric_settings: FourierInversionNumericSettings,
+        stability_controls: FourierInversionIntegrationStabilityControls,
+    ) -> Result<Self, FourierInversionEngineSettingsError> {
+        let settings =
+            Self::new_with_stability_controls(contour, numeric_settings, stability_controls);
+        settings.validate()?;
+        Ok(settings)
+    }
+
     pub fn validate(self) -> Result<(), FourierInversionEngineSettingsError> {
         self.contour
             .validate()
             .map_err(|source| FourierInversionEngineSettingsError::InvalidContour { source })?;
         self.numeric_settings.validate().map_err(|source| {
             FourierInversionEngineSettingsError::InvalidNumericSettings { source }
+        })?;
+        self.stability_controls.validate().map_err(|source| {
+            FourierInversionEngineSettingsError::InvalidStabilityControls { source }
         })?;
 
         Ok(())
@@ -797,6 +990,9 @@ pub enum FourierInversionEngineSettingsError {
     InvalidNumericSettings {
         source: FourierInversionNumericSettingsError,
     },
+    InvalidStabilityControls {
+        source: FourierInversionIntegrationStabilityControlsError,
+    },
 }
 
 impl Display for FourierInversionEngineSettingsError {
@@ -808,6 +1004,12 @@ impl Display for FourierInversionEngineSettingsError {
             Self::InvalidNumericSettings { source } => {
                 write!(formatter, "numeric settings are invalid: {source}")
             }
+            Self::InvalidStabilityControls { source } => {
+                write!(
+                    formatter,
+                    "integration stability controls are invalid: {source}"
+                )
+            }
         }
     }
 }
@@ -817,8 +1019,32 @@ impl Error for FourierInversionEngineSettingsError {
         match self {
             Self::InvalidContour { source } => Some(source),
             Self::InvalidNumericSettings { source } => Some(source),
+            Self::InvalidStabilityControls { source } => Some(source),
         }
     }
+}
+
+/// Deterministic diagnostics emitted by one Fourier inversion pricing run.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct FourierInversionNumericQualityDiagnostics {
+    pub stability_policy: &'static str,
+    pub convergence_check_policy: &'static str,
+    pub truncation_check_policy: &'static str,
+    pub quality_gate_policy: &'static str,
+    pub quality_gate: FourierInversionNumericQualityGate,
+    pub convergence_absolute_tolerance: f64,
+    pub convergence_relative_tolerance: f64,
+    pub terminal_integrand_absolute_tolerance: f64,
+    pub terminal_integrand_ratio_tolerance: f64,
+    pub coarse_integral_estimate: f64,
+    pub convergence_absolute_difference: f64,
+    pub convergence_relative_difference: f64,
+    pub terminal_integrand_absolute_value: f64,
+    pub terminal_integrand_ratio: f64,
+    pub convergence_check_passed: bool,
+    pub truncation_check_passed: bool,
+    pub insufficient_convergence_resolution: bool,
+    pub numeric_quality_is_poor: bool,
 }
 
 /// Deterministic diagnostics emitted by one Fourier inversion pricing run.
@@ -828,6 +1054,7 @@ pub struct FourierInversionDiagnostics {
     pub engine_policy: &'static str,
     pub contour_policy: &'static str,
     pub numeric_settings_policy: &'static str,
+    pub stability_policy: &'static str,
     pub quadrature_rule: FourierInversionQuadratureRule,
     pub contour_damping_factor: f64,
     pub contour_imaginary_shift: f64,
@@ -840,6 +1067,7 @@ pub struct FourierInversionDiagnostics {
     pub max_abs_integrand: f64,
     pub terminal_abs_integrand: f64,
     pub discounted_call_price: f64,
+    pub numeric_quality_diagnostics: FourierInversionNumericQualityDiagnostics,
 }
 
 /// Result payload for Fourier inversion vanilla-option pricing.
@@ -893,6 +1121,9 @@ pub enum FourierInversionPricingError {
     NegativePriceBeyondTolerance {
         value: f64,
         tolerance: f64,
+    },
+    NumericQualityFailure {
+        diagnostics: FourierInversionNumericQualityDiagnostics,
     },
 }
 
@@ -950,6 +1181,17 @@ impl Display for FourierInversionPricingError {
             Self::NegativePriceBeyondTolerance { value, tolerance } => write!(
                 formatter,
                 "price is negative beyond tolerance with value={value} and tolerance={tolerance}"
+            ),
+            Self::NumericQualityFailure { diagnostics } => write!(
+                formatter,
+                "integration numeric quality failed with convergence_passed={}, truncation_passed={}, insufficient_convergence_resolution={}, convergence_absolute_difference={}, convergence_relative_difference={}, terminal_integrand_absolute_value={}, terminal_integrand_ratio={}",
+                diagnostics.convergence_check_passed,
+                diagnostics.truncation_check_passed,
+                diagnostics.insufficient_convergence_resolution,
+                diagnostics.convergence_absolute_difference,
+                diagnostics.convergence_relative_difference,
+                diagnostics.terminal_integrand_absolute_value,
+                diagnostics.terminal_integrand_ratio
             ),
         }
     }
@@ -1032,6 +1274,7 @@ where
             engine_policy: FOURIER_INVERSION_ENGINE_POLICY,
             contour_policy: FOURIER_INVERSION_CONTOUR_POLICY,
             numeric_settings_policy: FOURIER_INVERSION_NUMERIC_SETTINGS_POLICY,
+            stability_policy: FOURIER_INVERSION_INTEGRATION_STABILITY_POLICY,
             quadrature_rule: settings.numeric_settings.quadrature_rule,
             contour_damping_factor: settings.contour.damping_factor,
             contour_imaginary_shift: settings.contour.damping_factor + 1.0,
@@ -1044,6 +1287,7 @@ where
             max_abs_integrand: integration_report.max_abs_integrand,
             terminal_abs_integrand: integration_report.terminal_abs_integrand,
             discounted_call_price: integration_report.discounted_call_price,
+            numeric_quality_diagnostics: integration_report.numeric_quality_diagnostics,
         },
     })
 }
@@ -1051,6 +1295,17 @@ where
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct FourierDiscountedCallIntegrationReport {
     discounted_call_price: f64,
+    integration_interval_width: f64,
+    integrand_evaluation_count: usize,
+    integral_estimate: f64,
+    absolute_integral_estimate: f64,
+    max_abs_integrand: f64,
+    terminal_abs_integrand: f64,
+    numeric_quality_diagnostics: FourierInversionNumericQualityDiagnostics,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct FourierIntegralStatistics {
     integration_interval_width: f64,
     integrand_evaluation_count: usize,
     integral_estimate: f64,
@@ -1069,8 +1324,74 @@ fn integrate_discounted_call_price_with_fourier_inversion<FCharacteristicFunctio
 where
     FCharacteristicFunction: Fn(ComplexScalar) -> ComplexScalar,
 {
-    let integration_interval_width = settings.numeric_settings.integration_upper_bound
-        / settings.numeric_settings.integration_step_count as f64;
+    let full_resolution_statistics = evaluate_fourier_integral_statistics(
+        settings.contour.damping_factor,
+        settings.numeric_settings.quadrature_rule,
+        settings.numeric_settings.integration_upper_bound,
+        settings.numeric_settings.integration_step_count,
+        log_moneyness,
+        log_return_characteristic_function,
+    )?;
+
+    let numeric_quality_diagnostics = evaluate_fourier_numeric_quality(
+        settings,
+        full_resolution_statistics,
+        log_moneyness,
+        log_return_characteristic_function,
+    )?;
+    if numeric_quality_diagnostics.numeric_quality_is_poor
+        && settings.stability_controls.quality_gate
+            == FourierInversionNumericQualityGate::EnforceFailure
+    {
+        return Err(FourierInversionPricingError::NumericQualityFailure {
+            diagnostics: numeric_quality_diagnostics,
+        });
+    }
+
+    let damping_multiplier = (-(settings.contour.damping_factor * log_moneyness)).exp();
+    if !damping_multiplier.is_finite() || damping_multiplier <= 0.0 {
+        return Err(FourierInversionPricingError::NonFiniteDampingMultiplier {
+            value: damping_multiplier,
+        });
+    }
+
+    let discounted_call_price = discount_factor
+        * market_inputs.spot
+        * damping_multiplier
+        * full_resolution_statistics.integral_estimate
+        / PI;
+    if !discounted_call_price.is_finite() {
+        return Err(FourierInversionPricingError::NonFiniteDiscountedCallPrice {
+            value: discounted_call_price,
+        });
+    }
+
+    let discounted_call_price = clamp_small_negative_price(discounted_call_price)?;
+
+    Ok(FourierDiscountedCallIntegrationReport {
+        discounted_call_price,
+        integration_interval_width: full_resolution_statistics.integration_interval_width,
+        integrand_evaluation_count: full_resolution_statistics.integrand_evaluation_count,
+        integral_estimate: full_resolution_statistics.integral_estimate,
+        absolute_integral_estimate: full_resolution_statistics.absolute_integral_estimate,
+        max_abs_integrand: full_resolution_statistics.max_abs_integrand,
+        terminal_abs_integrand: full_resolution_statistics.terminal_abs_integrand,
+        numeric_quality_diagnostics,
+    })
+}
+
+fn evaluate_fourier_integral_statistics<FCharacteristicFunction>(
+    damping_factor: f64,
+    quadrature_rule: FourierInversionQuadratureRule,
+    integration_upper_bound: f64,
+    integration_step_count: usize,
+    log_moneyness: f64,
+    log_return_characteristic_function: &FCharacteristicFunction,
+) -> Result<FourierIntegralStatistics, FourierInversionPricingError>
+where
+    FCharacteristicFunction: Fn(ComplexScalar) -> ComplexScalar,
+{
+    let integration_interval_width = integration_upper_bound / integration_step_count as f64;
 
     let mut weighted_integrand_sum: f64 = 0.0;
     let mut weighted_absolute_integrand_sum: f64 = 0.0;
@@ -1078,12 +1399,12 @@ where
     let mut terminal_abs_integrand: f64 = 0.0;
     let mut integrand_evaluation_count = 0usize;
 
-    match settings.numeric_settings.quadrature_rule {
+    match quadrature_rule {
         FourierInversionQuadratureRule::Midpoint => {
-            for step_index in 0..settings.numeric_settings.integration_step_count {
+            for step_index in 0..integration_step_count {
                 let frequency = (step_index as f64 + 0.5) * integration_interval_width;
                 let integrand_value = evaluate_damped_call_fourier_integrand(
-                    settings.contour.damping_factor,
+                    damping_factor,
                     log_moneyness,
                     frequency,
                     log_return_characteristic_function,
@@ -1098,16 +1419,15 @@ where
             }
         }
         FourierInversionQuadratureRule::Trapezoid => {
-            for step_index in 0..=settings.numeric_settings.integration_step_count {
+            for step_index in 0..=integration_step_count {
                 let frequency = step_index as f64 * integration_interval_width;
                 let integrand_value = evaluate_damped_call_fourier_integrand(
-                    settings.contour.damping_factor,
+                    damping_factor,
                     log_moneyness,
                     frequency,
                     log_return_characteristic_function,
                 )?;
-                let integration_weight = if step_index == 0
-                    || step_index == settings.numeric_settings.integration_step_count
+                let integration_weight = if step_index == 0 || step_index == integration_step_count
                 {
                     0.5
                 } else {
@@ -1138,30 +1458,94 @@ where
         });
     }
 
-    let damping_multiplier = (-(settings.contour.damping_factor * log_moneyness)).exp();
-    if !damping_multiplier.is_finite() || damping_multiplier <= 0.0 {
-        return Err(FourierInversionPricingError::NonFiniteDampingMultiplier {
-            value: damping_multiplier,
-        });
-    }
-
-    let discounted_call_price =
-        discount_factor * market_inputs.spot * damping_multiplier * integral_estimate / PI;
-    if !discounted_call_price.is_finite() {
-        return Err(FourierInversionPricingError::NonFiniteDiscountedCallPrice {
-            value: discounted_call_price,
-        });
-    }
-    let discounted_call_price = clamp_small_negative_price(discounted_call_price)?;
-
-    Ok(FourierDiscountedCallIntegrationReport {
-        discounted_call_price,
+    Ok(FourierIntegralStatistics {
         integration_interval_width,
         integrand_evaluation_count,
         integral_estimate,
         absolute_integral_estimate,
         max_abs_integrand,
         terminal_abs_integrand,
+    })
+}
+
+fn evaluate_fourier_numeric_quality<FCharacteristicFunction>(
+    settings: FourierInversionEngineSettings,
+    full_resolution_statistics: FourierIntegralStatistics,
+    log_moneyness: f64,
+    log_return_characteristic_function: &FCharacteristicFunction,
+) -> Result<FourierInversionNumericQualityDiagnostics, FourierInversionPricingError>
+where
+    FCharacteristicFunction: Fn(ComplexScalar) -> ComplexScalar,
+{
+    let stability_controls = settings.stability_controls;
+    let coarse_step_count = settings.numeric_settings.integration_step_count / 2;
+    let insufficient_convergence_resolution = coarse_step_count == 0;
+
+    let (
+        coarse_integral_estimate,
+        convergence_absolute_difference,
+        convergence_relative_difference,
+    ) = if insufficient_convergence_resolution {
+        (full_resolution_statistics.integral_estimate, 0.0, 0.0)
+    } else {
+        let coarse_resolution_statistics = evaluate_fourier_integral_statistics(
+            settings.contour.damping_factor,
+            settings.numeric_settings.quadrature_rule,
+            settings.numeric_settings.integration_upper_bound,
+            coarse_step_count,
+            log_moneyness,
+            log_return_characteristic_function,
+        )?;
+        let absolute_difference = (full_resolution_statistics.integral_estimate
+            - coarse_resolution_statistics.integral_estimate)
+            .abs();
+        let normalization = full_resolution_statistics.integral_estimate.abs().max(1.0);
+        (
+            coarse_resolution_statistics.integral_estimate,
+            absolute_difference,
+            absolute_difference / normalization,
+        )
+    };
+
+    let convergence_check_passed = !insufficient_convergence_resolution
+        && convergence_absolute_difference <= stability_controls.convergence_absolute_tolerance
+        && convergence_relative_difference <= stability_controls.convergence_relative_tolerance;
+
+    let terminal_integrand_ratio = if full_resolution_statistics.max_abs_integrand > 0.0 {
+        full_resolution_statistics.terminal_abs_integrand
+            / full_resolution_statistics.max_abs_integrand
+    } else {
+        0.0
+    };
+
+    let truncation_check_passed = full_resolution_statistics.terminal_abs_integrand
+        <= stability_controls.terminal_integrand_absolute_tolerance
+        && terminal_integrand_ratio <= stability_controls.terminal_integrand_ratio_tolerance;
+
+    let numeric_quality_is_poor = insufficient_convergence_resolution
+        || !convergence_check_passed
+        || !truncation_check_passed;
+
+    Ok(FourierInversionNumericQualityDiagnostics {
+        stability_policy: FOURIER_INVERSION_INTEGRATION_STABILITY_POLICY,
+        convergence_check_policy: FOURIER_INVERSION_CONVERGENCE_CHECK_POLICY,
+        truncation_check_policy: FOURIER_INVERSION_TRUNCATION_CHECK_POLICY,
+        quality_gate_policy: FOURIER_INVERSION_NUMERIC_QUALITY_GATE_POLICY,
+        quality_gate: stability_controls.quality_gate,
+        convergence_absolute_tolerance: stability_controls.convergence_absolute_tolerance,
+        convergence_relative_tolerance: stability_controls.convergence_relative_tolerance,
+        terminal_integrand_absolute_tolerance: stability_controls
+            .terminal_integrand_absolute_tolerance,
+        terminal_integrand_ratio_tolerance: stability_controls.terminal_integrand_ratio_tolerance,
+        coarse_integral_estimate,
+        convergence_absolute_difference,
+        convergence_relative_difference,
+        terminal_integrand_absolute_value: full_resolution_statistics.terminal_abs_integrand,
+        terminal_integrand_ratio,
+        convergence_check_passed,
+        truncation_check_passed,
+        insufficient_convergence_resolution,
+        numeric_quality_is_poor,
     })
 }
 
@@ -1661,9 +2045,40 @@ impl<'de> Deserialize<'de> for FourierInversionNumericSettings {
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct FourierInversionIntegrationStabilityControlsPayload {
+    convergence_absolute_tolerance: f64,
+    convergence_relative_tolerance: f64,
+    terminal_integrand_absolute_tolerance: f64,
+    terminal_integrand_ratio_tolerance: f64,
+    #[serde(default)]
+    quality_gate: FourierInversionNumericQualityGate,
+}
+
+impl<'de> Deserialize<'de> for FourierInversionIntegrationStabilityControls {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let payload =
+            FourierInversionIntegrationStabilityControlsPayload::deserialize(deserializer)?;
+        Self::try_new(
+            payload.convergence_absolute_tolerance,
+            payload.convergence_relative_tolerance,
+            payload.terminal_integrand_absolute_tolerance,
+            payload.terminal_integrand_ratio_tolerance,
+            payload.quality_gate,
+        )
+        .map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct FourierInversionEngineSettingsPayload {
     contour: FourierInversionContour,
     numeric_settings: FourierInversionNumericSettings,
+    #[serde(default)]
+    stability_controls: FourierInversionIntegrationStabilityControls,
 }
 
 impl<'de> Deserialize<'de> for FourierInversionEngineSettings {
@@ -1672,7 +2087,12 @@ impl<'de> Deserialize<'de> for FourierInversionEngineSettings {
         D: serde::Deserializer<'de>,
     {
         let payload = FourierInversionEngineSettingsPayload::deserialize(deserializer)?;
-        Self::try_new(payload.contour, payload.numeric_settings).map_err(serde::de::Error::custom)
+        Self::try_new_with_stability_controls(
+            payload.contour,
+            payload.numeric_settings,
+            payload.stability_controls,
+        )
+        .map_err(serde::de::Error::custom)
     }
 }
 
@@ -1918,6 +2338,8 @@ mod tests {
     use crate::pricing::{
         FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION, FourierInversionContour,
         FourierInversionContourError, FourierInversionEngineSettings,
+        FourierInversionIntegrationStabilityControls,
+        FourierInversionIntegrationStabilityControlsError, FourierInversionNumericQualityGate,
         FourierInversionNumericSettings, FourierInversionPricingError,
         FourierInversionQuadratureRule, PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY,
         PricingMartingaleConditionValidationError,
@@ -2036,7 +2458,10 @@ mod tests {
             absolute_error <= 1.0e-3,
             "put absolute pricing error {absolute_error} exceeded tolerance"
         );
-        assert_eq!(result.diagnostics.integrand_evaluation_count, result.diagnostics.integration_step_count + 1);
+        assert_eq!(
+            result.diagnostics.integrand_evaluation_count,
+            result.diagnostics.integration_step_count + 1
+        );
     }
 
     #[test]
@@ -2073,6 +2498,193 @@ mod tests {
             error,
             FourierInversionPricingError::InvalidSettings { .. }
         ));
+    }
+
+    #[test]
+    fn fourier_inversion_stability_controls_validate_and_deserialize_with_defaults() {
+        let controls_error = FourierInversionIntegrationStabilityControls::try_new(
+            f64::NAN,
+            1.0e-4,
+            1.0e-4,
+            1.0e-2,
+            FourierInversionNumericQualityGate::DiagnosticsOnly,
+        )
+        .expect_err("non-finite convergence tolerance must fail stability-control validation");
+        assert!(matches!(
+            controls_error,
+            FourierInversionIntegrationStabilityControlsError::InvalidConvergenceAbsoluteTolerance { value } if value.is_nan()
+        ));
+
+        let parsed_settings: FourierInversionEngineSettings = serde_json::from_value(json!({
+            "contour": {
+                "damping_factor": 1.5
+            },
+            "numeric_settings": {
+                "integration_upper_bound": 120.0,
+                "integration_step_count": 4096,
+                "quadrature_rule": "midpoint"
+            }
+        }))
+        .expect("engine settings should deserialize with default stability controls");
+
+        assert_eq!(
+            parsed_settings.stability_controls,
+            FourierInversionIntegrationStabilityControls::default()
+        );
+    }
+
+    #[test]
+    fn fourier_inversion_emits_numeric_quality_diagnostics_for_poor_settings() {
+        let market_inputs =
+            VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, 1.0, 0.02, 0.01)
+                .expect("market inputs should construct");
+        let volatility = 0.2;
+
+        let strict_controls = FourierInversionIntegrationStabilityControls::try_new(
+            1.0e-8,
+            1.0e-8,
+            1.0e-8,
+            1.0e-6,
+            FourierInversionNumericQualityGate::DiagnosticsOnly,
+        )
+        .expect("strict stability controls should construct");
+        let poor_settings = FourierInversionEngineSettings::try_new_with_stability_controls(
+            FourierInversionContour::try_new(1.2).expect("contour settings should construct"),
+            FourierInversionNumericSettings::try_new(
+                3.0,
+                2,
+                FourierInversionQuadratureRule::Midpoint,
+            )
+            .expect("numeric settings should construct"),
+            strict_controls,
+        )
+        .expect("engine settings should construct");
+
+        let result = price_vanilla_option_via_fourier_inversion(
+            market_inputs,
+            VanillaOptionPayoffConfiguration {
+                payoff_type: VanillaOptionPayoffType::Call,
+            },
+            poor_settings,
+            |argument| {
+                black_scholes_log_return_characteristic_function(
+                    market_inputs,
+                    volatility,
+                    argument,
+                )
+            },
+        )
+        .expect("diagnostics-only quality gate should not fail pricing");
+
+        assert!(
+            result
+                .diagnostics
+                .numeric_quality_diagnostics
+                .numeric_quality_is_poor
+        );
+    }
+
+    #[test]
+    fn fourier_inversion_quality_gate_can_fail_under_poor_settings() {
+        let market_inputs =
+            VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, 1.0, 0.02, 0.01)
+                .expect("market inputs should construct");
+        let volatility = 0.2;
+
+        let strict_controls = FourierInversionIntegrationStabilityControls::try_new(
+            1.0e-8,
+            1.0e-8,
+            1.0e-8,
+            1.0e-6,
+            FourierInversionNumericQualityGate::EnforceFailure,
+        )
+        .expect("strict stability controls should construct");
+        let poor_settings = FourierInversionEngineSettings::try_new_with_stability_controls(
+            FourierInversionContour::try_new(1.2).expect("contour settings should construct"),
+            FourierInversionNumericSettings::try_new(
+                3.0,
+                2,
+                FourierInversionQuadratureRule::Midpoint,
+            )
+            .expect("numeric settings should construct"),
+            strict_controls,
+        )
+        .expect("engine settings should construct");
+
+        let error = price_vanilla_option_via_fourier_inversion(
+            market_inputs,
+            VanillaOptionPayoffConfiguration {
+                payoff_type: VanillaOptionPayoffType::Call,
+            },
+            poor_settings,
+            |argument| {
+                black_scholes_log_return_characteristic_function(
+                    market_inputs,
+                    volatility,
+                    argument,
+                )
+            },
+        )
+        .expect_err("enforced quality gate must fail on poor numeric quality");
+
+        assert!(matches!(
+            error,
+            FourierInversionPricingError::NumericQualityFailure { diagnostics }
+            if diagnostics.numeric_quality_is_poor
+        ));
+    }
+
+    #[test]
+    fn fourier_inversion_quality_diagnostics_converge_on_reference_fixture() {
+        let market_inputs =
+            VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, 1.0, 0.02, 0.01)
+                .expect("market inputs should construct");
+        let volatility = 0.2;
+        let settings = FourierInversionEngineSettings::try_new(
+            FourierInversionContour::try_new(1.5).expect("contour settings should construct"),
+            FourierInversionNumericSettings::try_new(
+                160.0,
+                8_192,
+                FourierInversionQuadratureRule::Midpoint,
+            )
+            .expect("numeric settings should construct"),
+        )
+        .expect("engine settings should construct");
+
+        let result = price_vanilla_option_via_fourier_inversion(
+            market_inputs,
+            VanillaOptionPayoffConfiguration {
+                payoff_type: VanillaOptionPayoffType::Call,
+            },
+            settings,
+            |argument| {
+                black_scholes_log_return_characteristic_function(
+                    market_inputs,
+                    volatility,
+                    argument,
+                )
+            },
+        )
+        .expect("reference settings should produce converged diagnostics");
+
+        assert!(
+            !result
+                .diagnostics
+                .numeric_quality_diagnostics
+                .numeric_quality_is_poor
+        );
+        assert!(
+            result
+                .diagnostics
+                .numeric_quality_diagnostics
+                .convergence_check_passed
+        );
+        assert!(
+            result
+                .diagnostics
+                .numeric_quality_diagnostics
+                .truncation_check_passed
+        );
     }
 
     #[test]
