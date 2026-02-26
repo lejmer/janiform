@@ -19,6 +19,7 @@ Run this review at least:
 - before implementation for medium or high impact work
 - after a Project has been otherwise completed
 - before release candidates
+- once per release cycle as a repository-wide hygiene pass, including thin-wrapper inventory and triage
 
 For urgent fixes, run a lightweight version first, then run the full review immediately after stabilization.
 
@@ -31,13 +32,14 @@ For urgent fixes, run a lightweight version first, then run the full review imme
 5. Check observability and operability.
 6. Check performance and resource profile.
 7. Check DRY and duplication risk.
-8. Check test quality and coverage gaps.
-9. Record findings with severity.
-10. Implement fixes based on above findings.
+8. Check boundary adapter value and API surface minimization.
+9. Check test quality and coverage gaps.
+10. Record findings with severity.
+11. Implement fixes based on above findings.
 
 ## Risk Categories And What To Check
 
-### 1. Contract And Compatibility Risk
+### Contract And Compatibility Risk
 
 Check for:
 
@@ -46,7 +48,7 @@ Check for:
 - renamed or removed fields without migration path
 - inconsistent defaults across language boundaries
 
-### 2. Correctness And Model Integrity Risk
+### Correctness And Model Integrity Risk
 
 Check for:
 
@@ -55,7 +57,7 @@ Check for:
 - silent fallback behavior that changes outputs unexpectedly
 - mismatch between implementation and documented model assumptions
 
-### 3. Determinism And Reproducibility Risk
+### Determinism And Reproducibility Risk
 
 Check for:
 
@@ -64,7 +66,7 @@ Check for:
 - hidden time or locale dependencies
 - fixture loading paths that bypass integrity checks
 
-### 4. Failure Handling And Diagnostics Risk
+### Failure Handling And Diagnostics Risk
 
 Check for:
 
@@ -73,7 +75,7 @@ Check for:
 - generic failures with no actionable context
 - missing identifiers in diagnostics for triage
 
-### 5. Data Integrity And Validation Risk
+### Data Integrity And Validation Risk
 
 Check for:
 
@@ -82,7 +84,7 @@ Check for:
 - unvalidated cast paths
 - inconsistent unit or timestamp assumptions
 
-### 6. Operational And Observability Risk
+### Operational And Observability Risk
 
 Check for:
 
@@ -91,7 +93,7 @@ Check for:
 - missing machine-readable report artifacts for CI
 - no clear policy for unknown or unsupported inputs
 
-### 7. Performance And Capacity Risk
+### Performance And Capacity Risk
 
 Check for:
 
@@ -100,7 +102,7 @@ Check for:
 - high fixed overhead in common workflows
 - algorithmic complexity regressions
 
-### 8. Test And Validation Risk
+### Test And Validation Risk
 
 Check for:
 
@@ -109,7 +111,7 @@ Check for:
 - missing determinism tests for repeated runs
 - fixture drift not protected by content hash or schema checks
 
-### 9. DRY And Duplication Risk
+### DRY And Duplication Risk
 
 Check for:
 
@@ -119,6 +121,22 @@ Check for:
 - repeated constants or mapping tables that should have a single source of truth
 - copy-pasted test setup or fixtures that hide shared behavior changes
 - copy-pasted helpers that cause unnecessary code bloat
+
+### Boundary Adapter And Wrapper Utility Risk
+
+Check for:
+
+- consumer-specific wrapper functions that only forward to shared implementations
+- wrappers that add no validation, policy/default injection, type conversion, error mapping, telemetry, or compatibility constraint handling
+- duplicate adapter naming layers that increase public surface without behavioral value
+- tests that only prove wrapper equivalence and do not validate real boundary behavior
+
+Mitigation actions:
+
+- remove thin wrappers and call shared functions directly when no boundary value exists
+- prefer non-duplicative re-exports when naming stability is needed without extra behavior
+- if a public wrapper removal would be breaking, create a planned deprecation or cleanup issue instead of silent removal
+- keep one canonical implementation path and document boundary responsibilities explicitly
 
 ## Severity Policy
 
@@ -165,6 +183,7 @@ Before completion, ensure evidence exists for:
 - deterministic rerun equivalence for relevant paths
 - failure-path diagnostics quality
 - fixture and schema integrity checks
+- thin-wrapper inventory results for release-cycle hygiene reviews
 - test coverage for changed behavior
 
 ## Maintenance Rule
