@@ -12,6 +12,29 @@ The contract is for public pricing payloads only:
 
 This contract intentionally excludes Fourier integration settings and solver internals.
 
+## Fourier Integration Stability Controls
+
+The Fourier engine in `janiform_core::pricing` now includes a structured integration stability policy:
+
+- `FourierInversionIntegrationStabilityControls`
+  - `convergence_absolute_tolerance`
+  - `convergence_relative_tolerance`
+  - `terminal_integrand_absolute_tolerance`
+  - `terminal_integrand_ratio_tolerance`
+  - `quality_gate` (`diagnostics_only` or `enforce_failure`)
+
+Numeric quality checks are explicit:
+
+- convergence check: full-resolution integral versus half-resolution integral
+- truncation check: terminal-integrand absolute level and terminal-to-peak ratio
+
+When quality is poor:
+
+- `diagnostics_only`: pricing succeeds and emits quality diagnostics
+- `enforce_failure`: pricing returns `FourierInversionPricingError::NumericQualityFailure`
+
+This keeps numeric-quality diagnostics separate from business-level request and response validation errors.
+
 ## Rust contract
 
 The canonical Rust types are in `janiform_core::pricing`:
