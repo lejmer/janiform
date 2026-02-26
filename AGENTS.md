@@ -1,9 +1,5 @@
 # AGENTS Guidelines
 
-This document provides instructions and guardrails for AI coding agents (and humans) working in this repository. It orients you to the codebase, defines the development workflow, and embeds the complete Python style guide you must follow.
-
----
-
 ## Scope and Goals
 - Ensure safe, minimal, high‑quality changes that keep tests green, without cheating.
 - Follow the style and architectural conventions of this repo.
@@ -17,8 +13,8 @@ This document provides instructions and guardrails for AI coding agents (and hum
 - `crates/core/`: The Rust core of the library
 - `crates/pybind/`: Depends on `core` and translates
 - `python/janiform/`: Python package and CLI
-- `tests/python/`: Unit and integration tests for the Python li
-- `tests/rust/`: Unit and integration tests for Rust crates
+- `tests/`: Python unit and integration tests, shared fixtures, and validation harnesses
+- `crates/core/tests/`: Rust unit and integration tests for the core crate
 - `docs/`: Design docs, development guides, planning
 
 ---
@@ -35,16 +31,22 @@ This document provides instructions and guardrails for AI coding agents (and hum
 - Before adding new functions or classes, look through the repo to see if something similar already exists (except for enums and dataclasses that have context-dependent names):
   - If it does exist, use that instead of writing something new.
   - If it does exist, but slightly different, if it makes sense, extend it to do what you require it to do.
-    - If you do extend it, do not leave backwards-compatible APIs; instead, refactor code that uses it so that they adhere to the new API.
+    - If you extend internal or private code paths, prefer one canonical implementation and migrate in-repo callers instead of keeping duplicate legacy paths.
+    - If you extend a public API, preserve compatibility unless a planned breaking change is explicitly requested.
+    - If a breaking public API change is requested, update in-repo call sites and documentation in the same change.
   - If it does not exist, then you may write a new class or function.
   - If it exists in a different part of the program. For example: a class exists in the world server, but you want to use it in the master server, move it to the shared folder, do **not** import it from the world server.
-- You may ALWAYS assume that users have **every dependency available**. No need think about backwards-compatibility issues or missing packages.
+- You may ALWAYS assume that users have **every dependency available**. Do not spend effort on optional dependency fallbacks or missing-package compatibility shims.
 - Naming: clear, descriptive; avoid cryptic abbreviations and shorthands outside mathy contexts (we hate `idx` and `col`, never use that ever).
 - Change management
   - Keep diffs minimal and focused; avoid drive‑by refactors.
     - Bigger refactors are allowed only if asked for.
-    - Exception: Prefer refactoring when it makes things DRY.
+    - Small local refactors for DRY and clarity are allowed when they are directly related to the requested change.
     - NEVER repeat chunks of code for no reason.
+  - Do not add consumer-specific passthrough wrappers (for example `*_for_pricing`) unless the adapter adds boundary value in the same change.
+    - Boundary value means at least one of: validation, policy/default injection, type conversion, error mapping, telemetry, or compatibility constraints that are explicitly documented.
+    - If no boundary value is needed, call the shared function directly or use a non-duplicative re-export.
+    - If a passthrough wrapper is already public and removal would be breaking, do not remove it silently. Create a planned cleanup issue or deprecation path first.
   - Update or add tests when changing behavior.
   - Maintain public APIs unless explicitly required to change.
   - Use project logging (no prints) and follow error‑handling guidance below.
