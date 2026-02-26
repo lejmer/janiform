@@ -36,6 +36,25 @@ When quality is poor:
 
 This keeps numeric-quality diagnostics separate from business-level request and response validation errors.
 
+## Optional Run Diagnostics And Calibration Hooks
+
+Baseline response semantics remain unchanged.
+
+Optional pricing run outputs are available through:
+
+- `VanillaOptionPricingOptionalOutputSelection`
+- `build_vanilla_option_pricing_run_result`
+- `VanillaOptionPricingRunResult`
+
+These optional outputs can include:
+
+- transform diagnostics (`ExponentialAffineTransformIntegrationResult`)
+- Fourier integration quality diagnostics (`FourierInversionDiagnostics`)
+- calibration hooks (`VanillaOptionPricingCalibrationHooks`)
+
+See `docs/development/guides/pricing_diagnostics_and_calibration_hooks_schema.md` for full schema
+versions and required-field metadata.
+
 ## Rust contract
 
 The canonical Rust types are in `janiform_core::pricing`:

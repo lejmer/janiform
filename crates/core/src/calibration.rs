@@ -1,5 +1,8 @@
 //! Calibration-side Hawkes entrypoints through shared provider and transition APIs.
 
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+
 use crate::calendar::ExchangeCalendarRegistry;
 use crate::hawkes::{
     HawkesExcitationState, HawkesIntensityProjection, HawkesKernelLoadings,
@@ -8,14 +11,17 @@ use crate::hawkes::{
     HawkesStructuredRhoSelfDominancePolicy, HawkesTransitionError, HawkesTransitionStep,
 };
 use crate::hourly_factor_provider::{
-    HourlyFactorProviderError, HourlyFactorProviderRequest, provide_hourly_factor_contract,
+    provide_hourly_factor_contract, HourlyFactorProviderError, HourlyFactorProviderRequest,
 };
 use crate::hourly_factors::HourlyFactorContractOutput;
+use crate::pricing::{
+    VanillaOptionPricingCalibrationHooks, VanillaOptionPricingCalibrationHooksError,
+};
 use crate::risk_neutral::{
-    EsscherMartingaleConditionError, EsscherMartingaleConditionInput,
-    EsscherMartingaleConditionReport, EsscherTransformError, NigEsscherTransformationInput,
-    NigEsscherTransformedExponent, evaluate_esscher_martingale_condition,
-    transform_nig_characteristic_exponent_under_esscher_tilt,
+    evaluate_esscher_martingale_condition,
+    transform_nig_characteristic_exponent_under_esscher_tilt, EsscherMartingaleConditionError,
+    EsscherMartingaleConditionInput, EsscherMartingaleConditionReport, EsscherTransformError,
+    NigEsscherTransformationInput, NigEsscherTransformedExponent,
 };
 
 /// Resolve interval-aligned hourly factors for the calibration path.
@@ -95,20 +101,83 @@ pub fn evaluate_calibration_martingale_condition_under_esscher_tilt(
     evaluate_esscher_martingale_condition(input)
 }
 
+/// Canonical calibration observation distilled from pricing calibration hooks.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct OptionSurfaceCalibrationObservation {
+    pub option_price: f64,
+    pub log_moneyness: f64,
+    pub forward_moneyness: f64,
+    pub maturity_interval: f64,
+    pub integration_numeric_quality_is_poor: Option<bool>,
+    pub integration_convergence_check_passed: Option<bool>,
+    pub integration_truncation_check_passed: Option<bool>,
+}
+
+/// Consume one pricing calibration hook payload into the calibration observation shape.
+pub fn build_option_surface_calibration_observation_from_pricing_hooks(
+    hooks: VanillaOptionPricingCalibrationHooks,
+) -> Result<OptionSurfaceCalibrationObservation, OptionSurfaceCalibrationObservationError> {
+    hooks.validate().map_err(|source| {
+        OptionSurfaceCalibrationObservationError::InvalidPricingCalibrationHooks { source }
+    })?;
+
+    Ok(OptionSurfaceCalibrationObservation {
+        option_price: hooks.option_price,
+        log_moneyness: hooks.log_moneyness,
+        forward_moneyness: hooks.forward_moneyness,
+        maturity_interval: hooks.maturity_interval,
+        integration_numeric_quality_is_poor: hooks.integration_numeric_quality_is_poor,
+        integration_convergence_check_passed: hooks.integration_convergence_check_passed,
+        integration_truncation_check_passed: hooks.integration_truncation_check_passed,
+    })
+}
+
+/// Structured failure modes for pricing-hook calibration observation conversion.
+#[derive(Debug, Clone, PartialEq)]
+pub enum OptionSurfaceCalibrationObservationError {
+    InvalidPricingCalibrationHooks {
+        source: VanillaOptionPricingCalibrationHooksError,
+    },
+}
+
+impl Display for OptionSurfaceCalibrationObservationError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidPricingCalibrationHooks { source } => {
+                write!(
+                    formatter,
+                    "pricing calibration hooks payload is invalid for calibration consumption: {source}"
+                )
+            }
+        }
+    }
+}
+
+impl Error for OptionSurfaceCalibrationObservationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidPricingCalibrationHooks { source } => Some(source),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::calibration::{
+        build_option_surface_calibration_observation_from_pricing_hooks,
         evaluate_calibration_martingale_condition_under_esscher_tilt,
         precheck_hawkes_kernel_parameter_domain,
         precheck_structured_hawkes_kernel_parameter_domain,
         transform_nig_exponent_for_calibration_under_esscher_tilt,
+        OptionSurfaceCalibrationObservationError,
     };
     use crate::hawkes::{
-        HAWKES_KERNEL_PARAMETER_VALIDATION_REPORT_SCHEMA_VERSION, HawkesKernelLoadings,
-        HawkesKernelValidationStatus, HawkesStructuredAlphaParameterization,
+        HawkesKernelLoadings, HawkesKernelValidationStatus, HawkesStructuredAlphaParameterization,
         HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
+        HAWKES_KERNEL_PARAMETER_VALIDATION_REPORT_SCHEMA_VERSION,
     };
     use crate::nig::{ComplexScalar, NigParameters};
+    use crate::pricing::VanillaOptionPricingCalibrationHooks;
     use crate::risk_neutral::{EsscherMartingaleConditionInput, NigEsscherTransformationInput};
 
     #[test]
@@ -206,5 +275,62 @@ mod tests {
 
         assert!(report.is_satisfied);
         assert!(report.residual_norm <= report.tolerance);
+    }
+
+    #[test]
+    fn calibration_consumer_observation_builder_accepts_valid_pricing_hooks() {
+        let hooks = VanillaOptionPricingCalibrationHooks::try_new(
+            8.5,
+            -0.03,
+            1.08,
+            0.5,
+            None,
+            Some(false),
+            Some(true),
+            Some(true),
+        )
+        .expect("pricing hooks should construct");
+
+        let observation = build_option_surface_calibration_observation_from_pricing_hooks(hooks)
+            .expect("calibration observation conversion should succeed");
+
+        assert_eq!(observation.option_price, hooks.option_price);
+        assert_eq!(observation.log_moneyness, hooks.log_moneyness);
+        assert_eq!(observation.forward_moneyness, hooks.forward_moneyness);
+        assert_eq!(observation.maturity_interval, hooks.maturity_interval);
+        assert_eq!(
+            observation.integration_numeric_quality_is_poor,
+            hooks.integration_numeric_quality_is_poor
+        );
+        assert_eq!(
+            observation.integration_convergence_check_passed,
+            hooks.integration_convergence_check_passed
+        );
+        assert_eq!(
+            observation.integration_truncation_check_passed,
+            hooks.integration_truncation_check_passed
+        );
+    }
+
+    #[test]
+    fn calibration_consumer_observation_builder_rejects_invalid_pricing_hooks() {
+        let invalid_hooks = VanillaOptionPricingCalibrationHooks::new(
+            8.5,
+            -0.03,
+            0.0,
+            0.5,
+            None,
+            Some(false),
+            Some(true),
+            Some(true),
+        );
+
+        let error = build_option_surface_calibration_observation_from_pricing_hooks(invalid_hooks)
+            .expect_err("invalid pricing hooks should fail calibration conversion");
+
+        assert!(matches!(
+            error,
+            OptionSurfaceCalibrationObservationError::InvalidPricingCalibrationHooks { .. }
+        ));
     }
 }

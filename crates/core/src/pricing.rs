@@ -11,8 +11,9 @@ use crate::affine_oracle::{
     solve_exponential_affine_transform_with_optional_settings,
     ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
     ExponentialAffineTransformInputError, ExponentialAffineTransformIntegrationResult,
-    ExponentialAffineTransformOutput, ExponentialAffineTransformOutputError,
-    ExponentialAffineTransformSolverError, ExponentialAffineTransformSolverSettings,
+    ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformOutput,
+    ExponentialAffineTransformOutputError, ExponentialAffineTransformSolverError,
+    ExponentialAffineTransformSolverSettings,
 };
 use crate::complex_math::{complex_exponential, complex_multiply};
 use crate::hawkes::{
@@ -61,7 +62,39 @@ pub const FOURIER_INVERSION_NUMERIC_QUALITY_GATE_POLICY: &str =
     "diagnostics_only_or_explicit_quality_gate_failure_based_on_stability_controls.v1";
 pub const FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION: &str =
     "pricing.fourier_inversion.diagnostics.v1";
+pub const VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION: &str =
+    "pricing.vanilla_option.run_result.v1";
+pub const VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION: &str =
+    "pricing.vanilla_option.run_diagnostics.v1";
+pub const VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION: &str =
+    "pricing.vanilla_option.calibration_hooks.v1";
+pub const VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION: &str =
+    "pricing.vanilla_option.run_output_schema_metadata.v1";
+pub const VANILLA_OPTION_CALIBRATION_HOOK_POLICY: &str =
+    "derive_option_surface_inputs_from_pricing_response_and_optional_run_diagnostics.v1";
 pub const DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA: f64 = 1.0;
+
+const VANILLA_OPTION_PRICING_RUN_RESULT_REQUIRED_FIELDS: [&str; 5] = [
+    "schema_version",
+    "output_schema_metadata",
+    "response",
+    "run_diagnostics",
+    "calibration_hooks",
+];
+const VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_REQUIRED_FIELDS: [&str; 3] =
+    ["schema_version", "transform", "integration_quality"];
+const VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_REQUIRED_FIELDS: [&str; 10] = [
+    "schema_version",
+    "hook_policy",
+    "option_price",
+    "log_moneyness",
+    "forward_moneyness",
+    "maturity_interval",
+    "transform_status",
+    "integration_numeric_quality_is_poor",
+    "integration_convergence_check_passed",
+    "integration_truncation_check_passed",
+];
 
 const DEFAULT_FOURIER_INVERSION_DAMPING_FACTOR: f64 = 1.5;
 const DEFAULT_FOURIER_INVERSION_UPPER_INTEGRATION_BOUND: f64 = 150.0;
@@ -633,6 +666,539 @@ impl Error for VanillaOptionPricingResponseError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidDiagnostics { source } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+/// Selection controls for optional pricing run outputs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VanillaOptionPricingOptionalOutputSelection {
+    #[serde(default)]
+    pub include_transform_diagnostics: bool,
+    #[serde(default)]
+    pub include_integration_quality_diagnostics: bool,
+    #[serde(default)]
+    pub include_calibration_hooks: bool,
+}
+
+impl VanillaOptionPricingOptionalOutputSelection {
+    pub const fn new(
+        include_transform_diagnostics: bool,
+        include_integration_quality_diagnostics: bool,
+        include_calibration_hooks: bool,
+    ) -> Self {
+        Self {
+            include_transform_diagnostics,
+            include_integration_quality_diagnostics,
+            include_calibration_hooks,
+        }
+    }
+
+    pub const fn diagnostics_selected(self) -> bool {
+        self.include_transform_diagnostics || self.include_integration_quality_diagnostics
+    }
+}
+
+impl Default for VanillaOptionPricingOptionalOutputSelection {
+    fn default() -> Self {
+        Self::new(false, false, false)
+    }
+}
+
+/// Machine-readable schema metadata for pricing run optional outputs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct VanillaOptionPricingRunOutputSchemaMetadata {
+    pub schema_version: &'static str,
+    pub run_result_schema_version: &'static str,
+    pub run_diagnostics_schema_version: &'static str,
+    pub calibration_hooks_schema_version: &'static str,
+    pub required_run_result_fields: &'static [&'static str],
+    pub required_run_diagnostics_fields: &'static [&'static str],
+    pub required_calibration_hooks_fields: &'static [&'static str],
+}
+
+pub const VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA:
+    VanillaOptionPricingRunOutputSchemaMetadata = VanillaOptionPricingRunOutputSchemaMetadata {
+    schema_version: VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION,
+    run_result_schema_version: VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION,
+    run_diagnostics_schema_version: VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
+    calibration_hooks_schema_version: VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
+    required_run_result_fields: &VANILLA_OPTION_PRICING_RUN_RESULT_REQUIRED_FIELDS,
+    required_run_diagnostics_fields: &VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_REQUIRED_FIELDS,
+    required_calibration_hooks_fields: &VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_REQUIRED_FIELDS,
+};
+
+/// Optional run diagnostics for one pricing execution.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct VanillaOptionPricingRunDiagnostics {
+    pub schema_version: &'static str,
+    pub transform: Option<ExponentialAffineTransformIntegrationResult>,
+    pub integration_quality: Option<FourierInversionDiagnostics>,
+}
+
+impl VanillaOptionPricingRunDiagnostics {
+    pub const fn new(
+        transform: Option<ExponentialAffineTransformIntegrationResult>,
+        integration_quality: Option<FourierInversionDiagnostics>,
+    ) -> Self {
+        Self {
+            schema_version: VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
+            transform,
+            integration_quality,
+        }
+    }
+
+    pub fn try_new(
+        transform: Option<ExponentialAffineTransformIntegrationResult>,
+        integration_quality: Option<FourierInversionDiagnostics>,
+    ) -> Result<Self, VanillaOptionPricingRunDiagnosticsError> {
+        let diagnostics = Self::new(transform, integration_quality);
+        diagnostics.validate()?;
+        Ok(diagnostics)
+    }
+
+    pub fn validate(self) -> Result<(), VanillaOptionPricingRunDiagnosticsError> {
+        if self.transform.is_none() && self.integration_quality.is_none() {
+            return Err(VanillaOptionPricingRunDiagnosticsError::EmptyDiagnosticsPayload);
+        }
+
+        Ok(())
+    }
+}
+
+/// Validation errors for optional pricing run diagnostics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VanillaOptionPricingRunDiagnosticsError {
+    EmptyDiagnosticsPayload,
+}
+
+impl Display for VanillaOptionPricingRunDiagnosticsError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyDiagnosticsPayload => write!(
+                formatter,
+                "run diagnostics payload must include transform diagnostics, integration diagnostics, or both"
+            ),
+        }
+    }
+}
+
+impl Error for VanillaOptionPricingRunDiagnosticsError {}
+
+/// Optional calibration-facing hook payload for one pricing execution.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct VanillaOptionPricingCalibrationHooks {
+    pub schema_version: &'static str,
+    pub hook_policy: &'static str,
+    pub option_price: f64,
+    pub log_moneyness: f64,
+    pub forward_moneyness: f64,
+    pub maturity_interval: f64,
+    pub transform_status: Option<ExponentialAffineTransformIntegrationStatus>,
+    pub integration_numeric_quality_is_poor: Option<bool>,
+    pub integration_convergence_check_passed: Option<bool>,
+    pub integration_truncation_check_passed: Option<bool>,
+}
+
+impl VanillaOptionPricingCalibrationHooks {
+    #[allow(clippy::too_many_arguments)]
+    pub const fn new(
+        option_price: f64,
+        log_moneyness: f64,
+        forward_moneyness: f64,
+        maturity_interval: f64,
+        transform_status: Option<ExponentialAffineTransformIntegrationStatus>,
+        integration_numeric_quality_is_poor: Option<bool>,
+        integration_convergence_check_passed: Option<bool>,
+        integration_truncation_check_passed: Option<bool>,
+    ) -> Self {
+        Self {
+            schema_version: VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
+            hook_policy: VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
+            option_price,
+            log_moneyness,
+            forward_moneyness,
+            maturity_interval,
+            transform_status,
+            integration_numeric_quality_is_poor,
+            integration_convergence_check_passed,
+            integration_truncation_check_passed,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_new(
+        option_price: f64,
+        log_moneyness: f64,
+        forward_moneyness: f64,
+        maturity_interval: f64,
+        transform_status: Option<ExponentialAffineTransformIntegrationStatus>,
+        integration_numeric_quality_is_poor: Option<bool>,
+        integration_convergence_check_passed: Option<bool>,
+        integration_truncation_check_passed: Option<bool>,
+    ) -> Result<Self, VanillaOptionPricingCalibrationHooksError> {
+        let hooks = Self::new(
+            option_price,
+            log_moneyness,
+            forward_moneyness,
+            maturity_interval,
+            transform_status,
+            integration_numeric_quality_is_poor,
+            integration_convergence_check_passed,
+            integration_truncation_check_passed,
+        );
+        hooks.validate()?;
+        Ok(hooks)
+    }
+
+    pub fn from_pricing_response_with_optional_diagnostics(
+        response: VanillaOptionPricingResponse,
+        market_inputs: VanillaOptionPricingMarketInputs,
+        transform: Option<ExponentialAffineTransformIntegrationResult>,
+        integration_quality: Option<FourierInversionDiagnostics>,
+    ) -> Result<Self, VanillaOptionPricingCalibrationHooksError> {
+        response.validate().map_err(|source| {
+            VanillaOptionPricingCalibrationHooksError::InvalidResponse { source }
+        })?;
+        market_inputs.validate().map_err(|source| {
+            VanillaOptionPricingCalibrationHooksError::InvalidMarketInputs { source }
+        })?;
+
+        let log_moneyness = (market_inputs.strike / market_inputs.spot).ln();
+        let forward_moneyness = response.diagnostics.forward_price / market_inputs.strike;
+        let integration_quality_diagnostics =
+            integration_quality.map(|diagnostics| diagnostics.numeric_quality_diagnostics);
+
+        Self::try_new(
+            response.price,
+            log_moneyness,
+            forward_moneyness,
+            response.diagnostics.maturity_interval,
+            transform.map(|diagnostics| diagnostics.status),
+            integration_quality_diagnostics.map(|diagnostics| diagnostics.numeric_quality_is_poor),
+            integration_quality_diagnostics.map(|diagnostics| diagnostics.convergence_check_passed),
+            integration_quality_diagnostics.map(|diagnostics| diagnostics.truncation_check_passed),
+        )
+    }
+
+    pub fn validate(self) -> Result<(), VanillaOptionPricingCalibrationHooksError> {
+        if !self.option_price.is_finite() || self.option_price < 0.0 {
+            return Err(
+                VanillaOptionPricingCalibrationHooksError::InvalidOptionPrice {
+                    value: self.option_price,
+                },
+            );
+        }
+        if !self.log_moneyness.is_finite() {
+            return Err(
+                VanillaOptionPricingCalibrationHooksError::InvalidLogMoneyness {
+                    value: self.log_moneyness,
+                },
+            );
+        }
+        if !self.forward_moneyness.is_finite() || self.forward_moneyness <= 0.0 {
+            return Err(
+                VanillaOptionPricingCalibrationHooksError::InvalidForwardMoneyness {
+                    value: self.forward_moneyness,
+                },
+            );
+        }
+        if !self.maturity_interval.is_finite() || self.maturity_interval <= 0.0 {
+            return Err(
+                VanillaOptionPricingCalibrationHooksError::InvalidMaturityInterval {
+                    value: self.maturity_interval,
+                },
+            );
+        }
+
+        Ok(())
+    }
+}
+
+/// Validation errors for calibration-facing pricing hook payloads.
+#[derive(Debug, Clone, PartialEq)]
+pub enum VanillaOptionPricingCalibrationHooksError {
+    InvalidResponse {
+        source: VanillaOptionPricingResponseError,
+    },
+    InvalidMarketInputs {
+        source: VanillaOptionPricingMarketInputsError,
+    },
+    InvalidOptionPrice {
+        value: f64,
+    },
+    InvalidLogMoneyness {
+        value: f64,
+    },
+    InvalidForwardMoneyness {
+        value: f64,
+    },
+    InvalidMaturityInterval {
+        value: f64,
+    },
+}
+
+impl Display for VanillaOptionPricingCalibrationHooksError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidResponse { source } => {
+                write!(
+                    formatter,
+                    "response payload is invalid for calibration hooks: {source}"
+                )
+            }
+            Self::InvalidMarketInputs { source } => write!(
+                formatter,
+                "market inputs are invalid for calibration hooks: {source}"
+            ),
+            Self::InvalidOptionPrice { value } => write!(
+                formatter,
+                "calibration hook option_price must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidLogMoneyness { value } => write!(
+                formatter,
+                "calibration hook log_moneyness must be finite, found {value}"
+            ),
+            Self::InvalidForwardMoneyness { value } => write!(
+                formatter,
+                "calibration hook forward_moneyness must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidMaturityInterval { value } => write!(
+                formatter,
+                "calibration hook maturity_interval must be finite and strictly positive, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for VanillaOptionPricingCalibrationHooksError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidResponse { source } => Some(source),
+            Self::InvalidMarketInputs { source } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+/// Optional run output payload for baseline vanilla option pricing.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct VanillaOptionPricingRunResult {
+    pub schema_version: &'static str,
+    pub output_schema_metadata: VanillaOptionPricingRunOutputSchemaMetadata,
+    pub response: VanillaOptionPricingResponse,
+    pub run_diagnostics: Option<VanillaOptionPricingRunDiagnostics>,
+    pub calibration_hooks: Option<VanillaOptionPricingCalibrationHooks>,
+}
+
+impl VanillaOptionPricingRunResult {
+    pub const fn new(
+        response: VanillaOptionPricingResponse,
+        run_diagnostics: Option<VanillaOptionPricingRunDiagnostics>,
+        calibration_hooks: Option<VanillaOptionPricingCalibrationHooks>,
+    ) -> Self {
+        Self {
+            schema_version: VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION,
+            output_schema_metadata: VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA,
+            response,
+            run_diagnostics,
+            calibration_hooks,
+        }
+    }
+
+    pub fn try_new(
+        response: VanillaOptionPricingResponse,
+        run_diagnostics: Option<VanillaOptionPricingRunDiagnostics>,
+        calibration_hooks: Option<VanillaOptionPricingCalibrationHooks>,
+    ) -> Result<Self, VanillaOptionPricingRunResultError> {
+        let run_result = Self::new(response, run_diagnostics, calibration_hooks);
+        run_result.validate()?;
+        Ok(run_result)
+    }
+
+    pub fn validate(self) -> Result<(), VanillaOptionPricingRunResultError> {
+        self.response
+            .validate()
+            .map_err(|source| VanillaOptionPricingRunResultError::InvalidResponse { source })?;
+        if let Some(run_diagnostics) = self.run_diagnostics {
+            run_diagnostics.validate().map_err(|source| {
+                VanillaOptionPricingRunResultError::InvalidRunDiagnostics { source }
+            })?;
+        }
+        if let Some(calibration_hooks) = self.calibration_hooks {
+            calibration_hooks.validate().map_err(|source| {
+                VanillaOptionPricingRunResultError::InvalidCalibrationHooks { source }
+            })?;
+        }
+
+        Ok(())
+    }
+}
+
+/// Validation errors for pricing run outputs.
+#[derive(Debug, Clone, PartialEq)]
+pub enum VanillaOptionPricingRunResultError {
+    InvalidResponse {
+        source: VanillaOptionPricingResponseError,
+    },
+    InvalidRunDiagnostics {
+        source: VanillaOptionPricingRunDiagnosticsError,
+    },
+    InvalidCalibrationHooks {
+        source: VanillaOptionPricingCalibrationHooksError,
+    },
+}
+
+impl Display for VanillaOptionPricingRunResultError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidResponse { source } => {
+                write!(
+                    formatter,
+                    "response payload is invalid for run output: {source}"
+                )
+            }
+            Self::InvalidRunDiagnostics { source } => {
+                write!(formatter, "run diagnostics payload is invalid: {source}")
+            }
+            Self::InvalidCalibrationHooks { source } => {
+                write!(formatter, "calibration hooks payload is invalid: {source}")
+            }
+        }
+    }
+}
+
+impl Error for VanillaOptionPricingRunResultError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidResponse { source } => Some(source),
+            Self::InvalidRunDiagnostics { source } => Some(source),
+            Self::InvalidCalibrationHooks { source } => Some(source),
+        }
+    }
+}
+
+/// Build one pricing run output with optional diagnostics and calibration hooks.
+pub fn build_vanilla_option_pricing_run_result(
+    response: VanillaOptionPricingResponse,
+    output_selection: VanillaOptionPricingOptionalOutputSelection,
+    market_inputs_for_calibration_hooks: Option<VanillaOptionPricingMarketInputs>,
+    transform_diagnostics_source: Option<ExponentialAffineTransformIntegrationResult>,
+    integration_quality_source: Option<FourierInversionDiagnostics>,
+) -> Result<VanillaOptionPricingRunResult, VanillaOptionPricingRunResultBuildError> {
+    let run_diagnostics = if output_selection.diagnostics_selected() {
+        if output_selection.include_transform_diagnostics && transform_diagnostics_source.is_none()
+        {
+            return Err(VanillaOptionPricingRunResultBuildError::MissingTransformDiagnosticsSource);
+        }
+        if output_selection.include_integration_quality_diagnostics
+            && integration_quality_source.is_none()
+        {
+            return Err(
+                VanillaOptionPricingRunResultBuildError::MissingIntegrationQualityDiagnosticsSource,
+            );
+        }
+
+        let selected_transform_diagnostics = if output_selection.include_transform_diagnostics {
+            transform_diagnostics_source
+        } else {
+            None
+        };
+        let selected_integration_quality =
+            if output_selection.include_integration_quality_diagnostics {
+                integration_quality_source
+            } else {
+                None
+            };
+        Some(
+            VanillaOptionPricingRunDiagnostics::try_new(
+                selected_transform_diagnostics,
+                selected_integration_quality,
+            )
+            .map_err(|source| {
+                VanillaOptionPricingRunResultBuildError::InvalidRunDiagnostics { source }
+            })?,
+        )
+    } else {
+        None
+    };
+
+    let calibration_hooks = if output_selection.include_calibration_hooks {
+        let market_inputs = market_inputs_for_calibration_hooks.ok_or(
+            VanillaOptionPricingRunResultBuildError::MissingMarketInputsForCalibrationHooks,
+        )?;
+        Some(
+            VanillaOptionPricingCalibrationHooks::from_pricing_response_with_optional_diagnostics(
+                response,
+                market_inputs,
+                transform_diagnostics_source,
+                integration_quality_source,
+            )
+            .map_err(|source| {
+                VanillaOptionPricingRunResultBuildError::InvalidCalibrationHooks { source }
+            })?,
+        )
+    } else {
+        None
+    };
+
+    VanillaOptionPricingRunResult::try_new(response, run_diagnostics, calibration_hooks)
+        .map_err(|source| VanillaOptionPricingRunResultBuildError::InvalidRunResult { source })
+}
+
+/// Structured failures for pricing run output construction.
+#[derive(Debug, Clone, PartialEq)]
+pub enum VanillaOptionPricingRunResultBuildError {
+    MissingTransformDiagnosticsSource,
+    MissingIntegrationQualityDiagnosticsSource,
+    MissingMarketInputsForCalibrationHooks,
+    InvalidRunDiagnostics {
+        source: VanillaOptionPricingRunDiagnosticsError,
+    },
+    InvalidCalibrationHooks {
+        source: VanillaOptionPricingCalibrationHooksError,
+    },
+    InvalidRunResult {
+        source: VanillaOptionPricingRunResultError,
+    },
+}
+
+impl Display for VanillaOptionPricingRunResultBuildError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingTransformDiagnosticsSource => write!(
+                formatter,
+                "transform diagnostics were requested but no transform diagnostics source was provided"
+            ),
+            Self::MissingIntegrationQualityDiagnosticsSource => write!(
+                formatter,
+                "integration diagnostics were requested but no integration diagnostics source was provided"
+            ),
+            Self::MissingMarketInputsForCalibrationHooks => write!(
+                formatter,
+                "calibration hooks were requested but no market inputs were provided"
+            ),
+            Self::InvalidRunDiagnostics { source } => {
+                write!(formatter, "run diagnostics payload is invalid: {source}")
+            }
+            Self::InvalidCalibrationHooks { source } => {
+                write!(formatter, "calibration hooks payload is invalid: {source}")
+            }
+            Self::InvalidRunResult { source } => {
+                write!(formatter, "run output payload is invalid: {source}")
+            }
+        }
+    }
+}
+
+impl Error for VanillaOptionPricingRunResultBuildError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidRunDiagnostics { source } => Some(source),
+            Self::InvalidCalibrationHooks { source } => Some(source),
+            Self::InvalidRunResult { source } => Some(source),
             _ => None,
         }
     }
@@ -2477,32 +3043,40 @@ mod tests {
     use serde_json::json;
 
     use crate::affine_oracle::{
-        ExponentialAffineTransformDVector, ExponentialAffineTransformOutput,
+        ExponentialAffineTransformDVector, ExponentialAffineTransformIntegrationResult,
+        ExponentialAffineTransformOutput,
     };
     use crate::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
     use crate::news::GammaSeverityMarkConfiguration;
     use crate::nig::{ComplexScalar, NigSharedPlusShiftConfiguration};
     use crate::pricing::{
+        build_pricing_transform_input, build_vanilla_option_pricing_run_result,
         compose_total_return_characteristic_function,
         compose_total_return_characteristic_function_from_oracle_output,
         compose_total_return_characteristic_function_with_edge_mode,
-        price_vanilla_option_via_fourier_inversion,
+        price_vanilla_option_via_fourier_inversion, solve_exponential_affine_transform,
         validate_pricing_martingale_condition_under_esscher_tilt, FourierInversionContour,
-        FourierInversionContourError, FourierInversionEngineSettings,
+        FourierInversionContourError, FourierInversionDiagnostics, FourierInversionEngineSettings,
         FourierInversionIntegrationStabilityControls,
         FourierInversionIntegrationStabilityControlsError, FourierInversionNumericQualityGate,
         FourierInversionNumericSettings, FourierInversionPricingError,
         FourierInversionQuadratureRule, PricingMartingaleConditionValidationError,
         ReturnCharacteristicFunctionAssemblyError, VanillaOptionPayoffConfiguration,
-        VanillaOptionPayoffType, VanillaOptionPricingDiagnostics,
-        VanillaOptionPricingDiagnosticsError, VanillaOptionPricingMarketInputs,
-        VanillaOptionPricingMarketInputsError, VanillaOptionPricingModelParameters,
+        VanillaOptionPayoffType, VanillaOptionPricingCalibrationHooksError,
+        VanillaOptionPricingDiagnostics, VanillaOptionPricingDiagnosticsError,
+        VanillaOptionPricingMarketInputs, VanillaOptionPricingMarketInputsError,
+        VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
         VanillaOptionPricingRequest, VanillaOptionPricingRequestError,
         VanillaOptionPricingResponse, VanillaOptionPricingResponseError,
-        DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION,
+        VanillaOptionPricingRunResultBuildError, DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA,
+        FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION,
         PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY,
         RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
-        RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY,
+        RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY, VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
+        VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
+        VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
+        VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION,
+        VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION,
     };
     use crate::return_decomposition::{
         ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionInput,
@@ -3886,6 +4460,205 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn pricing_run_output_selection_defaults_to_base_response_only() {
+        let market_inputs = build_reference_market_inputs();
+        let response = build_reference_pricing_response(market_inputs);
+        let transform_diagnostics = build_reference_transform_diagnostics_source();
+        let integration_quality = build_reference_integration_diagnostics_source(market_inputs);
+
+        let run_result = build_vanilla_option_pricing_run_result(
+            response,
+            VanillaOptionPricingOptionalOutputSelection::default(),
+            None,
+            Some(transform_diagnostics),
+            Some(integration_quality),
+        )
+        .expect("default output selection should emit base response only");
+
+        assert_eq!(
+            run_result.schema_version,
+            VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION
+        );
+        assert!(run_result.run_diagnostics.is_none());
+        assert!(run_result.calibration_hooks.is_none());
+    }
+
+    #[test]
+    fn pricing_run_output_selection_can_emit_diagnostics_and_calibration_hooks() {
+        let market_inputs = build_reference_market_inputs();
+        let response = build_reference_pricing_response(market_inputs);
+        let transform_diagnostics = build_reference_transform_diagnostics_source();
+        let integration_quality = build_reference_integration_diagnostics_source(market_inputs);
+
+        let run_result = build_vanilla_option_pricing_run_result(
+            response,
+            VanillaOptionPricingOptionalOutputSelection::new(true, true, true),
+            Some(market_inputs),
+            Some(transform_diagnostics),
+            Some(integration_quality),
+        )
+        .expect("full output selection should include diagnostics and hooks");
+
+        let run_diagnostics = run_result
+            .run_diagnostics
+            .expect("run diagnostics should be present");
+        assert_eq!(
+            run_diagnostics.schema_version,
+            VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION
+        );
+        assert!(run_diagnostics.transform.is_some());
+        assert!(run_diagnostics.integration_quality.is_some());
+
+        let calibration_hooks = run_result
+            .calibration_hooks
+            .expect("calibration hooks should be present");
+        assert_eq!(
+            calibration_hooks.schema_version,
+            VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION
+        );
+        assert_eq!(
+            calibration_hooks.hook_policy,
+            VANILLA_OPTION_CALIBRATION_HOOK_POLICY
+        );
+        assert!(calibration_hooks.forward_moneyness > 0.0);
+        assert!(calibration_hooks.log_moneyness.is_finite());
+    }
+
+    #[test]
+    fn pricing_run_output_schema_metadata_is_machine_readable_with_required_fields() {
+        let market_inputs = build_reference_market_inputs();
+        let response = build_reference_pricing_response(market_inputs);
+        let transform_diagnostics = build_reference_transform_diagnostics_source();
+        let integration_quality = build_reference_integration_diagnostics_source(market_inputs);
+        let run_result = build_vanilla_option_pricing_run_result(
+            response,
+            VanillaOptionPricingOptionalOutputSelection::new(true, true, true),
+            Some(market_inputs),
+            Some(transform_diagnostics),
+            Some(integration_quality),
+        )
+        .expect("full output selection should construct");
+
+        assert_eq!(
+            run_result.output_schema_metadata.schema_version,
+            VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION
+        );
+        assert!(run_result
+            .output_schema_metadata
+            .required_run_result_fields
+            .contains(&"response"));
+        assert!(run_result
+            .output_schema_metadata
+            .required_run_diagnostics_fields
+            .contains(&"integration_quality"));
+        assert!(run_result
+            .output_schema_metadata
+            .required_calibration_hooks_fields
+            .contains(&"forward_moneyness"));
+
+        let serialized_run_result =
+            serde_json::to_value(run_result).expect("run result should serialize");
+        assert_eq!(
+            serialized_run_result["schema_version"],
+            json!(VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION)
+        );
+        assert_eq!(
+            serialized_run_result["output_schema_metadata"]["schema_version"],
+            json!(VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION)
+        );
+        assert_eq!(
+            serialized_run_result["output_schema_metadata"]["required_run_result_fields"],
+            json!(run_result.output_schema_metadata.required_run_result_fields)
+        );
+        assert_eq!(
+            serialized_run_result["output_schema_metadata"]["required_run_diagnostics_fields"],
+            json!(
+                run_result
+                    .output_schema_metadata
+                    .required_run_diagnostics_fields
+            )
+        );
+        assert_eq!(
+            serialized_run_result["output_schema_metadata"]["required_calibration_hooks_fields"],
+            json!(
+                run_result
+                    .output_schema_metadata
+                    .required_calibration_hooks_fields
+            )
+        );
+    }
+
+    #[test]
+    fn pricing_run_output_builder_reports_missing_selected_optional_sources() {
+        let market_inputs = build_reference_market_inputs();
+        let response = build_reference_pricing_response(market_inputs);
+
+        let missing_transform_error = build_vanilla_option_pricing_run_result(
+            response,
+            VanillaOptionPricingOptionalOutputSelection::new(true, false, false),
+            None,
+            None,
+            None,
+        )
+        .expect_err("transform diagnostics selection without source must fail");
+        assert!(matches!(
+            missing_transform_error,
+            VanillaOptionPricingRunResultBuildError::MissingTransformDiagnosticsSource
+        ));
+
+        let missing_integration_error = build_vanilla_option_pricing_run_result(
+            response,
+            VanillaOptionPricingOptionalOutputSelection::new(false, true, false),
+            None,
+            None,
+            None,
+        )
+        .expect_err("integration diagnostics selection without source must fail");
+        assert!(matches!(
+            missing_integration_error,
+            VanillaOptionPricingRunResultBuildError::MissingIntegrationQualityDiagnosticsSource
+        ));
+
+        let missing_market_inputs_error = build_vanilla_option_pricing_run_result(
+            response,
+            VanillaOptionPricingOptionalOutputSelection::new(false, false, true),
+            None,
+            None,
+            None,
+        )
+        .expect_err("calibration hooks selection without market inputs must fail");
+        assert!(matches!(
+            missing_market_inputs_error,
+            VanillaOptionPricingRunResultBuildError::MissingMarketInputsForCalibrationHooks
+        ));
+    }
+
+    #[test]
+    fn calibration_hooks_reject_invalid_market_inputs_with_actionable_error() {
+        let response = build_reference_pricing_response(build_reference_market_inputs());
+        let invalid_market_inputs =
+            VanillaOptionPricingMarketInputs::new(0.0, 100.0, 0.5, 0.02, 0.01);
+
+        let error = build_vanilla_option_pricing_run_result(
+            response,
+            VanillaOptionPricingOptionalOutputSelection::new(false, false, true),
+            Some(invalid_market_inputs),
+            None,
+            None,
+        )
+        .expect_err("invalid market inputs should fail calibration hook construction");
+
+        assert!(matches!(
+            error,
+            VanillaOptionPricingRunResultBuildError::InvalidCalibrationHooks {
+                source: VanillaOptionPricingCalibrationHooksError::InvalidMarketInputs {
+                    source: VanillaOptionPricingMarketInputsError::InvalidSpot { value }
+                }
+            } if value == 0.0
+        ));
+    }
+
     fn build_valid_vanilla_option_request() -> VanillaOptionPricingRequest {
         VanillaOptionPricingRequest::try_new(
             VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 0.5, 0.02, 0.01)
@@ -3929,6 +4702,69 @@ mod tests {
                 .expect("nig shared-plus-shift configuration should construct"),
         )
         .expect("model parameters should construct")
+    }
+
+    fn build_reference_market_inputs() -> VanillaOptionPricingMarketInputs {
+        VanillaOptionPricingMarketInputs::try_new(100.0, 95.0, 0.5, 0.02, 0.01)
+            .expect("reference market inputs should construct")
+    }
+
+    fn build_reference_pricing_response(
+        market_inputs: VanillaOptionPricingMarketInputs,
+    ) -> VanillaOptionPricingResponse {
+        let forward_price = market_inputs.spot
+            * ((market_inputs.risk_free_rate - market_inputs.dividend_yield)
+                * market_inputs.maturity_interval)
+                .exp();
+        let discount_factor =
+            (-market_inputs.risk_free_rate * market_inputs.maturity_interval).exp();
+
+        VanillaOptionPricingResponse::try_new(
+            12.5,
+            VanillaOptionPricingDiagnostics::try_new(
+                forward_price,
+                discount_factor,
+                market_inputs.maturity_interval,
+                0.55,
+            )
+            .expect("reference diagnostics should construct"),
+        )
+        .expect("reference response should construct")
+    }
+
+    fn build_reference_transform_diagnostics_source() -> ExponentialAffineTransformIntegrationResult
+    {
+        let transform_input = build_pricing_transform_input(
+            build_valid_vanilla_option_request(),
+            ComplexScalar::new(0.2, -0.1),
+            ComplexScalar::new(0.3, 0.05),
+            ComplexScalar::new(1.0, 0.0),
+            ComplexScalar::new(0.95, 0.02),
+            1.1,
+            0.08,
+        )
+        .expect("pricing transform input should construct");
+
+        solve_exponential_affine_transform(transform_input)
+            .expect("reference transform solve should succeed")
+    }
+
+    fn build_reference_integration_diagnostics_source(
+        market_inputs: VanillaOptionPricingMarketInputs,
+    ) -> FourierInversionDiagnostics {
+        let result = price_vanilla_option_via_fourier_inversion(
+            market_inputs,
+            VanillaOptionPayoffConfiguration {
+                payoff_type: VanillaOptionPayoffType::Call,
+            },
+            FourierInversionEngineSettings::default(),
+            |argument| {
+                black_scholes_log_return_characteristic_function(market_inputs, 0.2, argument)
+            },
+        )
+        .expect("reference Fourier pricing run should succeed");
+
+        result.diagnostics
     }
 
     fn black_scholes_log_return_characteristic_function(
