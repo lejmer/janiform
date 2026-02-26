@@ -226,6 +226,37 @@ impl ReturnDecomposition {
     }
 }
 
+/// Compose trading-time weighted characteristic exponents with shared edge-mode handling.
+pub fn compose_nig_trading_time_exponent_with_edge_mode(
+    driver_parameters: NigBuySellDriverParameters,
+    argument: ComplexScalar,
+    return_decomposition: ReturnDecomposition,
+    edge_mode: ReturnDecompositionEdgeMode,
+) -> NigTradingTimeCharacteristicExponentContributions {
+    return_decomposition.compose_nig_trading_time_exponent_with_edge_mode(
+        driver_parameters,
+        argument,
+        edge_mode,
+    )
+}
+
+/// Sample one trading-time return increment with shared edge-mode handling.
+pub fn sample_nig_trading_time_increment_with_edge_mode<R>(
+    driver_parameters: NigBuySellDriverParameters,
+    return_decomposition: ReturnDecomposition,
+    edge_mode: ReturnDecompositionEdgeMode,
+    randomness_stream: &mut R,
+) -> Result<NigTradingTimeIncrementContributions, NigTradingTimeIncrementSamplingError>
+where
+    R: SimulationRandomnessStream,
+{
+    return_decomposition.sample_nig_trading_time_increment_with_edge_mode(
+        driver_parameters,
+        edge_mode,
+        randomness_stream,
+    )
+}
+
 /// Validation rule for one return-decomposition component field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum ReturnDecompositionConstraint {

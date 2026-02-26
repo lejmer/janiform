@@ -8,8 +8,8 @@ use janiform_core::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesK
 use janiform_core::news::GammaSeverityMarkConfiguration;
 use janiform_core::nig::ComplexScalar;
 use janiform_core::pricing::{
-    solve_exponential_affine_transform_for_pricing,
-    solve_exponential_affine_transform_for_pricing_with_settings,
+    solve_exponential_affine_transform,
+    solve_exponential_affine_transform_with_settings,
 };
 use janiform_core::risk::{
     solve_exponential_affine_transform_for_risk_sampling,
@@ -20,7 +20,7 @@ use janiform_core::risk::{
 fn solver_api_contract_is_compatible_across_pricing_and_risk_consumers() {
     let transform_input = build_transform_input(1.0);
 
-    let pricing_result = solve_exponential_affine_transform_for_pricing(transform_input)
+    let pricing_result = solve_exponential_affine_transform(transform_input)
         .expect("pricing consumer solve should succeed");
     let risk_result = solve_exponential_affine_transform_for_risk_sampling(transform_input)
         .expect("risk consumer solve should succeed");
@@ -45,7 +45,7 @@ fn pricing_consumer_calls_shared_solver_entrypoint() {
     )
     .expect("pricing integration settings should construct");
 
-    let pricing_result = solve_exponential_affine_transform_for_pricing_with_settings(
+    let pricing_result = solve_exponential_affine_transform_with_settings(
         transform_input,
         solver_settings,
     )

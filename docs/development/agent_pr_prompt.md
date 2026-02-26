@@ -2,7 +2,7 @@ Please write a PR of your implementation of the Issue.
 
 Include a "Change Summary" section, and a "Related Issues" section.
 
-Write it to a markdown file in `./pull_requests/`.
+Write it to a markdown file in `./pull_requests/`. See other PRs in there for examples.
 
 Put the PR name as the main header, and use an appropriate prefix.
 

@@ -13,17 +13,18 @@ The canonical driver payload is `NigBuySellDriverParameters`, derived from one
 - Shared-plus-shift mapping policy:
   `buy_beta_equals_beta_0_and_sell_beta_equals_beta_0_plus_delta_beta.v1`
 
-Pricing and simulation consume this shared interface through thin adapters:
+Pricing and simulation consume this shared interface through shared
+consumer-agnostic entrypoints:
 
-- `pricing::compose_nig_trading_time_exponent_for_pricing`
+- `pricing::compose_nig_trading_time_exponent`
   - Uses `ReturnDecomposition::compose_nig_trading_time_exponent_with_edge_mode`
-  - Shared decomposition adapter then calls
+  - Shared decomposition entrypoint then calls
     `NigBuySellDriverParameters::compose_trading_time_weighted_characteristic_exponent`
   - Enforces sell-side sign convention through `psi_-(-u)` and publishes
     `buy_side_uses_psi_plus_of_u_and_sell_side_uses_psi_minus_of_negative_u.v1`
-- `simulation::sample_nig_trading_time_increment_for_simulation`
+- `simulation::sample_nig_trading_time_increment`
   - Uses `ReturnDecomposition::sample_nig_trading_time_increment_with_edge_mode`
-  - Shared decomposition adapter then calls
+  - Shared decomposition entrypoint then calls
     `NigBuySellDriverParameters::sample_trading_time_return_increment`
   - Enforces trading-time increment composition through
     `buy_side_increment_minus_sell_side_increment.v1`

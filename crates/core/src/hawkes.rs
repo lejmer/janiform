@@ -488,6 +488,15 @@ impl HawkesExcitationState {
     }
 }
 
+/// Apply one Hawkes transition step using canonical drift and jump call order.
+pub fn evolve_hawkes_state(
+    state: HawkesExcitationState,
+    kernel_parameters: HawkesKernelParameters,
+    transition_step: HawkesTransitionStep,
+) -> Result<HawkesExcitationState, HawkesTransitionError> {
+    state.apply_transition_step(kernel_parameters, transition_step)
+}
+
 /// Canonical 4-component loading map used for `alpha_ij` and `rho_ij`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -1,20 +1,18 @@
 mod support;
 
 use janiform_core::nig::{ComplexScalar, NigSharedPlusShiftConfiguration};
-use janiform_core::pricing::{
-    compose_nig_trading_time_exponent_for_pricing,
-    compose_nig_trading_time_exponent_for_pricing_with_edge_mode,
-};
+use janiform_core::pricing::compose_total_return_characteristic_function_with_edge_mode;
 use janiform_core::randomness::SplitMix64SimulationRandomnessStream;
 use janiform_core::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionInput,
+    compose_nig_trading_time_exponent_with_edge_mode,
+    sample_nig_trading_time_increment_with_edge_mode,
 };
-use janiform_core::simulation::sample_nig_trading_time_increment_for_simulation_with_edge_mode;
 
 use support::return_decomposition_sign_fixture::load_return_decomposition_sign_analytic_fixture_document;
 
 #[test]
-fn pricing_and_shared_decomposition_interface_use_equivalent_component_mapping() {
+fn shared_decomposition_mapping_preserves_component_assignment() {
     let driver_parameters = valid_nig_driver_parameters();
     let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
         a_plus: 1.9,
@@ -24,22 +22,20 @@ fn pricing_and_shared_decomposition_interface_use_equivalent_component_mapping()
     .expect("test decomposition payload should construct");
     let argument = ComplexScalar::new(0.55, -0.4);
 
-    let pricing_contributions = compose_nig_trading_time_exponent_for_pricing(
+    let observed = compose_nig_trading_time_exponent_with_edge_mode(
         driver_parameters,
         argument,
         return_decomposition,
+        ReturnDecompositionEdgeMode::Disabled,
     );
-    let shared_contributions =
-        return_decomposition.compose_nig_trading_time_exponent(driver_parameters, argument);
     let manual_expected = driver_parameters
         .compose_trading_time_weighted_characteristic_exponent(argument, 1.9, 0.35);
     let manual_swapped = driver_parameters
         .compose_trading_time_weighted_characteristic_exponent(argument, 0.35, 1.9);
 
-    assert_eq!(pricing_contributions, shared_contributions);
-    assert_eq!(shared_contributions, manual_expected);
+    assert_eq!(observed, manual_expected);
     assert!(
-        shared_contributions
+        observed
             .combined_weighted_exponent
             .subtract(manual_swapped.combined_weighted_exponent)
             .norm()
@@ -49,7 +45,7 @@ fn pricing_and_shared_decomposition_interface_use_equivalent_component_mapping()
 }
 
 #[test]
-fn simulation_and_pricing_adapters_match_shared_interface_under_edge_mode() {
+fn edge_mode_sampling_preserves_zeroed_components_and_sign_rules() {
     let driver_parameters = valid_nig_driver_parameters();
     let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
         a_plus: 0.7,
@@ -57,44 +53,23 @@ fn simulation_and_pricing_adapters_match_shared_interface_under_edge_mode() {
         gap: 0.1,
     })
     .expect("test decomposition payload should construct");
+
     let edge_mode = ReturnDecompositionEdgeMode::SellOnly;
-    let argument = ComplexScalar::new(0.2, 0.1);
-
-    let pricing_observed = compose_nig_trading_time_exponent_for_pricing_with_edge_mode(
-        driver_parameters,
-        argument,
-        return_decomposition,
-        edge_mode,
-    );
-    let pricing_expected = return_decomposition.compose_nig_trading_time_exponent_with_edge_mode(
-        driver_parameters,
-        argument,
-        edge_mode,
-    );
-    assert_eq!(pricing_observed, pricing_expected);
-
     let mut simulation_stream = SplitMix64SimulationRandomnessStream::from_seed(704_991);
-    let mut shared_stream = SplitMix64SimulationRandomnessStream::from_seed(704_991);
-    let simulation_observed = sample_nig_trading_time_increment_for_simulation_with_edge_mode(
+    let sampled = sample_nig_trading_time_increment_with_edge_mode(
         driver_parameters,
         return_decomposition,
         edge_mode,
         &mut simulation_stream,
     )
-    .expect("simulation adapter sampling should succeed");
-    let simulation_expected = return_decomposition
-        .sample_nig_trading_time_increment_with_edge_mode(
-            driver_parameters,
-            edge_mode,
-            &mut shared_stream,
-        )
-        .expect("shared decomposition adapter sampling should succeed");
+    .expect("shared simulation sampling should succeed");
 
-    assert_eq!(simulation_observed, simulation_expected);
+    assert_eq!(sampled.buy_side_increment, 0.0);
+    assert_eq!(sampled.combined_increment, -sampled.sell_side_increment);
 }
 
 #[test]
-fn analytic_sign_fixture_cases_are_reusable_across_cross_engine_adapters() {
+fn analytic_sign_fixture_cases_match_shared_composition_outputs() {
     let fixture_document = load_return_decomposition_sign_analytic_fixture_document()
         .expect("return decomposition sign analytic fixture should load");
     let driver_parameters = valid_nig_driver_parameters_from_fixture(
@@ -113,55 +88,100 @@ fn analytic_sign_fixture_cases_are_reusable_across_cross_engine_adapters() {
         })
         .expect("fixture decomposition payload should construct");
         let argument = fixture_case.argument.into_core();
+        let edge_mode = edge_mode_from_fixture_intent(&fixture_case.scenario_intent);
 
-        let pricing_observed = compose_nig_trading_time_exponent_for_pricing(
-            driver_parameters,
-            argument,
-            return_decomposition,
-        );
-        let shared_expected =
-            return_decomposition.compose_nig_trading_time_exponent(driver_parameters, argument);
-        assert_eq!(pricing_observed, shared_expected);
-
-        let edge_mode = match fixture_case.scenario_intent.as_str() {
-            "buy_only" => ReturnDecompositionEdgeMode::BuyOnly,
-            "sell_only" => ReturnDecompositionEdgeMode::SellOnly,
-            "combined" => ReturnDecompositionEdgeMode::Disabled,
-            _ => ReturnDecompositionEdgeMode::Disabled,
-        };
-        let edge_pricing_observed = compose_nig_trading_time_exponent_for_pricing_with_edge_mode(
+        let exponent_contributions = compose_nig_trading_time_exponent_with_edge_mode(
             driver_parameters,
             argument,
             return_decomposition,
             edge_mode,
         );
-        let edge_shared_expected = return_decomposition
-            .compose_nig_trading_time_exponent_with_edge_mode(
-                driver_parameters,
-                argument,
-                edge_mode,
-            );
-        assert_eq!(edge_pricing_observed, edge_shared_expected);
+        let expected = fixture_case.expected_output;
+        assert_complex_close(
+            exponent_contributions.buy_side_weighted_exponent,
+            expected.buy_side_weighted_exponent.into_core(),
+            1.0e-12,
+        );
+        assert_complex_close(
+            exponent_contributions.sell_side_weighted_exponent,
+            expected.sell_side_weighted_exponent.into_core(),
+            1.0e-12,
+        );
+        assert_complex_close(
+            exponent_contributions.combined_weighted_exponent,
+            expected.combined_weighted_exponent.into_core(),
+            1.0e-12,
+        );
+
+        let assembled = compose_total_return_characteristic_function_with_edge_mode(
+            driver_parameters,
+            argument,
+            return_decomposition,
+            fixture_case.gap_characteristic_factor.into_core(),
+            edge_mode,
+        )
+        .expect("shared characteristic-factor composition should succeed for fixture case");
+
+        assert_complex_close(
+            assembled.trading_time_characteristic_factor,
+            expected.trading_time_characteristic_factor.into_core(),
+            1.0e-12,
+        );
+        assert_complex_close(
+            assembled.combined_characteristic_factor,
+            expected.combined_characteristic_factor.into_core(),
+            1.0e-12,
+        );
+
+        let wrong_positive_u_distance = exponent_contributions
+            .sell_side_weighted_exponent
+            .subtract(
+                expected
+                    .wrong_positive_u_sell_side_weighted_exponent
+                    .into_core(),
+            )
+            .norm();
+        assert!(
+            wrong_positive_u_distance + 1.0e-12 >= expected.minimum_sell_sign_regression_distance,
+            "fixture case {} violated positive-u sign regression threshold",
+            fixture_case.fixture_id
+        );
 
         let case_seed = 704_991_u64
             + u64::try_from(case_position).expect("fixture case position should fit in u64");
         let mut simulation_stream = SplitMix64SimulationRandomnessStream::from_seed(case_seed);
-        let mut shared_stream = SplitMix64SimulationRandomnessStream::from_seed(case_seed);
-        let simulation_observed = sample_nig_trading_time_increment_for_simulation_with_edge_mode(
+        let sampled = sample_nig_trading_time_increment_with_edge_mode(
             driver_parameters,
             return_decomposition,
             edge_mode,
             &mut simulation_stream,
         )
-        .expect("simulation adapter sampling should succeed for fixture case");
-        let simulation_expected = return_decomposition
-            .sample_nig_trading_time_increment_with_edge_mode(
-                driver_parameters,
-                edge_mode,
-                &mut shared_stream,
-            )
-            .expect("shared decomposition adapter sampling should succeed for fixture case");
-        assert_eq!(simulation_observed, simulation_expected);
+        .expect("shared sampling should succeed for fixture case");
+        match edge_mode {
+            ReturnDecompositionEdgeMode::BuyOnly => {
+                assert_eq!(sampled.sell_side_increment, 0.0);
+                assert_eq!(sampled.combined_increment, sampled.buy_side_increment);
+            }
+            ReturnDecompositionEdgeMode::SellOnly => {
+                assert_eq!(sampled.buy_side_increment, 0.0);
+                assert_eq!(sampled.combined_increment, -sampled.sell_side_increment);
+            }
+            ReturnDecompositionEdgeMode::GapOnly => {
+                assert_eq!(sampled.buy_side_increment, 0.0);
+                assert_eq!(sampled.sell_side_increment, 0.0);
+                assert_eq!(sampled.combined_increment, 0.0);
+            }
+            ReturnDecompositionEdgeMode::Disabled => {}
+        }
+    }
+}
+
+fn edge_mode_from_fixture_intent(scenario_intent: &str) -> ReturnDecompositionEdgeMode {
+    match scenario_intent {
+        "buy_only" => ReturnDecompositionEdgeMode::BuyOnly,
+        "sell_only" => ReturnDecompositionEdgeMode::SellOnly,
+        "combined" => ReturnDecompositionEdgeMode::Disabled,
+        _ => ReturnDecompositionEdgeMode::Disabled,
     }
 }
 
@@ -180,4 +200,12 @@ fn valid_nig_driver_parameters_from_fixture(
         .expect("test shared-plus-shift payload should construct")
         .derive_driver_parameters()
         .expect("test shared-plus-shift payload should derive drivers")
+}
+
+fn assert_complex_close(observed: ComplexScalar, expected: ComplexScalar, tolerance: f64) {
+    let distance = observed.subtract(expected).norm();
+    assert!(
+        distance <= tolerance,
+        "complex values differ by {distance} which exceeds tolerance {tolerance}; observed={observed:?}, expected={expected:?}"
+    );
 }

@@ -1898,10 +1898,10 @@ pub fn solve_exponential_affine_transform_with_settings(
 ///
 /// Pricing consumer
 /// ```ignore
-/// use janiform_core::pricing::solve_exponential_affine_transform_for_pricing;
+/// use janiform_core::pricing::solve_exponential_affine_transform;
 ///
 /// let pricing_input = build_pricing_transform_input();
-/// let solve_result = solve_exponential_affine_transform_for_pricing(pricing_input)?;
+/// let solve_result = solve_exponential_affine_transform(pricing_input)?;
 /// # Ok::<(), janiform_core::affine_oracle::ExponentialAffineTransformSolverError>(())
 /// ```
 ///

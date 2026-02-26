@@ -8,10 +8,10 @@ use janiform_core::nig::{
     NIG_TRADING_TIME_INCREMENT_COMPOSITION_POLICY, NIG_TRADING_TIME_RETURN_SIGN_CONVENTION_POLICY,
     NigSharedPlusShiftConfiguration,
 };
-use janiform_core::pricing::compose_nig_trading_time_exponent_for_pricing;
+use janiform_core::pricing::compose_nig_trading_time_exponent;
 use janiform_core::randomness::SplitMix64SimulationRandomnessStream;
 use janiform_core::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
-use janiform_core::simulation::sample_nig_trading_time_increment_for_simulation;
+use janiform_core::simulation::sample_nig_trading_time_increment;
 use serde::Deserialize;
 
 use support::validation_fixture::fixtures_root_path;
@@ -210,7 +210,7 @@ fn exponent_reference_cases_match_pricing_interface_values() {
             fixture_case.integrated_buy_intensity,
             fixture_case.integrated_sell_intensity,
         );
-        let observed = compose_nig_trading_time_exponent_for_pricing(
+        let observed = compose_nig_trading_time_exponent(
             driver_parameters,
             fixture_case.argument.into_core(),
             return_decomposition,
@@ -255,7 +255,7 @@ fn seeded_sampling_sanity_cases_match_expected_statistics_and_pricing_cf() {
             fixture_case.integrated_buy_intensity,
             fixture_case.integrated_sell_intensity,
         );
-        let expected_exponent_contributions = compose_nig_trading_time_exponent_for_pricing(
+        let expected_exponent_contributions = compose_nig_trading_time_exponent(
             driver_parameters,
             ComplexScalar::new(fixture_case.characteristic_function_argument_real, 0.0),
             return_decomposition,
@@ -370,7 +370,7 @@ fn run_sampling_sanity_summary(
             fixture_case.integrated_buy_intensity,
             fixture_case.integrated_sell_intensity,
         );
-        let sampled_increment_contributions = sample_nig_trading_time_increment_for_simulation(
+        let sampled_increment_contributions = sample_nig_trading_time_increment(
             driver_parameters,
             return_decomposition,
             &mut randomness_stream,

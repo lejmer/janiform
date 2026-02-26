@@ -54,47 +54,49 @@ single source for both engines:
 - `ReturnDecomposition::sample_nig_trading_time_increment_with_edge_mode`
 
 These methods map `a_plus` and `a_minus` to the NIG buy and sell drivers after
-optional edge-mode zeroing, so adapters do not duplicate component wiring math.
+optional edge-mode zeroing.
 
 ## Engine reuse
 
-Pricing and simulation expose thin adapters over the shared decomposition
-methods:
+Engine-facing shared entrypoints are consumer-agnostic:
 
-- `pricing::compose_nig_trading_time_exponent_for_pricing`
-- `pricing::compose_nig_trading_time_exponent_for_coarse_transform_integration`
-- `simulation::sample_nig_trading_time_increment_for_simulation`
+- `pricing::compose_nig_trading_time_exponent`
+- `pricing::compose_nig_trading_time_exponent_with_edge_mode`
+- `simulation::sample_nig_trading_time_increment`
+- `simulation::sample_nig_trading_time_increment_with_edge_mode`
+- `return_decomposition::compose_nig_trading_time_exponent_with_edge_mode`
+- `return_decomposition::sample_nig_trading_time_increment_with_edge_mode`
+- `pricing::compose_total_return_characteristic_function`
+- `pricing::compose_total_return_characteristic_function_with_edge_mode`
+- `pricing::compose_total_return_characteristic_function_from_oracle_output`
 
-Edge-mode-aware debug and test entrypoints:
+Public API impact and migration notes:
 
-- `pricing::compose_nig_trading_time_exponent_for_pricing_with_edge_mode`
-- `pricing::compose_nig_trading_time_exponent_for_coarse_transform_integration_with_edge_mode`
-- `pricing::compose_total_return_characteristic_function_for_pricing_with_edge_mode`
-- `pricing::compose_total_return_characteristic_function_for_coarse_transform_integration_with_edge_mode`
-- `simulation::sample_nig_trading_time_increment_for_simulation_with_edge_mode`
+- JAN-105 intentionally removes pre-release `*_for_*` compatibility aliases in
+  `pricing` and `simulation`.
+- In-repo call sites now use the canonical names listed above.
 
 ## Integration call flow map
 
 Pricing call flow:
 
-1. Entry adapter receives `ReturnDecomposition`.
-2. Adapter delegates trading-time mapping to
-   `ReturnDecomposition::compose_nig_trading_time_exponent_with_edge_mode`.
+1. Shared entrypoint receives `ReturnDecomposition`.
+2. Shared decomposition mapping runs through
+   `return_decomposition::compose_nig_trading_time_exponent_with_edge_mode`.
 3. Full CF assembly multiplies `exp(weighted_trading_exponent)` and gap factor.
 
 Oracle-output pricing call flow:
 
-1. Entry adapter receives validated `ExponentialAffineTransformOutput`.
-2. Adapter uses `output.transform_value` as the trading-time characteristic factor.
+1. Shared entrypoint receives validated `ExponentialAffineTransformOutput`.
+2. Shared entrypoint uses `output.transform_value` as the trading-time characteristic factor.
 3. Factor composition multiplies trading-time and explicit gap factors through:
-   - `pricing::compose_total_return_characteristic_function_from_oracle_output_for_pricing`
-   - `pricing::compose_total_return_characteristic_function_from_oracle_output_for_coarse_transform_integration`
+   - `pricing::compose_total_return_characteristic_function_from_oracle_output`
 
 Simulation call flow:
 
-1. Entry adapter receives `ReturnDecomposition`.
-2. Adapter delegates increment mapping to
-   `ReturnDecomposition::sample_nig_trading_time_increment_with_edge_mode`.
+1. Shared entrypoint receives `ReturnDecomposition`.
+2. Shared decomposition mapping runs through
+   `return_decomposition::sample_nig_trading_time_increment_with_edge_mode`.
 3. Simulation uses returned buy, sell, and combined contributions as-is.
 
 ## Interface evolution policy for v0.1

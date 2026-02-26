@@ -7,8 +7,8 @@ use janiform_core::nig::{
 };
 use janiform_core::pricing::{
     RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
-    compose_nig_trading_time_exponent_for_pricing,
-    compose_total_return_characteristic_function_for_pricing,
+    compose_nig_trading_time_exponent,
+    compose_total_return_characteristic_function,
 };
 use janiform_core::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
 
@@ -72,7 +72,7 @@ fn return_decomposition_sign_analytic_cases_match_expected_pricing_outputs() {
         .expect("fixture return decomposition payload should construct");
         let argument = fixture_case.argument.into_core();
 
-        let exponent_contributions = compose_nig_trading_time_exponent_for_pricing(
+        let exponent_contributions = compose_nig_trading_time_exponent(
             driver_parameters,
             argument,
             return_decomposition,
@@ -112,7 +112,7 @@ fn return_decomposition_sign_analytic_cases_match_expected_pricing_outputs() {
             "combined_weighted_exponent",
         );
 
-        let assembled = compose_total_return_characteristic_function_for_pricing(
+        let assembled = compose_total_return_characteristic_function(
             driver_parameters,
             argument,
             return_decomposition,
@@ -158,7 +158,7 @@ fn return_decomposition_sign_analytic_cases_detect_positive_u_sell_side_regressi
         }
 
         let argument = fixture_case.argument.into_core();
-        let observed_sell_side_exponent = compose_nig_trading_time_exponent_for_pricing(
+        let observed_sell_side_exponent = compose_nig_trading_time_exponent(
             driver_parameters,
             argument,
             ReturnDecomposition::try_new(ReturnDecompositionInput {

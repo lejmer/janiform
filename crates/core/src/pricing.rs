@@ -12,15 +12,10 @@ use crate::affine_oracle::{
     ExponentialAffineTransformSolverError, ExponentialAffineTransformSolverSettings,
     solve_exponential_affine_transform_with_optional_settings,
 };
-use crate::calendar::ExchangeCalendarRegistry;
 use crate::complex_math::{complex_exponential, complex_multiply};
 use crate::hawkes::{
     HawkesExcitationState, HawkesIntensityProjection, HawkesKernelParameterError,
-    HawkesKernelParameters, HawkesSeasonalityIntervalError, HawkesTransitionError,
-    HawkesTransitionStep,
-};
-use crate::hourly_factor_provider::{
-    HourlyFactorProviderError, HourlyFactorProviderRequest, provide_hourly_factor_contract,
+    HawkesKernelParameters, HawkesSeasonalityIntervalError,
 };
 use crate::hourly_factors::HourlyFactorContractOutput;
 use crate::news::{GammaSeverityMarkConfiguration, NewsMarkConfigurationError};
@@ -756,15 +751,10 @@ impl Error for PricingMartingaleConditionValidationError {
 }
 
 /// Resolve interval-aligned hourly factors for the pricing path.
-pub fn load_hourly_factor_contract_for_pricing(
-    calendar_registry: &ExchangeCalendarRegistry,
-    provider_request: HourlyFactorProviderRequest<'_>,
-) -> Result<HourlyFactorContractOutput, HourlyFactorProviderError> {
-    provide_hourly_factor_contract(calendar_registry, provider_request)
-}
+pub use crate::hourly_factor_provider::provide_hourly_factor_contract as load_hourly_factor_contract;
 
 /// Project state to interval intensities for coarse-time sufficient-statistics paths.
-pub fn project_hawkes_intensities_for_coarse_interval(
+pub fn project_hawkes_intensities_coarse_interval(
     state: HawkesExcitationState,
     parameters: HawkesKernelParameters,
     hourly_factor_contract: &HourlyFactorContractOutput,
@@ -781,14 +771,14 @@ pub fn project_hawkes_intensities_for_coarse_interval(
 ///
 /// This adapter keeps the pricing layer conversion-focused and delegates to the
 /// shared solver entrypoint in `affine_oracle`.
-pub fn solve_exponential_affine_transform_for_pricing(
+pub fn solve_exponential_affine_transform(
     transform_input: ExponentialAffineTransformInput,
 ) -> Result<ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError> {
     solve_exponential_affine_transform_with_optional_settings(transform_input, None)
 }
 
 /// Solve one-interval exponential-affine transform for pricing workflows with explicit settings.
-pub fn solve_exponential_affine_transform_for_pricing_with_settings(
+pub fn solve_exponential_affine_transform_with_settings(
     transform_input: ExponentialAffineTransformInput,
     solver_settings: ExponentialAffineTransformSolverSettings,
 ) -> Result<ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError> {
@@ -804,12 +794,12 @@ pub fn solve_exponential_affine_transform_for_pricing_with_settings(
 /// \f[
 /// A^+\psi_+(u) + A^-\psi_-(-u).
 /// \f]
-pub fn compose_nig_trading_time_exponent_for_pricing(
+pub fn compose_nig_trading_time_exponent(
     driver_parameters: NigBuySellDriverParameters,
     argument: ComplexScalar,
     return_decomposition: ReturnDecomposition,
 ) -> NigTradingTimeCharacteristicExponentContributions {
-    compose_nig_trading_time_exponent_for_pricing_with_edge_mode(
+    crate::return_decomposition::compose_nig_trading_time_exponent_with_edge_mode(
         driver_parameters,
         argument,
         return_decomposition,
@@ -818,147 +808,24 @@ pub fn compose_nig_trading_time_exponent_for_pricing(
 }
 
 /// Compose trading-time characteristic exponent for pricing with optional edge-mode gating.
-pub fn compose_nig_trading_time_exponent_for_pricing_with_edge_mode(
-    driver_parameters: NigBuySellDriverParameters,
-    argument: ComplexScalar,
-    return_decomposition: ReturnDecomposition,
-    edge_mode: ReturnDecompositionEdgeMode,
-) -> NigTradingTimeCharacteristicExponentContributions {
-    return_decomposition.compose_nig_trading_time_exponent_with_edge_mode(
-        driver_parameters,
-        argument,
-        edge_mode,
-    )
-}
-
-/// Compose trading-time characteristic exponent for coarse-time transform integration.
-///
-/// This path delegates to the same helper as the pricing path to keep sell-side
-/// sign convention logic in one place.
-pub fn compose_nig_trading_time_exponent_for_coarse_transform_integration(
-    driver_parameters: NigBuySellDriverParameters,
-    argument: ComplexScalar,
-    return_decomposition: ReturnDecomposition,
-) -> NigTradingTimeCharacteristicExponentContributions {
-    compose_nig_trading_time_exponent_for_coarse_transform_integration_with_edge_mode(
-        driver_parameters,
-        argument,
-        return_decomposition,
-        ReturnDecompositionEdgeMode::Disabled,
-    )
-}
-
-/// Compose coarse-transform trading-time exponent with optional edge-mode gating.
-pub fn compose_nig_trading_time_exponent_for_coarse_transform_integration_with_edge_mode(
-    driver_parameters: NigBuySellDriverParameters,
-    argument: ComplexScalar,
-    return_decomposition: ReturnDecomposition,
-    edge_mode: ReturnDecompositionEdgeMode,
-) -> NigTradingTimeCharacteristicExponentContributions {
-    return_decomposition.compose_nig_trading_time_exponent_with_edge_mode(
-        driver_parameters,
-        argument,
-        edge_mode,
-    )
-}
+pub use crate::return_decomposition::compose_nig_trading_time_exponent_with_edge_mode;
 
 /// Compose full return characteristic function for pricing through one shared assembler.
 ///
 /// This path reuses the canonical trading-time exponent composition helper, which
 /// keeps sell-side `-u` convention logic in a single module.
-pub fn compose_total_return_characteristic_function_for_pricing(
+pub fn compose_total_return_characteristic_function(
     driver_parameters: NigBuySellDriverParameters,
     argument: ComplexScalar,
     return_decomposition: ReturnDecomposition,
     gap_characteristic_factor: ComplexScalar,
 ) -> Result<ReturnCharacteristicFunctionAssembly, ReturnCharacteristicFunctionAssemblyError> {
-    compose_total_return_characteristic_function_for_pricing_with_edge_mode(
+    compose_total_return_characteristic_function_with_edge_mode(
         driver_parameters,
         argument,
         return_decomposition,
         gap_characteristic_factor,
         ReturnDecompositionEdgeMode::Disabled,
-    )
-}
-
-/// Compose full return characteristic function for pricing with optional edge-mode gating.
-pub fn compose_total_return_characteristic_function_for_pricing_with_edge_mode(
-    driver_parameters: NigBuySellDriverParameters,
-    argument: ComplexScalar,
-    return_decomposition: ReturnDecomposition,
-    gap_characteristic_factor: ComplexScalar,
-    edge_mode: ReturnDecompositionEdgeMode,
-) -> Result<ReturnCharacteristicFunctionAssembly, ReturnCharacteristicFunctionAssemblyError> {
-    compose_total_return_characteristic_function_shared(
-        driver_parameters,
-        argument,
-        return_decomposition,
-        gap_characteristic_factor,
-        edge_mode,
-    )
-}
-
-/// Compose full return characteristic function for coarse-time transform integration.
-///
-/// This path delegates to the same shared assembler as the pricing path.
-pub fn compose_total_return_characteristic_function_for_coarse_transform_integration(
-    driver_parameters: NigBuySellDriverParameters,
-    argument: ComplexScalar,
-    return_decomposition: ReturnDecomposition,
-    gap_characteristic_factor: ComplexScalar,
-) -> Result<ReturnCharacteristicFunctionAssembly, ReturnCharacteristicFunctionAssemblyError> {
-    compose_total_return_characteristic_function_for_coarse_transform_integration_with_edge_mode(
-        driver_parameters,
-        argument,
-        return_decomposition,
-        gap_characteristic_factor,
-        ReturnDecompositionEdgeMode::Disabled,
-    )
-}
-
-/// Compose full return characteristic function for coarse transform with edge-mode gating.
-pub fn compose_total_return_characteristic_function_for_coarse_transform_integration_with_edge_mode(
-    driver_parameters: NigBuySellDriverParameters,
-    argument: ComplexScalar,
-    return_decomposition: ReturnDecomposition,
-    gap_characteristic_factor: ComplexScalar,
-    edge_mode: ReturnDecompositionEdgeMode,
-) -> Result<ReturnCharacteristicFunctionAssembly, ReturnCharacteristicFunctionAssemblyError> {
-    compose_total_return_characteristic_function_shared(
-        driver_parameters,
-        argument,
-        return_decomposition,
-        gap_characteristic_factor,
-        edge_mode,
-    )
-}
-
-/// Compose full return characteristic factors for pricing from one oracle solve output.
-///
-/// Equation reference:
-/// \f[
-/// F_{\text{total}}(u)=F_{\text{trading}}(u)\,\varphi_{\Delta G}(u).
-/// \f]
-pub fn compose_total_return_characteristic_function_from_oracle_output_for_pricing(
-    oracle_output: ExponentialAffineTransformOutput,
-    gap_characteristic_factor: ComplexScalar,
-) -> Result<ReturnCharacteristicFunctionFactorComposition, ReturnCharacteristicFunctionAssemblyError>
-{
-    compose_total_return_characteristic_function_from_oracle_output_shared(
-        oracle_output,
-        gap_characteristic_factor,
-    )
-}
-
-/// Compose full return characteristic factors for coarse-time integration from one oracle solve output.
-pub fn compose_total_return_characteristic_function_from_oracle_output_for_coarse_transform_integration(
-    oracle_output: ExponentialAffineTransformOutput,
-    gap_characteristic_factor: ComplexScalar,
-) -> Result<ReturnCharacteristicFunctionFactorComposition, ReturnCharacteristicFunctionAssemblyError>
-{
-    compose_total_return_characteristic_function_from_oracle_output_shared(
-        oracle_output,
-        gap_characteristic_factor,
     )
 }
 
@@ -1043,16 +910,7 @@ pub fn validate_pricing_martingale_condition_under_esscher_tilt(
 }
 
 /// Apply one coarse-time transform-path Hawkes state transition using canonical call order.
-///
-/// Call order is delegated to `HawkesExcitationState::apply_transition_step`:
-/// drift, then optional endogenous jump, then optional exogenous jump.
-pub fn evolve_hawkes_state_for_coarse_interval_step(
-    state: HawkesExcitationState,
-    kernel_parameters: HawkesKernelParameters,
-    transition_step: HawkesTransitionStep,
-) -> Result<HawkesExcitationState, HawkesTransitionError> {
-    state.apply_transition_step(kernel_parameters, transition_step)
-}
+pub use crate::hawkes::evolve_hawkes_state as evolve_hawkes_state;
 
 fn validate_boundary_state(
     boundary_state: HawkesExcitationState,
@@ -1195,7 +1053,8 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingResponse {
     }
 }
 
-fn compose_total_return_characteristic_function_shared(
+/// Compose the full return characteristic function with explicit edge-mode control.
+pub fn compose_total_return_characteristic_function_with_edge_mode(
     driver_parameters: NigBuySellDriverParameters,
     argument: ComplexScalar,
     return_decomposition: ReturnDecomposition,
@@ -1248,7 +1107,8 @@ fn compose_total_return_characteristic_function_shared(
     })
 }
 
-fn compose_total_return_characteristic_function_from_oracle_output_shared(
+/// Compose full return characteristic factors from one oracle solve output.
+pub fn compose_total_return_characteristic_function_from_oracle_output(
     oracle_output: ExponentialAffineTransformOutput,
     gap_characteristic_factor: ComplexScalar,
 ) -> Result<ReturnCharacteristicFunctionFactorComposition, ReturnCharacteristicFunctionAssemblyError>
@@ -1325,11 +1185,9 @@ mod tests {
         VanillaOptionPricingMarketInputsError, VanillaOptionPricingModelParameters,
         VanillaOptionPricingRequest, VanillaOptionPricingRequestError,
         VanillaOptionPricingResponse, VanillaOptionPricingResponseError,
-        compose_total_return_characteristic_function_for_coarse_transform_integration,
-        compose_total_return_characteristic_function_for_pricing,
-        compose_total_return_characteristic_function_for_pricing_with_edge_mode,
-        compose_total_return_characteristic_function_from_oracle_output_for_coarse_transform_integration,
-        compose_total_return_characteristic_function_from_oracle_output_for_pricing,
+        compose_total_return_characteristic_function,
+        compose_total_return_characteristic_function_with_edge_mode,
+        compose_total_return_characteristic_function_from_oracle_output,
         validate_pricing_martingale_condition_under_esscher_tilt,
     };
     use crate::return_decomposition::{
@@ -1339,79 +1197,7 @@ mod tests {
         NigEsscherTransformationInput, transform_nig_characteristic_exponent_under_esscher_tilt,
     };
 
-    use super::{
-        compose_nig_trading_time_exponent_for_coarse_transform_integration,
-        compose_nig_trading_time_exponent_for_coarse_transform_integration_with_edge_mode,
-        compose_nig_trading_time_exponent_for_pricing,
-        compose_nig_trading_time_exponent_for_pricing_with_edge_mode,
-    };
-
-    #[test]
-    fn pricing_and_coarse_transform_paths_share_sign_convention_helper() {
-        let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
-            .expect("valid shared-plus-shift payload should construct")
-            .derive_driver_parameters()
-            .expect("valid shared-plus-shift payload should derive drivers");
-        let argument = ComplexScalar::new(0.7, 0.2);
-        let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
-            a_plus: 1.3,
-            a_minus: 0.9,
-            gap: 0.0,
-        })
-        .expect("valid return decomposition payload should construct");
-
-        let pricing_contributions = compose_nig_trading_time_exponent_for_pricing(
-            driver_parameters,
-            argument,
-            return_decomposition,
-        );
-        let coarse_transform_contributions =
-            compose_nig_trading_time_exponent_for_coarse_transform_integration(
-                driver_parameters,
-                argument,
-                return_decomposition,
-            );
-
-        assert_eq!(pricing_contributions, coarse_transform_contributions);
-    }
-
-    #[test]
-    fn pricing_and_coarse_adapters_match_shared_return_decomposition_interface() {
-        let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
-            .expect("valid shared-plus-shift payload should construct")
-            .derive_driver_parameters()
-            .expect("valid shared-plus-shift payload should derive drivers");
-        let argument = ComplexScalar::new(0.45, -0.15);
-        let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
-            a_plus: 1.8,
-            a_minus: 0.6,
-            gap: -0.25,
-        })
-        .expect("valid return decomposition payload should construct");
-
-        let pricing_observed = compose_nig_trading_time_exponent_for_pricing_with_edge_mode(
-            driver_parameters,
-            argument,
-            return_decomposition,
-            ReturnDecompositionEdgeMode::SellOnly,
-        );
-        let coarse_observed =
-            compose_nig_trading_time_exponent_for_coarse_transform_integration_with_edge_mode(
-                driver_parameters,
-                argument,
-                return_decomposition,
-                ReturnDecompositionEdgeMode::SellOnly,
-            );
-        let shared_expected = return_decomposition
-            .compose_nig_trading_time_exponent_with_edge_mode(
-                driver_parameters,
-                argument,
-                ReturnDecompositionEdgeMode::SellOnly,
-            );
-
-        assert_eq!(pricing_observed, shared_expected);
-        assert_eq!(coarse_observed, shared_expected);
-    }
+    use super::compose_nig_trading_time_exponent;
 
     #[test]
     fn pricing_path_preserves_sell_side_minus_u_sign_handling() {
@@ -1427,7 +1213,7 @@ mod tests {
         })
         .expect("valid return decomposition payload should construct");
 
-        let composed = compose_nig_trading_time_exponent_for_pricing(
+        let composed = compose_nig_trading_time_exponent(
             driver_parameters,
             argument,
             return_decomposition,
@@ -1470,7 +1256,7 @@ mod tests {
         .expect("valid return decomposition payload should construct");
         let gap_characteristic_factor = ComplexScalar::new(1.0, 0.0);
 
-        let assembled = compose_total_return_characteristic_function_for_pricing(
+        let assembled = compose_total_return_characteristic_function(
             driver_parameters,
             argument,
             return_decomposition,
@@ -1519,7 +1305,7 @@ mod tests {
         .expect("valid return decomposition payload should construct");
         let gap_characteristic_factor = ComplexScalar::new(0.85, -0.25);
 
-        let assembled = compose_total_return_characteristic_function_for_pricing(
+        let assembled = compose_total_return_characteristic_function(
             driver_parameters,
             argument,
             return_decomposition,
@@ -1527,7 +1313,7 @@ mod tests {
         )
         .expect("full CF assembly should succeed with valid finite inputs");
 
-        let expected_trading_exponent = compose_nig_trading_time_exponent_for_pricing(
+        let expected_trading_exponent = compose_nig_trading_time_exponent(
             driver_parameters,
             argument,
             return_decomposition,
@@ -1550,40 +1336,6 @@ mod tests {
     }
 
     #[test]
-    fn full_characteristic_function_assembly_is_shared_between_pricing_and_coarse_paths() {
-        let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
-            .expect("valid shared-plus-shift payload should construct")
-            .derive_driver_parameters()
-            .expect("valid shared-plus-shift payload should derive drivers");
-        let argument = ComplexScalar::new(0.2, -0.15);
-        let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
-            a_plus: 1.1,
-            a_minus: 0.9,
-            gap: 0.0,
-        })
-        .expect("valid return decomposition payload should construct");
-        let gap_characteristic_factor = ComplexScalar::new(0.98, 0.05);
-
-        let pricing_assembled = compose_total_return_characteristic_function_for_pricing(
-            driver_parameters,
-            argument,
-            return_decomposition,
-            gap_characteristic_factor,
-        )
-        .expect("pricing full CF assembly should succeed");
-        let coarse_assembled =
-            compose_total_return_characteristic_function_for_coarse_transform_integration(
-                driver_parameters,
-                argument,
-                return_decomposition,
-                gap_characteristic_factor,
-            )
-            .expect("coarse full CF assembly should succeed");
-
-        assert_eq!(pricing_assembled, coarse_assembled);
-    }
-
-    #[test]
     fn oracle_output_cf_assembly_matches_canonical_pricing_path_for_fixed_trading_factor() {
         let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("valid shared-plus-shift payload should construct")
@@ -1598,7 +1350,7 @@ mod tests {
         .expect("valid return decomposition payload should construct");
         let gap_characteristic_factor = ComplexScalar::new(0.92, -0.08);
 
-        let canonical_assembly = compose_total_return_characteristic_function_for_pricing(
+        let canonical_assembly = compose_total_return_characteristic_function(
             driver_parameters,
             argument,
             return_decomposition,
@@ -1607,18 +1359,13 @@ mod tests {
         .expect("canonical pricing assembly should succeed");
 
         let oracle_factor_assembly =
-            compose_total_return_characteristic_function_from_oracle_output_for_pricing(
+            compose_total_return_characteristic_function_from_oracle_output(
                 oracle_output_with_transform_value(
                     canonical_assembly.trading_time_characteristic_factor,
                 ),
                 gap_characteristic_factor,
             )
             .expect("oracle-output assembly should succeed");
-        let coarse_factor_assembly = compose_total_return_characteristic_function_from_oracle_output_for_coarse_transform_integration(
-            oracle_output_with_transform_value(canonical_assembly.trading_time_characteristic_factor),
-            gap_characteristic_factor,
-        )
-        .expect("coarse oracle-output assembly should succeed");
 
         assert_complex_close(
             oracle_factor_assembly.trading_time_characteristic_factor,
@@ -1630,7 +1377,6 @@ mod tests {
             canonical_assembly.combined_characteristic_factor,
             1.0e-13,
         );
-        assert_eq!(oracle_factor_assembly, coarse_factor_assembly);
         assert_eq!(
             oracle_factor_assembly.composition_policy,
             RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY
@@ -1644,7 +1390,7 @@ mod tests {
     #[test]
     fn oracle_output_cf_assembly_isolates_trading_only_and_gap_only_paths() {
         let trading_only =
-            compose_total_return_characteristic_function_from_oracle_output_for_pricing(
+            compose_total_return_characteristic_function_from_oracle_output(
                 oracle_output_with_transform_value(ComplexScalar::new(0.84, -0.22)),
                 ComplexScalar::new(1.0, 0.0),
             )
@@ -1657,7 +1403,7 @@ mod tests {
         );
 
         let gap_characteristic_factor = ComplexScalar::new(0.66, 0.19);
-        let gap_only = compose_total_return_characteristic_function_from_oracle_output_for_pricing(
+        let gap_only = compose_total_return_characteristic_function_from_oracle_output(
             oracle_output_with_transform_value(ComplexScalar::new(1.0, 0.0)),
             gap_characteristic_factor,
         )
@@ -1684,7 +1430,7 @@ mod tests {
         })
         .expect("valid return decomposition payload should construct");
 
-        let correct_trading_exponent = compose_nig_trading_time_exponent_for_pricing(
+        let correct_trading_exponent = compose_nig_trading_time_exponent(
             driver_parameters,
             argument,
             return_decomposition,
@@ -1698,13 +1444,13 @@ mod tests {
         );
 
         let correct_assembly =
-            compose_total_return_characteristic_function_from_oracle_output_for_pricing(
+            compose_total_return_characteristic_function_from_oracle_output(
                 oracle_output_with_transform_value(correct_trading_factor),
                 ComplexScalar::new(1.0, 0.0),
             )
             .expect("correct-sign oracle assembly should succeed");
         let incorrect_assembly =
-            compose_total_return_characteristic_function_from_oracle_output_for_pricing(
+            compose_total_return_characteristic_function_from_oracle_output(
                 oracle_output_with_transform_value(incorrect_positive_u_trading_factor),
                 ComplexScalar::new(1.0, 0.0),
             )
@@ -1722,7 +1468,7 @@ mod tests {
 
     #[test]
     fn oracle_output_cf_assembly_rejects_invalid_output_payload() {
-        let error = compose_total_return_characteristic_function_from_oracle_output_for_pricing(
+        let error = compose_total_return_characteristic_function_from_oracle_output(
             ExponentialAffineTransformOutput {
                 c_at_delta: ComplexScalar::new(f64::NAN, 0.0),
                 d_at_delta: ExponentialAffineTransformDVector::new(
@@ -1758,7 +1504,7 @@ mod tests {
         })
         .expect("valid return decomposition payload should construct");
 
-        let assembled = compose_total_return_characteristic_function_for_pricing_with_edge_mode(
+        let assembled = compose_total_return_characteristic_function_with_edge_mode(
             driver_parameters,
             argument,
             return_decomposition,
@@ -1814,7 +1560,7 @@ mod tests {
         })
         .expect("valid return decomposition payload should construct");
 
-        let assembled = compose_total_return_characteristic_function_for_pricing_with_edge_mode(
+        let assembled = compose_total_return_characteristic_function_with_edge_mode(
             driver_parameters,
             argument,
             return_decomposition,
@@ -1871,7 +1617,7 @@ mod tests {
         .expect("valid return decomposition payload should construct");
         let gap_characteristic_factor = ComplexScalar::new(0.65, -0.35);
 
-        let assembled = compose_total_return_characteristic_function_for_pricing_with_edge_mode(
+        let assembled = compose_total_return_characteristic_function_with_edge_mode(
             driver_parameters,
             argument,
             return_decomposition,
@@ -1918,7 +1664,7 @@ mod tests {
         })
         .expect("valid return decomposition payload should construct");
 
-        let error = compose_total_return_characteristic_function_for_pricing(
+        let error = compose_total_return_characteristic_function(
             driver_parameters,
             argument,
             return_decomposition,
@@ -1945,7 +1691,7 @@ mod tests {
             gap: 0.0,
         };
 
-        let error = compose_total_return_characteristic_function_for_pricing(
+        let error = compose_total_return_characteristic_function(
             driver_parameters,
             ComplexScalar::new(0.0, 0.0),
             invalid_return_decomposition,
@@ -1973,7 +1719,7 @@ mod tests {
         })
         .expect("valid return decomposition payload should construct");
 
-        let assembled = compose_total_return_characteristic_function_for_pricing(
+        let assembled = compose_total_return_characteristic_function(
             driver_parameters,
             argument,
             return_decomposition,

@@ -6,13 +6,9 @@ use std::fmt::{Display, Formatter};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
-use crate::calendar::ExchangeCalendarRegistry;
 use crate::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesIntensityProjection, HawkesKernelParameters,
     HawkesSeasonalityIntervalError, HawkesTransitionError, HawkesTransitionStep,
-};
-use crate::hourly_factor_provider::{
-    HourlyFactorProviderError, HourlyFactorProviderRequest, provide_hourly_factor_contract,
 };
 use crate::hourly_factors::HourlyFactorContractOutput;
 use crate::nig::{
@@ -24,7 +20,9 @@ use crate::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
     SplitMix64SimulationRandomnessFactory,
 };
-use crate::return_decomposition::{ReturnDecomposition, ReturnDecompositionEdgeMode};
+use crate::return_decomposition::{
+    ReturnDecomposition, ReturnDecompositionEdgeMode,
+};
 
 pub const SEEDED_TICK_EVENT_RUN_CONFIG_SCHEMA_VERSION: &str =
     "simulation.seeded_tick_event.run_config.v1";
@@ -719,7 +717,7 @@ where
             };
             let previous_state = next_state;
 
-            next_state = evolve_hawkes_state_for_simulation_step(
+            next_state = evolve_hawkes_state(
                 next_state,
                 run_config.model_inputs.kernel_parameters,
                 transition_step,
@@ -778,7 +776,7 @@ where
             derive_elapsed_hours(previous_timestamp_utc_nanos, interval_end_utc_nanos);
         let previous_state = next_state;
 
-        next_state = evolve_hawkes_state_for_simulation_step(
+        next_state = evolve_hawkes_state(
             next_state,
             run_config.model_inputs.kernel_parameters,
             HawkesTransitionStep::new(elapsed_hours_to_interval_end, None, None),
@@ -1349,7 +1347,7 @@ fn validate_hourly_factor_interval_coverage(
                     previous_interval_index,
                     previous_interval_end_utc_nanos,
                     current_interval_index: interval_index,
-                    current_interval_start_utc_nanos: current_interval_start_utc_nanos,
+                    current_interval_start_utc_nanos,
                 },
             );
         }
@@ -1359,15 +1357,10 @@ fn validate_hourly_factor_interval_coverage(
 }
 
 /// Resolve interval-aligned hourly factors for the simulation path.
-pub fn load_hourly_factor_contract_for_simulation(
-    calendar_registry: &ExchangeCalendarRegistry,
-    provider_request: HourlyFactorProviderRequest<'_>,
-) -> Result<HourlyFactorContractOutput, HourlyFactorProviderError> {
-    provide_hourly_factor_contract(calendar_registry, provider_request)
-}
+pub use crate::hourly_factor_provider::provide_hourly_factor_contract as load_hourly_factor_contract;
 
 /// Project state to interval intensities for the fine-scale simulation path.
-pub fn project_hawkes_intensities_for_simulation_interval(
+pub fn project_hawkes_intensities_simulation_interval(
     state: HawkesExcitationState,
     parameters: HawkesKernelParameters,
     hourly_factor_contract: &HourlyFactorContractOutput,
@@ -1381,7 +1374,7 @@ pub fn project_hawkes_intensities_for_simulation_interval(
 }
 
 /// Sample one trading-time return increment for simulation through the shared NIG driver API.
-pub fn sample_nig_trading_time_increment_for_simulation<R>(
+pub fn sample_nig_trading_time_increment<R>(
     driver_parameters: NigBuySellDriverParameters,
     return_decomposition: ReturnDecomposition,
     randomness_stream: &mut R,
@@ -1389,7 +1382,7 @@ pub fn sample_nig_trading_time_increment_for_simulation<R>(
 where
     R: SimulationRandomnessStream,
 {
-    sample_nig_trading_time_increment_for_simulation_with_edge_mode(
+    crate::return_decomposition::sample_nig_trading_time_increment_with_edge_mode(
         driver_parameters,
         return_decomposition,
         ReturnDecompositionEdgeMode::Disabled,
@@ -1398,33 +1391,10 @@ where
 }
 
 /// Sample one simulation trading-time increment with optional decomposition edge-mode gating.
-pub fn sample_nig_trading_time_increment_for_simulation_with_edge_mode<R>(
-    driver_parameters: NigBuySellDriverParameters,
-    return_decomposition: ReturnDecomposition,
-    edge_mode: ReturnDecompositionEdgeMode,
-    randomness_stream: &mut R,
-) -> Result<NigTradingTimeIncrementContributions, NigTradingTimeIncrementSamplingError>
-where
-    R: SimulationRandomnessStream,
-{
-    return_decomposition.sample_nig_trading_time_increment_with_edge_mode(
-        driver_parameters,
-        edge_mode,
-        randomness_stream,
-    )
-}
+pub use crate::return_decomposition::sample_nig_trading_time_increment_with_edge_mode;
 
 /// Apply one simulation-path Hawkes state transition using canonical call order.
-///
-/// Call order is delegated to `HawkesExcitationState::apply_transition_step`:
-/// drift, then optional endogenous jump, then optional exogenous jump.
-pub fn evolve_hawkes_state_for_simulation_step(
-    state: HawkesExcitationState,
-    kernel_parameters: HawkesKernelParameters,
-    transition_step: HawkesTransitionStep,
-) -> Result<HawkesExcitationState, HawkesTransitionError> {
-    state.apply_transition_step(kernel_parameters, transition_step)
-}
+pub use crate::hawkes::evolve_hawkes_state as evolve_hawkes_state;
 
 #[cfg(test)]
 mod tests {
@@ -1472,8 +1442,8 @@ mod tests {
         SeededTickSimulationRunConfig, SeededTickSimulationRunError,
         SeededTickSimulationRunOptions, run_seeded_tick_event_simulation,
         run_seeded_tick_event_simulation_with_randomness_factory,
-        sample_nig_trading_time_increment_for_simulation,
-        sample_nig_trading_time_increment_for_simulation_with_edge_mode,
+        sample_nig_trading_time_increment,
+        sample_nig_trading_time_increment_with_edge_mode,
     };
 
     const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
@@ -1489,7 +1459,7 @@ mod tests {
         .expect("buy-only decomposition should be valid");
         let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(42_101);
 
-        let contributions = sample_nig_trading_time_increment_for_simulation_with_edge_mode(
+        let contributions = sample_nig_trading_time_increment_with_edge_mode(
             driver_parameters,
             decomposition,
             ReturnDecompositionEdgeMode::BuyOnly,
@@ -1519,7 +1489,7 @@ mod tests {
         .expect("sell-only decomposition should be valid");
         let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(42_102);
 
-        let contributions = sample_nig_trading_time_increment_for_simulation_with_edge_mode(
+        let contributions = sample_nig_trading_time_increment_with_edge_mode(
             driver_parameters,
             decomposition,
             ReturnDecompositionEdgeMode::SellOnly,
@@ -1549,7 +1519,7 @@ mod tests {
         .expect("gap-only decomposition should be valid");
         let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(42_104);
 
-        let contributions = sample_nig_trading_time_increment_for_simulation_with_edge_mode(
+        let contributions = sample_nig_trading_time_increment_with_edge_mode(
             driver_parameters,
             decomposition,
             ReturnDecompositionEdgeMode::GapOnly,
@@ -1567,39 +1537,6 @@ mod tests {
     }
 
     #[test]
-    fn simulation_adapter_matches_shared_return_decomposition_interface() {
-        let driver_parameters = valid_nig_driver_parameters();
-
-        let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
-            a_plus: 0.85,
-            a_minus: 0.35,
-            gap: -0.2,
-        })
-        .expect("test decomposition should be valid");
-
-        let mut simulation_stream = SplitMix64SimulationRandomnessStream::from_seed(42_105);
-        let mut shared_stream = SplitMix64SimulationRandomnessStream::from_seed(42_105);
-
-        let observed = sample_nig_trading_time_increment_for_simulation_with_edge_mode(
-            driver_parameters,
-            decomposition,
-            ReturnDecompositionEdgeMode::BuyOnly,
-            &mut simulation_stream,
-        )
-        .expect("simulation adapter sampling should succeed");
-
-        let expected = decomposition
-            .sample_nig_trading_time_increment_with_edge_mode(
-                driver_parameters,
-                ReturnDecompositionEdgeMode::BuyOnly,
-                &mut shared_stream,
-            )
-            .expect("shared decomposition adapter sampling should succeed");
-
-        assert_eq!(observed, expected);
-    }
-
-    #[test]
     fn trading_time_assembler_is_seed_deterministic() {
         let driver_parameters = valid_nig_driver_parameters();
         let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
@@ -1611,13 +1548,13 @@ mod tests {
         let mut first_stream = SplitMix64SimulationRandomnessStream::from_seed(42_103);
         let mut second_stream = SplitMix64SimulationRandomnessStream::from_seed(42_103);
 
-        let first_contributions = sample_nig_trading_time_increment_for_simulation(
+        let first_contributions = sample_nig_trading_time_increment(
             driver_parameters,
             decomposition,
             &mut first_stream,
         )
         .expect("first seeded assembly should sample successfully");
-        let second_contributions = sample_nig_trading_time_increment_for_simulation(
+        let second_contributions = sample_nig_trading_time_increment(
             driver_parameters,
             decomposition,
             &mut second_stream,
@@ -2240,7 +2177,7 @@ mod tests {
         let two_hour_result = run_seeded_tick_event_simulation(two_hour_config)
             .expect("two-hour carryover run should complete");
 
-        let expected_two_hour_final_state = super::evolve_hawkes_state_for_simulation_step(
+        let expected_two_hour_final_state = super::evolve_hawkes_state(
             one_hour_result.final_excitation_state,
             kernel_parameters,
             HawkesTransitionStep::new(1.0, None, None),
@@ -3024,7 +2961,7 @@ mod tests {
                 },
             )
             .expect("one-interval kernel parameter fixture should be valid"),
-            initial_excitation_state: crate::hawkes::HawkesExcitationState {
+            initial_excitation_state: HawkesExcitationState {
                 y_plus_plus: lambda_plus - 0.5,
                 y_plus_minus: 0.0,
                 y_minus_plus: lambda_minus - 0.5,
@@ -3195,7 +3132,7 @@ mod tests {
                 },
             )
             .expect("kernel parameter fixture should be valid"),
-            initial_excitation_state: crate::hawkes::HawkesExcitationState {
+            initial_excitation_state: HawkesExcitationState {
                 y_plus_plus: 0.2,
                 y_plus_minus: 0.1,
                 y_minus_plus: 0.15,
