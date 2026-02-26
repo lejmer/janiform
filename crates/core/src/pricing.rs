@@ -8,10 +8,11 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::affine_oracle::{
-    ExponentialAffineTransformInput, ExponentialAffineTransformIntegrationResult,
+    solve_exponential_affine_transform_with_optional_settings,
+    ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
+    ExponentialAffineTransformInputError, ExponentialAffineTransformIntegrationResult,
     ExponentialAffineTransformOutput, ExponentialAffineTransformOutputError,
     ExponentialAffineTransformSolverError, ExponentialAffineTransformSolverSettings,
-    solve_exponential_affine_transform_with_optional_settings,
 };
 use crate::complex_math::{complex_exponential, complex_multiply};
 use crate::hawkes::{
@@ -28,10 +29,10 @@ use crate::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionValidationError,
 };
 use crate::risk_neutral::{
-    EsscherMartingaleConditionError, EsscherMartingaleConditionInput,
-    EsscherMartingaleConditionReport, EsscherTransformError, NigEsscherTransformationInput,
     evaluate_esscher_martingale_condition,
-    transform_nig_characteristic_exponent_under_esscher_tilt,
+    transform_nig_characteristic_exponent_under_esscher_tilt, EsscherMartingaleConditionError,
+    EsscherMartingaleConditionInput, EsscherMartingaleConditionReport, EsscherTransformError,
+    NigEsscherTransformationInput,
 };
 
 pub const RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY: &str =
@@ -60,6 +61,7 @@ pub const FOURIER_INVERSION_NUMERIC_QUALITY_GATE_POLICY: &str =
     "diagnostics_only_or_explicit_quality_gate_failure_based_on_stability_controls.v1";
 pub const FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION: &str =
     "pricing.fourier_inversion.diagnostics.v1";
+pub const DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA: f64 = 1.0;
 
 const DEFAULT_FOURIER_INVERSION_DAMPING_FACTOR: f64 = 1.5;
 const DEFAULT_FOURIER_INVERSION_UPPER_INTEGRATION_BOUND: f64 = 150.0;
@@ -322,6 +324,7 @@ pub struct VanillaOptionPricingRequest {
     pub payoff: VanillaOptionPayoffConfiguration,
     pub boundary_state: HawkesExcitationState,
     pub model_parameters: VanillaOptionPricingModelParameters,
+    pub interval_delta: f64,
 }
 
 impl VanillaOptionPricingRequest {
@@ -331,11 +334,28 @@ impl VanillaOptionPricingRequest {
         boundary_state: HawkesExcitationState,
         model_parameters: VanillaOptionPricingModelParameters,
     ) -> Self {
+        Self::new_with_interval_delta(
+            market_inputs,
+            payoff,
+            boundary_state,
+            model_parameters,
+            DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA,
+        )
+    }
+
+    pub const fn new_with_interval_delta(
+        market_inputs: VanillaOptionPricingMarketInputs,
+        payoff: VanillaOptionPayoffConfiguration,
+        boundary_state: HawkesExcitationState,
+        model_parameters: VanillaOptionPricingModelParameters,
+        interval_delta: f64,
+    ) -> Self {
         Self {
             market_inputs,
             payoff,
             boundary_state,
             model_parameters,
+            interval_delta,
         }
     }
 
@@ -350,10 +370,30 @@ impl VanillaOptionPricingRequest {
         Ok(request)
     }
 
+    pub fn try_new_with_interval_delta(
+        market_inputs: VanillaOptionPricingMarketInputs,
+        payoff: VanillaOptionPayoffConfiguration,
+        boundary_state: HawkesExcitationState,
+        model_parameters: VanillaOptionPricingModelParameters,
+        interval_delta: f64,
+    ) -> Result<Self, VanillaOptionPricingRequestError> {
+        let request = Self::new_with_interval_delta(
+            market_inputs,
+            payoff,
+            boundary_state,
+            model_parameters,
+            interval_delta,
+        );
+        request.validate()?;
+        Ok(request)
+    }
+
     pub fn validate(self) -> Result<(), VanillaOptionPricingRequestError> {
         self.market_inputs
             .validate()
             .map_err(|source| VanillaOptionPricingRequestError::InvalidMarketInputs { source })?;
+
+        validate_interval_delta(self.interval_delta)?;
 
         validate_boundary_state(self.boundary_state)?;
 
@@ -375,6 +415,9 @@ pub enum VanillaOptionPricingRequestError {
     InvalidMarketInputs {
         source: VanillaOptionPricingMarketInputsError,
     },
+    InvalidIntervalDelta {
+        value: f64,
+    },
     InvalidBoundaryStateComponent {
         field: &'static str,
         value: f64,
@@ -389,6 +432,12 @@ impl Display for VanillaOptionPricingRequestError {
         match self {
             Self::InvalidMarketInputs { source } => {
                 write!(formatter, "market_inputs payload is invalid: {source}")
+            }
+            Self::InvalidIntervalDelta { value } => {
+                write!(
+                    formatter,
+                    "interval_delta must be finite and strictly positive, found {value}"
+                )
             }
             Self::InvalidBoundaryStateComponent { field, value } => write!(
                 formatter,
@@ -1856,6 +1905,81 @@ pub fn solve_exponential_affine_transform_with_settings(
     )
 }
 
+/// Build one-interval transform input from a validated pricing request.
+///
+/// This helper keeps interval-delta propagation explicit between pricing contracts
+/// and the shared affine-oracle solver API.
+#[allow(clippy::too_many_arguments)]
+pub fn build_pricing_transform_input(
+    pricing_request: VanillaOptionPricingRequest,
+    u_plus: ComplexScalar,
+    u_minus: ComplexScalar,
+    z_plus: ComplexScalar,
+    z_minus: ComplexScalar,
+    seasonality_factor: f64,
+    news_intensity_factor: f64,
+) -> Result<ExponentialAffineTransformInput, PricingTransformInputBuildError> {
+    pricing_request
+        .validate()
+        .map_err(|source| PricingTransformInputBuildError::InvalidPricingRequest { source })?;
+
+    let equation_specification = ExponentialAffineTransformEquationSpecification::new(
+        pricing_request.model_parameters.hawkes_kernel_parameters,
+        pricing_request
+            .model_parameters
+            .gamma_severity_mark_configuration,
+    );
+
+    ExponentialAffineTransformInput::try_new(
+        equation_specification,
+        u_plus,
+        u_minus,
+        z_plus,
+        z_minus,
+        seasonality_factor,
+        news_intensity_factor,
+        pricing_request.interval_delta,
+        pricing_request.boundary_state,
+    )
+    .map_err(|source| PricingTransformInputBuildError::InvalidTransformInput { source })
+}
+
+/// Structured failure for pricing-request to solver-input conversion.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PricingTransformInputBuildError {
+    InvalidPricingRequest {
+        source: VanillaOptionPricingRequestError,
+    },
+    InvalidTransformInput {
+        source: ExponentialAffineTransformInputError,
+    },
+}
+
+impl Display for PricingTransformInputBuildError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidPricingRequest { source } => {
+                write!(formatter, "pricing request is invalid: {source}")
+            }
+            Self::InvalidTransformInput { source } => {
+                write!(
+                    formatter,
+                    "failed to build affine-oracle transform input from pricing request: {source}"
+                )
+            }
+        }
+    }
+}
+
+impl Error for PricingTransformInputBuildError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidPricingRequest { source } => Some(source),
+            Self::InvalidTransformInput { source } => Some(source),
+        }
+    }
+}
+
 /// Compose trading-time characteristic exponent for pricing using canonical sign handling.
 ///
 /// Equation reference:
@@ -1987,6 +2111,16 @@ fn validate_boundary_state(
     validate_boundary_state_component("y_plus_minus", boundary_state.y_plus_minus)?;
     validate_boundary_state_component("y_minus_plus", boundary_state.y_minus_plus)?;
     validate_boundary_state_component("y_minus_minus", boundary_state.y_minus_minus)?;
+
+    Ok(())
+}
+
+fn validate_interval_delta(interval_delta: f64) -> Result<(), VanillaOptionPricingRequestError> {
+    if !interval_delta.is_finite() || interval_delta <= 0.0 {
+        return Err(VanillaOptionPricingRequestError::InvalidIntervalDelta {
+            value: interval_delta,
+        });
+    }
 
     Ok(())
 }
@@ -2153,6 +2287,8 @@ struct VanillaOptionPricingRequestPayload {
     payoff: VanillaOptionPayoffConfiguration,
     boundary_state: HawkesExcitationState,
     model_parameters: VanillaOptionPricingModelParameters,
+    #[serde(default = "default_intraday_pricing_interval_delta")]
+    interval_delta: f64,
 }
 
 impl<'de> Deserialize<'de> for VanillaOptionPricingRequest {
@@ -2161,13 +2297,24 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingRequest {
         D: serde::Deserializer<'de>,
     {
         let payload = VanillaOptionPricingRequestPayload::deserialize(deserializer)?;
-        Self::try_new(
+        Self::try_new_with_interval_delta(
             payload.market_inputs,
             payload.payoff,
             payload.boundary_state,
             payload.model_parameters,
+            payload.interval_delta,
         )
         .map_err(serde::de::Error::custom)
+    }
+}
+
+const fn default_intraday_pricing_interval_delta() -> f64 {
+    DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
+}
+
+impl VanillaOptionPricingRequest {
+    pub const fn default_interval_delta() -> f64 {
+        DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
     }
 }
 
@@ -2336,32 +2483,32 @@ mod tests {
     use crate::news::GammaSeverityMarkConfiguration;
     use crate::nig::{ComplexScalar, NigSharedPlusShiftConfiguration};
     use crate::pricing::{
-        FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION, FourierInversionContour,
+        compose_total_return_characteristic_function,
+        compose_total_return_characteristic_function_from_oracle_output,
+        compose_total_return_characteristic_function_with_edge_mode,
+        price_vanilla_option_via_fourier_inversion,
+        validate_pricing_martingale_condition_under_esscher_tilt, FourierInversionContour,
         FourierInversionContourError, FourierInversionEngineSettings,
         FourierInversionIntegrationStabilityControls,
         FourierInversionIntegrationStabilityControlsError, FourierInversionNumericQualityGate,
         FourierInversionNumericSettings, FourierInversionPricingError,
-        FourierInversionQuadratureRule, PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY,
-        PricingMartingaleConditionValidationError,
-        RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
-        RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY,
+        FourierInversionQuadratureRule, PricingMartingaleConditionValidationError,
         ReturnCharacteristicFunctionAssemblyError, VanillaOptionPayoffConfiguration,
         VanillaOptionPayoffType, VanillaOptionPricingDiagnostics,
         VanillaOptionPricingDiagnosticsError, VanillaOptionPricingMarketInputs,
         VanillaOptionPricingMarketInputsError, VanillaOptionPricingModelParameters,
         VanillaOptionPricingRequest, VanillaOptionPricingRequestError,
         VanillaOptionPricingResponse, VanillaOptionPricingResponseError,
-        compose_total_return_characteristic_function,
-        compose_total_return_characteristic_function_from_oracle_output,
-        compose_total_return_characteristic_function_with_edge_mode,
-        price_vanilla_option_via_fourier_inversion,
-        validate_pricing_martingale_condition_under_esscher_tilt,
+        DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION,
+        PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY,
+        RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
+        RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY,
     };
     use crate::return_decomposition::{
         ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionInput,
     };
     use crate::risk_neutral::{
-        NigEsscherTransformationInput, transform_nig_characteristic_exponent_under_esscher_tilt,
+        transform_nig_characteristic_exponent_under_esscher_tilt, NigEsscherTransformationInput,
     };
 
     use super::compose_nig_trading_time_exponent;
@@ -3439,6 +3586,117 @@ mod tests {
             .expect("serialized request payload should deserialize");
 
         assert_eq!(parsed_request, request);
+        assert_eq!(
+            parsed_request.interval_delta,
+            DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
+        );
+    }
+
+    #[test]
+    fn vanilla_option_request_deserialization_defaults_interval_delta_to_hourly() {
+        let payload_without_interval_delta = json!({
+            "market_inputs": {
+                "spot": 101.0,
+                "strike": 100.0,
+                "maturity_interval": 0.5,
+                "risk_free_rate": 0.02,
+                "dividend_yield": 0.01
+            },
+            "payoff": {
+                "payoff_type": "call"
+            },
+            "boundary_state": {
+                "y_plus_plus": 0.2,
+                "y_plus_minus": 0.1,
+                "y_minus_plus": 0.3,
+                "y_minus_minus": 0.4
+            },
+            "model_parameters": {
+                "hawkes_kernel_parameters": {
+                    "lambda_bar": 0.8,
+                    "beta": 1.6,
+                    "alpha": {
+                        "plus_plus": 0.2,
+                        "plus_minus": 0.1,
+                        "minus_plus": 0.1,
+                        "minus_minus": 0.25
+                    },
+                    "rho": {
+                        "plus_plus": 0.1,
+                        "plus_minus": 0.05,
+                        "minus_plus": 0.05,
+                        "minus_minus": 0.1
+                    }
+                },
+                "gamma_severity_mark_configuration": {
+                    "shape_k": 1.8,
+                    "scale_theta": 0.7
+                },
+                "nig_shared_plus_shift_configuration": {
+                    "alpha": 2.3,
+                    "beta_0": -0.8,
+                    "delta": 0.7,
+                    "mu": 0.1,
+                    "delta_beta": -0.2
+                }
+            }
+        });
+
+        let parsed_request: VanillaOptionPricingRequest =
+            serde_json::from_value(payload_without_interval_delta)
+                .expect("payload without interval_delta should deserialize");
+
+        assert_eq!(
+            parsed_request.interval_delta,
+            DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
+        );
+    }
+
+    #[test]
+    fn vanilla_option_request_accepts_explicit_non_hourly_interval_delta() {
+        let request = VanillaOptionPricingRequest::try_new_with_interval_delta(
+            VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 0.5, 0.02, 0.01)
+                .expect("market inputs should construct"),
+            VanillaOptionPayoffConfiguration {
+                payoff_type: VanillaOptionPayoffType::Call,
+            },
+            HawkesExcitationState {
+                y_plus_plus: 0.2,
+                y_plus_minus: 0.1,
+                y_minus_plus: 0.3,
+                y_minus_minus: 0.4,
+            },
+            valid_model_parameters(),
+            0.5,
+        )
+        .expect("non-hourly interval delta should be accepted");
+
+        assert_eq!(request.interval_delta, 0.5);
+    }
+
+    #[test]
+    fn vanilla_option_request_rejects_non_positive_interval_delta() {
+        let error = VanillaOptionPricingRequest::try_new_with_interval_delta(
+            VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 0.5, 0.02, 0.01)
+                .expect("market inputs should construct"),
+            VanillaOptionPayoffConfiguration {
+                payoff_type: VanillaOptionPayoffType::Call,
+            },
+            HawkesExcitationState {
+                y_plus_plus: 0.2,
+                y_plus_minus: 0.1,
+                y_minus_plus: 0.3,
+                y_minus_minus: 0.4,
+            },
+            valid_model_parameters(),
+            0.0,
+        )
+        .expect_err("non-positive interval delta must fail request validation");
+
+        assert!(matches!(
+            error,
+            VanillaOptionPricingRequestError::InvalidIntervalDelta { value } if value == 0.0
+        ));
     }
 
     #[test]

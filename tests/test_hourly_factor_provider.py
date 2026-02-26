@@ -12,7 +12,10 @@ from janiform.hourly_factors import (
     HourlySeasonalityProviderMaterializedSource,
     provide_hourly_factor_contract,
 )
-from janiform.pricing import load_hourly_factor_contract_for_pricing
+from janiform.pricing import (
+    VanillaOptionPricingValidationError,
+    load_hourly_factor_contract_for_pricing,
+)
 from janiform.simulation import load_hourly_factor_contract_for_simulation
 
 
@@ -81,6 +84,32 @@ def test_pricing_path_consumes_provider_outputs(calendar_registry: CalendarRegis
     assert contract.nu_h == [0.8, 1.0, 0.0]
     assert contract.seasonality_materialization_method == "seasonality.hourly_s_h.materialization.v1"
     assert contract.news_intensity_materialization_method == "seasonality.hourly_nu_h.materialization.v1"
+
+
+def test_pricing_path_rejects_non_hourly_interval_delta_with_hourly_factor_provider(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
+        load_hourly_factor_contract_for_pricing(
+            calendar_registry=calendar_registry,
+            exchange_code="XNYS",
+            range_start_utc=datetime(2026, 2, 2, 14, 0, 0, tzinfo=UTC),
+            range_end_utc=datetime(2026, 2, 2, 17, 0, 0, tzinfo=UTC),
+            seasonality_source=HourlySeasonalityProviderExplicitSource(
+                hourly_factors=[1.0, 0.9, 1.1],
+                materialization_method="explicit_hourly_input.v1",
+            ),
+            news_intensity_source=HourlyNewsIntensityProviderExplicitSource(
+                hourly_factors=[0.2, 0.0, 0.3],
+                materialization_method="explicit_hourly_input.v1",
+            ),
+            interval_delta=0.5,
+        )
+
+    assert captured_error.value.failure.field_path == "interval_delta"
+    assert "hourly factor provider supports only interval_delta=1.0" in (
+        captured_error.value.failure.message
+    )
 
 
 def test_simulation_path_consumes_provider_outputs(calendar_registry: CalendarRegistry) -> None:

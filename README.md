@@ -45,6 +45,7 @@ janiform --help
 - NIG cross-engine interface and reference fixtures: `docs/development/guides/nig_cross_engine_interface_and_reference_fixtures.md`
 - Return decomposition API contract: `docs/development/guides/return_decomposition_api_contract.md`
 - Vanilla option pricing contract: `docs/development/guides/vanilla_option_pricing_contract.md`
+  - Includes `interval_delta` (`Delta`) semantics with hourly (`1.0`) intraday default and configurable non-hourly support when compatible factors are supplied
 - Open closed gap summary and diff report contract: `docs/development/guides/open_closed_gap_summary_and_diff_report_contract.md`
 - Affine oracle solver diagnostics and telemetry schema: `docs/development/guides/affine_oracle_solver_diagnostics_schema.md`
 - Seeded tick event tape schema: `docs/development/guides/seeded_tick_event_tape_schema.md`
