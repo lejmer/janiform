@@ -301,13 +301,19 @@ mod tests {
     use crate::hourly_factors::HourlyFactorContractError;
     use crate::news::NewsIntensityConfiguration;
     use crate::pricing::{
-        evolve_hawkes_state_for_coarse_interval_step, load_hourly_factor_contract_for_pricing,
-        project_hawkes_intensities_for_coarse_interval,
+        evolve_hawkes_state as evolve_hawkes_state_coarse_interval_step,
+        load_hourly_factor_contract as load_hourly_factor_contract_for_pricing_path,
+        project_hawkes_intensities_coarse_interval,
     };
     use crate::simulation::{
-        evolve_hawkes_state_for_simulation_step, load_hourly_factor_contract_for_simulation,
-        project_hawkes_intensities_for_simulation_interval,
+        evolve_hawkes_state as evolve_hawkes_state_simulation_step,
+        load_hourly_factor_contract as load_hourly_factor_contract_for_simulation_path,
+        project_hawkes_intensities_simulation_interval,
     };
+
+    const SIMULATION_SHARED_SEASONALITY_HOURLY_FACTORS: [f64; 3] = [1.0, 0.9, 1.1];
+    const SIMULATION_SHARED_NEWS_HOURLY_FACTORS: [f64; 3] = [0.2, 0.0, 0.3];
+    const DETERMINISTIC_NEWS_TIME_MULTIPLIERS: [(u64, f64); 3] = [(0, 1.0), (1, 0.5), (2, 2.0)];
 
     #[test]
     fn provider_returns_structured_error_for_missing_seasonality_source() {
@@ -421,7 +427,7 @@ mod tests {
             }),
         };
 
-        let output = load_hourly_factor_contract_for_pricing(&registry, request)
+        let output = load_hourly_factor_contract_for_pricing_path(&registry, request)
             .expect("pricing path should resolve hourly factors from provider");
 
         assert_eq!(output.s_h, vec![1.1, 0.8, 1.4]);
@@ -440,28 +446,14 @@ mod tests {
     fn provider_supports_deterministic_news_intensity_inputs_for_pricing_and_simulation_paths() {
         let registry = build_calendar_registry();
 
-        let pricing_request = HourlyFactorProviderRequest {
-            exchange_code: "XNYS",
-            range_start_utc: parse_timestamp("2026-02-07T00:00:00Z"),
-            range_end_utc: parse_timestamp("2026-02-07T03:00:00Z"),
-            seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
-                hourly_factors: &[1.0, 1.0, 1.0],
-                materialization_method: "shared_precomputed_hourly_s_h.v1",
-            }),
-            news_intensity_source: Some(
-                HourlyNewsIntensityFactorSource::MaterializedWithDeterministicInputs {
-                    intensity_configuration: NewsIntensityConfiguration::new(0.4),
-                    deterministic_time_multiplier_by_interval_index: &[
-                        (0, 1.0),
-                        (1, 0.5),
-                        (2, 2.0),
-                    ],
-                    open_window_override_by_interval_index: &[],
-                },
-            ),
-        };
+        let deterministic_news_intensity_request =
+            deterministic_news_intensity_provider_request();
 
-        let pricing_output = load_hourly_factor_contract_for_pricing(&registry, pricing_request)
+        let pricing_output =
+            load_hourly_factor_contract_for_pricing_path(
+                &registry,
+                deterministic_news_intensity_request.clone(),
+            )
             .expect("deterministic news-intensity source should resolve for pricing");
 
         assert_eq!(pricing_output.nu_h, vec![0.4, 0.2, 0.8]);
@@ -472,29 +464,12 @@ mod tests {
             HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_DETERMINISTIC_MATERIALIZATION_METHOD
         );
 
-        let simulation_request = HourlyFactorProviderRequest {
-            exchange_code: "XNYS",
-            range_start_utc: parse_timestamp("2026-02-07T00:00:00Z"),
-            range_end_utc: parse_timestamp("2026-02-07T03:00:00Z"),
-            seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
-                hourly_factors: &[1.0, 1.0, 1.0],
-                materialization_method: "shared_precomputed_hourly_s_h.v1",
-            }),
-            news_intensity_source: Some(
-                HourlyNewsIntensityFactorSource::MaterializedWithDeterministicInputs {
-                    intensity_configuration: NewsIntensityConfiguration::new(0.4),
-                    deterministic_time_multiplier_by_interval_index: &[
-                        (0, 1.0),
-                        (1, 0.5),
-                        (2, 2.0),
-                    ],
-                    open_window_override_by_interval_index: &[],
-                },
-            ),
-        };
         let simulation_output =
-            load_hourly_factor_contract_for_simulation(&registry, simulation_request)
-                .expect("deterministic news-intensity source should resolve for simulation");
+            load_hourly_factor_contract_for_simulation_path(
+                &registry,
+                deterministic_news_intensity_request,
+            )
+            .expect("deterministic news-intensity source should resolve for simulation");
 
         assert_eq!(simulation_output.nu_h, vec![0.4, 0.2, 0.8]);
         assert_eq!(
@@ -509,21 +484,8 @@ mod tests {
     fn simulation_path_consumes_shared_hourly_factor_provider() {
         let registry = build_calendar_registry();
 
-        let request = HourlyFactorProviderRequest {
-            exchange_code: "XNYS",
-            range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
-            range_end_utc: parse_timestamp("2026-02-02T17:00:00Z"),
-            seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
-                hourly_factors: &[1.0, 0.9, 1.1],
-                materialization_method: "shared_precomputed_hourly_s_h.v1",
-            }),
-            news_intensity_source: Some(HourlyNewsIntensityFactorSource::Explicit {
-                hourly_factors: &[0.2, 0.0, 0.3],
-                materialization_method: "shared_precomputed_hourly_nu_h.v1",
-            }),
-        };
-
-        let output = load_hourly_factor_contract_for_simulation(&registry, request)
+        let request = shared_simulation_hourly_factor_provider_request();
+        let output = load_hourly_factor_contract_for_simulation_path(&registry, request)
             .expect("simulation path should resolve hourly factors from provider");
 
         assert_eq!(output.s_h, vec![1.0, 0.9, 1.1]);
@@ -566,20 +528,12 @@ mod tests {
     #[test]
     fn simulation_coarse_and_calibration_paths_share_one_hawkes_intensity_projection_api() {
         let registry = build_calendar_registry();
-        let request = HourlyFactorProviderRequest {
-            exchange_code: "XNYS",
-            range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
-            range_end_utc: parse_timestamp("2026-02-02T17:00:00Z"),
-            seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
-                hourly_factors: &[1.0, 0.9, 1.1],
-                materialization_method: "shared_precomputed_hourly_s_h.v1",
-            }),
-            news_intensity_source: Some(HourlyNewsIntensityFactorSource::Explicit {
-                hourly_factors: &[0.2, 0.0, 0.3],
-                materialization_method: "shared_precomputed_hourly_nu_h.v1",
-            }),
-        };
-        let hourly_factor_contract = load_hourly_factor_contract_for_simulation(&registry, request)
+
+        let request = shared_simulation_hourly_factor_provider_request();
+        let hourly_factor_contract = load_hourly_factor_contract_for_simulation_path(
+            &registry,
+            request,
+        )
             .expect("shared provider output should be valid for projection use");
         let state = HawkesExcitationState {
             y_plus_plus: 0.20,
@@ -606,7 +560,7 @@ mod tests {
         )
         .expect("parameter fixture must be valid");
 
-        let simulation_projection = project_hawkes_intensities_for_simulation_interval(
+        let simulation_projection = project_hawkes_intensities_simulation_interval(
             state,
             parameters,
             &hourly_factor_contract,
@@ -614,7 +568,7 @@ mod tests {
         )
         .expect("simulation projection should resolve interval seasonality");
 
-        let coarse_projection = project_hawkes_intensities_for_coarse_interval(
+        let coarse_projection = project_hawkes_intensities_coarse_interval(
             state,
             parameters,
             &hourly_factor_contract,
@@ -670,14 +624,14 @@ mod tests {
         let reference_state = initial_state
             .apply_transition_step(kernel_parameters, transition_step)
             .expect("reference transition must succeed");
-        let simulation_state = evolve_hawkes_state_for_simulation_step(
+        let simulation_state = evolve_hawkes_state_simulation_step(
             initial_state,
             kernel_parameters,
             transition_step,
         )
         .expect("simulation transition must use canonical transition API");
 
-        let coarse_state = evolve_hawkes_state_for_coarse_interval_step(
+        let coarse_state = evolve_hawkes_state_coarse_interval_step(
             initial_state,
             kernel_parameters,
             transition_step,
@@ -694,6 +648,42 @@ mod tests {
         assert_eq!(simulation_state, reference_state);
         assert_eq!(coarse_state, reference_state);
         assert_eq!(calibration_state, reference_state);
+    }
+
+    fn deterministic_news_intensity_provider_request() -> HourlyFactorProviderRequest<'static> {
+        HourlyFactorProviderRequest {
+            exchange_code: "XNYS",
+            range_start_utc: parse_timestamp("2026-02-07T00:00:00Z"),
+            range_end_utc: parse_timestamp("2026-02-07T03:00:00Z"),
+            seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
+                hourly_factors: &[1.0, 1.0, 1.0],
+                materialization_method: "shared_precomputed_hourly_s_h.v1",
+            }),
+            news_intensity_source: Some(
+                HourlyNewsIntensityFactorSource::MaterializedWithDeterministicInputs {
+                    intensity_configuration: NewsIntensityConfiguration::new(0.4),
+                    deterministic_time_multiplier_by_interval_index:
+                        &DETERMINISTIC_NEWS_TIME_MULTIPLIERS,
+                    open_window_override_by_interval_index: &[],
+                },
+            ),
+        }
+    }
+
+    fn shared_simulation_hourly_factor_provider_request() -> HourlyFactorProviderRequest<'static> {
+        HourlyFactorProviderRequest {
+            exchange_code: "XNYS",
+            range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
+            range_end_utc: parse_timestamp("2026-02-02T17:00:00Z"),
+            seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
+                hourly_factors: &SIMULATION_SHARED_SEASONALITY_HOURLY_FACTORS,
+                materialization_method: "shared_precomputed_hourly_s_h.v1",
+            }),
+            news_intensity_source: Some(HourlyNewsIntensityFactorSource::Explicit {
+                hourly_factors: &SIMULATION_SHARED_NEWS_HOURLY_FACTORS,
+                materialization_method: "shared_precomputed_hourly_nu_h.v1",
+            }),
+        }
     }
 
     fn build_calendar_registry() -> crate::calendar::ExchangeCalendarRegistry {

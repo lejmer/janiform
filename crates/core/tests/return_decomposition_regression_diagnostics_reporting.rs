@@ -4,8 +4,8 @@ use janiform_core::nig::{
     ComplexScalar, NigBuySellDriverParameters, NigSharedPlusShiftConfiguration,
 };
 use janiform_core::pricing::{
-    compose_nig_trading_time_exponent_for_pricing_with_edge_mode,
-    compose_total_return_characteristic_function_for_pricing_with_edge_mode,
+    compose_nig_trading_time_exponent_with_edge_mode,
+    compose_total_return_characteristic_function_with_edge_mode,
 };
 use janiform_core::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionInput,
@@ -302,14 +302,14 @@ fn compose_observed_contributions(
     match observed_output_mode {
         RegressionObservedOutputMode::Canonical => {
             let exponent_contributions =
-                compose_nig_trading_time_exponent_for_pricing_with_edge_mode(
+                compose_nig_trading_time_exponent_with_edge_mode(
                     driver_parameters,
                     scenario.argument,
                     scenario.return_decomposition,
                     scenario.context.edge_mode,
                 );
             let characteristic_function_assembly =
-                compose_total_return_characteristic_function_for_pricing_with_edge_mode(
+                compose_total_return_characteristic_function_with_edge_mode(
                     driver_parameters,
                     scenario.argument,
                     scenario.return_decomposition,
@@ -401,14 +401,14 @@ fn compose_observed_contributions(
         }
         RegressionObservedOutputMode::InjectComponentDisableModeRegression => {
             let exponent_contributions =
-                compose_nig_trading_time_exponent_for_pricing_with_edge_mode(
+                compose_nig_trading_time_exponent_with_edge_mode(
                     driver_parameters,
                     scenario.argument,
                     scenario.return_decomposition,
                     ReturnDecompositionEdgeMode::Disabled,
                 );
             let characteristic_function_assembly =
-                compose_total_return_characteristic_function_for_pricing_with_edge_mode(
+                compose_total_return_characteristic_function_with_edge_mode(
                     driver_parameters,
                     scenario.argument,
                     scenario.return_decomposition,

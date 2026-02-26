@@ -206,9 +206,10 @@ single integration point for hourly factor delivery.
   - returns canonical interval-aligned `s_h` and `nu_h` contract output
   - returns structured provider errors for missing inputs and unsupported ranges
 - Downstream engine usage:
-  - pricing path: call `janiform_core::pricing::load_hourly_factor_contract_for_pricing(...)`
-  - simulation path: call `janiform_core::simulation::load_hourly_factor_contract_for_simulation(...)`
-  - both paths call the same shared provider and do not own local factor adapters
+  - canonical call: `janiform_core::hourly_factor_provider::provide_hourly_factor_contract(...)`
+  - module entrypoints:
+    - `janiform_core::pricing::load_hourly_factor_contract(...)`
+    - `janiform_core::simulation::load_hourly_factor_contract(...)`
 - Python user-facing API:
   - shared provider entrypoint: `janiform.provide_hourly_factor_contract(...)`
   - pricing adapter: `janiform.load_hourly_factor_contract_for_pricing(...)`
