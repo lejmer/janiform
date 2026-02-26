@@ -8,8 +8,7 @@ use janiform_core::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesK
 use janiform_core::news::GammaSeverityMarkConfiguration;
 use janiform_core::nig::ComplexScalar;
 use janiform_core::pricing::{
-    solve_exponential_affine_transform,
-    solve_exponential_affine_transform_with_settings,
+    solve_exponential_affine_transform, solve_exponential_affine_transform_with_settings,
 };
 use janiform_core::risk::{
     solve_exponential_affine_transform_for_risk_sampling,
@@ -45,11 +44,9 @@ fn pricing_consumer_calls_shared_solver_entrypoint() {
     )
     .expect("pricing integration settings should construct");
 
-    let pricing_result = solve_exponential_affine_transform_with_settings(
-        transform_input,
-        solver_settings,
-    )
-    .expect("pricing solve with explicit settings should succeed");
+    let pricing_result =
+        solve_exponential_affine_transform_with_settings(transform_input, solver_settings)
+            .expect("pricing solve with explicit settings should succeed");
     let shared_result = solve_exponential_affine_transform_with_optional_settings(
         transform_input,
         Some(solver_settings),

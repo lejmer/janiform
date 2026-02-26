@@ -31,7 +31,11 @@ fn collect_public_for_api_items(source: &str) -> Vec<String> {
             .expect("public function name must terminate");
         let function_name = &source[name_start..name_end];
         if function_name.contains("_for_") {
-            let line_number = source[..function_start].chars().filter(|c| *c == '\n').count() + 1;
+            let line_number = source[..function_start]
+                .chars()
+                .filter(|c| *c == '\n')
+                .count()
+                + 1;
             violations.push(format!("line {}: pub fn {}", line_number, function_name));
         }
         search_start = name_end;

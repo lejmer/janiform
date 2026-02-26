@@ -446,15 +446,13 @@ mod tests {
     fn provider_supports_deterministic_news_intensity_inputs_for_pricing_and_simulation_paths() {
         let registry = build_calendar_registry();
 
-        let deterministic_news_intensity_request =
-            deterministic_news_intensity_provider_request();
+        let deterministic_news_intensity_request = deterministic_news_intensity_provider_request();
 
-        let pricing_output =
-            load_hourly_factor_contract_for_pricing_path(
-                &registry,
-                deterministic_news_intensity_request.clone(),
-            )
-            .expect("deterministic news-intensity source should resolve for pricing");
+        let pricing_output = load_hourly_factor_contract_for_pricing_path(
+            &registry,
+            deterministic_news_intensity_request.clone(),
+        )
+        .expect("deterministic news-intensity source should resolve for pricing");
 
         assert_eq!(pricing_output.nu_h, vec![0.4, 0.2, 0.8]);
         assert_eq!(
@@ -464,12 +462,11 @@ mod tests {
             HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_DETERMINISTIC_MATERIALIZATION_METHOD
         );
 
-        let simulation_output =
-            load_hourly_factor_contract_for_simulation_path(
-                &registry,
-                deterministic_news_intensity_request,
-            )
-            .expect("deterministic news-intensity source should resolve for simulation");
+        let simulation_output = load_hourly_factor_contract_for_simulation_path(
+            &registry,
+            deterministic_news_intensity_request,
+        )
+        .expect("deterministic news-intensity source should resolve for simulation");
 
         assert_eq!(simulation_output.nu_h, vec![0.4, 0.2, 0.8]);
         assert_eq!(
@@ -530,11 +527,9 @@ mod tests {
         let registry = build_calendar_registry();
 
         let request = shared_simulation_hourly_factor_provider_request();
-        let hourly_factor_contract = load_hourly_factor_contract_for_simulation_path(
-            &registry,
-            request,
-        )
-            .expect("shared provider output should be valid for projection use");
+        let hourly_factor_contract =
+            load_hourly_factor_contract_for_simulation_path(&registry, request)
+                .expect("shared provider output should be valid for projection use");
         let state = HawkesExcitationState {
             y_plus_plus: 0.20,
             y_plus_minus: 0.10,
@@ -624,12 +619,9 @@ mod tests {
         let reference_state = initial_state
             .apply_transition_step(kernel_parameters, transition_step)
             .expect("reference transition must succeed");
-        let simulation_state = evolve_hawkes_state_simulation_step(
-            initial_state,
-            kernel_parameters,
-            transition_step,
-        )
-        .expect("simulation transition must use canonical transition API");
+        let simulation_state =
+            evolve_hawkes_state_simulation_step(initial_state, kernel_parameters, transition_step)
+                .expect("simulation transition must use canonical transition API");
 
         let coarse_state = evolve_hawkes_state_coarse_interval_step(
             initial_state,

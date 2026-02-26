@@ -6,8 +6,7 @@ use janiform_core::nig::{
     ComplexScalar, NIG_TRADING_TIME_RETURN_SIGN_CONVENTION_POLICY, NigSharedPlusShiftConfiguration,
 };
 use janiform_core::pricing::{
-    RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
-    compose_nig_trading_time_exponent,
+    RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY, compose_nig_trading_time_exponent,
     compose_total_return_characteristic_function,
 };
 use janiform_core::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
@@ -72,11 +71,8 @@ fn return_decomposition_sign_analytic_cases_match_expected_pricing_outputs() {
         .expect("fixture return decomposition payload should construct");
         let argument = fixture_case.argument.into_core();
 
-        let exponent_contributions = compose_nig_trading_time_exponent(
-            driver_parameters,
-            argument,
-            return_decomposition,
-        );
+        let exponent_contributions =
+            compose_nig_trading_time_exponent(driver_parameters, argument, return_decomposition);
         assert_eq!(
             exponent_contributions.policy,
             NIG_TRADING_TIME_RETURN_SIGN_CONVENTION_POLICY

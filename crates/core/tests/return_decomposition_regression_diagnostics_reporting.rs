@@ -301,13 +301,12 @@ fn compose_observed_contributions(
 ) -> ReturnDecompositionDiagnosticContributions {
     match observed_output_mode {
         RegressionObservedOutputMode::Canonical => {
-            let exponent_contributions =
-                compose_nig_trading_time_exponent_with_edge_mode(
-                    driver_parameters,
-                    scenario.argument,
-                    scenario.return_decomposition,
-                    scenario.context.edge_mode,
-                );
+            let exponent_contributions = compose_nig_trading_time_exponent_with_edge_mode(
+                driver_parameters,
+                scenario.argument,
+                scenario.return_decomposition,
+                scenario.context.edge_mode,
+            );
             let characteristic_function_assembly =
                 compose_total_return_characteristic_function_with_edge_mode(
                     driver_parameters,
@@ -400,13 +399,12 @@ fn compose_observed_contributions(
             }
         }
         RegressionObservedOutputMode::InjectComponentDisableModeRegression => {
-            let exponent_contributions =
-                compose_nig_trading_time_exponent_with_edge_mode(
-                    driver_parameters,
-                    scenario.argument,
-                    scenario.return_decomposition,
-                    ReturnDecompositionEdgeMode::Disabled,
-                );
+            let exponent_contributions = compose_nig_trading_time_exponent_with_edge_mode(
+                driver_parameters,
+                scenario.argument,
+                scenario.return_decomposition,
+                ReturnDecompositionEdgeMode::Disabled,
+            );
             let characteristic_function_assembly =
                 compose_total_return_characteristic_function_with_edge_mode(
                     driver_parameters,

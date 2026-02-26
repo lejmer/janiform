@@ -228,7 +228,7 @@ fn method_comparison_reports_are_deterministic_for_fixture_cases() {
                 fixture_case.fixture_id, fixture_case.description, source
             )
         });
-        
+
         let second_report = compare_exponential_affine_transform_integration_methods(
             fixture_case.input,
             fixture_document.policy.clone(),
