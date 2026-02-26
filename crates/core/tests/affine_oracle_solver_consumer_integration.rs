@@ -1,14 +1,17 @@
 use janiform_core::affine_oracle::{
+    solve_exponential_affine_transform_with_optional_settings,
     ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
     ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformIntegratorMethod,
     ExponentialAffineTransformSolverSettings,
-    solve_exponential_affine_transform_with_optional_settings,
 };
 use janiform_core::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
 use janiform_core::news::GammaSeverityMarkConfiguration;
 use janiform_core::nig::ComplexScalar;
 use janiform_core::pricing::{
-    solve_exponential_affine_transform, solve_exponential_affine_transform_with_settings,
+    build_pricing_transform_input, solve_exponential_affine_transform,
+    solve_exponential_affine_transform_with_settings, VanillaOptionPayoffConfiguration,
+    VanillaOptionPayoffType, VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
+    VanillaOptionPricingRequest, DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA,
 };
 use janiform_core::risk::{
     solve_exponential_affine_transform_for_risk_sampling,
@@ -112,6 +115,60 @@ fn risk_consumer_calls_shared_solver_entrypoint_with_interval_parametric_delta()
     );
 }
 
+#[test]
+fn pricing_pipeline_propagates_interval_delta_to_solver_input() {
+    let request_with_hourly_default =
+        build_pricing_request(DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA);
+    let request_with_non_hourly_delta = build_pricing_request(0.5);
+
+    let hourly_transform_input = build_pricing_transform_input(
+        request_with_hourly_default,
+        ComplexScalar::new(0.2, -0.1),
+        ComplexScalar::new(0.3, 0.05),
+        ComplexScalar::new(1.0, 0.0),
+        ComplexScalar::new(0.95, 0.02),
+        1.1,
+        0.08,
+    )
+    .expect("hourly pricing transform input should build");
+    let non_hourly_transform_input = build_pricing_transform_input(
+        request_with_non_hourly_delta,
+        ComplexScalar::new(0.2, -0.1),
+        ComplexScalar::new(0.3, 0.05),
+        ComplexScalar::new(1.0, 0.0),
+        ComplexScalar::new(0.95, 0.02),
+        1.1,
+        0.08,
+    )
+    .expect("non-hourly pricing transform input should build");
+
+    assert_eq!(
+        hourly_transform_input.delta,
+        DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
+    );
+    assert_eq!(non_hourly_transform_input.delta, 0.5);
+
+    let hourly_result = solve_exponential_affine_transform(hourly_transform_input)
+        .expect("hourly pricing solve should succeed");
+    let non_hourly_result = solve_exponential_affine_transform(non_hourly_transform_input)
+        .expect("non-hourly pricing solve should succeed");
+
+    let hourly_output = hourly_result
+        .output
+        .expect("completed hourly solve should include output");
+    let non_hourly_output = non_hourly_result
+        .output
+        .expect("completed non-hourly solve should include output");
+    assert!(
+        hourly_output
+            .transform_value
+            .subtract(non_hourly_output.transform_value)
+            .norm()
+            > 1.0e-6,
+        "pricing pipeline interval-delta propagation regression detected with near-identical transform values"
+    );
+}
+
 fn build_transform_input(delta: f64) -> ExponentialAffineTransformInput {
     ExponentialAffineTransformInput::try_new(
         ExponentialAffineTransformEquationSpecification::try_new(
@@ -151,4 +208,48 @@ fn build_transform_input(delta: f64) -> ExponentialAffineTransformInput {
         },
     )
     .expect("fixture transform input should construct")
+}
+
+fn build_pricing_request(interval_delta: f64) -> VanillaOptionPricingRequest {
+    let model_parameters = VanillaOptionPricingModelParameters::try_new(
+        HawkesKernelParameters::try_new(
+            0.8,
+            1.2,
+            HawkesKernelLoadings {
+                plus_plus: 0.20,
+                plus_minus: 0.08,
+                minus_plus: 0.10,
+                minus_minus: 0.24,
+            },
+            HawkesKernelLoadings {
+                plus_plus: 0.03,
+                plus_minus: 0.02,
+                minus_plus: 0.01,
+                minus_minus: 0.04,
+            },
+        )
+        .expect("pricing fixture hawkes kernel parameters should construct"),
+        GammaSeverityMarkConfiguration::try_new(1.8, 0.9)
+            .expect("pricing fixture gamma mark configuration should construct"),
+        janiform_core::nig::NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("pricing fixture NIG configuration should construct"),
+    )
+    .expect("pricing fixture model parameters should construct");
+
+    VanillaOptionPricingRequest::try_new_with_interval_delta(
+        VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 0.5, 0.02, 0.01)
+            .expect("pricing fixture market inputs should construct"),
+        VanillaOptionPayoffConfiguration {
+            payoff_type: VanillaOptionPayoffType::Call,
+        },
+        HawkesExcitationState {
+            y_plus_plus: 0.4,
+            y_plus_minus: 0.2,
+            y_minus_plus: 0.3,
+            y_minus_minus: 0.5,
+        },
+        model_parameters,
+        interval_delta,
+    )
+    .expect("pricing fixture request should construct")
 }

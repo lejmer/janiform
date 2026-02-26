@@ -8,6 +8,7 @@ The contract is for public pricing payloads only:
 
 - request market and model inputs
 - requested vanilla payoff configuration
+- optional pricing interval length `interval_delta` (`Delta`)
 - response price and non-engine-specific diagnostics
 
 This contract intentionally excludes Fourier integration settings and solver internals.
@@ -57,6 +58,7 @@ Structured request validation errors:
 
 - `VanillaOptionPricingRequestError`
   - `InvalidMarketInputs`
+  - `InvalidIntervalDelta`
   - `InvalidBoundaryStateComponent`
   - `InvalidModelParameters`
 
@@ -78,6 +80,13 @@ Risk-neutral martingale validation errors:
 
 All request and response payloads are serializable and deserializable through `serde`.
 Deserialization is validation-aware and rejects malformed or incomplete payloads.
+
+## Interval Delta Semantics
+
+- `interval_delta` is the coarse-interval length `Delta` used by the pricing-side affine-oracle solve.
+- If omitted from request payloads, it defaults to `1.0` (hourly intraday boundary default for v0.1).
+- Non-hourly values are allowed in request validation and solver input construction when compatible interval factors are supplied by the caller.
+- The hourly factor provider path remains hourly-only and rejects `interval_delta != 1.0` with a structured validation error.
 
 ## Python-facing contract
 

@@ -21,7 +21,17 @@ def test_vanilla_option_request_validation_and_serialization_roundtrip() -> None
     deserialized_request = deserialize_vanilla_option_pricing_request(serialized_request)
 
     assert deserialized_request == validated_request
+    assert validated_request["interval_delta"] == pytest.approx(1.0)
     assert json.loads(serialized_request)["payoff"]["payoff_type"] == "call"
+
+
+def test_vanilla_option_request_accepts_explicit_non_hourly_interval_delta() -> None:
+    request_payload = _valid_request_payload()
+    request_payload["interval_delta"] = 0.5
+
+    validated_request = validate_vanilla_option_pricing_request(request_payload)
+
+    assert validated_request["interval_delta"] == pytest.approx(0.5)
 
 
 def test_vanilla_option_response_validation_and_serialization_roundtrip() -> None:
@@ -55,6 +65,17 @@ def test_vanilla_option_request_rejects_negative_boundary_state_with_structured_
 
     assert captured_error.value.failure.field_path == "boundary_state.y_plus_plus"
     assert captured_error.value.failure.message == "must be non-negative"
+
+
+def test_vanilla_option_request_rejects_non_positive_interval_delta() -> None:
+    request_payload = _valid_request_payload()
+    request_payload["interval_delta"] = 0.0
+
+    with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
+        validate_vanilla_option_pricing_request(request_payload)
+
+    assert captured_error.value.failure.field_path == "interval_delta"
+    assert captured_error.value.failure.message == "must be strictly positive"
 
 
 def test_vanilla_option_response_rejects_negative_price_with_structured_error() -> None:

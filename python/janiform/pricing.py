@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from math import isfinite, sqrt
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 from .calendar import CalendarRegistry
 from .hourly_factors import (
@@ -14,6 +14,8 @@ from .hourly_factors import (
     provide_hourly_factor_contract,
 )
 from .simulation import HawkesExcitationState, HawkesKernelParameters
+
+DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA = 1.0
 
 
 class VanillaOptionPayoffType(StrEnum):
@@ -57,6 +59,7 @@ class VanillaOptionPricingRequest(TypedDict):
     payoff: VanillaOptionPayoffConfiguration
     boundary_state: HawkesExcitationState
     model_parameters: VanillaOptionPricingModelParameters
+    interval_delta: NotRequired[float]
 
 
 class VanillaOptionPricingDiagnostics(TypedDict):
@@ -91,8 +94,23 @@ def load_hourly_factor_contract_for_pricing(
     range_end_utc: datetime,
     seasonality_source: HourlySeasonalityProviderSource,
     news_intensity_source: HourlyNewsIntensityProviderSource,
+    interval_delta: float = DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA,
 ) -> HourlyFactorContract:
     """Load interval-aligned hourly factors for the pricing path."""
+    parsed_interval_delta = _require_positive_finite_scalar(
+        interval_delta,
+        field_path="interval_delta",
+    )
+    if parsed_interval_delta != DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA:
+        raise VanillaOptionPricingValidationError(
+            VanillaOptionPricingValidationFailure(
+                field_path="interval_delta",
+                message=(
+                    "hourly factor provider supports only interval_delta=1.0 "
+                    f"for hourly boundaries, received {parsed_interval_delta}"
+                ),
+            )
+        )
 
     return provide_hourly_factor_contract(
         calendar_registry=calendar_registry,
@@ -154,6 +172,11 @@ def validate_vanilla_option_pricing_request(
     )
 
     parsed_model_parameters = _validate_model_parameters(model_parameters)
+    interval_delta = (
+        _require_positive_finite_number(raw_request, "interval_delta", "interval_delta")
+        if "interval_delta" in raw_request
+        else DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
+    )
 
     return {
         "market_inputs": {
@@ -173,6 +196,7 @@ def validate_vanilla_option_pricing_request(
             "y_minus_minus": y_minus_minus,
         },
         "model_parameters": parsed_model_parameters,
+        "interval_delta": interval_delta,
     }
 
 
@@ -579,6 +603,35 @@ def _require_finite_number(
             VanillaOptionPricingValidationFailure(
                 field_path=field_path,
                 message="must be a finite number",
+            )
+        )
+
+    return numeric_value
+
+
+def _require_positive_finite_scalar(value: object, *, field_path: str) -> float:
+    if not isinstance(value, (int, float)):
+        raise VanillaOptionPricingValidationError(
+            VanillaOptionPricingValidationFailure(
+                field_path=field_path,
+                message="must be a finite number",
+            )
+        )
+
+    numeric_value = float(value)
+    if not isfinite(numeric_value):
+        raise VanillaOptionPricingValidationError(
+            VanillaOptionPricingValidationFailure(
+                field_path=field_path,
+                message="must be a finite number",
+            )
+        )
+
+    if numeric_value <= 0.0:
+        raise VanillaOptionPricingValidationError(
+            VanillaOptionPricingValidationFailure(
+                field_path=field_path,
+                message="must be strictly positive",
             )
         )
 
