@@ -8,6 +8,7 @@ Create regression suite that verifies artifact round-trip integrity and robust h
 - Corruption scenarios include missing files, malformed payloads, and incompatible versions
 - Regression outputs include actionable diagnostics with run and artifact context
 - Fixtures and expected outcomes are versioned
+- Regression coverage includes persistence-default policy checks: artifacts are optional, ON by default in CLI flows, and OFF by default for imported package usage unless explicitly enabled
 
 ### Unit tests
 - Round-trip integrity tests for full staged calibration outputs

@@ -8,6 +8,7 @@ Implement artifact persistence writer with atomic commit behavior so calibration
 - Commit flow is atomic at run level with clear success or failure semantics
 - Partial writes are detected and rolled back or quarantined
 - Persistence configuration supports local and CI execution contexts
+- Persistence controls are explicit and documented: persisted artifacts are optional, default ON for CLI workflows, and default OFF for imported package usage unless explicitly enabled
 
 ### Unit tests
 - Successful full-run artifact persistence and interrupted-write handling and recovery behavior

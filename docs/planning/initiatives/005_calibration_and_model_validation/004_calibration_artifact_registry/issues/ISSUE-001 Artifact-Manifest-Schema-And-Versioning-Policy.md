@@ -8,6 +8,7 @@ Define the top-level artifact manifest schema and versioning policy for calibrat
 - Versioning policy defines compatibility guarantees for v0.x artifacts
 - Manifest validation rejects missing required fields and invalid versions
 - Policy documentation includes upgrade and deprecation guidance
+- Policy documentation explicitly states persisted artifacts are optional, with defaults set to ON for CLI workflows and OFF for imported package usage unless explicitly enabled
 
 ### Unit tests
 - Required-field enforcement

@@ -8,6 +8,7 @@ Implement reload resolver that reconstructs calibration runs from artifacts with
 - Compatibility checks validate schema version and required component availability
 - Reload API returns structured errors for incompatible or corrupted artifacts
 - Reload output is usable by validation and pricing workflows
+- Reload behavior documentation explicitly references persistence defaults: artifacts are optional, ON by default in CLI flows, and OFF by default for imported package usage unless explicitly enabled
 
 ### Unit tests
 - Successful reload of complete and partial artifact sets

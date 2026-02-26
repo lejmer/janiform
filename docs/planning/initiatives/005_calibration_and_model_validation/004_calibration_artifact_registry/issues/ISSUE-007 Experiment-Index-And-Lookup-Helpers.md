@@ -8,6 +8,7 @@ Implement lightweight indexing and lookup helpers so teams can find calibration 
 - Lookup API supports deterministic query results and pagination or filtering
 - Index is updated as part of artifact commit flow
 - Index rebuild path is available for recovery scenarios
+- Index behavior and docs align with persistence defaults: artifacts are optional, ON by default in CLI flows, and OFF by default for imported package usage unless explicitly enabled
 
 ### Unit tests
 - Index record creation and update behavior and index rebuild from existing artifact store

@@ -7,6 +7,7 @@ Implement schema for diagnostics, metric outputs, and comparison results so cali
 - Artifact links to run manifest and stage outputs
 - Validation catches incomplete metric records and invalid references
 - Output schema and metadata are machine-readable and documented
+- Persistence behavior follows explicit defaults: optional overall, ON by default in CLI flows, and OFF by default for imported package usage unless explicitly enabled
 
 ### Unit tests
 - Required threshold and status metadata and artifact-reference integrity to manifest and stage outputs

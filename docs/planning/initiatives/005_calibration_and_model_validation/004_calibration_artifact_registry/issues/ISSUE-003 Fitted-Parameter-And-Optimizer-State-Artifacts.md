@@ -7,6 +7,7 @@ Define and persist artifacts for fitted parameters and optimizer state across ca
 - Stage-level parameter artifacts link cleanly into the run manifest
 - Validation detects missing stage outputs and malformed parameter payloads
 - Output schema and metadata are machine-readable and documented
+- Persistence behavior follows explicit defaults: optional overall, ON by default in CLI flows, and OFF by default for imported package usage unless explicitly enabled
 
 ### Unit tests
 - Optimizer metadata completeness and type checks and round-trip tests for parameter and optimizer artifact persistence

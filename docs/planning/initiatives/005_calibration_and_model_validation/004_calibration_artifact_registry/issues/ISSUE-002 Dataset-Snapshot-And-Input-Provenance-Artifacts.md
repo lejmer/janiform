@@ -6,6 +6,7 @@ Implement artifact schema and persistence path for dataset snapshots and input p
 ### Acceptance Criteria
 - Validation catches missing provenance fields and inconsistent checksums
 - Output schema and metadata are machine-readable and documented
+- Persistence behavior follows explicit defaults: optional overall, ON by default in CLI flows, and OFF by default for imported package usage unless explicitly enabled
 
 ### Unit tests
 - Round-trip tests for dataset provenance read and write
