@@ -20,9 +20,7 @@ use crate::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
     SplitMix64SimulationRandomnessFactory,
 };
-use crate::return_decomposition::{
-    ReturnDecomposition, ReturnDecompositionEdgeMode,
-};
+use crate::return_decomposition::{ReturnDecomposition, ReturnDecompositionEdgeMode};
 
 pub const SEEDED_TICK_EVENT_RUN_CONFIG_SCHEMA_VERSION: &str =
     "simulation.seeded_tick_event.run_config.v1";
@@ -1394,7 +1392,7 @@ where
 pub use crate::return_decomposition::sample_nig_trading_time_increment_with_edge_mode;
 
 /// Apply one simulation-path Hawkes state transition using canonical call order.
-pub use crate::hawkes::evolve_hawkes_state as evolve_hawkes_state;
+pub use crate::hawkes::evolve_hawkes_state;
 
 #[cfg(test)]
 mod tests {
@@ -1442,8 +1440,7 @@ mod tests {
         SeededTickSimulationRunConfig, SeededTickSimulationRunError,
         SeededTickSimulationRunOptions, run_seeded_tick_event_simulation,
         run_seeded_tick_event_simulation_with_randomness_factory,
-        sample_nig_trading_time_increment,
-        sample_nig_trading_time_increment_with_edge_mode,
+        sample_nig_trading_time_increment, sample_nig_trading_time_increment_with_edge_mode,
     };
 
     const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
@@ -1548,18 +1545,12 @@ mod tests {
         let mut first_stream = SplitMix64SimulationRandomnessStream::from_seed(42_103);
         let mut second_stream = SplitMix64SimulationRandomnessStream::from_seed(42_103);
 
-        let first_contributions = sample_nig_trading_time_increment(
-            driver_parameters,
-            decomposition,
-            &mut first_stream,
-        )
-        .expect("first seeded assembly should sample successfully");
-        let second_contributions = sample_nig_trading_time_increment(
-            driver_parameters,
-            decomposition,
-            &mut second_stream,
-        )
-        .expect("second seeded assembly should sample successfully");
+        let first_contributions =
+            sample_nig_trading_time_increment(driver_parameters, decomposition, &mut first_stream)
+                .expect("first seeded assembly should sample successfully");
+        let second_contributions =
+            sample_nig_trading_time_increment(driver_parameters, decomposition, &mut second_stream)
+                .expect("second seeded assembly should sample successfully");
 
         assert_eq!(first_contributions, second_contributions);
     }
