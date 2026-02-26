@@ -8,6 +8,7 @@ use serde::Serialize;
 
 use crate::affine_oracle::{
     ExponentialAffineTransformInput, ExponentialAffineTransformIntegrationResult,
+    ExponentialAffineTransformOutput, ExponentialAffineTransformOutputError,
     ExponentialAffineTransformSolverError, ExponentialAffineTransformSolverSettings,
     solve_exponential_affine_transform_with_optional_settings,
 };
@@ -583,11 +584,24 @@ pub struct ReturnCharacteristicFunctionAssembly {
     pub domain_guard_policy: &'static str,
 }
 
-/// Structured failure modes for full return characteristic-function assembly.
+/// Deterministic factor-only composition payload for oracle-derived trading-time CF.
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ReturnCharacteristicFunctionFactorComposition {
+    pub trading_time_characteristic_factor: ComplexScalar,
+    pub gap_characteristic_factor: ComplexScalar,
+    pub combined_characteristic_factor: ComplexScalar,
+    pub composition_policy: &'static str,
+    pub domain_guard_policy: &'static str,
+}
+
+/// Structured failure modes for full return characteristic-function assembly.
+#[derive(Debug, Clone, PartialEq)]
 pub enum ReturnCharacteristicFunctionAssemblyError {
     InvalidCharacteristicFunctionArgument {
         argument: ComplexScalar,
+    },
+    InvalidOracleTransformOutput {
+        source: ExponentialAffineTransformOutputError,
     },
     InvalidGapCharacteristicFactor {
         value: ComplexScalar,
@@ -612,6 +626,10 @@ impl Display for ReturnCharacteristicFunctionAssemblyError {
             Self::InvalidCharacteristicFunctionArgument { argument } => write!(
                 formatter,
                 "characteristic-function argument must be finite, found {argument:?}"
+            ),
+            Self::InvalidOracleTransformOutput { source } => write!(
+                formatter,
+                "oracle transform output is invalid for characteristic-function assembly: {source}"
             ),
             Self::InvalidGapCharacteristicFactor { value } => write!(
                 formatter,
@@ -642,6 +660,7 @@ impl Display for ReturnCharacteristicFunctionAssemblyError {
 impl Error for ReturnCharacteristicFunctionAssemblyError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            Self::InvalidOracleTransformOutput { source } => Some(source),
             Self::InvalidReturnDecomposition { source } => Some(source),
             _ => None,
         }
@@ -914,6 +933,35 @@ pub fn compose_total_return_characteristic_function_for_coarse_transform_integra
     )
 }
 
+/// Compose full return characteristic factors for pricing from one oracle solve output.
+///
+/// Equation reference:
+/// \f[
+/// F_{\text{total}}(u)=F_{\text{trading}}(u)\,\varphi_{\Delta G}(u).
+/// \f]
+pub fn compose_total_return_characteristic_function_from_oracle_output_for_pricing(
+    oracle_output: ExponentialAffineTransformOutput,
+    gap_characteristic_factor: ComplexScalar,
+) -> Result<ReturnCharacteristicFunctionFactorComposition, ReturnCharacteristicFunctionAssemblyError>
+{
+    compose_total_return_characteristic_function_from_oracle_output_shared(
+        oracle_output,
+        gap_characteristic_factor,
+    )
+}
+
+/// Compose full return characteristic factors for coarse-time integration from one oracle solve output.
+pub fn compose_total_return_characteristic_function_from_oracle_output_for_coarse_transform_integration(
+    oracle_output: ExponentialAffineTransformOutput,
+    gap_characteristic_factor: ComplexScalar,
+) -> Result<ReturnCharacteristicFunctionFactorComposition, ReturnCharacteristicFunctionAssemblyError>
+{
+    compose_total_return_characteristic_function_from_oracle_output_shared(
+        oracle_output,
+        gap_characteristic_factor,
+    )
+}
+
 /// Validate pricing-path martingale wiring for Esscher-tilted NIG components.
 ///
 /// This check is trading-time only.
@@ -1169,14 +1217,6 @@ fn compose_total_return_characteristic_function_shared(
         ComplexScalar::new(1.0, 0.0)
     };
 
-    if !effective_gap_characteristic_factor.is_finite() {
-        return Err(
-            ReturnCharacteristicFunctionAssemblyError::InvalidGapCharacteristicFactor {
-                value: effective_gap_characteristic_factor,
-            },
-        );
-    }
-
     effective_decomposition.validate().map_err(|source| {
         ReturnCharacteristicFunctionAssemblyError::InvalidReturnDecomposition { source }
     })?;
@@ -1193,6 +1233,41 @@ fn compose_total_return_characteristic_function_shared(
     }
 
     let trading_time_characteristic_factor = complex_exponential(combined_weighted_exponent);
+    let factor_composition = compose_return_characteristic_factor_shared(
+        trading_time_characteristic_factor,
+        effective_gap_characteristic_factor,
+    )?;
+
+    Ok(ReturnCharacteristicFunctionAssembly {
+        trading_time_exponent_contributions,
+        trading_time_characteristic_factor: factor_composition.trading_time_characteristic_factor,
+        gap_characteristic_factor: factor_composition.gap_characteristic_factor,
+        combined_characteristic_factor: factor_composition.combined_characteristic_factor,
+        composition_policy: factor_composition.composition_policy,
+        domain_guard_policy: factor_composition.domain_guard_policy,
+    })
+}
+
+fn compose_total_return_characteristic_function_from_oracle_output_shared(
+    oracle_output: ExponentialAffineTransformOutput,
+    gap_characteristic_factor: ComplexScalar,
+) -> Result<ReturnCharacteristicFunctionFactorComposition, ReturnCharacteristicFunctionAssemblyError>
+{
+    oracle_output.validate().map_err(|source| {
+        ReturnCharacteristicFunctionAssemblyError::InvalidOracleTransformOutput { source }
+    })?;
+
+    compose_return_characteristic_factor_shared(
+        oracle_output.transform_value,
+        gap_characteristic_factor,
+    )
+}
+
+fn compose_return_characteristic_factor_shared(
+    trading_time_characteristic_factor: ComplexScalar,
+    gap_characteristic_factor: ComplexScalar,
+) -> Result<ReturnCharacteristicFunctionFactorComposition, ReturnCharacteristicFunctionAssemblyError>
+{
     if !trading_time_characteristic_factor.is_finite() {
         return Err(
             ReturnCharacteristicFunctionAssemblyError::NonFiniteTradingTimeCharacteristicFactor {
@@ -1201,9 +1276,17 @@ fn compose_total_return_characteristic_function_shared(
         );
     }
 
+    if !gap_characteristic_factor.is_finite() {
+        return Err(
+            ReturnCharacteristicFunctionAssemblyError::InvalidGapCharacteristicFactor {
+                value: gap_characteristic_factor,
+            },
+        );
+    }
+
     let combined_characteristic_factor = complex_multiply(
         trading_time_characteristic_factor,
-        effective_gap_characteristic_factor,
+        gap_characteristic_factor,
     );
     if !combined_characteristic_factor.is_finite() {
         return Err(
@@ -1213,10 +1296,9 @@ fn compose_total_return_characteristic_function_shared(
         );
     }
 
-    Ok(ReturnCharacteristicFunctionAssembly {
-        trading_time_exponent_contributions,
+    Ok(ReturnCharacteristicFunctionFactorComposition {
         trading_time_characteristic_factor,
-        gap_characteristic_factor: effective_gap_characteristic_factor,
+        gap_characteristic_factor,
         combined_characteristic_factor,
         composition_policy: RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
         domain_guard_policy: RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY,
@@ -1227,6 +1309,9 @@ fn compose_total_return_characteristic_function_shared(
 mod tests {
     use serde_json::json;
 
+    use crate::affine_oracle::{
+        ExponentialAffineTransformDVector, ExponentialAffineTransformOutput,
+    };
     use crate::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
     use crate::news::GammaSeverityMarkConfiguration;
     use crate::nig::{ComplexScalar, NigSharedPlusShiftConfiguration};
@@ -1243,6 +1328,8 @@ mod tests {
         compose_total_return_characteristic_function_for_coarse_transform_integration,
         compose_total_return_characteristic_function_for_pricing,
         compose_total_return_characteristic_function_for_pricing_with_edge_mode,
+        compose_total_return_characteristic_function_from_oracle_output_for_coarse_transform_integration,
+        compose_total_return_characteristic_function_from_oracle_output_for_pricing,
         validate_pricing_martingale_condition_under_esscher_tilt,
     };
     use crate::return_decomposition::{
@@ -1497,6 +1584,166 @@ mod tests {
     }
 
     #[test]
+    fn oracle_output_cf_assembly_matches_canonical_pricing_path_for_fixed_trading_factor() {
+        let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("valid shared-plus-shift payload should construct")
+            .derive_driver_parameters()
+            .expect("valid shared-plus-shift payload should derive drivers");
+        let argument = ComplexScalar::new(0.35, -0.15);
+        let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 0.8,
+            a_minus: 1.1,
+            gap: 0.0,
+        })
+        .expect("valid return decomposition payload should construct");
+        let gap_characteristic_factor = ComplexScalar::new(0.92, -0.08);
+
+        let canonical_assembly = compose_total_return_characteristic_function_for_pricing(
+            driver_parameters,
+            argument,
+            return_decomposition,
+            gap_characteristic_factor,
+        )
+        .expect("canonical pricing assembly should succeed");
+
+        let oracle_factor_assembly =
+            compose_total_return_characteristic_function_from_oracle_output_for_pricing(
+                oracle_output_with_transform_value(
+                    canonical_assembly.trading_time_characteristic_factor,
+                ),
+                gap_characteristic_factor,
+            )
+            .expect("oracle-output assembly should succeed");
+        let coarse_factor_assembly = compose_total_return_characteristic_function_from_oracle_output_for_coarse_transform_integration(
+            oracle_output_with_transform_value(canonical_assembly.trading_time_characteristic_factor),
+            gap_characteristic_factor,
+        )
+        .expect("coarse oracle-output assembly should succeed");
+
+        assert_complex_close(
+            oracle_factor_assembly.trading_time_characteristic_factor,
+            canonical_assembly.trading_time_characteristic_factor,
+            1.0e-13,
+        );
+        assert_complex_close(
+            oracle_factor_assembly.combined_characteristic_factor,
+            canonical_assembly.combined_characteristic_factor,
+            1.0e-13,
+        );
+        assert_eq!(oracle_factor_assembly, coarse_factor_assembly);
+        assert_eq!(
+            oracle_factor_assembly.composition_policy,
+            RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY
+        );
+        assert_eq!(
+            oracle_factor_assembly.domain_guard_policy,
+            RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY
+        );
+    }
+
+    #[test]
+    fn oracle_output_cf_assembly_isolates_trading_only_and_gap_only_paths() {
+        let trading_only =
+            compose_total_return_characteristic_function_from_oracle_output_for_pricing(
+                oracle_output_with_transform_value(ComplexScalar::new(0.84, -0.22)),
+                ComplexScalar::new(1.0, 0.0),
+            )
+            .expect("trading-only oracle composition should succeed");
+
+        assert_complex_close(
+            trading_only.combined_characteristic_factor,
+            trading_only.trading_time_characteristic_factor,
+            1.0e-13,
+        );
+
+        let gap_characteristic_factor = ComplexScalar::new(0.66, 0.19);
+        let gap_only = compose_total_return_characteristic_function_from_oracle_output_for_pricing(
+            oracle_output_with_transform_value(ComplexScalar::new(1.0, 0.0)),
+            gap_characteristic_factor,
+        )
+        .expect("gap-only oracle composition should succeed");
+
+        assert_complex_close(
+            gap_only.combined_characteristic_factor,
+            gap_characteristic_factor,
+            1.0e-13,
+        );
+    }
+
+    #[test]
+    fn oracle_output_cf_assembly_regression_guard_detects_positive_u_sell_side_sign_inversion() {
+        let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("valid shared-plus-shift payload should construct")
+            .derive_driver_parameters()
+            .expect("valid shared-plus-shift payload should derive drivers");
+        let argument = ComplexScalar::new(1.1, 0.0);
+        let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 0.0,
+            a_minus: 1.0,
+            gap: 0.0,
+        })
+        .expect("valid return decomposition payload should construct");
+
+        let correct_trading_exponent = compose_nig_trading_time_exponent_for_pricing(
+            driver_parameters,
+            argument,
+            return_decomposition,
+        )
+        .combined_weighted_exponent;
+        let correct_trading_factor = super::complex_exponential(correct_trading_exponent);
+        let incorrect_positive_u_trading_factor = super::complex_exponential(
+            driver_parameters
+                .sell_side_parameters
+                .characteristic_exponent(argument),
+        );
+
+        let correct_assembly =
+            compose_total_return_characteristic_function_from_oracle_output_for_pricing(
+                oracle_output_with_transform_value(correct_trading_factor),
+                ComplexScalar::new(1.0, 0.0),
+            )
+            .expect("correct-sign oracle assembly should succeed");
+        let incorrect_assembly =
+            compose_total_return_characteristic_function_from_oracle_output_for_pricing(
+                oracle_output_with_transform_value(incorrect_positive_u_trading_factor),
+                ComplexScalar::new(1.0, 0.0),
+            )
+            .expect("incorrect-sign oracle assembly should still compose deterministically");
+
+        let regression_distance = correct_assembly
+            .combined_characteristic_factor
+            .subtract(incorrect_assembly.combined_characteristic_factor)
+            .norm();
+        assert!(
+            regression_distance > 1.0e-6,
+            "sell-side sign-convention regression detected in oracle-output CF assembly with distance={regression_distance}"
+        );
+    }
+
+    #[test]
+    fn oracle_output_cf_assembly_rejects_invalid_output_payload() {
+        let error = compose_total_return_characteristic_function_from_oracle_output_for_pricing(
+            ExponentialAffineTransformOutput {
+                c_at_delta: ComplexScalar::new(f64::NAN, 0.0),
+                d_at_delta: ExponentialAffineTransformDVector::new(
+                    ComplexScalar::new(0.0, 0.0),
+                    ComplexScalar::new(0.0, 0.0),
+                    ComplexScalar::new(0.0, 0.0),
+                    ComplexScalar::new(0.0, 0.0),
+                ),
+                transform_value: ComplexScalar::new(1.0, 0.0),
+            },
+            ComplexScalar::new(1.0, 0.0),
+        )
+        .expect_err("invalid oracle output must fail full CF assembly");
+
+        assert!(matches!(
+            error,
+            ReturnCharacteristicFunctionAssemblyError::InvalidOracleTransformOutput { .. }
+        ));
+    }
+
+    #[test]
     fn edge_mode_buy_only_disables_sell_and_gap_components_in_full_cf_assembly() {
         let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("valid shared-plus-shift payload should construct")
@@ -1747,6 +1994,7 @@ mod tests {
             .combined_characteristic_factor
             .subtract(incorrect_positive_u_combined)
             .norm();
+
         assert!(
             regression_distance > 1.0e-6,
             "sell-side sign-convention regression detected in full CF assembly with distance={regression_distance}"
@@ -2132,5 +2380,21 @@ mod tests {
             difference <= tolerance,
             "difference {difference} exceeded tolerance {tolerance} for observed {observed:?} and expected {expected:?}"
         );
+    }
+
+    fn oracle_output_with_transform_value(
+        transform_value: ComplexScalar,
+    ) -> ExponentialAffineTransformOutput {
+        ExponentialAffineTransformOutput::try_new(
+            ComplexScalar::new(0.0, 0.0),
+            ExponentialAffineTransformDVector::new(
+                ComplexScalar::new(0.0, 0.0),
+                ComplexScalar::new(0.0, 0.0),
+                ComplexScalar::new(0.0, 0.0),
+                ComplexScalar::new(0.0, 0.0),
+            ),
+            transform_value,
+        )
+        .expect("oracle output helper payload should validate")
     }
 }

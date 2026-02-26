@@ -82,6 +82,14 @@ Pricing call flow:
    `ReturnDecomposition::compose_nig_trading_time_exponent_with_edge_mode`.
 3. Full CF assembly multiplies `exp(weighted_trading_exponent)` and gap factor.
 
+Oracle-output pricing call flow:
+
+1. Entry adapter receives validated `ExponentialAffineTransformOutput`.
+2. Adapter uses `output.transform_value` as the trading-time characteristic factor.
+3. Factor composition multiplies trading-time and explicit gap factors through:
+   - `pricing::compose_total_return_characteristic_function_from_oracle_output_for_pricing`
+   - `pricing::compose_total_return_characteristic_function_from_oracle_output_for_coarse_transform_integration`
+
 Simulation call flow:
 
 1. Entry adapter receives `ReturnDecomposition`.
