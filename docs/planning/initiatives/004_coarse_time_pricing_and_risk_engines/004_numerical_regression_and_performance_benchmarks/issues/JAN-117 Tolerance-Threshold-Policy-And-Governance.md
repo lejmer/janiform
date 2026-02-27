@@ -1,4 +1,4 @@
-## ISSUE-004: Tolerance Threshold Policy And Governance
+## Tolerance Threshold Policy And Governance
 
 ### Description
 Define engine-level tolerance thresholds for numerical and statistical regressions and establish governance for threshold updates.

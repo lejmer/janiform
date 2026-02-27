@@ -1,4 +1,4 @@
-## ISSUE-008: Interval Sensitivity Benchmark Matrix
+## Interval Sensitivity Benchmark Matrix
 
 ### Description
 Add benchmark and regression matrix across multiple interval grids to track sensitivity of accuracy and performance when `Delta` changes.

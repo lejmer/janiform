@@ -1,4 +1,4 @@
-## ISSUE-001: Benchmark Scenario Catalog And Workload Profiles
+## Benchmark Scenario Catalog And Workload Profiles
 
 ### Description
 Define benchmark scenario catalog and workload profiles covering oracle, pricing, and risk sampler usage for representative portfolio conditions.

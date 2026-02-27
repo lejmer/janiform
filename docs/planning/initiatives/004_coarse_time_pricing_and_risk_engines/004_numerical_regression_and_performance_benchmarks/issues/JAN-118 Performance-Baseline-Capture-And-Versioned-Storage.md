@@ -1,4 +1,4 @@
-## ISSUE-005: Performance Baseline Capture And Versioned Storage
+## Performance Baseline Capture And Versioned Storage
 
 ### Description
 Implement storage and versioning for performance baselines so latency and throughput changes can be tracked over time.

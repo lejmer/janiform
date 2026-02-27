@@ -1,4 +1,4 @@
-## ISSUE-006: CI Tiered Execution Strategy For Regression And Benchmarks
+## CI Tiered Execution Strategy For Regression And Benchmarks
 
 ### Description
 Define tiered CI strategy that separates fast deterministic regression checks from heavier performance benchmark jobs.

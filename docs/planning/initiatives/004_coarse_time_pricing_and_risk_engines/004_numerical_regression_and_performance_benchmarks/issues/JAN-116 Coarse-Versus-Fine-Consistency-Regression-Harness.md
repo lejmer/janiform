@@ -1,4 +1,4 @@
-## ISSUE-003: Coarse Versus Fine Consistency Regression Harness
+## Coarse Versus Fine Consistency Regression Harness
 
 ### Description
 Build engine-level regression harness that compares coarse-time outputs against controlled fine-scale Monte Carlo references on bounded benchmark fixtures.
