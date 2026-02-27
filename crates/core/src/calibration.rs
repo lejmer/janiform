@@ -166,10 +166,10 @@ impl Error for OptionSurfaceCalibrationObservationError {
 
 pub const CALIBRATION_RUN_SPEC_SCHEMA_VERSION: &str = "calibration.orchestration.run_spec.v1";
 pub const CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION: &str = "calibration.orchestration.stage_graph.v1";
-pub const CALIBRATION_RUN_CONTRACT_ARTIFACT_SCHEMA_VERSION: &str =
-    "calibration.orchestration.run_contract_artifact.v1";
-pub const CALIBRATION_SOLVER_SETTINGS_AUDIT_POLICY: &str =
-    "persist_stage_solver_settings_for_each_run.v1";
+pub const CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION: &str =
+    "calibration.orchestration.run_contract.v1";
+pub const CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY: &str =
+    "capture_stage_solver_settings_per_run_contract.v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -177,6 +177,13 @@ pub enum CalibrationStage {
     Seasonality,
     Hawkes,
     ReturnComponents,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CalibrationExecutionMode {
+    Memory,
+    Disk,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -421,6 +428,7 @@ pub struct CalibrationStageSolverSettings {
 pub struct CalibrationRunSpec {
     pub run_id: String,
     pub data_inputs: CalibrationRunDataInputs,
+    pub execution_mode: CalibrationExecutionMode,
     pub selected_stages: Vec<CalibrationStage>,
     pub seed_settings: CalibrationRunSeedSettings,
     pub optimizer_settings_by_stage: Vec<CalibrationStageSolverSettings>,
@@ -430,6 +438,7 @@ impl CalibrationRunSpec {
     pub fn try_new(
         run_id: impl Into<String>,
         data_inputs: CalibrationRunDataInputs,
+        execution_mode: CalibrationExecutionMode,
         selected_stages: Vec<CalibrationStage>,
         seed_settings: CalibrationRunSeedSettings,
         optimizer_settings_by_stage: Vec<CalibrationStageSolverSettings>,
@@ -437,6 +446,7 @@ impl CalibrationRunSpec {
         let run_spec = Self {
             run_id: run_id.into(),
             data_inputs,
+            execution_mode,
             selected_stages,
             seed_settings,
             optimizer_settings_by_stage,
@@ -840,18 +850,18 @@ pub fn resolve_calibration_stage_execution_order(
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CalibrationRunContractArtifact {
+pub struct CalibrationRunContract {
     pub schema_version: String,
     pub run_spec_schema_version: String,
     pub stage_graph_schema_version: String,
-    pub solver_settings_audit_policy: String,
+    pub solver_settings_capture_policy: String,
     pub run_spec: CalibrationRunSpec,
     pub stage_graph: CalibrationStageGraph,
     pub execution_stage_order: Vec<CalibrationStage>,
     pub stage_solver_settings: Vec<CalibrationStageSolverSettings>,
 }
 
-impl CalibrationRunContractArtifact {
+impl CalibrationRunContract {
     pub fn try_new(
         run_spec: CalibrationRunSpec,
         stage_graph: CalibrationStageGraph,
@@ -860,10 +870,10 @@ impl CalibrationRunContractArtifact {
             resolve_calibration_stage_execution_order(&run_spec, &stage_graph)?;
 
         Ok(Self {
-            schema_version: CALIBRATION_RUN_CONTRACT_ARTIFACT_SCHEMA_VERSION.to_string(),
+            schema_version: CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION.to_string(),
             run_spec_schema_version: CALIBRATION_RUN_SPEC_SCHEMA_VERSION.to_string(),
             stage_graph_schema_version: CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION.to_string(),
-            solver_settings_audit_policy: CALIBRATION_SOLVER_SETTINGS_AUDIT_POLICY.to_string(),
+            solver_settings_capture_policy: CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY.to_string(),
             stage_solver_settings: run_spec.optimizer_settings_by_stage.clone(),
             run_spec,
             stage_graph,
@@ -875,11 +885,11 @@ impl CalibrationRunContractArtifact {
 #[cfg(test)]
 mod tests {
     use crate::calibration::{
-        CALIBRATION_RUN_CONTRACT_ARTIFACT_SCHEMA_VERSION, CALIBRATION_RUN_SPEC_SCHEMA_VERSION,
-        CALIBRATION_SOLVER_SETTINGS_AUDIT_POLICY, CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION,
-        CalibrationOptimizerSettings, CalibrationRunContractArtifact, CalibrationRunContractError,
-        CalibrationRunDataInputs, CalibrationRunSeedSettings, CalibrationRunSpec,
-        CalibrationRunSpecError, CalibrationStage, CalibrationStageDependency,
+        CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION, CALIBRATION_RUN_SPEC_SCHEMA_VERSION,
+        CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY, CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION,
+        CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationRunContract,
+        CalibrationRunContractError, CalibrationRunDataInputs, CalibrationRunSeedSettings,
+        CalibrationRunSpec, CalibrationRunSpecError, CalibrationStage, CalibrationStageDependency,
         CalibrationStageGraph, CalibrationStageGraphError, CalibrationStageSeedOverride,
         CalibrationStageSolverSettings, OptionSurfaceCalibrationObservationError,
         build_option_surface_calibration_observation_from_pricing_hooks,
@@ -1064,6 +1074,7 @@ mod tests {
 
         let serialized = serde_json::to_value(&run_spec).expect("run spec should serialize");
         assert_eq!(serialized["run_id"], json!("run-001"));
+        assert_eq!(serialized["execution_mode"], json!("memory"));
         assert_eq!(serialized["selected_stages"][0], json!("seasonality"));
         assert_eq!(
             serialized["optimizer_settings_by_stage"][1]["stage"],
@@ -1077,10 +1088,21 @@ mod tests {
     }
 
     #[test]
+    fn calibration_run_spec_deserialization_rejects_invalid_execution_mode() {
+        let mut serialized = serde_json::to_value(build_valid_run_spec())
+            .expect("run spec fixture should serialize");
+        serialized["execution_mode"] = json!("unsupported_mode");
+
+        let parse_result = serde_json::from_value::<CalibrationRunSpec>(serialized);
+        assert!(parse_result.is_err());
+    }
+
+    #[test]
     fn calibration_stage_graph_validation_resolves_explicit_execution_order() {
         let run_spec = CalibrationRunSpec::try_new(
             "run-ordered",
             build_data_inputs(),
+            CalibrationExecutionMode::Memory,
             vec![
                 CalibrationStage::ReturnComponents,
                 CalibrationStage::Seasonality,
@@ -1130,6 +1152,7 @@ mod tests {
         let run_spec = CalibrationRunSpec::try_new(
             "run-unsupported-dependency",
             build_data_inputs(),
+            CalibrationExecutionMode::Memory,
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
             vec![
@@ -1168,6 +1191,7 @@ mod tests {
         let run_spec = CalibrationRunSpec::try_new(
             "run-cycle",
             build_data_inputs(),
+            CalibrationExecutionMode::Memory,
             vec![
                 CalibrationStage::Seasonality,
                 CalibrationStage::Hawkes,
@@ -1204,7 +1228,7 @@ mod tests {
     }
 
     #[test]
-    fn calibration_run_contract_artifact_persists_solver_settings_for_auditability() {
+    fn calibration_run_contract_captures_solver_settings_for_auditability() {
         let run_spec = build_valid_run_spec();
         let stage_graph = CalibrationStageGraph::new(vec![
             CalibrationStageDependency {
@@ -1217,22 +1241,22 @@ mod tests {
             },
         ]);
 
-        let artifact = CalibrationRunContractArtifact::try_new(run_spec.clone(), stage_graph)
-            .expect("valid run contract should build artifact");
+        let run_contract = CalibrationRunContract::try_new(run_spec.clone(), stage_graph)
+            .expect("valid run contract should build");
         assert_eq!(
-            artifact.schema_version,
-            CALIBRATION_RUN_CONTRACT_ARTIFACT_SCHEMA_VERSION
+            run_contract.schema_version,
+            CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION
         );
         assert_eq!(
-            artifact.solver_settings_audit_policy,
-            CALIBRATION_SOLVER_SETTINGS_AUDIT_POLICY
+            run_contract.solver_settings_capture_policy,
+            CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY
         );
         assert_eq!(
-            artifact.stage_solver_settings,
+            run_contract.stage_solver_settings,
             run_spec.optimizer_settings_by_stage
         );
         assert_eq!(
-            artifact.execution_stage_order,
+            run_contract.execution_stage_order,
             vec![
                 CalibrationStage::Seasonality,
                 CalibrationStage::Hawkes,
@@ -1240,7 +1264,8 @@ mod tests {
             ]
         );
 
-        let serialized = serde_json::to_value(&artifact).expect("artifact should serialize");
+        let serialized =
+            serde_json::to_value(&run_contract).expect("run contract should serialize");
         assert_eq!(
             serialized["stage_solver_settings"]
                 .as_array()
@@ -1254,10 +1279,35 @@ mod tests {
     }
 
     #[test]
+    fn calibration_run_contract_construction_supports_memory_and_disk_modes() {
+        let stage_graph = CalibrationStageGraph::new(vec![
+            CalibrationStageDependency {
+                stage: CalibrationStage::Hawkes,
+                depends_on: CalibrationStage::Seasonality,
+            },
+            CalibrationStageDependency {
+                stage: CalibrationStage::ReturnComponents,
+                depends_on: CalibrationStage::Hawkes,
+            },
+        ]);
+
+        for execution_mode in [
+            CalibrationExecutionMode::Memory,
+            CalibrationExecutionMode::Disk,
+        ] {
+            let run_spec = build_valid_run_spec_with_mode(execution_mode);
+            let run_contract = CalibrationRunContract::try_new(run_spec, stage_graph.clone())
+                .expect("run contract should build for both execution modes");
+            assert_eq!(run_contract.run_spec.execution_mode, execution_mode);
+        }
+    }
+
+    #[test]
     fn calibration_run_spec_rejects_missing_solver_settings_for_selected_stage() {
         let run_spec = CalibrationRunSpec::try_new(
             "run-missing-solver",
             build_data_inputs(),
+            CalibrationExecutionMode::Memory,
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
             vec![CalibrationStageSolverSettings {
@@ -1323,9 +1373,16 @@ mod tests {
     }
 
     fn build_valid_run_spec() -> CalibrationRunSpec {
+        build_valid_run_spec_with_mode(CalibrationExecutionMode::Memory)
+    }
+
+    fn build_valid_run_spec_with_mode(
+        execution_mode: CalibrationExecutionMode,
+    ) -> CalibrationRunSpec {
         CalibrationRunSpec::try_new(
             "run-001",
             build_data_inputs(),
+            execution_mode,
             vec![
                 CalibrationStage::Seasonality,
                 CalibrationStage::Hawkes,
