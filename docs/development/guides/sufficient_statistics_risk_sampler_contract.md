@@ -26,6 +26,9 @@ Canonical Rust types live in `janiform_core::risk`:
 - `SufficientStatisticsRiskReturnComponents`
 - `SufficientStatisticsGeneratedIntervalReturn`
 - `SufficientStatisticsRiskPathRecord`
+- `SufficientStatisticsRiskPathOutputSchemaMetadata`
+- `SufficientStatisticsRiskPathProvenance`
+- `SufficientStatisticsRiskPathDiagnostics`
 - `SufficientStatisticsRiskPath`
 
 Validation entrypoints:
@@ -68,6 +71,13 @@ Execution-mode policies:
   - value:
     `path_seed_partitioned_from_root_seed_and_path_index_with_shared_substream_mixer.v1`
 
+Path metadata and diagnostics policies:
+
+- `SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_POLICY`
+  - value: `compatible_with_calibration_and_validation_artifact_workflows.v1`
+- `SUFFICIENT_STATISTICS_RISK_PATH_ENVIRONMENT_METADATA_POLICY`
+  - value: `exclude_environment_specific_metadata.v1`
+
 Structured request validation errors:
 
 - `SufficientStatisticsRiskRunRequestError`
@@ -88,6 +98,9 @@ Structured path validation errors:
   - `InvalidTerminalState`
   - `NonSequentialIntervalIndex`
   - `InvalidRecord`
+  - `InvalidOutputSchemaMetadataField`
+  - `InvalidProvenanceField`
+  - `InvalidDiagnosticsField`
 
 All contract payloads are `serde` serializable and validation-aware on
 deserialization. Unknown fields and incomplete payloads are rejected.
@@ -98,6 +111,9 @@ The Python-facing contract is in `janiform.risk`:
 
 - `SufficientStatisticsRiskRunRequest`
 - `SufficientStatisticsRiskPath`
+- `SufficientStatisticsRiskPathOutputSchemaMetadata`
+- `SufficientStatisticsRiskPathProvenance`
+- `SufficientStatisticsRiskPathDiagnostics`
 - `SufficientStatisticsRiskValidationFailure`
 - `SufficientStatisticsRiskValidationError`
 
@@ -129,6 +145,33 @@ The interval-factor contract policy identifier is:
 The public request model requires explicit aligned vectors for `s_h` and `nu_h`.
 Implicit factor interpolation or resampling is not performed by contract
 validation.
+
+## Path Output Metadata And Diagnostics
+
+`SufficientStatisticsRiskPath` includes deterministic machine-readable metadata:
+
+- `schema_version`: `risk.sufficient_statistics.path.v1`
+- `run_request_schema_version`: `risk.sufficient_statistics.run_request.v1`
+- `output_schema_metadata`
+  - `schema_version`: `risk.sufficient_statistics.path_output_schema_metadata.v1`
+  - `required_path_fields`, `required_provenance_fields`,
+    `required_diagnostics_fields`
+- `provenance`
+  - `schema_version`: `risk.sufficient_statistics.path_provenance.v1`
+  - deterministic policy fields for interval factors, transform-slice sampling,
+    boundary updates, return generation, and seed partitioning
+  - `artifact_workflow_tags`: `["calibration", "validation"]`
+- `diagnostics`
+  - `schema_version`: `risk.sufficient_statistics.path_diagnostics.v1`
+  - concise cumulative statistics and return totals for triage:
+    `cumulative_a_plus`, `cumulative_a_minus`, `cumulative_n_plus`,
+    `cumulative_n_minus`, `cumulative_trading_time_return`,
+    `cumulative_gap_return`, `cumulative_total_return`,
+    `max_abs_total_return`
+
+Python and Rust validation accept payloads without explicit metadata blocks and
+canonicalize these values during validation. If caller-provided metadata blocks
+are present, they must exactly match canonical deterministic values.
 
 ## Interval Delta Semantics
 
