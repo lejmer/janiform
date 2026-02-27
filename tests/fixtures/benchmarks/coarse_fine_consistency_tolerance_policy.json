@@ -1,0 +1,41 @@
+{
+  "schema_version": "benchmark.coarse_fine_consistency.tolerance.v1",
+  "policy_id": "coarse_fine_consistency_engine_regression_tolerance_policy_v1",
+  "policy_version": "1.0.0",
+  "governance_scope_policy": "engine_level_consistency_only_model_level_multi_regime_governance_delegated_to_scale_consistency_validation_workflows.v1",
+  "interval_tolerance_bands": [
+    {
+      "interval_grid_label": "subhour_grid",
+      "delta_upper_bound": 0.5,
+      "oracle_c_at_delta_absolute_tolerance": 0.003,
+      "oracle_d_component_absolute_tolerance": 0.003,
+      "oracle_transform_value_absolute_tolerance": 0.003,
+      "pricing_price_absolute_delta_tolerance": 0.15,
+      "pricing_price_relative_delta_tolerance": 0.12,
+      "risk_integrated_intensity_mean_absolute_delta_tolerance": 0.5,
+      "risk_integrated_intensity_mean_relative_delta_tolerance": 0.5,
+      "risk_event_count_mean_absolute_delta_tolerance": 0.6,
+      "risk_event_count_mean_relative_delta_tolerance": 0.6
+    },
+    {
+      "interval_grid_label": "hourly_grid",
+      "delta_upper_bound": 1.0,
+      "oracle_c_at_delta_absolute_tolerance": 0.005,
+      "oracle_d_component_absolute_tolerance": 0.005,
+      "oracle_transform_value_absolute_tolerance": 0.005,
+      "pricing_price_absolute_delta_tolerance": 0.2,
+      "pricing_price_relative_delta_tolerance": 0.15,
+      "risk_integrated_intensity_mean_absolute_delta_tolerance": 0.65,
+      "risk_integrated_intensity_mean_relative_delta_tolerance": 0.65,
+      "risk_event_count_mean_absolute_delta_tolerance": 0.75,
+      "risk_event_count_mean_relative_delta_tolerance": 0.75
+    }
+  ],
+  "change_log": [
+    {
+      "policy_version": "1.0.0",
+      "recorded_at_utc": "2026-02-27T00:00:00Z",
+      "rationale": "Initial centralized interval-dependent tolerance policy for engine-level oracle, pricing, and risk regressions in benchmark workflows."
+    }
+  ]
+}

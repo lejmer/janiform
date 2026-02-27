@@ -7,6 +7,7 @@ benchmark harnesses.
 
 - `benchmark_scenario_catalog.json`
 - `oracle_pricer_risk_benchmark_policy.json`
+- `coarse_fine_consistency_tolerance_policy.json`
 
 ## Contract
 
@@ -25,6 +26,14 @@ benchmark harnesses.
   - `oracle_solver_probes`: transform probe and factor ranges used in oracle and risk paths
   - `pricing_input_ranges`: pricing workload ranges for market inputs and Fourier settings
   - `seed_partition`: deterministic component seed salts
+- Coarse fine consistency tolerance policy fields include:
+  - `policy_version` and `change_log`: required version history with rationale metadata
+  - `interval_tolerance_bands`: interval-dependent tolerances keyed by `delta_upper_bound`
+  - tolerance coverage for:
+    - oracle output differences
+    - pricing output deltas
+    - risk path summary metric deltas
+  - `governance_scope_policy`: explicit engine-level-only scope for benchmark regression workflows
 
 ## Determinism
 
@@ -43,3 +52,7 @@ exercise oracle, pricing, and sufficient-statistics risk sampling workloads.
 `oracle_pricer_risk_benchmark_policy.json` is the canonical source for baseline benchmark parameter
 values. The `rationale` object is required and documents why each exact parameter group exists, so
 the harness does not rely on undocumented hardcoded constants.
+
+`coarse_fine_consistency_tolerance_policy.json` centralizes versioned regression thresholds for
+engine-level coarse fine workflows and supports interval-grid bands so policy updates do not require
+harness code changes.

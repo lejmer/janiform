@@ -22,10 +22,13 @@ use janiform_core::benchmarking::{
     COARSE_FINE_CONSISTENCY_REGRESSION_VARIANCE_CONTROL_POLICY,
     CoarseFineConsistencyRegressionExecutionConfig, CoarseFineConsistencyRegressionToleranceConfig,
     CoarseFineConsistencyScenarioStatus, CoarseFineConsistencyScenarioSummary,
-    OraclePricerRiskBenchmarkPolicy, load_oracle_pricer_risk_benchmark_policy_from_json,
+    OraclePricerRiskBenchmarkPolicy,
+    load_coarse_fine_consistency_regression_tolerance_config_from_json,
+    load_oracle_pricer_risk_benchmark_policy_from_json,
     run_coarse_fine_consistency_regression_harness,
 };
 use janiform_core::hawkes::HawkesExcitationState;
+use serde_json::{Value, json};
 
 use support::validation_fixture::fixtures_root_path;
 
@@ -100,6 +103,25 @@ fn coarse_fine_harness_runs_paired_scenarios_and_emits_metric_deltas() {
         ]
     );
 
+    let observed_band_labels: Vec<(&str, &str)> = report
+        .scenario_reports
+        .iter()
+        .map(|scenario_report| {
+            (
+                scenario_report.scenario_id.as_str(),
+                scenario_report.applied_tolerance_band_label.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        observed_band_labels,
+        vec![
+            ("bounded_small_profile", "subhour_grid"),
+            ("bounded_medium_profile", "hourly_grid"),
+            ("bounded_large_profile", "hourly_grid"),
+        ]
+    );
+
     for scenario_report in &report.scenario_reports {
         assert_eq!(
             scenario_report.status,
@@ -110,7 +132,8 @@ fn coarse_fine_harness_runs_paired_scenarios_and_emits_metric_deltas() {
             scenario_report.run_metadata.scenario_id,
             scenario_report.scenario_id
         );
-        assert_eq!(scenario_report.metric_deltas.len(), 5);
+        assert!(!scenario_report.applied_tolerance_band_label.is_empty());
+        assert_eq!(scenario_report.metric_deltas.len(), 8);
 
         let metric_ids: Vec<&str> = scenario_report
             .metric_deltas
@@ -120,6 +143,9 @@ fn coarse_fine_harness_runs_paired_scenarios_and_emits_metric_deltas() {
         assert_eq!(
             metric_ids,
             vec![
+                "oracle_c_at_delta_absolute_difference",
+                "oracle_d_component_max_absolute_difference",
+                "oracle_transform_value_absolute_difference",
                 "pricing_vanilla_option_price",
                 "risk_mean_a_plus",
                 "risk_mean_a_minus",
@@ -128,9 +154,80 @@ fn coarse_fine_harness_runs_paired_scenarios_and_emits_metric_deltas() {
             ]
         );
         assert!(scenario_report.max_absolute_delta.is_finite());
+        assert!(scenario_report.run_metadata.oracle_component_seed > 0);
 
         assert_summary_values_finite(&scenario_report.summary);
     }
+}
+
+#[test]
+fn coarse_fine_tolerance_policy_fixture_parses_and_exposes_interval_bands() {
+    let tolerance_policy = load_tolerance_policy_fixture();
+
+    assert_eq!(
+        tolerance_policy.schema_version,
+        COARSE_FINE_CONSISTENCY_REGRESSION_TOLERANCE_SCHEMA_VERSION
+    );
+    assert!(!tolerance_policy.policy_id.trim().is_empty());
+    assert!(!tolerance_policy.policy_version.trim().is_empty());
+    assert!(tolerance_policy.interval_tolerance_bands.len() >= 2);
+}
+
+#[test]
+fn coarse_fine_tolerance_policy_requires_current_policy_version_in_change_log() {
+    let policy_payload = load_tolerance_policy_fixture_payload();
+    let mut policy_value: Value =
+        serde_json::from_str(&policy_payload).expect("policy payload should parse as json");
+    policy_value["policy_version"] = json!("2.0.0");
+
+    let mutated_policy_payload =
+        serde_json::to_string(&policy_value).expect("mutated payload should serialize");
+    let error_text =
+        load_coarse_fine_consistency_regression_tolerance_config_from_json(&mutated_policy_payload)
+            .expect_err("missing policy-version metadata should fail")
+            .to_string();
+    assert!(
+        error_text.contains("change_log must include an entry for policy_version"),
+        "unexpected parse error: {error_text}"
+    );
+}
+
+#[test]
+fn coarse_fine_tolerance_policy_rejects_non_increasing_delta_upper_bounds() {
+    let policy_payload = load_tolerance_policy_fixture_payload();
+    let mut policy_value: Value =
+        serde_json::from_str(&policy_payload).expect("policy payload should parse as json");
+    policy_value["interval_tolerance_bands"][1]["delta_upper_bound"] = json!(0.5);
+
+    let mutated_policy_payload =
+        serde_json::to_string(&policy_value).expect("mutated payload should serialize");
+    let error_text =
+        load_coarse_fine_consistency_regression_tolerance_config_from_json(&mutated_policy_payload)
+            .expect_err("non-increasing delta_upper_bound values must fail")
+            .to_string();
+    assert!(
+        error_text.contains("delta_upper_bound values must be strictly increasing"),
+        "unexpected parse error: {error_text}"
+    );
+}
+
+#[test]
+fn coarse_fine_tolerance_policy_rejects_invalid_schema_version() {
+    let policy_payload = load_tolerance_policy_fixture_payload();
+    let mut policy_value: Value =
+        serde_json::from_str(&policy_payload).expect("policy payload should parse as json");
+    policy_value["schema_version"] = json!("benchmark.coarse_fine_consistency.tolerance.v0");
+
+    let mutated_policy_payload =
+        serde_json::to_string(&policy_value).expect("mutated payload should serialize");
+    let error_text =
+        load_coarse_fine_consistency_regression_tolerance_config_from_json(&mutated_policy_payload)
+            .expect_err("invalid schema version must fail")
+            .to_string();
+    assert!(
+        error_text.contains("schema_version"),
+        "unexpected parse error: {error_text}"
+    );
 }
 
 #[test]
@@ -153,6 +250,9 @@ fn coarse_fine_harness_threshold_boundaries_and_failures_are_deterministic() {
     )
     .expect("baseline coarse fine report should run");
 
+    let mut oracle_c_abs_max = 0.0_f64;
+    let mut oracle_d_abs_max = 0.0_f64;
+    let mut oracle_transform_abs_max = 0.0_f64;
     let mut pricing_abs_max = 0.0_f64;
     let mut pricing_rel_max = 0.0_f64;
     let mut risk_integrated_abs_max = 0.0_f64;
@@ -168,6 +268,16 @@ fn coarse_fine_harness_threshold_boundaries_and_failures_are_deterministic() {
             }
 
             match metric_delta.metric_id {
+                "oracle_c_at_delta_absolute_difference" => {
+                    oracle_c_abs_max = oracle_c_abs_max.max(metric_delta.absolute_delta);
+                }
+                "oracle_d_component_max_absolute_difference" => {
+                    oracle_d_abs_max = oracle_d_abs_max.max(metric_delta.absolute_delta);
+                }
+                "oracle_transform_value_absolute_difference" => {
+                    oracle_transform_abs_max =
+                        oracle_transform_abs_max.max(metric_delta.absolute_delta);
+                }
                 "pricing_vanilla_option_price" => {
                     pricing_abs_max = pricing_abs_max.max(metric_delta.absolute_delta);
                     pricing_rel_max = pricing_rel_max.max(metric_delta.relative_delta);
@@ -187,17 +297,18 @@ fn coarse_fine_harness_threshold_boundaries_and_failures_are_deterministic() {
         }
     }
 
-    let boundary_tolerance = CoarseFineConsistencyRegressionToleranceConfig {
-        schema_version: COARSE_FINE_CONSISTENCY_REGRESSION_TOLERANCE_SCHEMA_VERSION.to_string(),
-        policy_id: "coarse_fine_boundary_tolerance".to_string(),
-        policy_version: "1.0.0".to_string(),
-        pricing_price_absolute_delta_tolerance: pricing_abs_max,
-        pricing_price_relative_delta_tolerance: pricing_rel_max,
-        risk_integrated_intensity_mean_absolute_delta_tolerance: risk_integrated_abs_max,
-        risk_integrated_intensity_mean_relative_delta_tolerance: risk_integrated_rel_max,
-        risk_event_count_mean_absolute_delta_tolerance: risk_event_abs_max,
-        risk_event_count_mean_relative_delta_tolerance: risk_event_rel_max,
-    };
+    let boundary_tolerance = tolerance_policy_with_uniform_thresholds(
+        "coarse_fine_boundary_tolerance",
+        oracle_c_abs_max,
+        oracle_d_abs_max,
+        oracle_transform_abs_max,
+        pricing_abs_max,
+        pricing_rel_max,
+        risk_integrated_abs_max,
+        risk_integrated_rel_max,
+        risk_event_abs_max,
+        risk_event_rel_max,
+    );
     let boundary_report = run_coarse_fine_consistency_regression_harness(
         &catalog,
         &benchmark_policy,
@@ -216,23 +327,47 @@ fn coarse_fine_harness_threshold_boundaries_and_failures_are_deterministic() {
 
     let mut strict_tolerance = boundary_tolerance;
     match max_observed_metric.metric_id {
+        "oracle_c_at_delta_absolute_difference" => {
+            for tolerance_band in &mut strict_tolerance.interval_tolerance_bands {
+                tolerance_band.oracle_c_at_delta_absolute_tolerance =
+                    decrement_tolerance(max_observed_metric.absolute_delta);
+            }
+        }
+        "oracle_d_component_max_absolute_difference" => {
+            for tolerance_band in &mut strict_tolerance.interval_tolerance_bands {
+                tolerance_band.oracle_d_component_absolute_tolerance =
+                    decrement_tolerance(max_observed_metric.absolute_delta);
+            }
+        }
+        "oracle_transform_value_absolute_difference" => {
+            for tolerance_band in &mut strict_tolerance.interval_tolerance_bands {
+                tolerance_band.oracle_transform_value_absolute_tolerance =
+                    decrement_tolerance(max_observed_metric.absolute_delta);
+            }
+        }
         "pricing_vanilla_option_price" => {
-            strict_tolerance.pricing_price_absolute_delta_tolerance =
-                decrement_tolerance(max_observed_metric.absolute_delta);
-            strict_tolerance.pricing_price_relative_delta_tolerance =
-                decrement_tolerance(max_observed_metric.relative_delta);
+            for tolerance_band in &mut strict_tolerance.interval_tolerance_bands {
+                tolerance_band.pricing_price_absolute_delta_tolerance =
+                    decrement_tolerance(max_observed_metric.absolute_delta);
+                tolerance_band.pricing_price_relative_delta_tolerance =
+                    decrement_tolerance(max_observed_metric.relative_delta);
+            }
         }
         "risk_mean_a_plus" | "risk_mean_a_minus" => {
-            strict_tolerance.risk_integrated_intensity_mean_absolute_delta_tolerance =
-                decrement_tolerance(max_observed_metric.absolute_delta);
-            strict_tolerance.risk_integrated_intensity_mean_relative_delta_tolerance =
-                decrement_tolerance(max_observed_metric.relative_delta);
+            for tolerance_band in &mut strict_tolerance.interval_tolerance_bands {
+                tolerance_band.risk_integrated_intensity_mean_absolute_delta_tolerance =
+                    decrement_tolerance(max_observed_metric.absolute_delta);
+                tolerance_band.risk_integrated_intensity_mean_relative_delta_tolerance =
+                    decrement_tolerance(max_observed_metric.relative_delta);
+            }
         }
         "risk_mean_n_plus" | "risk_mean_n_minus" => {
-            strict_tolerance.risk_event_count_mean_absolute_delta_tolerance =
-                decrement_tolerance(max_observed_metric.absolute_delta);
-            strict_tolerance.risk_event_count_mean_relative_delta_tolerance =
-                decrement_tolerance(max_observed_metric.relative_delta);
+            for tolerance_band in &mut strict_tolerance.interval_tolerance_bands {
+                tolerance_band.risk_event_count_mean_absolute_delta_tolerance =
+                    decrement_tolerance(max_observed_metric.absolute_delta);
+                tolerance_band.risk_event_count_mean_relative_delta_tolerance =
+                    decrement_tolerance(max_observed_metric.relative_delta);
+            }
         }
         metric_id => panic!("unexpected metric id for strict tolerance test: {metric_id}"),
     }
@@ -310,17 +445,58 @@ fn decrement_tolerance(value: f64) -> f64 {
 }
 
 fn permissive_tolerance_config() -> CoarseFineConsistencyRegressionToleranceConfig {
-    CoarseFineConsistencyRegressionToleranceConfig {
-        schema_version: COARSE_FINE_CONSISTENCY_REGRESSION_TOLERANCE_SCHEMA_VERSION.to_string(),
-        policy_id: "coarse_fine_permissive_tolerance".to_string(),
-        policy_version: "1.0.0".to_string(),
-        pricing_price_absolute_delta_tolerance: 1.0e9,
-        pricing_price_relative_delta_tolerance: 1.0e9,
-        risk_integrated_intensity_mean_absolute_delta_tolerance: 1.0e9,
-        risk_integrated_intensity_mean_relative_delta_tolerance: 1.0e9,
-        risk_event_count_mean_absolute_delta_tolerance: 1.0e9,
-        risk_event_count_mean_relative_delta_tolerance: 1.0e9,
+    tolerance_policy_with_uniform_thresholds(
+        "coarse_fine_permissive_tolerance",
+        1.0e9,
+        1.0e9,
+        1.0e9,
+        1.0e9,
+        1.0e9,
+        1.0e9,
+        1.0e9,
+        1.0e9,
+        1.0e9,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn tolerance_policy_with_uniform_thresholds(
+    policy_id: &str,
+    oracle_c_at_delta_absolute_tolerance: f64,
+    oracle_d_component_absolute_tolerance: f64,
+    oracle_transform_value_absolute_tolerance: f64,
+    pricing_price_absolute_delta_tolerance: f64,
+    pricing_price_relative_delta_tolerance: f64,
+    risk_integrated_intensity_mean_absolute_delta_tolerance: f64,
+    risk_integrated_intensity_mean_relative_delta_tolerance: f64,
+    risk_event_count_mean_absolute_delta_tolerance: f64,
+    risk_event_count_mean_relative_delta_tolerance: f64,
+) -> CoarseFineConsistencyRegressionToleranceConfig {
+    let mut tolerance_policy = load_tolerance_policy_fixture();
+    tolerance_policy.policy_id = policy_id.to_string();
+
+    for interval_tolerance_band in &mut tolerance_policy.interval_tolerance_bands {
+        interval_tolerance_band.oracle_c_at_delta_absolute_tolerance =
+            oracle_c_at_delta_absolute_tolerance;
+        interval_tolerance_band.oracle_d_component_absolute_tolerance =
+            oracle_d_component_absolute_tolerance;
+        interval_tolerance_band.oracle_transform_value_absolute_tolerance =
+            oracle_transform_value_absolute_tolerance;
+        interval_tolerance_band.pricing_price_absolute_delta_tolerance =
+            pricing_price_absolute_delta_tolerance;
+        interval_tolerance_band.pricing_price_relative_delta_tolerance =
+            pricing_price_relative_delta_tolerance;
+        interval_tolerance_band.risk_integrated_intensity_mean_absolute_delta_tolerance =
+            risk_integrated_intensity_mean_absolute_delta_tolerance;
+        interval_tolerance_band.risk_integrated_intensity_mean_relative_delta_tolerance =
+            risk_integrated_intensity_mean_relative_delta_tolerance;
+        interval_tolerance_band.risk_event_count_mean_absolute_delta_tolerance =
+            risk_event_count_mean_absolute_delta_tolerance;
+        interval_tolerance_band.risk_event_count_mean_relative_delta_tolerance =
+            risk_event_count_mean_relative_delta_tolerance;
     }
+
+    tolerance_policy
 }
 
 fn build_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
@@ -346,6 +522,7 @@ fn build_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
                 "bounded_small_profile",
                 BenchmarkWorkloadScale::Small,
                 0.72,
+                0.5,
                 BenchmarkScenarioComponentWorkload {
                     oracle_requests_per_iteration: 2,
                     pricing_requests_per_iteration: 3,
@@ -356,6 +533,7 @@ fn build_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
                 "bounded_medium_profile",
                 BenchmarkWorkloadScale::Medium,
                 0.87,
+                1.0,
                 BenchmarkScenarioComponentWorkload {
                     oracle_requests_per_iteration: 3,
                     pricing_requests_per_iteration: 2,
@@ -366,6 +544,7 @@ fn build_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
                 "bounded_large_profile",
                 BenchmarkWorkloadScale::Large,
                 1.02,
+                1.0,
                 BenchmarkScenarioComponentWorkload {
                     oracle_requests_per_iteration: 4,
                     pricing_requests_per_iteration: 4,
@@ -380,6 +559,7 @@ fn build_profile(
     profile_id: &str,
     workload_scale: BenchmarkWorkloadScale,
     lambda_bar: f64,
+    interval_delta: f64,
     component_workload: BenchmarkScenarioComponentWorkload,
 ) -> BenchmarkScenarioWorkloadProfile {
     BenchmarkScenarioWorkloadProfile {
@@ -399,7 +579,7 @@ fn build_profile(
             },
         },
         interval_settings: BenchmarkScenarioIntervalSettings {
-            interval_delta: 1.0,
+            interval_delta,
             horizon_interval_count: 2,
             oracle_solver_step_count: 12,
         },
@@ -420,11 +600,11 @@ fn build_profile(
 }
 
 fn load_benchmark_policy_fixture() -> OraclePricerRiskBenchmarkPolicy {
-    load_oracle_pricer_risk_benchmark_policy_from_json(&load_policy_fixture_payload())
+    load_oracle_pricer_risk_benchmark_policy_from_json(&load_benchmark_policy_fixture_payload())
         .expect("benchmark policy fixture should parse")
 }
 
-fn load_policy_fixture_payload() -> String {
+fn load_benchmark_policy_fixture_payload() -> String {
     let fixture_path = fixtures_root_path()
         .join("benchmarks")
         .join("oracle_pricer_risk_benchmark_policy.json");
@@ -432,6 +612,26 @@ fn load_policy_fixture_payload() -> String {
     fs::read_to_string(&fixture_path).unwrap_or_else(|source| {
         panic!(
             "failed to read benchmark policy fixture `{}`: {source}",
+            fixture_path.display()
+        )
+    })
+}
+
+fn load_tolerance_policy_fixture() -> CoarseFineConsistencyRegressionToleranceConfig {
+    load_coarse_fine_consistency_regression_tolerance_config_from_json(
+        &load_tolerance_policy_fixture_payload(),
+    )
+    .expect("coarse fine tolerance policy fixture should parse")
+}
+
+fn load_tolerance_policy_fixture_payload() -> String {
+    let fixture_path = fixtures_root_path()
+        .join("benchmarks")
+        .join("coarse_fine_consistency_tolerance_policy.json");
+
+    fs::read_to_string(&fixture_path).unwrap_or_else(|source| {
+        panic!(
+            "failed to read coarse fine tolerance policy fixture `{}`: {source}",
             fixture_path.display()
         )
     })
