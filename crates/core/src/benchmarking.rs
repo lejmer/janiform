@@ -10,7 +10,8 @@ use serde::{Deserialize, Serialize};
 use crate::affine_oracle::{
     ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformGuardFailureCode,
     ExponentialAffineTransformInput, ExponentialAffineTransformInputError,
-    ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformIntegratorMethod,
+    ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformIntegrationStatus,
+    ExponentialAffineTransformIntegratorMethod, ExponentialAffineTransformOutput,
     ExponentialAffineTransformSolverError, ExponentialAffineTransformSolverSettings,
     ExponentialAffineTransformSolverSettingsError,
     solve_exponential_affine_transform_with_settings,
@@ -2058,8 +2059,7 @@ pub const COARSE_FINE_CONSISTENCY_REGRESSION_METRIC_POLICY: &str =
 /// Note:
 /// This harness covers engine-level coarse versus fine sanity checks for benchmark workflows.
 /// Model-level multi-regime scale-consistency governance is owned by separate validation workflows.
-pub const COARSE_FINE_CONSISTENCY_REGRESSION_GOVERNANCE_SCOPE_POLICY: &str =
-    "engine_level_consistency_only_model_level_multi_regime_governance_delegated_to_scale_consistency_validation_workflows.v1";
+pub const COARSE_FINE_CONSISTENCY_REGRESSION_GOVERNANCE_SCOPE_POLICY: &str = "engine_level_consistency_only_model_level_multi_regime_governance_delegated_to_scale_consistency_validation_workflows.v1";
 pub const COARSE_FINE_CONSISTENCY_REGRESSION_OUTPUT_SCHEMA_METADATA_VERSION: &str =
     "benchmark.coarse_fine_consistency.output_schema_metadata.v1";
 pub const COARSE_FINE_CONSISTENCY_REGRESSION_TOLERANCE_SCHEMA_VERSION: &str =
@@ -2081,8 +2081,9 @@ const COARSE_FINE_CONSISTENCY_REQUIRED_REPORT_FIELDS: [&str; 14] = [
     "summary",
     "scenario_reports",
 ];
-const COARSE_FINE_CONSISTENCY_REQUIRED_SCENARIO_REPORT_FIELDS: [&str; 7] = [
+const COARSE_FINE_CONSISTENCY_REQUIRED_SCENARIO_REPORT_FIELDS: [&str; 8] = [
     "scenario_id",
+    "applied_tolerance_band_label",
     "status",
     "failed_metric_count",
     "max_absolute_delta",
@@ -2100,9 +2101,10 @@ const COARSE_FINE_CONSISTENCY_REQUIRED_METRIC_DELTA_FIELDS: [&str; 8] = [
     "relative_tolerance",
     "passed",
 ];
-const COARSE_FINE_CONSISTENCY_REQUIRED_RUN_METADATA_FIELDS: [&str; 11] = [
+const COARSE_FINE_CONSISTENCY_REQUIRED_RUN_METADATA_FIELDS: [&str; 12] = [
     "scenario_id",
     "profile_seed",
+    "oracle_component_seed",
     "pricing_component_seed",
     "risk_component_seed",
     "coarse_interval_delta",
@@ -2204,12 +2206,69 @@ impl Display for CoarseFineConsistencyRegressionExecutionConfigError {
 
 impl Error for CoarseFineConsistencyRegressionExecutionConfigError {}
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CoarseFineConsistencyRegressionTolerancePolicyChangeLogEntry {
+    pub policy_version: String,
+    pub recorded_at_utc: String,
+    pub rationale: String,
+}
+
+impl CoarseFineConsistencyRegressionTolerancePolicyChangeLogEntry {
+    pub fn validate(
+        &self,
+    ) -> Result<(), CoarseFineConsistencyRegressionTolerancePolicyChangeLogEntryError> {
+        if self.policy_version.trim().is_empty() {
+            return Err(
+                CoarseFineConsistencyRegressionTolerancePolicyChangeLogEntryError::EmptyPolicyVersion,
+            );
+        }
+        if self.recorded_at_utc.trim().is_empty() {
+            return Err(
+                CoarseFineConsistencyRegressionTolerancePolicyChangeLogEntryError::EmptyRecordedAtUtc,
+            );
+        }
+        if self.rationale.trim().is_empty() {
+            return Err(
+                CoarseFineConsistencyRegressionTolerancePolicyChangeLogEntryError::EmptyRationale,
+            );
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CoarseFineConsistencyRegressionTolerancePolicyChangeLogEntryError {
+    EmptyPolicyVersion,
+    EmptyRecordedAtUtc,
+    EmptyRationale,
+}
+
+impl Display for CoarseFineConsistencyRegressionTolerancePolicyChangeLogEntryError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyPolicyVersion => {
+                write!(formatter, "policy_version must be a non-empty string")
+            }
+            Self::EmptyRecordedAtUtc => {
+                write!(formatter, "recorded_at_utc must be a non-empty string")
+            }
+            Self::EmptyRationale => write!(formatter, "rationale must be a non-empty string"),
+        }
+    }
+}
+
+impl Error for CoarseFineConsistencyRegressionTolerancePolicyChangeLogEntryError {}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CoarseFineConsistencyRegressionToleranceConfig {
-    pub schema_version: String,
-    pub policy_id: String,
-    pub policy_version: String,
+pub struct CoarseFineConsistencyRegressionIntervalToleranceBand {
+    pub interval_grid_label: String,
+    pub delta_upper_bound: f64,
+    pub oracle_c_at_delta_absolute_tolerance: f64,
+    pub oracle_d_component_absolute_tolerance: f64,
+    pub oracle_transform_value_absolute_tolerance: f64,
     pub pricing_price_absolute_delta_tolerance: f64,
     pub pricing_price_relative_delta_tolerance: f64,
     pub risk_integrated_intensity_mean_absolute_delta_tolerance: f64,
@@ -2218,18 +2277,146 @@ pub struct CoarseFineConsistencyRegressionToleranceConfig {
     pub risk_event_count_mean_relative_delta_tolerance: f64,
 }
 
+impl CoarseFineConsistencyRegressionIntervalToleranceBand {
+    pub fn validate(
+        &self,
+    ) -> Result<(), CoarseFineConsistencyRegressionIntervalToleranceBandError> {
+        if self.interval_grid_label.trim().is_empty() {
+            return Err(
+                CoarseFineConsistencyRegressionIntervalToleranceBandError::EmptyIntervalGridLabel,
+            );
+        }
+        if !self.delta_upper_bound.is_finite() || self.delta_upper_bound <= 0.0 {
+            return Err(
+                CoarseFineConsistencyRegressionIntervalToleranceBandError::InvalidDeltaUpperBound {
+                    value: self.delta_upper_bound,
+                },
+            );
+        }
+
+        let tolerance_fields = [
+            (
+                "oracle_c_at_delta_absolute_tolerance",
+                self.oracle_c_at_delta_absolute_tolerance,
+            ),
+            (
+                "oracle_d_component_absolute_tolerance",
+                self.oracle_d_component_absolute_tolerance,
+            ),
+            (
+                "oracle_transform_value_absolute_tolerance",
+                self.oracle_transform_value_absolute_tolerance,
+            ),
+            (
+                "pricing_price_absolute_delta_tolerance",
+                self.pricing_price_absolute_delta_tolerance,
+            ),
+            (
+                "pricing_price_relative_delta_tolerance",
+                self.pricing_price_relative_delta_tolerance,
+            ),
+            (
+                "risk_integrated_intensity_mean_absolute_delta_tolerance",
+                self.risk_integrated_intensity_mean_absolute_delta_tolerance,
+            ),
+            (
+                "risk_integrated_intensity_mean_relative_delta_tolerance",
+                self.risk_integrated_intensity_mean_relative_delta_tolerance,
+            ),
+            (
+                "risk_event_count_mean_absolute_delta_tolerance",
+                self.risk_event_count_mean_absolute_delta_tolerance,
+            ),
+            (
+                "risk_event_count_mean_relative_delta_tolerance",
+                self.risk_event_count_mean_relative_delta_tolerance,
+            ),
+        ];
+
+        for (field_name, value) in tolerance_fields {
+            if !value.is_finite() || value < 0.0 {
+                return Err(
+                    CoarseFineConsistencyRegressionIntervalToleranceBandError::InvalidToleranceValue {
+                        field_name,
+                        value,
+                    },
+                );
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CoarseFineConsistencyRegressionIntervalToleranceBandError {
+    EmptyIntervalGridLabel,
+    InvalidDeltaUpperBound {
+        value: f64,
+    },
+    InvalidToleranceValue {
+        field_name: &'static str,
+        value: f64,
+    },
+}
+
+impl Display for CoarseFineConsistencyRegressionIntervalToleranceBandError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyIntervalGridLabel => {
+                write!(formatter, "interval_grid_label must be a non-empty string")
+            }
+            Self::InvalidDeltaUpperBound { value } => write!(
+                formatter,
+                "delta_upper_bound must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidToleranceValue { field_name, value } => write!(
+                formatter,
+                "{field_name} must be finite and non-negative, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for CoarseFineConsistencyRegressionIntervalToleranceBandError {}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CoarseFineConsistencyRegressionToleranceConfig {
+    pub schema_version: String,
+    pub policy_id: String,
+    pub policy_version: String,
+    pub governance_scope_policy: String,
+    pub interval_tolerance_bands: Vec<CoarseFineConsistencyRegressionIntervalToleranceBand>,
+    pub change_log: Vec<CoarseFineConsistencyRegressionTolerancePolicyChangeLogEntry>,
+}
+
 impl Default for CoarseFineConsistencyRegressionToleranceConfig {
     fn default() -> Self {
         Self {
             schema_version: COARSE_FINE_CONSISTENCY_REGRESSION_TOLERANCE_SCHEMA_VERSION.to_string(),
             policy_id: "coarse_fine_consistency_default_tolerance".to_string(),
             policy_version: "1.0.0".to_string(),
-            pricing_price_absolute_delta_tolerance: 0.20,
-            pricing_price_relative_delta_tolerance: 0.15,
-            risk_integrated_intensity_mean_absolute_delta_tolerance: 0.65,
-            risk_integrated_intensity_mean_relative_delta_tolerance: 0.65,
-            risk_event_count_mean_absolute_delta_tolerance: 0.75,
-            risk_event_count_mean_relative_delta_tolerance: 0.75,
+            governance_scope_policy:
+                COARSE_FINE_CONSISTENCY_REGRESSION_GOVERNANCE_SCOPE_POLICY.to_string(),
+            interval_tolerance_bands: vec![CoarseFineConsistencyRegressionIntervalToleranceBand {
+                interval_grid_label: "hourly_grid".to_string(),
+                delta_upper_bound: 1.0,
+                oracle_c_at_delta_absolute_tolerance: 0.005,
+                oracle_d_component_absolute_tolerance: 0.005,
+                oracle_transform_value_absolute_tolerance: 0.005,
+                pricing_price_absolute_delta_tolerance: 0.20,
+                pricing_price_relative_delta_tolerance: 0.15,
+                risk_integrated_intensity_mean_absolute_delta_tolerance: 0.65,
+                risk_integrated_intensity_mean_relative_delta_tolerance: 0.65,
+                risk_event_count_mean_absolute_delta_tolerance: 0.75,
+                risk_event_count_mean_relative_delta_tolerance: 0.75,
+            }],
+            change_log: vec![CoarseFineConsistencyRegressionTolerancePolicyChangeLogEntry {
+                policy_version: "1.0.0".to_string(),
+                recorded_at_utc: "2026-02-27T00:00:00Z".to_string(),
+                rationale: "Default engine-level benchmark and regression thresholds covering oracle outputs, pricing outputs, and risk summary metrics.".to_string(),
+            }],
         }
     }
 }
@@ -2250,33 +2437,112 @@ impl CoarseFineConsistencyRegressionToleranceConfig {
         if self.policy_version.trim().is_empty() {
             return Err(CoarseFineConsistencyRegressionToleranceConfigError::EmptyPolicyVersion);
         }
+        if self.governance_scope_policy
+            != COARSE_FINE_CONSISTENCY_REGRESSION_GOVERNANCE_SCOPE_POLICY
+        {
+            return Err(
+                CoarseFineConsistencyRegressionToleranceConfigError::InvalidGovernanceScopePolicy {
+                    expected: COARSE_FINE_CONSISTENCY_REGRESSION_GOVERNANCE_SCOPE_POLICY,
+                    actual: self.governance_scope_policy.clone(),
+                },
+            );
+        }
+        if self.interval_tolerance_bands.is_empty() {
+            return Err(
+                CoarseFineConsistencyRegressionToleranceConfigError::EmptyIntervalToleranceBands,
+            );
+        }
 
-        validate_non_negative_finite_tolerance_field(
-            "pricing_price_absolute_delta_tolerance",
-            self.pricing_price_absolute_delta_tolerance,
-        )?;
-        validate_non_negative_finite_tolerance_field(
-            "pricing_price_relative_delta_tolerance",
-            self.pricing_price_relative_delta_tolerance,
-        )?;
-        validate_non_negative_finite_tolerance_field(
-            "risk_integrated_intensity_mean_absolute_delta_tolerance",
-            self.risk_integrated_intensity_mean_absolute_delta_tolerance,
-        )?;
-        validate_non_negative_finite_tolerance_field(
-            "risk_integrated_intensity_mean_relative_delta_tolerance",
-            self.risk_integrated_intensity_mean_relative_delta_tolerance,
-        )?;
-        validate_non_negative_finite_tolerance_field(
-            "risk_event_count_mean_absolute_delta_tolerance",
-            self.risk_event_count_mean_absolute_delta_tolerance,
-        )?;
-        validate_non_negative_finite_tolerance_field(
-            "risk_event_count_mean_relative_delta_tolerance",
-            self.risk_event_count_mean_relative_delta_tolerance,
-        )?;
+        let mut previous_delta_upper_bound: Option<f64> = None;
+        for (position, tolerance_band) in self.interval_tolerance_bands.iter().enumerate() {
+            tolerance_band.validate().map_err(|source| {
+                CoarseFineConsistencyRegressionToleranceConfigError::InvalidIntervalToleranceBand {
+                    position,
+                    source,
+                }
+            })?;
+
+            if let Some(previous_delta_upper_bound) = previous_delta_upper_bound {
+                if tolerance_band.delta_upper_bound <= previous_delta_upper_bound {
+                    return Err(
+                        CoarseFineConsistencyRegressionToleranceConfigError::NonIncreasingDeltaUpperBound {
+                            previous: previous_delta_upper_bound,
+                            current: tolerance_band.delta_upper_bound,
+                        },
+                    );
+                }
+            }
+            previous_delta_upper_bound = Some(tolerance_band.delta_upper_bound);
+        }
+
+        if self.change_log.is_empty() {
+            return Err(CoarseFineConsistencyRegressionToleranceConfigError::EmptyChangeLog);
+        }
+
+        let mut observed_policy_versions: BTreeSet<String> = BTreeSet::new();
+        let mut has_current_policy_version = false;
+        for (position, change_log_entry) in self.change_log.iter().enumerate() {
+            change_log_entry.validate().map_err(|source| {
+                CoarseFineConsistencyRegressionToleranceConfigError::InvalidChangeLogEntry {
+                    position,
+                    source,
+                }
+            })?;
+
+            if !observed_policy_versions.insert(change_log_entry.policy_version.clone()) {
+                return Err(
+                    CoarseFineConsistencyRegressionToleranceConfigError::DuplicateChangeLogPolicyVersion {
+                        policy_version: change_log_entry.policy_version.clone(),
+                    },
+                );
+            }
+            has_current_policy_version = has_current_policy_version
+                || change_log_entry.policy_version == self.policy_version;
+        }
+
+        if !has_current_policy_version {
+            return Err(
+                CoarseFineConsistencyRegressionToleranceConfigError::MissingCurrentPolicyVersionInChangeLog {
+                    policy_version: self.policy_version.clone(),
+                },
+            );
+        }
 
         Ok(())
+    }
+
+    pub fn select_tolerance_band_for_interval_delta(
+        &self,
+        interval_delta: f64,
+    ) -> Result<
+        CoarseFineConsistencyRegressionIntervalToleranceBand,
+        CoarseFineConsistencyRegressionToleranceConfigError,
+    > {
+        if !interval_delta.is_finite() || interval_delta <= 0.0 {
+            return Err(
+                CoarseFineConsistencyRegressionToleranceConfigError::InvalidIntervalDelta {
+                    value: interval_delta,
+                },
+            );
+        }
+
+        for tolerance_band in &self.interval_tolerance_bands {
+            if interval_delta <= tolerance_band.delta_upper_bound {
+                return Ok(tolerance_band.clone());
+            }
+        }
+
+        let maximum_supported_delta = self
+            .interval_tolerance_bands
+            .last()
+            .map_or(0.0, |tolerance_band| tolerance_band.delta_upper_bound);
+
+        Err(
+            CoarseFineConsistencyRegressionToleranceConfigError::DeltaOutsideToleranceBands {
+                interval_delta,
+                maximum_supported_delta,
+            },
+        )
     }
 }
 
@@ -2288,9 +2554,36 @@ pub enum CoarseFineConsistencyRegressionToleranceConfigError {
     },
     EmptyPolicyId,
     EmptyPolicyVersion,
-    InvalidToleranceValue {
-        field_name: &'static str,
+    InvalidGovernanceScopePolicy {
+        expected: &'static str,
+        actual: String,
+    },
+    EmptyIntervalToleranceBands,
+    InvalidIntervalToleranceBand {
+        position: usize,
+        source: CoarseFineConsistencyRegressionIntervalToleranceBandError,
+    },
+    NonIncreasingDeltaUpperBound {
+        previous: f64,
+        current: f64,
+    },
+    InvalidIntervalDelta {
         value: f64,
+    },
+    DeltaOutsideToleranceBands {
+        interval_delta: f64,
+        maximum_supported_delta: f64,
+    },
+    EmptyChangeLog,
+    InvalidChangeLogEntry {
+        position: usize,
+        source: CoarseFineConsistencyRegressionTolerancePolicyChangeLogEntryError,
+    },
+    DuplicateChangeLogPolicyVersion {
+        policy_version: String,
+    },
+    MissingCurrentPolicyVersionInChangeLog {
+        policy_version: String,
     },
 }
 
@@ -2310,15 +2603,119 @@ impl Display for CoarseFineConsistencyRegressionToleranceConfigError {
                     "tolerance_config.policy_version must be non-empty"
                 )
             }
-            Self::InvalidToleranceValue { field_name, value } => write!(
+            Self::InvalidGovernanceScopePolicy { expected, actual } => write!(
                 formatter,
-                "tolerance_config.{field_name} must be finite and non-negative, found {value}"
+                "tolerance_config.governance_scope_policy must be `{expected}`, found `{actual}`"
+            ),
+            Self::EmptyIntervalToleranceBands => write!(
+                formatter,
+                "tolerance_config.interval_tolerance_bands must contain at least one tolerance band"
+            ),
+            Self::InvalidIntervalToleranceBand { position, source } => write!(
+                formatter,
+                "tolerance_config.interval_tolerance_bands[{position}] is invalid: {source}"
+            ),
+            Self::NonIncreasingDeltaUpperBound { previous, current } => write!(
+                formatter,
+                "tolerance_config interval_tolerance_bands delta_upper_bound values must be strictly increasing, found previous={previous}, current={current}"
+            ),
+            Self::InvalidIntervalDelta { value } => write!(
+                formatter,
+                "interval_delta must be finite and strictly positive, found {value}"
+            ),
+            Self::DeltaOutsideToleranceBands {
+                interval_delta,
+                maximum_supported_delta,
+            } => write!(
+                formatter,
+                "interval_delta {interval_delta} is outside configured tolerance bands, maximum supported interval_delta is {maximum_supported_delta}"
+            ),
+            Self::EmptyChangeLog => {
+                write!(
+                    formatter,
+                    "tolerance_config.change_log must include at least one policy history entry"
+                )
+            }
+            Self::InvalidChangeLogEntry { position, source } => {
+                write!(
+                    formatter,
+                    "tolerance_config.change_log[{position}] is invalid: {source}"
+                )
+            }
+            Self::DuplicateChangeLogPolicyVersion { policy_version } => write!(
+                formatter,
+                "tolerance_config.change_log contains duplicate policy_version: {policy_version}"
+            ),
+            Self::MissingCurrentPolicyVersionInChangeLog { policy_version } => write!(
+                formatter,
+                "tolerance_config.change_log must include an entry for policy_version '{policy_version}'"
             ),
         }
     }
 }
 
-impl Error for CoarseFineConsistencyRegressionToleranceConfigError {}
+impl Error for CoarseFineConsistencyRegressionToleranceConfigError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidIntervalToleranceBand { source, .. } => Some(source),
+            Self::InvalidChangeLogEntry { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CoarseFineConsistencyRegressionToleranceConfigLoadError {
+    InvalidJson {
+        source: String,
+    },
+    InvalidToleranceConfig {
+        source: CoarseFineConsistencyRegressionToleranceConfigError,
+    },
+}
+
+impl Display for CoarseFineConsistencyRegressionToleranceConfigLoadError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidJson { source } => write!(
+                formatter,
+                "coarse fine consistency tolerance policy payload must be valid JSON: {source}"
+            ),
+            Self::InvalidToleranceConfig { source } => write!(
+                formatter,
+                "coarse fine consistency tolerance policy payload is invalid: {source}"
+            ),
+        }
+    }
+}
+
+impl Error for CoarseFineConsistencyRegressionToleranceConfigLoadError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidToleranceConfig { source } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+pub fn load_coarse_fine_consistency_regression_tolerance_config_from_json(
+    tolerance_policy_payload: &str,
+) -> Result<
+    CoarseFineConsistencyRegressionToleranceConfig,
+    CoarseFineConsistencyRegressionToleranceConfigLoadError,
+> {
+    let tolerance_config: CoarseFineConsistencyRegressionToleranceConfig =
+        serde_json::from_str(tolerance_policy_payload).map_err(|source| {
+            CoarseFineConsistencyRegressionToleranceConfigLoadError::InvalidJson {
+                source: source.to_string(),
+            }
+        })?;
+    tolerance_config.validate().map_err(|source| {
+        CoarseFineConsistencyRegressionToleranceConfigLoadError::InvalidToleranceConfig { source }
+    })?;
+
+    Ok(tolerance_config)
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CoarseFineConsistencyRegressionOutputSchemaMetadata {
@@ -2341,6 +2738,7 @@ pub enum CoarseFineConsistencyScenarioStatus {
 pub struct CoarseFineConsistencyScenarioRunMetadata {
     pub scenario_id: String,
     pub profile_seed: u64,
+    pub oracle_component_seed: u64,
     pub pricing_component_seed: u64,
     pub risk_component_seed: u64,
     pub coarse_interval_delta: f64,
@@ -2381,6 +2779,7 @@ pub struct CoarseFineConsistencyScenarioSummary {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CoarseFineConsistencyScenarioReport {
     pub scenario_id: String,
+    pub applied_tolerance_band_label: String,
     pub status: CoarseFineConsistencyScenarioStatus,
     pub failed_metric_count: usize,
     pub max_absolute_delta: f64,
@@ -2633,12 +3032,22 @@ fn run_coarse_fine_consistency_scenario(
             .reproducibility_seed
             .wrapping_add(fnv1a_64(profile.profile_id.as_bytes())),
     );
+    let oracle_component_seed =
+        splitmix64(profile_seed ^ benchmark_policy.seed_partition.oracle_component_seed_salt);
     let pricing_component_seed =
         splitmix64(profile_seed ^ benchmark_policy.seed_partition.pricing_component_seed_salt);
     let risk_component_seed =
         splitmix64(profile_seed ^ benchmark_policy.seed_partition.risk_component_seed_salt);
     let fine_interval_delta = profile.interval_settings.interval_delta
         / execution_config.fine_subinterval_count_per_coarse_interval as f64;
+    let tolerance_band = tolerance_config
+        .select_tolerance_band_for_interval_delta(profile.interval_settings.interval_delta)
+        .map_err(|source| {
+            coarse_fine_scenario_error(
+                &scenario_id,
+                format!("failed to resolve interval tolerance band: {source}"),
+            )
+        })?;
 
     let equation_specification =
         build_equation_specification(profile, benchmark_policy).map_err(|source| {
@@ -2647,6 +3056,7 @@ fn run_coarse_fine_consistency_scenario(
                 format!("failed to build equation specification: {source}"),
             )
         })?;
+
     let oracle_solver_settings = ExponentialAffineTransformSolverSettings::try_new(
         ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
         profile.interval_settings.oracle_solver_step_count,
@@ -2657,6 +3067,70 @@ fn run_coarse_fine_consistency_scenario(
             format!("failed to construct oracle solver settings: {source}"),
         )
     })?;
+
+    let oracle_reference_step_count = profile
+        .interval_settings
+        .oracle_solver_step_count
+        .checked_mul(execution_config.fine_subinterval_count_per_coarse_interval)
+        .ok_or_else(|| {
+            coarse_fine_scenario_error(
+                &scenario_id,
+                "oracle reference solver step count overflowed usize".to_string(),
+            )
+        })?;
+
+    let oracle_reference_solver_settings = ExponentialAffineTransformSolverSettings::try_new(
+        ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
+        oracle_reference_step_count,
+    )
+    .map_err(|source| {
+        coarse_fine_scenario_error(
+            &scenario_id,
+            format!("failed to construct oracle reference solver settings: {source}"),
+        )
+    })?;
+
+    let oracle_invocation_seed = derive_invocation_seed(oracle_component_seed, 1);
+    let oracle_transform_input = build_oracle_transform_input(
+        profile,
+        benchmark_policy,
+        equation_specification,
+        oracle_invocation_seed,
+    )
+    .map_err(|source| {
+        coarse_fine_scenario_error(
+            &scenario_id,
+            format!("failed to build oracle transform input: {source}"),
+        )
+    })?;
+
+    let coarse_oracle_result = solve_exponential_affine_transform_with_settings(
+        oracle_transform_input,
+        oracle_solver_settings,
+    )
+    .map_err(|source| {
+        coarse_fine_scenario_error(
+            &scenario_id,
+            format!("coarse oracle solve failed: {source}"),
+        )
+    })?;
+
+    let oracle_reference_result = solve_exponential_affine_transform_with_settings(
+        oracle_transform_input,
+        oracle_reference_solver_settings,
+    )
+    .map_err(|source| {
+        coarse_fine_scenario_error(
+            &scenario_id,
+            format!("oracle reference solve failed: {source}"),
+        )
+    })?;
+
+    let coarse_oracle_output =
+        extract_completed_oracle_output(&scenario_id, "coarse", coarse_oracle_result)?;
+    let oracle_reference_output =
+        extract_completed_oracle_output(&scenario_id, "reference", oracle_reference_result)?;
+
     let pricing_engine_settings = build_pricing_engine_settings(profile, benchmark_policy)
         .map_err(|source| {
             coarse_fine_scenario_error(
@@ -2771,39 +3245,66 @@ fn run_coarse_fine_consistency_scenario(
 
     let metric_deltas = vec![
         build_coarse_fine_metric_delta(
+            "oracle_c_at_delta_absolute_difference",
+            complex_difference_norm(
+                coarse_oracle_output.c_at_delta,
+                oracle_reference_output.c_at_delta,
+            ),
+            0.0,
+            tolerance_band.oracle_c_at_delta_absolute_tolerance,
+            0.0,
+        ),
+        build_coarse_fine_metric_delta(
+            "oracle_d_component_max_absolute_difference",
+            max_abs_oracle_d_component_difference(coarse_oracle_output, oracle_reference_output),
+            0.0,
+            tolerance_band.oracle_d_component_absolute_tolerance,
+            0.0,
+        ),
+        build_coarse_fine_metric_delta(
+            "oracle_transform_value_absolute_difference",
+            complex_difference_norm(
+                coarse_oracle_output.transform_value,
+                oracle_reference_output.transform_value,
+            ),
+            0.0,
+            tolerance_band.oracle_transform_value_absolute_tolerance,
+            0.0,
+        ),
+        build_coarse_fine_metric_delta(
             "pricing_vanilla_option_price",
             coarse_pricing_value,
             fine_pricing_reference_value,
-            tolerance_config.pricing_price_absolute_delta_tolerance,
-            tolerance_config.pricing_price_relative_delta_tolerance,
+            tolerance_band.pricing_price_absolute_delta_tolerance,
+            tolerance_band.pricing_price_relative_delta_tolerance,
         ),
         build_coarse_fine_metric_delta(
             "risk_mean_a_plus",
             coarse_risk_metric_means.mean_a_plus,
             fine_risk_metric_means.mean_a_plus,
-            tolerance_config.risk_integrated_intensity_mean_absolute_delta_tolerance,
-            tolerance_config.risk_integrated_intensity_mean_relative_delta_tolerance,
+            tolerance_band.risk_integrated_intensity_mean_absolute_delta_tolerance,
+            tolerance_band.risk_integrated_intensity_mean_relative_delta_tolerance,
         ),
         build_coarse_fine_metric_delta(
             "risk_mean_a_minus",
             coarse_risk_metric_means.mean_a_minus,
             fine_risk_metric_means.mean_a_minus,
-            tolerance_config.risk_integrated_intensity_mean_absolute_delta_tolerance,
-            tolerance_config.risk_integrated_intensity_mean_relative_delta_tolerance,
+            tolerance_band.risk_integrated_intensity_mean_absolute_delta_tolerance,
+            tolerance_band.risk_integrated_intensity_mean_relative_delta_tolerance,
         ),
         build_coarse_fine_metric_delta(
             "risk_mean_n_plus",
             coarse_risk_metric_means.mean_n_plus,
             fine_risk_metric_means.mean_n_plus,
-            tolerance_config.risk_event_count_mean_absolute_delta_tolerance,
-            tolerance_config.risk_event_count_mean_relative_delta_tolerance,
+            tolerance_band.risk_event_count_mean_absolute_delta_tolerance,
+            tolerance_band.risk_event_count_mean_relative_delta_tolerance,
         ),
         build_coarse_fine_metric_delta(
             "risk_mean_n_minus",
             coarse_risk_metric_means.mean_n_minus,
             fine_risk_metric_means.mean_n_minus,
-            tolerance_config.risk_event_count_mean_absolute_delta_tolerance,
-            tolerance_config.risk_event_count_mean_relative_delta_tolerance,
+            tolerance_band.risk_event_count_mean_absolute_delta_tolerance,
+            tolerance_band.risk_event_count_mean_relative_delta_tolerance,
         ),
     ];
 
@@ -2823,12 +3324,14 @@ fn run_coarse_fine_consistency_scenario(
 
     Ok(CoarseFineConsistencyScenarioReport {
         scenario_id: scenario_id.clone(),
+        applied_tolerance_band_label: tolerance_band.interval_grid_label.clone(),
         status,
         failed_metric_count,
         max_absolute_delta,
         run_metadata: CoarseFineConsistencyScenarioRunMetadata {
             scenario_id,
             profile_seed,
+            oracle_component_seed,
             pricing_component_seed,
             risk_component_seed,
             coarse_interval_delta: profile.interval_settings.interval_delta,
@@ -2856,6 +3359,61 @@ fn run_coarse_fine_consistency_scenario(
     })
 }
 
+fn extract_completed_oracle_output(
+    scenario_id: &str,
+    label: &str,
+    result: ExponentialAffineTransformIntegrationResult,
+) -> Result<ExponentialAffineTransformOutput, CoarseFineConsistencyRegressionHarnessError> {
+    if result.status != ExponentialAffineTransformIntegrationStatus::Completed {
+        return Err(coarse_fine_scenario_error(
+            scenario_id,
+            format!(
+                "{label} oracle solve did not complete successfully, status={:?}",
+                result.status
+            ),
+        ));
+    }
+
+    result.output.ok_or_else(|| {
+        coarse_fine_scenario_error(
+            scenario_id,
+            format!("{label} oracle solve returned no output payload"),
+        )
+    })
+}
+
+fn complex_difference_norm(left: ComplexScalar, right: ComplexScalar) -> f64 {
+    left.subtract(right).norm()
+}
+
+fn max_abs_oracle_d_component_difference(
+    coarse_output: ExponentialAffineTransformOutput,
+    fine_reference_output: ExponentialAffineTransformOutput,
+) -> f64 {
+    let d_at_delta_coarse = coarse_output.d_at_delta;
+    let d_at_delta_fine_reference = fine_reference_output.d_at_delta;
+    [
+        complex_difference_norm(
+            d_at_delta_coarse.plus_plus,
+            d_at_delta_fine_reference.plus_plus,
+        ),
+        complex_difference_norm(
+            d_at_delta_coarse.plus_minus,
+            d_at_delta_fine_reference.plus_minus,
+        ),
+        complex_difference_norm(
+            d_at_delta_coarse.minus_plus,
+            d_at_delta_fine_reference.minus_plus,
+        ),
+        complex_difference_norm(
+            d_at_delta_coarse.minus_minus,
+            d_at_delta_fine_reference.minus_minus,
+        ),
+    ]
+    .into_iter()
+    .fold(0.0_f64, f64::max)
+}
+
 fn coarse_fine_scenario_error(
     scenario_id: &str,
     detail: String,
@@ -2864,22 +3422,6 @@ fn coarse_fine_scenario_error(
         scenario_id: scenario_id.to_string(),
         detail,
     }
-}
-
-fn validate_non_negative_finite_tolerance_field(
-    field_name: &'static str,
-    value: f64,
-) -> Result<(), CoarseFineConsistencyRegressionToleranceConfigError> {
-    if value.is_finite() && value >= 0.0 {
-        return Ok(());
-    }
-
-    Err(
-        CoarseFineConsistencyRegressionToleranceConfigError::InvalidToleranceValue {
-            field_name,
-            value,
-        },
-    )
 }
 
 fn build_coarse_fine_metric_delta(
