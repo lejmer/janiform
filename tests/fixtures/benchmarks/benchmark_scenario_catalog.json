@@ -57,6 +57,49 @@
       "description": "Small hourly profile for quick smoke-level benchmark checks across oracle, pricing, and risk sampler paths."
     },
     {
+      "profile_id": "medium_half_hour_balanced",
+      "workload_scale": "medium",
+      "model_state": {
+        "baseline_deseasonalized_intensity_lambda_bar": 1.02,
+        "initial_excitation_state": {
+          "y_plus_plus": 0.12,
+          "y_plus_minus": 0.09,
+          "y_minus_plus": 0.1,
+          "y_minus_minus": 0.15
+        },
+        "initial_shared_news_state": {
+          "j_t": 0.12,
+          "g_t": 0.03
+        }
+      },
+      "interval_settings": {
+        "interval_delta": 0.5,
+        "horizon_interval_count": 48,
+        "oracle_solver_step_count": 512
+      },
+      "portfolio_shape": {
+        "underlying_count": 4,
+        "maturity_bucket_count_per_underlying": 4,
+        "strikes_per_maturity_bucket": 8,
+        "option_position_count": 96
+      },
+      "run_length": {
+        "warmup_iteration_count": 2,
+        "measured_iteration_count": 8
+      },
+      "component_workload": {
+        "oracle_requests_per_iteration": 96,
+        "pricing_requests_per_iteration": 96,
+        "risk_paths_per_iteration": 512
+      },
+      "tags": [
+        "ci",
+        "medium",
+        "sub_hour"
+      ],
+      "description": "Medium half-hour profile for interval-sensitivity benchmarking across sub-hour granularity."
+    },
+    {
       "profile_id": "medium_hourly_balanced",
       "workload_scale": "medium",
       "model_state": {

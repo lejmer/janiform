@@ -31,6 +31,7 @@
     "required_profile_record_fields": [
       "profile_id",
       "workload_scale",
+      "interval_delta",
       "oracle_solver_metrics",
       "pricing_metrics",
       "risk_sampling_metrics"
@@ -72,7 +73,8 @@
         "mean_latency_seconds": 0.00115,
         "throughput_operations_per_second": 869.6,
         "measured_operation_count": 128
-      }
+      },
+      "interval_delta": 1.0
     },
     {
       "profile_id": "medium_hourly_balanced",
@@ -91,7 +93,8 @@
         "mean_latency_seconds": 0.0027,
         "throughput_operations_per_second": 370.4,
         "measured_operation_count": 512
-      }
+      },
+      "interval_delta": 1.0
     },
     {
       "profile_id": "large_hourly_portfolio",
@@ -110,7 +113,8 @@
         "mean_latency_seconds": 0.0071,
         "throughput_operations_per_second": 140.8,
         "measured_operation_count": 2048
-      }
+      },
+      "interval_delta": 1.0
     }
   ]
 }

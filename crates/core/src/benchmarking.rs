@@ -661,9 +661,10 @@ const ORACLE_PRICER_RISK_BENCHMARK_REQUIRED_REPORT_FIELDS: [&str; 11] = [
     "summary",
     "profile_reports",
 ];
-const ORACLE_PRICER_RISK_BENCHMARK_REQUIRED_PROFILE_REPORT_FIELDS: [&str; 8] = [
+const ORACLE_PRICER_RISK_BENCHMARK_REQUIRED_PROFILE_REPORT_FIELDS: [&str; 9] = [
     "profile_id",
     "workload_scale",
+    "interval_delta",
     "warmup_iteration_count",
     "measured_iteration_count",
     "oracle_solver_metrics",
@@ -1141,6 +1142,7 @@ pub struct OraclePricerRiskBenchmarkComponentMetrics {
 pub struct OraclePricerRiskBenchmarkProfileReport {
     pub profile_id: String,
     pub workload_scale: BenchmarkWorkloadScale,
+    pub interval_delta: f64,
     pub warmup_iteration_count: usize,
     pub measured_iteration_count: usize,
     pub oracle_solver_metrics: OraclePricerRiskBenchmarkComponentMetrics,
@@ -1660,6 +1662,7 @@ fn run_profile_benchmark(
     Ok(OraclePricerRiskBenchmarkProfileReport {
         profile_id: profile.profile_id.clone(),
         workload_scale: profile.workload_scale,
+        interval_delta: profile.interval_settings.interval_delta,
         warmup_iteration_count: resolved_run_length.warmup_iteration_count,
         measured_iteration_count: resolved_run_length.measured_iteration_count,
         oracle_solver_metrics,
@@ -2077,9 +2080,10 @@ const ORACLE_PRICER_RISK_PERFORMANCE_BASELINE_REQUIRED_FIELDS: [&str; 10] = [
     "summary",
     "profile_records",
 ];
-const ORACLE_PRICER_RISK_PERFORMANCE_BASELINE_REQUIRED_PROFILE_RECORD_FIELDS: [&str; 5] = [
+const ORACLE_PRICER_RISK_PERFORMANCE_BASELINE_REQUIRED_PROFILE_RECORD_FIELDS: [&str; 6] = [
     "profile_id",
     "workload_scale",
+    "interval_delta",
     "oracle_solver_metrics",
     "pricing_metrics",
     "risk_sampling_metrics",
@@ -2142,6 +2146,7 @@ pub struct OraclePricerRiskPerformanceBaselineComponentMetrics {
 pub struct OraclePricerRiskPerformanceBaselineProfileRecord {
     pub profile_id: String,
     pub workload_scale: BenchmarkWorkloadScale,
+    pub interval_delta: f64,
     pub oracle_solver_metrics: OraclePricerRiskPerformanceBaselineComponentMetrics,
     pub pricing_metrics: OraclePricerRiskPerformanceBaselineComponentMetrics,
     pub risk_sampling_metrics: OraclePricerRiskPerformanceBaselineComponentMetrics,
@@ -2308,6 +2313,14 @@ impl OraclePricerRiskPerformanceBaselineArtifact {
                     },
                 );
             }
+            if !profile_record.interval_delta.is_finite() || profile_record.interval_delta <= 0.0 {
+                return Err(
+                    OraclePricerRiskPerformanceBaselineValidationError::InvalidIntervalDelta {
+                        profile_id: profile_record.profile_id.clone(),
+                        value: profile_record.interval_delta,
+                    },
+                );
+            }
             observed_scales.insert(profile_record.workload_scale);
             validate_component_metrics_for_baseline(
                 &profile_record.profile_id,
@@ -2392,6 +2405,10 @@ pub enum OraclePricerRiskPerformanceBaselineValidationError {
         component_id: &'static str,
         value: usize,
     },
+    InvalidIntervalDelta {
+        profile_id: String,
+        value: f64,
+    },
     MissingWorkloadScaleCoverage {
         missing_scales: Vec<BenchmarkWorkloadScale>,
     },
@@ -2462,6 +2479,10 @@ impl Display for OraclePricerRiskPerformanceBaselineValidationError {
             } => write!(
                 formatter,
                 "profile `{profile_id}` component `{component_id}` measured_operation_count must be greater than 0, found {value}"
+            ),
+            Self::InvalidIntervalDelta { profile_id, value } => write!(
+                formatter,
+                "profile `{profile_id}` interval_delta must be finite and strictly positive, found {value}"
             ),
             Self::MissingWorkloadScaleCoverage { missing_scales } => {
                 let joined_scales = missing_scales
@@ -2635,6 +2656,7 @@ pub fn capture_oracle_pricer_risk_performance_baseline_artifact(
                 |profile_report| OraclePricerRiskPerformanceBaselineProfileRecord {
                     profile_id: profile_report.profile_id.clone(),
                     workload_scale: profile_report.workload_scale,
+                    interval_delta: profile_report.interval_delta,
                     oracle_solver_metrics: copy_component_metrics_for_baseline(
                         profile_report.oracle_solver_metrics,
                     ),
@@ -2898,6 +2920,11 @@ pub enum OraclePricerRiskPerformanceBaselineComparisonError {
         reference: BenchmarkWorkloadScale,
         candidate: BenchmarkWorkloadScale,
     },
+    IntervalDeltaMismatch {
+        profile_id: String,
+        reference: f64,
+        candidate: f64,
+    },
 }
 
 impl Display for OraclePricerRiskPerformanceBaselineComparisonError {
@@ -2941,6 +2968,14 @@ impl Display for OraclePricerRiskPerformanceBaselineComparisonError {
             } => write!(
                 formatter,
                 "profile `{profile_id}` has different workload scales between reference (`{reference}`) and candidate (`{candidate}`)"
+            ),
+            Self::IntervalDeltaMismatch {
+                profile_id,
+                reference,
+                candidate,
+            } => write!(
+                formatter,
+                "profile `{profile_id}` has different interval_delta values between reference ({reference}) and candidate ({candidate})"
             ),
         }
     }
@@ -3078,6 +3113,15 @@ pub fn compare_oracle_pricer_risk_performance_baseline_versions(
                     profile_id: profile_id.to_string(),
                     reference: reference_profile.workload_scale,
                     candidate: candidate_profile.workload_scale,
+                },
+            );
+        }
+        if reference_profile.interval_delta != candidate_profile.interval_delta {
+            return Err(
+                OraclePricerRiskPerformanceBaselineComparisonError::IntervalDeltaMismatch {
+                    profile_id: profile_id.to_string(),
+                    reference: reference_profile.interval_delta,
+                    candidate: candidate_profile.interval_delta,
                 },
             );
         }
