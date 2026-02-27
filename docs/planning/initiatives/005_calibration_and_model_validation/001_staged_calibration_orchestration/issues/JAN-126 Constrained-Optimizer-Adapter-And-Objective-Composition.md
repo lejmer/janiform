@@ -1,4 +1,4 @@
-## ISSUE-005: Constrained Optimizer Adapter And Objective Composition
+## Constrained Optimizer Adapter And Objective Composition
 
 ### Description
 Build optimizer adapter layer and objective-composition engine so stage modules can run constrained optimization with reproducible configuration and diagnostics.
@@ -14,5 +14,6 @@ Build optimizer adapter layer and objective-composition engine so stage modules 
 - Deterministic adapter behavior under fixed random seeds
 
 ### Notes/Constraints
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Keep optimizer interface generic enough for backend substitution
 - Separate objective logic from stage orchestration logic

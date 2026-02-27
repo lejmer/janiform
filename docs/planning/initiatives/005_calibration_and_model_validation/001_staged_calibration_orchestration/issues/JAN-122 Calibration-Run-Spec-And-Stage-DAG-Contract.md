@@ -1,4 +1,4 @@
-## ISSUE-001: Calibration Run Spec And Stage DAG Contract
+## Calibration Run Spec And Stage DAG Contract
 
 ### Description
 Define the calibration run specification and stage dependency graph contract for end-to-end orchestration across seasonality, Hawkes, and return-component fitting.
@@ -15,5 +15,6 @@ Define the calibration run specification and stage dependency graph contract for
 - Invalid dependency and cycle detection behavior
 
 ### Notes/Constraints
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Keep stage graph model independent from optimizer implementation details
 - Avoid implicit stage ordering rules

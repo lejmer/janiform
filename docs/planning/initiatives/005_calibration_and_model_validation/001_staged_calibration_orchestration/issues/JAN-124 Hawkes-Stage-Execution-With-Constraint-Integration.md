@@ -1,4 +1,4 @@
-## ISSUE-003: Hawkes Stage Execution With Constraint Integration
+## Hawkes Stage Execution With Constraint Integration
 
 ### Description
 Implement Hawkes-stage calibration execution with integrated parameter and stability constraint enforcement during optimization.
@@ -15,5 +15,6 @@ Implement Hawkes-stage calibration execution with integrated parameter and stabi
 - Deterministic outputs under fixed seed and optimizer settings
 
 ### Notes/Constraints
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Reuse constraint modules from Initiative 002
 - Avoid duplicating optimizer-constraint wiring logic

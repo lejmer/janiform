@@ -1,4 +1,4 @@
-## ISSUE-006: Checkpointing And Resume Orchestration
+## Checkpointing And Resume Orchestration
 
 ### Description
 Implement checkpoint and resume support so staged calibration can restart from intermediate artifacts after interruptions or targeted reruns.
@@ -14,5 +14,6 @@ Implement checkpoint and resume support so staged calibration can restart from i
 - Incompatible-checkpoint failure handling
 
 ### Notes/Constraints
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Reuse artifact registry schema from Initiative 005 project planning
 - Keep checkpoint writes atomic to avoid partial-state corruption

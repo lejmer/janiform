@@ -1,4 +1,4 @@
-## ISSUE-008: Orchestration Integration Tests And Failure Playbooks
+## Orchestration Integration Tests And Failure Playbooks
 
 ### Description
 Add integration tests and failure playbooks for staged calibration to ensure clear handling of success paths, expected failures, and operator triage workflows.
@@ -14,5 +14,6 @@ Add integration tests and failure playbooks for staged calibration to ensure cle
 - Integration tests for full staged calibration completion
 
 ### Notes/Constraints
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Keep full-run integration fixtures bounded for repeatable runtime
 - Separate deterministic orchestration tests from expensive statistical validations

@@ -1,4 +1,4 @@
-## ISSUE-002: Seasonality Stage Execution Module
+## Seasonality Stage Execution Module
 
 ### Description
 Implement the seasonality stage execution module that runs deterministic calendar-factor calibration and exports normalized outputs for downstream stages.
@@ -15,5 +15,6 @@ Implement the seasonality stage execution module that runs deterministic calenda
 - Deterministic output metadata under fixed seed and config
 
 ### Notes/Constraints
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Reuse seasonality pipeline interfaces from Initiative 001
 - Keep stage output schema stable for stage handoffs

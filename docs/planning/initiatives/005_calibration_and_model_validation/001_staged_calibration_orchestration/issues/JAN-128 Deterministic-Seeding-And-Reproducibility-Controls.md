@@ -1,4 +1,4 @@
-## ISSUE-007: Deterministic Seeding And Reproducibility Controls
+## Deterministic Seeding And Reproducibility Controls
 
 ### Description
 Implement deterministic seeding policy and reproducibility controls for stage execution, optimization routines, and sampling-based objective terms.
@@ -14,5 +14,6 @@ Implement deterministic seeding policy and reproducibility controls for stage ex
 - Repeated-run determinism across full staged workflow
 
 ### Notes/Constraints
+- See `docs/design/janiform_design_brainstorm_notes.md` and `docs/design/janiform_compact_model_spec.tex` for the model spec itself.
 - Reuse existing RNG abstractions where available
 - Avoid hidden nondeterministic sources in stage adapters
