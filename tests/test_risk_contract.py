@@ -25,6 +25,37 @@ def test_risk_run_request_validation_and_serialization_roundtrip() -> None:
     assert json.loads(serialized_request)["horizon_interval_count"] == 2
 
 
+def test_risk_run_request_defaults_interval_delta_to_hourly() -> None:
+    request_payload = _valid_run_request_payload()
+    del request_payload["interval_delta"]
+
+    validated_request = validate_sufficient_statistics_risk_run_request(request_payload)
+
+    assert validated_request["interval_delta"] == pytest.approx(1.0)
+
+
+def test_risk_run_request_accepts_sub_hour_interval_when_interval_factors_are_compatible() -> None:
+    request_payload = _valid_run_request_payload()
+    request_payload["interval_delta"] = 0.5
+    request_payload["interval_factors"]["interval_delta"] = 0.5
+
+    validated_request = validate_sufficient_statistics_risk_run_request(request_payload)
+
+    assert validated_request["interval_delta"] == pytest.approx(0.5)
+    assert validated_request["interval_factors"]["interval_delta"] == pytest.approx(0.5)
+
+
+def test_risk_run_request_rejects_sub_hour_interval_without_compatible_factor_delta() -> None:
+    request_payload = _valid_run_request_payload()
+    request_payload["interval_delta"] = 0.5
+
+    with pytest.raises(SufficientStatisticsRiskValidationError) as captured_error:
+        validate_sufficient_statistics_risk_run_request(request_payload)
+
+    assert captured_error.value.failure.field_path == "interval_factors.interval_delta"
+    assert "must match interval_delta exactly" in captured_error.value.failure.message
+
+
 def test_risk_path_validation_and_serialization_roundtrip() -> None:
     path_payload = _valid_path_payload()
 
