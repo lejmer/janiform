@@ -15,7 +15,10 @@ use crate::affine_oracle::{
     ExponentialAffineTransformSolverSettings,
     solve_exponential_affine_transform_with_optional_settings,
 };
-use crate::hawkes::HawkesExcitationState;
+use crate::hawkes::{
+    HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
+    HawkesTransitionError, HawkesTransitionStep, evolve_hawkes_state,
+};
 use crate::nig::{
     ComplexScalar, NigSharedPlusShiftConfiguration, NigSharedPlusShiftConfigurationError,
 };
@@ -375,6 +378,8 @@ pub const SUFFICIENT_STATISTICS_TRANSFORM_SLICE_EXPECTATION_ESTIMATION_POLICY: &
 pub const SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SAMPLING_POLICY: &str = "counts_via_fractional_rounding_and_integrated_intensity_via_exponential_with_slice_implied_mean.v1";
 pub const SUFFICIENT_STATISTICS_TRANSFORM_SLICE_RANDOMNESS_SUBSTREAM_POLICY: &str =
     "reuse_seeded_tick_substream_domains_with_interval_index_for_slice_sampler.v1";
+pub const SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY: &str =
+    "interval_boundary_drift_then_count_mapped_endogenous_jump_composition.v1";
 
 const DEFAULT_TRANSFORM_SLICE_A_PLUS_U: f64 = 1.0e-3;
 const DEFAULT_TRANSFORM_SLICE_A_MINUS_U: f64 = 1.0e-3;
@@ -1392,6 +1397,321 @@ impl Display for SufficientStatisticsIntervalStatisticsError {
 
 impl Error for SufficientStatisticsIntervalStatisticsError {}
 
+/// Snapshot metadata for one deterministic boundary-state update step.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct SufficientStatisticsBoundaryStateUpdateSnapshot {
+    pub interval_index: usize,
+    pub interval_delta: f64,
+    pub state_before_update: HawkesExcitationState,
+    pub sampled_statistics: SufficientStatisticsIntervalStatistics,
+}
+
+impl SufficientStatisticsBoundaryStateUpdateSnapshot {
+    pub const fn new(
+        interval_index: usize,
+        interval_delta: f64,
+        state_before_update: HawkesExcitationState,
+        sampled_statistics: SufficientStatisticsIntervalStatistics,
+    ) -> Self {
+        Self {
+            interval_index,
+            interval_delta,
+            state_before_update,
+            sampled_statistics,
+        }
+    }
+
+    pub const fn policy() -> &'static str {
+        SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SufficientStatisticsBoundaryStateUpdateError {
+    InvalidIntervalDelta {
+        snapshot: SufficientStatisticsBoundaryStateUpdateSnapshot,
+        value: f64,
+    },
+    InvalidStateBeforeUpdate {
+        snapshot: SufficientStatisticsBoundaryStateUpdateSnapshot,
+        field: &'static str,
+        value: f64,
+    },
+    InvalidSampledStatistics {
+        snapshot: SufficientStatisticsBoundaryStateUpdateSnapshot,
+        source: SufficientStatisticsIntervalStatisticsError,
+    },
+    InvalidScaledKernelLoading {
+        snapshot: SufficientStatisticsBoundaryStateUpdateSnapshot,
+        side: HawkesEventSide,
+        event_count: u64,
+        field: &'static str,
+        value: f64,
+    },
+    TransitionFailure {
+        snapshot: SufficientStatisticsBoundaryStateUpdateSnapshot,
+        source: HawkesTransitionError,
+    },
+    InvalidStateAfterUpdate {
+        snapshot: SufficientStatisticsBoundaryStateUpdateSnapshot,
+        field: &'static str,
+        value: f64,
+    },
+}
+
+impl Display for SufficientStatisticsBoundaryStateUpdateError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidIntervalDelta { snapshot, value } => write!(
+                formatter,
+                "boundary-state update failed for interval {}: interval_delta must be finite and strictly positive, found {value}; state_before_update={:?}, sampled_statistics={:?}",
+                snapshot.interval_index, snapshot.state_before_update, snapshot.sampled_statistics
+            ),
+            Self::InvalidStateBeforeUpdate {
+                snapshot,
+                field,
+                value,
+            } => write!(
+                formatter,
+                "boundary-state update failed for interval {}: state_before_update.{field} must be finite and non-negative, found {value}; state_before_update={:?}, sampled_statistics={:?}",
+                snapshot.interval_index, snapshot.state_before_update, snapshot.sampled_statistics
+            ),
+            Self::InvalidSampledStatistics { snapshot, source } => write!(
+                formatter,
+                "boundary-state update failed for interval {}: sampled_statistics are invalid: {source}; state_before_update={:?}, sampled_statistics={:?}",
+                snapshot.interval_index, snapshot.state_before_update, snapshot.sampled_statistics
+            ),
+            Self::InvalidScaledKernelLoading {
+                snapshot,
+                side,
+                event_count,
+                field,
+                value,
+            } => write!(
+                formatter,
+                "boundary-state update failed for interval {}: scaled loading {field} for side {side:?} with event_count {} must be finite and non-negative, found {value}; state_before_update={:?}, sampled_statistics={:?}",
+                snapshot.interval_index,
+                event_count,
+                snapshot.state_before_update,
+                snapshot.sampled_statistics
+            ),
+            Self::TransitionFailure { snapshot, source } => write!(
+                formatter,
+                "boundary-state update failed for interval {} during canonical transition composition: {source}; state_before_update={:?}, sampled_statistics={:?}",
+                snapshot.interval_index, snapshot.state_before_update, snapshot.sampled_statistics
+            ),
+            Self::InvalidStateAfterUpdate {
+                snapshot,
+                field,
+                value,
+            } => write!(
+                formatter,
+                "boundary-state update failed for interval {}: state_after_update.{field} must be finite and non-negative, found {value}; state_before_update={:?}, sampled_statistics={:?}",
+                snapshot.interval_index, snapshot.state_before_update, snapshot.sampled_statistics
+            ),
+        }
+    }
+}
+
+impl Error for SufficientStatisticsBoundaryStateUpdateError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidSampledStatistics { source, .. } => Some(source),
+            Self::TransitionFailure { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+/// Update one interval boundary state using sampled sufficient statistics.
+///
+/// Composition order:
+/// 1. shared-decay drift over `interval_delta`
+/// 2. buy-count mapped endogenous jump
+/// 3. sell-count mapped endogenous jump
+pub fn update_boundary_state_from_interval_statistics(
+    kernel_parameters: HawkesKernelParameters,
+    snapshot: SufficientStatisticsBoundaryStateUpdateSnapshot,
+) -> Result<HawkesExcitationState, SufficientStatisticsBoundaryStateUpdateError> {
+    if !snapshot.interval_delta.is_finite() || snapshot.interval_delta <= 0.0 {
+        return Err(
+            SufficientStatisticsBoundaryStateUpdateError::InvalidIntervalDelta {
+                snapshot,
+                value: snapshot.interval_delta,
+            },
+        );
+    }
+
+    validate_excitation_state(snapshot.state_before_update).map_err(|(field, value)| {
+        SufficientStatisticsBoundaryStateUpdateError::InvalidStateBeforeUpdate {
+            snapshot,
+            field,
+            value,
+        }
+    })?;
+
+    snapshot.sampled_statistics.validate().map_err(|source| {
+        SufficientStatisticsBoundaryStateUpdateError::InvalidSampledStatistics { snapshot, source }
+    })?;
+
+    let drifted_state =
+        evolve_hawkes_state(
+            snapshot.state_before_update,
+            kernel_parameters,
+            HawkesTransitionStep::new(snapshot.interval_delta, None, None),
+        )
+        .map_err(|source| {
+            SufficientStatisticsBoundaryStateUpdateError::TransitionFailure { snapshot, source }
+        })?;
+
+    let post_buy_state = apply_endogenous_count_mapped_jump(
+        drifted_state,
+        kernel_parameters,
+        snapshot,
+        HawkesEventSide::Buy,
+        snapshot.sampled_statistics.n_plus,
+    )?;
+
+    let post_sell_state = apply_endogenous_count_mapped_jump(
+        post_buy_state,
+        kernel_parameters,
+        snapshot,
+        HawkesEventSide::Sell,
+        snapshot.sampled_statistics.n_minus,
+    )?;
+
+    validate_excitation_state(post_sell_state).map_err(|(field, value)| {
+        SufficientStatisticsBoundaryStateUpdateError::InvalidStateAfterUpdate {
+            snapshot,
+            field,
+            value,
+        }
+    })?;
+
+    Ok(post_sell_state)
+}
+
+fn apply_endogenous_count_mapped_jump(
+    state_before_jump: HawkesExcitationState,
+    kernel_parameters: HawkesKernelParameters,
+    snapshot: SufficientStatisticsBoundaryStateUpdateSnapshot,
+    side: HawkesEventSide,
+    event_count: u64,
+) -> Result<HawkesExcitationState, SufficientStatisticsBoundaryStateUpdateError> {
+    if event_count == 0 {
+        return Ok(state_before_jump);
+    }
+
+    let scaled_alpha = scale_kernel_loadings_for_event_count(
+        kernel_parameters.alpha,
+        snapshot,
+        side,
+        event_count,
+    )?;
+    let scaled_kernel_parameters = HawkesKernelParameters {
+        alpha: scaled_alpha,
+        ..kernel_parameters
+    };
+
+    evolve_hawkes_state(
+        state_before_jump,
+        scaled_kernel_parameters,
+        HawkesTransitionStep::new(0.0, Some(side), None),
+    )
+    .map_err(
+        |source| SufficientStatisticsBoundaryStateUpdateError::TransitionFailure {
+            snapshot,
+            source,
+        },
+    )
+}
+
+fn scale_kernel_loadings_for_event_count(
+    loadings: HawkesKernelLoadings,
+    snapshot: SufficientStatisticsBoundaryStateUpdateSnapshot,
+    side: HawkesEventSide,
+    event_count: u64,
+) -> Result<HawkesKernelLoadings, SufficientStatisticsBoundaryStateUpdateError> {
+    let event_count_scale = event_count as f64;
+
+    match side {
+        HawkesEventSide::Buy => {
+            let scaled_plus_plus = loadings.plus_plus * event_count_scale;
+            let scaled_minus_plus = loadings.minus_plus * event_count_scale;
+
+            validate_scaled_loading(
+                snapshot,
+                side,
+                event_count,
+                "alpha.plus_plus",
+                scaled_plus_plus,
+            )?;
+            validate_scaled_loading(
+                snapshot,
+                side,
+                event_count,
+                "alpha.minus_plus",
+                scaled_minus_plus,
+            )?;
+
+            Ok(HawkesKernelLoadings {
+                plus_plus: scaled_plus_plus,
+                plus_minus: loadings.plus_minus,
+                minus_plus: scaled_minus_plus,
+                minus_minus: loadings.minus_minus,
+            })
+        }
+        HawkesEventSide::Sell => {
+            let scaled_plus_minus = loadings.plus_minus * event_count_scale;
+            let scaled_minus_minus = loadings.minus_minus * event_count_scale;
+
+            validate_scaled_loading(
+                snapshot,
+                side,
+                event_count,
+                "alpha.plus_minus",
+                scaled_plus_minus,
+            )?;
+            validate_scaled_loading(
+                snapshot,
+                side,
+                event_count,
+                "alpha.minus_minus",
+                scaled_minus_minus,
+            )?;
+
+            Ok(HawkesKernelLoadings {
+                plus_plus: loadings.plus_plus,
+                plus_minus: scaled_plus_minus,
+                minus_plus: loadings.minus_plus,
+                minus_minus: scaled_minus_minus,
+            })
+        }
+    }
+}
+
+fn validate_scaled_loading(
+    snapshot: SufficientStatisticsBoundaryStateUpdateSnapshot,
+    side: HawkesEventSide,
+    event_count: u64,
+    field: &'static str,
+    value: f64,
+) -> Result<(), SufficientStatisticsBoundaryStateUpdateError> {
+    if !value.is_finite() || value < 0.0 {
+        return Err(
+            SufficientStatisticsBoundaryStateUpdateError::InvalidScaledKernelLoading {
+                snapshot,
+                side,
+                event_count,
+                field,
+                value,
+            },
+        );
+    }
+
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct SufficientStatisticsRiskReturnComponents {
     pub buy_side_return: f64,
@@ -1940,26 +2260,32 @@ pub fn solve_exponential_affine_transform_for_risk_sampling_with_settings(
 #[cfg(test)]
 mod tests {
     use crate::affine_oracle::ExponentialAffineTransformEquationSpecification;
-    use crate::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
+    use crate::hawkes::{
+        HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
+        HawkesTransitionError, HawkesTransitionStep, evolve_hawkes_state,
+    };
     use crate::news::GammaSeverityMarkConfiguration;
     use crate::nig::{ComplexScalar, NigSharedPlusShiftConfiguration};
 
     use super::{
+        SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY,
         SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY,
         SUFFICIENT_STATISTICS_RISK_PATH_RECORD_SCHEMA_VERSION,
         SUFFICIENT_STATISTICS_RISK_PATH_SCHEMA_VERSION,
         SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION,
-        SufficientStatisticsIntervalStatistics, SufficientStatisticsRiskIntervalFactors,
-        SufficientStatisticsRiskModelInputs, SufficientStatisticsRiskPath,
-        SufficientStatisticsRiskPathError, SufficientStatisticsRiskPathRecord,
-        SufficientStatisticsRiskReturnComponents, SufficientStatisticsRiskRunRequest,
-        SufficientStatisticsRiskRunRequestError, SufficientStatisticsTransformSliceContext,
-        SufficientStatisticsTransformSliceSamplingError,
+        SufficientStatisticsBoundaryStateUpdateError,
+        SufficientStatisticsBoundaryStateUpdateSnapshot, SufficientStatisticsIntervalStatistics,
+        SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskModelInputs,
+        SufficientStatisticsRiskPath, SufficientStatisticsRiskPathError,
+        SufficientStatisticsRiskPathRecord, SufficientStatisticsRiskReturnComponents,
+        SufficientStatisticsRiskRunRequest, SufficientStatisticsRiskRunRequestError,
+        SufficientStatisticsTransformSliceContext, SufficientStatisticsTransformSliceSamplingError,
         SufficientStatisticsTransformSliceSettings,
         SufficientStatisticsTransformSliceSettingsError, SufficientStatisticsTransformSlices,
         sample_interval_statistics_batch_from_transform_slices,
         sample_interval_statistics_from_transform_slices,
         solve_sufficient_statistics_transform_slices,
+        update_boundary_state_from_interval_statistics,
     };
 
     #[test]
@@ -2164,6 +2490,216 @@ mod tests {
                 record_interval_index: 1,
             }
         );
+    }
+
+    #[test]
+    fn boundary_state_update_is_consistent_with_shared_transition_api_reference_sequence() {
+        let initial_state = build_initial_state();
+        let kernel_parameters = build_equation_specification().hawkes_kernel_parameters;
+        let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(1.4, 1.1, 3, 2)
+            .expect("statistics should be valid");
+        let update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
+            3,
+            0.75,
+            initial_state,
+            sampled_statistics,
+        );
+
+        assert_eq!(
+            SufficientStatisticsBoundaryStateUpdateSnapshot::policy(),
+            SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY
+        );
+
+        let updated_state =
+            update_boundary_state_from_interval_statistics(kernel_parameters, update_snapshot)
+                .expect("boundary-state update should succeed");
+
+        let mut reference_state = evolve_hawkes_state(
+            initial_state,
+            kernel_parameters,
+            HawkesTransitionStep::new(0.75, None, None),
+        )
+        .expect("reference drift step should succeed");
+
+        for _buy_event_position in 0..sampled_statistics.n_plus {
+            reference_state = evolve_hawkes_state(
+                reference_state,
+                kernel_parameters,
+                HawkesTransitionStep::new(0.0, Some(HawkesEventSide::Buy), None),
+            )
+            .expect("reference buy jump step should succeed");
+        }
+
+        for _sell_event_position in 0..sampled_statistics.n_minus {
+            reference_state = evolve_hawkes_state(
+                reference_state,
+                kernel_parameters,
+                HawkesTransitionStep::new(0.0, Some(HawkesEventSide::Sell), None),
+            )
+            .expect("reference sell jump step should succeed");
+        }
+
+        assert_float_close(updated_state.y_plus_plus, reference_state.y_plus_plus);
+        assert_float_close(updated_state.y_plus_minus, reference_state.y_plus_minus);
+        assert_float_close(updated_state.y_minus_plus, reference_state.y_minus_plus);
+        assert_float_close(updated_state.y_minus_minus, reference_state.y_minus_minus);
+    }
+
+    #[test]
+    fn boundary_state_update_maps_sampled_counts_to_canonical_components() {
+        let initial_state = build_initial_state();
+        let kernel_parameters = build_equation_specification().hawkes_kernel_parameters;
+        let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(0.8, 0.6, 4, 5)
+            .expect("statistics should be valid");
+        let interval_delta = 0.5;
+        let update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
+            1,
+            interval_delta,
+            initial_state,
+            sampled_statistics,
+        );
+
+        let updated_state =
+            update_boundary_state_from_interval_statistics(kernel_parameters, update_snapshot)
+                .expect("boundary-state mapping update should succeed");
+
+        let shared_decay_factor = (-kernel_parameters.beta * interval_delta).exp();
+        let expected_y_plus_plus = initial_state.y_plus_plus * shared_decay_factor
+            + kernel_parameters.alpha.plus_plus * sampled_statistics.n_plus as f64;
+        let expected_y_plus_minus = initial_state.y_plus_minus * shared_decay_factor
+            + kernel_parameters.alpha.plus_minus * sampled_statistics.n_minus as f64;
+        let expected_y_minus_plus = initial_state.y_minus_plus * shared_decay_factor
+            + kernel_parameters.alpha.minus_plus * sampled_statistics.n_plus as f64;
+        let expected_y_minus_minus = initial_state.y_minus_minus * shared_decay_factor
+            + kernel_parameters.alpha.minus_minus * sampled_statistics.n_minus as f64;
+
+        assert_float_close(updated_state.y_plus_plus, expected_y_plus_plus);
+        assert_float_close(updated_state.y_plus_minus, expected_y_plus_minus);
+        assert_float_close(updated_state.y_minus_plus, expected_y_minus_plus);
+        assert_float_close(updated_state.y_minus_minus, expected_y_minus_minus);
+    }
+
+    #[test]
+    fn boundary_state_update_preserves_deterministic_multi_interval_carryover() {
+        let kernel_parameters = build_equation_specification().hawkes_kernel_parameters;
+        let interval_delta = 1.0;
+        let sampled_statistics_path = [
+            SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 2, 1)
+                .expect("first interval statistics should be valid"),
+            SufficientStatisticsIntervalStatistics::try_new(0.4, 0.9, 1, 3)
+                .expect("second interval statistics should be valid"),
+            SufficientStatisticsIntervalStatistics::try_new(1.1, 0.2, 4, 0)
+                .expect("third interval statistics should be valid"),
+        ];
+
+        let mut first_run_state = build_initial_state();
+        let mut second_run_state = build_initial_state();
+        let mut first_run_boundary_states: Vec<HawkesExcitationState> = Vec::new();
+        let mut second_run_boundary_states: Vec<HawkesExcitationState> = Vec::new();
+
+        for (interval_index, sampled_statistics) in
+            sampled_statistics_path.iter().copied().enumerate()
+        {
+            let update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
+                interval_index,
+                interval_delta,
+                first_run_state,
+                sampled_statistics,
+            );
+            first_run_state =
+                update_boundary_state_from_interval_statistics(kernel_parameters, update_snapshot)
+                    .expect("first run carryover update should succeed");
+            first_run_boundary_states.push(first_run_state);
+        }
+
+        for (interval_index, sampled_statistics) in
+            sampled_statistics_path.iter().copied().enumerate()
+        {
+            let update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
+                interval_index,
+                interval_delta,
+                second_run_state,
+                sampled_statistics,
+            );
+            second_run_state =
+                update_boundary_state_from_interval_statistics(kernel_parameters, update_snapshot)
+                    .expect("second run carryover update should succeed");
+            second_run_boundary_states.push(second_run_state);
+        }
+
+        assert_eq!(first_run_boundary_states, second_run_boundary_states);
+        assert_eq!(first_run_state, second_run_state);
+    }
+
+    #[test]
+    fn boundary_state_update_failures_include_interval_and_state_snapshot_metadata() {
+        let kernel_parameters = build_equation_specification().hawkes_kernel_parameters;
+        let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 2, 1)
+            .expect("statistics should be valid");
+        let update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
+            9,
+            0.0,
+            build_initial_state(),
+            sampled_statistics,
+        );
+
+        let error =
+            update_boundary_state_from_interval_statistics(kernel_parameters, update_snapshot)
+                .expect_err("zero interval delta should fail boundary-state update");
+
+        assert!(matches!(
+            error,
+            SufficientStatisticsBoundaryStateUpdateError::InvalidIntervalDelta {
+                snapshot,
+                value: 0.0
+            }
+            if snapshot.interval_index == 9
+                && snapshot.state_before_update == update_snapshot.state_before_update
+                && snapshot.sampled_statistics == update_snapshot.sampled_statistics
+        ));
+    }
+
+    #[test]
+    fn boundary_state_update_wraps_transition_failures_with_snapshot_metadata() {
+        let invalid_kernel_parameters = HawkesKernelParameters {
+            lambda_bar: 0.8,
+            beta: 0.0,
+            alpha: HawkesKernelLoadings {
+                plus_plus: 0.2,
+                plus_minus: 0.1,
+                minus_plus: 0.1,
+                minus_minus: 0.25,
+            },
+            rho: HawkesKernelLoadings {
+                plus_plus: 0.08,
+                plus_minus: 0.04,
+                minus_plus: 0.05,
+                minus_minus: 0.1,
+            },
+        };
+        let update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
+            4,
+            0.5,
+            build_initial_state(),
+            SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 2, 1)
+                .expect("statistics should be valid"),
+        );
+
+        let error = update_boundary_state_from_interval_statistics(
+            invalid_kernel_parameters,
+            update_snapshot,
+        )
+        .expect_err("invalid beta should fail transition composition");
+
+        assert!(matches!(
+            error,
+            SufficientStatisticsBoundaryStateUpdateError::TransitionFailure {
+                snapshot,
+                source: HawkesTransitionError::InvalidBeta { value: 0.0 }
+            }
+            if snapshot.interval_index == 4
+                && snapshot.state_before_update == update_snapshot.state_before_update
+        ));
     }
 
     #[test]
@@ -2375,5 +2911,13 @@ mod tests {
             y_minus_plus: 0.3,
             y_minus_minus: 0.4,
         }
+    }
+
+    fn assert_float_close(left: f64, right: f64) {
+        assert!(
+            (left - right).abs() <= 1.0e-12,
+            "float mismatch: left={left}, right={right}, abs_diff={}",
+            (left - right).abs()
+        );
     }
 }
