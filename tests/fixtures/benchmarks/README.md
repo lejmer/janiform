@@ -45,6 +45,14 @@ benchmark harnesses.
   - `source_report`: benchmark report provenance (`catalog_id`, `policy_id`, and policy metadata)
   - `profile_records`: per-profile component metrics (`mean_latency_seconds`,
     `throughput_operations_per_second`, `measured_operation_count`)
+- Regression drift attribution report fields include:
+  - `schema_version`: `benchmark.regression_drift_attribution.report.v1`
+  - `classification_policy`: explicit drift-category rules for numerical drift, performance drift,
+    and scenario changes
+  - `comparison_context`: optional links to prior coarse-fine and performance baseline run versions
+  - `entries`: per-finding triage records with `scenario_id`, `component_id`, `threshold_id`,
+    metric identifiers, and deltas
+  - `output_schema_metadata`: required-field lists for deterministic machine-readable validation
 
 ## Determinism
 
