@@ -2,7 +2,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from math import isfinite, sqrt
-from typing import TypedDict, cast
+from typing import NotRequired, TypedDict, cast
 
 from .pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 from .simulation import HawkesExcitationState, HawkesKernelParameters
@@ -10,6 +10,7 @@ from .simulation import HawkesExcitationState, HawkesKernelParameters
 SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY = (
     "explicit_interval_aligned_s_h_and_nu_h_vectors_without_implicit_resampling.v1"
 )
+DEFAULT_INTRADAY_RISK_INTERVAL_DELTA = 1.0
 
 
 class SufficientStatisticsRiskEquationSpecification(TypedDict):
@@ -18,6 +19,7 @@ class SufficientStatisticsRiskEquationSpecification(TypedDict):
 
 
 class SufficientStatisticsRiskIntervalFactors(TypedDict):
+    interval_delta: NotRequired[float]
     s_h: list[float]
     nu_h: list[float]
 
@@ -31,7 +33,7 @@ class SufficientStatisticsRiskModelInputs(TypedDict):
 class SufficientStatisticsRiskRunRequest(TypedDict):
     seed: int
     horizon_interval_count: int
-    interval_delta: float
+    interval_delta: NotRequired[float]
     model_inputs: SufficientStatisticsRiskModelInputs
     interval_factors: SufficientStatisticsRiskIntervalFactors
 
@@ -87,16 +89,17 @@ def validate_sufficient_statistics_risk_run_request(
         "horizon_interval_count",
         "horizon_interval_count",
     )
-    interval_delta: float = _require_positive_finite_number(
-        raw_request,
-        "interval_delta",
-        "interval_delta",
+    interval_delta: float = (
+        _require_positive_finite_number(raw_request, "interval_delta", "interval_delta")
+        if "interval_delta" in raw_request
+        else DEFAULT_INTRADAY_RISK_INTERVAL_DELTA
     )
     model_inputs: SufficientStatisticsRiskModelInputs = _validate_model_inputs(raw_request)
     interval_factors: SufficientStatisticsRiskIntervalFactors = _validate_interval_factors(
         raw_request,
         "interval_factors",
         "interval_factors",
+        requested_interval_delta=interval_delta,
     )
 
     available_interval_count: int = len(interval_factors["s_h"])
@@ -240,6 +243,8 @@ def _validate_interval_factors(
     raw_payload: Mapping[str, object],
     field_name: str,
     field_path: str,
+    *,
+    requested_interval_delta: float,
 ) -> SufficientStatisticsRiskIntervalFactors:
     raw_interval_factors: Mapping[str, object] = _require_mapping(raw_payload, field_name, field_path)
     raw_s_h: Sequence[object] = _require_sequence(raw_interval_factors, "s_h", f"{field_path}.s_h")
@@ -274,7 +279,29 @@ def _validate_interval_factors(
         )
         nu_h.append(value)
 
+    interval_factor_delta: float = (
+        _require_positive_finite_number(
+            raw_interval_factors,
+            "interval_delta",
+            f"{field_path}.interval_delta",
+        )
+        if "interval_delta" in raw_interval_factors
+        else DEFAULT_INTRADAY_RISK_INTERVAL_DELTA
+    )
+    if interval_factor_delta != requested_interval_delta:
+        raise SufficientStatisticsRiskValidationError(
+            SufficientStatisticsRiskValidationFailure(
+                field_path=f"{field_path}.interval_delta",
+                message=(
+                    "must match interval_delta exactly under explicit factor alignment "
+                    f"without implicit resampling (interval_delta={requested_interval_delta}, "
+                    f"interval_factors.interval_delta={interval_factor_delta})"
+                ),
+            )
+        )
+
     return {
+        "interval_delta": interval_factor_delta,
         "s_h": s_h,
         "nu_h": nu_h,
     }

@@ -41,10 +41,13 @@ pub const SUFFICIENT_STATISTICS_RISK_PATH_RECORD_SCHEMA_VERSION: &str =
     "risk.sufficient_statistics.path_record.v1";
 pub const SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY: &str =
     "explicit_interval_aligned_s_h_and_nu_h_vectors_without_implicit_resampling.v1";
+pub const DEFAULT_INTRADAY_RISK_INTERVAL_DELTA: f64 = 1.0;
 
 /// Per-interval deterministic factors used by the sufficient-statistics risk sampler.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SufficientStatisticsRiskIntervalFactors {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interval_delta: Option<f64>,
     pub s_h: Box<[f64]>,
     pub nu_h: Box<[f64]>,
 }
@@ -53,8 +56,10 @@ impl SufficientStatisticsRiskIntervalFactors {
     pub fn try_new(
         s_h: Vec<f64>,
         nu_h: Vec<f64>,
+        interval_delta: Option<f64>,
     ) -> Result<Self, SufficientStatisticsRiskIntervalFactorsError> {
         let interval_factors = Self {
+            interval_delta,
             s_h: s_h.into_boxed_slice(),
             nu_h: nu_h.into_boxed_slice(),
         };
@@ -100,11 +105,26 @@ impl SufficientStatisticsRiskIntervalFactors {
             }
         }
 
+        if let Some(interval_delta) = self.interval_delta
+            && (!interval_delta.is_finite() || interval_delta <= 0.0)
+        {
+            return Err(
+                SufficientStatisticsRiskIntervalFactorsError::InvalidIntervalDelta {
+                    value: interval_delta,
+                },
+            );
+        }
+
         Ok(())
     }
 
     pub const fn policy() -> &'static str {
         SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY
+    }
+
+    pub fn resolved_interval_delta(&self) -> f64 {
+        self.interval_delta
+            .unwrap_or(DEFAULT_INTRADAY_RISK_INTERVAL_DELTA)
     }
 }
 
@@ -122,6 +142,9 @@ pub enum SufficientStatisticsRiskIntervalFactorsError {
     },
     InvalidNewsIntensityFactor {
         interval_index: usize,
+        value: f64,
+    },
+    InvalidIntervalDelta {
         value: f64,
     },
 }
@@ -154,6 +177,10 @@ impl Display for SufficientStatisticsRiskIntervalFactorsError {
             } => write!(
                 formatter,
                 "interval_factors.nu_h[{interval_index}] must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidIntervalDelta { value } => write!(
+                formatter,
+                "interval_factors.interval_delta must be finite and strictly positive when provided, found {value}"
             ),
         }
     }
@@ -301,6 +328,16 @@ impl SufficientStatisticsRiskRunRequest {
             SufficientStatisticsRiskRunRequestError::InvalidIntervalFactors { source }
         })?;
 
+        let resolved_factor_interval_delta = self.interval_factors.resolved_interval_delta();
+        if self.interval_delta != resolved_factor_interval_delta {
+            return Err(
+                SufficientStatisticsRiskRunRequestError::IntervalDeltaFactorMismatch {
+                    requested_interval_delta: self.interval_delta,
+                    available_factor_interval_delta: resolved_factor_interval_delta,
+                },
+            );
+        }
+
         let available_interval_count = self.interval_factors.s_h.len();
         if self.horizon_interval_count > available_interval_count {
             return Err(
@@ -317,6 +354,10 @@ impl SufficientStatisticsRiskRunRequest {
     pub const fn schema_version() -> &'static str {
         SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION
     }
+
+    pub const fn default_interval_delta() -> f64 {
+        DEFAULT_INTRADAY_RISK_INTERVAL_DELTA
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -332,6 +373,10 @@ pub enum SufficientStatisticsRiskRunRequestError {
     },
     InvalidIntervalFactors {
         source: SufficientStatisticsRiskIntervalFactorsError,
+    },
+    IntervalDeltaFactorMismatch {
+        requested_interval_delta: f64,
+        available_factor_interval_delta: f64,
     },
     HorizonExceedsAvailableIntervals {
         requested_interval_count: usize,
@@ -356,6 +401,13 @@ impl Display for SufficientStatisticsRiskRunRequestError {
             Self::InvalidIntervalFactors { source } => {
                 write!(formatter, "interval_factors payload is invalid: {source}")
             }
+            Self::IntervalDeltaFactorMismatch {
+                requested_interval_delta,
+                available_factor_interval_delta,
+            } => write!(
+                formatter,
+                "interval_delta ({requested_interval_delta}) must match interval_factors.interval_delta ({available_factor_interval_delta}) under the explicit-factor policy; implicit factor resampling is unsupported"
+            ),
             Self::HorizonExceedsAvailableIntervals {
                 requested_interval_count,
                 available_interval_count,
@@ -2212,6 +2264,8 @@ impl Error for SufficientStatisticsRiskPathError {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SufficientStatisticsRiskIntervalFactorsPayload {
+    #[serde(default)]
+    interval_delta: Option<f64>,
     s_h: Vec<f64>,
     nu_h: Vec<f64>,
 }
@@ -2222,7 +2276,8 @@ impl<'de> Deserialize<'de> for SufficientStatisticsRiskIntervalFactors {
         D: serde::Deserializer<'de>,
     {
         let payload = SufficientStatisticsRiskIntervalFactorsPayload::deserialize(deserializer)?;
-        Self::try_new(payload.s_h, payload.nu_h).map_err(serde::de::Error::custom)
+        Self::try_new(payload.s_h, payload.nu_h, payload.interval_delta)
+            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -2249,11 +2304,16 @@ impl<'de> Deserialize<'de> for SufficientStatisticsRiskModelInputs {
     }
 }
 
+const fn default_intraday_risk_interval_delta() -> f64 {
+    DEFAULT_INTRADAY_RISK_INTERVAL_DELTA
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SufficientStatisticsRiskRunRequestPayload {
     seed: u64,
     horizon_interval_count: usize,
+    #[serde(default = "default_intraday_risk_interval_delta")]
     interval_delta: f64,
     model_inputs: SufficientStatisticsRiskModelInputs,
     interval_factors: SufficientStatisticsRiskIntervalFactors,
@@ -2597,6 +2657,32 @@ mod tests {
             invalid_interval_delta,
             SufficientStatisticsRiskRunRequestError::InvalidIntervalDelta { value: 0.0 }
         );
+
+        let unsupported_non_hourly = SufficientStatisticsRiskRunRequest::try_new(
+            7,
+            1,
+            0.5,
+            build_model_inputs(),
+            build_interval_factors(),
+        )
+        .expect_err("non-hourly interval delta without compatible factor metadata must fail");
+        assert_eq!(
+            unsupported_non_hourly,
+            SufficientStatisticsRiskRunRequestError::IntervalDeltaFactorMismatch {
+                requested_interval_delta: 0.5,
+                available_factor_interval_delta: 1.0,
+            }
+        );
+
+        let supported_sub_hour = SufficientStatisticsRiskRunRequest::try_new(
+            7,
+            1,
+            0.5,
+            build_model_inputs(),
+            build_interval_factors_with_interval_delta(0.5),
+        )
+        .expect("non-hourly interval delta with compatible factor metadata should pass");
+        assert_eq!(supported_sub_hour.interval_delta, 0.5);
     }
 
     #[test]
@@ -2676,6 +2762,63 @@ mod tests {
             malformed_factors_error
                 .to_string()
                 .contains("interval_factors.nu_h length must match s_h length")
+        );
+    }
+
+    #[test]
+    fn run_request_deserialization_defaults_interval_delta_to_hourly() {
+        let payload_without_interval_delta = serde_json::json!({
+            "seed": 17,
+            "horizon_interval_count": 2,
+            "model_inputs": {
+                "equation_specification": {
+                    "hawkes_kernel_parameters": {
+                        "lambda_bar": 0.8,
+                        "beta": 1.6,
+                        "alpha": {
+                            "plus_plus": 0.2,
+                            "plus_minus": 0.1,
+                            "minus_plus": 0.1,
+                            "minus_minus": 0.25
+                        },
+                        "rho": {
+                            "plus_plus": 0.08,
+                            "plus_minus": 0.04,
+                            "minus_plus": 0.05,
+                            "minus_minus": 0.1
+                        }
+                    },
+                    "gamma_severity_mark_configuration": {
+                        "shape_k": 1.8,
+                        "scale_theta": 0.7
+                    }
+                },
+                "nig_shared_plus_shift_configuration": {
+                    "alpha": 2.3,
+                    "beta_0": -0.8,
+                    "delta": 0.7,
+                    "mu": 0.1,
+                    "delta_beta": -0.2
+                },
+                "initial_excitation_state": {
+                    "y_plus_plus": 0.2,
+                    "y_plus_minus": 0.1,
+                    "y_minus_plus": 0.3,
+                    "y_minus_minus": 0.4
+                }
+            },
+            "interval_factors": {
+                "s_h": [1.1, 0.9],
+                "nu_h": [0.2, 0.1]
+            }
+        });
+
+        let parsed_request: SufficientStatisticsRiskRunRequest =
+            serde_json::from_value(payload_without_interval_delta)
+                .expect("payload without interval_delta should deserialize");
+        assert_eq!(
+            parsed_request.interval_delta,
+            SufficientStatisticsRiskRunRequest::default_interval_delta()
         );
     }
 
@@ -3259,8 +3402,19 @@ mod tests {
     }
 
     fn build_interval_factors() -> SufficientStatisticsRiskIntervalFactors {
-        SufficientStatisticsRiskIntervalFactors::try_new(vec![1.1, 0.9], vec![0.2, 0.1])
+        SufficientStatisticsRiskIntervalFactors::try_new(vec![1.1, 0.9], vec![0.2, 0.1], None)
             .expect("interval factors should be valid")
+    }
+
+    fn build_interval_factors_with_interval_delta(
+        interval_delta: f64,
+    ) -> SufficientStatisticsRiskIntervalFactors {
+        SufficientStatisticsRiskIntervalFactors::try_new(
+            vec![1.1, 0.9],
+            vec![0.2, 0.1],
+            Some(interval_delta),
+        )
+        .expect("interval factors with explicit interval_delta should be valid")
     }
 
     fn build_initial_state() -> HawkesExcitationState {

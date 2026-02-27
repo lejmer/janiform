@@ -54,6 +54,7 @@ Structured request validation errors:
   - `InvalidIntervalDelta`
   - `InvalidModelInputs`
   - `InvalidIntervalFactors`
+  - `IntervalDeltaFactorMismatch`
   - `HorizonExceedsAvailableIntervals`
 
 Structured path validation errors:
@@ -107,3 +108,16 @@ The interval-factor contract policy identifier is:
 The public request model requires explicit aligned vectors for `s_h` and `nu_h`.
 Implicit factor interpolation or resampling is not performed by contract
 validation.
+
+## Interval Delta Semantics
+
+- `interval_delta` is the coarse-interval length `Delta` used by the risk-side
+  oracle-solver interface (`SufficientStatisticsTransformSliceContext.delta` and
+  downstream boundary-state updates).
+- If omitted from run request payloads, it defaults to `1.0` for hourly
+  compatibility.
+- `interval_factors.interval_delta` is optional and defaults to `1.0`.
+- The run request requires exact equality between `interval_delta` and
+  `interval_factors.interval_delta`.
+- Mismatched interval metadata fails validation with an explicit error.
+  Implicit factor interpolation or resampling is not performed.

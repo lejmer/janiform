@@ -92,7 +92,6 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
             payoff_type: VanillaOptionPayoffType::Call,
         },
         FourierInversionEngineSettings::default(),
-
         // Use a Black-Scholes baseline here to validate wiring, not Janiform dynamics.
         |argument| black_scholes_log_return_characteristic_function(market_inputs, 0.2, argument),
     )
