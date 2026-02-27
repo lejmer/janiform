@@ -1,19 +1,20 @@
 ## ISSUE-008: Round Trip Integrity And Corruption Regression Suite
 
 ### Description
-Create regression suite that verifies artifact round-trip integrity and robust handling of corrupted or incomplete artifact sets.
+Create regression suite that verifies persisted artifact round-trip integrity and robust handling of corrupted or incomplete artifact sets.
 
 ### Acceptance Criteria
-- Suite validates write and read round-trip fidelity across all artifact categories
-- Corruption scenarios include missing files, malformed payloads, and incompatible versions
-- Regression outputs include actionable diagnostics with run and artifact context
-- Fixtures and expected outcomes are versioned
-- Regression coverage includes persistence-default policy checks: artifacts are optional, ON by default in CLI flows, and OFF by default for imported package usage unless explicitly enabled
+- Suite validates write and read round-trip fidelity across all persisted artifact categories.
+- Corruption scenarios include missing files, malformed payloads, and incompatible versions.
+- Regression outputs include actionable diagnostics with run and artifact context.
+- Fixtures and expected outcomes are versioned.
+- Regression coverage includes persistence-default policy checks: artifacts are optional, ON by default in CLI flows, and OFF by default for imported package usage unless explicitly enabled.
+- Regression behavior is scoped to runs where `execution_mode=disk` and artifact persistence is enabled.
 
 ### Unit tests
-- Round-trip integrity tests for full staged calibration outputs
-- Corruption-case tests for each artifact category and stable diagnostic reporting on failures
+- Round-trip integrity tests for full staged calibration persisted outputs.
+- Corruption-case tests for each artifact category and stable diagnostic reporting on failures.
 
 ### Notes/Constraints
-- Keep fixture set bounded for fast regression execution
-- Separate corruption robustness tests from performance benchmarking jobs
+- Keep fixture set bounded for fast regression execution.
+- Separate corruption robustness tests from performance benchmarking jobs.

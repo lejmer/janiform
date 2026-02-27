@@ -9,6 +9,7 @@ Ship a production-ready Python and CLI surface with stable contracts, hardened b
 
 ### Success signals
 - Python API and CLI expose simulation, calibration, and pricing workflows with stable user-facing contracts.
+- Execution-mode defaults are explicit and enforced: CLI defaults to `execution_mode=disk`, Python importable API defaults to `execution_mode=memory`, and both surfaces support explicit override.
 - PyO3 boundary code is thin and consistent, with explicit conversion and error mapping.
 - CI-level checks pass for core build, Python importability, and repository verification commands.
 - Documentation covers install, quickstart, model concepts, and examples for the primary v0.1 workflows.

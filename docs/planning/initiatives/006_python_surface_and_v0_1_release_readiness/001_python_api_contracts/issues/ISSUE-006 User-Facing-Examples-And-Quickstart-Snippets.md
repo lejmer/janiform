@@ -4,15 +4,17 @@
 Create user-facing examples for simulation, calibration, and pricing workflows that use only stable public API contracts.
 
 ### Acceptance Criteria
-- Example scripts cover at least one end-to-end path per primary workflow
-- Examples use typed request and response models from stable namespaces
-- Example outputs are documented and reproducible
-- Examples are referenced by package documentation
+- Example scripts cover at least one end-to-end path per primary workflow.
+- Examples use typed request and response models from stable namespaces.
+- Calibration examples document default `execution_mode=memory` behavior and explicit override to `disk`.
+- Example outputs are documented and reproducible.
+- Examples are referenced by package documentation.
 
 ### Unit tests
-- Smoke tests that execute example paths or validate example snippets and tests ensuring examples import only public API modules
-- Deterministic example output structure
+- Smoke tests that execute example paths or validate example snippets and tests ensuring examples import only public API modules.
+- Deterministic example output structure.
+- Coverage of calibration example default-mode and override-mode behavior.
 
 ### Notes/Constraints
-- Keep examples concise and practical for first-time users
-- Avoid reliance on experimental endpoints
+- Keep examples concise and practical for first-time users.
+- Avoid reliance on experimental endpoints.

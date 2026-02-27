@@ -16,7 +16,7 @@ This guide defines the v0.1 report contract for Hawkes kernel parameter validati
 - `checks`: ordered per-check diagnostics for positivity, structural, and stability checks
 - `violations`: ordered failed checks projected to `field`, `constraint`, and `value`
 
-`checks` are deterministic in order and can be consumed directly by optimizer loops, CLI output formatting, and persisted run artifacts.
+`checks` are deterministic in order and can be consumed directly by optimizer loops, CLI output formatting, run outputs, and optional persisted artifacts.
 
 ## Error taxonomy
 

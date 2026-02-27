@@ -77,7 +77,7 @@ Multi-interval validation suite entrypoint:
   - validates short, medium, and long horizon scenario coverage
   - emits deterministic state-evolution invariant checks separately from
     tolerance-based statistical checks
-  - produces machine-readable report artifacts for CI comparability
+  - produces machine-readable reports and optional persisted artifacts for CI comparability
 
 Validation-suite contracts:
 
@@ -110,6 +110,9 @@ Path metadata and diagnostics policies:
   - value: `compatible_with_calibration_and_validation_artifact_workflows.v1`
 - `SUFFICIENT_STATISTICS_RISK_PATH_ENVIRONMENT_METADATA_POLICY`
   - value: `exclude_environment_specific_metadata.v1`
+
+The artifact-workflow policy and tags are compatibility and provenance markers.
+They do not require filesystem writes and are valid for in-memory-only workflows.
 
 Structured request validation errors:
 
