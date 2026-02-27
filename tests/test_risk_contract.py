@@ -65,6 +65,49 @@ def test_risk_path_validation_and_serialization_roundtrip() -> None:
 
     assert deserialized_path == validated_path
     assert json.loads(serialized_path)["records"][0]["sufficient_statistics"]["n_plus"] == 3
+    assert json.loads(serialized_path)["output_schema_metadata"]["schema_version"] == (
+        "risk.sufficient_statistics.path_output_schema_metadata.v1"
+    )
+    assert json.loads(serialized_path)["provenance"]["schema_version"] == (
+        "risk.sufficient_statistics.path_provenance.v1"
+    )
+    assert json.loads(serialized_path)["diagnostics"]["schema_version"] == (
+        "risk.sufficient_statistics.path_diagnostics.v1"
+    )
+    assert json.loads(serialized_path)["diagnostics"]["cumulative_n_plus"] == 3
+
+
+def test_risk_path_diagnostics_schema_exposes_required_field_lists() -> None:
+    validated_path = validate_sufficient_statistics_risk_path(_valid_path_payload())
+
+    output_schema_metadata = validated_path["output_schema_metadata"]
+    assert output_schema_metadata["required_path_fields"] == [
+        "schema_version",
+        "run_request_schema_version",
+        "output_schema_metadata",
+        "provenance",
+        "diagnostics",
+        "seed",
+        "interval_delta",
+        "simulated_interval_count",
+        "initial_excitation_state",
+        "terminal_excitation_state",
+        "records",
+    ]
+    assert output_schema_metadata["required_diagnostics_fields"] == [
+        "schema_version",
+        "simulated_interval_count",
+        "first_interval_index",
+        "last_interval_index",
+        "cumulative_a_plus",
+        "cumulative_a_minus",
+        "cumulative_n_plus",
+        "cumulative_n_minus",
+        "cumulative_trading_time_return",
+        "cumulative_gap_return",
+        "cumulative_total_return",
+        "max_abs_total_return",
+    ]
 
 
 def test_risk_run_request_rejects_incomplete_payload_with_structured_error() -> None:
@@ -101,6 +144,40 @@ def test_risk_path_rejects_non_sequential_interval_index_with_structured_error()
 
     assert captured_error.value.failure.field_path == "records[0].interval_index"
     assert captured_error.value.failure.message == "must equal 0"
+
+
+def test_risk_path_rejects_mismatched_diagnostics_with_context() -> None:
+    path_payload = _valid_path_payload()
+    path_payload["diagnostics"] = {
+        "schema_version": "risk.sufficient_statistics.path_diagnostics.v1",
+        "simulated_interval_count": 1,
+        "first_interval_index": 0,
+        "last_interval_index": 0,
+        "cumulative_a_plus": 0.7,
+        "cumulative_a_minus": 0.5,
+        "cumulative_n_plus": 5,
+        "cumulative_n_minus": 2,
+        "cumulative_trading_time_return": 0.01,
+        "cumulative_gap_return": -0.02,
+        "cumulative_total_return": -0.01,
+        "max_abs_total_return": 0.01,
+    }
+
+    with pytest.raises(SufficientStatisticsRiskValidationError) as captured_error:
+        validate_sufficient_statistics_risk_path(path_payload)
+
+    assert captured_error.value.failure.field_path == "diagnostics.cumulative_n_plus"
+    assert "must be 3, found 5" in captured_error.value.failure.message
+    assert "simulated_interval_count=1" in captured_error.value.failure.message
+
+
+def test_risk_path_metadata_is_deterministic_across_repeated_validations() -> None:
+    first_validated_path = validate_sufficient_statistics_risk_path(_valid_path_payload())
+    second_validated_path = validate_sufficient_statistics_risk_path(_valid_path_payload())
+
+    assert first_validated_path["output_schema_metadata"] == second_validated_path["output_schema_metadata"]
+    assert first_validated_path["provenance"] == second_validated_path["provenance"]
+    assert first_validated_path["diagnostics"] == second_validated_path["diagnostics"]
 
 
 def _valid_run_request_payload() -> dict[str, object]:
