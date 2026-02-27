@@ -1,7 +1,8 @@
 # Return Decomposition API Contract
 
-This guide defines the canonical return-decomposition contract shared by pricing
-and simulation in `janiform-core`.
+This guide defines the canonical return-decomposition contract shared by
+pricing, simulation, and sufficient-statistics risk generation in
+`janiform-core`.
 
 ## Domain model
 
@@ -64,6 +65,7 @@ Engine-facing shared entrypoints are consumer-agnostic:
 - `pricing::compose_nig_trading_time_exponent_with_edge_mode`
 - `simulation::sample_nig_trading_time_increment`
 - `simulation::sample_nig_trading_time_increment_with_edge_mode`
+- `risk::generate_interval_return_from_sampled_statistics`
 - `return_decomposition::compose_nig_trading_time_exponent_with_edge_mode`
 - `return_decomposition::sample_nig_trading_time_increment_with_edge_mode`
 - `pricing::compose_total_return_characteristic_function`
@@ -98,6 +100,14 @@ Simulation call flow:
 2. Shared decomposition mapping runs through
    `return_decomposition::sample_nig_trading_time_increment_with_edge_mode`.
 3. Simulation uses returned buy, sell, and combined contributions as-is.
+
+Risk interval-return call flow:
+
+1. Shared entrypoint receives sampled `A_plus` and `A_minus` plus gap input.
+2. Shared entrypoint builds `ReturnDecomposition` and samples trading-time
+   increments through `ReturnDecomposition::sample_nig_trading_time_increment`.
+3. Shared entrypoint applies market-state gap gating and emits total return with
+   optional component breakdown.
 
 ## Interface evolution policy for v0.1
 
