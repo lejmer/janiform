@@ -1,0 +1,64 @@
+name: ci-benchmark-smoke-tier
+
+on:
+  schedule:
+    - cron: "0 6 * * 1-5"
+  workflow_dispatch:
+
+jobs:
+  scheduled-benchmark-smoke-workloads:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run benchmark smoke workloads
+        run: |
+          mkdir -p .artifacts/benchmark-tier
+          cargo test -p janiform-core --test oracle_pricer_risk_benchmark_harness -- --nocapture | tee .artifacts/benchmark-tier/oracle_pricer_risk_benchmark_harness.log
+          cargo test -p janiform-core --test performance_baseline_capture_and_storage -- --nocapture | tee .artifacts/benchmark-tier/performance_baseline_capture_and_storage.log
+
+      - name: Build scenario and baseline links
+        if: always()
+        run: |
+          python3 scripts/ci/write_benchmark_artifact_index.py \
+            --output-dir .artifacts/benchmark-tier \
+            --repository "${{ github.repository }}" \
+            --git-sha "${{ github.sha }}" \
+            --run-id "${{ github.run_id }}" \
+            --scenario-path "tests/fixtures/benchmarks/benchmark_scenario_catalog.json" \
+            --baseline-path "tests/fixtures/benchmarks/oracle_pricer_risk_performance_baseline_v1_1.json"
+
+      - name: Publish benchmark smoke summary
+        if: always()
+        run: |
+          cat .artifacts/benchmark-tier/benchmark_artifact_index.md >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Scope: benchmark smoke validation for wiring, schema stability, and baseline artifact hooks" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Workloads: \`oracle_pricer_risk_benchmark_harness\`, \`performance_baseline_capture_and_storage\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Trigger policy: scheduled weekdays and manual dispatch only" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Emit benchmark smoke failure context with links
+        if: failure()
+        run: |
+          echo "Benchmark smoke workload failed. Scenario and baseline links:"
+          cat .artifacts/benchmark-tier/benchmark_artifact_index.md
+
+      - name: Upload benchmark smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-smoke-workload-artifacts
+          path: .artifacts/benchmark-tier
+          if-no-files-found: error
