@@ -8,12 +8,12 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::affine_oracle::{
-    solve_exponential_affine_transform_with_optional_settings,
     ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
     ExponentialAffineTransformInputError, ExponentialAffineTransformIntegrationResult,
     ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformOutput,
     ExponentialAffineTransformOutputError, ExponentialAffineTransformSolverError,
     ExponentialAffineTransformSolverSettings,
+    solve_exponential_affine_transform_with_optional_settings,
 };
 use crate::complex_math::{complex_exponential, complex_multiply};
 use crate::hawkes::{
@@ -30,10 +30,10 @@ use crate::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionValidationError,
 };
 use crate::risk_neutral::{
+    EsscherMartingaleConditionError, EsscherMartingaleConditionInput,
+    EsscherMartingaleConditionReport, EsscherTransformError, NigEsscherTransformationInput,
     evaluate_esscher_martingale_condition,
-    transform_nig_characteristic_exponent_under_esscher_tilt, EsscherMartingaleConditionError,
-    EsscherMartingaleConditionInput, EsscherMartingaleConditionReport, EsscherTransformError,
-    NigEsscherTransformationInput,
+    transform_nig_characteristic_exponent_under_esscher_tilt,
 };
 
 pub const RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY: &str =
@@ -3050,39 +3050,38 @@ mod tests {
     use crate::news::GammaSeverityMarkConfiguration;
     use crate::nig::{ComplexScalar, NigSharedPlusShiftConfiguration};
     use crate::pricing::{
-        build_pricing_transform_input, build_vanilla_option_pricing_run_result,
-        compose_total_return_characteristic_function,
-        compose_total_return_characteristic_function_from_oracle_output,
-        compose_total_return_characteristic_function_with_edge_mode,
-        price_vanilla_option_via_fourier_inversion, solve_exponential_affine_transform,
-        validate_pricing_martingale_condition_under_esscher_tilt, FourierInversionContour,
-        FourierInversionContourError, FourierInversionDiagnostics, FourierInversionEngineSettings,
-        FourierInversionIntegrationStabilityControls,
+        DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION,
+        FourierInversionContour, FourierInversionContourError, FourierInversionDiagnostics,
+        FourierInversionEngineSettings, FourierInversionIntegrationStabilityControls,
         FourierInversionIntegrationStabilityControlsError, FourierInversionNumericQualityGate,
         FourierInversionNumericSettings, FourierInversionPricingError,
-        FourierInversionQuadratureRule, PricingMartingaleConditionValidationError,
-        ReturnCharacteristicFunctionAssemblyError, VanillaOptionPayoffConfiguration,
+        FourierInversionQuadratureRule, PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY,
+        PricingMartingaleConditionValidationError,
+        RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
+        RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY,
+        ReturnCharacteristicFunctionAssemblyError, VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
+        VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
+        VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
+        VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION,
+        VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION, VanillaOptionPayoffConfiguration,
         VanillaOptionPayoffType, VanillaOptionPricingCalibrationHooksError,
         VanillaOptionPricingDiagnostics, VanillaOptionPricingDiagnosticsError,
         VanillaOptionPricingMarketInputs, VanillaOptionPricingMarketInputsError,
         VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
         VanillaOptionPricingRequest, VanillaOptionPricingRequestError,
         VanillaOptionPricingResponse, VanillaOptionPricingResponseError,
-        VanillaOptionPricingRunResultBuildError, DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA,
-        FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION,
-        PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY,
-        RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
-        RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY, VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
-        VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
-        VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
-        VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION,
-        VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION,
+        VanillaOptionPricingRunResultBuildError, build_pricing_transform_input,
+        build_vanilla_option_pricing_run_result, compose_total_return_characteristic_function,
+        compose_total_return_characteristic_function_from_oracle_output,
+        compose_total_return_characteristic_function_with_edge_mode,
+        price_vanilla_option_via_fourier_inversion, solve_exponential_affine_transform,
+        validate_pricing_martingale_condition_under_esscher_tilt,
     };
     use crate::return_decomposition::{
         ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionInput,
     };
     use crate::risk_neutral::{
-        transform_nig_characteristic_exponent_under_esscher_tilt, NigEsscherTransformationInput,
+        NigEsscherTransformationInput, transform_nig_characteristic_exponent_under_esscher_tilt,
     };
 
     use super::compose_nig_trading_time_exponent;
@@ -4544,18 +4543,24 @@ mod tests {
             run_result.output_schema_metadata.schema_version,
             VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION
         );
-        assert!(run_result
-            .output_schema_metadata
-            .required_run_result_fields
-            .contains(&"response"));
-        assert!(run_result
-            .output_schema_metadata
-            .required_run_diagnostics_fields
-            .contains(&"integration_quality"));
-        assert!(run_result
-            .output_schema_metadata
-            .required_calibration_hooks_fields
-            .contains(&"forward_moneyness"));
+        assert!(
+            run_result
+                .output_schema_metadata
+                .required_run_result_fields
+                .contains(&"response")
+        );
+        assert!(
+            run_result
+                .output_schema_metadata
+                .required_run_diagnostics_fields
+                .contains(&"integration_quality")
+        );
+        assert!(
+            run_result
+                .output_schema_metadata
+                .required_calibration_hooks_fields
+                .contains(&"forward_moneyness")
+        );
 
         let serialized_run_result =
             serde_json::to_value(run_result).expect("run result should serialize");

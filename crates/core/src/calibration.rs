@@ -11,17 +11,17 @@ use crate::hawkes::{
     HawkesStructuredRhoSelfDominancePolicy, HawkesTransitionError, HawkesTransitionStep,
 };
 use crate::hourly_factor_provider::{
-    provide_hourly_factor_contract, HourlyFactorProviderError, HourlyFactorProviderRequest,
+    HourlyFactorProviderError, HourlyFactorProviderRequest, provide_hourly_factor_contract,
 };
 use crate::hourly_factors::HourlyFactorContractOutput;
 use crate::pricing::{
     VanillaOptionPricingCalibrationHooks, VanillaOptionPricingCalibrationHooksError,
 };
 use crate::risk_neutral::{
-    evaluate_esscher_martingale_condition,
-    transform_nig_characteristic_exponent_under_esscher_tilt, EsscherMartingaleConditionError,
-    EsscherMartingaleConditionInput, EsscherMartingaleConditionReport, EsscherTransformError,
-    NigEsscherTransformationInput, NigEsscherTransformedExponent,
+    EsscherMartingaleConditionError, EsscherMartingaleConditionInput,
+    EsscherMartingaleConditionReport, EsscherTransformError, NigEsscherTransformationInput,
+    NigEsscherTransformedExponent, evaluate_esscher_martingale_condition,
+    transform_nig_characteristic_exponent_under_esscher_tilt,
 };
 
 /// Resolve interval-aligned hourly factors for the calibration path.
@@ -164,17 +164,17 @@ impl Error for OptionSurfaceCalibrationObservationError {
 #[cfg(test)]
 mod tests {
     use crate::calibration::{
+        OptionSurfaceCalibrationObservationError,
         build_option_surface_calibration_observation_from_pricing_hooks,
         evaluate_calibration_martingale_condition_under_esscher_tilt,
         precheck_hawkes_kernel_parameter_domain,
         precheck_structured_hawkes_kernel_parameter_domain,
         transform_nig_exponent_for_calibration_under_esscher_tilt,
-        OptionSurfaceCalibrationObservationError,
     };
     use crate::hawkes::{
-        HawkesKernelLoadings, HawkesKernelValidationStatus, HawkesStructuredAlphaParameterization,
+        HAWKES_KERNEL_PARAMETER_VALIDATION_REPORT_SCHEMA_VERSION, HawkesKernelLoadings,
+        HawkesKernelValidationStatus, HawkesStructuredAlphaParameterization,
         HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
-        HAWKES_KERNEL_PARAMETER_VALIDATION_REPORT_SCHEMA_VERSION,
     };
     use crate::nig::{ComplexScalar, NigParameters};
     use crate::pricing::VanillaOptionPricingCalibrationHooks;
