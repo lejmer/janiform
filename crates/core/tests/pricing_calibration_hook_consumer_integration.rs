@@ -1,16 +1,18 @@
+mod support;
+
 use janiform_core::calibration::build_option_surface_calibration_observation_from_pricing_hooks;
-use janiform_core::complex_math::complex_exponential;
 use janiform_core::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
 use janiform_core::news::GammaSeverityMarkConfiguration;
 use janiform_core::nig::{ComplexScalar, NigSharedPlusShiftConfiguration};
 use janiform_core::pricing::{
-    build_pricing_transform_input, build_vanilla_option_pricing_run_result,
-    price_vanilla_option_via_fourier_inversion, solve_exponential_affine_transform,
     FourierInversionEngineSettings, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
     VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
-    VanillaOptionPricingRequest, VanillaOptionPricingResponse,
+    VanillaOptionPricingRequest, VanillaOptionPricingResponse, build_pricing_transform_input,
+    build_vanilla_option_pricing_run_result, price_vanilla_option_via_fourier_inversion,
+    solve_exponential_affine_transform,
 };
+use support::pricing_reference::black_scholes_log_return_characteristic_function;
 
 #[test]
 fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
@@ -90,6 +92,8 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
             payoff_type: VanillaOptionPayoffType::Call,
         },
         FourierInversionEngineSettings::default(),
+
+        // Use a Black-Scholes baseline here to validate wiring, not Janiform dynamics.
         |argument| black_scholes_log_return_characteristic_function(market_inputs, 0.2, argument),
     )
     .expect("Fourier pricing run should succeed")
@@ -142,21 +146,4 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
         calibration_observation.integration_truncation_check_passed,
         Some(numeric_quality.truncation_check_passed)
     );
-}
-
-fn black_scholes_log_return_characteristic_function(
-    market_inputs: VanillaOptionPricingMarketInputs,
-    volatility: f64,
-    argument: ComplexScalar,
-) -> ComplexScalar {
-    let variance = volatility * volatility * market_inputs.maturity_interval;
-    let drift = (market_inputs.risk_free_rate
-        - market_inputs.dividend_yield
-        - 0.5 * volatility * volatility)
-        * market_inputs.maturity_interval;
-    let imaginary_unit_term = ComplexScalar::new(-argument.imaginary, argument.real);
-    let drift_term = imaginary_unit_term.scale(drift);
-    let variance_term = argument.square().scale(-0.5 * variance);
-
-    complex_exponential(drift_term.add(variance_term))
 }

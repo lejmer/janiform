@@ -132,3 +132,25 @@ Python validation emits one structured failure with:
 - `message`
 
 so callers can surface actionable input errors without string parsing.
+
+## Benchmark Regression Fixture
+
+The pricing benchmark and sanity-bound regression suite is fixture driven:
+
+- Fixture file: `tests/fixtures/pricing/vanilla_option_pricing_benchmark_fixture.json`
+- Fixture schema: `pricing.vanilla_option.benchmark_fixture.v1`
+- Benchmark-result schema metadata:
+  `pricing.vanilla_option.benchmark_result.v1`
+- Tolerance-policy schema:
+  `pricing.vanilla_option.benchmark_tolerance_policy.v1`
+
+The fixture defines:
+
+- baseline vanilla reference scenarios
+- tolerance-based regression thresholds
+- monotonicity and no-arbitrage guardrails
+- explicit numeric-quality pathology probes
+
+Rust regression entrypoint:
+
+- `cargo test -p janiform-core --test pricing_benchmark_validation_regression`
