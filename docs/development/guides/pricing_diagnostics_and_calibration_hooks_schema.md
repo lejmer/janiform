@@ -78,4 +78,4 @@ Calibration hooks are designed to be consumed by
 - `required_run_diagnostics_fields`
 - `required_calibration_hooks_fields`
 
-This keeps schema checks deterministic for calibration and artifact workflows.
+This keeps schema checks deterministic for calibration workflows and optional persisted artifact workflows.

@@ -166,10 +166,14 @@ impl Error for OptionSurfaceCalibrationObservationError {
 
 pub const CALIBRATION_RUN_SPEC_SCHEMA_VERSION: &str = "calibration.orchestration.run_spec.v1";
 pub const CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION: &str = "calibration.orchestration.stage_graph.v1";
-pub const CALIBRATION_RUN_CONTRACT_ARTIFACT_SCHEMA_VERSION: &str =
-    "calibration.orchestration.run_contract_artifact.v1";
-pub const CALIBRATION_SOLVER_SETTINGS_AUDIT_POLICY: &str =
-    "persist_stage_solver_settings_for_each_run.v1";
+pub const CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION: &str =
+    "calibration.orchestration.run_contract.v1";
+pub const CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY: &str =
+    "capture_stage_solver_settings_per_run_contract.v1";
+
+/// Caller-surface default policy for execution-mode resolution.
+pub const CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY: &str =
+    "cli_defaults_to_disk_python_importable_api_defaults_to_memory.v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -177,6 +181,42 @@ pub enum CalibrationStage {
     Seasonality,
     Hawkes,
     ReturnComponents,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CalibrationExecutionMode {
+    Memory,
+    Disk,
+}
+
+/// Originating caller surface used for execution-mode defaults.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CalibrationCallerSurface {
+    Cli,
+    PythonImportableApi,
+}
+
+/// Resolve the default execution mode for one caller surface.
+pub const fn default_calibration_execution_mode_for_surface(
+    caller_surface: CalibrationCallerSurface,
+) -> CalibrationExecutionMode {
+    match caller_surface {
+        CalibrationCallerSurface::Cli => CalibrationExecutionMode::Disk,
+        CalibrationCallerSurface::PythonImportableApi => CalibrationExecutionMode::Memory,
+    }
+}
+
+/// Resolve execution mode using caller-surface defaults and optional override.
+pub const fn resolve_calibration_execution_mode_for_surface(
+    caller_surface: CalibrationCallerSurface,
+    execution_mode_override: Option<CalibrationExecutionMode>,
+) -> CalibrationExecutionMode {
+    match execution_mode_override {
+        Some(execution_mode) => execution_mode,
+        None => default_calibration_execution_mode_for_surface(caller_surface),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -311,6 +351,283 @@ impl Display for CalibrationRunSeedSettingsError {
 
 impl Error for CalibrationRunSeedSettingsError {}
 
+/// Stage-to-stage handoff transport for orchestration contracts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CalibrationStageHandoffTransport {
+    InMemoryOutput,
+    PersistedArtifactReference,
+}
+
+/// One directed stage handoff contract entry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CalibrationStageHandoff {
+    pub from_stage: CalibrationStage,
+    pub to_stage: CalibrationStage,
+    pub transport: CalibrationStageHandoffTransport,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_reference: Option<String>,
+}
+
+impl CalibrationStageHandoff {
+    fn validate(
+        &self,
+        execution_mode: CalibrationExecutionMode,
+        selected_stages: &BTreeSet<CalibrationStage>,
+    ) -> Result<(), CalibrationStageHandoffError> {
+        if self.from_stage == self.to_stage {
+            return Err(CalibrationStageHandoffError::SelfHandoff {
+                stage: self.from_stage,
+            });
+        }
+
+        if !selected_stages.contains(&self.from_stage) {
+            return Err(CalibrationStageHandoffError::FromStageIsNotSelected {
+                stage: self.from_stage,
+            });
+        }
+
+        if !selected_stages.contains(&self.to_stage) {
+            return Err(CalibrationStageHandoffError::ToStageIsNotSelected {
+                stage: self.to_stage,
+            });
+        }
+
+        match self.transport {
+            CalibrationStageHandoffTransport::InMemoryOutput => {
+                if self.artifact_reference.is_some() {
+                    return Err(
+                        CalibrationStageHandoffError::UnexpectedArtifactReferenceForInMemoryHandoff {
+                            from_stage: self.from_stage,
+                            to_stage: self.to_stage,
+                        },
+                    );
+                }
+            }
+            CalibrationStageHandoffTransport::PersistedArtifactReference => {
+                if execution_mode != CalibrationExecutionMode::Disk {
+                    return Err(
+                        CalibrationStageHandoffError::PersistedArtifactHandoffRequiresDiskMode {
+                            from_stage: self.from_stage,
+                            to_stage: self.to_stage,
+                        },
+                    );
+                }
+
+                let Some(artifact_reference) = &self.artifact_reference else {
+                    return Err(
+                        CalibrationStageHandoffError::MissingArtifactReferenceForPersistedHandoff {
+                            from_stage: self.from_stage,
+                            to_stage: self.to_stage,
+                        },
+                    );
+                };
+                if artifact_reference.trim().is_empty() {
+                    return Err(
+                        CalibrationStageHandoffError::EmptyArtifactReferenceForPersistedHandoff {
+                            from_stage: self.from_stage,
+                            to_stage: self.to_stage,
+                        },
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CalibrationStageHandoffError {
+    SelfHandoff {
+        stage: CalibrationStage,
+    },
+    FromStageIsNotSelected {
+        stage: CalibrationStage,
+    },
+    ToStageIsNotSelected {
+        stage: CalibrationStage,
+    },
+    UnexpectedArtifactReferenceForInMemoryHandoff {
+        from_stage: CalibrationStage,
+        to_stage: CalibrationStage,
+    },
+    PersistedArtifactHandoffRequiresDiskMode {
+        from_stage: CalibrationStage,
+        to_stage: CalibrationStage,
+    },
+    MissingArtifactReferenceForPersistedHandoff {
+        from_stage: CalibrationStage,
+        to_stage: CalibrationStage,
+    },
+    EmptyArtifactReferenceForPersistedHandoff {
+        from_stage: CalibrationStage,
+        to_stage: CalibrationStage,
+    },
+}
+
+impl Display for CalibrationStageHandoffError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SelfHandoff { stage } => write!(
+                formatter,
+                "stage_handoffs contains invalid self handoff for stage `{stage:?}`"
+            ),
+            Self::FromStageIsNotSelected { stage } => write!(
+                formatter,
+                "stage_handoffs.from_stage `{stage:?}` must be selected in selected_stages"
+            ),
+            Self::ToStageIsNotSelected { stage } => write!(
+                formatter,
+                "stage_handoffs.to_stage `{stage:?}` must be selected in selected_stages"
+            ),
+            Self::UnexpectedArtifactReferenceForInMemoryHandoff {
+                from_stage,
+                to_stage,
+            } => write!(
+                formatter,
+                "stage_handoffs entry `{from_stage:?}` -> `{to_stage:?}` uses in_memory_output and must not include artifact_reference"
+            ),
+            Self::PersistedArtifactHandoffRequiresDiskMode {
+                from_stage,
+                to_stage,
+            } => write!(
+                formatter,
+                "stage_handoffs entry `{from_stage:?}` -> `{to_stage:?}` uses persisted_artifact_reference and requires execution_mode=disk"
+            ),
+            Self::MissingArtifactReferenceForPersistedHandoff {
+                from_stage,
+                to_stage,
+            } => write!(
+                formatter,
+                "stage_handoffs entry `{from_stage:?}` -> `{to_stage:?}` uses persisted_artifact_reference and must include artifact_reference"
+            ),
+            Self::EmptyArtifactReferenceForPersistedHandoff {
+                from_stage,
+                to_stage,
+            } => write!(
+                formatter,
+                "stage_handoffs entry `{from_stage:?}` -> `{to_stage:?}` has empty artifact_reference"
+            ),
+        }
+    }
+}
+
+impl Error for CalibrationStageHandoffError {}
+
+/// Resume source contract for calibration orchestration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CalibrationResumeSource {
+    SameProcess,
+    PersistedCheckpointReference,
+}
+
+/// Resume configuration for staged calibration orchestration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CalibrationResumeSettings {
+    pub source: CalibrationResumeSource,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_from_stage: Option<CalibrationStage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_reference: Option<String>,
+}
+
+impl CalibrationResumeSettings {
+    fn validate(
+        &self,
+        execution_mode: CalibrationExecutionMode,
+        selected_stages: &BTreeSet<CalibrationStage>,
+    ) -> Result<(), CalibrationResumeSettingsError> {
+        if let Some(resume_from_stage) = self.resume_from_stage
+            && !selected_stages.contains(&resume_from_stage)
+        {
+            return Err(CalibrationResumeSettingsError::ResumeFromUnselectedStage {
+                stage: resume_from_stage,
+            });
+        }
+
+        match self.source {
+            CalibrationResumeSource::SameProcess => {
+                if execution_mode != CalibrationExecutionMode::Memory {
+                    return Err(
+                        CalibrationResumeSettingsError::SameProcessResumeRequiresMemoryMode,
+                    );
+                }
+
+                if self.checkpoint_reference.is_some() {
+                    return Err(
+                        CalibrationResumeSettingsError::UnexpectedCheckpointReferenceForSameProcessResume,
+                    );
+                }
+            }
+            CalibrationResumeSource::PersistedCheckpointReference => {
+                if execution_mode != CalibrationExecutionMode::Disk {
+                    return Err(
+                        CalibrationResumeSettingsError::PersistedCheckpointResumeRequiresDiskMode,
+                    );
+                }
+
+                let Some(checkpoint_reference) = &self.checkpoint_reference else {
+                    return Err(
+                        CalibrationResumeSettingsError::MissingCheckpointReferenceForPersistedResume,
+                    );
+                };
+                if checkpoint_reference.trim().is_empty() {
+                    return Err(
+                        CalibrationResumeSettingsError::EmptyCheckpointReferenceForPersistedResume,
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CalibrationResumeSettingsError {
+    ResumeFromUnselectedStage { stage: CalibrationStage },
+    SameProcessResumeRequiresMemoryMode,
+    PersistedCheckpointResumeRequiresDiskMode,
+    UnexpectedCheckpointReferenceForSameProcessResume,
+    MissingCheckpointReferenceForPersistedResume,
+    EmptyCheckpointReferenceForPersistedResume,
+}
+
+impl Display for CalibrationResumeSettingsError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ResumeFromUnselectedStage { stage } => write!(
+                formatter,
+                "resume_settings.resume_from_stage `{stage:?}` must be selected in selected_stages"
+            ),
+            Self::SameProcessResumeRequiresMemoryMode => write!(
+                formatter,
+                "resume_settings.source=same_process is only supported when execution_mode=memory"
+            ),
+            Self::PersistedCheckpointResumeRequiresDiskMode => write!(
+                formatter,
+                "resume_settings.source=persisted_checkpoint_reference is only supported when execution_mode=disk"
+            ),
+            Self::UnexpectedCheckpointReferenceForSameProcessResume => write!(
+                formatter,
+                "resume_settings.source=same_process must not include checkpoint_reference"
+            ),
+            Self::MissingCheckpointReferenceForPersistedResume => write!(
+                formatter,
+                "resume_settings.source=persisted_checkpoint_reference must include checkpoint_reference"
+            ),
+            Self::EmptyCheckpointReferenceForPersistedResume => write!(
+                formatter,
+                "resume_settings.checkpoint_reference must be non-empty when provided"
+            ),
+        }
+    }
+}
+
+impl Error for CalibrationResumeSettingsError {}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CalibrationOptimizerSettings {
     pub solver_name: String,
@@ -421,28 +738,88 @@ pub struct CalibrationStageSolverSettings {
 pub struct CalibrationRunSpec {
     pub run_id: String,
     pub data_inputs: CalibrationRunDataInputs,
+    pub execution_mode: CalibrationExecutionMode,
     pub selected_stages: Vec<CalibrationStage>,
     pub seed_settings: CalibrationRunSeedSettings,
     pub optimizer_settings_by_stage: Vec<CalibrationStageSolverSettings>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stage_handoffs: Vec<CalibrationStageHandoff>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_settings: Option<CalibrationResumeSettings>,
 }
 
 impl CalibrationRunSpec {
     pub fn try_new(
         run_id: impl Into<String>,
         data_inputs: CalibrationRunDataInputs,
+        execution_mode: CalibrationExecutionMode,
         selected_stages: Vec<CalibrationStage>,
         seed_settings: CalibrationRunSeedSettings,
         optimizer_settings_by_stage: Vec<CalibrationStageSolverSettings>,
     ) -> Result<Self, CalibrationRunSpecError> {
-        let run_spec = Self {
-            run_id: run_id.into(),
+        Self::try_new_with_mode_extensions(
+            run_id,
             data_inputs,
+            execution_mode,
             selected_stages,
             seed_settings,
             optimizer_settings_by_stage,
+            Vec::new(),
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    /// Build a run spec with explicit mode-aware extension fields.
+    pub fn try_new_with_mode_extensions(
+        run_id: impl Into<String>,
+        data_inputs: CalibrationRunDataInputs,
+        execution_mode: CalibrationExecutionMode,
+        selected_stages: Vec<CalibrationStage>,
+        seed_settings: CalibrationRunSeedSettings,
+        optimizer_settings_by_stage: Vec<CalibrationStageSolverSettings>,
+        stage_handoffs: Vec<CalibrationStageHandoff>,
+        resume_settings: Option<CalibrationResumeSettings>,
+    ) -> Result<Self, CalibrationRunSpecError> {
+        let run_spec = Self {
+            run_id: run_id.into(),
+            data_inputs,
+            execution_mode,
+            selected_stages,
+            seed_settings,
+            optimizer_settings_by_stage,
+            stage_handoffs,
+            resume_settings,
         };
         run_spec.validate()?;
         Ok(run_spec)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    /// Build a run spec with caller-surface execution-mode defaulting.
+    pub fn try_new_for_caller_surface(
+        run_id: impl Into<String>,
+        data_inputs: CalibrationRunDataInputs,
+        caller_surface: CalibrationCallerSurface,
+        execution_mode_override: Option<CalibrationExecutionMode>,
+        selected_stages: Vec<CalibrationStage>,
+        seed_settings: CalibrationRunSeedSettings,
+        optimizer_settings_by_stage: Vec<CalibrationStageSolverSettings>,
+        stage_handoffs: Vec<CalibrationStageHandoff>,
+        resume_settings: Option<CalibrationResumeSettings>,
+    ) -> Result<Self, CalibrationRunSpecError> {
+        let resolved_execution_mode =
+            resolve_calibration_execution_mode_for_surface(caller_surface, execution_mode_override);
+        Self::try_new_with_mode_extensions(
+            run_id,
+            data_inputs,
+            resolved_execution_mode,
+            selected_stages,
+            seed_settings,
+            optimizer_settings_by_stage,
+            stage_handoffs,
+            resume_settings,
+        )
     }
 
     pub fn validate(&self) -> Result<(), CalibrationRunSpecError> {
@@ -515,6 +892,26 @@ impl CalibrationRunSpec {
             }
         }
 
+        let mut stage_handoff_pairs = BTreeSet::new();
+        for stage_handoff in &self.stage_handoffs {
+            stage_handoff
+                .validate(self.execution_mode, &selected_stages)
+                .map_err(|source| CalibrationRunSpecError::InvalidStageHandoff { source })?;
+
+            if !stage_handoff_pairs.insert((stage_handoff.from_stage, stage_handoff.to_stage)) {
+                return Err(CalibrationRunSpecError::DuplicateStageHandoff {
+                    from_stage: stage_handoff.from_stage,
+                    to_stage: stage_handoff.to_stage,
+                });
+            }
+        }
+
+        if let Some(resume_settings) = &self.resume_settings {
+            resume_settings
+                .validate(self.execution_mode, &selected_stages)
+                .map_err(|source| CalibrationRunSpecError::InvalidResumeSettings { source })?;
+        }
+
         Ok(())
     }
 
@@ -552,6 +949,44 @@ pub enum CalibrationRunSpecError {
     UnexpectedStageSolverSettings {
         stage: CalibrationStage,
     },
+    InvalidStageHandoff {
+        source: CalibrationStageHandoffError,
+    },
+    DuplicateStageHandoff {
+        from_stage: CalibrationStage,
+        to_stage: CalibrationStage,
+    },
+    InvalidResumeSettings {
+        source: CalibrationResumeSettingsError,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CalibrationRunSpecErrorClassification {
+    InvalidInput,
+    ModeIncompatibleOptions,
+}
+
+impl CalibrationRunSpecError {
+    /// Return a deterministic error class for caller-side handling.
+    pub const fn classification(&self) -> CalibrationRunSpecErrorClassification {
+        match self {
+            Self::InvalidStageHandoff { source } => match source {
+                CalibrationStageHandoffError::PersistedArtifactHandoffRequiresDiskMode {
+                    ..
+                } => CalibrationRunSpecErrorClassification::ModeIncompatibleOptions,
+                _ => CalibrationRunSpecErrorClassification::InvalidInput,
+            },
+            Self::InvalidResumeSettings { source } => match source {
+                CalibrationResumeSettingsError::SameProcessResumeRequiresMemoryMode
+                | CalibrationResumeSettingsError::PersistedCheckpointResumeRequiresDiskMode => {
+                    CalibrationRunSpecErrorClassification::ModeIncompatibleOptions
+                }
+                _ => CalibrationRunSpecErrorClassification::InvalidInput,
+            },
+            _ => CalibrationRunSpecErrorClassification::InvalidInput,
+        }
+    }
 }
 
 impl Display for CalibrationRunSpecError {
@@ -592,6 +1027,19 @@ impl Display for CalibrationRunSpecError {
                 formatter,
                 "optimizer_settings_by_stage contains stage `{stage:?}` that is not selected"
             ),
+            Self::InvalidStageHandoff { source } => {
+                write!(formatter, "stage_handoffs payload is invalid: {source}")
+            }
+            Self::DuplicateStageHandoff {
+                from_stage,
+                to_stage,
+            } => write!(
+                formatter,
+                "stage_handoffs contains duplicate entry `{from_stage:?}` -> `{to_stage:?}`"
+            ),
+            Self::InvalidResumeSettings { source } => {
+                write!(formatter, "resume_settings payload is invalid: {source}")
+            }
         }
     }
 }
@@ -602,6 +1050,8 @@ impl Error for CalibrationRunSpecError {
             Self::InvalidDataInputs { source } => Some(source),
             Self::InvalidSeedSettings { source } => Some(source),
             Self::InvalidStageSolverSettings { source, .. } => Some(source),
+            Self::InvalidStageHandoff { source } => Some(source),
+            Self::InvalidResumeSettings { source } => Some(source),
             _ => None,
         }
     }
@@ -840,18 +1290,18 @@ pub fn resolve_calibration_stage_execution_order(
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CalibrationRunContractArtifact {
+pub struct CalibrationRunContract {
     pub schema_version: String,
     pub run_spec_schema_version: String,
     pub stage_graph_schema_version: String,
-    pub solver_settings_audit_policy: String,
+    pub solver_settings_capture_policy: String,
     pub run_spec: CalibrationRunSpec,
     pub stage_graph: CalibrationStageGraph,
     pub execution_stage_order: Vec<CalibrationStage>,
     pub stage_solver_settings: Vec<CalibrationStageSolverSettings>,
 }
 
-impl CalibrationRunContractArtifact {
+impl CalibrationRunContract {
     pub fn try_new(
         run_spec: CalibrationRunSpec,
         stage_graph: CalibrationStageGraph,
@@ -860,10 +1310,10 @@ impl CalibrationRunContractArtifact {
             resolve_calibration_stage_execution_order(&run_spec, &stage_graph)?;
 
         Ok(Self {
-            schema_version: CALIBRATION_RUN_CONTRACT_ARTIFACT_SCHEMA_VERSION.to_string(),
+            schema_version: CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION.to_string(),
             run_spec_schema_version: CALIBRATION_RUN_SPEC_SCHEMA_VERSION.to_string(),
             stage_graph_schema_version: CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION.to_string(),
-            solver_settings_audit_policy: CALIBRATION_SOLVER_SETTINGS_AUDIT_POLICY.to_string(),
+            solver_settings_capture_policy: CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY.to_string(),
             stage_solver_settings: run_spec.optimizer_settings_by_stage.clone(),
             run_spec,
             stage_graph,
@@ -875,18 +1325,23 @@ impl CalibrationRunContractArtifact {
 #[cfg(test)]
 mod tests {
     use crate::calibration::{
-        CALIBRATION_RUN_CONTRACT_ARTIFACT_SCHEMA_VERSION, CALIBRATION_RUN_SPEC_SCHEMA_VERSION,
-        CALIBRATION_SOLVER_SETTINGS_AUDIT_POLICY, CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION,
-        CalibrationOptimizerSettings, CalibrationRunContractArtifact, CalibrationRunContractError,
+        CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY, CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION,
+        CALIBRATION_RUN_SPEC_SCHEMA_VERSION, CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY,
+        CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION, CalibrationCallerSurface, CalibrationExecutionMode,
+        CalibrationOptimizerSettings, CalibrationResumeSettings, CalibrationResumeSettingsError,
+        CalibrationResumeSource, CalibrationRunContract, CalibrationRunContractError,
         CalibrationRunDataInputs, CalibrationRunSeedSettings, CalibrationRunSpec,
-        CalibrationRunSpecError, CalibrationStage, CalibrationStageDependency,
-        CalibrationStageGraph, CalibrationStageGraphError, CalibrationStageSeedOverride,
-        CalibrationStageSolverSettings, OptionSurfaceCalibrationObservationError,
+        CalibrationRunSpecError, CalibrationRunSpecErrorClassification, CalibrationStage,
+        CalibrationStageDependency, CalibrationStageGraph, CalibrationStageGraphError,
+        CalibrationStageHandoff, CalibrationStageHandoffError, CalibrationStageHandoffTransport,
+        CalibrationStageSeedOverride, CalibrationStageSolverSettings,
+        OptionSurfaceCalibrationObservationError,
         build_option_surface_calibration_observation_from_pricing_hooks,
+        default_calibration_execution_mode_for_surface,
         evaluate_calibration_martingale_condition_under_esscher_tilt,
         precheck_hawkes_kernel_parameter_domain,
         precheck_structured_hawkes_kernel_parameter_domain,
-        resolve_calibration_stage_execution_order,
+        resolve_calibration_execution_mode_for_surface, resolve_calibration_stage_execution_order,
         transform_nig_exponent_for_calibration_under_esscher_tilt,
     };
     use crate::hawkes::{
@@ -1064,12 +1519,15 @@ mod tests {
 
         let serialized = serde_json::to_value(&run_spec).expect("run spec should serialize");
         assert_eq!(serialized["run_id"], json!("run-001"));
+        assert_eq!(serialized["execution_mode"], json!("memory"));
         assert_eq!(serialized["selected_stages"][0], json!("seasonality"));
         assert_eq!(
             serialized["optimizer_settings_by_stage"][1]["stage"],
             json!("hawkes")
         );
         assert_eq!(serialized["seed_settings"]["global_seed"], json!(17));
+        assert!(serialized.get("stage_handoffs").is_none());
+        assert!(serialized.get("resume_settings").is_none());
 
         let parsed: CalibrationRunSpec =
             serde_json::from_value(serialized).expect("run spec should deserialize");
@@ -1077,10 +1535,287 @@ mod tests {
     }
 
     #[test]
+    fn calibration_run_spec_deserialization_rejects_invalid_execution_mode() {
+        let mut serialized = serde_json::to_value(build_valid_run_spec())
+            .expect("run spec fixture should serialize");
+        serialized["execution_mode"] = json!("unsupported_mode");
+
+        let parse_result = serde_json::from_value::<CalibrationRunSpec>(serialized);
+        assert!(parse_result.is_err());
+    }
+
+    #[test]
+    fn calibration_execution_mode_defaults_are_surface_specific_and_documented() {
+        assert_eq!(
+            CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY,
+            "cli_defaults_to_disk_python_importable_api_defaults_to_memory.v1"
+        );
+        assert_eq!(
+            default_calibration_execution_mode_for_surface(CalibrationCallerSurface::Cli),
+            CalibrationExecutionMode::Disk
+        );
+        assert_eq!(
+            default_calibration_execution_mode_for_surface(
+                CalibrationCallerSurface::PythonImportableApi
+            ),
+            CalibrationExecutionMode::Memory
+        );
+    }
+
+    #[test]
+    fn calibration_execution_mode_resolution_honors_explicit_overrides_per_surface() {
+        assert_eq!(
+            resolve_calibration_execution_mode_for_surface(
+                CalibrationCallerSurface::Cli,
+                Some(CalibrationExecutionMode::Memory)
+            ),
+            CalibrationExecutionMode::Memory
+        );
+        assert_eq!(
+            resolve_calibration_execution_mode_for_surface(
+                CalibrationCallerSurface::PythonImportableApi,
+                Some(CalibrationExecutionMode::Disk)
+            ),
+            CalibrationExecutionMode::Disk
+        );
+    }
+
+    #[test]
+    fn calibration_run_spec_for_caller_surface_applies_default_execution_mode() {
+        let cli_spec = CalibrationRunSpec::try_new_for_caller_surface(
+            "run-cli-default",
+            build_data_inputs(),
+            CalibrationCallerSurface::Cli,
+            None,
+            vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
+            build_seed_settings(),
+            vec![
+                CalibrationStageSolverSettings {
+                    stage: CalibrationStage::Seasonality,
+                    optimizer_settings: build_solver_settings(),
+                },
+                CalibrationStageSolverSettings {
+                    stage: CalibrationStage::Hawkes,
+                    optimizer_settings: build_solver_settings(),
+                },
+            ],
+            Vec::new(),
+            None,
+        )
+        .expect("cli default run spec should validate");
+        assert_eq!(cli_spec.execution_mode, CalibrationExecutionMode::Disk);
+
+        let python_spec = CalibrationRunSpec::try_new_for_caller_surface(
+            "run-python-default",
+            build_data_inputs(),
+            CalibrationCallerSurface::PythonImportableApi,
+            None,
+            vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
+            build_seed_settings(),
+            vec![
+                CalibrationStageSolverSettings {
+                    stage: CalibrationStage::Seasonality,
+                    optimizer_settings: build_solver_settings(),
+                },
+                CalibrationStageSolverSettings {
+                    stage: CalibrationStage::Hawkes,
+                    optimizer_settings: build_solver_settings(),
+                },
+            ],
+            Vec::new(),
+            None,
+        )
+        .expect("python default run spec should validate");
+        assert_eq!(python_spec.execution_mode, CalibrationExecutionMode::Memory);
+    }
+
+    #[test]
+    fn calibration_run_spec_mode_extensions_support_valid_memory_and_disk_configurations() {
+        let memory_run_spec = CalibrationRunSpec::try_new_with_mode_extensions(
+            "run-memory",
+            build_data_inputs(),
+            CalibrationExecutionMode::Memory,
+            vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
+            build_seed_settings(),
+            vec![
+                CalibrationStageSolverSettings {
+                    stage: CalibrationStage::Seasonality,
+                    optimizer_settings: build_solver_settings(),
+                },
+                CalibrationStageSolverSettings {
+                    stage: CalibrationStage::Hawkes,
+                    optimizer_settings: build_solver_settings(),
+                },
+            ],
+            vec![CalibrationStageHandoff {
+                from_stage: CalibrationStage::Seasonality,
+                to_stage: CalibrationStage::Hawkes,
+                transport: CalibrationStageHandoffTransport::InMemoryOutput,
+                artifact_reference: None,
+            }],
+            Some(CalibrationResumeSettings {
+                source: CalibrationResumeSource::SameProcess,
+                resume_from_stage: Some(CalibrationStage::Hawkes),
+                checkpoint_reference: None,
+            }),
+        )
+        .expect("memory mode with in-memory handoff and same-process resume should validate");
+        assert_eq!(
+            memory_run_spec.execution_mode,
+            CalibrationExecutionMode::Memory
+        );
+
+        let disk_run_spec = CalibrationRunSpec::try_new_with_mode_extensions(
+            "run-disk",
+            build_data_inputs(),
+            CalibrationExecutionMode::Disk,
+            vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
+            build_seed_settings(),
+            vec![
+                CalibrationStageSolverSettings {
+                    stage: CalibrationStage::Seasonality,
+                    optimizer_settings: build_solver_settings(),
+                },
+                CalibrationStageSolverSettings {
+                    stage: CalibrationStage::Hawkes,
+                    optimizer_settings: build_solver_settings(),
+                },
+            ],
+            vec![CalibrationStageHandoff {
+                from_stage: CalibrationStage::Seasonality,
+                to_stage: CalibrationStage::Hawkes,
+                transport: CalibrationStageHandoffTransport::PersistedArtifactReference,
+                artifact_reference: Some("artifact://seasonality/stage-001".to_string()),
+            }],
+            Some(CalibrationResumeSettings {
+                source: CalibrationResumeSource::PersistedCheckpointReference,
+                resume_from_stage: None,
+                checkpoint_reference: Some("checkpoint://run-disk/last-success".to_string()),
+            }),
+        )
+        .expect("disk mode with persisted handoff and persisted resume should validate");
+        assert_eq!(disk_run_spec.execution_mode, CalibrationExecutionMode::Disk);
+    }
+
+    #[test]
+    fn calibration_run_spec_rejects_mode_incompatible_option_settings_with_deterministic_classification()
+     {
+        let memory_with_persisted_handoff = CalibrationRunSpec::try_new_with_mode_extensions(
+            "run-invalid-memory-handoff",
+            build_data_inputs(),
+            CalibrationExecutionMode::Memory,
+            vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
+            build_seed_settings(),
+            vec![
+                CalibrationStageSolverSettings {
+                    stage: CalibrationStage::Seasonality,
+                    optimizer_settings: build_solver_settings(),
+                },
+                CalibrationStageSolverSettings {
+                    stage: CalibrationStage::Hawkes,
+                    optimizer_settings: build_solver_settings(),
+                },
+            ],
+            vec![CalibrationStageHandoff {
+                from_stage: CalibrationStage::Seasonality,
+                to_stage: CalibrationStage::Hawkes,
+                transport: CalibrationStageHandoffTransport::PersistedArtifactReference,
+                artifact_reference: Some("artifact://seasonality/stage-001".to_string()),
+            }],
+            None,
+        )
+        .expect_err("memory mode must reject persisted artifact handoff");
+
+        assert_eq!(
+            memory_with_persisted_handoff.classification(),
+            CalibrationRunSpecErrorClassification::ModeIncompatibleOptions
+        );
+        assert!(matches!(
+            memory_with_persisted_handoff,
+            CalibrationRunSpecError::InvalidStageHandoff {
+                source: CalibrationStageHandoffError::PersistedArtifactHandoffRequiresDiskMode { .. }
+            }
+        ));
+
+        let memory_with_persisted_resume = CalibrationRunSpec::try_new_with_mode_extensions(
+            "run-invalid-memory-resume",
+            build_data_inputs(),
+            CalibrationExecutionMode::Memory,
+            vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
+            build_seed_settings(),
+            vec![
+                CalibrationStageSolverSettings {
+                    stage: CalibrationStage::Seasonality,
+                    optimizer_settings: build_solver_settings(),
+                },
+                CalibrationStageSolverSettings {
+                    stage: CalibrationStage::Hawkes,
+                    optimizer_settings: build_solver_settings(),
+                },
+            ],
+            Vec::new(),
+            Some(CalibrationResumeSettings {
+                source: CalibrationResumeSource::PersistedCheckpointReference,
+                resume_from_stage: None,
+                checkpoint_reference: Some("checkpoint://run-memory/last-success".to_string()),
+            }),
+        )
+        .expect_err("memory mode must reject persisted checkpoint resume");
+
+        assert_eq!(
+            memory_with_persisted_resume.classification(),
+            CalibrationRunSpecErrorClassification::ModeIncompatibleOptions
+        );
+        assert!(matches!(
+            memory_with_persisted_resume,
+            CalibrationRunSpecError::InvalidResumeSettings {
+                source: CalibrationResumeSettingsError::PersistedCheckpointResumeRequiresDiskMode
+            }
+        ));
+
+        let disk_with_same_process_resume = CalibrationRunSpec::try_new_with_mode_extensions(
+            "run-invalid-disk-resume",
+            build_data_inputs(),
+            CalibrationExecutionMode::Disk,
+            vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
+            build_seed_settings(),
+            vec![
+                CalibrationStageSolverSettings {
+                    stage: CalibrationStage::Seasonality,
+                    optimizer_settings: build_solver_settings(),
+                },
+                CalibrationStageSolverSettings {
+                    stage: CalibrationStage::Hawkes,
+                    optimizer_settings: build_solver_settings(),
+                },
+            ],
+            Vec::new(),
+            Some(CalibrationResumeSettings {
+                source: CalibrationResumeSource::SameProcess,
+                resume_from_stage: None,
+                checkpoint_reference: None,
+            }),
+        )
+        .expect_err("disk mode must reject same-process resume");
+
+        assert_eq!(
+            disk_with_same_process_resume.classification(),
+            CalibrationRunSpecErrorClassification::ModeIncompatibleOptions
+        );
+        assert!(matches!(
+            disk_with_same_process_resume,
+            CalibrationRunSpecError::InvalidResumeSettings {
+                source: CalibrationResumeSettingsError::SameProcessResumeRequiresMemoryMode
+            }
+        ));
+    }
+
+    #[test]
     fn calibration_stage_graph_validation_resolves_explicit_execution_order() {
         let run_spec = CalibrationRunSpec::try_new(
             "run-ordered",
             build_data_inputs(),
+            CalibrationExecutionMode::Memory,
             vec![
                 CalibrationStage::ReturnComponents,
                 CalibrationStage::Seasonality,
@@ -1090,6 +1825,7 @@ mod tests {
             build_solver_settings_for_all_stages(),
         )
         .expect("run spec should validate");
+
         let stage_graph = CalibrationStageGraph::new(vec![
             CalibrationStageDependency {
                 stage: CalibrationStage::Hawkes,
@@ -1130,6 +1866,7 @@ mod tests {
         let run_spec = CalibrationRunSpec::try_new(
             "run-unsupported-dependency",
             build_data_inputs(),
+            CalibrationExecutionMode::Memory,
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
             vec![
@@ -1168,6 +1905,7 @@ mod tests {
         let run_spec = CalibrationRunSpec::try_new(
             "run-cycle",
             build_data_inputs(),
+            CalibrationExecutionMode::Memory,
             vec![
                 CalibrationStage::Seasonality,
                 CalibrationStage::Hawkes,
@@ -1204,7 +1942,7 @@ mod tests {
     }
 
     #[test]
-    fn calibration_run_contract_artifact_persists_solver_settings_for_auditability() {
+    fn calibration_run_contract_captures_solver_settings_for_auditability() {
         let run_spec = build_valid_run_spec();
         let stage_graph = CalibrationStageGraph::new(vec![
             CalibrationStageDependency {
@@ -1217,22 +1955,22 @@ mod tests {
             },
         ]);
 
-        let artifact = CalibrationRunContractArtifact::try_new(run_spec.clone(), stage_graph)
-            .expect("valid run contract should build artifact");
+        let run_contract = CalibrationRunContract::try_new(run_spec.clone(), stage_graph)
+            .expect("valid run contract should build");
         assert_eq!(
-            artifact.schema_version,
-            CALIBRATION_RUN_CONTRACT_ARTIFACT_SCHEMA_VERSION
+            run_contract.schema_version,
+            CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION
         );
         assert_eq!(
-            artifact.solver_settings_audit_policy,
-            CALIBRATION_SOLVER_SETTINGS_AUDIT_POLICY
+            run_contract.solver_settings_capture_policy,
+            CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY
         );
         assert_eq!(
-            artifact.stage_solver_settings,
+            run_contract.stage_solver_settings,
             run_spec.optimizer_settings_by_stage
         );
         assert_eq!(
-            artifact.execution_stage_order,
+            run_contract.execution_stage_order,
             vec![
                 CalibrationStage::Seasonality,
                 CalibrationStage::Hawkes,
@@ -1240,7 +1978,8 @@ mod tests {
             ]
         );
 
-        let serialized = serde_json::to_value(&artifact).expect("artifact should serialize");
+        let serialized =
+            serde_json::to_value(&run_contract).expect("run contract should serialize");
         assert_eq!(
             serialized["stage_solver_settings"]
                 .as_array()
@@ -1254,10 +1993,35 @@ mod tests {
     }
 
     #[test]
+    fn calibration_run_contract_construction_supports_memory_and_disk_modes() {
+        let stage_graph = CalibrationStageGraph::new(vec![
+            CalibrationStageDependency {
+                stage: CalibrationStage::Hawkes,
+                depends_on: CalibrationStage::Seasonality,
+            },
+            CalibrationStageDependency {
+                stage: CalibrationStage::ReturnComponents,
+                depends_on: CalibrationStage::Hawkes,
+            },
+        ]);
+
+        for execution_mode in [
+            CalibrationExecutionMode::Memory,
+            CalibrationExecutionMode::Disk,
+        ] {
+            let run_spec = build_valid_run_spec_with_mode(execution_mode);
+            let run_contract = CalibrationRunContract::try_new(run_spec, stage_graph.clone())
+                .expect("run contract should build for both execution modes");
+            assert_eq!(run_contract.run_spec.execution_mode, execution_mode);
+        }
+    }
+
+    #[test]
     fn calibration_run_spec_rejects_missing_solver_settings_for_selected_stage() {
         let run_spec = CalibrationRunSpec::try_new(
             "run-missing-solver",
             build_data_inputs(),
+            CalibrationExecutionMode::Memory,
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
             vec![CalibrationStageSolverSettings {
@@ -1323,9 +2087,16 @@ mod tests {
     }
 
     fn build_valid_run_spec() -> CalibrationRunSpec {
+        build_valid_run_spec_with_mode(CalibrationExecutionMode::Memory)
+    }
+
+    fn build_valid_run_spec_with_mode(
+        execution_mode: CalibrationExecutionMode,
+    ) -> CalibrationRunSpec {
         CalibrationRunSpec::try_new(
             "run-001",
             build_data_inputs(),
+            execution_mode,
             vec![
                 CalibrationStage::Seasonality,
                 CalibrationStage::Hawkes,

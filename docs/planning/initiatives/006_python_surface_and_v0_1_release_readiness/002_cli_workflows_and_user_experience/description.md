@@ -6,10 +6,12 @@ Deliver scriptable CLI workflows with consistent arguments, structured outputs, 
 - Implement CLI commands for core workflows with consistent argument patterns and outputs.
 - Support common use cases for simulation, calibration orchestration, and pricing tasks.
 - Ensure CLI behavior is scriptable and suitable for automation.
+- Encode `--execution-mode {disk,memory}` for calibration workflows with CLI default `disk` and explicit override support.
 
 ### Definition of Done
 - CLI exposes primary commands with help text, structured output options, and error codes.
-- Smoke tests validate CLI execution for representative workflows.
+- Calibration CLI contracts document default `execution_mode=disk` and explicit override to `memory`.
+- Smoke tests validate CLI execution for representative workflows, including mode defaults and overrides.
 - Documentation includes command reference and practical examples.
 
 ### Agent implementation notes
