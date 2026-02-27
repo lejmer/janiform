@@ -52,6 +52,7 @@ janiform --help
 - Affine oracle solver diagnostics and telemetry schema: `docs/development/guides/affine_oracle_solver_diagnostics_schema.md`
 - Seeded tick event tape schema: `docs/development/guides/seeded_tick_event_tape_schema.md`
 - Validation fallback policy: `docs/development/guides/validation_fallback_policy.md`
+- CI tiered execution strategy: `docs/development/guides/ci_tiered_execution_strategy.md`
 - Python coding conventions: `docs/development/guides/python_style_guide.md`
 - Planning artifacts: `docs/planning/`
 
