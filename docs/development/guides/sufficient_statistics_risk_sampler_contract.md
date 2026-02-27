@@ -1,0 +1,94 @@
+# Sufficient Statistics Risk Sampler Contract
+
+This guide defines the public v0.1 run request and path output contract for the
+sufficient-statistics risk simulation pipeline.
+
+## Scope
+
+The contract covers:
+
+- run request fields for seeded execution and interval settings
+- required model inputs and deterministic interval factors
+- interval-level output records with sufficient statistics and return components
+- validation behavior for malformed or incomplete payloads
+
+This contract intentionally excludes engine-internal temporary fields and
+implementation-specific solver workspace values.
+
+## Rust contract
+
+Canonical Rust types live in `janiform_core::risk`:
+
+- `SufficientStatisticsRiskIntervalFactors`
+- `SufficientStatisticsRiskModelInputs`
+- `SufficientStatisticsRiskRunRequest`
+- `SufficientStatisticsIntervalStatistics`
+- `SufficientStatisticsRiskReturnComponents`
+- `SufficientStatisticsRiskPathRecord`
+- `SufficientStatisticsRiskPath`
+
+Validation entrypoints:
+
+- `SufficientStatisticsRiskRunRequest::try_new`
+- `SufficientStatisticsRiskPath::try_new`
+
+Structured request validation errors:
+
+- `SufficientStatisticsRiskRunRequestError`
+  - `InvalidHorizonIntervalCount`
+  - `InvalidIntervalDelta`
+  - `InvalidModelInputs`
+  - `InvalidIntervalFactors`
+  - `HorizonExceedsAvailableIntervals`
+
+Structured path validation errors:
+
+- `SufficientStatisticsRiskPathError`
+  - `InvalidIntervalDelta`
+  - `InvalidSimulatedIntervalCount`
+  - `RecordCountMismatch`
+  - `InvalidInitialState`
+  - `InvalidTerminalState`
+  - `NonSequentialIntervalIndex`
+  - `InvalidRecord`
+
+All contract payloads are `serde` serializable and validation-aware on
+deserialization. Unknown fields and incomplete payloads are rejected.
+
+## Python-facing contract
+
+The Python-facing contract is in `janiform.risk`:
+
+- `SufficientStatisticsRiskRunRequest`
+- `SufficientStatisticsRiskPath`
+- `SufficientStatisticsRiskValidationFailure`
+- `SufficientStatisticsRiskValidationError`
+
+Validation and serialization helpers:
+
+- `validate_sufficient_statistics_risk_run_request`
+- `validate_sufficient_statistics_risk_path`
+- `serialize_sufficient_statistics_risk_run_request`
+- `deserialize_sufficient_statistics_risk_run_request`
+- `serialize_sufficient_statistics_risk_path`
+- `deserialize_sufficient_statistics_risk_path`
+
+Python validation emits one structured failure with:
+
+- `field_path`
+- `message`
+
+This allows downstream portfolio risk pipelines to route input issues without
+string parsing.
+
+## Interval factor policy
+
+The interval-factor contract policy identifier is:
+
+- `SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY`
+  - value:
+    `explicit_interval_aligned_s_h_and_nu_h_vectors_without_implicit_resampling.v1`
+
+The public request model requires explicit aligned vectors for `s_h` and `nu_h`.
+Implicit factor interpolation or resampling is not performed by contract
+validation.
