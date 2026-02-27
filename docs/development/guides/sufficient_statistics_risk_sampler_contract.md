@@ -24,6 +24,7 @@ Canonical Rust types live in `janiform_core::risk`:
 - `SufficientStatisticsRiskRunRequest`
 - `SufficientStatisticsIntervalStatistics`
 - `SufficientStatisticsRiskReturnComponents`
+- `SufficientStatisticsGeneratedIntervalReturn`
 - `SufficientStatisticsRiskPathRecord`
 - `SufficientStatisticsRiskPath`
 
@@ -31,6 +32,20 @@ Validation entrypoints:
 
 - `SufficientStatisticsRiskRunRequest::try_new`
 - `SufficientStatisticsRiskPath::try_new`
+
+Return generation entrypoint:
+
+- `generate_interval_return_from_sampled_statistics`
+  - consumes sampled `A_plus` and `A_minus` with market-state-gated gap input
+  - reuses shared return-decomposition sampling for sell-side sign handling
+  - supports optional component breakdown through
+    `SufficientStatisticsRiskReturnGenerationOptions`
+
+Return generation policies:
+
+- `SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY`
+- `SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_BREAKDOWN_POLICY`
+- `SUFFICIENT_STATISTICS_INTERVAL_RETURN_GAP_GATING_POLICY`
 
 Structured request validation errors:
 

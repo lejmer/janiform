@@ -15,16 +15,22 @@ use crate::affine_oracle::{
     ExponentialAffineTransformSolverSettings,
     solve_exponential_affine_transform_with_optional_settings,
 };
+use crate::calendar::MarketState;
 use crate::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
     HawkesTransitionError, HawkesTransitionStep, evolve_hawkes_state,
 };
+use crate::news::SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY;
 use crate::nig::{
-    ComplexScalar, NigSharedPlusShiftConfiguration, NigSharedPlusShiftConfigurationError,
+    ComplexScalar, NigBuySellDriverParameters, NigSharedPlusShiftConfiguration,
+    NigSharedPlusShiftConfigurationError, NigTradingTimeIncrementSamplingError,
 };
 use crate::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
     SplitMix64SimulationRandomnessFactory,
+};
+use crate::return_decomposition::{
+    ReturnDecomposition, ReturnDecompositionInput, ReturnDecompositionValidationError,
 };
 
 pub const SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION: &str =
@@ -380,6 +386,12 @@ pub const SUFFICIENT_STATISTICS_TRANSFORM_SLICE_RANDOMNESS_SUBSTREAM_POLICY: &st
     "reuse_seeded_tick_substream_domains_with_interval_index_for_slice_sampler.v1";
 pub const SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY: &str =
     "interval_boundary_drift_then_count_mapped_endogenous_jump_composition.v1";
+pub const SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY: &str =
+    "sample_trading_time_increment_from_sampled_statistics_via_shared_return_decomposition.v1";
+pub const SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_BREAKDOWN_POLICY: &str =
+    "optional_component_breakdown_toggle_for_risk_interval_return_generation.v1";
+pub const SUFFICIENT_STATISTICS_INTERVAL_RETURN_GAP_GATING_POLICY: &str =
+    SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY;
 
 const DEFAULT_TRANSFORM_SLICE_A_PLUS_U: f64 = 1.0e-3;
 const DEFAULT_TRANSFORM_SLICE_A_MINUS_U: f64 = 1.0e-3;
@@ -1768,6 +1780,203 @@ impl Display for SufficientStatisticsRiskReturnComponentsError {
 
 impl Error for SufficientStatisticsRiskReturnComponentsError {}
 
+/// Optional controls for interval return generation from sampled sufficient statistics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SufficientStatisticsRiskReturnGenerationOptions {
+    pub include_component_breakdown: bool,
+}
+
+impl SufficientStatisticsRiskReturnGenerationOptions {
+    pub const fn component_breakdown_policy() -> &'static str {
+        SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_BREAKDOWN_POLICY
+    }
+}
+
+impl Default for SufficientStatisticsRiskReturnGenerationOptions {
+    fn default() -> Self {
+        Self {
+            include_component_breakdown: false,
+        }
+    }
+}
+
+/// One generated interval return with optional component breakdown.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SufficientStatisticsGeneratedIntervalReturn {
+    pub total_return: f64,
+    pub component_breakdown: Option<SufficientStatisticsRiskReturnComponents>,
+}
+
+impl SufficientStatisticsGeneratedIntervalReturn {
+    pub const fn generation_policy() -> &'static str {
+        SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY
+    }
+
+    pub const fn gap_gating_policy() -> &'static str {
+        SUFFICIENT_STATISTICS_INTERVAL_RETURN_GAP_GATING_POLICY
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SufficientStatisticsRiskReturnGenerationError {
+    InvalidSampledStatistics {
+        source: SufficientStatisticsIntervalStatisticsError,
+    },
+    InvalidGapReturn {
+        value: f64,
+    },
+    InvalidReturnDecomposition {
+        source: ReturnDecompositionValidationError,
+    },
+    TradingTimeSamplingFailure {
+        source: NigTradingTimeIncrementSamplingError,
+    },
+    InvalidReturnComponents {
+        source: SufficientStatisticsRiskReturnComponentsError,
+    },
+    InvalidTotalReturn {
+        value: f64,
+    },
+}
+
+impl Display for SufficientStatisticsRiskReturnGenerationError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidSampledStatistics { source } => {
+                write!(formatter, "sampled_statistics is invalid: {source}")
+            }
+            Self::InvalidGapReturn { value } => {
+                write!(formatter, "gap_return input must be finite, found {value}")
+            }
+            Self::InvalidReturnDecomposition { source } => {
+                write!(
+                    formatter,
+                    "return decomposition construction failed: {source}"
+                )
+            }
+            Self::TradingTimeSamplingFailure { source } => {
+                write!(
+                    formatter,
+                    "trading-time increment sampling failed: {source}"
+                )
+            }
+            Self::InvalidReturnComponents { source } => {
+                write!(
+                    formatter,
+                    "generated return components are invalid: {source}"
+                )
+            }
+            Self::InvalidTotalReturn { value } => {
+                write!(
+                    formatter,
+                    "generated total_return must be finite, found {value}"
+                )
+            }
+        }
+    }
+}
+
+impl Error for SufficientStatisticsRiskReturnGenerationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidSampledStatistics { source } => Some(source),
+            Self::InvalidReturnDecomposition { source } => Some(source),
+            Self::TradingTimeSamplingFailure { source } => Some(source),
+            Self::InvalidReturnComponents { source } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+/// Generate one interval return increment from sampled sufficient statistics.
+///
+/// Composition:
+/// - samples trading-time increment via the shared return-decomposition API
+/// - applies market-state gating to direct gap input
+/// - emits optional component breakdown for diagnostics
+pub fn generate_interval_return_from_sampled_statistics<R>(
+    driver_parameters: NigBuySellDriverParameters,
+    sampled_statistics: SufficientStatisticsIntervalStatistics,
+    market_state: MarketState,
+    gap_return: f64,
+    randomness_stream: &mut R,
+    options: Option<SufficientStatisticsRiskReturnGenerationOptions>,
+) -> Result<
+    SufficientStatisticsGeneratedIntervalReturn,
+    SufficientStatisticsRiskReturnGenerationError,
+>
+where
+    R: SimulationRandomnessStream,
+{
+    sampled_statistics.validate().map_err(|source| {
+        SufficientStatisticsRiskReturnGenerationError::InvalidSampledStatistics { source }
+    })?;
+
+    if !gap_return.is_finite() {
+        return Err(
+            SufficientStatisticsRiskReturnGenerationError::InvalidGapReturn { value: gap_return },
+        );
+    }
+
+    let effective_gap_return = market_state_gated_gap_return(market_state, gap_return);
+    let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+        a_plus: sampled_statistics.a_plus,
+        a_minus: sampled_statistics.a_minus,
+        gap: effective_gap_return,
+    })
+    .map_err(|source| {
+        SufficientStatisticsRiskReturnGenerationError::InvalidReturnDecomposition { source }
+    })?;
+
+    let trading_time_contributions = return_decomposition
+        .sample_nig_trading_time_increment(driver_parameters, randomness_stream)
+        .map_err(|source| {
+            SufficientStatisticsRiskReturnGenerationError::TradingTimeSamplingFailure { source }
+        })?;
+
+    let buy_side_return = trading_time_contributions.buy_side_increment;
+    let sell_side_return = -trading_time_contributions.sell_side_increment;
+    let trading_time_return = trading_time_contributions.combined_increment;
+    let total_return = trading_time_return + effective_gap_return;
+    if !total_return.is_finite() {
+        return Err(
+            SufficientStatisticsRiskReturnGenerationError::InvalidTotalReturn {
+                value: total_return,
+            },
+        );
+    }
+
+    let include_component_breakdown = options.unwrap_or_default().include_component_breakdown;
+    let component_breakdown = if include_component_breakdown {
+        Some(
+            SufficientStatisticsRiskReturnComponents::try_new(
+                buy_side_return,
+                sell_side_return,
+                trading_time_return,
+                effective_gap_return,
+                total_return,
+            )
+            .map_err(|source| {
+                SufficientStatisticsRiskReturnGenerationError::InvalidReturnComponents { source }
+            })?,
+        )
+    } else {
+        None
+    };
+
+    Ok(SufficientStatisticsGeneratedIntervalReturn {
+        total_return,
+        component_breakdown,
+    })
+}
+
+fn market_state_gated_gap_return(market_state: MarketState, gap_return: f64) -> f64 {
+    match market_state {
+        MarketState::Open => 0.0,
+        MarketState::Closed => gap_return,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SufficientStatisticsRiskPathRecord {
     pub schema_version: &'static str,
@@ -2260,28 +2469,35 @@ pub fn solve_exponential_affine_transform_for_risk_sampling_with_settings(
 #[cfg(test)]
 mod tests {
     use crate::affine_oracle::ExponentialAffineTransformEquationSpecification;
+    use crate::calendar::MarketState;
     use crate::hawkes::{
         HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
         HawkesTransitionError, HawkesTransitionStep, evolve_hawkes_state,
     };
     use crate::news::GammaSeverityMarkConfiguration;
     use crate::nig::{ComplexScalar, NigSharedPlusShiftConfiguration};
+    use crate::randomness::SplitMix64SimulationRandomnessStream;
+    use crate::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
 
     use super::{
         SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY,
+        SUFFICIENT_STATISTICS_INTERVAL_RETURN_GAP_GATING_POLICY,
         SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY,
         SUFFICIENT_STATISTICS_RISK_PATH_RECORD_SCHEMA_VERSION,
         SUFFICIENT_STATISTICS_RISK_PATH_SCHEMA_VERSION,
         SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION,
         SufficientStatisticsBoundaryStateUpdateError,
-        SufficientStatisticsBoundaryStateUpdateSnapshot, SufficientStatisticsIntervalStatistics,
+        SufficientStatisticsBoundaryStateUpdateSnapshot,
+        SufficientStatisticsGeneratedIntervalReturn, SufficientStatisticsIntervalStatistics,
         SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskModelInputs,
         SufficientStatisticsRiskPath, SufficientStatisticsRiskPathError,
         SufficientStatisticsRiskPathRecord, SufficientStatisticsRiskReturnComponents,
-        SufficientStatisticsRiskRunRequest, SufficientStatisticsRiskRunRequestError,
-        SufficientStatisticsTransformSliceContext, SufficientStatisticsTransformSliceSamplingError,
+        SufficientStatisticsRiskReturnGenerationOptions, SufficientStatisticsRiskRunRequest,
+        SufficientStatisticsRiskRunRequestError, SufficientStatisticsTransformSliceContext,
+        SufficientStatisticsTransformSliceSamplingError,
         SufficientStatisticsTransformSliceSettings,
         SufficientStatisticsTransformSliceSettingsError, SufficientStatisticsTransformSlices,
+        generate_interval_return_from_sampled_statistics,
         sample_interval_statistics_batch_from_transform_slices,
         sample_interval_statistics_from_transform_slices,
         solve_sufficient_statistics_transform_slices,
@@ -2490,6 +2706,142 @@ mod tests {
                 record_interval_index: 1,
             }
         );
+    }
+
+    #[test]
+    fn interval_return_generator_trading_only_open_window_suppresses_gap_and_preserves_sell_sign() {
+        let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(0.8, 0.6, 2, 1)
+            .expect("sampled statistics should be valid");
+        let driver_parameters = valid_nig_driver_parameters();
+        let mut observed_stream = SplitMix64SimulationRandomnessStream::from_seed(44_001);
+        let mut expected_stream = SplitMix64SimulationRandomnessStream::from_seed(44_001);
+
+        let generated_return = generate_interval_return_from_sampled_statistics(
+            driver_parameters,
+            sampled_statistics,
+            MarketState::Open,
+            -0.27,
+            &mut observed_stream,
+            Some(SufficientStatisticsRiskReturnGenerationOptions {
+                include_component_breakdown: true,
+            }),
+        )
+        .expect("interval return generation should succeed for open-window trading-only path");
+        let expected_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: sampled_statistics.a_plus,
+            a_minus: sampled_statistics.a_minus,
+            gap: 0.0,
+        })
+        .expect("expected decomposition should construct");
+        let expected_trading_contributions = expected_decomposition
+            .sample_nig_trading_time_increment(driver_parameters, &mut expected_stream)
+            .expect("reference trading-time sampling should succeed");
+
+        let component_breakdown = generated_return
+            .component_breakdown
+            .expect("component breakdown should be present");
+        assert_eq!(
+            SufficientStatisticsGeneratedIntervalReturn::gap_gating_policy(),
+            SUFFICIENT_STATISTICS_INTERVAL_RETURN_GAP_GATING_POLICY
+        );
+        assert_float_close(
+            component_breakdown.buy_side_return,
+            expected_trading_contributions.buy_side_increment,
+        );
+        assert_float_close(
+            component_breakdown.sell_side_return,
+            -expected_trading_contributions.sell_side_increment,
+        );
+        assert_float_close(
+            component_breakdown.trading_time_return,
+            expected_trading_contributions.combined_increment,
+        );
+        assert_float_close(component_breakdown.gap_return, 0.0);
+        assert_float_close(
+            component_breakdown.total_return,
+            expected_trading_contributions.combined_increment,
+        );
+        assert_float_close(
+            generated_return.total_return,
+            expected_trading_contributions.combined_increment,
+        );
+    }
+
+    #[test]
+    fn interval_return_generator_closed_window_applies_gap_and_supports_optional_breakdown() {
+        let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(0.9, 0.7, 3, 2)
+            .expect("sampled statistics should be valid");
+        let driver_parameters = valid_nig_driver_parameters();
+        let mut stream_with_breakdown = SplitMix64SimulationRandomnessStream::from_seed(44_002);
+        let mut stream_without_breakdown = SplitMix64SimulationRandomnessStream::from_seed(44_002);
+        let gap_return = 0.19;
+
+        let with_breakdown = generate_interval_return_from_sampled_statistics(
+            driver_parameters,
+            sampled_statistics,
+            MarketState::Closed,
+            gap_return,
+            &mut stream_with_breakdown,
+            Some(SufficientStatisticsRiskReturnGenerationOptions {
+                include_component_breakdown: true,
+            }),
+        )
+        .expect("closed-window return generation should succeed with breakdown");
+        let without_breakdown = generate_interval_return_from_sampled_statistics(
+            driver_parameters,
+            sampled_statistics,
+            MarketState::Closed,
+            gap_return,
+            &mut stream_without_breakdown,
+            Some(SufficientStatisticsRiskReturnGenerationOptions {
+                include_component_breakdown: false,
+            }),
+        )
+        .expect("closed-window return generation should succeed without breakdown");
+
+        let component_breakdown = with_breakdown
+            .component_breakdown
+            .expect("component breakdown should be present");
+        assert_float_close(
+            component_breakdown.total_return,
+            component_breakdown.trading_time_return + gap_return,
+        );
+        assert_float_close(component_breakdown.gap_return, gap_return);
+        assert!(without_breakdown.component_breakdown.is_none());
+        assert_float_close(without_breakdown.total_return, with_breakdown.total_return);
+    }
+
+    #[test]
+    fn interval_return_generator_is_seed_deterministic_across_repeated_runs() {
+        let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(1.0, 0.4, 1, 2)
+            .expect("sampled statistics should be valid");
+        let driver_parameters = valid_nig_driver_parameters();
+        let options = Some(SufficientStatisticsRiskReturnGenerationOptions {
+            include_component_breakdown: true,
+        });
+        let mut first_stream = SplitMix64SimulationRandomnessStream::from_seed(44_003);
+        let mut second_stream = SplitMix64SimulationRandomnessStream::from_seed(44_003);
+
+        let first_generated_return = generate_interval_return_from_sampled_statistics(
+            driver_parameters,
+            sampled_statistics,
+            MarketState::Closed,
+            -0.05,
+            &mut first_stream,
+            options,
+        )
+        .expect("first seeded interval return generation should succeed");
+        let second_generated_return = generate_interval_return_from_sampled_statistics(
+            driver_parameters,
+            sampled_statistics,
+            MarketState::Closed,
+            -0.05,
+            &mut second_stream,
+            options,
+        )
+        .expect("second seeded interval return generation should succeed");
+
+        assert_eq!(first_generated_return, second_generated_return);
     }
 
     #[test]
@@ -2897,6 +3249,13 @@ mod tests {
             build_initial_state(),
         )
         .expect("model inputs should be valid")
+    }
+
+    fn valid_nig_driver_parameters() -> crate::nig::NigBuySellDriverParameters {
+        build_model_inputs()
+            .nig_shared_plus_shift_configuration
+            .derive_driver_parameters()
+            .expect("nig driver parameters should derive from shared-plus-shift configuration")
     }
 
     fn build_interval_factors() -> SufficientStatisticsRiskIntervalFactors {
