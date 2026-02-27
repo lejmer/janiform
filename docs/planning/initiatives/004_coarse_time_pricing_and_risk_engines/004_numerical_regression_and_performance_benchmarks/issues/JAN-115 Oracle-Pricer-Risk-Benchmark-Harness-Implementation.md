@@ -1,4 +1,4 @@
-## ISSUE-002: Oracle Pricer Risk Benchmark Harness Implementation
+## Oracle Pricer Risk Benchmark Harness Implementation
 
 ### Description
 Implement benchmark harnesses for oracle solver, characteristic-function pricing, and sufficient-statistics risk sampling with unified execution controls.

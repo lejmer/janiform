@@ -1,0 +1,146 @@
+{
+  "schema_version": "benchmark.scenario.catalog.v1",
+  "catalog_id": "coarse_time_engine_benchmark_scenarios_v1",
+  "catalog_version": "1.0.0",
+  "schema_metadata": {
+    "schema_family": "benchmark.scenario.catalog",
+    "schema_generation": "v0.x",
+    "forward_extension_policy": "additive_fields_only.v1"
+  },
+  "determinism_metadata": {
+    "profile_loading_order": "workload_scale_then_profile_id_ascending.v1",
+    "content_hash_scope": "document_payload_bytes.v1",
+    "content_hash_algorithm": "fnv1a_64_hex_utf8.v1"
+  },
+  "profiles": [
+    {
+      "profile_id": "small_hourly_baseline",
+      "workload_scale": "small",
+      "model_state": {
+        "baseline_deseasonalized_intensity_lambda_bar": 0.7,
+        "initial_excitation_state": {
+          "y_plus_plus": 0.06,
+          "y_plus_minus": 0.03,
+          "y_minus_plus": 0.05,
+          "y_minus_minus": 0.08
+        },
+        "initial_shared_news_state": {
+          "j_t": 0.0,
+          "g_t": 0.0
+        }
+      },
+      "interval_settings": {
+        "interval_delta": 1.0,
+        "horizon_interval_count": 12,
+        "oracle_solver_step_count": 256
+      },
+      "portfolio_shape": {
+        "underlying_count": 2,
+        "maturity_bucket_count_per_underlying": 3,
+        "strikes_per_maturity_bucket": 6,
+        "option_position_count": 24
+      },
+      "run_length": {
+        "warmup_iteration_count": 2,
+        "measured_iteration_count": 8
+      },
+      "component_workload": {
+        "oracle_requests_per_iteration": 24,
+        "pricing_requests_per_iteration": 24,
+        "risk_paths_per_iteration": 128
+      },
+      "tags": [
+        "ci",
+        "small",
+        "hourly"
+      ],
+      "description": "Small hourly profile for quick smoke-level benchmark checks across oracle, pricing, and risk sampler paths."
+    },
+    {
+      "profile_id": "medium_hourly_balanced",
+      "workload_scale": "medium",
+      "model_state": {
+        "baseline_deseasonalized_intensity_lambda_bar": 0.9,
+        "initial_excitation_state": {
+          "y_plus_plus": 0.1,
+          "y_plus_minus": 0.07,
+          "y_minus_plus": 0.08,
+          "y_minus_minus": 0.13
+        },
+        "initial_shared_news_state": {
+          "j_t": 0.12,
+          "g_t": 0.03
+        }
+      },
+      "interval_settings": {
+        "interval_delta": 1.0,
+        "horizon_interval_count": 24,
+        "oracle_solver_step_count": 512
+      },
+      "portfolio_shape": {
+        "underlying_count": 4,
+        "maturity_bucket_count_per_underlying": 4,
+        "strikes_per_maturity_bucket": 8,
+        "option_position_count": 96
+      },
+      "run_length": {
+        "warmup_iteration_count": 3,
+        "measured_iteration_count": 10
+      },
+      "component_workload": {
+        "oracle_requests_per_iteration": 96,
+        "pricing_requests_per_iteration": 96,
+        "risk_paths_per_iteration": 512
+      },
+      "tags": [
+        "ci",
+        "medium",
+        "hourly"
+      ],
+      "description": "Medium hourly profile used as the default balanced benchmark workload for release regression checks."
+    },
+    {
+      "profile_id": "large_hourly_portfolio",
+      "workload_scale": "large",
+      "model_state": {
+        "baseline_deseasonalized_intensity_lambda_bar": 1.15,
+        "initial_excitation_state": {
+          "y_plus_plus": 0.16,
+          "y_plus_minus": 0.1,
+          "y_minus_plus": 0.12,
+          "y_minus_minus": 0.2
+        },
+        "initial_shared_news_state": {
+          "j_t": 0.25,
+          "g_t": 0.08
+        }
+      },
+      "interval_settings": {
+        "interval_delta": 1.0,
+        "horizon_interval_count": 48,
+        "oracle_solver_step_count": 1024
+      },
+      "portfolio_shape": {
+        "underlying_count": 8,
+        "maturity_bucket_count_per_underlying": 6,
+        "strikes_per_maturity_bucket": 16,
+        "option_position_count": 512
+      },
+      "run_length": {
+        "warmup_iteration_count": 4,
+        "measured_iteration_count": 12
+      },
+      "component_workload": {
+        "oracle_requests_per_iteration": 384,
+        "pricing_requests_per_iteration": 384,
+        "risk_paths_per_iteration": 2048
+      },
+      "tags": [
+        "release",
+        "large",
+        "hourly"
+      ],
+      "description": "Large hourly portfolio profile for bounded throughput and latency tracking near release-scale loads."
+    }
+  ]
+}
