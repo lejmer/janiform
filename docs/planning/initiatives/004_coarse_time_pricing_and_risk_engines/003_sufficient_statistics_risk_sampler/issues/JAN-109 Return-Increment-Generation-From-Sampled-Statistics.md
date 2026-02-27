@@ -1,4 +1,4 @@
-## ISSUE-004: Return Increment Generation From Sampled Statistics
+## Return Increment Generation From Sampled Statistics
 
 ### Description
 Generate interval return increments from sampled sufficient statistics using shared return decomposition modules and gap behavior rules.

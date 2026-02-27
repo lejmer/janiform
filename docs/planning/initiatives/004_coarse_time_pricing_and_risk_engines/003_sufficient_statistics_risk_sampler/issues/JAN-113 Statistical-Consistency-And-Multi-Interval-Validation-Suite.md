@@ -1,4 +1,4 @@
-## ISSUE-008: Statistical Consistency And Multi Interval Validation Suite
+## Statistical Consistency And Multi Interval Validation Suite
 
 ### Description
 Build validation suite for statistical consistency and state-evolution behavior across multi-interval risk runs.

@@ -1,4 +1,4 @@
-## ISSUE-001: Risk Sampler Run Contract And Path Model
+## Risk Sampler Run Contract And Path Model
 
 ### Description
 Define the public run contract and output path model for sufficient-statistics risk simulation, including seeds, interval settings, model state, and emitted path records.

@@ -1,4 +1,4 @@
-## ISSUE-005: Interval Parametric Grid Support And Hourly Compatibility
+## Interval Parametric Grid Support And Hourly Compatibility
 
 ### Description
 Support configurable interval grids for risk generation, including sub-hour intervals when compatible factors are provided, while preserving hourly compatibility for shared workflows.

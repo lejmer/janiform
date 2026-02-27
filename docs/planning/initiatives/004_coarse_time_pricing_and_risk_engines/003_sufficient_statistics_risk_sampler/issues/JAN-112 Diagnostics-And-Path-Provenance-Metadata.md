@@ -1,4 +1,4 @@
-## ISSUE-007: Diagnostics And Path Provenance Metadata
+## Diagnostics And Path Provenance Metadata
 
 ### Description
 Add diagnostics and provenance metadata for risk paths to support debugging, reproducibility, and downstream analysis.

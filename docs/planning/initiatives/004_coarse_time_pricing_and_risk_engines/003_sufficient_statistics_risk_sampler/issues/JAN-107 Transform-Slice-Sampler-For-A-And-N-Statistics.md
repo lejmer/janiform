@@ -1,4 +1,4 @@
-## ISSUE-002: Transform Slice Sampler For A And N Statistics
+## Transform Slice Sampler For A And N Statistics
 
 ### Description
 Implement sampling of `A_plus`, `A_minus`, `N_plus`, and `N_minus` from sufficient-statistics transform slices without cluster simulation.

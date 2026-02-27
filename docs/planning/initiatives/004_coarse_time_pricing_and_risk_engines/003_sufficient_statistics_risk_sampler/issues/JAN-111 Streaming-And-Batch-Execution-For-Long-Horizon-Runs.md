@@ -1,4 +1,4 @@
-## ISSUE-006: Streaming And Batch Execution For Long Horizon Runs
+## Streaming And Batch Execution For Long Horizon Runs
 
 ### Description
 Implement streaming-friendly and batch execution modes for long-horizon risk runs so large scenarios can be generated with bounded memory usage.

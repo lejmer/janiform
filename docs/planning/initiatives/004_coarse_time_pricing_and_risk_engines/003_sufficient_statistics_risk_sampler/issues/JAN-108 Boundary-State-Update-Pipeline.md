@@ -1,4 +1,4 @@
-## ISSUE-003: Boundary State Update Pipeline
+## Boundary State Update Pipeline
 
 ### Description
 Implement boundary state updates for the 4D Hawkes state using sampled interval statistics and canonical transition rules.
