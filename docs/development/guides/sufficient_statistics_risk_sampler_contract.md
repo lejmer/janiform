@@ -71,6 +71,39 @@ Execution-mode policies:
   - value:
     `path_seed_partitioned_from_root_seed_and_path_index_with_shared_substream_mixer.v1`
 
+Multi-interval validation suite entrypoint:
+
+- `run_sufficient_statistics_multi_interval_validation_suite`
+  - validates short, medium, and long horizon scenario coverage
+  - emits deterministic state-evolution invariant checks separately from
+    tolerance-based statistical checks
+  - produces machine-readable report artifacts for CI comparability
+
+Validation-suite contracts:
+
+- `SufficientStatisticsValidationHorizonCategory`
+- `SufficientStatisticsMultiIntervalValidationScenario`
+- `SufficientStatisticsMultiIntervalValidationThresholds`
+- `SufficientStatisticsMultiIntervalValidationCaseReport`
+- `SufficientStatisticsMultiIntervalValidationReport`
+
+Validation-suite report policies and schema versions:
+
+- `SUFFICIENT_STATISTICS_MULTI_INTERVAL_VALIDATION_REPORT_SCHEMA_VERSION`
+  - value: `validation.sufficient_statistics.multi_interval.report.v1`
+- `SUFFICIENT_STATISTICS_MULTI_INTERVAL_VALIDATION_DETERMINISM_POLICY`
+  - value: `stable_input_case_order_and_seed_replay_validation.v1`
+- `SUFFICIENT_STATISTICS_MULTI_INTERVAL_VALIDATION_COVERAGE_POLICY`
+  - value: `require_short_medium_and_long_horizon_scenarios.v1`
+- `SUFFICIENT_STATISTICS_MULTI_INTERVAL_VALIDATION_OUTPUT_SCHEMA_METADATA_VERSION`
+  - value:
+    `validation.sufficient_statistics.multi_interval.output_schema_metadata.v1`
+- `SUFFICIENT_STATISTICS_MULTI_INTERVAL_VALIDATION_THRESHOLDS_SCHEMA_VERSION`
+  - value: `validation.sufficient_statistics.multi_interval.thresholds.v1`
+- `SUFFICIENT_STATISTICS_MULTI_INTERVAL_VALIDATION_THRESHOLD_POLICY`
+  - value:
+    `deterministic_invariants_strict_and_interval_mean_tolerance_guard.v1`
+
 Path metadata and diagnostics policies:
 
 - `SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_POLICY`
