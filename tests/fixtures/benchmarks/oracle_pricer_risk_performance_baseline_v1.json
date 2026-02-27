@@ -1,0 +1,116 @@
+{
+  "schema_version": "benchmark.oracle_pricer_risk.performance_baseline.v1",
+  "baseline_id": "oracle_pricer_risk_ci_performance_baseline",
+  "baseline_version": "1.0.0",
+  "schema_metadata": {
+    "schema_family": "benchmark.oracle_pricer_risk.performance_baseline",
+    "schema_generation": "v0.x",
+    "forward_extension_policy": "additive_fields_only.v1"
+  },
+  "ownership_metadata": {
+    "ownership_policy": "initiative_004_project_004_maintainers.v1",
+    "owner_team": "coarse_time_pricing_and_risk_engines",
+    "owner_oncall": "janiform-core-owners",
+    "refresh_process": "tests/fixtures/benchmarks/README.md#performance-baseline-refresh-process"
+  },
+  "capture_policy": "extract_component_latency_throughput_and_operation_counts_from_benchmark_report.v1",
+  "output_schema_metadata": {
+    "schema_version": "benchmark.oracle_pricer_risk.performance_baseline.output_schema_metadata.v1",
+    "required_baseline_fields": [
+      "schema_version",
+      "baseline_id",
+      "baseline_version",
+      "schema_metadata",
+      "ownership_metadata",
+      "capture_policy",
+      "output_schema_metadata",
+      "source_report",
+      "summary",
+      "profile_records"
+    ],
+    "required_profile_record_fields": [
+      "profile_id",
+      "workload_scale",
+      "oracle_solver_metrics",
+      "pricing_metrics",
+      "risk_sampling_metrics"
+    ],
+    "required_component_metric_fields": [
+      "mean_latency_seconds",
+      "throughput_operations_per_second",
+      "measured_operation_count"
+    ]
+  },
+  "source_report": {
+    "benchmark_report_schema_version": "benchmark.oracle_pricer_risk.report.v1",
+    "determinism_policy": "canonical_profile_order_and_deterministic_seed_partitioning.v1",
+    "execution_policy": "warmup_iterations_excluded_from_measured_latency_and_throughput.v1",
+    "metric_policy": "mean_latency_seconds_and_throughput_operations_per_second.v1",
+    "catalog_id": "coarse_time_engine_benchmark_scenarios_v1",
+    "catalog_version": "1.0.0",
+    "policy_id": "oracle_pricer_risk_benchmark_policy_v1",
+    "policy_version": "1.0.0"
+  },
+  "summary": {
+    "profile_count": 3
+  },
+  "profile_records": [
+    {
+      "profile_id": "small_hourly_baseline",
+      "workload_scale": "small",
+      "oracle_solver_metrics": {
+        "mean_latency_seconds": 0.00031,
+        "throughput_operations_per_second": 3225.8,
+        "measured_operation_count": 24
+      },
+      "pricing_metrics": {
+        "mean_latency_seconds": 0.00052,
+        "throughput_operations_per_second": 1918.3,
+        "measured_operation_count": 24
+      },
+      "risk_sampling_metrics": {
+        "mean_latency_seconds": 0.0012,
+        "throughput_operations_per_second": 833.4,
+        "measured_operation_count": 128
+      }
+    },
+    {
+      "profile_id": "medium_hourly_balanced",
+      "workload_scale": "medium",
+      "oracle_solver_metrics": {
+        "mean_latency_seconds": 0.00044,
+        "throughput_operations_per_second": 2271.9,
+        "measured_operation_count": 96
+      },
+      "pricing_metrics": {
+        "mean_latency_seconds": 0.00079,
+        "throughput_operations_per_second": 1260.5,
+        "measured_operation_count": 96
+      },
+      "risk_sampling_metrics": {
+        "mean_latency_seconds": 0.0029,
+        "throughput_operations_per_second": 344.8,
+        "measured_operation_count": 512
+      }
+    },
+    {
+      "profile_id": "large_hourly_portfolio",
+      "workload_scale": "large",
+      "oracle_solver_metrics": {
+        "mean_latency_seconds": 0.00072,
+        "throughput_operations_per_second": 1388.2,
+        "measured_operation_count": 384
+      },
+      "pricing_metrics": {
+        "mean_latency_seconds": 0.00141,
+        "throughput_operations_per_second": 710.1,
+        "measured_operation_count": 384
+      },
+      "risk_sampling_metrics": {
+        "mean_latency_seconds": 0.0074,
+        "throughput_operations_per_second": 135.1,
+        "measured_operation_count": 2048
+      }
+    }
+  ]
+}
