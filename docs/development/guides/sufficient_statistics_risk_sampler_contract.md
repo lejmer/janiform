@@ -47,6 +47,27 @@ Return generation policies:
 - `SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_BREAKDOWN_POLICY`
 - `SUFFICIENT_STATISTICS_INTERVAL_RETURN_GAP_GATING_POLICY`
 
+Streaming and batch execution entrypoints:
+
+- `stream_interval_statistics_from_transform_slices`
+- `stream_interval_statistics_multi_path_batch_from_transform_slices`
+- `sample_interval_statistics_multi_path_batch_from_transform_slices`
+
+Execution-mode helper contracts:
+
+- `SufficientStatisticsStreamingChunkingSettings`
+- `SufficientStatisticsIntervalStatisticsChunk`
+- `SufficientStatisticsIntervalStatisticsPathChunk`
+- `derive_sufficient_statistics_batch_path_seed`
+
+Execution-mode policies:
+
+- `SUFFICIENT_STATISTICS_STREAMING_CHUNKING_POLICY`
+  - value: `fixed_max_intervals_per_chunk_with_ordered_interval_emission.v1`
+- `SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY`
+  - value:
+    `path_seed_partitioned_from_root_seed_and_path_index_with_shared_substream_mixer.v1`
+
 Structured request validation errors:
 
 - `SufficientStatisticsRiskRunRequestError`
