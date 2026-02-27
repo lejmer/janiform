@@ -27,7 +27,7 @@ use crate::nig::{
 };
 use crate::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
-    SplitMix64SimulationRandomnessFactory,
+    SplitMix64SimulationRandomnessFactory, derive_simulation_substream_seed,
 };
 use crate::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionInput, ReturnDecompositionValidationError,
@@ -436,6 +436,10 @@ pub const SUFFICIENT_STATISTICS_TRANSFORM_SLICE_EXPECTATION_ESTIMATION_POLICY: &
 pub const SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SAMPLING_POLICY: &str = "counts_via_fractional_rounding_and_integrated_intensity_via_exponential_with_slice_implied_mean.v1";
 pub const SUFFICIENT_STATISTICS_TRANSFORM_SLICE_RANDOMNESS_SUBSTREAM_POLICY: &str =
     "reuse_seeded_tick_substream_domains_with_interval_index_for_slice_sampler.v1";
+pub const SUFFICIENT_STATISTICS_STREAMING_CHUNKING_POLICY: &str =
+    "fixed_max_intervals_per_chunk_with_ordered_interval_emission.v1";
+pub const SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY: &str =
+    "path_seed_partitioned_from_root_seed_and_path_index_with_shared_substream_mixer.v1";
 pub const SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY: &str =
     "interval_boundary_drift_then_count_mapped_endogenous_jump_composition.v1";
 pub const SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY: &str =
@@ -449,9 +453,12 @@ const DEFAULT_TRANSFORM_SLICE_A_PLUS_U: f64 = 1.0e-3;
 const DEFAULT_TRANSFORM_SLICE_A_MINUS_U: f64 = 1.0e-3;
 const DEFAULT_TRANSFORM_SLICE_N_PLUS_Z: f64 = 0.99;
 const DEFAULT_TRANSFORM_SLICE_N_MINUS_Z: f64 = 0.99;
+const DEFAULT_STREAMING_MAX_INTERVALS_PER_CHUNK: usize = 256;
 const TRANSFORM_SLICE_REAL_PART_TOLERANCE: f64 = 1.0e-8;
 const TRANSFORM_SLICE_NEGATIVE_EXPECTATION_TOLERANCE: f64 = 1.0e-10;
 const MAX_INTERVAL_STATISTICS_COUNT: u64 = 1_000_000;
+const BATCH_SEED_PARTITION_SUBSTREAM_DOMAIN: SimulationRandomnessSubstreamDomain =
+    SimulationRandomnessSubstreamDomain::ExogenousNewsCount;
 
 /// One-interval context used to solve and sample sufficient-statistics transform slices.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -949,6 +956,138 @@ impl Error for SufficientStatisticsTransformSliceSamplingError {
     }
 }
 
+/// Chunking settings for streaming sufficient-statistics interval emission.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct SufficientStatisticsStreamingChunkingSettings {
+    pub max_intervals_per_chunk: usize,
+}
+
+impl SufficientStatisticsStreamingChunkingSettings {
+    pub fn try_new(
+        max_intervals_per_chunk: usize,
+    ) -> Result<Self, SufficientStatisticsStreamingChunkingSettingsError> {
+        let settings = Self {
+            max_intervals_per_chunk,
+        };
+        settings.validate()?;
+        Ok(settings)
+    }
+
+    pub fn validate(self) -> Result<(), SufficientStatisticsStreamingChunkingSettingsError> {
+        if self.max_intervals_per_chunk == 0 {
+            return Err(
+                SufficientStatisticsStreamingChunkingSettingsError::InvalidMaxIntervalsPerChunk {
+                    value: self.max_intervals_per_chunk,
+                },
+            );
+        }
+
+        Ok(())
+    }
+
+    pub const fn policy() -> &'static str {
+        SUFFICIENT_STATISTICS_STREAMING_CHUNKING_POLICY
+    }
+}
+
+impl Default for SufficientStatisticsStreamingChunkingSettings {
+    fn default() -> Self {
+        Self {
+            max_intervals_per_chunk: DEFAULT_STREAMING_MAX_INTERVALS_PER_CHUNK,
+        }
+    }
+}
+
+/// Validation errors for streaming chunking settings.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SufficientStatisticsStreamingChunkingSettingsError {
+    InvalidMaxIntervalsPerChunk { value: usize },
+}
+
+impl Display for SufficientStatisticsStreamingChunkingSettingsError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidMaxIntervalsPerChunk { value } => write!(
+                formatter,
+                "max_intervals_per_chunk must be greater than 0, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for SufficientStatisticsStreamingChunkingSettingsError {}
+
+/// One emitted chunk of sampled interval statistics for a single path.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SufficientStatisticsIntervalStatisticsChunk {
+    pub chunk_index: usize,
+    pub start_interval_index: usize,
+    pub records: Vec<SufficientStatisticsIntervalStatistics>,
+}
+
+/// One emitted chunk of sampled interval statistics for one path in a multi-path batch.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SufficientStatisticsIntervalStatisticsPathChunk {
+    pub path_index: usize,
+    pub path_seed: u64,
+    pub interval_chunk: SufficientStatisticsIntervalStatisticsChunk,
+}
+
+/// Errors emitted by streaming and batch transform-slice execution adapters.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SufficientStatisticsTransformSliceExecutionError {
+    InvalidChunkingSettings {
+        source: SufficientStatisticsStreamingChunkingSettingsError,
+    },
+    SamplingFailure {
+        source: SufficientStatisticsTransformSliceSamplingError,
+    },
+    PathSamplingFailure {
+        path_index: usize,
+        source: SufficientStatisticsTransformSliceSamplingError,
+    },
+}
+
+impl Display for SufficientStatisticsTransformSliceExecutionError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidChunkingSettings { source } => {
+                write!(
+                    formatter,
+                    "streaming chunking settings are invalid: {source}"
+                )
+            }
+            Self::SamplingFailure { source } => write!(
+                formatter,
+                "transform-slice sampling failed during streaming execution: {source}"
+            ),
+            Self::PathSamplingFailure { path_index, source } => write!(
+                formatter,
+                "path {path_index} sampling failed during batch execution: {source}"
+            ),
+        }
+    }
+}
+
+impl Error for SufficientStatisticsTransformSliceExecutionError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidChunkingSettings { source } => Some(source),
+            Self::SamplingFailure { source } => Some(source),
+            Self::PathSamplingFailure { source, .. } => Some(source),
+        }
+    }
+}
+
+pub const fn sufficient_statistics_batch_seed_partition_policy() -> &'static str {
+    SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY
+}
+
+/// Deterministically derive a per-path seed from one root batch seed.
+pub fn derive_sufficient_statistics_batch_path_seed(root_seed: u64, path_index: u64) -> u64 {
+    derive_simulation_substream_seed(root_seed, BATCH_SEED_PARTITION_SUBSTREAM_DOMAIN, path_index)
+}
+
 /// Solve the baseline and `A/N` probe slices used by interval sufficient-statistics sampling.
 pub fn solve_sufficient_statistics_transform_slices(
     equation_specification: ExponentialAffineTransformEquationSpecification,
@@ -1104,9 +1243,202 @@ pub fn sample_interval_statistics_batch_from_transform_slices_with_randomness_fa
 where
     F: SimulationRandomnessFactory,
 {
+    if slices_batch.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let chunking_settings =
+        SufficientStatisticsStreamingChunkingSettings::try_new(slices_batch.len())
+            .expect("non-empty slices batch must produce a valid chunking setting");
     let mut sampled_statistics = Vec::with_capacity(slices_batch.len());
+    stream_interval_statistics_from_transform_slices_with_randomness_factory_internal(
+        seed,
+        slices_batch,
+        chunking_settings,
+        randomness_factory,
+        |interval_chunk| sampled_statistics.extend(interval_chunk.records),
+    )?;
+
+    Ok(sampled_statistics)
+}
+
+/// Stream sampled interval statistics in deterministic chunks.
+pub fn stream_interval_statistics_from_transform_slices<C>(
+    seed: u64,
+    slices_batch: &[SufficientStatisticsTransformSlices],
+    chunking_settings: SufficientStatisticsStreamingChunkingSettings,
+    emit_chunk: C,
+) -> Result<(), SufficientStatisticsTransformSliceExecutionError>
+where
+    C: FnMut(SufficientStatisticsIntervalStatisticsChunk),
+{
+    let randomness_factory = SplitMix64SimulationRandomnessFactory;
+    stream_interval_statistics_from_transform_slices_with_randomness_factory(
+        seed,
+        slices_batch,
+        chunking_settings,
+        &randomness_factory,
+        emit_chunk,
+    )
+}
+
+/// Stream sampled interval statistics in deterministic chunks with an injected randomness factory.
+pub fn stream_interval_statistics_from_transform_slices_with_randomness_factory<F, C>(
+    seed: u64,
+    slices_batch: &[SufficientStatisticsTransformSlices],
+    chunking_settings: SufficientStatisticsStreamingChunkingSettings,
+    randomness_factory: &F,
+    emit_chunk: C,
+) -> Result<(), SufficientStatisticsTransformSliceExecutionError>
+where
+    F: SimulationRandomnessFactory,
+    C: FnMut(SufficientStatisticsIntervalStatisticsChunk),
+{
+    chunking_settings.validate().map_err(|source| {
+        SufficientStatisticsTransformSliceExecutionError::InvalidChunkingSettings { source }
+    })?;
+
+    stream_interval_statistics_from_transform_slices_with_randomness_factory_internal(
+        seed,
+        slices_batch,
+        chunking_settings,
+        randomness_factory,
+        emit_chunk,
+    )
+    .map_err(|source| SufficientStatisticsTransformSliceExecutionError::SamplingFailure { source })
+}
+
+/// Stream multi-path sampled interval statistics with deterministic path-seed partitioning.
+pub fn stream_interval_statistics_multi_path_batch_from_transform_slices<C>(
+    root_seed: u64,
+    slices_path_batch: &[Vec<SufficientStatisticsTransformSlices>],
+    chunking_settings: SufficientStatisticsStreamingChunkingSettings,
+    emit_chunk: C,
+) -> Result<(), SufficientStatisticsTransformSliceExecutionError>
+where
+    C: FnMut(SufficientStatisticsIntervalStatisticsPathChunk),
+{
+    let randomness_factory = SplitMix64SimulationRandomnessFactory;
+    stream_interval_statistics_multi_path_batch_from_transform_slices_with_randomness_factory(
+        root_seed,
+        slices_path_batch,
+        chunking_settings,
+        &randomness_factory,
+        emit_chunk,
+    )
+}
+
+/// Stream multi-path sampled interval statistics with deterministic path-seed partitioning.
+pub fn stream_interval_statistics_multi_path_batch_from_transform_slices_with_randomness_factory<
+    F,
+    C,
+>(
+    root_seed: u64,
+    slices_path_batch: &[Vec<SufficientStatisticsTransformSlices>],
+    chunking_settings: SufficientStatisticsStreamingChunkingSettings,
+    randomness_factory: &F,
+    mut emit_chunk: C,
+) -> Result<(), SufficientStatisticsTransformSliceExecutionError>
+where
+    F: SimulationRandomnessFactory,
+    C: FnMut(SufficientStatisticsIntervalStatisticsPathChunk),
+{
+    chunking_settings.validate().map_err(|source| {
+        SufficientStatisticsTransformSliceExecutionError::InvalidChunkingSettings { source }
+    })?;
+
+    for (path_index, path_slices) in slices_path_batch.iter().enumerate() {
+        let path_seed = derive_sufficient_statistics_batch_path_seed(root_seed, path_index as u64);
+        stream_interval_statistics_from_transform_slices_with_randomness_factory_internal(
+            path_seed,
+            path_slices,
+            chunking_settings,
+            randomness_factory,
+            |interval_chunk| {
+                emit_chunk(SufficientStatisticsIntervalStatisticsPathChunk {
+                    path_index,
+                    path_seed,
+                    interval_chunk,
+                });
+            },
+        )
+        .map_err(|source| {
+            SufficientStatisticsTransformSliceExecutionError::PathSamplingFailure {
+                path_index,
+                source,
+            }
+        })?;
+    }
+
+    Ok(())
+}
+
+/// Batch sample multi-path interval statistics with deterministic path-seed partitioning.
+pub fn sample_interval_statistics_multi_path_batch_from_transform_slices(
+    root_seed: u64,
+    slices_path_batch: &[Vec<SufficientStatisticsTransformSlices>],
+    chunking_settings: SufficientStatisticsStreamingChunkingSettings,
+) -> Result<
+    Vec<Vec<SufficientStatisticsIntervalStatistics>>,
+    SufficientStatisticsTransformSliceExecutionError,
+> {
+    let randomness_factory = SplitMix64SimulationRandomnessFactory;
+    sample_interval_statistics_multi_path_batch_from_transform_slices_with_randomness_factory(
+        root_seed,
+        slices_path_batch,
+        chunking_settings,
+        &randomness_factory,
+    )
+}
+
+/// Batch sample multi-path interval statistics with deterministic path-seed partitioning.
+pub fn sample_interval_statistics_multi_path_batch_from_transform_slices_with_randomness_factory<
+    F,
+>(
+    root_seed: u64,
+    slices_path_batch: &[Vec<SufficientStatisticsTransformSlices>],
+    chunking_settings: SufficientStatisticsStreamingChunkingSettings,
+    randomness_factory: &F,
+) -> Result<
+    Vec<Vec<SufficientStatisticsIntervalStatistics>>,
+    SufficientStatisticsTransformSliceExecutionError,
+>
+where
+    F: SimulationRandomnessFactory,
+{
+    let mut sampled_paths = vec![Vec::new(); slices_path_batch.len()];
+    stream_interval_statistics_multi_path_batch_from_transform_slices_with_randomness_factory(
+        root_seed,
+        slices_path_batch,
+        chunking_settings,
+        randomness_factory,
+        |path_chunk| sampled_paths[path_chunk.path_index].extend(path_chunk.interval_chunk.records),
+    )?;
+    Ok(sampled_paths)
+}
+
+fn stream_interval_statistics_from_transform_slices_with_randomness_factory_internal<F, C>(
+    seed: u64,
+    slices_batch: &[SufficientStatisticsTransformSlices],
+    chunking_settings: SufficientStatisticsStreamingChunkingSettings,
+    randomness_factory: &F,
+    mut emit_chunk: C,
+) -> Result<(), SufficientStatisticsTransformSliceSamplingError>
+where
+    F: SimulationRandomnessFactory,
+    C: FnMut(SufficientStatisticsIntervalStatisticsChunk),
+{
+    let mut chunk_index = 0_usize;
+    let mut chunk_start_interval_index = 0_usize;
+    let mut pending_chunk_records: Vec<SufficientStatisticsIntervalStatistics> =
+        Vec::with_capacity(chunking_settings.max_intervals_per_chunk);
+
     for (batch_position, slices) in slices_batch.iter().copied().enumerate() {
-        sampled_statistics.push(
+        if pending_chunk_records.is_empty() {
+            chunk_start_interval_index = batch_position;
+        }
+
+        pending_chunk_records.push(
             sample_interval_statistics_from_transform_slices_with_sampling_index(
                 seed,
                 batch_position as u64,
@@ -1114,9 +1446,51 @@ where
                 randomness_factory,
             )?,
         );
+
+        if pending_chunk_records.len() >= chunking_settings.max_intervals_per_chunk {
+            flush_interval_statistics_chunk(
+                &mut pending_chunk_records,
+                &mut chunk_index,
+                chunk_start_interval_index,
+                &mut emit_chunk,
+            );
+        }
     }
 
-    Ok(sampled_statistics)
+    if !pending_chunk_records.is_empty() {
+        flush_interval_statistics_chunk(
+            &mut pending_chunk_records,
+            &mut chunk_index,
+            chunk_start_interval_index,
+            &mut emit_chunk,
+        );
+    }
+
+    Ok(())
+}
+
+fn flush_interval_statistics_chunk<C>(
+    pending_chunk_records: &mut Vec<SufficientStatisticsIntervalStatistics>,
+    chunk_index: &mut usize,
+    chunk_start_interval_index: usize,
+    emit_chunk: &mut C,
+) where
+    C: FnMut(SufficientStatisticsIntervalStatisticsChunk),
+{
+    if pending_chunk_records.is_empty() {
+        return;
+    }
+
+    let records = std::mem::replace(
+        pending_chunk_records,
+        Vec::with_capacity(pending_chunk_records.capacity()),
+    );
+    emit_chunk(SufficientStatisticsIntervalStatisticsChunk {
+        chunk_index: *chunk_index,
+        start_interval_index: chunk_start_interval_index,
+        records,
+    });
+    *chunk_index = chunk_index.saturating_add(1);
 }
 
 fn solve_transform_slice_value(
@@ -2540,12 +2914,14 @@ mod tests {
     use crate::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
 
     use super::{
+        SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY,
         SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY,
         SUFFICIENT_STATISTICS_INTERVAL_RETURN_GAP_GATING_POLICY,
         SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY,
         SUFFICIENT_STATISTICS_RISK_PATH_RECORD_SCHEMA_VERSION,
         SUFFICIENT_STATISTICS_RISK_PATH_SCHEMA_VERSION,
         SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION,
+        SUFFICIENT_STATISTICS_STREAMING_CHUNKING_POLICY,
         SufficientStatisticsBoundaryStateUpdateError,
         SufficientStatisticsBoundaryStateUpdateSnapshot,
         SufficientStatisticsGeneratedIntervalReturn, SufficientStatisticsIntervalStatistics,
@@ -2553,14 +2929,21 @@ mod tests {
         SufficientStatisticsRiskPath, SufficientStatisticsRiskPathError,
         SufficientStatisticsRiskPathRecord, SufficientStatisticsRiskReturnComponents,
         SufficientStatisticsRiskReturnGenerationOptions, SufficientStatisticsRiskRunRequest,
-        SufficientStatisticsRiskRunRequestError, SufficientStatisticsTransformSliceContext,
+        SufficientStatisticsRiskRunRequestError, SufficientStatisticsStreamingChunkingSettings,
+        SufficientStatisticsTransformSliceContext,
+        SufficientStatisticsTransformSliceExecutionError,
         SufficientStatisticsTransformSliceSamplingError,
         SufficientStatisticsTransformSliceSettings,
         SufficientStatisticsTransformSliceSettingsError, SufficientStatisticsTransformSlices,
+        derive_sufficient_statistics_batch_path_seed,
         generate_interval_return_from_sampled_statistics,
         sample_interval_statistics_batch_from_transform_slices,
         sample_interval_statistics_from_transform_slices,
+        sample_interval_statistics_multi_path_batch_from_transform_slices,
         solve_sufficient_statistics_transform_slices,
+        stream_interval_statistics_from_transform_slices,
+        stream_interval_statistics_multi_path_batch_from_transform_slices,
+        sufficient_statistics_batch_seed_partition_policy,
         update_boundary_state_from_interval_statistics,
     };
 
@@ -3264,6 +3647,198 @@ mod tests {
                 .expect("second batch sampling run should succeed");
 
         assert_eq!(first_batch_sample, second_batch_sample);
+    }
+
+    #[test]
+    fn transform_slice_streaming_sampler_matches_batch_sampler_with_ordered_complete_output() {
+        let equation_specification = build_equation_specification();
+        let settings = SufficientStatisticsTransformSliceSettings::default();
+
+        let slices_batch = vec![
+            solve_sufficient_statistics_transform_slices(
+                equation_specification,
+                build_transform_slice_context(0, 1.1, 0.2, 1.0),
+                settings,
+            )
+            .expect("first interval slices should solve"),
+            solve_sufficient_statistics_transform_slices(
+                equation_specification,
+                build_transform_slice_context(1, 0.8, 0.15, 1.0),
+                settings,
+            )
+            .expect("second interval slices should solve"),
+            solve_sufficient_statistics_transform_slices(
+                equation_specification,
+                build_transform_slice_context(2, 0.7, 0.1, 1.0),
+                settings,
+            )
+            .expect("third interval slices should solve"),
+        ];
+
+        let chunking_settings = SufficientStatisticsStreamingChunkingSettings::try_new(2)
+            .expect("chunking settings should be valid");
+
+        assert_eq!(
+            SufficientStatisticsStreamingChunkingSettings::policy(),
+            SUFFICIENT_STATISTICS_STREAMING_CHUNKING_POLICY
+        );
+
+        let mut streamed_chunks = Vec::new();
+        stream_interval_statistics_from_transform_slices(
+            77,
+            &slices_batch,
+            chunking_settings,
+            |chunk| streamed_chunks.push(chunk),
+        )
+        .expect("streaming sampling should succeed");
+
+        assert_eq!(streamed_chunks.len(), 2);
+        assert_eq!(streamed_chunks[0].chunk_index, 0);
+        assert_eq!(streamed_chunks[0].start_interval_index, 0);
+        assert_eq!(streamed_chunks[0].records.len(), 2);
+        assert_eq!(streamed_chunks[1].chunk_index, 1);
+        assert_eq!(streamed_chunks[1].start_interval_index, 2);
+        assert_eq!(streamed_chunks[1].records.len(), 1);
+
+        let streamed_statistics: Vec<SufficientStatisticsIntervalStatistics> = streamed_chunks
+            .iter()
+            .flat_map(|chunk| chunk.records.iter().copied())
+            .collect();
+        let batched_statistics =
+            sample_interval_statistics_batch_from_transform_slices(77, &slices_batch)
+                .expect("batch sampling should succeed");
+
+        assert_eq!(streamed_statistics, batched_statistics);
+    }
+
+    #[test]
+    fn transform_slice_multi_path_batch_sampler_uses_deterministic_seed_partitioning() {
+        let equation_specification = build_equation_specification();
+        let settings = SufficientStatisticsTransformSliceSettings::default();
+
+        let first_path = vec![
+            solve_sufficient_statistics_transform_slices(
+                equation_specification,
+                build_transform_slice_context(0, 1.1, 0.2, 1.0),
+                settings,
+            )
+            .expect("first path first interval should solve"),
+            solve_sufficient_statistics_transform_slices(
+                equation_specification,
+                build_transform_slice_context(1, 0.85, 0.13, 1.0),
+                settings,
+            )
+            .expect("first path second interval should solve"),
+        ];
+        let second_path = vec![
+            solve_sufficient_statistics_transform_slices(
+                equation_specification,
+                build_transform_slice_context(0, 0.9, 0.11, 1.0),
+                settings,
+            )
+            .expect("second path first interval should solve"),
+            solve_sufficient_statistics_transform_slices(
+                equation_specification,
+                build_transform_slice_context(1, 0.75, 0.09, 1.0),
+                settings,
+            )
+            .expect("second path second interval should solve"),
+        ];
+
+        let path_batch = vec![first_path, second_path];
+        let chunking_settings = SufficientStatisticsStreamingChunkingSettings::try_new(1)
+            .expect("chunking settings should be valid");
+
+        assert_eq!(
+            sufficient_statistics_batch_seed_partition_policy(),
+            SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY
+        );
+
+        let first_batch = sample_interval_statistics_multi_path_batch_from_transform_slices(
+            1_901,
+            &path_batch,
+            chunking_settings,
+        )
+        .expect("first multi-path batch sampling run should succeed");
+        let second_batch = sample_interval_statistics_multi_path_batch_from_transform_slices(
+            1_901,
+            &path_batch,
+            chunking_settings,
+        )
+        .expect("second multi-path batch sampling run should succeed");
+
+        assert_eq!(first_batch, second_batch);
+
+        for (path_index, path_slices) in path_batch.iter().enumerate() {
+            let path_seed = derive_sufficient_statistics_batch_path_seed(1_901, path_index as u64);
+            let expected_path_statistics =
+                sample_interval_statistics_batch_from_transform_slices(path_seed, path_slices)
+                    .expect("single-path sampling with partitioned seed should succeed");
+            assert_eq!(first_batch[path_index], expected_path_statistics);
+        }
+
+        let mut streamed_path_chunks = Vec::new();
+        stream_interval_statistics_multi_path_batch_from_transform_slices(
+            1_901,
+            &path_batch,
+            chunking_settings,
+            |path_chunk| streamed_path_chunks.push(path_chunk),
+        )
+        .expect("multi-path streaming sampling should succeed");
+
+        assert_eq!(streamed_path_chunks.len(), 4);
+        assert_eq!(streamed_path_chunks[0].path_index, 0);
+        assert_eq!(streamed_path_chunks[1].path_index, 0);
+        assert_eq!(streamed_path_chunks[2].path_index, 1);
+        assert_eq!(streamed_path_chunks[3].path_index, 1);
+        assert_eq!(
+            streamed_path_chunks[0].interval_chunk.start_interval_index,
+            0
+        );
+        assert_eq!(
+            streamed_path_chunks[1].interval_chunk.start_interval_index,
+            1
+        );
+        assert_eq!(
+            streamed_path_chunks[2].interval_chunk.start_interval_index,
+            0
+        );
+        assert_eq!(
+            streamed_path_chunks[3].interval_chunk.start_interval_index,
+            1
+        );
+    }
+
+    #[test]
+    fn transform_slice_streaming_sampler_rejects_zero_chunk_size() {
+        let equation_specification = build_equation_specification();
+        let settings = SufficientStatisticsTransformSliceSettings::default();
+
+        let slices_batch = vec![
+            solve_sufficient_statistics_transform_slices(
+                equation_specification,
+                build_transform_slice_context(0, 1.1, 0.2, 1.0),
+                settings,
+            )
+            .expect("interval slices should solve"),
+        ];
+
+        let invalid_chunking_settings = SufficientStatisticsStreamingChunkingSettings {
+            max_intervals_per_chunk: 0,
+        };
+
+        let error = stream_interval_statistics_from_transform_slices(
+            77,
+            &slices_batch,
+            invalid_chunking_settings,
+            |_chunk| {},
+        )
+        .expect_err("zero chunk size must fail streaming execution");
+
+        assert!(matches!(
+            error,
+            SufficientStatisticsTransformSliceExecutionError::InvalidChunkingSettings { .. }
+        ));
     }
 
     #[test]
