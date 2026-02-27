@@ -8,13 +8,21 @@ use serde::Serialize;
 
 use crate::affine_oracle::{
     ExponentialAffineTransformEquationSpecification,
-    ExponentialAffineTransformEquationSpecificationError, ExponentialAffineTransformInput,
-    ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError,
+    ExponentialAffineTransformEquationSpecificationError,
+    ExponentialAffineTransformGuardFailureCode, ExponentialAffineTransformInput,
+    ExponentialAffineTransformInputError, ExponentialAffineTransformIntegrationResult,
+    ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformSolverError,
     ExponentialAffineTransformSolverSettings,
     solve_exponential_affine_transform_with_optional_settings,
 };
 use crate::hawkes::HawkesExcitationState;
-use crate::nig::{NigSharedPlusShiftConfiguration, NigSharedPlusShiftConfigurationError};
+use crate::nig::{
+    ComplexScalar, NigSharedPlusShiftConfiguration, NigSharedPlusShiftConfigurationError,
+};
+use crate::randomness::{
+    SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
+    SplitMix64SimulationRandomnessFactory,
+};
 
 pub const SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION: &str =
     "risk.sufficient_statistics.run_request.v1";
@@ -358,6 +366,962 @@ impl Error for SufficientStatisticsRiskRunRequestError {
             _ => None,
         }
     }
+}
+
+pub const SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SETTINGS_POLICY: &str =
+    "positive_u_probes_and_positive_non_unit_z_probes_for_oracle_slice_sampling.v1";
+pub const SUFFICIENT_STATISTICS_TRANSFORM_SLICE_EXPECTATION_ESTIMATION_POLICY: &str =
+    "first_order_finite_difference_of_laplace_and_pgf_slices.v1";
+pub const SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SAMPLING_POLICY: &str = "counts_via_fractional_rounding_and_integrated_intensity_via_exponential_with_slice_implied_mean.v1";
+pub const SUFFICIENT_STATISTICS_TRANSFORM_SLICE_RANDOMNESS_SUBSTREAM_POLICY: &str =
+    "reuse_seeded_tick_substream_domains_with_interval_index_for_slice_sampler.v1";
+
+const DEFAULT_TRANSFORM_SLICE_A_PLUS_U: f64 = 1.0e-3;
+const DEFAULT_TRANSFORM_SLICE_A_MINUS_U: f64 = 1.0e-3;
+const DEFAULT_TRANSFORM_SLICE_N_PLUS_Z: f64 = 0.99;
+const DEFAULT_TRANSFORM_SLICE_N_MINUS_Z: f64 = 0.99;
+const TRANSFORM_SLICE_REAL_PART_TOLERANCE: f64 = 1.0e-8;
+const TRANSFORM_SLICE_NEGATIVE_EXPECTATION_TOLERANCE: f64 = 1.0e-10;
+const MAX_INTERVAL_STATISTICS_COUNT: u64 = 1_000_000;
+
+/// One-interval context used to solve and sample sufficient-statistics transform slices.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct SufficientStatisticsTransformSliceContext {
+    pub interval_index: usize,
+    pub s_h: f64,
+    pub nu_h: f64,
+    pub delta: f64,
+    pub initial_excitation_state: HawkesExcitationState,
+}
+
+impl SufficientStatisticsTransformSliceContext {
+    pub fn try_new(
+        interval_index: usize,
+        s_h: f64,
+        nu_h: f64,
+        delta: f64,
+        initial_excitation_state: HawkesExcitationState,
+    ) -> Result<Self, SufficientStatisticsTransformSliceContextError> {
+        let context = Self {
+            interval_index,
+            s_h,
+            nu_h,
+            delta,
+            initial_excitation_state,
+        };
+        context.validate()?;
+        Ok(context)
+    }
+
+    pub fn validate(self) -> Result<(), SufficientStatisticsTransformSliceContextError> {
+        if !self.s_h.is_finite() || self.s_h < 0.0 {
+            return Err(
+                SufficientStatisticsTransformSliceContextError::InvalidSeasonalityFactor {
+                    interval_index: self.interval_index,
+                    value: self.s_h,
+                },
+            );
+        }
+        if !self.nu_h.is_finite() || self.nu_h < 0.0 {
+            return Err(
+                SufficientStatisticsTransformSliceContextError::InvalidNewsIntensity {
+                    interval_index: self.interval_index,
+                    value: self.nu_h,
+                },
+            );
+        }
+        if !self.delta.is_finite() || self.delta <= 0.0 {
+            return Err(
+                SufficientStatisticsTransformSliceContextError::InvalidIntervalDelta {
+                    interval_index: self.interval_index,
+                    value: self.delta,
+                },
+            );
+        }
+
+        validate_excitation_state(self.initial_excitation_state).map_err(|(field, value)| {
+            SufficientStatisticsTransformSliceContextError::InvalidInitialState {
+                interval_index: self.interval_index,
+                field,
+                value,
+            }
+        })?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SufficientStatisticsTransformSliceContextError {
+    InvalidSeasonalityFactor {
+        interval_index: usize,
+        value: f64,
+    },
+    InvalidNewsIntensity {
+        interval_index: usize,
+        value: f64,
+    },
+    InvalidIntervalDelta {
+        interval_index: usize,
+        value: f64,
+    },
+    InvalidInitialState {
+        interval_index: usize,
+        field: &'static str,
+        value: f64,
+    },
+}
+
+impl Display for SufficientStatisticsTransformSliceContextError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidSeasonalityFactor {
+                interval_index,
+                value,
+            } => write!(
+                formatter,
+                "interval {interval_index} has invalid s_h, expected finite non-negative value, found {value}"
+            ),
+            Self::InvalidNewsIntensity {
+                interval_index,
+                value,
+            } => write!(
+                formatter,
+                "interval {interval_index} has invalid nu_h, expected finite non-negative value, found {value}"
+            ),
+            Self::InvalidIntervalDelta {
+                interval_index,
+                value,
+            } => write!(
+                formatter,
+                "interval {interval_index} has invalid delta, expected finite strictly positive value, found {value}"
+            ),
+            Self::InvalidInitialState {
+                interval_index,
+                field,
+                value,
+            } => write!(
+                formatter,
+                "interval {interval_index} has invalid initial_excitation_state.{field}, expected finite non-negative value, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for SufficientStatisticsTransformSliceContextError {}
+
+/// Probe settings for transform-slice extraction used by the risk sampler.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct SufficientStatisticsTransformSliceSettings {
+    pub a_plus_u: f64,
+    pub a_minus_u: f64,
+    pub n_plus_z: f64,
+    pub n_minus_z: f64,
+}
+
+impl SufficientStatisticsTransformSliceSettings {
+    pub fn try_new(
+        a_plus_u: f64,
+        a_minus_u: f64,
+        n_plus_z: f64,
+        n_minus_z: f64,
+    ) -> Result<Self, SufficientStatisticsTransformSliceSettingsError> {
+        let settings = Self {
+            a_plus_u,
+            a_minus_u,
+            n_plus_z,
+            n_minus_z,
+        };
+        settings.validate()?;
+        Ok(settings)
+    }
+
+    pub fn validate(self) -> Result<(), SufficientStatisticsTransformSliceSettingsError> {
+        if !self.a_plus_u.is_finite() || self.a_plus_u <= 0.0 {
+            return Err(
+                SufficientStatisticsTransformSliceSettingsError::InvalidAPlusU {
+                    value: self.a_plus_u,
+                },
+            );
+        }
+        if !self.a_minus_u.is_finite() || self.a_minus_u <= 0.0 {
+            return Err(
+                SufficientStatisticsTransformSliceSettingsError::InvalidAMinusU {
+                    value: self.a_minus_u,
+                },
+            );
+        }
+        if !self.n_plus_z.is_finite() || self.n_plus_z <= 0.0 || self.n_plus_z == 1.0 {
+            return Err(
+                SufficientStatisticsTransformSliceSettingsError::InvalidNPlusZ {
+                    value: self.n_plus_z,
+                },
+            );
+        }
+        if !self.n_minus_z.is_finite() || self.n_minus_z <= 0.0 || self.n_minus_z == 1.0 {
+            return Err(
+                SufficientStatisticsTransformSliceSettingsError::InvalidNMinusZ {
+                    value: self.n_minus_z,
+                },
+            );
+        }
+
+        Ok(())
+    }
+
+    pub const fn policy() -> &'static str {
+        SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SETTINGS_POLICY
+    }
+}
+
+impl Default for SufficientStatisticsTransformSliceSettings {
+    fn default() -> Self {
+        Self {
+            a_plus_u: DEFAULT_TRANSFORM_SLICE_A_PLUS_U,
+            a_minus_u: DEFAULT_TRANSFORM_SLICE_A_MINUS_U,
+            n_plus_z: DEFAULT_TRANSFORM_SLICE_N_PLUS_Z,
+            n_minus_z: DEFAULT_TRANSFORM_SLICE_N_MINUS_Z,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SufficientStatisticsTransformSliceSettingsError {
+    InvalidAPlusU { value: f64 },
+    InvalidAMinusU { value: f64 },
+    InvalidNPlusZ { value: f64 },
+    InvalidNMinusZ { value: f64 },
+}
+
+impl Display for SufficientStatisticsTransformSliceSettingsError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidAPlusU { value } => write!(
+                formatter,
+                "a_plus_u must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidAMinusU { value } => write!(
+                formatter,
+                "a_minus_u must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidNPlusZ { value } => write!(
+                formatter,
+                "n_plus_z must be finite, strictly positive, and different from 1.0, found {value}"
+            ),
+            Self::InvalidNMinusZ { value } => write!(
+                formatter,
+                "n_minus_z must be finite, strictly positive, and different from 1.0, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for SufficientStatisticsTransformSliceSettingsError {}
+
+/// One interval's transform-slice payload used to sample `A` and `N` sufficient statistics.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct SufficientStatisticsTransformSlices {
+    pub context: SufficientStatisticsTransformSliceContext,
+    pub settings: SufficientStatisticsTransformSliceSettings,
+    pub baseline_transform: ComplexScalar,
+    pub a_plus_transform: ComplexScalar,
+    pub a_minus_transform: ComplexScalar,
+    pub n_plus_transform: ComplexScalar,
+    pub n_minus_transform: ComplexScalar,
+}
+
+impl SufficientStatisticsTransformSlices {
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_new(
+        context: SufficientStatisticsTransformSliceContext,
+        settings: SufficientStatisticsTransformSliceSettings,
+        baseline_transform: ComplexScalar,
+        a_plus_transform: ComplexScalar,
+        a_minus_transform: ComplexScalar,
+        n_plus_transform: ComplexScalar,
+        n_minus_transform: ComplexScalar,
+    ) -> Result<Self, SufficientStatisticsTransformSlicesError> {
+        let slices = Self {
+            context,
+            settings,
+            baseline_transform,
+            a_plus_transform,
+            a_minus_transform,
+            n_plus_transform,
+            n_minus_transform,
+        };
+        slices.validate()?;
+        Ok(slices)
+    }
+
+    pub fn validate(self) -> Result<(), SufficientStatisticsTransformSlicesError> {
+        self.context.validate().map_err(|source| {
+            SufficientStatisticsTransformSlicesError::InvalidContext { source }
+        })?;
+        self.settings.validate().map_err(|source| {
+            SufficientStatisticsTransformSlicesError::InvalidSettings { source }
+        })?;
+
+        ensure_finite_transform_slice("baseline_transform", self.baseline_transform)?;
+        ensure_finite_transform_slice("a_plus_transform", self.a_plus_transform)?;
+        ensure_finite_transform_slice("a_minus_transform", self.a_minus_transform)?;
+        ensure_finite_transform_slice("n_plus_transform", self.n_plus_transform)?;
+        ensure_finite_transform_slice("n_minus_transform", self.n_minus_transform)?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SufficientStatisticsTransformSlicesError {
+    InvalidContext {
+        source: SufficientStatisticsTransformSliceContextError,
+    },
+    InvalidSettings {
+        source: SufficientStatisticsTransformSliceSettingsError,
+    },
+    InvalidTransformValue {
+        field: &'static str,
+        value: ComplexScalar,
+    },
+}
+
+impl Display for SufficientStatisticsTransformSlicesError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidContext { source } => {
+                write!(formatter, "transform-slice context is invalid: {source}")
+            }
+            Self::InvalidSettings { source } => {
+                write!(formatter, "transform-slice settings are invalid: {source}")
+            }
+            Self::InvalidTransformValue { field, value } => write!(
+                formatter,
+                "{field} must be finite as a complex scalar, found {value:?}"
+            ),
+        }
+    }
+}
+
+impl Error for SufficientStatisticsTransformSlicesError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidContext { source } => Some(source),
+            Self::InvalidSettings { source } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SufficientStatisticsTransformSliceSolveError {
+    InvalidContext {
+        source: SufficientStatisticsTransformSliceContextError,
+    },
+    InvalidSettings {
+        source: SufficientStatisticsTransformSliceSettingsError,
+    },
+    InvalidTransformInput {
+        interval_index: usize,
+        slice_name: &'static str,
+        source: ExponentialAffineTransformInputError,
+    },
+    SolverFailure {
+        interval_index: usize,
+        slice_name: &'static str,
+        source: ExponentialAffineTransformSolverError,
+    },
+    IncompleteSolverOutput {
+        interval_index: usize,
+        slice_name: &'static str,
+        status: ExponentialAffineTransformIntegrationStatus,
+        guard_failure_code: Option<ExponentialAffineTransformGuardFailureCode>,
+    },
+    InvalidSolvedSlices {
+        interval_index: usize,
+        source: SufficientStatisticsTransformSlicesError,
+    },
+}
+
+impl Display for SufficientStatisticsTransformSliceSolveError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidContext { source } => {
+                write!(
+                    formatter,
+                    "transform-slice solve context is invalid: {source}"
+                )
+            }
+            Self::InvalidSettings { source } => {
+                write!(
+                    formatter,
+                    "transform-slice solve settings are invalid: {source}"
+                )
+            }
+            Self::InvalidTransformInput {
+                interval_index,
+                slice_name,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} transform input for slice {slice_name} is invalid: {source}"
+            ),
+            Self::SolverFailure {
+                interval_index,
+                slice_name,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} solver failed for slice {slice_name}: {source}"
+            ),
+            Self::IncompleteSolverOutput {
+                interval_index,
+                slice_name,
+                status,
+                guard_failure_code,
+            } => write!(
+                formatter,
+                "interval {interval_index} solver did not produce completed output for slice {slice_name}, status={status:?}, guard_failure_code={guard_failure_code:?}"
+            ),
+            Self::InvalidSolvedSlices {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} solved transform slices are invalid: {source}"
+            ),
+        }
+    }
+}
+
+impl Error for SufficientStatisticsTransformSliceSolveError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidContext { source } => Some(source),
+            Self::InvalidSettings { source } => Some(source),
+            Self::InvalidTransformInput { source, .. } => Some(source),
+            Self::SolverFailure { source, .. } => Some(source),
+            Self::InvalidSolvedSlices { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SufficientStatisticsTransformSliceSamplingError {
+    InvalidSlices {
+        source: SufficientStatisticsTransformSlicesError,
+    },
+    NonRealTransformSlice {
+        interval_index: usize,
+        field: &'static str,
+        value: ComplexScalar,
+        tolerance: f64,
+    },
+    InvalidExpectedStatistic {
+        interval_index: usize,
+        statistic: &'static str,
+        value: f64,
+        numerator: f64,
+        denominator: f64,
+        context: SufficientStatisticsTransformSliceContext,
+    },
+    InvalidSampledStatistics {
+        interval_index: usize,
+        source: SufficientStatisticsIntervalStatisticsError,
+    },
+}
+
+impl Display for SufficientStatisticsTransformSliceSamplingError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidSlices { source } => {
+                write!(formatter, "invalid transform slices for sampling: {source}")
+            }
+            Self::NonRealTransformSlice {
+                interval_index,
+                field,
+                value,
+                tolerance,
+            } => write!(
+                formatter,
+                "interval {interval_index} {field} must be real-valued within imaginary tolerance {tolerance}, found {value:?}"
+            ),
+            Self::InvalidExpectedStatistic {
+                interval_index,
+                statistic,
+                value,
+                numerator,
+                denominator,
+                context,
+            } => write!(
+                formatter,
+                "interval {interval_index} derived expected {statistic} is invalid (value={value}, numerator={numerator}, denominator={denominator}, s_h={}, nu_h={}, delta={}, initial_state={:?})",
+                context.s_h, context.nu_h, context.delta, context.initial_excitation_state
+            ),
+            Self::InvalidSampledStatistics {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} sampled sufficient statistics are invalid: {source}"
+            ),
+        }
+    }
+}
+
+impl Error for SufficientStatisticsTransformSliceSamplingError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidSlices { source } => Some(source),
+            Self::InvalidSampledStatistics { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+/// Solve the baseline and `A/N` probe slices used by interval sufficient-statistics sampling.
+pub fn solve_sufficient_statistics_transform_slices(
+    equation_specification: ExponentialAffineTransformEquationSpecification,
+    context: SufficientStatisticsTransformSliceContext,
+    settings: SufficientStatisticsTransformSliceSettings,
+) -> Result<SufficientStatisticsTransformSlices, SufficientStatisticsTransformSliceSolveError> {
+    solve_sufficient_statistics_transform_slices_with_solver_settings(
+        equation_specification,
+        context,
+        settings,
+        None,
+    )
+}
+
+/// Solve transform slices with optional explicit ODE solver settings.
+pub fn solve_sufficient_statistics_transform_slices_with_solver_settings(
+    equation_specification: ExponentialAffineTransformEquationSpecification,
+    context: SufficientStatisticsTransformSliceContext,
+    settings: SufficientStatisticsTransformSliceSettings,
+    solver_settings: Option<ExponentialAffineTransformSolverSettings>,
+) -> Result<SufficientStatisticsTransformSlices, SufficientStatisticsTransformSliceSolveError> {
+    context.validate().map_err(|source| {
+        SufficientStatisticsTransformSliceSolveError::InvalidContext { source }
+    })?;
+    settings.validate().map_err(|source| {
+        SufficientStatisticsTransformSliceSolveError::InvalidSettings { source }
+    })?;
+
+    let baseline_transform = solve_transform_slice_value(
+        equation_specification,
+        context,
+        "baseline",
+        ComplexScalar::new(0.0, 0.0),
+        ComplexScalar::new(0.0, 0.0),
+        ComplexScalar::new(1.0, 0.0),
+        ComplexScalar::new(1.0, 0.0),
+        solver_settings,
+    )?;
+    let a_plus_transform = solve_transform_slice_value(
+        equation_specification,
+        context,
+        "a_plus",
+        ComplexScalar::new(settings.a_plus_u, 0.0),
+        ComplexScalar::new(0.0, 0.0),
+        ComplexScalar::new(1.0, 0.0),
+        ComplexScalar::new(1.0, 0.0),
+        solver_settings,
+    )?;
+    let a_minus_transform = solve_transform_slice_value(
+        equation_specification,
+        context,
+        "a_minus",
+        ComplexScalar::new(0.0, 0.0),
+        ComplexScalar::new(settings.a_minus_u, 0.0),
+        ComplexScalar::new(1.0, 0.0),
+        ComplexScalar::new(1.0, 0.0),
+        solver_settings,
+    )?;
+    let n_plus_transform = solve_transform_slice_value(
+        equation_specification,
+        context,
+        "n_plus",
+        ComplexScalar::new(0.0, 0.0),
+        ComplexScalar::new(0.0, 0.0),
+        ComplexScalar::new(settings.n_plus_z, 0.0),
+        ComplexScalar::new(1.0, 0.0),
+        solver_settings,
+    )?;
+    let n_minus_transform = solve_transform_slice_value(
+        equation_specification,
+        context,
+        "n_minus",
+        ComplexScalar::new(0.0, 0.0),
+        ComplexScalar::new(0.0, 0.0),
+        ComplexScalar::new(1.0, 0.0),
+        ComplexScalar::new(settings.n_minus_z, 0.0),
+        solver_settings,
+    )?;
+
+    SufficientStatisticsTransformSlices::try_new(
+        context,
+        settings,
+        baseline_transform,
+        a_plus_transform,
+        a_minus_transform,
+        n_plus_transform,
+        n_minus_transform,
+    )
+    .map_err(
+        |source| SufficientStatisticsTransformSliceSolveError::InvalidSolvedSlices {
+            interval_index: context.interval_index,
+            source,
+        },
+    )
+}
+
+/// Sample one interval's sufficient statistics from solved transform slices.
+pub fn sample_interval_statistics_from_transform_slices(
+    seed: u64,
+    slices: SufficientStatisticsTransformSlices,
+) -> Result<SufficientStatisticsIntervalStatistics, SufficientStatisticsTransformSliceSamplingError>
+{
+    let randomness_factory = SplitMix64SimulationRandomnessFactory;
+    sample_interval_statistics_from_transform_slices_with_randomness_factory(
+        seed,
+        slices,
+        &randomness_factory,
+    )
+}
+
+/// Sample one interval's sufficient statistics with an injected randomness factory.
+pub fn sample_interval_statistics_from_transform_slices_with_randomness_factory<F>(
+    seed: u64,
+    slices: SufficientStatisticsTransformSlices,
+    randomness_factory: &F,
+) -> Result<SufficientStatisticsIntervalStatistics, SufficientStatisticsTransformSliceSamplingError>
+where
+    F: SimulationRandomnessFactory,
+{
+    sample_interval_statistics_from_transform_slices_with_sampling_index(
+        seed,
+        0,
+        slices,
+        randomness_factory,
+    )
+}
+
+/// Sample a batch of interval statistics from solved transform slices.
+pub fn sample_interval_statistics_batch_from_transform_slices(
+    seed: u64,
+    slices_batch: &[SufficientStatisticsTransformSlices],
+) -> Result<
+    Vec<SufficientStatisticsIntervalStatistics>,
+    SufficientStatisticsTransformSliceSamplingError,
+> {
+    let randomness_factory = SplitMix64SimulationRandomnessFactory;
+    sample_interval_statistics_batch_from_transform_slices_with_randomness_factory(
+        seed,
+        slices_batch,
+        &randomness_factory,
+    )
+}
+
+/// Sample a batch of interval statistics with an injected randomness factory.
+pub fn sample_interval_statistics_batch_from_transform_slices_with_randomness_factory<F>(
+    seed: u64,
+    slices_batch: &[SufficientStatisticsTransformSlices],
+    randomness_factory: &F,
+) -> Result<
+    Vec<SufficientStatisticsIntervalStatistics>,
+    SufficientStatisticsTransformSliceSamplingError,
+>
+where
+    F: SimulationRandomnessFactory,
+{
+    let mut sampled_statistics = Vec::with_capacity(slices_batch.len());
+    for (batch_position, slices) in slices_batch.iter().copied().enumerate() {
+        sampled_statistics.push(
+            sample_interval_statistics_from_transform_slices_with_sampling_index(
+                seed,
+                batch_position as u64,
+                slices,
+                randomness_factory,
+            )?,
+        );
+    }
+
+    Ok(sampled_statistics)
+}
+
+fn solve_transform_slice_value(
+    equation_specification: ExponentialAffineTransformEquationSpecification,
+    context: SufficientStatisticsTransformSliceContext,
+    slice_name: &'static str,
+    u_plus: ComplexScalar,
+    u_minus: ComplexScalar,
+    z_plus: ComplexScalar,
+    z_minus: ComplexScalar,
+    solver_settings: Option<ExponentialAffineTransformSolverSettings>,
+) -> Result<ComplexScalar, SufficientStatisticsTransformSliceSolveError> {
+    let transform_input = ExponentialAffineTransformInput::try_new(
+        equation_specification,
+        u_plus,
+        u_minus,
+        z_plus,
+        z_minus,
+        context.s_h,
+        context.nu_h,
+        context.delta,
+        context.initial_excitation_state,
+    )
+    .map_err(
+        |source| SufficientStatisticsTransformSliceSolveError::InvalidTransformInput {
+            interval_index: context.interval_index,
+            slice_name,
+            source,
+        },
+    )?;
+
+    let solve_result =
+        solve_exponential_affine_transform_with_optional_settings(transform_input, solver_settings)
+            .map_err(
+                |source| SufficientStatisticsTransformSliceSolveError::SolverFailure {
+                    interval_index: context.interval_index,
+                    slice_name,
+                    source,
+                },
+            )?;
+
+    if solve_result.status != ExponentialAffineTransformIntegrationStatus::Completed {
+        return Err(
+            SufficientStatisticsTransformSliceSolveError::IncompleteSolverOutput {
+                interval_index: context.interval_index,
+                slice_name,
+                status: solve_result.status,
+                guard_failure_code: solve_result
+                    .metadata
+                    .guard_failure
+                    .map(|guard_failure| guard_failure.code),
+            },
+        );
+    }
+
+    let output = solve_result.output.ok_or(
+        SufficientStatisticsTransformSliceSolveError::IncompleteSolverOutput {
+            interval_index: context.interval_index,
+            slice_name,
+            status: solve_result.status,
+            guard_failure_code: solve_result
+                .metadata
+                .guard_failure
+                .map(|guard_failure| guard_failure.code),
+        },
+    )?;
+    Ok(output.transform_value)
+}
+
+fn sample_interval_statistics_from_transform_slices_with_sampling_index<F>(
+    seed: u64,
+    batch_position: u64,
+    slices: SufficientStatisticsTransformSlices,
+    randomness_factory: &F,
+) -> Result<SufficientStatisticsIntervalStatistics, SufficientStatisticsTransformSliceSamplingError>
+where
+    F: SimulationRandomnessFactory,
+{
+    slices.validate().map_err(|source| {
+        SufficientStatisticsTransformSliceSamplingError::InvalidSlices { source }
+    })?;
+
+    let context = slices.context;
+    let settings = slices.settings;
+    let baseline_transform =
+        extract_real_transform_value(context, "baseline_transform", slices.baseline_transform)?;
+    let a_plus_transform =
+        extract_real_transform_value(context, "a_plus_transform", slices.a_plus_transform)?;
+    let a_minus_transform =
+        extract_real_transform_value(context, "a_minus_transform", slices.a_minus_transform)?;
+    let n_plus_transform =
+        extract_real_transform_value(context, "n_plus_transform", slices.n_plus_transform)?;
+    let n_minus_transform =
+        extract_real_transform_value(context, "n_minus_transform", slices.n_minus_transform)?;
+
+    let expected_a_plus = derive_non_negative_expectation(
+        context,
+        "a_plus",
+        baseline_transform - a_plus_transform,
+        settings.a_plus_u,
+    )?;
+    let expected_a_minus = derive_non_negative_expectation(
+        context,
+        "a_minus",
+        baseline_transform - a_minus_transform,
+        settings.a_minus_u,
+    )?;
+    let expected_n_plus = derive_non_negative_expectation(
+        context,
+        "n_plus",
+        n_plus_transform - baseline_transform,
+        settings.n_plus_z - 1.0,
+    )?;
+    let expected_n_minus = derive_non_negative_expectation(
+        context,
+        "n_minus",
+        n_minus_transform - baseline_transform,
+        settings.n_minus_z - 1.0,
+    )?;
+
+    let substream_index = derive_transform_slice_sampling_substream_index(
+        context.interval_index as u64,
+        batch_position,
+    );
+    let mut n_plus_stream = randomness_factory.create_substream(
+        seed,
+        SimulationRandomnessSubstreamDomain::EndogenousBuyEventCount,
+        substream_index,
+    );
+    let mut n_minus_stream = randomness_factory.create_substream(
+        seed,
+        SimulationRandomnessSubstreamDomain::EndogenousSellEventCount,
+        substream_index,
+    );
+    let mut a_plus_stream = randomness_factory.create_substream(
+        seed,
+        SimulationRandomnessSubstreamDomain::EndogenousBuyEventTimestamp,
+        substream_index,
+    );
+    let mut a_minus_stream = randomness_factory.create_substream(
+        seed,
+        SimulationRandomnessSubstreamDomain::EndogenousSellEventTimestamp,
+        substream_index,
+    );
+
+    let sampled_n_plus = sample_count_from_expectation(expected_n_plus, &mut n_plus_stream);
+    let sampled_n_minus = sample_count_from_expectation(expected_n_minus, &mut n_minus_stream);
+    let sampled_a_plus = sample_exponential_with_mean(expected_a_plus, &mut a_plus_stream);
+    let sampled_a_minus = sample_exponential_with_mean(expected_a_minus, &mut a_minus_stream);
+
+    SufficientStatisticsIntervalStatistics::try_new(
+        sampled_a_plus,
+        sampled_a_minus,
+        sampled_n_plus,
+        sampled_n_minus,
+    )
+    .map_err(|source| {
+        SufficientStatisticsTransformSliceSamplingError::InvalidSampledStatistics {
+            interval_index: context.interval_index,
+            source,
+        }
+    })
+}
+
+fn ensure_finite_transform_slice(
+    field: &'static str,
+    value: ComplexScalar,
+) -> Result<(), SufficientStatisticsTransformSlicesError> {
+    if !value.is_finite() {
+        return Err(
+            SufficientStatisticsTransformSlicesError::InvalidTransformValue { field, value },
+        );
+    }
+    Ok(())
+}
+
+fn extract_real_transform_value(
+    context: SufficientStatisticsTransformSliceContext,
+    field: &'static str,
+    value: ComplexScalar,
+) -> Result<f64, SufficientStatisticsTransformSliceSamplingError> {
+    if value.imaginary.abs() > TRANSFORM_SLICE_REAL_PART_TOLERANCE {
+        return Err(
+            SufficientStatisticsTransformSliceSamplingError::NonRealTransformSlice {
+                interval_index: context.interval_index,
+                field,
+                value,
+                tolerance: TRANSFORM_SLICE_REAL_PART_TOLERANCE,
+            },
+        );
+    }
+
+    Ok(value.real)
+}
+
+fn derive_non_negative_expectation(
+    context: SufficientStatisticsTransformSliceContext,
+    statistic: &'static str,
+    numerator: f64,
+    denominator: f64,
+) -> Result<f64, SufficientStatisticsTransformSliceSamplingError> {
+    let expected_value = numerator / denominator;
+    if !expected_value.is_finite() {
+        return Err(
+            SufficientStatisticsTransformSliceSamplingError::InvalidExpectedStatistic {
+                interval_index: context.interval_index,
+                statistic,
+                value: expected_value,
+                numerator,
+                denominator,
+                context,
+            },
+        );
+    }
+
+    if expected_value < -TRANSFORM_SLICE_NEGATIVE_EXPECTATION_TOLERANCE {
+        return Err(
+            SufficientStatisticsTransformSliceSamplingError::InvalidExpectedStatistic {
+                interval_index: context.interval_index,
+                statistic,
+                value: expected_value,
+                numerator,
+                denominator,
+                context,
+            },
+        );
+    }
+
+    Ok(expected_value.max(0.0))
+}
+
+fn derive_transform_slice_sampling_substream_index(
+    interval_index: u64,
+    batch_position: u64,
+) -> u64 {
+    let interval_component = interval_index.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    interval_component ^ batch_position
+}
+
+fn sample_count_from_expectation<R>(expected_count: f64, randomness_stream: &mut R) -> u64
+where
+    R: SimulationRandomnessStream,
+{
+    if !expected_count.is_finite() || expected_count <= 0.0 {
+        return 0;
+    }
+
+    if expected_count >= u64::MAX as f64 {
+        return MAX_INTERVAL_STATISTICS_COUNT;
+    }
+
+    let floored_count = expected_count.floor() as u64;
+    let fractional_count = expected_count - floored_count as f64;
+    let sampled_count = if randomness_stream.next_unit_interval_f64() < fractional_count {
+        floored_count.saturating_add(1)
+    } else {
+        floored_count
+    };
+
+    sampled_count.min(MAX_INTERVAL_STATISTICS_COUNT)
+}
+
+fn sample_exponential_with_mean<R>(mean: f64, randomness_stream: &mut R) -> f64
+where
+    R: SimulationRandomnessStream,
+{
+    if !mean.is_finite() || mean <= 0.0 {
+        return 0.0;
+    }
+
+    let bounded_draw = randomness_stream
+        .next_unit_interval_f64()
+        .clamp(0.0, 1.0 - f64::EPSILON);
+    -mean * (1.0 - bounded_draw).ln()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -978,7 +1942,7 @@ mod tests {
     use crate::affine_oracle::ExponentialAffineTransformEquationSpecification;
     use crate::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
     use crate::news::GammaSeverityMarkConfiguration;
-    use crate::nig::NigSharedPlusShiftConfiguration;
+    use crate::nig::{ComplexScalar, NigSharedPlusShiftConfiguration};
 
     use super::{
         SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY,
@@ -989,7 +1953,13 @@ mod tests {
         SufficientStatisticsRiskModelInputs, SufficientStatisticsRiskPath,
         SufficientStatisticsRiskPathError, SufficientStatisticsRiskPathRecord,
         SufficientStatisticsRiskReturnComponents, SufficientStatisticsRiskRunRequest,
-        SufficientStatisticsRiskRunRequestError,
+        SufficientStatisticsRiskRunRequestError, SufficientStatisticsTransformSliceContext,
+        SufficientStatisticsTransformSliceSamplingError,
+        SufficientStatisticsTransformSliceSettings,
+        SufficientStatisticsTransformSliceSettingsError, SufficientStatisticsTransformSlices,
+        sample_interval_statistics_batch_from_transform_slices,
+        sample_interval_statistics_from_transform_slices,
+        solve_sufficient_statistics_transform_slices,
     };
 
     #[test]
@@ -1196,6 +2166,140 @@ mod tests {
         );
     }
 
+    #[test]
+    fn transform_slice_sampler_outputs_domain_sane_statistics() {
+        let equation_specification = build_equation_specification();
+        let context = build_transform_slice_context(0, 1.1, 0.2, 1.0);
+        let settings = SufficientStatisticsTransformSliceSettings::default();
+
+        let slices =
+            solve_sufficient_statistics_transform_slices(equation_specification, context, settings)
+                .expect("transform slices should solve");
+        let sampled_statistics = sample_interval_statistics_from_transform_slices(17, slices)
+            .expect("slice sampling should succeed");
+
+        sampled_statistics
+            .validate()
+            .expect("sampled statistics should satisfy domain checks");
+
+        let serialized =
+            serde_json::to_value(sampled_statistics).expect("sampled statistics should serialize");
+
+        assert!(serialized.get("a_plus").is_some());
+        assert!(serialized.get("a_minus").is_some());
+        assert!(serialized.get("n_plus").is_some());
+        assert!(serialized.get("n_minus").is_some());
+    }
+
+    #[test]
+    fn transform_slice_sampler_is_seed_deterministic_for_repeated_sampling() {
+        let equation_specification = build_equation_specification();
+        let context = build_transform_slice_context(1, 0.9, 0.1, 1.0);
+        let settings = SufficientStatisticsTransformSliceSettings::default();
+        let slices =
+            solve_sufficient_statistics_transform_slices(equation_specification, context, settings)
+                .expect("transform slices should solve");
+
+        let first_sample = sample_interval_statistics_from_transform_slices(123, slices)
+            .expect("first sampling run should succeed");
+        let second_sample = sample_interval_statistics_from_transform_slices(123, slices)
+            .expect("second sampling run should succeed");
+
+        assert_eq!(first_sample, second_sample);
+    }
+
+    #[test]
+    fn transform_slice_batch_sampler_is_seed_deterministic_for_repeated_sampling() {
+        let equation_specification = build_equation_specification();
+        let settings = SufficientStatisticsTransformSliceSettings::default();
+        let first_interval_slices = solve_sufficient_statistics_transform_slices(
+            equation_specification,
+            build_transform_slice_context(0, 1.1, 0.2, 1.0),
+            settings,
+        )
+        .expect("first interval slices should solve");
+        let second_interval_slices = solve_sufficient_statistics_transform_slices(
+            equation_specification,
+            build_transform_slice_context(1, 0.8, 0.15, 1.0),
+            settings,
+        )
+        .expect("second interval slices should solve");
+        let batch = vec![first_interval_slices, second_interval_slices];
+
+        let first_batch_sample = sample_interval_statistics_batch_from_transform_slices(77, &batch)
+            .expect("first batch sampling run should succeed");
+        let second_batch_sample =
+            sample_interval_statistics_batch_from_transform_slices(77, &batch)
+                .expect("second batch sampling run should succeed");
+
+        assert_eq!(first_batch_sample, second_batch_sample);
+    }
+
+    #[test]
+    fn transform_slice_sampler_rejects_non_real_transform_inputs_with_context() {
+        let context = build_transform_slice_context(4, 1.2, 0.3, 1.0);
+        let slices = SufficientStatisticsTransformSlices::try_new(
+            context,
+            SufficientStatisticsTransformSliceSettings::default(),
+            ComplexScalar::new(1.0, 1.0e-3),
+            ComplexScalar::new(0.99, 0.0),
+            ComplexScalar::new(0.98, 0.0),
+            ComplexScalar::new(0.97, 0.0),
+            ComplexScalar::new(0.96, 0.0),
+        )
+        .expect("finite transform payload should construct");
+
+        let error = sample_interval_statistics_from_transform_slices(8, slices)
+            .expect_err("non-real transform slice should fail sampling");
+        assert!(matches!(
+            error,
+            SufficientStatisticsTransformSliceSamplingError::NonRealTransformSlice {
+                interval_index: 4,
+                field: "baseline_transform",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn transform_slice_sampler_rejects_invalid_expected_statistics_from_invalid_slices() {
+        let context = build_transform_slice_context(6, 1.2, 0.3, 1.0);
+        let settings = SufficientStatisticsTransformSliceSettings::default();
+        let invalid_slices = SufficientStatisticsTransformSlices::try_new(
+            context,
+            settings,
+            ComplexScalar::new(1.0, 0.0),
+            ComplexScalar::new(1.1, 0.0),
+            ComplexScalar::new(0.95, 0.0),
+            ComplexScalar::new(0.98, 0.0),
+            ComplexScalar::new(0.97, 0.0),
+        )
+        .expect("finite transform payload should construct");
+
+        let error = sample_interval_statistics_from_transform_slices(8, invalid_slices)
+            .expect_err("invalid expected A-plus value should fail sampling");
+        assert!(matches!(
+            error,
+            SufficientStatisticsTransformSliceSamplingError::InvalidExpectedStatistic {
+                interval_index: 6,
+                statistic: "a_plus",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn transform_slice_settings_rejects_invalid_probe_values() {
+        let invalid_settings =
+            SufficientStatisticsTransformSliceSettings::try_new(1.0e-3, 1.0e-3, 1.0, 0.99)
+                .expect_err("n_plus_z equal to one must fail validation");
+
+        assert_eq!(
+            invalid_settings,
+            SufficientStatisticsTransformSliceSettingsError::InvalidNPlusZ { value: 1.0 }
+        );
+    }
+
     fn build_valid_run_request() -> SufficientStatisticsRiskRunRequest {
         SufficientStatisticsRiskRunRequest::try_new(
             17,
@@ -1207,7 +2311,23 @@ mod tests {
         .expect("run request should be valid")
     }
 
-    fn build_model_inputs() -> SufficientStatisticsRiskModelInputs {
+    fn build_transform_slice_context(
+        interval_index: usize,
+        s_h: f64,
+        nu_h: f64,
+        delta: f64,
+    ) -> SufficientStatisticsTransformSliceContext {
+        SufficientStatisticsTransformSliceContext::try_new(
+            interval_index,
+            s_h,
+            nu_h,
+            delta,
+            build_initial_state(),
+        )
+        .expect("slice context should be valid")
+    }
+
+    fn build_equation_specification() -> ExponentialAffineTransformEquationSpecification {
         let kernel_parameters = HawkesKernelParameters::try_new(
             0.8,
             1.6,
@@ -1225,14 +2345,17 @@ mod tests {
             },
         )
         .expect("kernel parameters should be valid");
-        let equation_specification = ExponentialAffineTransformEquationSpecification::try_new(
+
+        ExponentialAffineTransformEquationSpecification::try_new(
             kernel_parameters,
             GammaSeverityMarkConfiguration::try_new(1.8, 0.7).expect("gamma marks should be valid"),
         )
-        .expect("equation specification should be valid");
+        .expect("equation specification should be valid")
+    }
 
+    fn build_model_inputs() -> SufficientStatisticsRiskModelInputs {
         SufficientStatisticsRiskModelInputs::try_new(
-            equation_specification,
+            build_equation_specification(),
             NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
                 .expect("nig configuration should be valid"),
             build_initial_state(),
