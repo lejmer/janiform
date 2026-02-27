@@ -6,7 +6,9 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::calendar::ExchangeCalendarRegistry;
+use crate::calendar::{
+    ExchangeCalendarRegistry, TimestampEventInputRecord, TimestampEventSessionFilter,
+};
 use crate::hawkes::{
     HawkesExcitationState, HawkesIntensityProjection, HawkesKernelLoadings,
     HawkesKernelParameterValidationReport, HawkesKernelParameters, HawkesSeasonalityIntervalError,
@@ -25,6 +27,13 @@ use crate::risk_neutral::{
     EsscherMartingaleConditionReport, EsscherTransformError, NigEsscherTransformationInput,
     NigEsscherTransformedExponent, evaluate_esscher_martingale_condition,
     transform_nig_characteristic_exponent_under_esscher_tilt,
+};
+use crate::seasonality::{
+    DayOfWeekSeasonalityEstimatorSettings, DayOfYearSeasonalityEstimatorSettings,
+    IntradaySeasonalityEstimatorSettings, ScheduledEventOverlayDefinition,
+    SeasonalityDiagnosticsReportOutput, compose_deterministic_seasonality_signal,
+    estimate_day_of_week_seasonality, estimate_day_of_year_seasonality,
+    estimate_intraday_seasonality, generate_seasonality_diagnostics_report,
 };
 
 /// Resolve interval-aligned hourly factors for the calibration path.
@@ -174,6 +183,14 @@ pub const CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY: &str =
 /// Caller-surface default policy for execution-mode resolution.
 pub const CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY: &str =
     "cli_defaults_to_disk_python_importable_api_defaults_to_memory.v1";
+pub const CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION: &str =
+    "calibration.orchestration.stage_execution.seasonality.report.v1";
+pub const CALIBRATION_SEASONALITY_STAGE_OUTPUT_SCHEMA_VERSION: &str =
+    "calibration.orchestration.stage_output.seasonality.v1";
+pub const CALIBRATION_SEASONALITY_STAGE_HANDOFF_POLICY: &str =
+    "explicit_run_spec_handoffs_mode_aware_transport.v1";
+pub const CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION: &str =
+    "seasonality_estimator.v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1322,26 +1339,627 @@ impl CalibrationRunContract {
     }
 }
 
+/// Resolve the seed used for one stage after applying stage-level overrides.
+pub fn resolve_calibration_stage_seed(
+    run_spec: &CalibrationRunSpec,
+    stage: CalibrationStage,
+) -> u64 {
+    run_spec
+        .seed_settings
+        .stage_seed_overrides
+        .iter()
+        .find(|stage_seed_override| stage_seed_override.stage == stage)
+        .map(|stage_seed_override| stage_seed_override.seed)
+        .unwrap_or(run_spec.seed_settings.global_seed)
+}
+
+/// Configurable knobs for deterministic seasonality stage execution.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SeasonalityStageExecutionSettings {
+    pub session_filter: TimestampEventSessionFilter,
+    pub sparse_hour_event_threshold: usize,
+    pub intraday_settings: IntradaySeasonalityEstimatorSettings,
+    pub day_of_week_settings: DayOfWeekSeasonalityEstimatorSettings,
+    pub day_of_year_settings: DayOfYearSeasonalityEstimatorSettings,
+}
+
+impl Default for SeasonalityStageExecutionSettings {
+    fn default() -> Self {
+        Self {
+            session_filter: TimestampEventSessionFilter::OpenOnly,
+            sparse_hour_event_threshold: 1,
+            intraday_settings: IntradaySeasonalityEstimatorSettings::default(),
+            day_of_week_settings: DayOfWeekSeasonalityEstimatorSettings::default(),
+            day_of_year_settings: DayOfYearSeasonalityEstimatorSettings::default(),
+        }
+    }
+}
+
+/// Input payload for standalone or pipeline-integrated seasonality-stage execution.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SeasonalityStageExecutionInput {
+    pub timestamp_event_records: Vec<TimestampEventInputRecord>,
+    pub scheduled_event_overlays: Vec<ScheduledEventOverlayDefinition>,
+    pub settings: SeasonalityStageExecutionSettings,
+    pub dataset_id_override: Option<String>,
+    pub estimator_version_override: Option<String>,
+}
+
+impl SeasonalityStageExecutionInput {
+    pub fn from_timestamp_event_records(
+        timestamp_event_records: Vec<TimestampEventInputRecord>,
+    ) -> Self {
+        Self {
+            timestamp_event_records,
+            scheduled_event_overlays: Vec::new(),
+            settings: SeasonalityStageExecutionSettings::default(),
+            dataset_id_override: None,
+            estimator_version_override: None,
+        }
+    }
+}
+
+/// Success and failure status for stage execution reports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CalibrationStageExecutionStatus {
+    Success,
+    Failure,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SeasonalityStageNormalizationMetadata {
+    pub normalization_policy: String,
+    pub fit_window_event_count: usize,
+    pub target_mean_factor: f64,
+    pub pre_normalization_mean_factor: f64,
+    pub normalization_constant: f64,
+    pub normalization_log_offset: f64,
+    pub post_normalization_mean_factor: f64,
+    pub mean_anchor_tolerance: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SeasonalityStageOverlayMetadata {
+    pub overlays_enabled: bool,
+    pub configured_overlay_count: usize,
+    pub enabled_overlay_count: usize,
+    pub active_overlay_event_count: usize,
+    pub precedence_policy: String,
+    pub merge_policy: String,
+    pub window_boundary_policy: String,
+    pub configured_overlay_ids_in_order: Vec<String>,
+    pub applied_overlay_ids_in_order: Vec<String>,
+    pub overlay_source_labels_in_order: Vec<String>,
+}
+
+/// Stable seasonality-stage payload consumed by downstream calibration stages.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SeasonalityStageNormalizedPayload {
+    pub schema_version: &'static str,
+    pub dataset_id: String,
+    pub exchange_code: String,
+    pub trade_events_data_reference: String,
+    pub timestamp_event_input_schema_version: String,
+    pub timestamp_event_preprocessed_schema_version: String,
+    pub intraday_estimate_schema_version: String,
+    pub day_of_week_estimate_schema_version: String,
+    pub day_of_year_estimate_schema_version: String,
+    pub composition_schema_version: String,
+    pub source_record_positions: Vec<u64>,
+    pub timestamp_utc_nanos: Vec<i64>,
+    pub exchange_local_minute_of_day: Vec<u16>,
+    pub exchange_local_day_of_week: Vec<u8>,
+    pub exchange_local_day_of_year: Vec<u16>,
+    pub market_state_codes: Vec<u8>,
+    pub intraday_minutes_per_bin: u16,
+    pub intraday_factor_by_bin: Vec<f64>,
+    pub day_of_week_factor: Vec<f64>,
+    pub day_of_year_factor: Vec<f64>,
+    pub normalized_combined_log_component_by_event: Vec<f64>,
+    pub normalized_combined_factor_by_event: Vec<f64>,
+    pub normalization_metadata: SeasonalityStageNormalizationMetadata,
+    pub overlay_metadata: SeasonalityStageOverlayMetadata,
+    pub diagnostics_report: SeasonalityDiagnosticsReportOutput,
+}
+
+/// Stage-handoff transfer output resolved from the run-spec contract.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SeasonalityStageHandoffOutput {
+    pub from_stage: CalibrationStage,
+    pub to_stage: CalibrationStage,
+    pub transport: CalibrationStageHandoffTransport,
+    pub in_memory_payload_available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_reference: Option<String>,
+}
+
+/// Deterministic execution metadata exposed for reproducibility and downstream audit.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SeasonalityStageExecutionMetadata {
+    pub stage_output_schema_version: &'static str,
+    pub stage_seed: u64,
+    pub solver_settings: CalibrationOptimizerSettings,
+    pub dataset_id: String,
+    pub estimator_version: String,
+    pub input_record_count: usize,
+    pub accepted_record_count: usize,
+    pub filtered_record_count: usize,
+    pub diagnostics_report_schema_version: String,
+    pub diagnostics_snapshot_fingerprint_algorithm: String,
+    pub diagnostics_snapshot_fingerprint_hex: String,
+    pub normalization_policy: String,
+}
+
+/// Structured failure modes for seasonality-stage execution.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "failure_kind", rename_all = "snake_case")]
+pub enum SeasonalityStageExecutionFailure {
+    InvalidRunSpec { error_message: String },
+    StageIsNotSelectedInRunSpec,
+    MissingStageSolverSettings,
+    MissingTimestampEventRecords,
+    EmptyDatasetId,
+    EmptyEstimatorVersion,
+    NoAcceptedTimestampEventsAfterPreprocessing,
+    TimestampPreprocessingFailed { error_message: String },
+    IntradayEstimationFailed { error_message: String },
+    DayOfWeekEstimationFailed { error_message: String },
+    DayOfYearEstimationFailed { error_message: String },
+    DeterministicCompositionFailed { error_message: String },
+    DiagnosticsReportFailed { error_message: String },
+}
+
+/// Structured seasonality-stage report for partial or full staged calibration workflows.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SeasonalityStageExecutionReport {
+    pub schema_version: &'static str,
+    pub stage: CalibrationStage,
+    pub status: CalibrationStageExecutionStatus,
+    pub run_id: String,
+    pub execution_mode: CalibrationExecutionMode,
+    pub handoff_policy: &'static str,
+    pub handoffs: Vec<SeasonalityStageHandoffOutput>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub normalized_stage_payload: Option<SeasonalityStageNormalizedPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<SeasonalityStageExecutionMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure: Option<SeasonalityStageExecutionFailure>,
+}
+
+/// Execute the deterministic seasonality stage and emit normalized handoff-ready output.
+pub fn run_seasonality_calibration_stage(
+    run_spec: &CalibrationRunSpec,
+    calendar_registry: &ExchangeCalendarRegistry,
+    stage_input: SeasonalityStageExecutionInput,
+) -> SeasonalityStageExecutionReport {
+    if let Err(source) = run_spec.validate() {
+        return build_seasonality_stage_failure_report(
+            run_spec,
+            SeasonalityStageExecutionFailure::InvalidRunSpec {
+                error_message: format!("{source} (classification={:?})", source.classification()),
+            },
+        );
+    }
+
+    if !run_spec
+        .selected_stages
+        .iter()
+        .copied()
+        .any(|selected_stage| selected_stage == CalibrationStage::Seasonality)
+    {
+        return build_seasonality_stage_failure_report(
+            run_spec,
+            SeasonalityStageExecutionFailure::StageIsNotSelectedInRunSpec,
+        );
+    }
+
+    let Some(stage_solver_settings) =
+        stage_solver_settings_for_stage(run_spec, CalibrationStage::Seasonality)
+    else {
+        return build_seasonality_stage_failure_report(
+            run_spec,
+            SeasonalityStageExecutionFailure::MissingStageSolverSettings,
+        );
+    };
+
+    let SeasonalityStageExecutionInput {
+        timestamp_event_records,
+        scheduled_event_overlays,
+        settings,
+        dataset_id_override,
+        estimator_version_override,
+    } = stage_input;
+
+    if timestamp_event_records.is_empty() {
+        return build_seasonality_stage_failure_report(
+            run_spec,
+            SeasonalityStageExecutionFailure::MissingTimestampEventRecords,
+        );
+    }
+
+    let input_record_count = timestamp_event_records.len();
+    let resolved_dataset_id = dataset_id_override
+        .unwrap_or_else(|| run_spec.data_inputs.trade_events_data_reference.clone());
+    if resolved_dataset_id.trim().is_empty() {
+        return build_seasonality_stage_failure_report(
+            run_spec,
+            SeasonalityStageExecutionFailure::EmptyDatasetId,
+        );
+    }
+
+    let resolved_estimator_version = estimator_version_override
+        .unwrap_or_else(|| CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION.to_string());
+    if resolved_estimator_version.trim().is_empty() {
+        return build_seasonality_stage_failure_report(
+            run_spec,
+            SeasonalityStageExecutionFailure::EmptyEstimatorVersion,
+        );
+    }
+
+    let preprocessed = match calendar_registry.preprocess_timestamp_events(
+        &run_spec.data_inputs.exchange_code,
+        timestamp_event_records,
+        settings.session_filter,
+        settings.sparse_hour_event_threshold,
+    ) {
+        Ok(preprocessed) => preprocessed,
+        Err(source) => {
+            return build_seasonality_stage_failure_report(
+                run_spec,
+                SeasonalityStageExecutionFailure::TimestampPreprocessingFailed {
+                    error_message: source.to_string(),
+                },
+            );
+        }
+    };
+
+    if preprocessed.timestamp_utc_nanos.is_empty() {
+        return build_seasonality_stage_failure_report(
+            run_spec,
+            SeasonalityStageExecutionFailure::NoAcceptedTimestampEventsAfterPreprocessing,
+        );
+    }
+
+    let intraday_estimate = match estimate_intraday_seasonality(
+        &preprocessed.exchange_local_minute_of_day,
+        settings.intraday_settings,
+    ) {
+        Ok(estimate) => estimate,
+        Err(source) => {
+            return build_seasonality_stage_failure_report(
+                run_spec,
+                SeasonalityStageExecutionFailure::IntradayEstimationFailed {
+                    error_message: source.to_string(),
+                },
+            );
+        }
+    };
+
+    let day_of_week_estimate = match estimate_day_of_week_seasonality(
+        &preprocessed.exchange_local_day_of_week,
+        settings.day_of_week_settings,
+    ) {
+        Ok(estimate) => estimate,
+        Err(source) => {
+            return build_seasonality_stage_failure_report(
+                run_spec,
+                SeasonalityStageExecutionFailure::DayOfWeekEstimationFailed {
+                    error_message: source.to_string(),
+                },
+            );
+        }
+    };
+
+    let day_of_year_estimate = match estimate_day_of_year_seasonality(
+        &preprocessed.exchange_local_day_of_year,
+        settings.day_of_year_settings,
+    ) {
+        Ok(estimate) => estimate,
+        Err(source) => {
+            return build_seasonality_stage_failure_report(
+                run_spec,
+                SeasonalityStageExecutionFailure::DayOfYearEstimationFailed {
+                    error_message: source.to_string(),
+                },
+            );
+        }
+    };
+
+    let composition = match compose_deterministic_seasonality_signal(
+        &preprocessed.timestamp_utc_nanos,
+        &preprocessed.exchange_local_minute_of_day,
+        &preprocessed.exchange_local_day_of_week,
+        &preprocessed.exchange_local_day_of_year,
+        intraday_estimate.minutes_per_bin,
+        &intraday_estimate.intraday_log_component_by_bin,
+        &day_of_week_estimate.day_of_week_log_component,
+        &day_of_year_estimate.day_of_year_log_component,
+        &scheduled_event_overlays,
+    ) {
+        Ok(composition) => composition,
+        Err(source) => {
+            return build_seasonality_stage_failure_report(
+                run_spec,
+                SeasonalityStageExecutionFailure::DeterministicCompositionFailed {
+                    error_message: source.to_string(),
+                },
+            );
+        }
+    };
+
+    let diagnostics_report = match generate_seasonality_diagnostics_report(
+        crate::seasonality::SeasonalityDiagnosticsReportInput {
+            dataset_id: &resolved_dataset_id,
+            input_schema_version: preprocessed.input_schema_version,
+            preprocessed_schema_version: preprocessed.schema_version,
+            exchange_code: &preprocessed.exchange_code,
+            exchange_timezone_name: &preprocessed.exchange_timezone_name,
+            source_record_positions: &preprocessed.source_record_positions,
+            timestamp_utc_nanos: &preprocessed.timestamp_utc_nanos,
+            exchange_local_minute_of_day: &preprocessed.exchange_local_minute_of_day,
+            exchange_local_day_of_week: &preprocessed.exchange_local_day_of_week,
+            exchange_local_day_of_year: &preprocessed.exchange_local_day_of_year,
+            market_state_codes: &preprocessed.market_state_codes,
+            intraday_estimate: &intraday_estimate,
+            day_of_week_estimate: &day_of_week_estimate,
+            day_of_year_estimate: &day_of_year_estimate,
+            composition: &composition,
+            estimator_version: &resolved_estimator_version,
+        },
+    ) {
+        Ok(report) => report,
+        Err(source) => {
+            return build_seasonality_stage_failure_report(
+                run_spec,
+                SeasonalityStageExecutionFailure::DiagnosticsReportFailed {
+                    error_message: source.to_string(),
+                },
+            );
+        }
+    };
+
+    let normalization_metadata = SeasonalityStageNormalizationMetadata {
+        normalization_policy: composition
+            .diagnostics
+            .normalization_metadata
+            .normalization_policy
+            .to_string(),
+        fit_window_event_count: composition
+            .diagnostics
+            .normalization_metadata
+            .fit_window_event_count,
+        target_mean_factor: composition
+            .diagnostics
+            .normalization_metadata
+            .target_mean_factor,
+        pre_normalization_mean_factor: composition
+            .diagnostics
+            .normalization_metadata
+            .pre_normalization_mean_factor,
+        normalization_constant: composition
+            .diagnostics
+            .normalization_metadata
+            .normalization_constant,
+        normalization_log_offset: composition
+            .diagnostics
+            .normalization_metadata
+            .normalization_log_offset,
+        post_normalization_mean_factor: composition
+            .diagnostics
+            .normalization_metadata
+            .post_normalization_mean_factor,
+        mean_anchor_tolerance: composition
+            .diagnostics
+            .normalization_metadata
+            .mean_anchor_tolerance,
+    };
+
+    let overlay_metadata = SeasonalityStageOverlayMetadata {
+        overlays_enabled: composition
+            .diagnostics
+            .overlay_provenance_metadata
+            .overlays_enabled,
+        configured_overlay_count: composition
+            .diagnostics
+            .overlay_provenance_metadata
+            .configured_overlay_count,
+        enabled_overlay_count: composition
+            .diagnostics
+            .overlay_provenance_metadata
+            .enabled_overlay_count,
+        active_overlay_event_count: composition
+            .diagnostics
+            .overlay_provenance_metadata
+            .active_overlay_event_count,
+        precedence_policy: composition
+            .diagnostics
+            .overlay_provenance_metadata
+            .precedence_policy
+            .to_string(),
+        merge_policy: composition
+            .diagnostics
+            .overlay_provenance_metadata
+            .merge_policy
+            .to_string(),
+        window_boundary_policy: composition
+            .diagnostics
+            .overlay_provenance_metadata
+            .window_boundary_policy
+            .to_string(),
+        configured_overlay_ids_in_order: composition
+            .diagnostics
+            .overlay_provenance_metadata
+            .configured_overlay_ids_in_order
+            .clone(),
+        applied_overlay_ids_in_order: composition
+            .diagnostics
+            .overlay_provenance_metadata
+            .applied_overlay_ids_in_order
+            .clone(),
+        overlay_source_labels_in_order: composition
+            .diagnostics
+            .overlay_provenance_metadata
+            .overlay_source_labels_in_order
+            .clone(),
+    };
+
+    let normalized_stage_payload = SeasonalityStageNormalizedPayload {
+        schema_version: CALIBRATION_SEASONALITY_STAGE_OUTPUT_SCHEMA_VERSION,
+        dataset_id: resolved_dataset_id.clone(),
+        exchange_code: preprocessed.exchange_code.clone(),
+        trade_events_data_reference: run_spec.data_inputs.trade_events_data_reference.clone(),
+        timestamp_event_input_schema_version: preprocessed.input_schema_version.to_string(),
+        timestamp_event_preprocessed_schema_version: preprocessed.schema_version.to_string(),
+        intraday_estimate_schema_version: intraday_estimate.schema_version.to_string(),
+        day_of_week_estimate_schema_version: day_of_week_estimate.schema_version.to_string(),
+        day_of_year_estimate_schema_version: day_of_year_estimate.schema_version.to_string(),
+        composition_schema_version: composition.schema_version.to_string(),
+        source_record_positions: preprocessed.source_record_positions.clone(),
+        timestamp_utc_nanos: preprocessed.timestamp_utc_nanos.clone(),
+        exchange_local_minute_of_day: preprocessed.exchange_local_minute_of_day.clone(),
+        exchange_local_day_of_week: preprocessed.exchange_local_day_of_week.clone(),
+        exchange_local_day_of_year: preprocessed.exchange_local_day_of_year.clone(),
+        market_state_codes: preprocessed.market_state_codes.clone(),
+        intraday_minutes_per_bin: intraday_estimate.minutes_per_bin,
+        intraday_factor_by_bin: intraday_estimate.intraday_factor_by_bin.clone(),
+        day_of_week_factor: day_of_week_estimate.day_of_week_factor.clone(),
+        day_of_year_factor: day_of_year_estimate.day_of_year_factor.clone(),
+        normalized_combined_log_component_by_event: composition
+            .combined_log_component_by_event
+            .clone(),
+        normalized_combined_factor_by_event: composition.combined_factor_by_event.clone(),
+        normalization_metadata: normalization_metadata.clone(),
+        overlay_metadata,
+        diagnostics_report: diagnostics_report.clone(),
+    };
+
+    let handoffs = build_seasonality_stage_handoff_outputs(run_spec);
+    let stage_seed = resolve_calibration_stage_seed(run_spec, CalibrationStage::Seasonality);
+
+    SeasonalityStageExecutionReport {
+        schema_version: CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
+        stage: CalibrationStage::Seasonality,
+        status: CalibrationStageExecutionStatus::Success,
+        run_id: run_spec.run_id.clone(),
+        execution_mode: run_spec.execution_mode,
+        handoff_policy: CALIBRATION_SEASONALITY_STAGE_HANDOFF_POLICY,
+        handoffs,
+        normalized_stage_payload: Some(normalized_stage_payload),
+        metadata: Some(SeasonalityStageExecutionMetadata {
+            stage_output_schema_version: CALIBRATION_SEASONALITY_STAGE_OUTPUT_SCHEMA_VERSION,
+            stage_seed,
+            solver_settings: stage_solver_settings,
+            dataset_id: resolved_dataset_id,
+            estimator_version: resolved_estimator_version,
+            input_record_count,
+            accepted_record_count: preprocessed.diagnostics.accepted_record_count,
+            filtered_record_count: preprocessed.diagnostics.filtered_record_count,
+            diagnostics_report_schema_version: diagnostics_report.schema_version.to_string(),
+            diagnostics_snapshot_fingerprint_algorithm: diagnostics_report
+                .reproducibility_metadata
+                .input_snapshot
+                .snapshot_fingerprint_algorithm
+                .to_string(),
+            diagnostics_snapshot_fingerprint_hex: diagnostics_report
+                .reproducibility_metadata
+                .input_snapshot
+                .snapshot_fingerprint_hex
+                .clone(),
+            normalization_policy: normalization_metadata.normalization_policy,
+        }),
+        failure: None,
+    }
+}
+
+fn build_seasonality_stage_handoff_outputs(
+    run_spec: &CalibrationRunSpec,
+) -> Vec<SeasonalityStageHandoffOutput> {
+    run_spec
+        .stage_handoffs
+        .iter()
+        .filter(|stage_handoff| stage_handoff.from_stage == CalibrationStage::Seasonality)
+        .map(|stage_handoff| match stage_handoff.transport {
+            CalibrationStageHandoffTransport::InMemoryOutput => SeasonalityStageHandoffOutput {
+                from_stage: stage_handoff.from_stage,
+                to_stage: stage_handoff.to_stage,
+                transport: stage_handoff.transport,
+                in_memory_payload_available: true,
+                artifact_reference: None,
+            },
+            CalibrationStageHandoffTransport::PersistedArtifactReference => {
+                SeasonalityStageHandoffOutput {
+                    from_stage: stage_handoff.from_stage,
+                    to_stage: stage_handoff.to_stage,
+                    transport: stage_handoff.transport,
+                    in_memory_payload_available: false,
+                    artifact_reference: stage_handoff.artifact_reference.clone(),
+                }
+            }
+        })
+        .collect()
+}
+
+fn stage_solver_settings_for_stage(
+    run_spec: &CalibrationRunSpec,
+    stage: CalibrationStage,
+) -> Option<CalibrationOptimizerSettings> {
+    run_spec
+        .optimizer_settings_by_stage
+        .iter()
+        .find(|stage_solver_settings| stage_solver_settings.stage == stage)
+        .map(|stage_solver_settings| stage_solver_settings.optimizer_settings.clone())
+}
+
+fn build_seasonality_stage_failure_report(
+    run_spec: &CalibrationRunSpec,
+    failure: SeasonalityStageExecutionFailure,
+) -> SeasonalityStageExecutionReport {
+    SeasonalityStageExecutionReport {
+        schema_version: CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
+        stage: CalibrationStage::Seasonality,
+        status: CalibrationStageExecutionStatus::Failure,
+        run_id: run_spec.run_id.clone(),
+        execution_mode: run_spec.execution_mode,
+        handoff_policy: CALIBRATION_SEASONALITY_STAGE_HANDOFF_POLICY,
+        handoffs: Vec::new(),
+        normalized_stage_payload: None,
+        metadata: None,
+        failure: Some(failure),
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use chrono::{TimeZone, Utc};
+
+    use crate::calendar::{
+        ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, TimestampEventInputRecord,
+    };
     use crate::calibration::{
         CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY, CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION,
-        CALIBRATION_RUN_SPEC_SCHEMA_VERSION, CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY,
-        CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION, CalibrationCallerSurface, CalibrationExecutionMode,
-        CalibrationOptimizerSettings, CalibrationResumeSettings, CalibrationResumeSettingsError,
-        CalibrationResumeSource, CalibrationRunContract, CalibrationRunContractError,
-        CalibrationRunDataInputs, CalibrationRunSeedSettings, CalibrationRunSpec,
-        CalibrationRunSpecError, CalibrationRunSpecErrorClassification, CalibrationStage,
-        CalibrationStageDependency, CalibrationStageGraph, CalibrationStageGraphError,
+        CALIBRATION_RUN_SPEC_SCHEMA_VERSION,
+        CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION,
+        CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
+        CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY, CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION,
+        CalibrationCallerSurface, CalibrationExecutionMode, CalibrationOptimizerSettings,
+        CalibrationResumeSettings, CalibrationResumeSettingsError, CalibrationResumeSource,
+        CalibrationRunContract, CalibrationRunContractError, CalibrationRunDataInputs,
+        CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationRunSpecError,
+        CalibrationRunSpecErrorClassification, CalibrationStage, CalibrationStageDependency,
+        CalibrationStageExecutionStatus, CalibrationStageGraph, CalibrationStageGraphError,
         CalibrationStageHandoff, CalibrationStageHandoffError, CalibrationStageHandoffTransport,
         CalibrationStageSeedOverride, CalibrationStageSolverSettings,
-        OptionSurfaceCalibrationObservationError,
+        OptionSurfaceCalibrationObservationError, SeasonalityStageExecutionFailure,
+        SeasonalityStageExecutionInput,
         build_option_surface_calibration_observation_from_pricing_hooks,
         default_calibration_execution_mode_for_surface,
         evaluate_calibration_martingale_condition_under_esscher_tilt,
         precheck_hawkes_kernel_parameter_domain,
         precheck_structured_hawkes_kernel_parameter_domain,
         resolve_calibration_execution_mode_for_surface, resolve_calibration_stage_execution_order,
+        run_seasonality_calibration_stage,
         transform_nig_exponent_for_calibration_under_esscher_tilt,
     };
     use crate::hawkes::{
@@ -2038,6 +2656,203 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn seasonality_stage_execution_succeeds_for_memory_and_disk_mode_handoffs() {
+        let calendar_registry = calibration_stage_test_registry();
+        let input_events = calibration_stage_timestamp_fixture();
+
+        let memory_report = run_seasonality_calibration_stage(
+            &build_seasonality_stage_run_spec(CalibrationExecutionMode::Memory),
+            &calendar_registry,
+            SeasonalityStageExecutionInput::from_timestamp_event_records(input_events.clone()),
+        );
+        let disk_report = run_seasonality_calibration_stage(
+            &build_seasonality_stage_run_spec(CalibrationExecutionMode::Disk),
+            &calendar_registry,
+            SeasonalityStageExecutionInput::from_timestamp_event_records(input_events),
+        );
+
+        assert_eq!(
+            memory_report.schema_version,
+            CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION
+        );
+        assert_eq!(
+            memory_report.status,
+            CalibrationStageExecutionStatus::Success
+        );
+        assert_eq!(disk_report.status, CalibrationStageExecutionStatus::Success);
+
+        let memory_payload = memory_report
+            .normalized_stage_payload
+            .as_ref()
+            .expect("memory report should include normalized payload");
+        let disk_payload = disk_report
+            .normalized_stage_payload
+            .as_ref()
+            .expect("disk report should include normalized payload");
+        assert_eq!(memory_payload, disk_payload);
+
+        let memory_handoff = memory_report
+            .handoffs
+            .first()
+            .expect("memory report should include one handoff");
+        assert!(memory_handoff.in_memory_payload_available);
+        assert!(memory_handoff.artifact_reference.is_none());
+
+        let disk_handoff = disk_report
+            .handoffs
+            .first()
+            .expect("disk report should include one handoff");
+        assert!(!disk_handoff.in_memory_payload_available);
+        assert_eq!(
+            disk_handoff.artifact_reference.as_deref(),
+            Some("artifact://seasonality/run-001")
+        );
+    }
+
+    #[test]
+    fn seasonality_stage_execution_reports_missing_input_and_invalid_config_failures() {
+        let calendar_registry = calibration_stage_test_registry();
+        let run_spec = build_seasonality_stage_run_spec(CalibrationExecutionMode::Memory);
+
+        let missing_input_report = run_seasonality_calibration_stage(
+            &run_spec,
+            &calendar_registry,
+            SeasonalityStageExecutionInput::from_timestamp_event_records(Vec::new()),
+        );
+        assert_eq!(
+            missing_input_report.status,
+            CalibrationStageExecutionStatus::Failure
+        );
+        assert_eq!(
+            missing_input_report.failure,
+            Some(SeasonalityStageExecutionFailure::MissingTimestampEventRecords)
+        );
+
+        let mut invalid_config_input = SeasonalityStageExecutionInput::from_timestamp_event_records(
+            calibration_stage_timestamp_fixture(),
+        );
+        invalid_config_input.settings.sparse_hour_event_threshold = 0;
+
+        let invalid_config_report =
+            run_seasonality_calibration_stage(&run_spec, &calendar_registry, invalid_config_input);
+        assert_eq!(
+            invalid_config_report.status,
+            CalibrationStageExecutionStatus::Failure
+        );
+        assert!(matches!(
+            invalid_config_report.failure,
+            Some(SeasonalityStageExecutionFailure::TimestampPreprocessingFailed { .. })
+        ));
+    }
+
+    #[test]
+    fn seasonality_stage_execution_metadata_is_deterministic_under_fixed_seed_and_config() {
+        let calendar_registry = calibration_stage_test_registry();
+        let memory_run_spec = build_seasonality_stage_run_spec(CalibrationExecutionMode::Memory);
+        let disk_run_spec = build_seasonality_stage_run_spec(CalibrationExecutionMode::Disk);
+
+        let first_memory_report = run_seasonality_calibration_stage(
+            &memory_run_spec,
+            &calendar_registry,
+            SeasonalityStageExecutionInput::from_timestamp_event_records(
+                calibration_stage_timestamp_fixture(),
+            ),
+        );
+        let second_memory_report = run_seasonality_calibration_stage(
+            &memory_run_spec,
+            &calendar_registry,
+            SeasonalityStageExecutionInput::from_timestamp_event_records(
+                calibration_stage_timestamp_fixture(),
+            ),
+        );
+        let first_disk_report = run_seasonality_calibration_stage(
+            &disk_run_spec,
+            &calendar_registry,
+            SeasonalityStageExecutionInput::from_timestamp_event_records(
+                calibration_stage_timestamp_fixture(),
+            ),
+        );
+        let second_disk_report = run_seasonality_calibration_stage(
+            &disk_run_spec,
+            &calendar_registry,
+            SeasonalityStageExecutionInput::from_timestamp_event_records(
+                calibration_stage_timestamp_fixture(),
+            ),
+        );
+
+        let first_memory_metadata = first_memory_report
+            .metadata
+            .as_ref()
+            .expect("memory report should include metadata");
+        let second_memory_metadata = second_memory_report
+            .metadata
+            .as_ref()
+            .expect("second memory report should include metadata");
+        let first_disk_metadata = first_disk_report
+            .metadata
+            .as_ref()
+            .expect("disk report should include metadata");
+        let second_disk_metadata = second_disk_report
+            .metadata
+            .as_ref()
+            .expect("second disk report should include metadata");
+
+        assert_eq!(first_memory_metadata, second_memory_metadata);
+        assert_eq!(first_disk_metadata, second_disk_metadata);
+        assert_eq!(
+            first_memory_metadata.stage_seed,
+            first_disk_metadata.stage_seed
+        );
+        assert_eq!(
+            first_memory_metadata.diagnostics_snapshot_fingerprint_hex,
+            first_disk_metadata.diagnostics_snapshot_fingerprint_hex
+        );
+        assert_eq!(
+            first_memory_metadata.estimator_version,
+            CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION
+        );
+    }
+
+    #[test]
+    fn seasonality_stage_execution_supports_standalone_partial_pipeline_runs() {
+        let calendar_registry = calibration_stage_test_registry();
+
+        let standalone_seed_settings = CalibrationRunSeedSettings::try_new(
+            17,
+            vec![CalibrationStageSeedOverride {
+                stage: CalibrationStage::Seasonality,
+                seed: 101,
+            }],
+        )
+        .expect("standalone seed settings should validate");
+
+        let standalone_run_spec = CalibrationRunSpec::try_new(
+            "run-seasonality-only",
+            build_data_inputs(),
+            CalibrationExecutionMode::Memory,
+            vec![CalibrationStage::Seasonality],
+            standalone_seed_settings,
+            vec![CalibrationStageSolverSettings {
+                stage: CalibrationStage::Seasonality,
+                optimizer_settings: build_solver_settings(),
+            }],
+        )
+        .expect("standalone seasonality run spec should validate");
+
+        let report = run_seasonality_calibration_stage(
+            &standalone_run_spec,
+            &calendar_registry,
+            SeasonalityStageExecutionInput::from_timestamp_event_records(
+                calibration_stage_timestamp_fixture(),
+            ),
+        );
+
+        assert_eq!(report.status, CalibrationStageExecutionStatus::Success);
+        assert!(report.handoffs.is_empty());
+        assert!(report.failure.is_none());
+    }
+
     fn build_data_inputs() -> CalibrationRunDataInputs {
         CalibrationRunDataInputs::try_new(
             "XNYS",
@@ -2106,5 +2921,114 @@ mod tests {
             build_solver_settings_for_all_stages(),
         )
         .expect("run spec should validate")
+    }
+
+    fn build_seasonality_stage_run_spec(
+        execution_mode: CalibrationExecutionMode,
+    ) -> CalibrationRunSpec {
+        let stage_handoff = match execution_mode {
+            CalibrationExecutionMode::Memory => CalibrationStageHandoff {
+                from_stage: CalibrationStage::Seasonality,
+                to_stage: CalibrationStage::Hawkes,
+                transport: CalibrationStageHandoffTransport::InMemoryOutput,
+                artifact_reference: None,
+            },
+            CalibrationExecutionMode::Disk => CalibrationStageHandoff {
+                from_stage: CalibrationStage::Seasonality,
+                to_stage: CalibrationStage::Hawkes,
+                transport: CalibrationStageHandoffTransport::PersistedArtifactReference,
+                artifact_reference: Some("artifact://seasonality/run-001".to_string()),
+            },
+        };
+
+        CalibrationRunSpec::try_new_with_mode_extensions(
+            "run-001",
+            build_data_inputs(),
+            execution_mode,
+            vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
+            build_seed_settings(),
+            vec![
+                CalibrationStageSolverSettings {
+                    stage: CalibrationStage::Seasonality,
+                    optimizer_settings: build_solver_settings(),
+                },
+                CalibrationStageSolverSettings {
+                    stage: CalibrationStage::Hawkes,
+                    optimizer_settings: build_solver_settings(),
+                },
+            ],
+            vec![stage_handoff],
+            None,
+        )
+        .expect("seasonality stage run spec should validate")
+    }
+
+    fn calibration_stage_test_registry() -> ExchangeCalendarRegistry {
+        ExchangeCalendarRegistryLoader::load_from_json(
+            r#"
+{
+  "schema_version": "calendar.registry.v1",
+  "artifact_date": "2026-01-31",
+  "exchanges": [
+    {
+      "schema_version": "calendar.v1",
+      "exchange_code": "XNYS",
+      "exchange_name": "New York Stock Exchange",
+      "timezone_name": "America/New_York",
+      "rule_metadata": {
+        "holiday_calendar_code": "US_EQUITIES",
+        "early_close_rule_set": "US_EQUITIES_EARLY_CLOSE"
+      },
+      "regular_sessions": [
+        {
+          "weekday": "Monday",
+          "windows": [{"label": "regular", "open_time": "09:30", "close_time": "16:00"}]
+        },
+        {
+          "weekday": "Tuesday",
+          "windows": [{"label": "regular", "open_time": "09:30", "close_time": "16:00"}]
+        },
+        {
+          "weekday": "Wednesday",
+          "windows": [{"label": "regular", "open_time": "09:30", "close_time": "16:00"}]
+        }
+      ],
+      "holiday_dates": [],
+      "early_close_sessions": []
+    }
+  ]
+}
+"#,
+        )
+        .expect("calendar registry fixture should load")
+    }
+
+    fn calibration_stage_timestamp_fixture() -> Vec<TimestampEventInputRecord> {
+        vec![
+            timestamp_input_record(0, 2026, 2, 2, 14, 30, 0),
+            timestamp_input_record(1, 2026, 2, 2, 15, 30, 0),
+            timestamp_input_record(2, 2026, 2, 3, 14, 30, 0),
+            timestamp_input_record(3, 2026, 2, 3, 18, 45, 0),
+            timestamp_input_record(4, 2026, 2, 4, 14, 30, 0),
+            timestamp_input_record(5, 2026, 2, 4, 20, 30, 0),
+        ]
+    }
+
+    fn timestamp_input_record(
+        source_record_position: u64,
+        year: i32,
+        month: u32,
+        day: u32,
+        hour: u32,
+        minute: u32,
+        second: u32,
+    ) -> TimestampEventInputRecord {
+        TimestampEventInputRecord {
+            source_record_position,
+            timestamp_utc: Utc
+                .with_ymd_and_hms(year, month, day, hour, minute, second)
+                .single()
+                .expect("test timestamp should be valid"),
+        }
     }
 }
