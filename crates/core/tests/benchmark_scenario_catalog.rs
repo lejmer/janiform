@@ -50,7 +50,7 @@ fn benchmark_scenario_catalog_parses_valid_fixture_profiles() {
         BENCHMARK_SCENARIO_CATALOG_CONTENT_HASH_ALGORITHM_POLICY
     );
 
-    assert_eq!(catalog.profiles.len(), 3);
+    assert_eq!(catalog.profiles.len(), 4);
 
     let observed_scales: Vec<BenchmarkWorkloadScale> = catalog
         .profiles
@@ -62,8 +62,26 @@ fn benchmark_scenario_catalog_parses_valid_fixture_profiles() {
         vec![
             BenchmarkWorkloadScale::Small,
             BenchmarkWorkloadScale::Medium,
+            BenchmarkWorkloadScale::Medium,
             BenchmarkWorkloadScale::Large,
         ]
+    );
+
+    let has_hourly_profile = catalog
+        .profiles
+        .iter()
+        .any(|profile| (profile.interval_settings.interval_delta - 1.0).abs() < f64::EPSILON);
+    let has_sub_hour_profile = catalog
+        .profiles
+        .iter()
+        .any(|profile| profile.interval_settings.interval_delta < 1.0);
+    assert!(
+        has_hourly_profile,
+        "catalog should include hourly-default profile"
+    );
+    assert!(
+        has_sub_hour_profile,
+        "catalog should include sub-hour profile"
     );
 
     for profile in &catalog.profiles {
@@ -96,7 +114,7 @@ fn benchmark_scenario_catalog_loader_rejects_invalid_profile_interval_delta() {
         .expect_err("interval_delta equal to zero must fail")
         .to_string();
 
-    assert!(error_text.contains("medium_hourly_balanced"));
+    assert!(error_text.contains("medium_half_hour_balanced"));
     assert!(error_text.contains("interval_settings.interval_delta"));
 }
 
@@ -159,9 +177,32 @@ fn benchmark_scenario_catalog_loader_applies_deterministic_profile_ordering() {
         baseline_profile_ids,
         vec![
             "small_hourly_baseline",
+            "medium_half_hour_balanced",
             "medium_hourly_balanced",
             "large_hourly_portfolio",
         ]
+    );
+}
+
+#[test]
+fn benchmark_scenario_catalog_interval_matrix_shares_compatible_scales() {
+    let catalog_payload = load_benchmark_scenario_catalog_fixture_payload();
+    let catalog = load_benchmark_scenario_catalog_from_json(&catalog_payload)
+        .expect("benchmark scenario catalog fixture should parse");
+
+    assert!(
+        catalog
+            .profiles
+            .iter()
+            .any(|profile| profile.tags.iter().any(|tag| tag == "sub_hour")),
+        "sub-hour profile should be tagged"
+    );
+    assert!(
+        catalog
+            .profiles
+            .iter()
+            .any(|profile| profile.tags.iter().any(|tag| tag == "hourly")),
+        "hourly profile should be tagged"
     );
 }
 

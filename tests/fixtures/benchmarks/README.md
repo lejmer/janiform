@@ -16,6 +16,7 @@ benchmark harnesses.
 - `schema_version`: `benchmark.scenario.catalog.v1`
 - `catalog_id`: `coarse_time_engine_benchmark_scenarios_v1`
 - Workload scales: `small`, `medium`, `large`
+- Interval grid coverage includes an hourly default profile and at least one sub-hour profile for sensitivity checks.
 - Profile fields include:
   - `model_state`
   - `interval_settings`
@@ -44,7 +45,8 @@ benchmark harnesses.
   - `output_schema_metadata`: machine-readable required-field lists for baseline and record payloads
   - `source_report`: benchmark report provenance (`catalog_id`, `policy_id`, and policy metadata)
   - `profile_records`: per-profile component metrics (`mean_latency_seconds`,
-    `throughput_operations_per_second`, `measured_operation_count`)
+    `throughput_operations_per_second`, `measured_operation_count`, and
+    `interval_delta` metadata for profile-matrix comparability
 - Regression drift attribution report fields include:
   - `schema_version`: `benchmark.regression_drift_attribution.report.v1`
   - `classification_policy`: explicit drift-category rules for numerical drift, performance drift,

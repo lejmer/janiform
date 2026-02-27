@@ -234,6 +234,57 @@ fn benchmark_harness_validates_config_and_invocation_wiring_per_component() {
     );
 }
 
+#[test]
+fn benchmark_harness_reports_metrics_for_interval_profiles_and_preserves_profile_interval_metadata()
+{
+    let catalog = build_interval_matrix_bounded_catalog_fixture();
+    let benchmark_policy = load_benchmark_policy_fixture();
+    let execution_config = OraclePricerRiskBenchmarkExecutionConfig {
+        warmup_iteration_count_override: Some(0),
+        measured_iteration_count_override: Some(1),
+        reproducibility_seed: 11,
+    };
+
+    let report =
+        run_oracle_pricer_risk_benchmark_harness(&catalog, &benchmark_policy, execution_config)
+            .expect("interval matrix benchmark run should complete");
+
+    assert_eq!(report.profile_reports.len(), catalog.profiles.len());
+
+    let mut profile_report_by_id: BTreeMap<&str, _> = report
+        .profile_reports
+        .iter()
+        .map(|profile_report| (profile_report.profile_id.as_str(), profile_report))
+        .collect();
+
+    let mut has_hourly_profile = false;
+    let mut has_sub_hour_profile = false;
+
+    for source_profile in &catalog.profiles {
+        let profile_report = profile_report_by_id
+            .remove(source_profile.profile_id.as_str())
+            .expect("profile report should exist for every catalog profile");
+
+        assert!(profile_report.interval_delta > 0.0);
+        assert_eq!(
+            profile_report.interval_delta, source_profile.interval_settings.interval_delta,
+            "interval_delta should be preserved from profile configuration",
+        );
+        assert_eq!(profile_report.measured_iteration_count, 1);
+
+        if (profile_report.interval_delta - 1.0).abs() < f64::EPSILON {
+            has_hourly_profile = true;
+        }
+        if profile_report.interval_delta < 1.0 {
+            has_sub_hour_profile = true;
+        }
+    }
+
+    assert!(has_hourly_profile);
+    assert!(has_sub_hour_profile);
+    assert!(profile_report_by_id.is_empty());
+}
+
 fn build_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
     BenchmarkScenarioCatalog {
         schema_version: BENCHMARK_SCENARIO_CATALOG_SCHEMA_VERSION.to_string(),
@@ -285,6 +336,83 @@ fn build_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
             ),
         ],
     }
+}
+
+fn build_interval_matrix_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
+    BenchmarkScenarioCatalog {
+        schema_version: BENCHMARK_SCENARIO_CATALOG_SCHEMA_VERSION.to_string(),
+        catalog_id: "bounded_benchmark_catalog_interval_matrix".to_string(),
+        catalog_version: "1.0.1".to_string(),
+        schema_metadata: BenchmarkScenarioCatalogSchemaMetadata {
+            schema_family: BENCHMARK_SCENARIO_CATALOG_SCHEMA_FAMILY.to_string(),
+            schema_generation: BENCHMARK_SCENARIO_CATALOG_SCHEMA_GENERATION.to_string(),
+            forward_extension_policy: BENCHMARK_SCENARIO_CATALOG_FORWARD_EXTENSION_POLICY
+                .to_string(),
+        },
+        determinism_metadata: BenchmarkScenarioCatalogDeterminismMetadata {
+            profile_loading_order: BENCHMARK_SCENARIO_CATALOG_PROFILE_LOADING_ORDER_POLICY
+                .to_string(),
+            content_hash_scope: BENCHMARK_SCENARIO_CATALOG_CONTENT_HASH_SCOPE_POLICY.to_string(),
+            content_hash_algorithm: BENCHMARK_SCENARIO_CATALOG_CONTENT_HASH_ALGORITHM_POLICY
+                .to_string(),
+        },
+        profiles: vec![
+            build_profile_with_interval(
+                "interval_matrix_small_hourly",
+                BenchmarkWorkloadScale::Small,
+                1.0,
+                0.72,
+                BenchmarkScenarioComponentWorkload {
+                    oracle_requests_per_iteration: 2,
+                    pricing_requests_per_iteration: 2,
+                    risk_paths_per_iteration: 2,
+                },
+            ),
+            build_profile_with_interval(
+                "interval_matrix_small_half_hour",
+                BenchmarkWorkloadScale::Small,
+                0.5,
+                0.74,
+                BenchmarkScenarioComponentWorkload {
+                    oracle_requests_per_iteration: 1,
+                    pricing_requests_per_iteration: 1,
+                    risk_paths_per_iteration: 1,
+                },
+            ),
+            build_profile(
+                "bounded_medium_profile",
+                BenchmarkWorkloadScale::Medium,
+                0.87,
+                BenchmarkScenarioComponentWorkload {
+                    oracle_requests_per_iteration: 3,
+                    pricing_requests_per_iteration: 2,
+                    risk_paths_per_iteration: 3,
+                },
+            ),
+            build_profile(
+                "bounded_large_profile",
+                BenchmarkWorkloadScale::Large,
+                1.02,
+                BenchmarkScenarioComponentWorkload {
+                    oracle_requests_per_iteration: 4,
+                    pricing_requests_per_iteration: 4,
+                    risk_paths_per_iteration: 3,
+                },
+            ),
+        ],
+    }
+}
+
+fn build_profile_with_interval(
+    profile_id: &str,
+    workload_scale: BenchmarkWorkloadScale,
+    interval_delta: f64,
+    lambda_bar: f64,
+    component_workload: BenchmarkScenarioComponentWorkload,
+) -> BenchmarkScenarioWorkloadProfile {
+    let mut profile = build_profile(profile_id, workload_scale, lambda_bar, component_workload);
+    profile.interval_settings.interval_delta = interval_delta;
+    profile
 }
 
 fn build_profile(
