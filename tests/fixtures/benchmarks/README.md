@@ -8,6 +8,8 @@ benchmark harnesses.
 - `benchmark_scenario_catalog.json`
 - `oracle_pricer_risk_benchmark_policy.json`
 - `coarse_fine_consistency_tolerance_policy.json`
+- `oracle_pricer_risk_performance_baseline_v1.json`
+- `oracle_pricer_risk_performance_baseline_v1_1.json`
 
 ## Contract
 
@@ -34,6 +36,15 @@ benchmark harnesses.
     - pricing output deltas
     - risk path summary metric deltas
   - `governance_scope_policy`: explicit engine-level-only scope for benchmark regression workflows
+- Oracle pricer risk performance baseline fields include:
+  - `baseline_id` and `baseline_version`: versioned storage identity for comparison runs
+  - `schema_metadata`: schema family and forward-extension policy for machine-readable loading
+  - `ownership_metadata`: team ownership and refresh process metadata
+  - `capture_policy`: baseline extraction policy for concise component metrics
+  - `output_schema_metadata`: machine-readable required-field lists for baseline and record payloads
+  - `source_report`: benchmark report provenance (`catalog_id`, `policy_id`, and policy metadata)
+  - `profile_records`: per-profile component metrics (`mean_latency_seconds`,
+    `throughput_operations_per_second`, `measured_operation_count`)
 
 ## Determinism
 
@@ -56,3 +67,21 @@ the harness does not rely on undocumented hardcoded constants.
 `coarse_fine_consistency_tolerance_policy.json` centralizes versioned regression thresholds for
 engine-level coarse fine workflows and supports interval-grid bands so policy updates do not require
 harness code changes.
+
+## Performance baseline ownership
+
+- Ownership policy: `initiative_004_project_004_maintainers.v1`
+- Owner team: `coarse_time_pricing_and_risk_engines`
+- On-call alias: `janiform-core-owners`
+
+## Performance baseline refresh process
+
+1. Run the oracle pricer risk benchmark harness with deterministic execution config and fixed
+   benchmark catalog and policy fixtures.
+2. Capture the baseline artifact from the benchmark report with:
+   `capture_oracle_pricer_risk_performance_baseline_artifact(...)`.
+3. Bump `baseline_version` and update `ownership_metadata.refresh_process` only when process links
+   change.
+4. Save the updated JSON artifact in this directory and keep prior versions for drift comparisons.
+5. Validate with:
+   `cargo test -p janiform-core --test performance_baseline_capture_and_storage`.
