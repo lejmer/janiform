@@ -2,7 +2,7 @@
 //!
 //! Equation reference:
 //! \f[
-//! X = L^+(A^+) - L^-(A^-) + G.
+//! X = L^+(A^+) - L^-(A^-) + M + G.
 //! \f]
 
 use std::error::Error;
@@ -18,10 +18,10 @@ use crate::nig::{
 use crate::randomness::SimulationRandomnessStream;
 
 pub const RETURN_DECOMPOSITION_INTERFACE_POLICY: &str =
-    "explicit_a_plus_a_minus_and_gap_component_fields_without_tuple_passing.v1";
-pub const RETURN_DECOMPOSITION_UNITS_POLICY: &str = "a_plus_and_a_minus_are_integrated_intensity_expected_event_counts_and_gap_is_log_return_increment.v1";
-pub const RETURN_DECOMPOSITION_EDGE_MODE_POLICY: &str = "explicit_opt_in_buy_only_sell_only_gap_only_component_disable_modes_for_debug_and_test_workflows.v1";
-pub const RETURN_DECOMPOSITION_INTERFACE_EVOLUTION_POLICY: &str = "v0_1_additive_only_changes_for_existing_fields_and_behavior_breaking_changes_require_new_policy_identifier.v1";
+    "explicit_a_plus_a_minus_open_jump_and_closed_gap_component_fields_without_tuple_passing.v1";
+pub const RETURN_DECOMPOSITION_UNITS_POLICY: &str = "a_plus_and_a_minus_are_integrated_intensity_expected_event_counts_and_open_jump_and_closed_gap_are_log_return_increments.v1";
+pub const RETURN_DECOMPOSITION_EDGE_MODE_POLICY: &str = "explicit_opt_in_buy_only_sell_only_open_jump_only_and_closed_gap_only_component_disable_modes_for_debug_and_test_workflows.v1";
+pub const RETURN_DECOMPOSITION_INTERFACE_EVOLUTION_POLICY: &str = "additive_only_changes_for_existing_fields_and_behavior_breaking_changes_require_new_policy_identifier.v1";
 
 /// Explicit component-disable modes for test and debug workflows.
 ///
@@ -32,7 +32,8 @@ pub enum ReturnDecompositionEdgeMode {
     Disabled,
     BuyOnly,
     SellOnly,
-    GapOnly,
+    OpenJumpOnly,
+    ClosedGapOnly,
 }
 
 impl ReturnDecompositionEdgeMode {
@@ -48,8 +49,12 @@ impl ReturnDecompositionEdgeMode {
         matches!(self, Self::Disabled | Self::SellOnly)
     }
 
-    pub const fn gap_component_enabled(self) -> bool {
-        matches!(self, Self::Disabled | Self::GapOnly)
+    pub const fn open_jump_component_enabled(self) -> bool {
+        matches!(self, Self::Disabled | Self::OpenJumpOnly)
+    }
+
+    pub const fn closed_gap_component_enabled(self) -> bool {
+        matches!(self, Self::Disabled | Self::ClosedGapOnly)
     }
 }
 
@@ -64,7 +69,8 @@ impl Default for ReturnDecompositionEdgeMode {
 pub struct ReturnDecompositionInput {
     pub a_plus: f64,
     pub a_minus: f64,
-    pub gap: f64,
+    pub open_jump: f64,
+    pub closed_gap: f64,
 }
 
 /// One validated return decomposition payload with explicit component fields.
@@ -80,10 +86,15 @@ pub struct ReturnDecomposition {
     /// Units: expected sell-event count in business time.
     pub a_minus: f64,
 
-    /// Closed-market gap return contribution \f$G\f$ over the interval.
+    /// Open-window direct return-jump contribution \f$M\f$ over the interval.
     ///
     /// Units: log-return increment.
-    pub gap: f64,
+    pub open_jump: f64,
+
+    /// Closed-window gap return contribution \f$G\f$ over the interval.
+    ///
+    /// Units: log-return increment.
+    pub closed_gap: f64,
 }
 
 impl ReturnDecomposition {
@@ -93,12 +104,14 @@ impl ReturnDecomposition {
     ) -> Result<Self, ReturnDecompositionValidationError> {
         validate_non_negative_finite("a_plus", components.a_plus)?;
         validate_non_negative_finite("a_minus", components.a_minus)?;
-        validate_finite("gap", components.gap)?;
+        validate_finite("open_jump", components.open_jump)?;
+        validate_finite("closed_gap", components.closed_gap)?;
 
         Ok(Self {
             a_plus: components.a_plus,
             a_minus: components.a_minus,
-            gap: components.gap,
+            open_jump: components.open_jump,
+            closed_gap: components.closed_gap,
         })
     }
 
@@ -106,7 +119,8 @@ impl ReturnDecomposition {
     pub fn validate(self) -> Result<(), ReturnDecompositionValidationError> {
         validate_non_negative_finite("a_plus", self.a_plus)?;
         validate_non_negative_finite("a_minus", self.a_minus)?;
-        validate_finite("gap", self.gap)?;
+        validate_finite("open_jump", self.open_jump)?;
+        validate_finite("closed_gap", self.closed_gap)?;
 
         Ok(())
     }
@@ -121,7 +135,7 @@ impl ReturnDecomposition {
         RETURN_DECOMPOSITION_UNITS_POLICY
     }
 
-    /// Return the canonical v0.1 interface evolution policy identifier.
+    /// Return the canonical interface evolution policy identifier.
     pub const fn interface_evolution_policy() -> &'static str {
         RETURN_DECOMPOSITION_INTERFACE_EVOLUTION_POLICY
     }
@@ -212,8 +226,14 @@ impl ReturnDecomposition {
             0.0
         };
 
-        let gap = if edge_mode.gap_component_enabled() {
-            self.gap
+        let open_jump = if edge_mode.open_jump_component_enabled() {
+            self.open_jump
+        } else {
+            0.0
+        };
+
+        let closed_gap = if edge_mode.closed_gap_component_enabled() {
+            self.closed_gap
         } else {
             0.0
         };
@@ -221,7 +241,8 @@ impl ReturnDecomposition {
         Self {
             a_plus,
             a_minus,
-            gap,
+            open_jump,
+            closed_gap,
         }
     }
 }
@@ -310,7 +331,8 @@ impl Error for ReturnDecompositionValidationError {}
 struct ReturnDecompositionPayload {
     a_plus: f64,
     a_minus: f64,
-    gap: f64,
+    open_jump: f64,
+    closed_gap: f64,
 }
 
 impl<'de> Deserialize<'de> for ReturnDecomposition {
@@ -322,7 +344,8 @@ impl<'de> Deserialize<'de> for ReturnDecomposition {
         Self::try_new(ReturnDecompositionInput {
             a_plus: payload.a_plus,
             a_minus: payload.a_minus,
-            gap: payload.gap,
+            open_jump: payload.open_jump,
+            closed_gap: payload.closed_gap,
         })
         .map_err(serde::de::Error::custom)
     }
@@ -375,13 +398,15 @@ mod tests {
         let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 1.7,
             a_minus: 0.45,
-            gap: -0.12,
+            open_jump: -0.12,
+            closed_gap: 0.05,
         })
         .expect("valid return decomposition payload should construct");
 
         assert_eq!(decomposition.a_plus, 1.7);
         assert_eq!(decomposition.a_minus, 0.45);
-        assert_eq!(decomposition.gap, -0.12);
+        assert_eq!(decomposition.open_jump, -0.12);
+        assert_eq!(decomposition.closed_gap, 0.05);
         assert_eq!(
             ReturnDecomposition::interface_policy(),
             RETURN_DECOMPOSITION_INTERFACE_POLICY
@@ -395,7 +420,8 @@ mod tests {
             .expect("return decomposition payload should serialize");
         assert_eq!(serialized["a_plus"], serde_json::json!(1.7));
         assert_eq!(serialized["a_minus"], serde_json::json!(0.45));
-        assert_eq!(serialized["gap"], serde_json::json!(-0.12));
+        assert_eq!(serialized["open_jump"], serde_json::json!(-0.12));
+        assert_eq!(serialized["closed_gap"], serde_json::json!(0.05));
 
         let parsed: ReturnDecomposition =
             serde_json::from_value(serialized).expect("serialized payload should deserialize");
@@ -407,7 +433,8 @@ mod tests {
         let invalid_buy_side = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: -0.01,
             a_minus: 0.2,
-            gap: 0.0,
+            open_jump: 0.0,
+            closed_gap: 0.0,
         })
         .expect_err("negative a_plus must fail validation");
         assert_eq!(
@@ -419,20 +446,21 @@ mod tests {
             }
         );
 
-        let invalid_gap = ReturnDecomposition::try_new(ReturnDecompositionInput {
+        let invalid_open_jump = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 0.4,
             a_minus: 0.3,
-            gap: f64::NAN,
+            open_jump: f64::NAN,
+            closed_gap: 0.0,
         })
-        .expect_err("non-finite gap must fail validation");
+        .expect_err("non-finite open_jump must fail validation");
 
-        match invalid_gap {
+        match invalid_open_jump {
             ReturnDecompositionValidationError::DomainViolation {
                 field,
                 constraint,
                 value,
             } => {
-                assert_eq!(field, "gap");
+                assert_eq!(field, "open_jump");
                 assert_eq!(constraint, super::ReturnDecompositionConstraint::Finite);
                 assert!(value.is_nan());
             }
@@ -441,23 +469,26 @@ mod tests {
 
     #[test]
     fn deserialization_rejects_unknown_or_incomplete_payloads() {
-        let missing_gap_payload = serde_json::json!({
+        let missing_closed_gap_payload = serde_json::json!({
             "a_plus": 0.7,
-            "a_minus": 0.5
+            "a_minus": 0.5,
+            "open_jump": 0.1
         });
-        let missing_gap_error = serde_json::from_value::<ReturnDecomposition>(missing_gap_payload)
-            .expect_err("missing gap field must fail deserialization");
+        let missing_closed_gap_error =
+            serde_json::from_value::<ReturnDecomposition>(missing_closed_gap_payload)
+                .expect_err("missing closed_gap field must fail deserialization");
 
         assert!(
-            missing_gap_error
+            missing_closed_gap_error
                 .to_string()
-                .contains("missing field `gap`")
+                .contains("missing field `closed_gap`")
         );
 
         let unknown_field_payload = serde_json::json!({
             "a_plus": 0.7,
             "a_minus": 0.5,
-            "gap": 0.1,
+            "open_jump": 0.1,
+            "closed_gap": -0.2,
             "integrated_buy_intensity": 0.7
         });
         let unknown_field_error =
@@ -472,7 +503,8 @@ mod tests {
         let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 1.5,
             a_minus: 0.8,
-            gap: -0.4,
+            open_jump: 0.15,
+            closed_gap: -0.4,
         })
         .expect("test decomposition payload should construct");
 
@@ -489,7 +521,8 @@ mod tests {
             ReturnDecomposition {
                 a_plus: 1.5,
                 a_minus: 0.0,
-                gap: 0.0,
+                open_jump: 0.0,
+                closed_gap: 0.0,
             }
         );
         assert_eq!(
@@ -497,15 +530,26 @@ mod tests {
             ReturnDecomposition {
                 a_plus: 0.0,
                 a_minus: 0.8,
-                gap: 0.0,
+                open_jump: 0.0,
+                closed_gap: 0.0,
             }
         );
         assert_eq!(
-            decomposition.with_edge_mode(ReturnDecompositionEdgeMode::GapOnly),
+            decomposition.with_edge_mode(ReturnDecompositionEdgeMode::OpenJumpOnly),
             ReturnDecomposition {
                 a_plus: 0.0,
                 a_minus: 0.0,
-                gap: -0.4,
+                open_jump: 0.15,
+                closed_gap: 0.0,
+            }
+        );
+        assert_eq!(
+            decomposition.with_edge_mode(ReturnDecompositionEdgeMode::ClosedGapOnly),
+            ReturnDecomposition {
+                a_plus: 0.0,
+                a_minus: 0.0,
+                open_jump: 0.0,
+                closed_gap: -0.4,
             }
         );
     }
@@ -516,7 +560,8 @@ mod tests {
         let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 1.2,
             a_minus: 0.7,
-            gap: -0.3,
+            open_jump: -0.3,
+            closed_gap: 0.2,
         })
         .expect("test decomposition should be valid");
         let argument = ComplexScalar::new(0.25, -0.4);
@@ -538,7 +583,8 @@ mod tests {
         let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 0.9,
             a_minus: 0.4,
-            gap: 0.1,
+            open_jump: 0.1,
+            closed_gap: -0.2,
         })
         .expect("test decomposition should be valid");
 
@@ -560,10 +606,10 @@ mod tests {
     }
 
     #[test]
-    fn interface_evolution_policy_identifier_is_stable_for_v0_1() {
+    fn interface_evolution_policy_identifier_is_stable() {
         assert_eq!(
             ReturnDecomposition::interface_evolution_policy(),
-            "v0_1_additive_only_changes_for_existing_fields_and_behavior_breaking_changes_require_new_policy_identifier.v1"
+            "additive_only_changes_for_existing_fields_and_behavior_breaking_changes_require_new_policy_identifier.v1"
         );
         assert_eq!(
             ReturnDecomposition::interface_evolution_policy(),

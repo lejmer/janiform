@@ -104,7 +104,8 @@ def test_risk_path_diagnostics_schema_exposes_required_field_lists() -> None:
         "cumulative_n_plus",
         "cumulative_n_minus",
         "cumulative_trading_time_return",
-        "cumulative_gap_return",
+        "cumulative_open_jump_return",
+        "cumulative_closed_gap_return",
         "cumulative_total_return",
         "max_abs_total_return",
     ]
@@ -158,7 +159,8 @@ def test_risk_path_rejects_mismatched_diagnostics_with_context() -> None:
         "cumulative_n_plus": 5,
         "cumulative_n_minus": 2,
         "cumulative_trading_time_return": 0.01,
-        "cumulative_gap_return": -0.02,
+        "cumulative_open_jump_return": 0.0,
+        "cumulative_closed_gap_return": -0.02,
         "cumulative_total_return": -0.01,
         "max_abs_total_return": 0.01,
     }
@@ -259,7 +261,8 @@ def _valid_path_payload() -> dict[str, object]:
                     "buy_side_return": 0.04,
                     "sell_side_return": -0.03,
                     "trading_time_return": 0.01,
-                    "gap_return": -0.02,
+                    "open_jump_return": 0.0,
+                    "closed_gap_return": -0.02,
                     "total_return": -0.01,
                 },
             }

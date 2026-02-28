@@ -20,7 +20,7 @@ use crate::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
     HawkesTransitionError, HawkesTransitionStep, evolve_hawkes_state,
 };
-use crate::news::SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY;
+use crate::news::SHARED_NEWS_EVENT_DISPATCH_RETURN_ROUTING_POLICY;
 use crate::nig::{
     ComplexScalar, NigBuySellDriverParameters, NigSharedPlusShiftConfiguration,
     NigSharedPlusShiftConfigurationError, NigTradingTimeIncrementSamplingError,
@@ -74,11 +74,11 @@ const SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_PROVENANCE_FIELDS: [&str; 10] = [
     "transform_slice_sampling_policy",
     "boundary_state_update_policy",
     "interval_return_generation_policy",
-    "interval_return_gap_gating_policy",
+    "interval_return_component_routing_policy",
     "batch_seed_partition_policy",
     "artifact_workflow_tags",
 ];
-const SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_DIAGNOSTICS_FIELDS: [&str; 12] = [
+const SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_DIAGNOSTICS_FIELDS: [&str; 13] = [
     "schema_version",
     "simulated_interval_count",
     "first_interval_index",
@@ -88,7 +88,8 @@ const SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_DIAGNOSTICS_FIELDS: [&str; 12] = 
     "cumulative_n_plus",
     "cumulative_n_minus",
     "cumulative_trading_time_return",
-    "cumulative_gap_return",
+    "cumulative_open_jump_return",
+    "cumulative_closed_gap_return",
     "cumulative_total_return",
     "max_abs_total_return",
 ];
@@ -498,8 +499,8 @@ pub const SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY: &str =
     "sample_trading_time_increment_from_sampled_statistics_via_shared_return_decomposition.v1";
 pub const SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_BREAKDOWN_POLICY: &str =
     "optional_component_breakdown_toggle_for_risk_interval_return_generation.v1";
-pub const SUFFICIENT_STATISTICS_INTERVAL_RETURN_GAP_GATING_POLICY: &str =
-    SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY;
+pub const SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY: &str =
+    SHARED_NEWS_EVENT_DISPATCH_RETURN_ROUTING_POLICY;
 
 const DEFAULT_TRANSFORM_SLICE_A_PLUS_U: f64 = 1.0e-3;
 const DEFAULT_TRANSFORM_SLICE_A_MINUS_U: f64 = 1.0e-3;
@@ -2207,7 +2208,8 @@ pub struct SufficientStatisticsRiskReturnComponents {
     pub buy_side_return: f64,
     pub sell_side_return: f64,
     pub trading_time_return: f64,
-    pub gap_return: f64,
+    pub open_jump_return: f64,
+    pub closed_gap_return: f64,
     pub total_return: f64,
 }
 
@@ -2216,14 +2218,16 @@ impl SufficientStatisticsRiskReturnComponents {
         buy_side_return: f64,
         sell_side_return: f64,
         trading_time_return: f64,
-        gap_return: f64,
+        open_jump_return: f64,
+        closed_gap_return: f64,
         total_return: f64,
     ) -> Result<Self, SufficientStatisticsRiskReturnComponentsError> {
         let return_components = Self {
             buy_side_return,
             sell_side_return,
             trading_time_return,
-            gap_return,
+            open_jump_return,
+            closed_gap_return,
             total_return,
         };
         return_components.validate()?;
@@ -2234,7 +2238,8 @@ impl SufficientStatisticsRiskReturnComponents {
         validate_finite_component("buy_side_return", self.buy_side_return)?;
         validate_finite_component("sell_side_return", self.sell_side_return)?;
         validate_finite_component("trading_time_return", self.trading_time_return)?;
-        validate_finite_component("gap_return", self.gap_return)?;
+        validate_finite_component("open_jump_return", self.open_jump_return)?;
+        validate_finite_component("closed_gap_return", self.closed_gap_return)?;
         validate_finite_component("total_return", self.total_return)?;
 
         Ok(())
@@ -2290,8 +2295,8 @@ impl SufficientStatisticsGeneratedIntervalReturn {
         SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY
     }
 
-    pub const fn gap_gating_policy() -> &'static str {
-        SUFFICIENT_STATISTICS_INTERVAL_RETURN_GAP_GATING_POLICY
+    pub const fn component_routing_policy() -> &'static str {
+        SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY
     }
 }
 
@@ -2300,7 +2305,10 @@ pub enum SufficientStatisticsRiskReturnGenerationError {
     InvalidSampledStatistics {
         source: SufficientStatisticsIntervalStatisticsError,
     },
-    InvalidGapReturn {
+    InvalidOpenJumpReturn {
+        value: f64,
+    },
+    InvalidClosedGapReturn {
         value: f64,
     },
     InvalidReturnDecomposition {
@@ -2323,8 +2331,17 @@ impl Display for SufficientStatisticsRiskReturnGenerationError {
             Self::InvalidSampledStatistics { source } => {
                 write!(formatter, "sampled_statistics is invalid: {source}")
             }
-            Self::InvalidGapReturn { value } => {
-                write!(formatter, "gap_return input must be finite, found {value}")
+            Self::InvalidOpenJumpReturn { value } => {
+                write!(
+                    formatter,
+                    "open_jump_return input must be finite, found {value}"
+                )
+            }
+            Self::InvalidClosedGapReturn { value } => {
+                write!(
+                    formatter,
+                    "closed_gap_return input must be finite, found {value}"
+                )
             }
             Self::InvalidReturnDecomposition { source } => {
                 write!(
@@ -2370,13 +2387,14 @@ impl Error for SufficientStatisticsRiskReturnGenerationError {
 ///
 /// Composition:
 /// - samples trading-time increment via the shared return-decomposition API
-/// - applies market-state gating to direct gap input
+/// - routes open-jump and closed-gap inputs by market state
 /// - emits optional component breakdown for diagnostics
 pub fn generate_interval_return_from_sampled_statistics<R>(
     driver_parameters: NigBuySellDriverParameters,
     sampled_statistics: SufficientStatisticsIntervalStatistics,
     market_state: MarketState,
-    gap_return: f64,
+    open_jump_return: f64,
+    closed_gap_return: f64,
     randomness_stream: &mut R,
     options: Option<SufficientStatisticsRiskReturnGenerationOptions>,
 ) -> Result<
@@ -2390,17 +2408,28 @@ where
         SufficientStatisticsRiskReturnGenerationError::InvalidSampledStatistics { source }
     })?;
 
-    if !gap_return.is_finite() {
+    if !open_jump_return.is_finite() {
         return Err(
-            SufficientStatisticsRiskReturnGenerationError::InvalidGapReturn { value: gap_return },
+            SufficientStatisticsRiskReturnGenerationError::InvalidOpenJumpReturn {
+                value: open_jump_return,
+            },
+        );
+    }
+    if !closed_gap_return.is_finite() {
+        return Err(
+            SufficientStatisticsRiskReturnGenerationError::InvalidClosedGapReturn {
+                value: closed_gap_return,
+            },
         );
     }
 
-    let effective_gap_return = market_state_gated_gap_return(market_state, gap_return);
+    let (effective_open_jump_return, effective_closed_gap_return) =
+        market_state_routed_return_jumps(market_state, open_jump_return, closed_gap_return);
     let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
         a_plus: sampled_statistics.a_plus,
         a_minus: sampled_statistics.a_minus,
-        gap: effective_gap_return,
+        open_jump: effective_open_jump_return,
+        closed_gap: effective_closed_gap_return,
     })
     .map_err(|source| {
         SufficientStatisticsRiskReturnGenerationError::InvalidReturnDecomposition { source }
@@ -2415,7 +2444,8 @@ where
     let buy_side_return = trading_time_contributions.buy_side_increment;
     let sell_side_return = -trading_time_contributions.sell_side_increment;
     let trading_time_return = trading_time_contributions.combined_increment;
-    let total_return = trading_time_return + effective_gap_return;
+    let total_return =
+        trading_time_return + effective_open_jump_return + effective_closed_gap_return;
     if !total_return.is_finite() {
         return Err(
             SufficientStatisticsRiskReturnGenerationError::InvalidTotalReturn {
@@ -2431,7 +2461,8 @@ where
                 buy_side_return,
                 sell_side_return,
                 trading_time_return,
-                effective_gap_return,
+                effective_open_jump_return,
+                effective_closed_gap_return,
                 total_return,
             )
             .map_err(|source| {
@@ -2448,10 +2479,14 @@ where
     })
 }
 
-fn market_state_gated_gap_return(market_state: MarketState, gap_return: f64) -> f64 {
+fn market_state_routed_return_jumps(
+    market_state: MarketState,
+    open_jump_return: f64,
+    closed_gap_return: f64,
+) -> (f64, f64) {
     match market_state {
-        MarketState::Open => 0.0,
-        MarketState::Closed => gap_return,
+        MarketState::Open => (open_jump_return, 0.0),
+        MarketState::Closed => (0.0, closed_gap_return),
     }
 }
 
@@ -2491,7 +2526,7 @@ pub struct SufficientStatisticsRiskPathProvenance {
     pub transform_slice_sampling_policy: &'static str,
     pub boundary_state_update_policy: &'static str,
     pub interval_return_generation_policy: &'static str,
-    pub interval_return_gap_gating_policy: &'static str,
+    pub interval_return_component_routing_policy: &'static str,
     pub batch_seed_partition_policy: &'static str,
     pub artifact_workflow_tags: &'static [&'static str],
 }
@@ -2505,7 +2540,8 @@ pub const SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE: SufficientStatisticsRiskPa
         transform_slice_sampling_policy: SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SAMPLING_POLICY,
         boundary_state_update_policy: SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY,
         interval_return_generation_policy: SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY,
-        interval_return_gap_gating_policy: SUFFICIENT_STATISTICS_INTERVAL_RETURN_GAP_GATING_POLICY,
+        interval_return_component_routing_policy:
+            SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY,
         batch_seed_partition_policy: SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY,
         artifact_workflow_tags: &SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_TAGS,
     };
@@ -2522,7 +2558,8 @@ pub struct SufficientStatisticsRiskPathDiagnostics {
     pub cumulative_n_plus: u64,
     pub cumulative_n_minus: u64,
     pub cumulative_trading_time_return: f64,
-    pub cumulative_gap_return: f64,
+    pub cumulative_open_jump_return: f64,
+    pub cumulative_closed_gap_return: f64,
     pub cumulative_total_return: f64,
     pub max_abs_total_return: f64,
 }
@@ -2951,11 +2988,17 @@ fn validate_risk_path_provenance(
             actual: provenance.interval_return_generation_policy.to_string(),
         });
     }
-    if provenance.interval_return_gap_gating_policy != expected.interval_return_gap_gating_policy {
+    if provenance.interval_return_component_routing_policy
+        != expected.interval_return_component_routing_policy
+    {
         return Err(SufficientStatisticsRiskPathError::InvalidProvenanceField {
-            field_path: "provenance.interval_return_gap_gating_policy",
-            expected: expected.interval_return_gap_gating_policy.to_string(),
-            actual: provenance.interval_return_gap_gating_policy.to_string(),
+            field_path: "provenance.interval_return_component_routing_policy",
+            expected: expected
+                .interval_return_component_routing_policy
+                .to_string(),
+            actual: provenance
+                .interval_return_component_routing_policy
+                .to_string(),
         });
     }
     if provenance.batch_seed_partition_policy != expected.batch_seed_partition_policy {
@@ -2985,7 +3028,8 @@ fn derive_sufficient_statistics_risk_path_diagnostics(
     let mut cumulative_n_plus: u64 = 0;
     let mut cumulative_n_minus: u64 = 0;
     let mut cumulative_trading_time_return = 0.0;
-    let mut cumulative_gap_return = 0.0;
+    let mut cumulative_open_jump_return = 0.0;
+    let mut cumulative_closed_gap_return = 0.0;
     let mut cumulative_total_return = 0.0;
     let mut max_abs_total_return: f64 = 0.0;
 
@@ -3039,13 +3083,24 @@ fn derive_sufficient_statistics_risk_path_diagnostics(
             });
         }
 
-        cumulative_gap_return += record.return_components.gap_return;
-        if !cumulative_gap_return.is_finite() {
+        cumulative_open_jump_return += record.return_components.open_jump_return;
+        if !cumulative_open_jump_return.is_finite() {
             return Err(SufficientStatisticsRiskPathError::InvalidDiagnosticsField {
-                field_path: "diagnostics.cumulative_gap_return".to_string(),
+                field_path: "diagnostics.cumulative_open_jump_return".to_string(),
                 expected: "finite cumulative sum".to_string(),
                 actual: format!(
-                    "non-finite value after records[{record_position}].return_components.gap_return aggregation"
+                    "non-finite value after records[{record_position}].return_components.open_jump_return aggregation"
+                ),
+            });
+        }
+
+        cumulative_closed_gap_return += record.return_components.closed_gap_return;
+        if !cumulative_closed_gap_return.is_finite() {
+            return Err(SufficientStatisticsRiskPathError::InvalidDiagnosticsField {
+                field_path: "diagnostics.cumulative_closed_gap_return".to_string(),
+                expected: "finite cumulative sum".to_string(),
+                actual: format!(
+                    "non-finite value after records[{record_position}].return_components.closed_gap_return aggregation"
                 ),
             });
         }
@@ -3085,7 +3140,8 @@ fn derive_sufficient_statistics_risk_path_diagnostics(
         cumulative_n_plus,
         cumulative_n_minus,
         cumulative_trading_time_return,
-        cumulative_gap_return,
+        cumulative_open_jump_return,
+        cumulative_closed_gap_return,
         cumulative_total_return,
         max_abs_total_return,
     })
@@ -3166,11 +3222,21 @@ fn validate_risk_path_diagnostics(
             actual: diagnostics.cumulative_trading_time_return.to_string(),
         });
     }
-    if diagnostics.cumulative_gap_return != expected_diagnostics.cumulative_gap_return {
+    if diagnostics.cumulative_open_jump_return != expected_diagnostics.cumulative_open_jump_return {
         return Err(SufficientStatisticsRiskPathError::InvalidDiagnosticsField {
-            field_path: "diagnostics.cumulative_gap_return".to_string(),
-            expected: expected_diagnostics.cumulative_gap_return.to_string(),
-            actual: diagnostics.cumulative_gap_return.to_string(),
+            field_path: "diagnostics.cumulative_open_jump_return".to_string(),
+            expected: expected_diagnostics.cumulative_open_jump_return.to_string(),
+            actual: diagnostics.cumulative_open_jump_return.to_string(),
+        });
+    }
+    if diagnostics.cumulative_closed_gap_return != expected_diagnostics.cumulative_closed_gap_return
+    {
+        return Err(SufficientStatisticsRiskPathError::InvalidDiagnosticsField {
+            field_path: "diagnostics.cumulative_closed_gap_return".to_string(),
+            expected: expected_diagnostics
+                .cumulative_closed_gap_return
+                .to_string(),
+            actual: diagnostics.cumulative_closed_gap_return.to_string(),
         });
     }
     if diagnostics.cumulative_total_return != expected_diagnostics.cumulative_total_return {
@@ -3297,7 +3363,8 @@ struct SufficientStatisticsRiskReturnComponentsPayload {
     buy_side_return: f64,
     sell_side_return: f64,
     trading_time_return: f64,
-    gap_return: f64,
+    open_jump_return: f64,
+    closed_gap_return: f64,
     total_return: f64,
 }
 
@@ -3311,7 +3378,8 @@ impl<'de> Deserialize<'de> for SufficientStatisticsRiskReturnComponents {
             payload.buy_side_return,
             payload.sell_side_return,
             payload.trading_time_return,
-            payload.gap_return,
+            payload.open_jump_return,
+            payload.closed_gap_return,
             payload.total_return,
         )
         .map_err(serde::de::Error::custom)
@@ -3397,7 +3465,7 @@ struct SufficientStatisticsRiskPathProvenancePayload {
     transform_slice_sampling_policy: String,
     boundary_state_update_policy: String,
     interval_return_generation_policy: String,
-    interval_return_gap_gating_policy: String,
+    interval_return_component_routing_policy: String,
     batch_seed_partition_policy: String,
     artifact_workflow_tags: Vec<String>,
 }
@@ -3414,7 +3482,8 @@ struct SufficientStatisticsRiskPathDiagnosticsPayload {
     cumulative_n_plus: u64,
     cumulative_n_minus: u64,
     cumulative_trading_time_return: f64,
-    cumulative_gap_return: f64,
+    cumulative_open_jump_return: f64,
+    cumulative_closed_gap_return: f64,
     cumulative_total_return: f64,
     max_abs_total_return: f64,
 }
@@ -3574,10 +3643,13 @@ fn validate_path_provenance_payload(
             expected.interval_return_generation_policy, payload.interval_return_generation_policy
         ));
     }
-    if payload.interval_return_gap_gating_policy != expected.interval_return_gap_gating_policy {
+    if payload.interval_return_component_routing_policy
+        != expected.interval_return_component_routing_policy
+    {
         return Err(format!(
-            "provenance.interval_return_gap_gating_policy must be {}, found {}",
-            expected.interval_return_gap_gating_policy, payload.interval_return_gap_gating_policy
+            "provenance.interval_return_component_routing_policy must be {}, found {}",
+            expected.interval_return_component_routing_policy,
+            payload.interval_return_component_routing_policy
         ));
     }
     if payload.batch_seed_partition_policy != expected.batch_seed_partition_policy {
@@ -3654,10 +3726,16 @@ fn validate_path_diagnostics_payload(
             expected.cumulative_trading_time_return, payload.cumulative_trading_time_return
         ));
     }
-    if payload.cumulative_gap_return != expected.cumulative_gap_return {
+    if payload.cumulative_open_jump_return != expected.cumulative_open_jump_return {
         return Err(format!(
-            "diagnostics.cumulative_gap_return must be {}, found {}",
-            expected.cumulative_gap_return, payload.cumulative_gap_return
+            "diagnostics.cumulative_open_jump_return must be {}, found {}",
+            expected.cumulative_open_jump_return, payload.cumulative_open_jump_return
+        ));
+    }
+    if payload.cumulative_closed_gap_return != expected.cumulative_closed_gap_return {
+        return Err(format!(
+            "diagnostics.cumulative_closed_gap_return must be {}, found {}",
+            expected.cumulative_closed_gap_return, payload.cumulative_closed_gap_return
         ));
     }
     if payload.cumulative_total_return != expected.cumulative_total_return {
@@ -3768,7 +3846,7 @@ mod tests {
     use super::{
         SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY,
         SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY,
-        SUFFICIENT_STATISTICS_INTERVAL_RETURN_GAP_GATING_POLICY,
+        SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY,
         SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY,
         SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION,
         SUFFICIENT_STATISTICS_RISK_PATH_OUTPUT_SCHEMA_METADATA_VERSION,
@@ -3831,7 +3909,7 @@ mod tests {
             0,
             SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
                 .expect("statistics should be valid"),
-            SufficientStatisticsRiskReturnComponents::try_new(0.04, -0.03, 0.01, -0.02, -0.01)
+            SufficientStatisticsRiskReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
                 .expect("return components should be valid"),
         )
         .expect("record should be valid");
@@ -3890,7 +3968,7 @@ mod tests {
             0,
             SufficientStatisticsIntervalStatistics::try_new(0.9, 0.4, 2, 1)
                 .expect("statistics should be valid"),
-            SufficientStatisticsRiskReturnComponents::try_new(0.03, -0.02, 0.01, -0.01, 0.0)
+            SufficientStatisticsRiskReturnComponents::try_new(0.03, -0.02, 0.01, 0.0, -0.01, 0.0)
                 .expect("return components should be valid"),
         )
         .expect("record should be valid");
@@ -3933,7 +4011,8 @@ mod tests {
                 "cumulative_n_plus",
                 "cumulative_n_minus",
                 "cumulative_trading_time_return",
-                "cumulative_gap_return",
+                "cumulative_open_jump_return",
+                "cumulative_closed_gap_return",
                 "cumulative_total_return",
                 "max_abs_total_return"
             ])
@@ -3946,7 +4025,7 @@ mod tests {
             0,
             SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
                 .expect("statistics should be valid"),
-            SufficientStatisticsRiskReturnComponents::try_new(0.04, -0.03, 0.01, -0.02, -0.01)
+            SufficientStatisticsRiskReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
                 .expect("return components should be valid"),
         )
         .expect("record should be valid");
@@ -3978,7 +4057,7 @@ mod tests {
             0,
             SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
                 .expect("statistics should be valid"),
-            SufficientStatisticsRiskReturnComponents::try_new(0.04, -0.03, 0.01, -0.02, -0.01)
+            SufficientStatisticsRiskReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
                 .expect("return components should be valid"),
         )
         .expect("record should be valid");
@@ -4207,7 +4286,7 @@ mod tests {
             1,
             SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
                 .expect("statistics should be valid"),
-            SufficientStatisticsRiskReturnComponents::try_new(0.04, -0.03, 0.01, -0.02, -0.01)
+            SufficientStatisticsRiskReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
                 .expect("return components should be valid"),
         )
         .expect("record should be valid");
@@ -4231,28 +4310,32 @@ mod tests {
     }
 
     #[test]
-    fn interval_return_generator_trading_only_open_window_suppresses_gap_and_preserves_sell_sign() {
+    fn interval_return_generator_open_window_routes_open_jump_and_suppresses_closed_gap() {
         let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(0.8, 0.6, 2, 1)
             .expect("sampled statistics should be valid");
         let driver_parameters = valid_nig_driver_parameters();
         let mut observed_stream = SplitMix64SimulationRandomnessStream::from_seed(44_001);
         let mut expected_stream = SplitMix64SimulationRandomnessStream::from_seed(44_001);
+        let open_jump_return = -0.27;
+        let closed_gap_return = 0.19;
 
         let generated_return = generate_interval_return_from_sampled_statistics(
             driver_parameters,
             sampled_statistics,
             MarketState::Open,
-            -0.27,
+            open_jump_return,
+            closed_gap_return,
             &mut observed_stream,
             Some(SufficientStatisticsRiskReturnGenerationOptions {
                 include_component_breakdown: true,
             }),
         )
-        .expect("interval return generation should succeed for open-window trading-only path");
+        .expect("interval return generation should succeed for open-window path");
         let expected_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: sampled_statistics.a_plus,
             a_minus: sampled_statistics.a_minus,
-            gap: 0.0,
+            open_jump: open_jump_return,
+            closed_gap: 0.0,
         })
         .expect("expected decomposition should construct");
         let expected_trading_contributions = expected_decomposition
@@ -4263,8 +4346,8 @@ mod tests {
             .component_breakdown
             .expect("component breakdown should be present");
         assert_eq!(
-            SufficientStatisticsGeneratedIntervalReturn::gap_gating_policy(),
-            SUFFICIENT_STATISTICS_INTERVAL_RETURN_GAP_GATING_POLICY
+            SufficientStatisticsGeneratedIntervalReturn::component_routing_policy(),
+            SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY
         );
         assert_float_close(
             component_breakdown.buy_side_return,
@@ -4278,31 +4361,34 @@ mod tests {
             component_breakdown.trading_time_return,
             expected_trading_contributions.combined_increment,
         );
-        assert_float_close(component_breakdown.gap_return, 0.0);
+        assert_float_close(component_breakdown.open_jump_return, open_jump_return);
+        assert_float_close(component_breakdown.closed_gap_return, 0.0);
         assert_float_close(
             component_breakdown.total_return,
-            expected_trading_contributions.combined_increment,
+            expected_trading_contributions.combined_increment + open_jump_return,
         );
         assert_float_close(
             generated_return.total_return,
-            expected_trading_contributions.combined_increment,
+            expected_trading_contributions.combined_increment + open_jump_return,
         );
     }
 
     #[test]
-    fn interval_return_generator_closed_window_applies_gap_and_supports_optional_breakdown() {
+    fn interval_return_generator_closed_window_routes_closed_gap_and_supports_optional_breakdown() {
         let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(0.9, 0.7, 3, 2)
             .expect("sampled statistics should be valid");
         let driver_parameters = valid_nig_driver_parameters();
         let mut stream_with_breakdown = SplitMix64SimulationRandomnessStream::from_seed(44_002);
         let mut stream_without_breakdown = SplitMix64SimulationRandomnessStream::from_seed(44_002);
-        let gap_return = 0.19;
+        let open_jump_return = -0.11;
+        let closed_gap_return = 0.19;
 
         let with_breakdown = generate_interval_return_from_sampled_statistics(
             driver_parameters,
             sampled_statistics,
             MarketState::Closed,
-            gap_return,
+            open_jump_return,
+            closed_gap_return,
             &mut stream_with_breakdown,
             Some(SufficientStatisticsRiskReturnGenerationOptions {
                 include_component_breakdown: true,
@@ -4313,7 +4399,8 @@ mod tests {
             driver_parameters,
             sampled_statistics,
             MarketState::Closed,
-            gap_return,
+            open_jump_return,
+            closed_gap_return,
             &mut stream_without_breakdown,
             Some(SufficientStatisticsRiskReturnGenerationOptions {
                 include_component_breakdown: false,
@@ -4326,9 +4413,10 @@ mod tests {
             .expect("component breakdown should be present");
         assert_float_close(
             component_breakdown.total_return,
-            component_breakdown.trading_time_return + gap_return,
+            component_breakdown.trading_time_return + closed_gap_return,
         );
-        assert_float_close(component_breakdown.gap_return, gap_return);
+        assert_float_close(component_breakdown.open_jump_return, 0.0);
+        assert_float_close(component_breakdown.closed_gap_return, closed_gap_return);
         assert!(without_breakdown.component_breakdown.is_none());
         assert_float_close(without_breakdown.total_return, with_breakdown.total_return);
     }
@@ -4348,6 +4436,7 @@ mod tests {
             driver_parameters,
             sampled_statistics,
             MarketState::Closed,
+            0.0,
             -0.05,
             &mut first_stream,
             options,
@@ -4357,6 +4446,7 @@ mod tests {
             driver_parameters,
             sampled_statistics,
             MarketState::Closed,
+            0.0,
             -0.05,
             &mut second_stream,
             options,

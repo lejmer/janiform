@@ -2943,11 +2943,12 @@ pub fn compose_total_return_characteristic_function_with_edge_mode(
     }
 
     let effective_decomposition = return_decomposition.with_edge_mode(edge_mode);
-    let effective_gap_characteristic_factor = if edge_mode.gap_component_enabled() {
-        gap_characteristic_factor
-    } else {
-        ComplexScalar::new(1.0, 0.0)
-    };
+    let effective_gap_characteristic_factor =
+        if edge_mode.open_jump_component_enabled() || edge_mode.closed_gap_component_enabled() {
+            gap_characteristic_factor
+        } else {
+            ComplexScalar::new(1.0, 0.0)
+        };
 
     effective_decomposition.validate().map_err(|source| {
         ReturnCharacteristicFunctionAssemblyError::InvalidReturnDecomposition { source }
@@ -3494,7 +3495,8 @@ mod tests {
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 0.0,
             a_minus: 1.0,
-            gap: 0.0,
+            open_jump: 0.0,
+            closed_gap: 0.0,
         })
         .expect("valid return decomposition payload should construct");
 
@@ -3533,7 +3535,8 @@ mod tests {
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 0.0,
             a_minus: 1.0,
-            gap: 0.0,
+            open_jump: 0.0,
+            closed_gap: 0.0,
         })
         .expect("valid return decomposition payload should construct");
         let gap_characteristic_factor = ComplexScalar::new(1.0, 0.0);
@@ -3582,7 +3585,8 @@ mod tests {
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 1.4,
             a_minus: 0.7,
-            gap: -0.2,
+            open_jump: 0.0,
+            closed_gap: -0.2,
         })
         .expect("valid return decomposition payload should construct");
         let gap_characteristic_factor = ComplexScalar::new(0.85, -0.25);
@@ -3624,7 +3628,8 @@ mod tests {
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 0.8,
             a_minus: 1.1,
-            gap: 0.0,
+            open_jump: 0.0,
+            closed_gap: 0.0,
         })
         .expect("valid return decomposition payload should construct");
         let gap_characteristic_factor = ComplexScalar::new(0.92, -0.08);
@@ -3704,7 +3709,8 @@ mod tests {
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 0.0,
             a_minus: 1.0,
-            gap: 0.0,
+            open_jump: 0.0,
+            closed_gap: 0.0,
         })
         .expect("valid return decomposition payload should construct");
 
@@ -3773,7 +3779,8 @@ mod tests {
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 1.2,
             a_minus: 0.9,
-            gap: -0.35,
+            open_jump: 0.0,
+            closed_gap: -0.35,
         })
         .expect("valid return decomposition payload should construct");
 
@@ -3829,7 +3836,8 @@ mod tests {
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 0.4,
             a_minus: 1.1,
-            gap: -0.1,
+            open_jump: 0.0,
+            closed_gap: -0.1,
         })
         .expect("valid return decomposition payload should construct");
 
@@ -3885,7 +3893,8 @@ mod tests {
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 0.9,
             a_minus: 0.7,
-            gap: 0.6,
+            open_jump: 0.0,
+            closed_gap: 0.6,
         })
         .expect("valid return decomposition payload should construct");
         let gap_characteristic_factor = ComplexScalar::new(0.65, -0.35);
@@ -3895,7 +3904,7 @@ mod tests {
             argument,
             return_decomposition,
             gap_characteristic_factor,
-            ReturnDecompositionEdgeMode::GapOnly,
+            ReturnDecompositionEdgeMode::ClosedGapOnly,
         )
         .expect("gap-only edge mode CF assembly should succeed");
 
@@ -3933,7 +3942,8 @@ mod tests {
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 1.0,
             a_minus: 0.4,
-            gap: 0.0,
+            open_jump: 0.0,
+            closed_gap: 0.0,
         })
         .expect("valid return decomposition payload should construct");
 
@@ -3961,7 +3971,8 @@ mod tests {
         let invalid_return_decomposition = ReturnDecomposition {
             a_plus: -0.1,
             a_minus: 0.3,
-            gap: 0.0,
+            open_jump: 0.0,
+            closed_gap: 0.0,
         };
 
         let error = compose_total_return_characteristic_function(
@@ -3988,7 +3999,8 @@ mod tests {
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 0.0,
             a_minus: 1.0,
-            gap: 0.0,
+            open_jump: 0.0,
+            closed_gap: 0.0,
         })
         .expect("valid return decomposition payload should construct");
 
@@ -4029,7 +4041,8 @@ mod tests {
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 1.1,
             a_minus: 0.7,
-            gap: 0.0,
+            open_jump: 0.0,
+            closed_gap: 0.0,
         })
         .expect("valid return decomposition payload should construct");
 
@@ -4096,7 +4109,8 @@ mod tests {
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 0.9,
             a_minus: 1.2,
-            gap: 0.0,
+            open_jump: 0.0,
+            closed_gap: 0.0,
         })
         .expect("valid return decomposition payload should construct");
 
@@ -4129,7 +4143,8 @@ mod tests {
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 1.0,
             a_minus: 1.0,
-            gap: 0.0,
+            open_jump: 0.0,
+            closed_gap: 0.0,
         })
         .expect("valid return decomposition payload should construct");
 

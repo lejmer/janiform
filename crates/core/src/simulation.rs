@@ -2062,7 +2062,8 @@ mod tests {
         let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 0.9,
             a_minus: 0.7,
-            gap: -0.2,
+            open_jump: 0.0,
+            closed_gap: -0.2,
         })
         .expect("buy-only decomposition should be valid");
         let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(42_101);
@@ -2092,7 +2093,8 @@ mod tests {
         let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 0.6,
             a_minus: 0.9,
-            gap: -0.1,
+            open_jump: 0.0,
+            closed_gap: -0.1,
         })
         .expect("sell-only decomposition should be valid");
         let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(42_102);
@@ -2122,7 +2124,8 @@ mod tests {
         let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 0.9,
             a_minus: 0.8,
-            gap: -0.3,
+            open_jump: 0.0,
+            closed_gap: -0.3,
         })
         .expect("gap-only decomposition should be valid");
         let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(42_104);
@@ -2130,7 +2133,7 @@ mod tests {
         let contributions = sample_nig_trading_time_increment_with_edge_mode(
             driver_parameters,
             decomposition,
-            ReturnDecompositionEdgeMode::GapOnly,
+            ReturnDecompositionEdgeMode::ClosedGapOnly,
             &mut randomness_stream,
         )
         .expect("gap-only assembly should sample successfully");
@@ -2150,7 +2153,8 @@ mod tests {
         let decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 0.8,
             a_minus: 0.5,
-            gap: 0.0,
+            open_jump: 0.0,
+            closed_gap: 0.0,
         })
         .expect("mixed decomposition should be valid");
         let mut first_stream = SplitMix64SimulationRandomnessStream::from_seed(42_103);
