@@ -1,4 +1,4 @@
-## Refactor Telescoping Constructor And Enforce Invariants Via Types Or Builders
+## Refactor Telescoping Constructors And Enforce Invariants Via Types Or Builders
 
 ### Description
 We have a recurring anti-pattern across the Rust codebase: structs expose many "telescoping" constructors like `try_new_*` / `new_*` that mostly permute argument combinations, while invariants are enforced via ad-hoc `validate()` calls. This inflates API surface, increases maintenance cost, and allows invalid intermediate states.

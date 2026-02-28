@@ -547,11 +547,11 @@ fn build_seasonality_stage_handoff_outputs(
         .stage_handoffs
         .iter()
         .filter(|stage_handoff| stage_handoff.from_stage == CalibrationStage::Seasonality)
-        .map(|stage_handoff| match stage_handoff.transport {
+        .map(|stage_handoff| match stage_handoff.transport() {
             CalibrationStageHandoffTransport::InMemoryOutput => SeasonalityStageHandoffOutput {
                 from_stage: stage_handoff.from_stage,
                 to_stage: stage_handoff.to_stage,
-                transport: stage_handoff.transport,
+                transport: stage_handoff.transport(),
                 in_memory_payload_available: true,
                 artifact_reference: None,
             },
@@ -559,9 +559,9 @@ fn build_seasonality_stage_handoff_outputs(
                 SeasonalityStageHandoffOutput {
                     from_stage: stage_handoff.from_stage,
                     to_stage: stage_handoff.to_stage,
-                    transport: stage_handoff.transport,
+                    transport: stage_handoff.transport(),
                     in_memory_payload_available: false,
-                    artifact_reference: stage_handoff.artifact_reference.clone(),
+                    artifact_reference: stage_handoff.artifact_reference().map(str::to_string),
                 }
             }
         })

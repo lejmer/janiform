@@ -10,8 +10,7 @@ use crate::affine_oracle::{
     ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformIntegrationResult,
     ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformIntegratorMethod,
     ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformOutput,
-    ExponentialAffineTransformSolverSettings,
-    solve_exponential_affine_transform_with_settings,
+    ExponentialAffineTransformSolverSettings, solve_exponential_affine_transform_with_settings,
 };
 use crate::benchmarking::{
     BenchmarkScenarioCatalog, BenchmarkScenarioCatalogLoadError, BenchmarkScenarioWorkloadProfile,
@@ -1505,16 +1504,24 @@ fn solve_coarse_fine_risk_slices(
         factor_series.iter().copied().enumerate()
     {
         let known_news_intensity_factor = news_intensity_factor * 0.5;
-        let surprise_news_intensity_factor =
-            news_intensity_factor - known_news_intensity_factor;
+        let surprise_news_intensity_factor = news_intensity_factor - known_news_intensity_factor;
+        let news_intensity_input = ExponentialAffineTransformNewsIntensityInput::try_new(
+            known_news_intensity_factor,
+            surprise_news_intensity_factor,
+        )
+        .map_err(|source| {
+            coarse_fine_scenario_error(
+                scenario_id,
+                format!(
+                    "interval {interval_index} risk slice news_intensity validation failed: {source}"
+                ),
+            )
+        })?;
 
         let context = SufficientStatisticsTransformSliceContext::try_new(
             interval_index,
             seasonality_factor,
-            ExponentialAffineTransformNewsIntensityInput::new(
-                known_news_intensity_factor,
-                surprise_news_intensity_factor,
-            ),
+            news_intensity_input,
             interval_delta,
             initial_excitation_state,
         )

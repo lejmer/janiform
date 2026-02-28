@@ -376,7 +376,7 @@ pub fn run_hawkes_calibration_stage(
             && stage_handoff.to_stage == CalibrationStage::Hawkes
     });
     let expected_transport = expected_seasonality_handoff
-        .map(|stage_handoff| stage_handoff.transport)
+        .map(|stage_handoff| stage_handoff.transport())
         .unwrap_or(match run_spec.execution_mode {
             CalibrationExecutionMode::Memory => CalibrationStageHandoffTransport::InMemoryOutput,
             CalibrationExecutionMode::Disk => {
@@ -417,13 +417,13 @@ pub fn run_hawkes_calibration_stage(
         }
 
         if let Some(expected_stage_handoff) = expected_seasonality_handoff
-            && let Some(expected_artifact_reference) = &expected_stage_handoff.artifact_reference
-            && expected_artifact_reference != &provided_artifact_reference
+            && let Some(expected_artifact_reference) = expected_stage_handoff.artifact_reference()
+            && expected_artifact_reference != provided_artifact_reference
         {
             return build_hawkes_stage_failure_report(
                 run_spec,
                 HawkesStageExecutionFailure::SeasonalityArtifactReferenceMismatch {
-                    expected_artifact_reference: expected_artifact_reference.clone(),
+                    expected_artifact_reference: expected_artifact_reference.to_string(),
                     provided_artifact_reference,
                 },
             );
@@ -735,11 +735,11 @@ fn build_hawkes_stage_handoff_outputs(
         .stage_handoffs
         .iter()
         .filter(|stage_handoff| stage_handoff.from_stage == CalibrationStage::Hawkes)
-        .map(|stage_handoff| match stage_handoff.transport {
+        .map(|stage_handoff| match stage_handoff.transport() {
             CalibrationStageHandoffTransport::InMemoryOutput => HawkesStageHandoffOutput {
                 from_stage: stage_handoff.from_stage,
                 to_stage: stage_handoff.to_stage,
-                transport: stage_handoff.transport,
+                transport: stage_handoff.transport(),
                 in_memory_payload_available: true,
                 artifact_reference: None,
             },
@@ -747,9 +747,9 @@ fn build_hawkes_stage_handoff_outputs(
                 HawkesStageHandoffOutput {
                     from_stage: stage_handoff.from_stage,
                     to_stage: stage_handoff.to_stage,
-                    transport: stage_handoff.transport,
+                    transport: stage_handoff.transport(),
                     in_memory_payload_available: false,
-                    artifact_reference: stage_handoff.artifact_reference.clone(),
+                    artifact_reference: stage_handoff.artifact_reference().map(str::to_string),
                 }
             }
         })
