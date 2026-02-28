@@ -120,6 +120,7 @@ fn analytic_sign_fixture_cases_match_shared_composition_outputs() {
             driver_parameters,
             argument,
             return_decomposition,
+            ComplexScalar::new(1.0, 0.0),
             fixture_case.gap_characteristic_factor.into_core(),
             edge_mode,
         )

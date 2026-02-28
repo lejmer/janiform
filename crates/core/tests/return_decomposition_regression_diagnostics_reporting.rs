@@ -49,7 +49,7 @@ struct DecompositionRegressionScenario {
     context: ReturnDecompositionScenarioDiagnosticContext,
     argument: ComplexScalar,
     return_decomposition: ReturnDecomposition,
-    gap_characteristic_factor: ComplexScalar,
+    closed_gap_characteristic_factor: ComplexScalar,
     expected_contributions: ReturnDecompositionDiagnosticContributions,
     wrong_positive_u_sell_side_weighted_exponent: ComplexScalar,
 }
@@ -250,7 +250,9 @@ fn load_regression_scenarios() -> (
                     closed_gap: fixture_case.return_decomposition.gap,
                 })
                 .expect("fixture decomposition payload should construct"),
-                gap_characteristic_factor: fixture_case.gap_characteristic_factor.into_core(),
+                closed_gap_characteristic_factor: fixture_case
+                    .gap_characteristic_factor
+                    .into_core(),
                 expected_contributions: expected_contributions_from_fixture_case(fixture_case),
                 wrong_positive_u_sell_side_weighted_exponent: fixture_case
                     .expected_output
@@ -313,7 +315,8 @@ fn compose_observed_contributions(
                     driver_parameters,
                     scenario.argument,
                     scenario.return_decomposition,
-                    scenario.gap_characteristic_factor,
+                    ComplexScalar::new(1.0, 0.0),
+                    scenario.closed_gap_characteristic_factor,
                     scenario.context.edge_mode,
                 )
                 .expect("canonical decomposition assembly should succeed");
@@ -351,13 +354,14 @@ fn compose_observed_contributions(
                 buy_side_weighted_exponent.add(sell_side_weighted_exponent);
             let trading_time_characteristic_factor =
                 complex_exponential(combined_weighted_exponent);
-            let effective_gap_characteristic_factor = effective_gap_characteristic_factor(
-                scenario.gap_characteristic_factor,
-                scenario.context.edge_mode,
-            );
+            let effective_closed_gap_characteristic_factor =
+                effective_closed_gap_characteristic_factor(
+                    scenario.closed_gap_characteristic_factor,
+                    scenario.context.edge_mode,
+                );
             let combined_characteristic_factor = complex_multiply(
                 trading_time_characteristic_factor,
-                effective_gap_characteristic_factor,
+                effective_closed_gap_characteristic_factor,
             );
 
             ReturnDecompositionDiagnosticContributions {
@@ -382,13 +386,14 @@ fn compose_observed_contributions(
                 buy_side_weighted_exponent.add(sell_side_weighted_exponent);
             let trading_time_characteristic_factor =
                 complex_exponential(combined_weighted_exponent);
-            let effective_gap_characteristic_factor = effective_gap_characteristic_factor(
-                scenario.gap_characteristic_factor,
-                scenario.context.edge_mode,
-            );
+            let effective_closed_gap_characteristic_factor =
+                effective_closed_gap_characteristic_factor(
+                    scenario.closed_gap_characteristic_factor,
+                    scenario.context.edge_mode,
+                );
             let combined_characteristic_factor = complex_multiply(
                 trading_time_characteristic_factor,
-                effective_gap_characteristic_factor,
+                effective_closed_gap_characteristic_factor,
             );
 
             ReturnDecompositionDiagnosticContributions {
@@ -411,7 +416,8 @@ fn compose_observed_contributions(
                     driver_parameters,
                     scenario.argument,
                     scenario.return_decomposition,
-                    scenario.gap_characteristic_factor,
+                    ComplexScalar::new(1.0, 0.0),
+                    scenario.closed_gap_characteristic_factor,
                     ReturnDecompositionEdgeMode::Disabled,
                 )
                 .expect("disable-mode regression injection assembly should succeed");
@@ -511,12 +517,12 @@ fn edge_mode_for_scenario_intent(scenario_intent: &str) -> ReturnDecompositionEd
     }
 }
 
-fn effective_gap_characteristic_factor(
-    gap_characteristic_factor: ComplexScalar,
+fn effective_closed_gap_characteristic_factor(
+    closed_gap_characteristic_factor: ComplexScalar,
     edge_mode: ReturnDecompositionEdgeMode,
 ) -> ComplexScalar {
-    if edge_mode.open_jump_component_enabled() || edge_mode.closed_gap_component_enabled() {
-        gap_characteristic_factor
+    if edge_mode.closed_gap_component_enabled() {
+        closed_gap_characteristic_factor
     } else {
         ComplexScalar::new(1.0, 0.0)
     }
