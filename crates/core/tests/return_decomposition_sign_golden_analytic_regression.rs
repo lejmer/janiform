@@ -113,6 +113,7 @@ fn return_decomposition_sign_analytic_cases_match_expected_pricing_outputs() {
             driver_parameters,
             argument,
             return_decomposition,
+            ComplexScalar::new(1.0, 0.0),
             fixture_case.gap_characteristic_factor.into_core(),
         )
         .expect("fixture full characteristic-function assembly should succeed");

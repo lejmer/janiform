@@ -36,9 +36,8 @@ use crate::risk_neutral::{
     transform_nig_characteristic_exponent_under_esscher_tilt,
 };
 
-pub const RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY: &str =
-    "exp_of_trading_time_weighted_exponent_times_explicit_gap_characteristic_factor.v1";
-pub const RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY: &str = "finite_argument_and_gap_factor_with_valid_return_decomposition_and_finite_composition_result.v1";
+pub const RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY: &str = "exp_of_trading_time_weighted_exponent_times_explicit_open_jump_and_closed_gap_characteristic_factors.v1";
+pub const RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY: &str = "finite_argument_and_component_factors_with_valid_return_decomposition_and_finite_composition_result.v1";
 pub const VANILLA_OPTION_PAYOFF_CONFIGURATION_POLICY: &str =
     "baseline_european_vanilla_call_and_put_payoff_type_selection_only.v1";
 pub const VANILLA_OPTION_REQUEST_VALIDATION_POLICY: &str =
@@ -2250,13 +2249,15 @@ fn clamp_small_negative_price(price: f64) -> Result<f64, FourierInversionPricing
 ///
 /// Equation reference:
 /// \f[
-/// \exp\!\left(A^+\psi_+(u) + A^-\psi_-(-u)\right)\,\varphi_{\Delta G}(u).
+/// \exp\!\left(A^+\psi_+(u) + A^-\psi_-(-u)\right)\,\varphi_{\Delta M}(u)\,\varphi_{\Delta G}(u).
 /// \f]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ReturnCharacteristicFunctionAssembly {
     pub trading_time_exponent_contributions: NigTradingTimeCharacteristicExponentContributions,
     pub trading_time_characteristic_factor: ComplexScalar,
-    pub gap_characteristic_factor: ComplexScalar,
+    pub open_jump_characteristic_factor: ComplexScalar,
+    pub closed_gap_characteristic_factor: ComplexScalar,
+    pub combined_news_jump_characteristic_factor: ComplexScalar,
     pub combined_characteristic_factor: ComplexScalar,
     pub composition_policy: &'static str,
     pub domain_guard_policy: &'static str,
@@ -2266,7 +2267,9 @@ pub struct ReturnCharacteristicFunctionAssembly {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ReturnCharacteristicFunctionFactorComposition {
     pub trading_time_characteristic_factor: ComplexScalar,
-    pub gap_characteristic_factor: ComplexScalar,
+    pub open_jump_characteristic_factor: ComplexScalar,
+    pub closed_gap_characteristic_factor: ComplexScalar,
+    pub combined_news_jump_characteristic_factor: ComplexScalar,
     pub combined_characteristic_factor: ComplexScalar,
     pub composition_policy: &'static str,
     pub domain_guard_policy: &'static str,
@@ -2281,7 +2284,10 @@ pub enum ReturnCharacteristicFunctionAssemblyError {
     InvalidOracleTransformOutput {
         source: ExponentialAffineTransformOutputError,
     },
-    InvalidGapCharacteristicFactor {
+    InvalidOpenJumpCharacteristicFactor {
+        value: ComplexScalar,
+    },
+    InvalidClosedGapCharacteristicFactor {
         value: ComplexScalar,
     },
     InvalidReturnDecomposition {
@@ -2291,6 +2297,9 @@ pub enum ReturnCharacteristicFunctionAssemblyError {
         value: ComplexScalar,
     },
     NonFiniteTradingTimeCharacteristicFactor {
+        value: ComplexScalar,
+    },
+    NonFiniteCombinedNewsJumpCharacteristicFactor {
         value: ComplexScalar,
     },
     NonFiniteCombinedCharacteristicFactor {
@@ -2309,9 +2318,13 @@ impl Display for ReturnCharacteristicFunctionAssemblyError {
                 formatter,
                 "oracle transform output is invalid for characteristic-function assembly: {source}"
             ),
-            Self::InvalidGapCharacteristicFactor { value } => write!(
+            Self::InvalidOpenJumpCharacteristicFactor { value } => write!(
                 formatter,
-                "gap characteristic factor must be finite, found {value:?}"
+                "open-jump characteristic factor must be finite, found {value:?}"
+            ),
+            Self::InvalidClosedGapCharacteristicFactor { value } => write!(
+                formatter,
+                "closed-gap characteristic factor must be finite, found {value:?}"
             ),
             Self::InvalidReturnDecomposition { source } => {
                 write!(
@@ -2326,6 +2339,10 @@ impl Display for ReturnCharacteristicFunctionAssemblyError {
             Self::NonFiniteTradingTimeCharacteristicFactor { value } => write!(
                 formatter,
                 "trading-time characteristic factor must be finite, found {value:?}"
+            ),
+            Self::NonFiniteCombinedNewsJumpCharacteristicFactor { value } => write!(
+                formatter,
+                "combined news-jump characteristic factor must be finite, found {value:?}"
             ),
             Self::NonFiniteCombinedCharacteristicFactor { value } => write!(
                 formatter,
@@ -2576,13 +2593,15 @@ pub fn compose_total_return_characteristic_function(
     driver_parameters: NigBuySellDriverParameters,
     argument: ComplexScalar,
     return_decomposition: ReturnDecomposition,
-    gap_characteristic_factor: ComplexScalar,
+    open_jump_characteristic_factor: ComplexScalar,
+    closed_gap_characteristic_factor: ComplexScalar,
 ) -> Result<ReturnCharacteristicFunctionAssembly, ReturnCharacteristicFunctionAssemblyError> {
     compose_total_return_characteristic_function_with_edge_mode(
         driver_parameters,
         argument,
         return_decomposition,
-        gap_characteristic_factor,
+        open_jump_characteristic_factor,
+        closed_gap_characteristic_factor,
         ReturnDecompositionEdgeMode::Disabled,
     )
 }
@@ -2931,7 +2950,8 @@ pub fn compose_total_return_characteristic_function_with_edge_mode(
     driver_parameters: NigBuySellDriverParameters,
     argument: ComplexScalar,
     return_decomposition: ReturnDecomposition,
-    gap_characteristic_factor: ComplexScalar,
+    open_jump_characteristic_factor: ComplexScalar,
+    closed_gap_characteristic_factor: ComplexScalar,
     edge_mode: ReturnDecompositionEdgeMode,
 ) -> Result<ReturnCharacteristicFunctionAssembly, ReturnCharacteristicFunctionAssemblyError> {
     if !argument.is_finite() {
@@ -2943,12 +2963,16 @@ pub fn compose_total_return_characteristic_function_with_edge_mode(
     }
 
     let effective_decomposition = return_decomposition.with_edge_mode(edge_mode);
-    let effective_gap_characteristic_factor =
-        if edge_mode.open_jump_component_enabled() || edge_mode.closed_gap_component_enabled() {
-            gap_characteristic_factor
-        } else {
-            ComplexScalar::new(1.0, 0.0)
-        };
+    let effective_open_jump_characteristic_factor = if edge_mode.open_jump_component_enabled() {
+        open_jump_characteristic_factor
+    } else {
+        ComplexScalar::new(1.0, 0.0)
+    };
+    let effective_closed_gap_characteristic_factor = if edge_mode.closed_gap_component_enabled() {
+        closed_gap_characteristic_factor
+    } else {
+        ComplexScalar::new(1.0, 0.0)
+    };
 
     effective_decomposition.validate().map_err(|source| {
         ReturnCharacteristicFunctionAssemblyError::InvalidReturnDecomposition { source }
@@ -2968,13 +2992,17 @@ pub fn compose_total_return_characteristic_function_with_edge_mode(
     let trading_time_characteristic_factor = complex_exponential(combined_weighted_exponent);
     let factor_composition = compose_return_characteristic_factor_shared(
         trading_time_characteristic_factor,
-        effective_gap_characteristic_factor,
+        effective_open_jump_characteristic_factor,
+        effective_closed_gap_characteristic_factor,
     )?;
 
     Ok(ReturnCharacteristicFunctionAssembly {
         trading_time_exponent_contributions,
         trading_time_characteristic_factor: factor_composition.trading_time_characteristic_factor,
-        gap_characteristic_factor: factor_composition.gap_characteristic_factor,
+        open_jump_characteristic_factor: factor_composition.open_jump_characteristic_factor,
+        closed_gap_characteristic_factor: factor_composition.closed_gap_characteristic_factor,
+        combined_news_jump_characteristic_factor: factor_composition
+            .combined_news_jump_characteristic_factor,
         combined_characteristic_factor: factor_composition.combined_characteristic_factor,
         composition_policy: factor_composition.composition_policy,
         domain_guard_policy: factor_composition.domain_guard_policy,
@@ -2984,7 +3012,8 @@ pub fn compose_total_return_characteristic_function_with_edge_mode(
 /// Compose full return characteristic factors from one oracle solve output.
 pub fn compose_total_return_characteristic_function_from_oracle_output(
     oracle_output: ExponentialAffineTransformOutput,
-    gap_characteristic_factor: ComplexScalar,
+    open_jump_characteristic_factor: ComplexScalar,
+    closed_gap_characteristic_factor: ComplexScalar,
 ) -> Result<ReturnCharacteristicFunctionFactorComposition, ReturnCharacteristicFunctionAssemblyError>
 {
     oracle_output.validate().map_err(|source| {
@@ -2993,13 +3022,15 @@ pub fn compose_total_return_characteristic_function_from_oracle_output(
 
     compose_return_characteristic_factor_shared(
         oracle_output.transform_value,
-        gap_characteristic_factor,
+        open_jump_characteristic_factor,
+        closed_gap_characteristic_factor,
     )
 }
 
 fn compose_return_characteristic_factor_shared(
     trading_time_characteristic_factor: ComplexScalar,
-    gap_characteristic_factor: ComplexScalar,
+    open_jump_characteristic_factor: ComplexScalar,
+    closed_gap_characteristic_factor: ComplexScalar,
 ) -> Result<ReturnCharacteristicFunctionFactorComposition, ReturnCharacteristicFunctionAssemblyError>
 {
     if !trading_time_characteristic_factor.is_finite() {
@@ -3010,17 +3041,37 @@ fn compose_return_characteristic_factor_shared(
         );
     }
 
-    if !gap_characteristic_factor.is_finite() {
+    if !open_jump_characteristic_factor.is_finite() {
         return Err(
-            ReturnCharacteristicFunctionAssemblyError::InvalidGapCharacteristicFactor {
-                value: gap_characteristic_factor,
+            ReturnCharacteristicFunctionAssemblyError::InvalidOpenJumpCharacteristicFactor {
+                value: open_jump_characteristic_factor,
+            },
+        );
+    }
+
+    if !closed_gap_characteristic_factor.is_finite() {
+        return Err(
+            ReturnCharacteristicFunctionAssemblyError::InvalidClosedGapCharacteristicFactor {
+                value: closed_gap_characteristic_factor,
+            },
+        );
+    }
+
+    let combined_news_jump_characteristic_factor = complex_multiply(
+        open_jump_characteristic_factor,
+        closed_gap_characteristic_factor,
+    );
+    if !combined_news_jump_characteristic_factor.is_finite() {
+        return Err(
+            ReturnCharacteristicFunctionAssemblyError::NonFiniteCombinedNewsJumpCharacteristicFactor {
+                value: combined_news_jump_characteristic_factor,
             },
         );
     }
 
     let combined_characteristic_factor = complex_multiply(
         trading_time_characteristic_factor,
-        gap_characteristic_factor,
+        combined_news_jump_characteristic_factor,
     );
     if !combined_characteristic_factor.is_finite() {
         return Err(
@@ -3032,7 +3083,9 @@ fn compose_return_characteristic_factor_shared(
 
     Ok(ReturnCharacteristicFunctionFactorComposition {
         trading_time_characteristic_factor,
-        gap_characteristic_factor,
+        open_jump_characteristic_factor,
+        closed_gap_characteristic_factor,
+        combined_news_jump_characteristic_factor,
         combined_characteristic_factor,
         composition_policy: RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
         domain_guard_policy: RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY,
@@ -3526,7 +3579,8 @@ mod tests {
     }
 
     #[test]
-    fn full_characteristic_function_assembly_uses_trading_time_factor_when_gap_is_unity() {
+    fn full_characteristic_function_assembly_uses_trading_time_factor_when_news_jump_factors_are_unity()
+     {
         let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("valid shared-plus-shift payload should construct")
             .derive_driver_parameters()
@@ -3539,13 +3593,15 @@ mod tests {
             closed_gap: 0.0,
         })
         .expect("valid return decomposition payload should construct");
-        let gap_characteristic_factor = ComplexScalar::new(1.0, 0.0);
+        let open_jump_characteristic_factor = ComplexScalar::new(1.0, 0.0);
+        let closed_gap_characteristic_factor = ComplexScalar::new(1.0, 0.0);
 
         let assembled = compose_total_return_characteristic_function(
             driver_parameters,
             argument,
             return_decomposition,
-            gap_characteristic_factor,
+            open_jump_characteristic_factor,
+            closed_gap_characteristic_factor,
         )
         .expect("full CF assembly should succeed with valid finite inputs");
 
@@ -3560,6 +3616,11 @@ mod tests {
             1.0e-13,
         );
 
+        assert_complex_close(
+            assembled.combined_news_jump_characteristic_factor,
+            ComplexScalar::new(1.0, 0.0),
+            1.0e-13,
+        );
         assert_complex_close(
             assembled.combined_characteristic_factor,
             assembled.trading_time_characteristic_factor,
@@ -3576,7 +3637,7 @@ mod tests {
     }
 
     #[test]
-    fn full_characteristic_function_assembly_multiplies_exp_trading_term_and_gap_factor() {
+    fn full_characteristic_function_assembly_multiplies_exp_trading_term_and_component_factors() {
         let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("valid shared-plus-shift payload should construct")
             .derive_driver_parameters()
@@ -3589,13 +3650,15 @@ mod tests {
             closed_gap: -0.2,
         })
         .expect("valid return decomposition payload should construct");
-        let gap_characteristic_factor = ComplexScalar::new(0.85, -0.25);
+        let open_jump_characteristic_factor = ComplexScalar::new(0.95, 0.15);
+        let closed_gap_characteristic_factor = ComplexScalar::new(0.85, -0.25);
 
         let assembled = compose_total_return_characteristic_function(
             driver_parameters,
             argument,
             return_decomposition,
-            gap_characteristic_factor,
+            open_jump_characteristic_factor,
+            closed_gap_characteristic_factor,
         )
         .expect("full CF assembly should succeed with valid finite inputs");
 
@@ -3603,12 +3666,31 @@ mod tests {
             compose_nig_trading_time_exponent(driver_parameters, argument, return_decomposition)
                 .combined_weighted_exponent;
         let expected_trading_factor = super::complex_exponential(expected_trading_exponent);
+        let expected_news_jump_factor = super::complex_multiply(
+            open_jump_characteristic_factor,
+            closed_gap_characteristic_factor,
+        );
         let expected_combined =
-            super::complex_multiply(expected_trading_factor, gap_characteristic_factor);
+            super::complex_multiply(expected_trading_factor, expected_news_jump_factor);
 
         assert_complex_close(
             assembled.trading_time_characteristic_factor,
             expected_trading_factor,
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled.open_jump_characteristic_factor,
+            open_jump_characteristic_factor,
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled.closed_gap_characteristic_factor,
+            closed_gap_characteristic_factor,
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled.combined_news_jump_characteristic_factor,
+            expected_news_jump_factor,
             1.0e-13,
         );
         assert_complex_close(
@@ -3632,13 +3714,15 @@ mod tests {
             closed_gap: 0.0,
         })
         .expect("valid return decomposition payload should construct");
-        let gap_characteristic_factor = ComplexScalar::new(0.92, -0.08);
+        let open_jump_characteristic_factor = ComplexScalar::new(0.92, -0.08);
+        let closed_gap_characteristic_factor = ComplexScalar::new(0.87, 0.04);
 
         let canonical_assembly = compose_total_return_characteristic_function(
             driver_parameters,
             argument,
             return_decomposition,
-            gap_characteristic_factor,
+            open_jump_characteristic_factor,
+            closed_gap_characteristic_factor,
         )
         .expect("canonical pricing assembly should succeed");
 
@@ -3647,13 +3731,19 @@ mod tests {
                 oracle_output_with_transform_value(
                     canonical_assembly.trading_time_characteristic_factor,
                 ),
-                gap_characteristic_factor,
+                open_jump_characteristic_factor,
+                closed_gap_characteristic_factor,
             )
             .expect("oracle-output assembly should succeed");
 
         assert_complex_close(
             oracle_factor_assembly.trading_time_characteristic_factor,
             canonical_assembly.trading_time_characteristic_factor,
+            1.0e-13,
+        );
+        assert_complex_close(
+            oracle_factor_assembly.combined_news_jump_characteristic_factor,
+            canonical_assembly.combined_news_jump_characteristic_factor,
             1.0e-13,
         );
         assert_complex_close(
@@ -3672,9 +3762,10 @@ mod tests {
     }
 
     #[test]
-    fn oracle_output_cf_assembly_isolates_trading_only_and_gap_only_paths() {
+    fn oracle_output_cf_assembly_isolates_trading_open_jump_closed_gap_and_combined_paths() {
         let trading_only = compose_total_return_characteristic_function_from_oracle_output(
             oracle_output_with_transform_value(ComplexScalar::new(0.84, -0.22)),
+            ComplexScalar::new(1.0, 0.0),
             ComplexScalar::new(1.0, 0.0),
         )
         .expect("trading-only oracle composition should succeed");
@@ -3685,16 +3776,53 @@ mod tests {
             1.0e-13,
         );
 
-        let gap_characteristic_factor = ComplexScalar::new(0.66, 0.19);
-        let gap_only = compose_total_return_characteristic_function_from_oracle_output(
+        let open_jump_characteristic_factor = ComplexScalar::new(0.66, 0.19);
+        let open_jump_only = compose_total_return_characteristic_function_from_oracle_output(
             oracle_output_with_transform_value(ComplexScalar::new(1.0, 0.0)),
-            gap_characteristic_factor,
+            open_jump_characteristic_factor,
+            ComplexScalar::new(1.0, 0.0),
         )
-        .expect("gap-only oracle composition should succeed");
+        .expect("open-jump-only oracle composition should succeed");
 
         assert_complex_close(
-            gap_only.combined_characteristic_factor,
-            gap_characteristic_factor,
+            open_jump_only.combined_characteristic_factor,
+            open_jump_characteristic_factor,
+            1.0e-13,
+        );
+
+        let closed_gap_characteristic_factor = ComplexScalar::new(0.73, -0.11);
+        let closed_gap_only = compose_total_return_characteristic_function_from_oracle_output(
+            oracle_output_with_transform_value(ComplexScalar::new(1.0, 0.0)),
+            ComplexScalar::new(1.0, 0.0),
+            closed_gap_characteristic_factor,
+        )
+        .expect("closed-gap-only oracle composition should succeed");
+
+        assert_complex_close(
+            closed_gap_only.combined_characteristic_factor,
+            closed_gap_characteristic_factor,
+            1.0e-13,
+        );
+
+        let combined_news_jump_factor = super::complex_multiply(
+            open_jump_characteristic_factor,
+            closed_gap_characteristic_factor,
+        );
+        let combined = compose_total_return_characteristic_function_from_oracle_output(
+            oracle_output_with_transform_value(ComplexScalar::new(1.0, 0.0)),
+            open_jump_characteristic_factor,
+            closed_gap_characteristic_factor,
+        )
+        .expect("combined oracle composition should succeed");
+
+        assert_complex_close(
+            combined.combined_news_jump_characteristic_factor,
+            combined_news_jump_factor,
+            1.0e-13,
+        );
+        assert_complex_close(
+            combined.combined_characteristic_factor,
+            combined_news_jump_factor,
             1.0e-13,
         );
     }
@@ -3706,6 +3834,7 @@ mod tests {
             .derive_driver_parameters()
             .expect("valid shared-plus-shift payload should derive drivers");
         let argument = ComplexScalar::new(1.1, 0.0);
+
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 0.0,
             a_minus: 1.0,
@@ -3727,10 +3856,12 @@ mod tests {
         let correct_assembly = compose_total_return_characteristic_function_from_oracle_output(
             oracle_output_with_transform_value(correct_trading_factor),
             ComplexScalar::new(1.0, 0.0),
+            ComplexScalar::new(1.0, 0.0),
         )
         .expect("correct-sign oracle assembly should succeed");
         let incorrect_assembly = compose_total_return_characteristic_function_from_oracle_output(
             oracle_output_with_transform_value(incorrect_positive_u_trading_factor),
+            ComplexScalar::new(1.0, 0.0),
             ComplexScalar::new(1.0, 0.0),
         )
         .expect("incorrect-sign oracle assembly should still compose deterministically");
@@ -3759,6 +3890,7 @@ mod tests {
                 transform_value: ComplexScalar::new(1.0, 0.0),
             },
             ComplexScalar::new(1.0, 0.0),
+            ComplexScalar::new(1.0, 0.0),
         )
         .expect_err("invalid oracle output must fail full CF assembly");
 
@@ -3769,7 +3901,7 @@ mod tests {
     }
 
     #[test]
-    fn edge_mode_buy_only_disables_sell_and_gap_components_in_full_cf_assembly() {
+    fn edge_mode_buy_only_disables_sell_and_news_jump_components_in_full_cf_assembly() {
         let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("valid shared-plus-shift payload should construct")
             .derive_driver_parameters()
@@ -3789,6 +3921,7 @@ mod tests {
             argument,
             return_decomposition,
             ComplexScalar::new(0.8, -0.1),
+            ComplexScalar::new(0.75, 0.22),
             ReturnDecompositionEdgeMode::BuyOnly,
         )
         .expect("buy-only edge mode CF assembly should succeed");
@@ -3814,7 +3947,17 @@ mod tests {
             1.0e-13,
         );
         assert_complex_close(
-            assembled.gap_characteristic_factor,
+            assembled.open_jump_characteristic_factor,
+            ComplexScalar::new(1.0, 0.0),
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled.closed_gap_characteristic_factor,
+            ComplexScalar::new(1.0, 0.0),
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled.combined_news_jump_characteristic_factor,
             ComplexScalar::new(1.0, 0.0),
             1.0e-13,
         );
@@ -3826,7 +3969,7 @@ mod tests {
     }
 
     #[test]
-    fn edge_mode_sell_only_preserves_minus_u_sign_and_disables_gap_component() {
+    fn edge_mode_sell_only_preserves_minus_u_sign_and_disables_news_jump_components() {
         let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("valid shared-plus-shift payload should construct")
             .derive_driver_parameters()
@@ -3846,6 +3989,7 @@ mod tests {
             argument,
             return_decomposition,
             ComplexScalar::new(0.7, 0.05),
+            ComplexScalar::new(0.68, -0.04),
             ReturnDecompositionEdgeMode::SellOnly,
         )
         .expect("sell-only edge mode CF assembly should succeed");
@@ -3871,7 +4015,17 @@ mod tests {
             1.0e-13,
         );
         assert_complex_close(
-            assembled.gap_characteristic_factor,
+            assembled.open_jump_characteristic_factor,
+            ComplexScalar::new(1.0, 0.0),
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled.closed_gap_characteristic_factor,
+            ComplexScalar::new(1.0, 0.0),
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled.combined_news_jump_characteristic_factor,
             ComplexScalar::new(1.0, 0.0),
             1.0e-13,
         );
@@ -3883,30 +4037,31 @@ mod tests {
     }
 
     #[test]
-    fn edge_mode_gap_only_isolates_gap_factor_in_full_cf_assembly() {
+    fn edge_mode_open_jump_only_isolates_open_jump_factor_in_full_cf_assembly() {
         let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("valid shared-plus-shift payload should construct")
             .derive_driver_parameters()
             .expect("valid shared-plus-shift payload should derive drivers");
-        let argument = ComplexScalar::new(0.35, 0.25);
+        let argument = ComplexScalar::new(0.15, -0.35);
 
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 0.9,
             a_minus: 0.7,
-            open_jump: 0.0,
-            closed_gap: 0.6,
+            open_jump: 0.6,
+            closed_gap: 0.4,
         })
         .expect("valid return decomposition payload should construct");
-        let gap_characteristic_factor = ComplexScalar::new(0.65, -0.35);
+        let open_jump_characteristic_factor = ComplexScalar::new(0.78, 0.22);
 
         let assembled = compose_total_return_characteristic_function_with_edge_mode(
             driver_parameters,
             argument,
             return_decomposition,
-            gap_characteristic_factor,
-            ReturnDecompositionEdgeMode::ClosedGapOnly,
+            open_jump_characteristic_factor,
+            ComplexScalar::new(0.65, -0.35),
+            ReturnDecompositionEdgeMode::OpenJumpOnly,
         )
-        .expect("gap-only edge mode CF assembly should succeed");
+        .expect("open-jump-only edge mode CF assembly should succeed");
 
         assert_complex_close(
             assembled
@@ -3921,19 +4076,85 @@ mod tests {
             1.0e-13,
         );
         assert_complex_close(
-            assembled.gap_characteristic_factor,
-            gap_characteristic_factor,
+            assembled.open_jump_characteristic_factor,
+            open_jump_characteristic_factor,
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled.closed_gap_characteristic_factor,
+            ComplexScalar::new(1.0, 0.0),
             1.0e-13,
         );
         assert_complex_close(
             assembled.combined_characteristic_factor,
-            gap_characteristic_factor,
+            open_jump_characteristic_factor,
             1.0e-13,
         );
     }
 
     #[test]
-    fn full_characteristic_function_assembly_rejects_non_finite_gap_factor() {
+    fn edge_mode_closed_gap_only_isolates_closed_gap_factor_in_full_cf_assembly() {
+        let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("valid shared-plus-shift payload should construct")
+            .derive_driver_parameters()
+            .expect("valid shared-plus-shift payload should derive drivers");
+        let argument = ComplexScalar::new(0.35, 0.25);
+
+        let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 0.9,
+            a_minus: 0.7,
+            open_jump: 0.0,
+            closed_gap: 0.6,
+        })
+        .expect("valid return decomposition payload should construct");
+        let closed_gap_characteristic_factor = ComplexScalar::new(0.65, -0.35);
+
+        let assembled = compose_total_return_characteristic_function_with_edge_mode(
+            driver_parameters,
+            argument,
+            return_decomposition,
+            ComplexScalar::new(0.83, 0.28),
+            closed_gap_characteristic_factor,
+            ReturnDecompositionEdgeMode::ClosedGapOnly,
+        )
+        .expect("closed-gap-only edge mode CF assembly should succeed");
+
+        assert_complex_close(
+            assembled
+                .trading_time_exponent_contributions
+                .combined_weighted_exponent,
+            ComplexScalar::new(0.0, 0.0),
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled.trading_time_characteristic_factor,
+            ComplexScalar::new(1.0, 0.0),
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled.open_jump_characteristic_factor,
+            ComplexScalar::new(1.0, 0.0),
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled.closed_gap_characteristic_factor,
+            closed_gap_characteristic_factor,
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled.combined_news_jump_characteristic_factor,
+            closed_gap_characteristic_factor,
+            1.0e-13,
+        );
+        assert_complex_close(
+            assembled.combined_characteristic_factor,
+            closed_gap_characteristic_factor,
+            1.0e-13,
+        );
+    }
+
+    #[test]
+    fn full_characteristic_function_assembly_rejects_non_finite_open_jump_factor() {
         let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("valid shared-plus-shift payload should construct")
             .derive_driver_parameters()
@@ -3952,13 +4173,61 @@ mod tests {
             argument,
             return_decomposition,
             ComplexScalar::new(f64::NAN, 0.0),
+            ComplexScalar::new(1.0, 0.0),
         )
-        .expect_err("non-finite gap factor must fail full CF assembly");
+        .expect_err("non-finite open-jump factor must fail full CF assembly");
 
         assert!(matches!(
             error,
-            ReturnCharacteristicFunctionAssemblyError::InvalidGapCharacteristicFactor { value }
+            ReturnCharacteristicFunctionAssemblyError::InvalidOpenJumpCharacteristicFactor { value }
             if value.real.is_nan()
+        ));
+    }
+
+    #[test]
+    fn full_characteristic_function_assembly_rejects_non_finite_closed_gap_factor() {
+        let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("valid shared-plus-shift payload should construct")
+            .derive_driver_parameters()
+            .expect("valid shared-plus-shift payload should derive drivers");
+        let argument = ComplexScalar::new(0.1, 0.0);
+
+        let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+            a_plus: 1.0,
+            a_minus: 0.4,
+            open_jump: 0.0,
+            closed_gap: 0.0,
+        })
+        .expect("valid return decomposition payload should construct");
+
+        let error = compose_total_return_characteristic_function(
+            driver_parameters,
+            argument,
+            return_decomposition,
+            ComplexScalar::new(1.0, 0.0),
+            ComplexScalar::new(f64::NAN, 0.0),
+        )
+        .expect_err("non-finite closed-gap factor must fail full CF assembly");
+
+        assert!(matches!(
+            error,
+            ReturnCharacteristicFunctionAssemblyError::InvalidClosedGapCharacteristicFactor { value }
+            if value.real.is_nan()
+        ));
+    }
+
+    #[test]
+    fn oracle_output_cf_assembly_rejects_non_finite_combined_news_jump_factor() {
+        let error = compose_total_return_characteristic_function_from_oracle_output(
+            oracle_output_with_transform_value(ComplexScalar::new(1.0, 0.0)),
+            ComplexScalar::new(1.0e308, 1.0e308),
+            ComplexScalar::new(1.0e308, 1.0e308),
+        )
+        .expect_err("non-finite combined news-jump factor must fail assembly");
+
+        assert!(matches!(
+            error,
+            ReturnCharacteristicFunctionAssemblyError::NonFiniteCombinedNewsJumpCharacteristicFactor { .. }
         ));
     }
 
@@ -3980,6 +4249,7 @@ mod tests {
             ComplexScalar::new(0.0, 0.0),
             invalid_return_decomposition,
             ComplexScalar::new(1.0, 0.0),
+            ComplexScalar::new(1.0, 0.0),
         )
         .expect_err("invalid return decomposition must fail full CF assembly");
 
@@ -3996,6 +4266,7 @@ mod tests {
             .derive_driver_parameters()
             .expect("valid shared-plus-shift payload should derive drivers");
         let argument = ComplexScalar::new(1.1, 0.0);
+
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 0.0,
             a_minus: 1.0,
@@ -4008,6 +4279,7 @@ mod tests {
             driver_parameters,
             argument,
             return_decomposition,
+            ComplexScalar::new(1.0, 0.0),
             ComplexScalar::new(1.0, 0.0),
         )
         .expect("full CF assembly should succeed");
@@ -4038,6 +4310,7 @@ mod tests {
             .expect("valid shared-plus-shift payload should construct")
             .derive_driver_parameters()
             .expect("valid shared-plus-shift payload should derive drivers");
+
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 1.1,
             a_minus: 0.7,
@@ -4106,6 +4379,7 @@ mod tests {
             .expect("valid shared-plus-shift payload should construct")
             .derive_driver_parameters()
             .expect("valid shared-plus-shift payload should derive drivers");
+
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 0.9,
             a_minus: 1.2,
@@ -4140,6 +4414,7 @@ mod tests {
             .expect("valid shared-plus-shift payload should construct")
             .derive_driver_parameters()
             .expect("valid shared-plus-shift payload should derive drivers");
+
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: 1.0,
             a_minus: 1.0,
