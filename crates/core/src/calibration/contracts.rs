@@ -227,17 +227,100 @@ pub enum CalibrationStageHandoffTransport {
     PersistedArtifactReference,
 }
 
+/// Typed stage-to-stage handoff payload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "transport", rename_all = "snake_case")]
+pub enum CalibrationStageHandoffRoute {
+    InMemoryOutput,
+    PersistedArtifactReference { artifact_reference: String },
+}
+
+impl CalibrationStageHandoffRoute {
+    pub const fn transport(&self) -> CalibrationStageHandoffTransport {
+        match self {
+            Self::InMemoryOutput => CalibrationStageHandoffTransport::InMemoryOutput,
+            Self::PersistedArtifactReference { .. } => {
+                CalibrationStageHandoffTransport::PersistedArtifactReference
+            }
+        }
+    }
+
+    pub fn artifact_reference(&self) -> Option<&str> {
+        match self {
+            Self::InMemoryOutput => None,
+            Self::PersistedArtifactReference { artifact_reference } => Some(artifact_reference),
+        }
+    }
+}
+
 /// One directed stage handoff contract entry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CalibrationStageHandoff {
     pub from_stage: CalibrationStage,
     pub to_stage: CalibrationStage,
-    pub transport: CalibrationStageHandoffTransport,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub artifact_reference: Option<String>,
+    #[serde(flatten)]
+    pub route: CalibrationStageHandoffRoute,
 }
 
 impl CalibrationStageHandoff {
+    pub fn try_new(
+        from_stage: CalibrationStage,
+        to_stage: CalibrationStage,
+        route: CalibrationStageHandoffRoute,
+    ) -> Result<Self, CalibrationStageHandoffError> {
+        if from_stage == to_stage {
+            return Err(CalibrationStageHandoffError::SelfHandoff { stage: from_stage });
+        }
+
+        if let CalibrationStageHandoffRoute::PersistedArtifactReference { artifact_reference } =
+            &route
+            && artifact_reference.trim().is_empty()
+        {
+            return Err(
+                CalibrationStageHandoffError::EmptyArtifactReferenceForPersistedHandoff {
+                    from_stage,
+                    to_stage,
+                },
+            );
+        }
+
+        Ok(Self {
+            from_stage,
+            to_stage,
+            route,
+        })
+    }
+
+    pub fn in_memory_output(from_stage: CalibrationStage, to_stage: CalibrationStage) -> Self {
+        Self {
+            from_stage,
+            to_stage,
+            route: CalibrationStageHandoffRoute::InMemoryOutput,
+        }
+    }
+
+    pub fn persisted_artifact_reference(
+        from_stage: CalibrationStage,
+        to_stage: CalibrationStage,
+        artifact_reference: impl Into<String>,
+    ) -> Result<Self, CalibrationStageHandoffError> {
+        Self::try_new(
+            from_stage,
+            to_stage,
+            CalibrationStageHandoffRoute::PersistedArtifactReference {
+                artifact_reference: artifact_reference.into(),
+            },
+        )
+    }
+
+    pub const fn transport(&self) -> CalibrationStageHandoffTransport {
+        self.route.transport()
+    }
+
+    pub fn artifact_reference(&self) -> Option<&str> {
+        self.route.artifact_reference()
+    }
+
     fn validate(
         &self,
         execution_mode: CalibrationExecutionMode,
@@ -261,18 +344,9 @@ impl CalibrationStageHandoff {
             });
         }
 
-        match self.transport {
-            CalibrationStageHandoffTransport::InMemoryOutput => {
-                if self.artifact_reference.is_some() {
-                    return Err(
-                        CalibrationStageHandoffError::UnexpectedArtifactReferenceForInMemoryHandoff {
-                            from_stage: self.from_stage,
-                            to_stage: self.to_stage,
-                        },
-                    );
-                }
-            }
-            CalibrationStageHandoffTransport::PersistedArtifactReference => {
+        match &self.route {
+            CalibrationStageHandoffRoute::InMemoryOutput => {}
+            CalibrationStageHandoffRoute::PersistedArtifactReference { artifact_reference } => {
                 if execution_mode != CalibrationExecutionMode::Disk {
                     return Err(
                         CalibrationStageHandoffError::PersistedArtifactHandoffRequiresDiskMode {
@@ -282,14 +356,6 @@ impl CalibrationStageHandoff {
                     );
                 }
 
-                let Some(artifact_reference) = &self.artifact_reference else {
-                    return Err(
-                        CalibrationStageHandoffError::MissingArtifactReferenceForPersistedHandoff {
-                            from_stage: self.from_stage,
-                            to_stage: self.to_stage,
-                        },
-                    );
-                };
                 if artifact_reference.trim().is_empty() {
                     return Err(
                         CalibrationStageHandoffError::EmptyArtifactReferenceForPersistedHandoff {
@@ -316,15 +382,7 @@ pub enum CalibrationStageHandoffError {
     ToStageIsNotSelected {
         stage: CalibrationStage,
     },
-    UnexpectedArtifactReferenceForInMemoryHandoff {
-        from_stage: CalibrationStage,
-        to_stage: CalibrationStage,
-    },
     PersistedArtifactHandoffRequiresDiskMode {
-        from_stage: CalibrationStage,
-        to_stage: CalibrationStage,
-    },
-    MissingArtifactReferenceForPersistedHandoff {
         from_stage: CalibrationStage,
         to_stage: CalibrationStage,
     },
@@ -349,26 +407,12 @@ impl Display for CalibrationStageHandoffError {
                 formatter,
                 "stage_handoffs.to_stage `{stage:?}` must be selected in selected_stages"
             ),
-            Self::UnexpectedArtifactReferenceForInMemoryHandoff {
-                from_stage,
-                to_stage,
-            } => write!(
-                formatter,
-                "stage_handoffs entry `{from_stage:?}` -> `{to_stage:?}` uses in_memory_output and must not include artifact_reference"
-            ),
             Self::PersistedArtifactHandoffRequiresDiskMode {
                 from_stage,
                 to_stage,
             } => write!(
                 formatter,
                 "stage_handoffs entry `{from_stage:?}` -> `{to_stage:?}` uses persisted_artifact_reference and requires execution_mode=disk"
-            ),
-            Self::MissingArtifactReferenceForPersistedHandoff {
-                from_stage,
-                to_stage,
-            } => write!(
-                formatter,
-                "stage_handoffs entry `{from_stage:?}` -> `{to_stage:?}` uses persisted_artifact_reference and must include artifact_reference"
             ),
             Self::EmptyArtifactReferenceForPersistedHandoff {
                 from_stage,
@@ -384,24 +428,42 @@ impl Display for CalibrationStageHandoffError {
 impl Error for CalibrationStageHandoffError {}
 
 /// Resume source contract for calibration orchestration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "source", rename_all = "snake_case")]
 pub enum CalibrationResumeSource {
     SameProcess,
-    PersistedCheckpointReference,
+    PersistedCheckpointReference { checkpoint_reference: String },
 }
 
 /// Resume configuration for staged calibration orchestration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CalibrationResumeSettings {
+    #[serde(flatten)]
     pub source: CalibrationResumeSource,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resume_from_stage: Option<CalibrationStage>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub checkpoint_reference: Option<String>,
 }
 
 impl CalibrationResumeSettings {
+    pub fn same_process(resume_from_stage: Option<CalibrationStage>) -> Self {
+        Self {
+            source: CalibrationResumeSource::SameProcess,
+            resume_from_stage,
+        }
+    }
+
+    pub fn persisted_checkpoint_reference(
+        checkpoint_reference: impl Into<String>,
+        resume_from_stage: Option<CalibrationStage>,
+    ) -> Self {
+        Self {
+            source: CalibrationResumeSource::PersistedCheckpointReference {
+                checkpoint_reference: checkpoint_reference.into(),
+            },
+            resume_from_stage,
+        }
+    }
+
     fn validate(
         &self,
         execution_mode: CalibrationExecutionMode,
@@ -415,32 +477,23 @@ impl CalibrationResumeSettings {
             });
         }
 
-        match self.source {
+        match &self.source {
             CalibrationResumeSource::SameProcess => {
                 if execution_mode != CalibrationExecutionMode::Memory {
                     return Err(
                         CalibrationResumeSettingsError::SameProcessResumeRequiresMemoryMode,
                     );
                 }
-
-                if self.checkpoint_reference.is_some() {
-                    return Err(
-                        CalibrationResumeSettingsError::UnexpectedCheckpointReferenceForSameProcessResume,
-                    );
-                }
             }
-            CalibrationResumeSource::PersistedCheckpointReference => {
+            CalibrationResumeSource::PersistedCheckpointReference {
+                checkpoint_reference,
+            } => {
                 if execution_mode != CalibrationExecutionMode::Disk {
                     return Err(
                         CalibrationResumeSettingsError::PersistedCheckpointResumeRequiresDiskMode,
                     );
                 }
 
-                let Some(checkpoint_reference) = &self.checkpoint_reference else {
-                    return Err(
-                        CalibrationResumeSettingsError::MissingCheckpointReferenceForPersistedResume,
-                    );
-                };
                 if checkpoint_reference.trim().is_empty() {
                     return Err(
                         CalibrationResumeSettingsError::EmptyCheckpointReferenceForPersistedResume,
@@ -458,8 +511,6 @@ pub enum CalibrationResumeSettingsError {
     ResumeFromUnselectedStage { stage: CalibrationStage },
     SameProcessResumeRequiresMemoryMode,
     PersistedCheckpointResumeRequiresDiskMode,
-    UnexpectedCheckpointReferenceForSameProcessResume,
-    MissingCheckpointReferenceForPersistedResume,
     EmptyCheckpointReferenceForPersistedResume,
 }
 
@@ -477,14 +528,6 @@ impl Display for CalibrationResumeSettingsError {
             Self::PersistedCheckpointResumeRequiresDiskMode => write!(
                 formatter,
                 "resume_settings.source=persisted_checkpoint_reference is only supported when execution_mode=disk"
-            ),
-            Self::UnexpectedCheckpointReferenceForSameProcessResume => write!(
-                formatter,
-                "resume_settings.source=same_process must not include checkpoint_reference"
-            ),
-            Self::MissingCheckpointReferenceForPersistedResume => write!(
-                formatter,
-                "resume_settings.source=persisted_checkpoint_reference must include checkpoint_reference"
             ),
             Self::EmptyCheckpointReferenceForPersistedResume => write!(
                 formatter,
@@ -616,6 +659,45 @@ pub struct CalibrationRunSpec {
     pub resume_settings: Option<CalibrationResumeSettings>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct CalibrationRunSpecBuilder {
+    run_id: String,
+    data_inputs: CalibrationRunDataInputs,
+    execution_mode: CalibrationExecutionMode,
+    selected_stages: Vec<CalibrationStage>,
+    seed_settings: CalibrationRunSeedSettings,
+    optimizer_settings_by_stage: Vec<CalibrationStageSolverSettings>,
+    stage_handoffs: Vec<CalibrationStageHandoff>,
+    resume_settings: Option<CalibrationResumeSettings>,
+}
+
+impl CalibrationRunSpecBuilder {
+    pub fn with_stage_handoffs(mut self, stage_handoffs: Vec<CalibrationStageHandoff>) -> Self {
+        self.stage_handoffs = stage_handoffs;
+        self
+    }
+
+    pub fn with_resume_settings(mut self, resume_settings: CalibrationResumeSettings) -> Self {
+        self.resume_settings = Some(resume_settings);
+        self
+    }
+
+    pub fn build(self) -> Result<CalibrationRunSpec, CalibrationRunSpecError> {
+        let run_spec = CalibrationRunSpec {
+            run_id: self.run_id,
+            data_inputs: self.data_inputs,
+            execution_mode: self.execution_mode,
+            selected_stages: self.selected_stages,
+            seed_settings: self.seed_settings,
+            optimizer_settings_by_stage: self.optimizer_settings_by_stage,
+            stage_handoffs: self.stage_handoffs,
+            resume_settings: self.resume_settings,
+        };
+        run_spec.validate()?;
+        Ok(run_spec)
+    }
+}
+
 impl CalibrationRunSpec {
     pub fn try_new(
         run_id: impl Into<String>,
@@ -625,69 +707,35 @@ impl CalibrationRunSpec {
         seed_settings: CalibrationRunSeedSettings,
         optimizer_settings_by_stage: Vec<CalibrationStageSolverSettings>,
     ) -> Result<Self, CalibrationRunSpecError> {
-        Self::try_new_with_mode_extensions(
+        Self::builder(
             run_id,
             data_inputs,
             execution_mode,
             selected_stages,
             seed_settings,
             optimizer_settings_by_stage,
-            Vec::new(),
-            None,
         )
+        .build()
     }
 
-    #[allow(clippy::too_many_arguments)]
-    /// Build a run spec with explicit mode-aware extension fields.
-    pub fn try_new_with_mode_extensions(
+    pub fn builder(
         run_id: impl Into<String>,
         data_inputs: CalibrationRunDataInputs,
         execution_mode: CalibrationExecutionMode,
         selected_stages: Vec<CalibrationStage>,
         seed_settings: CalibrationRunSeedSettings,
         optimizer_settings_by_stage: Vec<CalibrationStageSolverSettings>,
-        stage_handoffs: Vec<CalibrationStageHandoff>,
-        resume_settings: Option<CalibrationResumeSettings>,
-    ) -> Result<Self, CalibrationRunSpecError> {
-        let run_spec = Self {
+    ) -> CalibrationRunSpecBuilder {
+        CalibrationRunSpecBuilder {
             run_id: run_id.into(),
             data_inputs,
             execution_mode,
             selected_stages,
             seed_settings,
             optimizer_settings_by_stage,
-            stage_handoffs,
-            resume_settings,
-        };
-        run_spec.validate()?;
-        Ok(run_spec)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    /// Build a run spec with caller-surface execution-mode defaulting.
-    pub fn try_new_for_caller_surface(
-        run_id: impl Into<String>,
-        data_inputs: CalibrationRunDataInputs,
-        caller_surface: CalibrationCallerSurface,
-        execution_mode_override: Option<CalibrationExecutionMode>,
-        selected_stages: Vec<CalibrationStage>,
-        seed_settings: CalibrationRunSeedSettings,
-        optimizer_settings_by_stage: Vec<CalibrationStageSolverSettings>,
-        stage_handoffs: Vec<CalibrationStageHandoff>,
-        resume_settings: Option<CalibrationResumeSettings>,
-    ) -> Result<Self, CalibrationRunSpecError> {
-        let resolved_execution_mode =
-            resolve_calibration_execution_mode_for_surface(caller_surface, execution_mode_override);
-        Self::try_new_with_mode_extensions(
-            run_id,
-            data_inputs,
-            resolved_execution_mode,
-            selected_stages,
-            seed_settings,
-            optimizer_settings_by_stage,
-            stage_handoffs,
-            resume_settings,
-        )
+            stage_handoffs: Vec::new(),
+            resume_settings: None,
+        }
     }
 
     pub fn validate(&self) -> Result<(), CalibrationRunSpecError> {

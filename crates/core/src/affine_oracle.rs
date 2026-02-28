@@ -211,18 +211,14 @@ pub struct ExponentialAffineTransformNewsIntensityInput {
 }
 
 impl ExponentialAffineTransformNewsIntensityInput {
-    pub const fn new(known_nu_h: f64, surprise_nu_h: f64) -> Self {
-        Self {
-            known_nu_h,
-            surprise_nu_h,
-        }
-    }
-
     pub fn try_new(
         known_nu_h: f64,
         surprise_nu_h: f64,
     ) -> Result<Self, ExponentialAffineTransformNewsIntensityInputError> {
-        let input = Self::new(known_nu_h, surprise_nu_h);
+        let input = Self {
+            known_nu_h,
+            surprise_nu_h,
+        };
         input.validate()?;
         Ok(input)
     }
@@ -262,16 +258,9 @@ impl ExponentialAffineTransformNewsIntensityInput {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExponentialAffineTransformNewsIntensityInputError {
-    InvalidKnownNewsIntensity {
-        value: f64,
-    },
-    InvalidSurpriseNewsIntensity {
-        value: f64,
-    },
-    NonFiniteAggregateNewsIntensity {
-        known_nu_h: f64,
-        surprise_nu_h: f64,
-    },
+    InvalidKnownNewsIntensity { value: f64 },
+    InvalidSurpriseNewsIntensity { value: f64 },
+    NonFiniteAggregateNewsIntensity { known_nu_h: f64, surprise_nu_h: f64 },
 }
 
 impl Display for ExponentialAffineTransformNewsIntensityInputError {
@@ -426,7 +415,10 @@ impl Display for ExponentialAffineTransformInputError {
                 )
             }
             Self::InvalidNewsIntensityInput { source } => {
-                write!(formatter, "transform input news_intensity is invalid: {source}")
+                write!(
+                    formatter,
+                    "transform input news_intensity is invalid: {source}"
+                )
             }
             Self::InvalidComplexField { field, value } => write!(
                 formatter,
@@ -803,44 +795,15 @@ impl Default for ExponentialAffineTransformSolverSettings {
 }
 
 impl ExponentialAffineTransformSolverSettings {
-    pub fn new(
-        integrator_method: ExponentialAffineTransformIntegratorMethod,
-        step_count: usize,
-    ) -> Self {
-        Self {
-            integrator_method,
-            step_count,
-            telemetry_mode: ExponentialAffineTransformTelemetryMode::Disabled,
-        }
-    }
-
     pub fn try_new(
         integrator_method: ExponentialAffineTransformIntegratorMethod,
         step_count: usize,
     ) -> Result<Self, ExponentialAffineTransformSolverSettingsError> {
-        let settings = Self::new(integrator_method, step_count);
-        settings.validate()?;
-        Ok(settings)
-    }
-
-    pub fn new_with_telemetry(
-        integrator_method: ExponentialAffineTransformIntegratorMethod,
-        step_count: usize,
-        telemetry_mode: ExponentialAffineTransformTelemetryMode,
-    ) -> Self {
-        Self {
+        let settings = Self {
             integrator_method,
             step_count,
-            telemetry_mode,
-        }
-    }
-
-    pub fn try_new_with_telemetry(
-        integrator_method: ExponentialAffineTransformIntegratorMethod,
-        step_count: usize,
-        telemetry_mode: ExponentialAffineTransformTelemetryMode,
-    ) -> Result<Self, ExponentialAffineTransformSolverSettingsError> {
-        let settings = Self::new_with_telemetry(integrator_method, step_count, telemetry_mode);
+            telemetry_mode: ExponentialAffineTransformTelemetryMode::Disabled,
+        };
         settings.validate()?;
         Ok(settings)
     }
@@ -1874,9 +1837,9 @@ mod tests {
         ExponentialAffineTransformDVector, ExponentialAffineTransformEquationSpecification,
         ExponentialAffineTransformGuardFailureCode, ExponentialAffineTransformInput,
         ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformIntegratorMethod,
-        ExponentialAffineTransformNewsIntensityInput,
-        ExponentialAffineTransformOutput, ExponentialAffineTransformSolverError,
-        ExponentialAffineTransformSolverSettings, ExponentialAffineTransformTelemetryMode,
+        ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformOutput,
+        ExponentialAffineTransformSolverError, ExponentialAffineTransformSolverSettings,
+        ExponentialAffineTransformTelemetryMode,
         evaluate_exponential_affine_transform_hamiltonians,
         evaluate_exponential_affine_transform_ode_rhs, solve_exponential_affine_transform,
         solve_exponential_affine_transform_with_settings,
@@ -2532,10 +2495,12 @@ mod tests {
 
         let solver_error = solve_exponential_affine_transform_with_settings(
             valid_input(),
-            ExponentialAffineTransformSolverSettings::new(
-                ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
-                0,
-            ),
+            ExponentialAffineTransformSolverSettings {
+                integrator_method:
+                    ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
+                step_count: 0,
+                telemetry_mode: ExponentialAffineTransformTelemetryMode::Disabled,
+            },
         )
         .expect_err("solver execution must reject invalid settings before runtime");
         assert!(
@@ -2942,12 +2907,12 @@ mod tests {
     #[test]
     fn telemetry_payload_reports_guarded_failure_context() {
         let transform_input = domain_violation_fixture_input();
-        let solver_settings = ExponentialAffineTransformSolverSettings::try_new_with_telemetry(
+        let solver_settings = ExponentialAffineTransformSolverSettings::try_new(
             ExponentialAffineTransformIntegratorMethod::ForwardEuler,
             2,
-            ExponentialAffineTransformTelemetryMode::Enabled,
         )
-        .expect("guarded-failure telemetry settings should construct");
+        .expect("guarded-failure telemetry settings should construct")
+        .with_telemetry_mode(ExponentialAffineTransformTelemetryMode::Enabled);
 
         let solve_result =
             solve_exponential_affine_transform_with_settings(transform_input, solver_settings)

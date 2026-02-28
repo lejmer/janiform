@@ -11,9 +11,8 @@ use crate::affine_oracle::{
     ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformGuardFailureCode,
     ExponentialAffineTransformInput, ExponentialAffineTransformInputError,
     ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformIntegratorMethod,
-    ExponentialAffineTransformNewsIntensityInput,
-    ExponentialAffineTransformSolverError, ExponentialAffineTransformSolverSettings,
-    ExponentialAffineTransformSolverSettingsError,
+    ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformSolverError,
+    ExponentialAffineTransformSolverSettings, ExponentialAffineTransformSolverSettingsError,
     solve_exponential_affine_transform_with_settings,
 };
 use crate::complex_math::complex_exponential;
@@ -64,6 +63,25 @@ impl BenchmarkWorkloadScale {
     pub(crate) fn required_order() -> [Self; 3] {
         [Self::Small, Self::Medium, Self::Large]
     }
+}
+
+/// Shared key contract for canonical profile ordering.
+pub(crate) trait CanonicalProfileRecord {
+    fn profile_id(&self) -> &str;
+    fn workload_scale_rank(&self) -> u8;
+}
+
+/// Sort profile records by canonical benchmark policy:
+/// workload scale rank first, then profile id ascending.
+pub(crate) fn sort_profile_records_canonically<T>(profile_records: &mut [T])
+where
+    T: CanonicalProfileRecord,
+{
+    profile_records.sort_by(|left, right| {
+        left.workload_scale_rank()
+            .cmp(&right.workload_scale_rank())
+            .then_with(|| left.profile_id().cmp(right.profile_id()))
+    });
 }
 
 impl Display for BenchmarkWorkloadScale {
@@ -151,6 +169,16 @@ pub struct BenchmarkScenarioWorkloadProfile {
     pub component_workload: BenchmarkScenarioComponentWorkload,
     pub tags: Vec<String>,
     pub description: String,
+}
+
+impl CanonicalProfileRecord for BenchmarkScenarioWorkloadProfile {
+    fn profile_id(&self) -> &str {
+        self.profile_id.as_str()
+    }
+
+    fn workload_scale_rank(&self) -> u8 {
+        self.workload_scale.ordering_rank()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -248,12 +276,7 @@ impl BenchmarkScenarioCatalog {
     }
 
     pub(crate) fn sort_profiles_canonically(&mut self) {
-        self.profiles.sort_by(|left, right| {
-            left.workload_scale
-                .ordering_rank()
-                .cmp(&right.workload_scale.ordering_rank())
-                .then_with(|| left.profile_id.cmp(&right.profile_id))
-        });
+        sort_profile_records_canonically(self.profiles.as_mut_slice());
     }
 }
 
@@ -1784,6 +1807,16 @@ pub(crate) fn build_oracle_transform_input(
     );
     let known_news_intensity_factor = news_intensity_factor * noise;
     let surprise_news_intensity_factor = news_intensity_factor - known_news_intensity_factor;
+    let news_intensity_input = ExponentialAffineTransformNewsIntensityInput::try_new(
+        known_news_intensity_factor,
+        surprise_news_intensity_factor,
+    )
+    .map_err(
+        |source| OraclePricerRiskBenchmarkHarnessError::InvalidOracleTransformInput {
+            profile_id: profile.profile_id.clone(),
+            source: ExponentialAffineTransformInputError::InvalidNewsIntensityInput { source },
+        },
+    )?;
 
     ExponentialAffineTransformInput::try_new(
         equation_specification,
@@ -1816,10 +1849,7 @@ pub(crate) fn build_oracle_transform_input(
             solver_probes.seasonality_factor_max,
             noise,
         ),
-        ExponentialAffineTransformNewsIntensityInput::new(
-            known_news_intensity_factor,
-            surprise_news_intensity_factor,
-        ),
+        news_intensity_input,
         profile.interval_settings.interval_delta,
         profile.model_state.initial_excitation_state,
     )
@@ -1905,16 +1935,26 @@ fn build_risk_transform_slices(
             1.0 - factor_noise,
         );
         let known_news_intensity_factor = news_intensity_factor * factor_noise;
-        let surprise_news_intensity_factor =
-            news_intensity_factor - known_news_intensity_factor;
+        let surprise_news_intensity_factor = news_intensity_factor - known_news_intensity_factor;
+        let news_intensity_input = ExponentialAffineTransformNewsIntensityInput::try_new(
+            known_news_intensity_factor,
+            surprise_news_intensity_factor,
+        )
+        .map_err(|source| {
+            OraclePricerRiskBenchmarkHarnessError::InvalidRiskSliceContext {
+                profile_id: profile.profile_id.clone(),
+                interval_index,
+                source: SufficientStatisticsTransformSliceContextError::InvalidNewsIntensity {
+                    interval_index,
+                    source,
+                },
+            }
+        })?;
 
         let context = SufficientStatisticsTransformSliceContext::try_new(
             interval_index,
             seasonality_factor,
-            ExponentialAffineTransformNewsIntensityInput::new(
-                known_news_intensity_factor,
-                surprise_news_intensity_factor,
-            ),
+            news_intensity_input,
             profile.interval_settings.interval_delta,
             profile.model_state.initial_excitation_state,
         )

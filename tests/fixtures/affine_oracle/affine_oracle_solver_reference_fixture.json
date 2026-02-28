@@ -68,7 +68,10 @@
           "imaginary": 0.0
         },
         "s_h": 1.1,
-        "nu_h": 0.0,
+        "news_intensity": {
+          "known_nu_h": 0.0,
+          "surprise_nu_h": 0.0
+        },
         "delta": 1.0,
         "initial_state": {
           "y_plus_plus": 0.4,
@@ -164,7 +167,10 @@
           "imaginary": 0.02
         },
         "s_h": 1.1,
-        "nu_h": 0.08,
+        "news_intensity": {
+          "known_nu_h": 0.0,
+          "surprise_nu_h": 0.08
+        },
         "delta": 1.0,
         "initial_state": {
           "y_plus_plus": 0.4,
@@ -212,7 +218,7 @@
         "one_interval_solver",
         "reference_regression"
       ],
-      "description": "Nonlinear complex-valued one-hour run with non-zero alpha, rho, and nu_h for high-signal equation drift detection."
+      "description": "Nonlinear complex-valued one-hour run with non-zero alpha, rho, and news_intensity for high-signal equation drift detection."
     },
     {
       "fixture_id": "nonlinear_complex_subhour_reference",
@@ -260,7 +266,10 @@
           "imaginary": 0.02
         },
         "s_h": 1.1,
-        "nu_h": 0.08,
+        "news_intensity": {
+          "known_nu_h": 0.0,
+          "surprise_nu_h": 0.08
+        },
         "delta": 0.5,
         "initial_state": {
           "y_plus_plus": 0.4,

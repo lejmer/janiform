@@ -210,7 +210,7 @@ pub fn run_staged_calibration_with_checkpointing(
     let mut start_position = 0usize;
 
     if let Some(resume_settings) = &run_spec.resume_settings {
-        let loaded_checkpoint = match resume_settings.source {
+        let loaded_checkpoint = match &resume_settings.source {
             CalibrationResumeSource::SameProcess => {
                 let Some(checkpoint_store) = memory_checkpoint_store.as_deref() else {
                     return build_staged_run_failure_report(
@@ -241,7 +241,9 @@ pub fn run_staged_calibration_with_checkpointing(
 
                 loaded_state
             }
-            CalibrationResumeSource::PersistedCheckpointReference => {
+            CalibrationResumeSource::PersistedCheckpointReference {
+                checkpoint_reference,
+            } => {
                 let Some(disk_checkpoint_directory) = disk_checkpoint_directory else {
                     return build_staged_run_failure_report(
                         run_contract,
@@ -253,11 +255,7 @@ pub fn run_staged_calibration_with_checkpointing(
                         CalibrationStagedRunFailure::MissingDiskCheckpointDirectory,
                     );
                 };
-                let checkpoint_reference = resume_settings
-                    .checkpoint_reference
-                    .as_deref()
-                    .unwrap_or_default()
-                    .to_string();
+                let checkpoint_reference = checkpoint_reference.to_string();
                 let checkpoint_metadata = match load_stage_checkpoint_from_disk(
                     disk_checkpoint_directory,
                     checkpoint_reference.as_str(),
@@ -307,16 +305,15 @@ pub fn run_staged_calibration_with_checkpointing(
             .checkpoint_metadata
             .validate_compatibility_with_run_contract(run_contract)
         {
-            let resume_reference = resume_settings
-                .checkpoint_reference
-                .as_deref()
-                .map(ToOwned::to_owned)
-                .unwrap_or_else(|| {
-                    loaded_checkpoint
-                        .checkpoint_metadata
-                        .checkpoint_reference
-                        .clone()
-                });
+            let resume_reference = match &resume_settings.source {
+                CalibrationResumeSource::SameProcess => loaded_checkpoint
+                    .checkpoint_metadata
+                    .checkpoint_reference
+                    .clone(),
+                CalibrationResumeSource::PersistedCheckpointReference {
+                    checkpoint_reference,
+                } => checkpoint_reference.clone(),
+            };
 
             return build_staged_run_failure_report(
                 run_contract,
@@ -332,18 +329,15 @@ pub fn run_staged_calibration_with_checkpointing(
             );
         }
 
-        resumed_from_checkpoint_reference = Some(
-            resume_settings
+        resumed_from_checkpoint_reference = Some(match &resume_settings.source {
+            CalibrationResumeSource::SameProcess => loaded_checkpoint
+                .checkpoint_metadata
                 .checkpoint_reference
-                .as_deref()
-                .map(ToOwned::to_owned)
-                .unwrap_or_else(|| {
-                    loaded_checkpoint
-                        .checkpoint_metadata
-                        .checkpoint_reference
-                        .clone()
-                }),
-        );
+                .clone(),
+            CalibrationResumeSource::PersistedCheckpointReference {
+                checkpoint_reference,
+            } => checkpoint_reference.clone(),
+        });
         resumed_from_last_successful_stage =
             Some(loaded_checkpoint.checkpoint_metadata.completed_stage);
         payload_state = loaded_checkpoint.payload_state;
@@ -682,7 +676,7 @@ fn expected_stage_handoff_transport(
         .stage_handoffs
         .iter()
         .find(|handoff| handoff.from_stage == from_stage && handoff.to_stage == to_stage)
-        .map(|handoff| handoff.transport)
+        .map(|handoff| handoff.transport())
         .unwrap_or(match run_spec.execution_mode {
             CalibrationExecutionMode::Memory => CalibrationStageHandoffTransport::InMemoryOutput,
             CalibrationExecutionMode::Disk => {
@@ -700,10 +694,10 @@ fn expected_stage_handoff_artifact_reference(
         .stage_handoffs
         .iter()
         .find(|handoff| handoff.from_stage == from_stage && handoff.to_stage == to_stage)
-        .and_then(|handoff| handoff.artifact_reference.as_ref())
+        .and_then(|handoff| handoff.artifact_reference())
         && !artifact_reference.trim().is_empty()
     {
-        return artifact_reference.clone();
+        return artifact_reference.to_string();
     }
 
     format!(

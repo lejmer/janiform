@@ -26,12 +26,11 @@ mod tests {
         CalibrationOptimizerAdapterConfiguration, CalibrationOptimizerAdapterError,
         CalibrationOptimizerCandidateParameterValue, CalibrationOptimizerParameterBound,
         CalibrationOptimizerSettings, CalibrationResumeSettings, CalibrationResumeSettingsError,
-        CalibrationResumeSource, CalibrationRunContract, CalibrationRunContractError,
-        CalibrationRunDataInputs, CalibrationRunSeedSettings, CalibrationRunSpec,
-        CalibrationRunSpecError, CalibrationRunSpecErrorClassification, CalibrationStage,
-        CalibrationStageDependency, CalibrationStageExecutionStatus, CalibrationStageGraph,
-        CalibrationStageGraphError, CalibrationStageHandoff, CalibrationStageHandoffError,
-        CalibrationStageHandoffTransport, CalibrationStageSeedOverride,
+        CalibrationRunContract, CalibrationRunContractError, CalibrationRunDataInputs,
+        CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationRunSpecError,
+        CalibrationRunSpecErrorClassification, CalibrationStage, CalibrationStageDependency,
+        CalibrationStageExecutionStatus, CalibrationStageGraph, CalibrationStageGraphError,
+        CalibrationStageHandoff, CalibrationStageHandoffError, CalibrationStageSeedOverride,
         CalibrationStageSolverSettings, CalibrationStagedRunFailure, CalibrationStagedRunInputs,
         HawkesStageCandidateInput, HawkesStageExecutionFailure, HawkesStageExecutionInput,
         HawkesStageObjectiveTermInput, OptionSurfaceCalibrationObservationError,
@@ -435,30 +434,27 @@ mod tests {
 
     #[test]
     fn calibration_run_spec_for_caller_surface_applies_default_execution_mode() {
-        let cli_spec = CalibrationRunSpec::try_new_for_caller_surface(
+        let cli_spec = CalibrationRunSpec::try_new(
             "run-cli-default",
             build_data_inputs(),
-            CalibrationCallerSurface::Cli,
-            None,
+            resolve_calibration_execution_mode_for_surface(CalibrationCallerSurface::Cli, None),
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
             build_solver_settings_for_seasonality_and_hawkes(),
-            Vec::new(),
-            None,
         )
         .expect("cli default run spec should validate");
         assert_eq!(cli_spec.execution_mode, CalibrationExecutionMode::Disk);
 
-        let python_spec = CalibrationRunSpec::try_new_for_caller_surface(
+        let python_spec = CalibrationRunSpec::try_new(
             "run-python-default",
             build_data_inputs(),
-            CalibrationCallerSurface::PythonImportableApi,
-            None,
+            resolve_calibration_execution_mode_for_surface(
+                CalibrationCallerSurface::PythonImportableApi,
+                None,
+            ),
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
             build_solver_settings_for_seasonality_and_hawkes(),
-            Vec::new(),
-            None,
         )
         .expect("python default run spec should validate");
         assert_eq!(python_spec.execution_mode, CalibrationExecutionMode::Memory);
@@ -466,50 +462,49 @@ mod tests {
 
     #[test]
     fn calibration_run_spec_mode_extensions_support_valid_memory_and_disk_configurations() {
-        let memory_run_spec = CalibrationRunSpec::try_new_with_mode_extensions(
+        let memory_run_spec = CalibrationRunSpec::builder(
             "run-memory",
             build_data_inputs(),
             CalibrationExecutionMode::Memory,
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
             build_solver_settings_for_seasonality_and_hawkes(),
-            vec![build_mode_aware_stage_handoff(
-                CalibrationStage::Seasonality,
-                CalibrationStage::Hawkes,
-                CalibrationExecutionMode::Memory,
-                "artifact://seasonality/stage-001",
-            )],
-            Some(CalibrationResumeSettings {
-                source: CalibrationResumeSource::SameProcess,
-                resume_from_stage: Some(CalibrationStage::Hawkes),
-                checkpoint_reference: None,
-            }),
         )
+        .with_stage_handoffs(vec![build_mode_aware_stage_handoff(
+            CalibrationStage::Seasonality,
+            CalibrationStage::Hawkes,
+            CalibrationExecutionMode::Memory,
+            "artifact://seasonality/stage-001",
+        )])
+        .with_resume_settings(CalibrationResumeSettings::same_process(Some(
+            CalibrationStage::Hawkes,
+        )))
+        .build()
         .expect("memory mode with in-memory handoff and same-process resume should validate");
         assert_eq!(
             memory_run_spec.execution_mode,
             CalibrationExecutionMode::Memory
         );
 
-        let disk_run_spec = CalibrationRunSpec::try_new_with_mode_extensions(
+        let disk_run_spec = CalibrationRunSpec::builder(
             "run-disk",
             build_data_inputs(),
             CalibrationExecutionMode::Disk,
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
             build_solver_settings_for_seasonality_and_hawkes(),
-            vec![build_mode_aware_stage_handoff(
-                CalibrationStage::Seasonality,
-                CalibrationStage::Hawkes,
-                CalibrationExecutionMode::Disk,
-                "artifact://seasonality/stage-001",
-            )],
-            Some(CalibrationResumeSettings {
-                source: CalibrationResumeSource::PersistedCheckpointReference,
-                resume_from_stage: None,
-                checkpoint_reference: Some("checkpoint://run-disk/last-success".to_string()),
-            }),
         )
+        .with_stage_handoffs(vec![build_mode_aware_stage_handoff(
+            CalibrationStage::Seasonality,
+            CalibrationStage::Hawkes,
+            CalibrationExecutionMode::Disk,
+            "artifact://seasonality/stage-001",
+        )])
+        .with_resume_settings(CalibrationResumeSettings::persisted_checkpoint_reference(
+            "checkpoint://run-disk/last-success",
+            None,
+        ))
+        .build()
         .expect("disk mode with persisted handoff and persisted resume should validate");
         assert_eq!(disk_run_spec.execution_mode, CalibrationExecutionMode::Disk);
     }
@@ -517,21 +512,23 @@ mod tests {
     #[test]
     fn calibration_run_spec_rejects_mode_incompatible_option_settings_with_deterministic_classification()
      {
-        let memory_with_persisted_handoff = CalibrationRunSpec::try_new_with_mode_extensions(
+        let memory_with_persisted_handoff = CalibrationRunSpec::builder(
             "run-invalid-memory-handoff",
             build_data_inputs(),
             CalibrationExecutionMode::Memory,
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
             build_solver_settings_for_seasonality_and_hawkes(),
-            vec![CalibrationStageHandoff {
-                from_stage: CalibrationStage::Seasonality,
-                to_stage: CalibrationStage::Hawkes,
-                transport: CalibrationStageHandoffTransport::PersistedArtifactReference,
-                artifact_reference: Some("artifact://seasonality/stage-001".to_string()),
-            }],
-            None,
         )
+        .with_stage_handoffs(vec![
+            CalibrationStageHandoff::persisted_artifact_reference(
+                CalibrationStage::Seasonality,
+                CalibrationStage::Hawkes,
+                "artifact://seasonality/stage-001",
+            )
+            .expect("persisted handoff fixture should be valid"),
+        ])
+        .build()
         .expect_err("memory mode must reject persisted artifact handoff");
 
         assert_eq!(
@@ -545,20 +542,19 @@ mod tests {
             }
         ));
 
-        let memory_with_persisted_resume = CalibrationRunSpec::try_new_with_mode_extensions(
+        let memory_with_persisted_resume = CalibrationRunSpec::builder(
             "run-invalid-memory-resume",
             build_data_inputs(),
             CalibrationExecutionMode::Memory,
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
             build_solver_settings_for_seasonality_and_hawkes(),
-            Vec::new(),
-            Some(CalibrationResumeSettings {
-                source: CalibrationResumeSource::PersistedCheckpointReference,
-                resume_from_stage: None,
-                checkpoint_reference: Some("checkpoint://run-memory/last-success".to_string()),
-            }),
         )
+        .with_resume_settings(CalibrationResumeSettings::persisted_checkpoint_reference(
+            "checkpoint://run-memory/last-success",
+            None,
+        ))
+        .build()
         .expect_err("memory mode must reject persisted checkpoint resume");
 
         assert_eq!(
@@ -572,20 +568,16 @@ mod tests {
             }
         ));
 
-        let disk_with_same_process_resume = CalibrationRunSpec::try_new_with_mode_extensions(
+        let disk_with_same_process_resume = CalibrationRunSpec::builder(
             "run-invalid-disk-resume",
             build_data_inputs(),
             CalibrationExecutionMode::Disk,
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
             build_solver_settings_for_seasonality_and_hawkes(),
-            Vec::new(),
-            Some(CalibrationResumeSettings {
-                source: CalibrationResumeSource::SameProcess,
-                resume_from_stage: None,
-                checkpoint_reference: None,
-            }),
         )
+        .with_resume_settings(CalibrationResumeSettings::same_process(None))
+        .build()
         .expect_err("disk mode must reject same-process resume");
 
         assert_eq!(
@@ -916,11 +908,7 @@ mod tests {
         let resume_run_contract = build_run_contract_with_mode_and_resume(
             run_id,
             CalibrationExecutionMode::Memory,
-            Some(CalibrationResumeSettings {
-                source: CalibrationResumeSource::SameProcess,
-                resume_from_stage: None,
-                checkpoint_reference: None,
-            }),
+            Some(CalibrationResumeSettings::same_process(None)),
         );
         let resume_report = run_staged_calibration_with_checkpointing(
             &resume_run_contract,
@@ -965,11 +953,9 @@ mod tests {
         let resume_run_contract = build_run_contract_with_mode_and_resume(
             run_id,
             CalibrationExecutionMode::Memory,
-            Some(CalibrationResumeSettings {
-                source: CalibrationResumeSource::SameProcess,
-                resume_from_stage: Some(CalibrationStage::Hawkes),
-                checkpoint_reference: None,
-            }),
+            Some(CalibrationResumeSettings::same_process(Some(
+                CalibrationStage::Hawkes,
+            ))),
         );
         let resume_report = run_staged_calibration_with_checkpointing(
             &resume_run_contract,
@@ -1027,11 +1013,10 @@ mod tests {
         let resume_from_last_contract = build_run_contract_with_mode_and_resume(
             run_id,
             CalibrationExecutionMode::Disk,
-            Some(CalibrationResumeSettings {
-                source: CalibrationResumeSource::PersistedCheckpointReference,
-                resume_from_stage: None,
-                checkpoint_reference: Some(calibration_last_success_checkpoint_reference(run_id)),
-            }),
+            Some(CalibrationResumeSettings::persisted_checkpoint_reference(
+                calibration_last_success_checkpoint_reference(run_id),
+                None,
+            )),
         );
         let resume_from_last_report = run_staged_calibration_with_checkpointing(
             &resume_from_last_contract,
@@ -1054,11 +1039,10 @@ mod tests {
         let resume_from_stage_contract = build_run_contract_with_mode_and_resume(
             run_id,
             CalibrationExecutionMode::Disk,
-            Some(CalibrationResumeSettings {
-                source: CalibrationResumeSource::PersistedCheckpointReference,
-                resume_from_stage: Some(CalibrationStage::Hawkes),
-                checkpoint_reference: Some(calibration_last_success_checkpoint_reference(run_id)),
-            }),
+            Some(CalibrationResumeSettings::persisted_checkpoint_reference(
+                calibration_last_success_checkpoint_reference(run_id),
+                Some(CalibrationStage::Hawkes),
+            )),
         );
         let resume_from_stage_report = run_staged_calibration_with_checkpointing(
             &resume_from_stage_contract,
@@ -1101,13 +1085,10 @@ mod tests {
         let incompatible_run_contract = build_run_contract_with_mode_and_resume(
             "run-target",
             CalibrationExecutionMode::Disk,
-            Some(CalibrationResumeSettings {
-                source: CalibrationResumeSource::PersistedCheckpointReference,
-                resume_from_stage: None,
-                checkpoint_reference: Some(calibration_last_success_checkpoint_reference(
-                    "run-source",
-                )),
-            }),
+            Some(CalibrationResumeSettings::persisted_checkpoint_reference(
+                calibration_last_success_checkpoint_reference("run-source"),
+                None,
+            )),
         );
         let incompatible_report = run_staged_calibration_with_checkpointing(
             &incompatible_run_contract,
@@ -1129,11 +1110,7 @@ mod tests {
         let memory_resume_contract = build_run_contract_with_mode_and_resume(
             "run-memory-missing-store",
             CalibrationExecutionMode::Memory,
-            Some(CalibrationResumeSettings {
-                source: CalibrationResumeSource::SameProcess,
-                resume_from_stage: None,
-                checkpoint_reference: None,
-            }),
+            Some(CalibrationResumeSettings::same_process(None)),
         );
         let missing_store_report = run_staged_calibration_with_checkpointing(
             &memory_resume_contract,
@@ -1919,21 +1896,28 @@ mod tests {
         execution_mode: CalibrationExecutionMode,
         resume_settings: Option<CalibrationResumeSettings>,
     ) -> CalibrationRunContract {
-        let run_spec = CalibrationRunSpec::try_new_with_mode_extensions(
-            run_id,
-            build_data_inputs(),
-            execution_mode,
-            vec![
-                CalibrationStage::Seasonality,
-                CalibrationStage::Hawkes,
-                CalibrationStage::ReturnComponents,
-            ],
-            build_seed_settings(),
-            build_solver_settings_for_all_stages(),
-            Vec::new(),
-            resume_settings,
-        )
-        .expect("run spec should validate");
+        let run_spec = {
+            let builder = CalibrationRunSpec::builder(
+                run_id,
+                build_data_inputs(),
+                execution_mode,
+                vec![
+                    CalibrationStage::Seasonality,
+                    CalibrationStage::Hawkes,
+                    CalibrationStage::ReturnComponents,
+                ],
+                build_seed_settings(),
+                build_solver_settings_for_all_stages(),
+            );
+
+            let builder = if let Some(resume_settings) = resume_settings {
+                builder.with_resume_settings(resume_settings)
+            } else {
+                builder
+            };
+
+            builder.build().expect("run spec should validate")
+        };
 
         CalibrationRunContract::try_new(run_spec, default_stage_graph())
             .expect("run contract should validate")
@@ -1959,18 +1943,17 @@ mod tests {
         persisted_artifact_reference: &str,
     ) -> CalibrationStageHandoff {
         match execution_mode {
-            CalibrationExecutionMode::Memory => CalibrationStageHandoff {
-                from_stage,
-                to_stage,
-                transport: CalibrationStageHandoffTransport::InMemoryOutput,
-                artifact_reference: None,
-            },
-            CalibrationExecutionMode::Disk => CalibrationStageHandoff {
-                from_stage,
-                to_stage,
-                transport: CalibrationStageHandoffTransport::PersistedArtifactReference,
-                artifact_reference: Some(persisted_artifact_reference.to_string()),
-            },
+            CalibrationExecutionMode::Memory => {
+                CalibrationStageHandoff::in_memory_output(from_stage, to_stage)
+            }
+            CalibrationExecutionMode::Disk => {
+                CalibrationStageHandoff::persisted_artifact_reference(
+                    from_stage,
+                    to_stage,
+                    persisted_artifact_reference,
+                )
+                .expect("disk-mode persisted handoff fixture should be valid")
+            }
         }
     }
 
@@ -2030,16 +2013,16 @@ mod tests {
             "artifact://seasonality/run-001",
         );
 
-        CalibrationRunSpec::try_new_with_mode_extensions(
+        CalibrationRunSpec::builder(
             "run-001",
             build_data_inputs(),
             execution_mode,
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
             build_solver_settings_for_seasonality_and_hawkes(),
-            vec![stage_handoff],
-            None,
         )
+        .with_stage_handoffs(vec![stage_handoff])
+        .build()
         .expect("seasonality stage run spec should validate")
     }
 
@@ -2058,7 +2041,7 @@ mod tests {
             "artifact://hawkes/run-001",
         );
 
-        CalibrationRunSpec::try_new_with_mode_extensions(
+        CalibrationRunSpec::builder(
             "run-001",
             build_data_inputs(),
             execution_mode,
@@ -2069,9 +2052,9 @@ mod tests {
             ],
             build_seed_settings(),
             build_solver_settings_for_all_stages(),
-            vec![seasonality_handoff, hawkes_handoff],
-            None,
         )
+        .with_stage_handoffs(vec![seasonality_handoff, hawkes_handoff])
+        .build()
         .expect("hawkes stage run spec should validate")
     }
 

@@ -7,11 +7,12 @@ use std::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 use crate::benchmarking::{
-    BenchmarkWorkloadScale, ORACLE_PRICER_RISK_BENCHMARK_DETERMINISM_POLICY,
-    ORACLE_PRICER_RISK_BENCHMARK_EXECUTION_POLICY, ORACLE_PRICER_RISK_BENCHMARK_METRIC_POLICY,
-    ORACLE_PRICER_RISK_BENCHMARK_REPORT_SCHEMA_VERSION, ORACLE_PRICER_RISK_COMPONENT_ORACLE,
-    ORACLE_PRICER_RISK_COMPONENT_PRICING, ORACLE_PRICER_RISK_COMPONENT_RISK,
-    OraclePricerRiskBenchmarkComponentMetrics, OraclePricerRiskBenchmarkReport,
+    BenchmarkWorkloadScale, CanonicalProfileRecord,
+    ORACLE_PRICER_RISK_BENCHMARK_DETERMINISM_POLICY, ORACLE_PRICER_RISK_BENCHMARK_EXECUTION_POLICY,
+    ORACLE_PRICER_RISK_BENCHMARK_METRIC_POLICY, ORACLE_PRICER_RISK_BENCHMARK_REPORT_SCHEMA_VERSION,
+    ORACLE_PRICER_RISK_COMPONENT_ORACLE, ORACLE_PRICER_RISK_COMPONENT_PRICING,
+    ORACLE_PRICER_RISK_COMPONENT_RISK, OraclePricerRiskBenchmarkComponentMetrics,
+    OraclePricerRiskBenchmarkReport, sort_profile_records_canonically,
 };
 
 pub const ORACLE_PRICER_RISK_PERFORMANCE_BASELINE_SCHEMA_VERSION: &str =
@@ -114,6 +115,16 @@ pub struct OraclePricerRiskPerformanceBaselineProfileRecord {
     pub oracle_solver_metrics: OraclePricerRiskPerformanceBaselineComponentMetrics,
     pub pricing_metrics: OraclePricerRiskPerformanceBaselineComponentMetrics,
     pub risk_sampling_metrics: OraclePricerRiskPerformanceBaselineComponentMetrics,
+}
+
+impl CanonicalProfileRecord for OraclePricerRiskPerformanceBaselineProfileRecord {
+    fn profile_id(&self) -> &str {
+        self.profile_id.as_str()
+    }
+
+    fn workload_scale_rank(&self) -> u8 {
+        self.workload_scale.ordering_rank()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -319,12 +330,7 @@ impl OraclePricerRiskPerformanceBaselineArtifact {
     }
 
     fn sort_profile_records_canonically(&mut self) {
-        self.profile_records.sort_by(|left, right| {
-            left.workload_scale
-                .ordering_rank()
-                .cmp(&right.workload_scale.ordering_rank())
-                .then_with(|| left.profile_id.cmp(&right.profile_id))
-        });
+        sort_profile_records_canonically(self.profile_records.as_mut_slice());
     }
 }
 
@@ -634,12 +640,7 @@ pub fn capture_oracle_pricer_risk_performance_baseline_artifact(
             )
             .collect();
 
-    profile_records.sort_by(|left, right| {
-        left.workload_scale
-            .ordering_rank()
-            .cmp(&right.workload_scale.ordering_rank())
-            .then_with(|| left.profile_id.cmp(&right.profile_id))
-    });
+    sort_profile_records_canonically(profile_records.as_mut_slice());
 
     let mut baseline_artifact = OraclePricerRiskPerformanceBaselineArtifact {
         schema_version: ORACLE_PRICER_RISK_PERFORMANCE_BASELINE_SCHEMA_VERSION.to_string(),

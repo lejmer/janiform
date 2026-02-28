@@ -11,7 +11,7 @@ use crate::affine_oracle::{
     ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformIntegrationStatus,
     ExponentialAffineTransformIntegratorMethod, ExponentialAffineTransformOutput,
     ExponentialAffineTransformSolverError, ExponentialAffineTransformSolverSettings,
-    ExponentialAffineTransformSolverSettingsError,
+    ExponentialAffineTransformSolverSettingsError, ExponentialAffineTransformTelemetryMode,
     solve_exponential_affine_transform_with_settings,
 };
 use crate::nig::ComplexScalar;
@@ -135,12 +135,16 @@ impl ExponentialAffineTransformMethodComparisonSolverSettings {
     }
 
     pub fn validate(self) -> Result<(), ExponentialAffineTransformSolverSettingsError> {
-        ExponentialAffineTransformSolverSettings::new(self.integrator_method, self.step_count)
-            .validate()
+        ExponentialAffineTransformSolverSettings::try_new(self.integrator_method, self.step_count)
+            .map(|_| ())
     }
 
     pub fn to_solver_settings(self) -> ExponentialAffineTransformSolverSettings {
-        ExponentialAffineTransformSolverSettings::new(self.integrator_method, self.step_count)
+        ExponentialAffineTransformSolverSettings {
+            integrator_method: self.integrator_method,
+            step_count: self.step_count,
+            telemetry_mode: ExponentialAffineTransformTelemetryMode::Disabled,
+        }
     }
 }
 
