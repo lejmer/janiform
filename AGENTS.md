@@ -36,6 +36,7 @@ This codebase is pre-v0.1 and has no external users.
 - `cargo` for Rust
 - `python3` for Python
 - `pytest` for Python tests
+- `maturin develop` for building (note: the venv for agents is `.venv-wsl`, not `.venv`)
 
 ---
 
