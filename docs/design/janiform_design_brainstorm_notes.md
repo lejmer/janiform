@@ -63,20 +63,23 @@ We commit to (projective/semigroup consistency):
 Total log-return process \(X_t\) is decomposed as:
 
 \[
-X_t = \underbrace{L^+_{A^+_t} - L^-_{A^-_t}}_{\text{trading-time moves}} \; + \; \underbrace{G_t}_{\text{gap moves during closures}}.
+X_t = \underbrace{L^+_{A^+_t} - L^-_{A^-_t}}_{\text{trading-time moves}}
+\; + \; \underbrace{M_t}_{\text{direct news jumps in open windows}}
+\; + \; \underbrace{G_t}_{\text{gap jumps from closed-window news}}.
 \]
 
 Where:
 
 - \(L^+\) and \(L^-\) are **NIG Lévy processes** (heavy tails + skew), run in **business time**.
 - \(A^\pm_t = \int_0^t \lambda^\pm_u\,du\) are **integrated intensities** of buy/sell trade processes.
-- \(G_t\) is a **compound Poisson** jump process that only produces returns when the market is closed (overnight/weekend/holiday), with **Kou / double-exponential** jumps.
-  **Clarification:** In the final specification below, \(G_t\) is driven by the *same* Poisson news arrivals as the exogenous activity shocks; it is therefore compound Poisson, but not an independent jump process.
+- \(M_t\) is the direct open-window news-jump component.
+- \(G_t\) is the closed-window news-jump component realized as market-open gaps.
+  **Clarification:** In the final specification below, \(M_t\) and \(G_t\) are both driven by the same aggregated news-arrival stream used for exogenous activity shocks, where the aggregated stream is the superposition of known-schedule and surprise-news components.
 
 **Reasoning:**  
 - Time-change by integrated intensity preserves duration information (silences/bursts matter).
 - NIG Lévy increments give heavy tails; aggregation "thins" tails naturally via mixing and summing.
-- Separating a gap component allows realistic weekend/overnight jumps without trading during closure.
+- Separating open-window direct jumps from closed-window gap jumps preserves market-state semantics.
 - Using bivariate buy/sell intensities preserves sign dynamics and skew.
 
 ---
@@ -185,19 +188,33 @@ This yields a homogeneous-in-hour Hawkes structure, greatly simplifying transfor
 We need:
 - Out-of-nowhere shocks that ignite activity/volatility
 - Weekend/overnight gap moves for closed markets
-- Shocks while open should be handled primarily by Hawkes state (no separate price jump needed)
+- Shocks while open should create immediate direct return jumps and also feed Hawkes activity excitation
 
-### 5.1 One shared "news process" with dependent marks
-News arrivals: a Poisson process \(N_t^{\text{news}}\) with deterministic intensity \(\nu_{\text{news}}(t)\).
-
-**Final decision:** \(\nu_{\text{news}}(t)\) includes day-of-week / day-of-year / holiday terms and is active in closed windows:
-
+### 5.1 Two-component shared news process with dependent marks
+News arrivals are modeled as a superposition:
 \[
-\nu_{\text{news}}(t) = \mathbf{1}_{\text{closed}}(t)\,\exp\Big(g_{\text{dow}}(\mathrm{dow}(t)) + g_{\text{doy}}(\mathrm{doy}(t)) + g_{\text{holiday}}(t)\Big).
+N_t^{\text{news}} = N_t^{\text{known}} + N_t^{\text{surprise}},
+\]
+where:
+- \(N_t^{\text{known}}\) represents known-in-advance scheduled-event times (shock realization is still random).
+- \(N_t^{\text{surprise}}\) captures unscheduled/out-of-nowhere shocks.
+
+The aggregated news intensity is
+\[
+\nu_{\text{news}}(t)=\nu_{\text{known}}(t)+\nu_{\text{surprise}}(t).
 \]
 
-### 5.2 Dependent coupling between "gap jump" and "activity burst" (closed-form)
-At each news time \(\tau_m\), draw severity and gap mark:
+**Final decision:** news arrivals are allowed in both open and closed windows, while direct gap increments remain closed-only through the \(G_t\) gating rule in Section 5.3.
+Trade-arrival seasonality \(s(t)\) applies only to \(\lambda^\pm_t\), not to \(\nu_{\text{news}}(t)\).
+
+For implementation, use a deterministic scheduled-event component plus a smooth background component:
+\[
+\nu_{\text{surprise}}(t)=\exp\Big(g_{\text{dow}}(\mathrm{dow}(t)) + g_{\text{doy}}(\mathrm{doy}(t)) + g_{\text{holiday}}(t) + g_{\text{session}}(\mathrm{session}(t))\Big),
+\]
+with \(\mathrm{session}(t)\in\{\text{open},\text{closed}\}\), and \(\nu_{\text{known}}(t)\) built from the known event calendar.
+
+### 5.2 Dependent coupling between "news jump" and "activity burst" (closed-form)
+At each news time \(\tau_m\) from either component (\(N^{\text{known}}\) or \(N^{\text{surprise}}\)), draw severity and gap mark:
 
 1. Severity:
 \[
@@ -215,7 +232,7 @@ p\,\eta_+ e^{-\eta_+ x}, & x\ge 0,\\
 \quad \eta_+,\eta_->0,\; p\in(0,1).
 \]
 
-3. Gap jump size:
+3. News-jump mark:
 \[
 Z_m = \sigma_G \sqrt{U_m}\,\varepsilon_m.
 \]
@@ -223,21 +240,80 @@ Z_m = \sigma_G \sqrt{U_m}\,\varepsilon_m.
 **Decision:** Keep \(p\) constant (no extra skew in gaps).  
 **Reasoning:** Slight negative gap bias exists empirically, but not worth DOF here; skew already modeled elsewhere.
 
-### 5.3 Processes \(J_t\) and \(G_t\)
+### 5.3 Processes \(J_t\), \(M_t\), and \(G_t\)
 Define:
 
 - Exogenous Hawkes shock accumulator:
 \[
-J_t = \sum_{\tau_m \le t} U_m.
+J_t^{\text{known}} = \sum_{\tau_m^{\text{known}} \le t} U_m^{\text{known}},
+\qquad
+J_t^{\text{surprise}} = \sum_{\tau_m^{\text{surprise}} \le t} U_m^{\text{surprise}},
+\]
+\[
+J_t = J_t^{\text{known}} + J_t^{\text{surprise}}.
 \]
 
 - Gap return component (closed only):
 \[
-G_t = \sum_{\tau_m \le t} \mathbf{1}_{\text{closed}}(\tau_m)\, Z_m.
+G_t^{\text{known}} = \sum_{\tau_m^{\text{known}} \le t} \mathbf{1}_{\text{closed}}(\tau_m^{\text{known}})\, Z_m^{\text{known}},
+\qquad
+G_t^{\text{surprise}} = \sum_{\tau_m^{\text{surprise}} \le t} \mathbf{1}_{\text{closed}}(\tau_m^{\text{surprise}})\, Z_m^{\text{surprise}},
+\]
+\[
+G_t = G_t^{\text{known}} + G_t^{\text{surprise}}.
 \]
 
-**Decision:** When news hits during open, Hawkes-state dynamics dominate; gap returns apply only when closed.
-**Clarification:** Open-news affects prices *indirectly* via higher activity (\(A^\pm\)) and therefore larger/heavier trading-time increments; closed-news additionally contributes an explicit gap return \(G\).
+- Direct open-window news-jump component:
+\[
+M_t^{\text{known}} = \sum_{\tau_m^{\text{known}} \le t} \mathbf{1}_{\text{open}}(\tau_m^{\text{known}})\, Z_m^{\text{known}},
+\qquad
+M_t^{\text{surprise}} = \sum_{\tau_m^{\text{surprise}} \le t} \mathbf{1}_{\text{open}}(\tau_m^{\text{surprise}})\, Z_m^{\text{surprise}},
+\]
+\[
+M_t = M_t^{\text{known}} + M_t^{\text{surprise}}.
+\]
+
+**Decision:** News shocks always feed \(J_t\) and therefore Hawkes activity excitation. Open-window news applies direct return jumps through \(M_t\) on the first post-arrival open tick. Closed-window news applies direct return jumps through \(G_t\) on the first reopening tick as a market-open gap.
+
+### 5.4 Calibration strategy for trade and news layers
+Inputs required:
+- Trade tick timestamps with buy or sell sign labels.
+- Exchange open and close calendar windows.
+- Known scheduled-news timestamps (event calendar).
+- Return series at tick and close-open boundaries.
+
+Recommended staged fit:
+1. Trade seasonality fit:
+   Estimate \(s(t)\) from trade-arrival timestamps only, using a continuous step function with hourly steps.
+   Normalize so \(\mathbb E[s(t)]\approx 1\) on the training window.
+2. Deseasonalized Hawkes fit:
+   Build deseasonalized intensities from \(\tilde\lambda_t^\pm=\lambda_t^\pm/s(t)\) and fit Hawkes parameters \((\bar\lambda,\beta,\alpha_{ij})\) on trade arrivals.
+   This step captures endogenous self and cross excitation without leaking deterministic calendar structure into Hawkes parameters.
+3. Known-news arrival component:
+   Treat \(N_t^{\text{known}}\) as exogenous from the provided event calendar.
+   Estimate only shock-response and mark parameters for these arrivals, not their event times.
+4. Surprise-news arrival component:
+   Infer candidate surprise-news times from residual return jumps and close-open gaps that are not explained by known-news times.
+   Fit \(\nu_{\text{surprise}}(t)\) with calendar covariates \((\mathrm{dow},\mathrm{doy},\mathrm{holiday},\mathrm{session})\) using a point-process likelihood on inferred arrivals.
+5. News-jump mark fit:
+   Fit \((k_U,\theta_U,\sigma_G,p,\eta_+,\eta_-)\) from jump magnitudes using:
+   - open-window first-tick jumps for \(M_t\),
+   - close-open gaps for \(G_t\),
+   - known-news event windows and inferred surprise-news event windows.
+   Keep one shared mark law unless diagnostics justify a known versus surprise split.
+6. News-to-Hawkes coupling fit:
+   Fit \(\rho_{ij}\) from post-shock activity response, enforcing the structured constraints from Section 6.2.
+   This guarantees news shocks increase activity through \(J_t\) even when their direct return effect is in \(M_t\) or \(G_t\).
+7. Joint refinement:
+   Run a constrained joint optimization over Hawkes plus news parameters with deterministic seeds, preserving:
+   - positivity and stability constraints,
+   - open-window direct-jump semantics for \(M_t\),
+   - closed-window gap semantics for \(G_t\).
+
+Practical identifiability notes:
+- Keep \(s(t)\) estimation isolated from news estimation to avoid confounding deterministic trade seasonality with news arrivals.
+- Anchor \(G_t\) primarily on close-open returns and \(M_t\) primarily on open-window first-tick jump returns.
+- Use known-news timestamps as hard anchors before fitting surprise arrivals.
 
 ---
 
@@ -313,7 +389,7 @@ Conditional CF given \((A^+,A^-)\):
 A^+\,\psi_{\text{NIG}}(u;\alpha,\beta_0,\delta,\mu)
 +
 A^-\,\psi_{\text{NIG}}(-u;\alpha,\beta_0+\Delta_\beta,\delta,\mu)
-\Big)\cdot \varphi_{\Delta G}(u).
+\Big)\cdot \varphi_{\Delta M+\Delta G}(u).
 \]
 
 **Clarification:** Because \(X\) subtracts the sell-side driver \(L^-_{A^-}\), its characteristic function contributes \(\exp\big(A^-\,\psi_-(-u)\big)\) rather than \(\exp\big(A^-\,\psi_-(u)\big)\).
@@ -344,7 +420,7 @@ Martingale condition under \(Q\):
 Computes coarse-interval (e.g., hourly) CF of returns conditional on hour boundary state \(\mathbf Y_h\), then prices via Fourier methods.
 
 ### 9.2 Engine B: Risk simulation (sufficient-statistics sampler)
-Samples sufficient statistics \((A^+,A^-,N^+,N^-)\) per interval and updates \(\mathbf Y\) at hour boundaries; then samples NIG increments conditional on \(A^\pm\) and adds gap component if closed.
+Samples sufficient statistics \((A^+,A^-,N^+,N^-)\) per interval and updates \(\mathbf Y\) at hour boundaries; then samples NIG increments conditional on \(A^\pm\), applies direct open-window news jumps \(M\), and applies closed-window gap jumps \(G\).
 
 **Final decision:** Use **sufficient statistics** (not cluster simulation).
 
@@ -352,7 +428,7 @@ Samples sufficient statistics \((A^+,A^-,N^+,N^-)\) per interval and updates \(\
 
 ## 10. Sufficient-statistics oracle (explicit ODE system)
 
-Define transform over one interval \([0,\Delta]\) with piecewise constant \(s(t)=s_h\), \(\nu_{\text{news}}(t)=\nu_h\):
+Define transform over one interval \([0,\Delta]\) with piecewise constant \(s(t)=s_h\), \(\nu_{\text{news}}(t)=\nu_h\), where \(\nu_h=\nu^{\text{known}}_h+\nu^{\text{surprise}}_h\):
 
 \[
 F(u_+,u_-,z_+,z_- \mid \mathbf Y_0)

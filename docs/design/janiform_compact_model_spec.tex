@@ -11,7 +11,7 @@
 
 \section*{1. Return Process}
 \[
-X_t = L^+_{A_t^+} - L^-_{A_t^-} + G_t,
+X_t = L^+_{A_t^+} - L^-_{A_t^-} + M_t + G_t,
 \qquad
 A_t^\pm = \int_0^t \lambda_u^\pm\,du.
 \]
@@ -44,20 +44,31 @@ f_{\mathrm{intra}}(\mathrm{tod}(t))
 \Big).
 \]
 
-Let \(N_t^{\mathrm{news}}\) be an inhomogeneous Poisson with deterministic intensity
+Let news arrivals be a superposition
 \[
-\nu_{\mathrm{news}}(t)
+N_t^{\mathrm{news}} = N_t^{\mathrm{known}} + N_t^{\mathrm{surprise}},
+\]
+where \(N_t^{\mathrm{known}}\) tracks known-in-advance scheduled times and
+\(N_t^{\mathrm{surprise}}\) captures unscheduled shocks.
+Use deterministic intensities
+\[
+\nu_{\mathrm{news}}(t)=\nu_{\mathrm{known}}(t)+\nu_{\mathrm{surprise}}(t),
+\]
+\[
+\nu_{\mathrm{surprise}}(t)
 =
-\mathbf{1}_{\mathrm{closed}}(t)\,
 \exp\!\Big(
 g_{\mathrm{dow}}(\mathrm{dow}(t))
 +g_{\mathrm{doy}}(\mathrm{doy}(t))
 +g_{\mathrm{holiday}}(t)
++g_{\mathrm{session}}(\mathrm{session}(t))
 \Big).
 \]
+Arrivals are allowed in both open and closed windows, while direct gap increments remain closed-only in \(G_t\).
+Trade seasonality \(s(t)\) modulates \(\lambda_t^\pm\) only and does not modulate \(\nu_{\mathrm{news}}(t)\).
 
 \section*{4. News Marks, Activity Shock, and Gap Process}
-At news times \(\tau_m\):
+At news times \(\tau_m^{\mathrm{known}}\) and \(\tau_m^{\mathrm{surprise}}\):
 \[
 U_m\sim\Gamma(k_U,\theta_U),\qquad
 \varepsilon_m\sim\text{Kou}(p,\eta_+,\eta_-),\qquad
@@ -77,10 +88,30 @@ p\,\eta_+e^{-\eta_+ x}, & x\ge 0,\\
 \]
 
 \[
-J_t=\sum_{\tau_m\le t} U_m,
+J_t^{\mathrm{known}}=\sum_{\tau_m^{\mathrm{known}}\le t} U_m^{\mathrm{known}},
 \qquad
-G_t=\sum_{\tau_m\le t}\mathbf{1}_{\mathrm{closed}}(\tau_m)\,Z_m.
+J_t^{\mathrm{surprise}}=\sum_{\tau_m^{\mathrm{surprise}}\le t} U_m^{\mathrm{surprise}},
+\qquad
+J_t=J_t^{\mathrm{known}}+J_t^{\mathrm{surprise}}.
 \]
+\[
+M_t^{\mathrm{known}}=\sum_{\tau_m^{\mathrm{known}}\le t}\mathbf{1}_{\mathrm{open}}(\tau_m^{\mathrm{known}})\,Z_m^{\mathrm{known}},
+\qquad
+M_t^{\mathrm{surprise}}=\sum_{\tau_m^{\mathrm{surprise}}\le t}\mathbf{1}_{\mathrm{open}}(\tau_m^{\mathrm{surprise}})\,Z_m^{\mathrm{surprise}},
+\]
+\[
+M_t=M_t^{\mathrm{known}}+M_t^{\mathrm{surprise}}.
+\]
+\[
+G_t^{\mathrm{known}}=\sum_{\tau_m^{\mathrm{known}}\le t}\mathbf{1}_{\mathrm{closed}}(\tau_m^{\mathrm{known}})\,Z_m^{\mathrm{known}},
+\qquad
+G_t^{\mathrm{surprise}}=\sum_{\tau_m^{\mathrm{surprise}}\le t}\mathbf{1}_{\mathrm{closed}}(\tau_m^{\mathrm{surprise}})\,Z_m^{\mathrm{surprise}},
+\]
+\[
+G_t=G_t^{\mathrm{known}}+G_t^{\mathrm{surprise}}.
+\]
+Open-window news jumps are applied on the first post-arrival open tick via \(M_t\).
+Closed-window news jumps are applied on the first reopening tick via \(G_t\).
 
 \section*{5. NIG Business-Time Drivers}
 For \(L^\pm\), define exponents \(\psi_\pm\) by
@@ -100,7 +131,7 @@ Conditional characteristic function of \(\Delta X_t=X_{t+\Delta}-X_t\):
 \[
 \mathbb{E}\!\left[e^{iu\Delta X_t}\mid A^+,A^-\right]
 =
-\exp\!\Big(A^+\psi_+(u)+A^-\psi_-(-u)\Big)\,\varphi_{\Delta G}(u).
+\exp\!\Big(A^+\psi_+(u)+A^-\psi_-(-u)\Big)\,\varphi_{\Delta M+\Delta G}(u).
 \]
 
 \section*{6. Structured Asymmetry and Constraints}
@@ -152,7 +183,7 @@ where \(\mathcal{L}\) is the Lévy layer \((L^+,L^-)\), \(\mathcal{H}\) is the H
 No additional cross-layer dependence is introduced beyond the explicit coupling through \(dJ_t\) in \(dY_t^{ij}\).
 
 \section*{8. Affine One-Interval Transform}
-For piecewise-constant \(s_h,\nu_h\) on \([0,\Delta]\), define
+For piecewise-constant \(s_h,\nu_h\) on \([0,\Delta]\), with \(\nu_h=\nu_h^{\mathrm{known}}+\nu_h^{\mathrm{surprise}}\), define
 \[
 F(u_+,u_-,z_+,z_-\mid \mathbf{Y}_0)
 =
