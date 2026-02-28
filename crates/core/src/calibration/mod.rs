@@ -1,0 +1,23 @@
+//! Calibration-stage orchestration entrypoints and shared adapters.
+
+mod adapters;
+mod checkpointing;
+mod contracts;
+mod objective;
+mod optimizer_adapter;
+mod staged_runner;
+mod stages;
+#[cfg(test)]
+mod test_support;
+#[cfg(test)]
+mod tests;
+
+pub use adapters::*;
+pub use checkpointing::*;
+pub use contracts::*;
+pub use objective::*;
+pub use optimizer_adapter::*;
+pub use staged_runner::*;
+pub use stages::hawkes::*;
+pub use stages::return_components::*;
+pub use stages::seasonality::*;

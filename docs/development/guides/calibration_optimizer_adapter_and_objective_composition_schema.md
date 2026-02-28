@@ -4,7 +4,9 @@ This guide documents the machine-readable contracts used by staged calibration f
 
 ## Scope
 
-- Module: `crates/core/src/calibration.rs`
+- Calibration module facade: `crates/core/src/calibration/mod.rs`
+- Objective composition implementation: `crates/core/src/calibration/objective.rs`
+- Constrained optimizer adapter implementation: `crates/core/src/calibration/optimizer_adapter.rs`
 - Consumer stages:
   - Hawkes stage (`run_hawkes_calibration_stage`)
   - Return-components stage (`run_return_components_calibration_stage`)

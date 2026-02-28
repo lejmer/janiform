@@ -1,0 +1,790 @@
+use std::path::Path;
+
+use serde::Serialize;
+
+use crate::calendar::ExchangeCalendarRegistry;
+
+use super::checkpointing::{
+    CalibrationDiskCheckpointError, CalibrationInMemoryStagePayloadState,
+    CalibrationMemoryCheckpointStore, CalibrationStageCheckpointMetadata,
+    LoadedInMemoryCheckpointState, calibration_stage_token, load_stage_checkpoint_from_disk,
+    persist_stage_checkpoint_to_disk,
+};
+use super::contracts::{
+    CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION, CALIBRATION_DISK_CHECKPOINT_WRITE_POLICY,
+    CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION, CALIBRATION_RUN_SPEC_SCHEMA_VERSION,
+    CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY, CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION,
+    CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION, CalibrationExecutionMode, CalibrationOptimizerSettings,
+    CalibrationResumeSource, CalibrationRunContract, CalibrationRunSpec, CalibrationStage,
+    CalibrationStageHandoffTransport, resolve_calibration_stage_execution_order,
+};
+use super::stages::hawkes::{
+    HawkesStageCandidateInput, HawkesStageExecutionInput, HawkesStageExecutionReport,
+    HawkesStageSeasonalityInput, run_hawkes_calibration_stage,
+};
+use super::stages::return_components::{
+    ReturnComponentsStageActivityInput, ReturnComponentsStageCandidateInput,
+    ReturnComponentsStageExecutionInput, ReturnComponentsStageExecutionReport,
+    run_return_components_calibration_stage,
+};
+use super::stages::seasonality::{
+    CalibrationStageExecutionStatus, SeasonalityStageExecutionInput,
+    SeasonalityStageExecutionReport, run_seasonality_calibration_stage,
+};
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct CalibrationStagedRunInputs {
+    pub seasonality_stage_input: Option<SeasonalityStageExecutionInput>,
+    pub hawkes_candidate_inputs: Option<Vec<HawkesStageCandidateInput>>,
+    pub return_components_candidate_inputs: Option<Vec<ReturnComponentsStageCandidateInput>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(
+    tag = "stage_report_kind",
+    content = "report",
+    rename_all = "snake_case"
+)]
+pub enum CalibrationStagedRunStageReport {
+    Seasonality(SeasonalityStageExecutionReport),
+    Hawkes(HawkesStageExecutionReport),
+    ReturnComponents(ReturnComponentsStageExecutionReport),
+}
+
+impl CalibrationStagedRunStageReport {
+    const fn stage(&self) -> CalibrationStage {
+        match self {
+            Self::Seasonality(_) => CalibrationStage::Seasonality,
+            Self::Hawkes(_) => CalibrationStage::Hawkes,
+            Self::ReturnComponents(_) => CalibrationStage::ReturnComponents,
+        }
+    }
+
+    const fn status(&self) -> CalibrationStageExecutionStatus {
+        match self {
+            Self::Seasonality(report) => report.status,
+            Self::Hawkes(report) => report.status,
+            Self::ReturnComponents(report) => report.status,
+        }
+    }
+
+    fn checkpoint_components(&self) -> Option<(String, u64, CalibrationOptimizerSettings)> {
+        match self {
+            Self::Seasonality(report) => report.metadata.as_ref().map(|metadata| {
+                (
+                    metadata.stage_output_schema_version.to_string(),
+                    metadata.stage_seed,
+                    metadata.solver_settings.clone(),
+                )
+            }),
+            Self::Hawkes(report) => report.metadata.as_ref().map(|metadata| {
+                (
+                    metadata.stage_output_schema_version.to_string(),
+                    metadata.stage_seed,
+                    metadata.solver_settings.clone(),
+                )
+            }),
+            Self::ReturnComponents(report) => report.metadata.as_ref().map(|metadata| {
+                (
+                    metadata.stage_output_schema_version.to_string(),
+                    metadata.stage_seed,
+                    metadata.solver_settings.clone(),
+                )
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "failure_kind", rename_all = "snake_case")]
+pub enum CalibrationStagedRunFailure {
+    InvalidRunContract {
+        error_message: String,
+    },
+    MissingMemoryCheckpointStore,
+    MissingDiskCheckpointDirectory,
+    MissingResumeCheckpointForRun {
+        run_id: String,
+    },
+    MissingStageInput {
+        stage: CalibrationStage,
+    },
+    MissingInMemoryUpstreamPayload {
+        required_stage: CalibrationStage,
+        consuming_stage: CalibrationStage,
+    },
+    InvalidCheckpointReference {
+        checkpoint_reference: String,
+        error_message: String,
+    },
+    CheckpointLoadFailed {
+        checkpoint_reference: String,
+        error_message: String,
+    },
+    CheckpointCompatibilityFailed {
+        checkpoint_reference: String,
+        error_message: String,
+    },
+    CheckpointPersistFailed {
+        checkpoint_reference: String,
+        error_message: String,
+    },
+    MissingCheckpointMetadataForSuccessfulStage {
+        stage: CalibrationStage,
+    },
+    StageExecutionFailed {
+        stage: CalibrationStage,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CalibrationStagedRunReport {
+    pub run_id: String,
+    pub execution_mode: CalibrationExecutionMode,
+    pub status: CalibrationStageExecutionStatus,
+    pub stage_reports: Vec<CalibrationStagedRunStageReport>,
+    pub emitted_checkpoints: Vec<CalibrationStageCheckpointMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resumed_from_checkpoint_reference: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resumed_from_last_successful_stage: Option<CalibrationStage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub started_from_stage: Option<CalibrationStage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure: Option<CalibrationStagedRunFailure>,
+}
+
+pub fn calibration_checkpoint_reference_for_stage(run_id: &str, stage: CalibrationStage) -> String {
+    format!("checkpoint://{run_id}/{}", calibration_stage_token(stage))
+}
+
+pub fn calibration_last_success_checkpoint_reference(run_id: &str) -> String {
+    format!("checkpoint://{run_id}/last-success")
+}
+
+/// Execute staged calibration with deterministic checkpoint emission after each successful stage.
+///
+/// Resume behavior is mode-aware by contract:
+/// - `execution_mode=memory` supports resume only through `CalibrationMemoryCheckpointStore`
+/// - `execution_mode=disk` supports cross-process resume from persisted checkpoint references
+pub fn run_staged_calibration_with_checkpointing(
+    run_contract: &CalibrationRunContract,
+    calendar_registry: &ExchangeCalendarRegistry,
+    mut staged_run_inputs: CalibrationStagedRunInputs,
+    mut memory_checkpoint_store: Option<&mut CalibrationMemoryCheckpointStore>,
+    disk_checkpoint_directory: Option<&Path>,
+) -> CalibrationStagedRunReport {
+    if let Err(error_message) = validate_run_contract_for_staged_execution(run_contract) {
+        return build_staged_run_failure_report(
+            run_contract,
+            Vec::new(),
+            Vec::new(),
+            None,
+            None,
+            None,
+            CalibrationStagedRunFailure::InvalidRunContract { error_message },
+        );
+    }
+
+    let run_spec = &run_contract.run_spec;
+    if run_spec.execution_mode == CalibrationExecutionMode::Disk
+        && disk_checkpoint_directory.is_none()
+    {
+        return build_staged_run_failure_report(
+            run_contract,
+            Vec::new(),
+            Vec::new(),
+            None,
+            None,
+            None,
+            CalibrationStagedRunFailure::MissingDiskCheckpointDirectory,
+        );
+    }
+
+    let execution_stage_order = run_contract.execution_stage_order.clone();
+
+    let mut stage_reports = Vec::new();
+    let mut emitted_checkpoints = Vec::new();
+    let mut payload_state = CalibrationInMemoryStagePayloadState::default();
+    let mut resumed_from_checkpoint_reference = None;
+    let mut resumed_from_last_successful_stage = None;
+    let mut start_position = 0usize;
+
+    if let Some(resume_settings) = &run_spec.resume_settings {
+        let loaded_checkpoint = match resume_settings.source {
+            CalibrationResumeSource::SameProcess => {
+                let Some(checkpoint_store) = memory_checkpoint_store.as_deref() else {
+                    return build_staged_run_failure_report(
+                        run_contract,
+                        stage_reports,
+                        emitted_checkpoints,
+                        None,
+                        None,
+                        None,
+                        CalibrationStagedRunFailure::MissingMemoryCheckpointStore,
+                    );
+                };
+
+                let Some(loaded_state) = checkpoint_store.load_resume_state(&run_spec.run_id)
+                else {
+                    return build_staged_run_failure_report(
+                        run_contract,
+                        stage_reports,
+                        emitted_checkpoints,
+                        None,
+                        None,
+                        None,
+                        CalibrationStagedRunFailure::MissingResumeCheckpointForRun {
+                            run_id: run_spec.run_id.clone(),
+                        },
+                    );
+                };
+
+                loaded_state
+            }
+            CalibrationResumeSource::PersistedCheckpointReference => {
+                let Some(disk_checkpoint_directory) = disk_checkpoint_directory else {
+                    return build_staged_run_failure_report(
+                        run_contract,
+                        stage_reports,
+                        emitted_checkpoints,
+                        None,
+                        None,
+                        None,
+                        CalibrationStagedRunFailure::MissingDiskCheckpointDirectory,
+                    );
+                };
+                let checkpoint_reference = resume_settings
+                    .checkpoint_reference
+                    .as_deref()
+                    .unwrap_or_default()
+                    .to_string();
+                let checkpoint_metadata = match load_stage_checkpoint_from_disk(
+                    disk_checkpoint_directory,
+                    checkpoint_reference.as_str(),
+                ) {
+                    Ok(checkpoint_metadata) => checkpoint_metadata,
+                    Err(CalibrationDiskCheckpointError::InvalidCheckpointReference {
+                        checkpoint_reference,
+                        source,
+                    }) => {
+                        return build_staged_run_failure_report(
+                            run_contract,
+                            stage_reports,
+                            emitted_checkpoints,
+                            None,
+                            None,
+                            None,
+                            CalibrationStagedRunFailure::InvalidCheckpointReference {
+                                checkpoint_reference,
+                                error_message: source.to_string(),
+                            },
+                        );
+                    }
+                    Err(source) => {
+                        return build_staged_run_failure_report(
+                            run_contract,
+                            stage_reports,
+                            emitted_checkpoints,
+                            None,
+                            None,
+                            None,
+                            CalibrationStagedRunFailure::CheckpointLoadFailed {
+                                checkpoint_reference,
+                                error_message: source.to_string(),
+                            },
+                        );
+                    }
+                };
+
+                LoadedInMemoryCheckpointState {
+                    checkpoint_metadata,
+                    payload_state: CalibrationInMemoryStagePayloadState::default(),
+                }
+            }
+        };
+
+        if let Err(source) = loaded_checkpoint
+            .checkpoint_metadata
+            .validate_compatibility_with_run_contract(run_contract)
+        {
+            let resume_reference = resume_settings
+                .checkpoint_reference
+                .as_deref()
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(|| {
+                    loaded_checkpoint
+                        .checkpoint_metadata
+                        .checkpoint_reference
+                        .clone()
+                });
+
+            return build_staged_run_failure_report(
+                run_contract,
+                stage_reports,
+                emitted_checkpoints,
+                None,
+                None,
+                None,
+                CalibrationStagedRunFailure::CheckpointCompatibilityFailed {
+                    checkpoint_reference: resume_reference,
+                    error_message: source.to_string(),
+                },
+            );
+        }
+
+        resumed_from_checkpoint_reference = Some(
+            resume_settings
+                .checkpoint_reference
+                .as_deref()
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(|| {
+                    loaded_checkpoint
+                        .checkpoint_metadata
+                        .checkpoint_reference
+                        .clone()
+                }),
+        );
+        resumed_from_last_successful_stage =
+            Some(loaded_checkpoint.checkpoint_metadata.completed_stage);
+        payload_state = loaded_checkpoint.payload_state;
+
+        start_position = if let Some(resume_from_stage) = resume_settings.resume_from_stage {
+            let Some(position) = execution_stage_order
+                .iter()
+                .position(|stage| *stage == resume_from_stage)
+            else {
+                return build_staged_run_failure_report(
+                    run_contract,
+                    stage_reports,
+                    emitted_checkpoints,
+                    resumed_from_checkpoint_reference,
+                    resumed_from_last_successful_stage,
+                    None,
+                    CalibrationStagedRunFailure::CheckpointCompatibilityFailed {
+                        checkpoint_reference: calibration_last_success_checkpoint_reference(
+                            run_spec.run_id.as_str(),
+                        ),
+                        error_message: format!(
+                            "resume_from_stage `{resume_from_stage:?}` is not in execution order `{:?}`",
+                            execution_stage_order
+                        ),
+                    },
+                );
+            };
+
+            position
+        } else {
+            loaded_checkpoint
+                .checkpoint_metadata
+                .completed_stage_position
+                .saturating_add(1)
+        };
+    }
+
+    if start_position >= execution_stage_order.len() {
+        return CalibrationStagedRunReport {
+            run_id: run_spec.run_id.clone(),
+            execution_mode: run_spec.execution_mode,
+            status: CalibrationStageExecutionStatus::Success,
+            stage_reports,
+            emitted_checkpoints,
+            resumed_from_checkpoint_reference,
+            resumed_from_last_successful_stage,
+            started_from_stage: None,
+            failure: None,
+        };
+    }
+
+    let started_from_stage = execution_stage_order.get(start_position).copied();
+    for (stage_position, stage) in execution_stage_order
+        .iter()
+        .copied()
+        .enumerate()
+        .skip(start_position)
+    {
+        let stage_report = match run_stage_for_staged_execution(
+            run_spec,
+            calendar_registry,
+            stage,
+            &mut staged_run_inputs,
+            &payload_state,
+        ) {
+            Ok(stage_report) => stage_report,
+            Err(failure) => {
+                return build_staged_run_failure_report(
+                    run_contract,
+                    stage_reports,
+                    emitted_checkpoints,
+                    resumed_from_checkpoint_reference,
+                    resumed_from_last_successful_stage,
+                    started_from_stage,
+                    failure,
+                );
+            }
+        };
+
+        let stage_status = stage_report.status();
+        stage_reports.push(stage_report.clone());
+
+        if stage_status == CalibrationStageExecutionStatus::Failure {
+            return build_staged_run_failure_report(
+                run_contract,
+                stage_reports,
+                emitted_checkpoints,
+                resumed_from_checkpoint_reference,
+                resumed_from_last_successful_stage,
+                started_from_stage,
+                CalibrationStagedRunFailure::StageExecutionFailed { stage },
+            );
+        }
+
+        update_in_memory_payload_state(&mut payload_state, &stage_report);
+
+        let checkpoint_metadata =
+            match build_stage_checkpoint_metadata(run_contract, &stage_report, stage_position) {
+                Ok(checkpoint_metadata) => checkpoint_metadata,
+                Err(failure) => {
+                    return build_staged_run_failure_report(
+                        run_contract,
+                        stage_reports,
+                        emitted_checkpoints,
+                        resumed_from_checkpoint_reference,
+                        resumed_from_last_successful_stage,
+                        started_from_stage,
+                        failure,
+                    );
+                }
+            };
+
+        if run_spec.execution_mode == CalibrationExecutionMode::Memory {
+            if let Some(checkpoint_store) = memory_checkpoint_store.as_deref_mut() {
+                checkpoint_store
+                    .record_stage_checkpoint(checkpoint_metadata.clone(), &payload_state);
+            }
+        } else {
+            let Some(disk_checkpoint_directory) = disk_checkpoint_directory else {
+                return build_staged_run_failure_report(
+                    run_contract,
+                    stage_reports,
+                    emitted_checkpoints,
+                    resumed_from_checkpoint_reference,
+                    resumed_from_last_successful_stage,
+                    started_from_stage,
+                    CalibrationStagedRunFailure::MissingDiskCheckpointDirectory,
+                );
+            };
+
+            if let Err(source) =
+                persist_stage_checkpoint_to_disk(disk_checkpoint_directory, &checkpoint_metadata)
+            {
+                return build_staged_run_failure_report(
+                    run_contract,
+                    stage_reports,
+                    emitted_checkpoints,
+                    resumed_from_checkpoint_reference,
+                    resumed_from_last_successful_stage,
+                    started_from_stage,
+                    CalibrationStagedRunFailure::CheckpointPersistFailed {
+                        checkpoint_reference: checkpoint_metadata.checkpoint_reference.clone(),
+                        error_message: source.to_string(),
+                    },
+                );
+            }
+        }
+
+        emitted_checkpoints.push(checkpoint_metadata);
+    }
+
+    CalibrationStagedRunReport {
+        run_id: run_spec.run_id.clone(),
+        execution_mode: run_spec.execution_mode,
+        status: CalibrationStageExecutionStatus::Success,
+        stage_reports,
+        emitted_checkpoints,
+        resumed_from_checkpoint_reference,
+        resumed_from_last_successful_stage,
+        started_from_stage,
+        failure: None,
+    }
+}
+
+fn validate_run_contract_for_staged_execution(
+    run_contract: &CalibrationRunContract,
+) -> Result<(), String> {
+    if run_contract.schema_version != CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION {
+        return Err(format!(
+            "run_contract.schema_version must be `{}`, found `{}`",
+            CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION, run_contract.schema_version
+        ));
+    }
+    if run_contract.run_spec_schema_version != CALIBRATION_RUN_SPEC_SCHEMA_VERSION {
+        return Err(format!(
+            "run_contract.run_spec_schema_version must be `{}`, found `{}`",
+            CALIBRATION_RUN_SPEC_SCHEMA_VERSION, run_contract.run_spec_schema_version
+        ));
+    }
+    if run_contract.stage_graph_schema_version != CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION {
+        return Err(format!(
+            "run_contract.stage_graph_schema_version must be `{}`, found `{}`",
+            CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION, run_contract.stage_graph_schema_version
+        ));
+    }
+
+    let resolved_execution_order = resolve_calibration_stage_execution_order(
+        &run_contract.run_spec,
+        &run_contract.stage_graph,
+    )
+    .map_err(|source| source.to_string())?;
+    if resolved_execution_order != run_contract.execution_stage_order {
+        return Err(format!(
+            "run_contract.execution_stage_order is stale, expected `{:?}`, found `{:?}`",
+            resolved_execution_order, run_contract.execution_stage_order
+        ));
+    }
+
+    Ok(())
+}
+
+fn run_stage_for_staged_execution(
+    run_spec: &CalibrationRunSpec,
+    calendar_registry: &ExchangeCalendarRegistry,
+    stage: CalibrationStage,
+    staged_run_inputs: &mut CalibrationStagedRunInputs,
+    payload_state: &CalibrationInMemoryStagePayloadState,
+) -> Result<CalibrationStagedRunStageReport, CalibrationStagedRunFailure> {
+    match stage {
+        CalibrationStage::Seasonality => {
+            let Some(seasonality_stage_input) = staged_run_inputs.seasonality_stage_input.take()
+            else {
+                return Err(CalibrationStagedRunFailure::MissingStageInput {
+                    stage: CalibrationStage::Seasonality,
+                });
+            };
+
+            Ok(CalibrationStagedRunStageReport::Seasonality(
+                run_seasonality_calibration_stage(
+                    run_spec,
+                    calendar_registry,
+                    seasonality_stage_input,
+                ),
+            ))
+        }
+        CalibrationStage::Hawkes => {
+            let Some(candidate_inputs) = staged_run_inputs.hawkes_candidate_inputs.take() else {
+                return Err(CalibrationStagedRunFailure::MissingStageInput {
+                    stage: CalibrationStage::Hawkes,
+                });
+            };
+            let seasonality_input_transport = expected_stage_handoff_transport(
+                run_spec,
+                CalibrationStage::Seasonality,
+                CalibrationStage::Hawkes,
+            );
+            let seasonality_input = match seasonality_input_transport {
+                CalibrationStageHandoffTransport::InMemoryOutput => {
+                    let Some(seasonality_stage_payload) =
+                        payload_state.seasonality_stage_payload.clone()
+                    else {
+                        return Err(
+                            CalibrationStagedRunFailure::MissingInMemoryUpstreamPayload {
+                                required_stage: CalibrationStage::Seasonality,
+                                consuming_stage: CalibrationStage::Hawkes,
+                            },
+                        );
+                    };
+
+                    HawkesStageSeasonalityInput::InMemoryOutput {
+                        payload: seasonality_stage_payload,
+                    }
+                }
+                CalibrationStageHandoffTransport::PersistedArtifactReference => {
+                    HawkesStageSeasonalityInput::PersistedArtifactReference {
+                        artifact_reference: expected_stage_handoff_artifact_reference(
+                            run_spec,
+                            CalibrationStage::Seasonality,
+                            CalibrationStage::Hawkes,
+                        ),
+                    }
+                }
+            };
+
+            Ok(CalibrationStagedRunStageReport::Hawkes(
+                run_hawkes_calibration_stage(
+                    run_spec,
+                    HawkesStageExecutionInput {
+                        seasonality_input,
+                        candidate_inputs,
+                    },
+                ),
+            ))
+        }
+        CalibrationStage::ReturnComponents => {
+            let Some(candidate_inputs) =
+                staged_run_inputs.return_components_candidate_inputs.take()
+            else {
+                return Err(CalibrationStagedRunFailure::MissingStageInput {
+                    stage: CalibrationStage::ReturnComponents,
+                });
+            };
+
+            let activity_input_transport = expected_stage_handoff_transport(
+                run_spec,
+                CalibrationStage::Hawkes,
+                CalibrationStage::ReturnComponents,
+            );
+
+            let activity_input = match activity_input_transport {
+                CalibrationStageHandoffTransport::InMemoryOutput => {
+                    let Some(hawkes_stage_payload) = payload_state.hawkes_stage_payload.clone()
+                    else {
+                        return Err(
+                            CalibrationStagedRunFailure::MissingInMemoryUpstreamPayload {
+                                required_stage: CalibrationStage::Hawkes,
+                                consuming_stage: CalibrationStage::ReturnComponents,
+                            },
+                        );
+                    };
+
+                    ReturnComponentsStageActivityInput::InMemoryOutput {
+                        payload: hawkes_stage_payload,
+                    }
+                }
+                CalibrationStageHandoffTransport::PersistedArtifactReference => {
+                    ReturnComponentsStageActivityInput::PersistedArtifactReference {
+                        artifact_reference: expected_stage_handoff_artifact_reference(
+                            run_spec,
+                            CalibrationStage::Hawkes,
+                            CalibrationStage::ReturnComponents,
+                        ),
+                    }
+                }
+            };
+
+            Ok(CalibrationStagedRunStageReport::ReturnComponents(
+                run_return_components_calibration_stage(
+                    run_spec,
+                    ReturnComponentsStageExecutionInput {
+                        activity_input,
+                        candidate_inputs,
+                    },
+                ),
+            ))
+        }
+    }
+}
+
+fn expected_stage_handoff_transport(
+    run_spec: &CalibrationRunSpec,
+    from_stage: CalibrationStage,
+    to_stage: CalibrationStage,
+) -> CalibrationStageHandoffTransport {
+    run_spec
+        .stage_handoffs
+        .iter()
+        .find(|handoff| handoff.from_stage == from_stage && handoff.to_stage == to_stage)
+        .map(|handoff| handoff.transport)
+        .unwrap_or(match run_spec.execution_mode {
+            CalibrationExecutionMode::Memory => CalibrationStageHandoffTransport::InMemoryOutput,
+            CalibrationExecutionMode::Disk => {
+                CalibrationStageHandoffTransport::PersistedArtifactReference
+            }
+        })
+}
+
+fn expected_stage_handoff_artifact_reference(
+    run_spec: &CalibrationRunSpec,
+    from_stage: CalibrationStage,
+    to_stage: CalibrationStage,
+) -> String {
+    if let Some(artifact_reference) = run_spec
+        .stage_handoffs
+        .iter()
+        .find(|handoff| handoff.from_stage == from_stage && handoff.to_stage == to_stage)
+        .and_then(|handoff| handoff.artifact_reference.as_ref())
+        && !artifact_reference.trim().is_empty()
+    {
+        return artifact_reference.clone();
+    }
+
+    format!(
+        "artifact://{}/{}",
+        calibration_stage_token(from_stage),
+        run_spec.run_id
+    )
+}
+
+fn update_in_memory_payload_state(
+    payload_state: &mut CalibrationInMemoryStagePayloadState,
+    stage_report: &CalibrationStagedRunStageReport,
+) {
+    match stage_report {
+        CalibrationStagedRunStageReport::Seasonality(report) => {
+            payload_state.seasonality_stage_payload = report.normalized_stage_payload.clone();
+        }
+        CalibrationStagedRunStageReport::Hawkes(report) => {
+            payload_state.hawkes_stage_payload = report.fitted_stage_payload.clone();
+        }
+        CalibrationStagedRunStageReport::ReturnComponents(report) => {
+            payload_state.return_components_stage_payload = report.fitted_stage_payload.clone();
+        }
+    }
+}
+
+fn build_stage_checkpoint_metadata(
+    run_contract: &CalibrationRunContract,
+    stage_report: &CalibrationStagedRunStageReport,
+    stage_position: usize,
+) -> Result<CalibrationStageCheckpointMetadata, CalibrationStagedRunFailure> {
+    let stage = stage_report.stage();
+    let Some((stage_output_schema_version, stage_seed, stage_solver_settings)) =
+        stage_report.checkpoint_components()
+    else {
+        return Err(
+            CalibrationStagedRunFailure::MissingCheckpointMetadataForSuccessfulStage { stage },
+        );
+    };
+
+    Ok(CalibrationStageCheckpointMetadata {
+        schema_version: CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION.to_string(),
+        checkpoint_reference_policy: CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY.to_string(),
+        disk_write_policy: CALIBRATION_DISK_CHECKPOINT_WRITE_POLICY.to_string(),
+        artifact_manifest_schema_version: CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION.to_string(),
+        checkpoint_reference: calibration_checkpoint_reference_for_stage(
+            run_contract.run_spec.run_id.as_str(),
+            stage,
+        ),
+        run_id: run_contract.run_spec.run_id.clone(),
+        execution_mode: run_contract.run_spec.execution_mode,
+        run_contract_schema_version: run_contract.schema_version.clone(),
+        run_spec_schema_version: run_contract.run_spec_schema_version.clone(),
+        stage_graph_schema_version: run_contract.stage_graph_schema_version.clone(),
+        execution_stage_order: run_contract.execution_stage_order.clone(),
+        completed_stage: stage,
+        completed_stage_position: stage_position,
+        completed_stage_output_schema_version: stage_output_schema_version,
+        completed_stage_seed: stage_seed,
+        completed_stage_solver_settings: stage_solver_settings,
+    })
+}
+
+fn build_staged_run_failure_report(
+    run_contract: &CalibrationRunContract,
+    stage_reports: Vec<CalibrationStagedRunStageReport>,
+    emitted_checkpoints: Vec<CalibrationStageCheckpointMetadata>,
+    resumed_from_checkpoint_reference: Option<String>,
+    resumed_from_last_successful_stage: Option<CalibrationStage>,
+    started_from_stage: Option<CalibrationStage>,
+    failure: CalibrationStagedRunFailure,
+) -> CalibrationStagedRunReport {
+    CalibrationStagedRunReport {
+        run_id: run_contract.run_spec.run_id.clone(),
+        execution_mode: run_contract.run_spec.execution_mode,
+        status: CalibrationStageExecutionStatus::Failure,
+        stage_reports,
+        emitted_checkpoints,
+        resumed_from_checkpoint_reference,
+        resumed_from_last_successful_stage,
+        started_from_stage,
+        failure: Some(failure),
+    }
+}
