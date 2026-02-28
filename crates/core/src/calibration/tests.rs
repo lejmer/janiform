@@ -34,9 +34,13 @@ mod tests {
         CalibrationStageSolverSettings, CalibrationStagedRunFailure, CalibrationStagedRunInputs,
         HawkesStageCandidateInput, HawkesStageExecutionFailure, HawkesStageExecutionInput,
         HawkesStageObjectiveTermInput, OptionSurfaceCalibrationObservationError,
-        ReturnComponentsStageCandidateInput, ReturnComponentsStageExecutionFailure,
-        ReturnComponentsStageExecutionInput, ReturnComponentsStageObjectiveTermInput,
-        SeasonalityStageExecutionFailure, SeasonalityStageExecutionInput,
+        ReturnComponentsDetectedCloseOpenGapCandidate,
+        ReturnComponentsDetectedIntradayJumpCandidate, ReturnComponentsKnownNewsCalendarInput,
+        ReturnComponentsRealizedKnownNewsReturnSample,
+        ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageExecutionFailure,
+        ReturnComponentsStageExecutionInput, ReturnComponentsStageObjectiveMetricWeights,
+        ReturnComponentsStageSignalSourceWindow, SeasonalityStageExecutionFailure,
+        SeasonalityStageExecutionInput,
         build_option_surface_calibration_observation_from_pricing_hooks,
         calibration_checkpoint_reference_for_stage, calibration_last_success_checkpoint_reference,
         compose_calibration_weighted_objective, default_calibration_execution_mode_for_surface,
@@ -56,9 +60,7 @@ mod tests {
     };
     use crate::news::{
         CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
-        GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
-        NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
-        SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
+        GammaSeverityMarkConfiguration, SharedNewsMarkLawConfiguration,
     };
     use crate::nig::{ComplexScalar, NigParameters, NigSharedPlusShiftConfiguration};
     use crate::pricing::VanillaOptionPricingCalibrationHooks;
@@ -1576,14 +1578,14 @@ mod tests {
             &memory_run_spec,
             ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
                 hawkes_payload.clone(),
-                return_components_stage_candidate_fixture(),
+                return_components_stage_candidate_generation_fixture(),
             ),
         );
         let disk_report = run_return_components_calibration_stage(
             &disk_run_spec,
             ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
                 "artifact://hawkes/run-001",
-                return_components_stage_candidate_fixture(),
+                return_components_stage_candidate_generation_fixture(),
             ),
         );
 
@@ -1606,10 +1608,7 @@ mod tests {
             .as_ref()
             .expect("disk report should include fitted stage payload");
 
-        assert_eq!(
-            memory_payload.selected_candidate_id,
-            "candidate_return_low_loss"
-        );
+        assert!(!memory_payload.selected_candidate_id.trim().is_empty());
         assert_eq!(
             memory_payload.selected_candidate_id,
             disk_payload.selected_candidate_id
@@ -1633,6 +1632,55 @@ mod tests {
             disk_payload.activity_artifact_reference.as_deref(),
             Some("artifact://hawkes/run-001")
         );
+        assert_eq!(
+            memory_payload.objective_metric_bucket_policy,
+            "open_jump_closed_gap_activity_coupling_bucketed_weighted_terms.v1"
+        );
+        assert_eq!(
+            memory_payload.candidate_generation_policy,
+            "known_calendar_and_observed_jump_gap_signals_to_candidate_families.v1"
+        );
+
+        for candidate_diagnostic in &memory_payload.candidate_diagnostics {
+            let term_ids = candidate_diagnostic
+                .objective_terms
+                .iter()
+                .map(|objective_term| objective_term.term_id.as_str())
+                .collect::<Vec<_>>();
+            assert!(term_ids.contains(&"open_jump_fit"));
+            assert!(term_ids.contains(&"closed_gap_fit"));
+            assert!(term_ids.contains(&"activity_coupling_fit"));
+            assert!(
+                !candidate_diagnostic
+                    .candidate_provenance
+                    .source_windows
+                    .is_empty()
+            );
+            assert!(
+                !candidate_diagnostic
+                    .candidate_provenance
+                    .preprocessing_filters
+                    .is_empty()
+            );
+            assert!(
+                candidate_diagnostic
+                    .objective_metric_buckets
+                    .open_jump_fit
+                    .is_finite()
+            );
+            assert!(
+                candidate_diagnostic
+                    .objective_metric_buckets
+                    .closed_gap_fit
+                    .is_finite()
+            );
+            assert!(
+                candidate_diagnostic
+                    .objective_metric_buckets
+                    .activity_coupling_fit
+                    .is_finite()
+            );
+        }
     }
 
     #[test]
@@ -1647,14 +1695,14 @@ mod tests {
             &memory_run_spec,
             ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
                 hawkes_payload,
-                return_components_stage_candidate_fixture(),
+                return_components_stage_candidate_generation_fixture(),
             ),
         );
         let disk_report = run_return_components_calibration_stage(
             &disk_run_spec,
             ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
                 "artifact://hawkes/standalone",
-                return_components_stage_candidate_fixture(),
+                return_components_stage_candidate_generation_fixture(),
             ),
         );
 
@@ -1670,6 +1718,32 @@ mod tests {
     }
 
     #[test]
+    fn return_components_stage_execution_rejects_incomplete_candidate_generation_inputs() {
+        let hawkes_payload = build_hawkes_stage_success_payload();
+        let run_spec =
+            build_return_components_stage_pipeline_run_spec(CalibrationExecutionMode::Memory);
+
+        let mut candidate_generation_input = return_components_stage_candidate_generation_fixture();
+        candidate_generation_input
+            .detected_intraday_jump_candidates
+            .clear();
+
+        let report = run_return_components_calibration_stage(
+            &run_spec,
+            ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
+                hawkes_payload,
+                candidate_generation_input,
+            ),
+        );
+
+        assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);
+        assert!(matches!(
+            report.failure,
+            Some(ReturnComponentsStageExecutionFailure::InvalidCandidateGenerationInput { .. })
+        ));
+    }
+
+    #[test]
     fn return_components_stage_execution_reports_missing_dependency_stage_outputs() {
         let hawkes_payload = build_hawkes_stage_success_payload();
 
@@ -1679,7 +1753,7 @@ mod tests {
             &memory_run_spec,
             ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
                 "artifact://hawkes/run-001",
-                return_components_stage_candidate_fixture(),
+                return_components_stage_candidate_generation_fixture(),
             ),
         );
         assert_eq!(
@@ -1697,7 +1771,7 @@ mod tests {
             &disk_run_spec,
             ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
                 hawkes_payload,
-                return_components_stage_candidate_fixture(),
+                return_components_stage_candidate_generation_fixture(),
             ),
         );
         assert_eq!(
@@ -1722,28 +1796,28 @@ mod tests {
             &memory_run_spec,
             ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
                 hawkes_payload.clone(),
-                return_components_stage_candidate_fixture(),
+                return_components_stage_candidate_generation_fixture(),
             ),
         );
         let second_memory_report = run_return_components_calibration_stage(
             &memory_run_spec,
             ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
                 hawkes_payload,
-                return_components_stage_candidate_fixture(),
+                return_components_stage_candidate_generation_fixture(),
             ),
         );
         let first_disk_report = run_return_components_calibration_stage(
             &disk_run_spec,
             ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
                 "artifact://hawkes/run-001",
-                return_components_stage_candidate_fixture(),
+                return_components_stage_candidate_generation_fixture(),
             ),
         );
         let second_disk_report = run_return_components_calibration_stage(
             &disk_run_spec,
             ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
                 "artifact://hawkes/run-001",
-                return_components_stage_candidate_fixture(),
+                return_components_stage_candidate_generation_fixture(),
             ),
         );
 
@@ -1960,7 +2034,7 @@ mod tests {
     fn staged_run_inputs(
         include_seasonality_input: bool,
         include_hawkes_candidates: bool,
-        include_return_candidates: bool,
+        include_return_candidate_generation_input: bool,
     ) -> CalibrationStagedRunInputs {
         CalibrationStagedRunInputs {
             seasonality_stage_input: if include_seasonality_input {
@@ -1977,11 +2051,12 @@ mod tests {
             } else {
                 None
             },
-            return_components_candidate_inputs: if include_return_candidates {
-                Some(return_components_stage_candidate_fixture())
-            } else {
-                None
-            },
+            return_components_candidate_generation_input:
+                if include_return_candidate_generation_input {
+                    Some(return_components_stage_candidate_generation_fixture())
+                } else {
+                    None
+                },
         }
     }
 
@@ -2189,97 +2264,97 @@ mod tests {
         }
     }
 
-    fn return_components_stage_candidate_fixture() -> Vec<ReturnComponentsStageCandidateInput> {
-        vec![
-            ReturnComponentsStageCandidateInput {
-                candidate_id: "candidate_return_high_loss".to_string(),
-                nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration::try_new(
-                    2.30, -0.80, 0.70, 0.10, -0.20,
-                )
-                .expect("high-loss NIG configuration should validate"),
-                news_process_configuration: build_news_process_configuration(
-                    0.08, 1.8, 0.7, 0.45, 8.0, 10.0, 0.22,
-                ),
-                objective_terms: vec![
-                    ReturnComponentsStageObjectiveTermInput {
-                        term_id: "tail_fit_residual".to_string(),
-                        weight: 1.0,
-                        observed_score: 1.2,
-                    },
-                    ReturnComponentsStageObjectiveTermInput {
-                        term_id: "gap_quantile_residual".to_string(),
-                        weight: 1.0,
-                        observed_score: 0.8,
-                    },
-                ],
-            },
-            ReturnComponentsStageCandidateInput {
-                candidate_id: "candidate_return_low_loss".to_string(),
-                nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration::try_new(
-                    2.45, -0.70, 0.62, 0.08, -0.15,
-                )
-                .expect("low-loss NIG configuration should validate"),
-                news_process_configuration: build_news_process_configuration(
-                    0.06, 1.6, 0.65, 0.50, 9.5, 9.0, 0.18,
-                ),
-                objective_terms: vec![
-                    ReturnComponentsStageObjectiveTermInput {
-                        term_id: "tail_fit_residual".to_string(),
-                        weight: 1.0,
-                        observed_score: 0.6,
-                    },
-                    ReturnComponentsStageObjectiveTermInput {
-                        term_id: "gap_quantile_residual".to_string(),
-                        weight: 1.0,
-                        observed_score: 0.4,
-                    },
-                ],
-            },
-        ]
-    }
+    fn return_components_stage_candidate_generation_fixture()
+    -> ReturnComponentsStageCandidateGenerationInput {
+        let source_window = ReturnComponentsStageSignalSourceWindow {
+            window_start_utc_nanos: utc_nanos(2026, 2, 2, 13, 0, 0),
+            window_end_utc_nanos: utc_nanos(2026, 2, 5, 0, 0, 0),
+        };
 
-    fn build_news_process_configuration(
-        closed_window_baseline_intensity: f64,
-        gamma_shape_k: f64,
-        gamma_scale_theta: f64,
-        probability_positive: f64,
-        eta_plus: f64,
-        eta_minus: f64,
-        sigma_g: f64,
-    ) -> NewsProcessConfiguration {
-        NewsProcessConfiguration::try_new(
-            NewsArrivalConfiguration {
-                known: KnownNewsArrivalConfiguration {
-                    scheduled_event_timestamps_utc_nanos: vec![],
-                },
-                surprise: SurpriseNewsArrivalConfiguration {
-                    baseline_intensity: closed_window_baseline_intensity,
-                },
+        ReturnComponentsStageCandidateGenerationInput {
+            known_news_calendar: ReturnComponentsKnownNewsCalendarInput {
+                source_window,
+                scheduled_event_timestamps_utc_nanos: vec![
+                    utc_nanos(2026, 2, 2, 14, 30, 0),
+                    utc_nanos(2026, 2, 3, 15, 0, 0),
+                    utc_nanos(2026, 2, 4, 16, 0, 0),
+                ],
             },
-            SharedNewsMarkLawConfiguration {
-                gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(
-                    gamma_shape_k,
-                    gamma_scale_theta,
-                )
-                .expect("gamma severity mark configuration should validate"),
+            realized_known_news_return_samples: vec![
+                ReturnComponentsRealizedKnownNewsReturnSample {
+                    event_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 30, 0),
+                    open_window_jump_return: 0.016,
+                    closed_window_gap_return: -0.009,
+                },
+                ReturnComponentsRealizedKnownNewsReturnSample {
+                    event_timestamp_utc_nanos: utc_nanos(2026, 2, 3, 15, 0, 0),
+                    open_window_jump_return: -0.012,
+                    closed_window_gap_return: 0.004,
+                },
+                ReturnComponentsRealizedKnownNewsReturnSample {
+                    event_timestamp_utc_nanos: utc_nanos(2026, 2, 4, 16, 0, 0),
+                    open_window_jump_return: 0.011,
+                    closed_window_gap_return: -0.006,
+                },
+            ],
+            detected_intraday_jump_candidates: vec![
+                ReturnComponentsDetectedIntradayJumpCandidate {
+                    jump_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 16, 5, 0),
+                    jump_return: 0.018,
+                    post_shock_activity_lift: 1.35,
+                },
+                ReturnComponentsDetectedIntradayJumpCandidate {
+                    jump_timestamp_utc_nanos: utc_nanos(2026, 2, 3, 18, 20, 0),
+                    jump_return: -0.014,
+                    post_shock_activity_lift: 1.10,
+                },
+                ReturnComponentsDetectedIntradayJumpCandidate {
+                    jump_timestamp_utc_nanos: utc_nanos(2026, 2, 4, 19, 15, 0),
+                    jump_return: 0.010,
+                    post_shock_activity_lift: 0.95,
+                },
+            ],
+            detected_close_open_gap_candidates: vec![
+                ReturnComponentsDetectedCloseOpenGapCandidate {
+                    close_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 21, 0, 0),
+                    open_timestamp_utc_nanos: utc_nanos(2026, 2, 3, 14, 30, 0),
+                    gap_return: -0.013,
+                    post_shock_activity_lift: 1.40,
+                },
+                ReturnComponentsDetectedCloseOpenGapCandidate {
+                    close_timestamp_utc_nanos: utc_nanos(2026, 2, 3, 21, 0, 0),
+                    open_timestamp_utc_nanos: utc_nanos(2026, 2, 4, 14, 30, 0),
+                    gap_return: 0.008,
+                    post_shock_activity_lift: 1.05,
+                },
+            ],
+            nig_shared_plus_shift_candidates: vec![
+                NigSharedPlusShiftConfiguration::try_new(2.30, -0.80, 0.70, 0.10, -0.20)
+                    .expect("high-loss NIG configuration should validate"),
+                NigSharedPlusShiftConfiguration::try_new(2.45, -0.70, 0.62, 0.08, -0.15)
+                    .expect("low-loss NIG configuration should validate"),
+            ],
+            shared_mark_law_template: SharedNewsMarkLawConfiguration {
+                gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
+                    .expect("gamma severity mark configuration should validate"),
                 double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::try_new(
-                    probability_positive,
-                    eta_plus,
-                    eta_minus,
+                    0.45, 8.0, 10.0,
                 )
                 .expect("double-exponential base-shock configuration should validate"),
-                coupled_gap_marks: CoupledGapMarkConfiguration::new(sigma_g),
+                coupled_gap_marks: CoupledGapMarkConfiguration::new(0.22),
             },
-            NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 1.0,
-                return_jump_scale: 1.0,
-            },
-            NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 1.0,
-                return_jump_scale: 1.0,
-            },
-        )
-        .expect("news process configuration should validate")
+            objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights::new(
+                1.0, 1.0, 1.0,
+            ),
+        }
+    }
+
+    fn utc_nanos(year: i32, month: u32, day: u32, hour: u32, minute: u32, second: u32) -> i64 {
+        Utc.with_ymd_and_hms(year, month, day, hour, minute, second)
+            .single()
+            .expect("fixture timestamp should be valid")
+            .timestamp_nanos_opt()
+            .expect("fixture timestamp nanos should fit in i64")
     }
 
     fn calibration_stage_test_registry() -> ExchangeCalendarRegistry {

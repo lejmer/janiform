@@ -23,7 +23,7 @@ use super::stages::hawkes::{
     HawkesStageSeasonalityInput, run_hawkes_calibration_stage,
 };
 use super::stages::return_components::{
-    ReturnComponentsStageActivityInput, ReturnComponentsStageCandidateInput,
+    ReturnComponentsStageActivityInput, ReturnComponentsStageCandidateGenerationInput,
     ReturnComponentsStageExecutionInput, ReturnComponentsStageExecutionReport,
     run_return_components_calibration_stage,
 };
@@ -35,7 +35,8 @@ use super::stages::seasonality::{
 pub struct CalibrationStagedRunInputs {
     pub seasonality_stage_input: Option<SeasonalityStageExecutionInput>,
     pub hawkes_candidate_inputs: Option<Vec<HawkesStageCandidateInput>>,
-    pub return_components_candidate_inputs: Option<Vec<ReturnComponentsStageCandidateInput>>,
+    pub return_components_candidate_generation_input:
+        Option<ReturnComponentsStageCandidateGenerationInput>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -613,8 +614,9 @@ fn run_stage_for_staged_execution(
             ))
         }
         CalibrationStage::ReturnComponents => {
-            let Some(candidate_inputs) =
-                staged_run_inputs.return_components_candidate_inputs.take()
+            let Some(candidate_generation_input) = staged_run_inputs
+                .return_components_candidate_generation_input
+                .take()
             else {
                 return Err(CalibrationStagedRunFailure::MissingStageInput {
                     stage: CalibrationStage::ReturnComponents,
@@ -659,7 +661,7 @@ fn run_stage_for_staged_execution(
                     run_spec,
                     ReturnComponentsStageExecutionInput {
                         activity_input,
-                        candidate_inputs,
+                        candidate_generation_input,
                     },
                 ),
             ))
