@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use chrono::DateTime;
 use janiform_core::calendar::{ExchangeCalendarRegistry, MarketState};
 use janiform_core::news::{
-    SharedNewsAccumulatorState, SharedNewsEventTimestampedInput,
+    NewsArrivalComponent, SharedNewsAccumulatorState, SharedNewsEventTimestampedInput,
     dispatch_shared_news_events_with_resolved_market_states,
 };
 
@@ -628,8 +628,9 @@ fn evaluate_open_window_scenario(
             SharedNewsEventTimestampedInput {
                 event_timestamp_utc_nanos: timestamp_utc_to_nanos(&injected_event.timestamp_utc),
                 event_generation_order,
+                news_arrival_component: NewsArrivalComponent::Surprise,
                 shared_severity_mark: injected_event.shared_severity_mark,
-                coupled_gap_jump_mark: injected_event.coupled_gap_jump_mark,
+                coupled_return_jump_mark: injected_event.coupled_gap_jump_mark,
             }
         })
         .collect();
@@ -639,6 +640,7 @@ fn evaluate_open_window_scenario(
         &fixture_case.exchange_code,
         SharedNewsAccumulatorState::new(
             fixture_case.initial_accumulator_state.j_t,
+            0.0,
             fixture_case.initial_accumulator_state.g_t,
         ),
         &event_inputs,
@@ -669,7 +671,7 @@ fn evaluate_open_window_scenario(
                 expected_shared_severity_mark: expected_metadata.expected_shared_severity_mark,
                 observed_shared_severity_mark: dispatch_record.shared_severity_mark,
                 expected_coupled_gap_jump_mark: expected_metadata.expected_coupled_gap_jump_mark,
-                observed_coupled_gap_jump_mark: dispatch_record.coupled_gap_jump_mark,
+                observed_coupled_gap_jump_mark: dispatch_record.coupled_return_jump_mark,
                 activity_coupling_j_t_increment: dispatch_record.j_t_increment,
                 direct_gap_g_t_increment: dispatch_record.g_t_increment,
                 expected_activity_coupling_j_t_increment: expected_metadata

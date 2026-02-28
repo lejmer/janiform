@@ -16,7 +16,9 @@ use crate::calendar::{
 };
 use crate::randomness::SimulationRandomnessStream;
 
-pub const NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION: &str = "news.process.configuration.v1";
+pub const NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION: &str = "news.process.configuration.v2";
+pub const NEWS_ARRIVAL_COMPONENT_INTENSITY_POLICY: &str =
+    "known_schedule_count_plus_surprise_baseline_times_deterministic_multiplier.v1";
 pub const NEWS_INTENSITY_BASELINE_POLICY: &str =
     "closed_window_share_times_baseline_intensity_times_deterministic_multiplier.v1";
 pub const NEWS_INTENSITY_DETERMINISTIC_INPUT_POLICY: &str =
@@ -30,13 +32,17 @@ pub const COUPLED_GAP_MARK_CONSTRUCTION_POLICY: &str =
 pub const SHARED_NEWS_EVENT_DISPATCH_ORDERING_POLICY: &str =
     "event_timestamp_then_generation_order.v1";
 pub const SHARED_NEWS_EVENT_DISPATCH_JT_UPDATE_POLICY: &str =
-    "every_news_event_adds_shared_severity_mark_to_jt.v1";
+    "every_news_event_adds_shared_severity_mark_to_jt.v2";
+pub const SHARED_NEWS_EVENT_DISPATCH_MT_GATING_POLICY: &str =
+    "apply_shared_return_jump_mark_only_for_open_market_state.v1";
 pub const SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY: &str =
-    "apply_shared_gap_mark_only_for_closed_market_state.v1";
+    "apply_shared_return_jump_mark_only_for_closed_market_state.v2";
+pub const SHARED_NEWS_EVENT_DISPATCH_RETURN_ROUTING_POLICY: &str =
+    "open_market_state_routes_to_mt_closed_market_state_routes_to_gt.v1";
 pub const SHARED_NEWS_EVENT_MARKET_STATE_DEPENDENCY: &str = MARKET_STATE_RESOLUTION_POLICY;
 pub const SHARED_NEWS_EVENT_BOUNDARY_POLICY: &str = SESSION_WINDOW_BOUNDARY_POLICY;
 pub const COMPOSABLE_NEWS_MARK_INTERFACE_POLICY: &str =
-    "arrival_intensity_then_shared_mark_sampling_then_coupled_mark_construction.v1";
+    "component_arrival_intensity_then_shared_mark_sampling_then_coupled_mark_construction.v2";
 
 const ONE_SECOND_NANOS: i64 = 1_000_000_000;
 
@@ -56,7 +62,13 @@ pub enum NewsMarkInterfaceError {
         stage: NewsMarkInterfaceStage,
         reason: String,
     },
-    InvalidGeneratedArrivalIntensity {
+    InvalidGeneratedKnownArrivalIntensity {
+        value: f64,
+    },
+    InvalidGeneratedSurpriseArrivalIntensity {
+        value: f64,
+    },
+    InvalidGeneratedTotalArrivalIntensity {
         value: f64,
     },
     InvalidSampledSeverityMark {
@@ -99,9 +111,17 @@ impl Display for NewsMarkInterfaceError {
                     "composable news-mark component at stage `{stage:?}` rejected input: {reason}"
                 )
             }
-            Self::InvalidGeneratedArrivalIntensity { value } => write!(
+            Self::InvalidGeneratedKnownArrivalIntensity { value } => write!(
                 formatter,
-                "composable news arrival-intensity output must be finite and non-negative, found {value}"
+                "composable known-news arrival-intensity output must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidGeneratedSurpriseArrivalIntensity { value } => write!(
+                formatter,
+                "composable surprise-news arrival-intensity output must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidGeneratedTotalArrivalIntensity { value } => write!(
+                formatter,
+                "composable total news arrival-intensity output must be finite and non-negative, found {value}"
             ),
             Self::InvalidSampledSeverityMark { value } => write!(
                 formatter,
@@ -129,13 +149,43 @@ impl Display for NewsMarkInterfaceError {
 
 impl Error for NewsMarkInterfaceError {}
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NewsArrivalComponent {
+    Known,
+    Surprise,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NewsReturnJumpRoutingTarget {
+    OpenWindowDirectJumpM,
+    ClosedWindowGapG,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NewsArrivalIntensityEvaluationInput {
+    pub interval_start_utc_nanos: i64,
+    pub interval_end_utc_nanos: i64,
+    pub surprise_deterministic_time_multiplier: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NewsArrivalIntensityEvaluationOutput {
+    pub known_scheduled_arrival_count: u64,
+    pub known_component_intensity: f64,
+    pub surprise_component_intensity: f64,
+    pub total_intensity: f64,
+    pub intensity_policy: &'static str,
+}
+
 /// Interface boundary for deterministic news-arrival intensity generation.
 pub trait NewsArrivalIntensityGenerator {
     fn generate_arrival_intensity(
         &self,
-        closed_window_share: f64,
-        deterministic_time_multiplier: f64,
-    ) -> Result<f64, NewsMarkInterfaceError>;
+        intensity_input: NewsArrivalIntensityEvaluationInput,
+    ) -> Result<NewsArrivalIntensityEvaluationOutput, NewsMarkInterfaceError>;
 }
 
 /// Interface boundary for shared severity-mark sampling.
@@ -227,16 +277,41 @@ where
 
     pub fn generate_arrival_intensity(
         &self,
-        closed_window_share: f64,
-        deterministic_time_multiplier: f64,
-    ) -> Result<f64, NewsMarkInterfaceError> {
+        intensity_input: NewsArrivalIntensityEvaluationInput,
+    ) -> Result<NewsArrivalIntensityEvaluationOutput, NewsMarkInterfaceError> {
         let generated_arrival_intensity = self
             .arrival_intensity_generator
-            .generate_arrival_intensity(closed_window_share, deterministic_time_multiplier)?;
-        if !generated_arrival_intensity.is_finite() || generated_arrival_intensity < 0.0 {
-            return Err(NewsMarkInterfaceError::InvalidGeneratedArrivalIntensity {
-                value: generated_arrival_intensity,
-            });
+            .generate_arrival_intensity(intensity_input)?;
+        if !generated_arrival_intensity
+            .known_component_intensity
+            .is_finite()
+            || generated_arrival_intensity.known_component_intensity < 0.0
+        {
+            return Err(
+                NewsMarkInterfaceError::InvalidGeneratedKnownArrivalIntensity {
+                    value: generated_arrival_intensity.known_component_intensity,
+                },
+            );
+        }
+        if !generated_arrival_intensity
+            .surprise_component_intensity
+            .is_finite()
+            || generated_arrival_intensity.surprise_component_intensity < 0.0
+        {
+            return Err(
+                NewsMarkInterfaceError::InvalidGeneratedSurpriseArrivalIntensity {
+                    value: generated_arrival_intensity.surprise_component_intensity,
+                },
+            );
+        }
+        if !generated_arrival_intensity.total_intensity.is_finite()
+            || generated_arrival_intensity.total_intensity < 0.0
+        {
+            return Err(
+                NewsMarkInterfaceError::InvalidGeneratedTotalArrivalIntensity {
+                    value: generated_arrival_intensity.total_intensity,
+                },
+            );
         }
 
         Ok(generated_arrival_intensity)
@@ -298,6 +373,259 @@ where
         })
     }
 }
+
+/// Known scheduled-news arrival configuration with explicit UTC anchors.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KnownNewsArrivalConfiguration {
+    pub scheduled_event_timestamps_utc_nanos: Vec<i64>,
+}
+
+impl KnownNewsArrivalConfiguration {
+    pub fn validate(&self) -> Result<(), NewsArrivalConfigurationError> {
+        let mut previous_timestamp_utc_nanos: Option<i64> = None;
+        for &timestamp_utc_nanos in &self.scheduled_event_timestamps_utc_nanos {
+            if utc_timestamp_from_nanos(timestamp_utc_nanos).is_none() {
+                return Err(
+                    NewsArrivalConfigurationError::InvalidKnownScheduledTimestampUtcNanos {
+                        value: timestamp_utc_nanos,
+                    },
+                );
+            }
+            if let Some(previous_timestamp_utc_nanos_value) = previous_timestamp_utc_nanos {
+                if timestamp_utc_nanos <= previous_timestamp_utc_nanos_value {
+                    return Err(
+                        NewsArrivalConfigurationError::KnownScheduledTimestampsNotStrictlyIncreasing {
+                            previous_timestamp_utc_nanos: previous_timestamp_utc_nanos_value,
+                            current_timestamp_utc_nanos: timestamp_utc_nanos,
+                        },
+                    );
+                }
+            }
+            previous_timestamp_utc_nanos = Some(timestamp_utc_nanos);
+        }
+
+        Ok(())
+    }
+
+    fn count_scheduled_arrivals_in_interval(
+        &self,
+        interval_start_utc_nanos: i64,
+        interval_end_utc_nanos: i64,
+    ) -> usize {
+        self.scheduled_event_timestamps_utc_nanos
+            .iter()
+            .filter(|&&timestamp_utc_nanos| {
+                timestamp_utc_nanos >= interval_start_utc_nanos
+                    && timestamp_utc_nanos < interval_end_utc_nanos
+            })
+            .count()
+    }
+}
+
+/// Surprise-news deterministic background intensity configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SurpriseNewsArrivalConfiguration {
+    pub baseline_intensity: f64,
+}
+
+impl SurpriseNewsArrivalConfiguration {
+    pub fn validate(self) -> Result<(), NewsArrivalConfigurationError> {
+        if !self.baseline_intensity.is_finite() || self.baseline_intensity < 0.0 {
+            return Err(
+                NewsArrivalConfigurationError::InvalidSurpriseBaselineIntensity {
+                    value: self.baseline_intensity,
+                },
+            );
+        }
+
+        Ok(())
+    }
+}
+
+/// Componentized known and surprise arrival configuration for the news process.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NewsArrivalConfiguration {
+    pub known: KnownNewsArrivalConfiguration,
+    pub surprise: SurpriseNewsArrivalConfiguration,
+}
+
+impl NewsArrivalConfiguration {
+    pub fn validate(&self) -> Result<(), NewsArrivalConfigurationError> {
+        self.known.validate()?;
+        self.surprise.validate()?;
+        Ok(())
+    }
+
+    pub fn evaluate_with_deterministic_time_multiplier(
+        &self,
+        intensity_input: NewsArrivalIntensityEvaluationInput,
+    ) -> Result<NewsArrivalIntensityEvaluationOutput, NewsComponentIntensityEvaluationError> {
+        self.validate().map_err(|source| {
+            NewsComponentIntensityEvaluationError::InvalidConfiguration { source }
+        })?;
+
+        if intensity_input.interval_end_utc_nanos <= intensity_input.interval_start_utc_nanos {
+            return Err(
+                NewsComponentIntensityEvaluationError::NonIncreasingInterval {
+                    interval_start_utc_nanos: intensity_input.interval_start_utc_nanos,
+                    interval_end_utc_nanos: intensity_input.interval_end_utc_nanos,
+                },
+            );
+        }
+        if utc_timestamp_from_nanos(intensity_input.interval_start_utc_nanos).is_none() {
+            return Err(
+                NewsComponentIntensityEvaluationError::InvalidIntervalStartTimestampUtcNanos {
+                    value: intensity_input.interval_start_utc_nanos,
+                },
+            );
+        }
+        if utc_timestamp_from_nanos(intensity_input.interval_end_utc_nanos).is_none() {
+            return Err(
+                NewsComponentIntensityEvaluationError::InvalidIntervalEndTimestampUtcNanos {
+                    value: intensity_input.interval_end_utc_nanos,
+                },
+            );
+        }
+        if !intensity_input
+            .surprise_deterministic_time_multiplier
+            .is_finite()
+            || intensity_input.surprise_deterministic_time_multiplier < 0.0
+        {
+            return Err(
+                NewsComponentIntensityEvaluationError::InvalidSurpriseDeterministicTimeMultiplier {
+                    value: intensity_input.surprise_deterministic_time_multiplier,
+                },
+            );
+        }
+
+        let known_scheduled_arrival_count_usize = self.known.count_scheduled_arrivals_in_interval(
+            intensity_input.interval_start_utc_nanos,
+            intensity_input.interval_end_utc_nanos,
+        );
+        let known_scheduled_arrival_count = u64::try_from(known_scheduled_arrival_count_usize)
+            .map_err(|_| {
+                NewsComponentIntensityEvaluationError::KnownScheduledArrivalCountOverflow {
+                    value: known_scheduled_arrival_count_usize,
+                }
+            })?;
+        let known_component_intensity = known_scheduled_arrival_count as f64;
+        if !known_component_intensity.is_finite() || known_component_intensity < 0.0 {
+            return Err(
+                NewsComponentIntensityEvaluationError::InvalidKnownComponentIntensity {
+                    value: known_component_intensity,
+                },
+            );
+        }
+
+        let surprise_component_intensity = self.surprise.baseline_intensity
+            * intensity_input.surprise_deterministic_time_multiplier;
+        if !surprise_component_intensity.is_finite() || surprise_component_intensity < 0.0 {
+            return Err(
+                NewsComponentIntensityEvaluationError::InvalidSurpriseComponentIntensity {
+                    value: surprise_component_intensity,
+                },
+            );
+        }
+
+        let total_intensity = known_component_intensity + surprise_component_intensity;
+        if !total_intensity.is_finite() || total_intensity < 0.0 {
+            return Err(
+                NewsComponentIntensityEvaluationError::InvalidTotalIntensity {
+                    value: total_intensity,
+                },
+            );
+        }
+
+        Ok(NewsArrivalIntensityEvaluationOutput {
+            known_scheduled_arrival_count,
+            known_component_intensity,
+            surprise_component_intensity,
+            total_intensity,
+            intensity_policy: NEWS_ARRIVAL_COMPONENT_INTENSITY_POLICY,
+        })
+    }
+}
+
+impl NewsArrivalIntensityGenerator for NewsArrivalConfiguration {
+    fn generate_arrival_intensity(
+        &self,
+        intensity_input: NewsArrivalIntensityEvaluationInput,
+    ) -> Result<NewsArrivalIntensityEvaluationOutput, NewsMarkInterfaceError> {
+        self.evaluate_with_deterministic_time_multiplier(intensity_input)
+            .map_err(|source| {
+                NewsMarkInterfaceError::component_rejected(
+                    NewsMarkInterfaceStage::ArrivalIntensityGeneration,
+                    source.to_string(),
+                )
+            })
+    }
+}
+
+/// Shared mark-law parameters consumed across known and surprise components.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SharedNewsMarkLawConfiguration {
+    pub gamma_severity_marks: GammaSeverityMarkConfiguration,
+    pub double_exponential_base_shock: DoubleExponentialBaseShockConfiguration,
+    pub coupled_gap_marks: CoupledGapMarkConfiguration,
+}
+
+impl SharedNewsMarkLawConfiguration {
+    pub fn validate(self) -> Result<(), NewsProcessConfigurationError> {
+        self.gamma_severity_marks.validate().map_err(|source| {
+            NewsProcessConfigurationError::InvalidGammaSeverityMarkConfiguration { source }
+        })?;
+
+        self.double_exponential_base_shock
+            .validate()
+            .map_err(
+                |source| NewsProcessConfigurationError::InvalidBaseShockConfiguration { source },
+            )?;
+
+        self.coupled_gap_marks.validate().map_err(|source| {
+            NewsProcessConfigurationError::InvalidCoupledGapMarkConfiguration { source }
+        })?;
+
+        Ok(())
+    }
+}
+
+/// Component-level mark scaling applied to shared mark-law draws.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NewsComponentMarkScaleConfiguration {
+    pub activity_coupling_scale: f64,
+    pub return_jump_scale: f64,
+}
+
+impl NewsComponentMarkScaleConfiguration {
+    pub fn validate(self) -> Result<(), NewsComponentMarkScaleConfigurationError> {
+        if !self.activity_coupling_scale.is_finite() || self.activity_coupling_scale < 0.0 {
+            return Err(
+                NewsComponentMarkScaleConfigurationError::InvalidActivityCouplingScale {
+                    value: self.activity_coupling_scale,
+                },
+            );
+        }
+        if !self.return_jump_scale.is_finite() || self.return_jump_scale < 0.0 {
+            return Err(
+                NewsComponentMarkScaleConfigurationError::InvalidReturnJumpScale {
+                    value: self.return_jump_scale,
+                },
+            );
+        }
+
+        Ok(())
+    }
+}
+
+/// Legacy deterministic intensity policy kept for hourly factor materialization contracts.
+///
+/// `NewsProcessConfiguration` now uses `NewsArrivalConfiguration` for known and surprise
+/// components directly.
 
 /// Deterministic intensity policy configuration for `nu_news(t)`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -366,25 +694,6 @@ impl NewsIntensityConfiguration {
         }
 
         Ok(interval_intensity)
-    }
-}
-
-impl NewsArrivalIntensityGenerator for NewsIntensityConfiguration {
-    fn generate_arrival_intensity(
-        &self,
-        closed_window_share: f64,
-        deterministic_time_multiplier: f64,
-    ) -> Result<f64, NewsMarkInterfaceError> {
-        self.evaluate_with_deterministic_time_multiplier(
-            closed_window_share,
-            deterministic_time_multiplier,
-        )
-        .map_err(|source| {
-            NewsMarkInterfaceError::component_rejected(
-                NewsMarkInterfaceStage::ArrivalIntensityGeneration,
-                source.to_string(),
-            )
-        })
     }
 }
 
@@ -663,16 +972,18 @@ pub struct CoupledGapMarkConstruction {
     pub construction_policy: &'static str,
 }
 
-/// Running shared-news accumulators for Hawkes shock loading `J_t` and gap process `G_t`.
+/// Running shared-news accumulators for Hawkes shock loading `J_t`,
+/// open-window direct jumps `M_t`, and closed-window gap jumps `G_t`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SharedNewsAccumulatorState {
     pub j_t: f64,
+    pub m_t: f64,
     pub g_t: f64,
 }
 
 impl SharedNewsAccumulatorState {
-    pub const fn new(j_t: f64, g_t: f64) -> Self {
-        Self { j_t, g_t }
+    pub const fn new(j_t: f64, m_t: f64, g_t: f64) -> Self {
+        Self { j_t, m_t, g_t }
     }
 }
 
@@ -683,15 +994,17 @@ impl SharedNewsAccumulatorState {
 /// 2. lower `event_generation_order`
 ///
 /// Every event contributes to `J_t` using `shared_severity_mark`.
-/// `coupled_gap_jump_mark` contributes to `G_t` only when `market_state == closed`.
+/// `coupled_return_jump_mark` contributes to `M_t` when `market_state == open`
+/// and to `G_t` when `market_state == closed`.
 /// `market_state` should come from canonical calendar resolver output.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SharedNewsEventDispatchInput {
     pub event_timestamp_utc_nanos: i64,
     pub event_generation_order: u64,
+    pub news_arrival_component: NewsArrivalComponent,
     pub market_state: MarketState,
     pub shared_severity_mark: f64,
-    pub coupled_gap_jump_mark: f64,
+    pub coupled_return_jump_mark: f64,
 }
 
 impl SharedNewsEventDispatchInput {
@@ -706,8 +1019,9 @@ impl SharedNewsEventDispatchInput {
 pub struct SharedNewsEventTimestampedInput {
     pub event_timestamp_utc_nanos: i64,
     pub event_generation_order: u64,
+    pub news_arrival_component: NewsArrivalComponent,
     pub shared_severity_mark: f64,
-    pub coupled_gap_jump_mark: f64,
+    pub coupled_return_jump_mark: f64,
 }
 
 /// Resolve market state for shared news events from the canonical calendar service.
@@ -743,26 +1057,31 @@ pub fn resolve_shared_news_event_market_states(
         resolved_event_inputs.push(SharedNewsEventDispatchInput {
             event_timestamp_utc_nanos: event_input.event_timestamp_utc_nanos,
             event_generation_order: event_input.event_generation_order,
+            news_arrival_component: event_input.news_arrival_component,
             market_state,
             shared_severity_mark: event_input.shared_severity_mark,
-            coupled_gap_jump_mark: event_input.coupled_gap_jump_mark,
+            coupled_return_jump_mark: event_input.coupled_return_jump_mark,
         });
     }
 
     Ok(resolved_event_inputs)
 }
 
-/// Per-event dispatch record produced by shared `J_t` and `G_t` updates.
+/// Per-event dispatch record produced by shared `J_t`, `M_t`, and `G_t` updates.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SharedNewsEventDispatchRecord {
     pub event_timestamp_utc_nanos: i64,
     pub event_generation_order: u64,
+    pub news_arrival_component: NewsArrivalComponent,
     pub market_state: MarketState,
+    pub return_jump_routing_target: NewsReturnJumpRoutingTarget,
     pub shared_severity_mark: f64,
-    pub coupled_gap_jump_mark: f64,
+    pub coupled_return_jump_mark: f64,
     pub j_t_increment: f64,
+    pub m_t_increment: f64,
     pub g_t_increment: f64,
     pub j_t_after_event: f64,
+    pub m_t_after_event: f64,
     pub g_t_after_event: f64,
 }
 
@@ -771,7 +1090,9 @@ pub struct SharedNewsEventDispatchRecord {
 pub struct SharedNewsEventDispatchOutput {
     pub ordering_policy: &'static str,
     pub j_t_update_policy: &'static str,
+    pub m_t_gating_policy: &'static str,
     pub g_t_gating_policy: &'static str,
+    pub return_jump_routing_policy: &'static str,
     pub market_state_dependency: &'static str,
     pub market_state_boundary_policy: &'static str,
     pub records: Vec<SharedNewsEventDispatchRecord>,
@@ -782,6 +1103,9 @@ pub struct SharedNewsEventDispatchOutput {
 #[derive(Debug, Clone, PartialEq)]
 pub enum SharedNewsEventDispatchError {
     InvalidInitialJtAccumulator {
+        value: f64,
+    },
+    InvalidInitialMtAccumulator {
         value: f64,
     },
     InvalidInitialGtAccumulator {
@@ -800,11 +1124,15 @@ pub enum SharedNewsEventDispatchError {
         event_generation_order: u64,
         value: f64,
     },
-    InvalidGapJumpMark {
+    InvalidReturnJumpMark {
         event_generation_order: u64,
         value: f64,
     },
     InvalidAccumulatedJt {
+        event_generation_order: u64,
+        value: f64,
+    },
+    InvalidAccumulatedMt {
         event_generation_order: u64,
         value: f64,
     },
@@ -820,6 +1148,10 @@ impl Display for SharedNewsEventDispatchError {
             Self::InvalidInitialJtAccumulator { value } => write!(
                 formatter,
                 "initial J_t accumulator must be finite, found {value}"
+            ),
+            Self::InvalidInitialMtAccumulator { value } => write!(
+                formatter,
+                "initial M_t accumulator must be finite, found {value}"
             ),
             Self::InvalidInitialGtAccumulator { value } => write!(
                 formatter,
@@ -847,12 +1179,12 @@ impl Display for SharedNewsEventDispatchError {
                 formatter,
                 "shared severity mark for event generation order {event_generation_order} must be finite and non-negative, found {value}"
             ),
-            Self::InvalidGapJumpMark {
+            Self::InvalidReturnJumpMark {
                 event_generation_order,
                 value,
             } => write!(
                 formatter,
-                "shared gap jump mark for event generation order {event_generation_order} must be finite, found {value}"
+                "shared return jump mark for event generation order {event_generation_order} must be finite, found {value}"
             ),
             Self::InvalidAccumulatedJt {
                 event_generation_order,
@@ -860,6 +1192,13 @@ impl Display for SharedNewsEventDispatchError {
             } => write!(
                 formatter,
                 "accumulated J_t after event generation order {event_generation_order} must be finite, found {value}"
+            ),
+            Self::InvalidAccumulatedMt {
+                event_generation_order,
+                value,
+            } => write!(
+                formatter,
+                "accumulated M_t after event generation order {event_generation_order} must be finite, found {value}"
             ),
             Self::InvalidAccumulatedGt {
                 event_generation_order,
@@ -881,7 +1220,7 @@ impl Error for SharedNewsEventDispatchError {
     }
 }
 
-/// Dispatch shared news events through one canonical `J_t` plus `G_t` update path.
+/// Dispatch shared news events through one canonical `J_t` plus `M_t` plus `G_t` update path.
 ///
 /// Event processing order is deterministic and documented by
 /// `SHARED_NEWS_EVENT_DISPATCH_ORDERING_POLICY`.
@@ -906,7 +1245,9 @@ pub fn dispatch_shared_news_events(
     Ok(SharedNewsEventDispatchOutput {
         ordering_policy: SHARED_NEWS_EVENT_DISPATCH_ORDERING_POLICY,
         j_t_update_policy: SHARED_NEWS_EVENT_DISPATCH_JT_UPDATE_POLICY,
+        m_t_gating_policy: SHARED_NEWS_EVENT_DISPATCH_MT_GATING_POLICY,
         g_t_gating_policy: SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY,
+        return_jump_routing_policy: SHARED_NEWS_EVENT_DISPATCH_RETURN_ROUTING_POLICY,
         market_state_dependency: SHARED_NEWS_EVENT_MARKET_STATE_DEPENDENCY,
         market_state_boundary_policy: SHARED_NEWS_EVENT_BOUNDARY_POLICY,
         records: dispatch_records,
@@ -934,7 +1275,11 @@ fn validate_initial_dispatch_state(
             value: initial_state.j_t,
         });
     }
-
+    if !initial_state.m_t.is_finite() {
+        return Err(SharedNewsEventDispatchError::InvalidInitialMtAccumulator {
+            value: initial_state.m_t,
+        });
+    }
     if !initial_state.g_t.is_finite() {
         return Err(SharedNewsEventDispatchError::InvalidInitialGtAccumulator {
             value: initial_state.g_t,
@@ -954,17 +1299,26 @@ fn dispatch_one_shared_news_event(
             value: event_input.shared_severity_mark,
         });
     }
-    if !event_input.coupled_gap_jump_mark.is_finite() {
-        return Err(SharedNewsEventDispatchError::InvalidGapJumpMark {
+    if !event_input.coupled_return_jump_mark.is_finite() {
+        return Err(SharedNewsEventDispatchError::InvalidReturnJumpMark {
             event_generation_order: event_input.event_generation_order,
-            value: event_input.coupled_gap_jump_mark,
+            value: event_input.coupled_return_jump_mark,
         });
     }
 
     let j_t_increment = event_input.shared_severity_mark;
-    let g_t_increment = match event_input.market_state {
-        MarketState::Open => 0.0,
-        MarketState::Closed => event_input.coupled_gap_jump_mark,
+    let (return_jump_routing_target, m_t_increment, g_t_increment) = match event_input.market_state
+    {
+        MarketState::Open => (
+            NewsReturnJumpRoutingTarget::OpenWindowDirectJumpM,
+            event_input.coupled_return_jump_mark,
+            0.0,
+        ),
+        MarketState::Closed => (
+            NewsReturnJumpRoutingTarget::ClosedWindowGapG,
+            0.0,
+            event_input.coupled_return_jump_mark,
+        ),
     };
 
     next_state.j_t += j_t_increment;
@@ -972,6 +1326,14 @@ fn dispatch_one_shared_news_event(
         return Err(SharedNewsEventDispatchError::InvalidAccumulatedJt {
             event_generation_order: event_input.event_generation_order,
             value: next_state.j_t,
+        });
+    }
+
+    next_state.m_t += m_t_increment;
+    if !next_state.m_t.is_finite() {
+        return Err(SharedNewsEventDispatchError::InvalidAccumulatedMt {
+            event_generation_order: event_input.event_generation_order,
+            value: next_state.m_t,
         });
     }
 
@@ -986,12 +1348,16 @@ fn dispatch_one_shared_news_event(
     Ok(SharedNewsEventDispatchRecord {
         event_timestamp_utc_nanos: event_input.event_timestamp_utc_nanos,
         event_generation_order: event_input.event_generation_order,
+        news_arrival_component: event_input.news_arrival_component,
         market_state: event_input.market_state,
+        return_jump_routing_target,
         shared_severity_mark: event_input.shared_severity_mark,
-        coupled_gap_jump_mark: event_input.coupled_gap_jump_mark,
+        coupled_return_jump_mark: event_input.coupled_return_jump_mark,
         j_t_increment,
+        m_t_increment,
         g_t_increment,
         j_t_after_event: next_state.j_t,
+        m_t_after_event: next_state.m_t,
         g_t_after_event: next_state.g_t,
     })
 }
@@ -1000,14 +1366,14 @@ fn dispatch_one_shared_news_event(
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct NewsProcessConfiguration {
     pub schema_version: &'static str,
-    pub intensity: NewsIntensityConfiguration,
-    pub gamma_severity_marks: GammaSeverityMarkConfiguration,
-    pub double_exponential_base_shock: DoubleExponentialBaseShockConfiguration,
-    pub coupled_gap_marks: CoupledGapMarkConfiguration,
+    pub arrivals: NewsArrivalConfiguration,
+    pub shared_mark_law: SharedNewsMarkLawConfiguration,
+    pub known_component_mark_scales: NewsComponentMarkScaleConfiguration,
+    pub surprise_component_mark_scales: NewsComponentMarkScaleConfiguration,
 }
 
 pub type DefaultNewsMarkPipeline = ComposableNewsMarkPipeline<
-    NewsIntensityConfiguration,
+    NewsArrivalConfiguration,
     GammaSeverityMarkConfiguration,
     DoubleExponentialBaseShockConfiguration,
     CoupledGapMarkConfiguration,
@@ -1015,26 +1381,26 @@ pub type DefaultNewsMarkPipeline = ComposableNewsMarkPipeline<
 
 impl NewsProcessConfiguration {
     pub fn try_new(
-        intensity: NewsIntensityConfiguration,
-        gamma_severity_marks: GammaSeverityMarkConfiguration,
-        double_exponential_base_shock: DoubleExponentialBaseShockConfiguration,
-        coupled_gap_marks: CoupledGapMarkConfiguration,
+        arrivals: NewsArrivalConfiguration,
+        shared_mark_law: SharedNewsMarkLawConfiguration,
+        known_component_mark_scales: NewsComponentMarkScaleConfiguration,
+        surprise_component_mark_scales: NewsComponentMarkScaleConfiguration,
     ) -> Result<Self, NewsProcessConfigurationError> {
         Self::try_new_with_schema_version(
             NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION,
-            intensity,
-            gamma_severity_marks,
-            double_exponential_base_shock,
-            coupled_gap_marks,
+            arrivals,
+            shared_mark_law,
+            known_component_mark_scales,
+            surprise_component_mark_scales,
         )
     }
 
     fn try_new_with_schema_version(
         schema_version: &str,
-        intensity: NewsIntensityConfiguration,
-        gamma_severity_marks: GammaSeverityMarkConfiguration,
-        double_exponential_base_shock: DoubleExponentialBaseShockConfiguration,
-        coupled_gap_marks: CoupledGapMarkConfiguration,
+        arrivals: NewsArrivalConfiguration,
+        shared_mark_law: SharedNewsMarkLawConfiguration,
+        known_component_mark_scales: NewsComponentMarkScaleConfiguration,
+        surprise_component_mark_scales: NewsComponentMarkScaleConfiguration,
     ) -> Result<Self, NewsProcessConfigurationError> {
         if schema_version != NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION {
             return Err(NewsProcessConfigurationError::UnsupportedSchemaVersion {
@@ -1042,41 +1408,41 @@ impl NewsProcessConfiguration {
             });
         }
 
-        intensity.validate().map_err(|source| {
-            NewsProcessConfigurationError::InvalidIntensityConfiguration { source }
+        arrivals.validate().map_err(|source| {
+            NewsProcessConfigurationError::InvalidArrivalConfiguration { source }
         })?;
-        gamma_severity_marks.validate().map_err(|source| {
-            NewsProcessConfigurationError::InvalidGammaSeverityMarkConfiguration { source }
+        shared_mark_law.validate()?;
+        known_component_mark_scales.validate().map_err(|source| {
+            NewsProcessConfigurationError::InvalidKnownComponentMarkScales { source }
         })?;
-        double_exponential_base_shock.validate().map_err(|source| {
-            NewsProcessConfigurationError::InvalidBaseShockConfiguration { source }
-        })?;
-        coupled_gap_marks.validate().map_err(|source| {
-            NewsProcessConfigurationError::InvalidCoupledGapMarkConfiguration { source }
-        })?;
+        surprise_component_mark_scales
+            .validate()
+            .map_err(|source| {
+                NewsProcessConfigurationError::InvalidSurpriseComponentMarkScales { source }
+            })?;
 
         Ok(Self {
             schema_version: NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION,
-            intensity,
-            gamma_severity_marks,
-            double_exponential_base_shock,
-            coupled_gap_marks,
+            arrivals,
+            shared_mark_law,
+            known_component_mark_scales,
+            surprise_component_mark_scales,
         })
     }
 
     /// Build the default v0.1 composable interface wiring.
     ///
     /// Component mapping:
-    /// - arrival intensity: deterministic closed-window intensity model
+    /// - arrival intensity: known-schedule and surprise-background component model
     /// - severity sampler: Gamma(shape, scale)
     /// - base-shock sampler: Kou double-exponential
     /// - coupled constructor: `sigma_g * sqrt(U) * epsilon`
     pub fn default_v0_1_mark_pipeline(&self) -> DefaultNewsMarkPipeline {
         DefaultNewsMarkPipeline::new(
-            self.intensity,
-            self.gamma_severity_marks,
-            self.double_exponential_base_shock,
-            self.coupled_gap_marks,
+            self.arrivals.clone(),
+            self.shared_mark_law.gamma_severity_marks,
+            self.shared_mark_law.double_exponential_base_shock,
+            self.shared_mark_law.coupled_gap_marks,
         )
     }
 }
@@ -1101,10 +1467,10 @@ impl<'de> Deserialize<'de> for NewsIntensityConfiguration {
 #[serde(deny_unknown_fields)]
 struct NewsProcessConfigurationPayload {
     schema_version: String,
-    intensity: NewsIntensityConfiguration,
-    gamma_severity_marks: GammaSeverityMarkConfiguration,
-    double_exponential_base_shock: DoubleExponentialBaseShockConfiguration,
-    coupled_gap_marks: CoupledGapMarkConfiguration,
+    arrivals: NewsArrivalConfiguration,
+    shared_mark_law: SharedNewsMarkLawConfiguration,
+    known_component_mark_scales: NewsComponentMarkScaleConfiguration,
+    surprise_component_mark_scales: NewsComponentMarkScaleConfiguration,
 }
 
 impl<'de> Deserialize<'de> for NewsProcessConfiguration {
@@ -1115,14 +1481,159 @@ impl<'de> Deserialize<'de> for NewsProcessConfiguration {
         let payload = NewsProcessConfigurationPayload::deserialize(deserializer)?;
         Self::try_new_with_schema_version(
             &payload.schema_version,
-            payload.intensity,
-            payload.gamma_severity_marks,
-            payload.double_exponential_base_shock,
-            payload.coupled_gap_marks,
+            payload.arrivals,
+            payload.shared_mark_law,
+            payload.known_component_mark_scales,
+            payload.surprise_component_mark_scales,
         )
         .map_err(serde::de::Error::custom)
     }
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum NewsArrivalConfigurationError {
+    InvalidKnownScheduledTimestampUtcNanos {
+        value: i64,
+    },
+    KnownScheduledTimestampsNotStrictlyIncreasing {
+        previous_timestamp_utc_nanos: i64,
+        current_timestamp_utc_nanos: i64,
+    },
+    InvalidSurpriseBaselineIntensity {
+        value: f64,
+    },
+}
+
+impl Display for NewsArrivalConfigurationError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidKnownScheduledTimestampUtcNanos { value } => write!(
+                formatter,
+                "known.scheduled_event_timestamps_utc_nanos contains an invalid UTC timestamp nanos value {value}"
+            ),
+            Self::KnownScheduledTimestampsNotStrictlyIncreasing {
+                previous_timestamp_utc_nanos,
+                current_timestamp_utc_nanos,
+            } => write!(
+                formatter,
+                "known.scheduled_event_timestamps_utc_nanos must be strictly increasing, found previous={previous_timestamp_utc_nanos} and current={current_timestamp_utc_nanos}"
+            ),
+            Self::InvalidSurpriseBaselineIntensity { value } => write!(
+                formatter,
+                "surprise.baseline_intensity must be a finite non-negative value, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for NewsArrivalConfigurationError {}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum NewsComponentIntensityEvaluationError {
+    InvalidConfiguration {
+        source: NewsArrivalConfigurationError,
+    },
+    NonIncreasingInterval {
+        interval_start_utc_nanos: i64,
+        interval_end_utc_nanos: i64,
+    },
+    InvalidIntervalStartTimestampUtcNanos {
+        value: i64,
+    },
+    InvalidIntervalEndTimestampUtcNanos {
+        value: i64,
+    },
+    InvalidSurpriseDeterministicTimeMultiplier {
+        value: f64,
+    },
+    KnownScheduledArrivalCountOverflow {
+        value: usize,
+    },
+    InvalidKnownComponentIntensity {
+        value: f64,
+    },
+    InvalidSurpriseComponentIntensity {
+        value: f64,
+    },
+    InvalidTotalIntensity {
+        value: f64,
+    },
+}
+
+impl Display for NewsComponentIntensityEvaluationError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidConfiguration { source } => write!(formatter, "{source}"),
+            Self::NonIncreasingInterval {
+                interval_start_utc_nanos,
+                interval_end_utc_nanos,
+            } => write!(
+                formatter,
+                "arrival-intensity interval must be increasing, found start={interval_start_utc_nanos} and end={interval_end_utc_nanos}"
+            ),
+            Self::InvalidIntervalStartTimestampUtcNanos { value } => write!(
+                formatter,
+                "interval_start_utc_nanos must map to a valid UTC timestamp, found {value}"
+            ),
+            Self::InvalidIntervalEndTimestampUtcNanos { value } => write!(
+                formatter,
+                "interval_end_utc_nanos must map to a valid UTC timestamp, found {value}"
+            ),
+            Self::InvalidSurpriseDeterministicTimeMultiplier { value } => write!(
+                formatter,
+                "surprise_deterministic_time_multiplier must be finite and non-negative, found {value}"
+            ),
+            Self::KnownScheduledArrivalCountOverflow { value } => write!(
+                formatter,
+                "known scheduled arrival count overflowed u64 conversion, found {value}"
+            ),
+            Self::InvalidKnownComponentIntensity { value } => write!(
+                formatter,
+                "known-component arrival intensity must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidSurpriseComponentIntensity { value } => write!(
+                formatter,
+                "surprise-component arrival intensity must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidTotalIntensity { value } => write!(
+                formatter,
+                "total arrival intensity must be finite and non-negative, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for NewsComponentIntensityEvaluationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidConfiguration { source } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum NewsComponentMarkScaleConfigurationError {
+    InvalidActivityCouplingScale { value: f64 },
+    InvalidReturnJumpScale { value: f64 },
+}
+
+impl Display for NewsComponentMarkScaleConfigurationError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidActivityCouplingScale { value } => write!(
+                formatter,
+                "activity_coupling_scale must be a finite non-negative value, found {value}"
+            ),
+            Self::InvalidReturnJumpScale { value } => write!(
+                formatter,
+                "return_jump_scale must be a finite non-negative value, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for NewsComponentMarkScaleConfigurationError {}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NewsIntensityError {
@@ -1189,11 +1700,27 @@ impl Error for NewsMarkConfigurationError {}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NewsProcessConfigurationError {
-    UnsupportedSchemaVersion { value: String },
-    InvalidIntensityConfiguration { source: NewsIntensityError },
-    InvalidGammaSeverityMarkConfiguration { source: NewsMarkConfigurationError },
-    InvalidBaseShockConfiguration { source: NewsMarkConfigurationError },
-    InvalidCoupledGapMarkConfiguration { source: NewsMarkConfigurationError },
+    UnsupportedSchemaVersion {
+        value: String,
+    },
+    InvalidArrivalConfiguration {
+        source: NewsArrivalConfigurationError,
+    },
+    InvalidGammaSeverityMarkConfiguration {
+        source: NewsMarkConfigurationError,
+    },
+    InvalidBaseShockConfiguration {
+        source: NewsMarkConfigurationError,
+    },
+    InvalidCoupledGapMarkConfiguration {
+        source: NewsMarkConfigurationError,
+    },
+    InvalidKnownComponentMarkScales {
+        source: NewsComponentMarkScaleConfigurationError,
+    },
+    InvalidSurpriseComponentMarkScales {
+        source: NewsComponentMarkScaleConfigurationError,
+    },
 }
 
 impl Display for NewsProcessConfigurationError {
@@ -1203,10 +1730,12 @@ impl Display for NewsProcessConfigurationError {
                 formatter,
                 "unsupported news process configuration schema version `{value}`, expected `{NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION}`"
             ),
-            Self::InvalidIntensityConfiguration { source } => write!(formatter, "{source}"),
+            Self::InvalidArrivalConfiguration { source } => write!(formatter, "{source}"),
             Self::InvalidGammaSeverityMarkConfiguration { source } => write!(formatter, "{source}"),
             Self::InvalidBaseShockConfiguration { source } => write!(formatter, "{source}"),
             Self::InvalidCoupledGapMarkConfiguration { source } => write!(formatter, "{source}"),
+            Self::InvalidKnownComponentMarkScales { source } => write!(formatter, "{source}"),
+            Self::InvalidSurpriseComponentMarkScales { source } => write!(formatter, "{source}"),
         }
     }
 }
@@ -1214,10 +1743,12 @@ impl Display for NewsProcessConfigurationError {
 impl Error for NewsProcessConfigurationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::InvalidIntensityConfiguration { source } => Some(source),
+            Self::InvalidArrivalConfiguration { source } => Some(source),
             Self::InvalidGammaSeverityMarkConfiguration { source } => Some(source),
             Self::InvalidBaseShockConfiguration { source } => Some(source),
             Self::InvalidCoupledGapMarkConfiguration { source } => Some(source),
+            Self::InvalidKnownComponentMarkScales { source } => Some(source),
+            Self::InvalidSurpriseComponentMarkScales { source } => Some(source),
             Self::UnsupportedSchemaVersion { .. } => None,
         }
     }
@@ -1457,15 +1988,19 @@ mod tests {
         DefaultNewsMarkPipeline, DoubleExponentialBaseShockConfiguration,
         DoubleExponentialBaseShockSamplingError, GAMMA_SEVERITY_MARK_SAMPLING_POLICY,
         GammaSeverityMarkConfiguration, GammaSeverityMarkSamplingError,
-        NEWS_INTENSITY_BASELINE_POLICY, NEWS_INTENSITY_DETERMINISTIC_INPUT_POLICY,
-        NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION, NewsArrivalIntensityGenerator,
-        NewsBaseShockMarkSampler, NewsCoupledMarkConstructor, NewsIntensityConfiguration,
-        NewsMarkConfigurationError, NewsMarkInterfaceError, NewsMarkInterfaceStage,
-        NewsProcessConfiguration, NewsSeverityMarkSampler, SHARED_NEWS_EVENT_BOUNDARY_POLICY,
-        SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY, SHARED_NEWS_EVENT_DISPATCH_JT_UPDATE_POLICY,
+        NEWS_ARRIVAL_COMPONENT_INTENSITY_POLICY, NEWS_INTENSITY_BASELINE_POLICY,
+        NEWS_INTENSITY_DETERMINISTIC_INPUT_POLICY, NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION,
+        NewsArrivalComponent, NewsArrivalConfiguration, NewsArrivalIntensityEvaluationInput,
+        NewsArrivalIntensityEvaluationOutput, NewsArrivalIntensityGenerator,
+        NewsBaseShockMarkSampler, NewsComponentMarkScaleConfiguration, NewsCoupledMarkConstructor,
+        NewsIntensityConfiguration, NewsMarkConfigurationError, NewsMarkInterfaceError,
+        NewsMarkInterfaceStage, NewsProcessConfiguration, NewsSeverityMarkSampler,
+        SHARED_NEWS_EVENT_BOUNDARY_POLICY, SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY,
+        SHARED_NEWS_EVENT_DISPATCH_JT_UPDATE_POLICY, SHARED_NEWS_EVENT_DISPATCH_MT_GATING_POLICY,
         SHARED_NEWS_EVENT_DISPATCH_ORDERING_POLICY, SHARED_NEWS_EVENT_MARKET_STATE_DEPENDENCY,
         SharedNewsAccumulatorState, SharedNewsEventDispatchInput, SharedNewsEventTimestampedInput,
-        dispatch_shared_news_events, dispatch_shared_news_events_with_resolved_market_states,
+        SharedNewsMarkLawConfiguration, dispatch_shared_news_events,
+        dispatch_shared_news_events_with_resolved_market_states,
         resolve_shared_news_event_market_states,
     };
     use crate::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, MarketState};
@@ -1477,15 +2012,14 @@ mod tests {
 
     #[derive(Debug, Clone, Copy)]
     struct MockArrivalIntensityGenerator {
-        generated_arrival_intensity: f64,
+        generated_arrival_intensity: NewsArrivalIntensityEvaluationOutput,
     }
 
     impl NewsArrivalIntensityGenerator for MockArrivalIntensityGenerator {
         fn generate_arrival_intensity(
             &self,
-            _closed_window_share: f64,
-            _deterministic_time_multiplier: f64,
-        ) -> Result<f64, NewsMarkInterfaceError> {
+            _intensity_input: NewsArrivalIntensityEvaluationInput,
+        ) -> Result<NewsArrivalIntensityEvaluationOutput, NewsMarkInterfaceError> {
             Ok(self.generated_arrival_intensity)
         }
     }
@@ -1567,16 +2101,77 @@ mod tests {
         }
     }
 
+    fn sample_arrival_configuration() -> NewsArrivalConfiguration {
+        NewsArrivalConfiguration {
+            known: super::KnownNewsArrivalConfiguration {
+                scheduled_event_timestamps_utc_nanos: vec![
+                    1_710_000_000_000_000_000,
+                    1_710_000_000_000_000_500,
+                    1_710_000_000_000_001_000,
+                ],
+            },
+            surprise: super::SurpriseNewsArrivalConfiguration {
+                baseline_intensity: 0.75,
+            },
+        }
+    }
+
+    fn sample_shared_mark_law_configuration() -> SharedNewsMarkLawConfiguration {
+        SharedNewsMarkLawConfiguration {
+            gamma_severity_marks: GammaSeverityMarkConfiguration::new(1.8, 0.9),
+            double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::new(
+                0.35, 2.1, 3.0,
+            ),
+            coupled_gap_marks: CoupledGapMarkConfiguration::new(0.6),
+        }
+    }
+
+    fn sample_process_configuration() -> NewsProcessConfiguration {
+        NewsProcessConfiguration::try_new(
+            sample_arrival_configuration(),
+            sample_shared_mark_law_configuration(),
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 1.0,
+                return_jump_scale: 1.0,
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 1.0,
+                return_jump_scale: 1.0,
+            },
+        )
+        .expect("valid process configuration should construct")
+    }
+
+    fn sample_arrival_intensity_input() -> NewsArrivalIntensityEvaluationInput {
+        NewsArrivalIntensityEvaluationInput {
+            interval_start_utc_nanos: 1_710_000_000_000_000_000,
+            interval_end_utc_nanos: 1_710_000_000_000_001_000,
+            surprise_deterministic_time_multiplier: 1.25,
+        }
+    }
+
+    fn mock_arrival_intensity_output(
+        known_component_intensity: f64,
+        surprise_component_intensity: f64,
+    ) -> NewsArrivalIntensityEvaluationOutput {
+        let known_scheduled_arrival_count =
+            if known_component_intensity.is_finite() && known_component_intensity >= 0.0 {
+                known_component_intensity.floor() as u64
+            } else {
+                0
+            };
+        NewsArrivalIntensityEvaluationOutput {
+            known_scheduled_arrival_count,
+            known_component_intensity,
+            surprise_component_intensity,
+            total_intensity: known_component_intensity + surprise_component_intensity,
+            intensity_policy: NEWS_ARRIVAL_COMPONENT_INTENSITY_POLICY,
+        }
+    }
+
     #[test]
     fn news_process_configuration_round_trip_preserves_payload() {
-        let configuration = NewsProcessConfiguration::try_new(
-            NewsIntensityConfiguration::try_new(0.75)
-                .expect("valid intensity payload should construct"),
-            GammaSeverityMarkConfiguration::new(1.8, 0.9),
-            DoubleExponentialBaseShockConfiguration::new(0.35, 2.1, 3.0),
-            CoupledGapMarkConfiguration::new(0.6),
-        )
-        .expect("valid process configuration should construct");
+        let configuration = sample_process_configuration();
 
         let serialized =
             serde_json::to_string(&configuration).expect("configuration payload should serialize");
@@ -1594,27 +2189,37 @@ mod tests {
     fn news_process_configuration_deserialization_reports_missing_required_field() {
         let payload = json!({
             "schema_version": NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION,
-            "gamma_severity_marks": {
-                "shape_k": 1.8,
-                "scale_theta": 0.9
+            "shared_mark_law": {
+                "gamma_severity_marks": {
+                    "shape_k": 1.8,
+                    "scale_theta": 0.9
+                },
+                "double_exponential_base_shock": {
+                    "probability_positive": 0.35,
+                    "eta_plus": 2.1,
+                    "eta_minus": 3.0
+                },
+                "coupled_gap_marks": {
+                    "sigma_g": 0.6
+                }
             },
-            "double_exponential_base_shock": {
-                "probability_positive": 0.35,
-                "eta_plus": 2.1,
-                "eta_minus": 3.0
+            "known_component_mark_scales": {
+                "activity_coupling_scale": 1.0,
+                "return_jump_scale": 1.0
             },
-            "coupled_gap_marks": {
-                "sigma_g": 0.6
+            "surprise_component_mark_scales": {
+                "activity_coupling_scale": 1.0,
+                "return_jump_scale": 1.0
             }
         });
 
         let parse_result = serde_json::from_value::<NewsProcessConfiguration>(payload);
         let error_text = parse_result
-            .expect_err("missing intensity field must fail")
+            .expect_err("missing arrivals field must fail")
             .to_string();
 
         assert!(
-            error_text.contains("missing field `intensity`"),
+            error_text.contains("missing field `arrivals`"),
             "unexpected error text: {error_text}"
         );
     }
@@ -1623,20 +2228,35 @@ mod tests {
     fn news_process_configuration_deserialization_reports_invalid_field_value() {
         let payload = json!({
             "schema_version": NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION,
-            "intensity": {
-                "closed_window_baseline_intensity": -0.1
+            "arrivals": {
+                "known": {
+                    "scheduled_event_timestamps_utc_nanos": [1710000000000000000_i64]
+                },
+                "surprise": {
+                    "baseline_intensity": -0.1
+                }
             },
-            "gamma_severity_marks": {
-                "shape_k": 1.8,
-                "scale_theta": 0.9
+            "shared_mark_law": {
+                "gamma_severity_marks": {
+                    "shape_k": 1.8,
+                    "scale_theta": 0.9
+                },
+                "double_exponential_base_shock": {
+                    "probability_positive": 0.35,
+                    "eta_plus": 2.1,
+                    "eta_minus": 3.0
+                },
+                "coupled_gap_marks": {
+                    "sigma_g": 0.6
+                }
             },
-            "double_exponential_base_shock": {
-                "probability_positive": 0.35,
-                "eta_plus": 2.1,
-                "eta_minus": 3.0
+            "known_component_mark_scales": {
+                "activity_coupling_scale": 1.0,
+                "return_jump_scale": 1.0
             },
-            "coupled_gap_marks": {
-                "sigma_g": 0.6
+            "surprise_component_mark_scales": {
+                "activity_coupling_scale": 1.0,
+                "return_jump_scale": 1.0
             }
         });
 
@@ -1646,8 +2266,7 @@ mod tests {
             .to_string();
 
         assert!(
-            error_text
-                .contains("closed_window_baseline_intensity must be a finite non-negative value"),
+            error_text.contains("surprise.baseline_intensity must be a finite non-negative value"),
             "unexpected error text: {error_text}"
         );
     }
@@ -1695,28 +2314,26 @@ mod tests {
 
     #[test]
     fn default_v0_1_composable_pipeline_wires_gamma_and_double_exponential_components() {
-        let configuration = NewsProcessConfiguration::try_new(
-            NewsIntensityConfiguration::try_new(0.75)
-                .expect("valid intensity payload should construct"),
-            GammaSeverityMarkConfiguration::new(1.8, 0.9),
-            DoubleExponentialBaseShockConfiguration::new(0.35, 2.1, 3.0),
-            CoupledGapMarkConfiguration::new(0.6),
-        )
-        .expect("valid process configuration should construct");
+        let configuration = sample_process_configuration();
         let pipeline: DefaultNewsMarkPipeline = configuration.default_v0_1_mark_pipeline();
+        let intensity_input = sample_arrival_intensity_input();
 
         let generated_arrival_intensity = pipeline
-            .generate_arrival_intensity(0.4, 1.25)
+            .generate_arrival_intensity(intensity_input)
             .expect("default pipeline should evaluate arrival intensity");
         let expected_arrival_intensity = configuration
-            .intensity
-            .evaluate_with_deterministic_time_multiplier(0.4, 1.25)
+            .arrivals
+            .evaluate_with_deterministic_time_multiplier(intensity_input)
             .expect("deterministic intensity inputs should evaluate");
 
-        assert!((generated_arrival_intensity - expected_arrival_intensity).abs() <= 1e-12);
+        assert_eq!(generated_arrival_intensity, expected_arrival_intensity);
+        assert_eq!(
+            generated_arrival_intensity.intensity_policy,
+            NEWS_ARRIVAL_COMPONENT_INTENSITY_POLICY
+        );
         assert_eq!(
             COMPOSABLE_NEWS_MARK_INTERFACE_POLICY,
-            "arrival_intensity_then_shared_mark_sampling_then_coupled_mark_construction.v1"
+            "component_arrival_intensity_then_shared_mark_sampling_then_coupled_mark_construction.v2"
         );
 
         let mut pipeline_stream = SplitMix64SimulationRandomnessStream::from_seed(90_011);
@@ -1726,14 +2343,17 @@ mod tests {
 
         let mut expected_stream = SplitMix64SimulationRandomnessStream::from_seed(90_011);
         let expected_severity_mark = configuration
+            .shared_mark_law
             .gamma_severity_marks
             .sample_severity_mark(&mut expected_stream)
             .expect("gamma severity sampler should succeed");
         let expected_base_shock_mark = configuration
+            .shared_mark_law
             .double_exponential_base_shock
             .sample_base_shock_mark(&mut expected_stream)
             .expect("double-exponential base-shock sampler should succeed");
         let expected_construction = configuration
+            .shared_mark_law
             .coupled_gap_marks
             .construct_gap_jump_mark(expected_severity_mark, expected_base_shock_mark)
             .expect("coupled gap-mark constructor should succeed");
@@ -1753,7 +2373,7 @@ mod tests {
     fn composable_pipeline_supports_pluggable_component_implementations() {
         let pipeline = ComposableNewsMarkPipeline::new(
             MockArrivalIntensityGenerator {
-                generated_arrival_intensity: 1.4,
+                generated_arrival_intensity: mock_arrival_intensity_output(1.0, 0.4),
             },
             MockSeverityMarkSampler {
                 sampled_severity_mark: 2.25,
@@ -1770,13 +2390,13 @@ mod tests {
         let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(10);
 
         let generated_arrival_intensity = pipeline
-            .generate_arrival_intensity(0.2, 0.3)
+            .generate_arrival_intensity(sample_arrival_intensity_input())
             .expect("mock arrival generator should produce intensity");
         let sampled_payload = pipeline
             .sample_coupled_marks(&mut randomness_stream)
             .expect("mock component wiring should generate coupled marks");
 
-        assert_eq!(generated_arrival_intensity, 1.4);
+        assert!((generated_arrival_intensity.total_intensity - 1.4).abs() <= 1e-12);
         assert_eq!(sampled_payload.shared_severity_mark, 2.25);
         assert_eq!(sampled_payload.shared_base_shock_mark, -0.8);
         assert_eq!(
@@ -1795,7 +2415,7 @@ mod tests {
     fn composable_pipeline_contract_rejects_invalid_arrival_intensity_output() {
         let pipeline = ComposableNewsMarkPipeline::new(
             MockArrivalIntensityGenerator {
-                generated_arrival_intensity: f64::NAN,
+                generated_arrival_intensity: mock_arrival_intensity_output(f64::NAN, 0.1),
             },
             MockSeverityMarkSampler {
                 sampled_severity_mark: 1.0,
@@ -1811,11 +2431,11 @@ mod tests {
         );
 
         let error = pipeline
-            .generate_arrival_intensity(0.5, 1.0)
+            .generate_arrival_intensity(sample_arrival_intensity_input())
             .expect_err("non-finite arrival intensity must fail contract validation");
         assert!(matches!(
             error,
-            NewsMarkInterfaceError::InvalidGeneratedArrivalIntensity { value }
+            NewsMarkInterfaceError::InvalidGeneratedKnownArrivalIntensity { value }
             if value.is_nan()
         ));
     }
@@ -1824,7 +2444,7 @@ mod tests {
     fn composable_pipeline_contract_rejects_invalid_severity_and_base_shock_outputs() {
         let severity_violation_pipeline = ComposableNewsMarkPipeline::new(
             MockArrivalIntensityGenerator {
-                generated_arrival_intensity: 1.0,
+                generated_arrival_intensity: mock_arrival_intensity_output(0.7, 0.3),
             },
             MockSeverityMarkSampler {
                 sampled_severity_mark: -0.01,
@@ -1851,7 +2471,7 @@ mod tests {
 
         let base_shock_violation_pipeline = ComposableNewsMarkPipeline::new(
             MockArrivalIntensityGenerator {
-                generated_arrival_intensity: 1.0,
+                generated_arrival_intensity: mock_arrival_intensity_output(0.7, 0.3),
             },
             MockSeverityMarkSampler {
                 sampled_severity_mark: 1.0,
@@ -1882,7 +2502,7 @@ mod tests {
     fn composable_pipeline_contract_rejects_coupled_mark_output_violations() {
         let severity_mismatch_pipeline = ComposableNewsMarkPipeline::new(
             MockArrivalIntensityGenerator {
-                generated_arrival_intensity: 1.0,
+                generated_arrival_intensity: mock_arrival_intensity_output(0.7, 0.3),
             },
             MockSeverityMarkSampler {
                 sampled_severity_mark: 2.0,
@@ -1910,7 +2530,7 @@ mod tests {
 
         let non_finite_gap_pipeline = ComposableNewsMarkPipeline::new(
             MockArrivalIntensityGenerator {
-                generated_arrival_intensity: 1.0,
+                generated_arrival_intensity: mock_arrival_intensity_output(0.7, 0.3),
             },
             MockSeverityMarkSampler {
                 sampled_severity_mark: 2.0,
@@ -1940,7 +2560,7 @@ mod tests {
     fn composable_pipeline_propagates_component_rejections_from_pluggable_components() {
         let pipeline = ComposableNewsMarkPipeline::new(
             MockArrivalIntensityGenerator {
-                generated_arrival_intensity: 1.0,
+                generated_arrival_intensity: mock_arrival_intensity_output(0.7, 0.3),
             },
             RejectingSeverityMarkSampler {
                 rejection_reason: "mock rejection for severity stage".to_string(),
@@ -2306,29 +2926,34 @@ mod tests {
             SharedNewsEventDispatchInput {
                 event_timestamp_utc_nanos: 300,
                 event_generation_order: 2,
+                news_arrival_component: NewsArrivalComponent::Surprise,
                 market_state: MarketState::Open,
                 shared_severity_mark: 1.25,
-                coupled_gap_jump_mark: -0.3,
+                coupled_return_jump_mark: -0.3,
             },
             SharedNewsEventDispatchInput {
                 event_timestamp_utc_nanos: 100,
                 event_generation_order: 0,
+                news_arrival_component: NewsArrivalComponent::Known,
                 market_state: MarketState::Closed,
                 shared_severity_mark: 0.4,
-                coupled_gap_jump_mark: -0.2,
+                coupled_return_jump_mark: -0.2,
             },
             SharedNewsEventDispatchInput {
                 event_timestamp_utc_nanos: 200,
                 event_generation_order: 1,
+                news_arrival_component: NewsArrivalComponent::Surprise,
                 market_state: MarketState::Closed,
                 shared_severity_mark: 0.8,
-                coupled_gap_jump_mark: 0.1,
+                coupled_return_jump_mark: 0.1,
             },
         ];
 
-        let dispatch_output =
-            dispatch_shared_news_events(SharedNewsAccumulatorState::new(0.0, 0.0), &event_inputs)
-                .expect("valid shared dispatch inputs should dispatch");
+        let dispatch_output = dispatch_shared_news_events(
+            SharedNewsAccumulatorState::new(0.0, 0.0, 0.0),
+            &event_inputs,
+        )
+        .expect("valid shared dispatch inputs should dispatch");
 
         assert_eq!(dispatch_output.records.len(), event_inputs.len());
 
@@ -2364,26 +2989,36 @@ mod tests {
             SharedNewsEventDispatchInput {
                 event_timestamp_utc_nanos: 10,
                 event_generation_order: 0,
+                news_arrival_component: NewsArrivalComponent::Known,
                 market_state: MarketState::Open,
                 shared_severity_mark: 0.6,
-                coupled_gap_jump_mark: 1.1,
+                coupled_return_jump_mark: 1.1,
             },
             SharedNewsEventDispatchInput {
                 event_timestamp_utc_nanos: 20,
                 event_generation_order: 1,
+                news_arrival_component: NewsArrivalComponent::Surprise,
                 market_state: MarketState::Closed,
                 shared_severity_mark: 0.9,
-                coupled_gap_jump_mark: -0.35,
+                coupled_return_jump_mark: -0.35,
             },
         ];
 
-        let initial_state = SharedNewsAccumulatorState::new(1.2, 0.8);
+        let initial_state = SharedNewsAccumulatorState::new(1.2, 0.15, 0.8);
         let dispatch_output = dispatch_shared_news_events(initial_state, &event_inputs)
             .expect("valid shared dispatch inputs should dispatch");
 
         assert_eq!(
+            dispatch_output.records[0].m_t_increment, 1.1,
+            "open-window event should emit direct jump into M_t"
+        );
+        assert_eq!(
             dispatch_output.records[0].g_t_increment, 0.0,
             "open-window event must not emit a direct gap increment"
+        );
+        assert_eq!(
+            dispatch_output.records[1].m_t_increment, 0.0,
+            "closed-window event must not emit direct jump into M_t"
         );
         assert_eq!(
             dispatch_output.records[1].g_t_increment, -0.35,
@@ -2391,6 +3026,7 @@ mod tests {
         );
 
         assert!((dispatch_output.final_state.j_t - (1.2 + 0.6 + 0.9)).abs() <= 1e-12);
+        assert!((dispatch_output.final_state.m_t - (0.15 + 1.1)).abs() <= 1e-12);
         assert!((dispatch_output.final_state.g_t - (0.8 - 0.35)).abs() <= 1e-12);
     }
 
@@ -2401,12 +3037,12 @@ mod tests {
         reversed_inputs.reverse();
 
         let first_output = dispatch_shared_news_events(
-            SharedNewsAccumulatorState::new(0.0, 0.0),
+            SharedNewsAccumulatorState::new(0.0, 0.0, 0.0),
             &first_seeded_inputs,
         )
         .expect("first seeded dispatch should succeed");
         let second_output = dispatch_shared_news_events(
-            SharedNewsAccumulatorState::new(0.0, 0.0),
+            SharedNewsAccumulatorState::new(0.0, 0.0, 0.0),
             &reversed_inputs,
         )
         .expect("second seeded dispatch should succeed");
@@ -2423,6 +3059,10 @@ mod tests {
         assert_eq!(
             first_output.g_t_gating_policy,
             SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY
+        );
+        assert_eq!(
+            first_output.m_t_gating_policy,
+            SHARED_NEWS_EVENT_DISPATCH_MT_GATING_POLICY
         );
         assert_eq!(
             first_output.market_state_dependency,
@@ -2453,14 +3093,16 @@ mod tests {
             SharedNewsEventTimestampedInput {
                 event_timestamp_utc_nanos: timestamp_utc_nanos("2026-02-02T14:30:00Z"),
                 event_generation_order: 0,
+                news_arrival_component: NewsArrivalComponent::Known,
                 shared_severity_mark: 0.5,
-                coupled_gap_jump_mark: 0.2,
+                coupled_return_jump_mark: 0.2,
             },
             SharedNewsEventTimestampedInput {
                 event_timestamp_utc_nanos: timestamp_utc_nanos("2026-02-02T21:00:00Z"),
                 event_generation_order: 1,
+                news_arrival_component: NewsArrivalComponent::Surprise,
                 shared_severity_mark: 0.7,
-                coupled_gap_jump_mark: -0.3,
+                coupled_return_jump_mark: -0.3,
             },
         ];
 
@@ -2480,31 +3122,36 @@ mod tests {
             SharedNewsEventTimestampedInput {
                 event_timestamp_utc_nanos: timestamp_utc_nanos("2026-02-02T14:30:00Z"),
                 event_generation_order: 0,
+                news_arrival_component: NewsArrivalComponent::Known,
                 shared_severity_mark: 0.6,
-                coupled_gap_jump_mark: 1.1,
+                coupled_return_jump_mark: 1.1,
             },
             SharedNewsEventTimestampedInput {
                 event_timestamp_utc_nanos: timestamp_utc_nanos("2026-02-02T21:00:00Z"),
                 event_generation_order: 1,
+                news_arrival_component: NewsArrivalComponent::Surprise,
                 shared_severity_mark: 0.9,
-                coupled_gap_jump_mark: -0.35,
+                coupled_return_jump_mark: -0.35,
             },
         ];
 
         let dispatch_output = dispatch_shared_news_events_with_resolved_market_states(
             &registry,
             "XNYS",
-            SharedNewsAccumulatorState::new(0.0, 0.0),
+            SharedNewsAccumulatorState::new(0.0, 0.0, 0.0),
             &event_inputs,
         )
         .expect("dispatch should resolve market states and apply canonical gating");
 
         assert_eq!(dispatch_output.records.len(), 2);
         assert_eq!(dispatch_output.records[0].market_state, MarketState::Open);
+        assert_eq!(dispatch_output.records[0].m_t_increment, 1.1);
         assert_eq!(dispatch_output.records[0].g_t_increment, 0.0);
         assert_eq!(dispatch_output.records[1].market_state, MarketState::Closed);
+        assert_eq!(dispatch_output.records[1].m_t_increment, 0.0);
         assert_eq!(dispatch_output.records[1].g_t_increment, -0.35);
         assert!((dispatch_output.final_state.j_t - 1.5).abs() <= 1e-12);
+        assert!((dispatch_output.final_state.m_t - 1.1).abs() <= 1e-12);
         assert!((dispatch_output.final_state.g_t - (-0.35)).abs() <= 1e-12);
         assert_eq!(
             dispatch_output.market_state_dependency,
@@ -2553,9 +3200,14 @@ mod tests {
             event_inputs.push(SharedNewsEventDispatchInput {
                 event_timestamp_utc_nanos,
                 event_generation_order: (event_count - event_position - 1) as u64,
+                news_arrival_component: if event_position % 2 == 0 {
+                    NewsArrivalComponent::Known
+                } else {
+                    NewsArrivalComponent::Surprise
+                },
                 market_state,
                 shared_severity_mark,
-                coupled_gap_jump_mark,
+                coupled_return_jump_mark: coupled_gap_jump_mark,
             });
         }
 

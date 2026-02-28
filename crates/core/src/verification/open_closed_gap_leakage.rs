@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use crate::calendar::{ExchangeCalendarRegistry, MarketState};
 use crate::news::{
-    SharedNewsAccumulatorState, SharedNewsEventTimestampedInput,
+    NewsArrivalComponent, SharedNewsAccumulatorState, SharedNewsEventTimestampedInput,
     dispatch_shared_news_events_with_resolved_market_states,
 };
 
@@ -418,8 +418,9 @@ fn evaluate_open_closed_gap_leakage_case(
         event_inputs.push(SharedNewsEventTimestampedInput {
             event_timestamp_utc_nanos,
             event_generation_order,
+            news_arrival_component: NewsArrivalComponent::Surprise,
             shared_severity_mark: event_input.shared_severity_mark,
-            coupled_gap_jump_mark: event_input.coupled_gap_jump_mark,
+            coupled_return_jump_mark: event_input.coupled_gap_jump_mark,
         });
         event_metadata_by_generation_order.push(OpenClosedGapLeakageEventMetadata {
             event_id: event_input.event_id.clone(),
@@ -434,6 +435,7 @@ fn evaluate_open_closed_gap_leakage_case(
         &gap_behavior_case.exchange_code,
         SharedNewsAccumulatorState::new(
             gap_behavior_case.initial_j_t,
+            0.0,
             gap_behavior_case.initial_g_t,
         ),
         &event_inputs,
@@ -469,7 +471,7 @@ fn evaluate_open_closed_gap_leakage_case(
             .unwrap_or(dispatch_record.g_t_increment);
         let expected_direct_gap_increment = match dispatch_record.market_state {
             MarketState::Open => 0.0,
-            MarketState::Closed => dispatch_record.coupled_gap_jump_mark,
+            MarketState::Closed => dispatch_record.coupled_return_jump_mark,
         };
 
         expected_activity_coupling_j_t_increment_total += dispatch_record.shared_severity_mark;

@@ -613,16 +613,17 @@ pub fn run_return_components_calibration_stage(
     let news_process_configuration = match NewsProcessConfiguration::try_new(
         selected_candidate_input
             .news_process_configuration
-            .intensity,
+            .arrivals
+            .clone(),
         selected_candidate_input
             .news_process_configuration
-            .gamma_severity_marks,
+            .shared_mark_law,
         selected_candidate_input
             .news_process_configuration
-            .double_exponential_base_shock,
+            .known_component_mark_scales,
         selected_candidate_input
             .news_process_configuration
-            .coupled_gap_marks,
+            .surprise_component_mark_scales,
     ) {
         Ok(configuration) => configuration,
         Err(source) => {
@@ -729,14 +730,14 @@ fn collect_return_components_stage_constraint_violations(
     }
 
     if let Err(source) = NewsProcessConfiguration::try_new(
-        candidate_input.news_process_configuration.intensity,
+        candidate_input.news_process_configuration.arrivals.clone(),
+        candidate_input.news_process_configuration.shared_mark_law,
         candidate_input
             .news_process_configuration
-            .gamma_severity_marks,
+            .known_component_mark_scales,
         candidate_input
             .news_process_configuration
-            .double_exponential_base_shock,
-        candidate_input.news_process_configuration.coupled_gap_marks,
+            .surprise_component_mark_scales,
     ) {
         violations.push(ReturnComponentsStageConstraintViolationDiagnostic {
             field: "news_process_configuration".to_string(),
