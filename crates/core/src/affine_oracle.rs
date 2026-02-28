@@ -202,127 +202,73 @@ impl Error for ExponentialAffineTransformEquationSpecificationError {
     }
 }
 
-const NEWS_INTENSITY_COMPONENT_SUM_TOLERANCE: f64 = 1.0e-12;
-
-/// One-interval news intensity input with optional known/surprise component diagnostics.
+/// One-interval news intensity input with explicit known/surprise components.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExponentialAffineTransformNewsIntensityInput {
-    pub total_nu_h: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub known_nu_h: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub surprise_nu_h: Option<f64>,
+    pub known_nu_h: f64,
+    pub surprise_nu_h: f64,
 }
 
 impl ExponentialAffineTransformNewsIntensityInput {
-    pub const fn new(total_nu_h: f64, known_nu_h: Option<f64>, surprise_nu_h: Option<f64>) -> Self {
+    pub const fn new(known_nu_h: f64, surprise_nu_h: f64) -> Self {
         Self {
-            total_nu_h,
             known_nu_h,
             surprise_nu_h,
         }
     }
 
     pub fn try_new(
-        total_nu_h: f64,
-        known_nu_h: Option<f64>,
-        surprise_nu_h: Option<f64>,
+        known_nu_h: f64,
+        surprise_nu_h: f64,
     ) -> Result<Self, ExponentialAffineTransformNewsIntensityInputError> {
-        let input = Self::new(total_nu_h, known_nu_h, surprise_nu_h);
+        let input = Self::new(known_nu_h, surprise_nu_h);
         input.validate()?;
         Ok(input)
     }
 
-    pub fn try_new_total_only(
-        total_nu_h: f64,
-    ) -> Result<Self, ExponentialAffineTransformNewsIntensityInputError> {
-        Self::try_new(total_nu_h, None, None)
-    }
-
-    pub fn try_new_with_components(
-        known_nu_h: f64,
-        surprise_nu_h: f64,
-    ) -> Result<Self, ExponentialAffineTransformNewsIntensityInputError> {
-        Self::try_new(
-            known_nu_h + surprise_nu_h,
-            Some(known_nu_h),
-            Some(surprise_nu_h),
-        )
-    }
-
     pub fn validate(self) -> Result<(), ExponentialAffineTransformNewsIntensityInputError> {
-        if !self.total_nu_h.is_finite() || self.total_nu_h < 0.0 {
+        if !self.known_nu_h.is_finite() || self.known_nu_h < 0.0 {
             return Err(
-                ExponentialAffineTransformNewsIntensityInputError::InvalidTotalNewsIntensity {
-                    value: self.total_nu_h,
+                ExponentialAffineTransformNewsIntensityInputError::InvalidKnownNewsIntensity {
+                    value: self.known_nu_h,
+                },
+            );
+        }
+        if !self.surprise_nu_h.is_finite() || self.surprise_nu_h < 0.0 {
+            return Err(
+                ExponentialAffineTransformNewsIntensityInputError::InvalidSurpriseNewsIntensity {
+                    value: self.surprise_nu_h,
                 },
             );
         }
 
-        match (self.known_nu_h, self.surprise_nu_h) {
-            (None, None) => Ok(()),
-            (Some(_), None) => {
-                Err(ExponentialAffineTransformNewsIntensityInputError::MissingComponentField {
-                    missing_field: "surprise_nu_h",
-                })
-            }
-            (None, Some(_)) => {
-                Err(ExponentialAffineTransformNewsIntensityInputError::MissingComponentField {
-                    missing_field: "known_nu_h",
-                })
-            }
-            (Some(known_nu_h), Some(surprise_nu_h)) => {
-                if !known_nu_h.is_finite() || known_nu_h < 0.0 {
-                    return Err(
-                        ExponentialAffineTransformNewsIntensityInputError::InvalidKnownNewsIntensity {
-                            value: known_nu_h,
-                        },
-                    );
-                }
-                if !surprise_nu_h.is_finite() || surprise_nu_h < 0.0 {
-                    return Err(
-                        ExponentialAffineTransformNewsIntensityInputError::InvalidSurpriseNewsIntensity {
-                            value: surprise_nu_h,
-                        },
-                    );
-                }
-                let component_sum = known_nu_h + surprise_nu_h;
-                if !component_sum.is_finite()
-                    || (component_sum - self.total_nu_h).abs()
-                        > NEWS_INTENSITY_COMPONENT_SUM_TOLERANCE
-                {
-                    return Err(
-                        ExponentialAffineTransformNewsIntensityInputError::InconsistentComponentAggregation {
-                            total_nu_h: self.total_nu_h,
-                            known_nu_h,
-                            surprise_nu_h,
-                        },
-                    );
-                }
-
-                Ok(())
-            }
+        if !self.total_nu_h().is_finite() {
+            return Err(
+                ExponentialAffineTransformNewsIntensityInputError::NonFiniteAggregateNewsIntensity {
+                    known_nu_h: self.known_nu_h,
+                    surprise_nu_h: self.surprise_nu_h,
+                },
+            );
         }
+
+        Ok(())
+    }
+
+    pub fn total_nu_h(self) -> f64 {
+        self.known_nu_h + self.surprise_nu_h
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExponentialAffineTransformNewsIntensityInputError {
-    InvalidTotalNewsIntensity {
-        value: f64,
-    },
-    MissingComponentField {
-        missing_field: &'static str,
-    },
     InvalidKnownNewsIntensity {
         value: f64,
     },
     InvalidSurpriseNewsIntensity {
         value: f64,
     },
-    InconsistentComponentAggregation {
-        total_nu_h: f64,
+    NonFiniteAggregateNewsIntensity {
         known_nu_h: f64,
         surprise_nu_h: f64,
     },
@@ -331,14 +277,6 @@ pub enum ExponentialAffineTransformNewsIntensityInputError {
 impl Display for ExponentialAffineTransformNewsIntensityInputError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidTotalNewsIntensity { value } => write!(
-                formatter,
-                "total_nu_h must be finite and non-negative, found {value}"
-            ),
-            Self::MissingComponentField { missing_field } => write!(
-                formatter,
-                "known_nu_h and surprise_nu_h must either both be provided or both be omitted, missing {missing_field}"
-            ),
             Self::InvalidKnownNewsIntensity { value } => write!(
                 formatter,
                 "known_nu_h must be finite and non-negative, found {value}"
@@ -347,13 +285,12 @@ impl Display for ExponentialAffineTransformNewsIntensityInputError {
                 formatter,
                 "surprise_nu_h must be finite and non-negative, found {value}"
             ),
-            Self::InconsistentComponentAggregation {
-                total_nu_h,
+            Self::NonFiniteAggregateNewsIntensity {
                 known_nu_h,
                 surprise_nu_h,
             } => write!(
                 formatter,
-                "total_nu_h must match known_nu_h + surprise_nu_h within tolerance {NEWS_INTENSITY_COMPONENT_SUM_TOLERANCE}, found total_nu_h={total_nu_h}, known_nu_h={known_nu_h}, surprise_nu_h={surprise_nu_h}"
+                "known_nu_h + surprise_nu_h must be finite, found known_nu_h={known_nu_h}, surprise_nu_h={surprise_nu_h}"
             ),
         }
     }
@@ -384,62 +321,6 @@ impl ExponentialAffineTransformInput {
         z_plus: ComplexScalar,
         z_minus: ComplexScalar,
         s_h: f64,
-        nu_h: f64,
-        delta: f64,
-        initial_state: HawkesExcitationState,
-    ) -> Self {
-        Self::new_with_news_intensity(
-            equation_specification,
-            u_plus,
-            u_minus,
-            z_plus,
-            z_minus,
-            s_h,
-            ExponentialAffineTransformNewsIntensityInput::new(nu_h, None, None),
-            delta,
-            initial_state,
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn try_new(
-        equation_specification: ExponentialAffineTransformEquationSpecification,
-        u_plus: ComplexScalar,
-        u_minus: ComplexScalar,
-        z_plus: ComplexScalar,
-        z_minus: ComplexScalar,
-        s_h: f64,
-        nu_h: f64,
-        delta: f64,
-        initial_state: HawkesExcitationState,
-    ) -> Result<Self, ExponentialAffineTransformInputError> {
-        let news_intensity =
-            ExponentialAffineTransformNewsIntensityInput::try_new_total_only(nu_h).map_err(
-                |source| ExponentialAffineTransformInputError::InvalidNewsIntensityInput {
-                    source,
-                },
-            )?;
-        Self::try_new_with_news_intensity(
-            equation_specification,
-            u_plus,
-            u_minus,
-            z_plus,
-            z_minus,
-            s_h,
-            news_intensity,
-            delta,
-            initial_state,
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn new_with_news_intensity(
-        equation_specification: ExponentialAffineTransformEquationSpecification,
-        u_plus: ComplexScalar,
-        u_minus: ComplexScalar,
-        z_plus: ComplexScalar,
-        z_minus: ComplexScalar,
-        s_h: f64,
         news_intensity: ExponentialAffineTransformNewsIntensityInput,
         delta: f64,
         initial_state: HawkesExcitationState,
@@ -458,7 +339,7 @@ impl ExponentialAffineTransformInput {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn try_new_with_news_intensity(
+    pub fn try_new(
         equation_specification: ExponentialAffineTransformEquationSpecification,
         u_plus: ComplexScalar,
         u_minus: ComplexScalar,
@@ -469,7 +350,7 @@ impl ExponentialAffineTransformInput {
         delta: f64,
         initial_state: HawkesExcitationState,
     ) -> Result<Self, ExponentialAffineTransformInputError> {
-        let input = Self::new_with_news_intensity(
+        let input = Self::new(
             equation_specification,
             u_plus,
             u_minus,
@@ -1822,10 +1703,7 @@ struct ExponentialAffineTransformInputPayload {
     z_plus: ComplexScalarPayload,
     z_minus: ComplexScalarPayload,
     s_h: f64,
-    #[serde(default)]
-    nu_h: Option<f64>,
-    #[serde(default)]
-    news_intensity: Option<ExponentialAffineTransformNewsIntensityInput>,
+    news_intensity: ExponentialAffineTransformNewsIntensityInput,
     delta: f64,
     initial_state: HawkesExcitationStatePayload,
 }
@@ -1836,38 +1714,14 @@ impl<'de> Deserialize<'de> for ExponentialAffineTransformInput {
         D: serde::Deserializer<'de>,
     {
         let payload = ExponentialAffineTransformInputPayload::deserialize(deserializer)?;
-        let news_intensity = match (payload.news_intensity, payload.nu_h) {
-            (Some(news_intensity), None) => news_intensity,
-            (None, Some(nu_h)) => ExponentialAffineTransformNewsIntensityInput::try_new_total_only(
-                nu_h,
-            )
-            .map_err(serde::de::Error::custom)?,
-            (Some(news_intensity), Some(nu_h)) => {
-                if (news_intensity.total_nu_h - nu_h).abs()
-                    > NEWS_INTENSITY_COMPONENT_SUM_TOLERANCE
-                {
-                    return Err(serde::de::Error::custom(format!(
-                        "news_intensity.total_nu_h ({}) must match nu_h ({nu_h}) when both are provided",
-                        news_intensity.total_nu_h
-                    )));
-                }
-                news_intensity
-            }
-            (None, None) => {
-                return Err(serde::de::Error::custom(
-                    "missing news intensity input, provide news_intensity or legacy nu_h",
-                ));
-            }
-        };
-
-        Self::try_new_with_news_intensity(
+        Self::try_new(
             payload.equation_specification,
             payload.u_plus.into(),
             payload.u_minus.into(),
             payload.z_plus.into(),
             payload.z_minus.into(),
             payload.s_h,
-            news_intensity,
+            payload.news_intensity,
             payload.delta,
             payload.initial_state.into(),
         )
@@ -1995,7 +1849,7 @@ fn evaluate_gamma_moment_news_term(
         complex_pow_real_exponent_principal(one_minus_theta_d_dot_r, -gamma_configuration.shape_k);
     gamma_moment
         .subtract(ComplexScalar::new(1.0, 0.0))
-        .scale(transform_input.news_intensity.total_nu_h)
+        .scale(transform_input.news_intensity.total_nu_h())
 }
 
 #[cfg(test)]
@@ -2057,14 +1911,14 @@ mod tests {
     }
 
     fn valid_input() -> ExponentialAffineTransformInput {
-        ExponentialAffineTransformInput::try_new_with_news_intensity(
+        ExponentialAffineTransformInput::try_new(
             valid_equation_specification(),
             ComplexScalar::new(0.2, -0.1),
             ComplexScalar::new(0.3, 0.05),
             ComplexScalar::new(1.0, 0.0),
             ComplexScalar::new(0.95, 0.02),
             1.1,
-            ExponentialAffineTransformNewsIntensityInput::try_new_with_components(0.03, 0.05)
+            ExponentialAffineTransformNewsIntensityInput::try_new(0.03, 0.05)
                 .expect("news intensity components should construct"),
             1.0,
             HawkesExcitationState {
@@ -2121,7 +1975,8 @@ mod tests {
             ComplexScalar::new(1.0, 0.0),
             ComplexScalar::new(1.0, 0.0),
             1.1,
-            0.0,
+            ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
+                .expect("closed-form fixture news-intensity payload should construct"),
             1.0,
             HawkesExcitationState {
                 y_plus_plus: 0.4,
@@ -2162,7 +2017,8 @@ mod tests {
             ComplexScalar::new(1.0, 0.0),
             ComplexScalar::new(1.0, 0.0),
             2.0,
-            0.0,
+            ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
+                .expect("domain violation fixture news-intensity payload should construct"),
             0.5,
             HawkesExcitationState {
                 y_plus_plus: 0.4,
@@ -2203,7 +2059,8 @@ mod tests {
             ComplexScalar::new(1.0e308, 0.0),
             ComplexScalar::new(1.0e308, 0.0),
             1.0,
-            0.0,
+            ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
+                .expect("blowup fixture news-intensity payload should construct"),
             2.0,
             HawkesExcitationState {
                 y_plus_plus: 0.4,
@@ -2278,7 +2135,6 @@ mod tests {
             },
             "s_h": 1.1,
             "news_intensity": {
-                "total_nu_h": 0.08,
                 "known_nu_h": 0.03,
                 "surprise_nu_h": 0.05
             },
@@ -2294,132 +2150,6 @@ mod tests {
         let parsed: ExponentialAffineTransformInput =
             serde_json::from_value(payload).expect("reference payload should deserialize");
         assert_eq!(parsed, valid_input());
-    }
-
-    #[test]
-    fn transform_input_deserialization_accepts_legacy_nu_h_fallback() {
-        let payload = json!({
-            "equation_specification": {
-                "hawkes_kernel_parameters": {
-                    "lambda_bar": 0.8,
-                    "beta": 1.2,
-                    "alpha": {
-                        "plus_plus": 0.20,
-                        "plus_minus": 0.08,
-                        "minus_plus": 0.10,
-                        "minus_minus": 0.24
-                    },
-                    "rho": {
-                        "plus_plus": 0.03,
-                        "plus_minus": 0.02,
-                        "minus_plus": 0.01,
-                        "minus_minus": 0.04
-                    }
-                },
-                "gamma_severity_mark_configuration": {
-                    "shape_k": 1.8,
-                    "scale_theta": 0.9
-                }
-            },
-            "u_plus": {
-                "real": 0.2,
-                "imaginary": -0.1
-            },
-            "u_minus": {
-                "real": 0.3,
-                "imaginary": 0.05
-            },
-            "z_plus": {
-                "real": 1.0,
-                "imaginary": 0.0
-            },
-            "z_minus": {
-                "real": 0.95,
-                "imaginary": 0.02
-            },
-            "s_h": 1.1,
-            "nu_h": 0.08,
-            "delta": 1.0,
-            "initial_state": {
-                "y_plus_plus": 0.4,
-                "y_plus_minus": 0.2,
-                "y_minus_plus": 0.3,
-                "y_minus_minus": 0.5
-            }
-        });
-
-        let parsed: ExponentialAffineTransformInput =
-            serde_json::from_value(payload).expect("legacy payload should deserialize");
-        assert_eq!(parsed.news_intensity.total_nu_h, 0.08);
-        assert_eq!(parsed.news_intensity.known_nu_h, None);
-        assert_eq!(parsed.news_intensity.surprise_nu_h, None);
-    }
-
-    #[test]
-    fn transform_input_deserialization_rejects_inconsistent_legacy_and_component_total() {
-        let payload = json!({
-            "equation_specification": {
-                "hawkes_kernel_parameters": {
-                    "lambda_bar": 0.8,
-                    "beta": 1.2,
-                    "alpha": {
-                        "plus_plus": 0.20,
-                        "plus_minus": 0.08,
-                        "minus_plus": 0.10,
-                        "minus_minus": 0.24
-                    },
-                    "rho": {
-                        "plus_plus": 0.03,
-                        "plus_minus": 0.02,
-                        "minus_plus": 0.01,
-                        "minus_minus": 0.04
-                    }
-                },
-                "gamma_severity_mark_configuration": {
-                    "shape_k": 1.8,
-                    "scale_theta": 0.9
-                }
-            },
-            "u_plus": {
-                "real": 0.2,
-                "imaginary": -0.1
-            },
-            "u_minus": {
-                "real": 0.3,
-                "imaginary": 0.05
-            },
-            "z_plus": {
-                "real": 1.0,
-                "imaginary": 0.0
-            },
-            "z_minus": {
-                "real": 0.95,
-                "imaginary": 0.02
-            },
-            "s_h": 1.1,
-            "nu_h": 0.09,
-            "news_intensity": {
-                "total_nu_h": 0.08,
-                "known_nu_h": 0.03,
-                "surprise_nu_h": 0.05
-            },
-            "delta": 1.0,
-            "initial_state": {
-                "y_plus_plus": 0.4,
-                "y_plus_minus": 0.2,
-                "y_minus_plus": 0.3,
-                "y_minus_minus": 0.5
-            }
-        });
-
-        let error = serde_json::from_value::<ExponentialAffineTransformInput>(payload)
-            .expect_err("inconsistent dual news-intensity representation must fail");
-        assert!(
-            error
-                .to_string()
-                .contains("news_intensity.total_nu_h (0.08) must match nu_h (0.09)"),
-            "unexpected error message: {error}"
-        );
     }
 
     #[test]
@@ -2486,7 +2216,10 @@ mod tests {
                 "imaginary": 0.02
             },
             "s_h": 1.1,
-            "nu_h": 0.08,
+            "news_intensity": {
+                "known_nu_h": 0.03,
+                "surprise_nu_h": 0.05
+            },
             "initial_state": {
                 "y_plus_plus": 0.4,
                 "y_plus_minus": 0.2,
@@ -2547,7 +2280,10 @@ mod tests {
                 "imaginary": 0.02
             },
             "s_h": "high",
-            "nu_h": 0.08,
+            "news_intensity": {
+                "known_nu_h": 0.03,
+                "surprise_nu_h": 0.05
+            },
             "delta": 1.0,
             "initial_state": {
                 "y_plus_plus": 0.4,
@@ -2609,7 +2345,10 @@ mod tests {
                 "imaginary": 0.02
             },
             "s_h": 1.1,
-            "nu_h": 0.08,
+            "news_intensity": {
+                "known_nu_h": 0.03,
+                "surprise_nu_h": 0.05
+            },
             "delta": 0.0,
             "initial_state": {
                 "y_plus_plus": 0.4,
@@ -2709,7 +2448,8 @@ mod tests {
             ComplexScalar::new(0.9, 0.0),
             ComplexScalar::new(1.1, 0.0),
             1.1,
-            0.08,
+            ExponentialAffineTransformNewsIntensityInput::try_new(0.03, 0.05)
+                .expect("fixture news intensity should construct"),
             1.0,
             HawkesExcitationState {
                 y_plus_plus: 0.4,

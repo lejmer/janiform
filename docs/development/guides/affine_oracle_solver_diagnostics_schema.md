@@ -54,12 +54,12 @@ This document defines the machine-readable diagnostics and optional telemetry pa
 
 `news_intensity` includes:
 
-- `total_nu_h` (always required and used in affine `C'` gamma-moment term)
-- `known_nu_h` (optional, for diagnostics and calibration wiring)
-- `surprise_nu_h` (optional, for diagnostics and calibration wiring)
+- `known_nu_h` (required)
+- `surprise_nu_h` (required)
 
-When component fields are present, they must satisfy
-`total_nu_h = known_nu_h + surprise_nu_h` within contract tolerance.
+The affine `C'` gamma-moment term consumes aggregate intensity computed as
+`known_nu_h + surprise_nu_h`. Component fields remain visible in metadata and
+telemetry for diagnostics and calibration wiring.
 
 `status_flags` mirrors `status` with explicit booleans:
 

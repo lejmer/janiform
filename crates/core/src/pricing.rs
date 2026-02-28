@@ -10,9 +10,9 @@ use serde::Serialize;
 use crate::affine_oracle::{
     ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
     ExponentialAffineTransformInputError, ExponentialAffineTransformIntegrationResult,
-    ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformOutput,
-    ExponentialAffineTransformOutputError, ExponentialAffineTransformSolverError,
-    ExponentialAffineTransformSolverSettings,
+    ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformNewsIntensityInput,
+    ExponentialAffineTransformOutput, ExponentialAffineTransformOutputError,
+    ExponentialAffineTransformSolverError, ExponentialAffineTransformSolverSettings,
     solve_exponential_affine_transform_with_optional_settings,
 };
 use crate::complex_math::{complex_exponential, complex_multiply};
@@ -2500,7 +2500,7 @@ pub fn build_pricing_transform_input(
     z_plus: ComplexScalar,
     z_minus: ComplexScalar,
     seasonality_factor: f64,
-    news_intensity_factor: f64,
+    news_intensity: ExponentialAffineTransformNewsIntensityInput,
 ) -> Result<ExponentialAffineTransformInput, PricingTransformInputBuildError> {
     pricing_request
         .validate()
@@ -2520,7 +2520,7 @@ pub fn build_pricing_transform_input(
         z_plus,
         z_minus,
         seasonality_factor,
-        news_intensity_factor,
+        news_intensity,
         pricing_request.interval_delta,
         pricing_request.boundary_state,
     )
@@ -3098,7 +3098,7 @@ mod tests {
 
     use crate::affine_oracle::{
         ExponentialAffineTransformDVector, ExponentialAffineTransformIntegrationResult,
-        ExponentialAffineTransformOutput,
+        ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformOutput,
     };
     use crate::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
     use crate::news::GammaSeverityMarkConfiguration;
@@ -5036,7 +5036,8 @@ mod tests {
             ComplexScalar::new(1.0, 0.0),
             ComplexScalar::new(0.95, 0.02),
             1.1,
-            0.08,
+            ExponentialAffineTransformNewsIntensityInput::try_new(0.03, 0.05)
+                .expect("reference pricing news intensity should construct"),
         )
         .expect("pricing transform input should construct");
 

@@ -1508,13 +1508,12 @@ fn solve_coarse_fine_risk_slices(
         let surprise_news_intensity_factor =
             news_intensity_factor - known_news_intensity_factor;
 
-        let context = SufficientStatisticsTransformSliceContext::try_new_with_news_intensity(
+        let context = SufficientStatisticsTransformSliceContext::try_new(
             interval_index,
             seasonality_factor,
             ExponentialAffineTransformNewsIntensityInput::new(
-                news_intensity_factor,
-                Some(known_news_intensity_factor),
-                Some(surprise_news_intensity_factor),
+                known_news_intensity_factor,
+                surprise_news_intensity_factor,
             ),
             interval_delta,
             initial_excitation_state,

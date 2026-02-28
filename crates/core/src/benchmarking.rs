@@ -1785,7 +1785,7 @@ pub(crate) fn build_oracle_transform_input(
     let known_news_intensity_factor = news_intensity_factor * noise;
     let surprise_news_intensity_factor = news_intensity_factor - known_news_intensity_factor;
 
-    ExponentialAffineTransformInput::try_new_with_news_intensity(
+    ExponentialAffineTransformInput::try_new(
         equation_specification,
         ComplexScalar::new(
             interpolate_range(solver_probes.u_probe_min, solver_probes.u_probe_max, noise),
@@ -1817,9 +1817,8 @@ pub(crate) fn build_oracle_transform_input(
             noise,
         ),
         ExponentialAffineTransformNewsIntensityInput::new(
-            news_intensity_factor,
-            Some(known_news_intensity_factor),
-            Some(surprise_news_intensity_factor),
+            known_news_intensity_factor,
+            surprise_news_intensity_factor,
         ),
         profile.interval_settings.interval_delta,
         profile.model_state.initial_excitation_state,
@@ -1909,13 +1908,12 @@ fn build_risk_transform_slices(
         let surprise_news_intensity_factor =
             news_intensity_factor - known_news_intensity_factor;
 
-        let context = SufficientStatisticsTransformSliceContext::try_new_with_news_intensity(
+        let context = SufficientStatisticsTransformSliceContext::try_new(
             interval_index,
             seasonality_factor,
             ExponentialAffineTransformNewsIntensityInput::new(
-                news_intensity_factor,
-                Some(known_news_intensity_factor),
-                Some(surprise_news_intensity_factor),
+                known_news_intensity_factor,
+                surprise_news_intensity_factor,
             ),
             profile.interval_settings.interval_delta,
             profile.model_state.initial_excitation_state,

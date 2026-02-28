@@ -105,71 +105,52 @@ pub struct SufficientStatisticsRiskIntervalFactors {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub interval_delta: Option<f64>,
     pub s_h: Box<[f64]>,
+    #[serde(skip_serializing)]
     pub nu_h: Box<[f64]>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub nu_h_known: Option<Box<[f64]>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub nu_h_surprise: Option<Box<[f64]>>,
+    pub nu_h_known: Box<[f64]>,
+    pub nu_h_surprise: Box<[f64]>,
 }
 
 impl SufficientStatisticsRiskIntervalFactors {
     pub fn try_new(
         s_h: Vec<f64>,
-        nu_h: Vec<f64>,
-        interval_delta: Option<f64>,
-    ) -> Result<Self, SufficientStatisticsRiskIntervalFactorsError> {
-        Self::from_parts(interval_delta, s_h, nu_h, None, None)
-    }
-
-    pub fn try_new_with_news_intensity_components(
-        s_h: Vec<f64>,
         nu_h_known: Vec<f64>,
         nu_h_surprise: Vec<f64>,
         interval_delta: Option<f64>,
     ) -> Result<Self, SufficientStatisticsRiskIntervalFactorsError> {
+        if s_h.is_empty() {
+            return Err(SufficientStatisticsRiskIntervalFactorsError::MissingIntervals);
+        }
+        if nu_h_known.len() != s_h.len() {
+            return Err(
+                SufficientStatisticsRiskIntervalFactorsError::FieldLengthMismatch {
+                    field: "nu_h_known",
+                    expected_length: s_h.len(),
+                    actual_length: nu_h_known.len(),
+                },
+            );
+        }
+        if nu_h_surprise.len() != s_h.len() {
+            return Err(
+                SufficientStatisticsRiskIntervalFactorsError::FieldLengthMismatch {
+                    field: "nu_h_surprise",
+                    expected_length: s_h.len(),
+                    actual_length: nu_h_surprise.len(),
+                },
+            );
+        }
+
         let nu_h: Vec<f64> = nu_h_known
             .iter()
             .zip(nu_h_surprise.iter())
             .map(|(known_nu_h, surprise_nu_h)| known_nu_h + surprise_nu_h)
             .collect();
-        Self::from_parts(
-            interval_delta,
-            s_h,
-            nu_h,
-            Some(nu_h_known),
-            Some(nu_h_surprise),
-        )
-    }
-
-    pub fn try_new_with_total_and_news_intensity_components(
-        s_h: Vec<f64>,
-        nu_h: Vec<f64>,
-        nu_h_known: Vec<f64>,
-        nu_h_surprise: Vec<f64>,
-        interval_delta: Option<f64>,
-    ) -> Result<Self, SufficientStatisticsRiskIntervalFactorsError> {
-        Self::from_parts(
-            interval_delta,
-            s_h,
-            nu_h,
-            Some(nu_h_known),
-            Some(nu_h_surprise),
-        )
-    }
-
-    fn from_parts(
-        interval_delta: Option<f64>,
-        s_h: Vec<f64>,
-        nu_h: Vec<f64>,
-        nu_h_known: Option<Vec<f64>>,
-        nu_h_surprise: Option<Vec<f64>>,
-    ) -> Result<Self, SufficientStatisticsRiskIntervalFactorsError> {
         let interval_factors = Self {
             interval_delta,
             s_h: s_h.into_boxed_slice(),
             nu_h: nu_h.into_boxed_slice(),
-            nu_h_known: nu_h_known.map(Vec::into_boxed_slice),
-            nu_h_surprise: nu_h_surprise.map(Vec::into_boxed_slice),
+            nu_h_known: nu_h_known.into_boxed_slice(),
+            nu_h_surprise: nu_h_surprise.into_boxed_slice(),
         };
         interval_factors.validate()?;
         Ok(interval_factors)
@@ -179,16 +160,6 @@ impl SufficientStatisticsRiskIntervalFactors {
         let interval_count = self.s_h.len();
         if interval_count == 0 {
             return Err(SufficientStatisticsRiskIntervalFactorsError::MissingIntervals);
-        }
-
-        if self.nu_h.len() != interval_count {
-            return Err(
-                SufficientStatisticsRiskIntervalFactorsError::FieldLengthMismatch {
-                    field: "nu_h",
-                    expected_length: interval_count,
-                    actual_length: self.nu_h.len(),
-                },
-            );
         }
 
         for (interval_index, value) in self.s_h.iter().copied().enumerate() {
@@ -213,79 +184,68 @@ impl SufficientStatisticsRiskIntervalFactors {
             }
         }
 
-        match (&self.nu_h_known, &self.nu_h_surprise) {
-            (None, None) => {}
-            (Some(_), None) => {
+        if self.nu_h_known.len() != interval_count {
+            return Err(
+                SufficientStatisticsRiskIntervalFactorsError::FieldLengthMismatch {
+                    field: "nu_h_known",
+                    expected_length: interval_count,
+                    actual_length: self.nu_h_known.len(),
+                },
+            );
+        }
+        if self.nu_h_surprise.len() != interval_count {
+            return Err(
+                SufficientStatisticsRiskIntervalFactorsError::FieldLengthMismatch {
+                    field: "nu_h_surprise",
+                    expected_length: interval_count,
+                    actual_length: self.nu_h_surprise.len(),
+                },
+            );
+        }
+        if self.nu_h.len() != interval_count {
+            return Err(
+                SufficientStatisticsRiskIntervalFactorsError::FieldLengthMismatch {
+                    field: "nu_h",
+                    expected_length: interval_count,
+                    actual_length: self.nu_h.len(),
+                },
+            );
+        }
+
+        for interval_index in 0..interval_count {
+            let known_nu_h = self.nu_h_known[interval_index];
+            if !known_nu_h.is_finite() || known_nu_h < 0.0 {
                 return Err(
-                    SufficientStatisticsRiskIntervalFactorsError::MissingNewsIntensityComponentField {
-                        missing_field: "nu_h_surprise",
+                    SufficientStatisticsRiskIntervalFactorsError::InvalidKnownNewsIntensityFactor {
+                        interval_index,
+                        value: known_nu_h,
                     },
                 );
             }
-            (None, Some(_)) => {
+
+            let surprise_nu_h = self.nu_h_surprise[interval_index];
+            if !surprise_nu_h.is_finite() || surprise_nu_h < 0.0 {
                 return Err(
-                    SufficientStatisticsRiskIntervalFactorsError::MissingNewsIntensityComponentField {
-                        missing_field: "nu_h_known",
+                    SufficientStatisticsRiskIntervalFactorsError::InvalidSurpriseNewsIntensityFactor {
+                        interval_index,
+                        value: surprise_nu_h,
                     },
                 );
             }
-            (Some(nu_h_known), Some(nu_h_surprise)) => {
-                if nu_h_known.len() != interval_count {
-                    return Err(
-                        SufficientStatisticsRiskIntervalFactorsError::FieldLengthMismatch {
-                            field: "nu_h_known",
-                            expected_length: interval_count,
-                            actual_length: nu_h_known.len(),
-                        },
-                    );
-                }
-                if nu_h_surprise.len() != interval_count {
-                    return Err(
-                        SufficientStatisticsRiskIntervalFactorsError::FieldLengthMismatch {
-                            field: "nu_h_surprise",
-                            expected_length: interval_count,
-                            actual_length: nu_h_surprise.len(),
-                        },
-                    );
-                }
 
-                for interval_index in 0..interval_count {
-                    let known_nu_h = nu_h_known[interval_index];
-                    if !known_nu_h.is_finite() || known_nu_h < 0.0 {
-                        return Err(
-                            SufficientStatisticsRiskIntervalFactorsError::InvalidKnownNewsIntensityFactor {
-                                interval_index,
-                                value: known_nu_h,
-                            },
-                        );
-                    }
-
-                    let surprise_nu_h = nu_h_surprise[interval_index];
-                    if !surprise_nu_h.is_finite() || surprise_nu_h < 0.0 {
-                        return Err(
-                            SufficientStatisticsRiskIntervalFactorsError::InvalidSurpriseNewsIntensityFactor {
-                                interval_index,
-                                value: surprise_nu_h,
-                            },
-                        );
-                    }
-
-                    let total_nu_h = self.nu_h[interval_index];
-                    let component_sum = known_nu_h + surprise_nu_h;
-                    if !component_sum.is_finite()
-                        || (component_sum - total_nu_h).abs()
-                            > NEWS_INTENSITY_COMPONENT_SUM_TOLERANCE
-                    {
-                        return Err(
-                            SufficientStatisticsRiskIntervalFactorsError::InconsistentNewsIntensityAggregation {
-                                interval_index,
-                                nu_h_total: total_nu_h,
-                                nu_h_known: known_nu_h,
-                                nu_h_surprise: surprise_nu_h,
-                            },
-                        );
-                    }
-                }
+            let total_nu_h = self.nu_h[interval_index];
+            let component_sum = known_nu_h + surprise_nu_h;
+            if !component_sum.is_finite()
+                || (component_sum - total_nu_h).abs() > NEWS_INTENSITY_COMPONENT_SUM_TOLERANCE
+            {
+                return Err(
+                    SufficientStatisticsRiskIntervalFactorsError::InconsistentNewsIntensityAggregation {
+                        interval_index,
+                        nu_h_total: total_nu_h,
+                        nu_h_known: known_nu_h,
+                        nu_h_surprise: surprise_nu_h,
+                    },
+                );
             }
         }
 
@@ -315,19 +275,11 @@ impl SufficientStatisticsRiskIntervalFactors {
         &self,
         interval_index: usize,
     ) -> ExponentialAffineTransformNewsIntensityInput {
-        let total_nu_h = self.nu_h[interval_index];
-        match (&self.nu_h_known, &self.nu_h_surprise) {
-            (Some(nu_h_known), Some(nu_h_surprise)) => {
-                ExponentialAffineTransformNewsIntensityInput::try_new(
-                    total_nu_h,
-                    Some(nu_h_known[interval_index]),
-                    Some(nu_h_surprise[interval_index]),
-                )
-                .expect("validated interval factors must produce valid news intensity inputs")
-            }
-            _ => ExponentialAffineTransformNewsIntensityInput::try_new_total_only(total_nu_h)
-                .expect("validated interval factors must produce valid news intensity inputs"),
-        }
+        ExponentialAffineTransformNewsIntensityInput::try_new(
+            self.nu_h_known[interval_index],
+            self.nu_h_surprise[interval_index],
+        )
+        .expect("validated interval factors must produce valid news intensity inputs")
     }
 }
 
@@ -346,9 +298,6 @@ pub enum SufficientStatisticsRiskIntervalFactorsError {
     InvalidNewsIntensityFactor {
         interval_index: usize,
         value: f64,
-    },
-    MissingNewsIntensityComponentField {
-        missing_field: &'static str,
     },
     InvalidKnownNewsIntensityFactor {
         interval_index: usize,
@@ -397,10 +346,6 @@ impl Display for SufficientStatisticsRiskIntervalFactorsError {
             } => write!(
                 formatter,
                 "interval_factors.nu_h[{interval_index}] must be finite and non-negative, found {value}"
-            ),
-            Self::MissingNewsIntensityComponentField { missing_field } => write!(
-                formatter,
-                "interval_factors.nu_h_known and interval_factors.nu_h_surprise must either both be provided or both be omitted, missing {missing_field}"
             ),
             Self::InvalidKnownNewsIntensityFactor {
                 interval_index,
@@ -719,29 +664,6 @@ pub struct SufficientStatisticsTransformSliceContext {
 
 impl SufficientStatisticsTransformSliceContext {
     pub fn try_new(
-        interval_index: usize,
-        s_h: f64,
-        nu_h: f64,
-        delta: f64,
-        initial_excitation_state: HawkesExcitationState,
-    ) -> Result<Self, SufficientStatisticsTransformSliceContextError> {
-        let news_intensity =
-            ExponentialAffineTransformNewsIntensityInput::try_new_total_only(nu_h).map_err(
-                |source| SufficientStatisticsTransformSliceContextError::InvalidNewsIntensity {
-                    interval_index,
-                    source,
-                },
-            )?;
-        Self::try_new_with_news_intensity(
-            interval_index,
-            s_h,
-            news_intensity,
-            delta,
-            initial_excitation_state,
-        )
-    }
-
-    pub fn try_new_with_news_intensity(
         interval_index: usize,
         s_h: f64,
         news_intensity: ExponentialAffineTransformNewsIntensityInput,
@@ -1200,9 +1122,9 @@ impl Display for SufficientStatisticsTransformSliceSamplingError {
                 context,
             } => write!(
                 formatter,
-                "interval {interval_index} derived expected {statistic} is invalid (value={value}, numerator={numerator}, denominator={denominator}, s_h={}, total_nu_h={}, known_nu_h={:?}, surprise_nu_h={:?}, delta={}, initial_state={:?})",
+                "interval {interval_index} derived expected {statistic} is invalid (value={value}, numerator={numerator}, denominator={denominator}, s_h={}, total_nu_h={}, known_nu_h={}, surprise_nu_h={}, delta={}, initial_state={:?})",
                 context.s_h,
-                context.news_intensity.total_nu_h,
+                context.news_intensity.total_nu_h(),
                 context.news_intensity.known_nu_h,
                 context.news_intensity.surprise_nu_h,
                 context.delta,
@@ -1776,7 +1698,7 @@ fn solve_transform_slice_value(
     z_minus: ComplexScalar,
     solver_settings: Option<ExponentialAffineTransformSolverSettings>,
 ) -> Result<ComplexScalar, SufficientStatisticsTransformSliceSolveError> {
-    let transform_input = ExponentialAffineTransformInput::try_new_with_news_intensity(
+    let transform_input = ExponentialAffineTransformInput::try_new(
         equation_specification,
         u_plus,
         u_minus,
@@ -3483,12 +3405,8 @@ struct SufficientStatisticsRiskIntervalFactorsPayload {
     #[serde(default)]
     interval_delta: Option<f64>,
     s_h: Vec<f64>,
-    #[serde(default)]
-    nu_h: Option<Vec<f64>>,
-    #[serde(default)]
-    nu_h_known: Option<Vec<f64>>,
-    #[serde(default)]
-    nu_h_surprise: Option<Vec<f64>>,
+    nu_h_known: Vec<f64>,
+    nu_h_surprise: Vec<f64>,
 }
 
 impl<'de> Deserialize<'de> for SufficientStatisticsRiskIntervalFactors {
@@ -3497,38 +3415,13 @@ impl<'de> Deserialize<'de> for SufficientStatisticsRiskIntervalFactors {
         D: serde::Deserializer<'de>,
     {
         let payload = SufficientStatisticsRiskIntervalFactorsPayload::deserialize(deserializer)?;
-        match (payload.nu_h, payload.nu_h_known, payload.nu_h_surprise) {
-            (Some(nu_h), None, None) => Self::try_new(payload.s_h, nu_h, payload.interval_delta)
-                .map_err(serde::de::Error::custom),
-            (None, Some(nu_h_known), Some(nu_h_surprise)) => {
-                Self::try_new_with_news_intensity_components(
-                    payload.s_h,
-                    nu_h_known,
-                    nu_h_surprise,
-                    payload.interval_delta,
-                )
-                .map_err(serde::de::Error::custom)
-            }
-            (Some(nu_h), Some(nu_h_known), Some(nu_h_surprise)) => {
-                Self::try_new_with_total_and_news_intensity_components(
-                    payload.s_h,
-                    nu_h,
-                    nu_h_known,
-                    nu_h_surprise,
-                    payload.interval_delta,
-                )
-                .map_err(serde::de::Error::custom)
-            }
-            (None, None, None) => Err(serde::de::Error::custom(
-                "interval_factors must provide nu_h or both nu_h_known and nu_h_surprise",
-            )),
-            (_, Some(_), None) => Err(serde::de::Error::custom(
-                "interval_factors.nu_h_surprise is required when nu_h_known is provided",
-            )),
-            (_, None, Some(_)) => Err(serde::de::Error::custom(
-                "interval_factors.nu_h_known is required when nu_h_surprise is provided",
-            )),
-        }
+        Self::try_new(
+            payload.s_h,
+            payload.nu_h_known,
+            payload.nu_h_surprise,
+            payload.interval_delta,
+        )
+        .map_err(serde::de::Error::custom)
     }
 }
 
@@ -4163,7 +4056,7 @@ mod tests {
 
     #[test]
     fn interval_factors_component_news_intensity_round_trip_and_context_consistency() {
-        let factors = SufficientStatisticsRiskIntervalFactors::try_new_with_news_intensity_components(
+        let factors = SufficientStatisticsRiskIntervalFactors::try_new(
             vec![1.1, 0.9],
             vec![0.12, 0.03],
             vec![0.08, 0.07],
@@ -4175,16 +4068,11 @@ mod tests {
         let first_interval_news_intensity = factors.news_intensity_input_at(0);
         assert_eq!(
             first_interval_news_intensity,
-            ExponentialAffineTransformNewsIntensityInput::try_new(
-                0.2,
-                Some(0.12),
-                Some(0.08)
-            )
-            .expect("expected news-intensity input should construct")
+            ExponentialAffineTransformNewsIntensityInput::try_new(0.12, 0.08)
+                .expect("expected news-intensity input should construct")
         );
 
         let serialized = serde_json::to_value(&factors).expect("interval factors should serialize");
-        assert_eq!(serialized["nu_h"], serde_json::json!([0.2, 0.1]));
         assert_eq!(serialized["nu_h_known"], serde_json::json!([0.12, 0.03]));
         assert_eq!(serialized["nu_h_surprise"], serde_json::json!([0.08, 0.07]));
 
@@ -4195,14 +4083,15 @@ mod tests {
 
     #[test]
     fn interval_factors_reject_inconsistent_total_and_component_news_intensity() {
-        let error =
-            SufficientStatisticsRiskIntervalFactors::try_new_with_total_and_news_intensity_components(
-                vec![1.1],
-                vec![0.3],
-                vec![0.1],
-                vec![0.1],
-                Some(1.0),
-            )
+        let factors = SufficientStatisticsRiskIntervalFactors {
+            interval_delta: Some(1.0),
+            s_h: vec![1.1].into_boxed_slice(),
+            nu_h: vec![0.3].into_boxed_slice(),
+            nu_h_known: vec![0.1].into_boxed_slice(),
+            nu_h_surprise: vec![0.1].into_boxed_slice(),
+        };
+        let error = factors
+            .validate()
             .expect_err("inconsistent total and component intensities must fail validation");
         assert!(matches!(
             error,
@@ -4461,7 +4350,8 @@ mod tests {
             "interval_delta": 1.0,
             "interval_factors": {
                 "s_h": [1.1, 0.9],
-                "nu_h": [0.2, 0.1]
+                "nu_h_known": [0.12, 0.03],
+                "nu_h_surprise": [0.08, 0.07]
             }
         });
         let missing_model_inputs_error =
@@ -4519,7 +4409,8 @@ mod tests {
             },
             "interval_factors": {
                 "s_h": [1.1, 0.9],
-                "nu_h": [0.2]
+                "nu_h_known": [0.2],
+                "nu_h_surprise": [0.0, 0.1]
             }
         });
         let malformed_factors_error =
@@ -4529,7 +4420,7 @@ mod tests {
         assert!(
             malformed_factors_error
                 .to_string()
-                .contains("interval_factors.nu_h length must match s_h length")
+                .contains("interval_factors.nu_h_known length must match s_h length")
         );
     }
 
@@ -4577,7 +4468,8 @@ mod tests {
             },
             "interval_factors": {
                 "s_h": [1.1, 0.9],
-                "nu_h": [0.2, 0.1]
+                "nu_h_known": [0.12, 0.03],
+                "nu_h_surprise": [0.08, 0.07]
             }
         });
 
@@ -4644,11 +4536,7 @@ mod tests {
         assert_eq!(parsed_request.interval_factors.nu_h.as_ref(), &[0.2, 0.1]);
         assert_eq!(
             parsed_request.interval_factors.news_intensity_input_at(1),
-            ExponentialAffineTransformNewsIntensityInput::try_new(
-                0.1,
-                Some(0.03),
-                Some(0.07)
-            )
+            ExponentialAffineTransformNewsIntensityInput::try_new(0.03, 0.07)
             .expect("expected news-intensity input should construct")
         );
     }
@@ -5379,13 +5267,16 @@ mod tests {
     fn build_transform_slice_context(
         interval_index: usize,
         s_h: f64,
-        nu_h: f64,
+        total_nu_h: f64,
         delta: f64,
     ) -> SufficientStatisticsTransformSliceContext {
+        let known_nu_h = total_nu_h * 0.5;
+        let surprise_nu_h = total_nu_h - known_nu_h;
         SufficientStatisticsTransformSliceContext::try_new(
             interval_index,
             s_h,
-            nu_h,
+            ExponentialAffineTransformNewsIntensityInput::try_new(known_nu_h, surprise_nu_h)
+                .expect("slice context news_intensity should be valid"),
             delta,
             build_initial_state(),
         )
@@ -5436,8 +5327,13 @@ mod tests {
     }
 
     fn build_interval_factors() -> SufficientStatisticsRiskIntervalFactors {
-        SufficientStatisticsRiskIntervalFactors::try_new(vec![1.1, 0.9], vec![0.2, 0.1], None)
-            .expect("interval factors should be valid")
+        SufficientStatisticsRiskIntervalFactors::try_new(
+            vec![1.1, 0.9],
+            vec![0.12, 0.03],
+            vec![0.08, 0.07],
+            None,
+        )
+        .expect("interval factors should be valid")
     }
 
     fn build_interval_factors_with_interval_delta(
@@ -5445,7 +5341,8 @@ mod tests {
     ) -> SufficientStatisticsRiskIntervalFactors {
         SufficientStatisticsRiskIntervalFactors::try_new(
             vec![1.1, 0.9],
-            vec![0.2, 0.1],
+            vec![0.12, 0.03],
+            vec![0.08, 0.07],
             Some(interval_delta),
         )
         .expect("interval factors with explicit interval_delta should be valid")

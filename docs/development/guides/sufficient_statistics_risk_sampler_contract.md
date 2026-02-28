@@ -178,22 +178,15 @@ The interval-factor contract policy identifier is:
   - value:
     `explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1`
 
-The public request model requires explicit aligned vectors for `s_h` and one
-of the following news-intensity input shapes:
+The public request model requires explicit aligned vectors for `s_h` and
+component-aware news-intensity inputs:
 
-- aggregate only
-  - `nu_h`
-- component-aware
-  - `nu_h_known`
-  - `nu_h_surprise`
-- redundant aggregate plus components
-  - `nu_h`
-  - `nu_h_known`
-  - `nu_h_surprise`
+- `nu_h_known`
+- `nu_h_surprise`
 
-When component vectors are present, they must be aligned with `s_h`, finite,
-non-negative, and satisfy
-`nu_h = nu_h_known + nu_h_surprise` per interval within contract tolerance.
+Both vectors must be aligned with `s_h`, finite, and non-negative. The
+contract derives aggregate intensity deterministically per interval as
+`nu_h = nu_h_known + nu_h_surprise` within contract tolerance.
 
 The transform-slice context forwards component-aware news-intensity payloads to
 the affine oracle. The affine ODE still consumes only aggregate `total_nu_h`
