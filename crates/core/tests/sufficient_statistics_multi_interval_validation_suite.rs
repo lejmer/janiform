@@ -285,9 +285,14 @@ fn build_run_request(
     )
     .expect("fixture model inputs should construct");
 
-    let (s_h, nu_h) = build_interval_factors(horizon_interval_count);
-    let interval_factors = SufficientStatisticsRiskIntervalFactors::try_new(s_h, nu_h, Some(1.0))
-        .expect("interval factors should construct");
+    let (s_h, nu_h_known, nu_h_surprise) = build_interval_factors(horizon_interval_count);
+    let interval_factors = SufficientStatisticsRiskIntervalFactors::try_new(
+        s_h,
+        nu_h_known,
+        nu_h_surprise,
+        Some(1.0),
+    )
+    .expect("interval factors should construct");
 
     SufficientStatisticsRiskRunRequest::try_new(
         seed,
@@ -299,14 +304,18 @@ fn build_run_request(
     .expect("fixture run request should construct")
 }
 
-fn build_interval_factors(horizon_interval_count: usize) -> (Vec<f64>, Vec<f64>) {
+fn build_interval_factors(horizon_interval_count: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
     let mut s_h: Vec<f64> = Vec::with_capacity(horizon_interval_count);
-    let mut nu_h: Vec<f64> = Vec::with_capacity(horizon_interval_count);
+    let mut nu_h_known: Vec<f64> = Vec::with_capacity(horizon_interval_count);
+    let mut nu_h_surprise: Vec<f64> = Vec::with_capacity(horizon_interval_count);
 
     for interval_index in 0..horizon_interval_count {
         s_h.push(0.85 + (interval_index % 5) as f64 * 0.05);
-        nu_h.push(0.03 + (interval_index % 4) as f64 * 0.01);
+        let nu_h_total = 0.03 + (interval_index % 4) as f64 * 0.01;
+        let known_nu_h = nu_h_total * 0.6;
+        nu_h_known.push(known_nu_h);
+        nu_h_surprise.push(nu_h_total - known_nu_h);
     }
 
-    (s_h, nu_h)
+    (s_h, nu_h_known, nu_h_surprise)
 }

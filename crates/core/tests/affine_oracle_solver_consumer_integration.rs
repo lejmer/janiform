@@ -1,7 +1,7 @@
 use janiform_core::affine_oracle::{
     ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
     ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformIntegratorMethod,
-    ExponentialAffineTransformSolverSettings,
+    ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformSolverSettings,
     solve_exponential_affine_transform_with_optional_settings,
 };
 use janiform_core::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
@@ -128,7 +128,8 @@ fn pricing_pipeline_propagates_interval_delta_to_solver_input() {
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(0.95, 0.02),
         1.1,
-        0.08,
+        ExponentialAffineTransformNewsIntensityInput::try_new(0.04, 0.04)
+            .expect("hourly test news intensity should construct"),
     )
     .expect("hourly pricing transform input should build");
     let non_hourly_transform_input = build_pricing_transform_input(
@@ -138,7 +139,8 @@ fn pricing_pipeline_propagates_interval_delta_to_solver_input() {
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(0.95, 0.02),
         1.1,
-        0.08,
+        ExponentialAffineTransformNewsIntensityInput::try_new(0.04, 0.04)
+            .expect("non-hourly test news intensity should construct"),
     )
     .expect("non-hourly pricing transform input should build");
 
@@ -198,7 +200,8 @@ fn build_transform_input(delta: f64) -> ExponentialAffineTransformInput {
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(0.95, 0.02),
         1.1,
-        0.08,
+        ExponentialAffineTransformNewsIntensityInput::try_new(0.03, 0.05)
+            .expect("fixture news intensity should construct"),
         delta,
         HawkesExcitationState {
             y_plus_plus: 0.4,

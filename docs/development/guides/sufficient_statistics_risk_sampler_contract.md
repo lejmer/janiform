@@ -176,9 +176,23 @@ The interval-factor contract policy identifier is:
 
 - `SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY`
   - value:
-    `explicit_interval_aligned_s_h_and_nu_h_vectors_without_implicit_resampling.v1`
+    `explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1`
 
-The public request model requires explicit aligned vectors for `s_h` and `nu_h`.
+The public request model requires explicit aligned vectors for `s_h` and
+component-aware news-intensity inputs:
+
+- `nu_h_known`
+- `nu_h_surprise`
+
+Both vectors must be aligned with `s_h`, finite, and non-negative. The
+contract derives aggregate intensity deterministically per interval as
+`nu_h = nu_h_known + nu_h_surprise` within contract tolerance.
+
+The transform-slice context forwards component-aware news-intensity payloads to
+the affine oracle. The affine ODE still consumes only aggregate `total_nu_h`
+for tractable gamma-moment terms while preserving known and surprise fields in
+diagnostics and calibration wiring.
+
 Implicit factor interpolation or resampling is not performed by contract
 validation.
 

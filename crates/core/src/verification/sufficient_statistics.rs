@@ -587,7 +587,9 @@ fn execute_sufficient_statistics_validation_path(
         let slice_context = SufficientStatisticsTransformSliceContext::try_new(
             interval_index,
             run_request.interval_factors.s_h[interval_index],
-            run_request.interval_factors.nu_h[interval_index],
+            run_request
+                .interval_factors
+                .news_intensity_input_at(interval_index),
             run_request.interval_delta,
             current_state,
         )

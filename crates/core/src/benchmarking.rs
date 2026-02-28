@@ -11,6 +11,7 @@ use crate::affine_oracle::{
     ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformGuardFailureCode,
     ExponentialAffineTransformInput, ExponentialAffineTransformInputError,
     ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformIntegratorMethod,
+    ExponentialAffineTransformNewsIntensityInput,
     ExponentialAffineTransformSolverError, ExponentialAffineTransformSolverSettings,
     ExponentialAffineTransformSolverSettingsError,
     solve_exponential_affine_transform_with_settings,
@@ -1776,6 +1777,14 @@ pub(crate) fn build_oracle_transform_input(
     let complementary_noise = 1.0 - noise;
     let solver_probes = benchmark_policy.oracle_solver_probes;
 
+    let news_intensity_factor = interpolate_range(
+        solver_probes.news_intensity_factor_min,
+        solver_probes.news_intensity_factor_max,
+        complementary_noise,
+    );
+    let known_news_intensity_factor = news_intensity_factor * noise;
+    let surprise_news_intensity_factor = news_intensity_factor - known_news_intensity_factor;
+
     ExponentialAffineTransformInput::try_new(
         equation_specification,
         ComplexScalar::new(
@@ -1807,10 +1816,9 @@ pub(crate) fn build_oracle_transform_input(
             solver_probes.seasonality_factor_max,
             noise,
         ),
-        interpolate_range(
-            solver_probes.news_intensity_factor_min,
-            solver_probes.news_intensity_factor_max,
-            complementary_noise,
+        ExponentialAffineTransformNewsIntensityInput::new(
+            known_news_intensity_factor,
+            surprise_news_intensity_factor,
         ),
         profile.interval_settings.interval_delta,
         profile.model_state.initial_excitation_state,
@@ -1896,11 +1904,17 @@ fn build_risk_transform_slices(
                 .news_intensity_factor_max,
             1.0 - factor_noise,
         );
+        let known_news_intensity_factor = news_intensity_factor * factor_noise;
+        let surprise_news_intensity_factor =
+            news_intensity_factor - known_news_intensity_factor;
 
         let context = SufficientStatisticsTransformSliceContext::try_new(
             interval_index,
             seasonality_factor,
-            news_intensity_factor,
+            ExponentialAffineTransformNewsIntensityInput::new(
+                known_news_intensity_factor,
+                surprise_news_intensity_factor,
+            ),
             profile.interval_settings.interval_delta,
             profile.model_state.initial_excitation_state,
         )

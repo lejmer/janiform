@@ -1,6 +1,7 @@
 mod support;
 
 use janiform_core::calibration::build_option_surface_calibration_observation_from_pricing_hooks;
+use janiform_core::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
 use janiform_core::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
 use janiform_core::news::GammaSeverityMarkConfiguration;
 use janiform_core::nig::{ComplexScalar, NigSharedPlusShiftConfiguration};
@@ -80,7 +81,8 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(0.95, 0.02),
         1.1,
-        0.08,
+        ExponentialAffineTransformNewsIntensityInput::try_new(0.03, 0.05)
+            .expect("pricing-hook test news intensity should construct"),
     )
     .expect("pricing transform input should construct");
     let transform_diagnostics = solve_exponential_affine_transform(transform_input)

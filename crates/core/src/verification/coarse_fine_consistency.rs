@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 use crate::affine_oracle::{
     ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformIntegrationResult,
     ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformIntegratorMethod,
-    ExponentialAffineTransformOutput, ExponentialAffineTransformSolverSettings,
+    ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformOutput,
+    ExponentialAffineTransformSolverSettings,
     solve_exponential_affine_transform_with_settings,
 };
 use crate::benchmarking::{
@@ -1503,10 +1504,17 @@ fn solve_coarse_fine_risk_slices(
     for (interval_index, (seasonality_factor, news_intensity_factor)) in
         factor_series.iter().copied().enumerate()
     {
+        let known_news_intensity_factor = news_intensity_factor * 0.5;
+        let surprise_news_intensity_factor =
+            news_intensity_factor - known_news_intensity_factor;
+
         let context = SufficientStatisticsTransformSliceContext::try_new(
             interval_index,
             seasonality_factor,
-            news_intensity_factor,
+            ExponentialAffineTransformNewsIntensityInput::new(
+                known_news_intensity_factor,
+                surprise_news_intensity_factor,
+            ),
             interval_delta,
             initial_excitation_state,
         )

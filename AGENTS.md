@@ -9,6 +9,19 @@
 
 ---
 
+## Contract Evolution Policy (Mandatory)
+
+This codebase is pre-v0.1 and has no external users.
+
+- Backward compatibility is **forbidden** unless the task explicitly asks for it.
+- Do **not** add legacy/fallback parsing, compatibility shims, deprecated aliases, dual payload support, or wrapper constructors for old APIs.
+- Do **not** preserve old fields "just in case".
+- Do **not** bump schema versions during refactors or when introducing breaking changes. Keep schema identifiers at `v1`.
+- Replace old contracts directly, then migrate all in-repo call sites/tests/docs to the new contract in the same PR.
+- If you believe compatibility is required, **stop and ask** before implementing anything.
+
+---
+
 ## Repo Orientation
 - `crates/core/`: The Rust core of the library
 - `crates/pybind/`: Depends on `core` and translates
