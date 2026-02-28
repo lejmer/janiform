@@ -66,7 +66,8 @@ fn return_decomposition_sign_analytic_cases_match_expected_pricing_outputs() {
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: fixture_case.return_decomposition.a_plus,
             a_minus: fixture_case.return_decomposition.a_minus,
-            gap: fixture_case.return_decomposition.gap,
+            open_jump: 0.0,
+            closed_gap: fixture_case.return_decomposition.gap,
         })
         .expect("fixture return decomposition payload should construct");
         let argument = fixture_case.argument.into_core();
@@ -160,7 +161,8 @@ fn return_decomposition_sign_analytic_cases_detect_positive_u_sell_side_regressi
             ReturnDecomposition::try_new(ReturnDecompositionInput {
                 a_plus: fixture_case.return_decomposition.a_plus,
                 a_minus: fixture_case.return_decomposition.a_minus,
-                gap: fixture_case.return_decomposition.gap,
+                open_jump: 0.0,
+                closed_gap: fixture_case.return_decomposition.gap,
             })
             .expect("fixture return decomposition payload should construct"),
         )

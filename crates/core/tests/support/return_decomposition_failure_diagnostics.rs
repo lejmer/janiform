@@ -239,7 +239,9 @@ fn has_component_disable_mode_signature(
         return true;
     }
 
-    if !context.edge_mode.gap_component_enabled() {
+    if !context.edge_mode.open_jump_component_enabled()
+        && !context.edge_mode.closed_gap_component_enabled()
+    {
         let trading_factor = observed.trading_time_characteristic_factor.into_core();
         let combined_factor = observed.combined_characteristic_factor.into_core();
         if combined_factor.subtract(trading_factor).norm() > tolerance {

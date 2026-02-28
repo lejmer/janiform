@@ -246,7 +246,8 @@ fn load_regression_scenarios() -> (
                 return_decomposition: ReturnDecomposition::try_new(ReturnDecompositionInput {
                     a_plus: fixture_case.return_decomposition.a_plus,
                     a_minus: fixture_case.return_decomposition.a_minus,
-                    gap: fixture_case.return_decomposition.gap,
+                    open_jump: 0.0,
+                    closed_gap: fixture_case.return_decomposition.gap,
                 })
                 .expect("fixture decomposition payload should construct"),
                 gap_characteristic_factor: fixture_case.gap_characteristic_factor.into_core(),
@@ -514,7 +515,7 @@ fn effective_gap_characteristic_factor(
     gap_characteristic_factor: ComplexScalar,
     edge_mode: ReturnDecompositionEdgeMode,
 ) -> ComplexScalar {
-    if edge_mode.gap_component_enabled() {
+    if edge_mode.open_jump_component_enabled() || edge_mode.closed_gap_component_enabled() {
         gap_characteristic_factor
     } else {
         ComplexScalar::new(1.0, 0.0)

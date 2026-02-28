@@ -17,7 +17,8 @@ fn shared_decomposition_mapping_preserves_component_assignment() {
     let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
         a_plus: 1.9,
         a_minus: 0.35,
-        gap: -0.2,
+        open_jump: 0.0,
+        closed_gap: -0.2,
     })
     .expect("test decomposition payload should construct");
     let argument = ComplexScalar::new(0.55, -0.4);
@@ -50,7 +51,8 @@ fn edge_mode_sampling_preserves_zeroed_components_and_sign_rules() {
     let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
         a_plus: 0.7,
         a_minus: 1.25,
-        gap: 0.1,
+        open_jump: 0.0,
+        closed_gap: 0.1,
     })
     .expect("test decomposition payload should construct");
 
@@ -84,7 +86,8 @@ fn analytic_sign_fixture_cases_match_shared_composition_outputs() {
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: fixture_case.return_decomposition.a_plus,
             a_minus: fixture_case.return_decomposition.a_minus,
-            gap: fixture_case.return_decomposition.gap,
+            open_jump: 0.0,
+            closed_gap: fixture_case.return_decomposition.gap,
         })
         .expect("fixture decomposition payload should construct");
         let argument = fixture_case.argument.into_core();
@@ -166,7 +169,12 @@ fn analytic_sign_fixture_cases_match_shared_composition_outputs() {
                 assert_eq!(sampled.buy_side_increment, 0.0);
                 assert_eq!(sampled.combined_increment, -sampled.sell_side_increment);
             }
-            ReturnDecompositionEdgeMode::GapOnly => {
+            ReturnDecompositionEdgeMode::OpenJumpOnly => {
+                assert_eq!(sampled.buy_side_increment, 0.0);
+                assert_eq!(sampled.sell_side_increment, 0.0);
+                assert_eq!(sampled.combined_increment, 0.0);
+            }
+            ReturnDecompositionEdgeMode::ClosedGapOnly => {
                 assert_eq!(sampled.buy_side_increment, 0.0);
                 assert_eq!(sampled.sell_side_increment, 0.0);
                 assert_eq!(sampled.combined_increment, 0.0);

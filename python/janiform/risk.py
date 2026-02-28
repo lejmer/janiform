@@ -37,8 +37,8 @@ SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY = (
 SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY = (
     "sample_trading_time_increment_from_sampled_statistics_via_shared_return_decomposition.v1"
 )
-SUFFICIENT_STATISTICS_INTERVAL_RETURN_GAP_GATING_POLICY = (
-    "apply_shared_gap_mark_only_for_closed_market_state.v1"
+SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY = (
+    "open_market_state_routes_to_mt_closed_market_state_routes_to_gt.v1"
 )
 SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY = (
     "path_seed_partitioned_from_root_seed_and_path_index_with_shared_substream_mixer.v1"
@@ -64,7 +64,7 @@ SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_PROVENANCE_FIELDS: tuple[str, ...] = (
     "transform_slice_sampling_policy",
     "boundary_state_update_policy",
     "interval_return_generation_policy",
-    "interval_return_gap_gating_policy",
+    "interval_return_component_routing_policy",
     "batch_seed_partition_policy",
     "artifact_workflow_tags",
 )
@@ -78,7 +78,8 @@ SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_DIAGNOSTICS_FIELDS: tuple[str, ...] = (
     "cumulative_n_plus",
     "cumulative_n_minus",
     "cumulative_trading_time_return",
-    "cumulative_gap_return",
+    "cumulative_open_jump_return",
+    "cumulative_closed_gap_return",
     "cumulative_total_return",
     "max_abs_total_return",
 )
@@ -125,7 +126,8 @@ class SufficientStatisticsRiskReturnComponents(TypedDict):
     buy_side_return: float
     sell_side_return: float
     trading_time_return: float
-    gap_return: float
+    open_jump_return: float
+    closed_gap_return: float
     total_return: float
 
 
@@ -154,7 +156,7 @@ class SufficientStatisticsRiskPathProvenance(TypedDict):
     transform_slice_sampling_policy: str
     boundary_state_update_policy: str
     interval_return_generation_policy: str
-    interval_return_gap_gating_policy: str
+    interval_return_component_routing_policy: str
     batch_seed_partition_policy: str
     artifact_workflow_tags: list[str]
 
@@ -169,7 +171,8 @@ class SufficientStatisticsRiskPathDiagnostics(TypedDict):
     cumulative_n_plus: int
     cumulative_n_minus: int
     cumulative_trading_time_return: float
-    cumulative_gap_return: float
+    cumulative_open_jump_return: float
+    cumulative_closed_gap_return: float
     cumulative_total_return: float
     max_abs_total_return: float
 
@@ -364,7 +367,9 @@ def _build_risk_path_provenance() -> SufficientStatisticsRiskPathProvenance:
         "transform_slice_sampling_policy": SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SAMPLING_POLICY,
         "boundary_state_update_policy": SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY,
         "interval_return_generation_policy": SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY,
-        "interval_return_gap_gating_policy": SUFFICIENT_STATISTICS_INTERVAL_RETURN_GAP_GATING_POLICY,
+        "interval_return_component_routing_policy": (
+            SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY
+        ),
         "batch_seed_partition_policy": SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY,
         "artifact_workflow_tags": list(SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_TAGS),
     }
@@ -379,7 +384,8 @@ def _build_risk_path_diagnostics(
     cumulative_n_plus: int = 0
     cumulative_n_minus: int = 0
     cumulative_trading_time_return: float = 0.0
-    cumulative_gap_return: float = 0.0
+    cumulative_open_jump_return: float = 0.0
+    cumulative_closed_gap_return: float = 0.0
     cumulative_total_return: float = 0.0
     max_abs_total_return: float = 0.0
 
@@ -391,7 +397,8 @@ def _build_risk_path_diagnostics(
         cumulative_n_plus += sufficient_statistics["n_plus"]
         cumulative_n_minus += sufficient_statistics["n_minus"]
         cumulative_trading_time_return += return_components["trading_time_return"]
-        cumulative_gap_return += return_components["gap_return"]
+        cumulative_open_jump_return += return_components["open_jump_return"]
+        cumulative_closed_gap_return += return_components["closed_gap_return"]
         cumulative_total_return += return_components["total_return"]
         max_abs_total_return = max(max_abs_total_return, abs(return_components["total_return"]))
 
@@ -408,7 +415,8 @@ def _build_risk_path_diagnostics(
         "cumulative_n_plus": cumulative_n_plus,
         "cumulative_n_minus": cumulative_n_minus,
         "cumulative_trading_time_return": cumulative_trading_time_return,
-        "cumulative_gap_return": cumulative_gap_return,
+        "cumulative_open_jump_return": cumulative_open_jump_return,
+        "cumulative_closed_gap_return": cumulative_closed_gap_return,
         "cumulative_total_return": cumulative_total_return,
         "max_abs_total_return": max_abs_total_return,
     }
@@ -518,9 +526,9 @@ def _validate_path_provenance(
     )
     _validate_exact_string(
         raw_provenance,
-        "interval_return_gap_gating_policy",
-        f"{field_path}.interval_return_gap_gating_policy",
-        expected_provenance["interval_return_gap_gating_policy"],
+        "interval_return_component_routing_policy",
+        f"{field_path}.interval_return_component_routing_policy",
+        expected_provenance["interval_return_component_routing_policy"],
     )
     _validate_exact_string(
         raw_provenance,
@@ -603,9 +611,16 @@ def _validate_path_diagnostics(
     )
     _validate_exact_number(
         raw_diagnostics,
-        "cumulative_gap_return",
-        f"{field_path}.cumulative_gap_return",
-        expected_diagnostics["cumulative_gap_return"],
+        "cumulative_open_jump_return",
+        f"{field_path}.cumulative_open_jump_return",
+        expected_diagnostics["cumulative_open_jump_return"],
+        simulated_interval_count,
+    )
+    _validate_exact_number(
+        raw_diagnostics,
+        "cumulative_closed_gap_return",
+        f"{field_path}.cumulative_closed_gap_return",
+        expected_diagnostics["cumulative_closed_gap_return"],
         simulated_interval_count,
     )
     _validate_exact_number(
@@ -974,14 +989,24 @@ def _validate_return_components(
         "trading_time_return",
         f"{field_path}.trading_time_return",
     )
-    gap_return = _require_finite_number(raw_components, "gap_return", f"{field_path}.gap_return")
+    open_jump_return = _require_finite_number(
+        raw_components,
+        "open_jump_return",
+        f"{field_path}.open_jump_return",
+    )
+    closed_gap_return = _require_finite_number(
+        raw_components,
+        "closed_gap_return",
+        f"{field_path}.closed_gap_return",
+    )
     total_return = _require_finite_number(raw_components, "total_return", f"{field_path}.total_return")
 
     return {
         "buy_side_return": buy_side_return,
         "sell_side_return": sell_side_return,
         "trading_time_return": trading_time_return,
-        "gap_return": gap_return,
+        "open_jump_return": open_jump_return,
+        "closed_gap_return": closed_gap_return,
         "total_return": total_return,
     }
 

@@ -9,17 +9,18 @@ pricing, simulation, and sufficient-statistics risk generation in
 The shared model is `return_decomposition::ReturnDecomposition`.
 
 It uses explicit fields that map directly to the model equation
-\f$X = L^+(A^+) - L^-(A^-) + G\f$:
+\f$X = L^+(A^+) - L^-(A^-) + M + G\f$:
 
 - `a_plus`: integrated buy intensity \f$A^+\f$
 - `a_minus`: integrated sell intensity \f$A^-\f$
-- `gap`: closed-market gap return contribution \f$G\f$
+- `open_jump`: open-window direct return-jump contribution \f$M\f$
+- `closed_gap`: closed-window gap return contribution \f$G\f$
 
 ## Units and validation
 
 - `a_plus` and `a_minus` are expected event counts in business time for the
   target interval and must be finite and non-negative.
-- `gap` is a log-return increment and must be finite.
+- `open_jump` and `closed_gap` are log-return increments and must be finite.
 
 Validation is enforced by `ReturnDecomposition::try_new` and on deserialization.
 Unknown fields and incomplete payloads are rejected.
@@ -37,9 +38,10 @@ Explicit opt-in component-disable modes are exposed through
 `return_decomposition::ReturnDecompositionEdgeMode`:
 
 - `disabled`: canonical production behavior
-- `buy_only`: disables sell and gap components
-- `sell_only`: disables buy and gap components
-- `gap_only`: disables buy and sell components
+- `buy_only`: disables sell, open-jump, and closed-gap components
+- `sell_only`: disables buy, open-jump, and closed-gap components
+- `open_jump_only`: disables buy, sell, and closed-gap components
+- `closed_gap_only`: disables buy, sell, and open-jump components
 
 `ReturnDecomposition::with_edge_mode` applies deterministic zeroing so disabled
 components contribute exactly zero.
@@ -85,13 +87,13 @@ Pricing call flow:
 1. Shared entrypoint receives `ReturnDecomposition`.
 2. Shared decomposition mapping runs through
    `return_decomposition::compose_nig_trading_time_exponent_with_edge_mode`.
-3. Full CF assembly multiplies `exp(weighted_trading_exponent)` and gap factor.
+3. Full CF assembly multiplies `exp(weighted_trading_exponent)` and jump factor inputs.
 
 Oracle-output pricing call flow:
 
 1. Shared entrypoint receives validated `ExponentialAffineTransformOutput`.
 2. Shared entrypoint uses `output.transform_value` as the trading-time characteristic factor.
-3. Factor composition multiplies trading-time and explicit gap factors through:
+3. Factor composition multiplies trading-time and explicit jump factors through:
    - `pricing::compose_total_return_characteristic_function_from_oracle_output`
 
 Simulation call flow:
@@ -103,10 +105,11 @@ Simulation call flow:
 
 Risk interval-return call flow:
 
-1. Shared entrypoint receives sampled `A_plus` and `A_minus` plus gap input.
+1. Shared entrypoint receives sampled `A_plus` and `A_minus` plus explicit
+   `open_jump_return` and `closed_gap_return` inputs.
 2. Shared entrypoint builds `ReturnDecomposition` and samples trading-time
    increments through `ReturnDecomposition::sample_nig_trading_time_increment`.
-3. Shared entrypoint applies market-state gap gating and emits total return with
+3. Shared entrypoint applies market-state component routing and emits total return with
    optional component breakdown.
 
 ## Interface evolution policy for v0.1

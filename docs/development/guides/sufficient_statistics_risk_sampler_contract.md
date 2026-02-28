@@ -39,7 +39,7 @@ Validation entrypoints:
 Return generation entrypoint:
 
 - `generate_interval_return_from_sampled_statistics`
-  - consumes sampled `A_plus` and `A_minus` with market-state-gated gap input
+  - consumes sampled `A_plus` and `A_minus` with market-state-routed `open_jump` and `closed_gap` inputs
   - reuses shared return-decomposition sampling for sell-side sign handling
   - supports optional component breakdown through
     `SufficientStatisticsRiskReturnGenerationOptions`
@@ -48,7 +48,7 @@ Return generation policies:
 
 - `SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY`
 - `SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_BREAKDOWN_POLICY`
-- `SUFFICIENT_STATISTICS_INTERVAL_RETURN_GAP_GATING_POLICY`
+- `SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY`
 
 Streaming and batch execution entrypoints:
 
@@ -202,7 +202,8 @@ validation.
   - concise cumulative statistics and return totals for triage:
     `cumulative_a_plus`, `cumulative_a_minus`, `cumulative_n_plus`,
     `cumulative_n_minus`, `cumulative_trading_time_return`,
-    `cumulative_gap_return`, `cumulative_total_return`,
+    `cumulative_open_jump_return`, `cumulative_closed_gap_return`,
+    `cumulative_total_return`,
     `max_abs_total_return`
 
 Python and Rust validation accept payloads without explicit metadata blocks and

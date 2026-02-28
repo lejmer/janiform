@@ -1430,14 +1430,14 @@ impl NewsProcessConfiguration {
         })
     }
 
-    /// Build the default v0.1 composable interface wiring.
+    /// Build the default composable interface wiring.
     ///
     /// Component mapping:
     /// - arrival intensity: known-schedule and surprise-background component model
     /// - severity sampler: Gamma(shape, scale)
     /// - base-shock sampler: Kou double-exponential
     /// - coupled constructor: `sigma_g * sqrt(U) * epsilon`
-    pub fn default_v0_1_mark_pipeline(&self) -> DefaultNewsMarkPipeline {
+    pub fn default_mark_pipeline(&self) -> DefaultNewsMarkPipeline {
         DefaultNewsMarkPipeline::new(
             self.arrivals.clone(),
             self.shared_mark_law.gamma_severity_marks,
@@ -2313,9 +2313,9 @@ mod tests {
     }
 
     #[test]
-    fn default_v0_1_composable_pipeline_wires_gamma_and_double_exponential_components() {
+    fn default_composable_pipeline_wires_gamma_and_double_exponential_components() {
         let configuration = sample_process_configuration();
-        let pipeline: DefaultNewsMarkPipeline = configuration.default_v0_1_mark_pipeline();
+        let pipeline: DefaultNewsMarkPipeline = configuration.default_mark_pipeline();
         let intensity_input = sample_arrival_intensity_input();
 
         let generated_arrival_intensity = pipeline

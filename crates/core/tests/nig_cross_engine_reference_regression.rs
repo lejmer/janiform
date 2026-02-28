@@ -414,7 +414,8 @@ fn fixture_return_decomposition(
     ReturnDecomposition::try_new(ReturnDecompositionInput {
         a_plus: integrated_buy_intensity,
         a_minus: integrated_sell_intensity,
-        gap: 0.0,
+        open_jump: 0.0,
+        closed_gap: 0.0,
     })
     .expect("fixture decomposition components should be valid")
 }
