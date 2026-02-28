@@ -75,15 +75,19 @@ def test_pricing_path_consumes_provider_outputs(calendar_registry: CalendarRegis
             sparse_hour_minimum_observation_count=1,
         ),
         news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
-            closed_window_baseline_intensity=0.6,
-            open_window_override_by_interval_index={0: 1.0, 1: 1.0},
+            known_scheduled_event_timestamps_utc=[
+                datetime(2026, 2, 2, 14, 5, 0, tzinfo=UTC),
+                datetime(2026, 2, 2, 15, 10, 0, tzinfo=UTC),
+            ],
+            surprise_baseline_intensity=0.1,
+            surprise_deterministic_time_multiplier_by_interval_index={0: 1.0, 1: 2.0, 2: 1.0},
         ),
     )
 
     assert contract.s_h == [1.1, 0.8, 1.4]
-    assert contract.nu_h == [0.8, 1.0, 0.0]
+    assert contract.nu_h == [1.1, 1.2, 0.1]
     assert contract.seasonality_materialization_method == "seasonality.hourly_s_h.materialization.v1"
-    assert contract.news_intensity_materialization_method == "seasonality.hourly_nu_h.materialization.v1"
+    assert contract.news_intensity_materialization_method == "seasonality.hourly_nu_h.materialization.v2"
 
 
 def test_pricing_path_rejects_non_hourly_interval_delta_with_hourly_factor_provider(

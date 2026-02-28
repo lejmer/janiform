@@ -15,10 +15,10 @@ from .seasonality import SeasonalityInputValidationError
 
 HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION: str = "seasonality.hourly_factor.contract.v1"
 HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION: str = "seasonality.hourly_s_h.materialization.v1"
-HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION: str = "seasonality.hourly_nu_h.materialization.v1"
+HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION: str = "seasonality.hourly_nu_h.materialization.v2"
 DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD: str = "explicit_hourly_input.v1"
 DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD: str = (
-    "calendar_closed_window_baseline_with_optional_open_window_overrides.v1"
+    "known_calendar_anchor_plus_surprise_background_controls.v1"
 )
 DEFAULT_SEASONALITY_INTERPOLATION_METHOD: str = "previous_observation_carry_forward.v1"
 DEFAULT_SEASONALITY_AGGREGATION_METHOD: str = "mean_of_observations.v1"
@@ -67,8 +67,9 @@ class HourlyNewsIntensityProviderExplicitSource:
 
 @dataclass(frozen=True, slots=True)
 class HourlyNewsIntensityProviderMaterializedSource:
-    closed_window_baseline_intensity: float
-    open_window_override_by_interval_index: Mapping[int, float] | None = None
+    known_scheduled_event_timestamps_utc: Sequence[datetime]
+    surprise_baseline_intensity: float
+    surprise_deterministic_time_multiplier_by_interval_index: Mapping[int, float] | None = None
 
 
 type HourlySeasonalityProviderSource = (
@@ -320,18 +321,24 @@ HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA: HourlyNewsIntensityMaterial
             "interval_end_utc_nanos",
             "interval_start_exchange_local",
             "interval_end_exchange_local",
+            "known_component_nu_h",
+            "surprise_component_nu_h",
             "nu_h",
             "interval_count",
-            "fully_closed_interval_count",
-            "fully_open_interval_count",
-            "mixed_state_interval_count",
-            "open_window_override_interval_count",
+            "known_component_non_zero_interval_count",
+            "surprise_component_non_zero_interval_count",
+            "combined_component_non_zero_interval_count",
+            "known_scheduled_arrival_count",
+            "surprise_multiplier_override_interval_count",
             "skipped_local_hour_interval_count",
             "repeated_local_hour_interval_count",
             "materialization_method",
-            "calendar_market_state_dependency",
-            "open_window_override_policy",
-            "closed_window_baseline_intensity",
+            "component_aggregation_policy",
+            "arrival_intensity_policy",
+            "known_news_calendar_anchor_policy",
+            "surprise_news_intensity_control_policy",
+            "known_news_calendar_anchor_count",
+            "surprise_baseline_intensity",
             "interval_boundary_policy",
             "interval_alignment_policy",
             "timezone_transition_policy",
@@ -342,9 +349,12 @@ HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA: HourlyNewsIntensityMaterial
         interval_alignment_policy="utc_hour_aligned.v1",
         required_metadata_fields=(
             "materialization_method",
-            "calendar_market_state_dependency",
-            "open_window_override_policy",
-            "closed_window_baseline_intensity",
+            "component_aggregation_policy",
+            "arrival_intensity_policy",
+            "known_news_calendar_anchor_policy",
+            "surprise_news_intensity_control_policy",
+            "known_news_calendar_anchor_count",
+            "surprise_baseline_intensity",
             "interval_boundary_policy",
             "interval_alignment_policy",
             "timezone_transition_policy",
@@ -482,10 +492,11 @@ class HourlySeasonalityMaterialization:
 
 @dataclass(frozen=True, slots=True)
 class HourlyNewsIntensityMaterializationSettings:
-    """Configuration for deterministic calendar-state materialization from `nu_news(t)` to hourly `nu_h`."""
+    """Configuration for deterministic known/surprise materialization from `nu_news(t)` to hourly `nu_h`."""
 
-    closed_window_baseline_intensity: float
-    open_window_override_by_interval_index: Mapping[int, float] | None = None
+    known_scheduled_event_timestamps_utc: Sequence[datetime]
+    surprise_baseline_intensity: float
+    surprise_deterministic_time_multiplier_by_interval_index: Mapping[int, float] | None = None
 
 
 class HourlyNewsIntensityMaterialization:
@@ -535,6 +546,14 @@ class HourlyNewsIntensityMaterialization:
         return cast(list[str], self._native_result.interval_end_exchange_local)
 
     @property
+    def known_component_nu_h(self) -> list[float]:
+        return cast(list[float], self._native_result.known_component_nu_h)
+
+    @property
+    def surprise_component_nu_h(self) -> list[float]:
+        return cast(list[float], self._native_result.surprise_component_nu_h)
+
+    @property
     def nu_h(self) -> list[float]:
         return cast(list[float], self._native_result.nu_h)
 
@@ -543,20 +562,24 @@ class HourlyNewsIntensityMaterialization:
         return cast(int, self._native_result.interval_count)
 
     @property
-    def fully_closed_interval_count(self) -> int:
-        return cast(int, self._native_result.fully_closed_interval_count)
+    def known_component_non_zero_interval_count(self) -> int:
+        return cast(int, self._native_result.known_component_non_zero_interval_count)
 
     @property
-    def fully_open_interval_count(self) -> int:
-        return cast(int, self._native_result.fully_open_interval_count)
+    def surprise_component_non_zero_interval_count(self) -> int:
+        return cast(int, self._native_result.surprise_component_non_zero_interval_count)
 
     @property
-    def mixed_state_interval_count(self) -> int:
-        return cast(int, self._native_result.mixed_state_interval_count)
+    def combined_component_non_zero_interval_count(self) -> int:
+        return cast(int, self._native_result.combined_component_non_zero_interval_count)
 
     @property
-    def open_window_override_interval_count(self) -> int:
-        return cast(int, self._native_result.open_window_override_interval_count)
+    def known_scheduled_arrival_count(self) -> int:
+        return cast(int, self._native_result.known_scheduled_arrival_count)
+
+    @property
+    def surprise_multiplier_override_interval_count(self) -> int:
+        return cast(int, self._native_result.surprise_multiplier_override_interval_count)
 
     @property
     def skipped_local_hour_interval_count(self) -> int:
@@ -571,16 +594,28 @@ class HourlyNewsIntensityMaterialization:
         return cast(str, self._native_result.materialization_method)
 
     @property
-    def calendar_market_state_dependency(self) -> str:
-        return cast(str, self._native_result.calendar_market_state_dependency)
+    def component_aggregation_policy(self) -> str:
+        return cast(str, self._native_result.component_aggregation_policy)
 
     @property
-    def open_window_override_policy(self) -> str:
-        return cast(str, self._native_result.open_window_override_policy)
+    def arrival_intensity_policy(self) -> str:
+        return cast(str, self._native_result.arrival_intensity_policy)
 
     @property
-    def closed_window_baseline_intensity(self) -> float:
-        return cast(float, self._native_result.closed_window_baseline_intensity)
+    def known_news_calendar_anchor_policy(self) -> str:
+        return cast(str, self._native_result.known_news_calendar_anchor_policy)
+
+    @property
+    def surprise_news_intensity_control_policy(self) -> str:
+        return cast(str, self._native_result.surprise_news_intensity_control_policy)
+
+    @property
+    def known_news_calendar_anchor_count(self) -> int:
+        return cast(int, self._native_result.known_news_calendar_anchor_count)
+
+    @property
+    def surprise_baseline_intensity(self) -> float:
+        return cast(float, self._native_result.surprise_baseline_intensity)
 
     @property
     def interval_boundary_policy(self) -> str:
@@ -751,15 +786,29 @@ def _serialize_news_intensity_provider_source(
                 "materialization_method": news_intensity_source.materialization_method,
             }
         case HourlyNewsIntensityProviderMaterializedSource():
-            open_window_override_by_interval_index = (
-                dict(news_intensity_source.open_window_override_by_interval_index)
-                if news_intensity_source.open_window_override_by_interval_index is not None
+            normalized_known_scheduled_event_timestamps_utc = [
+                _normalize_utc_timestamp(
+                    known_scheduled_event_timestamp_utc,
+                    field_name="known_scheduled_event_timestamps_utc",
+                )
+                for known_scheduled_event_timestamp_utc in news_intensity_source.known_scheduled_event_timestamps_utc
+            ]
+            surprise_deterministic_time_multiplier_by_interval_index = (
+                dict(news_intensity_source.surprise_deterministic_time_multiplier_by_interval_index)
+                if news_intensity_source.surprise_deterministic_time_multiplier_by_interval_index is not None
                 else {}
             )
+
             return {
                 "source_kind": 'materialized',
-                "closed_window_baseline_intensity": news_intensity_source.closed_window_baseline_intensity,
-                "open_window_override_by_interval_index": open_window_override_by_interval_index,
+                "known_scheduled_event_timestamps_utc": [
+                    known_scheduled_event_timestamp_utc.isoformat()
+                    for known_scheduled_event_timestamp_utc in normalized_known_scheduled_event_timestamps_utc
+                ],
+                "surprise_baseline_intensity": news_intensity_source.surprise_baseline_intensity,
+                "surprise_deterministic_time_multiplier_by_interval_index": (
+                    surprise_deterministic_time_multiplier_by_interval_index
+                ),
             }
         case _:
             raise SeasonalityInputValidationError(
@@ -827,19 +876,28 @@ def materialize_hourly_news_intensity_factors(
     settings: HourlyNewsIntensityMaterializationSettings,
 ) -> HourlyNewsIntensityMaterialization:
     """
-    Materialize calendar-driven `nu_news(t)` into hourly `nu_h` aligned to canonical UTC hour buckets.
+    Materialize known/surprise `nu_news(t)` into hourly `nu_h` aligned to canonical UTC hour buckets.
 
-    Closed windows use the configured baseline intensity and optional open-window overrides can be injected
-    by interval index for scenario analysis.
+    Known scheduled-news timestamps are counted per interval and added to the surprise background
+    component controlled by baseline and optional interval multipliers.
     UTC bucket boundaries remain authoritative through timezone offset transitions.
     """
 
     native: ModuleType = native_module()
+
     normalized_range_start_utc = _normalize_utc_timestamp(range_start_utc, field_name="range_start_utc")
     normalized_range_end_utc = _normalize_utc_timestamp(range_end_utc, field_name="range_end_utc")
-    open_window_override_by_interval_index: dict[int, float] = (
-        dict(settings.open_window_override_by_interval_index)
-        if settings.open_window_override_by_interval_index is not None
+    normalized_known_scheduled_event_timestamps_utc = [
+        _normalize_utc_timestamp(
+            known_scheduled_event_timestamp_utc,
+            field_name="known_scheduled_event_timestamps_utc",
+        )
+        for known_scheduled_event_timestamp_utc in settings.known_scheduled_event_timestamps_utc
+    ]
+
+    surprise_deterministic_time_multiplier_by_interval_index: dict[int, float] = (
+        dict(settings.surprise_deterministic_time_multiplier_by_interval_index)
+        if settings.surprise_deterministic_time_multiplier_by_interval_index is not None
         else {}
     )
 
@@ -849,8 +907,14 @@ def materialize_hourly_news_intensity_factors(
             exchange_code,
             normalized_range_start_utc.isoformat(),
             normalized_range_end_utc.isoformat(),
-            settings.closed_window_baseline_intensity,
-            open_window_override_by_interval_index=open_window_override_by_interval_index,
+            settings.surprise_baseline_intensity,
+            known_scheduled_event_timestamps_utc=[
+                known_scheduled_event_timestamp_utc.isoformat()
+                for known_scheduled_event_timestamp_utc in normalized_known_scheduled_event_timestamps_utc
+            ],
+            surprise_deterministic_time_multiplier_by_interval_index=(
+                surprise_deterministic_time_multiplier_by_interval_index
+            ),
         )
     except native.SeasonalityInputValidationError as e:
         raise SeasonalityInputValidationError(str(e)) from e

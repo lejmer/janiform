@@ -256,8 +256,9 @@ pub enum HourlyNewsIntensitySourceFixture {
         materialization_method: String,
     },
     Materialized {
-        closed_window_baseline_intensity: f64,
-        open_window_override_by_interval_index: BTreeMap<String, f64>,
+        known_scheduled_event_timestamps_utc: Vec<String>,
+        surprise_baseline_intensity: f64,
+        surprise_deterministic_time_multiplier_by_interval_index: BTreeMap<String, f64>,
     },
 }
 
@@ -2414,25 +2415,44 @@ fn validate_hourly_canonical_output_case(
             )?;
         }
         HourlyNewsIntensitySourceFixture::Materialized {
-            closed_window_baseline_intensity,
-            open_window_override_by_interval_index,
+            known_scheduled_event_timestamps_utc,
+            surprise_baseline_intensity,
+            surprise_deterministic_time_multiplier_by_interval_index,
         } => {
             validate_finite_non_negative(
-                *closed_window_baseline_intensity,
-                "canonical_output_cases.news_intensity_source.closed_window_baseline_intensity",
+                *surprise_baseline_intensity,
+                "canonical_output_cases.news_intensity_source.surprise_baseline_intensity",
             )?;
 
-            for raw_interval_index in open_window_override_by_interval_index.keys() {
+            for known_timestamp_utc in known_scheduled_event_timestamps_utc {
+                require_non_empty(
+                    known_timestamp_utc,
+                    "canonical_output_cases.news_intensity_source.known_scheduled_event_timestamps_utc",
+                )?;
+            }
+
+            for raw_interval_index in
+                surprise_deterministic_time_multiplier_by_interval_index.keys()
+            {
                 require_non_empty(
                     raw_interval_index,
-                    "canonical_output_cases.news_intensity_source.open_window_override_by_interval_index",
+                    "canonical_output_cases.news_intensity_source.surprise_deterministic_time_multiplier_by_interval_index",
                 )?;
 
                 if raw_interval_index.parse::<u64>().is_err() {
                     return Err(format!(
-                        "open_window_override_by_interval_index key `{raw_interval_index}` must parse as u64"
+                        "surprise_deterministic_time_multiplier_by_interval_index key `{raw_interval_index}` must parse as u64"
                     ));
                 }
+            }
+
+            for surprise_multiplier in
+                surprise_deterministic_time_multiplier_by_interval_index.values()
+            {
+                validate_finite_non_negative(
+                    *surprise_multiplier,
+                    "canonical_output_cases.news_intensity_source.surprise_deterministic_time_multiplier_by_interval_index",
+                )?;
             }
         }
     }

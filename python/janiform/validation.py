@@ -482,35 +482,79 @@ def _validate_news_intensity_source(
                 ),
             }
         case "materialized":
-            raw_override_mapping: Mapping[str, object] = _require_mapping(
+            raw_multiplier_mapping: Mapping[str, object] = _require_mapping(
                 news_intensity_source,
-                "open_window_override_by_interval_index",
+                "surprise_deterministic_time_multiplier_by_interval_index",
                 context,
             )
 
-            normalized_overrides: dict[str, float] = {}
-            for raw_interval_index, raw_override_value in raw_override_mapping.items():
+            normalized_multipliers: dict[str, float] = {}
+            for raw_interval_index, raw_multiplier_value in raw_multiplier_mapping.items():
                 if not isinstance(raw_interval_index, str) or not raw_interval_index.isdigit():
                     raise SeasonalityInputValidationError(
-                        f"{context}.open_window_override_by_interval_index keys must be numeric strings",
+                        f"{context}.surprise_deterministic_time_multiplier_by_interval_index keys must be numeric strings",
                     )
-                normalized_overrides[raw_interval_index] = _validate_finite_float(
-                    raw_override_value,
-                    f"{context}.open_window_override_by_interval_index['{raw_interval_index}']",
+                normalized_multipliers[raw_interval_index] = _validate_finite_float(
+                    raw_multiplier_value,
+                    f"{context}.surprise_deterministic_time_multiplier_by_interval_index['{raw_interval_index}']",
                 )
+
+            known_scheduled_event_timestamps_utc: list[str] = _require_string_list(
+                news_intensity_source,
+                "known_scheduled_event_timestamps_utc",
+                context,
+                require_non_empty=False,
+            )
 
             return {
                 "source_kind": source_kind,
-                "closed_window_baseline_intensity": _validate_finite_float(
-                    _require_field(news_intensity_source, "closed_window_baseline_intensity", context),
-                    f"{context}.closed_window_baseline_intensity",
+                "known_scheduled_event_timestamps_utc": known_scheduled_event_timestamps_utc,
+                "surprise_baseline_intensity": _validate_finite_float(
+                    _require_field(news_intensity_source, "surprise_baseline_intensity", context),
+                    f"{context}.surprise_baseline_intensity",
                 ),
-                "open_window_override_by_interval_index": normalized_overrides,
+                "surprise_deterministic_time_multiplier_by_interval_index": normalized_multipliers,
             }
         case _:
             raise SeasonalityInputValidationError(
                 f"{context}.source_kind must be either 'explicit' or 'materialized'",
             )
+
+
+def _require_string_list(
+    parent: Mapping[str, object],
+    field_name: str,
+    context: str,
+    *,
+    require_non_empty: bool,
+) -> list[str]:
+    field_value: object = _require_field(parent, field_name, context)
+    if not isinstance(field_value, Sequence) or isinstance(field_value, str | bytes):
+        raise SeasonalityInputValidationError(
+            f"{context}.{field_name} must be a sequence of strings",
+        )
+
+    normalized_values: list[str] = []
+    for value_index, raw_value in enumerate(field_value):
+        if not isinstance(raw_value, str):
+            raise SeasonalityInputValidationError(
+                f"{context}.{field_name}[{value_index}] must be a string",
+            )
+
+        normalized_value: str = raw_value.strip()
+        if not normalized_value:
+            raise SeasonalityInputValidationError(
+                f"{context}.{field_name}[{value_index}] must be non-empty",
+            )
+
+        normalized_values.append(normalized_value)
+
+    if require_non_empty and not normalized_values:
+        raise SeasonalityInputValidationError(
+            f"{context}.{field_name} must include at least one value",
+        )
+
+    return normalized_values
 
 
 def _validate_harness_report_payload(raw_payload: object) -> DeterministicRegressionHarnessReport:
@@ -1549,33 +1593,7 @@ def _require_non_empty_string_list(
     field_name: str,
     context: str,
 ) -> list[str]:
-    field_value: object = _require_field(parent, field_name, context)
-    if not isinstance(field_value, Sequence) or isinstance(field_value, str | bytes):
-        raise SeasonalityInputValidationError(
-            f"{context}.{field_name} must be a sequence of strings",
-        )
-
-    normalized_values: list[str] = []
-    for value_index, raw_value in enumerate(field_value):
-        if not isinstance(raw_value, str):
-            raise SeasonalityInputValidationError(
-                f"{context}.{field_name}[{value_index}] must be a string",
-            )
-
-        normalized_value: str = raw_value.strip()
-        if not normalized_value:
-            raise SeasonalityInputValidationError(
-                f"{context}.{field_name}[{value_index}] must be non-empty",
-            )
-
-        normalized_values.append(normalized_value)
-
-    if not normalized_values:
-        raise SeasonalityInputValidationError(
-            f"{context}.{field_name} must include at least one value",
-        )
-
-    return normalized_values
+    return _require_string_list(parent, field_name, context, require_non_empty=True)
 
 
 def _require_float_list(parent: Mapping[str, object], field_name: str, context: str) -> list[float]:

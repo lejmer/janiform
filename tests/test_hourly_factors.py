@@ -328,19 +328,26 @@ def test_materialize_hourly_news_intensity_applies_closed_baseline_and_open_over
         range_start_utc=datetime(2026, 2, 2, 14, 0, 0, tzinfo=UTC),
         range_end_utc=datetime(2026, 2, 2, 17, 0, 0, tzinfo=UTC),
         settings=HourlyNewsIntensityMaterializationSettings(
-            closed_window_baseline_intensity=0.6,
-            open_window_override_by_interval_index={0: 1.0, 1: 1.0},
+            known_scheduled_event_timestamps_utc=[
+                datetime(2026, 2, 2, 14, 5, 0, tzinfo=UTC),
+                datetime(2026, 2, 2, 15, 10, 0, tzinfo=UTC),
+            ],
+            surprise_baseline_intensity=0.0,
+            surprise_deterministic_time_multiplier_by_interval_index={},
         ),
     )
 
     assert materialization.schema_version == HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION
-    assert materialization.nu_h == [0.8, 1.0, 0.0]
+    assert materialization.known_component_nu_h == [1.0, 1.0, 0.0]
+    assert materialization.surprise_component_nu_h == [0.0, 0.0, 0.0]
+    assert materialization.nu_h == [1.0, 1.0, 0.0]
     assert materialization.materialization_method == DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD
     assert materialization.interval_count == 3
-    assert materialization.fully_closed_interval_count == 0
-    assert materialization.fully_open_interval_count == 2
-    assert materialization.mixed_state_interval_count == 1
-    assert materialization.open_window_override_interval_count == 2
+    assert materialization.known_component_non_zero_interval_count == 2
+    assert materialization.surprise_component_non_zero_interval_count == 0
+    assert materialization.combined_component_non_zero_interval_count == 2
+    assert materialization.known_scheduled_arrival_count == 2
+    assert materialization.surprise_multiplier_override_interval_count == 0
     assert materialization.skipped_local_hour_interval_count == 0
     assert materialization.repeated_local_hour_interval_count == 0
     assert (
@@ -359,33 +366,25 @@ def test_materialize_hourly_news_intensity_applies_closed_baseline_and_open_over
 def test_materialize_hourly_news_intensity_closed_logic_dominates_weekend_and_overnight(
     calendar_registry: CalendarRegistry,
 ) -> None:
-    weekend_materialization = materialize_hourly_news_intensity_factors(
+    materialization = materialize_hourly_news_intensity_factors(
         calendar_registry=calendar_registry,
         exchange_code="XNYS",
         range_start_utc=datetime(2026, 2, 7, 0, 0, 0, tzinfo=UTC),
-        range_end_utc=datetime(2026, 2, 7, 6, 0, 0, tzinfo=UTC),
+        range_end_utc=datetime(2026, 2, 7, 3, 0, 0, tzinfo=UTC),
         settings=HourlyNewsIntensityMaterializationSettings(
-            closed_window_baseline_intensity=0.7,
-            open_window_override_by_interval_index={0: 2.5, 1: 2.5},
-        ),
-    )
-    overnight_materialization = materialize_hourly_news_intensity_factors(
-        calendar_registry=calendar_registry,
-        exchange_code="XNYS",
-        range_start_utc=datetime(2026, 2, 3, 1, 0, 0, tzinfo=UTC),
-        range_end_utc=datetime(2026, 2, 3, 5, 0, 0, tzinfo=UTC),
-        settings=HourlyNewsIntensityMaterializationSettings(
-            closed_window_baseline_intensity=0.7,
-            open_window_override_by_interval_index={0: 2.5, 1: 2.5},
+            known_scheduled_event_timestamps_utc=[],
+            surprise_baseline_intensity=0.4,
+            surprise_deterministic_time_multiplier_by_interval_index={0: 1.0, 1: 0.5, 2: 2.0},
         ),
     )
 
-    assert weekend_materialization.nu_h == [0.7, 0.7, 0.7, 0.7, 0.7, 0.7]
-    assert weekend_materialization.fully_closed_interval_count == 6
-    assert weekend_materialization.open_window_override_interval_count == 0
-    assert overnight_materialization.nu_h == [0.7, 0.7, 0.7, 0.7]
-    assert overnight_materialization.fully_closed_interval_count == 4
-    assert overnight_materialization.open_window_override_interval_count == 0
+    assert materialization.known_component_nu_h == [0.0, 0.0, 0.0]
+    assert materialization.surprise_component_nu_h == [0.4, 0.2, 0.8]
+    assert materialization.nu_h == [0.4, 0.2, 0.8]
+    assert materialization.known_component_non_zero_interval_count == 0
+    assert materialization.surprise_component_non_zero_interval_count == 3
+    assert materialization.combined_component_non_zero_interval_count == 3
+    assert materialization.surprise_multiplier_override_interval_count == 3
 
 
 def test_materialize_hourly_news_intensity_aligns_one_to_one_with_seasonality_grid(
@@ -410,8 +409,9 @@ def test_materialize_hourly_news_intensity_aligns_one_to_one_with_seasonality_gr
         range_start_utc=datetime(2026, 2, 2, 14, 0, 0, tzinfo=UTC),
         range_end_utc=datetime(2026, 2, 2, 18, 0, 0, tzinfo=UTC),
         settings=HourlyNewsIntensityMaterializationSettings(
-            closed_window_baseline_intensity=0.5,
-            open_window_override_by_interval_index={1: 0.25},
+            known_scheduled_event_timestamps_utc=[],
+            surprise_baseline_intensity=0.5,
+            surprise_deterministic_time_multiplier_by_interval_index={1: 0.25},
         ),
     )
 
@@ -440,7 +440,7 @@ def test_materialize_hourly_news_intensity_rejects_out_of_range_override_indices
 ) -> None:
     with pytest.raises(
         SeasonalityInputValidationError,
-        match="open_window_override_by_interval_index contains interval index 2",
+        match="surprise_deterministic_time_multiplier_by_interval_index contains interval index 2",
     ):
         materialize_hourly_news_intensity_factors(
             calendar_registry=calendar_registry,
@@ -448,8 +448,9 @@ def test_materialize_hourly_news_intensity_rejects_out_of_range_override_indices
             range_start_utc=datetime(2026, 2, 2, 14, 0, 0, tzinfo=UTC),
             range_end_utc=datetime(2026, 2, 2, 16, 0, 0, tzinfo=UTC),
             settings=HourlyNewsIntensityMaterializationSettings(
-                closed_window_baseline_intensity=0.5,
-                open_window_override_by_interval_index={2: 1.0},
+                known_scheduled_event_timestamps_utc=[],
+                surprise_baseline_intensity=0.5,
+                surprise_deterministic_time_multiplier_by_interval_index={2: 1.0},
             ),
         )
 

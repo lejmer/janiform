@@ -84,8 +84,9 @@ pub enum HourlyNewsIntensityRegressionSource {
         materialization_method: String,
     },
     Materialized {
-        closed_window_baseline_intensity: f64,
-        open_window_override_by_interval_index: Vec<(u64, f64)>,
+        known_scheduled_event_timestamps_utc_nanos: Vec<i64>,
+        surprise_baseline_intensity: f64,
+        surprise_deterministic_time_multiplier_by_interval_index: Vec<(u64, f64)>,
     },
 }
 
@@ -411,11 +412,13 @@ fn resolve_hourly_factor_contract(
             materialization_method,
         },
         HourlyNewsIntensityRegressionSource::Materialized {
-            closed_window_baseline_intensity,
-            open_window_override_by_interval_index,
+            known_scheduled_event_timestamps_utc_nanos,
+            surprise_baseline_intensity,
+            surprise_deterministic_time_multiplier_by_interval_index,
         } => HourlyNewsIntensityFactorSource::Materialized {
-            closed_window_baseline_intensity: *closed_window_baseline_intensity,
-            open_window_override_by_interval_index,
+            known_scheduled_event_timestamps_utc_nanos,
+            surprise_baseline_intensity: *surprise_baseline_intensity,
+            surprise_deterministic_time_multiplier_by_interval_index,
         },
     };
 

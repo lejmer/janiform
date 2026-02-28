@@ -332,14 +332,28 @@ def _parse_news_intensity_provider_source(
                 materialization_method=cast(str, raw_source["materialization_method"]),
             )
         case "materialized":
-            raw_open_window_overrides = cast(dict[str, float], raw_source["open_window_override_by_interval_index"])
-            open_window_override_by_interval_index: dict[int, float] = {
-                int(raw_interval_index): float(raw_override_value)
-                for raw_interval_index, raw_override_value in raw_open_window_overrides.items()
+            known_scheduled_event_timestamps_utc: list[datetime] = [
+                _parse_fixture_timestamp(raw_known_timestamp)
+                for raw_known_timestamp in cast(
+                    list[str],
+                    raw_source["known_scheduled_event_timestamps_utc"],
+                )
+            ]
+            raw_surprise_multipliers = cast(
+                dict[str, float],
+                raw_source["surprise_deterministic_time_multiplier_by_interval_index"],
+            )
+            surprise_deterministic_time_multiplier_by_interval_index: dict[int, float] = {
+                int(raw_interval_index): float(raw_multiplier_value)
+                for raw_interval_index, raw_multiplier_value in raw_surprise_multipliers.items()
             }
+
             return HourlyNewsIntensityProviderMaterializedSource(
-                closed_window_baseline_intensity=float(raw_source["closed_window_baseline_intensity"]),
-                open_window_override_by_interval_index=open_window_override_by_interval_index,
+                known_scheduled_event_timestamps_utc=known_scheduled_event_timestamps_utc,
+                surprise_baseline_intensity=float(raw_source["surprise_baseline_intensity"]),
+                surprise_deterministic_time_multiplier_by_interval_index=(
+                    surprise_deterministic_time_multiplier_by_interval_index
+                ),
             )
         case _:
             raise ValueError(f"unexpected news_intensity source_kind value: {source_kind}")

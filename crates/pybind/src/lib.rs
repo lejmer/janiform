@@ -161,8 +161,9 @@ enum ParsedHourlyProviderNewsIntensitySource {
         materialization_method: String,
     },
     Materialized {
-        closed_window_baseline_intensity: f64,
-        open_window_override_by_interval_index: Vec<(u64, f64)>,
+        known_scheduled_event_timestamps_utc_nanos: Vec<i64>,
+        surprise_baseline_intensity: f64,
+        surprise_deterministic_time_multiplier_by_interval_index: Vec<(u64, f64)>,
     },
 }
 
@@ -1027,6 +1028,16 @@ impl PyHourlyNewsIntensityMaterializationResult {
     }
 
     #[getter]
+    fn known_component_nu_h(&self) -> Vec<f64> {
+        self.output.known_component_nu_h.clone()
+    }
+
+    #[getter]
+    fn surprise_component_nu_h(&self) -> Vec<f64> {
+        self.output.surprise_component_nu_h.clone()
+    }
+
+    #[getter]
     fn nu_h(&self) -> Vec<f64> {
         self.output.nu_h.clone()
     }
@@ -1037,23 +1048,36 @@ impl PyHourlyNewsIntensityMaterializationResult {
     }
 
     #[getter]
-    fn fully_closed_interval_count(&self) -> usize {
-        self.output.diagnostics.fully_closed_interval_count
+    fn known_component_non_zero_interval_count(&self) -> usize {
+        self.output
+            .diagnostics
+            .known_component_non_zero_interval_count
     }
 
     #[getter]
-    fn fully_open_interval_count(&self) -> usize {
-        self.output.diagnostics.fully_open_interval_count
+    fn surprise_component_non_zero_interval_count(&self) -> usize {
+        self.output
+            .diagnostics
+            .surprise_component_non_zero_interval_count
     }
 
     #[getter]
-    fn mixed_state_interval_count(&self) -> usize {
-        self.output.diagnostics.mixed_state_interval_count
+    fn combined_component_non_zero_interval_count(&self) -> usize {
+        self.output
+            .diagnostics
+            .combined_component_non_zero_interval_count
     }
 
     #[getter]
-    fn open_window_override_interval_count(&self) -> usize {
-        self.output.diagnostics.open_window_override_interval_count
+    fn known_scheduled_arrival_count(&self) -> u64 {
+        self.output.diagnostics.known_scheduled_arrival_count
+    }
+
+    #[getter]
+    fn surprise_multiplier_override_interval_count(&self) -> usize {
+        self.output
+            .diagnostics
+            .surprise_multiplier_override_interval_count
     }
 
     #[getter]
@@ -1072,18 +1096,33 @@ impl PyHourlyNewsIntensityMaterializationResult {
     }
 
     #[getter]
-    fn calendar_market_state_dependency(&self) -> &str {
-        self.output.metadata.calendar_market_state_dependency
+    fn component_aggregation_policy(&self) -> &str {
+        self.output.metadata.component_aggregation_policy
     }
 
     #[getter]
-    fn open_window_override_policy(&self) -> &str {
-        self.output.metadata.open_window_override_policy
+    fn arrival_intensity_policy(&self) -> &str {
+        self.output.metadata.arrival_intensity_policy
     }
 
     #[getter]
-    fn closed_window_baseline_intensity(&self) -> f64 {
-        self.output.metadata.closed_window_baseline_intensity
+    fn known_news_calendar_anchor_policy(&self) -> &str {
+        self.output.metadata.known_news_calendar_anchor_policy
+    }
+
+    #[getter]
+    fn surprise_news_intensity_control_policy(&self) -> &str {
+        self.output.metadata.surprise_news_intensity_control_policy
+    }
+
+    #[getter]
+    fn known_news_calendar_anchor_count(&self) -> usize {
+        self.output.metadata.known_news_calendar_anchor_count
+    }
+
+    #[getter]
+    fn surprise_baseline_intensity(&self) -> f64 {
+        self.output.metadata.surprise_baseline_intensity
     }
 
     #[getter]
@@ -1541,40 +1580,75 @@ fn materialize_hourly_seasonality_factors(
 }
 
 #[pyfunction]
-#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, closed_window_baseline_intensity, *, open_window_override_by_interval_index = None))]
+#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, surprise_baseline_intensity, *, known_scheduled_event_timestamps_utc = None, surprise_deterministic_time_multiplier_by_interval_index = None))]
 fn materialize_hourly_news_intensity_factors(
     py: Python<'_>,
     calendar_registry: &PyCalendarRegistry,
     exchange_code: &str,
     range_start_utc: &str,
     range_end_utc: &str,
-    closed_window_baseline_intensity: f64,
-    open_window_override_by_interval_index: Option<&Bound<'_, PyAny>>,
+    surprise_baseline_intensity: f64,
+    known_scheduled_event_timestamps_utc: Option<&Bound<'_, PyAny>>,
+    surprise_deterministic_time_multiplier_by_interval_index: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<PyHourlyNewsIntensityMaterializationResult> {
     let parsed_range_start_utc = parse_timestamp_utc(range_start_utc)?;
     let parsed_range_end_utc = parse_timestamp_utc(range_end_utc)?;
-    let parsed_open_window_override_by_interval_index: Vec<(u64, f64)> = if let Some(
-        raw_open_window_override_by_interval_index,
+    let parsed_known_scheduled_event_timestamps_utc_nanos: Vec<i64> = if let Some(
+        raw_known_scheduled_event_timestamps_utc,
     ) =
-        open_window_override_by_interval_index
+        known_scheduled_event_timestamps_utc
     {
-        if raw_open_window_override_by_interval_index.is_none() {
+        if raw_known_scheduled_event_timestamps_utc.is_none() {
             Vec::new()
         } else {
-            let parsed_mapping: std::collections::BTreeMap<u64, f64> =
-                    raw_open_window_override_by_interval_index
-                        .extract()
-                        .map_err(|_| {
-                            SeasonalityInputValidationError::new_err(
-                                "open_window_override_by_interval_index must be a mapping of integer interval indices to float intensity values",
-                            )
-                        })?;
-
-            parsed_mapping.into_iter().collect()
+            let raw_timestamp_values: Vec<String> = raw_known_scheduled_event_timestamps_utc
+                    .extract()
+                    .map_err(|_| {
+                        SeasonalityInputValidationError::new_err(
+                            "known_scheduled_event_timestamps_utc must be an iterable of RFC3339 timestamps",
+                        )
+                    })?;
+            let mut parsed_timestamps_utc_nanos: Vec<i64> =
+                Vec::with_capacity(raw_timestamp_values.len());
+            for raw_timestamp_value in raw_timestamp_values {
+                let parsed_timestamp_utc = parse_timestamp_utc(&raw_timestamp_value)?;
+                parsed_timestamps_utc_nanos.push(
+                        parsed_timestamp_utc
+                            .timestamp_nanos_opt()
+                            .ok_or_else(|| {
+                                SeasonalityInputValidationError::new_err(format!(
+                                    "known_scheduled_event_timestamps_utc contains an out-of-range timestamp: {raw_timestamp_value}"
+                                ))
+                            })?,
+                    );
+            }
+            parsed_timestamps_utc_nanos
         }
     } else {
         Vec::new()
     };
+
+    let parsed_surprise_deterministic_time_multiplier_by_interval_index: Vec<(u64, f64)> =
+        if let Some(raw_surprise_deterministic_time_multiplier_by_interval_index) =
+            surprise_deterministic_time_multiplier_by_interval_index
+        {
+            if raw_surprise_deterministic_time_multiplier_by_interval_index.is_none() {
+                Vec::new()
+            } else {
+                let parsed_mapping: std::collections::BTreeMap<u64, f64> =
+                    raw_surprise_deterministic_time_multiplier_by_interval_index
+                        .extract()
+                        .map_err(|_| {
+                            SeasonalityInputValidationError::new_err(
+                                "surprise_deterministic_time_multiplier_by_interval_index must be a mapping of integer interval indices to float multiplier values",
+                            )
+                        })?;
+
+                parsed_mapping.into_iter().collect()
+            }
+        } else {
+            Vec::new()
+        };
 
     let output = py
         .allow_threads(|| {
@@ -1583,8 +1657,9 @@ fn materialize_hourly_news_intensity_factors(
                 exchange_code,
                 parsed_range_start_utc,
                 parsed_range_end_utc,
-                closed_window_baseline_intensity,
-                &parsed_open_window_override_by_interval_index,
+                &parsed_known_scheduled_event_timestamps_utc_nanos,
+                surprise_baseline_intensity,
+                &parsed_surprise_deterministic_time_multiplier_by_interval_index,
             )
         })
         .map_err(map_hourly_factor_contract_error)?;
@@ -1667,11 +1742,13 @@ fn provide_hourly_factor_contract(
                     materialization_method,
                 }),
                 Some(ParsedHourlyProviderNewsIntensitySource::Materialized {
-                    closed_window_baseline_intensity,
-                    open_window_override_by_interval_index,
+                    known_scheduled_event_timestamps_utc_nanos,
+                    surprise_baseline_intensity,
+                    surprise_deterministic_time_multiplier_by_interval_index,
                 }) => Some(HourlyNewsIntensityFactorSource::Materialized {
-                    closed_window_baseline_intensity: *closed_window_baseline_intensity,
-                    open_window_override_by_interval_index,
+                    known_scheduled_event_timestamps_utc_nanos,
+                    surprise_baseline_intensity: *surprise_baseline_intensity,
+                    surprise_deterministic_time_multiplier_by_interval_index,
                 }),
                 None => None,
             };
@@ -2222,63 +2299,96 @@ fn parse_hourly_provider_news_intensity_source(
             })
         }
         "materialized" => {
-            let closed_window_baseline_value = source_mapping
-                .contains("closed_window_baseline_intensity")?
-                .then(|| source_mapping.get_item("closed_window_baseline_intensity"))
+            let known_scheduled_event_timestamps_utc_value = source_mapping
+                .contains("known_scheduled_event_timestamps_utc")?
+                .then(|| source_mapping.get_item("known_scheduled_event_timestamps_utc"))
                 .ok_or_else(|| {
                     SeasonalityInputValidationError::new_err(
-                        "news_intensity_source with source_kind='materialized' is missing required field 'closed_window_baseline_intensity'",
+                        "news_intensity_source with source_kind='materialized' is missing required field 'known_scheduled_event_timestamps_utc'",
+                    )
+                })??;
+            let raw_known_scheduled_event_timestamps_utc: Vec<String> =
+                known_scheduled_event_timestamps_utc_value
+                    .extract()
+                    .map_err(|_| {
+                        SeasonalityInputValidationError::new_err(
+                            "news_intensity_source field 'known_scheduled_event_timestamps_utc' must be an iterable of RFC3339 timestamps",
+                        )
+                    })?;
+            let mut known_scheduled_event_timestamps_utc_nanos: Vec<i64> =
+                Vec::with_capacity(raw_known_scheduled_event_timestamps_utc.len());
+            for raw_known_timestamp_utc in raw_known_scheduled_event_timestamps_utc {
+                let parsed_timestamp_utc = parse_timestamp_utc(&raw_known_timestamp_utc)?;
+                known_scheduled_event_timestamps_utc_nanos.push(
+                    parsed_timestamp_utc
+                        .timestamp_nanos_opt()
+                        .ok_or_else(|| {
+                            SeasonalityInputValidationError::new_err(format!(
+                                "news_intensity_source field 'known_scheduled_event_timestamps_utc' contains an out-of-range timestamp: {raw_known_timestamp_utc}"
+                            ))
+                        })?,
+                );
+            }
+
+            let surprise_baseline_value = source_mapping
+                .contains("surprise_baseline_intensity")?
+                .then(|| source_mapping.get_item("surprise_baseline_intensity"))
+                .ok_or_else(|| {
+                    SeasonalityInputValidationError::new_err(
+                        "news_intensity_source with source_kind='materialized' is missing required field 'surprise_baseline_intensity'",
                     )
                 })??;
 
-            let closed_window_baseline_intensity: f64 =
-                closed_window_baseline_value.extract().map_err(|_| {
+            let surprise_baseline_intensity: f64 =
+                surprise_baseline_value.extract().map_err(|_| {
                     SeasonalityInputValidationError::new_err(
-                        "news_intensity_source field 'closed_window_baseline_intensity' must be a float",
+                        "news_intensity_source field 'surprise_baseline_intensity' must be a float",
                     )
                 })?;
 
-            let open_window_override_by_interval_index: Vec<(u64, f64)> = if source_mapping
-                .contains("open_window_override_by_interval_index")?
-            {
-                let open_window_override_value =
-                    source_mapping.get_item("open_window_override_by_interval_index")?;
-
-                if let Ok(parsed_mapping) =
-                    open_window_override_value.extract::<std::collections::BTreeMap<u64, f64>>()
+            let surprise_deterministic_time_multiplier_by_interval_index: Vec<(u64, f64)> =
+                if source_mapping
+                    .contains("surprise_deterministic_time_multiplier_by_interval_index")?
                 {
-                    parsed_mapping.into_iter().collect()
-                } else {
-                    let parsed_string_mapping = open_window_override_value
+                    let surprise_multiplier_value = source_mapping
+                        .get_item("surprise_deterministic_time_multiplier_by_interval_index")?;
+
+                    if let Ok(parsed_mapping) =
+                        surprise_multiplier_value.extract::<std::collections::BTreeMap<u64, f64>>()
+                    {
+                        parsed_mapping.into_iter().collect()
+                    } else {
+                        let parsed_string_mapping = surprise_multiplier_value
                         .extract::<std::collections::BTreeMap<String, f64>>()
                         .map_err(|_| {
                             SeasonalityInputValidationError::new_err(
-                                "news_intensity_source field 'open_window_override_by_interval_index' must be a mapping of integer interval indices to float intensity values",
+                                "news_intensity_source field 'surprise_deterministic_time_multiplier_by_interval_index' must be a mapping of integer interval indices to float multiplier values",
                             )
                         })?;
 
-                    let mut parsed_mapping: Vec<(u64, f64)> = Vec::new();
+                        let mut parsed_mapping: Vec<(u64, f64)> = Vec::new();
 
-                    for (raw_interval_index, intensity_value) in parsed_string_mapping {
-                        let parsed_interval_index =
+                        for (raw_interval_index, multiplier_value) in parsed_string_mapping {
+                            let parsed_interval_index =
                             raw_interval_index.parse::<u64>().map_err(|_| {
                                 SeasonalityInputValidationError::new_err(format!(
-                                    "news_intensity_source field 'open_window_override_by_interval_index' key '{raw_interval_index}' must parse to an integer interval index",
+                                    "news_intensity_source field 'surprise_deterministic_time_multiplier_by_interval_index' key '{raw_interval_index}' must parse to an integer interval index",
                                 ))
                             })?;
-                        parsed_mapping.push((parsed_interval_index, intensity_value));
-                    }
+                            parsed_mapping.push((parsed_interval_index, multiplier_value));
+                        }
 
-                    parsed_mapping.sort_by_key(|(interval_index, _)| *interval_index);
-                    parsed_mapping
-                }
-            } else {
-                Vec::new()
-            };
+                        parsed_mapping.sort_by_key(|(interval_index, _)| *interval_index);
+                        parsed_mapping
+                    }
+                } else {
+                    Vec::new()
+                };
 
             Ok(ParsedHourlyProviderNewsIntensitySource::Materialized {
-                closed_window_baseline_intensity,
-                open_window_override_by_interval_index,
+                known_scheduled_event_timestamps_utc_nanos,
+                surprise_baseline_intensity,
+                surprise_deterministic_time_multiplier_by_interval_index,
             })
         }
         _ => Err(SeasonalityInputValidationError::new_err(
@@ -2728,11 +2838,13 @@ fn convert_regression_news_intensity_source(
             materialization_method,
         },
         ParsedHourlyProviderNewsIntensitySource::Materialized {
-            closed_window_baseline_intensity,
-            open_window_override_by_interval_index,
+            known_scheduled_event_timestamps_utc_nanos,
+            surprise_baseline_intensity,
+            surprise_deterministic_time_multiplier_by_interval_index,
         } => HourlyNewsIntensityRegressionSource::Materialized {
-            closed_window_baseline_intensity,
-            open_window_override_by_interval_index,
+            known_scheduled_event_timestamps_utc_nanos,
+            surprise_baseline_intensity,
+            surprise_deterministic_time_multiplier_by_interval_index,
         },
     }
 }
@@ -3181,34 +3293,51 @@ fn map_hourly_factor_contract_error(error: HourlyFactorContractError) -> PyErr {
         } => SeasonalityInputValidationError::new_err(format!(
             "nu_h must contain finite non-negative values, found {value} at interval index {interval_index}"
         )),
-        HourlyFactorContractError::InvalidClosedWindowBaselineIntensity { value } => {
+        HourlyFactorContractError::InvalidKnownScheduledTimestampUtcNanos { value } => {
             SeasonalityInputValidationError::new_err(format!(
-                "closed_window_baseline_intensity must be a finite non-negative value, found {value}"
+                "known_scheduled_event_timestamps_utc_nanos contains an invalid UTC timestamp nanos value {value}"
             ))
         }
-        HourlyFactorContractError::OpenWindowOverrideIntervalOutOfRange {
+        HourlyFactorContractError::KnownScheduledTimestampsNotStrictlyIncreasing {
+            previous_timestamp_utc_nanos,
+            current_timestamp_utc_nanos,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "known_scheduled_event_timestamps_utc_nanos must be strictly increasing, found previous={previous_timestamp_utc_nanos} and current={current_timestamp_utc_nanos}"
+        )),
+        HourlyFactorContractError::InvalidSurpriseBaselineIntensity { value } => {
+            SeasonalityInputValidationError::new_err(format!(
+                "surprise_baseline_intensity must be a finite non-negative value, found {value}"
+            ))
+        }
+        HourlyFactorContractError::SurpriseDeterministicTimeMultiplierIntervalOutOfRange {
             interval_index,
             interval_count,
         } => SeasonalityInputValidationError::new_err(format!(
-            "open_window_override_by_interval_index contains interval index {interval_index}, expected a value in [0, {interval_count})"
+            "surprise_deterministic_time_multiplier_by_interval_index contains interval index {interval_index}, expected a value in [0, {interval_count})"
         )),
-        HourlyFactorContractError::InvalidOpenWindowOverrideIntensity {
+        HourlyFactorContractError::InvalidSurpriseDeterministicTimeMultiplier {
             interval_index,
             value,
         } => SeasonalityInputValidationError::new_err(format!(
-            "open_window_override_by_interval_index value at interval index {interval_index} must be finite and non-negative, found {value}"
+            "surprise_deterministic_time_multiplier_by_interval_index value at interval index {interval_index} must be finite and non-negative, found {value}"
         )),
-        HourlyFactorContractError::DeterministicTimeMultiplierIntervalOutOfRange {
-            interval_index,
-            interval_count,
-        } => SeasonalityInputValidationError::new_err(format!(
-            "deterministic_time_multiplier_by_interval_index contains interval index {interval_index}, expected a value in [0, {interval_count})"
-        )),
-        HourlyFactorContractError::InvalidDeterministicTimeMultiplier {
+        HourlyFactorContractError::KnownScheduledArrivalCountOverflow {
             interval_index,
             value,
         } => SeasonalityInputValidationError::new_err(format!(
-            "deterministic_time_multiplier_by_interval_index value at interval index {interval_index} must be finite and non-negative, found {value}"
+            "known scheduled arrival count overflowed at interval index {interval_index}, found {value}"
+        )),
+        HourlyFactorContractError::InvalidKnownComponentNewsIntensityFactor {
+            interval_index,
+            value,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "known_component_nu_h must contain finite non-negative values, found {value} at interval index {interval_index}"
+        )),
+        HourlyFactorContractError::InvalidSurpriseComponentNewsIntensityFactor {
+            interval_index,
+            value,
+        } => SeasonalityInputValidationError::new_err(format!(
+            "surprise_component_nu_h must contain finite non-negative values, found {value} at interval index {interval_index}"
         )),
         HourlyFactorContractError::SourceLengthMismatch {
             source_timestamp_count,

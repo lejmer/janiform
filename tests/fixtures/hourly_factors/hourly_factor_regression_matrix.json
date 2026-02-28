@@ -99,10 +99,15 @@
       },
       "news_intensity_source": {
         "source_kind": "materialized",
-        "closed_window_baseline_intensity": 0.6,
-        "open_window_override_by_interval_index": {
+        "known_scheduled_event_timestamps_utc": [
+          "2026-02-02T14:05:00Z",
+          "2026-02-02T15:10:00Z"
+        ],
+        "surprise_baseline_intensity": 0.1,
+        "surprise_deterministic_time_multiplier_by_interval_index": {
           "0": 1.0,
-          "1": 1.0
+          "1": 2.0,
+          "2": 1.0
         }
       },
       "expected_s_h": [
@@ -111,9 +116,9 @@
         1.4
       ],
       "expected_nu_h": [
-        0.8,
-        1.0,
-        0.0
+        1.1,
+        1.2,
+        0.1
       ],
       "expected_skipped_local_hour_interval_count": 0,
       "expected_repeated_local_hour_interval_count": 0,
@@ -122,7 +127,7 @@
         "boundary",
         "canonical"
       ],
-      "description": "Baseline mixed open-hour case with materialized seasonality and open-window overrides."
+      "description": "Baseline mixed-hour case with known calendar anchors and surprise background multipliers."
     },
     {
       "fixture_id": "xnys_weekend_closed_hours_case",
@@ -143,11 +148,9 @@
       },
       "news_intensity_source": {
         "source_kind": "materialized",
-        "closed_window_baseline_intensity": 0.7,
-        "open_window_override_by_interval_index": {
-          "0": 2.5,
-          "1": 2.5
-        }
+        "known_scheduled_event_timestamps_utc": [],
+        "surprise_baseline_intensity": 0.7,
+        "surprise_deterministic_time_multiplier_by_interval_index": {}
       },
       "expected_s_h": [
         1.0,
@@ -171,7 +174,7 @@
         "weekend",
         "canonical"
       ],
-      "description": "Weekend closure case where overrides are configured but fully closed intervals dominate nu_h."
+      "description": "Weekend closure case where surprise baseline intensity is stable across hourly intervals."
     },
     {
       "fixture_id": "xnys_holiday_closed_hours_case",
@@ -189,12 +192,9 @@
       },
       "news_intensity_source": {
         "source_kind": "materialized",
-        "closed_window_baseline_intensity": 0.4,
-        "open_window_override_by_interval_index": {
-          "0": 1.5,
-          "1": 1.5,
-          "2": 1.5
-        }
+        "known_scheduled_event_timestamps_utc": [],
+        "surprise_baseline_intensity": 0.4,
+        "surprise_deterministic_time_multiplier_by_interval_index": {}
       },
       "expected_s_h": [
         0.9,
@@ -212,7 +212,7 @@
         "holiday",
         "canonical"
       ],
-      "description": "Holiday closure case verifying full-day holiday precedence in hourly news intensity materialization."
+      "description": "Holiday closure case verifying deterministic surprise background intensity materialization."
     },
     {
       "fixture_id": "xnys_spring_forward_transition_case",
@@ -238,8 +238,9 @@
       },
       "news_intensity_source": {
         "source_kind": "materialized",
-        "closed_window_baseline_intensity": 0.5,
-        "open_window_override_by_interval_index": {}
+        "known_scheduled_event_timestamps_utc": [],
+        "surprise_baseline_intensity": 0.5,
+        "surprise_deterministic_time_multiplier_by_interval_index": {}
       },
       "expected_s_h": [
         1.0,
@@ -285,8 +286,9 @@
       },
       "news_intensity_source": {
         "source_kind": "materialized",
-        "closed_window_baseline_intensity": 0.5,
-        "open_window_override_by_interval_index": {}
+        "known_scheduled_event_timestamps_utc": [],
+        "surprise_baseline_intensity": 0.5,
+        "surprise_deterministic_time_multiplier_by_interval_index": {}
       },
       "expected_s_h": [
         1.5,

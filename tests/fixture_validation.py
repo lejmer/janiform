@@ -2088,22 +2088,38 @@ def _validate_hourly_news_intensity_source(raw_source: JsonObject, context: str)
             _require_float_list(raw_source, "hourly_factors", context)
             _require_non_empty_string(raw_source, "materialization_method", context)
         case "materialized":
-            _require_number(raw_source, "closed_window_baseline_intensity", context)
-
-            overrides: JsonObject = _require_json_object_field(
+            known_scheduled_event_timestamps_utc: JsonArray = _require_json_array_field(
                 raw_source,
-                "open_window_override_by_interval_index",
+                "known_scheduled_event_timestamps_utc",
                 context,
             )
+            for raw_known_timestamp in known_scheduled_event_timestamps_utc:
+                if not isinstance(raw_known_timestamp, str) or not raw_known_timestamp.strip():
+                    raise ValueError(
+                        f"{context}.known_scheduled_event_timestamps_utc values must be non-empty strings",
+                    )
 
-            for raw_interval_index, raw_override in overrides.items():
+            _require_number(raw_source, "surprise_baseline_intensity", context)
+
+            multipliers: JsonObject = _require_json_object_field(
+                raw_source,
+                "surprise_deterministic_time_multiplier_by_interval_index",
+                context,
+            )
+            for raw_interval_index, raw_multiplier in multipliers.items():
                 if not isinstance(raw_interval_index, str) or not raw_interval_index.strip():
-                    raise ValueError(f"{context}.open_window_override_by_interval_index keys must be non-empty strings")
+                    raise ValueError(
+                        f"{context}.surprise_deterministic_time_multiplier_by_interval_index keys must be non-empty strings"
+                    )
                 if not raw_interval_index.isdigit():
                     raise ValueError(
-                        f"{context}.open_window_override_by_interval_index key '{raw_interval_index}' must be numeric",
+                        f"{context}.surprise_deterministic_time_multiplier_by_interval_index key '{raw_interval_index}' must be numeric",
                     )
-                _require_float_like(raw_override, f"{context}.open_window_override_by_interval_index")
+
+                _require_float_like(
+                    raw_multiplier,
+                    f"{context}.surprise_deterministic_time_multiplier_by_interval_index",
+                )
         case _:
             raise ValueError(f"{context} contains unsupported source_kind value: {source_kind}")
 

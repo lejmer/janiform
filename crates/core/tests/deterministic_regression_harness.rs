@@ -393,29 +393,37 @@ fn parse_hourly_news_intensity_source(
             materialization_method: materialization_method.clone(),
         },
         HourlyNewsIntensitySourceFixture::Materialized {
-            closed_window_baseline_intensity,
-            open_window_override_by_interval_index,
+            known_scheduled_event_timestamps_utc,
+            surprise_baseline_intensity,
+            surprise_deterministic_time_multiplier_by_interval_index,
         } => {
-            let mut parsed_open_window_override_by_interval_index: Vec<(u64, f64)> =
-                open_window_override_by_interval_index
+            let known_scheduled_event_timestamps_utc_nanos: Vec<i64> =
+                known_scheduled_event_timestamps_utc
                     .iter()
-                    .map(|(interval_index, intensity_value)| {
+                    .map(|known_timestamp| parse_utc_timestamp_to_nanos(known_timestamp))
+                    .collect();
+
+            let mut parsed_surprise_deterministic_time_multiplier_by_interval_index: Vec<(u64, f64)> =
+                surprise_deterministic_time_multiplier_by_interval_index
+                    .iter()
+                    .map(|(interval_index, multiplier_value)| {
                         let parsed_interval_index = interval_index.parse::<u64>().unwrap_or_else(|source| {
                             panic!(
-                                "open_window_override_by_interval_index key `{interval_index}` should parse as u64: {source}"
+                                "surprise_deterministic_time_multiplier_by_interval_index key `{interval_index}` should parse as u64: {source}"
                             )
                         });
-                        (parsed_interval_index, *intensity_value)
+                        (parsed_interval_index, *multiplier_value)
                     })
                     .collect();
 
-            parsed_open_window_override_by_interval_index
+            parsed_surprise_deterministic_time_multiplier_by_interval_index
                 .sort_by_key(|(interval_index, _)| *interval_index);
 
             HourlyNewsIntensityRegressionSource::Materialized {
-                closed_window_baseline_intensity: *closed_window_baseline_intensity,
-                open_window_override_by_interval_index:
-                    parsed_open_window_override_by_interval_index,
+                known_scheduled_event_timestamps_utc_nanos,
+                surprise_baseline_intensity: *surprise_baseline_intensity,
+                surprise_deterministic_time_multiplier_by_interval_index:
+                    parsed_surprise_deterministic_time_multiplier_by_interval_index,
             }
         }
     }
