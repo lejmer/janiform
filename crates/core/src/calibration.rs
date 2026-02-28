@@ -1,4 +1,4 @@
-//! Calibration-side Hawkes entrypoints through shared provider and transition APIs.
+//! Calibration-stage orchestration entrypoints and shared adapters.
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -20,6 +20,8 @@ use crate::hourly_factor_provider::{
     HourlyFactorProviderError, HourlyFactorProviderRequest, provide_hourly_factor_contract,
 };
 use crate::hourly_factors::HourlyFactorContractOutput;
+use crate::news::NewsProcessConfiguration;
+use crate::nig::NigSharedPlusShiftConfiguration;
 use crate::pricing::{
     VanillaOptionPricingCalibrationHooks, VanillaOptionPricingCalibrationHooksError,
 };
@@ -198,6 +200,14 @@ pub const CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION: &str =
     "calibration.orchestration.stage_output.hawkes.v1";
 pub const CALIBRATION_HAWKES_STAGE_HANDOFF_POLICY: &str =
     "explicit_run_spec_handoffs_mode_aware_transport.v1";
+pub const CALIBRATION_RETURN_COMPONENTS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION: &str =
+    "calibration.orchestration.stage_execution.return_components.report.v1";
+pub const CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION: &str =
+    "calibration.orchestration.stage_output.return_components.v1";
+pub const CALIBRATION_RETURN_COMPONENTS_STAGE_HANDOFF_POLICY: &str =
+    "explicit_run_spec_handoffs_mode_aware_transport.v1";
+pub const CALIBRATION_RETURN_COMPONENTS_STAGE_OBJECTIVE_WEIGHTING_POLICY: &str =
+    "weighted_sum_of_configured_objective_terms.v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -2692,6 +2702,746 @@ fn build_hawkes_stage_failure_report(
     }
 }
 
+/// One weighted objective term used by return-components-stage candidate evaluation.
+pub type ReturnComponentsStageObjectiveTermInput = HawkesStageObjectiveTermInput;
+
+/// One weighted objective-term diagnostic emitted by return-components-stage evaluation.
+pub type ReturnComponentsStageObjectiveTermDiagnostic = HawkesStageObjectiveTermDiagnostic;
+
+/// Candidate parameterization and objective inputs for return-components-stage fitting.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReturnComponentsStageCandidateInput {
+    pub candidate_id: String,
+    pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+    pub news_process_configuration: NewsProcessConfiguration,
+    pub objective_terms: Vec<ReturnComponentsStageObjectiveTermInput>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ReturnComponentsStageCandidateInputError {
+    MissingCandidateId,
+    MissingObjectiveTerms,
+    InvalidObjectiveTerm {
+        term_id: String,
+        source: HawkesStageObjectiveTermInputError,
+    },
+    InvalidWeightedObjectiveValue {
+        value: f64,
+    },
+}
+
+impl Display for ReturnComponentsStageCandidateInputError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingCandidateId => write!(formatter, "candidate_id must be non-empty"),
+            Self::MissingObjectiveTerms => {
+                write!(
+                    formatter,
+                    "candidate objective_terms must include at least one weighted term"
+                )
+            }
+            Self::InvalidObjectiveTerm { term_id, source } => {
+                write!(formatter, "objective term `{term_id}` is invalid: {source}")
+            }
+            Self::InvalidWeightedObjectiveValue { value } => write!(
+                formatter,
+                "weighted objective sum must be finite, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for ReturnComponentsStageCandidateInputError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidObjectiveTerm { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+impl ReturnComponentsStageCandidateInput {
+    fn validate(&self) -> Result<(), ReturnComponentsStageCandidateInputError> {
+        if self.candidate_id.trim().is_empty() {
+            return Err(ReturnComponentsStageCandidateInputError::MissingCandidateId);
+        }
+        if self.objective_terms.is_empty() {
+            return Err(ReturnComponentsStageCandidateInputError::MissingObjectiveTerms);
+        }
+
+        for objective_term in &self.objective_terms {
+            objective_term.validate().map_err(|source| {
+                ReturnComponentsStageCandidateInputError::InvalidObjectiveTerm {
+                    term_id: objective_term.term_id.clone(),
+                    source,
+                }
+            })?;
+        }
+
+        Ok(())
+    }
+}
+
+/// Upstream activity-side handoff input resolved for return-components-stage execution.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ReturnComponentsStageActivityInput {
+    InMemoryOutput { payload: HawkesStageFittedPayload },
+    PersistedArtifactReference { artifact_reference: String },
+}
+
+impl ReturnComponentsStageActivityInput {
+    fn transport(&self) -> CalibrationStageHandoffTransport {
+        match self {
+            Self::InMemoryOutput { .. } => CalibrationStageHandoffTransport::InMemoryOutput,
+            Self::PersistedArtifactReference { .. } => {
+                CalibrationStageHandoffTransport::PersistedArtifactReference
+            }
+        }
+    }
+
+    fn artifact_reference(&self) -> Option<&str> {
+        match self {
+            Self::InMemoryOutput { .. } => None,
+            Self::PersistedArtifactReference { artifact_reference } => Some(artifact_reference),
+        }
+    }
+
+    fn selected_hawkes_candidate_id(&self) -> Option<&str> {
+        match self {
+            Self::InMemoryOutput { payload } => Some(payload.selected_candidate_id.as_str()),
+            Self::PersistedArtifactReference { .. } => None,
+        }
+    }
+}
+
+/// Input payload for standalone or pipeline-integrated return-components-stage execution.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReturnComponentsStageExecutionInput {
+    pub activity_input: ReturnComponentsStageActivityInput,
+    pub candidate_inputs: Vec<ReturnComponentsStageCandidateInput>,
+}
+
+impl ReturnComponentsStageExecutionInput {
+    pub fn from_in_memory_activity_output(
+        hawkes_payload: HawkesStageFittedPayload,
+        candidate_inputs: Vec<ReturnComponentsStageCandidateInput>,
+    ) -> Self {
+        Self {
+            activity_input: ReturnComponentsStageActivityInput::InMemoryOutput {
+                payload: hawkes_payload,
+            },
+            candidate_inputs,
+        }
+    }
+
+    pub fn from_persisted_activity_artifact_reference(
+        artifact_reference: impl Into<String>,
+        candidate_inputs: Vec<ReturnComponentsStageCandidateInput>,
+    ) -> Self {
+        Self {
+            activity_input: ReturnComponentsStageActivityInput::PersistedArtifactReference {
+                artifact_reference: artifact_reference.into(),
+            },
+            candidate_inputs,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStageConstraintViolationDiagnostic {
+    pub field: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStageCandidateDiagnostic {
+    pub candidate_id: String,
+    pub raw_objective_value: f64,
+    pub constraint_penalty: f64,
+    pub penalized_objective_value: f64,
+    pub constraint_violation_count: usize,
+    pub constraint_violations: Vec<ReturnComponentsStageConstraintViolationDiagnostic>,
+    pub objective_terms: Vec<ReturnComponentsStageObjectiveTermDiagnostic>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStageFittedParameters {
+    pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+    pub news_process_configuration: NewsProcessConfiguration,
+}
+
+/// Stable return-components-stage payload consumed by downstream calibration stages.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStageFittedPayload {
+    pub schema_version: &'static str,
+    pub selected_candidate_id: String,
+    pub fitted_parameters: ReturnComponentsStageFittedParameters,
+    pub candidate_diagnostics: Vec<ReturnComponentsStageCandidateDiagnostic>,
+    pub objective_weighting_policy: &'static str,
+    pub activity_input_transport: CalibrationStageHandoffTransport,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub activity_selected_hawkes_candidate_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub activity_artifact_reference: Option<String>,
+}
+
+/// Stage-handoff transfer output resolved from the run-spec contract.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStageHandoffOutput {
+    pub from_stage: CalibrationStage,
+    pub to_stage: CalibrationStage,
+    pub transport: CalibrationStageHandoffTransport,
+    pub in_memory_payload_available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_reference: Option<String>,
+}
+
+/// Deterministic execution metadata exposed for reproducibility and downstream audit.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStageExecutionMetadata {
+    pub stage_output_schema_version: &'static str,
+    pub stage_seed: u64,
+    pub solver_settings: CalibrationOptimizerSettings,
+    pub input_candidate_count: usize,
+    pub valid_candidate_count: usize,
+    pub selected_candidate_raw_objective: f64,
+    pub selected_candidate_penalized_objective: f64,
+    pub objective_weighting_policy: &'static str,
+}
+
+/// Structured failure modes for return-components-stage execution.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "failure_kind", rename_all = "snake_case")]
+pub enum ReturnComponentsStageExecutionFailure {
+    InvalidRunSpec {
+        error_message: String,
+    },
+    StageIsNotSelectedInRunSpec,
+    MissingStageSolverSettings,
+    ActivityInputTransportMismatch {
+        expected_transport: CalibrationStageHandoffTransport,
+        provided_transport: CalibrationStageHandoffTransport,
+    },
+    MissingArtifactReferenceInActivityInput,
+    InvalidArtifactReferenceInActivityInput {
+        artifact_reference: String,
+    },
+    ActivityArtifactReferenceMismatch {
+        expected_artifact_reference: String,
+        provided_artifact_reference: String,
+    },
+    MissingReturnComponentsCandidateInputs,
+    DuplicateCandidateId {
+        candidate_id: String,
+    },
+    InvalidCandidateInput {
+        candidate_id: String,
+        error_message: String,
+    },
+    ConstraintViolationsForAllCandidates {
+        candidate_diagnostics: Vec<ReturnComponentsStageCandidateDiagnostic>,
+    },
+    CandidateConstructionFailed {
+        candidate_id: String,
+        error_message: String,
+    },
+}
+
+/// Structured return-components-stage report for partial or full staged calibration workflows.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStageExecutionReport {
+    pub schema_version: &'static str,
+    pub stage: CalibrationStage,
+    pub status: CalibrationStageExecutionStatus,
+    pub run_id: String,
+    pub execution_mode: CalibrationExecutionMode,
+    pub handoff_policy: &'static str,
+    pub handoffs: Vec<ReturnComponentsStageHandoffOutput>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fitted_stage_payload: Option<ReturnComponentsStageFittedPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<ReturnComponentsStageExecutionMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure: Option<ReturnComponentsStageExecutionFailure>,
+}
+
+/// Execute the return-components stage with NIG and coupled-gap parameter constraints.
+pub fn run_return_components_calibration_stage(
+    run_spec: &CalibrationRunSpec,
+    stage_input: ReturnComponentsStageExecutionInput,
+) -> ReturnComponentsStageExecutionReport {
+    if let Err(source) = run_spec.validate() {
+        return build_return_components_stage_failure_report(
+            run_spec,
+            ReturnComponentsStageExecutionFailure::InvalidRunSpec {
+                error_message: format!("{source} (classification={:?})", source.classification()),
+            },
+        );
+    }
+
+    if !run_spec
+        .selected_stages
+        .iter()
+        .copied()
+        .any(|selected_stage| selected_stage == CalibrationStage::ReturnComponents)
+    {
+        return build_return_components_stage_failure_report(
+            run_spec,
+            ReturnComponentsStageExecutionFailure::StageIsNotSelectedInRunSpec,
+        );
+    }
+
+    let Some(stage_solver_settings) =
+        stage_solver_settings_for_stage(run_spec, CalibrationStage::ReturnComponents)
+    else {
+        return build_return_components_stage_failure_report(
+            run_spec,
+            ReturnComponentsStageExecutionFailure::MissingStageSolverSettings,
+        );
+    };
+
+    if stage_input.candidate_inputs.is_empty() {
+        return build_return_components_stage_failure_report(
+            run_spec,
+            ReturnComponentsStageExecutionFailure::MissingReturnComponentsCandidateInputs,
+        );
+    }
+
+    let expected_activity_handoff = run_spec.stage_handoffs.iter().find(|stage_handoff| {
+        stage_handoff.from_stage == CalibrationStage::Hawkes
+            && stage_handoff.to_stage == CalibrationStage::ReturnComponents
+    });
+    let expected_transport = expected_activity_handoff
+        .map(|stage_handoff| stage_handoff.transport)
+        .unwrap_or(match run_spec.execution_mode {
+            CalibrationExecutionMode::Memory => CalibrationStageHandoffTransport::InMemoryOutput,
+            CalibrationExecutionMode::Disk => {
+                CalibrationStageHandoffTransport::PersistedArtifactReference
+            }
+        });
+    let provided_transport = stage_input.activity_input.transport();
+
+    if provided_transport != expected_transport {
+        return build_return_components_stage_failure_report(
+            run_spec,
+            ReturnComponentsStageExecutionFailure::ActivityInputTransportMismatch {
+                expected_transport,
+                provided_transport,
+            },
+        );
+    }
+
+    if provided_transport == CalibrationStageHandoffTransport::PersistedArtifactReference {
+        let Some(provided_artifact_reference) = stage_input
+            .activity_input
+            .artifact_reference()
+            .map(ToOwned::to_owned)
+        else {
+            return build_return_components_stage_failure_report(
+                run_spec,
+                ReturnComponentsStageExecutionFailure::MissingArtifactReferenceInActivityInput,
+            );
+        };
+
+        if provided_artifact_reference.trim().is_empty() {
+            return build_return_components_stage_failure_report(
+                run_spec,
+                ReturnComponentsStageExecutionFailure::InvalidArtifactReferenceInActivityInput {
+                    artifact_reference: provided_artifact_reference,
+                },
+            );
+        }
+
+        if let Some(expected_stage_handoff) = expected_activity_handoff
+            && let Some(expected_artifact_reference) = &expected_stage_handoff.artifact_reference
+            && expected_artifact_reference != &provided_artifact_reference
+        {
+            return build_return_components_stage_failure_report(
+                run_spec,
+                ReturnComponentsStageExecutionFailure::ActivityArtifactReferenceMismatch {
+                    expected_artifact_reference: expected_artifact_reference.clone(),
+                    provided_artifact_reference,
+                },
+            );
+        }
+    }
+
+    let mut seen_candidate_ids = BTreeSet::new();
+    let mut candidate_diagnostics: Vec<ReturnComponentsStageCandidateDiagnostic> = Vec::new();
+    for candidate_input in &stage_input.candidate_inputs {
+        if !seen_candidate_ids.insert(candidate_input.candidate_id.clone()) {
+            return build_return_components_stage_failure_report(
+                run_spec,
+                ReturnComponentsStageExecutionFailure::DuplicateCandidateId {
+                    candidate_id: candidate_input.candidate_id.clone(),
+                },
+            );
+        }
+
+        if let Err(source) = candidate_input.validate() {
+            return build_return_components_stage_failure_report(
+                run_spec,
+                ReturnComponentsStageExecutionFailure::InvalidCandidateInput {
+                    candidate_id: candidate_input.candidate_id.clone(),
+                    error_message: source.to_string(),
+                },
+            );
+        }
+
+        let (raw_objective_value, objective_term_diagnostics) =
+            match compose_return_components_stage_weighted_objective(
+                &candidate_input.objective_terms,
+            ) {
+                Ok(output) => output,
+                Err(source) => {
+                    return build_return_components_stage_failure_report(
+                        run_spec,
+                        ReturnComponentsStageExecutionFailure::InvalidCandidateInput {
+                            candidate_id: candidate_input.candidate_id.clone(),
+                            error_message: source.to_string(),
+                        },
+                    );
+                }
+            };
+
+        let constraint_violations =
+            collect_return_components_stage_constraint_violations(candidate_input);
+        let constraint_violation_count = constraint_violations.len();
+        let constraint_penalty =
+            stage_solver_settings.constraint_penalty_weight * constraint_violation_count as f64;
+        let penalized_objective_value = raw_objective_value + constraint_penalty;
+
+        candidate_diagnostics.push(ReturnComponentsStageCandidateDiagnostic {
+            candidate_id: candidate_input.candidate_id.clone(),
+            raw_objective_value,
+            constraint_penalty,
+            penalized_objective_value,
+            constraint_violation_count,
+            constraint_violations,
+            objective_terms: objective_term_diagnostics,
+        });
+    }
+
+    let best_valid_candidate_position = candidate_diagnostics
+        .iter()
+        .enumerate()
+        .filter(|(_, candidate_diagnostic)| candidate_diagnostic.constraint_violation_count == 0)
+        .map(|(candidate_position, _)| candidate_position)
+        .reduce(|best_position, candidate_position| {
+            if is_better_return_components_stage_candidate(
+                &candidate_diagnostics[candidate_position],
+                &candidate_diagnostics[best_position],
+            ) {
+                candidate_position
+            } else {
+                best_position
+            }
+        });
+
+    let Some(selected_candidate_position) = best_valid_candidate_position else {
+        return build_return_components_stage_failure_report(
+            run_spec,
+            ReturnComponentsStageExecutionFailure::ConstraintViolationsForAllCandidates {
+                candidate_diagnostics,
+            },
+        );
+    };
+
+    let selected_candidate_input = &stage_input.candidate_inputs[selected_candidate_position];
+    let selected_candidate_diagnostic = &candidate_diagnostics[selected_candidate_position];
+    let nig_configuration = match NigSharedPlusShiftConfiguration::try_new(
+        selected_candidate_input
+            .nig_shared_plus_shift_configuration
+            .alpha,
+        selected_candidate_input
+            .nig_shared_plus_shift_configuration
+            .beta_0,
+        selected_candidate_input
+            .nig_shared_plus_shift_configuration
+            .delta,
+        selected_candidate_input
+            .nig_shared_plus_shift_configuration
+            .mu,
+        selected_candidate_input
+            .nig_shared_plus_shift_configuration
+            .delta_beta,
+    ) {
+        Ok(configuration) => configuration,
+        Err(source) => {
+            return build_return_components_stage_failure_report(
+                run_spec,
+                ReturnComponentsStageExecutionFailure::CandidateConstructionFailed {
+                    candidate_id: selected_candidate_input.candidate_id.clone(),
+                    error_message: source.to_string(),
+                },
+            );
+        }
+    };
+
+    if !nig_configuration.delta_beta.is_finite() || nig_configuration.delta_beta >= 0.0 {
+        return build_return_components_stage_failure_report(
+            run_spec,
+            ReturnComponentsStageExecutionFailure::CandidateConstructionFailed {
+                candidate_id: selected_candidate_input.candidate_id.clone(),
+                error_message:
+                    "nig_shared_plus_shift_configuration.delta_beta must be finite and strictly negative for return skew asymmetry".to_string(),
+            },
+        );
+    }
+
+    let news_process_configuration = match NewsProcessConfiguration::try_new(
+        selected_candidate_input
+            .news_process_configuration
+            .intensity,
+        selected_candidate_input
+            .news_process_configuration
+            .gamma_severity_marks,
+        selected_candidate_input
+            .news_process_configuration
+            .double_exponential_base_shock,
+        selected_candidate_input
+            .news_process_configuration
+            .coupled_gap_marks,
+    ) {
+        Ok(configuration) => configuration,
+        Err(source) => {
+            return build_return_components_stage_failure_report(
+                run_spec,
+                ReturnComponentsStageExecutionFailure::CandidateConstructionFailed {
+                    candidate_id: selected_candidate_input.candidate_id.clone(),
+                    error_message: source.to_string(),
+                },
+            );
+        }
+    };
+
+    let valid_candidate_count = candidate_diagnostics
+        .iter()
+        .filter(|candidate_diagnostic| candidate_diagnostic.constraint_violation_count == 0)
+        .count();
+
+    let selected_candidate_raw_objective = selected_candidate_diagnostic.raw_objective_value;
+    let selected_candidate_penalized_objective =
+        selected_candidate_diagnostic.penalized_objective_value;
+
+    let fitted_stage_payload = ReturnComponentsStageFittedPayload {
+        schema_version: CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
+        selected_candidate_id: selected_candidate_input.candidate_id.clone(),
+        fitted_parameters: ReturnComponentsStageFittedParameters {
+            nig_shared_plus_shift_configuration: nig_configuration,
+            news_process_configuration,
+        },
+        candidate_diagnostics,
+        objective_weighting_policy: CALIBRATION_RETURN_COMPONENTS_STAGE_OBJECTIVE_WEIGHTING_POLICY,
+        activity_input_transport: stage_input.activity_input.transport(),
+        activity_selected_hawkes_candidate_id: stage_input
+            .activity_input
+            .selected_hawkes_candidate_id()
+            .map(ToOwned::to_owned),
+        activity_artifact_reference: stage_input
+            .activity_input
+            .artifact_reference()
+            .map(ToOwned::to_owned),
+    };
+
+    ReturnComponentsStageExecutionReport {
+        schema_version: CALIBRATION_RETURN_COMPONENTS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
+        stage: CalibrationStage::ReturnComponents,
+        status: CalibrationStageExecutionStatus::Success,
+        run_id: run_spec.run_id.clone(),
+        execution_mode: run_spec.execution_mode,
+        handoff_policy: CALIBRATION_RETURN_COMPONENTS_STAGE_HANDOFF_POLICY,
+        handoffs: build_return_components_stage_handoff_outputs(run_spec),
+        fitted_stage_payload: Some(fitted_stage_payload),
+        metadata: Some(ReturnComponentsStageExecutionMetadata {
+            stage_output_schema_version: CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
+            stage_seed: resolve_calibration_stage_seed(
+                run_spec,
+                CalibrationStage::ReturnComponents,
+            ),
+            solver_settings: stage_solver_settings,
+            input_candidate_count: stage_input.candidate_inputs.len(),
+            valid_candidate_count,
+            selected_candidate_raw_objective,
+            selected_candidate_penalized_objective,
+            objective_weighting_policy:
+                CALIBRATION_RETURN_COMPONENTS_STAGE_OBJECTIVE_WEIGHTING_POLICY,
+        }),
+        failure: None,
+    }
+}
+
+fn compose_return_components_stage_weighted_objective(
+    objective_terms: &[ReturnComponentsStageObjectiveTermInput],
+) -> Result<
+    (f64, Vec<ReturnComponentsStageObjectiveTermDiagnostic>),
+    ReturnComponentsStageCandidateInputError,
+> {
+    let mut weighted_objective_value = 0.0;
+    let mut diagnostics = Vec::with_capacity(objective_terms.len());
+
+    for objective_term in objective_terms {
+        objective_term.validate().map_err(|source| {
+            ReturnComponentsStageCandidateInputError::InvalidObjectiveTerm {
+                term_id: objective_term.term_id.clone(),
+                source,
+            }
+        })?;
+
+        let weighted_contribution = objective_term.weight * objective_term.observed_score;
+        if !weighted_contribution.is_finite() {
+            return Err(
+                ReturnComponentsStageCandidateInputError::InvalidWeightedObjectiveValue {
+                    value: weighted_contribution,
+                },
+            );
+        }
+
+        weighted_objective_value += weighted_contribution;
+        if !weighted_objective_value.is_finite() {
+            return Err(
+                ReturnComponentsStageCandidateInputError::InvalidWeightedObjectiveValue {
+                    value: weighted_objective_value,
+                },
+            );
+        }
+
+        diagnostics.push(ReturnComponentsStageObjectiveTermDiagnostic {
+            term_id: objective_term.term_id.clone(),
+            weight: objective_term.weight,
+            observed_score: objective_term.observed_score,
+            weighted_contribution,
+        });
+    }
+
+    Ok((weighted_objective_value, diagnostics))
+}
+
+fn collect_return_components_stage_constraint_violations(
+    candidate_input: &ReturnComponentsStageCandidateInput,
+) -> Vec<ReturnComponentsStageConstraintViolationDiagnostic> {
+    let mut violations = Vec::new();
+
+    if !candidate_input
+        .nig_shared_plus_shift_configuration
+        .delta_beta
+        .is_finite()
+        || candidate_input
+            .nig_shared_plus_shift_configuration
+            .delta_beta
+            >= 0.0
+    {
+        violations.push(ReturnComponentsStageConstraintViolationDiagnostic {
+            field: "nig_shared_plus_shift_configuration.delta_beta".to_string(),
+            message:
+                "delta_beta must be finite and strictly negative to preserve sell-side skew asymmetry"
+                    .to_string(),
+        });
+    }
+
+    if let Err(source) = NigSharedPlusShiftConfiguration::try_new(
+        candidate_input.nig_shared_plus_shift_configuration.alpha,
+        candidate_input.nig_shared_plus_shift_configuration.beta_0,
+        candidate_input.nig_shared_plus_shift_configuration.delta,
+        candidate_input.nig_shared_plus_shift_configuration.mu,
+        candidate_input
+            .nig_shared_plus_shift_configuration
+            .delta_beta,
+    ) {
+        violations.push(ReturnComponentsStageConstraintViolationDiagnostic {
+            field: "nig_shared_plus_shift_configuration".to_string(),
+            message: source.to_string(),
+        });
+    }
+
+    if let Err(source) = NewsProcessConfiguration::try_new(
+        candidate_input.news_process_configuration.intensity,
+        candidate_input
+            .news_process_configuration
+            .gamma_severity_marks,
+        candidate_input
+            .news_process_configuration
+            .double_exponential_base_shock,
+        candidate_input.news_process_configuration.coupled_gap_marks,
+    ) {
+        violations.push(ReturnComponentsStageConstraintViolationDiagnostic {
+            field: "news_process_configuration".to_string(),
+            message: source.to_string(),
+        });
+    }
+
+    violations
+}
+
+fn is_better_return_components_stage_candidate(
+    candidate: &ReturnComponentsStageCandidateDiagnostic,
+    current_best: &ReturnComponentsStageCandidateDiagnostic,
+) -> bool {
+    match candidate
+        .penalized_objective_value
+        .total_cmp(&current_best.penalized_objective_value)
+    {
+        Ordering::Less => true,
+        Ordering::Greater => false,
+        Ordering::Equal => match candidate
+            .raw_objective_value
+            .total_cmp(&current_best.raw_objective_value)
+        {
+            Ordering::Less => true,
+            Ordering::Greater => false,
+            Ordering::Equal => candidate.candidate_id < current_best.candidate_id,
+        },
+    }
+}
+
+fn build_return_components_stage_handoff_outputs(
+    run_spec: &CalibrationRunSpec,
+) -> Vec<ReturnComponentsStageHandoffOutput> {
+    run_spec
+        .stage_handoffs
+        .iter()
+        .filter(|stage_handoff| stage_handoff.from_stage == CalibrationStage::ReturnComponents)
+        .map(|stage_handoff| match stage_handoff.transport {
+            CalibrationStageHandoffTransport::InMemoryOutput => {
+                ReturnComponentsStageHandoffOutput {
+                    from_stage: stage_handoff.from_stage,
+                    to_stage: stage_handoff.to_stage,
+                    transport: stage_handoff.transport,
+                    in_memory_payload_available: true,
+                    artifact_reference: None,
+                }
+            }
+            CalibrationStageHandoffTransport::PersistedArtifactReference => {
+                ReturnComponentsStageHandoffOutput {
+                    from_stage: stage_handoff.from_stage,
+                    to_stage: stage_handoff.to_stage,
+                    transport: stage_handoff.transport,
+                    in_memory_payload_available: false,
+                    artifact_reference: stage_handoff.artifact_reference.clone(),
+                }
+            }
+        })
+        .collect()
+}
+
+fn build_return_components_stage_failure_report(
+    run_spec: &CalibrationRunSpec,
+    failure: ReturnComponentsStageExecutionFailure,
+) -> ReturnComponentsStageExecutionReport {
+    ReturnComponentsStageExecutionReport {
+        schema_version: CALIBRATION_RETURN_COMPONENTS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
+        stage: CalibrationStage::ReturnComponents,
+        status: CalibrationStageExecutionStatus::Failure,
+        run_id: run_spec.run_id.clone(),
+        execution_mode: run_spec.execution_mode,
+        handoff_policy: CALIBRATION_RETURN_COMPONENTS_STAGE_HANDOFF_POLICY,
+        handoffs: Vec::new(),
+        fitted_stage_payload: None,
+        metadata: None,
+        failure: Some(failure),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::{TimeZone, Utc};
@@ -2702,6 +3452,7 @@ mod tests {
     use crate::calibration::{
         CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY,
         CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
+        CALIBRATION_RETURN_COMPONENTS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
         CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION, CALIBRATION_RUN_SPEC_SCHEMA_VERSION,
         CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION,
         CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
@@ -2715,7 +3466,9 @@ mod tests {
         CalibrationStageHandoff, CalibrationStageHandoffError, CalibrationStageHandoffTransport,
         CalibrationStageSeedOverride, CalibrationStageSolverSettings, HawkesStageCandidateInput,
         HawkesStageExecutionFailure, HawkesStageExecutionInput, HawkesStageObjectiveTermInput,
-        OptionSurfaceCalibrationObservationError, SeasonalityStageExecutionFailure,
+        OptionSurfaceCalibrationObservationError, ReturnComponentsStageCandidateInput,
+        ReturnComponentsStageExecutionFailure, ReturnComponentsStageExecutionInput,
+        ReturnComponentsStageObjectiveTermInput, SeasonalityStageExecutionFailure,
         SeasonalityStageExecutionInput,
         build_option_surface_calibration_observation_from_pricing_hooks,
         default_calibration_execution_mode_for_surface,
@@ -2723,7 +3476,8 @@ mod tests {
         precheck_hawkes_kernel_parameter_domain,
         precheck_structured_hawkes_kernel_parameter_domain,
         resolve_calibration_execution_mode_for_surface, resolve_calibration_stage_execution_order,
-        run_hawkes_calibration_stage, run_seasonality_calibration_stage,
+        run_hawkes_calibration_stage, run_return_components_calibration_stage,
+        run_seasonality_calibration_stage,
         transform_nig_exponent_for_calibration_under_esscher_tilt,
     };
     use crate::hawkes::{
@@ -2731,7 +3485,11 @@ mod tests {
         HawkesKernelValidationStatus, HawkesStructuredAlphaParameterization,
         HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
     };
-    use crate::nig::{ComplexScalar, NigParameters};
+    use crate::news::{
+        CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
+        GammaSeverityMarkConfiguration, NewsIntensityConfiguration, NewsProcessConfiguration,
+    };
+    use crate::nig::{ComplexScalar, NigParameters, NigSharedPlusShiftConfiguration};
     use crate::pricing::VanillaOptionPricingCalibrationHooks;
     use crate::risk_neutral::{EsscherMartingaleConditionInput, NigEsscherTransformationInput};
     use serde_json::json;
@@ -3834,6 +4592,250 @@ mod tests {
         );
     }
 
+    #[test]
+    fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_handoffs() {
+        let hawkes_payload = build_hawkes_stage_success_payload();
+        let memory_run_spec =
+            build_return_components_stage_pipeline_run_spec(CalibrationExecutionMode::Memory);
+        let disk_run_spec =
+            build_return_components_stage_pipeline_run_spec(CalibrationExecutionMode::Disk);
+
+        let memory_report = run_return_components_calibration_stage(
+            &memory_run_spec,
+            ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
+                hawkes_payload.clone(),
+                return_components_stage_candidate_fixture(),
+            ),
+        );
+        let disk_report = run_return_components_calibration_stage(
+            &disk_run_spec,
+            ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
+                "artifact://hawkes/run-001",
+                return_components_stage_candidate_fixture(),
+            ),
+        );
+
+        assert_eq!(
+            memory_report.schema_version,
+            CALIBRATION_RETURN_COMPONENTS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION
+        );
+        assert_eq!(
+            memory_report.status,
+            CalibrationStageExecutionStatus::Success
+        );
+        assert_eq!(disk_report.status, CalibrationStageExecutionStatus::Success);
+
+        let memory_payload = memory_report
+            .fitted_stage_payload
+            .as_ref()
+            .expect("memory report should include fitted stage payload");
+        let disk_payload = disk_report
+            .fitted_stage_payload
+            .as_ref()
+            .expect("disk report should include fitted stage payload");
+
+        assert_eq!(
+            memory_payload.selected_candidate_id,
+            "candidate_return_low_loss"
+        );
+        assert_eq!(
+            memory_payload.selected_candidate_id,
+            disk_payload.selected_candidate_id
+        );
+        assert_eq!(
+            memory_payload.fitted_parameters,
+            disk_payload.fitted_parameters
+        );
+        assert_eq!(
+            memory_payload.candidate_diagnostics,
+            disk_payload.candidate_diagnostics
+        );
+        assert_eq!(
+            memory_payload
+                .activity_selected_hawkes_candidate_id
+                .as_deref(),
+            Some(hawkes_payload.selected_candidate_id.as_str())
+        );
+        assert!(disk_payload.activity_selected_hawkes_candidate_id.is_none());
+        assert_eq!(
+            disk_payload.activity_artifact_reference.as_deref(),
+            Some("artifact://hawkes/run-001")
+        );
+    }
+
+    #[test]
+    fn return_components_stage_execution_supports_standalone_runs_in_memory_and_disk_modes() {
+        let hawkes_payload = build_hawkes_stage_success_payload();
+        let memory_run_spec =
+            build_return_components_stage_standalone_run_spec(CalibrationExecutionMode::Memory);
+        let disk_run_spec =
+            build_return_components_stage_standalone_run_spec(CalibrationExecutionMode::Disk);
+
+        let memory_report = run_return_components_calibration_stage(
+            &memory_run_spec,
+            ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
+                hawkes_payload,
+                return_components_stage_candidate_fixture(),
+            ),
+        );
+        let disk_report = run_return_components_calibration_stage(
+            &disk_run_spec,
+            ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
+                "artifact://hawkes/standalone",
+                return_components_stage_candidate_fixture(),
+            ),
+        );
+
+        assert_eq!(
+            memory_report.status,
+            CalibrationStageExecutionStatus::Success
+        );
+        assert_eq!(disk_report.status, CalibrationStageExecutionStatus::Success);
+        assert!(memory_report.handoffs.is_empty());
+        assert!(disk_report.handoffs.is_empty());
+        assert!(memory_report.failure.is_none());
+        assert!(disk_report.failure.is_none());
+    }
+
+    #[test]
+    fn return_components_stage_execution_reports_missing_dependency_stage_outputs() {
+        let hawkes_payload = build_hawkes_stage_success_payload();
+
+        let memory_run_spec =
+            build_return_components_stage_pipeline_run_spec(CalibrationExecutionMode::Memory);
+        let memory_failure_report = run_return_components_calibration_stage(
+            &memory_run_spec,
+            ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
+                "artifact://hawkes/run-001",
+                return_components_stage_candidate_fixture(),
+            ),
+        );
+        assert_eq!(
+            memory_failure_report.status,
+            CalibrationStageExecutionStatus::Failure
+        );
+        assert!(matches!(
+            memory_failure_report.failure,
+            Some(ReturnComponentsStageExecutionFailure::ActivityInputTransportMismatch { .. })
+        ));
+
+        let disk_run_spec =
+            build_return_components_stage_pipeline_run_spec(CalibrationExecutionMode::Disk);
+        let disk_failure_report = run_return_components_calibration_stage(
+            &disk_run_spec,
+            ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
+                hawkes_payload,
+                return_components_stage_candidate_fixture(),
+            ),
+        );
+        assert_eq!(
+            disk_failure_report.status,
+            CalibrationStageExecutionStatus::Failure
+        );
+        assert!(matches!(
+            disk_failure_report.failure,
+            Some(ReturnComponentsStageExecutionFailure::ActivityInputTransportMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn return_components_stage_execution_is_deterministic_under_fixed_settings() {
+        let hawkes_payload = build_hawkes_stage_success_payload();
+        let memory_run_spec =
+            build_return_components_stage_pipeline_run_spec(CalibrationExecutionMode::Memory);
+        let disk_run_spec =
+            build_return_components_stage_pipeline_run_spec(CalibrationExecutionMode::Disk);
+
+        let first_memory_report = run_return_components_calibration_stage(
+            &memory_run_spec,
+            ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
+                hawkes_payload.clone(),
+                return_components_stage_candidate_fixture(),
+            ),
+        );
+        let second_memory_report = run_return_components_calibration_stage(
+            &memory_run_spec,
+            ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
+                hawkes_payload,
+                return_components_stage_candidate_fixture(),
+            ),
+        );
+        let first_disk_report = run_return_components_calibration_stage(
+            &disk_run_spec,
+            ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
+                "artifact://hawkes/run-001",
+                return_components_stage_candidate_fixture(),
+            ),
+        );
+        let second_disk_report = run_return_components_calibration_stage(
+            &disk_run_spec,
+            ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
+                "artifact://hawkes/run-001",
+                return_components_stage_candidate_fixture(),
+            ),
+        );
+
+        let first_memory_payload = first_memory_report
+            .fitted_stage_payload
+            .as_ref()
+            .expect("memory report should include fitted payload");
+        let second_memory_payload = second_memory_report
+            .fitted_stage_payload
+            .as_ref()
+            .expect("second memory report should include fitted payload");
+        let first_disk_payload = first_disk_report
+            .fitted_stage_payload
+            .as_ref()
+            .expect("disk report should include fitted payload");
+        let second_disk_payload = second_disk_report
+            .fitted_stage_payload
+            .as_ref()
+            .expect("second disk report should include fitted payload");
+
+        assert_eq!(first_memory_payload, second_memory_payload);
+        assert_eq!(first_disk_payload, second_disk_payload);
+        assert_eq!(
+            first_memory_payload.selected_candidate_id,
+            first_disk_payload.selected_candidate_id
+        );
+        assert_eq!(
+            first_memory_payload.fitted_parameters,
+            first_disk_payload.fitted_parameters
+        );
+        assert_eq!(
+            first_memory_payload.candidate_diagnostics,
+            first_disk_payload.candidate_diagnostics
+        );
+
+        let first_memory_metadata = first_memory_report
+            .metadata
+            .as_ref()
+            .expect("memory report should include metadata");
+        let second_memory_metadata = second_memory_report
+            .metadata
+            .as_ref()
+            .expect("second memory report should include metadata");
+        let first_disk_metadata = first_disk_report
+            .metadata
+            .as_ref()
+            .expect("disk report should include metadata");
+        let second_disk_metadata = second_disk_report
+            .metadata
+            .as_ref()
+            .expect("second disk report should include metadata");
+
+        assert_eq!(first_memory_metadata, second_memory_metadata);
+        assert_eq!(first_disk_metadata, second_disk_metadata);
+        assert_eq!(
+            first_memory_metadata.stage_seed,
+            first_disk_metadata.stage_seed
+        );
+        assert_eq!(
+            first_memory_metadata.solver_settings,
+            first_disk_metadata.solver_settings
+        );
+    }
+
     fn build_data_inputs() -> CalibrationRunDataInputs {
         CalibrationRunDataInputs::try_new(
             "XNYS",
@@ -3992,6 +4994,38 @@ mod tests {
         .expect("hawkes stage run spec should validate")
     }
 
+    fn build_return_components_stage_pipeline_run_spec(
+        execution_mode: CalibrationExecutionMode,
+    ) -> CalibrationRunSpec {
+        build_hawkes_stage_run_spec(execution_mode)
+    }
+
+    fn build_return_components_stage_standalone_run_spec(
+        execution_mode: CalibrationExecutionMode,
+    ) -> CalibrationRunSpec {
+        let seed_settings = CalibrationRunSeedSettings::try_new(
+            23,
+            vec![CalibrationStageSeedOverride {
+                stage: CalibrationStage::ReturnComponents,
+                seed: 303,
+            }],
+        )
+        .expect("standalone return-components seed settings should validate");
+
+        CalibrationRunSpec::try_new(
+            "run-return-components-standalone",
+            build_data_inputs(),
+            execution_mode,
+            vec![CalibrationStage::ReturnComponents],
+            seed_settings,
+            vec![CalibrationStageSolverSettings {
+                stage: CalibrationStage::ReturnComponents,
+                optimizer_settings: build_solver_settings(),
+            }],
+        )
+        .expect("standalone return-components run spec should validate")
+    }
+
     fn build_seasonality_stage_success_payload()
     -> crate::calibration::SeasonalityStageNormalizedPayload {
         let calendar_registry = calibration_stage_test_registry();
@@ -4006,6 +5040,21 @@ mod tests {
         report
             .normalized_stage_payload
             .expect("seasonality stage fixture should produce normalized payload")
+    }
+
+    fn build_hawkes_stage_success_payload() -> crate::calibration::HawkesStageFittedPayload {
+        let seasonality_payload = build_seasonality_stage_success_payload();
+        let report = run_hawkes_calibration_stage(
+            &build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory),
+            HawkesStageExecutionInput::from_in_memory_seasonality_output(
+                seasonality_payload,
+                hawkes_stage_candidate_fixture(),
+            ),
+        );
+
+        report
+            .fitted_stage_payload
+            .expect("hawkes stage fixture should produce fitted payload")
     }
 
     fn hawkes_stage_candidate_fixture() -> Vec<HawkesStageCandidateInput> {
@@ -4074,6 +5123,80 @@ mod tests {
                 observed_score: 1.0,
             }],
         }
+    }
+
+    fn return_components_stage_candidate_fixture() -> Vec<ReturnComponentsStageCandidateInput> {
+        vec![
+            ReturnComponentsStageCandidateInput {
+                candidate_id: "candidate_return_high_loss".to_string(),
+                nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration::try_new(
+                    2.30, -0.80, 0.70, 0.10, -0.20,
+                )
+                .expect("high-loss NIG configuration should validate"),
+                news_process_configuration: build_news_process_configuration(
+                    0.08, 1.8, 0.7, 0.45, 8.0, 10.0, 0.22,
+                ),
+                objective_terms: vec![
+                    ReturnComponentsStageObjectiveTermInput {
+                        term_id: "tail_fit_residual".to_string(),
+                        weight: 1.0,
+                        observed_score: 1.2,
+                    },
+                    ReturnComponentsStageObjectiveTermInput {
+                        term_id: "gap_quantile_residual".to_string(),
+                        weight: 1.0,
+                        observed_score: 0.8,
+                    },
+                ],
+            },
+            ReturnComponentsStageCandidateInput {
+                candidate_id: "candidate_return_low_loss".to_string(),
+                nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration::try_new(
+                    2.45, -0.70, 0.62, 0.08, -0.15,
+                )
+                .expect("low-loss NIG configuration should validate"),
+                news_process_configuration: build_news_process_configuration(
+                    0.06, 1.6, 0.65, 0.50, 9.5, 9.0, 0.18,
+                ),
+                objective_terms: vec![
+                    ReturnComponentsStageObjectiveTermInput {
+                        term_id: "tail_fit_residual".to_string(),
+                        weight: 1.0,
+                        observed_score: 0.6,
+                    },
+                    ReturnComponentsStageObjectiveTermInput {
+                        term_id: "gap_quantile_residual".to_string(),
+                        weight: 1.0,
+                        observed_score: 0.4,
+                    },
+                ],
+            },
+        ]
+    }
+
+    fn build_news_process_configuration(
+        closed_window_baseline_intensity: f64,
+        gamma_shape_k: f64,
+        gamma_scale_theta: f64,
+        probability_positive: f64,
+        eta_plus: f64,
+        eta_minus: f64,
+        sigma_g: f64,
+    ) -> NewsProcessConfiguration {
+        NewsProcessConfiguration::try_new(
+            NewsIntensityConfiguration::try_new(closed_window_baseline_intensity)
+                .expect("news intensity configuration should validate"),
+            GammaSeverityMarkConfiguration::try_new(gamma_shape_k, gamma_scale_theta)
+                .expect("gamma severity mark configuration should validate"),
+            DoubleExponentialBaseShockConfiguration::try_new(
+                probability_positive,
+                eta_plus,
+                eta_minus,
+            )
+            .expect("double-exponential base-shock configuration should validate"),
+            CoupledGapMarkConfiguration::new(sigma_g),
+        )
+        .expect("news process configuration should validate")
     }
 
     fn calibration_stage_test_registry() -> ExchangeCalendarRegistry {
