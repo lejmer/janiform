@@ -10,8 +10,8 @@ use janiform_core::hourly_factors::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, build_hourly_factor_contract,
 };
 use janiform_core::simulation::{
-    SeededTickEventSide, SeededTickSimulationModelInputs, SeededTickSimulationRunConfig,
-    run_seeded_tick_event_simulation,
+    SeededTickEventSide, SeededTickSimulationModelInputs, SeededTickSimulationNewsMarkScales,
+    SeededTickSimulationRunConfig, run_seeded_tick_event_simulation,
 };
 use serde::Deserialize;
 
@@ -25,8 +25,7 @@ const SEEDED_TICK_SIMULATION_PARITY_FIXTURE_SET_ID: &str =
     "seeded_tick_simulation_parity_fixture_v1";
 const SEEDED_TICK_SIMULATION_CASE_ORDER_POLICY: &str = "preserve_declared_case_order.v1";
 const SEEDED_TICK_SIMULATION_CONTENT_HASH_SCOPE_POLICY: &str = "document_payload_bytes.v1";
-const SEEDED_TICK_SIMULATION_EVENT_ORDERING_POLICY: &str =
-    "timestamp_then_endogenous_before_exogenous_then_buy_before_sell_then_generation_order.v1";
+const SEEDED_TICK_SIMULATION_EVENT_ORDERING_POLICY: &str = "timestamp_then_endogenous_before_exogenous_then_buy_before_sell_then_known_before_surprise_then_generation_order.v1";
 const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -428,6 +427,9 @@ fn run_fixture_case(
                 y_minus_minus: fixture_case.initial_excitation_state.y_minus_minus,
             },
             hourly_factor_contract,
+            known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
+            known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
+            surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
         },
         None,
     )

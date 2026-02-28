@@ -42,7 +42,7 @@ SEEDED_TICK_SIMULATION_PARITY_FIXTURE_SET_ID: str = "seeded_tick_simulation_pari
 SEEDED_TICK_SIMULATION_CASE_ORDER_POLICY: str = "preserve_declared_case_order.v1"
 SEEDED_TICK_SIMULATION_CONTENT_HASH_SCOPE_POLICY: str = "document_payload_bytes.v1"
 SEEDED_TICK_SIMULATION_EVENT_ORDERING_POLICY: str = (
-    "timestamp_then_endogenous_before_exogenous_then_buy_before_sell_then_generation_order.v1"
+    "timestamp_then_endogenous_before_exogenous_then_buy_before_sell_then_known_before_surprise_then_generation_order.v1"
 )
 SUPPORTED_MANIFEST_DOMAINS: set[str] = {"calendar", "seasonality", "hourly_factors", "gap_behavior"}
 

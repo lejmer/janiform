@@ -4,7 +4,7 @@
   "fixture_set_version": "0.1.0",
   "determinism_metadata": {
     "fixture_loading_order": "preserve_declared_case_order.v1",
-    "event_ordering_policy": "timestamp_then_endogenous_before_exogenous_then_buy_before_sell_then_generation_order.v1",
+    "event_ordering_policy": "timestamp_then_endogenous_before_exogenous_then_buy_before_sell_then_known_before_surprise_then_generation_order.v1",
     "content_hash_scope": "document_payload_bytes.v1",
     "content_hash_algorithm": "fnv1a_64_hex_utf8.v1"
   },

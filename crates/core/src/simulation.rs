@@ -6,11 +6,13 @@ use std::fmt::{Display, Formatter};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
+use crate::calendar::MarketState;
 use crate::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesIntensityProjection, HawkesKernelParameters,
     HawkesSeasonalityIntervalError, HawkesTransitionError, HawkesTransitionStep,
 };
 use crate::hourly_factors::HourlyFactorContractOutput;
+use crate::news::{NewsArrivalComponent, NewsReturnJumpRoutingTarget};
 use crate::nig::{
     NigBuySellDriverParameters, NigTradingTimeIncrementContributions,
     NigTradingTimeIncrementSamplingError,
@@ -47,9 +49,9 @@ pub const SEEDED_TICK_EVENT_DETERMINISM_POLICY: &str =
 /// 1. lower timestamp first
 /// 2. endogenous events before exogenous news
 /// 3. buy before sell when endogenous timestamps tie
-/// 4. generation order fallback for exact key collisions
-pub const SEEDED_TICK_EVENT_ORDERING_POLICY: &str =
-    "timestamp_then_endogenous_before_exogenous_then_buy_before_sell_then_generation_order.v1";
+/// 4. known before surprise for exogenous news timestamp ties
+/// 5. generation order fallback for exact key collisions
+pub const SEEDED_TICK_EVENT_ORDERING_POLICY: &str = "timestamp_then_endogenous_before_exogenous_then_buy_before_sell_then_known_before_surprise_then_generation_order.v1";
 pub const SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY: &str =
     "event_time_timestamp_utc_nanos_without_bucket_identifier.v1";
 pub const SEEDED_TICK_EVENT_SIDE_ENCODING_POLICY: &str = "lowercase_buy_or_sell.v1";
@@ -63,6 +65,7 @@ pub const SEEDED_TICK_EVENT_FACTOR_CONTROL_POLICY: &str =
     "interval_aligned_s_h_nu_h_control_intensity_only_without_intra_interval_grid.v1";
 pub const SEEDED_TICK_EVENT_INTRA_INTERVAL_SCHEDULING_POLICY: &str =
     "event_time_updates_with_sequential_hawkes_transition_composition.v1";
+pub const SEEDED_TICK_EVENT_NEWS_MARKET_STATE_ROUTING_POLICY: &str = "positive_interval_s_h_routes_news_return_jump_to_open_m_channel_zero_interval_s_h_routes_news_return_jump_to_closed_g_channel.v1";
 pub const SEEDED_TICK_EVENT_DEBUG_TRACE_SAMPLING_POLICY: &str =
     "capture_every_nth_transition_with_mandatory_interval_boundary_drift_records.v1";
 pub const SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNKING_POLICY: &str =
@@ -73,6 +76,7 @@ pub const SEEDED_TICK_EVENT_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY: &str =
     SIMULATION_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY;
 
 const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
+const ONE_SECOND_NANOS: i64 = 1_000_000_000;
 const MAX_STOCHASTIC_UPDATES_PER_INTERVAL: u64 = 1_000_000;
 const DEFAULT_DEBUG_TRACE_SAMPLE_EVERY_NTH_TRANSITION: u64 = 1;
 const DEFAULT_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK: usize = 1_024;
@@ -166,6 +170,49 @@ impl Default for SeededTickSimulationRunOptions {
     }
 }
 
+/// Per-component mark scaling controls for seeded simulation news arrivals.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SeededTickSimulationNewsMarkScales {
+    pub activity_coupling_scale: f64,
+    pub return_jump_scale: f64,
+}
+
+impl SeededTickSimulationNewsMarkScales {
+    const fn default_unit() -> Self {
+        Self {
+            activity_coupling_scale: 1.0,
+            return_jump_scale: 1.0,
+        }
+    }
+
+    fn validate(self, component_label: &'static str) -> Result<(), SeededTickSimulationRunError> {
+        if !self.activity_coupling_scale.is_finite() || self.activity_coupling_scale < 0.0 {
+            return Err(
+                SeededTickSimulationRunError::InvalidNewsComponentActivityCouplingScale {
+                    component: component_label,
+                    value: self.activity_coupling_scale,
+                },
+            );
+        }
+        if !self.return_jump_scale.is_finite() || self.return_jump_scale < 0.0 {
+            return Err(
+                SeededTickSimulationRunError::InvalidNewsComponentReturnJumpScale {
+                    component: component_label,
+                    value: self.return_jump_scale,
+                },
+            );
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for SeededTickSimulationNewsMarkScales {
+    fn default() -> Self {
+        Self::default_unit()
+    }
+}
+
 /// Required model inputs for seeded tick-event simulation runs.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeededTickSimulationModelInputs {
@@ -177,6 +224,15 @@ pub struct SeededTickSimulationModelInputs {
 
     /// Interval-aligned hourly factors (`s_h`, `nu_h`) used by the simulator.
     pub hourly_factor_contract: HourlyFactorContractOutput,
+
+    /// Known scheduled news arrivals in UTC nanos.
+    pub known_scheduled_news_event_timestamps_utc_nanos: Vec<i64>,
+
+    /// Known-component mark scaling controls for activity coupling and return jumps.
+    pub known_news_mark_scales: SeededTickSimulationNewsMarkScales,
+
+    /// Surprise-component mark scaling controls for activity coupling and return jumps.
+    pub surprise_news_mark_scales: SeededTickSimulationNewsMarkScales,
 }
 
 /// Typed public run contract for deterministic seeded tick-event simulation.
@@ -300,6 +356,16 @@ impl SeededTickSimulationRunConfig {
             self.horizon_interval_count,
         )?;
 
+        validate_known_scheduled_news_timestamps(
+            &self
+                .model_inputs
+                .known_scheduled_news_event_timestamps_utc_nanos,
+        )?;
+        self.model_inputs.known_news_mark_scales.validate("known")?;
+        self.model_inputs
+            .surprise_news_mark_scales
+            .validate("surprise")?;
+
         if self.options.debug_trace_enabled {
             self.options.debug_trace_options.validate()?;
         }
@@ -384,6 +450,23 @@ pub enum SeededTickEventDebugTraceTransitionKind {
     IntervalBoundaryDrift,
 }
 
+/// News market-state label captured in seeded simulation debug traces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SeededTickSimulationNewsEventMarketState {
+    Open,
+    Closed,
+}
+
+impl SeededTickSimulationNewsEventMarketState {
+    const fn from_market_state(market_state: MarketState) -> Self {
+        match market_state {
+            MarketState::Open => Self::Open,
+            MarketState::Closed => Self::Closed,
+        }
+    }
+}
+
 /// Per-transition diagnostic record emitted in debug trace mode.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SeededTickEventDebugTraceRecord {
@@ -398,7 +481,22 @@ pub struct SeededTickEventDebugTraceRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub event_index: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub exogenous_news_severity_mark: Option<f64>,
+    pub exogenous_news_arrival_component: Option<NewsArrivalComponent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exogenous_news_activity_coupling_mark: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exogenous_news_return_jump_mark: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exogenous_news_market_state: Option<SeededTickSimulationNewsEventMarketState>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exogenous_news_return_jump_routing_target: Option<NewsReturnJumpRoutingTarget>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exogenous_news_open_window_return_jump_increment: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exogenous_news_closed_window_gap_increment: Option<f64>,
+    pub cumulative_news_activity_coupling_j_t_increment: f64,
+    pub cumulative_open_window_return_jump_m_t_increment: f64,
+    pub cumulative_closed_window_gap_g_t_increment: f64,
     pub seasonality_factor: f64,
     pub interval_news_intensity: f64,
     pub state_before_transition: SeededTickEventStateSnapshot,
@@ -423,6 +521,7 @@ pub struct SeededTickEventDebugTraceMetadata {
     pub trace_chunk_schema_version: &'static str,
     pub transition_ordering_policy: &'static str,
     pub state_carryover_policy: &'static str,
+    pub news_market_state_routing_policy: &'static str,
     pub sampling_policy: &'static str,
     pub chunking_policy: &'static str,
     pub sample_every_nth_transition: u64,
@@ -437,6 +536,24 @@ pub struct SeededTickEventDebugTraceOutput {
     pub metadata: SeededTickEventDebugTraceMetadata,
     pub captured_transition_count: usize,
     pub trace_chunks: Vec<SeededTickEventDebugTraceChunk>,
+}
+
+/// Cumulative news-routing diagnostics exposed on simulator outputs.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct SeededTickSimulationNewsRoutingTotals {
+    pub cumulative_activity_coupling_j_t_increment: f64,
+    pub cumulative_open_window_return_jump_m_t_increment: f64,
+    pub cumulative_closed_window_gap_g_t_increment: f64,
+}
+
+impl Default for SeededTickSimulationNewsRoutingTotals {
+    fn default() -> Self {
+        Self {
+            cumulative_activity_coupling_j_t_increment: 0.0,
+            cumulative_open_window_return_jump_m_t_increment: 0.0,
+            cumulative_closed_window_gap_g_t_increment: 0.0,
+        }
+    }
 }
 
 /// Deterministic seeded event-path output object.
@@ -454,6 +571,7 @@ pub struct SeededTickSimulationRunResult {
     pub event_tape_metadata: SeededTickEventTapeMetadata,
     pub event_path: Vec<SeededTickEventRecord>,
     pub final_excitation_state: HawkesExcitationState,
+    pub news_routing_totals: SeededTickSimulationNewsRoutingTotals,
     pub debug_trace_enabled: bool,
     pub debug_trace_output: Option<SeededTickEventDebugTraceOutput>,
 }
@@ -526,7 +644,34 @@ pub enum SeededTickSimulationRunError {
     InvalidDebugTraceChunkSize {
         value: usize,
     },
-    InvalidGeneratedNewsSeverityMark {
+    InvalidKnownScheduledNewsTimestampUtcNanos {
+        value: i64,
+    },
+    KnownScheduledNewsTimestampsNotStrictlyIncreasing {
+        previous_timestamp_utc_nanos: i64,
+        current_timestamp_utc_nanos: i64,
+    },
+    InvalidNewsComponentActivityCouplingScale {
+        component: &'static str,
+        value: f64,
+    },
+    InvalidNewsComponentReturnJumpScale {
+        component: &'static str,
+        value: f64,
+    },
+    InvalidGeneratedNewsActivityCouplingMark {
+        value: f64,
+    },
+    InvalidGeneratedNewsReturnJumpMark {
+        value: f64,
+    },
+    InvalidNewsRoutingStateViolation {
+        market_state: MarketState,
+        open_window_return_jump_increment: f64,
+        closed_window_gap_increment: f64,
+    },
+    InvalidAccumulatedNewsRoutingTotal {
+        field: &'static str,
         value: f64,
     },
     InvalidTransitionStep {
@@ -603,9 +748,44 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "debug trace max_records_per_chunk must be greater than 0, found {value}"
             ),
-            Self::InvalidGeneratedNewsSeverityMark { value } => write!(
+            Self::InvalidKnownScheduledNewsTimestampUtcNanos { value } => write!(
                 formatter,
-                "generated exogenous news severity mark must be finite and non-negative, found {value}"
+                "known_scheduled_news_event_timestamps_utc_nanos must map to valid UTC timestamp nanos, found {value}"
+            ),
+            Self::KnownScheduledNewsTimestampsNotStrictlyIncreasing {
+                previous_timestamp_utc_nanos,
+                current_timestamp_utc_nanos,
+            } => write!(
+                formatter,
+                "known_scheduled_news_event_timestamps_utc_nanos must be strictly increasing, found previous={previous_timestamp_utc_nanos} and current={current_timestamp_utc_nanos}"
+            ),
+            Self::InvalidNewsComponentActivityCouplingScale { component, value } => write!(
+                formatter,
+                "{component} news activity_coupling_scale must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidNewsComponentReturnJumpScale { component, value } => write!(
+                formatter,
+                "{component} news return_jump_scale must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidGeneratedNewsActivityCouplingMark { value } => write!(
+                formatter,
+                "generated exogenous news activity-coupling mark must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidGeneratedNewsReturnJumpMark { value } => write!(
+                formatter,
+                "generated exogenous news return-jump mark must be finite, found {value}"
+            ),
+            Self::InvalidNewsRoutingStateViolation {
+                market_state,
+                open_window_return_jump_increment,
+                closed_window_gap_increment,
+            } => write!(
+                formatter,
+                "invalid news routing state for market_state={market_state}, open_window_return_jump_increment={open_window_return_jump_increment}, closed_window_gap_increment={closed_window_gap_increment}"
+            ),
+            Self::InvalidAccumulatedNewsRoutingTotal { field, value } => write!(
+                formatter,
+                "accumulated news routing total {field} must remain finite, found {value}"
             ),
             Self::InvalidTransitionStep { source } => {
                 write!(
@@ -654,6 +834,11 @@ where
     let mut next_event_index: u64 = 0;
     let mut next_transition_index: u64 = 0;
     let mut next_state = run_config.model_inputs.initial_excitation_state;
+    let mut news_routing_totals = SeededTickSimulationNewsRoutingTotals::default();
+    let known_scheduled_news_event_timestamps_utc_nanos = &run_config
+        .model_inputs
+        .known_scheduled_news_event_timestamps_utc_nanos;
+    let mut next_known_scheduled_news_timestamp_position = 0usize;
     let mut debug_trace_collector = run_config.options.debug_trace_enabled.then(|| {
         SeededTickEventDebugTraceCollector::new(run_config.options.debug_trace_options, lambda_bar)
     });
@@ -688,6 +873,20 @@ where
         );
         let interval_news_intensity =
             run_config.model_inputs.hourly_factor_contract.nu_h[interval_index].max(0.0);
+        let interval_market_state =
+            derive_interval_market_state_for_news_routing(interval_seasonality_factor);
+        let (
+            interval_known_news_start_position,
+            interval_known_news_end_position,
+            next_interval_known_news_timestamp_position,
+        ) = derive_known_news_interval_slice_bounds(
+            known_scheduled_news_event_timestamps_utc_nanos,
+            next_known_scheduled_news_timestamp_position,
+            interval_start_utc_nanos,
+            interval_end_utc_nanos,
+        );
+        next_known_scheduled_news_timestamp_position = next_interval_known_news_timestamp_position;
+
         let interval_updates = schedule_interval_stochastic_updates(
             run_config.seed,
             interval_index,
@@ -696,8 +895,13 @@ where
             interval_duration_in_hours,
             interval_projection,
             interval_news_intensity,
+            &known_scheduled_news_event_timestamps_utc_nanos
+                [interval_known_news_start_position..interval_known_news_end_position],
+            run_config.model_inputs.known_news_mark_scales,
+            run_config.model_inputs.surprise_news_mark_scales,
+            interval_market_state,
             randomness_factory,
-        );
+        )?;
 
         let mut previous_timestamp_utc_nanos = interval_start_utc_nanos;
         for interval_update in interval_updates {
@@ -722,6 +926,11 @@ where
             )
             .map_err(map_transition_error_to_seeded_simulation_run_error)?;
 
+            if let Some(news_routing_update) = interval_update.news_routing_update() {
+                news_routing_totals =
+                    accumulate_news_routing_totals(news_routing_totals, news_routing_update)?;
+            }
+
             if let Some(trace_collector) = debug_trace_collector.as_mut() {
                 trace_collector.capture_transition(SeededTickEventDebugTraceCaptureInput {
                     transition_index: next_transition_index,
@@ -732,7 +941,8 @@ where
                     transition_kind: interval_update.transition_kind(),
                     generation_order: Some(interval_update.generation_order()),
                     event_index: event_index_for_update,
-                    exogenous_news_severity_mark: interval_update.exogenous_news_severity_mark(),
+                    news_transition_payload: interval_update.trace_news_transition_payload(),
+                    news_routing_totals,
                     seasonality_factor: interval_seasonality_factor,
                     interval_news_intensity,
                     state_before_transition: previous_state,
@@ -791,7 +1001,8 @@ where
                 transition_kind: SeededTickEventDebugTraceTransitionKind::IntervalBoundaryDrift,
                 generation_order: None,
                 event_index: None,
-                exogenous_news_severity_mark: None,
+                news_transition_payload: None,
+                news_routing_totals,
                 seasonality_factor: interval_seasonality_factor,
                 interval_news_intensity,
                 state_before_transition: previous_state,
@@ -821,6 +1032,7 @@ where
         event_tape_metadata,
         event_path,
         final_excitation_state: next_state,
+        news_routing_totals,
         debug_trace_enabled: run_config.options.debug_trace_enabled,
         debug_trace_output: debug_trace_collector.map(SeededTickEventDebugTraceCollector::finish),
     })
@@ -835,7 +1047,13 @@ enum IntervalStochasticUpdate {
     },
     ExogenousNews {
         timestamp_utc_nanos: i64,
-        severity_mark: f64,
+        news_arrival_component: NewsArrivalComponent,
+        activity_coupling_mark: f64,
+        return_jump_mark: f64,
+        market_state: MarketState,
+        return_jump_routing_target: NewsReturnJumpRoutingTarget,
+        open_window_return_jump_increment: f64,
+        closed_window_gap_increment: f64,
         generation_order: u64,
     },
 }
@@ -854,7 +1072,7 @@ impl IntervalStochasticUpdate {
         }
     }
 
-    const fn ordering_key(&self) -> (i64, u8, u8, u64) {
+    const fn ordering_key(&self) -> (i64, u8, u8, u8, u64) {
         match *self {
             Self::EndogenousEvent {
                 timestamp_utc_nanos,
@@ -867,13 +1085,24 @@ impl IntervalStochasticUpdate {
                     SeededTickEventSide::Buy => 0,
                     SeededTickEventSide::Sell => 1,
                 },
+                0,
                 generation_order,
             ),
             Self::ExogenousNews {
                 timestamp_utc_nanos,
+                news_arrival_component,
                 generation_order,
                 ..
-            } => (timestamp_utc_nanos, 1, 0, generation_order),
+            } => (
+                timestamp_utc_nanos,
+                1,
+                0,
+                match news_arrival_component {
+                    NewsArrivalComponent::Known => 0,
+                    NewsArrivalComponent::Surprise => 1,
+                },
+                generation_order,
+            ),
         }
     }
 
@@ -887,10 +1116,13 @@ impl IntervalStochasticUpdate {
                 Some(map_seeded_tick_side_to_hawkes_side(side)),
                 None,
             ),
-            Self::ExogenousNews { severity_mark, .. } => HawkesTransitionStep::new(
+            Self::ExogenousNews {
+                activity_coupling_mark,
+                ..
+            } => HawkesTransitionStep::new(
                 elapsed_hours_since_previous_update,
                 None,
-                Some(severity_mark),
+                Some(activity_coupling_mark),
             ),
         }
     }
@@ -920,12 +1152,65 @@ impl IntervalStochasticUpdate {
         }
     }
 
-    const fn exogenous_news_severity_mark(&self) -> Option<f64> {
+    const fn news_routing_update(&self) -> Option<SeededTickSimulationNewsRoutingUpdate> {
         match *self {
             Self::EndogenousEvent { .. } => None,
-            Self::ExogenousNews { severity_mark, .. } => Some(severity_mark),
+            Self::ExogenousNews {
+                activity_coupling_mark,
+                open_window_return_jump_increment,
+                closed_window_gap_increment,
+                ..
+            } => Some(SeededTickSimulationNewsRoutingUpdate {
+                activity_coupling_j_t_increment: activity_coupling_mark,
+                open_window_return_jump_m_t_increment: open_window_return_jump_increment,
+                closed_window_gap_g_t_increment: closed_window_gap_increment,
+            }),
         }
     }
+
+    const fn trace_news_transition_payload(
+        &self,
+    ) -> Option<SeededTickSimulationTraceNewsTransitionPayload> {
+        match *self {
+            Self::EndogenousEvent { .. } => None,
+            Self::ExogenousNews {
+                news_arrival_component,
+                activity_coupling_mark,
+                return_jump_mark,
+                market_state,
+                return_jump_routing_target,
+                open_window_return_jump_increment,
+                closed_window_gap_increment,
+                ..
+            } => Some(SeededTickSimulationTraceNewsTransitionPayload {
+                news_arrival_component,
+                activity_coupling_mark,
+                return_jump_mark,
+                market_state,
+                return_jump_routing_target,
+                open_window_return_jump_increment,
+                closed_window_gap_increment,
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SeededTickSimulationNewsRoutingUpdate {
+    activity_coupling_j_t_increment: f64,
+    open_window_return_jump_m_t_increment: f64,
+    closed_window_gap_g_t_increment: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SeededTickSimulationTraceNewsTransitionPayload {
+    news_arrival_component: NewsArrivalComponent,
+    activity_coupling_mark: f64,
+    return_jump_mark: f64,
+    market_state: MarketState,
+    return_jump_routing_target: NewsReturnJumpRoutingTarget,
+    open_window_return_jump_increment: f64,
+    closed_window_gap_increment: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -938,7 +1223,8 @@ struct SeededTickEventDebugTraceCaptureInput {
     transition_kind: SeededTickEventDebugTraceTransitionKind,
     generation_order: Option<u64>,
     event_index: Option<u64>,
-    exogenous_news_severity_mark: Option<f64>,
+    news_transition_payload: Option<SeededTickSimulationTraceNewsTransitionPayload>,
+    news_routing_totals: SeededTickSimulationNewsRoutingTotals,
     seasonality_factor: f64,
     interval_news_intensity: f64,
     state_before_transition: HawkesExcitationState,
@@ -978,7 +1264,38 @@ impl SeededTickEventDebugTraceCollector {
                 transition_kind: input.transition_kind,
                 generation_order: input.generation_order,
                 event_index: input.event_index,
-                exogenous_news_severity_mark: input.exogenous_news_severity_mark,
+                exogenous_news_arrival_component: input
+                    .news_transition_payload
+                    .map(|payload| payload.news_arrival_component),
+                exogenous_news_activity_coupling_mark: input
+                    .news_transition_payload
+                    .map(|payload| payload.activity_coupling_mark),
+                exogenous_news_return_jump_mark: input
+                    .news_transition_payload
+                    .map(|payload| payload.return_jump_mark),
+                exogenous_news_market_state: input.news_transition_payload.map(|payload| {
+                    SeededTickSimulationNewsEventMarketState::from_market_state(
+                        payload.market_state,
+                    )
+                }),
+                exogenous_news_return_jump_routing_target: input
+                    .news_transition_payload
+                    .map(|payload| payload.return_jump_routing_target),
+                exogenous_news_open_window_return_jump_increment: input
+                    .news_transition_payload
+                    .map(|payload| payload.open_window_return_jump_increment),
+                exogenous_news_closed_window_gap_increment: input
+                    .news_transition_payload
+                    .map(|payload| payload.closed_window_gap_increment),
+                cumulative_news_activity_coupling_j_t_increment: input
+                    .news_routing_totals
+                    .cumulative_activity_coupling_j_t_increment,
+                cumulative_open_window_return_jump_m_t_increment: input
+                    .news_routing_totals
+                    .cumulative_open_window_return_jump_m_t_increment,
+                cumulative_closed_window_gap_g_t_increment: input
+                    .news_routing_totals
+                    .cumulative_closed_window_gap_g_t_increment,
                 seasonality_factor: input.seasonality_factor,
                 interval_news_intensity: input.interval_news_intensity,
                 state_before_transition: SeededTickEventStateSnapshot::from_state(
@@ -1064,8 +1381,12 @@ fn schedule_interval_stochastic_updates<F>(
     interval_duration_in_hours: f64,
     interval_projection: HawkesIntensityProjection,
     interval_news_intensity: f64,
+    interval_known_news_event_timestamps_utc_nanos: &[i64],
+    known_news_mark_scales: SeededTickSimulationNewsMarkScales,
+    surprise_news_mark_scales: SeededTickSimulationNewsMarkScales,
+    interval_market_state: MarketState,
     randomness_factory: &F,
-) -> Vec<IntervalStochasticUpdate>
+) -> Result<Vec<IntervalStochasticUpdate>, SeededTickSimulationRunError>
 where
     F: SimulationRandomnessFactory,
 {
@@ -1104,6 +1425,11 @@ where
         SimulationRandomnessSubstreamDomain::ExogenousNewsSeverity,
         interval_index as u64,
     );
+    let mut news_return_jump_stream = randomness_factory.create_substream(
+        seed,
+        SimulationRandomnessSubstreamDomain::ExogenousNewsReturnJump,
+        interval_index as u64,
+    );
 
     let interval_buy_intensity = interval_projection.seasonality_scaled.lambda_plus.max(0.0);
     let interval_sell_intensity = interval_projection.seasonality_scaled.lambda_minus.max(0.0);
@@ -1116,13 +1442,21 @@ where
         interval_sell_intensity * interval_duration_in_hours,
         &mut sell_event_count_stream,
     );
-    let interval_news_count = sample_count_from_expectation(
-        interval_news_intensity * interval_duration_in_hours,
+    let interval_total_news_expected_count = interval_news_intensity * interval_duration_in_hours;
+    let interval_known_news_event_count =
+        u64::try_from(interval_known_news_event_timestamps_utc_nanos.len()).unwrap_or(u64::MAX);
+    let interval_surprise_news_expected_count =
+        (interval_total_news_expected_count - interval_known_news_event_count as f64).max(0.0);
+    let interval_surprise_news_count = sample_count_from_expectation(
+        interval_surprise_news_expected_count,
         &mut news_count_stream,
     );
 
     let mut interval_updates: Vec<IntervalStochasticUpdate> = Vec::with_capacity(
-        (interval_buy_event_count + interval_sell_event_count + interval_news_count) as usize,
+        (interval_buy_event_count
+            + interval_sell_event_count
+            + interval_known_news_event_count
+            + interval_surprise_news_count) as usize,
     );
     let mut next_generation_order = 0_u64;
 
@@ -1156,24 +1490,73 @@ where
         next_generation_order = next_generation_order.saturating_add(1);
     }
 
-    for _news_position in 0..interval_news_count {
+    for &known_news_timestamp_utc_nanos in interval_known_news_event_timestamps_utc_nanos {
+        let activity_coupling_mark = sample_exogenous_news_activity_coupling_mark(
+            &mut news_severity_stream,
+            known_news_mark_scales.activity_coupling_scale,
+        )?;
+        let return_jump_mark = sample_exogenous_news_return_jump_mark(
+            activity_coupling_mark,
+            &mut news_return_jump_stream,
+            known_news_mark_scales.return_jump_scale,
+        )?;
+        let (
+            return_jump_routing_target,
+            open_window_return_jump_increment,
+            closed_window_gap_increment,
+        ) = resolve_news_return_jump_routing(interval_market_state, return_jump_mark)?;
+
+        interval_updates.push(IntervalStochasticUpdate::ExogenousNews {
+            timestamp_utc_nanos: known_news_timestamp_utc_nanos,
+            news_arrival_component: NewsArrivalComponent::Known,
+            activity_coupling_mark,
+            return_jump_mark,
+            market_state: interval_market_state,
+            return_jump_routing_target,
+            open_window_return_jump_increment,
+            closed_window_gap_increment,
+            generation_order: next_generation_order,
+        });
+        next_generation_order = next_generation_order.saturating_add(1);
+    }
+
+    for _surprise_news_position in 0..interval_surprise_news_count {
         let timestamp_utc_nanos = sample_interval_timestamp_utc_nanos(
             interval_start_utc_nanos,
             interval_duration_nanos,
             &mut news_timestamp_stream,
         );
-        let severity_mark = sample_exogenous_news_severity_mark(&mut news_severity_stream);
+        let activity_coupling_mark = sample_exogenous_news_activity_coupling_mark(
+            &mut news_severity_stream,
+            surprise_news_mark_scales.activity_coupling_scale,
+        )?;
+        let return_jump_mark = sample_exogenous_news_return_jump_mark(
+            activity_coupling_mark,
+            &mut news_return_jump_stream,
+            surprise_news_mark_scales.return_jump_scale,
+        )?;
+        let (
+            return_jump_routing_target,
+            open_window_return_jump_increment,
+            closed_window_gap_increment,
+        ) = resolve_news_return_jump_routing(interval_market_state, return_jump_mark)?;
 
         interval_updates.push(IntervalStochasticUpdate::ExogenousNews {
             timestamp_utc_nanos,
-            severity_mark,
+            news_arrival_component: NewsArrivalComponent::Surprise,
+            activity_coupling_mark,
+            return_jump_mark,
+            market_state: interval_market_state,
+            return_jump_routing_target,
+            open_window_return_jump_increment,
+            closed_window_gap_increment,
             generation_order: next_generation_order,
         });
         next_generation_order = next_generation_order.saturating_add(1);
     }
 
     interval_updates.sort_by_key(IntervalStochasticUpdate::ordering_key);
-    interval_updates
+    Ok(interval_updates)
 }
 
 fn map_transition_error_to_seeded_simulation_run_error(
@@ -1181,7 +1564,7 @@ fn map_transition_error_to_seeded_simulation_run_error(
 ) -> SeededTickSimulationRunError {
     match source {
         HawkesTransitionError::InvalidNewsSeverityMark { source } => {
-            SeededTickSimulationRunError::InvalidGeneratedNewsSeverityMark {
+            SeededTickSimulationRunError::InvalidGeneratedNewsActivityCouplingMark {
                 value: source.value,
             }
         }
@@ -1226,6 +1609,7 @@ const fn build_seeded_tick_event_debug_trace_metadata(
         trace_chunk_schema_version: SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNK_SCHEMA_VERSION,
         transition_ordering_policy: SEEDED_TICK_EVENT_ORDERING_POLICY,
         state_carryover_policy: SEEDED_TICK_EVENT_STATE_CARRYOVER_POLICY,
+        news_market_state_routing_policy: SEEDED_TICK_EVENT_NEWS_MARKET_STATE_ROUTING_POLICY,
         sampling_policy: SEEDED_TICK_EVENT_DEBUG_TRACE_SAMPLING_POLICY,
         chunking_policy: SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNKING_POLICY,
         sample_every_nth_transition: debug_trace_options.sample_every_nth_transition,
@@ -1236,6 +1620,76 @@ const fn build_seeded_tick_event_debug_trace_metadata(
 
 fn derive_elapsed_hours(previous_timestamp_utc_nanos: i64, timestamp_utc_nanos: i64) -> f64 {
     (timestamp_utc_nanos - previous_timestamp_utc_nanos) as f64 / ONE_HOUR_NANOS as f64
+}
+
+const fn derive_interval_market_state_for_news_routing(
+    interval_seasonality_factor: f64,
+) -> MarketState {
+    if interval_seasonality_factor > 0.0 {
+        MarketState::Open
+    } else {
+        MarketState::Closed
+    }
+}
+
+fn derive_known_news_interval_slice_bounds(
+    known_scheduled_news_event_timestamps_utc_nanos: &[i64],
+    known_scheduled_news_start_position: usize,
+    interval_start_utc_nanos: i64,
+    interval_end_utc_nanos: i64,
+) -> (usize, usize, usize) {
+    let mut next_known_scheduled_news_position = known_scheduled_news_start_position;
+    while next_known_scheduled_news_position < known_scheduled_news_event_timestamps_utc_nanos.len()
+        && known_scheduled_news_event_timestamps_utc_nanos[next_known_scheduled_news_position]
+            < interval_start_utc_nanos
+    {
+        next_known_scheduled_news_position = next_known_scheduled_news_position.saturating_add(1);
+    }
+
+    let interval_known_news_start_position = next_known_scheduled_news_position;
+    while next_known_scheduled_news_position < known_scheduled_news_event_timestamps_utc_nanos.len()
+        && known_scheduled_news_event_timestamps_utc_nanos[next_known_scheduled_news_position]
+            < interval_end_utc_nanos
+    {
+        next_known_scheduled_news_position = next_known_scheduled_news_position.saturating_add(1);
+    }
+
+    (
+        interval_known_news_start_position,
+        next_known_scheduled_news_position,
+        next_known_scheduled_news_position,
+    )
+}
+
+fn validate_known_scheduled_news_timestamps(
+    known_scheduled_news_event_timestamps_utc_nanos: &[i64],
+) -> Result<(), SeededTickSimulationRunError> {
+    let mut previous_timestamp_utc_nanos: Option<i64> = None;
+    for &timestamp_utc_nanos in known_scheduled_news_event_timestamps_utc_nanos {
+        let seconds = timestamp_utc_nanos.div_euclid(ONE_SECOND_NANOS);
+        let nanoseconds = timestamp_utc_nanos.rem_euclid(ONE_SECOND_NANOS) as u32;
+        if DateTime::<Utc>::from_timestamp(seconds, nanoseconds).is_none() {
+            return Err(
+                SeededTickSimulationRunError::InvalidKnownScheduledNewsTimestampUtcNanos {
+                    value: timestamp_utc_nanos,
+                },
+            );
+        }
+
+        if let Some(previous_timestamp_utc_nanos_value) = previous_timestamp_utc_nanos
+            && timestamp_utc_nanos <= previous_timestamp_utc_nanos_value
+        {
+            return Err(
+                SeededTickSimulationRunError::KnownScheduledNewsTimestampsNotStrictlyIncreasing {
+                    previous_timestamp_utc_nanos: previous_timestamp_utc_nanos_value,
+                    current_timestamp_utc_nanos: timestamp_utc_nanos,
+                },
+            );
+        }
+        previous_timestamp_utc_nanos = Some(timestamp_utc_nanos);
+    }
+
+    Ok(())
 }
 
 fn sample_interval_timestamp_utc_nanos<R>(
@@ -1281,12 +1735,166 @@ where
     sampled_count.min(MAX_STOCHASTIC_UPDATES_PER_INTERVAL)
 }
 
+fn sample_exogenous_news_activity_coupling_mark<R>(
+    randomness_stream: &mut R,
+    activity_coupling_scale: f64,
+) -> Result<f64, SeededTickSimulationRunError>
+where
+    R: SimulationRandomnessStream,
+{
+    let sampled_unscaled_mark = sample_exogenous_news_severity_mark(randomness_stream);
+    let sampled_mark = activity_coupling_scale * sampled_unscaled_mark;
+    if !sampled_mark.is_finite() || sampled_mark < 0.0 {
+        return Err(
+            SeededTickSimulationRunError::InvalidGeneratedNewsActivityCouplingMark {
+                value: sampled_mark,
+            },
+        );
+    }
+
+    Ok(sampled_mark)
+}
+
+fn sample_exogenous_news_return_jump_mark<R>(
+    activity_coupling_mark: f64,
+    randomness_stream: &mut R,
+    return_jump_scale: f64,
+) -> Result<f64, SeededTickSimulationRunError>
+where
+    R: SimulationRandomnessStream,
+{
+    let sign_selector = randomness_stream.next_unit_interval_f64();
+    let sign = if sign_selector < 0.5 { -1.0 } else { 1.0 };
+    let magnitude = sample_exogenous_news_severity_mark(randomness_stream);
+    let sampled_mark = return_jump_scale * activity_coupling_mark.sqrt() * sign * magnitude;
+    if !sampled_mark.is_finite() {
+        return Err(
+            SeededTickSimulationRunError::InvalidGeneratedNewsReturnJumpMark {
+                value: sampled_mark,
+            },
+        );
+    }
+
+    Ok(sampled_mark)
+}
+
 fn sample_exogenous_news_severity_mark<R>(randomness_stream: &mut R) -> f64
 where
     R: SimulationRandomnessStream,
 {
     let unit_draw = randomness_stream.next_unit_interval_f64();
     -(1.0 - unit_draw).ln()
+}
+
+fn resolve_news_return_jump_routing(
+    market_state: MarketState,
+    return_jump_mark: f64,
+) -> Result<(NewsReturnJumpRoutingTarget, f64, f64), SeededTickSimulationRunError> {
+    let (
+        return_jump_routing_target,
+        open_window_return_jump_increment,
+        closed_window_gap_increment,
+    ) = match market_state {
+        MarketState::Open => (
+            NewsReturnJumpRoutingTarget::OpenWindowDirectJumpM,
+            return_jump_mark,
+            0.0,
+        ),
+        MarketState::Closed => (
+            NewsReturnJumpRoutingTarget::ClosedWindowGapG,
+            0.0,
+            return_jump_mark,
+        ),
+    };
+
+    validate_news_return_jump_routing_state(
+        market_state,
+        open_window_return_jump_increment,
+        closed_window_gap_increment,
+    )?;
+
+    Ok((
+        return_jump_routing_target,
+        open_window_return_jump_increment,
+        closed_window_gap_increment,
+    ))
+}
+
+fn validate_news_return_jump_routing_state(
+    market_state: MarketState,
+    open_window_return_jump_increment: f64,
+    closed_window_gap_increment: f64,
+) -> Result<(), SeededTickSimulationRunError> {
+    let routing_state_is_valid = match market_state {
+        MarketState::Open => closed_window_gap_increment == 0.0,
+        MarketState::Closed => open_window_return_jump_increment == 0.0,
+    };
+    if !routing_state_is_valid
+        || !open_window_return_jump_increment.is_finite()
+        || !closed_window_gap_increment.is_finite()
+    {
+        return Err(
+            SeededTickSimulationRunError::InvalidNewsRoutingStateViolation {
+                market_state,
+                open_window_return_jump_increment,
+                closed_window_gap_increment,
+            },
+        );
+    }
+
+    Ok(())
+}
+
+fn accumulate_news_routing_totals(
+    current_totals: SeededTickSimulationNewsRoutingTotals,
+    routing_update: SeededTickSimulationNewsRoutingUpdate,
+) -> Result<SeededTickSimulationNewsRoutingTotals, SeededTickSimulationRunError> {
+    let next_totals = SeededTickSimulationNewsRoutingTotals {
+        cumulative_activity_coupling_j_t_increment: current_totals
+            .cumulative_activity_coupling_j_t_increment
+            + routing_update.activity_coupling_j_t_increment,
+        cumulative_open_window_return_jump_m_t_increment: current_totals
+            .cumulative_open_window_return_jump_m_t_increment
+            + routing_update.open_window_return_jump_m_t_increment,
+        cumulative_closed_window_gap_g_t_increment: current_totals
+            .cumulative_closed_window_gap_g_t_increment
+            + routing_update.closed_window_gap_g_t_increment,
+    };
+    if !next_totals
+        .cumulative_activity_coupling_j_t_increment
+        .is_finite()
+    {
+        return Err(
+            SeededTickSimulationRunError::InvalidAccumulatedNewsRoutingTotal {
+                field: "cumulative_activity_coupling_j_t_increment",
+                value: next_totals.cumulative_activity_coupling_j_t_increment,
+            },
+        );
+    }
+    if !next_totals
+        .cumulative_open_window_return_jump_m_t_increment
+        .is_finite()
+    {
+        return Err(
+            SeededTickSimulationRunError::InvalidAccumulatedNewsRoutingTotal {
+                field: "cumulative_open_window_return_jump_m_t_increment",
+                value: next_totals.cumulative_open_window_return_jump_m_t_increment,
+            },
+        );
+    }
+    if !next_totals
+        .cumulative_closed_window_gap_g_t_increment
+        .is_finite()
+    {
+        return Err(
+            SeededTickSimulationRunError::InvalidAccumulatedNewsRoutingTotal {
+                field: "cumulative_closed_window_gap_g_t_increment",
+                value: next_totals.cumulative_closed_window_gap_g_t_increment,
+            },
+        );
+    }
+
+    Ok(next_totals)
 }
 
 const fn map_seeded_tick_side_to_hawkes_side(side: SeededTickEventSide) -> HawkesEventSide {
@@ -1399,6 +2007,7 @@ mod tests {
     use chrono::{DateTime, Utc};
     use serde_json::Value;
 
+    use crate::calendar::MarketState;
     use crate::hawkes::{
         HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters, HawkesTransitionStep,
     };
@@ -1410,6 +2019,7 @@ mod tests {
         HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY, HourlyFactorContractDiagnostics,
         HourlyFactorContractOutput, HourlyFactorMaterializationMetadata,
     };
+    use crate::news::{NewsArrivalComponent, NewsReturnJumpRoutingTarget};
     use crate::nig::{
         NIG_TRADING_TIME_INCREMENT_COMPOSITION_POLICY, NigSharedPlusShiftConfiguration,
     };
@@ -1427,8 +2037,8 @@ mod tests {
         SEEDED_TICK_EVENT_DEBUG_TRACE_RECORD_SCHEMA_VERSION,
         SEEDED_TICK_EVENT_DEBUG_TRACE_SAMPLING_POLICY,
         SEEDED_TICK_EVENT_DEBUG_TRACE_SCHEMA_VERSION, SEEDED_TICK_EVENT_DETERMINISM_POLICY,
-        SEEDED_TICK_EVENT_ORDERING_POLICY, SEEDED_TICK_EVENT_PATH_SCHEMA_VERSION,
-        SEEDED_TICK_EVENT_RANDOMNESS_STREAM_POLICY,
+        SEEDED_TICK_EVENT_NEWS_MARKET_STATE_ROUTING_POLICY, SEEDED_TICK_EVENT_ORDERING_POLICY,
+        SEEDED_TICK_EVENT_PATH_SCHEMA_VERSION, SEEDED_TICK_EVENT_RANDOMNESS_STREAM_POLICY,
         SEEDED_TICK_EVENT_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY,
         SEEDED_TICK_EVENT_RECORD_SCHEMA_VERSION, SEEDED_TICK_EVENT_SIDE_ENCODING_POLICY,
         SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY,
@@ -1437,6 +2047,7 @@ mod tests {
         SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY, SeededTickEventDebugTraceTransitionKind,
         SeededTickEventSide, SeededTickEventStateSnapshotCapture,
         SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
+        SeededTickSimulationNewsEventMarketState, SeededTickSimulationNewsMarkScales,
         SeededTickSimulationRunConfig, SeededTickSimulationRunError,
         SeededTickSimulationRunOptions, run_seeded_tick_event_simulation,
         run_seeded_tick_event_simulation_with_randomness_factory,
@@ -1764,6 +2375,7 @@ mod tests {
             vec![0.0],
             vec![],
             vec![],
+            vec![],
         );
 
         let run_result =
@@ -1793,6 +2405,10 @@ mod tests {
         assert_eq!(
             debug_trace_payload["metadata"]["trace_chunk_schema_version"],
             SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNK_SCHEMA_VERSION
+        );
+        assert_eq!(
+            debug_trace_payload["metadata"]["news_market_state_routing_policy"],
+            SEEDED_TICK_EVENT_NEWS_MARKET_STATE_ROUTING_POLICY
         );
         assert_eq!(
             debug_trace_payload["metadata"]["sampling_policy"],
@@ -1843,6 +2459,9 @@ mod tests {
             "timestamp_utc_nanos",
             "elapsed_hours_since_previous_update",
             "transition_kind",
+            "cumulative_news_activity_coupling_j_t_increment",
+            "cumulative_open_window_return_jump_m_t_increment",
+            "cumulative_closed_window_gap_g_t_increment",
             "seasonality_factor",
             "interval_news_intensity",
             "state_before_transition",
@@ -1880,6 +2499,7 @@ mod tests {
             vec![0.0],
             vec![0.3],
             vec![0.5],
+            vec![],
         );
 
         let run_result =
@@ -1962,13 +2582,37 @@ mod tests {
         assert_eq!(trace_records[3].event_index, None);
         assert_float_close(
             trace_records[2]
-                .exogenous_news_severity_mark
-                .expect("exogenous transition should include news severity mark"),
+                .exogenous_news_activity_coupling_mark
+                .expect("exogenous transition should include news activity-coupling mark"),
             -(1.0 - 0.5_f64).ln(),
         );
-        assert!(trace_records[0].exogenous_news_severity_mark.is_none());
-        assert!(trace_records[1].exogenous_news_severity_mark.is_none());
-        assert!(trace_records[3].exogenous_news_severity_mark.is_none());
+        assert_eq!(
+            trace_records[2].exogenous_news_arrival_component,
+            Some(NewsArrivalComponent::Surprise)
+        );
+        assert_eq!(
+            trace_records[2].exogenous_news_market_state,
+            Some(SeededTickSimulationNewsEventMarketState::Open)
+        );
+        assert_eq!(
+            trace_records[2].exogenous_news_return_jump_routing_target,
+            Some(NewsReturnJumpRoutingTarget::OpenWindowDirectJumpM)
+        );
+        assert!(
+            trace_records[0]
+                .exogenous_news_activity_coupling_mark
+                .is_none()
+        );
+        assert!(
+            trace_records[1]
+                .exogenous_news_activity_coupling_mark
+                .is_none()
+        );
+        assert!(
+            trace_records[3]
+                .exogenous_news_activity_coupling_mark
+                .is_none()
+        );
 
         for trace_window in trace_records.windows(2) {
             assert_state_snapshot_close(
@@ -2008,6 +2652,7 @@ mod tests {
             vec![0.1, 0.2, 0.3],
             vec![0.4, 0.5, 0.6],
             vec![0.0],
+            vec![],
             vec![],
             vec![],
         );
@@ -2257,6 +2902,7 @@ mod tests {
             vec![0.0],
             vec![],
             vec![],
+            vec![],
         );
         let run_result =
             run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
@@ -2311,6 +2957,7 @@ mod tests {
             vec![0.0],
             vec![],
             vec![],
+            vec![],
         );
         let run_result =
             run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
@@ -2327,6 +2974,255 @@ mod tests {
             run_result.event_ordering_policy,
             SEEDED_TICK_EVENT_ORDERING_POLICY
         );
+    }
+
+    #[test]
+    fn seeded_simulation_scheduler_applies_known_before_surprise_tie_ordering_policy() {
+        let start_utc_nanos = 1_704_067_200_000_000_000;
+        let tied_timestamp_utc_nanos =
+            start_utc_nanos + ((ONE_HOUR_NANOS as f64 * 0.3).floor() as i64);
+
+        let mut model_inputs = one_interval_model_inputs(1.0, 1.0, 2.0);
+        model_inputs.known_scheduled_news_event_timestamps_utc_nanos =
+            vec![tied_timestamp_utc_nanos];
+
+        let run_config = SeededTickSimulationRunConfig::try_new(
+            2_009,
+            DateTime::<Utc>::from_timestamp_nanos(start_utc_nanos),
+            1,
+            model_inputs,
+            Some(SeededTickSimulationRunOptions {
+                debug_trace_enabled: true,
+                debug_trace_options: SeededTickSimulationDebugTraceOptions {
+                    sample_every_nth_transition: 1,
+                    max_records_per_chunk: 16,
+                },
+                state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
+            }),
+        )
+        .expect("known-surprise tie-ordering run config should initialize");
+
+        let scripted_factory = ScriptedRandomnessFactory::new(
+            vec![0.0],
+            vec![0.0],
+            vec![0.3],
+            vec![0.3],
+            vec![0.0],
+            vec![0.3],
+            vec![0.4, 0.6],
+            vec![0.75, 0.2, 0.25, 0.3],
+        );
+        let run_result =
+            run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
+                .expect("known-surprise tie-ordering run should complete");
+
+        let trace_records = run_result
+            .debug_trace_output
+            .as_ref()
+            .expect("debug trace output should exist")
+            .trace_chunks
+            .iter()
+            .flat_map(|trace_chunk| trace_chunk.records.iter())
+            .collect::<Vec<_>>();
+
+        assert_eq!(trace_records.len(), 5);
+        assert_eq!(
+            trace_records[0].transition_kind,
+            SeededTickEventDebugTraceTransitionKind::EndogenousBuyEvent
+        );
+        assert_eq!(
+            trace_records[1].transition_kind,
+            SeededTickEventDebugTraceTransitionKind::EndogenousSellEvent
+        );
+        assert_eq!(
+            trace_records[2].exogenous_news_arrival_component,
+            Some(NewsArrivalComponent::Known)
+        );
+        assert_eq!(
+            trace_records[3].exogenous_news_arrival_component,
+            Some(NewsArrivalComponent::Surprise)
+        );
+        assert_eq!(trace_records[2].generation_order, Some(2));
+        assert_eq!(trace_records[3].generation_order, Some(3));
+        assert_eq!(
+            trace_records[2].timestamp_utc_nanos,
+            trace_records[3].timestamp_utc_nanos
+        );
+        assert_eq!(
+            trace_records[2].timestamp_utc_nanos,
+            tied_timestamp_utc_nanos
+        );
+
+        assert_eq!(run_result.event_path.len(), 2);
+        assert_eq!(run_result.event_path[0].side, SeededTickEventSide::Buy);
+        assert_eq!(run_result.event_path[1].side, SeededTickEventSide::Sell);
+    }
+
+    #[test]
+    fn seeded_simulation_news_routing_applies_open_window_to_m_and_closed_window_to_g() {
+        let start_utc_nanos = 1_704_067_200_000_000_000;
+        let mut model_inputs = valid_model_inputs();
+        model_inputs.kernel_parameters = HawkesKernelParameters::try_new(
+            0.5,
+            1.5,
+            HawkesKernelLoadings {
+                plus_plus: 0.0,
+                plus_minus: 0.0,
+                minus_plus: 0.0,
+                minus_minus: 0.0,
+            },
+            HawkesKernelLoadings {
+                plus_plus: 0.0,
+                plus_minus: 0.0,
+                minus_plus: 0.0,
+                minus_minus: 0.0,
+            },
+        )
+        .expect("routing kernel fixture should be valid");
+        model_inputs.initial_excitation_state = HawkesExcitationState {
+            y_plus_plus: 0.0,
+            y_plus_minus: 0.0,
+            y_minus_plus: 0.0,
+            y_minus_minus: 0.0,
+        };
+        model_inputs.hourly_factor_contract.s_h = vec![1.0, 0.0];
+        model_inputs.hourly_factor_contract.nu_h = vec![0.0, 0.0];
+        model_inputs.known_scheduled_news_event_timestamps_utc_nanos = vec![
+            start_utc_nanos + ONE_HOUR_NANOS / 5,
+            start_utc_nanos + ONE_HOUR_NANOS + ONE_HOUR_NANOS / 5,
+        ];
+
+        let run_config = SeededTickSimulationRunConfig::try_new(
+            2_010,
+            DateTime::<Utc>::from_timestamp_nanos(start_utc_nanos),
+            2,
+            model_inputs,
+            Some(SeededTickSimulationRunOptions {
+                debug_trace_enabled: true,
+                debug_trace_options: SeededTickSimulationDebugTraceOptions {
+                    sample_every_nth_transition: 1,
+                    max_records_per_chunk: 16,
+                },
+                state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
+            }),
+        )
+        .expect("open-closed routing run config should initialize");
+
+        let scripted_factory = ScriptedRandomnessFactory::new(
+            vec![1.0, 1.0],
+            vec![1.0, 1.0],
+            vec![],
+            vec![],
+            vec![1.0, 1.0],
+            vec![],
+            vec![0.5, 0.8],
+            vec![0.75, 0.5, 0.25, 0.5],
+        );
+        let run_result =
+            run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
+                .expect("open-closed routing run should complete");
+
+        let trace_records = run_result
+            .debug_trace_output
+            .as_ref()
+            .expect("debug trace output should exist")
+            .trace_chunks
+            .iter()
+            .flat_map(|trace_chunk| trace_chunk.records.iter())
+            .filter(|trace_record| {
+                trace_record.transition_kind
+                    == SeededTickEventDebugTraceTransitionKind::ExogenousNews
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(trace_records.len(), 2);
+        assert_eq!(
+            trace_records[0].exogenous_news_market_state,
+            Some(SeededTickSimulationNewsEventMarketState::Open)
+        );
+        assert_eq!(
+            trace_records[0].exogenous_news_return_jump_routing_target,
+            Some(NewsReturnJumpRoutingTarget::OpenWindowDirectJumpM)
+        );
+        assert_eq!(
+            trace_records[1].exogenous_news_market_state,
+            Some(SeededTickSimulationNewsEventMarketState::Closed)
+        );
+        assert_eq!(
+            trace_records[1].exogenous_news_return_jump_routing_target,
+            Some(NewsReturnJumpRoutingTarget::ClosedWindowGapG)
+        );
+
+        let first_activity = -(1.0 - 0.5_f64).ln();
+        let first_return_jump = first_activity.sqrt() * -(1.0 - 0.5_f64).ln();
+        let second_activity = -(1.0 - 0.5_f64).ln();
+        let second_return_jump = second_activity.sqrt() * -(1.0 - 0.5_f64).ln();
+
+        assert_float_close(
+            run_result
+                .news_routing_totals
+                .cumulative_activity_coupling_j_t_increment,
+            first_activity + second_activity,
+        );
+        assert_float_close(
+            run_result
+                .news_routing_totals
+                .cumulative_open_window_return_jump_m_t_increment,
+            first_return_jump,
+        );
+        assert_float_close(
+            run_result
+                .news_routing_totals
+                .cumulative_closed_window_gap_g_t_increment,
+            second_return_jump,
+        );
+    }
+
+    #[test]
+    fn seeded_simulation_rejects_invalid_generated_news_return_jump_mark() {
+        let run_config = SeededTickSimulationRunConfig::try_new(
+            2_011,
+            DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+            1,
+            one_interval_model_inputs(0.5, 0.5, 1.0),
+            None,
+        )
+        .expect("invalid return-jump mark run config should initialize");
+
+        let scripted_factory = ScriptedRandomnessFactory::new(
+            vec![1.0],
+            vec![1.0],
+            vec![],
+            vec![],
+            vec![0.0],
+            vec![0.3],
+            vec![0.5],
+            vec![0.75, f64::NAN],
+        );
+        let error =
+            run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
+                .expect_err("invalid generated return-jump mark must fail");
+
+        assert!(matches!(
+            error,
+            SeededTickSimulationRunError::InvalidGeneratedNewsReturnJumpMark { value } if value.is_nan()
+        ));
+    }
+
+    #[test]
+    fn seeded_simulation_rejects_invalid_news_routing_state_violations() {
+        let error = super::validate_news_return_jump_routing_state(MarketState::Open, 0.1, 0.2)
+            .expect_err("open-window routing with non-zero closed-gap increment must fail");
+
+        assert!(matches!(
+            error,
+            SeededTickSimulationRunError::InvalidNewsRoutingStateViolation {
+                market_state: MarketState::Open,
+                open_window_return_jump_increment,
+                closed_window_gap_increment,
+            } if (open_window_return_jump_increment - 0.1).abs() <= 1e-12
+                && (closed_window_gap_increment - 0.2).abs() <= 1e-12
+        ));
     }
 
     #[test]
@@ -2409,6 +3305,7 @@ mod tests {
             vec![0.0],
             vec![],
             vec![],
+            vec![],
         );
         let run_result =
             run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
@@ -2455,6 +3352,7 @@ mod tests {
             vec![0.25],
             vec![],
             vec![0.0],
+            vec![],
             vec![],
             vec![],
         );
@@ -2625,6 +3523,7 @@ mod tests {
             vec![0.0],
             vec![],
             vec![],
+            vec![],
         );
 
         let tie_result = run_seeded_tick_event_simulation_with_randomness_factory(
@@ -2673,6 +3572,7 @@ mod tests {
             vec![0.300000001],
             vec![0.3],
             vec![0.0],
+            vec![],
             vec![],
             vec![],
         );
@@ -2794,6 +3694,7 @@ mod tests {
                 SimulationRandomnessSubstreamDomain::ExogenousNewsCount => 0,
                 SimulationRandomnessSubstreamDomain::ExogenousNewsTimestamp => 0,
                 SimulationRandomnessSubstreamDomain::ExogenousNewsSeverity => 0,
+                SimulationRandomnessSubstreamDomain::ExogenousNewsReturnJump => 0,
             }
         }
     }
@@ -2807,6 +3708,7 @@ mod tests {
         news_count_draws: Vec<f64>,
         news_timestamp_draws: Vec<f64>,
         news_severity_draws: Vec<f64>,
+        news_return_jump_draws: Vec<f64>,
     }
 
     impl ScriptedRandomnessFactory {
@@ -2818,6 +3720,7 @@ mod tests {
             news_count_draws: Vec<f64>,
             news_timestamp_draws: Vec<f64>,
             news_severity_draws: Vec<f64>,
+            news_return_jump_draws: Vec<f64>,
         ) -> Self {
             Self {
                 buy_count_draws,
@@ -2827,6 +3730,7 @@ mod tests {
                 news_count_draws,
                 news_timestamp_draws,
                 news_severity_draws,
+                news_return_jump_draws,
             }
         }
     }
@@ -2861,6 +3765,9 @@ mod tests {
                 }
                 SimulationRandomnessSubstreamDomain::ExogenousNewsSeverity => {
                     self.news_severity_draws.clone()
+                }
+                SimulationRandomnessSubstreamDomain::ExogenousNewsReturnJump => {
+                    self.news_return_jump_draws.clone()
                 }
             };
 
@@ -2919,6 +3826,7 @@ mod tests {
                 SimulationRandomnessSubstreamDomain::ExogenousNewsCount => vec![0.0],
                 SimulationRandomnessSubstreamDomain::ExogenousNewsTimestamp => vec![],
                 SimulationRandomnessSubstreamDomain::ExogenousNewsSeverity => vec![],
+                SimulationRandomnessSubstreamDomain::ExogenousNewsReturnJump => vec![],
             };
 
             ScriptedRandomnessStream::new(draws)
@@ -2990,6 +3898,9 @@ mod tests {
                     repeated_local_hour_interval_count: 0,
                 },
             },
+            known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
+            known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
+            surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
         }
     }
 
@@ -3167,6 +4078,9 @@ mod tests {
                     repeated_local_hour_interval_count: 0,
                 },
             },
+            known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
+            known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
+            surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
         }
     }
 }
