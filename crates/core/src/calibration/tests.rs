@@ -57,7 +57,9 @@ mod tests {
     };
     use crate::news::{
         CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
-        GammaSeverityMarkConfiguration, NewsIntensityConfiguration, NewsProcessConfiguration,
+        GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
+        NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
+        SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
     };
     use crate::nig::{ComplexScalar, NigParameters, NigSharedPlusShiftConfiguration};
     use crate::pricing::VanillaOptionPricingCalibrationHooks;
@@ -440,16 +442,7 @@ mod tests {
             None,
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
-            vec![
-                CalibrationStageSolverSettings {
-                    stage: CalibrationStage::Seasonality,
-                    optimizer_settings: build_solver_settings(),
-                },
-                CalibrationStageSolverSettings {
-                    stage: CalibrationStage::Hawkes,
-                    optimizer_settings: build_solver_settings(),
-                },
-            ],
+            build_solver_settings_for_seasonality_and_hawkes(),
             Vec::new(),
             None,
         )
@@ -463,16 +456,7 @@ mod tests {
             None,
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
-            vec![
-                CalibrationStageSolverSettings {
-                    stage: CalibrationStage::Seasonality,
-                    optimizer_settings: build_solver_settings(),
-                },
-                CalibrationStageSolverSettings {
-                    stage: CalibrationStage::Hawkes,
-                    optimizer_settings: build_solver_settings(),
-                },
-            ],
+            build_solver_settings_for_seasonality_and_hawkes(),
             Vec::new(),
             None,
         )
@@ -488,22 +472,13 @@ mod tests {
             CalibrationExecutionMode::Memory,
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
-            vec![
-                CalibrationStageSolverSettings {
-                    stage: CalibrationStage::Seasonality,
-                    optimizer_settings: build_solver_settings(),
-                },
-                CalibrationStageSolverSettings {
-                    stage: CalibrationStage::Hawkes,
-                    optimizer_settings: build_solver_settings(),
-                },
-            ],
-            vec![CalibrationStageHandoff {
-                from_stage: CalibrationStage::Seasonality,
-                to_stage: CalibrationStage::Hawkes,
-                transport: CalibrationStageHandoffTransport::InMemoryOutput,
-                artifact_reference: None,
-            }],
+            build_solver_settings_for_seasonality_and_hawkes(),
+            vec![build_mode_aware_stage_handoff(
+                CalibrationStage::Seasonality,
+                CalibrationStage::Hawkes,
+                CalibrationExecutionMode::Memory,
+                "artifact://seasonality/stage-001",
+            )],
             Some(CalibrationResumeSettings {
                 source: CalibrationResumeSource::SameProcess,
                 resume_from_stage: Some(CalibrationStage::Hawkes),
@@ -522,22 +497,13 @@ mod tests {
             CalibrationExecutionMode::Disk,
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
-            vec![
-                CalibrationStageSolverSettings {
-                    stage: CalibrationStage::Seasonality,
-                    optimizer_settings: build_solver_settings(),
-                },
-                CalibrationStageSolverSettings {
-                    stage: CalibrationStage::Hawkes,
-                    optimizer_settings: build_solver_settings(),
-                },
-            ],
-            vec![CalibrationStageHandoff {
-                from_stage: CalibrationStage::Seasonality,
-                to_stage: CalibrationStage::Hawkes,
-                transport: CalibrationStageHandoffTransport::PersistedArtifactReference,
-                artifact_reference: Some("artifact://seasonality/stage-001".to_string()),
-            }],
+            build_solver_settings_for_seasonality_and_hawkes(),
+            vec![build_mode_aware_stage_handoff(
+                CalibrationStage::Seasonality,
+                CalibrationStage::Hawkes,
+                CalibrationExecutionMode::Disk,
+                "artifact://seasonality/stage-001",
+            )],
             Some(CalibrationResumeSettings {
                 source: CalibrationResumeSource::PersistedCheckpointReference,
                 resume_from_stage: None,
@@ -557,16 +523,7 @@ mod tests {
             CalibrationExecutionMode::Memory,
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
-            vec![
-                CalibrationStageSolverSettings {
-                    stage: CalibrationStage::Seasonality,
-                    optimizer_settings: build_solver_settings(),
-                },
-                CalibrationStageSolverSettings {
-                    stage: CalibrationStage::Hawkes,
-                    optimizer_settings: build_solver_settings(),
-                },
-            ],
+            build_solver_settings_for_seasonality_and_hawkes(),
             vec![CalibrationStageHandoff {
                 from_stage: CalibrationStage::Seasonality,
                 to_stage: CalibrationStage::Hawkes,
@@ -594,16 +551,7 @@ mod tests {
             CalibrationExecutionMode::Memory,
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
-            vec![
-                CalibrationStageSolverSettings {
-                    stage: CalibrationStage::Seasonality,
-                    optimizer_settings: build_solver_settings(),
-                },
-                CalibrationStageSolverSettings {
-                    stage: CalibrationStage::Hawkes,
-                    optimizer_settings: build_solver_settings(),
-                },
-            ],
+            build_solver_settings_for_seasonality_and_hawkes(),
             Vec::new(),
             Some(CalibrationResumeSettings {
                 source: CalibrationResumeSource::PersistedCheckpointReference,
@@ -630,16 +578,7 @@ mod tests {
             CalibrationExecutionMode::Disk,
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
-            vec![
-                CalibrationStageSolverSettings {
-                    stage: CalibrationStage::Seasonality,
-                    optimizer_settings: build_solver_settings(),
-                },
-                CalibrationStageSolverSettings {
-                    stage: CalibrationStage::Hawkes,
-                    optimizer_settings: build_solver_settings(),
-                },
-            ],
+            build_solver_settings_for_seasonality_and_hawkes(),
             Vec::new(),
             Some(CalibrationResumeSettings {
                 source: CalibrationResumeSource::SameProcess,
@@ -720,16 +659,7 @@ mod tests {
             CalibrationExecutionMode::Memory,
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
-            vec![
-                CalibrationStageSolverSettings {
-                    stage: CalibrationStage::Seasonality,
-                    optimizer_settings: build_solver_settings(),
-                },
-                CalibrationStageSolverSettings {
-                    stage: CalibrationStage::Hawkes,
-                    optimizer_settings: build_solver_settings(),
-                },
-            ],
+            build_solver_settings_for_seasonality_and_hawkes(),
         )
         .expect("run spec should validate");
         let stage_graph = CalibrationStageGraph::new(vec![CalibrationStageDependency {
@@ -1932,6 +1862,19 @@ mod tests {
             .expect("solver settings should validate")
     }
 
+    fn build_solver_settings_for_seasonality_and_hawkes() -> Vec<CalibrationStageSolverSettings> {
+        vec![
+            CalibrationStageSolverSettings {
+                stage: CalibrationStage::Seasonality,
+                optimizer_settings: build_solver_settings(),
+            },
+            CalibrationStageSolverSettings {
+                stage: CalibrationStage::Hawkes,
+                optimizer_settings: build_solver_settings(),
+            },
+        ]
+    }
+
     fn build_solver_settings_for_all_stages() -> Vec<CalibrationStageSolverSettings> {
         vec![
             CalibrationStageSolverSettings {
@@ -2009,6 +1952,28 @@ mod tests {
         ])
     }
 
+    fn build_mode_aware_stage_handoff(
+        from_stage: CalibrationStage,
+        to_stage: CalibrationStage,
+        execution_mode: CalibrationExecutionMode,
+        persisted_artifact_reference: &str,
+    ) -> CalibrationStageHandoff {
+        match execution_mode {
+            CalibrationExecutionMode::Memory => CalibrationStageHandoff {
+                from_stage,
+                to_stage,
+                transport: CalibrationStageHandoffTransport::InMemoryOutput,
+                artifact_reference: None,
+            },
+            CalibrationExecutionMode::Disk => CalibrationStageHandoff {
+                from_stage,
+                to_stage,
+                transport: CalibrationStageHandoffTransport::PersistedArtifactReference,
+                artifact_reference: Some(persisted_artifact_reference.to_string()),
+            },
+        }
+    }
+
     fn staged_run_inputs(
         include_seasonality_input: bool,
         include_hawkes_candidates: bool,
@@ -2058,20 +2023,12 @@ mod tests {
     fn build_seasonality_stage_run_spec(
         execution_mode: CalibrationExecutionMode,
     ) -> CalibrationRunSpec {
-        let stage_handoff = match execution_mode {
-            CalibrationExecutionMode::Memory => CalibrationStageHandoff {
-                from_stage: CalibrationStage::Seasonality,
-                to_stage: CalibrationStage::Hawkes,
-                transport: CalibrationStageHandoffTransport::InMemoryOutput,
-                artifact_reference: None,
-            },
-            CalibrationExecutionMode::Disk => CalibrationStageHandoff {
-                from_stage: CalibrationStage::Seasonality,
-                to_stage: CalibrationStage::Hawkes,
-                transport: CalibrationStageHandoffTransport::PersistedArtifactReference,
-                artifact_reference: Some("artifact://seasonality/run-001".to_string()),
-            },
-        };
+        let stage_handoff = build_mode_aware_stage_handoff(
+            CalibrationStage::Seasonality,
+            CalibrationStage::Hawkes,
+            execution_mode,
+            "artifact://seasonality/run-001",
+        );
 
         CalibrationRunSpec::try_new_with_mode_extensions(
             "run-001",
@@ -2079,16 +2036,7 @@ mod tests {
             execution_mode,
             vec![CalibrationStage::Seasonality, CalibrationStage::Hawkes],
             build_seed_settings(),
-            vec![
-                CalibrationStageSolverSettings {
-                    stage: CalibrationStage::Seasonality,
-                    optimizer_settings: build_solver_settings(),
-                },
-                CalibrationStageSolverSettings {
-                    stage: CalibrationStage::Hawkes,
-                    optimizer_settings: build_solver_settings(),
-                },
-            ],
+            build_solver_settings_for_seasonality_and_hawkes(),
             vec![stage_handoff],
             None,
         )
@@ -2096,35 +2044,19 @@ mod tests {
     }
 
     fn build_hawkes_stage_run_spec(execution_mode: CalibrationExecutionMode) -> CalibrationRunSpec {
-        let seasonality_handoff = match execution_mode {
-            CalibrationExecutionMode::Memory => CalibrationStageHandoff {
-                from_stage: CalibrationStage::Seasonality,
-                to_stage: CalibrationStage::Hawkes,
-                transport: CalibrationStageHandoffTransport::InMemoryOutput,
-                artifact_reference: None,
-            },
-            CalibrationExecutionMode::Disk => CalibrationStageHandoff {
-                from_stage: CalibrationStage::Seasonality,
-                to_stage: CalibrationStage::Hawkes,
-                transport: CalibrationStageHandoffTransport::PersistedArtifactReference,
-                artifact_reference: Some("artifact://seasonality/run-001".to_string()),
-            },
-        };
+        let seasonality_handoff = build_mode_aware_stage_handoff(
+            CalibrationStage::Seasonality,
+            CalibrationStage::Hawkes,
+            execution_mode,
+            "artifact://seasonality/run-001",
+        );
 
-        let hawkes_handoff = match execution_mode {
-            CalibrationExecutionMode::Memory => CalibrationStageHandoff {
-                from_stage: CalibrationStage::Hawkes,
-                to_stage: CalibrationStage::ReturnComponents,
-                transport: CalibrationStageHandoffTransport::InMemoryOutput,
-                artifact_reference: None,
-            },
-            CalibrationExecutionMode::Disk => CalibrationStageHandoff {
-                from_stage: CalibrationStage::Hawkes,
-                to_stage: CalibrationStage::ReturnComponents,
-                transport: CalibrationStageHandoffTransport::PersistedArtifactReference,
-                artifact_reference: Some("artifact://hawkes/run-001".to_string()),
-            },
-        };
+        let hawkes_handoff = build_mode_aware_stage_handoff(
+            CalibrationStage::Hawkes,
+            CalibrationStage::ReturnComponents,
+            execution_mode,
+            "artifact://hawkes/run-001",
+        );
 
         CalibrationRunSpec::try_new_with_mode_extensions(
             "run-001",
@@ -2333,17 +2265,36 @@ mod tests {
         sigma_g: f64,
     ) -> NewsProcessConfiguration {
         NewsProcessConfiguration::try_new(
-            NewsIntensityConfiguration::try_new(closed_window_baseline_intensity)
-                .expect("news intensity configuration should validate"),
-            GammaSeverityMarkConfiguration::try_new(gamma_shape_k, gamma_scale_theta)
+            NewsArrivalConfiguration {
+                known: KnownNewsArrivalConfiguration {
+                    scheduled_event_timestamps_utc_nanos: vec![],
+                },
+                surprise: SurpriseNewsArrivalConfiguration {
+                    baseline_intensity: closed_window_baseline_intensity,
+                },
+            },
+            SharedNewsMarkLawConfiguration {
+                gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(
+                    gamma_shape_k,
+                    gamma_scale_theta,
+                )
                 .expect("gamma severity mark configuration should validate"),
-            DoubleExponentialBaseShockConfiguration::try_new(
-                probability_positive,
-                eta_plus,
-                eta_minus,
-            )
-            .expect("double-exponential base-shock configuration should validate"),
-            CoupledGapMarkConfiguration::new(sigma_g),
+                double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::try_new(
+                    probability_positive,
+                    eta_plus,
+                    eta_minus,
+                )
+                .expect("double-exponential base-shock configuration should validate"),
+                coupled_gap_marks: CoupledGapMarkConfiguration::new(sigma_g),
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 1.0,
+                return_jump_scale: 1.0,
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 1.0,
+                return_jump_scale: 1.0,
+            },
         )
         .expect("news process configuration should validate")
     }

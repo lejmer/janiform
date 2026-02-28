@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use janiform_core::calendar::MarketState;
 use janiform_core::news::{
     CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
-    GammaSeverityMarkConfiguration, SharedNewsAccumulatorState, SharedNewsEventDispatchInput,
-    SharedNewsEventDispatchOutput, dispatch_shared_news_events,
+    GammaSeverityMarkConfiguration, NewsArrivalComponent, SharedNewsAccumulatorState,
+    SharedNewsEventDispatchInput, SharedNewsEventDispatchOutput, dispatch_shared_news_events,
 };
 use janiform_core::randomness::{SimulationRandomnessStream, SplitMix64SimulationRandomnessStream};
 
@@ -274,7 +274,7 @@ fn shared_mark_coupling_regression_is_consistent_across_jt_and_gt_for_fixed_seed
 
         assert_metric_within_tolerance(
             "coupling.gap_reconstruction_uses_same_shared_mark_pair",
-            dispatch_record.coupled_gap_jump_mark,
+            dispatch_record.coupled_return_jump_mark,
             reconstructed_gap_from_shared_marks,
             MARK_REGRESSION_ABSOLUTE_TOLERANCE,
             &context,
@@ -386,9 +386,14 @@ fn run_seeded_shared_mark_dispatch_case(
         event_inputs.push(SharedNewsEventDispatchInput {
             event_timestamp_utc_nanos,
             event_generation_order,
+            news_arrival_component: if event_position % 2 == 0 {
+                NewsArrivalComponent::Known
+            } else {
+                NewsArrivalComponent::Surprise
+            },
             market_state,
             shared_severity_mark,
-            coupled_gap_jump_mark: gap_jump_mark,
+            coupled_return_jump_mark: gap_jump_mark,
         });
         samples_by_generation_order.insert(
             event_generation_order,
@@ -400,9 +405,11 @@ fn run_seeded_shared_mark_dispatch_case(
         );
     }
 
-    let dispatch_output =
-        dispatch_shared_news_events(SharedNewsAccumulatorState::new(0.6, -0.25), &event_inputs)
-            .expect("seeded shared dispatch should succeed");
+    let dispatch_output = dispatch_shared_news_events(
+        SharedNewsAccumulatorState::new(0.6, 0.0, -0.25),
+        &event_inputs,
+    )
+    .expect("seeded shared dispatch should succeed");
 
     SeededSharedMarkDispatchCase {
         samples_by_generation_order,
