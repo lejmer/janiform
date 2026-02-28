@@ -14,7 +14,7 @@ This refactor is structural only. It must not change runtime behavior, schema co
   - objective composition
   - constrained optimizer adapter
   - seasonality stage
-  - hawkes stage
+  - Hawkes stage
   - return-components stage
   - checkpointing
   - staged runner orchestration
