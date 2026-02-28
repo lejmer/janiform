@@ -1,6 +1,5 @@
 //! Calibration-stage orchestration entrypoints and shared adapters.
 
-use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -1947,22 +1946,33 @@ fn build_seasonality_stage_failure_report(
     }
 }
 
-/// One weighted objective term used by Hawkes-stage candidate evaluation.
+pub const CALIBRATION_OBJECTIVE_COMPOSITION_SCHEMA_VERSION: &str =
+    "calibration.optimizer.objective_composition.v1";
+pub const CALIBRATION_CONSTRAINED_OPTIMIZER_ADAPTER_RUN_SCHEMA_VERSION: &str =
+    "calibration.optimizer.adapter_run.v1";
+pub const CALIBRATION_CONSTRAINED_OPTIMIZER_ADAPTER_SELECTION_POLICY: &str =
+    "minimum_penalized_then_minimum_raw_then_seeded_tiebreak.v1";
+pub const CALIBRATION_CONSTRAINED_OPTIMIZER_ADAPTER_PENALTY_POLICY: &str =
+    "constraint_penalty_weight_times_total_violation_count.v1";
+pub const CALIBRATION_CONSTRAINED_OPTIMIZER_ADAPTER_BOUNDS_POLICY: &str =
+    "inclusive_named_parameter_bounds.v1";
+
+/// Canonical weighted objective term shape shared across calibration stages.
 #[derive(Debug, Clone, PartialEq)]
-pub struct HawkesStageObjectiveTermInput {
+pub struct CalibrationObjectiveTermInput {
     pub term_id: String,
     pub weight: f64,
     pub observed_score: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum HawkesStageObjectiveTermInputError {
+pub enum CalibrationObjectiveTermInputError {
     MissingTermId,
     InvalidWeight { value: f64 },
     InvalidObservedScore { value: f64 },
 }
 
-impl Display for HawkesStageObjectiveTermInputError {
+impl Display for CalibrationObjectiveTermInputError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::MissingTermId => write!(formatter, "objective term id must be non-empty"),
@@ -1978,24 +1988,782 @@ impl Display for HawkesStageObjectiveTermInputError {
     }
 }
 
-impl Error for HawkesStageObjectiveTermInputError {}
+impl Error for CalibrationObjectiveTermInputError {}
 
-impl HawkesStageObjectiveTermInput {
-    fn validate(&self) -> Result<(), HawkesStageObjectiveTermInputError> {
+impl CalibrationObjectiveTermInput {
+    fn validate(&self) -> Result<(), CalibrationObjectiveTermInputError> {
         if self.term_id.trim().is_empty() {
-            return Err(HawkesStageObjectiveTermInputError::MissingTermId);
+            return Err(CalibrationObjectiveTermInputError::MissingTermId);
         }
         if !self.weight.is_finite() || self.weight < 0.0 {
-            return Err(HawkesStageObjectiveTermInputError::InvalidWeight { value: self.weight });
+            return Err(CalibrationObjectiveTermInputError::InvalidWeight { value: self.weight });
         }
         if !self.observed_score.is_finite() {
-            return Err(HawkesStageObjectiveTermInputError::InvalidObservedScore {
+            return Err(CalibrationObjectiveTermInputError::InvalidObservedScore {
                 value: self.observed_score,
             });
         }
 
         Ok(())
     }
+}
+
+/// One weighted objective term used by Hawkes-stage candidate evaluation.
+pub type HawkesStageObjectiveTermInput = CalibrationObjectiveTermInput;
+pub type HawkesStageObjectiveTermInputError = CalibrationObjectiveTermInputError;
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CalibrationObjectiveTermDiagnostic {
+    pub term_id: String,
+    pub weight: f64,
+    pub observed_score: f64,
+    pub weighted_contribution: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CalibrationObjectiveCompositionReport {
+    pub schema_version: &'static str,
+    pub weighted_objective_value: f64,
+    pub objective_terms: Vec<CalibrationObjectiveTermDiagnostic>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CalibrationObjectiveCompositionError {
+    MissingObjectiveTerms,
+    InvalidObjectiveTerm {
+        term_id: String,
+        source: CalibrationObjectiveTermInputError,
+    },
+    InvalidWeightedObjectiveValue {
+        value: f64,
+    },
+}
+
+impl Display for CalibrationObjectiveCompositionError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingObjectiveTerms => {
+                write!(
+                    formatter,
+                    "objective_terms must include at least one weighted term"
+                )
+            }
+            Self::InvalidObjectiveTerm { term_id, source } => {
+                write!(formatter, "objective term `{term_id}` is invalid: {source}")
+            }
+            Self::InvalidWeightedObjectiveValue { value } => write!(
+                formatter,
+                "weighted objective sum must be finite, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for CalibrationObjectiveCompositionError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidObjectiveTerm { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+pub fn compose_calibration_weighted_objective(
+    objective_terms: &[CalibrationObjectiveTermInput],
+) -> Result<CalibrationObjectiveCompositionReport, CalibrationObjectiveCompositionError> {
+    if objective_terms.is_empty() {
+        return Err(CalibrationObjectiveCompositionError::MissingObjectiveTerms);
+    }
+
+    let mut weighted_objective_value = 0.0;
+    let mut diagnostics = Vec::with_capacity(objective_terms.len());
+
+    for objective_term in objective_terms {
+        objective_term.validate().map_err(|source| {
+            CalibrationObjectiveCompositionError::InvalidObjectiveTerm {
+                term_id: objective_term.term_id.clone(),
+                source,
+            }
+        })?;
+
+        let weighted_contribution = objective_term.weight * objective_term.observed_score;
+        if !weighted_contribution.is_finite() {
+            return Err(
+                CalibrationObjectiveCompositionError::InvalidWeightedObjectiveValue {
+                    value: weighted_contribution,
+                },
+            );
+        }
+
+        weighted_objective_value += weighted_contribution;
+        if !weighted_objective_value.is_finite() {
+            return Err(
+                CalibrationObjectiveCompositionError::InvalidWeightedObjectiveValue {
+                    value: weighted_objective_value,
+                },
+            );
+        }
+
+        diagnostics.push(CalibrationObjectiveTermDiagnostic {
+            term_id: objective_term.term_id.clone(),
+            weight: objective_term.weight,
+            observed_score: objective_term.observed_score,
+            weighted_contribution,
+        });
+    }
+
+    Ok(CalibrationObjectiveCompositionReport {
+        schema_version: CALIBRATION_OBJECTIVE_COMPOSITION_SCHEMA_VERSION,
+        weighted_objective_value,
+        objective_terms: diagnostics,
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CalibrationOptimizerParameterBound {
+    pub parameter_name: String,
+    pub lower_inclusive: f64,
+    pub upper_inclusive: f64,
+}
+
+impl CalibrationOptimizerParameterBound {
+    pub fn try_new(
+        parameter_name: impl Into<String>,
+        lower_inclusive: f64,
+        upper_inclusive: f64,
+    ) -> Result<Self, CalibrationOptimizerParameterBoundError> {
+        let bound = Self {
+            parameter_name: parameter_name.into(),
+            lower_inclusive,
+            upper_inclusive,
+        };
+        bound.validate()?;
+        Ok(bound)
+    }
+
+    fn validate(&self) -> Result<(), CalibrationOptimizerParameterBoundError> {
+        if self.parameter_name.trim().is_empty() {
+            return Err(CalibrationOptimizerParameterBoundError::MissingParameterName);
+        }
+        if !self.lower_inclusive.is_finite() {
+            return Err(CalibrationOptimizerParameterBoundError::InvalidLowerBound {
+                value: self.lower_inclusive,
+            });
+        }
+        if !self.upper_inclusive.is_finite() {
+            return Err(CalibrationOptimizerParameterBoundError::InvalidUpperBound {
+                value: self.upper_inclusive,
+            });
+        }
+        if self.lower_inclusive > self.upper_inclusive {
+            return Err(CalibrationOptimizerParameterBoundError::InvertedBounds {
+                lower_inclusive: self.lower_inclusive,
+                upper_inclusive: self.upper_inclusive,
+            });
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CalibrationOptimizerParameterBoundError {
+    MissingParameterName,
+    InvalidLowerBound {
+        value: f64,
+    },
+    InvalidUpperBound {
+        value: f64,
+    },
+    InvertedBounds {
+        lower_inclusive: f64,
+        upper_inclusive: f64,
+    },
+}
+
+impl Display for CalibrationOptimizerParameterBoundError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingParameterName => {
+                write!(
+                    formatter,
+                    "optimizer bound parameter_name must be non-empty"
+                )
+            }
+            Self::InvalidLowerBound { value } => write!(
+                formatter,
+                "optimizer bound lower_inclusive must be finite, found {value}"
+            ),
+            Self::InvalidUpperBound { value } => write!(
+                formatter,
+                "optimizer bound upper_inclusive must be finite, found {value}"
+            ),
+            Self::InvertedBounds {
+                lower_inclusive,
+                upper_inclusive,
+            } => write!(
+                formatter,
+                "optimizer bound lower_inclusive ({lower_inclusive}) must be <= upper_inclusive ({upper_inclusive})"
+            ),
+        }
+    }
+}
+
+impl Error for CalibrationOptimizerParameterBoundError {}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CalibrationOptimizerAdapterConfiguration {
+    pub backend_id: String,
+    pub random_seed: u64,
+    pub solver_settings: CalibrationOptimizerSettings,
+    #[serde(default)]
+    pub parameter_bounds: Vec<CalibrationOptimizerParameterBound>,
+}
+
+impl CalibrationOptimizerAdapterConfiguration {
+    pub fn try_new(
+        backend_id: impl Into<String>,
+        random_seed: u64,
+        solver_settings: CalibrationOptimizerSettings,
+        parameter_bounds: Vec<CalibrationOptimizerParameterBound>,
+    ) -> Result<Self, CalibrationOptimizerAdapterConfigurationError> {
+        let configuration = Self {
+            backend_id: backend_id.into(),
+            random_seed,
+            solver_settings,
+            parameter_bounds,
+        };
+        configuration.validate()?;
+        Ok(configuration)
+    }
+
+    fn validate(&self) -> Result<(), CalibrationOptimizerAdapterConfigurationError> {
+        if self.backend_id.trim().is_empty() {
+            return Err(CalibrationOptimizerAdapterConfigurationError::MissingBackendId);
+        }
+
+        self.solver_settings.validate().map_err(|source| {
+            CalibrationOptimizerAdapterConfigurationError::InvalidSolverSettings { source }
+        })?;
+
+        let mut seen_parameter_names = BTreeSet::new();
+        for bound in &self.parameter_bounds {
+            bound.validate().map_err(|source| {
+                CalibrationOptimizerAdapterConfigurationError::InvalidParameterBound {
+                    parameter_name: bound.parameter_name.clone(),
+                    source,
+                }
+            })?;
+            if !seen_parameter_names.insert(bound.parameter_name.as_str()) {
+                return Err(
+                    CalibrationOptimizerAdapterConfigurationError::DuplicateParameterBound {
+                        parameter_name: bound.parameter_name.clone(),
+                    },
+                );
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CalibrationOptimizerAdapterConfigurationError {
+    MissingBackendId,
+    InvalidSolverSettings {
+        source: CalibrationOptimizerSettingsError,
+    },
+    InvalidParameterBound {
+        parameter_name: String,
+        source: CalibrationOptimizerParameterBoundError,
+    },
+    DuplicateParameterBound {
+        parameter_name: String,
+    },
+}
+
+impl Display for CalibrationOptimizerAdapterConfigurationError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingBackendId => {
+                write!(formatter, "optimizer adapter backend_id must be non-empty")
+            }
+            Self::InvalidSolverSettings { source } => {
+                write!(
+                    formatter,
+                    "optimizer adapter solver_settings are invalid: {source}"
+                )
+            }
+            Self::InvalidParameterBound {
+                parameter_name,
+                source,
+            } => {
+                write!(
+                    formatter,
+                    "optimizer adapter parameter bound `{parameter_name}` is invalid: {source}"
+                )
+            }
+            Self::DuplicateParameterBound { parameter_name } => write!(
+                formatter,
+                "optimizer adapter contains duplicate bound for parameter `{parameter_name}`"
+            ),
+        }
+    }
+}
+
+impl Error for CalibrationOptimizerAdapterConfigurationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidSolverSettings { source } => Some(source),
+            Self::InvalidParameterBound { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CalibrationOptimizerCandidateParameterValue {
+    pub parameter_name: String,
+    pub value: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CalibrationOptimizerAdapterCandidateInput {
+    pub candidate_id: String,
+    pub objective_terms: Vec<CalibrationObjectiveTermInput>,
+    pub parameter_values: Vec<CalibrationOptimizerCandidateParameterValue>,
+    pub external_constraint_violation_count: usize,
+}
+
+impl CalibrationOptimizerAdapterCandidateInput {
+    fn validate(&self) -> Result<(), CalibrationOptimizerAdapterCandidateInputError> {
+        if self.candidate_id.trim().is_empty() {
+            return Err(CalibrationOptimizerAdapterCandidateInputError::MissingCandidateId);
+        }
+        if self.objective_terms.is_empty() {
+            return Err(CalibrationOptimizerAdapterCandidateInputError::MissingObjectiveTerms);
+        }
+
+        let mut seen_parameter_names = BTreeSet::new();
+        for parameter_value in &self.parameter_values {
+            if parameter_value.parameter_name.trim().is_empty() {
+                return Err(
+                    CalibrationOptimizerAdapterCandidateInputError::MissingParameterValueName {
+                        candidate_id: self.candidate_id.clone(),
+                    },
+                );
+            }
+
+            if !parameter_value.value.is_finite() {
+                return Err(
+                    CalibrationOptimizerAdapterCandidateInputError::InvalidParameterValue {
+                        candidate_id: self.candidate_id.clone(),
+                        parameter_name: parameter_value.parameter_name.clone(),
+                        value: parameter_value.value,
+                    },
+                );
+            }
+
+            if !seen_parameter_names.insert(parameter_value.parameter_name.as_str()) {
+                return Err(
+                    CalibrationOptimizerAdapterCandidateInputError::DuplicateParameterValue {
+                        candidate_id: self.candidate_id.clone(),
+                        parameter_name: parameter_value.parameter_name.clone(),
+                    },
+                );
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CalibrationOptimizerAdapterCandidateInputError {
+    MissingCandidateId,
+    MissingObjectiveTerms,
+    MissingParameterValueName {
+        candidate_id: String,
+    },
+    DuplicateParameterValue {
+        candidate_id: String,
+        parameter_name: String,
+    },
+    InvalidParameterValue {
+        candidate_id: String,
+        parameter_name: String,
+        value: f64,
+    },
+}
+
+impl Display for CalibrationOptimizerAdapterCandidateInputError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingCandidateId => {
+                write!(
+                    formatter,
+                    "optimizer adapter candidate_id must be non-empty"
+                )
+            }
+            Self::MissingObjectiveTerms => write!(
+                formatter,
+                "optimizer adapter candidate objective_terms must include at least one term"
+            ),
+            Self::MissingParameterValueName { candidate_id } => write!(
+                formatter,
+                "optimizer adapter candidate `{candidate_id}` has parameter_values entry with empty parameter_name"
+            ),
+            Self::DuplicateParameterValue {
+                candidate_id,
+                parameter_name,
+            } => write!(
+                formatter,
+                "optimizer adapter candidate `{candidate_id}` has duplicate parameter value for `{parameter_name}`"
+            ),
+            Self::InvalidParameterValue {
+                candidate_id,
+                parameter_name,
+                value,
+            } => write!(
+                formatter,
+                "optimizer adapter candidate `{candidate_id}` has non-finite value `{value}` for parameter `{parameter_name}`"
+            ),
+        }
+    }
+}
+
+impl Error for CalibrationOptimizerAdapterCandidateInputError {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CalibrationOptimizerBoundViolationKind {
+    BelowLowerBound,
+    AboveUpperBound,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CalibrationOptimizerBoundViolationDiagnostic {
+    pub parameter_name: String,
+    pub value: f64,
+    pub lower_inclusive: f64,
+    pub upper_inclusive: f64,
+    pub violation_kind: CalibrationOptimizerBoundViolationKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CalibrationOptimizerAdapterCandidateDiagnostic {
+    pub candidate_id: String,
+    pub objective_composition: CalibrationObjectiveCompositionReport,
+    pub raw_objective_value: f64,
+    pub external_constraint_violation_count: usize,
+    pub bound_violation_count: usize,
+    pub total_constraint_violation_count: usize,
+    pub constraint_penalty: f64,
+    pub penalized_objective_value: f64,
+    pub bound_violations: Vec<CalibrationOptimizerBoundViolationDiagnostic>,
+    pub seeded_tiebreak_key: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CalibrationOptimizerAdapterRunMetadata {
+    pub schema_version: &'static str,
+    pub backend_id: String,
+    pub random_seed: u64,
+    pub selection_policy: &'static str,
+    pub penalty_policy: &'static str,
+    pub bounds_policy: &'static str,
+    pub solver_settings: CalibrationOptimizerSettings,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CalibrationOptimizerAdapterRunOutput {
+    pub metadata: CalibrationOptimizerAdapterRunMetadata,
+    pub selected_candidate_id: Option<String>,
+    pub selected_candidate_position: Option<usize>,
+    pub candidate_diagnostics: Vec<CalibrationOptimizerAdapterCandidateDiagnostic>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CalibrationOptimizerAdapterError {
+    InvalidConfiguration {
+        source: CalibrationOptimizerAdapterConfigurationError,
+    },
+    MissingCandidates,
+    DuplicateCandidateId {
+        candidate_id: String,
+    },
+    InvalidCandidateInput {
+        candidate_id: String,
+        source: CalibrationOptimizerAdapterCandidateInputError,
+    },
+    InvalidObjectiveComposition {
+        candidate_id: String,
+        source: CalibrationObjectiveCompositionError,
+    },
+    MissingBoundedParameterValue {
+        candidate_id: String,
+        parameter_name: String,
+    },
+    InvalidPenalizedObjectiveValue {
+        candidate_id: String,
+        value: f64,
+    },
+}
+
+impl Display for CalibrationOptimizerAdapterError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidConfiguration { source } => {
+                write!(
+                    formatter,
+                    "optimizer adapter configuration is invalid: {source}"
+                )
+            }
+            Self::MissingCandidates => write!(
+                formatter,
+                "optimizer adapter invocation requires at least one candidate"
+            ),
+            Self::DuplicateCandidateId { candidate_id } => write!(
+                formatter,
+                "optimizer adapter candidates contain duplicate candidate_id `{candidate_id}`"
+            ),
+            Self::InvalidCandidateInput {
+                candidate_id,
+                source,
+            } => {
+                write!(
+                    formatter,
+                    "optimizer adapter candidate `{candidate_id}` is invalid: {source}"
+                )
+            }
+            Self::InvalidObjectiveComposition {
+                candidate_id,
+                source,
+            } => {
+                write!(
+                    formatter,
+                    "optimizer adapter candidate `{candidate_id}` objective composition failed: {source}"
+                )
+            }
+            Self::MissingBoundedParameterValue {
+                candidate_id,
+                parameter_name,
+            } => write!(
+                formatter,
+                "optimizer adapter candidate `{candidate_id}` is missing required bounded parameter `{parameter_name}`"
+            ),
+            Self::InvalidPenalizedObjectiveValue {
+                candidate_id,
+                value,
+            } => write!(
+                formatter,
+                "optimizer adapter candidate `{candidate_id}` produced non-finite penalized objective value `{value}`"
+            ),
+        }
+    }
+}
+
+impl Error for CalibrationOptimizerAdapterError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidConfiguration { source } => Some(source),
+            Self::InvalidCandidateInput { source, .. } => Some(source),
+            Self::InvalidObjectiveComposition { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+pub fn run_constrained_optimizer_adapter(
+    configuration: &CalibrationOptimizerAdapterConfiguration,
+    candidate_inputs: &[CalibrationOptimizerAdapterCandidateInput],
+) -> Result<CalibrationOptimizerAdapterRunOutput, CalibrationOptimizerAdapterError> {
+    configuration
+        .validate()
+        .map_err(|source| CalibrationOptimizerAdapterError::InvalidConfiguration { source })?;
+
+    if candidate_inputs.is_empty() {
+        return Err(CalibrationOptimizerAdapterError::MissingCandidates);
+    }
+
+    let mut seen_candidate_ids = BTreeSet::new();
+    let mut candidate_diagnostics = Vec::with_capacity(candidate_inputs.len());
+
+    for candidate_input in candidate_inputs {
+        if !seen_candidate_ids.insert(candidate_input.candidate_id.as_str()) {
+            return Err(CalibrationOptimizerAdapterError::DuplicateCandidateId {
+                candidate_id: candidate_input.candidate_id.clone(),
+            });
+        }
+
+        candidate_input.validate().map_err(|source| {
+            CalibrationOptimizerAdapterError::InvalidCandidateInput {
+                candidate_id: candidate_input.candidate_id.clone(),
+                source,
+            }
+        })?;
+
+        let objective_composition =
+            compose_calibration_weighted_objective(candidate_input.objective_terms.as_slice())
+                .map_err(|source| {
+                    CalibrationOptimizerAdapterError::InvalidObjectiveComposition {
+                        candidate_id: candidate_input.candidate_id.clone(),
+                        source,
+                    }
+                })?;
+
+        let parameter_values = candidate_input
+            .parameter_values
+            .iter()
+            .map(|parameter_value| {
+                (
+                    parameter_value.parameter_name.as_str(),
+                    parameter_value.value,
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+
+        let mut bound_violations = Vec::new();
+        for parameter_bound in &configuration.parameter_bounds {
+            let Some(parameter_value) =
+                parameter_values.get(parameter_bound.parameter_name.as_str())
+            else {
+                return Err(
+                    CalibrationOptimizerAdapterError::MissingBoundedParameterValue {
+                        candidate_id: candidate_input.candidate_id.clone(),
+                        parameter_name: parameter_bound.parameter_name.clone(),
+                    },
+                );
+            };
+
+            if *parameter_value < parameter_bound.lower_inclusive {
+                bound_violations.push(CalibrationOptimizerBoundViolationDiagnostic {
+                    parameter_name: parameter_bound.parameter_name.clone(),
+                    value: *parameter_value,
+                    lower_inclusive: parameter_bound.lower_inclusive,
+                    upper_inclusive: parameter_bound.upper_inclusive,
+                    violation_kind: CalibrationOptimizerBoundViolationKind::BelowLowerBound,
+                });
+            } else if *parameter_value > parameter_bound.upper_inclusive {
+                bound_violations.push(CalibrationOptimizerBoundViolationDiagnostic {
+                    parameter_name: parameter_bound.parameter_name.clone(),
+                    value: *parameter_value,
+                    lower_inclusive: parameter_bound.lower_inclusive,
+                    upper_inclusive: parameter_bound.upper_inclusive,
+                    violation_kind: CalibrationOptimizerBoundViolationKind::AboveUpperBound,
+                });
+            }
+        }
+
+        let bound_violation_count = bound_violations.len();
+        let total_constraint_violation_count =
+            candidate_input.external_constraint_violation_count + bound_violation_count;
+        let constraint_penalty = configuration.solver_settings.constraint_penalty_weight
+            * total_constraint_violation_count as f64;
+        let penalized_objective_value =
+            objective_composition.weighted_objective_value + constraint_penalty;
+
+        if !penalized_objective_value.is_finite() {
+            return Err(
+                CalibrationOptimizerAdapterError::InvalidPenalizedObjectiveValue {
+                    candidate_id: candidate_input.candidate_id.clone(),
+                    value: penalized_objective_value,
+                },
+            );
+        }
+
+        candidate_diagnostics.push(CalibrationOptimizerAdapterCandidateDiagnostic {
+            candidate_id: candidate_input.candidate_id.clone(),
+            raw_objective_value: objective_composition.weighted_objective_value,
+            objective_composition,
+            external_constraint_violation_count: candidate_input
+                .external_constraint_violation_count,
+            bound_violation_count,
+            total_constraint_violation_count,
+            constraint_penalty,
+            penalized_objective_value,
+            bound_violations,
+            seeded_tiebreak_key: seeded_tiebreak_key(
+                configuration.random_seed,
+                candidate_input.candidate_id.as_str(),
+            ),
+        });
+    }
+
+    let selected_candidate_position = candidate_diagnostics
+        .iter()
+        .enumerate()
+        .filter(|(_, candidate_diagnostic)| {
+            candidate_diagnostic.total_constraint_violation_count == 0
+        })
+        .map(|(candidate_position, _)| candidate_position)
+        .reduce(|best_position, candidate_position| {
+            let candidate = &candidate_diagnostics[candidate_position];
+            let current_best = &candidate_diagnostics[best_position];
+
+            match candidate
+                .penalized_objective_value
+                .total_cmp(&current_best.penalized_objective_value)
+            {
+                std::cmp::Ordering::Less => candidate_position,
+                std::cmp::Ordering::Greater => best_position,
+                std::cmp::Ordering::Equal => match candidate
+                    .raw_objective_value
+                    .total_cmp(&current_best.raw_objective_value)
+                {
+                    std::cmp::Ordering::Less => candidate_position,
+                    std::cmp::Ordering::Greater => best_position,
+                    std::cmp::Ordering::Equal => match candidate
+                        .seeded_tiebreak_key
+                        .cmp(&current_best.seeded_tiebreak_key)
+                    {
+                        std::cmp::Ordering::Less => candidate_position,
+                        std::cmp::Ordering::Greater => best_position,
+                        std::cmp::Ordering::Equal => {
+                            if candidate.candidate_id < current_best.candidate_id {
+                                candidate_position
+                            } else {
+                                best_position
+                            }
+                        }
+                    },
+                },
+            }
+        });
+
+    Ok(CalibrationOptimizerAdapterRunOutput {
+        metadata: CalibrationOptimizerAdapterRunMetadata {
+            schema_version: CALIBRATION_CONSTRAINED_OPTIMIZER_ADAPTER_RUN_SCHEMA_VERSION,
+            backend_id: configuration.backend_id.clone(),
+            random_seed: configuration.random_seed,
+            selection_policy: CALIBRATION_CONSTRAINED_OPTIMIZER_ADAPTER_SELECTION_POLICY,
+            penalty_policy: CALIBRATION_CONSTRAINED_OPTIMIZER_ADAPTER_PENALTY_POLICY,
+            bounds_policy: CALIBRATION_CONSTRAINED_OPTIMIZER_ADAPTER_BOUNDS_POLICY,
+            solver_settings: configuration.solver_settings.clone(),
+        },
+        selected_candidate_id: selected_candidate_position
+            .map(|position| candidate_diagnostics[position].candidate_id.clone()),
+        selected_candidate_position,
+        candidate_diagnostics,
+    })
+}
+
+fn seeded_tiebreak_key(seed: u64, candidate_id: &str) -> u64 {
+    let mut mixed = seed ^ 0x6A09_E667_F3BC_C909;
+    for byte in candidate_id.as_bytes() {
+        mixed = mixed.rotate_left(7) ^ (*byte as u64);
+        mixed = mixed.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    }
+
+    splitmix64_output_mixer(mixed)
+}
+
+const fn splitmix64_output_mixer(mut value: u64) -> u64 {
+    value ^= value >> 30;
+    value = value.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    value ^= value >> 27;
+    value = value.wrapping_mul(0x94D0_49BB_1331_11EB);
+    value ^ (value >> 31)
 }
 
 /// Candidate parameterization and objective inputs for Hawkes stage fitting.
@@ -2181,13 +2949,7 @@ impl HawkesStageExecutionInput {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct HawkesStageObjectiveTermDiagnostic {
-    pub term_id: String,
-    pub weight: f64,
-    pub observed_score: f64,
-    pub weighted_contribution: f64,
-}
+pub type HawkesStageObjectiveTermDiagnostic = CalibrationObjectiveTermDiagnostic;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct HawkesStageCandidateDiagnostic {
@@ -2241,6 +3003,7 @@ pub struct HawkesStageExecutionMetadata {
     pub stage_output_schema_version: &'static str,
     pub stage_seed: u64,
     pub solver_settings: CalibrationOptimizerSettings,
+    pub optimizer_adapter_metadata: CalibrationOptimizerAdapterRunMetadata,
     pub input_candidate_count: usize,
     pub valid_candidate_count: usize,
     pub selected_candidate_raw_objective: f64,
@@ -2404,8 +3167,29 @@ pub fn run_hawkes_calibration_stage(
         }
     }
 
+    let stage_seed = resolve_calibration_stage_seed(run_spec, CalibrationStage::Hawkes);
+    let optimizer_adapter_configuration = match CalibrationOptimizerAdapterConfiguration::try_new(
+        "candidate_enumeration.v1",
+        stage_seed,
+        stage_solver_settings.clone(),
+        hawkes_stage_optimizer_bounds(),
+    ) {
+        Ok(configuration) => configuration,
+        Err(source) => {
+            return build_hawkes_stage_failure_report(
+                run_spec,
+                HawkesStageExecutionFailure::CandidateConstructionFailed {
+                    candidate_id: "optimizer_adapter_configuration".to_string(),
+                    error_message: source.to_string(),
+                },
+            );
+        }
+    };
+
     let mut seen_candidate_ids = BTreeSet::new();
-    let mut candidate_diagnostics: Vec<HawkesStageCandidateDiagnostic> = Vec::new();
+    let mut validation_reports = Vec::with_capacity(stage_input.candidate_inputs.len());
+    let mut adapter_candidate_inputs = Vec::with_capacity(stage_input.candidate_inputs.len());
+
     for candidate_input in &stage_input.candidate_inputs {
         if !seen_candidate_ids.insert(candidate_input.candidate_id.clone()) {
             return build_hawkes_stage_failure_report(
@@ -2426,20 +3210,6 @@ pub fn run_hawkes_calibration_stage(
             );
         }
 
-        let (raw_objective_value, objective_term_diagnostics) =
-            match compose_hawkes_stage_weighted_objective(&candidate_input.objective_terms) {
-                Ok(output) => output,
-                Err(source) => {
-                    return build_hawkes_stage_failure_report(
-                        run_spec,
-                        HawkesStageExecutionFailure::InvalidCandidateInput {
-                            candidate_id: candidate_input.candidate_id.clone(),
-                            error_message: source.to_string(),
-                        },
-                    );
-                }
-            };
-
         let validation_report = precheck_structured_hawkes_kernel_parameter_domain(
             candidate_input.lambda_bar,
             candidate_input.beta,
@@ -2449,43 +3219,123 @@ pub fn run_hawkes_calibration_stage(
             candidate_input.stability_numeric_tolerance,
         );
 
-        let constraint_violation_count = validation_report.summary.failed_check_count;
-        let constraint_penalty =
-            stage_solver_settings.constraint_penalty_weight * constraint_violation_count as f64;
-        let penalized_objective_value = raw_objective_value + constraint_penalty;
+        let external_constraint_violation_count = validation_report.summary.failed_check_count;
+        validation_reports.push(validation_report);
+        adapter_candidate_inputs.push(CalibrationOptimizerAdapterCandidateInput {
+            candidate_id: candidate_input.candidate_id.clone(),
+            objective_terms: candidate_input.objective_terms.clone(),
+            parameter_values: vec![
+                CalibrationOptimizerCandidateParameterValue {
+                    parameter_name: "lambda_bar".to_string(),
+                    value: candidate_input.lambda_bar,
+                },
+                CalibrationOptimizerCandidateParameterValue {
+                    parameter_name: "beta".to_string(),
+                    value: candidate_input.beta,
+                },
+                CalibrationOptimizerCandidateParameterValue {
+                    parameter_name: "stability_numeric_tolerance".to_string(),
+                    value: candidate_input.stability_numeric_tolerance,
+                },
+            ],
+            external_constraint_violation_count,
+        });
+    }
 
+    let optimizer_adapter_output = match run_constrained_optimizer_adapter(
+        &optimizer_adapter_configuration,
+        &adapter_candidate_inputs,
+    ) {
+        Ok(output) => output,
+
+        Err(CalibrationOptimizerAdapterError::InvalidCandidateInput {
+            candidate_id,
+            source,
+        }) => {
+            return build_hawkes_stage_failure_report(
+                run_spec,
+                HawkesStageExecutionFailure::InvalidCandidateInput {
+                    candidate_id,
+                    error_message: source.to_string(),
+                },
+            );
+        }
+
+        Err(CalibrationOptimizerAdapterError::InvalidObjectiveComposition {
+            candidate_id,
+            source,
+        }) => {
+            return build_hawkes_stage_failure_report(
+                run_spec,
+                HawkesStageExecutionFailure::InvalidCandidateInput {
+                    candidate_id,
+                    error_message: source.to_string(),
+                },
+            );
+        }
+
+        Err(CalibrationOptimizerAdapterError::DuplicateCandidateId { candidate_id }) => {
+            return build_hawkes_stage_failure_report(
+                run_spec,
+                HawkesStageExecutionFailure::DuplicateCandidateId { candidate_id },
+            );
+        }
+
+        Err(source) => {
+            return build_hawkes_stage_failure_report(
+                run_spec,
+                HawkesStageExecutionFailure::CandidateConstructionFailed {
+                    candidate_id: "optimizer_adapter".to_string(),
+                    error_message: source.to_string(),
+                },
+            );
+        }
+    };
+
+    let mut candidate_diagnostics: Vec<HawkesStageCandidateDiagnostic> =
+        Vec::with_capacity(stage_input.candidate_inputs.len());
+    for ((candidate_input, validation_report), optimizer_diagnostic) in stage_input
+        .candidate_inputs
+        .iter()
+        .zip(validation_reports.into_iter())
+        .zip(optimizer_adapter_output.candidate_diagnostics.iter())
+    {
         candidate_diagnostics.push(HawkesStageCandidateDiagnostic {
             candidate_id: candidate_input.candidate_id.clone(),
-            raw_objective_value,
-            constraint_penalty,
-            penalized_objective_value,
-            constraint_violation_count,
-            objective_terms: objective_term_diagnostics,
+            raw_objective_value: optimizer_diagnostic.raw_objective_value,
+            constraint_penalty: optimizer_diagnostic.constraint_penalty,
+            penalized_objective_value: optimizer_diagnostic.penalized_objective_value,
+            constraint_violation_count: optimizer_diagnostic.total_constraint_violation_count,
+            objective_terms: optimizer_diagnostic
+                .objective_composition
+                .objective_terms
+                .clone(),
             validation_report,
         });
     }
 
-    let best_valid_candidate_position = candidate_diagnostics
-        .iter()
-        .enumerate()
-        .filter(|(_, candidate_diagnostic)| candidate_diagnostic.validation_report.is_valid())
-        .map(|(candidate_position, _)| candidate_position)
-        .reduce(|best_position, candidate_position| {
-            if is_better_hawkes_stage_candidate(
-                &candidate_diagnostics[candidate_position],
-                &candidate_diagnostics[best_position],
-            ) {
-                candidate_position
-            } else {
-                best_position
-            }
-        });
-
-    let Some(selected_candidate_position) = best_valid_candidate_position else {
+    let Some(selected_candidate_id) = optimizer_adapter_output.selected_candidate_id.as_ref()
+    else {
         return build_hawkes_stage_failure_report(
             run_spec,
             HawkesStageExecutionFailure::ConstraintViolationsForAllCandidates {
                 candidate_diagnostics,
+            },
+        );
+    };
+
+    let Some(selected_candidate_position) = stage_input
+        .candidate_inputs
+        .iter()
+        .position(|candidate| candidate.candidate_id == *selected_candidate_id)
+    else {
+        return build_hawkes_stage_failure_report(
+            run_spec,
+            HawkesStageExecutionFailure::CandidateConstructionFailed {
+                candidate_id: "optimizer_adapter_selection".to_string(),
+                error_message:
+                    "selected candidate id was not found in stage_input.candidate_inputs"
+                        .to_string(),
             },
         );
     };
@@ -2528,6 +3378,7 @@ pub fn run_hawkes_calibration_stage(
         selected_candidate_input.stability_numeric_tolerance,
     ) {
         Ok(kernel_parameters) => kernel_parameters,
+
         Err(source) => {
             return build_hawkes_stage_failure_report(
                 run_spec,
@@ -2539,9 +3390,10 @@ pub fn run_hawkes_calibration_stage(
         }
     };
 
-    let valid_candidate_count = candidate_diagnostics
+    let valid_candidate_count = optimizer_adapter_output
+        .candidate_diagnostics
         .iter()
-        .filter(|candidate_diagnostic| candidate_diagnostic.validation_report.is_valid())
+        .filter(|candidate_diagnostic| candidate_diagnostic.total_constraint_violation_count == 0)
         .count();
 
     let selected_candidate_raw_objective = selected_candidate_diagnostic.raw_objective_value;
@@ -2581,8 +3433,9 @@ pub fn run_hawkes_calibration_stage(
         fitted_stage_payload: Some(fitted_stage_payload),
         metadata: Some(HawkesStageExecutionMetadata {
             stage_output_schema_version: CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION,
-            stage_seed: resolve_calibration_stage_seed(run_spec, CalibrationStage::Hawkes),
+            stage_seed,
             solver_settings: stage_solver_settings,
+            optimizer_adapter_metadata: optimizer_adapter_output.metadata.clone(),
             input_candidate_count: stage_input.candidate_inputs.len(),
             valid_candidate_count,
             selected_candidate_raw_objective,
@@ -2592,68 +3445,24 @@ pub fn run_hawkes_calibration_stage(
     }
 }
 
-fn compose_hawkes_stage_weighted_objective(
-    objective_terms: &[HawkesStageObjectiveTermInput],
-) -> Result<(f64, Vec<HawkesStageObjectiveTermDiagnostic>), HawkesStageCandidateInputError> {
-    let mut weighted_objective_value = 0.0;
-    let mut diagnostics = Vec::with_capacity(objective_terms.len());
-
-    for objective_term in objective_terms {
-        objective_term.validate().map_err(|source| {
-            HawkesStageCandidateInputError::InvalidObjectiveTerm {
-                term_id: objective_term.term_id.clone(),
-                source,
-            }
-        })?;
-
-        let weighted_contribution = objective_term.weight * objective_term.observed_score;
-        if !weighted_contribution.is_finite() {
-            return Err(
-                HawkesStageCandidateInputError::InvalidWeightedObjectiveValue {
-                    value: weighted_contribution,
-                },
-            );
-        }
-
-        weighted_objective_value += weighted_contribution;
-        if !weighted_objective_value.is_finite() {
-            return Err(
-                HawkesStageCandidateInputError::InvalidWeightedObjectiveValue {
-                    value: weighted_objective_value,
-                },
-            );
-        }
-
-        diagnostics.push(HawkesStageObjectiveTermDiagnostic {
-            term_id: objective_term.term_id.clone(),
-            weight: objective_term.weight,
-            observed_score: objective_term.observed_score,
-            weighted_contribution,
-        });
-    }
-
-    Ok((weighted_objective_value, diagnostics))
-}
-
-fn is_better_hawkes_stage_candidate(
-    candidate: &HawkesStageCandidateDiagnostic,
-    current_best: &HawkesStageCandidateDiagnostic,
-) -> bool {
-    match candidate
-        .penalized_objective_value
-        .total_cmp(&current_best.penalized_objective_value)
-    {
-        Ordering::Less => true,
-        Ordering::Greater => false,
-        Ordering::Equal => match candidate
-            .raw_objective_value
-            .total_cmp(&current_best.raw_objective_value)
-        {
-            Ordering::Less => true,
-            Ordering::Greater => false,
-            Ordering::Equal => candidate.candidate_id < current_best.candidate_id,
+fn hawkes_stage_optimizer_bounds() -> Vec<CalibrationOptimizerParameterBound> {
+    vec![
+        CalibrationOptimizerParameterBound {
+            parameter_name: "lambda_bar".to_string(),
+            lower_inclusive: 0.0,
+            upper_inclusive: f64::MAX,
         },
-    }
+        CalibrationOptimizerParameterBound {
+            parameter_name: "beta".to_string(),
+            lower_inclusive: 0.0,
+            upper_inclusive: f64::MAX,
+        },
+        CalibrationOptimizerParameterBound {
+            parameter_name: "stability_numeric_tolerance".to_string(),
+            lower_inclusive: 0.0,
+            upper_inclusive: f64::MAX,
+        },
+    ]
 }
 
 fn build_hawkes_stage_handoff_outputs(
@@ -2902,6 +3711,7 @@ pub struct ReturnComponentsStageExecutionMetadata {
     pub stage_output_schema_version: &'static str,
     pub stage_seed: u64,
     pub solver_settings: CalibrationOptimizerSettings,
+    pub optimizer_adapter_metadata: CalibrationOptimizerAdapterRunMetadata,
     pub input_candidate_count: usize,
     pub valid_candidate_count: usize,
     pub selected_candidate_raw_objective: f64,
@@ -3066,8 +3876,32 @@ pub fn run_return_components_calibration_stage(
         }
     }
 
+    let stage_seed = resolve_calibration_stage_seed(run_spec, CalibrationStage::ReturnComponents);
+    let optimizer_adapter_configuration = match CalibrationOptimizerAdapterConfiguration::try_new(
+        "candidate_enumeration.v1",
+        stage_seed,
+        stage_solver_settings.clone(),
+        return_components_stage_optimizer_bounds(),
+    ) {
+        Ok(configuration) => configuration,
+
+        Err(source) => {
+            return build_return_components_stage_failure_report(
+                run_spec,
+                ReturnComponentsStageExecutionFailure::CandidateConstructionFailed {
+                    candidate_id: "optimizer_adapter_configuration".to_string(),
+                    error_message: source.to_string(),
+                },
+            );
+        }
+    };
+
     let mut seen_candidate_ids = BTreeSet::new();
-    let mut candidate_diagnostics: Vec<ReturnComponentsStageCandidateDiagnostic> = Vec::new();
+    let mut external_constraint_diagnostics =
+        Vec::<Vec<ReturnComponentsStageConstraintViolationDiagnostic>>::with_capacity(
+            stage_input.candidate_inputs.len(),
+        );
+    let mut adapter_candidate_inputs = Vec::with_capacity(stage_input.candidate_inputs.len());
     for candidate_input in &stage_input.candidate_inputs {
         if !seen_candidate_ids.insert(candidate_input.candidate_id.clone()) {
             return build_return_components_stage_failure_report(
@@ -3088,61 +3922,134 @@ pub fn run_return_components_calibration_stage(
             );
         }
 
-        let (raw_objective_value, objective_term_diagnostics) =
-            match compose_return_components_stage_weighted_objective(
-                &candidate_input.objective_terms,
-            ) {
-                Ok(output) => output,
-                Err(source) => {
-                    return build_return_components_stage_failure_report(
-                        run_spec,
-                        ReturnComponentsStageExecutionFailure::InvalidCandidateInput {
-                            candidate_id: candidate_input.candidate_id.clone(),
-                            error_message: source.to_string(),
-                        },
-                    );
-                }
-            };
-
         let constraint_violations =
             collect_return_components_stage_constraint_violations(candidate_input);
-        let constraint_violation_count = constraint_violations.len();
-        let constraint_penalty =
-            stage_solver_settings.constraint_penalty_weight * constraint_violation_count as f64;
-        let penalized_objective_value = raw_objective_value + constraint_penalty;
+        let external_constraint_violation_count = constraint_violations.len();
+        external_constraint_diagnostics.push(constraint_violations);
 
-        candidate_diagnostics.push(ReturnComponentsStageCandidateDiagnostic {
+        adapter_candidate_inputs.push(CalibrationOptimizerAdapterCandidateInput {
             candidate_id: candidate_input.candidate_id.clone(),
-            raw_objective_value,
-            constraint_penalty,
-            penalized_objective_value,
-            constraint_violation_count,
-            constraint_violations,
-            objective_terms: objective_term_diagnostics,
+            objective_terms: candidate_input.objective_terms.clone(),
+            parameter_values: vec![CalibrationOptimizerCandidateParameterValue {
+                parameter_name: "nig_shared_plus_shift_configuration.delta_beta".to_string(),
+                value: candidate_input
+                    .nig_shared_plus_shift_configuration
+                    .delta_beta,
+            }],
+            external_constraint_violation_count,
         });
     }
 
-    let best_valid_candidate_position = candidate_diagnostics
-        .iter()
-        .enumerate()
-        .filter(|(_, candidate_diagnostic)| candidate_diagnostic.constraint_violation_count == 0)
-        .map(|(candidate_position, _)| candidate_position)
-        .reduce(|best_position, candidate_position| {
-            if is_better_return_components_stage_candidate(
-                &candidate_diagnostics[candidate_position],
-                &candidate_diagnostics[best_position],
-            ) {
-                candidate_position
-            } else {
-                best_position
-            }
-        });
+    let optimizer_adapter_output = match run_constrained_optimizer_adapter(
+        &optimizer_adapter_configuration,
+        &adapter_candidate_inputs,
+    ) {
+        Ok(output) => output,
 
-    let Some(selected_candidate_position) = best_valid_candidate_position else {
+        Err(CalibrationOptimizerAdapterError::InvalidCandidateInput {
+            candidate_id,
+            source,
+        }) => {
+            return build_return_components_stage_failure_report(
+                run_spec,
+                ReturnComponentsStageExecutionFailure::InvalidCandidateInput {
+                    candidate_id,
+                    error_message: source.to_string(),
+                },
+            );
+        }
+
+        Err(CalibrationOptimizerAdapterError::InvalidObjectiveComposition {
+            candidate_id,
+            source,
+        }) => {
+            return build_return_components_stage_failure_report(
+                run_spec,
+                ReturnComponentsStageExecutionFailure::InvalidCandidateInput {
+                    candidate_id,
+                    error_message: source.to_string(),
+                },
+            );
+        }
+
+        Err(CalibrationOptimizerAdapterError::DuplicateCandidateId { candidate_id }) => {
+            return build_return_components_stage_failure_report(
+                run_spec,
+                ReturnComponentsStageExecutionFailure::DuplicateCandidateId { candidate_id },
+            );
+        }
+
+        Err(source) => {
+            return build_return_components_stage_failure_report(
+                run_spec,
+                ReturnComponentsStageExecutionFailure::CandidateConstructionFailed {
+                    candidate_id: "optimizer_adapter".to_string(),
+                    error_message: source.to_string(),
+                },
+            );
+        }
+    };
+
+    let mut candidate_diagnostics: Vec<ReturnComponentsStageCandidateDiagnostic> =
+        Vec::with_capacity(stage_input.candidate_inputs.len());
+    for ((candidate_input, constraint_violations), optimizer_diagnostic) in stage_input
+        .candidate_inputs
+        .iter()
+        .zip(external_constraint_diagnostics.into_iter())
+        .zip(optimizer_adapter_output.candidate_diagnostics.iter())
+    {
+        let mut combined_constraint_violations = constraint_violations;
+        for bound_violation in &optimizer_diagnostic.bound_violations {
+            combined_constraint_violations.push(
+                ReturnComponentsStageConstraintViolationDiagnostic {
+                    field: bound_violation.parameter_name.clone(),
+                    message: format!(
+                        "value {} violated inclusive bounds [{}, {}] ({:?})",
+                        bound_violation.value,
+                        bound_violation.lower_inclusive,
+                        bound_violation.upper_inclusive,
+                        bound_violation.violation_kind
+                    ),
+                },
+            );
+        }
+
+        candidate_diagnostics.push(ReturnComponentsStageCandidateDiagnostic {
+            candidate_id: candidate_input.candidate_id.clone(),
+            raw_objective_value: optimizer_diagnostic.raw_objective_value,
+            constraint_penalty: optimizer_diagnostic.constraint_penalty,
+            penalized_objective_value: optimizer_diagnostic.penalized_objective_value,
+            constraint_violation_count: optimizer_diagnostic.total_constraint_violation_count,
+            constraint_violations: combined_constraint_violations,
+            objective_terms: optimizer_diagnostic
+                .objective_composition
+                .objective_terms
+                .clone(),
+        });
+    }
+
+    let Some(selected_candidate_id) = optimizer_adapter_output.selected_candidate_id.as_ref()
+    else {
         return build_return_components_stage_failure_report(
             run_spec,
             ReturnComponentsStageExecutionFailure::ConstraintViolationsForAllCandidates {
                 candidate_diagnostics,
+            },
+        );
+    };
+
+    let Some(selected_candidate_position) = stage_input
+        .candidate_inputs
+        .iter()
+        .position(|candidate| candidate.candidate_id == *selected_candidate_id)
+    else {
+        return build_return_components_stage_failure_report(
+            run_spec,
+            ReturnComponentsStageExecutionFailure::CandidateConstructionFailed {
+                candidate_id: "optimizer_adapter_selection".to_string(),
+                error_message:
+                    "selected candidate id was not found in stage_input.candidate_inputs"
+                        .to_string(),
             },
         );
     };
@@ -3215,9 +4122,10 @@ pub fn run_return_components_calibration_stage(
         }
     };
 
-    let valid_candidate_count = candidate_diagnostics
+    let valid_candidate_count = optimizer_adapter_output
+        .candidate_diagnostics
         .iter()
-        .filter(|candidate_diagnostic| candidate_diagnostic.constraint_violation_count == 0)
+        .filter(|candidate_diagnostic| candidate_diagnostic.total_constraint_violation_count == 0)
         .count();
 
     let selected_candidate_raw_objective = selected_candidate_diagnostic.raw_objective_value;
@@ -3255,11 +4163,9 @@ pub fn run_return_components_calibration_stage(
         fitted_stage_payload: Some(fitted_stage_payload),
         metadata: Some(ReturnComponentsStageExecutionMetadata {
             stage_output_schema_version: CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
-            stage_seed: resolve_calibration_stage_seed(
-                run_spec,
-                CalibrationStage::ReturnComponents,
-            ),
+            stage_seed,
             solver_settings: stage_solver_settings,
+            optimizer_adapter_metadata: optimizer_adapter_output.metadata.clone(),
             input_candidate_count: stage_input.candidate_inputs.len(),
             valid_candidate_count,
             selected_candidate_raw_objective,
@@ -3269,52 +4175,6 @@ pub fn run_return_components_calibration_stage(
         }),
         failure: None,
     }
-}
-
-fn compose_return_components_stage_weighted_objective(
-    objective_terms: &[ReturnComponentsStageObjectiveTermInput],
-) -> Result<
-    (f64, Vec<ReturnComponentsStageObjectiveTermDiagnostic>),
-    ReturnComponentsStageCandidateInputError,
-> {
-    let mut weighted_objective_value = 0.0;
-    let mut diagnostics = Vec::with_capacity(objective_terms.len());
-
-    for objective_term in objective_terms {
-        objective_term.validate().map_err(|source| {
-            ReturnComponentsStageCandidateInputError::InvalidObjectiveTerm {
-                term_id: objective_term.term_id.clone(),
-                source,
-            }
-        })?;
-
-        let weighted_contribution = objective_term.weight * objective_term.observed_score;
-        if !weighted_contribution.is_finite() {
-            return Err(
-                ReturnComponentsStageCandidateInputError::InvalidWeightedObjectiveValue {
-                    value: weighted_contribution,
-                },
-            );
-        }
-
-        weighted_objective_value += weighted_contribution;
-        if !weighted_objective_value.is_finite() {
-            return Err(
-                ReturnComponentsStageCandidateInputError::InvalidWeightedObjectiveValue {
-                    value: weighted_objective_value,
-                },
-            );
-        }
-
-        diagnostics.push(ReturnComponentsStageObjectiveTermDiagnostic {
-            term_id: objective_term.term_id.clone(),
-            weight: objective_term.weight,
-            observed_score: objective_term.observed_score,
-            weighted_contribution,
-        });
-    }
-
-    Ok((weighted_objective_value, diagnostics))
 }
 
 fn collect_return_components_stage_constraint_violations(
@@ -3373,25 +4233,12 @@ fn collect_return_components_stage_constraint_violations(
     violations
 }
 
-fn is_better_return_components_stage_candidate(
-    candidate: &ReturnComponentsStageCandidateDiagnostic,
-    current_best: &ReturnComponentsStageCandidateDiagnostic,
-) -> bool {
-    match candidate
-        .penalized_objective_value
-        .total_cmp(&current_best.penalized_objective_value)
-    {
-        Ordering::Less => true,
-        Ordering::Greater => false,
-        Ordering::Equal => match candidate
-            .raw_objective_value
-            .total_cmp(&current_best.raw_objective_value)
-        {
-            Ordering::Less => true,
-            Ordering::Greater => false,
-            Ordering::Equal => candidate.candidate_id < current_best.candidate_id,
-        },
-    }
+fn return_components_stage_optimizer_bounds() -> Vec<CalibrationOptimizerParameterBound> {
+    vec![CalibrationOptimizerParameterBound {
+        parameter_name: "nig_shared_plus_shift_configuration.delta_beta".to_string(),
+        lower_inclusive: -f64::MAX,
+        upper_inclusive: 0.0,
+    }]
 }
 
 fn build_return_components_stage_handoff_outputs(
@@ -3450,14 +4297,19 @@ mod tests {
         ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, TimestampEventInputRecord,
     };
     use crate::calibration::{
+        CALIBRATION_CONSTRAINED_OPTIMIZER_ADAPTER_RUN_SCHEMA_VERSION,
         CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY,
         CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
+        CALIBRATION_OBJECTIVE_COMPOSITION_SCHEMA_VERSION,
         CALIBRATION_RETURN_COMPONENTS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
         CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION, CALIBRATION_RUN_SPEC_SCHEMA_VERSION,
         CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION,
         CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
         CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY, CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION,
-        CalibrationCallerSurface, CalibrationExecutionMode, CalibrationOptimizerSettings,
+        CalibrationCallerSurface, CalibrationExecutionMode, CalibrationObjectiveTermInput,
+        CalibrationOptimizerAdapterCandidateInput, CalibrationOptimizerAdapterConfiguration,
+        CalibrationOptimizerAdapterError, CalibrationOptimizerCandidateParameterValue,
+        CalibrationOptimizerParameterBound, CalibrationOptimizerSettings,
         CalibrationResumeSettings, CalibrationResumeSettingsError, CalibrationResumeSource,
         CalibrationRunContract, CalibrationRunContractError, CalibrationRunDataInputs,
         CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationRunSpecError,
@@ -3471,13 +4323,13 @@ mod tests {
         ReturnComponentsStageObjectiveTermInput, SeasonalityStageExecutionFailure,
         SeasonalityStageExecutionInput,
         build_option_surface_calibration_observation_from_pricing_hooks,
-        default_calibration_execution_mode_for_surface,
+        compose_calibration_weighted_objective, default_calibration_execution_mode_for_surface,
         evaluate_calibration_martingale_condition_under_esscher_tilt,
         precheck_hawkes_kernel_parameter_domain,
         precheck_structured_hawkes_kernel_parameter_domain,
         resolve_calibration_execution_mode_for_surface, resolve_calibration_stage_execution_order,
-        run_hawkes_calibration_stage, run_return_components_calibration_stage,
-        run_seasonality_calibration_stage,
+        run_constrained_optimizer_adapter, run_hawkes_calibration_stage,
+        run_return_components_calibration_stage, run_seasonality_calibration_stage,
         transform_nig_exponent_for_calibration_under_esscher_tilt,
     };
     use crate::hawkes::{
@@ -3565,6 +4417,147 @@ mod tests {
                 "stability.numeric_tolerance",
             ]
         );
+    }
+
+    #[test]
+    fn objective_composition_reports_weighted_sum_and_per_term_diagnostics() {
+        let objective_terms = vec![
+            CalibrationObjectiveTermInput {
+                term_id: "tail_fit".to_string(),
+                weight: 2.0,
+                observed_score: 0.25,
+            },
+            CalibrationObjectiveTermInput {
+                term_id: "activity_clustering".to_string(),
+                weight: 1.5,
+                observed_score: 0.4,
+            },
+        ];
+
+        let report = compose_calibration_weighted_objective(objective_terms.as_slice())
+            .expect("objective composition should succeed");
+
+        assert_eq!(
+            report.schema_version,
+            CALIBRATION_OBJECTIVE_COMPOSITION_SCHEMA_VERSION
+        );
+        assert_eq!(report.objective_terms.len(), 2);
+        assert!((report.objective_terms[0].weighted_contribution - 0.5).abs() < 1e-12);
+        assert!((report.objective_terms[1].weighted_contribution - 0.6).abs() < 1e-12);
+        assert!((report.weighted_objective_value - 1.1).abs() < 1e-12);
+    }
+
+    #[test]
+    fn constrained_optimizer_adapter_configuration_and_failure_paths_are_validated() {
+        let solver_settings = CalibrationOptimizerSettings::try_new("lbfgs", 25, 1e-8, 1e-6, 10.0)
+            .expect("solver settings should validate");
+        let duplicate_bounds = vec![
+            CalibrationOptimizerParameterBound::try_new("lambda_bar", 0.0, 10.0)
+                .expect("first bound should validate"),
+            CalibrationOptimizerParameterBound::try_new("lambda_bar", 0.0, 10.0)
+                .expect("second bound should validate"),
+        ];
+
+        let duplicate_bound_error = CalibrationOptimizerAdapterConfiguration::try_new(
+            "candidate_enumeration.v1",
+            7,
+            solver_settings.clone(),
+            duplicate_bounds,
+        )
+        .expect_err("duplicate parameter bounds must be rejected");
+        assert!(matches!(
+            duplicate_bound_error,
+            crate::calibration::CalibrationOptimizerAdapterConfigurationError::DuplicateParameterBound { .. }
+        ));
+
+        let valid_configuration = CalibrationOptimizerAdapterConfiguration::try_new(
+            "candidate_enumeration.v1",
+            7,
+            solver_settings,
+            vec![
+                CalibrationOptimizerParameterBound::try_new("lambda_bar", 0.0, 10.0)
+                    .expect("bound should validate"),
+            ],
+        )
+        .expect("configuration should validate");
+
+        let missing_parameter_error = run_constrained_optimizer_adapter(
+            &valid_configuration,
+            &[CalibrationOptimizerAdapterCandidateInput {
+                candidate_id: "candidate_001".to_string(),
+                objective_terms: vec![CalibrationObjectiveTermInput {
+                    term_id: "objective_1".to_string(),
+                    weight: 1.0,
+                    observed_score: 0.5,
+                }],
+                parameter_values: Vec::new(),
+                external_constraint_violation_count: 0,
+            }],
+        )
+        .expect_err("missing parameter value for configured bound must fail");
+
+        assert!(matches!(
+            missing_parameter_error,
+            CalibrationOptimizerAdapterError::MissingBoundedParameterValue { .. }
+        ));
+    }
+
+    #[test]
+    fn constrained_optimizer_adapter_is_deterministic_for_fixed_seed() {
+        let configuration = CalibrationOptimizerAdapterConfiguration::try_new(
+            "candidate_enumeration.v1",
+            991,
+            CalibrationOptimizerSettings::try_new("lbfgs", 50, 1e-8, 1e-6, 2.0)
+                .expect("solver settings should validate"),
+            vec![
+                CalibrationOptimizerParameterBound::try_new("beta", 0.0, 10.0)
+                    .expect("bound should validate"),
+            ],
+        )
+        .expect("configuration should validate");
+
+        let tie_candidates = vec![
+            CalibrationOptimizerAdapterCandidateInput {
+                candidate_id: "candidate_a".to_string(),
+                objective_terms: vec![CalibrationObjectiveTermInput {
+                    term_id: "objective".to_string(),
+                    weight: 1.0,
+                    observed_score: 1.0,
+                }],
+                parameter_values: vec![CalibrationOptimizerCandidateParameterValue {
+                    parameter_name: "beta".to_string(),
+                    value: 1.0,
+                }],
+                external_constraint_violation_count: 0,
+            },
+            CalibrationOptimizerAdapterCandidateInput {
+                candidate_id: "candidate_b".to_string(),
+                objective_terms: vec![CalibrationObjectiveTermInput {
+                    term_id: "objective".to_string(),
+                    weight: 1.0,
+                    observed_score: 1.0,
+                }],
+                parameter_values: vec![CalibrationOptimizerCandidateParameterValue {
+                    parameter_name: "beta".to_string(),
+                    value: 1.0,
+                }],
+                external_constraint_violation_count: 0,
+            },
+        ];
+
+        let first_output =
+            run_constrained_optimizer_adapter(&configuration, tie_candidates.as_slice())
+                .expect("optimizer adapter run should succeed");
+        let second_output =
+            run_constrained_optimizer_adapter(&configuration, tie_candidates.as_slice())
+                .expect("second optimizer adapter run should succeed");
+
+        assert_eq!(
+            first_output.metadata.schema_version,
+            CALIBRATION_CONSTRAINED_OPTIMIZER_ADAPTER_RUN_SCHEMA_VERSION
+        );
+        assert_eq!(first_output, second_output);
+        assert!(first_output.selected_candidate_id.is_some());
     }
 
     #[test]
