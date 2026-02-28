@@ -5,7 +5,7 @@ Implement panic-safety protections so unexpected Rust failures are contained and
 
 ### Acceptance Criteria
 - Boundary calls guard against panics crossing the FFI boundary
-- Panic paths convert to stable Python internal-error exceptions
+- Panic paths convert to deterministic Python internal-error exceptions
 - Failure containment behavior is consistent across all exposed entrypoints
 - Panic-safety policy is documented with boundary invariants
 
@@ -17,3 +17,4 @@ Implement panic-safety protections so unexpected Rust failures are contained and
 ### Notes/Constraints
 - Keep panic guards lightweight and centralized
 - Preserve normal-path performance by avoiding unnecessary overhead
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

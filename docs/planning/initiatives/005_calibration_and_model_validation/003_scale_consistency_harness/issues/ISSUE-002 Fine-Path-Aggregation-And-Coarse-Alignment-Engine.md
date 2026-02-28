@@ -16,3 +16,4 @@ Implement aggregation engine that maps fine-scale simulation outputs onto coarse
 ### Notes/Constraints
 - Reuse shared interval-grid utilities
 - Keep aggregation logic separate from metric comparison code
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

@@ -4,7 +4,7 @@ Compute and compare stylized-fact diagnostics across horizons for empirical and 
 
 ### Context and requirements
 - Implement diagnostics that compare fitted model outputs against empirical stylized facts.
-- Cover activity clustering, heavy tails, skew, volatility persistence, and gap behavior.
+- Cover activity clustering, heavy tails, skew, volatility persistence, open-window direct-jump behavior, and closed-window gap behavior.
 - Produce machine-readable and human-readable summaries for decision making.
 
 ### Definition of Done

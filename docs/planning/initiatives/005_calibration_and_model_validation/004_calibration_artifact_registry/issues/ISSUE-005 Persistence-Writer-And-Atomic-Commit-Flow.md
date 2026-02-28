@@ -17,3 +17,4 @@ Implement `disk`-mode artifact persistence writer with atomic commit behavior so
 ### Notes/Constraints
 - Keep writer behavior deterministic across platforms.
 - Avoid silent overwrites of existing run artifacts.
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

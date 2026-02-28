@@ -18,3 +18,4 @@ Implement batch orchestrator to run consistency checks across multiple parameter
 ### Notes/Constraints
 - Keep orchestration logic decoupled from metric internals.
 - Bound batch defaults to maintain practical runtime.
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

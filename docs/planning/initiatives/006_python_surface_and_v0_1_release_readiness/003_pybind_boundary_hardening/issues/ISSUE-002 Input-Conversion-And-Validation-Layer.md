@@ -16,3 +16,4 @@ Implement robust conversion and validation at PyO3 boundaries so Python inputs a
 ### Notes/Constraints
 - Avoid putting domain logic inside conversion helpers
 - Reuse existing core validators instead of re-implementing rules
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

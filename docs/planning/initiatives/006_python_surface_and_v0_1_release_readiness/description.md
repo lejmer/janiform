@@ -1,6 +1,6 @@
 ## Initiative 006: Python Surface And v0.1 Release Readiness
 
-Ship a production-ready Python and CLI surface with stable contracts, hardened bindings, and release-quality process gates.
+Ship a production-ready Python and CLI surface with explicit contracts, hardened bindings, and release-quality process gates.
 
 ### Desired outcome
 - Janiform ships a usable Python package and CLI backed by the Rust core, with clear boundaries between `core` and `pybind`.
@@ -8,7 +8,7 @@ Ship a production-ready Python and CLI surface with stable contracts, hardened b
 - The repository has reliable quality gates for packaging, typing, tests, and build verification.
 
 ### Success signals
-- Python API and CLI expose simulation, calibration, and pricing workflows with stable user-facing contracts.
+- Python API and CLI expose simulation, calibration, and pricing workflows with explicit user-facing contracts aligned to the corrected news model semantics.
 - Execution-mode defaults are explicit and enforced: CLI defaults to `execution_mode=disk`, Python importable API defaults to `execution_mode=memory`, and both surfaces support explicit override.
 - PyO3 boundary code is thin and consistent, with explicit conversion and error mapping.
 - CI-level checks pass for core build, Python importability, and repository verification commands.

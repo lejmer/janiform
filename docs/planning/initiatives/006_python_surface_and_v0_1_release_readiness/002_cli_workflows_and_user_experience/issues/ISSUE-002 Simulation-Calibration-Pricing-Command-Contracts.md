@@ -6,7 +6,8 @@ Define and implement command-level input and output contracts for the core workf
 ### Acceptance Criteria
 - Each workflow command has documented required and optional arguments.
 - Calibration command contracts include `--execution-mode {disk,memory}` with default `disk`.
-- Command contracts map cleanly to stable Python API request models.
+- Command contracts map cleanly to Python API request models.
+- Command contracts use corrected terminology for known-surprise news flows and open-jump versus closed-gap outputs where surfaced.
 - Invalid argument combinations fail with deterministic validation errors.
 - Command outputs include required fields for downstream automation.
 
@@ -18,3 +19,4 @@ Define and implement command-level input and output contracts for the core workf
 ### Notes/Constraints
 - Keep workflow contracts consistent across commands.
 - Reuse shared validation utilities where possible.
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

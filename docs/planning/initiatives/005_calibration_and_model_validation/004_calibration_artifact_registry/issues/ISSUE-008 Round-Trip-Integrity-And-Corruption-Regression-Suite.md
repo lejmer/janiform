@@ -5,7 +5,7 @@ Create regression suite that verifies persisted artifact round-trip integrity an
 
 ### Acceptance Criteria
 - Suite validates write and read round-trip fidelity across all persisted artifact categories.
-- Corruption scenarios include missing files, malformed payloads, and incompatible versions.
+- Corruption scenarios include missing files, malformed payloads, and unsupported schema versions.
 - Regression outputs include actionable diagnostics with run and artifact context.
 - Fixtures and expected outcomes are versioned.
 - Regression coverage includes persistence-default policy checks: artifacts are optional, ON by default in CLI flows, and OFF by default for imported package usage unless explicitly enabled.
@@ -18,3 +18,4 @@ Create regression suite that verifies persisted artifact round-trip integrity an
 ### Notes/Constraints
 - Keep fixture set bounded for fast regression execution.
 - Separate corruption robustness tests from performance benchmarking jobs.
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

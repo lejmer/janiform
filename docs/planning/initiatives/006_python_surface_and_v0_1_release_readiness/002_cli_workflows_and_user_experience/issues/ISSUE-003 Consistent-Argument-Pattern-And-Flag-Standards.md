@@ -18,3 +18,4 @@ Establish argument and flag standards so command usage is predictable across wor
 ### Notes/Constraints
 - Prefer explicit long flags for script readability.
 - Avoid workflow-specific naming for shared concepts.
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

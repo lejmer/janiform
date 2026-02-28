@@ -14,4 +14,5 @@ Implement structured output modes for CLI commands so workflows can integrate re
 
 ### Notes/Constraints
 - Keep human-readable and machine-readable outputs clearly separated
-- Avoid including unstable internal fields in structured output
+- Avoid including internal-only fields in structured output
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

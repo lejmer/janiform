@@ -17,3 +17,4 @@ Generate diagnostics reports as in-memory-first result objects plus optional mac
 ### Notes/Constraints
 - Keep plotting layer optional so headless workflows are supported.
 - Avoid hardcoded paths in export configuration.
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

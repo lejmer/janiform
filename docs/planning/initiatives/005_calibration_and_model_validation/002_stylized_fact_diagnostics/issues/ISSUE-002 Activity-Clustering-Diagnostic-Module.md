@@ -17,3 +17,4 @@ Implement diagnostics for event and volatility clustering behavior to compare em
 ### Notes/Constraints
 - Reuse shared timestamp and interval utilities
 - Keep clustering metric computation separate from visualization code
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

@@ -17,3 +17,4 @@ Implement schema for persisted diagnostics, metric outputs, and comparison resul
 ### Notes/Constraints
 - Reuse metric naming conventions from diagnostics projects.
 - Keep artifact schema stable for downstream reporting tools.
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

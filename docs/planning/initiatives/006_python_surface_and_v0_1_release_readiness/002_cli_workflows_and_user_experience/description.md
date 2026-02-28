@@ -7,6 +7,7 @@ Deliver scriptable CLI workflows with consistent arguments, structured outputs, 
 - Support common use cases for simulation, calibration orchestration, and pricing tasks.
 - Ensure CLI behavior is scriptable and suitable for automation.
 - Encode `--execution-mode {disk,memory}` for calibration workflows with CLI default `disk` and explicit override support.
+- Keep CLI contracts aligned with corrected known-surprise news semantics and open-jump versus closed-gap terminology where surfaced.
 
 ### Definition of Done
 - CLI exposes primary commands with help text, structured output options, and error codes.

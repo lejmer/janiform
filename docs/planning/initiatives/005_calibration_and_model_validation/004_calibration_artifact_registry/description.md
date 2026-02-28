@@ -9,7 +9,7 @@ Provide the optional `disk`-mode persistence backend for calibration outputs so 
 - Define persistence policy explicitly: persisted artifacts are optional, default ON for CLI runs, and default OFF for imported package usage unless explicitly enabled.
 
 ### Definition of Done
-- Artifact format is documented and versioned with backward-compatibility policy for v0.x.
+- Artifact format is documented and versioned with an explicit pre-v0.1 schema-evolution policy where breaking changes are allowed.
 - `disk`-mode calibration runs can persist complete artifacts that can be reloaded for validation and pricing.
 - `memory`-mode calibration runs complete without requiring artifact-registry writes.
 - Persistence defaults are documented and enforced: CLI defaults to persisted artifacts ON, package API defaults to persisted artifacts OFF.

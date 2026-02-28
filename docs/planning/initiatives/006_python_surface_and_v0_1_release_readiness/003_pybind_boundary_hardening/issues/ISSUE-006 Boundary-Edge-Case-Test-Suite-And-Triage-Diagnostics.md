@@ -5,7 +5,7 @@ Build a targeted boundary test suite for conversion edge cases and failure-path 
 
 ### Acceptance Criteria
 - Test suite covers edge cases for malformed inputs, domain violations, and internal failures
-- Tests validate exception class, message shape, and stable error IDs
+- Tests validate exception class, message shape, and documented error IDs
 - Failure diagnostics include entrypoint and boundary-stage context
 - Test fixtures are reusable across future pybind entrypoints
 
@@ -16,3 +16,4 @@ Build a targeted boundary test suite for conversion edge cases and failure-path 
 ### Notes/Constraints
 - Keep suite focused on boundary behavior, not deep algorithm validation
 - Ensure failures are concise and actionable for maintainers
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

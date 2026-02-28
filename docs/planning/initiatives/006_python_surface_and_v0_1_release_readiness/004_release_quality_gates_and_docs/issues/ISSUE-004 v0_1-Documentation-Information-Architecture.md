@@ -15,3 +15,4 @@ Define and implement the v0.1 documentation structure covering installation, qui
 ### Notes/Constraints
 - Keep docs structure stable for v0.1
 - Avoid scattering first-time setup instructions across unrelated pages
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

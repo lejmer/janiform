@@ -1,7 +1,7 @@
 ## ISSUE-001: Stylized Fact Metric Catalog And Schema
 
 ### Description
-Define the canonical metric catalog and schema for stylized-fact diagnostics across activity clustering, tails, skew, volatility persistence, and gap behavior.
+Define the canonical metric catalog and schema for stylized-fact diagnostics across activity clustering, tails, skew, volatility persistence, open-window direct-jump behavior, and closed-window gap behavior.
 
 ### Acceptance Criteria
 - Metric catalog includes unique IDs, definitions, units, and horizon applicability
@@ -15,3 +15,4 @@ Define the canonical metric catalog and schema for stylized-fact diagnostics acr
 ### Notes/Constraints
 - Keep catalog decoupled from specific plotting or report layers
 - Avoid duplicate metric names with conflicting definitions
+- Pre-v0.1 policy applies: breaking schema changes are allowed when they improve model correctness and consistency.

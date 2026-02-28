@@ -16,3 +16,4 @@ Create the v0.1 release checklist with explicit owners, objective exit criteria,
 ### Notes/Constraints
 - Keep checklist objective and audit-friendly
 - Avoid subjective completion criteria
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

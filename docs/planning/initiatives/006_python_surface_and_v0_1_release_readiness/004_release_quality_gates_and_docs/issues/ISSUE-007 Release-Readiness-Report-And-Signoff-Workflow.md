@@ -17,3 +17,4 @@ Implement final release-readiness reporting and signoff workflow that summarizes
 ### Notes/Constraints
 - Keep signoff workflow lightweight but enforceable
 - Ensure blockers are surfaced clearly and early
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

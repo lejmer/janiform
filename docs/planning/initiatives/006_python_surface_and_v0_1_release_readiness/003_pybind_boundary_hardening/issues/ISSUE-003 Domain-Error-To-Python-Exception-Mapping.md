@@ -1,12 +1,12 @@
 ## ISSUE-003: Domain Error To Python Exception Mapping
 
 ### Description
-Create a structured mapping from core-domain errors to stable Python exception classes and messages.
+Create a structured mapping from core-domain errors to Python exception classes and messages.
 
 ### Acceptance Criteria
 - Error taxonomy mapping is defined for validation, runtime, and internal failure categories
 - Mapping produces consistent Python exception classes across entrypoints
-- Error payload includes stable identifiers and actionable context
+- Error payload includes documented identifiers and actionable context
 - Mapping behavior is documented for users and maintainers
 
 ### Unit tests
@@ -16,3 +16,4 @@ Create a structured mapping from core-domain errors to stable Python exception c
 ### Notes/Constraints
 - Keep exception surface small and predictable
 - Do not expose raw internal error internals in public exceptions
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

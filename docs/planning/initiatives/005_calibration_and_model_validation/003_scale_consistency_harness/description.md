@@ -9,7 +9,7 @@ Compare direct coarse outputs against aggregated fine simulations with governed 
 
 ### Definition of Done
 - Harness can execute paired experiments and compute pass or fail decisions by threshold.
-- Reports include metric deltas for returns, volatility, and event-derived statistics.
+- Reports include metric deltas for returns, volatility, and event-derived statistics including open-jump and closed-gap components.
 - Regression tests ensure harness behavior remains stable over time.
 
 ### Agent implementation notes

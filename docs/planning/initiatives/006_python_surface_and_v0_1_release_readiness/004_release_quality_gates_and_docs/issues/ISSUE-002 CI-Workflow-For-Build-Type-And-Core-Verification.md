@@ -16,3 +16,4 @@ Implement CI workflow jobs (GitHub Actions workflows) for Rust build verificatio
 ### Notes/Constraints
 - Keep workflows deterministic and portable across runners
 - Reuse existing project verification commands where possible
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

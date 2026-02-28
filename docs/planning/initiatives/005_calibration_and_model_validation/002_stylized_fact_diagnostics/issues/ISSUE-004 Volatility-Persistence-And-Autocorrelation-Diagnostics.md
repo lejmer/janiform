@@ -16,3 +16,4 @@ Implement diagnostics for volatility persistence and related autocorrelation str
 ### Notes/Constraints
 - Keep lag configuration explicit and documented
 - Separate raw-timeseries preprocessing from metric computation
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

@@ -15,6 +15,7 @@ Establish CI quality gates, v0.1 docs completeness, and objective release signof
 ### Agent implementation notes
 - Keep docs examples executable against current repository commands.
 - Store release criteria in versioned docs to support future iteration.
+- Pre-v0.1 policy applies to contracts and schemas. Breaking changes are allowed when they improve correctness and simplify usage.
 
 ### Initiative alignment
 - Delivers Initiative 006 success signals for CI readiness and documentation completeness.

@@ -16,3 +16,4 @@ Publish practical v0.1 workflow examples and validate that documented commands r
 ### Notes/Constraints
 - Keep examples concise and copy-pastable
 - Avoid undocumented experimental options in v0.1 examples
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

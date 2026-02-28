@@ -17,3 +17,4 @@ Define the run contract and scenario specification for paired coarse-versus-fine
 ### Notes/Constraints
 - Keep run spec independent from metric-calculation internals.
 - Avoid implicit defaults that hide interval mismatches.
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

@@ -16,3 +16,4 @@ Define the v0.1 quality-gate matrix and required-check policy for merge and rele
 ### Notes/Constraints
 - Keep gate policy objective and automation-friendly
 - Avoid ambiguous gate definitions that depend on manual interpretation
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

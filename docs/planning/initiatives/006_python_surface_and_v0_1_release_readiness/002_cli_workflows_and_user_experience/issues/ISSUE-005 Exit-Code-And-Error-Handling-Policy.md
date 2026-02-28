@@ -1,7 +1,7 @@
 ## ISSUE-005: Exit Code And Error Handling Policy
 
 ### Description
-Define stable exit-code and error-handling policy so CLI behavior is predictable in automated scripts and CI workflows.
+Define explicit exit-code and error-handling policy so CLI behavior is predictable in automated scripts and CI workflows.
 
 ### Acceptance Criteria
 - Exit-code map is documented for success, validation errors, runtime errors, and internal failures
@@ -15,3 +15,4 @@ Define stable exit-code and error-handling policy so CLI behavior is predictable
 ### Notes/Constraints
 - Keep exit-code map small and stable
 - Avoid command-specific one-off error semantics
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

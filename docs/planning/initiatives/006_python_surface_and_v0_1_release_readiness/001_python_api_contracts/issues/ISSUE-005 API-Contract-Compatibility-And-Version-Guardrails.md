@@ -1,18 +1,19 @@
 ## ISSUE-005: API Contract Compatibility And Version Guardrails
 
 ### Description
-Define compatibility guardrails for v0.1 API contracts and implement checks that prevent accidental breaking changes to stable signatures.
+Define API contract-evolution guardrails for pre-v0.1 development and implement checks that keep intentional breaking changes explicit, reviewed, and documented.
 
 ### Acceptance Criteria
-- Compatibility policy defines what counts as breaking change for public contracts
-- Contract signatures are tracked with version-aware checks
-- Guardrail checks run in verification workflows
-- Policy includes procedure for introducing experimental endpoints
+- Contract-evolution policy defines what counts as a breaking change for public contracts
+- Contract signatures and schema IDs are tracked with change-review checks
+- Guardrail checks run in verification workflows and require explicit rationale for contract breaks
+- Policy includes procedure for publishing updated contracts after approved breaking changes
 
 ### Unit tests
-- Signature compatibility snapshots on stable APIs
-- Tests that detect intentional contract-breaking modifications and experimental endpoint isolation from stable contract checks
+- Signature and schema snapshot checks for public APIs
+- Tests that detect undocumented contract changes and accept documented, approved contract breaks
 
 ### Notes/Constraints
-- Keep compatibility checks simple and reliable
+- Keep contract-evolution checks simple and reliable
 - Avoid blocking internal refactors that do not affect public contracts
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

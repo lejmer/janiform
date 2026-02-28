@@ -17,3 +17,4 @@ Create reference fixtures and regression validation suite to lock down metric co
 ### Notes/Constraints
 - Keep fixture set small enough for fast repeatable execution
 - Separate deterministic fixture checks from stochastic benchmarking runs
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

@@ -15,6 +15,7 @@ Harden the PyO3 boundary with strict conversion, exception mapping, and panic co
 ### Agent implementation notes
 - Avoid leaking internal Rust structs directly through public Python interfaces.
 - Document boundary invariants and error taxonomy.
+- Pre-v0.1 contract evolution is expected. Breaking changes are allowed when they improve clarity and correctness of boundary contracts.
 
 ### Initiative alignment
 - Satisfies Initiative 006 success signal for thin and consistent PyO3 boundary code.

@@ -17,3 +17,4 @@ Write command reference documentation and practical examples for common CLI work
 ### Notes/Constraints
 - Keep examples realistic and copy-pastable.
 - Avoid undocumented flags or behavior in published examples.
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

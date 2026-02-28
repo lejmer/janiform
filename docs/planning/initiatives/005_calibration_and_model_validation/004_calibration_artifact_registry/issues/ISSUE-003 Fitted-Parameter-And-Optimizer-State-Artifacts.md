@@ -17,3 +17,4 @@ Define and persist artifacts for fitted parameters and optimizer state across ca
 ### Notes/Constraints
 - Keep stage payload boundaries explicit to support partial reruns.
 - Avoid mixing derived diagnostics into parameter artifacts.
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

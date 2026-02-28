@@ -15,3 +15,4 @@ Build comparison engine that aligns empirical and simulated diagnostics across h
 ### Notes/Constraints
 - Keep comparison logic independent from plotting or UI concerns
 - Avoid implicit horizon interpolation without explicit policy
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

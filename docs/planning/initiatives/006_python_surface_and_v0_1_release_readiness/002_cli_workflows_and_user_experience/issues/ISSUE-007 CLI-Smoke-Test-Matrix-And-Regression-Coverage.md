@@ -19,3 +19,4 @@ Build smoke-test matrix for representative CLI workflows and add regression chec
 ### Notes/Constraints
 - Keep smoke suite fast to support merge-time checks.
 - Separate deep integration tests from smoke-level coverage.
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

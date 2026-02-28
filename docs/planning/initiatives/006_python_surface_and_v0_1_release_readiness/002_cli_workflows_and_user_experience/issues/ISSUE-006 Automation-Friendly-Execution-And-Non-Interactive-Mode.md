@@ -17,3 +17,4 @@ Ensure CLI supports non-interactive execution patterns required for scripting, s
 ### Notes/Constraints
 - Keep automation behavior enabled by default for scriptable commands.
 - Avoid hidden dependency on terminal-specific features.
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

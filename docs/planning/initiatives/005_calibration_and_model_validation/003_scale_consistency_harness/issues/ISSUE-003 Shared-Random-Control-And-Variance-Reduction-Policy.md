@@ -16,3 +16,4 @@ Implement shared-random control for paired experiments to reduce comparison nois
 ### Notes/Constraints
 - Reuse RNG abstractions used elsewhere in the simulation stack
 - Avoid hidden randomness in comparison pipeline stages
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

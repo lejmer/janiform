@@ -17,3 +17,4 @@ Implement metric-delta calculations for key consistency statistics including ret
 ### Notes/Constraints
 - Keep metric names aligned with stylized-fact diagnostics catalog
 - Separate metric computation from threshold decision logic
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

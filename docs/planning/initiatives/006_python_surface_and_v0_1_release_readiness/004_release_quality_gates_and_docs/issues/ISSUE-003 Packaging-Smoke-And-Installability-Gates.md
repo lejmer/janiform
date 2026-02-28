@@ -16,3 +16,4 @@ Add packaging smoke-test gates that validate installation and basic runtime comm
 ### Notes/Constraints
 - Keep smoke checks lightweight for reliable CI runtimes
 - Avoid deep integration coverage in packaging smoke stage
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

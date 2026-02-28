@@ -18,3 +18,4 @@ Implement lightweight indexing and lookup helpers so teams can find persisted ca
 ### Notes/Constraints
 - Keep index lightweight and derived from manifest metadata.
 - Avoid introducing external database dependencies in v0.1.
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

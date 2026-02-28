@@ -17,3 +17,4 @@ Create regression fixtures and stability tests that lock down harness behavior a
 ### Notes/Constraints
 - Keep fixture suite compact enough for fast regression runs
 - Separate deterministic fixture checks from large stochastic benchmark jobs
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

@@ -16,3 +16,4 @@ Implement artifact schema and persistence path for dataset snapshots and input p
 ### Notes/Constraints
 - Keep raw data references lightweight to avoid oversized artifacts.
 - Align provenance naming with existing calibration stage terminology.
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

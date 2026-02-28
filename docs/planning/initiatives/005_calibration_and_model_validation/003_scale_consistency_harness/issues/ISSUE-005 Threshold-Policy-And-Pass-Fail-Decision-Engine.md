@@ -19,3 +19,4 @@ Define and implement model-validation threshold policy plus pass-or-fail decisio
 - Keep policy governance aligned with broader calibration validation standards
 - Avoid hardcoding thresholds in code paths
 - Incorporate engine-level benchmark outputs from Initiative 004 as inputs rather than duplicating their ownership
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

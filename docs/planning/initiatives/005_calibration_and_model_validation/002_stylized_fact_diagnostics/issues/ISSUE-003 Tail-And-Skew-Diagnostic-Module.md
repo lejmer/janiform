@@ -16,3 +16,4 @@ Implement heavy-tail and skew diagnostics across multiple horizons for empirical
 ### Notes/Constraints
 - Keep metric calculations numerically stable near extreme quantiles
 - Avoid embedding model-specific assumptions in generic metrics
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.

@@ -17,3 +17,4 @@ Generate consistency reports and drift diagnostics that summarize deltas, pass-o
 ### Notes/Constraints
 - Keep diagnostics concise and actionable
 - Avoid environment-specific fields in report payloads
+- Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.
