@@ -1,7 +1,8 @@
 use janiform_core::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
 use janiform_core::simulation::{
     SeededTickEventStateSnapshotCapture, SeededTickSimulationDebugTraceOptions,
-    SeededTickSimulationModelInputs, SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
+    SeededTickSimulationModelInputs, SeededTickSimulationNewsMarkScales,
+    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
     run_seeded_tick_event_simulation as run_seeded_tick_event_simulation_core,
 };
 use pyo3::prelude::*;
@@ -50,6 +51,9 @@ fn run_seeded_tick_event_simulation(
             kernel_parameters: parsed_kernel_parameters,
             initial_excitation_state: parsed_initial_excitation_state,
             hourly_factor_contract: hourly_factor_contract.output.clone(),
+            known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
+            known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
+            surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
         },
         Some(run_options),
     )

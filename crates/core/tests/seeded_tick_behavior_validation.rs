@@ -17,7 +17,8 @@ use janiform_core::simulation::{
     SEEDED_TICK_EVENT_ORDERING_POLICY, SeededTickEventDebugTraceRecord,
     SeededTickEventDebugTraceTransitionKind, SeededTickEventRecord, SeededTickEventSide,
     SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
-    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions, SeededTickSimulationRunResult,
+    SeededTickSimulationNewsMarkScales, SeededTickSimulationRunConfig,
+    SeededTickSimulationRunOptions, SeededTickSimulationRunResult,
     run_seeded_tick_event_simulation, run_seeded_tick_event_simulation_with_randomness_factory,
 };
 use support::hawkes_invariant_catalog::{
@@ -309,6 +310,7 @@ fn seeded_behavior_validation_tied_timestamps_follow_documented_event_ordering_p
         vec![0.0],
         vec![0.3],
         vec![0.5],
+        vec![],
     );
 
     let first_run_result = run_seeded_tick_event_simulation_with_randomness_factory(
@@ -392,6 +394,7 @@ fn seeded_behavior_validation_near_tied_timestamps_follow_timestamp_priority_ord
         vec![0.300_000_001],
         vec![0.3],
         vec![0.0],
+        vec![],
         vec![],
         vec![],
     );
@@ -1268,6 +1271,9 @@ fn build_run_config_with_options(
                 seasonality_factor,
                 news_intensity,
             ),
+            known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
+            known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
+            surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
         },
         options,
     )
@@ -1475,6 +1481,9 @@ fn build_multi_hour_zero_event_carryover_model_inputs(
             0.0,
             0.0,
         ),
+        known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
+        known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
+        surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
     }
 }
 
@@ -1511,6 +1520,9 @@ fn build_one_interval_ordering_model_inputs(
             1.0,
             news_intensity,
         ),
+        known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
+        known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
+        surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
     }
 }
 
@@ -1540,6 +1552,9 @@ fn build_two_interval_boundary_adjacent_model_inputs() -> SeededTickSimulationMo
             y_minus_minus: 0.0,
         },
         hourly_factor_contract: build_uniform_factor_contract(ONE_HOUR_NANOS, 2, 1.0, 0.0),
+        known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
+        known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
+        surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
     }
 }
 
@@ -1559,6 +1574,7 @@ struct ScriptedRandomnessFactory {
     news_count_draws: Vec<f64>,
     news_timestamp_draws: Vec<f64>,
     news_severity_draws: Vec<f64>,
+    news_return_jump_draws: Vec<f64>,
 }
 
 impl ScriptedRandomnessFactory {
@@ -1570,6 +1586,7 @@ impl ScriptedRandomnessFactory {
         news_count_draws: Vec<f64>,
         news_timestamp_draws: Vec<f64>,
         news_severity_draws: Vec<f64>,
+        news_return_jump_draws: Vec<f64>,
     ) -> Self {
         Self {
             buy_count_draws,
@@ -1579,6 +1596,7 @@ impl ScriptedRandomnessFactory {
             news_count_draws,
             news_timestamp_draws,
             news_severity_draws,
+            news_return_jump_draws,
         }
     }
 }
@@ -1613,6 +1631,9 @@ impl SimulationRandomnessFactory for ScriptedRandomnessFactory {
             }
             SimulationRandomnessSubstreamDomain::ExogenousNewsSeverity => {
                 self.news_severity_draws.clone()
+            }
+            SimulationRandomnessSubstreamDomain::ExogenousNewsReturnJump => {
+                self.news_return_jump_draws.clone()
             }
         };
 
@@ -1671,6 +1692,7 @@ impl SimulationRandomnessFactory for BoundaryAdjacentRandomnessFactory {
             SimulationRandomnessSubstreamDomain::ExogenousNewsCount => vec![0.0],
             SimulationRandomnessSubstreamDomain::ExogenousNewsTimestamp => vec![],
             SimulationRandomnessSubstreamDomain::ExogenousNewsSeverity => vec![],
+            SimulationRandomnessSubstreamDomain::ExogenousNewsReturnJump => vec![],
         };
 
         ScriptedRandomnessStream::new(draws)

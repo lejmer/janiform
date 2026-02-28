@@ -24,4 +24,5 @@ Refactor return-decomposition and risk-return composition contracts so open-wind
 
 ### Notes/Constraints
 - Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.
+- Do not bump schema versions. We don't have users yet. We can do whatever we want, no consequences. Not even an alpha version of the library has been released yet so we don't have to bump schemas during this refactor. All schemas should be called v1 even after the refactor.
 - Keep decomposition naming consistent across simulation, risk, and pricing modules.

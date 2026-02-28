@@ -87,7 +87,7 @@ def test_pricing_path_consumes_provider_outputs(calendar_registry: CalendarRegis
     assert contract.s_h == [1.1, 0.8, 1.4]
     assert contract.nu_h == [1.1, 1.2, 0.1]
     assert contract.seasonality_materialization_method == "seasonality.hourly_s_h.materialization.v1"
-    assert contract.news_intensity_materialization_method == "seasonality.hourly_nu_h.materialization.v2"
+    assert contract.news_intensity_materialization_method == "seasonality.hourly_nu_h.materialization.v1"
 
 
 def test_pricing_path_rejects_non_hourly_interval_delta_with_hourly_factor_provider(

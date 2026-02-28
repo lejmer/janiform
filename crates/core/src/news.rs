@@ -16,7 +16,7 @@ use crate::calendar::{
 };
 use crate::randomness::SimulationRandomnessStream;
 
-pub const NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION: &str = "news.process.configuration.v2";
+pub const NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION: &str = "news.process.configuration.v1";
 pub const NEWS_ARRIVAL_COMPONENT_INTENSITY_POLICY: &str =
     "known_schedule_count_plus_surprise_baseline_times_deterministic_multiplier.v1";
 pub const NEWS_INTENSITY_BASELINE_POLICY: &str =
@@ -32,17 +32,17 @@ pub const COUPLED_GAP_MARK_CONSTRUCTION_POLICY: &str =
 pub const SHARED_NEWS_EVENT_DISPATCH_ORDERING_POLICY: &str =
     "event_timestamp_then_generation_order.v1";
 pub const SHARED_NEWS_EVENT_DISPATCH_JT_UPDATE_POLICY: &str =
-    "every_news_event_adds_shared_severity_mark_to_jt.v2";
+    "every_news_event_adds_shared_severity_mark_to_jt.v1";
 pub const SHARED_NEWS_EVENT_DISPATCH_MT_GATING_POLICY: &str =
     "apply_shared_return_jump_mark_only_for_open_market_state.v1";
 pub const SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY: &str =
-    "apply_shared_return_jump_mark_only_for_closed_market_state.v2";
+    "apply_shared_return_jump_mark_only_for_closed_market_state.v1";
 pub const SHARED_NEWS_EVENT_DISPATCH_RETURN_ROUTING_POLICY: &str =
     "open_market_state_routes_to_mt_closed_market_state_routes_to_gt.v1";
 pub const SHARED_NEWS_EVENT_MARKET_STATE_DEPENDENCY: &str = MARKET_STATE_RESOLUTION_POLICY;
 pub const SHARED_NEWS_EVENT_BOUNDARY_POLICY: &str = SESSION_WINDOW_BOUNDARY_POLICY;
 pub const COMPOSABLE_NEWS_MARK_INTERFACE_POLICY: &str =
-    "component_arrival_intensity_then_shared_mark_sampling_then_coupled_mark_construction.v2";
+    "component_arrival_intensity_then_shared_mark_sampling_then_coupled_mark_construction.v1";
 
 const ONE_SECOND_NANOS: i64 = 1_000_000_000;
 
@@ -2333,7 +2333,7 @@ mod tests {
         );
         assert_eq!(
             COMPOSABLE_NEWS_MARK_INTERFACE_POLICY,
-            "component_arrival_intensity_then_shared_mark_sampling_then_coupled_mark_construction.v2"
+            "component_arrival_intensity_then_shared_mark_sampling_then_coupled_mark_construction.v1"
         );
 
         let mut pipeline_stream = SplitMix64SimulationRandomnessStream::from_seed(90_011);

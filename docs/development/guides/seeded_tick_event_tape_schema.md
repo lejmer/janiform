@@ -25,6 +25,7 @@ The canonical serialized payload contains:
 ## Metadata fields
 
 - `event_ordering_policy`: deterministic ordering policy for tied timestamps
+  - tie-break sequence: timestamp, endogenous before exogenous, buy before sell, known before surprise, generation order
 - `timestamp_representation_policy`: confirms event-time nanosecond timestamps with no bucket identifier requirement
 - `side_encoding_policy`: side encoding policy (`buy`, `sell`)
 - `state_snapshot_capture`: snapshot capture mode (`disabled`, `post_event_transition`)
@@ -93,6 +94,7 @@ Debug traces always capture `interval_boundary_drift` transitions to preserve ca
 
 - `transition_ordering_policy`: deterministic transition ordering policy
 - `state_carryover_policy`: explicit policy for interval-boundary state carryover
+- `news_market_state_routing_policy`: explicit routing policy for open-window `M_t` and closed-window `G_t` news channels
 - `sampling_policy`: deterministic sampling policy string
 - `chunking_policy`: deterministic chunking policy string
 - `sample_every_nth_transition`: configured sampling stride
@@ -124,6 +126,9 @@ Required:
 - `timestamp_utc_nanos`
 - `elapsed_hours_since_previous_update`
 - `transition_kind` (`endogenous_buy_event`, `endogenous_sell_event`, `exogenous_news`, `interval_boundary_drift`)
+- `cumulative_news_activity_coupling_j_t_increment`
+- `cumulative_open_window_return_jump_m_t_increment`
+- `cumulative_closed_window_gap_g_t_increment`
 - `seasonality_factor`
 - `interval_news_intensity`
 - `state_before_transition`
@@ -133,4 +138,10 @@ Optional:
 
 - `generation_order`
 - `event_index`
-- `exogenous_news_severity_mark`
+- `exogenous_news_arrival_component` (`known`, `surprise`)
+- `exogenous_news_activity_coupling_mark`
+- `exogenous_news_return_jump_mark`
+- `exogenous_news_market_state` (`open`, `closed`)
+- `exogenous_news_return_jump_routing_target` (`open_window_direct_jump_m`, `closed_window_gap_g`)
+- `exogenous_news_open_window_return_jump_increment`
+- `exogenous_news_closed_window_gap_increment`

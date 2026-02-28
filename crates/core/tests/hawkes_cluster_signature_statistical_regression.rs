@@ -15,7 +15,8 @@ use janiform_core::hourly_factors::{
 };
 use janiform_core::simulation::{
     SeededTickEventRecord, SeededTickEventSide, SeededTickSimulationModelInputs,
-    SeededTickSimulationRunConfig, run_seeded_tick_event_simulation,
+    SeededTickSimulationNewsMarkScales, SeededTickSimulationRunConfig,
+    run_seeded_tick_event_simulation,
 };
 use serde::Deserialize;
 use support::hawkes_failure_diagnostics::{
@@ -1328,6 +1329,9 @@ fn build_run_config(
                 seasonality_factor,
                 news_intensity,
             ),
+            known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
+            known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
+            surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
         },
         None,
     )

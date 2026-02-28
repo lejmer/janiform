@@ -15,7 +15,7 @@ from .seasonality import SeasonalityInputValidationError
 
 HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION: str = "seasonality.hourly_factor.contract.v1"
 HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION: str = "seasonality.hourly_s_h.materialization.v1"
-HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION: str = "seasonality.hourly_nu_h.materialization.v2"
+HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION: str = "seasonality.hourly_nu_h.materialization.v1"
 DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD: str = "explicit_hourly_input.v1"
 DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD: str = (
     "known_calendar_anchor_plus_surprise_background_controls.v1"
