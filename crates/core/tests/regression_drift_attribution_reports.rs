@@ -1,4 +1,5 @@
-use janiform_core::benchmarking::{
+use janiform_core::benchmarking::BenchmarkWorkloadScale;
+use janiform_core::verification::{
     COARSE_FINE_CONSISTENCY_REGRESSION_DETERMINISM_POLICY,
     COARSE_FINE_CONSISTENCY_REGRESSION_GOVERNANCE_SCOPE_POLICY,
     COARSE_FINE_CONSISTENCY_REGRESSION_METRIC_POLICY,
@@ -68,7 +69,7 @@ fn regression_drift_report_schema_lists_required_fields_and_is_renderable() {
     let performance_comparison_report = build_performance_comparison_report(vec![
         OraclePricerRiskPerformanceBaselineComparisonComponentEntry {
             profile_id: "scenario_a".to_string(),
-            workload_scale: janiform_core::benchmarking::BenchmarkWorkloadScale::Small,
+            workload_scale: BenchmarkWorkloadScale::Small,
             component_id: "characteristic_function_pricer".to_string(),
             reference_mean_latency_seconds: 1.0,
             candidate_mean_latency_seconds: 1.4,
@@ -168,7 +169,7 @@ fn regression_drift_classification_rules_are_deterministic_and_boundary_inclusiv
     let performance_comparison_report = build_performance_comparison_report(vec![
         OraclePricerRiskPerformanceBaselineComparisonComponentEntry {
             profile_id: "scenario_boundary".to_string(),
-            workload_scale: janiform_core::benchmarking::BenchmarkWorkloadScale::Medium,
+            workload_scale: BenchmarkWorkloadScale::Medium,
             component_id: "characteristic_function_pricer".to_string(),
             reference_mean_latency_seconds: 1.0,
             candidate_mean_latency_seconds: 1.1,
@@ -247,7 +248,7 @@ fn regression_drift_report_compares_against_prior_baseline_runs_with_scenario_se
     let performance_comparison_report = build_performance_comparison_report(vec![
         OraclePricerRiskPerformanceBaselineComparisonComponentEntry {
             profile_id: "scenario_existing".to_string(),
-            workload_scale: janiform_core::benchmarking::BenchmarkWorkloadScale::Large,
+            workload_scale: BenchmarkWorkloadScale::Large,
             component_id: "sufficient_statistics_risk_sampler".to_string(),
             reference_mean_latency_seconds: 1.0,
             candidate_mean_latency_seconds: 1.3,

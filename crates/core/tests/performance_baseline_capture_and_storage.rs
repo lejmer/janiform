@@ -13,15 +13,18 @@ use janiform_core::benchmarking::{
     BenchmarkScenarioComponentWorkload, BenchmarkScenarioIntervalSettings,
     BenchmarkScenarioModelState, BenchmarkScenarioPortfolioShape, BenchmarkScenarioRunLength,
     BenchmarkScenarioSharedNewsState, BenchmarkScenarioWorkloadProfile, BenchmarkWorkloadScale,
-    OraclePricerRiskBenchmarkExecutionConfig, OraclePricerRiskPerformanceBaselineCaptureConfig,
-    capture_oracle_pricer_risk_performance_baseline_artifact,
-    compare_oracle_pricer_risk_performance_baseline_versions,
-    load_oracle_pricer_risk_benchmark_policy_from_json,
-    load_oracle_pricer_risk_performance_baseline_from_json,
+    OraclePricerRiskBenchmarkExecutionConfig, load_oracle_pricer_risk_benchmark_policy_from_json,
     run_oracle_pricer_risk_benchmark_harness,
-    serialize_oracle_pricer_risk_performance_baseline_to_json,
 };
 use janiform_core::hawkes::HawkesExcitationState;
+use janiform_core::verification::{
+    OraclePricerRiskPerformanceBaselineArtifact, OraclePricerRiskPerformanceBaselineCaptureConfig,
+    OraclePricerRiskPerformanceBaselineComponentMetrics,
+    capture_oracle_pricer_risk_performance_baseline_artifact,
+    compare_oracle_pricer_risk_performance_baseline_versions,
+    load_oracle_pricer_risk_performance_baseline_from_json,
+    serialize_oracle_pricer_risk_performance_baseline_to_json,
+};
 use serde_json::{Value, json};
 
 use support::validation_fixture::fixtures_root_path;
@@ -383,8 +386,8 @@ fn build_profile_with_interval(
 }
 
 fn assert_baseline_round_trip_close(
-    baseline: &janiform_core::benchmarking::OraclePricerRiskPerformanceBaselineArtifact,
-    reloaded_baseline: &janiform_core::benchmarking::OraclePricerRiskPerformanceBaselineArtifact,
+    baseline: &OraclePricerRiskPerformanceBaselineArtifact,
+    reloaded_baseline: &OraclePricerRiskPerformanceBaselineArtifact,
 ) {
     assert_eq!(baseline.schema_version, reloaded_baseline.schema_version);
     assert_eq!(baseline.baseline_id, reloaded_baseline.baseline_id);
@@ -439,8 +442,8 @@ fn assert_baseline_round_trip_close(
 }
 
 fn assert_component_metrics_close(
-    baseline_metrics: janiform_core::benchmarking::OraclePricerRiskPerformanceBaselineComponentMetrics,
-    reloaded_metrics: janiform_core::benchmarking::OraclePricerRiskPerformanceBaselineComponentMetrics,
+    baseline_metrics: OraclePricerRiskPerformanceBaselineComponentMetrics,
+    reloaded_metrics: OraclePricerRiskPerformanceBaselineComponentMetrics,
 ) {
     assert_float_close(
         baseline_metrics.mean_latency_seconds,

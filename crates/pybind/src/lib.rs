@@ -40,7 +40,7 @@ use janiform_core::simulation::{
     SeededTickSimulationModelInputs, SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
     run_seeded_tick_event_simulation as run_seeded_tick_event_simulation_core,
 };
-use janiform_core::validation::{
+use janiform_core::verification::{
     CalendarStateRegressionCase, HourlyFactorRegressionCase, HourlyNewsIntensityRegressionSource,
     HourlySeasonalityRegressionSource, OpenClosedGapLeakageRegressionCase,
     OpenClosedGapLeakageRegressionEventInput, OpenClosedGapLeakageRegressionHarnessToleranceConfig,
@@ -3267,12 +3267,14 @@ fn map_hourly_factor_provider_error(error: HourlyFactorProviderError) -> PyErr {
     }
 }
 
-fn map_regression_harness_error(error: janiform_core::validation::RegressionHarnessError) -> PyErr {
+fn map_regression_harness_error(
+    error: janiform_core::verification::RegressionHarnessError,
+) -> PyErr {
     SeasonalityInputValidationError::new_err(error.to_string())
 }
 
 fn map_open_closed_gap_leakage_regression_harness_error(
-    error: janiform_core::validation::OpenClosedGapLeakageRegressionHarnessError,
+    error: janiform_core::verification::OpenClosedGapLeakageRegressionHarnessError,
 ) -> PyErr {
     SeasonalityInputValidationError::new_err(error.to_string())
 }

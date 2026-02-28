@@ -2,7 +2,7 @@ mod support;
 
 use chrono::{DateTime, Utc};
 use janiform_core::calendar::{ExchangeCalendarRegistry, MarketState};
-use janiform_core::validation::{
+use janiform_core::verification::{
     CalendarStateRegressionCase, HourlyFactorRegressionCase, HourlyNewsIntensityRegressionSource,
     HourlySeasonalityRegressionSource, RegressionCaseFailure, RegressionCaseStatus,
     RegressionHarnessToleranceConfig, VALIDATION_FALLBACK_POLICY_SCHEMA_VERSION,
