@@ -346,18 +346,25 @@ fn build_contract_for_canonical_case(
                 materialization_method,
             } => (hourly_factors.clone(), materialization_method.clone()),
             HourlyNewsIntensitySourceFixture::Materialized {
-                closed_window_baseline_intensity,
-                open_window_override_by_interval_index,
+                known_scheduled_event_timestamps_utc,
+                surprise_baseline_intensity,
+                surprise_deterministic_time_multiplier_by_interval_index,
             } => {
-                let parsed_open_window_overrides =
-                    parse_open_window_overrides(open_window_override_by_interval_index);
+                let known_scheduled_event_timestamps_utc_nanos =
+                    parse_known_scheduled_event_timestamps_to_nanos(
+                        known_scheduled_event_timestamps_utc,
+                    );
+                let parsed_surprise_time_multipliers = parse_surprise_time_multipliers(
+                    surprise_deterministic_time_multiplier_by_interval_index,
+                );
                 let news_output = materialize_hourly_news_intensity_factors(
                     registry,
                     &fixture_case.exchange_code,
                     range_start_utc,
                     range_end_utc,
-                    *closed_window_baseline_intensity,
-                    &parsed_open_window_overrides,
+                    &known_scheduled_event_timestamps_utc_nanos,
+                    *surprise_baseline_intensity,
+                    &parsed_surprise_time_multipliers,
                 )?;
 
                 (
@@ -471,23 +478,32 @@ fn hourly_factor_error_variant_identifier(error: &HourlyFactorContractError) -> 
     }
 }
 
-fn parse_open_window_overrides(
-    raw_open_window_override_by_interval_index: &BTreeMap<String, f64>,
-) -> Vec<(u64, f64)> {
-    let mut parsed_open_window_overrides: Vec<(u64, f64)> = raw_open_window_override_by_interval_index
+fn parse_known_scheduled_event_timestamps_to_nanos(
+    raw_known_scheduled_event_timestamps_utc: &[String],
+) -> Vec<i64> {
+    raw_known_scheduled_event_timestamps_utc
         .iter()
-        .map(|(raw_interval_index, override_value)| {
-            let interval_index = raw_interval_index.parse::<u64>().unwrap_or_else(|error| {
+        .map(|raw_timestamp_utc| parse_utc_timestamp_to_nanos(raw_timestamp_utc))
+        .collect()
+}
+
+fn parse_surprise_time_multipliers(
+    raw_surprise_deterministic_time_multiplier_by_interval_index: &BTreeMap<String, f64>,
+) -> Vec<(u64, f64)> {
+    let mut parsed_surprise_time_multipliers: Vec<(u64, f64)> = raw_surprise_deterministic_time_multiplier_by_interval_index
+        .iter()
+        .map(|(raw_interval_index, multiplier_value)| {
+            let parsed_interval_index = raw_interval_index.parse::<u64>().unwrap_or_else(|error| {
                 panic!(
-                    "open_window_override_by_interval_index key `{raw_interval_index}` must parse as u64: {error}"
+                    "surprise_deterministic_time_multiplier_by_interval_index key `{raw_interval_index}` must parse as u64: {error}"
                 )
             });
-            (interval_index, *override_value)
+            (parsed_interval_index, *multiplier_value)
         })
         .collect();
 
-    parsed_open_window_overrides.sort_by_key(|(interval_index, _)| *interval_index);
-    parsed_open_window_overrides
+    parsed_surprise_time_multipliers.sort_by_key(|(interval_index, _)| *interval_index);
+    parsed_surprise_time_multipliers
 }
 
 fn factor_range_policy_for_case<'a>(
