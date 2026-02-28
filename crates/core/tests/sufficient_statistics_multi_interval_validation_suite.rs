@@ -6,7 +6,7 @@ use janiform_core::risk::{
     SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskModelInputs,
     SufficientStatisticsRiskRunRequest,
 };
-use janiform_core::validation::{
+use janiform_core::verification::{
     RegressionCaseStatus, SUFFICIENT_STATISTICS_MULTI_INTERVAL_VALIDATION_COVERAGE_POLICY,
     SUFFICIENT_STATISTICS_MULTI_INTERVAL_VALIDATION_DETERMINISM_POLICY,
     SUFFICIENT_STATISTICS_MULTI_INTERVAL_VALIDATION_OUTPUT_SCHEMA_METADATA_VERSION,

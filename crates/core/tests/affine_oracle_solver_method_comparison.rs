@@ -5,15 +5,18 @@ use std::fs;
 use std::path::PathBuf;
 
 use janiform_core::affine_oracle::{
+    ExponentialAffineTransformInput, ExponentialAffineTransformIntegrationStatus,
+    ExponentialAffineTransformIntegratorMethod,
+};
+use janiform_core::verification::{
     EXPONENTIAL_AFFINE_TRANSFORM_METHOD_COMPARISON_AGREEMENT_POLICY,
     EXPONENTIAL_AFFINE_TRANSFORM_METHOD_COMPARISON_INTERVAL_SELECTION_POLICY,
     EXPONENTIAL_AFFINE_TRANSFORM_METHOD_COMPARISON_OUTPUT_SCHEMA_METADATA_VERSION,
     EXPONENTIAL_AFFINE_TRANSFORM_METHOD_COMPARISON_REFERENCE_FIXTURE_POLICY,
     EXPONENTIAL_AFFINE_TRANSFORM_METHOD_COMPARISON_REPORT_SCHEMA_VERSION,
     EXPONENTIAL_AFFINE_TRANSFORM_METHOD_COMPARISON_TOLERANCE_POLICY_SCHEMA_VERSION,
-    ExponentialAffineTransformInput, ExponentialAffineTransformIntegrationStatus,
-    ExponentialAffineTransformIntegratorMethod,
     ExponentialAffineTransformMethodComparisonFailureCode,
+    ExponentialAffineTransformMethodComparisonOutputDifference,
     ExponentialAffineTransformMethodComparisonTolerancePolicy,
     compare_exponential_affine_transform_integration_methods,
 };
@@ -504,9 +507,7 @@ fn validate_non_negative_finite_metric(
 }
 
 fn assert_output_difference_matches_expected(
-    observed_output_difference: Option<
-        janiform_core::affine_oracle::ExponentialAffineTransformMethodComparisonOutputDifference,
-    >,
+    observed_output_difference: Option<ExponentialAffineTransformMethodComparisonOutputDifference>,
     expected_output_difference: Option<AffineOracleMethodComparisonExpectedOutputDifferenceFixture>,
     fixture_id: &str,
     description: &str,

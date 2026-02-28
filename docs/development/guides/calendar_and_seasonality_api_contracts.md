@@ -220,7 +220,7 @@ single integration point for hourly factor delivery.
 Deterministic regression harness outputs include a machine-readable `fallback_policy` block
 that captures unknown-date, unsupported-segment, and incomplete-fixture handling rules.
 
-- Rust entrypoint: `janiform_core::validation::run_deterministic_regression_harness(...)`
+- Rust entrypoint: `janiform_core::verification::run_deterministic_regression_harness(...)`
 - Python entrypoint: `janiform.validation.run_deterministic_regression_harness(...)`
 
 See `docs/development/guides/validation_fallback_policy.md` for policy identifiers,

@@ -7,7 +7,7 @@ The policy is deterministic and is surfaced in regression harness reports so out
 
 The policy applies to:
 
-- Rust validation entrypoint: `janiform_core::validation::run_deterministic_regression_harness`
+- Rust validation entrypoint: `janiform_core::verification::run_deterministic_regression_harness`
 - Python validation entrypoint: `janiform.validation.run_deterministic_regression_harness`
 - Shared fixture schema validation for `tests/fixtures/calendar` and `tests/fixtures/hourly_factors`
 

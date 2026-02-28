@@ -2,7 +2,7 @@ mod support;
 
 use chrono::{DateTime, Utc};
 use janiform_core::calendar::ExchangeCalendarRegistry;
-use janiform_core::validation::{
+use janiform_core::verification::{
     OPEN_CLOSED_GAP_BEHAVIOR_BASELINE_EXPECTED_OUTPUT_POLICY,
     OPEN_CLOSED_GAP_BEHAVIOR_DIFF_REPORT_SCHEMA_VERSION,
     OPEN_CLOSED_GAP_BEHAVIOR_SUMMARY_ARTIFACT_SCHEMA_VERSION,
