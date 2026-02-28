@@ -1,5 +1,6 @@
 //! Calibration-side Hawkes entrypoints through shared provider and transition APIs.
 
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -191,6 +192,12 @@ pub const CALIBRATION_SEASONALITY_STAGE_HANDOFF_POLICY: &str =
     "explicit_run_spec_handoffs_mode_aware_transport.v1";
 pub const CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION: &str =
     "seasonality_estimator.v1";
+pub const CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION: &str =
+    "calibration.orchestration.stage_execution.hawkes.report.v1";
+pub const CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION: &str =
+    "calibration.orchestration.stage_output.hawkes.v1";
+pub const CALIBRATION_HAWKES_STAGE_HANDOFF_POLICY: &str =
+    "explicit_run_spec_handoffs_mode_aware_transport.v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1930,6 +1937,761 @@ fn build_seasonality_stage_failure_report(
     }
 }
 
+/// One weighted objective term used by Hawkes-stage candidate evaluation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HawkesStageObjectiveTermInput {
+    pub term_id: String,
+    pub weight: f64,
+    pub observed_score: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum HawkesStageObjectiveTermInputError {
+    MissingTermId,
+    InvalidWeight { value: f64 },
+    InvalidObservedScore { value: f64 },
+}
+
+impl Display for HawkesStageObjectiveTermInputError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingTermId => write!(formatter, "objective term id must be non-empty"),
+            Self::InvalidWeight { value } => write!(
+                formatter,
+                "objective term weight must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidObservedScore { value } => write!(
+                formatter,
+                "objective term observed score must be finite, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for HawkesStageObjectiveTermInputError {}
+
+impl HawkesStageObjectiveTermInput {
+    fn validate(&self) -> Result<(), HawkesStageObjectiveTermInputError> {
+        if self.term_id.trim().is_empty() {
+            return Err(HawkesStageObjectiveTermInputError::MissingTermId);
+        }
+        if !self.weight.is_finite() || self.weight < 0.0 {
+            return Err(HawkesStageObjectiveTermInputError::InvalidWeight { value: self.weight });
+        }
+        if !self.observed_score.is_finite() {
+            return Err(HawkesStageObjectiveTermInputError::InvalidObservedScore {
+                value: self.observed_score,
+            });
+        }
+
+        Ok(())
+    }
+}
+
+/// Candidate parameterization and objective inputs for Hawkes stage fitting.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HawkesStageCandidateInput {
+    pub candidate_id: String,
+    pub lambda_bar: f64,
+    pub beta: f64,
+    pub structured_alpha: HawkesStructuredAlphaParameterization,
+    pub structured_rho: HawkesStructuredRhoParameterization,
+    pub self_dominance_policy: Option<HawkesStructuredRhoSelfDominancePolicy>,
+    pub stability_numeric_tolerance: f64,
+    pub objective_terms: Vec<HawkesStageObjectiveTermInput>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum HawkesStageCandidateInputError {
+    MissingCandidateId,
+    InvalidLambdaBar {
+        value: f64,
+    },
+    InvalidBeta {
+        value: f64,
+    },
+    InvalidStabilityNumericTolerance {
+        value: f64,
+    },
+    MissingObjectiveTerms,
+    InvalidObjectiveTerm {
+        term_id: String,
+        source: HawkesStageObjectiveTermInputError,
+    },
+    InvalidWeightedObjectiveValue {
+        value: f64,
+    },
+}
+
+impl Display for HawkesStageCandidateInputError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingCandidateId => write!(formatter, "candidate_id must be non-empty"),
+            Self::InvalidLambdaBar { value } => write!(
+                formatter,
+                "candidate lambda_bar must be finite for objective evaluation, found {value}"
+            ),
+            Self::InvalidBeta { value } => write!(
+                formatter,
+                "candidate beta must be finite for objective evaluation, found {value}"
+            ),
+            Self::InvalidStabilityNumericTolerance { value } => write!(
+                formatter,
+                "candidate stability_numeric_tolerance must be finite, found {value}"
+            ),
+            Self::MissingObjectiveTerms => {
+                write!(
+                    formatter,
+                    "candidate objective_terms must include at least one weighted term"
+                )
+            }
+            Self::InvalidObjectiveTerm { term_id, source } => {
+                write!(formatter, "objective term `{term_id}` is invalid: {source}")
+            }
+            Self::InvalidWeightedObjectiveValue { value } => write!(
+                formatter,
+                "weighted objective sum must be finite, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for HawkesStageCandidateInputError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidObjectiveTerm { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+impl HawkesStageCandidateInput {
+    fn validate(&self) -> Result<(), HawkesStageCandidateInputError> {
+        if self.candidate_id.trim().is_empty() {
+            return Err(HawkesStageCandidateInputError::MissingCandidateId);
+        }
+        if !self.lambda_bar.is_finite() {
+            return Err(HawkesStageCandidateInputError::InvalidLambdaBar {
+                value: self.lambda_bar,
+            });
+        }
+        if !self.beta.is_finite() {
+            return Err(HawkesStageCandidateInputError::InvalidBeta { value: self.beta });
+        }
+        if !self.stability_numeric_tolerance.is_finite() {
+            return Err(
+                HawkesStageCandidateInputError::InvalidStabilityNumericTolerance {
+                    value: self.stability_numeric_tolerance,
+                },
+            );
+        }
+        if self.objective_terms.is_empty() {
+            return Err(HawkesStageCandidateInputError::MissingObjectiveTerms);
+        }
+
+        for objective_term in &self.objective_terms {
+            objective_term.validate().map_err(|source| {
+                HawkesStageCandidateInputError::InvalidObjectiveTerm {
+                    term_id: objective_term.term_id.clone(),
+                    source,
+                }
+            })?;
+        }
+
+        Ok(())
+    }
+}
+
+/// Upstream seasonality handoff input resolved for Hawkes-stage execution.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HawkesStageSeasonalityInput {
+    InMemoryOutput {
+        payload: SeasonalityStageNormalizedPayload,
+    },
+    PersistedArtifactReference {
+        artifact_reference: String,
+    },
+}
+
+impl HawkesStageSeasonalityInput {
+    fn transport(&self) -> CalibrationStageHandoffTransport {
+        match self {
+            Self::InMemoryOutput { .. } => CalibrationStageHandoffTransport::InMemoryOutput,
+            Self::PersistedArtifactReference { .. } => {
+                CalibrationStageHandoffTransport::PersistedArtifactReference
+            }
+        }
+    }
+
+    fn artifact_reference(&self) -> Option<&str> {
+        match self {
+            Self::InMemoryOutput { .. } => None,
+            Self::PersistedArtifactReference { artifact_reference } => Some(artifact_reference),
+        }
+    }
+
+    fn dataset_id(&self) -> Option<&str> {
+        match self {
+            Self::InMemoryOutput { payload } => Some(payload.dataset_id.as_str()),
+            Self::PersistedArtifactReference { .. } => None,
+        }
+    }
+}
+
+/// Input payload for standalone or pipeline-integrated Hawkes-stage execution.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HawkesStageExecutionInput {
+    pub seasonality_input: HawkesStageSeasonalityInput,
+    pub candidate_inputs: Vec<HawkesStageCandidateInput>,
+}
+
+impl HawkesStageExecutionInput {
+    pub fn from_in_memory_seasonality_output(
+        seasonality_payload: SeasonalityStageNormalizedPayload,
+        candidate_inputs: Vec<HawkesStageCandidateInput>,
+    ) -> Self {
+        Self {
+            seasonality_input: HawkesStageSeasonalityInput::InMemoryOutput {
+                payload: seasonality_payload,
+            },
+            candidate_inputs,
+        }
+    }
+
+    pub fn from_persisted_seasonality_artifact_reference(
+        artifact_reference: impl Into<String>,
+        candidate_inputs: Vec<HawkesStageCandidateInput>,
+    ) -> Self {
+        Self {
+            seasonality_input: HawkesStageSeasonalityInput::PersistedArtifactReference {
+                artifact_reference: artifact_reference.into(),
+            },
+            candidate_inputs,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HawkesStageObjectiveTermDiagnostic {
+    pub term_id: String,
+    pub weight: f64,
+    pub observed_score: f64,
+    pub weighted_contribution: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HawkesStageCandidateDiagnostic {
+    pub candidate_id: String,
+    pub raw_objective_value: f64,
+    pub constraint_penalty: f64,
+    pub penalized_objective_value: f64,
+    pub constraint_violation_count: usize,
+    pub objective_terms: Vec<HawkesStageObjectiveTermDiagnostic>,
+    pub validation_report: HawkesKernelParameterValidationReport,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HawkesStageFittedParameters {
+    pub kernel_parameters: HawkesKernelParameters,
+    pub structured_alpha: HawkesStructuredAlphaParameterization,
+    pub structured_rho: HawkesStructuredRhoParameterization,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub self_dominance_policy: Option<HawkesStructuredRhoSelfDominancePolicy>,
+    pub stability_numeric_tolerance: f64,
+}
+
+/// Stable Hawkes-stage payload consumed by downstream calibration stages.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HawkesStageFittedPayload {
+    pub schema_version: &'static str,
+    pub selected_candidate_id: String,
+    pub fitted_parameters: HawkesStageFittedParameters,
+    pub candidate_diagnostics: Vec<HawkesStageCandidateDiagnostic>,
+    pub seasonality_input_transport: CalibrationStageHandoffTransport,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seasonality_dataset_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seasonality_artifact_reference: Option<String>,
+}
+
+/// Stage-handoff transfer output resolved from the run-spec contract.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HawkesStageHandoffOutput {
+    pub from_stage: CalibrationStage,
+    pub to_stage: CalibrationStage,
+    pub transport: CalibrationStageHandoffTransport,
+    pub in_memory_payload_available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_reference: Option<String>,
+}
+
+/// Deterministic execution metadata exposed for reproducibility and downstream audit.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HawkesStageExecutionMetadata {
+    pub stage_output_schema_version: &'static str,
+    pub stage_seed: u64,
+    pub solver_settings: CalibrationOptimizerSettings,
+    pub input_candidate_count: usize,
+    pub valid_candidate_count: usize,
+    pub selected_candidate_raw_objective: f64,
+    pub selected_candidate_penalized_objective: f64,
+}
+
+/// Structured failure modes for Hawkes-stage execution.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "failure_kind", rename_all = "snake_case")]
+pub enum HawkesStageExecutionFailure {
+    InvalidRunSpec {
+        error_message: String,
+    },
+    StageIsNotSelectedInRunSpec,
+    MissingStageSolverSettings,
+    SeasonalityInputTransportMismatch {
+        expected_transport: CalibrationStageHandoffTransport,
+        provided_transport: CalibrationStageHandoffTransport,
+    },
+    MissingArtifactReferenceInSeasonalityInput,
+    InvalidArtifactReferenceInSeasonalityInput {
+        artifact_reference: String,
+    },
+    SeasonalityArtifactReferenceMismatch {
+        expected_artifact_reference: String,
+        provided_artifact_reference: String,
+    },
+    MissingHawkesCandidateInputs,
+    DuplicateCandidateId {
+        candidate_id: String,
+    },
+    InvalidCandidateInput {
+        candidate_id: String,
+        error_message: String,
+    },
+    ConstraintViolationsForAllCandidates {
+        candidate_diagnostics: Vec<HawkesStageCandidateDiagnostic>,
+    },
+    CandidateConstructionFailed {
+        candidate_id: String,
+        error_message: String,
+    },
+}
+
+/// Structured Hawkes-stage report for partial or full staged calibration workflows.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HawkesStageExecutionReport {
+    pub schema_version: &'static str,
+    pub stage: CalibrationStage,
+    pub status: CalibrationStageExecutionStatus,
+    pub run_id: String,
+    pub execution_mode: CalibrationExecutionMode,
+    pub handoff_policy: &'static str,
+    pub handoffs: Vec<HawkesStageHandoffOutput>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fitted_stage_payload: Option<HawkesStageFittedPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<HawkesStageExecutionMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure: Option<HawkesStageExecutionFailure>,
+}
+
+/// Execute the Hawkes stage with structured constraint checks for each candidate.
+pub fn run_hawkes_calibration_stage(
+    run_spec: &CalibrationRunSpec,
+    stage_input: HawkesStageExecutionInput,
+) -> HawkesStageExecutionReport {
+    if let Err(source) = run_spec.validate() {
+        return build_hawkes_stage_failure_report(
+            run_spec,
+            HawkesStageExecutionFailure::InvalidRunSpec {
+                error_message: format!("{source} (classification={:?})", source.classification()),
+            },
+        );
+    }
+
+    if !run_spec
+        .selected_stages
+        .iter()
+        .copied()
+        .any(|selected_stage| selected_stage == CalibrationStage::Hawkes)
+    {
+        return build_hawkes_stage_failure_report(
+            run_spec,
+            HawkesStageExecutionFailure::StageIsNotSelectedInRunSpec,
+        );
+    }
+
+    let Some(stage_solver_settings) =
+        stage_solver_settings_for_stage(run_spec, CalibrationStage::Hawkes)
+    else {
+        return build_hawkes_stage_failure_report(
+            run_spec,
+            HawkesStageExecutionFailure::MissingStageSolverSettings,
+        );
+    };
+
+    if stage_input.candidate_inputs.is_empty() {
+        return build_hawkes_stage_failure_report(
+            run_spec,
+            HawkesStageExecutionFailure::MissingHawkesCandidateInputs,
+        );
+    }
+
+    let expected_seasonality_handoff = run_spec.stage_handoffs.iter().find(|stage_handoff| {
+        stage_handoff.from_stage == CalibrationStage::Seasonality
+            && stage_handoff.to_stage == CalibrationStage::Hawkes
+    });
+    let expected_transport = expected_seasonality_handoff
+        .map(|stage_handoff| stage_handoff.transport)
+        .unwrap_or(match run_spec.execution_mode {
+            CalibrationExecutionMode::Memory => CalibrationStageHandoffTransport::InMemoryOutput,
+            CalibrationExecutionMode::Disk => {
+                CalibrationStageHandoffTransport::PersistedArtifactReference
+            }
+        });
+    let provided_transport = stage_input.seasonality_input.transport();
+
+    if provided_transport != expected_transport {
+        return build_hawkes_stage_failure_report(
+            run_spec,
+            HawkesStageExecutionFailure::SeasonalityInputTransportMismatch {
+                expected_transport,
+                provided_transport,
+            },
+        );
+    }
+
+    if provided_transport == CalibrationStageHandoffTransport::PersistedArtifactReference {
+        let Some(provided_artifact_reference) = stage_input
+            .seasonality_input
+            .artifact_reference()
+            .map(ToOwned::to_owned)
+        else {
+            return build_hawkes_stage_failure_report(
+                run_spec,
+                HawkesStageExecutionFailure::MissingArtifactReferenceInSeasonalityInput,
+            );
+        };
+
+        if provided_artifact_reference.trim().is_empty() {
+            return build_hawkes_stage_failure_report(
+                run_spec,
+                HawkesStageExecutionFailure::InvalidArtifactReferenceInSeasonalityInput {
+                    artifact_reference: provided_artifact_reference,
+                },
+            );
+        }
+
+        if let Some(expected_stage_handoff) = expected_seasonality_handoff
+            && let Some(expected_artifact_reference) = &expected_stage_handoff.artifact_reference
+            && expected_artifact_reference != &provided_artifact_reference
+        {
+            return build_hawkes_stage_failure_report(
+                run_spec,
+                HawkesStageExecutionFailure::SeasonalityArtifactReferenceMismatch {
+                    expected_artifact_reference: expected_artifact_reference.clone(),
+                    provided_artifact_reference,
+                },
+            );
+        }
+    }
+
+    let mut seen_candidate_ids = BTreeSet::new();
+    let mut candidate_diagnostics: Vec<HawkesStageCandidateDiagnostic> = Vec::new();
+    for candidate_input in &stage_input.candidate_inputs {
+        if !seen_candidate_ids.insert(candidate_input.candidate_id.clone()) {
+            return build_hawkes_stage_failure_report(
+                run_spec,
+                HawkesStageExecutionFailure::DuplicateCandidateId {
+                    candidate_id: candidate_input.candidate_id.clone(),
+                },
+            );
+        }
+
+        if let Err(source) = candidate_input.validate() {
+            return build_hawkes_stage_failure_report(
+                run_spec,
+                HawkesStageExecutionFailure::InvalidCandidateInput {
+                    candidate_id: candidate_input.candidate_id.clone(),
+                    error_message: source.to_string(),
+                },
+            );
+        }
+
+        let (raw_objective_value, objective_term_diagnostics) =
+            match compose_hawkes_stage_weighted_objective(&candidate_input.objective_terms) {
+                Ok(output) => output,
+                Err(source) => {
+                    return build_hawkes_stage_failure_report(
+                        run_spec,
+                        HawkesStageExecutionFailure::InvalidCandidateInput {
+                            candidate_id: candidate_input.candidate_id.clone(),
+                            error_message: source.to_string(),
+                        },
+                    );
+                }
+            };
+
+        let validation_report = precheck_structured_hawkes_kernel_parameter_domain(
+            candidate_input.lambda_bar,
+            candidate_input.beta,
+            candidate_input.structured_alpha,
+            candidate_input.structured_rho,
+            candidate_input.self_dominance_policy,
+            candidate_input.stability_numeric_tolerance,
+        );
+
+        let constraint_violation_count = validation_report.summary.failed_check_count;
+        let constraint_penalty =
+            stage_solver_settings.constraint_penalty_weight * constraint_violation_count as f64;
+        let penalized_objective_value = raw_objective_value + constraint_penalty;
+
+        candidate_diagnostics.push(HawkesStageCandidateDiagnostic {
+            candidate_id: candidate_input.candidate_id.clone(),
+            raw_objective_value,
+            constraint_penalty,
+            penalized_objective_value,
+            constraint_violation_count,
+            objective_terms: objective_term_diagnostics,
+            validation_report,
+        });
+    }
+
+    let best_valid_candidate_position = candidate_diagnostics
+        .iter()
+        .enumerate()
+        .filter(|(_, candidate_diagnostic)| candidate_diagnostic.validation_report.is_valid())
+        .map(|(candidate_position, _)| candidate_position)
+        .reduce(|best_position, candidate_position| {
+            if is_better_hawkes_stage_candidate(
+                &candidate_diagnostics[candidate_position],
+                &candidate_diagnostics[best_position],
+            ) {
+                candidate_position
+            } else {
+                best_position
+            }
+        });
+
+    let Some(selected_candidate_position) = best_valid_candidate_position else {
+        return build_hawkes_stage_failure_report(
+            run_spec,
+            HawkesStageExecutionFailure::ConstraintViolationsForAllCandidates {
+                candidate_diagnostics,
+            },
+        );
+    };
+
+    let selected_candidate_input = &stage_input.candidate_inputs[selected_candidate_position];
+    let selected_candidate_diagnostic = &candidate_diagnostics[selected_candidate_position];
+
+    let Some(derived_alpha) = selected_candidate_diagnostic
+        .validation_report
+        .derived_alpha
+    else {
+        return build_hawkes_stage_failure_report(
+            run_spec,
+            HawkesStageExecutionFailure::CandidateConstructionFailed {
+                candidate_id: selected_candidate_input.candidate_id.clone(),
+                error_message:
+                    "selected candidate passed validation but did not provide derived alpha"
+                        .to_string(),
+            },
+        );
+    };
+
+    let Some(derived_rho) = selected_candidate_diagnostic.validation_report.derived_rho else {
+        return build_hawkes_stage_failure_report(
+            run_spec,
+            HawkesStageExecutionFailure::CandidateConstructionFailed {
+                candidate_id: selected_candidate_input.candidate_id.clone(),
+                error_message:
+                    "selected candidate passed validation but did not provide derived rho"
+                        .to_string(),
+            },
+        );
+    };
+
+    let kernel_parameters = match HawkesKernelParameters::try_new_with_stability_tolerance(
+        selected_candidate_input.lambda_bar,
+        selected_candidate_input.beta,
+        derived_alpha,
+        derived_rho,
+        selected_candidate_input.stability_numeric_tolerance,
+    ) {
+        Ok(kernel_parameters) => kernel_parameters,
+        Err(source) => {
+            return build_hawkes_stage_failure_report(
+                run_spec,
+                HawkesStageExecutionFailure::CandidateConstructionFailed {
+                    candidate_id: selected_candidate_input.candidate_id.clone(),
+                    error_message: source.to_string(),
+                },
+            );
+        }
+    };
+
+    let valid_candidate_count = candidate_diagnostics
+        .iter()
+        .filter(|candidate_diagnostic| candidate_diagnostic.validation_report.is_valid())
+        .count();
+
+    let selected_candidate_raw_objective = selected_candidate_diagnostic.raw_objective_value;
+    let selected_candidate_penalized_objective =
+        selected_candidate_diagnostic.penalized_objective_value;
+
+    let fitted_stage_payload = HawkesStageFittedPayload {
+        schema_version: CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION,
+        selected_candidate_id: selected_candidate_input.candidate_id.clone(),
+        fitted_parameters: HawkesStageFittedParameters {
+            kernel_parameters,
+            structured_alpha: selected_candidate_input.structured_alpha,
+            structured_rho: selected_candidate_input.structured_rho,
+            self_dominance_policy: selected_candidate_input.self_dominance_policy,
+            stability_numeric_tolerance: selected_candidate_input.stability_numeric_tolerance,
+        },
+        candidate_diagnostics,
+        seasonality_input_transport: stage_input.seasonality_input.transport(),
+        seasonality_dataset_id: stage_input
+            .seasonality_input
+            .dataset_id()
+            .map(ToOwned::to_owned),
+        seasonality_artifact_reference: stage_input
+            .seasonality_input
+            .artifact_reference()
+            .map(ToOwned::to_owned),
+    };
+
+    HawkesStageExecutionReport {
+        schema_version: CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
+        stage: CalibrationStage::Hawkes,
+        status: CalibrationStageExecutionStatus::Success,
+        run_id: run_spec.run_id.clone(),
+        execution_mode: run_spec.execution_mode,
+        handoff_policy: CALIBRATION_HAWKES_STAGE_HANDOFF_POLICY,
+        handoffs: build_hawkes_stage_handoff_outputs(run_spec),
+        fitted_stage_payload: Some(fitted_stage_payload),
+        metadata: Some(HawkesStageExecutionMetadata {
+            stage_output_schema_version: CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION,
+            stage_seed: resolve_calibration_stage_seed(run_spec, CalibrationStage::Hawkes),
+            solver_settings: stage_solver_settings,
+            input_candidate_count: stage_input.candidate_inputs.len(),
+            valid_candidate_count,
+            selected_candidate_raw_objective,
+            selected_candidate_penalized_objective,
+        }),
+        failure: None,
+    }
+}
+
+fn compose_hawkes_stage_weighted_objective(
+    objective_terms: &[HawkesStageObjectiveTermInput],
+) -> Result<(f64, Vec<HawkesStageObjectiveTermDiagnostic>), HawkesStageCandidateInputError> {
+    let mut weighted_objective_value = 0.0;
+    let mut diagnostics = Vec::with_capacity(objective_terms.len());
+
+    for objective_term in objective_terms {
+        objective_term.validate().map_err(|source| {
+            HawkesStageCandidateInputError::InvalidObjectiveTerm {
+                term_id: objective_term.term_id.clone(),
+                source,
+            }
+        })?;
+
+        let weighted_contribution = objective_term.weight * objective_term.observed_score;
+        if !weighted_contribution.is_finite() {
+            return Err(
+                HawkesStageCandidateInputError::InvalidWeightedObjectiveValue {
+                    value: weighted_contribution,
+                },
+            );
+        }
+
+        weighted_objective_value += weighted_contribution;
+        if !weighted_objective_value.is_finite() {
+            return Err(
+                HawkesStageCandidateInputError::InvalidWeightedObjectiveValue {
+                    value: weighted_objective_value,
+                },
+            );
+        }
+
+        diagnostics.push(HawkesStageObjectiveTermDiagnostic {
+            term_id: objective_term.term_id.clone(),
+            weight: objective_term.weight,
+            observed_score: objective_term.observed_score,
+            weighted_contribution,
+        });
+    }
+
+    Ok((weighted_objective_value, diagnostics))
+}
+
+fn is_better_hawkes_stage_candidate(
+    candidate: &HawkesStageCandidateDiagnostic,
+    current_best: &HawkesStageCandidateDiagnostic,
+) -> bool {
+    match candidate
+        .penalized_objective_value
+        .total_cmp(&current_best.penalized_objective_value)
+    {
+        Ordering::Less => true,
+        Ordering::Greater => false,
+        Ordering::Equal => match candidate
+            .raw_objective_value
+            .total_cmp(&current_best.raw_objective_value)
+        {
+            Ordering::Less => true,
+            Ordering::Greater => false,
+            Ordering::Equal => candidate.candidate_id < current_best.candidate_id,
+        },
+    }
+}
+
+fn build_hawkes_stage_handoff_outputs(
+    run_spec: &CalibrationRunSpec,
+) -> Vec<HawkesStageHandoffOutput> {
+    run_spec
+        .stage_handoffs
+        .iter()
+        .filter(|stage_handoff| stage_handoff.from_stage == CalibrationStage::Hawkes)
+        .map(|stage_handoff| match stage_handoff.transport {
+            CalibrationStageHandoffTransport::InMemoryOutput => HawkesStageHandoffOutput {
+                from_stage: stage_handoff.from_stage,
+                to_stage: stage_handoff.to_stage,
+                transport: stage_handoff.transport,
+                in_memory_payload_available: true,
+                artifact_reference: None,
+            },
+            CalibrationStageHandoffTransport::PersistedArtifactReference => {
+                HawkesStageHandoffOutput {
+                    from_stage: stage_handoff.from_stage,
+                    to_stage: stage_handoff.to_stage,
+                    transport: stage_handoff.transport,
+                    in_memory_payload_available: false,
+                    artifact_reference: stage_handoff.artifact_reference.clone(),
+                }
+            }
+        })
+        .collect()
+}
+
+fn build_hawkes_stage_failure_report(
+    run_spec: &CalibrationRunSpec,
+    failure: HawkesStageExecutionFailure,
+) -> HawkesStageExecutionReport {
+    HawkesStageExecutionReport {
+        schema_version: CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
+        stage: CalibrationStage::Hawkes,
+        status: CalibrationStageExecutionStatus::Failure,
+        run_id: run_spec.run_id.clone(),
+        execution_mode: run_spec.execution_mode,
+        handoff_policy: CALIBRATION_HAWKES_STAGE_HANDOFF_POLICY,
+        handoffs: Vec::new(),
+        fitted_stage_payload: None,
+        metadata: None,
+        failure: Some(failure),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::{TimeZone, Utc};
@@ -1938,8 +2700,9 @@ mod tests {
         ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, TimestampEventInputRecord,
     };
     use crate::calibration::{
-        CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY, CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION,
-        CALIBRATION_RUN_SPEC_SCHEMA_VERSION,
+        CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY,
+        CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
+        CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION, CALIBRATION_RUN_SPEC_SCHEMA_VERSION,
         CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION,
         CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
         CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY, CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION,
@@ -1950,7 +2713,8 @@ mod tests {
         CalibrationRunSpecErrorClassification, CalibrationStage, CalibrationStageDependency,
         CalibrationStageExecutionStatus, CalibrationStageGraph, CalibrationStageGraphError,
         CalibrationStageHandoff, CalibrationStageHandoffError, CalibrationStageHandoffTransport,
-        CalibrationStageSeedOverride, CalibrationStageSolverSettings,
+        CalibrationStageSeedOverride, CalibrationStageSolverSettings, HawkesStageCandidateInput,
+        HawkesStageExecutionFailure, HawkesStageExecutionInput, HawkesStageObjectiveTermInput,
         OptionSurfaceCalibrationObservationError, SeasonalityStageExecutionFailure,
         SeasonalityStageExecutionInput,
         build_option_surface_calibration_observation_from_pricing_hooks,
@@ -1959,7 +2723,7 @@ mod tests {
         precheck_hawkes_kernel_parameter_domain,
         precheck_structured_hawkes_kernel_parameter_domain,
         resolve_calibration_execution_mode_for_surface, resolve_calibration_stage_execution_order,
-        run_seasonality_calibration_stage,
+        run_hawkes_calibration_stage, run_seasonality_calibration_stage,
         transform_nig_exponent_for_calibration_under_esscher_tilt,
     };
     use crate::hawkes::{
@@ -2853,6 +3617,223 @@ mod tests {
         assert!(report.failure.is_none());
     }
 
+    #[test]
+    fn hawkes_stage_execution_succeeds_for_memory_and_disk_mode_handoffs() {
+        let seasonality_payload = build_seasonality_stage_success_payload();
+
+        let memory_run_spec = build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory);
+        let disk_run_spec = build_hawkes_stage_run_spec(CalibrationExecutionMode::Disk);
+
+        let memory_report = run_hawkes_calibration_stage(
+            &memory_run_spec,
+            HawkesStageExecutionInput::from_in_memory_seasonality_output(
+                seasonality_payload.clone(),
+                hawkes_stage_candidate_fixture(),
+            ),
+        );
+        let disk_report = run_hawkes_calibration_stage(
+            &disk_run_spec,
+            HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
+                "artifact://seasonality/run-001",
+                hawkes_stage_candidate_fixture(),
+            ),
+        );
+
+        assert_eq!(
+            memory_report.schema_version,
+            CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION
+        );
+        assert_eq!(
+            memory_report.status,
+            CalibrationStageExecutionStatus::Success
+        );
+        assert_eq!(disk_report.status, CalibrationStageExecutionStatus::Success);
+
+        let memory_payload = memory_report
+            .fitted_stage_payload
+            .as_ref()
+            .expect("memory report should include fitted stage payload");
+        let disk_payload = disk_report
+            .fitted_stage_payload
+            .as_ref()
+            .expect("disk report should include fitted stage payload");
+
+        assert_eq!(
+            memory_payload.selected_candidate_id,
+            "candidate_stable_low_loss"
+        );
+        assert_eq!(
+            memory_payload.selected_candidate_id,
+            disk_payload.selected_candidate_id
+        );
+        assert_eq!(
+            memory_payload.fitted_parameters.kernel_parameters,
+            disk_payload.fitted_parameters.kernel_parameters
+        );
+        assert_eq!(
+            memory_payload.candidate_diagnostics,
+            disk_payload.candidate_diagnostics
+        );
+
+        assert_eq!(
+            memory_payload.seasonality_dataset_id.as_deref(),
+            Some(seasonality_payload.dataset_id.as_str())
+        );
+        assert!(disk_payload.seasonality_dataset_id.is_none());
+        assert_eq!(
+            disk_payload.seasonality_artifact_reference.as_deref(),
+            Some("artifact://seasonality/run-001")
+        );
+
+        let memory_handoff = memory_report
+            .handoffs
+            .first()
+            .expect("memory report should include one handoff");
+        assert!(memory_handoff.in_memory_payload_available);
+        assert!(memory_handoff.artifact_reference.is_none());
+
+        let disk_handoff = disk_report
+            .handoffs
+            .first()
+            .expect("disk report should include one handoff");
+        assert!(!disk_handoff.in_memory_payload_available);
+        assert_eq!(
+            disk_handoff.artifact_reference.as_deref(),
+            Some("artifact://hawkes/run-001")
+        );
+    }
+
+    #[test]
+    fn hawkes_stage_execution_reports_constraint_violations_for_invalid_candidates() {
+        let run_spec = build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory);
+
+        let report = run_hawkes_calibration_stage(
+            &run_spec,
+            HawkesStageExecutionInput::from_in_memory_seasonality_output(
+                build_seasonality_stage_success_payload(),
+                vec![hawkes_stage_constraint_violating_candidate_fixture()],
+            ),
+        );
+
+        assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);
+
+        let failure = report
+            .failure
+            .as_ref()
+            .expect("failure report should include details");
+        match failure {
+            HawkesStageExecutionFailure::ConstraintViolationsForAllCandidates {
+                candidate_diagnostics,
+            } => {
+                assert_eq!(candidate_diagnostics.len(), 1);
+                let candidate = &candidate_diagnostics[0];
+                assert_eq!(candidate.candidate_id, "candidate_invalid_constraints");
+                assert!(candidate.constraint_violation_count > 0);
+                assert_eq!(
+                    candidate.validation_report.status,
+                    HawkesKernelValidationStatus::Fail
+                );
+            }
+            _ => panic!("expected constraint failure diagnostics"),
+        }
+    }
+
+    #[test]
+    fn hawkes_stage_execution_is_deterministic_under_fixed_seed_and_solver_settings() {
+        let seasonality_payload = build_seasonality_stage_success_payload();
+        let memory_run_spec = build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory);
+        let disk_run_spec = build_hawkes_stage_run_spec(CalibrationExecutionMode::Disk);
+
+        let first_memory_report = run_hawkes_calibration_stage(
+            &memory_run_spec,
+            HawkesStageExecutionInput::from_in_memory_seasonality_output(
+                seasonality_payload.clone(),
+                hawkes_stage_candidate_fixture(),
+            ),
+        );
+        let second_memory_report = run_hawkes_calibration_stage(
+            &memory_run_spec,
+            HawkesStageExecutionInput::from_in_memory_seasonality_output(
+                seasonality_payload,
+                hawkes_stage_candidate_fixture(),
+            ),
+        );
+        let first_disk_report = run_hawkes_calibration_stage(
+            &disk_run_spec,
+            HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
+                "artifact://seasonality/run-001",
+                hawkes_stage_candidate_fixture(),
+            ),
+        );
+        let second_disk_report = run_hawkes_calibration_stage(
+            &disk_run_spec,
+            HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
+                "artifact://seasonality/run-001",
+                hawkes_stage_candidate_fixture(),
+            ),
+        );
+
+        let first_memory_payload = first_memory_report
+            .fitted_stage_payload
+            .as_ref()
+            .expect("memory report should include fitted payload");
+        let second_memory_payload = second_memory_report
+            .fitted_stage_payload
+            .as_ref()
+            .expect("second memory report should include fitted payload");
+        let first_disk_payload = first_disk_report
+            .fitted_stage_payload
+            .as_ref()
+            .expect("disk report should include fitted payload");
+        let second_disk_payload = second_disk_report
+            .fitted_stage_payload
+            .as_ref()
+            .expect("second disk report should include fitted payload");
+
+        assert_eq!(first_memory_payload, second_memory_payload);
+        assert_eq!(first_disk_payload, second_disk_payload);
+        assert_eq!(
+            first_memory_payload.selected_candidate_id,
+            first_disk_payload.selected_candidate_id
+        );
+        assert_eq!(
+            first_memory_payload.fitted_parameters.kernel_parameters,
+            first_disk_payload.fitted_parameters.kernel_parameters
+        );
+        assert_eq!(
+            first_memory_payload.candidate_diagnostics,
+            first_disk_payload.candidate_diagnostics
+        );
+
+        let first_memory_metadata = first_memory_report
+            .metadata
+            .as_ref()
+            .expect("memory report should include metadata");
+        let second_memory_metadata = second_memory_report
+            .metadata
+            .as_ref()
+            .expect("second memory report should include metadata");
+        let first_disk_metadata = first_disk_report
+            .metadata
+            .as_ref()
+            .expect("disk report should include metadata");
+        let second_disk_metadata = second_disk_report
+            .metadata
+            .as_ref()
+            .expect("second disk report should include metadata");
+
+        assert_eq!(first_memory_metadata, second_memory_metadata);
+        assert_eq!(first_disk_metadata, second_disk_metadata);
+        assert_eq!(
+            first_memory_metadata.stage_seed,
+            first_disk_metadata.stage_seed
+        );
+        assert_eq!(
+            first_memory_metadata.solver_settings,
+            first_disk_metadata.solver_settings
+        );
+    }
+
     fn build_data_inputs() -> CalibrationRunDataInputs {
         CalibrationRunDataInputs::try_new(
             "XNYS",
@@ -2961,6 +3942,138 @@ mod tests {
             None,
         )
         .expect("seasonality stage run spec should validate")
+    }
+
+    fn build_hawkes_stage_run_spec(execution_mode: CalibrationExecutionMode) -> CalibrationRunSpec {
+        let seasonality_handoff = match execution_mode {
+            CalibrationExecutionMode::Memory => CalibrationStageHandoff {
+                from_stage: CalibrationStage::Seasonality,
+                to_stage: CalibrationStage::Hawkes,
+                transport: CalibrationStageHandoffTransport::InMemoryOutput,
+                artifact_reference: None,
+            },
+            CalibrationExecutionMode::Disk => CalibrationStageHandoff {
+                from_stage: CalibrationStage::Seasonality,
+                to_stage: CalibrationStage::Hawkes,
+                transport: CalibrationStageHandoffTransport::PersistedArtifactReference,
+                artifact_reference: Some("artifact://seasonality/run-001".to_string()),
+            },
+        };
+
+        let hawkes_handoff = match execution_mode {
+            CalibrationExecutionMode::Memory => CalibrationStageHandoff {
+                from_stage: CalibrationStage::Hawkes,
+                to_stage: CalibrationStage::ReturnComponents,
+                transport: CalibrationStageHandoffTransport::InMemoryOutput,
+                artifact_reference: None,
+            },
+            CalibrationExecutionMode::Disk => CalibrationStageHandoff {
+                from_stage: CalibrationStage::Hawkes,
+                to_stage: CalibrationStage::ReturnComponents,
+                transport: CalibrationStageHandoffTransport::PersistedArtifactReference,
+                artifact_reference: Some("artifact://hawkes/run-001".to_string()),
+            },
+        };
+
+        CalibrationRunSpec::try_new_with_mode_extensions(
+            "run-001",
+            build_data_inputs(),
+            execution_mode,
+            vec![
+                CalibrationStage::Seasonality,
+                CalibrationStage::Hawkes,
+                CalibrationStage::ReturnComponents,
+            ],
+            build_seed_settings(),
+            build_solver_settings_for_all_stages(),
+            vec![seasonality_handoff, hawkes_handoff],
+            None,
+        )
+        .expect("hawkes stage run spec should validate")
+    }
+
+    fn build_seasonality_stage_success_payload()
+    -> crate::calibration::SeasonalityStageNormalizedPayload {
+        let calendar_registry = calibration_stage_test_registry();
+        let report = run_seasonality_calibration_stage(
+            &build_seasonality_stage_run_spec(CalibrationExecutionMode::Memory),
+            &calendar_registry,
+            SeasonalityStageExecutionInput::from_timestamp_event_records(
+                calibration_stage_timestamp_fixture(),
+            ),
+        );
+
+        report
+            .normalized_stage_payload
+            .expect("seasonality stage fixture should produce normalized payload")
+    }
+
+    fn hawkes_stage_candidate_fixture() -> Vec<HawkesStageCandidateInput> {
+        vec![
+            HawkesStageCandidateInput {
+                candidate_id: "candidate_high_loss".to_string(),
+                lambda_bar: 0.85,
+                beta: 1.50,
+                structured_alpha: HawkesStructuredAlphaParameterization::new(
+                    0.40, 0.10, 0.08, 0.10,
+                ),
+                structured_rho: HawkesStructuredRhoParameterization::new(0.35, 0.10, 0.05, 0.10),
+                self_dominance_policy: Some(HawkesStructuredRhoSelfDominancePolicy::new(1.0)),
+                stability_numeric_tolerance: 0.0,
+                objective_terms: vec![
+                    HawkesStageObjectiveTermInput {
+                        term_id: "event_rate_residual".to_string(),
+                        weight: 1.0,
+                        observed_score: 2.8,
+                    },
+                    HawkesStageObjectiveTermInput {
+                        term_id: "clustering_autocorrelation".to_string(),
+                        weight: 1.0,
+                        observed_score: 1.4,
+                    },
+                ],
+            },
+            HawkesStageCandidateInput {
+                candidate_id: "candidate_stable_low_loss".to_string(),
+                lambda_bar: 0.80,
+                beta: 1.60,
+                structured_alpha: HawkesStructuredAlphaParameterization::new(
+                    0.35, 0.06, 0.07, 0.04,
+                ),
+                structured_rho: HawkesStructuredRhoParameterization::new(0.30, 0.08, 0.04, 0.05),
+                self_dominance_policy: Some(HawkesStructuredRhoSelfDominancePolicy::new(1.0)),
+                stability_numeric_tolerance: 0.0,
+                objective_terms: vec![
+                    HawkesStageObjectiveTermInput {
+                        term_id: "event_rate_residual".to_string(),
+                        weight: 1.0,
+                        observed_score: 1.6,
+                    },
+                    HawkesStageObjectiveTermInput {
+                        term_id: "clustering_autocorrelation".to_string(),
+                        weight: 1.0,
+                        observed_score: 0.7,
+                    },
+                ],
+            },
+        ]
+    }
+
+    fn hawkes_stage_constraint_violating_candidate_fixture() -> HawkesStageCandidateInput {
+        HawkesStageCandidateInput {
+            candidate_id: "candidate_invalid_constraints".to_string(),
+            lambda_bar: -0.2,
+            beta: 0.0,
+            structured_alpha: HawkesStructuredAlphaParameterization::new(-0.1, -0.1, -0.1, -0.1),
+            structured_rho: HawkesStructuredRhoParameterization::new(-0.2, -0.1, -0.1, -0.1),
+            self_dominance_policy: Some(HawkesStructuredRhoSelfDominancePolicy::new(0.9)),
+            stability_numeric_tolerance: -0.5,
+            objective_terms: vec![HawkesStageObjectiveTermInput {
+                term_id: "event_rate_residual".to_string(),
+                weight: 1.0,
+                observed_score: 1.0,
+            }],
+        }
     }
 
     fn calibration_stage_test_registry() -> ExchangeCalendarRegistry {
