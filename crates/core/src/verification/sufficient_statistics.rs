@@ -584,10 +584,12 @@ fn execute_sufficient_statistics_validation_path(
         Vec::with_capacity(run_request.horizon_interval_count);
 
     for interval_index in 0..run_request.horizon_interval_count {
-        let slice_context = SufficientStatisticsTransformSliceContext::try_new(
+        let slice_context = SufficientStatisticsTransformSliceContext::try_new_with_news_intensity(
             interval_index,
             run_request.interval_factors.s_h[interval_index],
-            run_request.interval_factors.nu_h[interval_index],
+            run_request
+                .interval_factors
+                .news_intensity_input_at(interval_index),
             run_request.interval_delta,
             current_state,
         )

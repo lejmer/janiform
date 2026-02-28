@@ -38,6 +38,8 @@ This document defines the machine-readable diagnostics and optional telemetry pa
 - `integrator_method`
 - `telemetry_mode`
 - `status_flags`
+- `news_intensity_usage_policy`
+- `news_intensity`
 - `configured_step_count`
 - `completed_step_count`
 - `step_size`
@@ -45,6 +47,19 @@ This document defines the machine-readable diagnostics and optional telemetry pa
 - `domain_guard_policy`
 - `blowup_termination_policy`
 - `guard_failure`
+
+`news_intensity_usage_policy` currently resolves to:
+
+- `gamma_moment_uses_total_news_intensity_components_are_diagnostic_inputs.v1`
+
+`news_intensity` includes:
+
+- `total_nu_h` (always required and used in affine `C'` gamma-moment term)
+- `known_nu_h` (optional, for diagnostics and calibration wiring)
+- `surprise_nu_h` (optional, for diagnostics and calibration wiring)
+
+When component fields are present, they must satisfy
+`total_nu_h = known_nu_h + surprise_nu_h` within contract tolerance.
 
 `status_flags` mirrors `status` with explicit booleans:
 
@@ -75,6 +90,7 @@ Telemetry does not alter integration state transitions, guard behavior, or final
 When enabled, `telemetry` includes:
 
 - `schema_version`
+- `news_intensity`
 - `checkpoint_count`
 - `max_abs_c_value`
 - `max_abs_d_component`
