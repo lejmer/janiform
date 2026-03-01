@@ -8,8 +8,10 @@ mod deterministic_regression;
 mod open_closed_gap_leakage;
 mod performance_baseline;
 mod regression_drift_attribution;
+mod stylized_fact_diagnostics_shared;
 mod stylized_fact_metric_catalog;
 mod sufficient_statistics;
+mod tail_skew;
 mod time_buckets;
 
 pub use activity_clustering::*;
@@ -22,3 +24,4 @@ pub use performance_baseline::*;
 pub use regression_drift_attribution::*;
 pub use stylized_fact_metric_catalog::*;
 pub use sufficient_statistics::*;
+pub use tail_skew::*;
