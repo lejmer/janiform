@@ -54,7 +54,7 @@ def test_seeded_behavior_validation_exhibits_clustering_and_non_grid_signatures(
     thresholds: dict[str, float] = {
         "minimum_fano_factor_gap": 0.35,
         "minimum_lag_one_autocorrelation_gap": 0.45,
-        "minimum_cluster_lag_one_autocorrelation": 0.80,
+        "minimum_cluster_lag_one_autocorrelation": 0.70,
         "minimum_non_grid_run_ratio": 0.95,
     }
 

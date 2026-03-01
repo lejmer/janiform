@@ -162,7 +162,19 @@ fn seeded_tick_simulation_parity_mismatch_diagnostics_are_actionable() {
     let run_result = run_fixture_case(&calendar_registry, &fixture_case)
         .expect("fixture case run should complete");
     let mut mutated_case = fixture_case.clone();
-    mutated_case.expected_side_sequence[0] = "buy".to_string();
+    let observed_first_side = run_result
+        .event_path
+        .first()
+        .map(|event_record| match event_record.side {
+            SeededTickEventSide::Buy => "buy",
+            SeededTickEventSide::Sell => "sell",
+        })
+        .expect("fixture case should include at least one event");
+    mutated_case.expected_side_sequence[0] = if observed_first_side == "buy" {
+        "sell".to_string()
+    } else {
+        "buy".to_string()
+    };
 
     let mismatch_diagnostic = first_mismatch_diagnostic(&run_result, &mutated_case)
         .expect("mutated case should produce a mismatch diagnostic");
