@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -21,7 +22,8 @@ mod tests {
         CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
         CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY, CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY,
         CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION, CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION,
-        CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CalibrationCallerSurface,
+        CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY,
+        CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION, CalibrationCallerSurface,
         CalibrationExecutionMode, CalibrationMemoryCheckpointStore, CalibrationObjectiveTermInput,
         CalibrationOptimizerAdapterCandidateInput, CalibrationOptimizerAdapterConfiguration,
         CalibrationOptimizerAdapterError, CalibrationOptimizerCandidateParameterValue,
@@ -1141,6 +1143,316 @@ mod tests {
     }
 
     #[test]
+    fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
+        let calendar_registry = calibration_stage_test_registry();
+
+        let python_default_contract = build_run_contract_for_caller_surface(
+            "run-python-default-completion",
+            CalibrationCallerSurface::PythonImportableApi,
+            None,
+        );
+        let mut python_default_store = CalibrationMemoryCheckpointStore::new();
+        let python_default_report = run_staged_calibration_with_checkpointing(
+            &python_default_contract,
+            &calendar_registry,
+            staged_run_inputs(true, true, true),
+            Some(&mut python_default_store),
+            None,
+        );
+        assert_eq!(
+            python_default_report.status,
+            CalibrationStageExecutionStatus::Success
+        );
+        assert_eq!(
+            python_default_report.execution_mode,
+            CalibrationExecutionMode::Memory
+        );
+        assert_eq!(python_default_report.stage_reports.len(), 3);
+
+        let cli_default_checkpoint_directory = temporary_checkpoint_directory("cli-default-run");
+        let cli_default_contract = build_run_contract_for_caller_surface(
+            "run-cli-default-completion",
+            CalibrationCallerSurface::Cli,
+            None,
+        );
+        let cli_default_report = run_staged_calibration_with_checkpointing(
+            &cli_default_contract,
+            &calendar_registry,
+            staged_run_inputs(true, true, true),
+            None,
+            Some(cli_default_checkpoint_directory.as_path()),
+        );
+        assert_eq!(
+            cli_default_report.status,
+            CalibrationStageExecutionStatus::Success
+        );
+        assert_eq!(
+            cli_default_report.execution_mode,
+            CalibrationExecutionMode::Disk
+        );
+        assert_eq!(cli_default_report.stage_reports.len(), 3);
+
+        let cli_override_contract = build_run_contract_for_caller_surface(
+            "run-cli-memory-override",
+            CalibrationCallerSurface::Cli,
+            Some(CalibrationExecutionMode::Memory),
+        );
+        let mut cli_override_store = CalibrationMemoryCheckpointStore::new();
+        let cli_override_report = run_staged_calibration_with_checkpointing(
+            &cli_override_contract,
+            &calendar_registry,
+            staged_run_inputs(true, true, true),
+            Some(&mut cli_override_store),
+            None,
+        );
+        assert_eq!(
+            cli_override_report.status,
+            CalibrationStageExecutionStatus::Success
+        );
+        assert_eq!(
+            cli_override_report.execution_mode,
+            CalibrationExecutionMode::Memory
+        );
+        assert_eq!(cli_override_report.stage_reports.len(), 3);
+
+        let python_override_checkpoint_directory =
+            temporary_checkpoint_directory("python-disk-override-run");
+        let python_override_contract = build_run_contract_for_caller_surface(
+            "run-python-disk-override",
+            CalibrationCallerSurface::PythonImportableApi,
+            Some(CalibrationExecutionMode::Disk),
+        );
+        let python_override_report = run_staged_calibration_with_checkpointing(
+            &python_override_contract,
+            &calendar_registry,
+            staged_run_inputs(true, true, true),
+            None,
+            Some(python_override_checkpoint_directory.as_path()),
+        );
+        assert_eq!(
+            python_override_report.status,
+            CalibrationStageExecutionStatus::Success
+        );
+        assert_eq!(
+            python_override_report.execution_mode,
+            CalibrationExecutionMode::Disk
+        );
+        assert_eq!(python_override_report.stage_reports.len(), 3);
+
+        let _ = fs::remove_dir_all(cli_default_checkpoint_directory);
+        let _ = fs::remove_dir_all(python_override_checkpoint_directory);
+    }
+
+    #[test]
+    fn staged_runner_stage_abort_failure_report_exposes_schema_and_triage_metadata() {
+        let run_contract = build_run_contract_with_mode_and_resume(
+            "run-stage-abort-metadata",
+            CalibrationExecutionMode::Memory,
+            None,
+        );
+        let calendar_registry = calibration_stage_test_registry();
+        let mut checkpoint_store = CalibrationMemoryCheckpointStore::new();
+        let mut staged_inputs = staged_run_inputs(true, true, true);
+        staged_inputs.hawkes_candidate_inputs =
+            Some(vec![hawkes_stage_constraint_violating_candidate_fixture()]);
+
+        let report = run_staged_calibration_with_checkpointing(
+            &run_contract,
+            &calendar_registry,
+            staged_inputs,
+            Some(&mut checkpoint_store),
+            None,
+        );
+
+        assert_eq!(
+            report.schema_version,
+            CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION
+        );
+        assert_eq!(
+            report.failure_triage_policy,
+            CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY
+        );
+        assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);
+        assert_eq!(
+            report.started_from_stage,
+            Some(CalibrationStage::Seasonality)
+        );
+        assert_eq!(
+            report.failure,
+            Some(CalibrationStagedRunFailure::StageExecutionFailed {
+                stage: CalibrationStage::Hawkes
+            })
+        );
+        assert_eq!(report.stage_reports.len(), 2);
+        assert_eq!(report.emitted_checkpoints.len(), 1);
+
+        let hawkes_stage_report = report
+            .stage_reports
+            .iter()
+            .find_map(|stage_report| match stage_report {
+                CalibrationStagedRunStageReport::Hawkes(hawkes_report) => Some(hawkes_report),
+                _ => None,
+            })
+            .expect("stage-abort report should include hawkes stage report");
+        assert_eq!(
+            hawkes_stage_report.schema_version,
+            CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION
+        );
+        assert_eq!(
+            hawkes_stage_report.status,
+            CalibrationStageExecutionStatus::Failure
+        );
+        assert!(matches!(
+            hawkes_stage_report.failure,
+            Some(HawkesStageExecutionFailure::ConstraintViolationsForAllCandidates { .. })
+        ));
+        let candidate_diagnostics = match hawkes_stage_report
+            .failure
+            .as_ref()
+            .expect("hawkes failure payload should be present")
+        {
+            HawkesStageExecutionFailure::ConstraintViolationsForAllCandidates {
+                candidate_diagnostics,
+            } => candidate_diagnostics,
+            _ => panic!("expected constraint violation diagnostics"),
+        };
+        assert_eq!(candidate_diagnostics.len(), 1);
+        assert_eq!(
+            candidate_diagnostics[0].candidate_id,
+            "candidate_invalid_constraints"
+        );
+        assert!(candidate_diagnostics[0].constraint_violation_count > 0);
+
+        let serialized_report =
+            serde_json::to_value(&report).expect("staged run report should serialize");
+        assert_eq!(
+            serialized_report["schema_version"],
+            json!(CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION)
+        );
+        assert_eq!(
+            serialized_report["failure_triage_policy"],
+            json!(CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY)
+        );
+        assert_eq!(
+            serialized_report["failure"]["failure_kind"],
+            json!("stage_execution_failed")
+        );
+        assert_eq!(serialized_report["failure"]["stage"], json!("hawkes"));
+        assert_eq!(
+            serialized_report["started_from_stage"],
+            json!("seasonality")
+        );
+    }
+
+    #[test]
+    fn staged_runner_reports_missing_persisted_checkpoint_artifacts_in_disk_mode() {
+        let run_id = "run-disk-missing-artifact";
+        let checkpoint_directory = temporary_checkpoint_directory("missing-artifact");
+        let calendar_registry = calibration_stage_test_registry();
+
+        let run_contract = build_run_contract_with_mode_and_resume(
+            run_id,
+            CalibrationExecutionMode::Disk,
+            Some(CalibrationResumeSettings::persisted_checkpoint_reference(
+                calibration_last_success_checkpoint_reference(run_id),
+                None,
+            )),
+        );
+        let report = run_staged_calibration_with_checkpointing(
+            &run_contract,
+            &calendar_registry,
+            staged_run_inputs(false, false, true),
+            None,
+            Some(checkpoint_directory.as_path()),
+        );
+
+        assert_eq!(
+            report.schema_version,
+            CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION
+        );
+        assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);
+        assert!(report.stage_reports.is_empty());
+        assert!(report.emitted_checkpoints.is_empty());
+        match report.failure {
+            Some(CalibrationStagedRunFailure::CheckpointLoadFailed {
+                checkpoint_reference,
+                error_message,
+            }) => {
+                assert_eq!(
+                    checkpoint_reference,
+                    calibration_last_success_checkpoint_reference(run_id)
+                );
+                assert!(!error_message.trim().is_empty());
+            }
+            _ => panic!("expected missing persisted artifact to produce CheckpointLoadFailed"),
+        }
+
+        let _ = fs::remove_dir_all(checkpoint_directory);
+    }
+
+    #[test]
+    fn staged_calibration_failure_playbook_is_machine_readable_and_complete() {
+        let playbook_json = include_str!(
+            "../../../../docs/development/guides/staged_calibration_failure_playbook.json"
+        );
+        let playbook_value: serde_json::Value =
+            serde_json::from_str(playbook_json).expect("playbook JSON should parse");
+
+        assert_eq!(
+            playbook_value["schema_version"],
+            json!("calibration.orchestration.failure_playbook.v1")
+        );
+        assert_eq!(
+            playbook_value["triage_policy"],
+            json!(CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY)
+        );
+
+        let entries = playbook_value["entries"]
+            .as_array()
+            .expect("playbook entries should be an array");
+        let failure_kinds: BTreeSet<String> = entries
+            .iter()
+            .map(|entry| {
+                entry["failure_kind"]
+                    .as_str()
+                    .expect("failure_kind should be a string")
+                    .to_string()
+            })
+            .collect();
+
+        let expected_failure_kinds: BTreeSet<String> = [
+            "invalid_run_contract",
+            "missing_memory_checkpoint_store",
+            "missing_disk_checkpoint_directory",
+            "missing_resume_checkpoint_for_run",
+            "missing_stage_input",
+            "missing_in_memory_upstream_payload",
+            "invalid_checkpoint_reference",
+            "checkpoint_load_failed",
+            "checkpoint_compatibility_failed",
+            "checkpoint_persist_failed",
+            "missing_checkpoint_metadata_for_successful_stage",
+            "stage_execution_failed",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+
+        assert_eq!(failure_kinds, expected_failure_kinds);
+
+        for entry in entries {
+            let triage_steps = entry["triage_steps"]
+                .as_array()
+                .expect("triage_steps should be an array");
+            let remediation_steps = entry["remediation_steps"]
+                .as_array()
+                .expect("remediation_steps should be an array");
+            assert!(!triage_steps.is_empty());
+            assert!(!remediation_steps.is_empty());
+        }
+    }
+
+    #[test]
     fn staged_runner_resume_from_last_successful_stage_works_in_memory_mode() {
         let run_id = "run-memory-resume-last";
         let calendar_registry = calibration_stage_test_registry();
@@ -2255,6 +2567,31 @@ mod tests {
 
         CalibrationRunContract::try_new(run_spec, default_stage_graph())
             .expect("run contract should validate")
+    }
+
+    fn build_run_contract_for_caller_surface(
+        run_id: &str,
+        caller_surface: CalibrationCallerSurface,
+        execution_mode_override: Option<CalibrationExecutionMode>,
+    ) -> CalibrationRunContract {
+        let execution_mode =
+            resolve_calibration_execution_mode_for_surface(caller_surface, execution_mode_override);
+        let run_spec = CalibrationRunSpec::try_new(
+            run_id,
+            build_data_inputs(),
+            execution_mode,
+            vec![
+                CalibrationStage::Seasonality,
+                CalibrationStage::Hawkes,
+                CalibrationStage::ReturnComponents,
+            ],
+            build_seed_settings(),
+            build_solver_settings_for_all_stages(),
+        )
+        .expect("caller-surface run spec should validate");
+
+        CalibrationRunContract::try_new(run_spec, default_stage_graph())
+            .expect("caller-surface run contract should validate")
     }
 
     fn default_stage_graph() -> CalibrationStageGraph {

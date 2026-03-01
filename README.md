@@ -49,6 +49,7 @@ janiform --help
 - Sufficient-statistics risk sampler contract: `docs/development/guides/sufficient_statistics_risk_sampler_contract.md`
 - Pricing diagnostics and calibration hooks schema: `docs/development/guides/pricing_diagnostics_and_calibration_hooks_schema.md`
 - Calibration optimizer adapter and objective composition schema: `docs/development/guides/calibration_optimizer_adapter_and_objective_composition_schema.md`
+- Staged calibration failure playbook: `docs/development/guides/staged_calibration_failure_playbook.md`
 - Open closed gap summary and diff report contract: `docs/development/guides/open_closed_gap_summary_and_diff_report_contract.md`
 - Affine oracle solver diagnostics and telemetry schema: `docs/development/guides/affine_oracle_solver_diagnostics_schema.md`
 - Seeded tick event tape schema: `docs/development/guides/seeded_tick_event_tape_schema.md`
