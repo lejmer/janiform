@@ -286,13 +286,9 @@ fn build_run_request(
     .expect("fixture model inputs should construct");
 
     let (s_h, nu_h_known, nu_h_surprise) = build_interval_factors(horizon_interval_count);
-    let interval_factors = SufficientStatisticsRiskIntervalFactors::try_new(
-        s_h,
-        nu_h_known,
-        nu_h_surprise,
-        Some(1.0),
-    )
-    .expect("interval factors should construct");
+    let interval_factors =
+        SufficientStatisticsRiskIntervalFactors::try_new(s_h, nu_h_known, nu_h_surprise, Some(1.0))
+            .expect("interval factors should construct");
 
     SufficientStatisticsRiskRunRequest::try_new(
         seed,

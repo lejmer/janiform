@@ -10,8 +10,9 @@ use serde::{Deserialize, Serialize};
 use super::contracts::{
     CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION, CALIBRATION_DISK_CHECKPOINT_WRITE_POLICY,
     CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY, CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION,
-    CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationRunContract,
-    CalibrationStage,
+    CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CalibrationExecutionMode,
+    CalibrationOptimizerSettings, CalibrationRunContract, CalibrationStage,
+    CalibrationStageSeedSource, resolve_calibration_stage_seed_metadata,
 };
 use super::stages::hawkes::HawkesStageFittedPayload;
 use super::stages::return_components::ReturnComponentsStageFittedPayload;
@@ -31,8 +32,11 @@ pub struct CalibrationStageCheckpointMetadata {
     pub execution_stage_order: Vec<CalibrationStage>,
     pub completed_stage: CalibrationStage,
     pub completed_stage_position: usize,
+    pub run_global_seed: u64,
     pub completed_stage_output_schema_version: String,
     pub completed_stage_seed: u64,
+    pub completed_stage_seed_source: CalibrationStageSeedSource,
+    pub stage_seed_derivation_policy: String,
     pub completed_stage_solver_settings: CalibrationOptimizerSettings,
 }
 
@@ -121,6 +125,22 @@ impl CalibrationStageCheckpointMetadata {
                 },
             );
         }
+        if self.run_global_seed != run_contract.run_spec.seed_settings.global_seed {
+            return Err(
+                CalibrationStageCheckpointCompatibilityError::RunGlobalSeedMismatch {
+                    expected: run_contract.run_spec.seed_settings.global_seed,
+                    found: self.run_global_seed,
+                },
+            );
+        }
+        if self.stage_seed_derivation_policy != CALIBRATION_STAGE_SEED_DERIVATION_POLICY {
+            return Err(
+                CalibrationStageCheckpointCompatibilityError::StageSeedDerivationPolicyMismatch {
+                    expected: CALIBRATION_STAGE_SEED_DERIVATION_POLICY.to_string(),
+                    found: self.stage_seed_derivation_policy.clone(),
+                },
+            );
+        }
 
         let Some(expected_stage_position) = self
             .execution_stage_order
@@ -140,6 +160,28 @@ impl CalibrationStageCheckpointMetadata {
                     completed_stage: self.completed_stage,
                     expected_position: expected_stage_position,
                     found_position: self.completed_stage_position,
+                },
+            );
+        }
+
+        let expected_stage_seed_metadata =
+            resolve_calibration_stage_seed_metadata(&run_contract.run_spec, self.completed_stage);
+
+        if self.completed_stage_seed != expected_stage_seed_metadata.stage_seed {
+            return Err(
+                CalibrationStageCheckpointCompatibilityError::CompletedStageSeedMismatch {
+                    completed_stage: self.completed_stage,
+                    expected_seed: expected_stage_seed_metadata.stage_seed,
+                    found_seed: self.completed_stage_seed,
+                },
+            );
+        }
+        if self.completed_stage_seed_source != expected_stage_seed_metadata.stage_seed_source {
+            return Err(
+                CalibrationStageCheckpointCompatibilityError::CompletedStageSeedSourceMismatch {
+                    completed_stage: self.completed_stage,
+                    expected_source: expected_stage_seed_metadata.stage_seed_source,
+                    found_source: self.completed_stage_seed_source,
                 },
             );
         }
@@ -190,6 +232,14 @@ pub enum CalibrationStageCheckpointCompatibilityError {
         expected: Vec<CalibrationStage>,
         found: Vec<CalibrationStage>,
     },
+    RunGlobalSeedMismatch {
+        expected: u64,
+        found: u64,
+    },
+    StageSeedDerivationPolicyMismatch {
+        expected: String,
+        found: String,
+    },
     CompletedStageIsNotInExecutionOrder {
         completed_stage: CalibrationStage,
     },
@@ -197,6 +247,16 @@ pub enum CalibrationStageCheckpointCompatibilityError {
         completed_stage: CalibrationStage,
         expected_position: usize,
         found_position: usize,
+    },
+    CompletedStageSeedMismatch {
+        completed_stage: CalibrationStage,
+        expected_seed: u64,
+        found_seed: u64,
+    },
+    CompletedStageSeedSourceMismatch {
+        completed_stage: CalibrationStage,
+        expected_source: CalibrationStageSeedSource,
+        found_source: CalibrationStageSeedSource,
     },
 }
 
@@ -243,6 +303,14 @@ impl Display for CalibrationStageCheckpointCompatibilityError {
                 formatter,
                 "checkpoint execution order is incompatible, expected `{expected:?}`, found `{found:?}`"
             ),
+            Self::RunGlobalSeedMismatch { expected, found } => write!(
+                formatter,
+                "checkpoint run_global_seed is incompatible, expected `{expected}`, found `{found}`"
+            ),
+            Self::StageSeedDerivationPolicyMismatch { expected, found } => write!(
+                formatter,
+                "checkpoint stage_seed_derivation_policy is incompatible, expected `{expected}`, found `{found}`"
+            ),
             Self::CompletedStageIsNotInExecutionOrder { completed_stage } => write!(
                 formatter,
                 "checkpoint completed_stage `{completed_stage:?}` is not present in checkpoint execution order"
@@ -254,6 +322,22 @@ impl Display for CalibrationStageCheckpointCompatibilityError {
             } => write!(
                 formatter,
                 "checkpoint completed_stage `{completed_stage:?}` is at unexpected position, expected `{expected_position}`, found `{found_position}`"
+            ),
+            Self::CompletedStageSeedMismatch {
+                completed_stage,
+                expected_seed,
+                found_seed,
+            } => write!(
+                formatter,
+                "checkpoint completed_stage seed for `{completed_stage:?}` is incompatible, expected `{expected_seed}`, found `{found_seed}`"
+            ),
+            Self::CompletedStageSeedSourceMismatch {
+                completed_stage,
+                expected_source,
+                found_source,
+            } => write!(
+                formatter,
+                "checkpoint completed_stage seed source for `{completed_stage:?}` is incompatible, expected `{expected_source:?}`, found `{found_source:?}`"
             ),
         }
     }

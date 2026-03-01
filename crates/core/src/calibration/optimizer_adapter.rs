@@ -4,6 +4,8 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
+use crate::randomness::splitmix64_output_mixer;
+
 use super::contracts::{CalibrationOptimizerSettings, CalibrationOptimizerSettingsError};
 use super::objective::{
     CALIBRATION_CONSTRAINED_OPTIMIZER_ADAPTER_BOUNDS_POLICY,
@@ -650,12 +652,4 @@ fn seeded_tiebreak_key(seed: u64, candidate_id: &str) -> u64 {
     }
 
     splitmix64_output_mixer(mixed)
-}
-
-const fn splitmix64_output_mixer(mut value: u64) -> u64 {
-    value ^= value >> 30;
-    value = value.wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    value ^= value >> 27;
-    value = value.wrapping_mul(0x94D0_49BB_1331_11EB);
-    value ^ (value >> 31)
 }

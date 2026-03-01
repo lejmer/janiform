@@ -56,7 +56,8 @@ fn fixture_scenarios_route_activity_open_jump_and_closed_gap_as_expected() {
                     )
                 });
 
-            let expected_market_state = parse_market_state(expected_event.expected_market_state.as_str());
+            let expected_market_state =
+                parse_market_state(expected_event.expected_market_state.as_str());
             assert_eq!(
                 dispatch_record.market_state, expected_market_state,
                 "scenario {} event {} resolved to unexpected market state",
@@ -154,7 +155,10 @@ fn fixture_scenarios_route_activity_open_jump_and_closed_gap_as_expected() {
             fixture_case.fixture_id
         );
         assert!(
-            float_close(expected_summary.expected_total_trading_return_increment, 0.0),
+            float_close(
+                expected_summary.expected_total_trading_return_increment,
+                0.0
+            ),
             "scenario {} expected total trading return increment must remain zero",
             fixture_case.fixture_id
         );
@@ -192,7 +196,11 @@ fn mixed_news_scenarios_include_known_and_surprise_components() {
             }
         }
 
-        assert!(known_event_count > 0, "scenario {} missing known events", mixed_case.fixture_id);
+        assert!(
+            known_event_count > 0,
+            "scenario {} missing known events",
+            mixed_case.fixture_id
+        );
         assert!(
             surprise_event_count > 0,
             "scenario {} missing surprise events",
@@ -230,7 +238,10 @@ fn load_gap_behavior_test_inputs() -> (
         load_open_closed_gap_behavior_scenario_fixture_from_manifest()
             .expect("open and closed gap behavior fixture should load from manifest");
 
-    (calendar_registry, loaded_gap_behavior_fixture.fixture_document.cases)
+    (
+        calendar_registry,
+        loaded_gap_behavior_fixture.fixture_document.cases,
+    )
 }
 
 fn dispatch_fixture_case(
@@ -248,12 +259,15 @@ fn dispatch_fixture_case(
             })
             .with_timezone(&chrono::Utc);
 
-        let event_timestamp_utc_nanos = event_timestamp_utc.timestamp_nanos_opt().unwrap_or_else(|| {
-            panic!(
-                "scenario {} event {} timestamp is outside nanosecond range",
-                fixture_case.fixture_id, injected_event.event_id
-            )
-        });
+        let event_timestamp_utc_nanos =
+            event_timestamp_utc
+                .timestamp_nanos_opt()
+                .unwrap_or_else(|| {
+                    panic!(
+                        "scenario {} event {} timestamp is outside nanosecond range",
+                        fixture_case.fixture_id, injected_event.event_id
+                    )
+                });
 
         event_inputs.push(SharedNewsEventTimestampedInput {
             event_timestamp_utc_nanos,

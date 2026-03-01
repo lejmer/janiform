@@ -448,8 +448,8 @@ fn open_closed_gap_behavior_fixture_rejects_open_window_closed_gap_application()
     let mut fixture_value: Value =
         serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
             .expect("open and closed gap behavior fixture should be valid JSON");
-    fixture_value["cases"][0]["expected_outcome"]["event_outcomes"][0]
-        ["expected_closed_gap_g_t_increment"] = Value::from(0.25);
+    fixture_value["cases"][0]["expected_outcome"]["event_outcomes"][0]["expected_closed_gap_g_t_increment"] =
+        Value::from(0.25);
 
     let parsed_fixture =
         serde_json::from_value::<OpenClosedGapBehaviorScenarioFixtureDocument>(fixture_value)

@@ -16,7 +16,8 @@ use super::contracts::{
     CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY, CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION,
     CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION, CalibrationExecutionMode, CalibrationOptimizerSettings,
     CalibrationResumeSource, CalibrationRunContract, CalibrationRunSpec, CalibrationStage,
-    CalibrationStageHandoffTransport, resolve_calibration_stage_execution_order,
+    CalibrationStageHandoffTransport, CalibrationStageSeedSource,
+    resolve_calibration_stage_execution_order,
 };
 use super::stages::hawkes::{
     HawkesStageCandidateInput, HawkesStageExecutionInput, HawkesStageExecutionReport,
@@ -51,6 +52,16 @@ pub enum CalibrationStagedRunStageReport {
     ReturnComponents(ReturnComponentsStageExecutionReport),
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct CalibrationStageCheckpointComponents {
+    stage_output_schema_version: String,
+    run_global_seed: u64,
+    stage_seed: u64,
+    stage_seed_source: CalibrationStageSeedSource,
+    stage_seed_derivation_policy: &'static str,
+    stage_solver_settings: CalibrationOptimizerSettings,
+}
+
 impl CalibrationStagedRunStageReport {
     const fn stage(&self) -> CalibrationStage {
         match self {
@@ -68,29 +79,53 @@ impl CalibrationStagedRunStageReport {
         }
     }
 
-    fn checkpoint_components(&self) -> Option<(String, u64, CalibrationOptimizerSettings)> {
+    fn checkpoint_components(&self) -> Option<CalibrationStageCheckpointComponents> {
         match self {
-            Self::Seasonality(report) => report.metadata.as_ref().map(|metadata| {
-                (
-                    metadata.stage_output_schema_version.to_string(),
-                    metadata.stage_seed,
-                    metadata.solver_settings.clone(),
-                )
-            }),
-            Self::Hawkes(report) => report.metadata.as_ref().map(|metadata| {
-                (
-                    metadata.stage_output_schema_version.to_string(),
-                    metadata.stage_seed,
-                    metadata.solver_settings.clone(),
-                )
-            }),
-            Self::ReturnComponents(report) => report.metadata.as_ref().map(|metadata| {
-                (
-                    metadata.stage_output_schema_version.to_string(),
-                    metadata.stage_seed,
-                    metadata.solver_settings.clone(),
-                )
-            }),
+            Self::Seasonality(report) => {
+                report
+                    .metadata
+                    .as_ref()
+                    .map(|metadata| CalibrationStageCheckpointComponents {
+                        stage_output_schema_version: metadata
+                            .stage_output_schema_version
+                            .to_string(),
+                        run_global_seed: metadata.run_global_seed,
+                        stage_seed: metadata.stage_seed,
+                        stage_seed_source: metadata.stage_seed_source,
+                        stage_seed_derivation_policy: metadata.stage_seed_derivation_policy,
+                        stage_solver_settings: metadata.solver_settings.clone(),
+                    })
+            }
+            Self::Hawkes(report) => {
+                report
+                    .metadata
+                    .as_ref()
+                    .map(|metadata| CalibrationStageCheckpointComponents {
+                        stage_output_schema_version: metadata
+                            .stage_output_schema_version
+                            .to_string(),
+                        run_global_seed: metadata.run_global_seed,
+                        stage_seed: metadata.stage_seed,
+                        stage_seed_source: metadata.stage_seed_source,
+                        stage_seed_derivation_policy: metadata.stage_seed_derivation_policy,
+                        stage_solver_settings: metadata.solver_settings.clone(),
+                    })
+            }
+            Self::ReturnComponents(report) => {
+                report
+                    .metadata
+                    .as_ref()
+                    .map(|metadata| CalibrationStageCheckpointComponents {
+                        stage_output_schema_version: metadata
+                            .stage_output_schema_version
+                            .to_string(),
+                        run_global_seed: metadata.run_global_seed,
+                        stage_seed: metadata.stage_seed,
+                        stage_seed_source: metadata.stage_seed_source,
+                        stage_seed_derivation_policy: metadata.stage_seed_derivation_policy,
+                        stage_solver_settings: metadata.solver_settings.clone(),
+                    })
+            }
         }
     }
 }
@@ -732,9 +767,7 @@ fn build_stage_checkpoint_metadata(
     stage_position: usize,
 ) -> Result<CalibrationStageCheckpointMetadata, CalibrationStagedRunFailure> {
     let stage = stage_report.stage();
-    let Some((stage_output_schema_version, stage_seed, stage_solver_settings)) =
-        stage_report.checkpoint_components()
-    else {
+    let Some(checkpoint_components) = stage_report.checkpoint_components() else {
         return Err(
             CalibrationStagedRunFailure::MissingCheckpointMetadataForSuccessfulStage { stage },
         );
@@ -757,9 +790,14 @@ fn build_stage_checkpoint_metadata(
         execution_stage_order: run_contract.execution_stage_order.clone(),
         completed_stage: stage,
         completed_stage_position: stage_position,
-        completed_stage_output_schema_version: stage_output_schema_version,
-        completed_stage_seed: stage_seed,
-        completed_stage_solver_settings: stage_solver_settings,
+        run_global_seed: checkpoint_components.run_global_seed,
+        completed_stage_output_schema_version: checkpoint_components.stage_output_schema_version,
+        completed_stage_seed: checkpoint_components.stage_seed,
+        completed_stage_seed_source: checkpoint_components.stage_seed_source,
+        stage_seed_derivation_policy: checkpoint_components
+            .stage_seed_derivation_policy
+            .to_string(),
+        completed_stage_solver_settings: checkpoint_components.stage_solver_settings,
     })
 }
 

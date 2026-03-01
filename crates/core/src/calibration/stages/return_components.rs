@@ -15,10 +15,11 @@ use super::super::contracts::{
     CALIBRATION_RETURN_COMPONENTS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
     CALIBRATION_RETURN_COMPONENTS_STAGE_HANDOFF_POLICY,
     CALIBRATION_RETURN_COMPONENTS_STAGE_OBJECTIVE_WEIGHTING_POLICY,
-    CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION, CalibrationExecutionMode,
+    CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
+    CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CalibrationExecutionMode,
     CalibrationOptimizerSettings, CalibrationRunSpec, CalibrationStage,
-    CalibrationStageHandoffTransport, resolve_calibration_stage_seed,
-    stage_solver_settings_for_stage,
+    CalibrationStageHandoffTransport, CalibrationStageSeedSource,
+    resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
 };
 use super::super::objective::{HawkesStageObjectiveTermInput, HawkesStageObjectiveTermInputError};
 use super::super::optimizer_adapter::{
@@ -1229,7 +1230,10 @@ pub struct ReturnComponentsStageHandoffOutput {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ReturnComponentsStageExecutionMetadata {
     pub stage_output_schema_version: &'static str,
+    pub run_global_seed: u64,
     pub stage_seed: u64,
+    pub stage_seed_source: CalibrationStageSeedSource,
+    pub stage_seed_derivation_policy: &'static str,
     pub candidate_generation_seed: u64,
     pub solver_settings: CalibrationOptimizerSettings,
     pub optimizer_adapter_metadata: CalibrationOptimizerAdapterRunMetadata,
@@ -1412,7 +1416,9 @@ pub fn run_return_components_calibration_stage(
         }
     }
 
-    let stage_seed = resolve_calibration_stage_seed(run_spec, CalibrationStage::ReturnComponents);
+    let resolved_stage_seed =
+        resolve_calibration_stage_seed_metadata(run_spec, CalibrationStage::ReturnComponents);
+    let stage_seed = resolved_stage_seed.stage_seed;
     let candidate_generation_seed = stage_seed;
 
     let generated_candidates = match generate_return_components_stage_candidate_inputs(
@@ -1735,7 +1741,10 @@ pub fn run_return_components_calibration_stage(
         fitted_stage_payload: Some(fitted_stage_payload),
         metadata: Some(ReturnComponentsStageExecutionMetadata {
             stage_output_schema_version: CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
+            run_global_seed: resolved_stage_seed.run_global_seed,
             stage_seed,
+            stage_seed_source: resolved_stage_seed.stage_seed_source,
+            stage_seed_derivation_policy: CALIBRATION_STAGE_SEED_DERIVATION_POLICY,
             candidate_generation_seed,
             solver_settings: stage_solver_settings,
             optimizer_adapter_metadata: optimizer_adapter_output.metadata.clone(),

@@ -3,12 +3,16 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
+
+use crate::randomness::splitmix64_output_mixer;
 pub const CALIBRATION_RUN_SPEC_SCHEMA_VERSION: &str = "calibration.orchestration.run_spec.v1";
 pub const CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION: &str = "calibration.orchestration.stage_graph.v1";
 pub const CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION: &str =
     "calibration.orchestration.run_contract.v1";
 pub const CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY: &str =
     "capture_stage_solver_settings_per_run_contract.v1";
+pub const CALIBRATION_STAGE_SEED_DERIVATION_POLICY: &str =
+    "global_seed_splitmix64_per_stage_with_override_precedence.v1";
 
 /// Caller-surface default policy for execution-mode resolution.
 pub const CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY: &str =
@@ -163,6 +167,20 @@ impl Error for CalibrationRunDataInputsError {}
 pub struct CalibrationStageSeedOverride {
     pub stage: CalibrationStage,
     pub seed: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CalibrationStageSeedSource {
+    DerivedFromGlobalSeed,
+    StageOverride,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CalibrationResolvedStageSeed {
+    pub run_global_seed: u64,
+    pub stage_seed: u64,
+    pub stage_seed_source: CalibrationStageSeedSource,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1243,13 +1261,49 @@ pub fn resolve_calibration_stage_seed(
     run_spec: &CalibrationRunSpec,
     stage: CalibrationStage,
 ) -> u64 {
-    run_spec
+    resolve_calibration_stage_seed_metadata(run_spec, stage).stage_seed
+}
+
+pub fn resolve_calibration_stage_seed_metadata(
+    run_spec: &CalibrationRunSpec,
+    stage: CalibrationStage,
+) -> CalibrationResolvedStageSeed {
+    if let Some(stage_seed_override) = run_spec
         .seed_settings
         .stage_seed_overrides
         .iter()
         .find(|stage_seed_override| stage_seed_override.stage == stage)
-        .map(|stage_seed_override| stage_seed_override.seed)
-        .unwrap_or(run_spec.seed_settings.global_seed)
+    {
+        return CalibrationResolvedStageSeed {
+            run_global_seed: run_spec.seed_settings.global_seed,
+            stage_seed: stage_seed_override.seed,
+            stage_seed_source: CalibrationStageSeedSource::StageOverride,
+        };
+    }
+
+    CalibrationResolvedStageSeed {
+        run_global_seed: run_spec.seed_settings.global_seed,
+        stage_seed: derive_calibration_stage_seed_from_global_seed(
+            run_spec.seed_settings.global_seed,
+            stage,
+        ),
+        stage_seed_source: CalibrationStageSeedSource::DerivedFromGlobalSeed,
+    }
+}
+
+pub fn derive_calibration_stage_seed_from_global_seed(
+    global_seed: u64,
+    stage: CalibrationStage,
+) -> u64 {
+    splitmix64_output_mixer(global_seed ^ calibration_stage_seed_derivation_nonce(stage))
+}
+
+const fn calibration_stage_seed_derivation_nonce(stage: CalibrationStage) -> u64 {
+    match stage {
+        CalibrationStage::Seasonality => 0x5E45_0A3D_B51F_4E91,
+        CalibrationStage::Hawkes => 0xA67B_3D2C_17F8_94E0,
+        CalibrationStage::ReturnComponents => 0x3CF2_D8A1_6B94_C705,
+    }
 }
 
 pub(crate) fn stage_solver_settings_for_stage(

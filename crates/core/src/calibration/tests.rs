@@ -21,20 +21,21 @@ mod tests {
         CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
         CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY, CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY,
         CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION, CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION,
-        CalibrationCallerSurface, CalibrationExecutionMode, CalibrationMemoryCheckpointStore,
-        CalibrationObjectiveTermInput, CalibrationOptimizerAdapterCandidateInput,
-        CalibrationOptimizerAdapterConfiguration, CalibrationOptimizerAdapterError,
-        CalibrationOptimizerCandidateParameterValue, CalibrationOptimizerParameterBound,
-        CalibrationOptimizerSettings, CalibrationResumeSettings, CalibrationResumeSettingsError,
-        CalibrationRunContract, CalibrationRunContractError, CalibrationRunDataInputs,
-        CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationRunSpecError,
-        CalibrationRunSpecErrorClassification, CalibrationStage, CalibrationStageDependency,
-        CalibrationStageExecutionStatus, CalibrationStageGraph, CalibrationStageGraphError,
-        CalibrationStageHandoff, CalibrationStageHandoffError, CalibrationStageSeedOverride,
+        CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CalibrationCallerSurface,
+        CalibrationExecutionMode, CalibrationMemoryCheckpointStore, CalibrationObjectiveTermInput,
+        CalibrationOptimizerAdapterCandidateInput, CalibrationOptimizerAdapterConfiguration,
+        CalibrationOptimizerAdapterError, CalibrationOptimizerCandidateParameterValue,
+        CalibrationOptimizerParameterBound, CalibrationOptimizerSettings,
+        CalibrationResumeSettings, CalibrationResumeSettingsError, CalibrationRunContract,
+        CalibrationRunContractError, CalibrationRunDataInputs, CalibrationRunSeedSettings,
+        CalibrationRunSpec, CalibrationRunSpecError, CalibrationRunSpecErrorClassification,
+        CalibrationStage, CalibrationStageDependency, CalibrationStageExecutionStatus,
+        CalibrationStageGraph, CalibrationStageGraphError, CalibrationStageHandoff,
+        CalibrationStageHandoffError, CalibrationStageSeedOverride, CalibrationStageSeedSource,
         CalibrationStageSolverSettings, CalibrationStagedRunFailure, CalibrationStagedRunInputs,
-        HawkesStageCandidateInput, HawkesStageExecutionFailure, HawkesStageExecutionInput,
-        HawkesStageObjectiveTermInput, OptionSurfaceCalibrationObservationError,
-        ReturnComponentsDetectedCloseOpenGapCandidate,
+        CalibrationStagedRunStageReport, HawkesStageCandidateInput, HawkesStageExecutionFailure,
+        HawkesStageExecutionInput, HawkesStageObjectiveTermInput,
+        OptionSurfaceCalibrationObservationError, ReturnComponentsDetectedCloseOpenGapCandidate,
         ReturnComponentsDetectedIntradayJumpCandidate, ReturnComponentsKnownNewsCalendarInput,
         ReturnComponentsRealizedKnownNewsReturnSample,
         ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageExecutionFailure,
@@ -44,13 +45,14 @@ mod tests {
         build_option_surface_calibration_observation_from_pricing_hooks,
         calibration_checkpoint_reference_for_stage, calibration_last_success_checkpoint_reference,
         compose_calibration_weighted_objective, default_calibration_execution_mode_for_surface,
+        derive_calibration_stage_seed_from_global_seed,
         evaluate_calibration_martingale_condition_under_esscher_tilt,
         precheck_hawkes_kernel_parameter_domain,
         precheck_structured_hawkes_kernel_parameter_domain,
         resolve_calibration_execution_mode_for_surface, resolve_calibration_stage_execution_order,
-        run_constrained_optimizer_adapter, run_hawkes_calibration_stage,
-        run_return_components_calibration_stage, run_seasonality_calibration_stage,
-        run_staged_calibration_with_checkpointing,
+        resolve_calibration_stage_seed_metadata, run_constrained_optimizer_adapter,
+        run_hawkes_calibration_stage, run_return_components_calibration_stage,
+        run_seasonality_calibration_stage, run_staged_calibration_with_checkpointing,
         transform_nig_exponent_for_calibration_under_esscher_tilt,
     };
     use crate::hawkes::{
@@ -396,6 +398,103 @@ mod tests {
 
         let parse_result = serde_json::from_value::<CalibrationRunSpec>(serialized);
         assert!(parse_result.is_err());
+    }
+
+    #[test]
+    fn calibration_stage_seed_derivation_is_deterministic_and_honors_overrides() {
+        let run_spec_with_overrides = build_valid_run_spec();
+        let seasonality_seed = resolve_calibration_stage_seed_metadata(
+            &run_spec_with_overrides,
+            CalibrationStage::Seasonality,
+        );
+        let hawkes_seed = resolve_calibration_stage_seed_metadata(
+            &run_spec_with_overrides,
+            CalibrationStage::Hawkes,
+        );
+        let return_seed_with_overrides = resolve_calibration_stage_seed_metadata(
+            &run_spec_with_overrides,
+            CalibrationStage::ReturnComponents,
+        );
+
+        assert_eq!(seasonality_seed.run_global_seed, 17);
+        assert_eq!(seasonality_seed.stage_seed, 101);
+        assert_eq!(
+            seasonality_seed.stage_seed_source,
+            CalibrationStageSeedSource::StageOverride
+        );
+        assert_eq!(hawkes_seed.stage_seed, 202);
+        assert_eq!(
+            hawkes_seed.stage_seed_source,
+            CalibrationStageSeedSource::StageOverride
+        );
+        assert_eq!(
+            return_seed_with_overrides.stage_seed_source,
+            CalibrationStageSeedSource::DerivedFromGlobalSeed
+        );
+        assert_eq!(
+            return_seed_with_overrides.stage_seed,
+            derive_calibration_stage_seed_from_global_seed(17, CalibrationStage::ReturnComponents)
+        );
+        assert_eq!(
+            CALIBRATION_STAGE_SEED_DERIVATION_POLICY,
+            "global_seed_splitmix64_per_stage_with_override_precedence.v1"
+        );
+
+        let run_spec_without_overrides = CalibrationRunSpec::try_new(
+            "run-derived-seeds-only",
+            build_data_inputs(),
+            CalibrationExecutionMode::Memory,
+            vec![
+                CalibrationStage::Seasonality,
+                CalibrationStage::Hawkes,
+                CalibrationStage::ReturnComponents,
+            ],
+            CalibrationRunSeedSettings::try_new(17, Vec::new())
+                .expect("seed settings without overrides should validate"),
+            build_solver_settings_for_all_stages(),
+        )
+        .expect("run spec should validate");
+
+        let derived_seasonality_seed = resolve_calibration_stage_seed_metadata(
+            &run_spec_without_overrides,
+            CalibrationStage::Seasonality,
+        );
+        let derived_hawkes_seed = resolve_calibration_stage_seed_metadata(
+            &run_spec_without_overrides,
+            CalibrationStage::Hawkes,
+        );
+        let derived_return_seed = resolve_calibration_stage_seed_metadata(
+            &run_spec_without_overrides,
+            CalibrationStage::ReturnComponents,
+        );
+
+        assert_eq!(
+            derived_seasonality_seed,
+            resolve_calibration_stage_seed_metadata(
+                &run_spec_without_overrides,
+                CalibrationStage::Seasonality
+            )
+        );
+        assert_eq!(
+            derived_seasonality_seed.stage_seed,
+            derive_calibration_stage_seed_from_global_seed(17, CalibrationStage::Seasonality)
+        );
+        assert_eq!(
+            derived_hawkes_seed.stage_seed,
+            derive_calibration_stage_seed_from_global_seed(17, CalibrationStage::Hawkes)
+        );
+        assert_eq!(
+            derived_return_seed.stage_seed,
+            derive_calibration_stage_seed_from_global_seed(17, CalibrationStage::ReturnComponents)
+        );
+        assert_ne!(
+            derived_seasonality_seed.stage_seed,
+            derived_hawkes_seed.stage_seed
+        );
+        assert_ne!(
+            derived_hawkes_seed.stage_seed,
+            derived_return_seed.stage_seed
+        );
     }
 
     #[test]
@@ -843,6 +942,7 @@ mod tests {
             .emitted_checkpoints
             .first()
             .expect("first stage checkpoint should exist");
+
         assert_eq!(
             first_checkpoint.schema_version,
             CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION
@@ -871,6 +971,31 @@ mod tests {
             CalibrationStage::Seasonality
         );
         assert_eq!(first_checkpoint.completed_stage_position, 0);
+        assert_eq!(first_checkpoint.run_global_seed, 17);
+        assert_eq!(first_checkpoint.completed_stage_seed, 101);
+        assert_eq!(
+            first_checkpoint.completed_stage_seed_source,
+            CalibrationStageSeedSource::StageOverride
+        );
+        assert_eq!(
+            first_checkpoint.stage_seed_derivation_policy,
+            CALIBRATION_STAGE_SEED_DERIVATION_POLICY
+        );
+
+        let return_components_checkpoint = report
+            .emitted_checkpoints
+            .iter()
+            .find(|checkpoint| checkpoint.completed_stage == CalibrationStage::ReturnComponents)
+            .expect("return-components stage checkpoint should exist");
+
+        assert_eq!(
+            return_components_checkpoint.completed_stage_seed_source,
+            CalibrationStageSeedSource::DerivedFromGlobalSeed
+        );
+        assert_eq!(
+            return_components_checkpoint.completed_stage_seed,
+            derive_calibration_stage_seed_from_global_seed(17, CalibrationStage::ReturnComponents)
+        );
         assert_eq!(
             checkpoint_store
                 .last_checkpoint_for_run(run_contract.run_spec.run_id.as_str())
@@ -878,6 +1003,141 @@ mod tests {
                 .completed_stage,
             CalibrationStage::ReturnComponents
         );
+    }
+
+    #[test]
+    fn staged_runner_reports_run_and_stage_seed_metadata_for_all_stages() {
+        let run_contract = build_run_contract_with_mode_and_resume(
+            "run-stage-seed-metadata",
+            CalibrationExecutionMode::Memory,
+            None,
+        );
+        let calendar_registry = calibration_stage_test_registry();
+        let mut checkpoint_store = CalibrationMemoryCheckpointStore::new();
+
+        let report = run_staged_calibration_with_checkpointing(
+            &run_contract,
+            &calendar_registry,
+            staged_run_inputs(true, true, true),
+            Some(&mut checkpoint_store),
+            None,
+        );
+
+        assert_eq!(report.status, CalibrationStageExecutionStatus::Success);
+        assert_eq!(report.stage_reports.len(), 3);
+
+        for stage_report in &report.stage_reports {
+            match stage_report {
+                CalibrationStagedRunStageReport::Seasonality(seasonality_report) => {
+                    let metadata = seasonality_report
+                        .metadata
+                        .as_ref()
+                        .expect("seasonality stage metadata should be present");
+                    assert_eq!(metadata.run_global_seed, 17);
+                    assert_eq!(metadata.stage_seed, 101);
+                    assert_eq!(
+                        metadata.stage_seed_source,
+                        CalibrationStageSeedSource::StageOverride
+                    );
+                    assert_eq!(
+                        metadata.stage_seed_derivation_policy,
+                        CALIBRATION_STAGE_SEED_DERIVATION_POLICY
+                    );
+                }
+                CalibrationStagedRunStageReport::Hawkes(hawkes_report) => {
+                    let metadata = hawkes_report
+                        .metadata
+                        .as_ref()
+                        .expect("hawkes stage metadata should be present");
+                    assert_eq!(metadata.run_global_seed, 17);
+                    assert_eq!(metadata.stage_seed, 202);
+                    assert_eq!(
+                        metadata.stage_seed_source,
+                        CalibrationStageSeedSource::StageOverride
+                    );
+                    assert_eq!(
+                        metadata.stage_seed_derivation_policy,
+                        CALIBRATION_STAGE_SEED_DERIVATION_POLICY
+                    );
+                }
+                CalibrationStagedRunStageReport::ReturnComponents(return_components_report) => {
+                    let metadata = return_components_report
+                        .metadata
+                        .as_ref()
+                        .expect("return-components stage metadata should be present");
+                    assert_eq!(metadata.run_global_seed, 17);
+                    assert_eq!(
+                        metadata.stage_seed,
+                        derive_calibration_stage_seed_from_global_seed(
+                            17,
+                            CalibrationStage::ReturnComponents
+                        )
+                    );
+                    assert_eq!(
+                        metadata.stage_seed_source,
+                        CalibrationStageSeedSource::DerivedFromGlobalSeed
+                    );
+                    assert_eq!(
+                        metadata.stage_seed_derivation_policy,
+                        CALIBRATION_STAGE_SEED_DERIVATION_POLICY
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn staged_runner_full_workflow_is_reproducible_across_repeated_runs_in_both_modes() {
+        let calendar_registry = calibration_stage_test_registry();
+
+        let memory_contract = build_run_contract_with_mode_and_resume(
+            "run-repeat-memory",
+            CalibrationExecutionMode::Memory,
+            None,
+        );
+        let mut first_memory_checkpoint_store = CalibrationMemoryCheckpointStore::new();
+        let first_memory_report = run_staged_calibration_with_checkpointing(
+            &memory_contract,
+            &calendar_registry,
+            staged_run_inputs(true, true, true),
+            Some(&mut first_memory_checkpoint_store),
+            None,
+        );
+        let mut second_memory_checkpoint_store = CalibrationMemoryCheckpointStore::new();
+        let second_memory_report = run_staged_calibration_with_checkpointing(
+            &memory_contract,
+            &calendar_registry,
+            staged_run_inputs(true, true, true),
+            Some(&mut second_memory_checkpoint_store),
+            None,
+        );
+
+        assert_eq!(first_memory_report, second_memory_report);
+
+        let checkpoint_directory = temporary_checkpoint_directory("repeat-full-disk");
+        let disk_contract = build_run_contract_with_mode_and_resume(
+            "run-repeat-disk",
+            CalibrationExecutionMode::Disk,
+            None,
+        );
+        let first_disk_report = run_staged_calibration_with_checkpointing(
+            &disk_contract,
+            &calendar_registry,
+            staged_run_inputs(true, true, true),
+            None,
+            Some(checkpoint_directory.as_path()),
+        );
+        let second_disk_report = run_staged_calibration_with_checkpointing(
+            &disk_contract,
+            &calendar_registry,
+            staged_run_inputs(true, true, true),
+            None,
+            Some(checkpoint_directory.as_path()),
+        );
+
+        assert_eq!(first_disk_report, second_disk_report);
+
+        let _ = fs::remove_dir_all(checkpoint_directory);
     }
 
     #[test]

@@ -11,9 +11,8 @@ use crate::affine_oracle::{
     ExponentialAffineTransformEquationSpecificationError,
     ExponentialAffineTransformGuardFailureCode, ExponentialAffineTransformInput,
     ExponentialAffineTransformInputError, ExponentialAffineTransformIntegrationResult,
-    ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformSolverError,
-    ExponentialAffineTransformNewsIntensityInput,
-    ExponentialAffineTransformNewsIntensityInputError,
+    ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformNewsIntensityInput,
+    ExponentialAffineTransformNewsIntensityInputError, ExponentialAffineTransformSolverError,
     ExponentialAffineTransformSolverSettings,
     solve_exponential_affine_transform_with_optional_settings,
 };
@@ -3981,7 +3980,8 @@ pub fn solve_exponential_affine_transform_for_risk_sampling_with_settings(
 #[cfg(test)]
 mod tests {
     use crate::affine_oracle::{
-        ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformNewsIntensityInput,
+        ExponentialAffineTransformEquationSpecification,
+        ExponentialAffineTransformNewsIntensityInput,
     };
     use crate::calendar::MarketState;
     use crate::hawkes::{
@@ -4009,12 +4009,11 @@ mod tests {
         SufficientStatisticsBoundaryStateUpdateSnapshot,
         SufficientStatisticsGeneratedIntervalReturn, SufficientStatisticsIntervalStatistics,
         SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskIntervalFactorsError,
-        SufficientStatisticsRiskModelInputs,
-        SufficientStatisticsRiskPath, SufficientStatisticsRiskPathError,
-        SufficientStatisticsRiskPathRecord, SufficientStatisticsRiskReturnComponents,
-        SufficientStatisticsRiskReturnGenerationOptions, SufficientStatisticsRiskRunRequest,
-        SufficientStatisticsRiskRunRequestError, SufficientStatisticsStreamingChunkingSettings,
-        SufficientStatisticsTransformSliceContext,
+        SufficientStatisticsRiskModelInputs, SufficientStatisticsRiskPath,
+        SufficientStatisticsRiskPathError, SufficientStatisticsRiskPathRecord,
+        SufficientStatisticsRiskReturnComponents, SufficientStatisticsRiskReturnGenerationOptions,
+        SufficientStatisticsRiskRunRequest, SufficientStatisticsRiskRunRequestError,
+        SufficientStatisticsStreamingChunkingSettings, SufficientStatisticsTransformSliceContext,
         SufficientStatisticsTransformSliceExecutionError,
         SufficientStatisticsTransformSliceSamplingError,
         SufficientStatisticsTransformSliceSettings,
@@ -4531,13 +4530,13 @@ mod tests {
             }
         });
 
-        let parsed_request: SufficientStatisticsRiskRunRequest =
-            serde_json::from_value(payload).expect("component-only news-intensity payload should parse");
+        let parsed_request: SufficientStatisticsRiskRunRequest = serde_json::from_value(payload)
+            .expect("component-only news-intensity payload should parse");
         assert_eq!(parsed_request.interval_factors.nu_h.as_ref(), &[0.2, 0.1]);
         assert_eq!(
             parsed_request.interval_factors.news_intensity_input_at(1),
             ExponentialAffineTransformNewsIntensityInput::try_new(0.03, 0.07)
-            .expect("expected news-intensity input should construct")
+                .expect("expected news-intensity input should construct")
         );
     }
 
