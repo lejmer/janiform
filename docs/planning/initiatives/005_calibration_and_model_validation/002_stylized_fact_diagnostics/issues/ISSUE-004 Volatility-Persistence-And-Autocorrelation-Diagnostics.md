@@ -6,12 +6,14 @@ Implement diagnostics for volatility persistence and related autocorrelation str
 ### Acceptance Criteria
 - Module computes volatility-persistence metrics on empirical and simulated series
 - Diagnostics support multiple horizons and lag settings
-- Outputs include model-versus-data deltas and threshold context
+- Outputs include model-versus-data deltas with uncertainty context and threshold metadata
+- Module emits standardized comparison values and explicit `insufficient_data` status for lag-horizon combinations that fail coverage requirements
 - Diagnostic interface integrates with shared metric catalog
 
 ### Unit tests
 - Autocorrelation and persistence metric correctness on reference fixtures and lag and horizon parameter validation
 - Deterministic outputs under fixed inputs
+- Sparse-window behavior tests validate `insufficient_data` handling and uncertainty-output schema completeness
 
 ### Notes/Constraints
 - Keep lag configuration explicit and documented

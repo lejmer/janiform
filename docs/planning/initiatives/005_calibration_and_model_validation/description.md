@@ -9,6 +9,6 @@ Establish reproducible calibration workflows and validation tooling that prove f
 
 ### Success signals
 - A reproducible calibration pipeline exists for seasonality, Hawkes, and return components with clear parameter bounds and penalties, and it runs in `memory` and `disk` modes.
-- Validation reports include activity clustering, heavy tails, skew, volatility persistence, and open-jump versus closed-gap behavior across multiple horizons.
+- Validation reports include activity clustering, heavy tails, skew, volatility persistence, and open-jump versus closed-gap behavior across multiple horizons, with robust primary diagnostics, secondary moment diagnostics, and explicit uncertainty context.
 - Fine-to-coarse consistency checks show direct coarse simulation agrees with aggregated fine simulation within predefined tolerances.
 - Calibration artifacts (inputs, params, metrics, diagnostics) are versioned and reloadable for persisted runs where `execution_mode=disk`.

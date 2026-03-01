@@ -8,11 +8,14 @@ Generate diagnostics reports as in-memory-first result objects plus optional mac
 - Report outputs can be generated for single and batched calibration runs.
 - Export to persisted artifacts is optional and enabled when `execution_mode=disk`.
 - Output schema and metadata are machine-readable and documented.
+- Reports clearly separate robust primary diagnostics from secondary L-moment and classical moment diagnostics.
+- Tables and artifacts include uncertainty intervals, sample coverage metrics, and explicit `insufficient_data` statuses.
 
 ### Unit tests
 - Table-summary generation on reference fixtures.
 - In-memory report schema validation and required metadata checks.
 - Deterministic export file structure and naming for `disk` mode.
+- Validation that report rendering preserves metric-class labels and uncertainty metadata.
 
 ### Notes/Constraints
 - Keep plotting layer optional so headless workflows are supported.
