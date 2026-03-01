@@ -1,0 +1,528 @@
+use serde_json::json;
+
+use crate::hawkes::HawkesExcitationState;
+use crate::pricing::{
+    build_vanilla_option_pricing_run_result, VanillaOptionPayoffConfiguration,
+    VanillaOptionPayoffType, VanillaOptionPricingCalibrationHooksError,
+    VanillaOptionPricingDiagnostics, VanillaOptionPricingDiagnosticsError,
+    VanillaOptionPricingMarketInputs, VanillaOptionPricingMarketInputsError,
+    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
+    VanillaOptionPricingRequestError, VanillaOptionPricingResponse,
+    VanillaOptionPricingResponseError, VanillaOptionPricingRunResultBuildError,
+    DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
+    VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
+    VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
+    VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION,
+    VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION,
+};
+
+use super::support::{
+    build_reference_integration_diagnostics_source, build_reference_market_inputs,
+    build_reference_pricing_response, build_reference_transform_diagnostics_source,
+    build_valid_vanilla_option_request, valid_model_parameters,
+};
+#[test]
+fn vanilla_option_request_roundtrip_serialization_preserves_contract_fields() {
+    let request = build_valid_vanilla_option_request();
+
+    let serialized_value = serde_json::to_value(request).expect("request payload should serialize");
+    let parsed_request: VanillaOptionPricingRequest = serde_json::from_value(serialized_value)
+        .expect("serialized request payload should deserialize");
+
+    assert_eq!(parsed_request, request);
+    assert_eq!(
+        parsed_request.interval_delta,
+        DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
+    );
+}
+
+#[test]
+fn vanilla_option_request_deserialization_defaults_interval_delta_to_hourly() {
+    let payload_without_interval_delta = json!({
+        "market_inputs": {
+            "spot": 101.0,
+            "strike": 100.0,
+            "maturity_interval": 0.5,
+            "risk_free_rate": 0.02,
+            "dividend_yield": 0.01
+        },
+        "payoff": {
+            "payoff_type": "call"
+        },
+        "boundary_state": {
+            "y_plus_plus": 0.2,
+            "y_plus_minus": 0.1,
+            "y_minus_plus": 0.3,
+            "y_minus_minus": 0.4
+        },
+        "model_parameters": {
+            "hawkes_kernel_parameters": {
+                "lambda_bar": 0.8,
+                "beta": 1.6,
+                "alpha": {
+                    "plus_plus": 0.2,
+                    "plus_minus": 0.1,
+                    "minus_plus": 0.1,
+                    "minus_minus": 0.25
+                },
+                "rho": {
+                    "plus_plus": 0.1,
+                    "plus_minus": 0.05,
+                    "minus_plus": 0.05,
+                    "minus_minus": 0.1
+                }
+            },
+            "gamma_severity_mark_configuration": {
+                "shape_k": 1.8,
+                "scale_theta": 0.7
+            },
+            "nig_shared_plus_shift_configuration": {
+                "alpha": 2.3,
+                "beta_0": -0.8,
+                "delta": 0.7,
+                "mu": 0.1,
+                "delta_beta": -0.2
+            }
+        }
+    });
+
+    let parsed_request: VanillaOptionPricingRequest =
+        serde_json::from_value(payload_without_interval_delta)
+            .expect("payload without interval_delta should deserialize");
+
+    assert_eq!(
+        parsed_request.interval_delta,
+        DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
+    );
+}
+
+#[test]
+fn vanilla_option_request_accepts_explicit_non_hourly_interval_delta() {
+    let request = VanillaOptionPricingRequest::try_new_with_interval_delta(
+        VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 0.5, 0.02, 0.01)
+            .expect("market inputs should construct"),
+        VanillaOptionPayoffConfiguration {
+            payoff_type: VanillaOptionPayoffType::Call,
+        },
+        HawkesExcitationState {
+            y_plus_plus: 0.2,
+            y_plus_minus: 0.1,
+            y_minus_plus: 0.3,
+            y_minus_minus: 0.4,
+        },
+        valid_model_parameters(),
+        0.5,
+    )
+    .expect("non-hourly interval delta should be accepted");
+
+    assert_eq!(request.interval_delta, 0.5);
+}
+
+#[test]
+fn vanilla_option_request_rejects_non_positive_interval_delta() {
+    let error = VanillaOptionPricingRequest::try_new_with_interval_delta(
+        VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 0.5, 0.02, 0.01)
+            .expect("market inputs should construct"),
+        VanillaOptionPayoffConfiguration {
+            payoff_type: VanillaOptionPayoffType::Call,
+        },
+        HawkesExcitationState {
+            y_plus_plus: 0.2,
+            y_plus_minus: 0.1,
+            y_minus_plus: 0.3,
+            y_minus_minus: 0.4,
+        },
+        valid_model_parameters(),
+        0.0,
+    )
+    .expect_err("non-positive interval delta must fail request validation");
+
+    assert!(matches!(
+        error,
+        VanillaOptionPricingRequestError::InvalidIntervalDelta { value } if value == 0.0
+    ));
+}
+
+#[test]
+fn vanilla_option_response_roundtrip_serialization_preserves_contract_fields() {
+    let response = VanillaOptionPricingResponse::try_new(
+        12.4,
+        VanillaOptionPricingDiagnostics::try_new(104.8, 0.97, 0.5, 0.4)
+            .expect("diagnostics should construct"),
+    )
+    .expect("response should construct");
+
+    let serialized_value =
+        serde_json::to_value(response).expect("response payload should serialize");
+    let parsed_response: VanillaOptionPricingResponse = serde_json::from_value(serialized_value)
+        .expect("serialized response payload should deserialize");
+
+    assert_eq!(parsed_response, response);
+}
+
+#[test]
+fn vanilla_option_request_rejects_invalid_market_input_with_structured_error() {
+    let market_inputs = VanillaOptionPricingMarketInputs::new(100.0, -90.0, 0.5, 0.02, 0.01);
+
+    let error = VanillaOptionPricingRequest::try_new(
+        market_inputs,
+        VanillaOptionPayoffConfiguration {
+            payoff_type: VanillaOptionPayoffType::Call,
+        },
+        HawkesExcitationState {
+            y_plus_plus: 0.2,
+            y_plus_minus: 0.1,
+            y_minus_plus: 0.3,
+            y_minus_minus: 0.4,
+        },
+        valid_model_parameters(),
+    )
+    .expect_err("negative strike should fail request validation");
+
+    assert!(matches!(
+        error,
+        VanillaOptionPricingRequestError::InvalidMarketInputs {
+            source: VanillaOptionPricingMarketInputsError::InvalidStrike { value }
+        } if value == -90.0
+    ));
+}
+
+#[test]
+fn vanilla_option_request_deserialize_rejects_invalid_boundary_state_with_actionable_error() {
+    let invalid_payload = json!({
+        "market_inputs": {
+            "spot": 101.0,
+            "strike": 100.0,
+            "maturity_interval": 0.5,
+            "risk_free_rate": 0.02,
+            "dividend_yield": 0.01
+        },
+        "payoff": {
+            "payoff_type": "put"
+        },
+        "boundary_state": {
+            "y_plus_plus": -0.1,
+            "y_plus_minus": 0.2,
+            "y_minus_plus": 0.3,
+            "y_minus_minus": 0.4
+        },
+        "model_parameters": {
+            "hawkes_kernel_parameters": {
+                "lambda_bar": 0.8,
+                "beta": 1.6,
+                "alpha": {
+                    "plus_plus": 0.2,
+                    "plus_minus": 0.1,
+                    "minus_plus": 0.1,
+                    "minus_minus": 0.25
+                },
+                "rho": {
+                    "plus_plus": 0.1,
+                    "plus_minus": 0.05,
+                    "minus_plus": 0.05,
+                    "minus_minus": 0.1
+                }
+            },
+            "gamma_severity_mark_configuration": {
+                "shape_k": 1.8,
+                "scale_theta": 0.7
+            },
+            "nig_shared_plus_shift_configuration": {
+                "alpha": 2.3,
+                "beta_0": -0.8,
+                "delta": 0.7,
+                "mu": 0.1,
+                "delta_beta": -0.2
+            }
+        }
+    });
+
+    let error = serde_json::from_value::<VanillaOptionPricingRequest>(invalid_payload)
+        .expect_err("invalid boundary state should fail request deserialization");
+    let error_message = error.to_string();
+
+    assert!(error_message.contains("boundary_state.y_plus_plus"));
+    assert!(error_message.contains("non-negative"));
+}
+
+#[test]
+fn vanilla_option_request_deserialize_rejects_incomplete_payload() {
+    let incomplete_payload = json!({
+        "market_inputs": {
+            "spot": 101.0,
+            "maturity_interval": 0.5,
+            "risk_free_rate": 0.02,
+            "dividend_yield": 0.01
+        },
+        "payoff": {
+            "payoff_type": "call"
+        },
+        "boundary_state": {
+            "y_plus_plus": 0.1,
+            "y_plus_minus": 0.2,
+            "y_minus_plus": 0.3,
+            "y_minus_minus": 0.4
+        },
+        "model_parameters": {
+            "hawkes_kernel_parameters": {
+                "lambda_bar": 0.8,
+                "beta": 1.6,
+                "alpha": {
+                    "plus_plus": 0.2,
+                    "plus_minus": 0.1,
+                    "minus_plus": 0.1,
+                    "minus_minus": 0.25
+                },
+                "rho": {
+                    "plus_plus": 0.1,
+                    "plus_minus": 0.05,
+                    "minus_plus": 0.05,
+                    "minus_minus": 0.1
+                }
+            },
+            "gamma_severity_mark_configuration": {
+                "shape_k": 1.8,
+                "scale_theta": 0.7
+            },
+            "nig_shared_plus_shift_configuration": {
+                "alpha": 2.3,
+                "beta_0": -0.8,
+                "delta": 0.7,
+                "mu": 0.1,
+                "delta_beta": -0.2
+            }
+        }
+    });
+
+    let error = serde_json::from_value::<VanillaOptionPricingRequest>(incomplete_payload)
+        .expect_err("incomplete request payload should fail deserialization");
+    let error_message = error.to_string();
+    assert!(error_message.contains("missing field `strike`"));
+}
+
+#[test]
+fn vanilla_option_response_rejects_invalid_price_with_structured_error() {
+    let diagnostics = VanillaOptionPricingDiagnostics::try_new(104.8, 0.97, 0.5, 0.4)
+        .expect("diagnostics should construct");
+
+    let error = VanillaOptionPricingResponse::try_new(-0.01, diagnostics)
+        .expect_err("negative option prices must fail response validation");
+
+    assert!(matches!(
+        error,
+        VanillaOptionPricingResponseError::InvalidPrice { value } if value == -0.01
+    ));
+}
+
+#[test]
+fn vanilla_option_response_rejects_invalid_diagnostics_with_structured_error() {
+    let invalid_diagnostics = VanillaOptionPricingDiagnostics::new(0.0, 0.97, 0.5, 0.4);
+
+    let error = VanillaOptionPricingResponse::try_new(1.0, invalid_diagnostics)
+        .expect_err("invalid diagnostics must fail response validation");
+
+    assert!(matches!(
+        error,
+        VanillaOptionPricingResponseError::InvalidDiagnostics {
+            source: VanillaOptionPricingDiagnosticsError::InvalidForwardPrice { value }
+        } if value == 0.0
+    ));
+}
+
+#[test]
+fn pricing_run_output_selection_defaults_to_base_response_only() {
+    let market_inputs = build_reference_market_inputs();
+    let response = build_reference_pricing_response(market_inputs);
+    let transform_diagnostics = build_reference_transform_diagnostics_source();
+    let integration_quality = build_reference_integration_diagnostics_source(market_inputs);
+
+    let run_result = build_vanilla_option_pricing_run_result(
+        response,
+        VanillaOptionPricingOptionalOutputSelection::default(),
+        None,
+        Some(transform_diagnostics),
+        Some(integration_quality),
+    )
+    .expect("default output selection should emit base response only");
+
+    assert_eq!(
+        run_result.schema_version,
+        VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION
+    );
+    assert!(run_result.run_diagnostics.is_none());
+    assert!(run_result.calibration_hooks.is_none());
+}
+
+#[test]
+fn pricing_run_output_selection_can_emit_diagnostics_and_calibration_hooks() {
+    let market_inputs = build_reference_market_inputs();
+    let response = build_reference_pricing_response(market_inputs);
+    let transform_diagnostics = build_reference_transform_diagnostics_source();
+    let integration_quality = build_reference_integration_diagnostics_source(market_inputs);
+
+    let run_result = build_vanilla_option_pricing_run_result(
+        response,
+        VanillaOptionPricingOptionalOutputSelection::new(true, true, true),
+        Some(market_inputs),
+        Some(transform_diagnostics),
+        Some(integration_quality),
+    )
+    .expect("full output selection should include diagnostics and hooks");
+
+    let run_diagnostics = run_result
+        .run_diagnostics
+        .expect("run diagnostics should be present");
+    assert_eq!(
+        run_diagnostics.schema_version,
+        VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION
+    );
+    assert!(run_diagnostics.transform.is_some());
+    assert!(run_diagnostics.integration_quality.is_some());
+
+    let calibration_hooks = run_result
+        .calibration_hooks
+        .expect("calibration hooks should be present");
+    assert_eq!(
+        calibration_hooks.schema_version,
+        VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION
+    );
+    assert_eq!(
+        calibration_hooks.hook_policy,
+        VANILLA_OPTION_CALIBRATION_HOOK_POLICY
+    );
+    assert!(calibration_hooks.forward_moneyness > 0.0);
+    assert!(calibration_hooks.log_moneyness.is_finite());
+}
+
+#[test]
+fn pricing_run_output_schema_metadata_is_machine_readable_with_required_fields() {
+    let market_inputs = build_reference_market_inputs();
+    let response = build_reference_pricing_response(market_inputs);
+    let transform_diagnostics = build_reference_transform_diagnostics_source();
+    let integration_quality = build_reference_integration_diagnostics_source(market_inputs);
+    let run_result = build_vanilla_option_pricing_run_result(
+        response,
+        VanillaOptionPricingOptionalOutputSelection::new(true, true, true),
+        Some(market_inputs),
+        Some(transform_diagnostics),
+        Some(integration_quality),
+    )
+    .expect("full output selection should construct");
+
+    assert_eq!(
+        run_result.output_schema_metadata.schema_version,
+        VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION
+    );
+    assert!(run_result
+        .output_schema_metadata
+        .required_run_result_fields
+        .contains(&"response"));
+    assert!(run_result
+        .output_schema_metadata
+        .required_run_diagnostics_fields
+        .contains(&"integration_quality"));
+    assert!(run_result
+        .output_schema_metadata
+        .required_calibration_hooks_fields
+        .contains(&"forward_moneyness"));
+
+    let serialized_run_result =
+        serde_json::to_value(run_result).expect("run result should serialize");
+    assert_eq!(
+        serialized_run_result["schema_version"],
+        json!(VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION)
+    );
+    assert_eq!(
+        serialized_run_result["output_schema_metadata"]["schema_version"],
+        json!(VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION)
+    );
+    assert_eq!(
+        serialized_run_result["output_schema_metadata"]["required_run_result_fields"],
+        json!(run_result.output_schema_metadata.required_run_result_fields)
+    );
+    assert_eq!(
+        serialized_run_result["output_schema_metadata"]["required_run_diagnostics_fields"],
+        json!(
+            run_result
+                .output_schema_metadata
+                .required_run_diagnostics_fields
+        )
+    );
+    assert_eq!(
+        serialized_run_result["output_schema_metadata"]["required_calibration_hooks_fields"],
+        json!(
+            run_result
+                .output_schema_metadata
+                .required_calibration_hooks_fields
+        )
+    );
+}
+
+#[test]
+fn pricing_run_output_builder_reports_missing_selected_optional_sources() {
+    let market_inputs = build_reference_market_inputs();
+    let response = build_reference_pricing_response(market_inputs);
+
+    let missing_transform_error = build_vanilla_option_pricing_run_result(
+        response,
+        VanillaOptionPricingOptionalOutputSelection::new(true, false, false),
+        None,
+        None,
+        None,
+    )
+    .expect_err("transform diagnostics selection without source must fail");
+    assert!(matches!(
+        missing_transform_error,
+        VanillaOptionPricingRunResultBuildError::MissingTransformDiagnosticsSource
+    ));
+
+    let missing_integration_error = build_vanilla_option_pricing_run_result(
+        response,
+        VanillaOptionPricingOptionalOutputSelection::new(false, true, false),
+        None,
+        None,
+        None,
+    )
+    .expect_err("integration diagnostics selection without source must fail");
+    assert!(matches!(
+        missing_integration_error,
+        VanillaOptionPricingRunResultBuildError::MissingIntegrationQualityDiagnosticsSource
+    ));
+
+    let missing_market_inputs_error = build_vanilla_option_pricing_run_result(
+        response,
+        VanillaOptionPricingOptionalOutputSelection::new(false, false, true),
+        None,
+        None,
+        None,
+    )
+    .expect_err("calibration hooks selection without market inputs must fail");
+    assert!(matches!(
+        missing_market_inputs_error,
+        VanillaOptionPricingRunResultBuildError::MissingMarketInputsForCalibrationHooks
+    ));
+}
+
+#[test]
+fn calibration_hooks_reject_invalid_market_inputs_with_actionable_error() {
+    let response = build_reference_pricing_response(build_reference_market_inputs());
+    let invalid_market_inputs = VanillaOptionPricingMarketInputs::new(0.0, 100.0, 0.5, 0.02, 0.01);
+
+    let error = build_vanilla_option_pricing_run_result(
+        response,
+        VanillaOptionPricingOptionalOutputSelection::new(false, false, true),
+        Some(invalid_market_inputs),
+        None,
+        None,
+    )
+    .expect_err("invalid market inputs should fail calibration hook construction");
+
+    assert!(matches!(
+        error,
+        VanillaOptionPricingRunResultBuildError::InvalidCalibrationHooks {
+            source: VanillaOptionPricingCalibrationHooksError::InvalidMarketInputs {
+                source: VanillaOptionPricingMarketInputsError::InvalidSpot { value }
+            }
+        } if value == 0.0
+    ));
+}
