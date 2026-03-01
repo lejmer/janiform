@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 use std::fs;
 
 use chrono::{DateTime, Utc};
+use janiform_core::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
 use janiform_core::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
 use janiform_core::hourly_factors::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
@@ -1329,6 +1330,7 @@ fn build_run_config(
                 seasonality_factor,
                 news_intensity,
             ),
+            calendar_registry: build_seeded_simulation_calendar_registry(),
             known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
             known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
             surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
@@ -1403,6 +1405,71 @@ fn build_uniform_factor_contract(
             repeated_local_hour_interval_count: 0,
         },
     }
+}
+
+fn build_seeded_simulation_calendar_registry() -> ExchangeCalendarRegistry {
+    ExchangeCalendarRegistryLoader::load_from_json(
+        r#"
+        {
+          "schema_version": "calendar.registry.v1",
+          "artifact_date": "2026-01-31",
+          "exchanges": [
+            {
+              "schema_version": "calendar.v1",
+              "exchange_code": "XNYS",
+              "exchange_name": "New York Stock Exchange",
+              "timezone_name": "America/New_York",
+              "rule_metadata": {
+                "holiday_calendar_code": "US_EQUITIES",
+                "early_close_rule_set": "US_EQUITIES_EARLY_CLOSE"
+              },
+              "regular_sessions": [
+                {
+                  "weekday": "Monday",
+                  "windows": [
+                    {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                  ]
+                },
+                {
+                  "weekday": "Tuesday",
+                  "windows": [
+                    {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                  ]
+                },
+                {
+                  "weekday": "Wednesday",
+                  "windows": [
+                    {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                  ]
+                },
+                {
+                  "weekday": "Thursday",
+                  "windows": [
+                    {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                  ]
+                },
+                {
+                  "weekday": "Friday",
+                  "windows": [
+                    {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                  ]
+                }
+              ],
+              "holiday_dates": ["2024-12-25"],
+              "early_close_sessions": [
+                {
+                  "date": "2024-11-29",
+                  "windows": [
+                    {"label": "post_thanksgiving", "open_time": "09:30", "close_time": "13:00"}
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+        "#,
+    )
+    .expect("calendar registry fixture should load")
 }
 
 fn symmetric_kernel_parameters() -> HawkesKernelParameters {

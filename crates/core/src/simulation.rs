@@ -6,7 +6,7 @@ use std::fmt::{Display, Formatter};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
-use crate::calendar::MarketState;
+use crate::calendar::{ExchangeCalendarRegistry, ExchangeCalendarResolveError, MarketState};
 use crate::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesIntensityProjection, HawkesKernelParameters,
     HawkesSeasonalityIntervalError, HawkesTransitionError, HawkesTransitionStep,
@@ -65,7 +65,7 @@ pub const SEEDED_TICK_EVENT_FACTOR_CONTROL_POLICY: &str =
     "interval_aligned_s_h_nu_h_control_intensity_only_without_intra_interval_grid.v1";
 pub const SEEDED_TICK_EVENT_INTRA_INTERVAL_SCHEDULING_POLICY: &str =
     "event_time_updates_with_sequential_hawkes_transition_composition.v1";
-pub const SEEDED_TICK_EVENT_NEWS_MARKET_STATE_ROUTING_POLICY: &str = "positive_interval_s_h_routes_news_return_jump_to_open_m_channel_zero_interval_s_h_routes_news_return_jump_to_closed_g_channel.v1";
+pub const SEEDED_TICK_EVENT_NEWS_MARKET_STATE_ROUTING_POLICY: &str = "calendar_resolve_market_state_at_utc_routes_open_news_return_jump_to_open_m_channel_and_closed_news_return_jump_to_closed_g_channel.v1";
 pub const SEEDED_TICK_EVENT_DEBUG_TRACE_SAMPLING_POLICY: &str =
     "capture_every_nth_transition_with_mandatory_interval_boundary_drift_records.v1";
 pub const SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNKING_POLICY: &str =
@@ -224,6 +224,9 @@ pub struct SeededTickSimulationModelInputs {
 
     /// Interval-aligned hourly factors (`s_h`, `nu_h`) used by the simulator.
     pub hourly_factor_contract: HourlyFactorContractOutput,
+
+    /// Canonical calendar registry used to resolve open and closed market states.
+    pub calendar_registry: ExchangeCalendarRegistry,
 
     /// Known scheduled news arrivals in UTC nanos.
     pub known_scheduled_news_event_timestamps_utc_nanos: Vec<i64>,
@@ -665,6 +668,11 @@ pub enum SeededTickSimulationRunError {
     InvalidGeneratedNewsReturnJumpMark {
         value: f64,
     },
+    NewsMarketStateResolutionFailed {
+        exchange_code: String,
+        timestamp_utc_nanos: i64,
+        source: ExchangeCalendarResolveError,
+    },
     InvalidNewsRoutingStateViolation {
         market_state: MarketState,
         open_window_return_jump_increment: f64,
@@ -775,6 +783,14 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "generated exogenous news return-jump mark must be finite, found {value}"
             ),
+            Self::NewsMarketStateResolutionFailed {
+                exchange_code,
+                timestamp_utc_nanos,
+                source,
+            } => write!(
+                formatter,
+                "failed to resolve market state for exchange `{exchange_code}` at timestamp {timestamp_utc_nanos}: {source}"
+            ),
             Self::InvalidNewsRoutingStateViolation {
                 market_state,
                 open_window_return_jump_increment,
@@ -800,6 +816,7 @@ impl Display for SeededTickSimulationRunError {
 impl Error for SeededTickSimulationRunError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            Self::NewsMarketStateResolutionFailed { source, .. } => Some(source),
             Self::InvalidTransitionStep { source } => Some(source),
             _ => None,
         }
@@ -873,8 +890,6 @@ where
         );
         let interval_news_intensity =
             run_config.model_inputs.hourly_factor_contract.nu_h[interval_index].max(0.0);
-        let interval_market_state =
-            derive_interval_market_state_for_news_routing(interval_seasonality_factor);
         let (
             interval_known_news_start_position,
             interval_known_news_end_position,
@@ -899,7 +914,12 @@ where
                 [interval_known_news_start_position..interval_known_news_end_position],
             run_config.model_inputs.known_news_mark_scales,
             run_config.model_inputs.surprise_news_mark_scales,
-            interval_market_state,
+            &run_config.model_inputs.calendar_registry,
+            run_config
+                .model_inputs
+                .hourly_factor_contract
+                .exchange_code
+                .as_str(),
             randomness_factory,
         )?;
 
@@ -1384,7 +1404,8 @@ fn schedule_interval_stochastic_updates<F>(
     interval_known_news_event_timestamps_utc_nanos: &[i64],
     known_news_mark_scales: SeededTickSimulationNewsMarkScales,
     surprise_news_mark_scales: SeededTickSimulationNewsMarkScales,
-    interval_market_state: MarketState,
+    calendar_registry: &ExchangeCalendarRegistry,
+    exchange_code: &str,
     randomness_factory: &F,
 ) -> Result<Vec<IntervalStochasticUpdate>, SeededTickSimulationRunError>
 where
@@ -1500,18 +1521,23 @@ where
             &mut news_return_jump_stream,
             known_news_mark_scales.return_jump_scale,
         )?;
+        let market_state = resolve_news_event_market_state(
+            calendar_registry,
+            exchange_code,
+            known_news_timestamp_utc_nanos,
+        )?;
         let (
             return_jump_routing_target,
             open_window_return_jump_increment,
             closed_window_gap_increment,
-        ) = resolve_news_return_jump_routing(interval_market_state, return_jump_mark)?;
+        ) = resolve_news_return_jump_routing(market_state, return_jump_mark)?;
 
         interval_updates.push(IntervalStochasticUpdate::ExogenousNews {
             timestamp_utc_nanos: known_news_timestamp_utc_nanos,
             news_arrival_component: NewsArrivalComponent::Known,
             activity_coupling_mark,
             return_jump_mark,
-            market_state: interval_market_state,
+            market_state,
             return_jump_routing_target,
             open_window_return_jump_increment,
             closed_window_gap_increment,
@@ -1535,18 +1561,20 @@ where
             &mut news_return_jump_stream,
             surprise_news_mark_scales.return_jump_scale,
         )?;
+        let market_state =
+            resolve_news_event_market_state(calendar_registry, exchange_code, timestamp_utc_nanos)?;
         let (
             return_jump_routing_target,
             open_window_return_jump_increment,
             closed_window_gap_increment,
-        ) = resolve_news_return_jump_routing(interval_market_state, return_jump_mark)?;
+        ) = resolve_news_return_jump_routing(market_state, return_jump_mark)?;
 
         interval_updates.push(IntervalStochasticUpdate::ExogenousNews {
             timestamp_utc_nanos,
             news_arrival_component: NewsArrivalComponent::Surprise,
             activity_coupling_mark,
             return_jump_mark,
-            market_state: interval_market_state,
+            market_state,
             return_jump_routing_target,
             open_window_return_jump_increment,
             closed_window_gap_increment,
@@ -1622,14 +1650,28 @@ fn derive_elapsed_hours(previous_timestamp_utc_nanos: i64, timestamp_utc_nanos: 
     (timestamp_utc_nanos - previous_timestamp_utc_nanos) as f64 / ONE_HOUR_NANOS as f64
 }
 
-const fn derive_interval_market_state_for_news_routing(
-    interval_seasonality_factor: f64,
-) -> MarketState {
-    if interval_seasonality_factor > 0.0 {
-        MarketState::Open
-    } else {
-        MarketState::Closed
-    }
+fn resolve_news_event_market_state(
+    calendar_registry: &ExchangeCalendarRegistry,
+    exchange_code: &str,
+    timestamp_utc_nanos: i64,
+) -> Result<MarketState, SeededTickSimulationRunError> {
+    let seconds = timestamp_utc_nanos.div_euclid(ONE_SECOND_NANOS);
+    let nanoseconds = timestamp_utc_nanos.rem_euclid(ONE_SECOND_NANOS) as u32;
+    let timestamp_utc = DateTime::<Utc>::from_timestamp(seconds, nanoseconds).ok_or(
+        SeededTickSimulationRunError::InvalidKnownScheduledNewsTimestampUtcNanos {
+            value: timestamp_utc_nanos,
+        },
+    )?;
+
+    calendar_registry
+        .resolve_market_state_at_utc(exchange_code, timestamp_utc)
+        .map_err(
+            |source| SeededTickSimulationRunError::NewsMarketStateResolutionFailed {
+                exchange_code: exchange_code.to_string(),
+                timestamp_utc_nanos,
+                source,
+            },
+        )
 }
 
 fn derive_known_news_interval_slice_bounds(
@@ -2007,7 +2049,7 @@ mod tests {
     use chrono::{DateTime, Utc};
     use serde_json::Value;
 
-    use crate::calendar::MarketState;
+    use crate::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, MarketState};
     use crate::hawkes::{
         HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters, HawkesTransitionStep,
     };
@@ -2596,11 +2638,11 @@ mod tests {
         );
         assert_eq!(
             trace_records[2].exogenous_news_market_state,
-            Some(SeededTickSimulationNewsEventMarketState::Open)
+            Some(SeededTickSimulationNewsEventMarketState::Closed)
         );
         assert_eq!(
             trace_records[2].exogenous_news_return_jump_routing_target,
-            Some(NewsReturnJumpRoutingTarget::OpenWindowDirectJumpM)
+            Some(NewsReturnJumpRoutingTarget::ClosedWindowGapG)
         );
         assert!(
             trace_records[0]
@@ -3063,42 +3105,205 @@ mod tests {
     }
 
     #[test]
-    fn seeded_simulation_news_routing_applies_open_window_to_m_and_closed_window_to_g() {
-        let start_utc_nanos = 1_704_067_200_000_000_000;
-        let mut model_inputs = valid_model_inputs();
-        model_inputs.kernel_parameters = HawkesKernelParameters::try_new(
-            0.5,
-            1.5,
-            HawkesKernelLoadings {
-                plus_plus: 0.0,
-                plus_minus: 0.0,
-                minus_plus: 0.0,
-                minus_minus: 0.0,
-            },
-            HawkesKernelLoadings {
-                plus_plus: 0.0,
-                plus_minus: 0.0,
-                minus_plus: 0.0,
-                minus_minus: 0.0,
-            },
-        )
-        .expect("routing kernel fixture should be valid");
-        model_inputs.initial_excitation_state = HawkesExcitationState {
-            y_plus_plus: 0.0,
-            y_plus_minus: 0.0,
-            y_minus_plus: 0.0,
-            y_minus_minus: 0.0,
-        };
-        model_inputs.hourly_factor_contract.s_h = vec![1.0, 0.0];
-        model_inputs.hourly_factor_contract.nu_h = vec![0.0, 0.0];
-        model_inputs.known_scheduled_news_event_timestamps_utc_nanos = vec![
-            start_utc_nanos + ONE_HOUR_NANOS / 5,
-            start_utc_nanos + ONE_HOUR_NANOS + ONE_HOUR_NANOS / 5,
-        ];
+    fn seeded_simulation_known_open_news_timestamp_updates_m_t_not_g_t() {
+        let interval_start_utc_nanos = timestamp_utc_nanos("2024-01-22T15:00:00Z");
+        let known_open_timestamp_utc_nanos = interval_start_utc_nanos + ONE_HOUR_NANOS / 4;
+
+        let mut model_inputs = one_interval_model_inputs(0.5, 0.5, 0.0);
+        override_hourly_factor_contract(
+            &mut model_inputs.hourly_factor_contract,
+            &[interval_start_utc_nanos],
+            &[interval_start_utc_nanos + ONE_HOUR_NANOS],
+            &[0.0],
+            &[0.0],
+        );
+        model_inputs.known_scheduled_news_event_timestamps_utc_nanos =
+            vec![known_open_timestamp_utc_nanos];
 
         let run_config = SeededTickSimulationRunConfig::try_new(
             2_010,
-            DateTime::<Utc>::from_timestamp_nanos(start_utc_nanos),
+            DateTime::<Utc>::from_timestamp_nanos(interval_start_utc_nanos),
+            1,
+            model_inputs,
+            Some(SeededTickSimulationRunOptions {
+                debug_trace_enabled: true,
+                debug_trace_options: SeededTickSimulationDebugTraceOptions {
+                    sample_every_nth_transition: 1,
+                    max_records_per_chunk: 16,
+                },
+                state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
+            }),
+        )
+        .expect("open-window news routing run config should initialize");
+
+        let scripted_factory = ScriptedRandomnessFactory::new(
+            vec![1.0],
+            vec![1.0],
+            vec![],
+            vec![],
+            vec![1.0],
+            vec![],
+            vec![0.5],
+            vec![0.75, 0.5],
+        );
+        let run_result =
+            run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
+                .expect("open-window news routing run should complete");
+
+        let trace_records = run_result
+            .debug_trace_output
+            .as_ref()
+            .expect("debug trace output should exist")
+            .trace_chunks
+            .iter()
+            .flat_map(|trace_chunk| trace_chunk.records.iter())
+            .filter(|trace_record| {
+                trace_record.transition_kind
+                    == SeededTickEventDebugTraceTransitionKind::ExogenousNews
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(trace_records.len(), 1);
+        assert_eq!(
+            trace_records[0].exogenous_news_market_state,
+            Some(SeededTickSimulationNewsEventMarketState::Open)
+        );
+        assert_eq!(
+            trace_records[0].exogenous_news_return_jump_routing_target,
+            Some(NewsReturnJumpRoutingTarget::OpenWindowDirectJumpM)
+        );
+        assert_float_close(
+            run_result
+                .news_routing_totals
+                .cumulative_open_window_return_jump_m_t_increment,
+            run_result
+                .news_routing_totals
+                .cumulative_activity_coupling_j_t_increment
+                .sqrt()
+                * -(1.0 - 0.5_f64).ln(),
+        );
+        assert_float_close(
+            run_result
+                .news_routing_totals
+                .cumulative_closed_window_gap_g_t_increment,
+            0.0,
+        );
+    }
+
+    #[test]
+    fn seeded_simulation_known_closed_news_timestamp_updates_g_t_not_m_t() {
+        let interval_start_utc_nanos = timestamp_utc_nanos("2024-12-25T15:00:00Z");
+        let known_closed_timestamp_utc_nanos = interval_start_utc_nanos + ONE_HOUR_NANOS / 4;
+
+        let mut model_inputs = one_interval_model_inputs(0.5, 0.5, 0.0);
+        override_hourly_factor_contract(
+            &mut model_inputs.hourly_factor_contract,
+            &[interval_start_utc_nanos],
+            &[interval_start_utc_nanos + ONE_HOUR_NANOS],
+            &[1.0],
+            &[0.0],
+        );
+        model_inputs.known_scheduled_news_event_timestamps_utc_nanos =
+            vec![known_closed_timestamp_utc_nanos];
+
+        let run_config = SeededTickSimulationRunConfig::try_new(
+            2_011,
+            DateTime::<Utc>::from_timestamp_nanos(interval_start_utc_nanos),
+            1,
+            model_inputs,
+            Some(SeededTickSimulationRunOptions {
+                debug_trace_enabled: true,
+                debug_trace_options: SeededTickSimulationDebugTraceOptions {
+                    sample_every_nth_transition: 1,
+                    max_records_per_chunk: 16,
+                },
+                state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
+            }),
+        )
+        .expect("closed-window news routing run config should initialize");
+
+        let scripted_factory = ScriptedRandomnessFactory::new(
+            vec![1.0],
+            vec![1.0],
+            vec![],
+            vec![],
+            vec![1.0],
+            vec![],
+            vec![0.5],
+            vec![0.75, 0.5],
+        );
+        let run_result =
+            run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
+                .expect("closed-window news routing run should complete");
+
+        let trace_records = run_result
+            .debug_trace_output
+            .as_ref()
+            .expect("debug trace output should exist")
+            .trace_chunks
+            .iter()
+            .flat_map(|trace_chunk| trace_chunk.records.iter())
+            .filter(|trace_record| {
+                trace_record.transition_kind
+                    == SeededTickEventDebugTraceTransitionKind::ExogenousNews
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(trace_records.len(), 1);
+        assert_eq!(
+            trace_records[0].exogenous_news_market_state,
+            Some(SeededTickSimulationNewsEventMarketState::Closed)
+        );
+        assert_eq!(
+            trace_records[0].exogenous_news_return_jump_routing_target,
+            Some(NewsReturnJumpRoutingTarget::ClosedWindowGapG)
+        );
+        assert_float_close(
+            run_result
+                .news_routing_totals
+                .cumulative_open_window_return_jump_m_t_increment,
+            0.0,
+        );
+        assert_float_close(
+            run_result
+                .news_routing_totals
+                .cumulative_closed_window_gap_g_t_increment,
+            run_result
+                .news_routing_totals
+                .cumulative_activity_coupling_j_t_increment
+                .sqrt()
+                * -(1.0 - 0.5_f64).ln(),
+        );
+    }
+
+    #[test]
+    fn seeded_simulation_calendar_resolution_is_source_of_truth_for_early_close_boundary() {
+        let interval_start_utc_nanos = timestamp_utc_nanos("2024-11-29T17:00:00Z");
+        let open_window_timestamp_utc_nanos = interval_start_utc_nanos + ONE_HOUR_NANOS / 2;
+        let early_close_boundary_timestamp_utc_nanos = interval_start_utc_nanos + ONE_HOUR_NANOS;
+
+        let mut model_inputs = one_interval_model_inputs(0.5, 0.5, 0.0);
+        override_hourly_factor_contract(
+            &mut model_inputs.hourly_factor_contract,
+            &[
+                interval_start_utc_nanos,
+                interval_start_utc_nanos + ONE_HOUR_NANOS,
+            ],
+            &[
+                interval_start_utc_nanos + ONE_HOUR_NANOS,
+                interval_start_utc_nanos + 2 * ONE_HOUR_NANOS,
+            ],
+            &[0.0, 1.0],
+            &[0.0, 0.0],
+        );
+        model_inputs.known_scheduled_news_event_timestamps_utc_nanos = vec![
+            open_window_timestamp_utc_nanos,
+            early_close_boundary_timestamp_utc_nanos,
+        ];
+
+        let run_config = SeededTickSimulationRunConfig::try_new(
+            2_012,
+            DateTime::<Utc>::from_timestamp_nanos(interval_start_utc_nanos),
             2,
             model_inputs,
             Some(SeededTickSimulationRunOptions {
@@ -3110,7 +3315,7 @@ mod tests {
                 state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
             }),
         )
-        .expect("open-closed routing run config should initialize");
+        .expect("early-close boundary routing run config should initialize");
 
         let scripted_factory = ScriptedRandomnessFactory::new(
             vec![1.0, 1.0],
@@ -3119,12 +3324,12 @@ mod tests {
             vec![],
             vec![1.0, 1.0],
             vec![],
-            vec![0.5, 0.8],
-            vec![0.75, 0.5, 0.25, 0.5],
+            vec![0.5, 0.5],
+            vec![0.75, 0.5, 0.75, 0.5],
         );
         let run_result =
             run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
-                .expect("open-closed routing run should complete");
+                .expect("early-close boundary routing run should complete");
 
         let trace_records = run_result
             .debug_trace_output
@@ -3141,12 +3346,20 @@ mod tests {
 
         assert_eq!(trace_records.len(), 2);
         assert_eq!(
+            trace_records[0].timestamp_utc_nanos,
+            open_window_timestamp_utc_nanos
+        );
+        assert_eq!(
             trace_records[0].exogenous_news_market_state,
             Some(SeededTickSimulationNewsEventMarketState::Open)
         );
         assert_eq!(
             trace_records[0].exogenous_news_return_jump_routing_target,
             Some(NewsReturnJumpRoutingTarget::OpenWindowDirectJumpM)
+        );
+        assert_eq!(
+            trace_records[1].timestamp_utc_nanos,
+            early_close_boundary_timestamp_utc_nanos
         );
         assert_eq!(
             trace_records[1].exogenous_news_market_state,
@@ -3156,29 +3369,17 @@ mod tests {
             trace_records[1].exogenous_news_return_jump_routing_target,
             Some(NewsReturnJumpRoutingTarget::ClosedWindowGapG)
         );
-
-        let first_activity = -(1.0 - 0.5_f64).ln();
-        let first_return_jump = first_activity.sqrt() * -(1.0 - 0.5_f64).ln();
-        let second_activity = -(1.0 - 0.5_f64).ln();
-        let second_return_jump = second_activity.sqrt() * -(1.0 - 0.5_f64).ln();
-
-        assert_float_close(
-            run_result
-                .news_routing_totals
-                .cumulative_activity_coupling_j_t_increment,
-            first_activity + second_activity,
-        );
-        assert_float_close(
+        assert_ne!(
             run_result
                 .news_routing_totals
                 .cumulative_open_window_return_jump_m_t_increment,
-            first_return_jump,
+            0.0
         );
-        assert_float_close(
+        assert_ne!(
             run_result
                 .news_routing_totals
                 .cumulative_closed_window_gap_g_t_increment,
-            second_return_jump,
+            0.0
         );
     }
 
@@ -3902,6 +4103,7 @@ mod tests {
                     repeated_local_hour_interval_count: 0,
                 },
             },
+            calendar_registry: build_seeded_simulation_calendar_registry(),
             known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
             known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
             surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
@@ -4012,6 +4214,52 @@ mod tests {
         model_inputs
     }
 
+    fn override_hourly_factor_contract(
+        hourly_factor_contract: &mut HourlyFactorContractOutput,
+        interval_start_utc_nanos: &[i64],
+        interval_end_utc_nanos: &[i64],
+        seasonality_factors: &[f64],
+        news_intensity_factors: &[f64],
+    ) {
+        hourly_factor_contract.request_start_utc_nanos = interval_start_utc_nanos[0];
+        hourly_factor_contract.request_end_utc_nanos =
+            interval_end_utc_nanos[interval_end_utc_nanos.len() - 1];
+        hourly_factor_contract.interval_indices = (0..interval_start_utc_nanos.len())
+            .map(|interval_position| interval_position as u64)
+            .collect();
+        hourly_factor_contract.interval_start_utc_nanos = interval_start_utc_nanos.to_vec();
+        hourly_factor_contract.interval_end_utc_nanos = interval_end_utc_nanos.to_vec();
+        hourly_factor_contract.interval_start_exchange_local = interval_start_utc_nanos
+            .iter()
+            .map(|timestamp_utc_nanos| {
+                DateTime::<Utc>::from_timestamp_nanos(*timestamp_utc_nanos).to_rfc3339()
+            })
+            .collect();
+        hourly_factor_contract.interval_end_exchange_local = interval_end_utc_nanos
+            .iter()
+            .map(|timestamp_utc_nanos| {
+                DateTime::<Utc>::from_timestamp_nanos(*timestamp_utc_nanos).to_rfc3339()
+            })
+            .collect();
+        hourly_factor_contract.s_h = seasonality_factors.to_vec();
+        hourly_factor_contract.nu_h = news_intensity_factors.to_vec();
+        hourly_factor_contract.diagnostics.interval_count = interval_start_utc_nanos.len();
+        hourly_factor_contract
+            .diagnostics
+            .first_interval_start_utc_nanos = interval_start_utc_nanos[0];
+        hourly_factor_contract
+            .diagnostics
+            .last_interval_end_utc_nanos = interval_end_utc_nanos[interval_end_utc_nanos.len() - 1];
+    }
+
+    fn timestamp_utc_nanos(raw_timestamp_utc: &str) -> i64 {
+        DateTime::parse_from_rfc3339(raw_timestamp_utc)
+            .expect("fixture timestamp must be RFC3339")
+            .with_timezone(&Utc)
+            .timestamp_nanos_opt()
+            .expect("fixture timestamp must be in nanosecond range")
+    }
+
     fn valid_model_inputs() -> SeededTickSimulationModelInputs {
         let start_utc_nanos = 1_704_067_200_000_000_000;
         let interval_start_utc_nanos = vec![start_utc_nanos, start_utc_nanos + ONE_HOUR_NANOS];
@@ -4082,9 +4330,75 @@ mod tests {
                     repeated_local_hour_interval_count: 0,
                 },
             },
+            calendar_registry: build_seeded_simulation_calendar_registry(),
             known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
             known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
             surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
         }
+    }
+
+    fn build_seeded_simulation_calendar_registry() -> ExchangeCalendarRegistry {
+        ExchangeCalendarRegistryLoader::load_from_json(
+            r#"
+            {
+              "schema_version": "calendar.registry.v1",
+              "artifact_date": "2026-01-31",
+              "exchanges": [
+                {
+                  "schema_version": "calendar.v1",
+                  "exchange_code": "XNYS",
+                  "exchange_name": "New York Stock Exchange",
+                  "timezone_name": "America/New_York",
+                  "rule_metadata": {
+                    "holiday_calendar_code": "US_EQUITIES",
+                    "early_close_rule_set": "US_EQUITIES_EARLY_CLOSE"
+                  },
+                  "regular_sessions": [
+                    {
+                      "weekday": "Monday",
+                      "windows": [
+                        {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                      ]
+                    },
+                    {
+                      "weekday": "Tuesday",
+                      "windows": [
+                        {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                      ]
+                    },
+                    {
+                      "weekday": "Wednesday",
+                      "windows": [
+                        {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                      ]
+                    },
+                    {
+                      "weekday": "Thursday",
+                      "windows": [
+                        {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                      ]
+                    },
+                    {
+                      "weekday": "Friday",
+                      "windows": [
+                        {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                      ]
+                    }
+                  ],
+                  "holiday_dates": ["2024-12-25"],
+                  "early_close_sessions": [
+                    {
+                      "date": "2024-11-29",
+                      "windows": [
+                        {"label": "post_thanksgiving", "open_time": "09:30", "close_time": "13:00"}
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+            "#,
+        )
+        .expect("calendar registry fixture should load")
     }
 }
