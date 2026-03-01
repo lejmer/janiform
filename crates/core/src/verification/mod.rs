@@ -7,6 +7,7 @@ mod deterministic_regression;
 mod open_closed_gap_leakage;
 mod performance_baseline;
 mod regression_drift_attribution;
+mod stylized_fact_metric_catalog;
 mod sufficient_statistics;
 
 pub use affine_oracle_method_comparison::*;
@@ -16,4 +17,5 @@ pub use deterministic_regression::*;
 pub use open_closed_gap_leakage::*;
 pub use performance_baseline::*;
 pub use regression_drift_attribution::*;
+pub use stylized_fact_metric_catalog::*;
 pub use sufficient_statistics::*;
