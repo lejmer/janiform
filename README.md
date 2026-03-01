@@ -1,6 +1,6 @@
 # Janiform
 
-Janiform is a calibrator and generator of a new affine Hawkes–NIG model with coupled news gaps. The Rust core provides the computation engine. The Python package exposes an importable API and CLI via PyO3 bindings.
+Janiform is a compact high-frequency asset return model that combines seasonal asymmetric Hawkes trade activity with NIG business-time shocks and marked news jumps (including closed-market gap effects). The Rust core provides the computation engine. The Python package exposes an importable API and CLI via PyO3 bindings.
 
 The name *Janiform* comes from the Roman god *Janus* who is a god with two faces (one looking forward, one backward). Janus is also the god of transitions and duality. Asymmetry is built into the model:
 - Two Lévy clocks
