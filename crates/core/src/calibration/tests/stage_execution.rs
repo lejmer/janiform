@@ -498,26 +498,36 @@ fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_hando
         assert!(term_ids.contains(&"open_jump_fit"));
         assert!(term_ids.contains(&"closed_gap_fit"));
         assert!(term_ids.contains(&"activity_coupling_fit"));
-        assert!(!candidate_diagnostic
-            .candidate_provenance
-            .source_windows
-            .is_empty());
-        assert!(!candidate_diagnostic
-            .candidate_provenance
-            .preprocessing_filters
-            .is_empty());
-        assert!(candidate_diagnostic
-            .objective_metric_buckets
-            .open_jump_fit
-            .is_finite());
-        assert!(candidate_diagnostic
-            .objective_metric_buckets
-            .closed_gap_fit
-            .is_finite());
-        assert!(candidate_diagnostic
-            .objective_metric_buckets
-            .activity_coupling_fit
-            .is_finite());
+        assert!(
+            !candidate_diagnostic
+                .candidate_provenance
+                .source_windows
+                .is_empty()
+        );
+        assert!(
+            !candidate_diagnostic
+                .candidate_provenance
+                .preprocessing_filters
+                .is_empty()
+        );
+        assert!(
+            candidate_diagnostic
+                .objective_metric_buckets
+                .open_jump_fit
+                .is_finite()
+        );
+        assert!(
+            candidate_diagnostic
+                .objective_metric_buckets
+                .closed_gap_fit
+                .is_finite()
+        );
+        assert!(
+            candidate_diagnostic
+                .objective_metric_buckets
+                .activity_coupling_fit
+                .is_finite()
+        );
     }
 }
 

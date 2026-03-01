@@ -9,17 +9,19 @@ pub(super) use crate::calendar::{
     ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, TimestampEventInputRecord,
 };
 pub(super) use crate::calibration::{
-    build_option_surface_calibration_observation_from_pricing_hooks,
-    calibration_checkpoint_reference_for_stage, calibration_last_success_checkpoint_reference,
-    compose_calibration_weighted_objective, default_calibration_execution_mode_for_surface,
-    derive_calibration_stage_seed_from_global_seed,
-    evaluate_calibration_martingale_condition_under_esscher_tilt,
-    precheck_hawkes_kernel_parameter_domain, precheck_structured_hawkes_kernel_parameter_domain,
-    resolve_calibration_execution_mode_for_surface, resolve_calibration_stage_execution_order,
-    resolve_calibration_stage_seed_metadata, run_constrained_optimizer_adapter,
-    run_hawkes_calibration_stage, run_return_components_calibration_stage,
-    run_seasonality_calibration_stage, run_staged_calibration_with_checkpointing,
-    transform_nig_exponent_for_calibration_under_esscher_tilt, CalibrationCallerSurface,
+    CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION,
+    CALIBRATION_CONSTRAINED_OPTIMIZER_ADAPTER_RUN_SCHEMA_VERSION,
+    CALIBRATION_DISK_CHECKPOINT_WRITE_POLICY, CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY,
+    CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
+    CALIBRATION_OBJECTIVE_COMPOSITION_SCHEMA_VERSION,
+    CALIBRATION_RETURN_COMPONENTS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
+    CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION, CALIBRATION_RUN_SPEC_SCHEMA_VERSION,
+    CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION,
+    CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
+    CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY, CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY,
+    CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION, CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION,
+    CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY,
+    CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION, CalibrationCallerSurface,
     CalibrationExecutionMode, CalibrationMemoryCheckpointStore, CalibrationObjectiveTermInput,
     CalibrationOptimizerAdapterCandidateInput, CalibrationOptimizerAdapterConfiguration,
     CalibrationOptimizerAdapterError, CalibrationOptimizerCandidateParameterValue,
@@ -38,24 +40,23 @@ pub(super) use crate::calibration::{
     ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageExecutionFailure,
     ReturnComponentsStageExecutionInput, ReturnComponentsStageObjectiveMetricWeights,
     ReturnComponentsStageSignalSourceWindow, SeasonalityStageExecutionFailure,
-    SeasonalityStageExecutionInput, CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION,
-    CALIBRATION_CONSTRAINED_OPTIMIZER_ADAPTER_RUN_SCHEMA_VERSION,
-    CALIBRATION_DISK_CHECKPOINT_WRITE_POLICY, CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY,
-    CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
-    CALIBRATION_OBJECTIVE_COMPOSITION_SCHEMA_VERSION,
-    CALIBRATION_RETURN_COMPONENTS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
-    CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION, CALIBRATION_RUN_SPEC_SCHEMA_VERSION,
-    CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION,
-    CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
-    CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY, CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY,
-    CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION, CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY,
-    CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION, CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION,
-    CALIBRATION_STAGE_SEED_DERIVATION_POLICY,
+    SeasonalityStageExecutionInput,
+    build_option_surface_calibration_observation_from_pricing_hooks,
+    calibration_checkpoint_reference_for_stage, calibration_last_success_checkpoint_reference,
+    compose_calibration_weighted_objective, default_calibration_execution_mode_for_surface,
+    derive_calibration_stage_seed_from_global_seed,
+    evaluate_calibration_martingale_condition_under_esscher_tilt,
+    precheck_hawkes_kernel_parameter_domain, precheck_structured_hawkes_kernel_parameter_domain,
+    resolve_calibration_execution_mode_for_surface, resolve_calibration_stage_execution_order,
+    resolve_calibration_stage_seed_metadata, run_constrained_optimizer_adapter,
+    run_hawkes_calibration_stage, run_return_components_calibration_stage,
+    run_seasonality_calibration_stage, run_staged_calibration_with_checkpointing,
+    transform_nig_exponent_for_calibration_under_esscher_tilt,
 };
 pub(super) use crate::hawkes::{
-    HawkesKernelLoadings, HawkesKernelValidationStatus, HawkesStructuredAlphaParameterization,
+    HAWKES_KERNEL_PARAMETER_VALIDATION_REPORT_SCHEMA_VERSION, HawkesKernelLoadings,
+    HawkesKernelValidationStatus, HawkesStructuredAlphaParameterization,
     HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
-    HAWKES_KERNEL_PARAMETER_VALIDATION_REPORT_SCHEMA_VERSION,
 };
 pub(super) use crate::news::{
     CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
@@ -99,8 +100,8 @@ pub(super) fn build_solver_settings() -> CalibrationOptimizerSettings {
         .expect("solver settings should validate")
 }
 
-pub(super) fn build_solver_settings_for_seasonality_and_hawkes(
-) -> Vec<CalibrationStageSolverSettings> {
+pub(super) fn build_solver_settings_for_seasonality_and_hawkes()
+-> Vec<CalibrationStageSolverSettings> {
     vec![
         CalibrationStageSolverSettings {
             stage: CalibrationStage::Seasonality,
@@ -376,8 +377,8 @@ pub(super) fn build_return_components_stage_standalone_run_spec(
     .expect("standalone return-components run spec should validate")
 }
 
-pub(super) fn build_seasonality_stage_success_payload(
-) -> crate::calibration::SeasonalityStageNormalizedPayload {
+pub(super) fn build_seasonality_stage_success_payload()
+-> crate::calibration::SeasonalityStageNormalizedPayload {
     let calendar_registry = calibration_stage_test_registry();
     let report = run_seasonality_calibration_stage(
         &build_seasonality_stage_run_spec(CalibrationExecutionMode::Memory),
@@ -471,8 +472,8 @@ pub(super) fn hawkes_stage_constraint_violating_candidate_fixture() -> HawkesSta
     }
 }
 
-pub(super) fn return_components_stage_candidate_generation_fixture(
-) -> ReturnComponentsStageCandidateGenerationInput {
+pub(super) fn return_components_stage_candidate_generation_fixture()
+-> ReturnComponentsStageCandidateGenerationInput {
     let source_window = ReturnComponentsStageSignalSourceWindow {
         window_start_utc_nanos: utc_nanos(2026, 2, 2, 13, 0, 0),
         window_end_utc_nanos: utc_nanos(2026, 2, 5, 0, 0, 0),

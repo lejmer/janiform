@@ -876,10 +876,7 @@ fn map_hourly_factor_provider_error(error: HourlyFactorProviderError) -> PyErr {
 }
 
 pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_function(wrap_pyfunction!(
-        build_hourly_factor_contract,
-        module
-    )?)?;
+    module.add_function(wrap_pyfunction!(build_hourly_factor_contract, module)?)?;
     module.add_function(wrap_pyfunction!(
         materialize_hourly_seasonality_factors,
         module
@@ -888,10 +885,7 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
         materialize_hourly_news_intensity_factors,
         module
     )?)?;
-    module.add_function(wrap_pyfunction!(
-        provide_hourly_factor_contract,
-        module
-    )?)?;
+    module.add_function(wrap_pyfunction!(provide_hourly_factor_contract, module)?)?;
 
     Ok(())
 }

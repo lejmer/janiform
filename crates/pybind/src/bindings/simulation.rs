@@ -244,9 +244,6 @@ fn map_seeded_tick_simulation_run_error(
 }
 
 pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_function(wrap_pyfunction!(
-        run_seeded_tick_event_simulation,
-        module
-    )?)?;
+    module.add_function(wrap_pyfunction!(run_seeded_tick_event_simulation, module)?)?;
     Ok(())
 }

@@ -657,14 +657,18 @@ fn staged_runner_resume_from_last_and_selected_stage_work_in_disk_mode() {
         CalibrationStageExecutionStatus::Failure
     );
     assert_eq!(initial_report.emitted_checkpoints.len(), 2);
-    assert!(checkpoint_directory
-        .join(run_id)
-        .join("hawkes.checkpoint.json")
-        .exists());
-    assert!(checkpoint_directory
-        .join(run_id)
-        .join("last-success.checkpoint.json")
-        .exists());
+    assert!(
+        checkpoint_directory
+            .join(run_id)
+            .join("hawkes.checkpoint.json")
+            .exists()
+    );
+    assert!(
+        checkpoint_directory
+            .join(run_id)
+            .join("last-success.checkpoint.json")
+            .exists()
+    );
 
     let resume_from_last_contract = build_run_contract_with_mode_and_resume(
         run_id,
