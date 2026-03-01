@@ -1,9 +1,4 @@
 use chrono::{DateTime, Utc};
-use janiform_core::hourly_factor_provider::{
-    HourlyFactorProviderError, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
-    HourlySeasonalityFactorSource,
-    provide_hourly_factor_contract as provide_hourly_factor_contract_core,
-};
 use janiform_core::hourly_factors::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_SEASONALITY_AGGREGATION_METHOD,
     DEFAULT_SEASONALITY_INTERPOLATION_METHOD, DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY,
@@ -11,6 +6,11 @@ use janiform_core::hourly_factors::{
     build_hourly_factor_contract as build_hourly_factor_contract_core,
     materialize_hourly_news_intensity_factors as materialize_hourly_news_intensity_factors_core,
     materialize_hourly_seasonality_factors as materialize_hourly_seasonality_factors_core,
+};
+use janiform_core::hourly_factors::{
+    HourlyFactorProviderError, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
+    HourlySeasonalityFactorSource,
+    provide_hourly_factor_contract as provide_hourly_factor_contract_core,
 };
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyMapping, PyModule};

@@ -2329,7 +2329,7 @@ fn validate_hourly_factor_interval_coverage(
 }
 
 /// Resolve interval-aligned hourly factors for the simulation path.
-pub use crate::hourly_factor_provider::provide_hourly_factor_contract as load_hourly_factor_contract;
+pub use crate::hourly_factors::provide_hourly_factor_contract as load_hourly_factor_contract;
 
 /// Project state to interval intensities for the fine-scale simulation path.
 pub fn project_hawkes_intensities_simulation_interval(

@@ -197,7 +197,7 @@ downstream engines.
 
 ## Shared Hourly Factor Provider Integration
 
-Use `provide_hourly_factor_contract(...)` from `janiform_core::hourly_factor_provider` as the
+Use `provide_hourly_factor_contract(...)` from `janiform_core::hourly_factors` as the
 single integration point for hourly factor delivery.
 
 - Provider API behavior:
@@ -206,7 +206,7 @@ single integration point for hourly factor delivery.
   - returns canonical interval-aligned `s_h` and `nu_h` contract output
   - returns structured provider errors for missing inputs and unsupported ranges
 - Downstream engine usage:
-  - canonical call: `janiform_core::hourly_factor_provider::provide_hourly_factor_contract(...)`
+  - canonical call: `janiform_core::hourly_factors::provide_hourly_factor_contract(...)`
   - module entrypoints:
     - `janiform_core::pricing::load_hourly_factor_contract(...)`
     - `janiform_core::simulation::load_hourly_factor_contract(...)`

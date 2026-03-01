@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::calendar::{ExchangeCalendarRegistry, MarketState};
-use crate::hourly_factor_provider::{
+use crate::hourly_factors::{
     HourlyFactorProviderError, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
     HourlySeasonalityFactorSource, provide_hourly_factor_contract,
 };
