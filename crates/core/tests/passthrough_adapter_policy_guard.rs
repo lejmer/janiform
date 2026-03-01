@@ -1,14 +1,35 @@
 #[test]
 fn pricing_and_simulation_public_api_names_must_not_include_consumer_suffixes() {
-    let pricing_source = include_str!("../src/pricing.rs");
+    let pricing_sources = [
+        ("pricing/mod.rs", include_str!("../src/pricing/mod.rs")),
+        (
+            "pricing/characteristic.rs",
+            include_str!("../src/pricing/characteristic.rs"),
+        ),
+        (
+            "pricing/constants.rs",
+            include_str!("../src/pricing/constants.rs"),
+        ),
+        (
+            "pricing/contracts.rs",
+            include_str!("../src/pricing/contracts.rs"),
+        ),
+        (
+            "pricing/fourier.rs",
+            include_str!("../src/pricing/fourier.rs"),
+        ),
+    ];
     let simulation_source = include_str!("../src/simulation.rs");
 
-    let pricing_violations = collect_public_for_api_items(pricing_source);
-    let simulation_violations = collect_public_for_api_items(simulation_source);
+    let pricing_violations: Vec<String> = pricing_sources
+        .into_iter()
+        .flat_map(|(source_name, source)| collect_public_for_api_items(source_name, source))
+        .collect();
+    let simulation_violations = collect_public_for_api_items("simulation.rs", simulation_source);
 
     assert!(
         pricing_violations.is_empty(),
-        "pricing.rs contains public API items with `*_for_*` names:\n{}",
+        "pricing module contains public API items with `*_for_*` names:\n{}",
         pricing_violations.join("\n")
     );
     assert!(
@@ -18,7 +39,7 @@ fn pricing_and_simulation_public_api_names_must_not_include_consumer_suffixes() 
     );
 }
 
-fn collect_public_for_api_items(source: &str) -> Vec<String> {
+fn collect_public_for_api_items(source_name: &str, source: &str) -> Vec<String> {
     let mut violations: Vec<String> = Vec::new();
     let mut search_start = 0usize;
 
@@ -36,7 +57,10 @@ fn collect_public_for_api_items(source: &str) -> Vec<String> {
                 .filter(|c| *c == '\n')
                 .count()
                 + 1;
-            violations.push(format!("line {}: pub fn {}", line_number, function_name));
+            violations.push(format!(
+                "{} line {}: pub fn {}",
+                source_name, line_number, function_name
+            ));
         }
         search_start = name_end;
     }
@@ -64,8 +88,8 @@ fn collect_public_for_api_items(source: &str) -> Vec<String> {
         if !pending_pub_use_statement.is_empty() && trimmed_line.ends_with(';') {
             if pending_pub_use_statement.contains("_for_") {
                 violations.push(format!(
-                    "line {}: {}",
-                    pending_pub_use_start_line, pending_pub_use_statement
+                    "{} line {}: {}",
+                    source_name, pending_pub_use_start_line, pending_pub_use_statement
                 ));
             }
             pending_pub_use_statement.clear();
