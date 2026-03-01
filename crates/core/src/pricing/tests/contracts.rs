@@ -2,18 +2,18 @@ use serde_json::json;
 
 use crate::hawkes::HawkesExcitationState;
 use crate::pricing::{
-    build_vanilla_option_pricing_run_result, VanillaOptionPayoffConfiguration,
+    DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
+    VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
+    VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
+    VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION,
+    VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION, VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType, VanillaOptionPricingCalibrationHooksError,
     VanillaOptionPricingDiagnostics, VanillaOptionPricingDiagnosticsError,
     VanillaOptionPricingMarketInputs, VanillaOptionPricingMarketInputsError,
     VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
     VanillaOptionPricingRequestError, VanillaOptionPricingResponse,
     VanillaOptionPricingResponseError, VanillaOptionPricingRunResultBuildError,
-    DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
-    VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
-    VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
-    VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION,
-    VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION,
+    build_vanilla_option_pricing_run_result,
 };
 
 use super::support::{
@@ -413,18 +413,24 @@ fn pricing_run_output_schema_metadata_is_machine_readable_with_required_fields()
         run_result.output_schema_metadata.schema_version,
         VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION
     );
-    assert!(run_result
-        .output_schema_metadata
-        .required_run_result_fields
-        .contains(&"response"));
-    assert!(run_result
-        .output_schema_metadata
-        .required_run_diagnostics_fields
-        .contains(&"integration_quality"));
-    assert!(run_result
-        .output_schema_metadata
-        .required_calibration_hooks_fields
-        .contains(&"forward_moneyness"));
+    assert!(
+        run_result
+            .output_schema_metadata
+            .required_run_result_fields
+            .contains(&"response")
+    );
+    assert!(
+        run_result
+            .output_schema_metadata
+            .required_run_diagnostics_fields
+            .contains(&"integration_quality")
+    );
+    assert!(
+        run_result
+            .output_schema_metadata
+            .required_calibration_hooks_fields
+            .contains(&"forward_moneyness")
+    );
 
     let serialized_run_result =
         serde_json::to_value(run_result).expect("run result should serialize");

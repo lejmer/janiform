@@ -19,13 +19,14 @@ fn pricing_and_simulation_public_api_names_must_not_include_consumer_suffixes() 
             include_str!("../src/pricing/fourier.rs"),
         ),
     ];
-    let simulation_source = include_str!("../src/simulation.rs");
+    let simulation_source = include_str!("../src/simulation/mod.rs");
 
     let pricing_violations: Vec<String> = pricing_sources
         .into_iter()
         .flat_map(|(source_name, source)| collect_public_for_api_items(source_name, source))
         .collect();
-    let simulation_violations = collect_public_for_api_items("simulation.rs", simulation_source);
+    let simulation_violations =
+        collect_public_for_api_items("simulation/mod.rs", simulation_source);
 
     assert!(
         pricing_violations.is_empty(),
@@ -34,7 +35,7 @@ fn pricing_and_simulation_public_api_names_must_not_include_consumer_suffixes() 
     );
     assert!(
         simulation_violations.is_empty(),
-        "simulation.rs contains public API items with `*_for_*` names:\n{}",
+        "simulation/mod.rs contains public API items with `*_for_*` names:\n{}",
         simulation_violations.join("\n")
     );
 }
