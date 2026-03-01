@@ -2,7 +2,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import ModuleType
-from typing import cast
+from typing import Any, cast
 
 from .api import native_module
 from .calendar import (
@@ -741,7 +741,7 @@ def build_hourly_factor_contract(
 
 def _serialize_seasonality_provider_source(
     seasonality_source: HourlySeasonalityProviderSource,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     match seasonality_source:
         case HourlySeasonalityProviderExplicitSource():
             return {
@@ -777,7 +777,7 @@ def _serialize_seasonality_provider_source(
 
 def _serialize_news_intensity_provider_source(
     news_intensity_source: HourlyNewsIntensityProviderSource,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     match news_intensity_source:
         case HourlyNewsIntensityProviderExplicitSource():
             return {

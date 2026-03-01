@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 import re
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -32,8 +32,8 @@ def test_hourly_factor_regression_fixture_covers_required_case_tags(
     hourly_factor_regression_canonical_cases: list[HourlyCanonicalOutputCase],
     hourly_factor_regression_missing_data_guard_cases: list[HourlyMissingDataGuardCase],
 ) -> None:
-    canonical_metadata: dict[str, object] = cast(
-        dict[str, object],
+    canonical_metadata: dict[str, Any] = cast(
+        dict[str, Any],
         hourly_factor_regression_fixture_document["canonical_regression_metadata"],
     )
     required_case_tags: set[str] = set(cast(list[str], canonical_metadata["required_tags"]))
@@ -56,8 +56,8 @@ def test_hourly_factor_regression_fixture_identifiers_remain_stable(
     hourly_factor_regression_canonical_cases: list[HourlyCanonicalOutputCase],
     hourly_factor_regression_missing_data_guard_cases: list[HourlyMissingDataGuardCase],
 ) -> None:
-    canonical_metadata: dict[str, object] = cast(
-        dict[str, object],
+    canonical_metadata: dict[str, Any] = cast(
+        dict[str, Any],
         hourly_factor_regression_fixture_document["canonical_regression_metadata"],
     )
     observed_canonical_fixture_ids: set[str] = {
@@ -127,7 +127,7 @@ def test_hourly_factor_missing_data_guard_cases_match_defined_outcomes(
 
     for regression_case in hourly_factor_regression_missing_data_guard_cases:
         fixture_id: str = _fixture_id(regression_case)
-        expected_outcome: dict[str, object] = cast(dict[str, object], regression_case["expected_outcome"])
+        expected_outcome: dict[str, Any] = cast(dict[str, Any], regression_case["expected_outcome"])
         outcome_kind: str = cast(str, expected_outcome["outcome_kind"])
 
         match outcome_kind:
@@ -194,7 +194,7 @@ def test_hourly_factor_deterministic_fallback_cases_are_repeatable(
     assert deterministic_fallback_cases
 
     for regression_case in deterministic_fallback_cases:
-        expected_outcome: dict[str, object] = cast(dict[str, object], regression_case["expected_outcome"])
+        expected_outcome: dict[str, Any] = cast(dict[str, Any], regression_case["expected_outcome"])
         if cast(str, expected_outcome["outcome_kind"]) == "success":
             first_materialization = _materialize_missing_data_guard_case(
                 calendar_registry=calendar_registry,
@@ -271,10 +271,10 @@ def _build_contract_for_canonical_case(
     regression_case: HourlyCanonicalOutputCase,
 ):
     seasonality_source = _parse_seasonality_provider_source(
-        cast(dict[str, object], regression_case["seasonality_source"]),
+        cast(dict[str, Any], regression_case["seasonality_source"]),
     )
     news_intensity_source = _parse_news_intensity_provider_source(
-        cast(dict[str, object], regression_case["news_intensity_source"]),
+        cast(dict[str, Any], regression_case["news_intensity_source"]),
     )
     range_start_utc = _parse_fixture_timestamp(cast(str, regression_case["range_start_utc"]))
     range_end_utc = _parse_fixture_timestamp(cast(str, regression_case["range_end_utc"]))
@@ -290,7 +290,7 @@ def _build_contract_for_canonical_case(
 
 
 def _parse_seasonality_provider_source(
-    raw_source: dict[str, object],
+    raw_source: dict[str, Any],
 ) -> HourlySeasonalityProviderExplicitSource | HourlySeasonalityProviderMaterializedSource:
     source_kind: str = cast(str, raw_source["source_kind"])
 
@@ -321,7 +321,7 @@ def _parse_seasonality_provider_source(
 
 
 def _parse_news_intensity_provider_source(
-    raw_source: dict[str, object],
+    raw_source: dict[str, Any],
 ) -> HourlyNewsIntensityProviderExplicitSource | HourlyNewsIntensityProviderMaterializedSource:
     source_kind: str = cast(str, raw_source["source_kind"])
 
@@ -366,7 +366,7 @@ def _materialize_missing_data_guard_case(
 ) -> HourlySeasonalityMaterialization:
     range_start_utc: datetime = _parse_fixture_timestamp(cast(str, regression_case["range_start_utc"]))
     range_end_utc: datetime = _parse_fixture_timestamp(cast(str, regression_case["range_end_utc"]))
-    settings = cast(dict[str, object], regression_case["settings"])
+    settings = cast(dict[str, Any], regression_case["settings"])
     source_timestamps_utc: list[datetime] = [
         _parse_fixture_timestamp(raw_timestamp)
         for raw_timestamp in cast(list[str], regression_case["source_timestamps_utc"])
@@ -393,7 +393,7 @@ def _materialize_missing_data_guard_case(
 
 def _seasonality_materialization_snapshot(
     materialization: HourlySeasonalityMaterialization,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     return {
         "s_h": list(materialization.s_h),
         "sparse_interval_count": materialization.sparse_interval_count,
@@ -454,9 +454,9 @@ def _parse_fixture_timestamp(timestamp_utc: str) -> datetime:
 
 def _threshold_configuration(
     hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     return cast(
-        dict[str, object],
+        dict[str, Any],
         hourly_factor_regression_fixture_document["threshold_configuration"],
     )
 
@@ -470,7 +470,7 @@ def _tolerance_config(
 
 def _factor_range_policy_for_case(
     *,
-    threshold_configuration: dict[str, object],
+    threshold_configuration: dict[str, Any],
     regression_case: HourlyCanonicalOutputCase,
 ) -> dict[str, float]:
     factor_range_by_fixture_class: dict[str, dict[str, float]] = cast(

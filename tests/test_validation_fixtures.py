@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -193,7 +194,7 @@ def test_seeded_tick_simulation_parity_fixture_loading_order_and_content_hash_ar
 def test_validation_manifest_rejects_missing_required_fields(
     validation_fixture_manifest_document: ValidationFixtureManifestDocument,
 ) -> None:
-    invalid_document: dict[str, object] = _copy_document(validation_fixture_manifest_document)
+    invalid_document: dict[str, Any] = _copy_document(validation_fixture_manifest_document)
     invalid_document.pop("schema_version")
 
     with pytest.raises(ValueError, match="missing required field 'schema_version'"):
@@ -203,9 +204,9 @@ def test_validation_manifest_rejects_missing_required_fields(
 def test_validation_manifest_rejects_invalid_domain_values(
     validation_fixture_manifest_document: ValidationFixtureManifestDocument,
 ) -> None:
-    invalid_document: dict[str, object] = _copy_document(validation_fixture_manifest_document)
+    invalid_document: dict[str, Any] = _copy_document(validation_fixture_manifest_document)
 
-    fixture_entries: list[dict[str, object]] = invalid_document["fixtures"]
+    fixture_entries: list[dict[str, Any]] = invalid_document["fixtures"]
     fixture_entries[0]["domain"] = "python_only"
 
     with pytest.raises(ValueError, match="unsupported fixture domain"):
@@ -215,9 +216,9 @@ def test_validation_manifest_rejects_invalid_domain_values(
 def test_validation_manifest_rejects_malformed_manifest_entry_content_hash(
     validation_fixture_manifest_document: ValidationFixtureManifestDocument,
 ) -> None:
-    invalid_document: dict[str, object] = _copy_document(validation_fixture_manifest_document)
+    invalid_document: dict[str, Any] = _copy_document(validation_fixture_manifest_document)
 
-    fixture_entries: list[dict[str, object]] = invalid_document["fixtures"]
+    fixture_entries: list[dict[str, Any]] = invalid_document["fixtures"]
     fixture_entries[0]["content_hash"] = "ABCDEF0123456789"
 
     with pytest.raises(ValueError, match="content_hash must be a lowercase fnv1a hex string"):
@@ -227,7 +228,7 @@ def test_validation_manifest_rejects_malformed_manifest_entry_content_hash(
 def test_calendar_fixture_rejects_missing_required_fields(
     calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
 ) -> None:
-    invalid_document: dict[str, object] = _copy_document(calendar_regression_fixture_document)
+    invalid_document: dict[str, Any] = _copy_document(calendar_regression_fixture_document)
     invalid_document.pop("cases")
 
     with pytest.raises(ValueError, match="missing required field 'cases'"):
@@ -237,9 +238,9 @@ def test_calendar_fixture_rejects_missing_required_fields(
 def test_calendar_fixture_rejects_invalid_expected_state_values(
     calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
 ) -> None:
-    invalid_document: dict[str, object] = _copy_document(calendar_regression_fixture_document)
+    invalid_document: dict[str, Any] = _copy_document(calendar_regression_fixture_document)
 
-    regression_cases: list[dict[str, object]] = invalid_document["cases"]
+    regression_cases: list[dict[str, Any]] = invalid_document["cases"]
     regression_cases[0]["expected_state"] = "invalid"
 
     with pytest.raises(ValueError, match="unsupported expected_state"):
@@ -275,10 +276,10 @@ def test_calendar_fixture_historical_holiday_cases_have_unique_exchange_timestam
 def test_calendar_fixture_rejects_duplicate_exchange_timestamp_pairs(
     calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
 ) -> None:
-    invalid_document: dict[str, object] = _copy_document(calendar_regression_fixture_document)
-    regression_cases: list[dict[str, object]] = invalid_document["cases"]
+    invalid_document: dict[str, Any] = _copy_document(calendar_regression_fixture_document)
+    regression_cases: list[dict[str, Any]] = invalid_document["cases"]
 
-    duplicate_case: dict[str, object] = dict(regression_cases[0])
+    duplicate_case: dict[str, Any] = dict(regression_cases[0])
     duplicate_case["fixture_id"] = "duplicate_exchange_timestamp_case"
 
     regression_cases.append(duplicate_case)
@@ -290,10 +291,10 @@ def test_calendar_fixture_rejects_duplicate_exchange_timestamp_pairs(
 def test_calendar_fixture_rejects_malformed_canonical_metadata(
     calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
 ) -> None:
-    invalid_document: dict[str, object] = _copy_document(calendar_regression_fixture_document)
-    canonical_metadata: dict[str, object] = invalid_document["canonical_regression_metadata"]
+    invalid_document: dict[str, Any] = _copy_document(calendar_regression_fixture_document)
+    canonical_metadata: dict[str, Any] = invalid_document["canonical_regression_metadata"]
 
-    stable_fixture_ids_by_tag: dict[str, object] = canonical_metadata["stable_fixture_ids_by_tag"]
+    stable_fixture_ids_by_tag: dict[str, Any] = canonical_metadata["stable_fixture_ids_by_tag"]
     stable_fixture_ids_by_tag["boundary"] = [1]
 
     with pytest.raises(
@@ -306,9 +307,9 @@ def test_calendar_fixture_rejects_malformed_canonical_metadata(
 def test_calendar_fixture_rejects_incomplete_fixture_coverage_for_stable_tag_sets(
     calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
 ) -> None:
-    invalid_document: dict[str, object] = _copy_document(calendar_regression_fixture_document)
+    invalid_document: dict[str, Any] = _copy_document(calendar_regression_fixture_document)
 
-    regression_cases: list[dict[str, object]] = invalid_document["cases"]
+    regression_cases: list[dict[str, Any]] = invalid_document["cases"]
     regression_cases.pop(0)
 
     with pytest.raises(
@@ -321,9 +322,9 @@ def test_calendar_fixture_rejects_incomplete_fixture_coverage_for_stable_tag_set
 def test_hourly_fixture_rejects_malformed_canonical_metadata(
     hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
 ) -> None:
-    invalid_document: dict[str, object] = _copy_document(hourly_factor_regression_fixture_document)
+    invalid_document: dict[str, Any] = _copy_document(hourly_factor_regression_fixture_document)
 
-    canonical_metadata: dict[str, object] = invalid_document["canonical_regression_metadata"]
+    canonical_metadata: dict[str, Any] = invalid_document["canonical_regression_metadata"]
     canonical_metadata["stable_canonical_output_fixture_ids"] = ["missing_fixture_id"]
 
     with pytest.raises(
@@ -336,9 +337,9 @@ def test_hourly_fixture_rejects_malformed_canonical_metadata(
 def test_hourly_fixture_rejects_unsupported_state_classification_strictness_policy(
     hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
 ) -> None:
-    invalid_document: dict[str, object] = _copy_document(hourly_factor_regression_fixture_document)
+    invalid_document: dict[str, Any] = _copy_document(hourly_factor_regression_fixture_document)
 
-    threshold_configuration: dict[str, object] = invalid_document["threshold_configuration"]
+    threshold_configuration: dict[str, Any] = invalid_document["threshold_configuration"]
     threshold_configuration["state_classification_strictness"] = "fuzzy_match.v1"
 
     with pytest.raises(ValueError, match="unsupported state classification strictness policy"):
@@ -348,8 +349,8 @@ def test_hourly_fixture_rejects_unsupported_state_classification_strictness_poli
 def test_hourly_fixture_rejects_factor_range_policies_with_inverted_bounds(
     hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
 ) -> None:
-    invalid_document: dict[str, object] = _copy_document(hourly_factor_regression_fixture_document)
-    threshold_configuration: dict[str, object] = invalid_document["threshold_configuration"]
+    invalid_document: dict[str, Any] = _copy_document(hourly_factor_regression_fixture_document)
+    threshold_configuration: dict[str, Any] = invalid_document["threshold_configuration"]
 
     factor_range_by_fixture_class: dict[str, dict[str, float]] = threshold_configuration[
         "factor_range_by_fixture_class"
@@ -364,9 +365,9 @@ def test_hourly_fixture_rejects_factor_range_policies_with_inverted_bounds(
 def test_hourly_fixture_rejects_threshold_change_log_without_current_policy_version(
     hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
 ) -> None:
-    invalid_document: dict[str, object] = _copy_document(hourly_factor_regression_fixture_document)
+    invalid_document: dict[str, Any] = _copy_document(hourly_factor_regression_fixture_document)
 
-    threshold_configuration: dict[str, object] = invalid_document["threshold_configuration"]
+    threshold_configuration: dict[str, Any] = invalid_document["threshold_configuration"]
     threshold_configuration["policy_version"] = "2.0.0"
 
     with pytest.raises(ValueError, match="change_log must include an entry for policy_version"):
@@ -376,27 +377,27 @@ def test_hourly_fixture_rejects_threshold_change_log_without_current_policy_vers
 def test_open_closed_gap_fixture_rejects_missing_required_fields(
     open_closed_gap_behavior_fixture_document: OpenClosedGapBehaviorFixtureDocument,
 ) -> None:
-    invalid_document: dict[str, object] = _copy_document(open_closed_gap_behavior_fixture_document)
+    invalid_document: dict[str, Any] = _copy_document(open_closed_gap_behavior_fixture_document)
     invalid_document.pop("cases")
 
     with pytest.raises(ValueError, match="missing required field 'cases'"):
         validate_open_closed_gap_behavior_fixture_document(invalid_document)
 
 
-def test_open_closed_gap_fixture_rejects_open_window_direct_gap_application(
+def test_open_closed_gap_fixture_rejects_open_window_closed_gap_application(
     open_closed_gap_behavior_fixture_document: OpenClosedGapBehaviorFixtureDocument,
 ) -> None:
-    invalid_document: dict[str, object] = _copy_document(open_closed_gap_behavior_fixture_document)
-    invalid_document["cases"][0]["expected_outcome"]["event_outcomes"][0]["expected_direct_gap_applied"] = True
+    invalid_document: dict[str, Any] = _copy_document(open_closed_gap_behavior_fixture_document)
+    invalid_document["cases"][0]["expected_outcome"]["event_outcomes"][0]["expected_closed_gap_g_t_increment"] = 0.25
 
-    with pytest.raises(ValueError, match="cannot set expected_direct_gap_applied=true"):
+    with pytest.raises(ValueError, match="must set expected_closed_gap_g_t_increment=0.0"):
         validate_open_closed_gap_behavior_fixture_document(invalid_document)
 
 
 def test_open_closed_gap_fixture_rejects_event_mapping_mismatch(
     open_closed_gap_behavior_fixture_document: OpenClosedGapBehaviorFixtureDocument,
 ) -> None:
-    invalid_document: dict[str, object] = _copy_document(open_closed_gap_behavior_fixture_document)
+    invalid_document: dict[str, Any] = _copy_document(open_closed_gap_behavior_fixture_document)
     invalid_document["cases"][0]["expected_outcome"]["event_outcomes"][0]["event_id"] = "unknown_event_id"
 
     with pytest.raises(ValueError, match="event_id set must match injected_events event_id set"):
@@ -417,7 +418,7 @@ def test_open_closed_gap_fixture_calendar_integration_rejects_missing_fixture_re
     open_closed_gap_behavior_fixture_document: OpenClosedGapBehaviorFixtureDocument,
     calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
 ) -> None:
-    invalid_document: dict[str, object] = _copy_document(open_closed_gap_behavior_fixture_document)
+    invalid_document: dict[str, Any] = _copy_document(open_closed_gap_behavior_fixture_document)
     invalid_document["cases"][0]["calendar_state_fixture_references"][0] = "missing_calendar_fixture_case"
     validated_document = validate_open_closed_gap_behavior_fixture_document(invalid_document)
 
@@ -435,7 +436,7 @@ def test_open_closed_gap_fixture_calendar_integration_rejects_missing_window_tag
     open_closed_gap_behavior_fixture_document: OpenClosedGapBehaviorFixtureDocument,
     calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
 ) -> None:
-    invalid_document: dict[str, object] = _copy_document(open_closed_gap_behavior_fixture_document)
+    invalid_document: dict[str, Any] = _copy_document(open_closed_gap_behavior_fixture_document)
     for fixture_case in invalid_document["cases"]:
         fixture_case["tags"] = [
             case_tag
@@ -443,8 +444,8 @@ def test_open_closed_gap_fixture_calendar_integration_rejects_missing_window_tag
             if case_tag != "weekend"
         ]
     
-    canonical_metadata: dict[str, object] = invalid_document["canonical_regression_metadata"]
-    stable_fixture_ids_by_tag: dict[str, object] = canonical_metadata["stable_fixture_ids_by_tag"]
+    canonical_metadata: dict[str, Any] = invalid_document["canonical_regression_metadata"]
+    stable_fixture_ids_by_tag: dict[str, Any] = canonical_metadata["stable_fixture_ids_by_tag"]
     stable_fixture_ids_by_tag.pop("weekend", None)
     
     validated_document = validate_open_closed_gap_behavior_fixture_document(invalid_document)
@@ -463,7 +464,7 @@ def test_open_closed_gap_fixture_calendar_integration_rejects_missing_boundary_t
     open_closed_gap_behavior_fixture_document: OpenClosedGapBehaviorFixtureDocument,
     calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
 ) -> None:
-    invalid_document: dict[str, object] = _copy_document(open_closed_gap_behavior_fixture_document)
+    invalid_document: dict[str, Any] = _copy_document(open_closed_gap_behavior_fixture_document)
     for fixture_case in invalid_document["cases"]:
         fixture_case["tags"] = [
             case_tag
@@ -471,7 +472,7 @@ def test_open_closed_gap_fixture_calendar_integration_rejects_missing_boundary_t
             if case_tag != "boundary"
         ]
     
-    canonical_metadata: dict[str, object] = invalid_document["canonical_regression_metadata"]
+    canonical_metadata: dict[str, Any] = invalid_document["canonical_regression_metadata"]
     required_tags: list[str] = canonical_metadata["required_tags"]
     canonical_metadata["required_tags"] = [
         required_tag
@@ -479,7 +480,7 @@ def test_open_closed_gap_fixture_calendar_integration_rejects_missing_boundary_t
         if required_tag != "boundary"
     ]
     
-    stable_fixture_ids_by_tag: dict[str, object] = canonical_metadata["stable_fixture_ids_by_tag"]
+    stable_fixture_ids_by_tag: dict[str, Any] = canonical_metadata["stable_fixture_ids_by_tag"]
     stable_fixture_ids_by_tag.pop("boundary", None)
     validated_document = validate_open_closed_gap_behavior_fixture_document(invalid_document)
 
@@ -496,7 +497,7 @@ def test_open_closed_gap_fixture_calendar_integration_rejects_missing_boundary_t
 def test_seeded_tick_simulation_parity_fixture_rejects_invalid_side_values(
     seeded_tick_simulation_parity_fixture_document: SeededTickSimulationParityFixtureDocument,
 ) -> None:
-    invalid_document: dict[str, object] = _copy_document(seeded_tick_simulation_parity_fixture_document)
+    invalid_document: dict[str, Any] = _copy_document(seeded_tick_simulation_parity_fixture_document)
     invalid_document["cases"][0]["expected_side_sequence"][0] = "hold"
 
     with pytest.raises(ValueError, match="contains unsupported side"):
@@ -506,7 +507,7 @@ def test_seeded_tick_simulation_parity_fixture_rejects_invalid_side_values(
 def test_seeded_tick_simulation_parity_fixture_rejects_inconsistent_event_count(
     seeded_tick_simulation_parity_fixture_document: SeededTickSimulationParityFixtureDocument,
 ) -> None:
-    invalid_document: dict[str, object] = _copy_document(seeded_tick_simulation_parity_fixture_document)
+    invalid_document: dict[str, Any] = _copy_document(seeded_tick_simulation_parity_fixture_document)
     invalid_document["cases"][0]["expected_total_event_count"] = 999
 
     with pytest.raises(ValueError, match="expected_total_event_count must match"):
@@ -536,5 +537,5 @@ def _find_entry_by_fixture_id(
     raise ValueError(f"missing fixture manifest entry with id: {fixture_id}")
 
 
-def _copy_document(document: object) -> dict[str, object]:
+def _copy_document(document: object) -> dict[str, Any]:
     return json.loads(json.dumps(document))

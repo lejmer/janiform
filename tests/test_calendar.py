@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -52,8 +52,8 @@ def test_historical_holiday_fixture_coverage_spans_years_and_intraday_slots(
     calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
     calendar_regression_cases: list[CalendarRegressionCase],
 ) -> None:
-    canonical_metadata: dict[str, object] = cast(
-        dict[str, object],
+    canonical_metadata: dict[str, Any] = cast(
+        dict[str, Any],
         calendar_regression_fixture_document["canonical_regression_metadata"],
     )
     historical_holiday_cases: list[CalendarRegressionCase] = [

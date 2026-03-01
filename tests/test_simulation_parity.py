@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import cast
+from typing import Any, cast
 
 from janiform import (
     HourlyNewsIntensityProviderExplicitSource,
@@ -57,7 +57,7 @@ def test_seeded_tick_simulation_mismatch_diagnostics_are_actionable(
 def _run_seeded_case(
     calendar_registry,
     fixture_case: SeededTickSimulationParityCase,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     range_start_utc = datetime.fromisoformat(fixture_case["range_start_utc"].replace("Z", "+00:00"))
     range_end_utc = datetime.fromisoformat(fixture_case["range_end_utc"].replace("Z", "+00:00"))
 
@@ -87,11 +87,11 @@ def _run_seeded_case(
 
 
 def _first_mismatch_diagnostic(
-    payload: dict[str, object],
+    payload: dict[str, Any],
     fixture_case: SeededTickSimulationParityCase,
 ) -> str | None:
     fixture_id = fixture_case["fixture_id"]
-    event_tape = cast(list[dict[str, object]], payload["event_tape"])
+    event_tape = cast(list[dict[str, Any]], payload["event_tape"])
 
     observed_timestamps = [cast(int, event_record["timestamp_utc_nanos"]) for event_record in event_tape]
     observed_side_sequence = [cast(str, event_record["side"]) for event_record in event_tape]

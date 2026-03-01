@@ -441,28 +441,28 @@ fn open_closed_gap_behavior_fixture_rejects_missing_required_fields() {
 }
 
 #[test]
-fn open_closed_gap_behavior_fixture_rejects_open_window_direct_gap_application() {
+fn open_closed_gap_behavior_fixture_rejects_open_window_closed_gap_application() {
     let loaded_fixture = load_open_closed_gap_behavior_scenario_fixture_from_manifest()
         .expect("open and closed gap behavior fixture should load from shared manifest");
 
     let mut fixture_value: Value =
         serde_json::from_slice(&loaded_fixture.loaded_payload.payload_bytes)
             .expect("open and closed gap behavior fixture should be valid JSON");
-    fixture_value["cases"][0]["expected_outcome"]["event_outcomes"][0]["expected_direct_gap_applied"] =
-        Value::Bool(true);
+    fixture_value["cases"][0]["expected_outcome"]["event_outcomes"][0]
+        ["expected_closed_gap_g_t_increment"] = Value::from(0.25);
 
     let parsed_fixture =
         serde_json::from_value::<OpenClosedGapBehaviorScenarioFixtureDocument>(fixture_value)
-            .expect("open and closed gap behavior fixture with invalid open-window direct gap should still parse");
+            .expect("open and closed gap behavior fixture with invalid open-window closed gap should still parse");
     let validation_errors =
         validate_open_closed_gap_behavior_scenario_fixture_document(&parsed_fixture)
-            .expect_err("fixture with invalid open-window direct gap should fail validation");
+            .expect_err("fixture with invalid open-window closed gap should fail validation");
 
     assert!(validation_errors.iter().any(|error| {
-        error.code == "open_window_direct_gap_not_allowed"
+        error.code == "open_window_closed_gap_not_allowed"
             && error
                 .field_path
-                .contains("expected_outcome.event_outcomes[0].expected_direct_gap_applied")
+                .contains("expected_outcome.event_outcomes[0].expected_closed_gap_g_t_increment")
     }));
 }
 

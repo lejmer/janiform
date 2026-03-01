@@ -2,7 +2,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from math import isfinite, sqrt
-from typing import NotRequired, TypedDict, cast
+from typing import Any, NotRequired, TypedDict, cast
 
 from .pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 from .simulation import HawkesExcitationState, HawkesKernelParameters
@@ -204,7 +204,7 @@ class SufficientStatisticsRiskValidationError(ValueError):
 
 
 def validate_sufficient_statistics_risk_run_request(
-    raw_request: Mapping[str, object],
+    raw_request: Mapping[str, Any],
 ) -> SufficientStatisticsRiskRunRequest:
     seed: int = _require_non_negative_integer(raw_request, "seed", "seed")
     horizon_interval_count: int = _require_positive_integer(
@@ -246,7 +246,7 @@ def validate_sufficient_statistics_risk_run_request(
 
 
 def validate_sufficient_statistics_risk_path(
-    raw_path: Mapping[str, object],
+    raw_path: Mapping[str, Any],
 ) -> SufficientStatisticsRiskPath:
     seed: int = _require_non_negative_integer(raw_path, "seed", "seed")
     interval_delta: float = _require_positive_finite_number(
@@ -321,7 +321,7 @@ def validate_sufficient_statistics_risk_path(
     }
 
 
-def serialize_sufficient_statistics_risk_run_request(request: Mapping[str, object]) -> str:
+def serialize_sufficient_statistics_risk_run_request(request: Mapping[str, Any]) -> str:
     validated_request: SufficientStatisticsRiskRunRequest = (
         validate_sufficient_statistics_risk_run_request(request)
     )
@@ -331,17 +331,17 @@ def serialize_sufficient_statistics_risk_run_request(request: Mapping[str, objec
 def deserialize_sufficient_statistics_risk_run_request(
     payload_json: str,
 ) -> SufficientStatisticsRiskRunRequest:
-    raw_payload: Mapping[str, object] = _parse_json_object(payload_json, "risk run request")
+    raw_payload: Mapping[str, Any] = _parse_json_object(payload_json, "risk run request")
     return validate_sufficient_statistics_risk_run_request(raw_payload)
 
 
-def serialize_sufficient_statistics_risk_path(path: Mapping[str, object]) -> str:
+def serialize_sufficient_statistics_risk_path(path: Mapping[str, Any]) -> str:
     validated_path: SufficientStatisticsRiskPath = validate_sufficient_statistics_risk_path(path)
     return json.dumps(validated_path, sort_keys=True)
 
 
 def deserialize_sufficient_statistics_risk_path(payload_json: str) -> SufficientStatisticsRiskPath:
-    raw_payload: Mapping[str, object] = _parse_json_object(payload_json, "risk path")
+    raw_payload: Mapping[str, Any] = _parse_json_object(payload_json, "risk path")
     return validate_sufficient_statistics_risk_path(raw_payload)
 
 
@@ -423,7 +423,7 @@ def _build_risk_path_diagnostics(
 
 
 def _validate_output_schema_metadata(
-    raw_metadata: Mapping[str, object],
+    raw_metadata: Mapping[str, Any],
     expected_metadata: SufficientStatisticsRiskPathOutputSchemaMetadata,
     field_path: str,
 ) -> None:
@@ -478,7 +478,7 @@ def _validate_output_schema_metadata(
 
 
 def _validate_path_provenance(
-    raw_provenance: Mapping[str, object],
+    raw_provenance: Mapping[str, Any],
     expected_provenance: SufficientStatisticsRiskPathProvenance,
     field_path: str,
 ) -> None:
@@ -545,7 +545,7 @@ def _validate_path_provenance(
 
 
 def _validate_path_diagnostics(
-    raw_diagnostics: Mapping[str, object],
+    raw_diagnostics: Mapping[str, Any],
     expected_diagnostics: SufficientStatisticsRiskPathDiagnostics,
     field_path: str,
     simulated_interval_count: int,
@@ -639,33 +639,33 @@ def _validate_path_diagnostics(
     )
 
 
-def _validate_model_inputs(raw_request: Mapping[str, object]) -> SufficientStatisticsRiskModelInputs:
-    raw_model_inputs: Mapping[str, object] = _require_mapping(
+def _validate_model_inputs(raw_request: Mapping[str, Any]) -> SufficientStatisticsRiskModelInputs:
+    raw_model_inputs: Mapping[str, Any] = _require_mapping(
         raw_request,
         "model_inputs",
         "model_inputs",
     )
-    raw_equation_specification: Mapping[str, object] = _require_mapping(
+    raw_equation_specification: Mapping[str, Any] = _require_mapping(
         raw_model_inputs,
         "equation_specification",
         "model_inputs.equation_specification",
     )
-    raw_kernel_parameters: Mapping[str, object] = _require_mapping(
+    raw_kernel_parameters: Mapping[str, Any] = _require_mapping(
         raw_equation_specification,
         "hawkes_kernel_parameters",
         "model_inputs.equation_specification.hawkes_kernel_parameters",
     )
-    raw_gamma_configuration: Mapping[str, object] = _require_mapping(
+    raw_gamma_configuration: Mapping[str, Any] = _require_mapping(
         raw_equation_specification,
         "gamma_severity_mark_configuration",
         "model_inputs.equation_specification.gamma_severity_mark_configuration",
     )
-    raw_nig_configuration: Mapping[str, object] = _require_mapping(
+    raw_nig_configuration: Mapping[str, Any] = _require_mapping(
         raw_model_inputs,
         "nig_shared_plus_shift_configuration",
         "model_inputs.nig_shared_plus_shift_configuration",
     )
-    raw_initial_state: Mapping[str, object] = _require_mapping(
+    raw_initial_state: Mapping[str, Any] = _require_mapping(
         raw_model_inputs,
         "initial_excitation_state",
         "model_inputs.initial_excitation_state",
@@ -699,13 +699,13 @@ def _validate_model_inputs(raw_request: Mapping[str, object]) -> SufficientStati
 
 
 def _validate_interval_factors(
-    raw_payload: Mapping[str, object],
+    raw_payload: Mapping[str, Any],
     field_name: str,
     field_path: str,
     *,
     requested_interval_delta: float,
 ) -> SufficientStatisticsRiskIntervalFactors:
-    raw_interval_factors: Mapping[str, object] = _require_mapping(raw_payload, field_name, field_path)
+    raw_interval_factors: Mapping[str, Any] = _require_mapping(raw_payload, field_name, field_path)
     raw_s_h: Sequence[object] = _require_sequence(raw_interval_factors, "s_h", f"{field_path}.s_h")
     raw_nu_h: Sequence[object] = _require_sequence(raw_interval_factors, "nu_h", f"{field_path}.nu_h")
     if len(raw_s_h) == 0:
@@ -767,11 +767,11 @@ def _validate_interval_factors(
 
 
 def _validate_hawkes_kernel_parameters(
-    raw_kernel_parameters: Mapping[str, object],
+    raw_kernel_parameters: Mapping[str, Any],
     field_path: str,
 ) -> HawkesKernelParameters:
-    raw_alpha: Mapping[str, object] = _require_mapping(raw_kernel_parameters, "alpha", f"{field_path}.alpha")
-    raw_rho: Mapping[str, object] = _require_mapping(raw_kernel_parameters, "rho", f"{field_path}.rho")
+    raw_alpha: Mapping[str, Any] = _require_mapping(raw_kernel_parameters, "alpha", f"{field_path}.alpha")
+    raw_rho: Mapping[str, Any] = _require_mapping(raw_kernel_parameters, "rho", f"{field_path}.rho")
 
     lambda_bar: float = _require_positive_finite_number(
         raw_kernel_parameters,
@@ -804,7 +804,7 @@ def _validate_hawkes_kernel_parameters(
 
 
 def _validate_kernel_loadings(
-    raw_loadings: Mapping[str, object],
+    raw_loadings: Mapping[str, Any],
     field_path: str,
 ) -> dict[str, float]:
     plus_plus: float = _require_non_negative_finite_number(raw_loadings, "plus_plus", f"{field_path}.plus_plus")
@@ -820,7 +820,7 @@ def _validate_kernel_loadings(
 
 
 def _validate_gamma_configuration(
-    raw_gamma_configuration: Mapping[str, object],
+    raw_gamma_configuration: Mapping[str, Any],
     field_path: str,
 ) -> GammaSeverityMarkConfiguration:
     shape_k: float = _require_positive_finite_number(raw_gamma_configuration, "shape_k", f"{field_path}.shape_k")
@@ -836,7 +836,7 @@ def _validate_gamma_configuration(
 
 
 def _validate_nig_configuration(
-    raw_nig_configuration: Mapping[str, object],
+    raw_nig_configuration: Mapping[str, Any],
     field_path: str,
 ) -> NigSharedPlusShiftConfiguration:
     alpha: float = _require_positive_finite_number(raw_nig_configuration, "alpha", f"{field_path}.alpha")
@@ -872,7 +872,7 @@ def _validate_nig_configuration(
 
 
 def _validate_excitation_state(
-    raw_state: Mapping[str, object],
+    raw_state: Mapping[str, Any],
     field_path: str,
 ) -> HawkesExcitationState:
     y_plus_plus: float = _require_non_negative_finite_number(raw_state, "y_plus_plus", f"{field_path}.y_plus_plus")
@@ -892,7 +892,7 @@ def _validate_excitation_state(
 
 
 def _validate_path_records(
-    raw_payload: Mapping[str, object],
+    raw_payload: Mapping[str, Any],
     field_name: str,
     simulated_interval_count: int,
 ) -> list[SufficientStatisticsRiskPathRecord]:
@@ -963,7 +963,7 @@ def _validate_path_records(
 
 
 def _validate_sufficient_statistics(
-    raw_statistics: Mapping[str, object],
+    raw_statistics: Mapping[str, Any],
     field_path: str,
 ) -> SufficientStatisticsIntervalStatistics:
     a_plus = _require_non_negative_finite_number(raw_statistics, "a_plus", f"{field_path}.a_plus")
@@ -979,7 +979,7 @@ def _validate_sufficient_statistics(
 
 
 def _validate_return_components(
-    raw_components: Mapping[str, object],
+    raw_components: Mapping[str, Any],
     field_path: str,
 ) -> SufficientStatisticsRiskReturnComponents:
     buy_side_return = _require_finite_number(raw_components, "buy_side_return", f"{field_path}.buy_side_return")
@@ -1012,7 +1012,7 @@ def _validate_return_components(
 
 
 def _validate_exact_string(
-    raw_mapping: Mapping[str, object],
+    raw_mapping: Mapping[str, Any],
     field_name: str,
     field_path: str,
     expected_value: str,
@@ -1028,7 +1028,7 @@ def _validate_exact_string(
 
 
 def _validate_required_field_list(
-    raw_mapping: Mapping[str, object],
+    raw_mapping: Mapping[str, Any],
     field_name: str,
     field_path: str,
     expected_field_names: Sequence[str],
@@ -1058,7 +1058,7 @@ def _validate_required_field_list(
 
 
 def _validate_exact_integer(
-    raw_mapping: Mapping[str, object],
+    raw_mapping: Mapping[str, Any],
     field_name: str,
     field_path: str,
     expected_value: int,
@@ -1081,7 +1081,7 @@ def _validate_exact_integer(
 
 
 def _validate_exact_optional_integer(
-    raw_mapping: Mapping[str, object],
+    raw_mapping: Mapping[str, Any],
     field_name: str,
     field_path: str,
     expected_value: int | None,
@@ -1115,7 +1115,7 @@ def _validate_exact_optional_integer(
 
 
 def _validate_exact_number(
-    raw_mapping: Mapping[str, object],
+    raw_mapping: Mapping[str, Any],
     field_name: str,
     field_path: str,
     expected_value: float,
@@ -1153,7 +1153,7 @@ def _compute_spectral_radius(alpha: Mapping[str, float], beta: float) -> float:
     return max(abs(largest_eigenvalue), abs(smallest_eigenvalue))
 
 
-def _parse_json_object(payload_json: str, context_label: str) -> Mapping[str, object]:
+def _parse_json_object(payload_json: str, context_label: str) -> Mapping[str, Any]:
     try:
         payload = json.loads(payload_json)
     except json.JSONDecodeError as e:
@@ -1172,10 +1172,10 @@ def _parse_json_object(payload_json: str, context_label: str) -> Mapping[str, ob
             )
         )
 
-    return cast(Mapping[str, object], payload)
+    return cast(Mapping[str, Any], payload)
 
 
-def _require_mapping(raw_mapping: Mapping[str, object], field_name: str, field_path: str) -> Mapping[str, object]:
+def _require_mapping(raw_mapping: Mapping[str, Any], field_name: str, field_path: str) -> Mapping[str, Any]:
     if field_name not in raw_mapping:
         raise SufficientStatisticsRiskValidationError(
             SufficientStatisticsRiskValidationFailure(field_path=field_path, message="is required")
@@ -1190,10 +1190,10 @@ def _require_mapping(raw_mapping: Mapping[str, object], field_name: str, field_p
             )
         )
 
-    return cast(Mapping[str, object], value)
+    return cast(Mapping[str, Any], value)
 
 
-def _require_string(raw_mapping: Mapping[str, object], field_name: str, field_path: str) -> str:
+def _require_string(raw_mapping: Mapping[str, Any], field_name: str, field_path: str) -> str:
     if field_name not in raw_mapping:
         raise SufficientStatisticsRiskValidationError(
             SufficientStatisticsRiskValidationFailure(field_path=field_path, message="is required")
@@ -1211,7 +1211,7 @@ def _require_string(raw_mapping: Mapping[str, object], field_name: str, field_pa
     return value
 
 
-def _require_sequence(raw_mapping: Mapping[str, object], field_name: str, field_path: str) -> Sequence[object]:
+def _require_sequence(raw_mapping: Mapping[str, Any], field_name: str, field_path: str) -> Sequence[object]:
     if field_name not in raw_mapping:
         raise SufficientStatisticsRiskValidationError(
             SufficientStatisticsRiskValidationFailure(field_path=field_path, message="is required")
@@ -1230,7 +1230,7 @@ def _require_sequence(raw_mapping: Mapping[str, object], field_name: str, field_
 
 
 def _require_non_negative_integer(
-    raw_mapping: Mapping[str, object],
+    raw_mapping: Mapping[str, Any],
     field_name: str,
     field_path: str,
 ) -> int:
@@ -1246,7 +1246,7 @@ def _require_non_negative_integer(
     return value
 
 
-def _require_positive_integer(raw_mapping: Mapping[str, object], field_name: str, field_path: str) -> int:
+def _require_positive_integer(raw_mapping: Mapping[str, Any], field_name: str, field_path: str) -> int:
     value = _require_integer(raw_mapping, field_name, field_path)
     if value <= 0:
         raise SufficientStatisticsRiskValidationError(
@@ -1259,7 +1259,7 @@ def _require_positive_integer(raw_mapping: Mapping[str, object], field_name: str
     return value
 
 
-def _require_integer(raw_mapping: Mapping[str, object], field_name: str, field_path: str) -> int:
+def _require_integer(raw_mapping: Mapping[str, Any], field_name: str, field_path: str) -> int:
     if field_name not in raw_mapping:
         raise SufficientStatisticsRiskValidationError(
             SufficientStatisticsRiskValidationFailure(field_path=field_path, message="is required")
@@ -1277,7 +1277,7 @@ def _require_integer(raw_mapping: Mapping[str, object], field_name: str, field_p
     return value
 
 
-def _require_positive_finite_number(raw_mapping: Mapping[str, object], field_name: str, field_path: str) -> float:
+def _require_positive_finite_number(raw_mapping: Mapping[str, Any], field_name: str, field_path: str) -> float:
     value = _require_finite_number(raw_mapping, field_name, field_path)
     if value <= 0.0:
         raise SufficientStatisticsRiskValidationError(
@@ -1291,7 +1291,7 @@ def _require_positive_finite_number(raw_mapping: Mapping[str, object], field_nam
 
 
 def _require_non_negative_finite_number(
-    raw_mapping: Mapping[str, object],
+    raw_mapping: Mapping[str, Any],
     field_name: str,
     field_path: str,
 ) -> float:
@@ -1307,7 +1307,7 @@ def _require_non_negative_finite_number(
     return value
 
 
-def _require_finite_number(raw_mapping: Mapping[str, object], field_name: str, field_path: str) -> float:
+def _require_finite_number(raw_mapping: Mapping[str, Any], field_name: str, field_path: str) -> float:
     if field_name not in raw_mapping:
         raise SufficientStatisticsRiskValidationError(
             SufficientStatisticsRiskValidationFailure(field_path=field_path, message="is required")

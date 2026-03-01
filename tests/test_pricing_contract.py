@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 import pytest
 
@@ -89,7 +90,7 @@ def test_vanilla_option_response_rejects_negative_price_with_structured_error() 
     assert captured_error.value.failure.message == "must be non-negative"
 
 
-def _valid_request_payload() -> dict[str, object]:
+def _valid_request_payload() -> dict[str, Any]:
     return {
         "market_inputs": {
             "spot": 101.0,
@@ -139,7 +140,7 @@ def _valid_request_payload() -> dict[str, object]:
     }
 
 
-def _valid_response_payload() -> dict[str, object]:
+def _valid_response_payload() -> dict[str, Any]:
     return {
         "price": 12.5,
         "diagnostics": {

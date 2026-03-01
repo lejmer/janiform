@@ -6,8 +6,8 @@ use janiform_core::verification::{
     COARSE_FINE_CONSISTENCY_REGRESSION_OUTPUT_SCHEMA_METADATA_VERSION,
     COARSE_FINE_CONSISTENCY_REGRESSION_REPORT_SCHEMA_VERSION,
     COARSE_FINE_CONSISTENCY_REGRESSION_TOLERANCE_SCHEMA_VERSION,
-    COARSE_FINE_CONSISTENCY_REGRESSION_VARIANCE_CONTROL_POLICY, CoarseFineConsistencyMetricDelta,
-    CoarseFineConsistencyRegressionExecutionConfig,
+    COARSE_FINE_CONSISTENCY_REGRESSION_VARIANCE_CONTROL_POLICY,
+    CoarseFineConsistencyMetricDelta, CoarseFineConsistencyRegressionExecutionConfig,
     CoarseFineConsistencyRegressionOutputSchemaMetadata, CoarseFineConsistencyRegressionReport,
     CoarseFineConsistencyRegressionSummary, CoarseFineConsistencyRegressionToleranceConfig,
     CoarseFineConsistencyScenarioReport, CoarseFineConsistencyScenarioRunMetadata,
@@ -23,6 +23,7 @@ use janiform_core::verification::{
     REGRESSION_DRIFT_ATTRIBUTION_REPORT_SCHEMA_VERSION,
     REGRESSION_DRIFT_ATTRIBUTION_SCENARIO_SET_THRESHOLD_ID,
     RegressionDriftAttributionPerformanceThresholds, RegressionDriftCategory,
+    VERIFICATION_CANONICAL_COMPONENT_VOCABULARY, VerificationSemanticBucket,
     build_regression_drift_attribution_report, render_regression_drift_attribution_report,
 };
 use serde_json::Value;
@@ -347,6 +348,7 @@ fn build_coarse_fine_report(
         output_schema_metadata: CoarseFineConsistencyRegressionOutputSchemaMetadata {
             schema_version: COARSE_FINE_CONSISTENCY_REGRESSION_OUTPUT_SCHEMA_METADATA_VERSION,
             tolerance_schema_version: COARSE_FINE_CONSISTENCY_REGRESSION_TOLERANCE_SCHEMA_VERSION,
+            canonical_component_vocabulary: VERIFICATION_CANONICAL_COMPONENT_VOCABULARY.to_vec(),
             required_report_fields: Vec::new(),
             required_scenario_report_fields: Vec::new(),
             required_metric_delta_fields: Vec::new(),
@@ -433,6 +435,7 @@ fn build_metric_delta(
 ) -> CoarseFineConsistencyMetricDelta {
     CoarseFineConsistencyMetricDelta {
         metric_id,
+        semantic_bucket: VerificationSemanticBucket::TradingReturn,
         coarse_value: 1.0 + absolute_delta,
         fine_reference_value: 1.0,
         absolute_delta,

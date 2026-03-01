@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from math import isfinite, sqrt
-from typing import NotRequired, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 from .calendar import CalendarRegistry
 from .hourly_factors import (
@@ -123,7 +123,7 @@ def load_hourly_factor_contract_for_pricing(
 
 
 def validate_vanilla_option_pricing_request(
-    raw_request: Mapping[str, object],
+    raw_request: Mapping[str, Any],
 ) -> VanillaOptionPricingRequest:
     market_inputs = _require_mapping(raw_request, "market_inputs", "market_inputs")
     payoff = _require_mapping(raw_request, "payoff", "payoff")
@@ -201,7 +201,7 @@ def validate_vanilla_option_pricing_request(
 
 
 def validate_vanilla_option_pricing_response(
-    raw_response: Mapping[str, object],
+    raw_response: Mapping[str, Any],
 ) -> VanillaOptionPricingResponse:
     price = _require_non_negative_finite_number(raw_response, "price", "price")
     diagnostics = _require_mapping(raw_response, "diagnostics", "diagnostics")
@@ -238,7 +238,7 @@ def validate_vanilla_option_pricing_response(
     }
 
 
-def serialize_vanilla_option_pricing_request(request: Mapping[str, object]) -> str:
+def serialize_vanilla_option_pricing_request(request: Mapping[str, Any]) -> str:
     validated_request = validate_vanilla_option_pricing_request(request)
     return json.dumps(validated_request, sort_keys=True)
 
@@ -248,7 +248,7 @@ def deserialize_vanilla_option_pricing_request(payload_json: str) -> VanillaOpti
     return validate_vanilla_option_pricing_request(raw_payload)
 
 
-def serialize_vanilla_option_pricing_response(response: Mapping[str, object]) -> str:
+def serialize_vanilla_option_pricing_response(response: Mapping[str, Any]) -> str:
     validated_response = validate_vanilla_option_pricing_response(response)
     return json.dumps(validated_response, sort_keys=True)
 
@@ -259,7 +259,7 @@ def deserialize_vanilla_option_pricing_response(payload_json: str) -> VanillaOpt
 
 
 def _validate_model_parameters(
-    raw_model_parameters: Mapping[str, object],
+    raw_model_parameters: Mapping[str, Any],
 ) -> VanillaOptionPricingModelParameters:
     raw_kernel_parameters = _require_mapping(
         raw_model_parameters,
@@ -450,7 +450,7 @@ def _validate_model_parameters(
 
 
 def _require_payoff_type(
-    mapping: Mapping[str, object],
+    mapping: Mapping[str, Any],
     field_name: str,
     field_path: str,
 ) -> VanillaOptionPayoffType:
@@ -494,7 +494,7 @@ def _compute_hawkes_alpha_over_beta_spectral_radius(
     return 0.5 * (trace + sqrt(safe_radicand))
 
 
-def _parse_json_object(payload_json: str, payload_label: str) -> Mapping[str, object]:
+def _parse_json_object(payload_json: str, payload_label: str) -> Mapping[str, Any]:
     try:
         parsed_payload = json.loads(payload_json)
     except json.JSONDecodeError as error:
@@ -517,10 +517,10 @@ def _parse_json_object(payload_json: str, payload_label: str) -> Mapping[str, ob
 
 
 def _require_mapping(
-    mapping: Mapping[str, object],
+    mapping: Mapping[str, Any],
     field_name: str,
     field_path: str,
-) -> Mapping[str, object]:
+) -> Mapping[str, Any]:
     raw_value = _require_field(mapping, field_name, field_path)
     if not isinstance(raw_value, Mapping):
         raise VanillaOptionPricingValidationError(
@@ -534,7 +534,7 @@ def _require_mapping(
 
 
 def _require_field(
-    mapping: Mapping[str, object],
+    mapping: Mapping[str, Any],
     field_name: str,
     field_path: str,
 ) -> object:
@@ -550,7 +550,7 @@ def _require_field(
 
 
 def _require_positive_finite_number(
-    mapping: Mapping[str, object],
+    mapping: Mapping[str, Any],
     field_name: str,
     field_path: str,
 ) -> float:
@@ -567,7 +567,7 @@ def _require_positive_finite_number(
 
 
 def _require_non_negative_finite_number(
-    mapping: Mapping[str, object],
+    mapping: Mapping[str, Any],
     field_name: str,
     field_path: str,
 ) -> float:
@@ -584,7 +584,7 @@ def _require_non_negative_finite_number(
 
 
 def _require_finite_number(
-    mapping: Mapping[str, object],
+    mapping: Mapping[str, Any],
     field_name: str,
     field_path: str,
 ) -> float:
