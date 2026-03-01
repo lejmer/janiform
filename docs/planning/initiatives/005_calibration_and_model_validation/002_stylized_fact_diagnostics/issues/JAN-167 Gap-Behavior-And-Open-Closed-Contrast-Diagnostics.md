@@ -1,4 +1,4 @@
-## ISSUE-005: Gap Behavior And Open Closed Contrast Diagnostics
+## Gap Behavior And Open Closed Contrast Diagnostics
 
 ### Description
 Implement diagnostics for overnight, weekend, and open-versus-closed behavior to validate direct open-window jump dynamics and closed-window reopening-gap dynamics against observed data.

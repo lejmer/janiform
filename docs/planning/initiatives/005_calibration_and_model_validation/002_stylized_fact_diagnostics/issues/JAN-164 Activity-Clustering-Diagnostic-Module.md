@@ -1,4 +1,4 @@
-## ISSUE-002: Activity Clustering Diagnostic Module
+## Activity Clustering Diagnostic Module
 
 ### Description
 Implement diagnostics for event and volatility clustering behavior to compare empirical data against model-generated outputs.

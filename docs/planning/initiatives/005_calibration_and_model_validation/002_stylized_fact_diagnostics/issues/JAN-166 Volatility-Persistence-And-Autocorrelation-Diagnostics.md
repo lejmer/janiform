@@ -1,4 +1,4 @@
-## ISSUE-004: Volatility Persistence And Autocorrelation Diagnostics
+## Volatility Persistence And Autocorrelation Diagnostics
 
 ### Description
 Implement diagnostics for volatility persistence and related autocorrelation structure to evaluate fitted-model temporal behavior.

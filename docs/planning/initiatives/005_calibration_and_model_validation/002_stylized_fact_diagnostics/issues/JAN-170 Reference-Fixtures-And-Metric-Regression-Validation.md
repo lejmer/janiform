@@ -1,4 +1,4 @@
-## ISSUE-008: Reference Fixtures And Metric Regression Validation
+## Reference Fixtures And Metric Regression Validation
 
 ### Description
 Create reference fixtures and regression validation suite to lock down metric correctness and guard against diagnostics drift.

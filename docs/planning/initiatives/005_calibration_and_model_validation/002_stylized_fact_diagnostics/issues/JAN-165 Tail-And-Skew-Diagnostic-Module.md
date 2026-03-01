@@ -1,4 +1,4 @@
-## ISSUE-003: Tail And Skew Diagnostic Module
+## Tail And Skew Diagnostic Module
 
 ### Description
 Implement heavy-tail and skew diagnostics across multiple horizons for empirical and simulated return series.
