@@ -1,11 +1,10 @@
 use crate::hawkes::{
     HAWKES_KERNEL_PARAMETER_VALIDATION_DETERMINISM_POLICY,
-    HAWKES_KERNEL_PARAMETER_VALIDATION_REPORT_SCHEMA_VERSION,
-    HAWKES_STRICT_STATIONARITY_THRESHOLD, HawkesEventSide, HawkesEventSidePayloadError,
-    HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameterConstraint,
-    HawkesKernelParameterError, HawkesKernelParameterViolation, HawkesKernelParameters,
-    HawkesKernelValidationStatus, HawkesNewsSeverityMarkError, HawkesSeasonalityIntervalError,
-    HawkesSourceComponents, HawkesStructuredAlphaParameterError,
+    HAWKES_KERNEL_PARAMETER_VALIDATION_REPORT_SCHEMA_VERSION, HAWKES_STRICT_STATIONARITY_THRESHOLD,
+    HawkesEventSide, HawkesEventSidePayloadError, HawkesExcitationState, HawkesKernelLoadings,
+    HawkesKernelParameterConstraint, HawkesKernelParameterError, HawkesKernelParameterViolation,
+    HawkesKernelParameters, HawkesKernelValidationStatus, HawkesNewsSeverityMarkError,
+    HawkesSeasonalityIntervalError, HawkesSourceComponents, HawkesStructuredAlphaParameterError,
     HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterError,
     HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
     HawkesTransitionError, HawkesTransitionStep,
@@ -258,8 +257,7 @@ fn hourly_interval_projection_reads_seasonality_from_shared_contract() {
         y_minus_plus: 0.4,
         y_minus_minus: 0.3,
     };
-    let hourly_factor_contract =
-        build_hourly_factor_contract_with_seasonality(vec![0.8, 1.3, 0.6]);
+    let hourly_factor_contract = build_hourly_factor_contract_with_seasonality(vec![0.8, 1.3, 0.6]);
 
     let projection = state
         .project_intensities_for_hourly_interval(0.5, &hourly_factor_contract, 1)
@@ -708,22 +706,17 @@ fn composed_transition_sequence_matches_manual_step_iteration() {
             let mut manual_state = next_state
                 .apply_shared_decay_drift(kernel_parameters.beta, transition_step.delta_t);
             if let Some(endogenous_event_side) = transition_step.endogenous_event_side {
-                manual_state = manual_state.apply_endogenous_event_jump(
-                    endogenous_event_side,
-                    kernel_parameters.alpha,
-                );
+                manual_state = manual_state
+                    .apply_endogenous_event_jump(endogenous_event_side, kernel_parameters.alpha);
             }
-            if let Some(exogenous_news_severity_mark) =
-                transition_step.exogenous_news_severity_mark
+            if let Some(exogenous_news_severity_mark) = transition_step.exogenous_news_severity_mark
             {
                 return manual_state
                     .apply_exogenous_news_loading_jump(
                         kernel_parameters.rho,
                         exogenous_news_severity_mark,
                     )
-                    .map_err(|source| HawkesTransitionError::InvalidNewsSeverityMark {
-                        source,
-                    });
+                    .map_err(|source| HawkesTransitionError::InvalidNewsSeverityMark { source });
             }
             Ok(manual_state)
         })
@@ -1144,8 +1137,7 @@ fn kernel_parameter_domain_precheck_accepts_interior_and_boundary_adjacent_value
 }
 
 #[test]
-fn kernel_parameter_domain_precheck_returns_optimizer_friendly_report_payload_for_valid_input()
-{
+fn kernel_parameter_domain_precheck_returns_optimizer_friendly_report_payload_for_valid_input() {
     let alpha = HawkesKernelLoadings {
         plus_plus: 0.6,
         plus_minus: 0.1,
@@ -1274,9 +1266,8 @@ fn spectral_radius_stability_checker_supports_tolerance_policy_near_threshold() 
     );
     assert!(strict_check.is_stable);
 
-    let tolerant_check =
-        HawkesKernelParameters::check_spectral_radius_stability(1.0, alpha, 1e-9)
-            .expect("tightened tolerance policy should evaluate");
+    let tolerant_check = HawkesKernelParameters::check_spectral_radius_stability(1.0, alpha, 1e-9)
+        .expect("tightened tolerance policy should evaluate");
     assert_eq!(
         tolerant_check.spectral_radius_alpha_over_beta,
         0.999_999_999_6
@@ -1297,9 +1288,8 @@ fn spectral_radius_stability_checker_reports_deterministic_numeric_output() {
         minus_minus: 0.7,
     };
 
-    let reference_check =
-        HawkesKernelParameters::check_spectral_radius_stability(1.25, alpha, 0.0)
-            .expect("valid payload should evaluate deterministic spectral radius");
+    let reference_check = HawkesKernelParameters::check_spectral_radius_stability(1.25, alpha, 0.0)
+        .expect("valid payload should evaluate deterministic spectral radius");
     assert!(reference_check.is_stable);
     assert_eq!(reference_check.spectral_radius_alpha_over_beta, 0.64);
 
@@ -1385,9 +1375,8 @@ fn kernel_parameter_construction_rejects_non_positive_or_non_finite_lambda_bar()
         HawkesKernelParameterError::InvalidLambdaBar { value: 0.0 }
     );
 
-    let nan_lambda_bar_error =
-        HawkesKernelParameters::try_new(f64::NAN, 1.0, loadings, loadings)
-            .expect_err("non-finite lambda_bar must fail");
+    let nan_lambda_bar_error = HawkesKernelParameters::try_new(f64::NAN, 1.0, loadings, loadings)
+        .expect_err("non-finite lambda_bar must fail");
     assert!(matches!(
         nan_lambda_bar_error,
         HawkesKernelParameterError::InvalidLambdaBar { value } if value.is_nan()
@@ -1547,8 +1536,8 @@ fn kernel_parameter_serialization_round_trip_preserves_canonical_payload() {
     )
     .expect("valid typed parameters must serialize");
 
-    let serialized = serde_json::to_string(&parameters)
-        .expect("canonical parameter payload should serialize");
+    let serialized =
+        serde_json::to_string(&parameters).expect("canonical parameter payload should serialize");
     let parsed: HawkesKernelParameters =
         serde_json::from_str(&serialized).expect("serialized payload should deserialize");
 

@@ -246,12 +246,7 @@ pub struct ComposableNewsMarkPipeline<
     coupled_mark_constructor: CoupledMarkConstructor,
 }
 
-impl<
-        ArrivalIntensityGenerator,
-        SeverityMarkSampler,
-        BaseShockMarkSampler,
-        CoupledMarkConstructor,
-    >
+impl<ArrivalIntensityGenerator, SeverityMarkSampler, BaseShockMarkSampler, CoupledMarkConstructor>
     ComposableNewsMarkPipeline<
         ArrivalIntensityGenerator,
         SeverityMarkSampler,

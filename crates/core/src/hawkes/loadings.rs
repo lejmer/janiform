@@ -3,10 +3,10 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use super::parameters::{
-    derive_self_to_cross_ratio, validate_non_negative_loadings, HawkesKernelParameterError,
-};
 use super::HawkesSourceComponents;
+use super::parameters::{
+    HawkesKernelParameterError, derive_self_to_cross_ratio, validate_non_negative_loadings,
+};
 /// Canonical 4-component loading map used for `alpha_ij` and `rho_ij`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

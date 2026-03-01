@@ -1,7 +1,7 @@
 use crate::calendar::ExchangeCalendarRegistry;
 use crate::hourly_factors::{
-    build_hourly_factor_contract, materialize_hourly_news_intensity_factors,
-    materialize_hourly_seasonality_factors, HourlyFactorContractError, HourlyFactorContractOutput,
+    HourlyFactorContractError, HourlyFactorContractOutput, build_hourly_factor_contract,
+    materialize_hourly_news_intensity_factors, materialize_hourly_seasonality_factors,
 };
 
 use super::constants::{

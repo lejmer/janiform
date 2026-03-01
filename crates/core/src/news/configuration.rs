@@ -11,10 +11,10 @@ use super::errors::{
     NewsProcessConfigurationError,
 };
 use super::interface::{
+    COUPLED_GAP_MARK_CONSTRUCTION_POLICY, NEWS_ARRIVAL_COMPONENT_INTENSITY_POLICY,
     NewsArrivalIntensityEvaluationInput, NewsArrivalIntensityEvaluationOutput,
     NewsArrivalIntensityGenerator, NewsBaseShockMarkSampler, NewsCoupledMarkConstructor,
     NewsMarkInterfaceError, NewsMarkInterfaceStage, NewsSeverityMarkSampler,
-    COUPLED_GAP_MARK_CONSTRUCTION_POLICY, NEWS_ARRIVAL_COMPONENT_INTENSITY_POLICY,
 };
 use super::sampling::{
     sample_exponential_with_rate, sample_gamma_shape_scale, utc_timestamp_from_nanos,

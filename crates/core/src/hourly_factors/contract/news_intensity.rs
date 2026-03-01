@@ -2,9 +2,9 @@ use chrono::{DateTime, Utc};
 
 use crate::calendar::ExchangeCalendarRegistry;
 use crate::news::{
-    KnownNewsArrivalConfiguration, NewsArrivalConfiguration, NewsArrivalConfigurationError,
-    NewsArrivalIntensityEvaluationInput, NewsComponentIntensityEvaluationError,
-    SurpriseNewsArrivalConfiguration, NEWS_ARRIVAL_COMPONENT_INTENSITY_POLICY,
+    KnownNewsArrivalConfiguration, NEWS_ARRIVAL_COMPONENT_INTENSITY_POLICY,
+    NewsArrivalConfiguration, NewsArrivalConfigurationError, NewsArrivalIntensityEvaluationInput,
+    NewsComponentIntensityEvaluationError, SurpriseNewsArrivalConfiguration,
 };
 
 use super::constants::{
