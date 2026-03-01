@@ -10,10 +10,10 @@ use crate::hawkes::{
     HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
     HawkesStructuredRhoSelfDominancePolicy, HawkesTransitionError, HawkesTransitionStep,
 };
-use crate::hourly_factor_provider::{
-    HourlyFactorProviderError, HourlyFactorProviderRequest, provide_hourly_factor_contract,
+use crate::hourly_factors::{
+    HourlyFactorContractOutput, HourlyFactorProviderError, HourlyFactorProviderRequest,
+    provide_hourly_factor_contract,
 };
-use crate::hourly_factors::HourlyFactorContractOutput;
 use crate::pricing::{
     VanillaOptionPricingCalibrationHooks, VanillaOptionPricingCalibrationHooksError,
 };

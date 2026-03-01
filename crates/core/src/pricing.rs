@@ -2451,7 +2451,7 @@ impl Error for PricingMartingaleConditionValidationError {
 }
 
 /// Resolve interval-aligned hourly factors for the pricing path.
-pub use crate::hourly_factor_provider::provide_hourly_factor_contract as load_hourly_factor_contract;
+pub use crate::hourly_factors::provide_hourly_factor_contract as load_hourly_factor_contract;
 
 /// Project state to interval intensities for coarse-time sufficient-statistics paths.
 pub fn project_hawkes_intensities_coarse_interval(
