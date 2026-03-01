@@ -2,13 +2,13 @@ use serde_json::json;
 
 use crate::complex_math::ComplexScalar;
 use crate::pricing::{
-    price_vanilla_option_via_fourier_inversion, FourierInversionContour,
+    FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION, FourierInversionContour,
     FourierInversionContourError, FourierInversionEngineSettings,
     FourierInversionIntegrationStabilityControls,
     FourierInversionIntegrationStabilityControlsError, FourierInversionNumericQualityGate,
     FourierInversionNumericSettings, FourierInversionPricingError, FourierInversionQuadratureRule,
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
-    FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION,
+    price_vanilla_option_via_fourier_inversion,
 };
 
 use super::support::{black_scholes_log_return_characteristic_function, black_scholes_price};

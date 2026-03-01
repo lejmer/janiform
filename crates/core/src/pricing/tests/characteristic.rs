@@ -1,21 +1,21 @@
 use crate::affine_oracle::{ExponentialAffineTransformDVector, ExponentialAffineTransformOutput};
-use crate::complex_math::{complex_exponential, complex_multiply, ComplexScalar};
+use crate::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
 use crate::nig::NigSharedPlusShiftConfiguration;
 use crate::pricing::{
-    compose_nig_trading_time_exponent, compose_total_return_characteristic_function,
+    PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY, PricingMartingaleConditionValidationError,
+    RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
+    RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY, ReturnCharacteristicFunctionAssemblyError,
+    VanillaOptionPricingMarketInputs, compose_nig_trading_time_exponent,
+    compose_total_return_characteristic_function,
     compose_total_return_characteristic_function_from_oracle_output,
     compose_total_return_characteristic_function_with_edge_mode,
     validate_pricing_martingale_condition_under_esscher_tilt,
-    PricingMartingaleConditionValidationError, ReturnCharacteristicFunctionAssemblyError,
-    VanillaOptionPricingMarketInputs, PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY,
-    RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
-    RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY,
 };
 use crate::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionInput,
 };
 use crate::risk_neutral::{
-    transform_nig_characteristic_exponent_under_esscher_tilt, NigEsscherTransformationInput,
+    NigEsscherTransformationInput, transform_nig_characteristic_exponent_under_esscher_tilt,
 };
 
 use super::support::{assert_complex_close, oracle_output_with_transform_value};
@@ -348,9 +348,9 @@ fn oracle_output_cf_assembly_regression_guard_detects_positive_u_sell_side_sign_
         .subtract(incorrect_assembly.combined_characteristic_factor)
         .norm();
     assert!(
-            regression_distance > 1.0e-6,
-            "sell-side sign-convention regression detected in oracle-output CF assembly with distance={regression_distance}"
-        );
+        regression_distance > 1.0e-6,
+        "sell-side sign-convention regression detected in oracle-output CF assembly with distance={regression_distance}"
+    );
 }
 
 #[test]
@@ -776,9 +776,9 @@ fn full_characteristic_function_regression_guard_detects_sell_side_sign_inversio
         .norm();
 
     assert!(
-            regression_distance > 1.0e-6,
-            "sell-side sign-convention regression detected in full CF assembly with distance={regression_distance}"
-        );
+        regression_distance > 1.0e-6,
+        "sell-side sign-convention regression detected in full CF assembly with distance={regression_distance}"
+    );
 }
 
 #[test]

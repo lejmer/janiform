@@ -2,12 +2,12 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use crate::affine_oracle::{
-    solve_exponential_affine_transform_with_optional_settings,
     ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
     ExponentialAffineTransformInputError, ExponentialAffineTransformIntegrationResult,
     ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformOutput,
     ExponentialAffineTransformOutputError, ExponentialAffineTransformSolverError,
     ExponentialAffineTransformSolverSettings,
+    solve_exponential_affine_transform_with_optional_settings,
 };
 use crate::complex_math::ComplexScalar;
 use crate::complex_math::{complex_exponential, complex_multiply};
@@ -21,10 +21,10 @@ use crate::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionValidationError,
 };
 use crate::risk_neutral::{
+    EsscherMartingaleConditionError, EsscherMartingaleConditionInput,
+    EsscherMartingaleConditionReport, EsscherTransformError, NigEsscherTransformationInput,
     evaluate_esscher_martingale_condition,
-    transform_nig_characteristic_exponent_under_esscher_tilt, EsscherMartingaleConditionError,
-    EsscherMartingaleConditionInput, EsscherMartingaleConditionReport, EsscherTransformError,
-    NigEsscherTransformationInput,
+    transform_nig_characteristic_exponent_under_esscher_tilt,
 };
 
 use super::constants::{

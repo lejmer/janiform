@@ -2,16 +2,16 @@ use crate::affine_oracle::{
     ExponentialAffineTransformDVector, ExponentialAffineTransformIntegrationResult,
     ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformOutput,
 };
-use crate::complex_math::{complex_exponential, ComplexScalar};
+use crate::complex_math::{ComplexScalar, complex_exponential};
 use crate::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
 use crate::news::GammaSeverityMarkConfiguration;
 use crate::nig::NigSharedPlusShiftConfiguration;
 use crate::pricing::{
-    build_pricing_transform_input, price_vanilla_option_via_fourier_inversion,
-    solve_exponential_affine_transform, FourierInversionDiagnostics,
-    FourierInversionEngineSettings, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
-    VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
+    FourierInversionDiagnostics, FourierInversionEngineSettings, VanillaOptionPayoffConfiguration,
+    VanillaOptionPayoffType, VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingRequest, VanillaOptionPricingResponse,
+    build_pricing_transform_input, price_vanilla_option_via_fourier_inversion,
+    solve_exponential_affine_transform,
 };
 
 pub(super) fn build_valid_vanilla_option_request() -> VanillaOptionPricingRequest {
@@ -86,8 +86,8 @@ pub(super) fn build_reference_pricing_response(
     .expect("reference response should construct")
 }
 
-pub(super) fn build_reference_transform_diagnostics_source(
-) -> ExponentialAffineTransformIntegrationResult {
+pub(super) fn build_reference_transform_diagnostics_source()
+-> ExponentialAffineTransformIntegrationResult {
     let transform_input = build_pricing_transform_input(
         build_valid_vanilla_option_request(),
         ComplexScalar::new(0.2, -0.1),
