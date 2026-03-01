@@ -11,8 +11,9 @@ use std::fmt::{Display, Formatter};
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::complex_math::ComplexScalar;
 use crate::nig::{
-    ComplexScalar, NigBuySellDriverParameters, NigTradingTimeCharacteristicExponentContributions,
+    NigBuySellDriverParameters, NigTradingTimeCharacteristicExponentContributions,
     NigTradingTimeIncrementContributions, NigTradingTimeIncrementSamplingError,
 };
 use crate::randomness::SimulationRandomnessStream;
@@ -383,7 +384,8 @@ fn validate_finite(
 
 #[cfg(test)]
 mod tests {
-    use crate::nig::{ComplexScalar, NigSharedPlusShiftConfiguration};
+    use crate::complex_math::ComplexScalar;
+    use crate::nig::NigSharedPlusShiftConfiguration;
     use crate::randomness::SplitMix64SimulationRandomnessStream;
 
     use super::{

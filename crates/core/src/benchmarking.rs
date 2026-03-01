@@ -15,11 +15,11 @@ use crate::affine_oracle::{
     ExponentialAffineTransformSolverSettings, ExponentialAffineTransformSolverSettingsError,
     solve_exponential_affine_transform_with_settings,
 };
+use crate::complex_math::ComplexScalar;
 use crate::complex_math::complex_exponential;
 use crate::hawkes::HawkesExcitationState;
 use crate::hawkes::{HawkesKernelLoadings, HawkesKernelParameterError, HawkesKernelParameters};
 use crate::news::{GammaSeverityMarkConfiguration, NewsMarkConfigurationError};
-use crate::nig::ComplexScalar;
 use crate::pricing::{
     FourierInversionContour, FourierInversionEngineSettings, FourierInversionEngineSettingsError,
     FourierInversionNumericSettings, FourierInversionPricingError, FourierInversionQuadratureRule,

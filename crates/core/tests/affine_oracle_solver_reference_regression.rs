@@ -11,7 +11,7 @@ use janiform_core::affine_oracle::{
     ExponentialAffineTransformOutput, ExponentialAffineTransformSolverSettings,
     solve_exponential_affine_transform_with_settings,
 };
-use janiform_core::nig::ComplexScalar;
+use janiform_core::complex_math::ComplexScalar;
 use serde::Deserialize;
 use serde_json::Value;
 

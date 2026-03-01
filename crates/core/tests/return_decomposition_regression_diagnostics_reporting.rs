@@ -1,8 +1,7 @@
 mod support;
 
-use janiform_core::nig::{
-    ComplexScalar, NigBuySellDriverParameters, NigSharedPlusShiftConfiguration,
-};
+use janiform_core::complex_math::ComplexScalar;
+use janiform_core::nig::{NigBuySellDriverParameters, NigSharedPlusShiftConfiguration};
 use janiform_core::pricing::{
     compose_nig_trading_time_exponent_with_edge_mode,
     compose_total_return_characteristic_function_with_edge_mode,

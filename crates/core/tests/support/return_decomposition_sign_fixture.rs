@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
-use janiform_core::nig::ComplexScalar;
+use janiform_core::complex_math::ComplexScalar;
 use serde::Deserialize;
 
 use crate::support::validation_fixture::fixtures_root_path;

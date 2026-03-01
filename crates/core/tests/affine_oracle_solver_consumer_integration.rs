@@ -4,9 +4,9 @@ use janiform_core::affine_oracle::{
     ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformSolverSettings,
     solve_exponential_affine_transform_with_optional_settings,
 };
+use janiform_core::complex_math::ComplexScalar;
 use janiform_core::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
 use janiform_core::news::GammaSeverityMarkConfiguration;
-use janiform_core::nig::ComplexScalar;
 use janiform_core::pricing::{
     DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType, VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,

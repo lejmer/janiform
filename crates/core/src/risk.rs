@@ -17,13 +17,14 @@ use crate::affine_oracle::{
     solve_exponential_affine_transform_with_optional_settings,
 };
 use crate::calendar::MarketState;
+use crate::complex_math::ComplexScalar;
 use crate::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
     HawkesTransitionError, HawkesTransitionStep, evolve_hawkes_state,
 };
 use crate::news::SHARED_NEWS_EVENT_DISPATCH_RETURN_ROUTING_POLICY;
 use crate::nig::{
-    ComplexScalar, NigBuySellDriverParameters, NigSharedPlusShiftConfiguration,
+    NigBuySellDriverParameters, NigSharedPlusShiftConfiguration,
     NigSharedPlusShiftConfigurationError, NigTradingTimeIncrementSamplingError,
 };
 use crate::randomness::{
@@ -3984,12 +3985,13 @@ mod tests {
         ExponentialAffineTransformNewsIntensityInput,
     };
     use crate::calendar::MarketState;
+    use crate::complex_math::ComplexScalar;
     use crate::hawkes::{
         HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
         HawkesTransitionError, HawkesTransitionStep, evolve_hawkes_state,
     };
     use crate::news::GammaSeverityMarkConfiguration;
-    use crate::nig::{ComplexScalar, NigSharedPlusShiftConfiguration};
+    use crate::nig::NigSharedPlusShiftConfiguration;
     use crate::randomness::SplitMix64SimulationRandomnessStream;
     use crate::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
 

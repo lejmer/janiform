@@ -3,7 +3,8 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use crate::nig::{ComplexScalar, NigParameterError, NigParameters};
+use crate::complex_math::ComplexScalar;
+use crate::nig::{NigParameterError, NigParameters};
 
 pub const ESSCHER_TRANSFORMATION_POLICY: &str =
     "psi_q_of_u_equals_psi_p_of_u_plus_i_theta_minus_psi_p_of_i_theta.v1";
@@ -316,7 +317,8 @@ fn validate_argument(argument: ComplexScalar) -> Result<(), EsscherTransformErro
 
 #[cfg(test)]
 mod tests {
-    use crate::nig::{ComplexScalar, NigParameters};
+    use crate::complex_math::ComplexScalar;
+    use crate::nig::NigParameters;
     use crate::risk_neutral::{
         ESSCHER_MARTINGALE_CONDITION_POLICY, ESSCHER_TRANSFORMATION_POLICY,
         EsscherMartingaleConditionError, EsscherMartingaleConditionInput, EsscherTransformError,

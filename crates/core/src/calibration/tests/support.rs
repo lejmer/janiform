@@ -53,6 +53,7 @@ pub(super) use crate::calibration::{
     run_seasonality_calibration_stage, run_staged_calibration_with_checkpointing,
     transform_nig_exponent_for_calibration_under_esscher_tilt,
 };
+pub(super) use crate::complex_math::ComplexScalar;
 pub(super) use crate::hawkes::{
     HAWKES_KERNEL_PARAMETER_VALIDATION_REPORT_SCHEMA_VERSION, HawkesKernelLoadings,
     HawkesKernelValidationStatus, HawkesStructuredAlphaParameterization,
@@ -62,7 +63,7 @@ pub(super) use crate::news::{
     CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, SharedNewsMarkLawConfiguration,
 };
-pub(super) use crate::nig::{ComplexScalar, NigParameters, NigSharedPlusShiftConfiguration};
+pub(super) use crate::nig::{NigParameters, NigSharedPlusShiftConfiguration};
 pub(super) use crate::pricing::VanillaOptionPricingCalibrationHooks;
 pub(super) use crate::risk_neutral::{
     EsscherMartingaleConditionInput, NigEsscherTransformationInput,

@@ -2,8 +2,9 @@ mod support;
 
 use std::collections::BTreeSet;
 
+use janiform_core::complex_math::ComplexScalar;
 use janiform_core::nig::{
-    ComplexScalar, NIG_TRADING_TIME_RETURN_SIGN_CONVENTION_POLICY, NigSharedPlusShiftConfiguration,
+    NIG_TRADING_TIME_RETURN_SIGN_CONVENTION_POLICY, NigSharedPlusShiftConfiguration,
 };
 use janiform_core::pricing::{
     RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY, compose_nig_trading_time_exponent,

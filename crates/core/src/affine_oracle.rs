@@ -20,6 +20,7 @@ use std::fmt::{Display, Formatter};
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::complex_math::ComplexScalar;
 use crate::complex_math::{
     complex_exponential, complex_multiply, complex_pow_real_exponent_principal,
 };
@@ -27,7 +28,6 @@ use crate::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameterError, HawkesKernelParameters,
 };
 use crate::news::{GammaSeverityMarkConfiguration, NewsMarkConfigurationError};
-use crate::nig::ComplexScalar;
 
 pub const EXPONENTIAL_AFFINE_TRANSFORM_EQUATION_MAPPING_POLICY: &str =
     "compact_model_spec_section_8_named_component_mapping.v1";
@@ -1844,9 +1844,9 @@ mod tests {
         evaluate_exponential_affine_transform_ode_rhs, solve_exponential_affine_transform,
         solve_exponential_affine_transform_with_settings,
     };
+    use crate::complex_math::ComplexScalar;
     use crate::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
     use crate::news::GammaSeverityMarkConfiguration;
-    use crate::nig::ComplexScalar;
 
     fn valid_equation_specification() -> ExponentialAffineTransformEquationSpecification {
         ExponentialAffineTransformEquationSpecification::try_new(

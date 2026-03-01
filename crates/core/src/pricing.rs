@@ -15,6 +15,7 @@ use crate::affine_oracle::{
     ExponentialAffineTransformSolverError, ExponentialAffineTransformSolverSettings,
     solve_exponential_affine_transform_with_optional_settings,
 };
+use crate::complex_math::ComplexScalar;
 use crate::complex_math::{complex_exponential, complex_multiply};
 use crate::hawkes::{
     HawkesExcitationState, HawkesIntensityProjection, HawkesKernelParameterError,
@@ -23,7 +24,7 @@ use crate::hawkes::{
 use crate::hourly_factors::HourlyFactorContractOutput;
 use crate::news::{GammaSeverityMarkConfiguration, NewsMarkConfigurationError};
 use crate::nig::{
-    ComplexScalar, NigBuySellDriverParameters, NigSharedPlusShiftConfiguration,
+    NigBuySellDriverParameters, NigSharedPlusShiftConfiguration,
     NigSharedPlusShiftConfigurationError, NigTradingTimeCharacteristicExponentContributions,
 };
 use crate::return_decomposition::{
@@ -3100,9 +3101,10 @@ mod tests {
         ExponentialAffineTransformDVector, ExponentialAffineTransformIntegrationResult,
         ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformOutput,
     };
+    use crate::complex_math::ComplexScalar;
     use crate::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
     use crate::news::GammaSeverityMarkConfiguration;
-    use crate::nig::{ComplexScalar, NigSharedPlusShiftConfiguration};
+    use crate::nig::NigSharedPlusShiftConfiguration;
     use crate::pricing::{
         DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION,
         FourierInversionContour, FourierInversionContourError, FourierInversionDiagnostics,
