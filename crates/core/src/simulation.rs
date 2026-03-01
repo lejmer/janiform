@@ -1479,11 +1479,20 @@ where
         interval_sell_intensity * interval_duration_in_hours,
         &mut sell_event_count_stream,
     );
-    let interval_total_news_expected_count = interval_news_intensity * interval_duration_in_hours;
     let interval_known_news_event_count =
         u64::try_from(interval_known_news_event_timestamps_utc_nanos.len()).unwrap_or(u64::MAX);
-    let interval_surprise_news_expected_count =
-        (interval_total_news_expected_count - interval_known_news_event_count as f64).max(0.0);
+    let interval_news_arrival_decomposition = derive_interval_news_arrival_decomposition(
+        interval_news_intensity,
+        interval_duration_in_hours,
+        interval_known_news_event_count,
+    );
+    // Keep component assumptions explicit
+    // - known arrivals are fixed UTC anchors from the provided calendar slice
+    // - surprise arrivals are sampled independently from a Poisson count using nu_surprise
+    // - nu_news follows the documented superposition nu_known + nu_surprise
+    let interval_surprise_news_expected_count = interval_news_arrival_decomposition
+        .surprise_component_intensity
+        * interval_duration_in_hours;
     let interval_surprise_news_count = sample_count_from_expectation(
         interval_surprise_news_expected_count,
         &mut news_count_stream,
@@ -1593,6 +1602,31 @@ where
 
     interval_updates.sort_by_key(IntervalStochasticUpdate::ordering_key);
     Ok(interval_updates)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct IntervalNewsArrivalDecomposition {
+    known_component_intensity: f64,
+    surprise_component_intensity: f64,
+}
+
+fn derive_interval_news_arrival_decomposition(
+    interval_news_intensity: f64,
+    interval_duration_in_hours: f64,
+    interval_known_news_event_count: u64,
+) -> IntervalNewsArrivalDecomposition {
+    let interval_known_component_intensity = if interval_duration_in_hours > 0.0 {
+        interval_known_news_event_count as f64 / interval_duration_in_hours
+    } else {
+        0.0
+    };
+    let interval_surprise_component_intensity =
+        (interval_news_intensity - interval_known_component_intensity).max(0.0);
+
+    IntervalNewsArrivalDecomposition {
+        known_component_intensity: interval_known_component_intensity,
+        surprise_component_intensity: interval_surprise_component_intensity,
+    }
 }
 
 fn map_transition_error_to_seeded_simulation_run_error(
@@ -3157,11 +3191,231 @@ mod tests {
     }
 
     #[test]
+    fn interval_news_arrival_decomposition_scales_known_component_by_interval_duration() {
+        let decomposition = super::derive_interval_news_arrival_decomposition(1.75, 2.0, 3);
+
+        assert_float_close(decomposition.known_component_intensity, 1.5);
+        assert_float_close(decomposition.surprise_component_intensity, 0.25);
+    }
+
+    #[test]
+    fn seeded_simulation_surprise_sampling_is_invariant_to_known_timestamp_profile_when_known_count_is_fixed(
+    ) {
+        let start_utc_nanos = 1_704_067_200_000_000_000;
+        let interval_end_utc_nanos = start_utc_nanos + 2 * ONE_HOUR_NANOS;
+
+        let known_timestamp_profiles: Vec<Vec<i64>> = vec![
+            vec![
+                start_utc_nanos + ONE_HOUR_NANOS / 10,
+                start_utc_nanos + 3 * ONE_HOUR_NANOS / 2,
+            ],
+            vec![
+                start_utc_nanos + ONE_HOUR_NANOS / 4,
+                start_utc_nanos + 7 * ONE_HOUR_NANOS / 4,
+            ],
+            vec![
+                start_utc_nanos + ONE_HOUR_NANOS / 2,
+                start_utc_nanos + 9 * ONE_HOUR_NANOS / 5,
+            ],
+        ];
+
+        for seed in 9_300_u64..9_316_u64 {
+            let mut expected_surprise_timestamps: Option<Vec<i64>> = None;
+
+            for known_timestamps in &known_timestamp_profiles {
+                let mut model_inputs = one_interval_model_inputs(0.0, 0.0, 1.75);
+                override_hourly_factor_contract(
+                    &mut model_inputs.hourly_factor_contract,
+                    &[start_utc_nanos],
+                    &[interval_end_utc_nanos],
+                    &[1.0],
+                    &[1.75],
+                );
+                model_inputs.known_scheduled_news_event_timestamps_utc_nanos =
+                    known_timestamps.clone();
+
+                let run_config = SeededTickSimulationRunConfig::try_new(
+                    seed,
+                    DateTime::<Utc>::from_timestamp_nanos(start_utc_nanos),
+                    1,
+                    model_inputs,
+                    Some(SeededTickSimulationRunOptions {
+                        debug_trace_enabled: true,
+                        debug_trace_options: SeededTickSimulationDebugTraceOptions {
+                            sample_every_nth_transition: 1,
+                            max_records_per_chunk: 16,
+                        },
+                        state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
+                    }),
+                )
+                .expect("profile-invariance run config should initialize");
+
+                let run_result = run_seeded_tick_event_simulation(run_config)
+                    .expect("profile-invariance run should complete");
+                let trace_records = run_result
+                    .debug_trace_output
+                    .as_ref()
+                    .expect("debug trace output should exist")
+                    .trace_chunks
+                    .iter()
+                    .flat_map(|trace_chunk| trace_chunk.records.iter())
+                    .collect::<Vec<_>>();
+
+                let observed_known_timestamps: Vec<i64> = trace_records
+                    .iter()
+                    .filter(|trace_record| {
+                        trace_record.transition_kind
+                            == SeededTickEventDebugTraceTransitionKind::ExogenousNews
+                            && trace_record.exogenous_news_arrival_component
+                                == Some(NewsArrivalComponent::Known)
+                    })
+                    .map(|trace_record| trace_record.timestamp_utc_nanos)
+                    .collect();
+                let observed_surprise_timestamps: Vec<i64> = trace_records
+                    .iter()
+                    .filter(|trace_record| {
+                        trace_record.transition_kind
+                            == SeededTickEventDebugTraceTransitionKind::ExogenousNews
+                            && trace_record.exogenous_news_arrival_component
+                                == Some(NewsArrivalComponent::Surprise)
+                    })
+                    .map(|trace_record| trace_record.timestamp_utc_nanos)
+                    .collect();
+
+                assert_eq!(observed_known_timestamps, *known_timestamps);
+
+                if let Some(reference_surprise_timestamps) = &expected_surprise_timestamps {
+                    assert_eq!(observed_surprise_timestamps, *reference_surprise_timestamps);
+                } else {
+                    expected_surprise_timestamps = Some(observed_surprise_timestamps);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn seeded_simulation_news_component_counts_follow_known_plus_surprise_decomposition_for_controlled_fixture(
+    ) {
+        let start_utc_nanos = 1_704_067_200_000_000_000;
+        let second_interval_start_utc_nanos = start_utc_nanos + ONE_HOUR_NANOS;
+        let second_interval_end_utc_nanos = start_utc_nanos + 2 * ONE_HOUR_NANOS;
+
+        let mut model_inputs = one_interval_model_inputs(0.0, 0.0, 0.0);
+
+        override_hourly_factor_contract(
+            &mut model_inputs.hourly_factor_contract,
+            &[start_utc_nanos, second_interval_start_utc_nanos],
+            &[
+                second_interval_start_utc_nanos,
+                second_interval_end_utc_nanos,
+            ],
+            &[1.0, 1.0],
+            &[2.75, 1.4],
+        );
+
+        model_inputs.known_scheduled_news_event_timestamps_utc_nanos = vec![
+            start_utc_nanos + ONE_HOUR_NANOS / 10,
+            start_utc_nanos + 3 * ONE_HOUR_NANOS / 5,
+            second_interval_start_utc_nanos + ONE_HOUR_NANOS / 3,
+        ];
+
+        let run_config = SeededTickSimulationRunConfig::try_new(
+            9_317,
+            DateTime::<Utc>::from_timestamp_nanos(start_utc_nanos),
+            2,
+            model_inputs,
+            Some(SeededTickSimulationRunOptions {
+                debug_trace_enabled: true,
+                debug_trace_options: SeededTickSimulationDebugTraceOptions {
+                    sample_every_nth_transition: 1,
+                    max_records_per_chunk: 16,
+                },
+                state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
+            }),
+        )
+        .expect("decomposition-fixture run config should initialize");
+
+        let scripted_factory = ScriptedRandomnessFactory::new(
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![0.2, 0.1],
+            vec![0.3, 0.6],
+            vec![0.5; 64],
+            vec![0.5; 64],
+        );
+        let run_result =
+            run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
+                .expect("decomposition-fixture run should complete");
+        let trace_records = run_result
+            .debug_trace_output
+            .as_ref()
+            .expect("debug trace output should exist")
+            .trace_chunks
+            .iter()
+            .flat_map(|trace_chunk| trace_chunk.records.iter())
+            .filter(|trace_record| {
+                trace_record.transition_kind
+                    == SeededTickEventDebugTraceTransitionKind::ExogenousNews
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(trace_records.len(), 5);
+
+        let known_count = trace_records
+            .iter()
+            .filter(|trace_record| {
+                trace_record.exogenous_news_arrival_component == Some(NewsArrivalComponent::Known)
+            })
+            .count();
+        let surprise_count = trace_records
+            .iter()
+            .filter(|trace_record| {
+                trace_record.exogenous_news_arrival_component
+                    == Some(NewsArrivalComponent::Surprise)
+            })
+            .count();
+
+        assert_eq!(known_count, 3);
+        assert_eq!(surprise_count, 2);
+
+        let surprise_interval_zero_count = trace_records
+            .iter()
+            .filter(|trace_record| {
+                trace_record.interval_index == 0
+                    && trace_record.exogenous_news_arrival_component
+                        == Some(NewsArrivalComponent::Surprise)
+            })
+            .count();
+        let surprise_interval_one_count = trace_records
+            .iter()
+            .filter(|trace_record| {
+                trace_record.interval_index == 1
+                    && trace_record.exogenous_news_arrival_component
+                        == Some(NewsArrivalComponent::Surprise)
+            })
+            .count();
+
+        assert_eq!(surprise_interval_zero_count, 1);
+        assert_eq!(surprise_interval_one_count, 1);
+
+        for trace_record in trace_records {
+            let expected_interval_news_intensity = [2.75, 1.4][trace_record.interval_index];
+            assert_float_close(
+                trace_record.interval_news_intensity,
+                expected_interval_news_intensity,
+            );
+        }
+    }
+
+    #[test]
     fn seeded_simulation_known_open_news_timestamp_updates_m_t_not_g_t() {
         let interval_start_utc_nanos = timestamp_utc_nanos("2024-01-22T15:00:00Z");
         let known_open_timestamp_utc_nanos = interval_start_utc_nanos + ONE_HOUR_NANOS / 4;
 
         let mut model_inputs = one_interval_model_inputs(0.5, 0.5, 0.0);
+
         override_hourly_factor_contract(
             &mut model_inputs.hourly_factor_contract,
             &[interval_start_utc_nanos],
@@ -3169,6 +3423,7 @@ mod tests {
             &[0.0],
             &[0.0],
         );
+
         model_inputs.known_scheduled_news_event_timestamps_utc_nanos =
             vec![known_open_timestamp_utc_nanos];
 
@@ -3248,6 +3503,7 @@ mod tests {
         let known_closed_timestamp_utc_nanos = interval_start_utc_nanos + ONE_HOUR_NANOS / 4;
 
         let mut model_inputs = one_interval_model_inputs(0.5, 0.5, 0.0);
+
         override_hourly_factor_contract(
             &mut model_inputs.hourly_factor_contract,
             &[interval_start_utc_nanos],
@@ -3255,6 +3511,7 @@ mod tests {
             &[1.0],
             &[0.0],
         );
+
         model_inputs.known_scheduled_news_event_timestamps_utc_nanos =
             vec![known_closed_timestamp_utc_nanos];
 
@@ -3335,6 +3592,7 @@ mod tests {
         let early_close_boundary_timestamp_utc_nanos = interval_start_utc_nanos + ONE_HOUR_NANOS;
 
         let mut model_inputs = one_interval_model_inputs(0.5, 0.5, 0.0);
+
         override_hourly_factor_contract(
             &mut model_inputs.hourly_factor_contract,
             &[
@@ -3348,6 +3606,7 @@ mod tests {
             &[0.0, 1.0],
             &[0.0, 0.0],
         );
+
         model_inputs.known_scheduled_news_event_timestamps_utc_nanos = vec![
             open_window_timestamp_utc_nanos,
             early_close_boundary_timestamp_utc_nanos,
