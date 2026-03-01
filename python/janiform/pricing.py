@@ -394,6 +394,13 @@ def _validate_model_parameters(
         "delta_beta",
         "model_parameters.nig_shared_plus_shift_configuration.delta_beta",
     )
+    if delta_beta >= 0.0:
+        raise VanillaOptionPricingValidationError(
+            VanillaOptionPricingValidationFailure(
+                field_path="model_parameters.nig_shared_plus_shift_configuration.delta_beta",
+                message="must be strictly negative",
+            )
+        )
 
     if alpha <= abs(beta_0):
         raise VanillaOptionPricingValidationError(

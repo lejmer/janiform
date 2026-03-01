@@ -844,6 +844,13 @@ def _validate_nig_configuration(
     delta: float = _require_positive_finite_number(raw_nig_configuration, "delta", f"{field_path}.delta")
     mu: float = _require_finite_number(raw_nig_configuration, "mu", f"{field_path}.mu")
     delta_beta: float = _require_finite_number(raw_nig_configuration, "delta_beta", f"{field_path}.delta_beta")
+    if delta_beta >= 0.0:
+        raise SufficientStatisticsRiskValidationError(
+            SufficientStatisticsRiskValidationFailure(
+                field_path=f"{field_path}.delta_beta",
+                message="must be strictly negative",
+            )
+        )
 
     if abs(beta_0) >= alpha:
         raise SufficientStatisticsRiskValidationError(

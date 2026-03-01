@@ -691,6 +691,18 @@ pub struct NigSharedPlusShiftConfiguration {
 }
 
 impl NigSharedPlusShiftConfiguration {
+    fn validate_delta_beta(delta_beta: f64) -> Result<(), NigSharedPlusShiftConfigurationError> {
+        if !delta_beta.is_finite() || delta_beta >= 0.0 {
+            return Err(
+                NigSharedPlusShiftConfigurationError::DeltaBetaDomainViolation {
+                    value: delta_beta,
+                },
+            );
+        }
+
+        Ok(())
+    }
+
     /// Validate and build one canonical shared-plus-shift configuration payload.
     pub fn try_new(
         alpha: f64,
@@ -699,6 +711,8 @@ impl NigSharedPlusShiftConfiguration {
         mu: f64,
         delta_beta: f64,
     ) -> Result<Self, NigSharedPlusShiftConfigurationError> {
+        Self::validate_delta_beta(delta_beta)?;
+
         let _buy_side_parameters =
             NigParameters::try_new(alpha, beta_0, delta, mu).map_err(|source| {
                 NigSharedPlusShiftConfigurationError::BuySideParameterDomainViolation { source }
@@ -732,6 +746,8 @@ impl NigSharedPlusShiftConfiguration {
     pub fn derive_driver_parameters(
         self,
     ) -> Result<NigBuySellDriverParameters, NigSharedPlusShiftConfigurationError> {
+        Self::validate_delta_beta(self.delta_beta)?;
+
         let buy_side_parameters =
             NigParameters::try_new(self.alpha, self.beta_0, self.delta, self.mu).map_err(
                 |source| NigSharedPlusShiftConfigurationError::BuySideParameterDomainViolation {
@@ -934,6 +950,9 @@ impl Error for NigParameterError {}
 /// Structured validation failure for `NigSharedPlusShiftConfiguration::try_new`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum NigSharedPlusShiftConfigurationError {
+    DeltaBetaDomainViolation {
+        value: f64,
+    },
     BuySideParameterDomainViolation {
         source: NigParameterError,
     },
@@ -948,6 +967,10 @@ pub enum NigSharedPlusShiftConfigurationError {
 impl Display for NigSharedPlusShiftConfigurationError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::DeltaBetaDomainViolation { value } => write!(
+                formatter,
+                "delta_beta must be finite and strictly negative, found {value}"
+            ),
             Self::BuySideParameterDomainViolation { source } => {
                 write!(formatter, "buy-side NIG parameters are invalid: {source}")
             }
@@ -967,6 +990,7 @@ impl Display for NigSharedPlusShiftConfigurationError {
 impl Error for NigSharedPlusShiftConfigurationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            Self::DeltaBetaDomainViolation { .. } => None,
             Self::BuySideParameterDomainViolation { source } => Some(source),
             Self::SellSideParameterDomainViolation { source, .. } => Some(source),
         }
@@ -1375,7 +1399,7 @@ mod tests {
 
     #[test]
     fn shared_plus_shift_configuration_rejects_invalid_derived_sell_side_domain() {
-        let error = NigSharedPlusShiftConfiguration::try_new(1.0, 0.2, 0.3, 0.0, 0.9)
+        let error = NigSharedPlusShiftConfiguration::try_new(1.0, 0.2, 0.3, 0.0, -1.3)
             .expect_err("derived sell-side beta at alpha boundary should fail");
 
         match error {
@@ -1386,8 +1410,8 @@ mod tests {
                 source,
             } => {
                 assert_eq!(beta_0, 0.2);
-                assert_eq!(delta_beta, 0.9);
-                assert_eq!(derived_sell_beta, 1.1);
+                assert_eq!(delta_beta, -1.3);
+                assert_eq!(derived_sell_beta, -1.1);
                 assert_eq!(
                     source,
                     NigParameterError::DomainViolation {
@@ -1399,6 +1423,30 @@ mod tests {
                         comparison_value: Some(1.1),
                     }
                 );
+            }
+            _ => panic!("unexpected error variant: {error}"),
+        }
+    }
+
+    #[test]
+    fn shared_plus_shift_configuration_rejects_non_negative_delta_beta() {
+        for value in [0.0, 0.15] {
+            let error = NigSharedPlusShiftConfiguration::try_new(2.0, -0.5, 0.4, 0.0, value)
+                .expect_err("non-negative delta_beta must fail");
+            assert_eq!(
+                error,
+                NigSharedPlusShiftConfigurationError::DeltaBetaDomainViolation { value }
+            );
+        }
+    }
+
+    #[test]
+    fn shared_plus_shift_configuration_rejects_non_finite_delta_beta() {
+        let error = NigSharedPlusShiftConfiguration::try_new(2.0, -0.5, 0.4, 0.0, f64::NAN)
+            .expect_err("non-finite delta_beta must fail");
+        match error {
+            NigSharedPlusShiftConfigurationError::DeltaBetaDomainViolation { value } => {
+                assert!(value.is_nan());
             }
             _ => panic!("unexpected error variant: {error}"),
         }
