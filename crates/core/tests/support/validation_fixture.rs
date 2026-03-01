@@ -1632,9 +1632,7 @@ fn validate_open_closed_gap_behavior_case(
         &fixture_case
             .deterministic_replay_metadata
             .replay_baseline_id,
-        &format!(
-            "{case_field_path_prefix}.deterministic_replay_metadata.replay_baseline_id"
-        ),
+        &format!("{case_field_path_prefix}.deterministic_replay_metadata.replay_baseline_id"),
         errors,
     );
     validate_open_closed_gap_behavior_non_empty(
@@ -1678,7 +1676,11 @@ fn validate_open_closed_gap_behavior_case(
         &format!("{case_field_path_prefix}.issue_traceability.issue_id"),
         errors,
     );
-    if fixture_case.issue_traceability.semantic_focus_tags.is_empty() {
+    if fixture_case
+        .issue_traceability
+        .semantic_focus_tags
+        .is_empty()
+    {
         add_open_closed_gap_behavior_validation_error(
             errors,
             "semantic_focus_tags_empty",
@@ -1882,14 +1884,12 @@ fn validate_open_closed_gap_behavior_case(
             format!("{case_field_path_prefix}.scenario_class"),
             "known_only scenario cannot include surprise events",
         ),
-        "surprise_only" if known_event_count > 0 => {
-            add_open_closed_gap_behavior_validation_error(
-                errors,
-                "scenario_class_component_mismatch",
-                format!("{case_field_path_prefix}.scenario_class"),
-                "surprise_only scenario cannot include known events",
-            )
-        }
+        "surprise_only" if known_event_count > 0 => add_open_closed_gap_behavior_validation_error(
+            errors,
+            "scenario_class_component_mismatch",
+            format!("{case_field_path_prefix}.scenario_class"),
+            "surprise_only scenario cannot include known events",
+        ),
         "mixed_news" if known_event_count == 0 || surprise_event_count == 0 => {
             add_open_closed_gap_behavior_validation_error(
                 errors,
@@ -1962,30 +1962,22 @@ fn validate_open_closed_gap_behavior_case_expected_outcome(
 
         validate_open_closed_gap_behavior_finite_non_negative(
             event_expectation.expected_activity_coupling_j_t_increment,
-            &format!(
-                "{expected_event_field_path_prefix}.expected_activity_coupling_j_t_increment"
-            ),
+            &format!("{expected_event_field_path_prefix}.expected_activity_coupling_j_t_increment"),
             errors,
         );
         validate_open_closed_gap_behavior_finite(
             event_expectation.expected_open_jump_m_t_increment,
-            &format!(
-                "{expected_event_field_path_prefix}.expected_open_jump_m_t_increment"
-            ),
+            &format!("{expected_event_field_path_prefix}.expected_open_jump_m_t_increment"),
             errors,
         );
         validate_open_closed_gap_behavior_finite(
             event_expectation.expected_closed_gap_g_t_increment,
-            &format!(
-                "{expected_event_field_path_prefix}.expected_closed_gap_g_t_increment"
-            ),
+            &format!("{expected_event_field_path_prefix}.expected_closed_gap_g_t_increment"),
             errors,
         );
         validate_open_closed_gap_behavior_finite(
             event_expectation.expected_trading_return_increment,
-            &format!(
-                "{expected_event_field_path_prefix}.expected_trading_return_increment"
-            ),
+            &format!("{expected_event_field_path_prefix}.expected_trading_return_increment"),
             errors,
         );
 
@@ -2031,7 +2023,8 @@ fn validate_open_closed_gap_behavior_case_expected_outcome(
 
         expected_total_activity_coupling_j_t_increment +=
             event_expectation.expected_activity_coupling_j_t_increment;
-        expected_total_open_jump_m_t_increment += event_expectation.expected_open_jump_m_t_increment;
+        expected_total_open_jump_m_t_increment +=
+            event_expectation.expected_open_jump_m_t_increment;
         expected_total_closed_gap_g_t_increment +=
             event_expectation.expected_closed_gap_g_t_increment;
         expected_total_trading_return_increment +=

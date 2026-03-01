@@ -52,7 +52,11 @@ fn open_closed_gap_leakage_regression_harness_matches_shared_fixture_suite() {
     assert_eq!(report.summary.total_semantic_mismatch_failure_count, 0);
     assert!(
         report.summary.scenario_class_coverage.known_only_case_count >= 1
-            && report.summary.scenario_class_coverage.surprise_only_case_count >= 1
+            && report
+                .summary
+                .scenario_class_coverage
+                .surprise_only_case_count
+                >= 1
             && report.summary.scenario_class_coverage.mixed_news_case_count >= 1
     );
     assert_eq!(
@@ -156,7 +160,9 @@ fn open_closed_gap_leakage_regression_harness_enforces_scenario_class_coverage()
                 "error should report missing scenario classes",
             );
         }
-        OpenClosedGapLeakageRegressionHarnessError::InvalidComponentAbsoluteTolerance { .. } => {
+        OpenClosedGapLeakageRegressionHarnessError::InvalidComponentAbsoluteTolerance {
+            ..
+        } => {
             panic!("expected missing scenario class coverage error");
         }
     }
@@ -211,7 +217,12 @@ fn open_closed_gap_leakage_regression_harness_reports_semantic_bucket_for_failur
                 event_id,
                 absolute_difference,
                 ..
-            } => Some((semantic_bucket, mismatch_kind, event_id, absolute_difference)),
+            } => Some((
+                semantic_bucket,
+                mismatch_kind,
+                event_id,
+                absolute_difference,
+            )),
             OpenClosedGapLeakageRegressionFailure::DispatchError { .. } => None,
         })
         .expect("failure report should include a semantic mismatch entry");

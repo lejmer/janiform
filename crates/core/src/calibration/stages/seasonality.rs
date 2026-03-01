@@ -15,10 +15,10 @@ use super::super::contracts::{
     CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION,
     CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
     CALIBRATION_SEASONALITY_STAGE_HANDOFF_POLICY,
-    CALIBRATION_SEASONALITY_STAGE_OUTPUT_SCHEMA_VERSION, CalibrationExecutionMode,
-    CalibrationOptimizerSettings, CalibrationRunSpec, CalibrationStage,
-    CalibrationStageHandoffTransport, resolve_calibration_stage_seed,
-    stage_solver_settings_for_stage,
+    CALIBRATION_SEASONALITY_STAGE_OUTPUT_SCHEMA_VERSION, CALIBRATION_STAGE_SEED_DERIVATION_POLICY,
+    CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationRunSpec, CalibrationStage,
+    CalibrationStageHandoffTransport, CalibrationStageSeedSource,
+    resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
 };
 /// Configurable knobs for deterministic seasonality stage execution.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -145,7 +145,10 @@ pub struct SeasonalityStageHandoffOutput {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SeasonalityStageExecutionMetadata {
     pub stage_output_schema_version: &'static str,
+    pub run_global_seed: u64,
     pub stage_seed: u64,
+    pub stage_seed_source: CalibrationStageSeedSource,
+    pub stage_seed_derivation_policy: &'static str,
     pub solver_settings: CalibrationOptimizerSettings,
     pub dataset_id: String,
     pub estimator_version: String,
@@ -503,7 +506,8 @@ pub fn run_seasonality_calibration_stage(
     };
 
     let handoffs = build_seasonality_stage_handoff_outputs(run_spec);
-    let stage_seed = resolve_calibration_stage_seed(run_spec, CalibrationStage::Seasonality);
+    let resolved_stage_seed =
+        resolve_calibration_stage_seed_metadata(run_spec, CalibrationStage::Seasonality);
 
     SeasonalityStageExecutionReport {
         schema_version: CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
@@ -516,7 +520,10 @@ pub fn run_seasonality_calibration_stage(
         normalized_stage_payload: Some(normalized_stage_payload),
         metadata: Some(SeasonalityStageExecutionMetadata {
             stage_output_schema_version: CALIBRATION_SEASONALITY_STAGE_OUTPUT_SCHEMA_VERSION,
-            stage_seed,
+            run_global_seed: resolved_stage_seed.run_global_seed,
+            stage_seed: resolved_stage_seed.stage_seed,
+            stage_seed_source: resolved_stage_seed.stage_seed_source,
+            stage_seed_derivation_policy: CALIBRATION_STAGE_SEED_DERIVATION_POLICY,
             solver_settings: stage_solver_settings,
             dataset_id: resolved_dataset_id,
             estimator_version: resolved_estimator_version,

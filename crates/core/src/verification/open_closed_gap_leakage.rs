@@ -13,8 +13,7 @@ use crate::news::{
 };
 
 use super::contracts::{
-    RegressionCaseStatus, VERIFICATION_CANONICAL_COMPONENT_VOCABULARY,
-    VerificationSemanticBucket,
+    RegressionCaseStatus, VERIFICATION_CANONICAL_COMPONENT_VOCABULARY, VerificationSemanticBucket,
 };
 
 pub const OPEN_CLOSED_GAP_LEAKAGE_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION: &str =
@@ -252,7 +251,9 @@ pub struct OpenClosedGapLeakageRegressionHarnessReport {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum OpenClosedGapLeakageRegressionHarnessError {
-    InvalidComponentAbsoluteTolerance { value: f64 },
+    InvalidComponentAbsoluteTolerance {
+        value: f64,
+    },
     MissingScenarioClassCoverage {
         missing_scenario_classes: Vec<NewsSemanticsScenarioClass>,
     },
@@ -348,10 +349,8 @@ pub fn run_open_closed_gap_leakage_regression_harness(
     );
     let open_jump_regression_metric_count =
         count_regression_metrics_by_bucket(&scenario_diffs, VerificationSemanticBucket::OpenJump);
-    let closed_gap_regression_metric_count = count_regression_metrics_by_bucket(
-        &scenario_diffs,
-        VerificationSemanticBucket::ClosedGap,
-    );
+    let closed_gap_regression_metric_count =
+        count_regression_metrics_by_bucket(&scenario_diffs, VerificationSemanticBucket::ClosedGap);
     let activity_coupling_regression_metric_count = count_regression_metrics_by_bucket(
         &scenario_diffs,
         VerificationSemanticBucket::ActivityCoupling,
@@ -369,8 +368,7 @@ pub fn run_open_closed_gap_leakage_regression_harness(
             baseline_expected_output_policy:
                 OPEN_CLOSED_GAP_BEHAVIOR_BASELINE_EXPECTED_OUTPUT_POLICY,
             environment_metadata_policy: OPEN_CLOSED_GAP_BEHAVIOR_ENVIRONMENT_METADATA_POLICY,
-            canonical_component_vocabulary: VERIFICATION_CANONICAL_COMPONENT_VOCABULARY
-                .to_vec(),
+            canonical_component_vocabulary: VERIFICATION_CANONICAL_COMPONENT_VOCABULARY.to_vec(),
             canonical_semantic_bucket_vocabulary: VERIFICATION_CANONICAL_COMPONENT_VOCABULARY
                 .to_vec(),
             required_case_report_fields: vec![
@@ -547,9 +545,7 @@ fn evaluate_open_closed_gap_leakage_case(
                 return dispatch_error_case_report(
                     gap_behavior_case,
                     component_absolute_tolerance,
-                    format!(
-                        "event position {event_position} does not fit in u64 generation order"
-                    ),
+                    format!("event position {event_position} does not fit in u64 generation order"),
                 );
             }
         };
@@ -707,9 +703,7 @@ fn evaluate_open_closed_gap_leakage_case(
             .and_then(|event_metadata| event_metadata.observed_closed_gap_g_t_increment_override)
             .unwrap_or(dispatch_record.g_t_increment);
         let observed_trading_return = event_metadata
-            .and_then(|event_metadata| {
-                event_metadata.observed_trading_return_increment_override
-            })
+            .and_then(|event_metadata| event_metadata.observed_trading_return_increment_override)
             .unwrap_or(0.0);
 
         let expected_activity_coupling = dispatch_record.shared_severity_mark;

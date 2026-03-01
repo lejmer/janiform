@@ -32,9 +32,7 @@ use crate::risk::{
     solve_sufficient_statistics_transform_slices_with_solver_settings,
 };
 
-use super::contracts::{
-    VERIFICATION_CANONICAL_COMPONENT_VOCABULARY, VerificationSemanticBucket,
-};
+use super::contracts::{VERIFICATION_CANONICAL_COMPONENT_VOCABULARY, VerificationSemanticBucket};
 
 pub const COARSE_FINE_CONSISTENCY_REGRESSION_REPORT_SCHEMA_VERSION: &str =
     "benchmark.coarse_fine_consistency.report.v1";
@@ -987,8 +985,7 @@ pub fn run_coarse_fine_consistency_regression_harness(
         output_schema_metadata: CoarseFineConsistencyRegressionOutputSchemaMetadata {
             schema_version: COARSE_FINE_CONSISTENCY_REGRESSION_OUTPUT_SCHEMA_METADATA_VERSION,
             tolerance_schema_version: COARSE_FINE_CONSISTENCY_REGRESSION_TOLERANCE_SCHEMA_VERSION,
-            canonical_component_vocabulary: VERIFICATION_CANONICAL_COMPONENT_VOCABULARY
-                .to_vec(),
+            canonical_component_vocabulary: VERIFICATION_CANONICAL_COMPONENT_VOCABULARY.to_vec(),
             required_report_fields: COARSE_FINE_CONSISTENCY_REQUIRED_REPORT_FIELDS.to_vec(),
             required_scenario_report_fields:
                 COARSE_FINE_CONSISTENCY_REQUIRED_SCENARIO_REPORT_FIELDS.to_vec(),

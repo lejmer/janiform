@@ -14,9 +14,10 @@ use crate::hawkes::{
 use super::super::contracts::{
     CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
     CALIBRATION_HAWKES_STAGE_HANDOFF_POLICY, CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION,
-    CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationRunSpec, CalibrationStage,
-    CalibrationStageHandoffTransport, resolve_calibration_stage_seed,
-    stage_solver_settings_for_stage,
+    CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CalibrationExecutionMode,
+    CalibrationOptimizerSettings, CalibrationRunSpec, CalibrationStage,
+    CalibrationStageHandoffTransport, CalibrationStageSeedSource,
+    resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
 };
 use super::super::objective::{
     CalibrationObjectiveTermDiagnostic, HawkesStageObjectiveTermInput,
@@ -264,7 +265,10 @@ pub struct HawkesStageHandoffOutput {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct HawkesStageExecutionMetadata {
     pub stage_output_schema_version: &'static str,
+    pub run_global_seed: u64,
     pub stage_seed: u64,
+    pub stage_seed_source: CalibrationStageSeedSource,
+    pub stage_seed_derivation_policy: &'static str,
     pub solver_settings: CalibrationOptimizerSettings,
     pub optimizer_adapter_metadata: CalibrationOptimizerAdapterRunMetadata,
     pub input_candidate_count: usize,
@@ -430,10 +434,11 @@ pub fn run_hawkes_calibration_stage(
         }
     }
 
-    let stage_seed = resolve_calibration_stage_seed(run_spec, CalibrationStage::Hawkes);
+    let resolved_stage_seed =
+        resolve_calibration_stage_seed_metadata(run_spec, CalibrationStage::Hawkes);
     let optimizer_adapter_configuration = match CalibrationOptimizerAdapterConfiguration::try_new(
         "candidate_enumeration.v1",
-        stage_seed,
+        resolved_stage_seed.stage_seed,
         stage_solver_settings.clone(),
         hawkes_stage_optimizer_bounds(),
     ) {
@@ -696,7 +701,10 @@ pub fn run_hawkes_calibration_stage(
         fitted_stage_payload: Some(fitted_stage_payload),
         metadata: Some(HawkesStageExecutionMetadata {
             stage_output_schema_version: CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION,
-            stage_seed,
+            run_global_seed: resolved_stage_seed.run_global_seed,
+            stage_seed: resolved_stage_seed.stage_seed,
+            stage_seed_source: resolved_stage_seed.stage_seed_source,
+            stage_seed_derivation_policy: CALIBRATION_STAGE_SEED_DERIVATION_POLICY,
             solver_settings: stage_solver_settings,
             optimizer_adapter_metadata: optimizer_adapter_output.metadata.clone(),
             input_candidate_count: stage_input.candidate_inputs.len(),

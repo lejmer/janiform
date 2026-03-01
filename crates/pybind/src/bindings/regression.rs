@@ -1,12 +1,11 @@
 use janiform_core::calendar::MarketState;
 use janiform_core::news::NewsArrivalComponent;
 use janiform_core::verification::{
-    NewsSemanticsScenarioClass, OpenClosedGapDeterministicReplayMetadata,
-    OpenClosedGapIssueTraceabilityMetadata,
     CalendarStateRegressionCase, HourlyFactorRegressionCase, HourlyNewsIntensityRegressionSource,
-    HourlySeasonalityRegressionSource, OpenClosedGapLeakageRegressionCase,
-    OpenClosedGapLeakageRegressionEventInput, OpenClosedGapLeakageRegressionHarnessToleranceConfig,
-    RegressionHarnessToleranceConfig,
+    HourlySeasonalityRegressionSource, NewsSemanticsScenarioClass,
+    OpenClosedGapDeterministicReplayMetadata, OpenClosedGapIssueTraceabilityMetadata,
+    OpenClosedGapLeakageRegressionCase, OpenClosedGapLeakageRegressionEventInput,
+    OpenClosedGapLeakageRegressionHarnessToleranceConfig, RegressionHarnessToleranceConfig,
     run_deterministic_regression_harness as run_deterministic_regression_harness_core,
     run_open_closed_gap_leakage_regression_harness as run_open_closed_gap_leakage_regression_harness_core,
 };
@@ -349,10 +348,8 @@ fn parse_open_closed_gap_leakage_regression_cases(
             )));
         }
 
-        let deterministic_replay_metadata = parse_deterministic_replay_metadata(
-            &case_mapping,
-            case_position,
-        )?;
+        let deterministic_replay_metadata =
+            parse_deterministic_replay_metadata(&case_mapping, case_position)?;
         let issue_traceability = parse_issue_traceability_metadata(&case_mapping, case_position)?;
 
         let injected_events_value = parse_required_field(
@@ -601,13 +598,11 @@ fn parse_deterministic_replay_metadata(
         "gap_behavior_cases",
         "deterministic_replay_metadata",
     )?;
-    let replay_mapping = replay_mapping_value
-        .downcast::<PyMapping>()
-        .map_err(|_| {
-            SeasonalityInputValidationError::new_err(format!(
-                "{context} field 'deterministic_replay_metadata' must be a mapping",
-            ))
-        })?;
+    let replay_mapping = replay_mapping_value.downcast::<PyMapping>().map_err(|_| {
+        SeasonalityInputValidationError::new_err(format!(
+            "{context} field 'deterministic_replay_metadata' must be a mapping",
+        ))
+    })?;
 
     let replay_baseline_id = parse_required_string_field(
         &replay_mapping,
@@ -682,8 +677,12 @@ fn parse_issue_traceability_metadata(
         ))
     })?;
 
-    let issue_id =
-        parse_required_string_field(&issue_mapping, case_position, "gap_behavior_cases", "issue_id")?;
+    let issue_id = parse_required_string_field(
+        &issue_mapping,
+        case_position,
+        "gap_behavior_cases",
+        "issue_id",
+    )?;
     let semantic_focus_tags = parse_required_string_list(
         &issue_mapping,
         case_position,
