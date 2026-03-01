@@ -27,7 +27,7 @@ pub fn serialize_stylized_fact_metric_catalog_to_json(
     catalog
         .validate()
         .map_err(|source| StylizedFactMetricCatalogSerializeError::InvalidCatalog { source })?;
-    
+
     serde_json::to_string_pretty(catalog).map_err(|source| {
         StylizedFactMetricCatalogSerializeError::SerializationFailure {
             source: source.to_string(),
@@ -448,9 +448,9 @@ pub fn build_stylized_fact_metric_catalog() -> StylizedFactMetricCatalog {
             ),
         ],
     };
-    
+
     catalog.sort_metrics_canonically();
-    
+
     debug_assert!(catalog.validate().is_ok());
     catalog
 }

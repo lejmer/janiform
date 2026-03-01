@@ -1,5 +1,6 @@
 //! Verification and regression harness domain.
 
+mod activity_clustering;
 mod affine_oracle_method_comparison;
 mod coarse_fine_consistency;
 mod contracts;
@@ -9,7 +10,9 @@ mod performance_baseline;
 mod regression_drift_attribution;
 mod stylized_fact_metric_catalog;
 mod sufficient_statistics;
+mod time_buckets;
 
+pub use activity_clustering::*;
 pub use affine_oracle_method_comparison::*;
 pub use coarse_fine_consistency::*;
 pub use contracts::*;
