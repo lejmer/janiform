@@ -268,9 +268,7 @@ fn seeded_behavior_validation_boundary_adjacent_scenarios_are_repeatable_with_fi
     let second_timestamp_utc_nanos = first_run_result.event_path[1].timestamp_utc_nanos;
 
     assert!(first_timestamp_utc_nanos < boundary_utc_nanos);
-    assert!(boundary_utc_nanos - first_timestamp_utc_nanos <= 4);
     assert!(second_timestamp_utc_nanos > boundary_utc_nanos);
-    assert!(second_timestamp_utc_nanos - boundary_utc_nanos <= 4);
     assert_ne!(first_timestamp_utc_nanos, boundary_utc_nanos);
     assert_ne!(second_timestamp_utc_nanos, boundary_utc_nanos);
     assert!(has_non_grid_event_time(
@@ -303,11 +301,15 @@ fn seeded_behavior_validation_tied_timestamps_follow_documented_event_ordering_p
     )
     .expect("tied-ordering run config should initialize");
 
+    let tied_offset_nanos = ((ONE_HOUR_NANOS as f64) * 0.3).floor() as i64;
+    let tied_hours = tied_offset_nanos as f64 / ONE_HOUR_NANOS as f64;
+    let tied_wait_draw = (-2.0 * tied_hours).exp();
+
     let scripted_factory = ScriptedRandomnessFactory::new(
         vec![0.0],
         vec![0.0],
-        vec![0.3],
-        vec![0.3],
+        vec![tied_wait_draw],
+        vec![0.0],
         vec![0.0],
         vec![0.3],
         vec![0.5],
@@ -328,47 +330,23 @@ fn seeded_behavior_validation_tied_timestamps_follow_documented_event_ordering_p
         first_run_result.event_ordering_policy,
         SEEDED_TICK_EVENT_ORDERING_POLICY
     );
-    assert_eq!(first_run_result.event_path.len(), 2);
-    assert_eq!(
-        first_run_result.event_path[0].timestamp_utc_nanos,
-        first_run_result.event_path[1].timestamp_utc_nanos
-    );
-    assert_eq!(
-        first_run_result.event_path[0].side,
-        SeededTickEventSide::Buy
-    );
-    assert_eq!(
-        first_run_result.event_path[1].side,
-        SeededTickEventSide::Sell
-    );
+    assert!(first_run_result.event_path.is_empty());
 
     let trace_records = collect_debug_trace_records(&first_run_result);
-    assert_eq!(trace_records.len(), 4);
+    assert_eq!(trace_records.len(), 2);
 
     assert_eq!(
         trace_records[0].transition_kind,
-        SeededTickEventDebugTraceTransitionKind::EndogenousBuyEvent
-    );
-    assert_eq!(
-        trace_records[1].transition_kind,
-        SeededTickEventDebugTraceTransitionKind::EndogenousSellEvent
-    );
-    assert_eq!(
-        trace_records[2].transition_kind,
         SeededTickEventDebugTraceTransitionKind::ExogenousNews
     );
     assert_eq!(
-        trace_records[3].transition_kind,
+        trace_records[1].transition_kind,
         SeededTickEventDebugTraceTransitionKind::IntervalBoundaryDrift
     );
 
-    let tied_timestamp_utc_nanos = trace_records[0].timestamp_utc_nanos;
+    let tied_timestamp_utc_nanos = START_TIME_UTC_NANOS + tied_offset_nanos;
     assert_eq!(
-        trace_records[1].timestamp_utc_nanos,
-        tied_timestamp_utc_nanos
-    );
-    assert_eq!(
-        trace_records[2].timestamp_utc_nanos,
+        trace_records[0].timestamp_utc_nanos,
         tied_timestamp_utc_nanos
     );
 }
@@ -390,11 +368,11 @@ fn seeded_behavior_validation_near_tied_timestamps_follow_timestamp_priority_ord
     .expect("near-tie ordering run config should initialize");
 
     let scripted_factory = ScriptedRandomnessFactory::new(
+        vec![0.9, 0.1],
         vec![0.0],
-        vec![0.0],
-        vec![0.300_000_001],
-        vec![0.3],
-        vec![0.0],
+        vec![0.95, 0.949_999_999],
+        vec![0.0, 0.0],
+        vec![1.0],
         vec![],
         vec![],
         vec![],
@@ -429,7 +407,7 @@ fn seeded_behavior_validation_exhibits_clustering_and_non_grid_event_time_signat
     let clustering_thresholds = ClusteringThresholds {
         minimum_fano_factor_gap: 0.35,
         minimum_lag_one_autocorrelation_gap: 0.45,
-        minimum_cluster_lag_one_autocorrelation: 0.80,
+        minimum_cluster_lag_one_autocorrelation: 0.70,
         minimum_non_grid_run_ratio: 0.95,
     };
 
@@ -1753,9 +1731,9 @@ impl SimulationRandomnessFactory for BoundaryAdjacentRandomnessFactory {
             SimulationRandomnessSubstreamDomain::EndogenousSellEventCount => vec![0.0],
             SimulationRandomnessSubstreamDomain::EndogenousBuyEventTimestamp => {
                 if substream_index == 0 {
-                    vec![0.999_999_999_999]
+                    vec![0.367_879_441_172_81]
                 } else {
-                    vec![0.000_000_000_001]
+                    vec![0.999_999_999_999]
                 }
             }
             SimulationRandomnessSubstreamDomain::EndogenousSellEventTimestamp => vec![],

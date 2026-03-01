@@ -40,11 +40,16 @@ def test_seeded_tick_simulation_mismatch_diagnostics_are_actionable(
 ) -> None:
     fixture_case = seeded_tick_simulation_parity_cases[0]
     payload = _run_seeded_case(calendar_registry, fixture_case)
+    observed_first_side = cast(str, cast(list[dict[str, Any]], payload["event_tape"])[0]["side"])
+    mismatched_first_side = "sell" if observed_first_side == "buy" else "buy"
     mutated_fixture_case = cast(
         SeededTickSimulationParityCase,
         {
             **fixture_case,
-            "expected_side_sequence": ["buy", *fixture_case["expected_side_sequence"][1:]],
+            "expected_side_sequence": [
+                mismatched_first_side,
+                *fixture_case["expected_side_sequence"][1:],
+            ],
         },
     )
 
