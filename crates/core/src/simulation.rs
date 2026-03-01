@@ -12,7 +12,12 @@ use crate::hawkes::{
     HawkesSeasonalityIntervalError, HawkesTransitionError, HawkesTransitionStep,
 };
 use crate::hourly_factors::HourlyFactorContractOutput;
-use crate::news::{NewsArrivalComponent, NewsReturnJumpRoutingTarget};
+use crate::news::{
+    CoupledGapMarkConfiguration, CoupledGapMarkConstructionError,
+    DoubleExponentialBaseShockConfiguration, DoubleExponentialBaseShockSamplingError,
+    GammaSeverityMarkConfiguration, GammaSeverityMarkSamplingError, NewsArrivalComponent,
+    NewsReturnJumpRoutingTarget,
+};
 use crate::nig::{
     NigBuySellDriverParameters, NigTradingTimeIncrementContributions,
     NigTradingTimeIncrementSamplingError,
@@ -80,6 +85,17 @@ const ONE_SECOND_NANOS: i64 = 1_000_000_000;
 const MAX_STOCHASTIC_UPDATES_PER_INTERVAL: u64 = 1_000_000;
 const DEFAULT_DEBUG_TRACE_SAMPLE_EVERY_NTH_TRANSITION: u64 = 1;
 const DEFAULT_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK: usize = 1_024;
+// Seeded simulation now follows the shared contract pipeline:
+// U ~ Gamma(k, theta), epsilon ~ Kou(p, eta_plus, eta_minus),
+// Z = sigma_g * sqrt(U) * epsilon.
+// These defaults keep a neutral baseline while component scales remain explicit.
+const SEEDED_TICK_EXOGENOUS_NEWS_SHARED_GAMMA_CONFIGURATION: GammaSeverityMarkConfiguration =
+    GammaSeverityMarkConfiguration::new(1.0, 1.0);
+const SEEDED_TICK_EXOGENOUS_NEWS_SHARED_BASE_SHOCK_CONFIGURATION:
+    DoubleExponentialBaseShockConfiguration =
+    DoubleExponentialBaseShockConfiguration::new(0.5, 1.0, 1.0);
+const SEEDED_TICK_EXOGENOUS_NEWS_SHARED_COUPLED_RETURN_JUMP_CONFIGURATION:
+    CoupledGapMarkConfiguration = CoupledGapMarkConfiguration::new(1.0);
 
 /// State snapshot capture mode for per-event diagnostics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -1512,14 +1528,10 @@ where
     }
 
     for &known_news_timestamp_utc_nanos in interval_known_news_event_timestamps_utc_nanos {
-        let activity_coupling_mark = sample_exogenous_news_activity_coupling_mark(
+        let (activity_coupling_mark, return_jump_mark) = sample_exogenous_news_marks(
             &mut news_severity_stream,
-            known_news_mark_scales.activity_coupling_scale,
-        )?;
-        let return_jump_mark = sample_exogenous_news_return_jump_mark(
-            activity_coupling_mark,
             &mut news_return_jump_stream,
-            known_news_mark_scales.return_jump_scale,
+            known_news_mark_scales,
         )?;
         let market_state = resolve_news_event_market_state(
             calendar_registry,
@@ -1552,14 +1564,10 @@ where
             interval_duration_nanos,
             &mut news_timestamp_stream,
         );
-        let activity_coupling_mark = sample_exogenous_news_activity_coupling_mark(
+        let (activity_coupling_mark, return_jump_mark) = sample_exogenous_news_marks(
             &mut news_severity_stream,
-            surprise_news_mark_scales.activity_coupling_scale,
-        )?;
-        let return_jump_mark = sample_exogenous_news_return_jump_mark(
-            activity_coupling_mark,
             &mut news_return_jump_stream,
-            surprise_news_mark_scales.return_jump_scale,
+            surprise_news_mark_scales,
         )?;
         let market_state =
             resolve_news_event_market_state(calendar_registry, exchange_code, timestamp_utc_nanos)?;
@@ -1777,55 +1785,93 @@ where
     sampled_count.min(MAX_STOCHASTIC_UPDATES_PER_INTERVAL)
 }
 
-fn sample_exogenous_news_activity_coupling_mark<R>(
-    randomness_stream: &mut R,
-    activity_coupling_scale: f64,
-) -> Result<f64, SeededTickSimulationRunError>
+fn sample_exogenous_news_marks<SeverityStream, ReturnJumpStream>(
+    severity_randomness_stream: &mut SeverityStream,
+    return_jump_randomness_stream: &mut ReturnJumpStream,
+    mark_scales: SeededTickSimulationNewsMarkScales,
+) -> Result<(f64, f64), SeededTickSimulationRunError>
 where
-    R: SimulationRandomnessStream,
+    SeverityStream: SimulationRandomnessStream,
+    ReturnJumpStream: SimulationRandomnessStream,
 {
-    let sampled_unscaled_mark = sample_exogenous_news_severity_mark(randomness_stream);
-    let sampled_mark = activity_coupling_scale * sampled_unscaled_mark;
-    if !sampled_mark.is_finite() || sampled_mark < 0.0 {
+    let shared_severity_mark = SEEDED_TICK_EXOGENOUS_NEWS_SHARED_GAMMA_CONFIGURATION
+        .sample_severity_mark(severity_randomness_stream)
+        .map_err(map_gamma_severity_sampling_error_to_seeded_simulation_run_error)?;
+    let shared_base_shock_mark = SEEDED_TICK_EXOGENOUS_NEWS_SHARED_BASE_SHOCK_CONFIGURATION
+        .sample_base_shock_mark(return_jump_randomness_stream)
+        .map_err(map_base_shock_sampling_error_to_seeded_simulation_run_error)?;
+    let shared_coupled_return_jump_mark =
+        SEEDED_TICK_EXOGENOUS_NEWS_SHARED_COUPLED_RETURN_JUMP_CONFIGURATION
+            .construct_gap_jump_mark(shared_severity_mark, shared_base_shock_mark)
+            .map_err(map_coupled_mark_construction_error_to_seeded_simulation_run_error)?
+            .gap_jump_mark;
+
+    let activity_coupling_mark = mark_scales.activity_coupling_scale * shared_severity_mark;
+    if !activity_coupling_mark.is_finite() || activity_coupling_mark < 0.0 {
         return Err(
             SeededTickSimulationRunError::InvalidGeneratedNewsActivityCouplingMark {
-                value: sampled_mark,
+                value: activity_coupling_mark,
             },
         );
     }
 
-    Ok(sampled_mark)
-}
-
-fn sample_exogenous_news_return_jump_mark<R>(
-    activity_coupling_mark: f64,
-    randomness_stream: &mut R,
-    return_jump_scale: f64,
-) -> Result<f64, SeededTickSimulationRunError>
-where
-    R: SimulationRandomnessStream,
-{
-    let sign_selector = randomness_stream.next_unit_interval_f64();
-    let sign = if sign_selector < 0.5 { -1.0 } else { 1.0 };
-    let magnitude = sample_exogenous_news_severity_mark(randomness_stream);
-    let sampled_mark = return_jump_scale * activity_coupling_mark.sqrt() * sign * magnitude;
-    if !sampled_mark.is_finite() {
+    let return_jump_mark = mark_scales.return_jump_scale * shared_coupled_return_jump_mark;
+    if !return_jump_mark.is_finite() {
         return Err(
             SeededTickSimulationRunError::InvalidGeneratedNewsReturnJumpMark {
-                value: sampled_mark,
+                value: return_jump_mark,
             },
         );
     }
 
-    Ok(sampled_mark)
+    Ok((activity_coupling_mark, return_jump_mark))
 }
 
-fn sample_exogenous_news_severity_mark<R>(randomness_stream: &mut R) -> f64
-where
-    R: SimulationRandomnessStream,
-{
-    let unit_draw = randomness_stream.next_unit_interval_f64();
-    -(1.0 - unit_draw).ln()
+fn map_gamma_severity_sampling_error_to_seeded_simulation_run_error(
+    source: GammaSeverityMarkSamplingError,
+) -> SeededTickSimulationRunError {
+    match source {
+        GammaSeverityMarkSamplingError::InvalidConfiguration { .. } => {
+            SeededTickSimulationRunError::InvalidGeneratedNewsActivityCouplingMark {
+                value: f64::NAN,
+            }
+        }
+        GammaSeverityMarkSamplingError::InvalidSampledMark { value } => {
+            SeededTickSimulationRunError::InvalidGeneratedNewsActivityCouplingMark { value }
+        }
+    }
+}
+
+fn map_base_shock_sampling_error_to_seeded_simulation_run_error(
+    source: DoubleExponentialBaseShockSamplingError,
+) -> SeededTickSimulationRunError {
+    match source {
+        DoubleExponentialBaseShockSamplingError::InvalidConfiguration { .. } => {
+            SeededTickSimulationRunError::InvalidGeneratedNewsReturnJumpMark { value: f64::NAN }
+        }
+        DoubleExponentialBaseShockSamplingError::InvalidSampledMark { value } => {
+            SeededTickSimulationRunError::InvalidGeneratedNewsReturnJumpMark { value }
+        }
+    }
+}
+
+fn map_coupled_mark_construction_error_to_seeded_simulation_run_error(
+    source: CoupledGapMarkConstructionError,
+) -> SeededTickSimulationRunError {
+    match source {
+        CoupledGapMarkConstructionError::InvalidConfiguration { .. } => {
+            SeededTickSimulationRunError::InvalidGeneratedNewsReturnJumpMark { value: f64::NAN }
+        }
+        CoupledGapMarkConstructionError::InvalidSharedSeverityMark { value } => {
+            SeededTickSimulationRunError::InvalidGeneratedNewsActivityCouplingMark { value }
+        }
+        CoupledGapMarkConstructionError::InvalidSharedBaseShockMark { value } => {
+            SeededTickSimulationRunError::InvalidGeneratedNewsReturnJumpMark { value }
+        }
+        CoupledGapMarkConstructionError::InvalidConstructedGapMark { value } => {
+            SeededTickSimulationRunError::InvalidGeneratedNewsReturnJumpMark { value }
+        }
+    }
 }
 
 fn resolve_news_return_jump_routing(
@@ -2068,6 +2114,7 @@ mod tests {
     use crate::randomness::{
         SimulationRandomnessFactory, SimulationRandomnessStream,
         SimulationRandomnessSubstreamDomain, SplitMix64SimulationRandomnessStream,
+        derive_simulation_substream_seed,
     };
     use crate::return_decomposition::{
         ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionInput,
@@ -2544,8 +2591,8 @@ mod tests {
             vec![0.3],
             vec![0.0],
             vec![0.3],
-            vec![0.5],
-            vec![],
+            vec![0.5, 0.25, 0.5],
+            vec![0.25, 0.5],
         );
 
         let run_result =
@@ -2626,11 +2673,16 @@ mod tests {
         assert_eq!(trace_records[1].event_index, Some(1));
         assert_eq!(trace_records[2].event_index, None);
         assert_eq!(trace_records[3].event_index, None);
+        let mut expected_severity_stream = ScriptedRandomnessStream::new(vec![0.5, 0.25, 0.5]);
+        let expected_activity_coupling_mark =
+            super::SEEDED_TICK_EXOGENOUS_NEWS_SHARED_GAMMA_CONFIGURATION
+                .sample_severity_mark(&mut expected_severity_stream)
+                .expect("expected shared gamma sample should construct in debug-trace fixture");
         assert_float_close(
             trace_records[2]
                 .exogenous_news_activity_coupling_mark
                 .expect("exogenous transition should include news activity-coupling mark"),
-            -(1.0 - 0.5_f64).ln(),
+            expected_activity_coupling_mark,
         );
         assert_eq!(
             trace_records[2].exogenous_news_arrival_component,
@@ -3055,7 +3107,7 @@ mod tests {
             vec![0.3],
             vec![0.0],
             vec![0.3],
-            vec![0.4, 0.6],
+            vec![0.5, 0.25, 0.5, 0.5, 0.25, 0.5],
             vec![0.75, 0.2, 0.25, 0.3],
         );
         let run_result =
@@ -3143,8 +3195,8 @@ mod tests {
             vec![],
             vec![1.0],
             vec![],
-            vec![0.5],
-            vec![0.75, 0.5],
+            vec![0.5, 0.25, 0.5],
+            vec![0.25, 0.5],
         );
         let run_result =
             run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
@@ -3229,8 +3281,8 @@ mod tests {
             vec![],
             vec![1.0],
             vec![],
-            vec![0.5],
-            vec![0.75, 0.5],
+            vec![0.5, 0.25, 0.5],
+            vec![0.25, 0.5],
         );
         let run_result =
             run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
@@ -3324,7 +3376,7 @@ mod tests {
             vec![],
             vec![1.0, 1.0],
             vec![],
-            vec![0.5, 0.5],
+            vec![0.5, 0.25, 0.5, 0.5, 0.25, 0.5],
             vec![0.75, 0.5, 0.75, 0.5],
         );
         let run_result =
@@ -3401,7 +3453,7 @@ mod tests {
             vec![],
             vec![0.0],
             vec![0.3],
-            vec![0.5],
+            vec![0.5, 0.25, 0.5],
             vec![0.75, f64::NAN],
         );
         let error =
@@ -3412,6 +3464,180 @@ mod tests {
             error,
             SeededTickSimulationRunError::InvalidGeneratedNewsReturnJumpMark { value } if value.is_nan()
         ));
+    }
+
+    #[test]
+    fn seeded_exogenous_mark_sampling_matches_shared_gamma_kou_reference_contract_for_fixed_seed() {
+        let root_seed = 98_771_u64;
+        let interval_index = 3_u64;
+        let mark_scales = SeededTickSimulationNewsMarkScales {
+            activity_coupling_scale: 1.35,
+            return_jump_scale: 0.85,
+        };
+
+        let severity_substream_seed = derive_simulation_substream_seed(
+            root_seed,
+            SimulationRandomnessSubstreamDomain::ExogenousNewsSeverity,
+            interval_index,
+        );
+        let return_jump_substream_seed = derive_simulation_substream_seed(
+            root_seed,
+            SimulationRandomnessSubstreamDomain::ExogenousNewsReturnJump,
+            interval_index,
+        );
+        let mut observed_severity_stream =
+            SplitMix64SimulationRandomnessStream::from_seed(severity_substream_seed);
+        let mut observed_return_jump_stream =
+            SplitMix64SimulationRandomnessStream::from_seed(return_jump_substream_seed);
+
+        let (observed_activity_coupling_mark, observed_return_jump_mark) =
+            super::sample_exogenous_news_marks(
+                &mut observed_severity_stream,
+                &mut observed_return_jump_stream,
+                mark_scales,
+            )
+            .expect("seeded exogenous mark sampling should succeed for valid fixed-seed setup");
+
+        let mut expected_severity_stream =
+            SplitMix64SimulationRandomnessStream::from_seed(severity_substream_seed);
+        let mut expected_return_jump_stream =
+            SplitMix64SimulationRandomnessStream::from_seed(return_jump_substream_seed);
+        let expected_shared_severity_mark =
+            super::SEEDED_TICK_EXOGENOUS_NEWS_SHARED_GAMMA_CONFIGURATION
+                .sample_severity_mark(&mut expected_severity_stream)
+                .expect("shared gamma mark sample should succeed");
+        let expected_shared_base_shock_mark =
+            super::SEEDED_TICK_EXOGENOUS_NEWS_SHARED_BASE_SHOCK_CONFIGURATION
+                .sample_base_shock_mark(&mut expected_return_jump_stream)
+                .expect("shared Kou base-shock sample should succeed");
+        let expected_shared_return_jump_mark =
+            super::SEEDED_TICK_EXOGENOUS_NEWS_SHARED_COUPLED_RETURN_JUMP_CONFIGURATION
+                .construct_gap_jump_mark(
+                    expected_shared_severity_mark,
+                    expected_shared_base_shock_mark,
+                )
+                .expect("shared coupled return-jump mark should construct")
+                .gap_jump_mark;
+
+        assert_float_close(
+            observed_activity_coupling_mark,
+            mark_scales.activity_coupling_scale * expected_shared_severity_mark,
+        );
+        assert_float_close(
+            observed_return_jump_mark,
+            mark_scales.return_jump_scale * expected_shared_return_jump_mark,
+        );
+    }
+
+    #[test]
+    fn seeded_exogenous_mark_sampling_preserves_shared_gamma_kou_sign_and_scale_statistics() {
+        let root_seed = 98_772_u64;
+        let interval_index = 4_u64;
+        let sample_count = 8_192_u64;
+        let mark_scales = SeededTickSimulationNewsMarkScales {
+            activity_coupling_scale: 1.1,
+            return_jump_scale: 0.9,
+        };
+
+        let severity_substream_seed = derive_simulation_substream_seed(
+            root_seed,
+            SimulationRandomnessSubstreamDomain::ExogenousNewsSeverity,
+            interval_index,
+        );
+        let return_jump_substream_seed = derive_simulation_substream_seed(
+            root_seed,
+            SimulationRandomnessSubstreamDomain::ExogenousNewsReturnJump,
+            interval_index,
+        );
+        let mut observed_severity_stream =
+            SplitMix64SimulationRandomnessStream::from_seed(severity_substream_seed);
+        let mut observed_return_jump_stream =
+            SplitMix64SimulationRandomnessStream::from_seed(return_jump_substream_seed);
+        let mut expected_severity_stream =
+            SplitMix64SimulationRandomnessStream::from_seed(severity_substream_seed);
+        let mut expected_return_jump_stream =
+            SplitMix64SimulationRandomnessStream::from_seed(return_jump_substream_seed);
+
+        let mut observed_activity_sum = 0.0;
+        let mut expected_activity_sum = 0.0;
+        let mut observed_return_abs_sum = 0.0;
+        let mut expected_return_abs_sum = 0.0;
+        let mut observed_positive_return_count = 0_u64;
+        let mut observed_negative_return_count = 0_u64;
+        let mut expected_positive_return_count = 0_u64;
+
+        for _sample_index in 0..sample_count {
+            let (observed_activity_coupling_mark, observed_return_jump_mark) =
+                super::sample_exogenous_news_marks(
+                    &mut observed_severity_stream,
+                    &mut observed_return_jump_stream,
+                    mark_scales,
+                )
+                .expect("seeded exogenous mark sampling should succeed for valid setup");
+
+            let expected_shared_severity_mark =
+                super::SEEDED_TICK_EXOGENOUS_NEWS_SHARED_GAMMA_CONFIGURATION
+                    .sample_severity_mark(&mut expected_severity_stream)
+                    .expect("shared gamma mark sampling should succeed");
+            let expected_shared_base_shock_mark =
+                super::SEEDED_TICK_EXOGENOUS_NEWS_SHARED_BASE_SHOCK_CONFIGURATION
+                    .sample_base_shock_mark(&mut expected_return_jump_stream)
+                    .expect("shared base-shock sampling should succeed");
+            let expected_shared_return_jump_mark =
+                super::SEEDED_TICK_EXOGENOUS_NEWS_SHARED_COUPLED_RETURN_JUMP_CONFIGURATION
+                    .construct_gap_jump_mark(
+                        expected_shared_severity_mark,
+                        expected_shared_base_shock_mark,
+                    )
+                    .expect("shared coupled return-jump mark construction should succeed")
+                    .gap_jump_mark;
+
+            let expected_activity_coupling_mark =
+                mark_scales.activity_coupling_scale * expected_shared_severity_mark;
+            let expected_return_jump_mark =
+                mark_scales.return_jump_scale * expected_shared_return_jump_mark;
+
+            assert!(observed_activity_coupling_mark.is_finite());
+            assert!(observed_activity_coupling_mark >= 0.0);
+            assert!(observed_return_jump_mark.is_finite());
+
+            observed_activity_sum += observed_activity_coupling_mark;
+            expected_activity_sum += expected_activity_coupling_mark;
+            observed_return_abs_sum += observed_return_jump_mark.abs();
+            expected_return_abs_sum += expected_return_jump_mark.abs();
+
+            if observed_return_jump_mark > 0.0 {
+                observed_positive_return_count = observed_positive_return_count.saturating_add(1);
+            } else if observed_return_jump_mark < 0.0 {
+                observed_negative_return_count = observed_negative_return_count.saturating_add(1);
+            }
+
+            if expected_return_jump_mark > 0.0 {
+                expected_positive_return_count = expected_positive_return_count.saturating_add(1);
+            }
+        }
+
+        assert!(
+            observed_positive_return_count > 0,
+            "seeded return jumps should contain positive marks under symmetric Kou configuration"
+        );
+        assert!(
+            observed_negative_return_count > 0,
+            "seeded return jumps should contain negative marks under symmetric Kou configuration"
+        );
+
+        let observed_activity_mean = observed_activity_sum / sample_count as f64;
+        let expected_activity_mean = expected_activity_sum / sample_count as f64;
+        let observed_return_abs_mean = observed_return_abs_sum / sample_count as f64;
+        let expected_return_abs_mean = expected_return_abs_sum / sample_count as f64;
+        let observed_positive_frequency =
+            observed_positive_return_count as f64 / sample_count as f64;
+        let expected_positive_frequency =
+            expected_positive_return_count as f64 / sample_count as f64;
+
+        assert_float_close(observed_activity_mean, expected_activity_mean);
+        assert_float_close(observed_return_abs_mean, expected_return_abs_mean);
+        assert_float_close(observed_positive_frequency, expected_positive_frequency);
     }
 
     #[test]
@@ -3898,8 +4124,14 @@ mod tests {
                 }
                 SimulationRandomnessSubstreamDomain::ExogenousNewsCount => 0,
                 SimulationRandomnessSubstreamDomain::ExogenousNewsTimestamp => 0,
-                SimulationRandomnessSubstreamDomain::ExogenousNewsSeverity => 0,
-                SimulationRandomnessSubstreamDomain::ExogenousNewsReturnJump => 0,
+                SimulationRandomnessSubstreamDomain::ExogenousNewsSeverity
+                | SimulationRandomnessSubstreamDomain::ExogenousNewsReturnJump => {
+                    0x9E37_79B9_7F4A_7C15_u64.wrapping_mul(
+                        self.substream_index
+                            .wrapping_add(self.draw_count)
+                            .wrapping_add(1),
+                    )
+                }
             }
         }
     }
