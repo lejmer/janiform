@@ -2,9 +2,10 @@ mod support;
 
 use janiform_core::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
 use janiform_core::calibration::build_option_surface_calibration_observation_from_pricing_hooks;
+use janiform_core::complex_math::ComplexScalar;
 use janiform_core::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
 use janiform_core::news::GammaSeverityMarkConfiguration;
-use janiform_core::nig::{ComplexScalar, NigSharedPlusShiftConfiguration};
+use janiform_core::nig::NigSharedPlusShiftConfiguration;
 use janiform_core::pricing::{
     FourierInversionEngineSettings, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
     VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,

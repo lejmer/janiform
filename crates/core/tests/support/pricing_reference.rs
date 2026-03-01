@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
+use janiform_core::complex_math::ComplexScalar;
 use janiform_core::complex_math::complex_exponential;
-use janiform_core::nig::ComplexScalar;
 use janiform_core::pricing::{VanillaOptionPayoffType, VanillaOptionPricingMarketInputs};
 
 // Shared Black-Scholes CF baseline used across pricing regression tests.

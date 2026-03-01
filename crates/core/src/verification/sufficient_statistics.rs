@@ -888,7 +888,7 @@ fn extract_real_transform_component(
     validation_scenario: &SufficientStatisticsMultiIntervalValidationScenario,
     interval_index: usize,
     check_id: &'static str,
-    value: crate::nig::ComplexScalar,
+    value: crate::complex_math::ComplexScalar,
 ) -> Result<f64, SufficientStatisticsMultiIntervalValidationError> {
     if !value.is_finite()
         || value.imaginary.abs()

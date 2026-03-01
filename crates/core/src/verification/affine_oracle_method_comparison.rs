@@ -14,7 +14,7 @@ use crate::affine_oracle::{
     ExponentialAffineTransformSolverSettingsError, ExponentialAffineTransformTelemetryMode,
     solve_exponential_affine_transform_with_settings,
 };
-use crate::nig::ComplexScalar;
+use crate::complex_math::ComplexScalar;
 
 pub const EXPONENTIAL_AFFINE_TRANSFORM_METHOD_COMPARISON_TOLERANCE_POLICY_SCHEMA_VERSION: &str =
     "affine_oracle.method_comparison.tolerance_policy.v1";

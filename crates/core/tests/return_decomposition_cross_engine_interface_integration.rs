@@ -1,6 +1,7 @@
 mod support;
 
-use janiform_core::nig::{ComplexScalar, NigSharedPlusShiftConfiguration};
+use janiform_core::complex_math::ComplexScalar;
+use janiform_core::nig::NigSharedPlusShiftConfiguration;
 use janiform_core::pricing::compose_total_return_characteristic_function_with_edge_mode;
 use janiform_core::randomness::SplitMix64SimulationRandomnessStream;
 use janiform_core::return_decomposition::{

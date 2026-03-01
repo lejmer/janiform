@@ -19,9 +19,9 @@ use crate::benchmarking::{
     build_pricing_market_inputs, derive_invocation_seed, fnv1a_64, interpolate_range, splitmix64,
     unit_interval_from_seed,
 };
+use crate::complex_math::ComplexScalar;
 use crate::complex_math::complex_exponential;
 use crate::hawkes::HawkesExcitationState;
-use crate::nig::ComplexScalar;
 use crate::pricing::{
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
     price_vanilla_option_via_fourier_inversion,

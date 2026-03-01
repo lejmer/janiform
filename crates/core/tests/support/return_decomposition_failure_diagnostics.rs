@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use janiform_core::nig::ComplexScalar;
+use janiform_core::complex_math::ComplexScalar;
 use janiform_core::return_decomposition::ReturnDecompositionEdgeMode;
 use serde::Deserialize;
 use serde::Serialize;
