@@ -96,7 +96,10 @@ fn build_hourly_factor_contract(
         })
         .map_err(map_hourly_factor_contract_error)?;
 
-    Ok(PyHourlyFactorContractResult { output })
+    Ok(PyHourlyFactorContractResult {
+        output,
+        calendar_registry: calendar_registry.registry.clone(),
+    })
 }
 
 #[pyfunction]
@@ -360,7 +363,10 @@ fn provide_hourly_factor_contract(
         })
         .map_err(map_hourly_factor_provider_error)?;
 
-    Ok(PyHourlyFactorContractResult { output })
+    Ok(PyHourlyFactorContractResult {
+        output,
+        calendar_registry: calendar_registry.registry.clone(),
+    })
 }
 
 pub(super) fn parse_hourly_provider_seasonality_source(
@@ -870,21 +876,22 @@ fn map_hourly_factor_provider_error(error: HourlyFactorProviderError) -> PyErr {
 }
 
 pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_function(pyo3::wrap_pyfunction!(
+    module.add_function(wrap_pyfunction!(
         build_hourly_factor_contract,
         module
     )?)?;
-    module.add_function(pyo3::wrap_pyfunction!(
+    module.add_function(wrap_pyfunction!(
         materialize_hourly_seasonality_factors,
         module
     )?)?;
-    module.add_function(pyo3::wrap_pyfunction!(
+    module.add_function(wrap_pyfunction!(
         materialize_hourly_news_intensity_factors,
         module
     )?)?;
-    module.add_function(pyo3::wrap_pyfunction!(
+    module.add_function(wrap_pyfunction!(
         provide_hourly_factor_contract,
         module
     )?)?;
+
     Ok(())
 }

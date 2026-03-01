@@ -427,6 +427,7 @@ fn run_fixture_case(
                 y_minus_minus: fixture_case.initial_excitation_state.y_minus_minus,
             },
             hourly_factor_contract,
+            calendar_registry: calendar_registry.clone(),
             known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
             known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
             surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),

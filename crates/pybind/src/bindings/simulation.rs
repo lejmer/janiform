@@ -51,6 +51,7 @@ fn run_seeded_tick_event_simulation(
             kernel_parameters: parsed_kernel_parameters,
             initial_excitation_state: parsed_initial_excitation_state,
             hourly_factor_contract: hourly_factor_contract.output.clone(),
+            calendar_registry: hourly_factor_contract.calendar_registry.clone(),
             known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
             known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
             surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
@@ -243,7 +244,7 @@ fn map_seeded_tick_simulation_run_error(
 }
 
 pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_function(pyo3::wrap_pyfunction!(
+    module.add_function(wrap_pyfunction!(
         run_seeded_tick_event_simulation,
         module
     )?)?;

@@ -1,3 +1,4 @@
+use janiform_core::calendar::ExchangeCalendarRegistry;
 use janiform_core::hourly_factors::{
     HourlyFactorContractOutput, HourlyNewsIntensityMaterializationOutput,
     HourlySeasonalityMaterializationOutput,
@@ -8,6 +9,7 @@ use pyo3::prelude::*;
 #[derive(Clone)]
 pub(crate) struct PyHourlyFactorContractResult {
     pub(crate) output: HourlyFactorContractOutput,
+    pub(crate) calendar_registry: ExchangeCalendarRegistry,
 }
 
 #[pyclass(
