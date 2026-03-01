@@ -34,7 +34,7 @@ pub const HOURLY_FACTOR_THRESHOLD_CONFIGURATION_SCHEMA_VERSION: &str =
     "validation.hourly_factor.thresholds.v1";
 pub const STATE_CLASSIFICATION_STRICTNESS_POLICY: &str = "exact_match_required.v1";
 pub const OPEN_CLOSED_GAP_BEHAVIOR_SCHEMA_FAMILY: &str = "validation.gap_behavior.open_closed";
-pub const OPEN_CLOSED_GAP_BEHAVIOR_SCHEMA_GENERATION: &str = "v0.x";
+pub const OPEN_CLOSED_GAP_BEHAVIOR_SCHEMA_GENERATION: &str = "v1";
 pub const OPEN_CLOSED_GAP_BEHAVIOR_FORWARD_EXTENSION_POLICY: &str = "additive_fields_only.v1";
 pub const OPEN_CLOSED_GAP_BEHAVIOR_CASE_ORDER_POLICY: &str = "preserve_declared_case_order.v1";
 pub const OPEN_CLOSED_GAP_BEHAVIOR_EVENT_ORDER_POLICY: &str = "preserve_declared_event_order.v1";
@@ -319,6 +319,7 @@ pub struct OpenClosedGapBehaviorOutputSchemaMetadata {
 #[serde(deny_unknown_fields)]
 pub struct OpenClosedGapBehaviorCanonicalMetadata {
     pub required_tags: Vec<String>,
+    pub required_scenario_classes: Vec<String>,
     pub stable_fixture_ids_by_tag: BTreeMap<String, Vec<String>>,
 }
 
@@ -327,6 +328,9 @@ pub struct OpenClosedGapBehaviorCanonicalMetadata {
 pub struct OpenClosedGapBehaviorScenarioCaseFixture {
     pub fixture_id: String,
     pub exchange_code: String,
+    pub scenario_class: String,
+    pub deterministic_replay_metadata: OpenClosedGapBehaviorDeterministicReplayMetadataFixture,
+    pub issue_traceability: OpenClosedGapBehaviorIssueTraceabilityFixture,
     pub calendar_fixture_set_id: String,
     pub calendar_state_fixture_references: Vec<String>,
     pub range_start_utc: String,
@@ -342,6 +346,7 @@ pub struct OpenClosedGapBehaviorScenarioCaseFixture {
 #[serde(deny_unknown_fields)]
 pub struct OpenClosedGapBehaviorAccumulatorStateFixture {
     pub j_t: f64,
+    pub m_t: f64,
     pub g_t: f64,
 }
 
@@ -350,8 +355,27 @@ pub struct OpenClosedGapBehaviorAccumulatorStateFixture {
 pub struct OpenClosedGapBehaviorInjectedEventFixture {
     pub event_id: String,
     pub timestamp_utc: String,
+    pub news_arrival_component: String,
     pub shared_severity_mark: f64,
-    pub coupled_gap_jump_mark: f64,
+    pub coupled_return_jump_mark: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpenClosedGapBehaviorDeterministicReplayMetadataFixture {
+    pub replay_baseline_id: String,
+    pub event_calendar_binding_id: String,
+    pub jump_observation_binding_id: String,
+    pub gap_observation_binding_id: String,
+    pub candidate_selection_policy_id: String,
+    pub candidate_selection_rank: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpenClosedGapBehaviorIssueTraceabilityFixture {
+    pub issue_id: String,
+    pub semantic_focus_tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -366,9 +390,10 @@ pub struct OpenClosedGapBehaviorExpectedOutcomeFixture {
 pub struct OpenClosedGapBehaviorEventExpectationFixture {
     pub event_id: String,
     pub expected_market_state: String,
-    pub expected_j_t_increment: f64,
-    pub expected_g_t_increment: f64,
-    pub expected_direct_gap_applied: bool,
+    pub expected_activity_coupling_j_t_increment: f64,
+    pub expected_open_jump_m_t_increment: f64,
+    pub expected_closed_gap_g_t_increment: f64,
+    pub expected_trading_return_increment: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
@@ -376,9 +401,10 @@ pub struct OpenClosedGapBehaviorEventExpectationFixture {
 pub struct OpenClosedGapBehaviorExpectedSummaryFixture {
     pub expected_open_event_count: usize,
     pub expected_closed_event_count: usize,
-    pub expected_total_j_t_increment: f64,
-    pub expected_total_g_t_increment: f64,
-    pub expected_open_window_direct_gap_increment_count: usize,
+    pub expected_total_activity_coupling_j_t_increment: f64,
+    pub expected_total_open_jump_m_t_increment: f64,
+    pub expected_total_closed_gap_g_t_increment: f64,
+    pub expected_total_trading_return_increment: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1202,6 +1228,9 @@ pub fn validate_open_closed_gap_behavior_calendar_integration(
 struct OpenClosedGapBehaviorObservedCoverage {
     observed_tags: BTreeSet<String>,
     observed_case_ids_by_tag: BTreeMap<String, BTreeSet<String>>,
+    known_only_case_count: usize,
+    surprise_only_case_count: usize,
+    mixed_news_case_count: usize,
 }
 
 fn validate_open_closed_gap_behavior_document_headers(
@@ -1455,6 +1484,60 @@ fn validate_open_closed_gap_behavior_canonical_metadata_declarations(
 
     if fixture_document
         .canonical_regression_metadata
+        .required_scenario_classes
+        .is_empty()
+    {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "required_scenario_classes_empty",
+            "canonical_regression_metadata.required_scenario_classes",
+            "must include at least one required scenario class",
+        );
+    }
+
+    let mut required_scenario_class_set: BTreeSet<&str> = BTreeSet::new();
+    for (scenario_class_index, required_scenario_class) in fixture_document
+        .canonical_regression_metadata
+        .required_scenario_classes
+        .iter()
+        .enumerate()
+    {
+        validate_open_closed_gap_behavior_non_empty(
+            required_scenario_class,
+            &format!(
+                "canonical_regression_metadata.required_scenario_classes[{scenario_class_index}]"
+            ),
+            errors,
+        );
+        if !matches!(
+            required_scenario_class.as_str(),
+            "known_only" | "surprise_only" | "mixed_news"
+        ) {
+            add_open_closed_gap_behavior_validation_error(
+                errors,
+                "unsupported_required_scenario_class",
+                format!(
+                    "canonical_regression_metadata.required_scenario_classes[{scenario_class_index}]"
+                ),
+                format!(
+                    "required scenario class must be one of `known_only`, `surprise_only`, or `mixed_news`, found `{required_scenario_class}`"
+                ),
+            );
+        }
+        if !required_scenario_class_set.insert(required_scenario_class.as_str()) {
+            add_open_closed_gap_behavior_validation_error(
+                errors,
+                "required_scenario_class_duplicate",
+                format!(
+                    "canonical_regression_metadata.required_scenario_classes[{scenario_class_index}]"
+                ),
+                format!("duplicate required scenario class `{required_scenario_class}`"),
+            );
+        }
+    }
+
+    if fixture_document
+        .canonical_regression_metadata
         .stable_fixture_ids_by_tag
         .is_empty()
     {
@@ -1515,6 +1598,94 @@ fn validate_open_closed_gap_behavior_case(
         &format!("{case_field_path_prefix}.exchange_code"),
         errors,
     );
+    validate_open_closed_gap_behavior_non_empty(
+        &fixture_case.scenario_class,
+        &format!("{case_field_path_prefix}.scenario_class"),
+        errors,
+    );
+    match fixture_case.scenario_class.as_str() {
+        "known_only" => {
+            observed_coverage.known_only_case_count =
+                observed_coverage.known_only_case_count.saturating_add(1);
+        }
+        "surprise_only" => {
+            observed_coverage.surprise_only_case_count =
+                observed_coverage.surprise_only_case_count.saturating_add(1);
+        }
+        "mixed_news" => {
+            observed_coverage.mixed_news_case_count =
+                observed_coverage.mixed_news_case_count.saturating_add(1);
+        }
+        _ => {
+            add_open_closed_gap_behavior_validation_error(
+                errors,
+                "unsupported_scenario_class",
+                format!("{case_field_path_prefix}.scenario_class"),
+                format!(
+                    "scenario_class must be one of `known_only`, `surprise_only`, or `mixed_news`, found `{}`",
+                    fixture_case.scenario_class
+                ),
+            );
+        }
+    }
+    validate_open_closed_gap_behavior_non_empty(
+        &fixture_case
+            .deterministic_replay_metadata
+            .replay_baseline_id,
+        &format!(
+            "{case_field_path_prefix}.deterministic_replay_metadata.replay_baseline_id"
+        ),
+        errors,
+    );
+    validate_open_closed_gap_behavior_non_empty(
+        &fixture_case
+            .deterministic_replay_metadata
+            .event_calendar_binding_id,
+        &format!(
+            "{case_field_path_prefix}.deterministic_replay_metadata.event_calendar_binding_id"
+        ),
+        errors,
+    );
+    validate_open_closed_gap_behavior_non_empty(
+        &fixture_case
+            .deterministic_replay_metadata
+            .jump_observation_binding_id,
+        &format!(
+            "{case_field_path_prefix}.deterministic_replay_metadata.jump_observation_binding_id"
+        ),
+        errors,
+    );
+    validate_open_closed_gap_behavior_non_empty(
+        &fixture_case
+            .deterministic_replay_metadata
+            .gap_observation_binding_id,
+        &format!(
+            "{case_field_path_prefix}.deterministic_replay_metadata.gap_observation_binding_id"
+        ),
+        errors,
+    );
+    validate_open_closed_gap_behavior_non_empty(
+        &fixture_case
+            .deterministic_replay_metadata
+            .candidate_selection_policy_id,
+        &format!(
+            "{case_field_path_prefix}.deterministic_replay_metadata.candidate_selection_policy_id"
+        ),
+        errors,
+    );
+    validate_open_closed_gap_behavior_non_empty(
+        &fixture_case.issue_traceability.issue_id,
+        &format!("{case_field_path_prefix}.issue_traceability.issue_id"),
+        errors,
+    );
+    if fixture_case.issue_traceability.semantic_focus_tags.is_empty() {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "semantic_focus_tags_empty",
+            format!("{case_field_path_prefix}.issue_traceability.semantic_focus_tags"),
+            "must include at least one semantic focus tag",
+        );
+    }
     validate_open_closed_gap_behavior_non_empty(
         &fixture_case.calendar_fixture_set_id,
         &format!("{case_field_path_prefix}.calendar_fixture_set_id"),
@@ -1600,6 +1771,11 @@ fn validate_open_closed_gap_behavior_case(
         errors,
     );
     validate_open_closed_gap_behavior_finite(
+        fixture_case.initial_accumulator_state.m_t,
+        &format!("{case_field_path_prefix}.initial_accumulator_state.m_t"),
+        errors,
+    );
+    validate_open_closed_gap_behavior_finite(
         fixture_case.initial_accumulator_state.g_t,
         &format!("{case_field_path_prefix}.initial_accumulator_state.g_t"),
         errors,
@@ -1638,6 +1814,8 @@ fn validate_open_closed_gap_behavior_case(
     }
 
     let mut injected_event_ids: BTreeSet<String> = BTreeSet::new();
+    let mut known_event_count = 0usize;
+    let mut surprise_event_count = 0usize;
     for (event_index, injected_event) in fixture_case.injected_events.iter().enumerate() {
         let injected_event_field_path_prefix =
             format!("{case_field_path_prefix}.injected_events[{event_index}]");
@@ -1652,14 +1830,38 @@ fn validate_open_closed_gap_behavior_case(
             &format!("{injected_event_field_path_prefix}.timestamp_utc"),
             errors,
         );
+        validate_open_closed_gap_behavior_non_empty(
+            &injected_event.news_arrival_component,
+            &format!("{injected_event_field_path_prefix}.news_arrival_component"),
+            errors,
+        );
+        match injected_event.news_arrival_component.as_str() {
+            "known" => {
+                known_event_count = known_event_count.saturating_add(1);
+            }
+            "surprise" => {
+                surprise_event_count = surprise_event_count.saturating_add(1);
+            }
+            _ => {
+                add_open_closed_gap_behavior_validation_error(
+                    errors,
+                    "unsupported_news_arrival_component",
+                    format!("{injected_event_field_path_prefix}.news_arrival_component"),
+                    format!(
+                        "news_arrival_component must be either `known` or `surprise`, found `{}`",
+                        injected_event.news_arrival_component
+                    ),
+                );
+            }
+        }
         validate_open_closed_gap_behavior_finite_non_negative(
             injected_event.shared_severity_mark,
             &format!("{injected_event_field_path_prefix}.shared_severity_mark"),
             errors,
         );
         validate_open_closed_gap_behavior_finite(
-            injected_event.coupled_gap_jump_mark,
-            &format!("{injected_event_field_path_prefix}.coupled_gap_jump_mark"),
+            injected_event.coupled_return_jump_mark,
+            &format!("{injected_event_field_path_prefix}.coupled_return_jump_mark"),
             errors,
         );
 
@@ -1671,6 +1873,32 @@ fn validate_open_closed_gap_behavior_case(
                 format!("duplicate event_id `{}`", injected_event.event_id),
             );
         }
+    }
+
+    match fixture_case.scenario_class.as_str() {
+        "known_only" if surprise_event_count > 0 => add_open_closed_gap_behavior_validation_error(
+            errors,
+            "scenario_class_component_mismatch",
+            format!("{case_field_path_prefix}.scenario_class"),
+            "known_only scenario cannot include surprise events",
+        ),
+        "surprise_only" if known_event_count > 0 => {
+            add_open_closed_gap_behavior_validation_error(
+                errors,
+                "scenario_class_component_mismatch",
+                format!("{case_field_path_prefix}.scenario_class"),
+                "surprise_only scenario cannot include known events",
+            )
+        }
+        "mixed_news" if known_event_count == 0 || surprise_event_count == 0 => {
+            add_open_closed_gap_behavior_validation_error(
+                errors,
+                "scenario_class_component_mismatch",
+                format!("{case_field_path_prefix}.scenario_class"),
+                "mixed_news scenario must include both known and surprise events",
+            )
+        }
+        _ => {}
     }
 
     validate_open_closed_gap_behavior_case_expected_outcome(
@@ -1699,9 +1927,10 @@ fn validate_open_closed_gap_behavior_case_expected_outcome(
     let mut expected_event_ids: BTreeSet<String> = BTreeSet::new();
     let mut expected_open_event_count = 0_usize;
     let mut expected_closed_event_count = 0_usize;
-    let mut expected_open_window_direct_gap_increment_count = 0_usize;
-    let mut expected_total_j_t_increment = 0.0_f64;
-    let mut expected_total_g_t_increment = 0.0_f64;
+    let mut expected_total_activity_coupling_j_t_increment = 0.0_f64;
+    let mut expected_total_open_jump_m_t_increment = 0.0_f64;
+    let mut expected_total_closed_gap_g_t_increment = 0.0_f64;
+    let mut expected_total_trading_return_increment = 0.0_f64;
 
     for (expectation_index, event_expectation) in fixture_case
         .expected_outcome
@@ -1732,40 +1961,60 @@ fn validate_open_closed_gap_behavior_case_expected_outcome(
         }
 
         validate_open_closed_gap_behavior_finite_non_negative(
-            event_expectation.expected_j_t_increment,
-            &format!("{expected_event_field_path_prefix}.expected_j_t_increment"),
+            event_expectation.expected_activity_coupling_j_t_increment,
+            &format!(
+                "{expected_event_field_path_prefix}.expected_activity_coupling_j_t_increment"
+            ),
             errors,
         );
         validate_open_closed_gap_behavior_finite(
-            event_expectation.expected_g_t_increment,
-            &format!("{expected_event_field_path_prefix}.expected_g_t_increment"),
+            event_expectation.expected_open_jump_m_t_increment,
+            &format!(
+                "{expected_event_field_path_prefix}.expected_open_jump_m_t_increment"
+            ),
+            errors,
+        );
+        validate_open_closed_gap_behavior_finite(
+            event_expectation.expected_closed_gap_g_t_increment,
+            &format!(
+                "{expected_event_field_path_prefix}.expected_closed_gap_g_t_increment"
+            ),
+            errors,
+        );
+        validate_open_closed_gap_behavior_finite(
+            event_expectation.expected_trading_return_increment,
+            &format!(
+                "{expected_event_field_path_prefix}.expected_trading_return_increment"
+            ),
             errors,
         );
 
         match event_expectation.expected_market_state.as_str() {
             "open" => {
                 expected_open_event_count = expected_open_event_count.saturating_add(1);
-                if event_expectation.expected_direct_gap_applied {
-                    expected_open_window_direct_gap_increment_count =
-                        expected_open_window_direct_gap_increment_count.saturating_add(1);
+                if event_expectation.expected_closed_gap_g_t_increment.abs() > 0.0 {
                     add_open_closed_gap_behavior_validation_error(
                         errors,
-                        "open_window_direct_gap_not_allowed",
-                        format!("{expected_event_field_path_prefix}.expected_direct_gap_applied"),
-                        "open-window event expectations must keep expected_direct_gap_applied=false",
-                    );
-                }
-                if event_expectation.expected_g_t_increment.abs() > 0.0 {
-                    add_open_closed_gap_behavior_validation_error(
-                        errors,
-                        "open_window_gap_increment_not_allowed",
-                        format!("{expected_event_field_path_prefix}.expected_g_t_increment"),
-                        "open-window event expectations must set expected_g_t_increment=0.0",
+                        "open_window_closed_gap_not_allowed",
+                        format!(
+                            "{expected_event_field_path_prefix}.expected_closed_gap_g_t_increment"
+                        ),
+                        "open-window event expectations must set expected_closed_gap_g_t_increment=0.0",
                     );
                 }
             }
             "closed" => {
                 expected_closed_event_count = expected_closed_event_count.saturating_add(1);
+                if event_expectation.expected_open_jump_m_t_increment.abs() > 0.0 {
+                    add_open_closed_gap_behavior_validation_error(
+                        errors,
+                        "closed_window_open_jump_not_allowed",
+                        format!(
+                            "{expected_event_field_path_prefix}.expected_open_jump_m_t_increment"
+                        ),
+                        "closed-window event expectations must set expected_open_jump_m_t_increment=0.0",
+                    );
+                }
             }
             _ => {
                 add_open_closed_gap_behavior_validation_error(
@@ -1780,8 +2029,13 @@ fn validate_open_closed_gap_behavior_case_expected_outcome(
             }
         }
 
-        expected_total_j_t_increment += event_expectation.expected_j_t_increment;
-        expected_total_g_t_increment += event_expectation.expected_g_t_increment;
+        expected_total_activity_coupling_j_t_increment +=
+            event_expectation.expected_activity_coupling_j_t_increment;
+        expected_total_open_jump_m_t_increment += event_expectation.expected_open_jump_m_t_increment;
+        expected_total_closed_gap_g_t_increment +=
+            event_expectation.expected_closed_gap_g_t_increment;
+        expected_total_trading_return_increment +=
+            event_expectation.expected_trading_return_increment;
     }
 
     if injected_event_ids != &expected_event_ids {
@@ -1823,23 +2077,6 @@ fn validate_open_closed_gap_behavior_case_expected_outcome(
         );
     }
 
-    if expected_summary.expected_open_window_direct_gap_increment_count
-        != expected_open_window_direct_gap_increment_count
-    {
-        add_open_closed_gap_behavior_validation_error(
-            errors,
-            "summary_open_window_direct_gap_increment_count_mismatch",
-            format!(
-                "{case_field_path_prefix}.expected_outcome.summary.expected_open_window_direct_gap_increment_count"
-            ),
-            format!(
-                "expected {}, observed {} from event_outcomes",
-                expected_summary.expected_open_window_direct_gap_increment_count,
-                expected_open_window_direct_gap_increment_count
-            ),
-        );
-    }
-
     let expected_total_event_count = expected_summary
         .expected_open_event_count
         .saturating_add(expected_summary.expected_closed_event_count);
@@ -1857,49 +2094,72 @@ fn validate_open_closed_gap_behavior_case_expected_outcome(
     }
 
     if !open_closed_gap_behavior_float_close(
-        expected_summary.expected_total_j_t_increment,
-        expected_total_j_t_increment,
+        expected_summary.expected_total_activity_coupling_j_t_increment,
+        expected_total_activity_coupling_j_t_increment,
     ) {
         add_open_closed_gap_behavior_validation_error(
             errors,
-            "summary_total_j_t_increment_mismatch",
+            "summary_total_activity_coupling_j_t_increment_mismatch",
             format!(
-                "{case_field_path_prefix}.expected_outcome.summary.expected_total_j_t_increment"
+                "{case_field_path_prefix}.expected_outcome.summary.expected_total_activity_coupling_j_t_increment"
             ),
             format!(
                 "expected {}, observed {} from event_outcomes",
-                expected_summary.expected_total_j_t_increment, expected_total_j_t_increment
+                expected_summary.expected_total_activity_coupling_j_t_increment,
+                expected_total_activity_coupling_j_t_increment
             ),
         );
     }
 
     if !open_closed_gap_behavior_float_close(
-        expected_summary.expected_total_g_t_increment,
-        expected_total_g_t_increment,
+        expected_summary.expected_total_open_jump_m_t_increment,
+        expected_total_open_jump_m_t_increment,
     ) {
         add_open_closed_gap_behavior_validation_error(
             errors,
-            "summary_total_g_t_increment_mismatch",
+            "summary_total_open_jump_m_t_increment_mismatch",
             format!(
-                "{case_field_path_prefix}.expected_outcome.summary.expected_total_g_t_increment"
+                "{case_field_path_prefix}.expected_outcome.summary.expected_total_open_jump_m_t_increment"
             ),
             format!(
                 "expected {}, observed {} from event_outcomes",
-                expected_summary.expected_total_g_t_increment, expected_total_g_t_increment
+                expected_summary.expected_total_open_jump_m_t_increment,
+                expected_total_open_jump_m_t_increment
             ),
         );
     }
-
-    if expected_summary.expected_open_window_direct_gap_increment_count
-        > expected_summary.expected_open_event_count
-    {
+    if !open_closed_gap_behavior_float_close(
+        expected_summary.expected_total_closed_gap_g_t_increment,
+        expected_total_closed_gap_g_t_increment,
+    ) {
         add_open_closed_gap_behavior_validation_error(
             errors,
-            "summary_open_window_direct_gap_increment_count_invalid",
+            "summary_total_closed_gap_g_t_increment_mismatch",
             format!(
-                "{case_field_path_prefix}.expected_outcome.summary.expected_open_window_direct_gap_increment_count"
+                "{case_field_path_prefix}.expected_outcome.summary.expected_total_closed_gap_g_t_increment"
             ),
-            "expected_open_window_direct_gap_increment_count cannot exceed expected_open_event_count",
+            format!(
+                "expected {}, observed {} from event_outcomes",
+                expected_summary.expected_total_closed_gap_g_t_increment,
+                expected_total_closed_gap_g_t_increment
+            ),
+        );
+    }
+    if !open_closed_gap_behavior_float_close(
+        expected_summary.expected_total_trading_return_increment,
+        expected_total_trading_return_increment,
+    ) {
+        add_open_closed_gap_behavior_validation_error(
+            errors,
+            "summary_total_trading_return_increment_mismatch",
+            format!(
+                "{case_field_path_prefix}.expected_outcome.summary.expected_total_trading_return_increment"
+            ),
+            format!(
+                "expected {}, observed {} from event_outcomes",
+                expected_summary.expected_total_trading_return_increment,
+                expected_total_trading_return_increment
+            ),
         );
     }
 }
@@ -1917,6 +2177,31 @@ fn validate_open_closed_gap_behavior_canonical_coverage(
                 "required_tag_missing_from_cases",
                 "canonical_regression_metadata.required_tags",
                 format!("required tag `{required_tag}` is not present in any scenario case"),
+            );
+        }
+    }
+    for (scenario_class_index, required_scenario_class) in fixture_document
+        .canonical_regression_metadata
+        .required_scenario_classes
+        .iter()
+        .enumerate()
+    {
+        let observed_count = match required_scenario_class.as_str() {
+            "known_only" => observed_coverage.known_only_case_count,
+            "surprise_only" => observed_coverage.surprise_only_case_count,
+            "mixed_news" => observed_coverage.mixed_news_case_count,
+            _ => continue,
+        };
+        if observed_count == 0 {
+            add_open_closed_gap_behavior_validation_error(
+                errors,
+                "required_scenario_class_missing_from_cases",
+                format!(
+                    "canonical_regression_metadata.required_scenario_classes[{scenario_class_index}]"
+                ),
+                format!(
+                    "required scenario class `{required_scenario_class}` is not present in any scenario case",
+                ),
             );
         }
     }

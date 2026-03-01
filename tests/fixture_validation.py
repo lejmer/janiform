@@ -2,7 +2,7 @@ import json
 import math
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import Any, TypedDict, cast
 
 from janiform.calendar import CalendarRegistry
 
@@ -27,7 +27,7 @@ STATE_CLASSIFICATION_STRICTNESS_POLICY: str = "exact_match_required.v1"
 OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SCHEMA_VERSION: str = "gap.behavior.open_closed.scenario_fixture.v1"
 OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SET_ID: str = "open_closed_gap_behavior_scenarios_v1"
 OPEN_CLOSED_GAP_BEHAVIOR_SCHEMA_FAMILY: str = "validation.gap_behavior.open_closed"
-OPEN_CLOSED_GAP_BEHAVIOR_SCHEMA_GENERATION: str = "v0.x"
+OPEN_CLOSED_GAP_BEHAVIOR_SCHEMA_GENERATION: str = "v1"
 OPEN_CLOSED_GAP_BEHAVIOR_FORWARD_EXTENSION_POLICY: str = "additive_fields_only.v1"
 OPEN_CLOSED_GAP_BEHAVIOR_CASE_ORDER_POLICY: str = "preserve_declared_case_order.v1"
 OPEN_CLOSED_GAP_BEHAVIOR_EVENT_ORDER_POLICY: str = "preserve_declared_event_order.v1"
@@ -47,7 +47,7 @@ SEEDED_TICK_SIMULATION_EVENT_ORDERING_POLICY: str = (
 SUPPORTED_MANIFEST_DOMAINS: set[str] = {"calendar", "seasonality", "hourly_factors", "gap_behavior"}
 
 
-type JsonObject = dict[str, object]
+type JsonObject = dict[str, Any]
 type JsonArray = list[object]
 
 
@@ -113,7 +113,7 @@ class CalendarRegressionFixtureDocument(TypedDict):
     schema_metadata: CalendarRegressionSchemaMetadata
     determinism_metadata: CalendarRegressionDeterminismMetadata
     canonical_regression_metadata: CalendarCanonicalRegressionMetadata
-    calendar_registry: dict[str, object]
+    calendar_registry: dict[str, Any]
     cases: list[CalendarRegressionCase]
 
 
@@ -155,8 +155,8 @@ class HourlyFactorRegressionCanonicalOutputCase(TypedDict):
     exchange_code: str
     range_start_utc: str
     range_end_utc: str
-    seasonality_source: dict[str, object]
-    news_intensity_source: dict[str, object]
+    seasonality_source: dict[str, Any]
+    news_intensity_source: dict[str, Any]
     expected_s_h: list[float]
     expected_nu_h: list[float]
     expected_skipped_local_hour_interval_count: int
@@ -172,8 +172,8 @@ class HourlyFactorRegressionMissingDataGuardCase(TypedDict):
     range_end_utc: str
     source_timestamps_utc: list[str]
     source_seasonality_factors: list[float]
-    settings: dict[str, object]
-    expected_outcome: dict[str, object]
+    settings: dict[str, Any]
+    expected_outcome: dict[str, Any]
     tags: list[str]
     description: str
 
@@ -209,35 +209,54 @@ class OpenClosedGapBehaviorOutputSchemaMetadata(TypedDict):
 
 class OpenClosedGapBehaviorCanonicalMetadata(TypedDict):
     required_tags: list[str]
+    required_scenario_classes: list[str]
     stable_fixture_ids_by_tag: dict[str, list[str]]
 
 
 class OpenClosedGapBehaviorAccumulatorState(TypedDict):
     j_t: float
+    m_t: float
     g_t: float
 
 
 class OpenClosedGapBehaviorInjectedEvent(TypedDict):
     event_id: str
     timestamp_utc: str
+    news_arrival_component: str
     shared_severity_mark: float
-    coupled_gap_jump_mark: float
+    coupled_return_jump_mark: float
+
+
+class OpenClosedGapBehaviorDeterministicReplayMetadata(TypedDict):
+    replay_baseline_id: str
+    event_calendar_binding_id: str
+    jump_observation_binding_id: str
+    gap_observation_binding_id: str
+    candidate_selection_policy_id: str
+    candidate_selection_rank: int
+
+
+class OpenClosedGapBehaviorIssueTraceability(TypedDict):
+    issue_id: str
+    semantic_focus_tags: list[str]
 
 
 class OpenClosedGapBehaviorEventOutcome(TypedDict):
     event_id: str
     expected_market_state: str
-    expected_j_t_increment: float
-    expected_g_t_increment: float
-    expected_direct_gap_applied: bool
+    expected_activity_coupling_j_t_increment: float
+    expected_open_jump_m_t_increment: float
+    expected_closed_gap_g_t_increment: float
+    expected_trading_return_increment: float
 
 
 class OpenClosedGapBehaviorSummary(TypedDict):
     expected_open_event_count: int
     expected_closed_event_count: int
-    expected_total_j_t_increment: float
-    expected_total_g_t_increment: float
-    expected_open_window_direct_gap_increment_count: int
+    expected_total_activity_coupling_j_t_increment: float
+    expected_total_open_jump_m_t_increment: float
+    expected_total_closed_gap_g_t_increment: float
+    expected_total_trading_return_increment: float
 
 
 class OpenClosedGapBehaviorExpectedOutcome(TypedDict):
@@ -248,6 +267,9 @@ class OpenClosedGapBehaviorExpectedOutcome(TypedDict):
 class OpenClosedGapBehaviorCase(TypedDict):
     fixture_id: str
     exchange_code: str
+    scenario_class: str
+    deterministic_replay_metadata: OpenClosedGapBehaviorDeterministicReplayMetadata
+    issue_traceability: OpenClosedGapBehaviorIssueTraceability
     calendar_fixture_set_id: str
     calendar_state_fixture_references: list[str]
     range_start_utc: str
@@ -555,7 +577,7 @@ def validate_calendar_regression_fixture_document(
         "schema_metadata": cast(CalendarRegressionSchemaMetadata, schema_metadata),
         "determinism_metadata": cast(CalendarRegressionDeterminismMetadata, determinism_metadata),
         "canonical_regression_metadata": canonical_regression_metadata,
-        "calendar_registry": cast(dict[str, object], calendar_registry),
+        "calendar_registry": cast(dict[str, Any], calendar_registry),
         "cases": validated_cases,
     }
 
@@ -780,6 +802,16 @@ def validate_open_closed_gap_behavior_fixture_document(
     if not required_tags.issubset(observed_tags):
         raise ValueError(
             "open and closed gap canonical_regression_metadata.required_tags must be present in case tags",
+        )
+
+    observed_scenario_classes: set[str] = {
+        fixture_case["scenario_class"] for fixture_case in validated_cases
+    }
+
+    required_scenario_classes = set(canonical_metadata["required_scenario_classes"])
+    if not required_scenario_classes.issubset(observed_scenario_classes):
+        raise ValueError(
+            "open and closed gap canonical_regression_metadata.required_scenario_classes must be present in case scenarios",
         )
 
     for tag, stable_fixture_ids in canonical_metadata["stable_fixture_ids_by_tag"].items():
@@ -1199,8 +1231,8 @@ def _validate_hourly_factor_canonical_output_case(
         "exchange_code": exchange_code,
         "range_start_utc": range_start_utc,
         "range_end_utc": range_end_utc,
-        "seasonality_source": cast(dict[str, object], seasonality_source),
-        "news_intensity_source": cast(dict[str, object], news_intensity_source),
+        "seasonality_source": cast(dict[str, Any], seasonality_source),
+        "news_intensity_source": cast(dict[str, Any], news_intensity_source),
         "expected_s_h": expected_s_h,
         "expected_nu_h": expected_nu_h,
         "expected_skipped_local_hour_interval_count": expected_skipped_local_hour_interval_count,
@@ -1414,8 +1446,8 @@ def _validate_hourly_factor_missing_data_guard_case(
         "range_end_utc": range_end_utc,
         "source_timestamps_utc": source_timestamps_utc,
         "source_seasonality_factors": source_seasonality_factors,
-        "settings": cast(dict[str, object], settings),
-        "expected_outcome": cast(dict[str, object], expected_outcome),
+        "settings": cast(dict[str, Any], settings),
+        "expected_outcome": cast(dict[str, Any], expected_outcome),
         "tags": tags,
         "description": description,
     }
@@ -1542,6 +1574,28 @@ def _validate_open_closed_gap_behavior_canonical_metadata(
         "open and closed gap canonical_regression_metadata",
     )
     _require_unique_fixture_ids(required_tags, "open and closed gap canonical_regression_metadata.required_tags")
+    required_scenario_classes: list[str] = _require_non_empty_string_list(
+        raw_metadata,
+        "required_scenario_classes",
+        "open and closed gap canonical_regression_metadata",
+    )
+    _require_unique_fixture_ids(
+        required_scenario_classes,
+        "open and closed gap canonical_regression_metadata.required_scenario_classes",
+    )
+
+    unsupported_required_scenario_classes = sorted(
+        {
+            required_scenario_class
+            for required_scenario_class in required_scenario_classes
+            if required_scenario_class not in {"known_only", "surprise_only", "mixed_news"}
+        },
+    )
+    if unsupported_required_scenario_classes:
+        raise ValueError(
+            "open and closed gap canonical_regression_metadata.required_scenario_classes contains unsupported values: "
+            f"{unsupported_required_scenario_classes}",
+        )
 
     stable_fixture_ids_by_tag_raw: JsonObject = _require_json_object_field(
         raw_metadata,
@@ -1575,6 +1629,7 @@ def _validate_open_closed_gap_behavior_canonical_metadata(
 
     return {
         "required_tags": required_tags,
+        "required_scenario_classes": required_scenario_classes,
         "stable_fixture_ids_by_tag": stable_fixture_ids_by_tag,
     }
 
@@ -1585,6 +1640,66 @@ def _validate_open_closed_gap_behavior_case(
 ) -> OpenClosedGapBehaviorCase:
     fixture_id: str = _require_non_empty_string(raw_case, "fixture_id", context)
     exchange_code: str = _require_non_empty_string(raw_case, "exchange_code", context)
+
+    scenario_class: str = _require_non_empty_string(raw_case, "scenario_class", context)
+    if scenario_class not in {"known_only", "surprise_only", "mixed_news"}:
+        raise ValueError(
+            f"{context}.scenario_class must be one of 'known_only', 'surprise_only', or 'mixed_news'",
+        )
+
+    deterministic_replay_metadata_raw = _require_json_object_field(
+        raw_case,
+        "deterministic_replay_metadata",
+        context,
+    )
+
+    deterministic_replay_metadata: OpenClosedGapBehaviorDeterministicReplayMetadata = {
+        "replay_baseline_id": _require_non_empty_string(
+            deterministic_replay_metadata_raw,
+            "replay_baseline_id",
+            f"{context}.deterministic_replay_metadata",
+        ),
+        "event_calendar_binding_id": _require_non_empty_string(
+            deterministic_replay_metadata_raw,
+            "event_calendar_binding_id",
+            f"{context}.deterministic_replay_metadata",
+        ),
+        "jump_observation_binding_id": _require_non_empty_string(
+            deterministic_replay_metadata_raw,
+            "jump_observation_binding_id",
+            f"{context}.deterministic_replay_metadata",
+        ),
+        "gap_observation_binding_id": _require_non_empty_string(
+            deterministic_replay_metadata_raw,
+            "gap_observation_binding_id",
+            f"{context}.deterministic_replay_metadata",
+        ),
+        "candidate_selection_policy_id": _require_non_empty_string(
+            deterministic_replay_metadata_raw,
+            "candidate_selection_policy_id",
+            f"{context}.deterministic_replay_metadata",
+        ),
+        "candidate_selection_rank": _require_non_negative_int(
+            deterministic_replay_metadata_raw,
+            "candidate_selection_rank",
+            f"{context}.deterministic_replay_metadata",
+        ),
+    }
+
+    issue_traceability_raw = _require_json_object_field(raw_case, "issue_traceability", context)
+    issue_traceability: OpenClosedGapBehaviorIssueTraceability = {
+        "issue_id": _require_non_empty_string(
+            issue_traceability_raw,
+            "issue_id",
+            f"{context}.issue_traceability",
+        ),
+        "semantic_focus_tags": _require_non_empty_string_list(
+            issue_traceability_raw,
+            "semantic_focus_tags",
+            f"{context}.issue_traceability",
+        ),
+    }
+
     calendar_fixture_set_id: str = _require_non_empty_string(raw_case, "calendar_fixture_set_id", context)
     if calendar_fixture_set_id != CALENDAR_REGRESSION_FIXTURE_SET_ID:
         raise ValueError(
@@ -1606,6 +1721,7 @@ def _validate_open_closed_gap_behavior_case(
     initial_accumulator_state: JsonObject = _require_json_object_field(raw_case, "initial_accumulator_state", context)
     initial_state: OpenClosedGapBehaviorAccumulatorState = {
         "j_t": _require_number(initial_accumulator_state, "j_t", f"{context}.initial_accumulator_state"),
+        "m_t": _require_number(initial_accumulator_state, "m_t", f"{context}.initial_accumulator_state"),
         "g_t": _require_number(initial_accumulator_state, "g_t", f"{context}.initial_accumulator_state"),
     }
 
@@ -1614,8 +1730,25 @@ def _validate_open_closed_gap_behavior_case(
         raise ValueError(f"{context}.injected_events must include at least one event")
 
     injected_events: list[OpenClosedGapBehaviorInjectedEvent] = []
+    known_event_count: int = 0
+    surprise_event_count: int = 0
     for event_index, raw_event in enumerate(injected_events_raw):
         event_map: JsonObject = _require_json_object(raw_event, f"{context}.injected_events[{event_index}]")
+
+        news_arrival_component = _require_non_empty_string(
+            event_map,
+            "news_arrival_component",
+            f"{context}.injected_events[{event_index}]",
+        )
+        if news_arrival_component == "known":
+            known_event_count += 1
+        elif news_arrival_component == "surprise":
+            surprise_event_count += 1
+        else:
+            raise ValueError(
+                f"{context}.injected_events[{event_index}].news_arrival_component must be either 'known' or 'surprise'",
+            )
+
         injected_events.append(
             {
                 "event_id": _require_non_empty_string(event_map, "event_id", f"{context}.injected_events[{event_index}]"),
@@ -1624,17 +1757,27 @@ def _validate_open_closed_gap_behavior_case(
                     "timestamp_utc",
                     f"{context}.injected_events[{event_index}]",
                 ),
+                "news_arrival_component": news_arrival_component,
                 "shared_severity_mark": _require_non_negative_float(
                     event_map,
                     "shared_severity_mark",
                     f"{context}.injected_events[{event_index}]",
                 ),
-                "coupled_gap_jump_mark": _require_number(
+                "coupled_return_jump_mark": _require_number(
                     event_map,
-                    "coupled_gap_jump_mark",
+                    "coupled_return_jump_mark",
                     f"{context}.injected_events[{event_index}]",
                 ),
             },
+        )
+
+    if scenario_class == "known_only" and surprise_event_count > 0:
+        raise ValueError(f"{context}.scenario_class=known_only cannot include surprise events")
+    if scenario_class == "surprise_only" and known_event_count > 0:
+        raise ValueError(f"{context}.scenario_class=surprise_only cannot include known events")
+    if scenario_class == "mixed_news" and (known_event_count == 0 or surprise_event_count == 0):
+        raise ValueError(
+            f"{context}.scenario_class=mixed_news must include both known and surprise events",
         )
 
     _require_unique_fixture_ids(
@@ -1654,6 +1797,9 @@ def _validate_open_closed_gap_behavior_case(
     return {
         "fixture_id": fixture_id,
         "exchange_code": exchange_code,
+        "scenario_class": scenario_class,
+        "deterministic_replay_metadata": deterministic_replay_metadata,
+        "issue_traceability": issue_traceability,
         "calendar_fixture_set_id": calendar_fixture_set_id,
         "calendar_state_fixture_references": calendar_state_fixture_references,
         "range_start_utc": range_start_utc,
@@ -1696,23 +1842,26 @@ def _validate_open_closed_gap_behavior_expected_outcome(
                 "must be either 'open' or 'closed'",
             )
 
-        expected_g_t_increment: float = _require_number(
+        expected_open_jump_m_t_increment: float = _require_number(
             event_outcome,
-            "expected_g_t_increment",
+            "expected_open_jump_m_t_increment",
             f"{case_context}.expected_outcome.event_outcomes[{event_index}]",
         )
-        expected_direct_gap_applied: bool = _require_bool(
+        expected_closed_gap_g_t_increment: float = _require_number(
             event_outcome,
-            "expected_direct_gap_applied",
+            "expected_closed_gap_g_t_increment",
             f"{case_context}.expected_outcome.event_outcomes[{event_index}]",
         )
-        if expected_market_state == "open" and expected_direct_gap_applied:
+
+        if expected_market_state == "open" and expected_closed_gap_g_t_increment != 0.0:
             raise ValueError(
-                f"{case_context}.expected_outcome.event_outcomes[{event_index}] cannot set expected_direct_gap_applied=true for open market state",
+                f"{case_context}.expected_outcome.event_outcomes[{event_index}] "
+                "must set expected_closed_gap_g_t_increment=0.0 for open market state",
             )
-        if expected_market_state == "open" and expected_g_t_increment != 0.0:
+        if expected_market_state == "closed" and expected_open_jump_m_t_increment != 0.0:
             raise ValueError(
-                f"{case_context}.expected_outcome.event_outcomes[{event_index}] must set expected_g_t_increment=0.0 for open market state",
+                f"{case_context}.expected_outcome.event_outcomes[{event_index}] "
+                "must set expected_open_jump_m_t_increment=0.0 for closed market state",
             )
 
         event_outcomes.append(
@@ -1723,13 +1872,18 @@ def _validate_open_closed_gap_behavior_expected_outcome(
                     f"{case_context}.expected_outcome.event_outcomes[{event_index}]",
                 ),
                 "expected_market_state": expected_market_state,
-                "expected_j_t_increment": _require_non_negative_float(
+                "expected_activity_coupling_j_t_increment": _require_non_negative_float(
                     event_outcome,
-                    "expected_j_t_increment",
+                    "expected_activity_coupling_j_t_increment",
                     f"{case_context}.expected_outcome.event_outcomes[{event_index}]",
                 ),
-                "expected_g_t_increment": expected_g_t_increment,
-                "expected_direct_gap_applied": expected_direct_gap_applied,
+                "expected_open_jump_m_t_increment": expected_open_jump_m_t_increment,
+                "expected_closed_gap_g_t_increment": expected_closed_gap_g_t_increment,
+                "expected_trading_return_increment": _require_number(
+                    event_outcome,
+                    "expected_trading_return_increment",
+                    f"{case_context}.expected_outcome.event_outcomes[{event_index}]",
+                ),
             },
         )
 
@@ -1777,19 +1931,24 @@ def _validate_open_closed_gap_behavior_summary(
             "expected_closed_event_count",
             f"{case_context}.expected_outcome.summary",
         ),
-        "expected_total_j_t_increment": _require_number(
+        "expected_total_activity_coupling_j_t_increment": _require_number(
             raw_summary,
-            "expected_total_j_t_increment",
+            "expected_total_activity_coupling_j_t_increment",
             f"{case_context}.expected_outcome.summary",
         ),
-        "expected_total_g_t_increment": _require_number(
+        "expected_total_open_jump_m_t_increment": _require_number(
             raw_summary,
-            "expected_total_g_t_increment",
+            "expected_total_open_jump_m_t_increment",
             f"{case_context}.expected_outcome.summary",
         ),
-        "expected_open_window_direct_gap_increment_count": _require_non_negative_int(
+        "expected_total_closed_gap_g_t_increment": _require_number(
             raw_summary,
-            "expected_open_window_direct_gap_increment_count",
+            "expected_total_closed_gap_g_t_increment",
+            f"{case_context}.expected_outcome.summary",
+        ),
+        "expected_total_trading_return_increment": _require_number(
+            raw_summary,
+            "expected_total_trading_return_increment",
             f"{case_context}.expected_outcome.summary",
         ),
     }
@@ -1800,13 +1959,18 @@ def _validate_open_closed_gap_behavior_summary(
     observed_closed_event_count: int = sum(
         1 for event_outcome in event_outcomes if event_outcome["expected_market_state"] == "closed"
     )
-    observed_open_window_direct_gap_increment_count: int = sum(
-        1
-        for event_outcome in event_outcomes
-        if event_outcome["expected_market_state"] == "open" and event_outcome["expected_direct_gap_applied"]
+    observed_total_activity_coupling_j_t_increment: float = sum(
+        event_outcome["expected_activity_coupling_j_t_increment"] for event_outcome in event_outcomes
     )
-    observed_total_j_t_increment: float = sum(event_outcome["expected_j_t_increment"] for event_outcome in event_outcomes)
-    observed_total_g_t_increment: float = sum(event_outcome["expected_g_t_increment"] for event_outcome in event_outcomes)
+    observed_total_open_jump_m_t_increment: float = sum(
+        event_outcome["expected_open_jump_m_t_increment"] for event_outcome in event_outcomes
+    )
+    observed_total_closed_gap_g_t_increment: float = sum(
+        event_outcome["expected_closed_gap_g_t_increment"] for event_outcome in event_outcomes
+    )
+    observed_total_trading_return_increment: float = sum(
+        event_outcome["expected_trading_return_increment"] for event_outcome in event_outcomes
+    )
 
     if summary["expected_open_event_count"] != observed_open_event_count:
         raise ValueError(
@@ -1816,21 +1980,49 @@ def _validate_open_closed_gap_behavior_summary(
         raise ValueError(
             f"{case_context}.expected_outcome.summary.expected_closed_event_count must match event_outcomes",
         )
-    if summary["expected_open_window_direct_gap_increment_count"] != observed_open_window_direct_gap_increment_count:
-        raise ValueError(
-            f"{case_context}.expected_outcome.summary.expected_open_window_direct_gap_increment_count must match event_outcomes",
-        )
     if summary["expected_open_event_count"] + summary["expected_closed_event_count"] != len(event_outcomes):
         raise ValueError(
             f"{case_context}.expected_outcome.summary open and closed event counts must sum to event_outcomes length",
         )
-    if not math.isclose(summary["expected_total_j_t_increment"], observed_total_j_t_increment, rel_tol=0.0, abs_tol=1e-12):
+
+    if not math.isclose(
+        summary["expected_total_activity_coupling_j_t_increment"],
+        observed_total_activity_coupling_j_t_increment,
+        rel_tol=0.0,
+        abs_tol=1e-12,
+    ):
         raise ValueError(
-            f"{case_context}.expected_outcome.summary.expected_total_j_t_increment must match event_outcomes",
+            f"{case_context}.expected_outcome.summary.expected_total_activity_coupling_j_t_increment must match event_outcomes",
         )
-    if not math.isclose(summary["expected_total_g_t_increment"], observed_total_g_t_increment, rel_tol=0.0, abs_tol=1e-12):
+
+    if not math.isclose(
+        summary["expected_total_open_jump_m_t_increment"],
+        observed_total_open_jump_m_t_increment,
+        rel_tol=0.0,
+        abs_tol=1e-12,
+    ):
         raise ValueError(
-            f"{case_context}.expected_outcome.summary.expected_total_g_t_increment must match event_outcomes",
+            f"{case_context}.expected_outcome.summary.expected_total_open_jump_m_t_increment must match event_outcomes",
+        )
+
+    if not math.isclose(
+        summary["expected_total_closed_gap_g_t_increment"],
+        observed_total_closed_gap_g_t_increment,
+        rel_tol=0.0,
+        abs_tol=1e-12,
+    ):
+        raise ValueError(
+            f"{case_context}.expected_outcome.summary.expected_total_closed_gap_g_t_increment must match event_outcomes",
+        )
+
+    if not math.isclose(
+        summary["expected_total_trading_return_increment"],
+        observed_total_trading_return_increment,
+        rel_tol=0.0,
+        abs_tol=1e-12,
+    ):
+        raise ValueError(
+            f"{case_context}.expected_outcome.summary.expected_total_trading_return_increment must match event_outcomes",
         )
 
     return summary
@@ -1842,16 +2034,19 @@ def _validate_seeded_tick_simulation_parity_case(
     fixture_id: str = _require_non_empty_string(raw_case, "fixture_id", "seeded tick simulation parity case")
     seed: int = _require_non_negative_int(raw_case, "seed", "seeded tick simulation parity case")
     exchange_code: str = _require_non_empty_string(raw_case, "exchange_code", "seeded tick simulation parity case")
+
     range_start_utc: str = _require_non_empty_string(
         raw_case,
         "range_start_utc",
         "seeded tick simulation parity case",
     )
+
     range_end_utc: str = _require_non_empty_string(
         raw_case,
         "range_end_utc",
         "seeded tick simulation parity case",
     )
+
     horizon_interval_count: int = _require_non_negative_int(
         raw_case,
         "horizon_interval_count",
@@ -1864,6 +2059,7 @@ def _validate_seeded_tick_simulation_parity_case(
         _require_json_object_field(raw_case, "kernel_parameters", "seeded tick simulation parity case"),
         "seeded tick simulation parity case.kernel_parameters",
     )
+
     initial_excitation_state = _validate_seeded_tick_simulation_initial_excitation_state(
         _require_json_object_field(raw_case, "initial_excitation_state", "seeded tick simulation parity case"),
         "seeded tick simulation parity case.initial_excitation_state",
@@ -1874,6 +2070,7 @@ def _validate_seeded_tick_simulation_parity_case(
         "seasonality_hourly_factors",
         "seeded tick simulation parity case",
     )
+
     news_intensity_hourly_factors: list[float] = _require_float_list(
         raw_case,
         "news_intensity_hourly_factors",

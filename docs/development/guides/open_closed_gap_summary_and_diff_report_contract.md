@@ -16,11 +16,11 @@ The contract applies to:
 - `determinism_policy`: `stable_input_order_and_event_timestamp_then_generation_order.v1`
 - `output_schema_metadata`: machine-readable required field lists and policy identifiers
 - `tolerance_config`:
-  - `direct_gap_absolute_tolerance`
-- `summary`: existing leakage gate summary
+  - `component_absolute_tolerance`
+- `summary`: semantic mismatch summary with scenario-class coverage
 - `summary_artifact`: per-scenario contribution artifact
 - `behavior_diff_report`: per-scenario baseline diff report
-- `case_reports`: leakage case reports with embedded contribution and diff sections
+- `case_reports`: scenario reports with semantic-mismatch diagnostics, contribution summary, and diff sections
 
 ## Output schema metadata
 
@@ -31,6 +31,8 @@ The contract applies to:
 - `behavior_diff_report_schema_version`: `validation.open_closed_gap_behavior.diff_report.v1`
 - `baseline_expected_output_policy`: `market_state_gated_expected_contribution_baseline.v1`
 - `environment_metadata_policy`: `exclude_environment_specific_metadata.v1`
+- `canonical_component_vocabulary`: `trading_return`, `open_jump`, `closed_gap`, `activity_coupling`
+- `canonical_semantic_bucket_vocabulary`: `trading_return`, `open_jump`, `closed_gap`, `activity_coupling`
 - `required_case_report_fields`
 - `required_summary_artifact_fields`
 - `required_behavior_diff_report_fields`
@@ -48,21 +50,25 @@ or machine identifiers.
 - `total_case_count`
 - `total_open_window_event_count`
 - `total_closed_window_event_count`
+- `scenario_class_coverage`
 - `scenarios[]`, each with:
   - `fixture_id`
   - `exchange_code`
+  - `scenario_class`
+  - `deterministic_replay_metadata`
+  - `issue_traceability`
   - `contributions`
 
-Each `contributions` object separates activity and gap components:
+Each `contributions` object separates canonical components:
 
-- `expected_activity_coupling_j_t_increment_total`
-- `observed_activity_coupling_j_t_increment_total`
-- `expected_open_window_direct_gap_g_t_increment_total`
-- `observed_open_window_direct_gap_g_t_increment_total`
-- `expected_closed_window_direct_gap_g_t_increment_total`
-- `observed_closed_window_direct_gap_g_t_increment_total`
-- `expected_total_direct_gap_g_t_increment`
-- `observed_total_direct_gap_g_t_increment`
+- `expected_activity_coupling_total`
+- `observed_activity_coupling_total`
+- `expected_trading_return_total`
+- `observed_trading_return_total`
+- `expected_open_jump_total`
+- `observed_open_jump_total`
+- `expected_closed_gap_total`
+- `observed_closed_gap_total`
 
 ## Behavior diff report
 
@@ -75,6 +81,10 @@ Each `contributions` object separates activity and gap components:
   - `total_case_count`
   - `regression_case_count`
   - `total_regression_metric_count`
+  - `trading_return_regression_metric_count`
+  - `open_jump_regression_metric_count`
+  - `closed_gap_regression_metric_count`
+  - `activity_coupling_regression_metric_count`
 - `scenario_diffs[]`, each with:
   - `fixture_id`
   - `exchange_code`
@@ -85,6 +95,7 @@ Each `contributions` object separates activity and gap components:
 Each `metrics[]` entry contains:
 
 - `metric_id`
+- `semantic_bucket`
 - `expected_value`
 - `observed_value`
 - `absolute_difference`
@@ -93,19 +104,19 @@ Each `metrics[]` entry contains:
 
 Current metric ids:
 
+- `trading_return_increment_total`
 - `activity_coupling_j_t_increment_total`
-- `open_window_direct_gap_g_t_increment_total`
-- `closed_window_direct_gap_g_t_increment_total`
-- `total_direct_gap_g_t_increment`
+- `open_jump_m_t_increment_total`
+- `closed_gap_g_t_increment_total`
 
 ## Baseline comparison policy
 
 `market_state_gated_expected_contribution_baseline.v1` defines expected values as:
 
 - Activity contribution is the sum of all event severity marks.
-- Open-window direct gap contribution is zero.
-- Closed-window direct gap contribution is the sum of closed-window coupled gap marks.
-- Total direct gap contribution is open plus closed direct gap contribution.
+- Trading return contribution is zero.
+- Open-jump contribution is the sum of open-window coupled return jump marks.
+- Closed-gap contribution is the sum of closed-window coupled return jump marks.
 
-Observed values come from dispatch records, using
-`observed_direct_gap_increment_override` when explicitly supplied in regression inputs.
+Observed values come from dispatch records, using per-component override fields when explicitly
+supplied in regression inputs.

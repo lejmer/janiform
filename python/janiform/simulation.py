@@ -1,7 +1,7 @@
 import json
 from datetime import UTC, datetime
 from types import ModuleType
-from typing import TypedDict, cast
+from typing import Any, TypedDict, cast
 
 from .api import native_module
 from .calendar import CalendarRegistry
@@ -35,7 +35,7 @@ class HawkesExcitationState(TypedDict):
     y_minus_minus: float
 
 
-type SeededTickEventTape = dict[str, object]
+type SeededTickEventTape = dict[str, Any]
 
 
 def load_hourly_factor_contract_for_simulation(

@@ -32,6 +32,10 @@ use crate::risk::{
     solve_sufficient_statistics_transform_slices_with_solver_settings,
 };
 
+use super::contracts::{
+    VERIFICATION_CANONICAL_COMPONENT_VOCABULARY, VerificationSemanticBucket,
+};
+
 pub const COARSE_FINE_CONSISTENCY_REGRESSION_REPORT_SCHEMA_VERSION: &str =
     "benchmark.coarse_fine_consistency.report.v1";
 pub const COARSE_FINE_CONSISTENCY_REGRESSION_DETERMINISM_POLICY: &str =
@@ -76,8 +80,9 @@ const COARSE_FINE_CONSISTENCY_REQUIRED_SCENARIO_REPORT_FIELDS: [&str; 8] = [
     "summary",
     "metric_deltas",
 ];
-const COARSE_FINE_CONSISTENCY_REQUIRED_METRIC_DELTA_FIELDS: [&str; 8] = [
+const COARSE_FINE_CONSISTENCY_REQUIRED_METRIC_DELTA_FIELDS: [&str; 9] = [
     "metric_id",
+    "semantic_bucket",
     "coarse_value",
     "fine_reference_value",
     "absolute_delta",
@@ -706,6 +711,7 @@ pub fn load_coarse_fine_consistency_regression_tolerance_config_from_json(
 pub struct CoarseFineConsistencyRegressionOutputSchemaMetadata {
     pub schema_version: &'static str,
     pub tolerance_schema_version: &'static str,
+    pub canonical_component_vocabulary: Vec<&'static str>,
     pub required_report_fields: Vec<&'static str>,
     pub required_scenario_report_fields: Vec<&'static str>,
     pub required_metric_delta_fields: Vec<&'static str>,
@@ -738,6 +744,7 @@ pub struct CoarseFineConsistencyScenarioRunMetadata {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CoarseFineConsistencyMetricDelta {
     pub metric_id: &'static str,
+    pub semantic_bucket: VerificationSemanticBucket,
     pub coarse_value: f64,
     pub fine_reference_value: f64,
     pub absolute_delta: f64,
@@ -980,6 +987,8 @@ pub fn run_coarse_fine_consistency_regression_harness(
         output_schema_metadata: CoarseFineConsistencyRegressionOutputSchemaMetadata {
             schema_version: COARSE_FINE_CONSISTENCY_REGRESSION_OUTPUT_SCHEMA_METADATA_VERSION,
             tolerance_schema_version: COARSE_FINE_CONSISTENCY_REGRESSION_TOLERANCE_SCHEMA_VERSION,
+            canonical_component_vocabulary: VERIFICATION_CANONICAL_COMPONENT_VOCABULARY
+                .to_vec(),
             required_report_fields: COARSE_FINE_CONSISTENCY_REQUIRED_REPORT_FIELDS.to_vec(),
             required_scenario_report_fields:
                 COARSE_FINE_CONSISTENCY_REQUIRED_SCENARIO_REPORT_FIELDS.to_vec(),
@@ -1231,6 +1240,7 @@ fn run_coarse_fine_consistency_scenario(
     let metric_deltas = vec![
         build_coarse_fine_metric_delta(
             "oracle_c_at_delta_absolute_difference",
+            VerificationSemanticBucket::TradingReturn,
             complex_difference_norm(
                 coarse_oracle_output.c_at_delta,
                 oracle_reference_output.c_at_delta,
@@ -1241,6 +1251,7 @@ fn run_coarse_fine_consistency_scenario(
         ),
         build_coarse_fine_metric_delta(
             "oracle_d_component_max_absolute_difference",
+            VerificationSemanticBucket::TradingReturn,
             max_abs_oracle_d_component_difference(coarse_oracle_output, oracle_reference_output),
             0.0,
             tolerance_band.oracle_d_component_absolute_tolerance,
@@ -1248,6 +1259,7 @@ fn run_coarse_fine_consistency_scenario(
         ),
         build_coarse_fine_metric_delta(
             "oracle_transform_value_absolute_difference",
+            VerificationSemanticBucket::TradingReturn,
             complex_difference_norm(
                 coarse_oracle_output.transform_value,
                 oracle_reference_output.transform_value,
@@ -1258,6 +1270,7 @@ fn run_coarse_fine_consistency_scenario(
         ),
         build_coarse_fine_metric_delta(
             "pricing_vanilla_option_price",
+            VerificationSemanticBucket::TradingReturn,
             coarse_pricing_value,
             fine_pricing_reference_value,
             tolerance_band.pricing_price_absolute_delta_tolerance,
@@ -1265,6 +1278,7 @@ fn run_coarse_fine_consistency_scenario(
         ),
         build_coarse_fine_metric_delta(
             "risk_mean_a_plus",
+            VerificationSemanticBucket::ActivityCoupling,
             coarse_risk_metric_means.mean_a_plus,
             fine_risk_metric_means.mean_a_plus,
             tolerance_band.risk_integrated_intensity_mean_absolute_delta_tolerance,
@@ -1272,6 +1286,7 @@ fn run_coarse_fine_consistency_scenario(
         ),
         build_coarse_fine_metric_delta(
             "risk_mean_a_minus",
+            VerificationSemanticBucket::ActivityCoupling,
             coarse_risk_metric_means.mean_a_minus,
             fine_risk_metric_means.mean_a_minus,
             tolerance_band.risk_integrated_intensity_mean_absolute_delta_tolerance,
@@ -1279,6 +1294,7 @@ fn run_coarse_fine_consistency_scenario(
         ),
         build_coarse_fine_metric_delta(
             "risk_mean_n_plus",
+            VerificationSemanticBucket::ActivityCoupling,
             coarse_risk_metric_means.mean_n_plus,
             fine_risk_metric_means.mean_n_plus,
             tolerance_band.risk_event_count_mean_absolute_delta_tolerance,
@@ -1286,6 +1302,7 @@ fn run_coarse_fine_consistency_scenario(
         ),
         build_coarse_fine_metric_delta(
             "risk_mean_n_minus",
+            VerificationSemanticBucket::ActivityCoupling,
             coarse_risk_metric_means.mean_n_minus,
             fine_risk_metric_means.mean_n_minus,
             tolerance_band.risk_event_count_mean_absolute_delta_tolerance,
@@ -1411,6 +1428,7 @@ fn coarse_fine_scenario_error(
 
 fn build_coarse_fine_metric_delta(
     metric_id: &'static str,
+    semantic_bucket: VerificationSemanticBucket,
     coarse_value: f64,
     fine_reference_value: f64,
     absolute_tolerance: f64,
@@ -1431,6 +1449,7 @@ fn build_coarse_fine_metric_delta(
 
     CoarseFineConsistencyMetricDelta {
         metric_id,
+        semantic_bucket,
         coarse_value,
         fine_reference_value,
         absolute_delta,

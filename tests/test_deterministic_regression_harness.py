@@ -1,5 +1,5 @@
 import json
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -21,7 +21,7 @@ from tests.fixture_validation import (
 )
 
 type HourlyCanonicalOutputCase = HourlyFactorRegressionCanonicalOutputCase
-type RegressionHarnessReport = dict[str, object]
+type RegressionHarnessReport = dict[str, Any]
 
 
 def test_deterministic_regression_harness_matches_shared_fixtures(
@@ -40,7 +40,7 @@ def test_deterministic_regression_harness_matches_shared_fixtures(
     )
 
     summary: dict[str, int] = cast(dict[str, int], report["summary"])
-    case_reports: list[dict[str, object]] = cast(list[dict[str, object]], report["case_reports"])
+    case_reports: list[dict[str, Any]] = cast(list[dict[str, Any]], report["case_reports"])
     fallback_policy: dict[str, str] = cast(dict[str, str], report["fallback_policy"])
 
     assert report["schema_version"] == DETERMINISTIC_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION
@@ -98,9 +98,9 @@ def test_deterministic_regression_harness_reports_fixture_mismatches(
 
     assert summary["failed_case_count"] == 2
     assert cast(str, calendar_failure_report["status"]) == "fail"
-    assert cast(dict[str, object], calendar_failure_report["failure"])["failure_kind"] == "market_state_mismatch"
+    assert cast(dict[str, Any], calendar_failure_report["failure"])["failure_kind"] == "market_state_mismatch"
     assert cast(str, seasonality_failure_report["status"]) == "fail"
-    assert cast(dict[str, object], seasonality_failure_report["failure"])["failure_kind"] == (
+    assert cast(dict[str, Any], seasonality_failure_report["failure"])["failure_kind"] == (
         "factor_tolerance_exceeded"
     )
 
@@ -137,8 +137,8 @@ def test_deterministic_regression_harness_rejects_invalid_seasonality_timestamp_
     hourly_factor_regression_canonical_cases: list[HourlyCanonicalOutputCase],
 ) -> None:
     malformed_seasonality_cases = _copy_case_list(hourly_factor_regression_canonical_cases)
-    malformed_source: dict[str, object] = cast(
-        dict[str, object],
+    malformed_source: dict[str, Any] = cast(
+        dict[str, Any],
         malformed_seasonality_cases[0]["seasonality_source"],
     )
     malformed_source["source_timestamp_utc"] = malformed_source.pop("source_timestamps_utc")
@@ -205,7 +205,7 @@ def test_deterministic_regression_harness_threshold_boundary_fails_when_exceeded
 def test_deterministic_regression_harness_unknown_date_uses_regular_schedule_policy(
     calendar_registry,
 ) -> None:
-    unknown_date_case: dict[str, object] = {
+    unknown_date_case: dict[str, Any] = {
         "fixture_id": "xnys_unknown_date_regular_schedule_case",
         "exchange_code": "XNYS",
         "timestamp_utc": "2027-02-02T14:30:00Z",
@@ -234,8 +234,8 @@ def test_deterministic_regression_harness_rejects_malformed_report_payload(
         def run_deterministic_regression_harness(
             self,
             _calendar_registry: object,
-            _calendar_cases: list[dict[str, object]],
-            _seasonality_cases: list[dict[str, object]],
+            _calendar_cases: list[dict[str, Any]],
+            _seasonality_cases: list[dict[str, Any]],
             *,
             seasonality_absolute_tolerance: float,
             news_intensity_absolute_tolerance: float,
@@ -279,8 +279,8 @@ def test_deterministic_regression_harness_rejects_malformed_report_payload(
 def _case_report_by_fixture_id(
     report: RegressionHarnessReport,
     fixture_id: str,
-) -> dict[str, object]:
-    case_reports: list[dict[str, object]] = cast(list[dict[str, object]], report["case_reports"])
+) -> dict[str, Any]:
+    case_reports: list[dict[str, Any]] = cast(list[dict[str, Any]], report["case_reports"])
     for case_report in case_reports:
         if cast(str, case_report["fixture_id"]) == fixture_id:
             return case_report
@@ -288,15 +288,15 @@ def _case_report_by_fixture_id(
     raise ValueError(f"missing case report for fixture_id: {fixture_id}")
 
 
-def _copy_case_list(cases: list[dict[str, object]]) -> list[dict[str, object]]:
-    return cast(list[dict[str, object]], json.loads(json.dumps(cases)))
+def _copy_case_list(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return cast(list[dict[str, Any]], json.loads(json.dumps(cases)))
 
 
 def _threshold_configuration(
     hourly_factor_regression_fixture_document: HourlyFactorRegressionFixtureDocument,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     return cast(
-        dict[str, object],
+        dict[str, Any],
         hourly_factor_regression_fixture_document["threshold_configuration"],
     )
 

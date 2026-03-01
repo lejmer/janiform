@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -132,7 +133,7 @@ def calendar_regression_cases(
 def calendar_registry_json(
     calendar_regression_fixture_document: CalendarRegressionFixtureDocument,
 ) -> str:
-    registry_artifact: dict[str, object] = calendar_regression_fixture_document["calendar_registry"]
+    registry_artifact: dict[str, Any] = calendar_regression_fixture_document["calendar_registry"]
     return json.dumps(registry_artifact)
 
 

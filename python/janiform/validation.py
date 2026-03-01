@@ -1,7 +1,7 @@
 import json
 import math
 from collections.abc import Mapping, Sequence
-from typing import TypedDict, cast
+from typing import Any, TypedDict, cast
 
 from .api import native_module
 from .calendar import CalendarRegistry
@@ -75,7 +75,7 @@ class RegressionCaseReport(TypedDict):
     case_kind: str
     status: str
     summary: str
-    failure: dict[str, object] | None
+    failure: dict[str, Any] | None
 
 
 class DeterministicRegressionHarnessReport(TypedDict):
@@ -87,16 +87,39 @@ class DeterministicRegressionHarnessReport(TypedDict):
     case_reports: list[RegressionCaseReport]
 
 
+class OpenClosedGapScenarioClassCoverage(TypedDict):
+    known_only_case_count: int
+    surprise_only_case_count: int
+    mixed_news_case_count: int
+
+
+class OpenClosedGapDeterministicReplayMetadata(TypedDict):
+    replay_baseline_id: str
+    event_calendar_binding_id: str
+    jump_observation_binding_id: str
+    gap_observation_binding_id: str
+    candidate_selection_policy_id: str
+    candidate_selection_rank: int
+
+
+class OpenClosedGapIssueTraceabilityMetadata(TypedDict):
+    issue_id: str
+    semantic_focus_tags: list[str]
+
+
 class OpenClosedGapLeakageRegressionHarnessToleranceConfig(TypedDict):
-    direct_gap_absolute_tolerance: float
+    component_absolute_tolerance: float
 
 
 class OpenClosedGapLeakageRegressionFailure(TypedDict):
     failure_kind: str
+    semantic_bucket: str | None
+    mismatch_kind: str | None
     event_id: str | None
     event_timestamp_utc: str | None
-    observed_direct_gap_increment: float | None
-    absolute_leakage_magnitude: float | None
+    expected_value: float | None
+    observed_value: float | None
+    absolute_difference: float | None
     error_message: str | None
 
 
@@ -106,6 +129,8 @@ class OpenClosedGapLeakageRegressionOutputSchemaMetadata(TypedDict):
     behavior_diff_report_schema_version: str
     baseline_expected_output_policy: str
     environment_metadata_policy: str
+    canonical_component_vocabulary: list[str]
+    canonical_semantic_bucket_vocabulary: list[str]
     required_case_report_fields: list[str]
     required_summary_artifact_fields: list[str]
     required_behavior_diff_report_fields: list[str]
@@ -115,18 +140,19 @@ class OpenClosedGapLeakageRegressionOutputSchemaMetadata(TypedDict):
 class OpenClosedGapBehaviorContributionSummary(TypedDict):
     open_window_event_count: int
     closed_window_event_count: int
-    expected_activity_coupling_j_t_increment_total: float
-    observed_activity_coupling_j_t_increment_total: float
-    expected_open_window_direct_gap_g_t_increment_total: float
-    observed_open_window_direct_gap_g_t_increment_total: float
-    expected_closed_window_direct_gap_g_t_increment_total: float
-    observed_closed_window_direct_gap_g_t_increment_total: float
-    expected_total_direct_gap_g_t_increment: float
-    observed_total_direct_gap_g_t_increment: float
+    expected_activity_coupling_total: float
+    observed_activity_coupling_total: float
+    expected_trading_return_total: float
+    observed_trading_return_total: float
+    expected_open_jump_total: float
+    observed_open_jump_total: float
+    expected_closed_gap_total: float
+    observed_closed_gap_total: float
 
 
 class OpenClosedGapBehaviorDiffMetric(TypedDict):
     metric_id: str
+    semantic_bucket: str
     expected_value: float
     observed_value: float
     absolute_difference: float
@@ -145,6 +171,9 @@ class OpenClosedGapBehaviorScenarioDiff(TypedDict):
 class OpenClosedGapBehaviorScenarioSummaryArtifact(TypedDict):
     fixture_id: str
     exchange_code: str
+    scenario_class: str
+    deterministic_replay_metadata: OpenClosedGapDeterministicReplayMetadata
+    issue_traceability: OpenClosedGapIssueTraceabilityMetadata
     contributions: OpenClosedGapBehaviorContributionSummary
 
 
@@ -154,6 +183,7 @@ class OpenClosedGapBehaviorSummaryArtifact(TypedDict):
     total_case_count: int
     total_open_window_event_count: int
     total_closed_window_event_count: int
+    scenario_class_coverage: OpenClosedGapScenarioClassCoverage
     scenarios: list[OpenClosedGapBehaviorScenarioSummaryArtifact]
 
 
@@ -161,6 +191,10 @@ class OpenClosedGapBehaviorDiffReportSummary(TypedDict):
     total_case_count: int
     regression_case_count: int
     total_regression_metric_count: int
+    trading_return_regression_metric_count: int
+    open_jump_regression_metric_count: int
+    closed_gap_regression_metric_count: int
+    activity_coupling_regression_metric_count: int
 
 
 class OpenClosedGapBehaviorDiffReport(TypedDict):
@@ -174,11 +208,13 @@ class OpenClosedGapBehaviorDiffReport(TypedDict):
 class OpenClosedGapLeakageRegressionCaseReport(TypedDict):
     fixture_id: str
     exchange_code: str
+    scenario_class: str
+    deterministic_replay_metadata: OpenClosedGapDeterministicReplayMetadata
+    issue_traceability: OpenClosedGapIssueTraceabilityMetadata
     status: str
     summary: str
-    open_window_event_count: int
-    leakage_failure_count: int
-    max_absolute_leakage_magnitude: float
+    semantic_mismatch_failure_count: int
+    max_absolute_mismatch: float
     contribution_summary: OpenClosedGapBehaviorContributionSummary
     behavior_diff: OpenClosedGapBehaviorScenarioDiff
     failures: list[OpenClosedGapLeakageRegressionFailure]
@@ -188,8 +224,8 @@ class OpenClosedGapLeakageRegressionHarnessSummary(TypedDict):
     total_case_count: int
     passed_case_count: int
     failed_case_count: int
-    total_open_window_event_count: int
-    total_leakage_failure_count: int
+    total_semantic_mismatch_failure_count: int
+    scenario_class_coverage: OpenClosedGapScenarioClassCoverage
 
 
 class OpenClosedGapLeakageRegressionHarnessReport(TypedDict):
@@ -206,16 +242,16 @@ class OpenClosedGapLeakageRegressionHarnessReport(TypedDict):
 def run_deterministic_regression_harness(
     *,
     calendar_registry: CalendarRegistry,
-    calendar_cases: Sequence[Mapping[str, object]],
-    seasonality_cases: Sequence[Mapping[str, object]],
+    calendar_cases: Sequence[Mapping[str, Any]],
+    seasonality_cases: Sequence[Mapping[str, Any]],
     seasonality_absolute_tolerance: float = 1e-12,
     news_intensity_absolute_tolerance: float = 1e-12,
 ) -> DeterministicRegressionHarnessReport:
     _validate_finite_non_negative_float(seasonality_absolute_tolerance, "seasonality_absolute_tolerance")
     _validate_finite_non_negative_float(news_intensity_absolute_tolerance, "news_intensity_absolute_tolerance")
 
-    normalized_calendar_cases: list[dict[str, object]] = _validate_calendar_cases(calendar_cases)
-    normalized_seasonality_cases: list[dict[str, object]] = _validate_seasonality_cases(seasonality_cases)
+    normalized_calendar_cases: list[dict[str, Any]] = _validate_calendar_cases(calendar_cases)
+    normalized_seasonality_cases: list[dict[str, Any]] = _validate_seasonality_cases(seasonality_cases)
 
     native = native_module()
     report_json: str = native.run_deterministic_regression_harness(
@@ -239,17 +275,17 @@ def run_deterministic_regression_harness(
 def run_open_closed_gap_leakage_regression_harness(
     *,
     calendar_registry: CalendarRegistry,
-    gap_behavior_cases: Sequence[Mapping[str, object]],
-    direct_gap_absolute_tolerance: float = 1e-12,
+    gap_behavior_cases: Sequence[Mapping[str, Any]],
+    component_absolute_tolerance: float = 1e-12,
 ) -> OpenClosedGapLeakageRegressionHarnessReport:
-    _validate_finite_non_negative_float(direct_gap_absolute_tolerance, "direct_gap_absolute_tolerance")
+    _validate_finite_non_negative_float(component_absolute_tolerance, "component_absolute_tolerance")
 
-    normalized_gap_behavior_cases: list[dict[str, object]] = _validate_gap_behavior_cases(gap_behavior_cases)
+    normalized_gap_behavior_cases: list[dict[str, Any]] = _validate_gap_behavior_cases(gap_behavior_cases)
     native = native_module()
     report_json: str = native.run_open_closed_gap_leakage_regression_harness(
         calendar_registry._native_registry,
         normalized_gap_behavior_cases,
-        direct_gap_absolute_tolerance=direct_gap_absolute_tolerance,
+        component_absolute_tolerance=component_absolute_tolerance,
     )
 
     try:
@@ -262,8 +298,8 @@ def run_open_closed_gap_leakage_regression_harness(
     return _validate_open_closed_gap_leakage_report_payload(parsed_report)
 
 
-def _validate_calendar_cases(calendar_cases: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
-    normalized_cases: list[dict[str, object]] = []
+def _validate_calendar_cases(calendar_cases: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    normalized_cases: list[dict[str, Any]] = []
 
     for case_position, calendar_case in enumerate(calendar_cases):
         context: str = f"calendar_cases[{case_position}]"
@@ -289,9 +325,9 @@ def _validate_calendar_cases(calendar_cases: Sequence[Mapping[str, object]]) -> 
 
 
 def _validate_seasonality_cases(
-    seasonality_cases: Sequence[Mapping[str, object]],
-) -> list[dict[str, object]]:
-    normalized_cases: list[dict[str, object]] = []
+    seasonality_cases: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    normalized_cases: list[dict[str, Any]] = []
 
     for case_position, seasonality_case in enumerate(seasonality_cases):
         context: str = f"seasonality_cases[{case_position}]"
@@ -300,12 +336,12 @@ def _validate_seasonality_cases(
         range_start_utc: str = _require_non_empty_string(seasonality_case, "range_start_utc", context)
         range_end_utc: str = _require_non_empty_string(seasonality_case, "range_end_utc", context)
 
-        seasonality_source: Mapping[str, object] = _require_mapping(
+        seasonality_source: Mapping[str, Any] = _require_mapping(
             seasonality_case,
             "seasonality_source",
             context,
         )
-        news_intensity_source: Mapping[str, object] = _require_mapping(
+        news_intensity_source: Mapping[str, Any] = _require_mapping(
             seasonality_case,
             "news_intensity_source",
             context,
@@ -330,18 +366,35 @@ def _validate_seasonality_cases(
 
 
 def _validate_gap_behavior_cases(
-    gap_behavior_cases: Sequence[Mapping[str, object]],
-) -> list[dict[str, object]]:
-    normalized_cases: list[dict[str, object]] = []
+    gap_behavior_cases: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    normalized_cases: list[dict[str, Any]] = []
 
     for case_position, gap_behavior_case in enumerate(gap_behavior_cases):
         context: str = f"gap_behavior_cases[{case_position}]"
         fixture_id: str = _require_non_empty_string(gap_behavior_case, "fixture_id", context)
         exchange_code: str = _require_non_empty_string(gap_behavior_case, "exchange_code", context)
+        scenario_class: str = _require_non_empty_string(gap_behavior_case, "scenario_class", context)
+        if scenario_class not in {"known_only", "surprise_only", "mixed_news"}:
+            raise SeasonalityInputValidationError(
+                f"{context}.scenario_class must be one of 'known_only', 'surprise_only', or 'mixed_news'",
+            )
+        deterministic_replay_metadata = _validate_open_closed_gap_deterministic_replay_metadata(
+            _require_mapping(gap_behavior_case, "deterministic_replay_metadata", context),
+            f"{context}.deterministic_replay_metadata",
+        )
+        issue_traceability = _validate_open_closed_gap_issue_traceability_metadata(
+            _require_mapping(gap_behavior_case, "issue_traceability", context),
+            f"{context}.issue_traceability",
+        )
 
         initial_j_t: float = _validate_finite_float(
             _require_field(gap_behavior_case, "initial_j_t", context),
             f"{context}.initial_j_t",
+        )
+        initial_m_t: float = _validate_finite_float(
+            _require_field(gap_behavior_case, "initial_m_t", context),
+            f"{context}.initial_m_t",
         )
         initial_g_t: float = _validate_finite_float(
             _require_field(gap_behavior_case, "initial_g_t", context),
@@ -354,36 +407,44 @@ def _validate_gap_behavior_cases(
         if not isinstance(injected_events, Sequence) or isinstance(injected_events, str | bytes):
             raise SeasonalityInputValidationError(f"{context}.injected_events must be a sequence")
 
-        normalized_injected_events: list[dict[str, object]] = []
+        normalized_injected_events: list[dict[str, Any]] = []
         for event_position, raw_event in enumerate(injected_events):
             event_context: str = f"{context}.injected_events[{event_position}]"
             if not isinstance(raw_event, Mapping):
                 raise SeasonalityInputValidationError(f"{event_context} must be a mapping")
 
-            normalized_event: dict[str, object] = {
+            normalized_event: dict[str, Any] = {
                 "event_id": _require_non_empty_string(raw_event, "event_id", event_context),
                 "timestamp_utc": _require_non_empty_string(raw_event, "timestamp_utc", event_context),
+                "news_arrival_component": _validate_open_closed_gap_news_arrival_component(
+                    _require_non_empty_string(raw_event, "news_arrival_component", event_context),
+                    f"{event_context}.news_arrival_component",
+                ),
                 "shared_severity_mark": _validate_finite_non_negative_float(
                     _require_field(raw_event, "shared_severity_mark", event_context),
                     f"{event_context}.shared_severity_mark",
                 ),
-                "coupled_gap_jump_mark": _validate_finite_float(
-                    _require_field(raw_event, "coupled_gap_jump_mark", event_context),
-                    f"{event_context}.coupled_gap_jump_mark",
+                "coupled_return_jump_mark": _validate_finite_float(
+                    _require_field(raw_event, "coupled_return_jump_mark", event_context),
+                    f"{event_context}.coupled_return_jump_mark",
                 ),
             }
 
-            if "observed_direct_gap_increment_override" in raw_event:
-                raw_override: object = _require_field(
-                    raw_event,
-                    "observed_direct_gap_increment_override",
-                    event_context,
+            for override_field_name in [
+                "observed_activity_coupling_j_t_increment_override",
+                "observed_open_jump_m_t_increment_override",
+                "observed_closed_gap_g_t_increment_override",
+                "observed_trading_return_increment_override",
+            ]:
+                if override_field_name not in raw_event:
+                    continue
+                raw_override: object = _require_field(raw_event, override_field_name, event_context)
+                if raw_override is None:
+                    continue
+                normalized_event[override_field_name] = _validate_finite_float(
+                    raw_override,
+                    f"{event_context}.{override_field_name}",
                 )
-                if raw_override is not None:
-                    normalized_event["observed_direct_gap_increment_override"] = _validate_finite_float(
-                        raw_override,
-                        f"{event_context}.observed_direct_gap_increment_override",
-                    )
 
             normalized_injected_events.append(normalized_event)
 
@@ -391,7 +452,11 @@ def _validate_gap_behavior_cases(
             {
                 "fixture_id": fixture_id,
                 "exchange_code": exchange_code,
+                "scenario_class": scenario_class,
+                "deterministic_replay_metadata": deterministic_replay_metadata,
+                "issue_traceability": issue_traceability,
                 "initial_j_t": initial_j_t,
+                "initial_m_t": initial_m_t,
                 "initial_g_t": initial_g_t,
                 "injected_events": normalized_injected_events,
             },
@@ -400,10 +465,62 @@ def _validate_gap_behavior_cases(
     return normalized_cases
 
 
+def _validate_open_closed_gap_news_arrival_component(value: str, context: str) -> str:
+    if value not in {"known", "surprise"}:
+        raise SeasonalityInputValidationError(
+            f"{context} must be either 'known' or 'surprise'",
+        )
+    return value
+
+
+def _validate_open_closed_gap_deterministic_replay_metadata(
+    raw_metadata: Mapping[str, Any],
+    context: str,
+) -> OpenClosedGapDeterministicReplayMetadata:
+    return {
+        "replay_baseline_id": _require_non_empty_string(raw_metadata, "replay_baseline_id", context),
+        "event_calendar_binding_id": _require_non_empty_string(
+            raw_metadata,
+            "event_calendar_binding_id",
+            context,
+        ),
+        "jump_observation_binding_id": _require_non_empty_string(
+            raw_metadata,
+            "jump_observation_binding_id",
+            context,
+        ),
+        "gap_observation_binding_id": _require_non_empty_string(
+            raw_metadata,
+            "gap_observation_binding_id",
+            context,
+        ),
+        "candidate_selection_policy_id": _require_non_empty_string(
+            raw_metadata,
+            "candidate_selection_policy_id",
+            context,
+        ),
+        "candidate_selection_rank": _require_non_negative_integer(
+            raw_metadata,
+            "candidate_selection_rank",
+            context,
+        ),
+    }
+
+
+def _validate_open_closed_gap_issue_traceability_metadata(
+    raw_metadata: Mapping[str, Any],
+    context: str,
+) -> OpenClosedGapIssueTraceabilityMetadata:
+    return {
+        "issue_id": _require_non_empty_string(raw_metadata, "issue_id", context),
+        "semantic_focus_tags": _require_non_empty_string_list(raw_metadata, "semantic_focus_tags", context),
+    }
+
+
 def _validate_seasonality_source(
-    seasonality_source: Mapping[str, object],
+    seasonality_source: Mapping[str, Any],
     case_context: str,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     context: str = f"{case_context}.seasonality_source"
     source_kind: str = _require_non_empty_string(seasonality_source, "source_kind", context)
 
@@ -464,9 +581,9 @@ def _validate_seasonality_source(
 
 
 def _validate_news_intensity_source(
-    news_intensity_source: Mapping[str, object],
+    news_intensity_source: Mapping[str, Any],
     case_context: str,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     context: str = f"{case_context}.news_intensity_source"
     source_kind: str = _require_non_empty_string(news_intensity_source, "source_kind", context)
 
@@ -482,7 +599,7 @@ def _validate_news_intensity_source(
                 ),
             }
         case "materialized":
-            raw_multiplier_mapping: Mapping[str, object] = _require_mapping(
+            raw_multiplier_mapping: Mapping[str, Any] = _require_mapping(
                 news_intensity_source,
                 "surprise_deterministic_time_multiplier_by_interval_index",
                 context,
@@ -522,7 +639,7 @@ def _validate_news_intensity_source(
 
 
 def _require_string_list(
-    parent: Mapping[str, object],
+    parent: Mapping[str, Any],
     field_name: str,
     context: str,
     *,
@@ -583,7 +700,7 @@ def _validate_harness_report_payload(raw_payload: object) -> DeterministicRegres
             f"unexpected deterministic regression harness determinism_policy: {determinism_policy}",
         )
 
-    fallback_policy_mapping: Mapping[str, object] = _require_mapping(
+    fallback_policy_mapping: Mapping[str, Any] = _require_mapping(
         raw_payload,
         "fallback_policy",
         "deterministic regression harness report",
@@ -643,7 +760,7 @@ def _validate_harness_report_payload(raw_payload: object) -> DeterministicRegres
             f"{fallback_policy['incomplete_fixture_coverage_policy']}",
         )
 
-    tolerance_config_mapping: Mapping[str, object] = _require_mapping(
+    tolerance_config_mapping: Mapping[str, Any] = _require_mapping(
         raw_payload,
         "tolerance_config",
         "deterministic regression harness report",
@@ -667,7 +784,7 @@ def _validate_harness_report_payload(raw_payload: object) -> DeterministicRegres
         ),
     }
 
-    summary_mapping: Mapping[str, object] = _require_mapping(
+    summary_mapping: Mapping[str, Any] = _require_mapping(
         raw_payload,
         "summary",
         "deterministic regression harness report",
@@ -734,7 +851,7 @@ def _validate_harness_report_payload(raw_payload: object) -> DeterministicRegres
                 "case_kind": case_kind,
                 "status": status,
                 "summary": _require_non_empty_string(raw_case_report, "summary", case_report_context),
-                "failure": cast(dict[str, object] | None, raw_failure),
+                "failure": cast(dict[str, Any] | None, raw_failure),
             },
         )
 
@@ -798,189 +915,12 @@ def _validate_open_closed_gap_leakage_report_payload(
     }
 
 
-def _extract_open_closed_gap_direct_tolerance(raw_payload: Mapping[str, object]) -> float:
-    tolerance_config = raw_payload.get("tolerance_config")
-    if not isinstance(tolerance_config, Mapping):
-        return 1e-12
-
-    raw_tolerance = tolerance_config.get("direct_gap_absolute_tolerance")
-    if not isinstance(raw_tolerance, int | float) or isinstance(raw_tolerance, bool):
-        return 1e-12
-
-    tolerance = float(raw_tolerance)
-    if not math.isfinite(tolerance) or tolerance < 0.0:
-        return 1e-12
-
-    return tolerance
-
-
-def _synthesize_legacy_contribution_summary(
-    raw_case_report: Mapping[str, object],
-) -> dict[str, object]:
-    fixture_id = str(raw_case_report.get("fixture_id", "")).strip()
-    exchange_code = str(raw_case_report.get("exchange_code", "")).strip()
-    open_window_event_count = _optional_non_negative_int(raw_case_report.get("open_window_event_count"))
-    observed_open_window_direct_gap_total = _legacy_observed_open_window_direct_gap_total(
-        raw_case_report.get("failures"),
-    )
-
-    contributions: dict[str, object] = {
-        "open_window_event_count": open_window_event_count,
-        "closed_window_event_count": 0,
-        "expected_activity_coupling_j_t_increment_total": 0.0,
-        "observed_activity_coupling_j_t_increment_total": 0.0,
-        "expected_open_window_direct_gap_g_t_increment_total": 0.0,
-        "observed_open_window_direct_gap_g_t_increment_total": observed_open_window_direct_gap_total,
-        "expected_closed_window_direct_gap_g_t_increment_total": 0.0,
-        "observed_closed_window_direct_gap_g_t_increment_total": 0.0,
-        "expected_total_direct_gap_g_t_increment": 0.0,
-        "observed_total_direct_gap_g_t_increment": observed_open_window_direct_gap_total,
-    }
-    return {
-        "fixture_id": fixture_id,
-        "exchange_code": exchange_code,
-        "contributions": contributions,
-    }
-
-
-def _synthesize_legacy_behavior_diff(
-    raw_case_report: Mapping[str, object],
-    contribution_summary: Mapping[str, object],
-    direct_gap_absolute_tolerance: float,
-) -> dict[str, object]:
-    fixture_id = cast(str, contribution_summary["fixture_id"])
-    exchange_code = cast(str, contribution_summary["exchange_code"])
-    contributions = cast(Mapping[str, object], contribution_summary["contributions"])
-
-    metrics: list[dict[str, object]] = []
-    for metric_id, expected_field, observed_field in [
-        (
-            "activity_coupling_j_t_increment_total",
-            "expected_activity_coupling_j_t_increment_total",
-            "observed_activity_coupling_j_t_increment_total",
-        ),
-        (
-            "open_window_direct_gap_g_t_increment_total",
-            "expected_open_window_direct_gap_g_t_increment_total",
-            "observed_open_window_direct_gap_g_t_increment_total",
-        ),
-        (
-            "closed_window_direct_gap_g_t_increment_total",
-            "expected_closed_window_direct_gap_g_t_increment_total",
-            "observed_closed_window_direct_gap_g_t_increment_total",
-        ),
-        (
-            "total_direct_gap_g_t_increment",
-            "expected_total_direct_gap_g_t_increment",
-            "observed_total_direct_gap_g_t_increment",
-        ),
-    ]:
-        expected_value = float(contributions[expected_field])
-        observed_value = float(contributions[observed_field])
-        absolute_difference = abs(expected_value - observed_value)
-        regression_detected = absolute_difference > direct_gap_absolute_tolerance
-        metrics.append(
-            {
-                "metric_id": metric_id,
-                "expected_value": expected_value,
-                "observed_value": observed_value,
-                "absolute_difference": absolute_difference,
-                "absolute_tolerance": direct_gap_absolute_tolerance,
-                "regression_detected": regression_detected,
-            },
-        )
-
-    regression_metric_count = sum(1 for metric in metrics if cast(bool, metric["regression_detected"]))
-    max_absolute_difference = max(cast(float, metric["absolute_difference"]) for metric in metrics)
-    return {
-        "fixture_id": fixture_id,
-        "exchange_code": exchange_code,
-        "regression_metric_count": regression_metric_count,
-        "max_absolute_difference": max_absolute_difference,
-        "metrics": metrics,
-    }
-
-
-def _legacy_observed_open_window_direct_gap_total(raw_failures: object) -> float:
-    if not isinstance(raw_failures, list):
-        return 0.0
-
-    observed_direct_gap_total = 0.0
-    for raw_failure in raw_failures:
-        if not isinstance(raw_failure, Mapping):
-            continue
-        if raw_failure.get("failure_kind") != "open_window_direct_gap_leakage":
-            continue
-        observed_direct_gap_increment = raw_failure.get("observed_direct_gap_increment")
-        if not isinstance(observed_direct_gap_increment, int | float) or isinstance(
-            observed_direct_gap_increment,
-            bool,
-        ):
-            continue
-        observed_direct_gap_total += float(observed_direct_gap_increment)
-
-    return observed_direct_gap_total
-
-
-def _optional_non_negative_int(raw_value: object) -> int:
-    if not isinstance(raw_value, int) or isinstance(raw_value, bool):
-        return 0
-    if raw_value < 0:
-        return 0
-    return raw_value
-
-
-def _default_open_closed_gap_output_schema_metadata() -> dict[str, object]:
-    return {
-        "schema_version": OPEN_CLOSED_GAP_LEAKAGE_REGRESSION_OUTPUT_SCHEMA_METADATA_VERSION,
-        "summary_artifact_schema_version": OPEN_CLOSED_GAP_BEHAVIOR_SUMMARY_ARTIFACT_SCHEMA_VERSION,
-        "behavior_diff_report_schema_version": OPEN_CLOSED_GAP_BEHAVIOR_DIFF_REPORT_SCHEMA_VERSION,
-        "baseline_expected_output_policy": OPEN_CLOSED_GAP_BEHAVIOR_BASELINE_EXPECTED_OUTPUT_POLICY,
-        "environment_metadata_policy": OPEN_CLOSED_GAP_BEHAVIOR_ENVIRONMENT_METADATA_POLICY,
-        "required_case_report_fields": [
-            "fixture_id",
-            "exchange_code",
-            "status",
-            "summary",
-            "open_window_event_count",
-            "leakage_failure_count",
-            "max_absolute_leakage_magnitude",
-            "contribution_summary",
-            "behavior_diff",
-            "failures",
-        ],
-        "required_summary_artifact_fields": [
-            "schema_version",
-            "determinism_policy",
-            "total_case_count",
-            "total_open_window_event_count",
-            "total_closed_window_event_count",
-            "scenarios",
-        ],
-        "required_behavior_diff_report_fields": [
-            "schema_version",
-            "determinism_policy",
-            "baseline_expected_output_policy",
-            "summary",
-            "scenario_diffs",
-        ],
-        "required_behavior_diff_metric_fields": [
-            "metric_id",
-            "expected_value",
-            "observed_value",
-            "absolute_difference",
-            "absolute_tolerance",
-            "regression_detected",
-        ],
-    }
-
-
 def _validate_open_closed_gap_output_schema_metadata(
-    raw_payload: Mapping[str, object],
+    raw_payload: Mapping[str, Any],
     report_context: str,
 ) -> OpenClosedGapLeakageRegressionOutputSchemaMetadata:
     output_schema_metadata_context = f"{report_context}.output_schema_metadata"
-    output_schema_metadata_mapping: Mapping[str, object] = _require_mapping(
+    output_schema_metadata_mapping: Mapping[str, Any] = _require_mapping(
         raw_payload,
         "output_schema_metadata",
         report_context,
@@ -1009,6 +949,16 @@ def _validate_open_closed_gap_output_schema_metadata(
         "environment_metadata_policy": _require_non_empty_string(
             output_schema_metadata_mapping,
             "environment_metadata_policy",
+            output_schema_metadata_context,
+        ),
+        "canonical_component_vocabulary": _require_non_empty_string_list(
+            output_schema_metadata_mapping,
+            "canonical_component_vocabulary",
+            output_schema_metadata_context,
+        ),
+        "canonical_semantic_bucket_vocabulary": _require_non_empty_string_list(
+            output_schema_metadata_mapping,
+            "canonical_semantic_bucket_vocabulary",
             output_schema_metadata_context,
         ),
         "required_case_report_fields": _require_non_empty_string_list(
@@ -1078,35 +1028,47 @@ def _validate_open_closed_gap_output_schema_metadata(
             f"{output_schema_metadata['environment_metadata_policy']}",
         )
 
+    expected_vocabulary = ["trading_return", "open_jump", "closed_gap", "activity_coupling"]
+    if output_schema_metadata["canonical_component_vocabulary"] != expected_vocabulary:
+        raise SeasonalityInputValidationError(
+            "unexpected open closed gap leakage regression harness output_schema_metadata.canonical_component_vocabulary: "
+            f"{output_schema_metadata['canonical_component_vocabulary']}",
+        )
+    if output_schema_metadata["canonical_semantic_bucket_vocabulary"] != expected_vocabulary:
+        raise SeasonalityInputValidationError(
+            "unexpected open closed gap leakage regression harness output_schema_metadata.canonical_semantic_bucket_vocabulary: "
+            f"{output_schema_metadata['canonical_semantic_bucket_vocabulary']}",
+        )
+
     return output_schema_metadata
 
 
 def _validate_open_closed_gap_tolerance_config(
-    raw_payload: Mapping[str, object],
+    raw_payload: Mapping[str, Any],
     report_context: str,
 ) -> OpenClosedGapLeakageRegressionHarnessToleranceConfig:
-    tolerance_config_mapping: Mapping[str, object] = _require_mapping(
+    tolerance_config_mapping: Mapping[str, Any] = _require_mapping(
         raw_payload,
         "tolerance_config",
         report_context,
     )
     return {
-        "direct_gap_absolute_tolerance": _validate_finite_non_negative_float(
+        "component_absolute_tolerance": _validate_finite_non_negative_float(
             _require_field(
                 tolerance_config_mapping,
-                "direct_gap_absolute_tolerance",
+                "component_absolute_tolerance",
                 f"{report_context}.tolerance_config",
             ),
-            "tolerance_config.direct_gap_absolute_tolerance",
+            "tolerance_config.component_absolute_tolerance",
         ),
     }
 
 
 def _validate_open_closed_gap_harness_summary(
-    raw_payload: Mapping[str, object],
+    raw_payload: Mapping[str, Any],
     report_context: str,
 ) -> OpenClosedGapLeakageRegressionHarnessSummary:
-    summary_mapping: Mapping[str, object] = _require_mapping(
+    summary_mapping: Mapping[str, Any] = _require_mapping(
         raw_payload,
         "summary",
         report_context,
@@ -1128,25 +1090,24 @@ def _validate_open_closed_gap_harness_summary(
             "failed_case_count",
             summary_context,
         ),
-        "total_open_window_event_count": _require_non_negative_integer(
+        "total_semantic_mismatch_failure_count": _require_non_negative_integer(
             summary_mapping,
-            "total_open_window_event_count",
+            "total_semantic_mismatch_failure_count",
             summary_context,
         ),
-        "total_leakage_failure_count": _require_non_negative_integer(
-            summary_mapping,
-            "total_leakage_failure_count",
-            summary_context,
+        "scenario_class_coverage": _validate_open_closed_gap_scenario_class_coverage(
+            _require_mapping(summary_mapping, "scenario_class_coverage", summary_context),
+            f"{summary_context}.scenario_class_coverage",
         ),
     }
 
 
 def _validate_open_closed_gap_summary_artifact(
-    raw_payload: Mapping[str, object],
+    raw_payload: Mapping[str, Any],
     report_context: str,
 ) -> OpenClosedGapBehaviorSummaryArtifact:
     summary_artifact_context = f"{report_context}.summary_artifact"
-    summary_artifact_mapping: Mapping[str, object] = _require_mapping(
+    summary_artifact_mapping: Mapping[str, Any] = _require_mapping(
         raw_payload,
         "summary_artifact",
         report_context,
@@ -1194,6 +1155,18 @@ def _validate_open_closed_gap_summary_artifact(
             {
                 "fixture_id": _require_non_empty_string(raw_summary_scenario, "fixture_id", scenario_context),
                 "exchange_code": _require_non_empty_string(raw_summary_scenario, "exchange_code", scenario_context),
+                "scenario_class": _validate_open_closed_gap_scenario_class(
+                    _require_non_empty_string(raw_summary_scenario, "scenario_class", scenario_context),
+                    f"{scenario_context}.scenario_class",
+                ),
+                "deterministic_replay_metadata": _validate_open_closed_gap_deterministic_replay_metadata(
+                    _require_mapping(raw_summary_scenario, "deterministic_replay_metadata", scenario_context),
+                    f"{scenario_context}.deterministic_replay_metadata",
+                ),
+                "issue_traceability": _validate_open_closed_gap_issue_traceability_metadata(
+                    _require_mapping(raw_summary_scenario, "issue_traceability", scenario_context),
+                    f"{scenario_context}.issue_traceability",
+                ),
                 "contributions": _validate_open_closed_gap_behavior_contribution_summary(
                     _require_mapping(raw_summary_scenario, "contributions", scenario_context),
                     f"{scenario_context}.contributions",
@@ -1219,16 +1192,20 @@ def _validate_open_closed_gap_summary_artifact(
             "total_closed_window_event_count",
             summary_artifact_context,
         ),
+        "scenario_class_coverage": _validate_open_closed_gap_scenario_class_coverage(
+            _require_mapping(summary_artifact_mapping, "scenario_class_coverage", summary_artifact_context),
+            f"{summary_artifact_context}.scenario_class_coverage",
+        ),
         "scenarios": summary_artifact_scenarios,
     }
 
 
 def _validate_open_closed_gap_behavior_diff_report(
-    raw_payload: Mapping[str, object],
+    raw_payload: Mapping[str, Any],
     report_context: str,
 ) -> OpenClosedGapBehaviorDiffReport:
     behavior_diff_report_context = f"{report_context}.behavior_diff_report"
-    behavior_diff_report_mapping: Mapping[str, object] = _require_mapping(
+    behavior_diff_report_mapping: Mapping[str, Any] = _require_mapping(
         raw_payload,
         "behavior_diff_report",
         report_context,
@@ -1289,6 +1266,26 @@ def _validate_open_closed_gap_behavior_diff_report(
             "total_regression_metric_count",
             summary_context,
         ),
+        "trading_return_regression_metric_count": _require_non_negative_integer(
+            behavior_diff_report_summary_mapping,
+            "trading_return_regression_metric_count",
+            summary_context,
+        ),
+        "open_jump_regression_metric_count": _require_non_negative_integer(
+            behavior_diff_report_summary_mapping,
+            "open_jump_regression_metric_count",
+            summary_context,
+        ),
+        "closed_gap_regression_metric_count": _require_non_negative_integer(
+            behavior_diff_report_summary_mapping,
+            "closed_gap_regression_metric_count",
+            summary_context,
+        ),
+        "activity_coupling_regression_metric_count": _require_non_negative_integer(
+            behavior_diff_report_summary_mapping,
+            "activity_coupling_regression_metric_count",
+            summary_context,
+        ),
     }
 
     behavior_diff_scenarios_raw: object = _require_field(
@@ -1318,7 +1315,7 @@ def _validate_open_closed_gap_behavior_diff_report(
 
 
 def _validate_open_closed_gap_case_reports(
-    raw_payload: Mapping[str, object],
+    raw_payload: Mapping[str, Any],
     report_context: str,
 ) -> list[OpenClosedGapLeakageRegressionCaseReport]:
     case_reports_raw: object = _require_field(
@@ -1357,21 +1354,28 @@ def _validate_open_closed_gap_case_report(
     return {
         "fixture_id": _require_non_empty_string(raw_case_report, "fixture_id", case_context),
         "exchange_code": _require_non_empty_string(raw_case_report, "exchange_code", case_context),
+        "scenario_class": _validate_open_closed_gap_scenario_class(
+            _require_non_empty_string(raw_case_report, "scenario_class", case_context),
+            f"{case_context}.scenario_class",
+        ),
+        "deterministic_replay_metadata": _validate_open_closed_gap_deterministic_replay_metadata(
+            _require_mapping(raw_case_report, "deterministic_replay_metadata", case_context),
+            f"{case_context}.deterministic_replay_metadata",
+        ),
+        "issue_traceability": _validate_open_closed_gap_issue_traceability_metadata(
+            _require_mapping(raw_case_report, "issue_traceability", case_context),
+            f"{case_context}.issue_traceability",
+        ),
         "status": status,
         "summary": _require_non_empty_string(raw_case_report, "summary", case_context),
-        "open_window_event_count": _require_non_negative_integer(
+        "semantic_mismatch_failure_count": _require_non_negative_integer(
             raw_case_report,
-            "open_window_event_count",
+            "semantic_mismatch_failure_count",
             case_context,
         ),
-        "leakage_failure_count": _require_non_negative_integer(
-            raw_case_report,
-            "leakage_failure_count",
-            case_context,
-        ),
-        "max_absolute_leakage_magnitude": _validate_finite_non_negative_float(
-            _require_field(raw_case_report, "max_absolute_leakage_magnitude", case_context),
-            f"{case_context}.max_absolute_leakage_magnitude",
+        "max_absolute_mismatch": _validate_finite_non_negative_float(
+            _require_field(raw_case_report, "max_absolute_mismatch", case_context),
+            f"{case_context}.max_absolute_mismatch",
         ),
         "contribution_summary": _validate_open_closed_gap_behavior_contribution_summary(
             _require_mapping(raw_case_report, "contribution_summary", case_context),
@@ -1386,7 +1390,7 @@ def _validate_open_closed_gap_case_report(
 
 
 def _validate_open_closed_gap_case_failures(
-    raw_case_report: Mapping[str, object],
+    raw_case_report: Mapping[str, Any],
     case_context: str,
 ) -> list[OpenClosedGapLeakageRegressionFailure]:
     failures_raw: object = _require_field(raw_case_report, "failures", case_context)
@@ -1413,40 +1417,56 @@ def _validate_open_closed_gap_case_failure(
         case "dispatch_error":
             return {
                 "failure_kind": failure_kind,
+                "semantic_bucket": None,
+                "mismatch_kind": None,
                 "event_id": None,
                 "event_timestamp_utc": None,
-                "observed_direct_gap_increment": None,
-                "absolute_leakage_magnitude": None,
+                "expected_value": None,
+                "observed_value": None,
+                "absolute_difference": None,
                 "error_message": _require_non_empty_string(
                     raw_failure,
                     "error_message",
                     failure_context,
                 ),
             }
-        case "open_window_direct_gap_leakage":
+        case "semantic_mismatch":
             return {
                 "failure_kind": failure_kind,
+                "semantic_bucket": _validate_open_closed_gap_semantic_bucket(
+                    _require_non_empty_string(raw_failure, "semantic_bucket", failure_context),
+                    f"{failure_context}.semantic_bucket",
+                ),
+                "mismatch_kind": _require_non_empty_string(raw_failure, "mismatch_kind", failure_context),
                 "event_id": _require_non_empty_string(raw_failure, "event_id", failure_context),
                 "event_timestamp_utc": _require_non_empty_string(
                     raw_failure,
                     "event_timestamp_utc",
                     failure_context,
                 ),
-                "observed_direct_gap_increment": _validate_finite_float(
+                "expected_value": _validate_finite_float(
                     _require_field(
                         raw_failure,
-                        "observed_direct_gap_increment",
+                        "expected_value",
                         failure_context,
                     ),
-                    f"{failure_context}.observed_direct_gap_increment",
+                    f"{failure_context}.expected_value",
                 ),
-                "absolute_leakage_magnitude": _validate_finite_non_negative_float(
+                "observed_value": _validate_finite_float(
                     _require_field(
                         raw_failure,
-                        "absolute_leakage_magnitude",
+                        "observed_value",
                         failure_context,
                     ),
-                    f"{failure_context}.absolute_leakage_magnitude",
+                    f"{failure_context}.observed_value",
+                ),
+                "absolute_difference": _validate_finite_non_negative_float(
+                    _require_field(
+                        raw_failure,
+                        "absolute_difference",
+                        failure_context,
+                    ),
+                    f"{failure_context}.absolute_difference",
                 ),
                 "error_message": None,
             }
@@ -1456,8 +1476,47 @@ def _validate_open_closed_gap_case_failure(
             )
 
 
+def _validate_open_closed_gap_scenario_class_coverage(
+    raw_coverage: Mapping[str, Any],
+    context: str,
+) -> OpenClosedGapScenarioClassCoverage:
+    return {
+        "known_only_case_count": _require_non_negative_integer(
+            raw_coverage,
+            "known_only_case_count",
+            context,
+        ),
+        "surprise_only_case_count": _require_non_negative_integer(
+            raw_coverage,
+            "surprise_only_case_count",
+            context,
+        ),
+        "mixed_news_case_count": _require_non_negative_integer(
+            raw_coverage,
+            "mixed_news_case_count",
+            context,
+        ),
+    }
+
+
+def _validate_open_closed_gap_scenario_class(value: str, context: str) -> str:
+    if value not in {"known_only", "surprise_only", "mixed_news"}:
+        raise SeasonalityInputValidationError(
+            f"{context} must be one of 'known_only', 'surprise_only', or 'mixed_news'",
+        )
+    return value
+
+
+def _validate_open_closed_gap_semantic_bucket(value: str, context: str) -> str:
+    if value not in {"trading_return", "open_jump", "closed_gap", "activity_coupling"}:
+        raise SeasonalityInputValidationError(
+            f"{context} must be one of 'trading_return', 'open_jump', 'closed_gap', or 'activity_coupling'",
+        )
+    return value
+
+
 def _validate_open_closed_gap_behavior_contribution_summary(
-    raw_contribution_summary: Mapping[str, object],
+    raw_contribution_summary: Mapping[str, Any],
     context: str,
 ) -> OpenClosedGapBehaviorContributionSummary:
     return {
@@ -1471,37 +1530,37 @@ def _validate_open_closed_gap_behavior_contribution_summary(
             "closed_window_event_count",
             context,
         ),
-        "expected_activity_coupling_j_t_increment_total": _validate_finite_float(
-            _require_field(raw_contribution_summary, "expected_activity_coupling_j_t_increment_total", context),
-            f"{context}.expected_activity_coupling_j_t_increment_total",
+        "expected_activity_coupling_total": _validate_finite_float(
+            _require_field(raw_contribution_summary, "expected_activity_coupling_total", context),
+            f"{context}.expected_activity_coupling_total",
         ),
-        "observed_activity_coupling_j_t_increment_total": _validate_finite_float(
-            _require_field(raw_contribution_summary, "observed_activity_coupling_j_t_increment_total", context),
-            f"{context}.observed_activity_coupling_j_t_increment_total",
+        "observed_activity_coupling_total": _validate_finite_float(
+            _require_field(raw_contribution_summary, "observed_activity_coupling_total", context),
+            f"{context}.observed_activity_coupling_total",
         ),
-        "expected_open_window_direct_gap_g_t_increment_total": _validate_finite_float(
-            _require_field(raw_contribution_summary, "expected_open_window_direct_gap_g_t_increment_total", context),
-            f"{context}.expected_open_window_direct_gap_g_t_increment_total",
+        "expected_trading_return_total": _validate_finite_float(
+            _require_field(raw_contribution_summary, "expected_trading_return_total", context),
+            f"{context}.expected_trading_return_total",
         ),
-        "observed_open_window_direct_gap_g_t_increment_total": _validate_finite_float(
-            _require_field(raw_contribution_summary, "observed_open_window_direct_gap_g_t_increment_total", context),
-            f"{context}.observed_open_window_direct_gap_g_t_increment_total",
+        "observed_trading_return_total": _validate_finite_float(
+            _require_field(raw_contribution_summary, "observed_trading_return_total", context),
+            f"{context}.observed_trading_return_total",
         ),
-        "expected_closed_window_direct_gap_g_t_increment_total": _validate_finite_float(
-            _require_field(raw_contribution_summary, "expected_closed_window_direct_gap_g_t_increment_total", context),
-            f"{context}.expected_closed_window_direct_gap_g_t_increment_total",
+        "expected_open_jump_total": _validate_finite_float(
+            _require_field(raw_contribution_summary, "expected_open_jump_total", context),
+            f"{context}.expected_open_jump_total",
         ),
-        "observed_closed_window_direct_gap_g_t_increment_total": _validate_finite_float(
-            _require_field(raw_contribution_summary, "observed_closed_window_direct_gap_g_t_increment_total", context),
-            f"{context}.observed_closed_window_direct_gap_g_t_increment_total",
+        "observed_open_jump_total": _validate_finite_float(
+            _require_field(raw_contribution_summary, "observed_open_jump_total", context),
+            f"{context}.observed_open_jump_total",
         ),
-        "expected_total_direct_gap_g_t_increment": _validate_finite_float(
-            _require_field(raw_contribution_summary, "expected_total_direct_gap_g_t_increment", context),
-            f"{context}.expected_total_direct_gap_g_t_increment",
+        "expected_closed_gap_total": _validate_finite_float(
+            _require_field(raw_contribution_summary, "expected_closed_gap_total", context),
+            f"{context}.expected_closed_gap_total",
         ),
-        "observed_total_direct_gap_g_t_increment": _validate_finite_float(
-            _require_field(raw_contribution_summary, "observed_total_direct_gap_g_t_increment", context),
-            f"{context}.observed_total_direct_gap_g_t_increment",
+        "observed_closed_gap_total": _validate_finite_float(
+            _require_field(raw_contribution_summary, "observed_closed_gap_total", context),
+            f"{context}.observed_closed_gap_total",
         ),
     }
 
@@ -1526,6 +1585,10 @@ def _validate_open_closed_gap_behavior_scenario_diff(
         metrics.append(
             {
                 "metric_id": _require_non_empty_string(raw_metric, "metric_id", metric_context),
+                "semantic_bucket": _validate_open_closed_gap_semantic_bucket(
+                    _require_non_empty_string(raw_metric, "semantic_bucket", metric_context),
+                    f"{metric_context}.semantic_bucket",
+                ),
                 "expected_value": _validate_finite_float(
                     _require_field(raw_metric, "expected_value", metric_context),
                     f"{metric_context}.expected_value",
@@ -1562,17 +1625,17 @@ def _validate_open_closed_gap_behavior_scenario_diff(
     }
 
 
-def _require_mapping(parent: Mapping[str, object], field_name: str, context: str) -> Mapping[str, object]:
+def _require_mapping(parent: Mapping[str, Any], field_name: str, context: str) -> Mapping[str, Any]:
     field_value: object = _require_field(parent, field_name, context)
     if not isinstance(field_value, Mapping):
         raise SeasonalityInputValidationError(
             f"{context}.{field_name} must be a mapping",
         )
 
-    return cast(Mapping[str, object], field_value)
+    return cast(Mapping[str, Any], field_value)
 
 
-def _require_non_empty_string(parent: Mapping[str, object], field_name: str, context: str) -> str:
+def _require_non_empty_string(parent: Mapping[str, Any], field_name: str, context: str) -> str:
     field_value: object = _require_field(parent, field_name, context)
     if not isinstance(field_value, str):
         raise SeasonalityInputValidationError(
@@ -1589,14 +1652,14 @@ def _require_non_empty_string(parent: Mapping[str, object], field_name: str, con
 
 
 def _require_non_empty_string_list(
-    parent: Mapping[str, object],
+    parent: Mapping[str, Any],
     field_name: str,
     context: str,
 ) -> list[str]:
     return _require_string_list(parent, field_name, context, require_non_empty=True)
 
 
-def _require_float_list(parent: Mapping[str, object], field_name: str, context: str) -> list[float]:
+def _require_float_list(parent: Mapping[str, Any], field_name: str, context: str) -> list[float]:
     field_value: object = _require_field(parent, field_name, context)
     if not isinstance(field_value, Sequence) or isinstance(field_value, str | bytes):
         raise SeasonalityInputValidationError(
@@ -1617,7 +1680,7 @@ def _require_float_list(parent: Mapping[str, object], field_name: str, context: 
     return normalized_values
 
 
-def _require_non_negative_integer(parent: Mapping[str, object], field_name: str, context: str) -> int:
+def _require_non_negative_integer(parent: Mapping[str, Any], field_name: str, context: str) -> int:
     field_value: object = _require_field(parent, field_name, context)
     if not isinstance(field_value, int) or isinstance(field_value, bool):
         raise SeasonalityInputValidationError(
@@ -1632,7 +1695,7 @@ def _require_non_negative_integer(parent: Mapping[str, object], field_name: str,
     return field_value
 
 
-def _require_boolean(parent: Mapping[str, object], field_name: str, context: str) -> bool:
+def _require_boolean(parent: Mapping[str, Any], field_name: str, context: str) -> bool:
     field_value: object = _require_field(parent, field_name, context)
     if not isinstance(field_value, bool):
         raise SeasonalityInputValidationError(
@@ -1642,7 +1705,7 @@ def _require_boolean(parent: Mapping[str, object], field_name: str, context: str
     return field_value
 
 
-def _require_field(parent: Mapping[str, object], field_name: str, context: str) -> object:
+def _require_field(parent: Mapping[str, Any], field_name: str, context: str) -> object:
     if field_name not in parent:
         raise SeasonalityInputValidationError(
             f"{context}.{field_name} is required",

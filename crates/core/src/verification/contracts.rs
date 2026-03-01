@@ -12,6 +12,22 @@ pub enum RegressionCaseStatus {
     Fail,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VerificationSemanticBucket {
+    TradingReturn,
+    OpenJump,
+    ClosedGap,
+    ActivityCoupling,
+}
+
+pub const VERIFICATION_CANONICAL_COMPONENT_VOCABULARY: [&str; 4] = [
+    "trading_return",
+    "open_jump",
+    "closed_gap",
+    "activity_coupling",
+];
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum VerificationContractError {
     InvalidNonNegativeFiniteValue {

@@ -16,16 +16,34 @@ Top-level fields:
 - `schema_metadata`: machine-readable schema family, generation, and extension policy
 - `determinism_metadata`: case and event ordering policies plus content hash metadata
 - `output_schema_metadata`: machine-readable required output fields for downstream reports
-- `canonical_regression_metadata`: required tags and stable fixture IDs by tag
+- `canonical_regression_metadata`: required tags, required scenario classes, and stable fixture IDs by tag
 - `cases`: scenario definitions
 
 Each case contains:
 
 - Exchange context: `exchange_code`, `calendar_fixture_set_id`, `range_start_utc`, `range_end_utc`
+- Scenario semantics: `scenario_class` with values `known_only`, `surprise_only`, or `mixed_news`
+- Deterministic replay metadata: `deterministic_replay_metadata`
+- Issue traceability metadata: `issue_traceability`
 - Calendar linkage: `calendar_state_fixture_references` identifies case IDs from `calendar_service_regression_matrix_v1`
 - Inputs: `initial_accumulator_state` and `injected_events`
 - Expected outcomes: per-event `event_outcomes` and aggregate `summary`
 - Metadata: `tags`, `description`
+
+`initial_accumulator_state` includes `j_t`, `m_t`, and `g_t`.
+
+Each injected event includes:
+
+- `news_arrival_component` (`known` or `surprise`)
+- `shared_severity_mark`
+- `coupled_return_jump_mark`
+
+Each expected event outcome includes:
+
+- `expected_activity_coupling_j_t_increment`
+- `expected_open_jump_m_t_increment`
+- `expected_closed_gap_g_t_increment`
+- `expected_trading_return_increment`
 
 ## Calendar Fixture Mapping
 

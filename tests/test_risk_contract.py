@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 import pytest
 
@@ -182,7 +183,7 @@ def test_risk_path_metadata_is_deterministic_across_repeated_validations() -> No
     assert first_validated_path["diagnostics"] == second_validated_path["diagnostics"]
 
 
-def _valid_run_request_payload() -> dict[str, object]:
+def _valid_run_request_payload() -> dict[str, Any]:
     return {
         "seed": 17,
         "horizon_interval_count": 2,
@@ -231,7 +232,7 @@ def _valid_run_request_payload() -> dict[str, object]:
     }
 
 
-def _valid_path_payload() -> dict[str, object]:
+def _valid_path_payload() -> dict[str, Any]:
     return {
         "seed": 17,
         "interval_delta": 1.0,

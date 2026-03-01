@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -455,7 +456,7 @@ def test_materialize_hourly_news_intensity_rejects_out_of_range_override_indices
         )
 
 
-def _contract_snapshot(contract: HourlyFactorContract) -> dict[str, object]:
+def _contract_snapshot(contract: HourlyFactorContract) -> dict[str, Any]:
     return {
         "schema_version": contract.schema_version,
         "exchange_code": contract.exchange_code,
@@ -486,7 +487,7 @@ def _contract_snapshot(contract: HourlyFactorContract) -> dict[str, object]:
 
 def _seasonality_materialization_snapshot(
     materialization: HourlySeasonalityMaterialization,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     return {
         "schema_version": materialization.schema_version,
         "exchange_code": materialization.exchange_code,

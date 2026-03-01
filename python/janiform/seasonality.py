@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from types import ModuleType
-from typing import Optional, cast
+from typing import Any, Optional, cast
 
 from .api import native_module
 from .calendar import (
@@ -88,7 +88,7 @@ class ScheduledEventOverlayDefinition:
 
     @staticmethod
     def from_config_record(
-        config_record: Mapping[str, object],
+        config_record: Mapping[str, Any],
     ) -> ScheduledEventOverlayDefinition:
         if "overlay_id" not in config_record:
             raise SeasonalityInputValidationError(
@@ -181,7 +181,7 @@ class ScheduledEventOverlayDefinition:
 
 
 def load_scheduled_event_overlay_definitions(
-    overlay_configuration_records: Sequence[Mapping[str, object]],
+    overlay_configuration_records: Sequence[Mapping[str, Any]],
 ) -> list[ScheduledEventOverlayDefinition]:
     return [
         ScheduledEventOverlayDefinition.from_config_record(config_record)
@@ -625,7 +625,7 @@ class SeasonalityDiagnosticsBatchInput:
 
 
 def preprocess_timestamp_events(
-    event_records: Sequence[Mapping[str, object]],
+    event_records: Sequence[Mapping[str, Any]],
     *,
     exchange_code: str,
     calendar_registry: CalendarRegistry,
@@ -731,7 +731,7 @@ def compose_deterministic_seasonality_signal(
     scheduled_event_overlays: Optional[Sequence[ScheduledEventOverlayDefinition]] = None,
 ) -> DeterministicSeasonalityComposition:
     native: ModuleType = native_module()
-    serialized_scheduled_event_overlays: Optional[list[dict[str, object]]] = (
+    serialized_scheduled_event_overlays: Optional[list[dict[str, Any]]] = (
         _serialize_scheduled_event_overlays(scheduled_event_overlays)
         if scheduled_event_overlays is not None
         else None
@@ -764,7 +764,7 @@ def generate_seasonality_diagnostics_report(
     composition: DeterministicSeasonalityComposition,
     *,
     estimator_version: str = DEFAULT_SEASONALITY_ESTIMATOR_VERSION,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     native: ModuleType = native_module()
 
     try:
@@ -780,20 +780,20 @@ def generate_seasonality_diagnostics_report(
     except native.SeasonalityInputValidationError as e:
         raise SeasonalityInputValidationError(str(e)) from e
 
-    return cast(dict[str, object], json.loads(cast(str, report_json)))
+    return cast(dict[str, Any], json.loads(cast(str, report_json)))
 
 
 def generate_seasonality_diagnostics_reports_batch(
     batch_inputs: Sequence[SeasonalityDiagnosticsBatchInput],
     *,
     estimator_version: str = DEFAULT_SEASONALITY_ESTIMATOR_VERSION,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     if len(batch_inputs) == 0:
         raise SeasonalityInputValidationError(
             "seasonality diagnostics batch report requires at least one dataset input"
         )
 
-    report_documents: list[dict[str, object]] = []
+    report_documents: list[dict[str, Any]] = []
     dataset_ids_in_order: list[str] = []
     observed_dataset_ids: set[str] = set()
     for batch_input in batch_inputs:
@@ -826,8 +826,8 @@ def generate_seasonality_diagnostics_reports_batch(
 
 def _serialize_scheduled_event_overlays(
     scheduled_event_overlays: Sequence[ScheduledEventOverlayDefinition],
-) -> list[dict[str, object]]:
-    serialized_overlays: list[dict[str, object]] = []
+) -> list[dict[str, Any]]:
+    serialized_overlays: list[dict[str, Any]] = []
     for scheduled_event_overlay in scheduled_event_overlays:
         if scheduled_event_overlay.precedence > 65_535:
             raise SeasonalityInputValidationError(

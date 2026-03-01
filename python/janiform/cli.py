@@ -46,10 +46,10 @@ def _build_parser() -> ArgumentParser:
         help="Path to open and closed gap behavior fixture JSON.",
     )
     gap_leakage_parser.add_argument(
-        "--direct-gap-absolute-tolerance",
+        "--component-absolute-tolerance",
         type=float,
         default=1e-12,
-        help="Absolute tolerance for open-window direct gap leakage detection.",
+        help="Absolute tolerance for component-level semantic mismatch detection.",
     )
 
     return parser
@@ -90,7 +90,7 @@ def _run_open_closed_gap_leakage_regression_command(parsed_arguments: Namespace)
         report = run_open_closed_gap_leakage_regression_harness(
             calendar_registry=calendar_registry,
             gap_behavior_cases=gap_behavior_cases,
-            direct_gap_absolute_tolerance=float(parsed_arguments.direct_gap_absolute_tolerance),
+            component_absolute_tolerance=float(parsed_arguments.component_absolute_tolerance),
         )
     except Exception as error:
         sys.stderr.write(f"open closed gap leakage regression command failed: {error}\n")
@@ -99,13 +99,13 @@ def _run_open_closed_gap_leakage_regression_command(parsed_arguments: Namespace)
     summary = report["summary"]
     behavior_diff_report_summary = cast(
         dict[str, int],
-        cast(dict[str, object], report["behavior_diff_report"])["summary"],
+        cast(dict[str, Any], report["behavior_diff_report"])["summary"],
     )
     if summary["failed_case_count"] == 0:
         sys.stdout.write(
             "open closed gap leakage regression passed: "
             f"{summary['passed_case_count']}/{summary['total_case_count']} scenarios, "
-            f"open_window_events={summary['total_open_window_event_count']}, "
+            f"semantic_mismatches={summary['total_semantic_mismatch_failure_count']}, "
             f"diff_regression_cases={behavior_diff_report_summary['regression_case_count']}\n",
         )
         return 0
@@ -113,7 +113,7 @@ def _run_open_closed_gap_leakage_regression_command(parsed_arguments: Namespace)
     sys.stderr.write(
         "open closed gap leakage regression failed: "
         f"{summary['failed_case_count']}/{summary['total_case_count']} scenarios, "
-        f"leakage_failures={summary['total_leakage_failure_count']}\n",
+        f"semantic_mismatches={summary['total_semantic_mismatch_failure_count']}\n",
     )
 
     for case_report in report["case_reports"]:
@@ -122,29 +122,32 @@ def _run_open_closed_gap_leakage_regression_command(parsed_arguments: Namespace)
 
         sys.stderr.write(
             f"scenario_id={case_report['fixture_id']} exchange_code={case_report['exchange_code']} "
-            f"leakage_failure_count={case_report['leakage_failure_count']} "
-            f"max_absolute_leakage_magnitude={case_report['max_absolute_leakage_magnitude']}\n",
+            f"semantic_mismatch_failure_count={case_report['semantic_mismatch_failure_count']} "
+            f"max_absolute_mismatch={case_report['max_absolute_mismatch']}\n",
         )
 
-        contribution_summary = cast(dict[str, object], case_report["contribution_summary"])
+        contribution_summary = cast(dict[str, Any], case_report["contribution_summary"])
 
         sys.stderr.write(
             "  contributions "
-            f"activity_expected={contribution_summary['expected_activity_coupling_j_t_increment_total']} "
-            f"activity_observed={contribution_summary['observed_activity_coupling_j_t_increment_total']} "
-            f"open_gap_expected={contribution_summary['expected_open_window_direct_gap_g_t_increment_total']} "
-            f"open_gap_observed={contribution_summary['observed_open_window_direct_gap_g_t_increment_total']} "
-            f"closed_gap_expected={contribution_summary['expected_closed_window_direct_gap_g_t_increment_total']} "
-            f"closed_gap_observed={contribution_summary['observed_closed_window_direct_gap_g_t_increment_total']}\n",
+            f"activity_expected={contribution_summary['expected_activity_coupling_total']} "
+            f"activity_observed={contribution_summary['observed_activity_coupling_total']} "
+            f"trading_expected={contribution_summary['expected_trading_return_total']} "
+            f"trading_observed={contribution_summary['observed_trading_return_total']} "
+            f"open_jump_expected={contribution_summary['expected_open_jump_total']} "
+            f"open_jump_observed={contribution_summary['observed_open_jump_total']} "
+            f"closed_gap_expected={contribution_summary['expected_closed_gap_total']} "
+            f"closed_gap_observed={contribution_summary['observed_closed_gap_total']}\n",
         )
 
-        behavior_diff = cast(dict[str, object], case_report["behavior_diff"])
-        for diff_metric in cast(list[dict[str, object]], behavior_diff["metrics"]):
+        behavior_diff = cast(dict[str, Any], case_report["behavior_diff"])
+        for diff_metric in cast(list[dict[str, Any]], behavior_diff["metrics"]):
             if not cast(bool, diff_metric["regression_detected"]):
                 continue
             sys.stderr.write(
                 "  diff_regression "
                 f"metric_id={diff_metric['metric_id']} "
+                f"semantic_bucket={diff_metric['semantic_bucket']} "
                 f"expected={diff_metric['expected_value']} "
                 f"observed={diff_metric['observed_value']} "
                 f"absolute_difference={diff_metric['absolute_difference']} "
@@ -154,12 +157,13 @@ def _run_open_closed_gap_leakage_regression_command(parsed_arguments: Namespace)
         for failure in case_report["failures"]:
             failure_kind = cast(str, failure["failure_kind"])
             match failure_kind:
-                case "open_window_direct_gap_leakage":
+                case "semantic_mismatch":
                     sys.stderr.write(
                         f"  failure_kind={failure_kind} event_id={failure['event_id']} "
                         f"event_timestamp_utc={failure['event_timestamp_utc']} "
-                        f"absolute_leakage_magnitude={failure['absolute_leakage_magnitude']} "
-                        f"observed_direct_gap_increment={failure['observed_direct_gap_increment']}\n",
+                        f"semantic_bucket={failure['semantic_bucket']} "
+                        f"mismatch_kind={failure['mismatch_kind']} "
+                        f"absolute_difference={failure['absolute_difference']}\n",
                     )
                 case "dispatch_error":
                     sys.stderr.write(
@@ -178,15 +182,15 @@ def _resolve_path_from_repository_root(repository_root: Path, path: Path) -> Pat
     return repository_root / path
 
 
-def _load_json_document(path: Path, context: str) -> dict[str, object]:
+def _load_json_document(path: Path, context: str) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"{context} at {path} must decode to a JSON object")
 
-    return cast(dict[str, object], payload)
+    return cast(dict[str, Any], payload)
 
 
-def _build_calendar_registry(calendar_fixture_document: dict[str, object]) -> CalendarRegistry:
+def _build_calendar_registry(calendar_fixture_document: dict[str, Any]) -> CalendarRegistry:
     calendar_registry_payload: object = calendar_fixture_document.get("calendar_registry")
     if not isinstance(calendar_registry_payload, dict):
         raise ValueError("calendar fixture must include object field `calendar_registry`")
@@ -195,13 +199,13 @@ def _build_calendar_registry(calendar_fixture_document: dict[str, object]) -> Ca
 
 
 def _extract_gap_behavior_cases(
-    gap_behavior_fixture_document: dict[str, object],
-) -> list[dict[str, object]]:
+    gap_behavior_fixture_document: dict[str, Any],
+) -> list[dict[str, Any]]:
     raw_cases: object = gap_behavior_fixture_document.get("cases")
     if not isinstance(raw_cases, list):
         raise ValueError("gap behavior fixture must include list field `cases`")
 
-    parsed_cases: list[dict[str, object]] = []
+    parsed_cases: list[dict[str, Any]] = []
     for raw_case in raw_cases:
         if not isinstance(raw_case, dict):
             raise ValueError("gap behavior fixture case must be an object")
@@ -218,7 +222,11 @@ def _extract_gap_behavior_cases(
             {
                 "fixture_id": raw_case.get("fixture_id"),
                 "exchange_code": raw_case.get("exchange_code"),
+                "scenario_class": raw_case.get("scenario_class"),
+                "deterministic_replay_metadata": raw_case.get("deterministic_replay_metadata"),
+                "issue_traceability": raw_case.get("issue_traceability"),
                 "initial_j_t": initial_accumulator_state.get("j_t"),
+                "initial_m_t": initial_accumulator_state.get("m_t"),
                 "initial_g_t": initial_accumulator_state.get("g_t"),
                 "injected_events": [
                     {
@@ -237,8 +245,13 @@ def _extract_gap_behavior_cases(
                             if isinstance(raw_event, dict)
                             else None
                         ),
-                        "coupled_gap_jump_mark": (
-                            raw_event.get("coupled_gap_jump_mark")
+                        "news_arrival_component": (
+                            raw_event.get("news_arrival_component")
+                            if isinstance(raw_event, dict)
+                            else None
+                        ),
+                        "coupled_return_jump_mark": (
+                            raw_event.get("coupled_return_jump_mark")
                             if isinstance(raw_event, dict)
                             else None
                         ),

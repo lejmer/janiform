@@ -4,7 +4,7 @@
   "fixture_set_version": "1.0.0",
   "schema_metadata": {
     "schema_family": "validation.gap_behavior.open_closed",
-    "schema_generation": "v0.x",
+    "schema_generation": "v1",
     "forward_extension_policy": "additive_fields_only.v1"
   },
   "determinism_metadata": {
@@ -17,15 +17,17 @@
     "schema_version": "validation.gap_behavior.open_closed.case_output.v1",
     "required_case_output_fields": [
       "fixture_id",
+      "scenario_class",
       "event_outcomes",
       "summary"
     ],
     "required_summary_fields": [
       "expected_open_event_count",
       "expected_closed_event_count",
-      "expected_total_j_t_increment",
-      "expected_total_g_t_increment",
-      "expected_open_window_direct_gap_increment_count"
+      "expected_total_activity_coupling_j_t_increment",
+      "expected_total_open_jump_m_t_increment",
+      "expected_total_closed_gap_g_t_increment",
+      "expected_total_trading_return_increment"
     ]
   },
   "canonical_regression_metadata": {
@@ -34,6 +36,11 @@
       "closed_window",
       "deterministic",
       "boundary"
+    ],
+    "required_scenario_classes": [
+      "known_only",
+      "surprise_only",
+      "mixed_news"
     ],
     "stable_fixture_ids_by_tag": {
       "open_window": [
@@ -75,6 +82,23 @@
     {
       "fixture_id": "xnys_intraday_open_window_gap_suppression",
       "exchange_code": "XNYS",
+      "scenario_class": "known_only",
+      "deterministic_replay_metadata": {
+        "replay_baseline_id": "gap_news_semantics_known_only_intraday",
+        "event_calendar_binding_id": "calendar_binding_xnys_intraday_v1",
+        "jump_observation_binding_id": "jump_obs_xnys_intraday_v1",
+        "gap_observation_binding_id": "gap_obs_xnys_intraday_v1",
+        "candidate_selection_policy_id": "deterministic_candidate_ranked.v1",
+        "candidate_selection_rank": 0
+      },
+      "issue_traceability": {
+        "issue_id": "JAN-140",
+        "semantic_focus_tags": [
+          "known_only",
+          "open_jump",
+          "activity_coupling"
+        ]
+      },
       "calendar_fixture_set_id": "calendar_service_regression_matrix_v1",
       "calendar_state_fixture_references": [
         "xnys_regular_at_open",
@@ -85,20 +109,23 @@
       "range_end_utc": "2024-03-18T20:00:00Z",
       "initial_accumulator_state": {
         "j_t": 0.1,
+        "m_t": -0.02,
         "g_t": -0.03
       },
       "injected_events": [
         {
           "event_id": "event_0",
           "timestamp_utc": "2024-03-18T14:15:00Z",
+          "news_arrival_component": "known",
           "shared_severity_mark": 0.8,
-          "coupled_gap_jump_mark": -0.25
+          "coupled_return_jump_mark": -0.25
         },
         {
           "event_id": "event_1",
           "timestamp_utc": "2024-03-18T17:40:00Z",
+          "news_arrival_component": "known",
           "shared_severity_mark": 0.35,
-          "coupled_gap_jump_mark": 0.17
+          "coupled_return_jump_mark": 0.17
         }
       ],
       "expected_outcome": {
@@ -106,24 +133,27 @@
           {
             "event_id": "event_0",
             "expected_market_state": "open",
-            "expected_j_t_increment": 0.8,
-            "expected_g_t_increment": 0.0,
-            "expected_direct_gap_applied": false
+            "expected_activity_coupling_j_t_increment": 0.8,
+            "expected_open_jump_m_t_increment": -0.25,
+            "expected_closed_gap_g_t_increment": 0.0,
+            "expected_trading_return_increment": 0.0
           },
           {
             "event_id": "event_1",
             "expected_market_state": "open",
-            "expected_j_t_increment": 0.35,
-            "expected_g_t_increment": 0.0,
-            "expected_direct_gap_applied": false
+            "expected_activity_coupling_j_t_increment": 0.35,
+            "expected_open_jump_m_t_increment": 0.17,
+            "expected_closed_gap_g_t_increment": 0.0,
+            "expected_trading_return_increment": 0.0
           }
         ],
         "summary": {
           "expected_open_event_count": 2,
           "expected_closed_event_count": 0,
-          "expected_total_j_t_increment": 1.15,
-          "expected_total_g_t_increment": 0.0,
-          "expected_open_window_direct_gap_increment_count": 0
+          "expected_total_activity_coupling_j_t_increment": 1.15,
+          "expected_total_open_jump_m_t_increment": -0.08,
+          "expected_total_closed_gap_g_t_increment": 0.0,
+          "expected_total_trading_return_increment": 0.0
         }
       },
       "tags": [
@@ -131,11 +161,28 @@
         "deterministic",
         "intraday"
       ],
-      "description": "Two intraday open-window events should accumulate J_t only and contribute zero direct gap increment."
+      "description": "Known-news intraday open-window case routes jump marks to M_t and suppresses closed-gap routing."
     },
     {
       "fixture_id": "xnys_overnight_closed_window_gap_emission",
       "exchange_code": "XNYS",
+      "scenario_class": "surprise_only",
+      "deterministic_replay_metadata": {
+        "replay_baseline_id": "gap_news_semantics_surprise_only_overnight",
+        "event_calendar_binding_id": "calendar_binding_xnys_overnight_v1",
+        "jump_observation_binding_id": "jump_obs_xnys_overnight_v1",
+        "gap_observation_binding_id": "gap_obs_xnys_overnight_v1",
+        "candidate_selection_policy_id": "deterministic_candidate_ranked.v1",
+        "candidate_selection_rank": 0
+      },
+      "issue_traceability": {
+        "issue_id": "JAN-140",
+        "semantic_focus_tags": [
+          "surprise_only",
+          "closed_gap",
+          "activity_coupling"
+        ]
+      },
       "calendar_fixture_set_id": "calendar_service_regression_matrix_v1",
       "calendar_state_fixture_references": [
         "xnys_regular_at_close",
@@ -146,26 +193,30 @@
       "range_end_utc": "2024-03-18T13:30:00Z",
       "initial_accumulator_state": {
         "j_t": 0.0,
+        "m_t": 0.0,
         "g_t": 0.0
       },
       "injected_events": [
         {
           "event_id": "event_0",
           "timestamp_utc": "2024-03-15T21:15:00Z",
+          "news_arrival_component": "surprise",
           "shared_severity_mark": 0.5,
-          "coupled_gap_jump_mark": -0.41
+          "coupled_return_jump_mark": -0.41
         },
         {
           "event_id": "event_1",
           "timestamp_utc": "2024-03-18T11:00:00Z",
+          "news_arrival_component": "surprise",
           "shared_severity_mark": 0.9,
-          "coupled_gap_jump_mark": 0.22
+          "coupled_return_jump_mark": 0.22
         },
         {
           "event_id": "event_2",
           "timestamp_utc": "2024-03-18T14:00:00Z",
+          "news_arrival_component": "surprise",
           "shared_severity_mark": 0.4,
-          "coupled_gap_jump_mark": -0.18
+          "coupled_return_jump_mark": -0.18
         }
       ],
       "expected_outcome": {
@@ -173,31 +224,35 @@
           {
             "event_id": "event_0",
             "expected_market_state": "closed",
-            "expected_j_t_increment": 0.5,
-            "expected_g_t_increment": -0.41,
-            "expected_direct_gap_applied": true
+            "expected_activity_coupling_j_t_increment": 0.5,
+            "expected_open_jump_m_t_increment": 0.0,
+            "expected_closed_gap_g_t_increment": -0.41,
+            "expected_trading_return_increment": 0.0
           },
           {
             "event_id": "event_1",
             "expected_market_state": "closed",
-            "expected_j_t_increment": 0.9,
-            "expected_g_t_increment": 0.22,
-            "expected_direct_gap_applied": true
+            "expected_activity_coupling_j_t_increment": 0.9,
+            "expected_open_jump_m_t_increment": 0.0,
+            "expected_closed_gap_g_t_increment": 0.22,
+            "expected_trading_return_increment": 0.0
           },
           {
             "event_id": "event_2",
             "expected_market_state": "open",
-            "expected_j_t_increment": 0.4,
-            "expected_g_t_increment": 0.0,
-            "expected_direct_gap_applied": false
+            "expected_activity_coupling_j_t_increment": 0.4,
+            "expected_open_jump_m_t_increment": -0.18,
+            "expected_closed_gap_g_t_increment": 0.0,
+            "expected_trading_return_increment": 0.0
           }
         ],
         "summary": {
           "expected_open_event_count": 1,
           "expected_closed_event_count": 2,
-          "expected_total_j_t_increment": 1.8,
-          "expected_total_g_t_increment": -0.19,
-          "expected_open_window_direct_gap_increment_count": 0
+          "expected_total_activity_coupling_j_t_increment": 1.8,
+          "expected_total_open_jump_m_t_increment": -0.18,
+          "expected_total_closed_gap_g_t_increment": -0.19,
+          "expected_total_trading_return_increment": 0.0
         }
       },
       "tags": [
@@ -206,11 +261,28 @@
         "deterministic",
         "overnight"
       ],
-      "description": "Closed overnight events emit explicit gap increments while the open-session event only affects J_t."
+      "description": "Surprise-news overnight scenario realizes coupled jump marks in G_t while keeping open-window routing in M_t."
     },
     {
       "fixture_id": "xtks_weekend_closed_window_gap_emission",
       "exchange_code": "XTKS",
+      "scenario_class": "surprise_only",
+      "deterministic_replay_metadata": {
+        "replay_baseline_id": "gap_news_semantics_surprise_only_weekend",
+        "event_calendar_binding_id": "calendar_binding_xtks_weekend_v1",
+        "jump_observation_binding_id": "jump_obs_xtks_weekend_v1",
+        "gap_observation_binding_id": "gap_obs_xtks_weekend_v1",
+        "candidate_selection_policy_id": "deterministic_candidate_ranked.v1",
+        "candidate_selection_rank": 0
+      },
+      "issue_traceability": {
+        "issue_id": "JAN-140",
+        "semantic_focus_tags": [
+          "surprise_only",
+          "closed_gap",
+          "weekend"
+        ]
+      },
       "calendar_fixture_set_id": "calendar_service_regression_matrix_v1",
       "calendar_state_fixture_references": [
         "xnys_weekend_sunday",
@@ -221,20 +293,23 @@
       "range_end_utc": "2024-03-25T00:00:00Z",
       "initial_accumulator_state": {
         "j_t": 0.2,
+        "m_t": 0.1,
         "g_t": 0.1
       },
       "injected_events": [
         {
           "event_id": "event_0",
           "timestamp_utc": "2024-03-23T03:00:00Z",
+          "news_arrival_component": "surprise",
           "shared_severity_mark": 0.6,
-          "coupled_gap_jump_mark": -0.12
+          "coupled_return_jump_mark": -0.12
         },
         {
           "event_id": "event_1",
           "timestamp_utc": "2024-03-24T11:00:00Z",
+          "news_arrival_component": "surprise",
           "shared_severity_mark": 1.2,
-          "coupled_gap_jump_mark": -0.38
+          "coupled_return_jump_mark": -0.38
         }
       ],
       "expected_outcome": {
@@ -242,24 +317,27 @@
           {
             "event_id": "event_0",
             "expected_market_state": "closed",
-            "expected_j_t_increment": 0.6,
-            "expected_g_t_increment": -0.12,
-            "expected_direct_gap_applied": true
+            "expected_activity_coupling_j_t_increment": 0.6,
+            "expected_open_jump_m_t_increment": 0.0,
+            "expected_closed_gap_g_t_increment": -0.12,
+            "expected_trading_return_increment": 0.0
           },
           {
             "event_id": "event_1",
             "expected_market_state": "closed",
-            "expected_j_t_increment": 1.2,
-            "expected_g_t_increment": -0.38,
-            "expected_direct_gap_applied": true
+            "expected_activity_coupling_j_t_increment": 1.2,
+            "expected_open_jump_m_t_increment": 0.0,
+            "expected_closed_gap_g_t_increment": -0.38,
+            "expected_trading_return_increment": 0.0
           }
         ],
         "summary": {
           "expected_open_event_count": 0,
           "expected_closed_event_count": 2,
-          "expected_total_j_t_increment": 1.8,
-          "expected_total_g_t_increment": -0.5,
-          "expected_open_window_direct_gap_increment_count": 0
+          "expected_total_activity_coupling_j_t_increment": 1.8,
+          "expected_total_open_jump_m_t_increment": 0.0,
+          "expected_total_closed_gap_g_t_increment": -0.5,
+          "expected_total_trading_return_increment": 0.0
         }
       },
       "tags": [
@@ -267,11 +345,29 @@
         "deterministic",
         "weekend"
       ],
-      "description": "Weekend closed-window events on XTKS emit direct gap increments and shared severity loads."
+      "description": "Weekend closed-window surprise events emit closed-gap increments and shared activity updates."
     },
     {
       "fixture_id": "xnys_overnight_close_open_boundary_transition",
       "exchange_code": "XNYS",
+      "scenario_class": "mixed_news",
+      "deterministic_replay_metadata": {
+        "replay_baseline_id": "gap_news_semantics_mixed_boundary_overnight",
+        "event_calendar_binding_id": "calendar_binding_xnys_boundary_overnight_v1",
+        "jump_observation_binding_id": "jump_obs_xnys_boundary_overnight_v1",
+        "gap_observation_binding_id": "gap_obs_xnys_boundary_overnight_v1",
+        "candidate_selection_policy_id": "deterministic_candidate_ranked.v1",
+        "candidate_selection_rank": 0
+      },
+      "issue_traceability": {
+        "issue_id": "JAN-140",
+        "semantic_focus_tags": [
+          "mixed_news",
+          "boundary",
+          "open_jump",
+          "closed_gap"
+        ]
+      },
       "calendar_fixture_set_id": "calendar_service_regression_matrix_v1",
       "calendar_state_fixture_references": [
         "xnys_regular_mid_session",
@@ -283,44 +379,51 @@
       "range_end_utc": "2026-02-06T14:30:01Z",
       "initial_accumulator_state": {
         "j_t": 0.3,
+        "m_t": 0.0,
         "g_t": -0.05
       },
       "injected_events": [
         {
           "event_id": "event_pre_close",
           "timestamp_utc": "2026-02-05T20:59:59Z",
+          "news_arrival_component": "known",
           "shared_severity_mark": 0.45,
-          "coupled_gap_jump_mark": -0.11
+          "coupled_return_jump_mark": -0.11
         },
         {
           "event_id": "event_at_close",
           "timestamp_utc": "2026-02-05T21:00:00Z",
+          "news_arrival_component": "surprise",
           "shared_severity_mark": 0.6,
-          "coupled_gap_jump_mark": -0.27
+          "coupled_return_jump_mark": -0.27
         },
         {
           "event_id": "event_post_close",
           "timestamp_utc": "2026-02-05T21:00:01Z",
+          "news_arrival_component": "known",
           "shared_severity_mark": 0.25,
-          "coupled_gap_jump_mark": 0.14
+          "coupled_return_jump_mark": 0.14
         },
         {
           "event_id": "event_pre_open",
           "timestamp_utc": "2026-02-06T14:29:59Z",
+          "news_arrival_component": "surprise",
           "shared_severity_mark": 0.8,
-          "coupled_gap_jump_mark": -0.31
+          "coupled_return_jump_mark": -0.31
         },
         {
           "event_id": "event_at_open",
           "timestamp_utc": "2026-02-06T14:30:00Z",
+          "news_arrival_component": "known",
           "shared_severity_mark": 0.5,
-          "coupled_gap_jump_mark": 0.2
+          "coupled_return_jump_mark": 0.2
         },
         {
           "event_id": "event_post_open",
           "timestamp_utc": "2026-02-06T14:30:01Z",
+          "news_arrival_component": "surprise",
           "shared_severity_mark": 0.3,
-          "coupled_gap_jump_mark": -0.09
+          "coupled_return_jump_mark": -0.09
         }
       ],
       "expected_outcome": {
@@ -328,52 +431,59 @@
           {
             "event_id": "event_pre_close",
             "expected_market_state": "open",
-            "expected_j_t_increment": 0.45,
-            "expected_g_t_increment": 0.0,
-            "expected_direct_gap_applied": false
+            "expected_activity_coupling_j_t_increment": 0.45,
+            "expected_open_jump_m_t_increment": -0.11,
+            "expected_closed_gap_g_t_increment": 0.0,
+            "expected_trading_return_increment": 0.0
           },
           {
             "event_id": "event_at_close",
             "expected_market_state": "closed",
-            "expected_j_t_increment": 0.6,
-            "expected_g_t_increment": -0.27,
-            "expected_direct_gap_applied": true
+            "expected_activity_coupling_j_t_increment": 0.6,
+            "expected_open_jump_m_t_increment": 0.0,
+            "expected_closed_gap_g_t_increment": -0.27,
+            "expected_trading_return_increment": 0.0
           },
           {
             "event_id": "event_post_close",
             "expected_market_state": "closed",
-            "expected_j_t_increment": 0.25,
-            "expected_g_t_increment": 0.14,
-            "expected_direct_gap_applied": true
+            "expected_activity_coupling_j_t_increment": 0.25,
+            "expected_open_jump_m_t_increment": 0.0,
+            "expected_closed_gap_g_t_increment": 0.14,
+            "expected_trading_return_increment": 0.0
           },
           {
             "event_id": "event_pre_open",
             "expected_market_state": "closed",
-            "expected_j_t_increment": 0.8,
-            "expected_g_t_increment": -0.31,
-            "expected_direct_gap_applied": true
+            "expected_activity_coupling_j_t_increment": 0.8,
+            "expected_open_jump_m_t_increment": 0.0,
+            "expected_closed_gap_g_t_increment": -0.31,
+            "expected_trading_return_increment": 0.0
           },
           {
             "event_id": "event_at_open",
             "expected_market_state": "open",
-            "expected_j_t_increment": 0.5,
-            "expected_g_t_increment": 0.0,
-            "expected_direct_gap_applied": false
+            "expected_activity_coupling_j_t_increment": 0.5,
+            "expected_open_jump_m_t_increment": 0.2,
+            "expected_closed_gap_g_t_increment": 0.0,
+            "expected_trading_return_increment": 0.0
           },
           {
             "event_id": "event_post_open",
             "expected_market_state": "open",
-            "expected_j_t_increment": 0.3,
-            "expected_g_t_increment": 0.0,
-            "expected_direct_gap_applied": false
+            "expected_activity_coupling_j_t_increment": 0.3,
+            "expected_open_jump_m_t_increment": -0.09,
+            "expected_closed_gap_g_t_increment": 0.0,
+            "expected_trading_return_increment": 0.0
           }
         ],
         "summary": {
           "expected_open_event_count": 3,
           "expected_closed_event_count": 3,
-          "expected_total_j_t_increment": 2.9,
-          "expected_total_g_t_increment": -0.44,
-          "expected_open_window_direct_gap_increment_count": 0
+          "expected_total_activity_coupling_j_t_increment": 2.9,
+          "expected_total_open_jump_m_t_increment": 0.0,
+          "expected_total_closed_gap_g_t_increment": -0.44,
+          "expected_total_trading_return_increment": 0.0
         }
       },
       "tags": [
@@ -385,11 +495,30 @@
         "session_edge",
         "exact_transition"
       ],
-      "description": "Boundary-adjacent overnight case with pre, at, and post session-close and session-open events following open-inclusive close-exclusive calendar semantics."
+      "description": "Mixed-news boundary overnight case verifies close-open transitions for open-jump and closed-gap routing."
     },
     {
       "fixture_id": "xnys_weekend_close_open_boundary_transition",
       "exchange_code": "XNYS",
+      "scenario_class": "mixed_news",
+      "deterministic_replay_metadata": {
+        "replay_baseline_id": "gap_news_semantics_mixed_boundary_weekend",
+        "event_calendar_binding_id": "calendar_binding_xnys_boundary_weekend_v1",
+        "jump_observation_binding_id": "jump_obs_xnys_boundary_weekend_v1",
+        "gap_observation_binding_id": "gap_obs_xnys_boundary_weekend_v1",
+        "candidate_selection_policy_id": "deterministic_candidate_ranked.v1",
+        "candidate_selection_rank": 0
+      },
+      "issue_traceability": {
+        "issue_id": "JAN-140",
+        "semantic_focus_tags": [
+          "mixed_news",
+          "boundary",
+          "weekend",
+          "open_jump",
+          "closed_gap"
+        ]
+      },
       "calendar_fixture_set_id": "calendar_service_regression_matrix_v1",
       "calendar_state_fixture_references": [
         "xnys_regular_mid_session",
@@ -402,50 +531,58 @@
       "range_end_utc": "2026-02-02T14:30:01Z",
       "initial_accumulator_state": {
         "j_t": 0.0,
+        "m_t": 0.0,
         "g_t": 0.0
       },
       "injected_events": [
         {
           "event_id": "event_pre_close",
           "timestamp_utc": "2026-01-30T20:59:59Z",
+          "news_arrival_component": "known",
           "shared_severity_mark": 0.3,
-          "coupled_gap_jump_mark": 0.08
+          "coupled_return_jump_mark": 0.08
         },
         {
           "event_id": "event_at_close",
           "timestamp_utc": "2026-01-30T21:00:00Z",
+          "news_arrival_component": "surprise",
           "shared_severity_mark": 0.55,
-          "coupled_gap_jump_mark": -0.24
+          "coupled_return_jump_mark": -0.24
         },
         {
           "event_id": "event_saturday_mid_window",
           "timestamp_utc": "2026-01-31T15:00:00Z",
+          "news_arrival_component": "known",
           "shared_severity_mark": 0.7,
-          "coupled_gap_jump_mark": 0.18
+          "coupled_return_jump_mark": 0.18
         },
         {
           "event_id": "event_sunday_mid_window",
           "timestamp_utc": "2026-02-01T03:00:00Z",
+          "news_arrival_component": "surprise",
           "shared_severity_mark": 0.9,
-          "coupled_gap_jump_mark": -0.33
+          "coupled_return_jump_mark": -0.33
         },
         {
           "event_id": "event_pre_open",
           "timestamp_utc": "2026-02-02T14:29:59Z",
+          "news_arrival_component": "surprise",
           "shared_severity_mark": 0.4,
-          "coupled_gap_jump_mark": 0.22
+          "coupled_return_jump_mark": 0.22
         },
         {
           "event_id": "event_at_open",
           "timestamp_utc": "2026-02-02T14:30:00Z",
+          "news_arrival_component": "known",
           "shared_severity_mark": 0.5,
-          "coupled_gap_jump_mark": -0.19
+          "coupled_return_jump_mark": -0.19
         },
         {
           "event_id": "event_post_open",
           "timestamp_utc": "2026-02-02T14:30:01Z",
+          "news_arrival_component": "surprise",
           "shared_severity_mark": 0.2,
-          "coupled_gap_jump_mark": 0.11
+          "coupled_return_jump_mark": 0.11
         }
       ],
       "expected_outcome": {
@@ -453,59 +590,67 @@
           {
             "event_id": "event_pre_close",
             "expected_market_state": "open",
-            "expected_j_t_increment": 0.3,
-            "expected_g_t_increment": 0.0,
-            "expected_direct_gap_applied": false
+            "expected_activity_coupling_j_t_increment": 0.3,
+            "expected_open_jump_m_t_increment": 0.08,
+            "expected_closed_gap_g_t_increment": 0.0,
+            "expected_trading_return_increment": 0.0
           },
           {
             "event_id": "event_at_close",
             "expected_market_state": "closed",
-            "expected_j_t_increment": 0.55,
-            "expected_g_t_increment": -0.24,
-            "expected_direct_gap_applied": true
+            "expected_activity_coupling_j_t_increment": 0.55,
+            "expected_open_jump_m_t_increment": 0.0,
+            "expected_closed_gap_g_t_increment": -0.24,
+            "expected_trading_return_increment": 0.0
           },
           {
             "event_id": "event_saturday_mid_window",
             "expected_market_state": "closed",
-            "expected_j_t_increment": 0.7,
-            "expected_g_t_increment": 0.18,
-            "expected_direct_gap_applied": true
+            "expected_activity_coupling_j_t_increment": 0.7,
+            "expected_open_jump_m_t_increment": 0.0,
+            "expected_closed_gap_g_t_increment": 0.18,
+            "expected_trading_return_increment": 0.0
           },
           {
             "event_id": "event_sunday_mid_window",
             "expected_market_state": "closed",
-            "expected_j_t_increment": 0.9,
-            "expected_g_t_increment": -0.33,
-            "expected_direct_gap_applied": true
+            "expected_activity_coupling_j_t_increment": 0.9,
+            "expected_open_jump_m_t_increment": 0.0,
+            "expected_closed_gap_g_t_increment": -0.33,
+            "expected_trading_return_increment": 0.0
           },
           {
             "event_id": "event_pre_open",
             "expected_market_state": "closed",
-            "expected_j_t_increment": 0.4,
-            "expected_g_t_increment": 0.22,
-            "expected_direct_gap_applied": true
+            "expected_activity_coupling_j_t_increment": 0.4,
+            "expected_open_jump_m_t_increment": 0.0,
+            "expected_closed_gap_g_t_increment": 0.22,
+            "expected_trading_return_increment": 0.0
           },
           {
             "event_id": "event_at_open",
             "expected_market_state": "open",
-            "expected_j_t_increment": 0.5,
-            "expected_g_t_increment": 0.0,
-            "expected_direct_gap_applied": false
+            "expected_activity_coupling_j_t_increment": 0.5,
+            "expected_open_jump_m_t_increment": -0.19,
+            "expected_closed_gap_g_t_increment": 0.0,
+            "expected_trading_return_increment": 0.0
           },
           {
             "event_id": "event_post_open",
             "expected_market_state": "open",
-            "expected_j_t_increment": 0.2,
-            "expected_g_t_increment": 0.0,
-            "expected_direct_gap_applied": false
+            "expected_activity_coupling_j_t_increment": 0.2,
+            "expected_open_jump_m_t_increment": 0.11,
+            "expected_closed_gap_g_t_increment": 0.0,
+            "expected_trading_return_increment": 0.0
           }
         ],
         "summary": {
           "expected_open_event_count": 3,
           "expected_closed_event_count": 4,
-          "expected_total_j_t_increment": 3.55,
-          "expected_total_g_t_increment": -0.17,
-          "expected_open_window_direct_gap_increment_count": 0
+          "expected_total_activity_coupling_j_t_increment": 3.55,
+          "expected_total_open_jump_m_t_increment": 0.0,
+          "expected_total_closed_gap_g_t_increment": -0.17,
+          "expected_total_trading_return_increment": 0.0
         }
       },
       "tags": [
@@ -517,7 +662,7 @@
         "session_edge",
         "exact_transition"
       ],
-      "description": "Weekend boundary case keeps the market closed from Friday close through weekend and Monday pre-open, then switches to open at the exact Monday session-open timestamp."
+      "description": "Weekend mixed-news boundary scenario validates closed-gap realization and open-jump routing across the Monday open boundary."
     }
   ]
 }

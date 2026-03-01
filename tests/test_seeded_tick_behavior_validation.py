@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from math import log
-from typing import TypedDict, cast
+from typing import Any, TypedDict, cast
 
 from janiform import (
     HourlyNewsIntensityProviderExplicitSource,
@@ -164,7 +164,7 @@ def _compute_batch_clustering_metrics(
     *,
     calendar_registry,
     seed_values: list[int],
-    kernel_parameters: dict[str, object],
+    kernel_parameters: dict[str, Any],
     horizon_interval_count: int,
     seasonality_factor: float,
     news_intensity: float,
@@ -183,7 +183,7 @@ def _compute_batch_clustering_metrics(
             news_intensity=news_intensity,
         )
 
-        event_tape = cast(list[dict[str, object]], payload["event_tape"])
+        event_tape = cast(list[dict[str, Any]], payload["event_tape"])
 
         interval_event_counts = _collect_interval_event_counts(
             event_tape=event_tape,
@@ -207,7 +207,7 @@ def _compute_batch_asymmetry_metrics(
     *,
     calendar_registry,
     seed_values: list[int],
-    kernel_parameters: dict[str, object],
+    kernel_parameters: dict[str, Any],
     horizon_interval_count: int,
     seasonality_factor: float,
     news_intensity: float,
@@ -225,7 +225,7 @@ def _compute_batch_asymmetry_metrics(
             news_intensity=news_intensity,
         )
 
-        event_tape = cast(list[dict[str, object]], payload["event_tape"])
+        event_tape = cast(list[dict[str, Any]], payload["event_tape"])
 
         buy_event_count = sum(1 for event_record in event_tape if cast(str, event_record["side"]) == "buy")
         sell_event_count = sum(
@@ -250,11 +250,11 @@ def _run_seeded_case(
     *,
     calendar_registry,
     seed: int,
-    kernel_parameters: dict[str, object],
+    kernel_parameters: dict[str, Any],
     horizon_interval_count: int,
     seasonality_factor: float,
     news_intensity: float,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     range_end_utc = START_TIME_UTC + timedelta(hours=horizon_interval_count)
     hourly_factor_contract = load_hourly_factor_contract_for_simulation(
         calendar_registry=calendar_registry,
@@ -288,7 +288,7 @@ def _run_seeded_case(
 
 def _collect_interval_event_counts(
     *,
-    event_tape: list[dict[str, object]],
+    event_tape: list[dict[str, Any]],
     horizon_interval_count: int,
 ) -> list[int]:
     interval_event_counts = [0] * horizon_interval_count
@@ -346,7 +346,7 @@ def _calculate_lag_one_autocorrelation(interval_event_counts: list[int]) -> floa
     return numerator / denominator
 
 
-def _has_non_grid_arrival(event_tape: list[dict[str, object]]) -> bool:
+def _has_non_grid_arrival(event_tape: list[dict[str, Any]]) -> bool:
     start_time_utc_seconds = int(START_TIME_UTC.timestamp())
     start_time_utc_nanos = start_time_utc_seconds * 1_000_000_000
 
@@ -365,7 +365,7 @@ def _mean(values: list[float]) -> float:
     return sum(values) / len(values)
 
 
-def _symmetric_kernel_parameters() -> dict[str, object]:
+def _symmetric_kernel_parameters() -> dict[str, Any]:
     return {
         "lambda_bar": 0.9,
         "beta": 1.6,
@@ -384,7 +384,7 @@ def _symmetric_kernel_parameters() -> dict[str, object]:
     }
 
 
-def _clustered_kernel_parameters() -> dict[str, object]:
+def _clustered_kernel_parameters() -> dict[str, Any]:
     return {
         "lambda_bar": 0.8,
         "beta": 1.2,
@@ -403,7 +403,7 @@ def _clustered_kernel_parameters() -> dict[str, object]:
     }
 
 
-def _sell_asymmetric_kernel_parameters() -> dict[str, object]:
+def _sell_asymmetric_kernel_parameters() -> dict[str, Any]:
     return {
         "lambda_bar": 0.8,
         "beta": 1.4,
