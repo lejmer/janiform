@@ -57,6 +57,31 @@ def test_risk_run_request_rejects_sub_hour_interval_without_compatible_factor_de
     assert "must match interval_delta exactly" in captured_error.value.failure.message
 
 
+def test_risk_run_request_rejects_non_negative_delta_beta_with_field_path() -> None:
+    request_payload = _valid_run_request_payload()
+    request_payload["model_inputs"]["nig_shared_plus_shift_configuration"]["delta_beta"] = 0.0
+
+    with pytest.raises(SufficientStatisticsRiskValidationError) as captured_error:
+        validate_sufficient_statistics_risk_run_request(request_payload)
+
+    assert (
+        captured_error.value.failure.field_path
+        == "model_inputs.nig_shared_plus_shift_configuration.delta_beta"
+    )
+    assert captured_error.value.failure.message == "must be strictly negative"
+
+
+def test_risk_run_request_accepts_negative_delta_beta_regression() -> None:
+    request_payload = _valid_run_request_payload()
+    request_payload["model_inputs"]["nig_shared_plus_shift_configuration"]["delta_beta"] = -0.12
+
+    validated_request = validate_sufficient_statistics_risk_run_request(request_payload)
+
+    assert validated_request["model_inputs"]["nig_shared_plus_shift_configuration"]["delta_beta"] == pytest.approx(
+        -0.12
+    )
+
+
 def test_risk_path_validation_and_serialization_roundtrip() -> None:
     path_payload = _valid_path_payload()
 
