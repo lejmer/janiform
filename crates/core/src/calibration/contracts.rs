@@ -9,6 +9,10 @@ pub const CALIBRATION_RUN_SPEC_SCHEMA_VERSION: &str = "calibration.orchestration
 pub const CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION: &str = "calibration.orchestration.stage_graph.v1";
 pub const CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION: &str =
     "calibration.orchestration.run_contract.v1";
+pub const CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION: &str =
+    "calibration.orchestration.staged_run.report.v1";
+pub const CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY: &str =
+    "mode_aware_failure_kind_and_checkpoint_context.v1";
 pub const CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY: &str =
     "capture_stage_solver_settings_per_run_contract.v1";
 pub const CALIBRATION_STAGE_SEED_DERIVATION_POLICY: &str =

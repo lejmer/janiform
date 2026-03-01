@@ -14,23 +14,25 @@ use super::contracts::{
     CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION, CALIBRATION_DISK_CHECKPOINT_WRITE_POLICY,
     CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION, CALIBRATION_RUN_SPEC_SCHEMA_VERSION,
     CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY, CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION,
-    CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION, CalibrationExecutionMode, CalibrationOptimizerSettings,
-    CalibrationResumeSource, CalibrationRunContract, CalibrationRunSpec, CalibrationStage,
-    CalibrationStageHandoffTransport, CalibrationStageSeedSource,
-    resolve_calibration_stage_execution_order,
+    CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION, CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY,
+    CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION, CalibrationExecutionMode,
+    CalibrationOptimizerSettings, CalibrationResumeSource, CalibrationRunContract,
+    CalibrationRunSpec, CalibrationStage, CalibrationStageHandoffTransport,
+    CalibrationStageSeedSource, resolve_calibration_stage_execution_order,
 };
 use super::stages::hawkes::{
-    HawkesStageCandidateInput, HawkesStageExecutionInput, HawkesStageExecutionReport,
-    HawkesStageSeasonalityInput, run_hawkes_calibration_stage,
+    HawkesStageCandidateInput, HawkesStageExecutionInput, HawkesStageExecutionMetadata,
+    HawkesStageExecutionReport, HawkesStageSeasonalityInput, run_hawkes_calibration_stage,
 };
 use super::stages::return_components::{
     ReturnComponentsStageActivityInput, ReturnComponentsStageCandidateGenerationInput,
-    ReturnComponentsStageExecutionInput, ReturnComponentsStageExecutionReport,
-    run_return_components_calibration_stage,
+    ReturnComponentsStageExecutionInput, ReturnComponentsStageExecutionMetadata,
+    ReturnComponentsStageExecutionReport, run_return_components_calibration_stage,
 };
 use super::stages::seasonality::{
     CalibrationStageExecutionStatus, SeasonalityStageExecutionInput,
-    SeasonalityStageExecutionReport, run_seasonality_calibration_stage,
+    SeasonalityStageExecutionMetadata, SeasonalityStageExecutionReport,
+    run_seasonality_calibration_stage,
 };
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct CalibrationStagedRunInputs {
@@ -62,6 +64,106 @@ struct CalibrationStageCheckpointComponents {
     stage_solver_settings: CalibrationOptimizerSettings,
 }
 
+trait CalibrationStageExecutionMetadataForCheckpoint {
+    fn stage_output_schema_version(&self) -> &'static str;
+    fn run_global_seed(&self) -> u64;
+    fn stage_seed(&self) -> u64;
+    fn stage_seed_source(&self) -> CalibrationStageSeedSource;
+    fn stage_seed_derivation_policy(&self) -> &'static str;
+    fn solver_settings(&self) -> &CalibrationOptimizerSettings;
+}
+
+impl CalibrationStageExecutionMetadataForCheckpoint for SeasonalityStageExecutionMetadata {
+    fn stage_output_schema_version(&self) -> &'static str {
+        self.stage_output_schema_version
+    }
+
+    fn run_global_seed(&self) -> u64 {
+        self.run_global_seed
+    }
+
+    fn stage_seed(&self) -> u64 {
+        self.stage_seed
+    }
+
+    fn stage_seed_source(&self) -> CalibrationStageSeedSource {
+        self.stage_seed_source
+    }
+
+    fn stage_seed_derivation_policy(&self) -> &'static str {
+        self.stage_seed_derivation_policy
+    }
+
+    fn solver_settings(&self) -> &CalibrationOptimizerSettings {
+        &self.solver_settings
+    }
+}
+
+impl CalibrationStageExecutionMetadataForCheckpoint for HawkesStageExecutionMetadata {
+    fn stage_output_schema_version(&self) -> &'static str {
+        self.stage_output_schema_version
+    }
+
+    fn run_global_seed(&self) -> u64 {
+        self.run_global_seed
+    }
+
+    fn stage_seed(&self) -> u64 {
+        self.stage_seed
+    }
+
+    fn stage_seed_source(&self) -> CalibrationStageSeedSource {
+        self.stage_seed_source
+    }
+
+    fn stage_seed_derivation_policy(&self) -> &'static str {
+        self.stage_seed_derivation_policy
+    }
+
+    fn solver_settings(&self) -> &CalibrationOptimizerSettings {
+        &self.solver_settings
+    }
+}
+
+impl CalibrationStageExecutionMetadataForCheckpoint for ReturnComponentsStageExecutionMetadata {
+    fn stage_output_schema_version(&self) -> &'static str {
+        self.stage_output_schema_version
+    }
+
+    fn run_global_seed(&self) -> u64 {
+        self.run_global_seed
+    }
+
+    fn stage_seed(&self) -> u64 {
+        self.stage_seed
+    }
+
+    fn stage_seed_source(&self) -> CalibrationStageSeedSource {
+        self.stage_seed_source
+    }
+
+    fn stage_seed_derivation_policy(&self) -> &'static str {
+        self.stage_seed_derivation_policy
+    }
+
+    fn solver_settings(&self) -> &CalibrationOptimizerSettings {
+        &self.solver_settings
+    }
+}
+
+fn checkpoint_components_from_metadata<M: CalibrationStageExecutionMetadataForCheckpoint>(
+    metadata: Option<&M>,
+) -> Option<CalibrationStageCheckpointComponents> {
+    metadata.map(|metadata| CalibrationStageCheckpointComponents {
+        stage_output_schema_version: metadata.stage_output_schema_version().to_string(),
+        run_global_seed: metadata.run_global_seed(),
+        stage_seed: metadata.stage_seed(),
+        stage_seed_source: metadata.stage_seed_source(),
+        stage_seed_derivation_policy: metadata.stage_seed_derivation_policy(),
+        stage_solver_settings: metadata.solver_settings().clone(),
+    })
+}
+
 impl CalibrationStagedRunStageReport {
     const fn stage(&self) -> CalibrationStage {
         match self {
@@ -82,50 +184,14 @@ impl CalibrationStagedRunStageReport {
     fn checkpoint_components(&self) -> Option<CalibrationStageCheckpointComponents> {
         match self {
             Self::Seasonality(report) => {
-                report
-                    .metadata
-                    .as_ref()
-                    .map(|metadata| CalibrationStageCheckpointComponents {
-                        stage_output_schema_version: metadata
-                            .stage_output_schema_version
-                            .to_string(),
-                        run_global_seed: metadata.run_global_seed,
-                        stage_seed: metadata.stage_seed,
-                        stage_seed_source: metadata.stage_seed_source,
-                        stage_seed_derivation_policy: metadata.stage_seed_derivation_policy,
-                        stage_solver_settings: metadata.solver_settings.clone(),
-                    })
-            }
+                checkpoint_components_from_metadata(report.metadata.as_ref())
+            },
             Self::Hawkes(report) => {
-                report
-                    .metadata
-                    .as_ref()
-                    .map(|metadata| CalibrationStageCheckpointComponents {
-                        stage_output_schema_version: metadata
-                            .stage_output_schema_version
-                            .to_string(),
-                        run_global_seed: metadata.run_global_seed,
-                        stage_seed: metadata.stage_seed,
-                        stage_seed_source: metadata.stage_seed_source,
-                        stage_seed_derivation_policy: metadata.stage_seed_derivation_policy,
-                        stage_solver_settings: metadata.solver_settings.clone(),
-                    })
-            }
+                checkpoint_components_from_metadata(report.metadata.as_ref())
+            },
             Self::ReturnComponents(report) => {
-                report
-                    .metadata
-                    .as_ref()
-                    .map(|metadata| CalibrationStageCheckpointComponents {
-                        stage_output_schema_version: metadata
-                            .stage_output_schema_version
-                            .to_string(),
-                        run_global_seed: metadata.run_global_seed,
-                        stage_seed: metadata.stage_seed,
-                        stage_seed_source: metadata.stage_seed_source,
-                        stage_seed_derivation_policy: metadata.stage_seed_derivation_policy,
-                        stage_solver_settings: metadata.solver_settings.clone(),
-                    })
-            }
+                checkpoint_components_from_metadata(report.metadata.as_ref())
+            },
         }
     }
 }
@@ -174,6 +240,8 @@ pub enum CalibrationStagedRunFailure {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CalibrationStagedRunReport {
+    pub schema_version: &'static str,
+    pub failure_triage_policy: &'static str,
     pub run_id: String,
     pub execution_mode: CalibrationExecutionMode,
     pub status: CalibrationStageExecutionStatus,
@@ -413,6 +481,8 @@ pub fn run_staged_calibration_with_checkpointing(
 
     if start_position >= execution_stage_order.len() {
         return CalibrationStagedRunReport {
+            schema_version: CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,
+            failure_triage_policy: CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY,
             run_id: run_spec.run_id.clone(),
             execution_mode: run_spec.execution_mode,
             status: CalibrationStageExecutionStatus::Success,
@@ -526,6 +596,8 @@ pub fn run_staged_calibration_with_checkpointing(
     }
 
     CalibrationStagedRunReport {
+        schema_version: CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,
+        failure_triage_policy: CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY,
         run_id: run_spec.run_id.clone(),
         execution_mode: run_spec.execution_mode,
         status: CalibrationStageExecutionStatus::Success,
@@ -811,6 +883,8 @@ fn build_staged_run_failure_report(
     failure: CalibrationStagedRunFailure,
 ) -> CalibrationStagedRunReport {
     CalibrationStagedRunReport {
+        schema_version: CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,
+        failure_triage_policy: CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY,
         run_id: run_contract.run_spec.run_id.clone(),
         execution_mode: run_contract.run_spec.execution_mode,
         status: CalibrationStageExecutionStatus::Failure,

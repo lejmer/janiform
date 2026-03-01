@@ -1,0 +1,138 @@
+{
+  "schema_version": "calibration.orchestration.failure_playbook.v1",
+  "triage_policy": "mode_aware_failure_kind_and_checkpoint_context.v1",
+  "entries": [
+    {
+      "failure_kind": "invalid_run_contract",
+      "triage_steps": [
+        "Validate run contract schema versions and resolved execution order",
+        "Confirm run contract was rebuilt from current run spec and stage graph"
+      ],
+      "remediation_steps": [
+        "Rebuild run contract",
+        "Rerun with rebuilt contract"
+      ]
+    },
+    {
+      "failure_kind": "missing_memory_checkpoint_store",
+      "triage_steps": [
+        "Confirm execution_mode is memory",
+        "Confirm resume source is same_process"
+      ],
+      "remediation_steps": [
+        "Provide CalibrationMemoryCheckpointStore",
+        "Switch to execution_mode=disk for cross-process resume"
+      ]
+    },
+    {
+      "failure_kind": "missing_disk_checkpoint_directory",
+      "triage_steps": [
+        "Confirm execution_mode is disk",
+        "Confirm disk checkpoint directory argument is set"
+      ],
+      "remediation_steps": [
+        "Provide writable checkpoint directory",
+        "Rerun from checkpoint or from start"
+      ]
+    },
+    {
+      "failure_kind": "missing_resume_checkpoint_for_run",
+      "triage_steps": [
+        "Check in-memory store for run_id checkpoints",
+        "Confirm prior run emitted successful checkpoint metadata"
+      ],
+      "remediation_steps": [
+        "Run non-resume path to seed checkpoints",
+        "Retry same-process resume"
+      ]
+    },
+    {
+      "failure_kind": "missing_stage_input",
+      "triage_steps": [
+        "Identify missing stage from failure payload",
+        "Check staged input payload map for that stage"
+      ],
+      "remediation_steps": [
+        "Provide missing stage input",
+        "Resume from last successful stage if possible"
+      ]
+    },
+    {
+      "failure_kind": "missing_in_memory_upstream_payload",
+      "triage_steps": [
+        "Confirm in-memory handoff route for failing stage edge",
+        "Confirm upstream stage executed in current process"
+      ],
+      "remediation_steps": [
+        "Run upstream stage in same process",
+        "Use persisted artifact handoff in disk mode when cross-process is required"
+      ]
+    },
+    {
+      "failure_kind": "invalid_checkpoint_reference",
+      "triage_steps": [
+        "Validate checkpoint URI format",
+        "Confirm stage token or last-success token is valid"
+      ],
+      "remediation_steps": [
+        "Correct checkpoint reference",
+        "Retry resume"
+      ]
+    },
+    {
+      "failure_kind": "checkpoint_load_failed",
+      "triage_steps": [
+        "Check checkpoint file existence at resolved location",
+        "Check file permissions and corruption status"
+      ],
+      "remediation_steps": [
+        "Restore or replace missing checkpoint artifact",
+        "Rerun from start if checkpoint is unavailable"
+      ]
+    },
+    {
+      "failure_kind": "checkpoint_compatibility_failed",
+      "triage_steps": [
+        "Compare run_id, execution_mode, stage order, and schema versions",
+        "Confirm resume_from_stage belongs to execution order"
+      ],
+      "remediation_steps": [
+        "Use checkpoint from compatible run contract",
+        "Use same_process resume only for memory and persisted reference only for disk"
+      ]
+    },
+    {
+      "failure_kind": "checkpoint_persist_failed",
+      "triage_steps": [
+        "Check checkpoint directory write permission and capacity",
+        "Check atomic rename behavior of target filesystem"
+      ],
+      "remediation_steps": [
+        "Fix filesystem permissions or storage limits",
+        "Resume from last successful checkpoint after fix"
+      ]
+    },
+    {
+      "failure_kind": "missing_checkpoint_metadata_for_successful_stage",
+      "triage_steps": [
+        "Inspect successful stage report metadata payload",
+        "Confirm seed and solver metadata are present"
+      ],
+      "remediation_steps": [
+        "Fix stage metadata emission contract",
+        "Re-run pipeline after patch"
+      ]
+    },
+    {
+      "failure_kind": "stage_execution_failed",
+      "triage_steps": [
+        "Inspect failing stage identifier",
+        "Inspect stage-specific failure payload inside stage reports"
+      ],
+      "remediation_steps": [
+        "Apply stage-specific remediation",
+        "Resume in memory mode via same_process or in disk mode via persisted checkpoint"
+      ]
+    }
+  ]
+}
