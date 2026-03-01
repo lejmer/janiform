@@ -185,13 +185,11 @@ impl CalibrationStagedRunStageReport {
         match self {
             Self::Seasonality(report) => {
                 checkpoint_components_from_metadata(report.metadata.as_ref())
-            },
-            Self::Hawkes(report) => {
-                checkpoint_components_from_metadata(report.metadata.as_ref())
-            },
+            }
+            Self::Hawkes(report) => checkpoint_components_from_metadata(report.metadata.as_ref()),
             Self::ReturnComponents(report) => {
                 checkpoint_components_from_metadata(report.metadata.as_ref())
-            },
+            }
         }
     }
 }

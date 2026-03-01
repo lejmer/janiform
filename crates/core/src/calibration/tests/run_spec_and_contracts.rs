@@ -245,8 +245,8 @@ fn calibration_run_spec_mode_extensions_support_valid_memory_and_disk_configurat
 }
 
 #[test]
-fn calibration_run_spec_rejects_mode_incompatible_option_settings_with_deterministic_classification(
-) {
+fn calibration_run_spec_rejects_mode_incompatible_option_settings_with_deterministic_classification()
+ {
     let memory_with_persisted_handoff = CalibrationRunSpec::builder(
         "run-invalid-memory-handoff",
         build_data_inputs(),
@@ -255,12 +255,14 @@ fn calibration_run_spec_rejects_mode_incompatible_option_settings_with_determini
         build_seed_settings(),
         build_solver_settings_for_seasonality_and_hawkes(),
     )
-    .with_stage_handoffs(vec![CalibrationStageHandoff::persisted_artifact_reference(
-        CalibrationStage::Seasonality,
-        CalibrationStage::Hawkes,
-        "artifact://seasonality/stage-001",
-    )
-    .expect("persisted handoff fixture should be valid")])
+    .with_stage_handoffs(vec![
+        CalibrationStageHandoff::persisted_artifact_reference(
+            CalibrationStage::Seasonality,
+            CalibrationStage::Hawkes,
+            "artifact://seasonality/stage-001",
+        )
+        .expect("persisted handoff fixture should be valid"),
+    ])
     .build()
     .expect_err("memory mode must reject persisted artifact handoff");
 
