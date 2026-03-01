@@ -1,4 +1,4 @@
-## ISSUE-006: Horizon Aware Comparison Engine And Delta Reports
+## Horizon Aware Comparison Engine And Delta Reports
 
 ### Description
 Build comparison engine that aligns empirical and simulated diagnostics across horizons and computes delta reports with pass or fail signaling.

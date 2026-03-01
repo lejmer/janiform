@@ -1,4 +1,4 @@
-## ISSUE-001: Stylized Fact Metric Catalog And Schema
+## Stylized Fact Metric Catalog And Schema
 
 ### Description
 Define the canonical metric catalog and schema for stylized-fact diagnostics across activity clustering, tails, skew, volatility persistence, open-window direct-jump behavior, and closed-window gap behavior.
