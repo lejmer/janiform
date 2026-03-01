@@ -2,8 +2,6 @@ use chrono::{DateTime, Utc};
 
 use crate::calendar::ExchangeCalendarRegistryLoader;
 use crate::hourly_factors::{
-    build_hourly_factor_contract, materialize_hourly_news_intensity_factors,
-    materialize_hourly_seasonality_factors, HourlyFactorContractError,
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_KNOWN_NEWS_CALENDAR_ANCHOR_POLICY,
     DEFAULT_NEWS_INTENSITY_COMPONENT_AGGREGATION_POLICY,
     DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD, DEFAULT_SURPRISE_NEWS_INTENSITY_CONTROL_POLICY,
@@ -11,7 +9,9 @@ use crate::hourly_factors::{
     HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY, HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
     HOURLY_FACTOR_SPRING_FORWARD_POLICY, HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
     HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
-    HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION,
+    HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION, HourlyFactorContractError,
+    build_hourly_factor_contract, materialize_hourly_news_intensity_factors,
+    materialize_hourly_seasonality_factors,
 };
 
 #[test]

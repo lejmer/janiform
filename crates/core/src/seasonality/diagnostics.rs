@@ -4,7 +4,9 @@ use std::fmt::{Display, Formatter};
 
 use serde::Serialize;
 
-use super::calendar_buckets::{DayOfWeekSeasonalityEstimateOutput, DayOfYearSeasonalityEstimateOutput};
+use super::calendar_buckets::{
+    DayOfWeekSeasonalityEstimateOutput, DayOfYearSeasonalityEstimateOutput,
+};
 use super::composition::DeterministicSeasonalityCompositionOutput;
 use super::intraday::IntradaySeasonalityEstimateOutput;
 use super::{

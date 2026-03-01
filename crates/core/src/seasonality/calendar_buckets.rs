@@ -3,8 +3,8 @@ use std::fmt::{Display, Formatter};
 
 use super::discrete::estimate_discrete_seasonality_by_bucket;
 use super::{
-    DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION, DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
-    DAYS_PER_WEEK, DAYS_PER_YEAR,
+    DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
+    DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION, DAYS_PER_WEEK, DAYS_PER_YEAR,
 };
 
 /// Configuration for day-of-week seasonality estimation from timestamp event density.

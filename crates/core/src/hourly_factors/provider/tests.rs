@@ -11,10 +11,10 @@ use crate::hawkes::{
 };
 use crate::hourly_factors::HourlyFactorContractError;
 use crate::hourly_factors::{
-    provide_hourly_factor_contract, HourlyFactorProviderError, HourlyFactorProviderRequest,
-    HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
     HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_MATERIALIZATION_METHOD,
-    HOURLY_FACTOR_PROVIDER_SEASONALITY_MATERIALIZATION_METHOD,
+    HOURLY_FACTOR_PROVIDER_SEASONALITY_MATERIALIZATION_METHOD, HourlyFactorProviderError,
+    HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
+    provide_hourly_factor_contract,
 };
 use crate::pricing::{
     evolve_hawkes_state as evolve_hawkes_state_coarse_interval_step,

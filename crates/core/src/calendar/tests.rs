@@ -1,4 +1,3 @@
-
 use super::{
     CalendarRuleMetadataArtifact, EarlyCloseSessionArtifact, ExchangeCalendarArtifact,
     ExchangeCalendarDefinition, ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact,
