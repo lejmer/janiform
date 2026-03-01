@@ -6,6 +6,7 @@ Refactor `crates/core/src/calibration/tests.rs` into `crates/core/src/calibratio
 ### Acceptance Criteria
 - Create `crates/core/src/calibration/tests/` and migrate test definitions from the single file into organized test submodules.
 - Preserve all current test references under `#[cfg(test)]` and avoid exposing non-test public APIs.
+- Keep `mod.rs` as just the module entrypoint.
 - Keep `mod tests;` wiring in `crates/core/src/calibration/mod.rs` with no path-level changes required.
 - Confirm all test suites compile and pass.
 

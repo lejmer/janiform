@@ -6,6 +6,7 @@ Refactor `crates/core/src/simulation.rs` into `crates/core/src/simulation/mod.rs
 ### Acceptance Criteria
 - Replace single-file `simulation.rs` with `crates/core/src/simulation/` and keep `janiform::simulation` API stable.
 - Preserve all existing public methods, structs, and type aliases currently exposed from `simulation`.
+- Keep `mod.rs` as just the module entrypoint.
 - Keep `pub mod simulation;` in `crates/core/src/lib.rs` unchanged.
 - Ensure dependent modules and tests compile without import-path edits.
 

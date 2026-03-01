@@ -6,6 +6,7 @@ Refactor `crates/core/src/affine_oracle.rs` into `crates/core/src/affine_oracle/
 ### Acceptance Criteria
 - Split the module into `crates/core/src/affine_oracle/` with `mod.rs` and focused children.
 - Preserve all public symbol names and `janiform::affine_oracle::*` import paths.
+- Keep `mod.rs` as just the module entrypoint.
 - Keep `lib.rs` declaration unchanged (`pub mod affine_oracle;`).
 - Confirm all dependent pricing/risk modules still resolve imports without edits.
 

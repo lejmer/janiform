@@ -6,6 +6,7 @@ Refactor `crates/core/src/news.rs` into `crates/core/src/news/mod.rs` with small
 ### Acceptance Criteria
 - Create a `crates/core/src/news/` module directory and split `news.rs` into logically grouped files.
 - Preserve current path stability for all exported news-related APIs.
+- Keep `mod.rs` as just the module entrypoint.
 - Maintain `pub mod news;` in `lib.rs` with no caller-facing path changes.
 - Validate no behavior regressions in deterministic news and coupled behavior tests.
 

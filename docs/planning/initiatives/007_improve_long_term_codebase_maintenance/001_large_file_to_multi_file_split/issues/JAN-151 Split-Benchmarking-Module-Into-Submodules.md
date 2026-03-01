@@ -6,6 +6,7 @@ Refactor `crates/core/src/benchmarking.rs` into `crates/core/src/benchmarking/` 
 ### Acceptance Criteria
 - Create `crates/core/src/benchmarking/mod.rs` and split the large single file into cohesive submodules.
 - Preserve all public contract paths from `janiform::benchmarking`.
+- Keep `mod.rs` as just the module entrypoint.
 - Keep module declaration in `lib.rs` unchanged.
 - Confirm compile and benchmark-related tests/builds still pass.
 

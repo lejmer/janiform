@@ -6,6 +6,7 @@ Refactor `crates/core/src/seasonality.rs` into `crates/core/src/seasonality/mod.
 ### Acceptance Criteria
 - Create `crates/core/src/seasonality/` and decompose the large file into cohesive submodules.
 - Preserve existing public imports and `janiform::seasonality` API for downstream users.
+- Keep `mod.rs` as just the module entrypoint.
 - Keep the `pub mod seasonality;` declaration in `lib.rs` unchanged.
 - Confirm all seasonality-related compile paths are stable.
 

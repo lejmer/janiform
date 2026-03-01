@@ -6,6 +6,7 @@ Refactor `crates/core/src/nig.rs` into `crates/core/src/nig/mod.rs` with smaller
 ### Acceptance Criteria
 - Move `nig.rs` into `crates/core/src/nig/` as a module with `mod.rs` and supporting files.
 - Keep public symbol paths and behavior unchanged for `janiform::nig` consumers.
+- Keep `mod.rs` as just the module entrypoint.
 - Preserve `pub mod nig;` declaration in `lib.rs`.
 - Run NIG-related tests to confirm parity.
 

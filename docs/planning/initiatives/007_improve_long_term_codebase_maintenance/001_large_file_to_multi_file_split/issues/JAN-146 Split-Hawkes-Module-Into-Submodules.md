@@ -8,6 +8,7 @@ Refactor `crates/core/src/hawkes.rs` into `crates/core/src/hawkes/` and a `mod.r
 - Preserve existing external imports from `janiform::hawkes` and nested public symbols.
 - Avoid changes to import paths for any public or re-exported Hawkes types/functions.
 - Keep `lib.rs` module declaration unchanged.
+- Keep `mod.rs` as just the module entrypoint.
 - Validate core compile + test pass.
 
 ### Unit tests
