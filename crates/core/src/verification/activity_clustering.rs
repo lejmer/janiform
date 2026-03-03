@@ -12,6 +12,10 @@ use super::stylized_fact_diagnostics_shared::{
     compute_sorted_quantile, coverage_ratio, derive_metric_bootstrap_seed,
     validate_block_bootstrap_configuration,
 };
+use super::stylized_fact_return_series_shared::{
+    ReturnObservationLike, TimestampedReturnObservation, bucket_abs_returns_by_interval,
+    compute_lag_autocorrelation, filter_sort_returns_in_window, find_non_finite_return_observation,
+};
 use super::time_buckets::{
     TimestampAnalysisWindow, interval_count_for_window, interval_position_for_timestamp,
 };
@@ -56,6 +60,16 @@ pub struct ActivityClusteringDatasetInput {
 pub struct ActivityClusteringReturnObservation {
     pub timestamp_utc_nanos: i64,
     pub return_increment: f64,
+}
+
+impl ReturnObservationLike for ActivityClusteringReturnObservation {
+    fn timestamp_utc_nanos(self) -> i64 {
+        self.timestamp_utc_nanos
+    }
+
+    fn return_increment(self) -> f64 {
+        self.return_increment
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -509,7 +523,7 @@ pub fn run_activity_clustering_diagnostics(
 struct PreparedActivityClusteringDataset {
     dataset_id: String,
     event_timestamps_in_window: Vec<i64>,
-    return_observations_in_window: Vec<ActivityClusteringReturnObservation>,
+    return_observations_in_window: Vec<TimestampedReturnObservation>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -683,17 +697,17 @@ fn validate_return_observations(
     dataset_id: &str,
     return_observations: &[ActivityClusteringReturnObservation],
 ) -> Result<(), ActivityClusteringDiagnosticsError> {
-    for (observation_position, return_observation) in return_observations.iter().enumerate() {
-        if !return_observation.return_increment.is_finite() {
-            return Err(
-                ActivityClusteringDiagnosticsError::InvalidReturnObservation {
-                    dataset_role,
-                    dataset_id: dataset_id.to_string(),
-                    observation_position,
-                    return_increment: return_observation.return_increment,
-                },
-            );
-        }
+    if let Some((observation_position, return_increment)) =
+        find_non_finite_return_observation(return_observations)
+    {
+        return Err(
+            ActivityClusteringDiagnosticsError::InvalidReturnObservation {
+                dataset_role,
+                dataset_id: dataset_id.to_string(),
+                observation_position,
+                return_increment,
+            },
+        );
     }
 
     Ok(())
@@ -719,16 +733,8 @@ fn prepare_dataset(
         .collect();
     event_timestamps_in_window.sort_unstable();
 
-    let mut return_observations_in_window: Vec<ActivityClusteringReturnObservation> = dataset
-        .return_observations
-        .iter()
-        .copied()
-        .filter(|return_observation| {
-            analysis_window.contains_timestamp(return_observation.timestamp_utc_nanos)
-        })
-        .collect();
-    return_observations_in_window
-        .sort_by_key(|return_observation| return_observation.timestamp_utc_nanos);
+    let return_observations_in_window =
+        filter_sort_returns_in_window(&dataset.return_observations, analysis_window);
 
     Ok(PreparedActivityClusteringDataset {
         dataset_id: dataset.dataset_id.clone(),
@@ -779,36 +785,20 @@ fn build_horizon_dataset_series(
         }
     }
 
-    let mut interval_return_sum: Vec<f64> = vec![0.0; interval_count];
-    let mut return_interval_has_observation: Vec<bool> = vec![false; interval_count];
-    for return_observation in &prepared_dataset.return_observations_in_window {
-        let Some(interval_position) = interval_position_for_timestamp(
-            return_observation.timestamp_utc_nanos,
-            analysis_window,
-            horizon_bucket.horizon_duration_nanos,
-            interval_count,
-        ) else {
-            continue;
-        };
-        interval_return_sum[interval_position] += return_observation.return_increment;
-        return_interval_has_observation[interval_position] = true;
-    }
-    let return_covered_interval_count = return_interval_has_observation
-        .iter()
-        .filter(|covered| **covered)
-        .count();
-    let abs_return_by_interval: Vec<f64> = interval_return_sum
-        .iter()
-        .map(|return_sum| return_sum.abs())
-        .collect();
+    let bucketed_abs_return_series = bucket_abs_returns_by_interval(
+        &prepared_dataset.return_observations_in_window,
+        analysis_window,
+        horizon_bucket.horizon_duration_nanos,
+        interval_count,
+    );
 
     HorizonDatasetSeries {
         interval_count,
         event_count_by_interval,
         event_covered_interval_count,
         interarrival_interval_units,
-        abs_return_by_interval,
-        return_covered_interval_count,
+        abs_return_by_interval: bucketed_abs_return_series.abs_return_by_interval,
+        return_covered_interval_count: bucketed_abs_return_series.covered_interval_count,
     }
 }
 
@@ -945,7 +935,7 @@ fn evaluate_volatility_clustering_metric(
     bootstrap_configuration: ActivityClusteringBlockBootstrapConfiguration,
     bootstrap_seed: u64,
 ) -> ActivityClusteringDatasetMetricResult {
-    let value = compute_lag_one_autocorrelation(&dataset_series.abs_return_by_interval);
+    let value = compute_lag_autocorrelation(&dataset_series.abs_return_by_interval, 1);
     let observed_counts = ActivityClusteringObservedCounts {
         sample_count: dataset_series.abs_return_by_interval.len(),
         effective_sample_count: dataset_series
@@ -976,7 +966,7 @@ fn evaluate_volatility_clustering_metric(
                 point_estimate,
                 block_bootstrap_configuration(bootstrap_configuration),
                 bootstrap_seed,
-                compute_lag_one_autocorrelation,
+                |resampled_abs_returns| compute_lag_autocorrelation(resampled_abs_returns, 1),
             );
             ActivityClusteringConfidenceInterval {
                 lower_bound,
@@ -1140,33 +1130,4 @@ fn compute_interarrival_expected_shortfall_ratio(
     }
 
     (Some(ratio), tail_values.len())
-}
-
-fn compute_lag_one_autocorrelation(series: &[f64]) -> Option<f64> {
-    if series.len() < 2 {
-        return None;
-    }
-    if series.iter().any(|value| !value.is_finite()) {
-        return None;
-    }
-
-    let sample_mean = series.iter().sum::<f64>() / series.len() as f64;
-    let variance_numerator = series
-        .iter()
-        .map(|value| {
-            let centered = *value - sample_mean;
-            centered * centered
-        })
-        .sum::<f64>();
-    if !variance_numerator.is_finite() || variance_numerator <= 0.0 {
-        return Some(0.0);
-    }
-
-    let covariance_numerator = series
-        .windows(2)
-        .map(|lag_pair| (lag_pair[0] - sample_mean) * (lag_pair[1] - sample_mean))
-        .sum::<f64>();
-    let autocorrelation = covariance_numerator / variance_numerator;
-
-    autocorrelation.is_finite().then_some(autocorrelation)
 }
