@@ -9,9 +9,9 @@ use serde::Serialize;
 
 use super::STYLIZED_FACT_METRIC_CATALOG_INSUFFICIENT_DATA_STATUS_CODE;
 use super::stylized_fact_diagnostics_shared::{
-    BlockBootstrapConfiguration, compute_block_bootstrap_confidence_interval,
-    compute_sorted_quantile, coverage_ratio, derive_metric_bootstrap_seed,
-    validate_block_bootstrap_configuration,
+    BlockBootstrapConfiguration, build_delta_uncertainty_context,
+    compute_block_bootstrap_confidence_interval, compute_sorted_quantile, coverage_ratio,
+    derive_metric_bootstrap_seed, validate_block_bootstrap_configuration,
 };
 use super::time_buckets::{
     TimestampAnalysisWindow, interval_count_for_window, interval_position_for_timestamp,
@@ -1416,29 +1416,14 @@ fn evaluate_tail_ratio_metric(
         required_minimums,
     );
 
-    let confidence_interval = if status == GapBehaviorMetricStatus::Available {
-        value.map(|point_estimate| {
-            let (lower_bound, upper_bound) = compute_block_bootstrap_confidence_interval(
-                interval_abs_series,
-                point_estimate,
-                BlockBootstrapConfiguration {
-                    confidence_level: bootstrap_configuration.confidence_level,
-                    replication_count: bootstrap_configuration.replication_count,
-                    block_length_interval_count: bootstrap_configuration
-                        .block_length_interval_count,
-                },
-                bootstrap_seed,
-                compute_abs_tail_expected_shortfall_ratio_from_series,
-            );
-            GapBehaviorConfidenceInterval {
-                lower_bound,
-                upper_bound,
-                confidence_level: bootstrap_configuration.confidence_level,
-            }
-        })
-    } else {
-        None
-    };
+    let confidence_interval = compute_confidence_interval_if_available(
+        status,
+        value,
+        interval_abs_series,
+        bootstrap_configuration,
+        bootstrap_seed,
+        compute_abs_tail_expected_shortfall_ratio_from_series,
+    );
 
     GapBehaviorDatasetMetricResult {
         status,
@@ -1486,29 +1471,14 @@ fn evaluate_wasserstein_metric(
         required_minimums,
     );
 
-    let confidence_interval = if status == GapBehaviorMetricStatus::Available {
-        value.map(|point_estimate| {
-            let (lower_bound, upper_bound) = compute_block_bootstrap_confidence_interval(
-                contrast_interval_series,
-                point_estimate,
-                BlockBootstrapConfiguration {
-                    confidence_level: bootstrap_configuration.confidence_level,
-                    replication_count: bootstrap_configuration.replication_count,
-                    block_length_interval_count: bootstrap_configuration
-                        .block_length_interval_count,
-                },
-                bootstrap_seed,
-                compute_open_closed_wasserstein_distance,
-            );
-            GapBehaviorConfidenceInterval {
-                lower_bound,
-                upper_bound,
-                confidence_level: bootstrap_configuration.confidence_level,
-            }
-        })
-    } else {
-        None
-    };
+    let confidence_interval = compute_confidence_interval_if_available(
+        status,
+        value,
+        contrast_interval_series,
+        bootstrap_configuration,
+        bootstrap_seed,
+        compute_open_closed_wasserstein_distance,
+    );
 
     GapBehaviorDatasetMetricResult {
         status,
@@ -1526,6 +1496,48 @@ fn compute_abs_tail_expected_shortfall_ratio_from_series(
 ) -> Option<f64> {
     compute_abs_tail_expected_shortfall_ratio(interval_abs_series)
         .map(|tail_ratio| tail_ratio.ratio)
+}
+
+fn block_bootstrap_configuration(
+    bootstrap_configuration: GapBehaviorBlockBootstrapConfiguration,
+) -> BlockBootstrapConfiguration {
+    BlockBootstrapConfiguration {
+        confidence_level: bootstrap_configuration.confidence_level,
+        replication_count: bootstrap_configuration.replication_count,
+        block_length_interval_count: bootstrap_configuration.block_length_interval_count,
+    }
+}
+
+fn compute_confidence_interval_if_available<T, F>(
+    status: GapBehaviorMetricStatus,
+    value: Option<f64>,
+    source_series: &[T],
+    bootstrap_configuration: GapBehaviorBlockBootstrapConfiguration,
+    bootstrap_seed: u64,
+    metric_evaluator: F,
+) -> Option<GapBehaviorConfidenceInterval>
+where
+    T: Copy,
+    F: Fn(&[T]) -> Option<f64>,
+{
+    if status != GapBehaviorMetricStatus::Available {
+        return None;
+    }
+
+    value.map(|point_estimate| {
+        let (lower_bound, upper_bound) = compute_block_bootstrap_confidence_interval(
+            source_series,
+            point_estimate,
+            block_bootstrap_configuration(bootstrap_configuration),
+            bootstrap_seed,
+            metric_evaluator,
+        );
+        GapBehaviorConfidenceInterval {
+            lower_bound,
+            upper_bound,
+            confidence_level: bootstrap_configuration.confidence_level,
+        }
+    })
 }
 
 fn compute_abs_tail_expected_shortfall_ratio(
@@ -1665,10 +1677,26 @@ fn build_metric_comparison(
         GapBehaviorMetricStatus::InsufficientData
     };
 
-    let uncertainty_context = derive_delta_uncertainty_context(
-        empirical.confidence_interval,
-        simulated.confidence_interval,
+    let uncertainty_context = build_delta_uncertainty_context(
+        empirical.confidence_interval.map(|confidence_interval| {
+            (
+                confidence_interval.lower_bound,
+                confidence_interval.upper_bound,
+            )
+        }),
+        simulated.confidence_interval.map(|confidence_interval| {
+            (
+                confidence_interval.lower_bound,
+                confidence_interval.upper_bound,
+            )
+        }),
         absolute_delta,
+        |uncertainty_components| GapBehaviorDeltaUncertaintyContext {
+            empirical_interval_half_width: uncertainty_components.empirical_interval_half_width,
+            simulated_interval_half_width: uncertainty_components.simulated_interval_half_width,
+            pooled_interval_half_width: uncertainty_components.pooled_interval_half_width,
+            standardized_delta: uncertainty_components.standardized_delta,
+        },
     );
 
     let absolute_delta_exceeds_threshold = absolute_delta.map(|delta| delta > max_absolute_delta);
@@ -1686,54 +1714,6 @@ fn build_metric_comparison(
             max_absolute_delta,
             absolute_delta_exceeds_threshold,
         },
-    }
-}
-
-fn derive_delta_uncertainty_context(
-    empirical_confidence_interval: Option<GapBehaviorConfidenceInterval>,
-    simulated_confidence_interval: Option<GapBehaviorConfidenceInterval>,
-    absolute_delta: Option<f64>,
-) -> GapBehaviorDeltaUncertaintyContext {
-    let empirical_interval_half_width =
-        empirical_confidence_interval.and_then(confidence_interval_half_width);
-    let simulated_interval_half_width =
-        simulated_confidence_interval.and_then(confidence_interval_half_width);
-
-    let pooled_interval_half_width =
-        match (empirical_interval_half_width, simulated_interval_half_width) {
-            (Some(empirical_half_width), Some(simulated_half_width)) => {
-                let pooled = (empirical_half_width * empirical_half_width
-                    + simulated_half_width * simulated_half_width)
-                    .sqrt();
-                pooled.is_finite().then_some(pooled)
-            }
-            _ => None,
-        };
-
-    let standardized_delta = match (absolute_delta, pooled_interval_half_width) {
-        (Some(delta), Some(pooled_half_width)) if pooled_half_width > 0.0 => {
-            let standardized_value = delta / pooled_half_width;
-            standardized_value.is_finite().then_some(standardized_value)
-        }
-        _ => None,
-    };
-
-    GapBehaviorDeltaUncertaintyContext {
-        empirical_interval_half_width,
-        simulated_interval_half_width,
-        pooled_interval_half_width,
-        standardized_delta,
-    }
-}
-
-fn confidence_interval_half_width(
-    confidence_interval: GapBehaviorConfidenceInterval,
-) -> Option<f64> {
-    let half_width = (confidence_interval.upper_bound - confidence_interval.lower_bound) * 0.5;
-    if half_width.is_finite() && half_width >= 0.0 {
-        Some(half_width)
-    } else {
-        None
     }
 }
 
