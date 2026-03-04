@@ -6,21 +6,20 @@ use std::fmt::{Display, Formatter};
 
 use serde::Serialize;
 
-use super::STYLIZED_FACT_METRIC_CATALOG_INSUFFICIENT_DATA_STATUS_CODE;
-use super::stylized_fact_diagnostics_shared::{
+use super::diagnostics_shared::{
     BlockBootstrapConfiguration, build_delta_uncertainty_context,
     compute_block_bootstrap_confidence_interval, coverage_ratio, derive_metric_bootstrap_seed,
     validate_block_bootstrap_configuration,
 };
-use super::stylized_fact_return_series_shared::{
+use super::metric_catalog::{
+    STYLIZED_FACT_METRIC_CATALOG_INSUFFICIENT_DATA_STATUS_CODE, StylizedFactMetricDomain,
+    StylizedFactMetricHorizonApplicability, build_stylized_fact_metric_catalog,
+};
+use super::return_series_shared::{
     ReturnObservationLike, TimestampedReturnObservation, bucket_abs_returns_by_interval,
     compute_lag_autocorrelation, filter_sort_returns_in_window, find_non_finite_return_observation,
 };
 use super::time_buckets::{TimestampAnalysisWindow, interval_count_for_window};
-use super::{
-    StylizedFactMetricDomain, StylizedFactMetricHorizonApplicability,
-    build_stylized_fact_metric_catalog,
-};
 
 const VOLATILITY_PERSISTENCE_METRIC_ID: &str = "volatility_abs_return_acf_distribution_distance";
 

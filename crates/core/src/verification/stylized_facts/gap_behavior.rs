@@ -7,19 +7,22 @@ use std::fmt::{Display, Formatter};
 
 use serde::Serialize;
 
-use super::STYLIZED_FACT_METRIC_CATALOG_INSUFFICIENT_DATA_STATUS_CODE;
-use super::stylized_fact_diagnostics_shared::{
+use super::super::{
+    NewsSemanticsScenarioClass, OpenClosedGapDeterministicReplayMetadata,
+    OpenClosedGapIssueTraceabilityMetadata,
+};
+use super::diagnostics_shared::{
     BlockBootstrapConfiguration, build_delta_uncertainty_context,
     compute_block_bootstrap_confidence_interval, compute_sorted_quantile, coverage_ratio,
     derive_metric_bootstrap_seed, validate_block_bootstrap_configuration,
 };
+use super::metric_catalog::{
+    STYLIZED_FACT_METRIC_CATALOG_INSUFFICIENT_DATA_STATUS_CODE, StylizedFactMetricDomain,
+    StylizedFactMetricFamily, StylizedFactMetricHorizonApplicability,
+    build_stylized_fact_metric_catalog,
+};
 use super::time_buckets::{
     TimestampAnalysisWindow, interval_count_for_window, interval_position_for_timestamp,
-};
-use super::{
-    NewsSemanticsScenarioClass, OpenClosedGapDeterministicReplayMetadata,
-    OpenClosedGapIssueTraceabilityMetadata, StylizedFactMetricDomain, StylizedFactMetricFamily,
-    StylizedFactMetricHorizonApplicability, build_stylized_fact_metric_catalog,
 };
 
 const OPEN_JUMP_ABS_TAIL_EXPECTED_SHORTFALL_RATIO_METRIC_ID: &str =
