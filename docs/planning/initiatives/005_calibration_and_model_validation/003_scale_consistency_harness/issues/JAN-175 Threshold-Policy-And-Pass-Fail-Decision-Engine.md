@@ -1,4 +1,4 @@
-## ISSUE-005: Threshold Policy And Pass Fail Decision Engine
+## Threshold Policy And Pass Fail Decision Engine
 
 ### Description
 Define and implement model-validation threshold policy plus pass-or-fail decision logic for scale-consistency checks across regimes.

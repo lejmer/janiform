@@ -1,4 +1,4 @@
-## ISSUE-008: Regression Fixtures And Harness Stability Tests
+## Regression Fixtures And Harness Stability Tests
 
 ### Description
 Create regression fixtures and stability tests that lock down harness behavior and protect against unintended changes in consistency outcomes.

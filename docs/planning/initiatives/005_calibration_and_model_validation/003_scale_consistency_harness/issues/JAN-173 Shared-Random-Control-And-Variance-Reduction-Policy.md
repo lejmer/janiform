@@ -1,4 +1,4 @@
-## ISSUE-003: Shared Random Control And Variance Reduction Policy
+## Shared Random Control And Variance Reduction Policy
 
 ### Description
 Implement shared-random control for paired experiments to reduce comparison noise and improve sensitivity to true coarse-versus-fine divergence.

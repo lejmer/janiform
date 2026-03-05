@@ -1,4 +1,4 @@
-## ISSUE-004: Metric Delta Calculator For Returns Vol And Events
+## Metric Delta Calculator For Returns Vol And Events
 
 ### Description
 Implement metric-delta calculations for key consistency statistics including returns, volatility, and event-derived summaries.

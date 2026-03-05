@@ -1,4 +1,4 @@
-## ISSUE-007: Consistency Report And Drift Diagnostics Outputs
+## Consistency Report And Drift Diagnostics Outputs
 
 ### Description
 Generate consistency reports and drift diagnostics that summarize deltas, pass-or-fail status, and likely sources of mismatch.

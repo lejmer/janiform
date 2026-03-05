@@ -1,4 +1,4 @@
-## ISSUE-002: Fine Path Aggregation And Coarse Alignment Engine
+## Fine Path Aggregation And Coarse Alignment Engine
 
 ### Description
 Implement aggregation engine that maps fine-scale simulation outputs onto coarse intervals for direct consistency comparison.

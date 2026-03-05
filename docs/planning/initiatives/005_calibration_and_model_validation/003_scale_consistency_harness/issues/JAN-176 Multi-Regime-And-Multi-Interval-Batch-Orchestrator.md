@@ -1,4 +1,4 @@
-## ISSUE-006: Multi Regime And Multi Interval Batch Orchestrator
+## Multi Regime And Multi Interval Batch Orchestrator
 
 ### Description
 Implement batch orchestrator to run consistency checks across multiple parameter regimes and interval configurations in one execution workflow.

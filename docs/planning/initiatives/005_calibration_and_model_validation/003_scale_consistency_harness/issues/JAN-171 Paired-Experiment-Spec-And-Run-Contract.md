@@ -1,4 +1,4 @@
-## ISSUE-001: Paired Experiment Spec And Run Contract
+## Paired Experiment Spec And Run Contract
 
 ### Description
 Define the run contract and scenario specification for paired coarse-versus-fine consistency experiments across parameter regimes and interval configurations.
