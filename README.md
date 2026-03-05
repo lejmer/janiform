@@ -52,6 +52,7 @@ janiform --help
 - Staged calibration failure playbook: `docs/development/guides/staged_calibration_failure_playbook.md`
 - Open closed gap summary and diff report contract: `docs/development/guides/open_closed_gap_summary_and_diff_report_contract.md`
 - Stylized fact metric catalog schema: `docs/development/guides/stylized_fact_metric_catalog_schema.md`
+- Stylized fact horizon comparison report schema: `docs/development/guides/stylized_fact_horizon_comparison_report_schema.md`
 - Affine oracle solver diagnostics and telemetry schema: `docs/development/guides/affine_oracle_solver_diagnostics_schema.md`
 - Seeded tick event tape schema: `docs/development/guides/seeded_tick_event_tape_schema.md`
 - Validation fallback policy: `docs/development/guides/validation_fallback_policy.md`
