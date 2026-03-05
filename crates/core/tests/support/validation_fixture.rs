@@ -41,6 +41,7 @@ pub const OPEN_CLOSED_GAP_BEHAVIOR_EVENT_ORDER_POLICY: &str = "preserve_declared
 pub const OPEN_CLOSED_GAP_BEHAVIOR_CONTENT_HASH_SCOPE_POLICY: &str = "document_payload_bytes.v1";
 pub const OPEN_CLOSED_GAP_BEHAVIOR_OUTPUT_SCHEMA_VERSION: &str =
     "validation.gap_behavior.open_closed.case_output.v1";
+pub const STYLIZED_FACT_REGRESSION_FIXTURE_DOMAIN: &str = "stylized_facts";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -74,6 +75,7 @@ pub enum ValidationFixtureDomain {
     Seasonality,
     HourlyFactors,
     GapBehavior,
+    StylizedFacts,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
