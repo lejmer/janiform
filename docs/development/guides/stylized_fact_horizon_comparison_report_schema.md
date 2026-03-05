@@ -111,3 +111,50 @@ For matched and sufficient metric pairs, the report includes:
 - dataset metric statuses
 - sufficiency reason codes
 - decision reason codes
+
+## Report bundle generation
+
+The canonical report bundle generator is implemented in:
+
+- `janiform_core::verification::run_stylized_fact_horizon_comparison_report_generator`
+
+It composes one comparison report with deterministic table and plot-ready payloads and optional
+disk-mode artifact export.
+
+### Bundle schema
+
+- `schema_version`: `validation.stylized_fact.horizon_comparison.report_bundle.v1`
+- `determinism_policy`: `stable_run_horizon_metric_order_with_metric_catalog_classification.v1`
+- `comparison_report`
+- `table_summary`
+- `plot_payload`
+- `artifact_export` (`null` in memory mode and populated when exported in disk mode)
+
+### Table summary schema
+
+- `schema_version`: `validation.stylized_fact.horizon_comparison.table_summary.v1`
+- deterministic `rows[]` ordered by `(calibration_run_id, horizon_label, metric_id, metric_variant)`
+- each row carries:
+  - metric identifiers and metric-class labels (`primary_robust`, `secondary_moment`)
+  - uncertainty fields (`absolute_delta`, `standardized_delta`, confidence intervals)
+  - sample coverage and minimum-sufficiency fields
+  - explicit `insufficient_data` reason metadata and decision reason codes
+
+### Plot payload schema
+
+- `schema_version`: `validation.stylized_fact.horizon_comparison.plot_payload.v1`
+- renderer-agnostic `points[]` preserving:
+  - metric identifiers and metric-class labels
+  - uncertainty intervals and deltas
+  - sample coverage fields
+  - explicit insufficient-data reason metadata
+
+### Artifact export policy
+
+- Export is optional and controlled by `generation_options.artifact_export`.
+- Export is allowed only when `generation_options.execution_mode = disk`.
+- File names are deterministic from configured `file_stem`:
+  - `{file_stem}.report_bundle.json`
+  - `{file_stem}.table_summary.json`
+  - `{file_stem}.plot_payload.json`
+- Export directory is fully caller-configured via `export_directory` with no hardcoded paths.
