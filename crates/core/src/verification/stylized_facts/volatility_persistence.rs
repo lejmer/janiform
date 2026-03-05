@@ -6,20 +6,20 @@ use std::fmt::{Display, Formatter};
 
 use serde::Serialize;
 
-use super::STYLIZED_FACT_METRIC_CATALOG_INSUFFICIENT_DATA_STATUS_CODE;
-use super::stylized_fact_diagnostics_shared::{
-    BlockBootstrapConfiguration, compute_block_bootstrap_confidence_interval, coverage_ratio,
-    derive_metric_bootstrap_seed, validate_block_bootstrap_configuration,
+use super::diagnostics_shared::{
+    BlockBootstrapConfiguration, build_delta_uncertainty_context,
+    compute_block_bootstrap_confidence_interval, coverage_ratio, derive_metric_bootstrap_seed,
+    validate_block_bootstrap_configuration,
 };
-use super::stylized_fact_return_series_shared::{
+use super::metric_catalog::{
+    STYLIZED_FACT_METRIC_CATALOG_INSUFFICIENT_DATA_STATUS_CODE, StylizedFactMetricDomain,
+    StylizedFactMetricHorizonApplicability, build_stylized_fact_metric_catalog,
+};
+use super::return_series_shared::{
     ReturnObservationLike, TimestampedReturnObservation, bucket_abs_returns_by_interval,
     compute_lag_autocorrelation, filter_sort_returns_in_window, find_non_finite_return_observation,
 };
 use super::time_buckets::{TimestampAnalysisWindow, interval_count_for_window};
-use super::{
-    StylizedFactMetricDomain, StylizedFactMetricHorizonApplicability,
-    build_stylized_fact_metric_catalog,
-};
 
 const VOLATILITY_PERSISTENCE_METRIC_ID: &str = "volatility_abs_return_acf_distribution_distance";
 
@@ -951,10 +951,26 @@ fn build_lag_comparison(
         VolatilityPersistenceMetricStatus::InsufficientData
     };
 
-    let uncertainty_context = derive_delta_uncertainty_context(
-        empirical.confidence_interval,
-        simulated.confidence_interval,
+    let uncertainty_context = build_delta_uncertainty_context(
+        empirical.confidence_interval.map(|confidence_interval| {
+            (
+                confidence_interval.lower_bound,
+                confidence_interval.upper_bound,
+            )
+        }),
+        simulated.confidence_interval.map(|confidence_interval| {
+            (
+                confidence_interval.lower_bound,
+                confidence_interval.upper_bound,
+            )
+        }),
         absolute_delta,
+        |uncertainty_components| VolatilityPersistenceDeltaUncertaintyContext {
+            empirical_interval_half_width: uncertainty_components.empirical_interval_half_width,
+            simulated_interval_half_width: uncertainty_components.simulated_interval_half_width,
+            pooled_interval_half_width: uncertainty_components.pooled_interval_half_width,
+            standardized_delta: uncertainty_components.standardized_delta,
+        },
     );
 
     let absolute_delta_exceeds_threshold = absolute_delta.map(|delta| delta > max_absolute_delta);
@@ -974,53 +990,6 @@ fn build_lag_comparison(
             max_absolute_delta,
             absolute_delta_exceeds_threshold,
         },
-    }
-}
-
-fn derive_delta_uncertainty_context(
-    empirical_confidence_interval: Option<VolatilityPersistenceConfidenceInterval>,
-    simulated_confidence_interval: Option<VolatilityPersistenceConfidenceInterval>,
-    absolute_delta: Option<f64>,
-) -> VolatilityPersistenceDeltaUncertaintyContext {
-    let empirical_interval_half_width =
-        empirical_confidence_interval.and_then(confidence_interval_half_width);
-    let simulated_interval_half_width =
-        simulated_confidence_interval.and_then(confidence_interval_half_width);
-    let pooled_interval_half_width =
-        match (empirical_interval_half_width, simulated_interval_half_width) {
-            (Some(empirical_half_width), Some(simulated_half_width)) => {
-                let pooled = (empirical_half_width * empirical_half_width
-                    + simulated_half_width * simulated_half_width)
-                    .sqrt();
-                pooled.is_finite().then_some(pooled)
-            }
-            _ => None,
-        };
-
-    let standardized_delta = match (absolute_delta, pooled_interval_half_width) {
-        (Some(delta), Some(pooled_half_width)) if pooled_half_width > 0.0 => {
-            let standardized_value = delta / pooled_half_width;
-            standardized_value.is_finite().then_some(standardized_value)
-        }
-        _ => None,
-    };
-
-    VolatilityPersistenceDeltaUncertaintyContext {
-        empirical_interval_half_width,
-        simulated_interval_half_width,
-        pooled_interval_half_width,
-        standardized_delta,
-    }
-}
-
-fn confidence_interval_half_width(
-    confidence_interval: VolatilityPersistenceConfidenceInterval,
-) -> Option<f64> {
-    let half_width = (confidence_interval.upper_bound - confidence_interval.lower_bound) * 0.5;
-    if half_width.is_finite() && half_width >= 0.0 {
-        Some(half_width)
-    } else {
-        None
     }
 }
 

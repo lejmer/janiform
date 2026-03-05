@@ -6,13 +6,13 @@ use std::fmt::{Display, Formatter};
 
 use serde::Serialize;
 
-use super::STYLIZED_FACT_METRIC_CATALOG_INSUFFICIENT_DATA_STATUS_CODE;
-use super::stylized_fact_diagnostics_shared::{
+use super::diagnostics_shared::{
     BlockBootstrapConfiguration, compute_block_bootstrap_confidence_interval,
     compute_sorted_quantile, coverage_ratio, derive_metric_bootstrap_seed,
     validate_block_bootstrap_configuration,
 };
-use super::stylized_fact_return_series_shared::{
+use super::metric_catalog::STYLIZED_FACT_METRIC_CATALOG_INSUFFICIENT_DATA_STATUS_CODE;
+use super::return_series_shared::{
     ReturnObservationLike, TimestampedReturnObservation, bucket_abs_returns_by_interval,
     compute_lag_autocorrelation, filter_sort_returns_in_window, find_non_finite_return_observation,
 };

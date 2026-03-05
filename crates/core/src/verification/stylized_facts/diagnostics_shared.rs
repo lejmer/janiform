@@ -124,6 +124,79 @@ pub(crate) fn derive_metric_bootstrap_seed(
     splitmix64_output_mixer(seed_mixed_by_dataset ^ metric_role.wrapping_mul(0x94D0_49BB_1331_11EB))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct DeltaUncertaintyComponents {
+    pub empirical_interval_half_width: Option<f64>,
+    pub simulated_interval_half_width: Option<f64>,
+    pub pooled_interval_half_width: Option<f64>,
+    pub standardized_delta: Option<f64>,
+}
+
+pub(crate) fn derive_delta_uncertainty_components(
+    empirical_interval_bounds: Option<(f64, f64)>,
+    simulated_interval_bounds: Option<(f64, f64)>,
+    absolute_delta: Option<f64>,
+) -> DeltaUncertaintyComponents {
+    let empirical_interval_half_width =
+        empirical_interval_bounds.and_then(interval_bounds_half_width);
+    let simulated_interval_half_width =
+        simulated_interval_bounds.and_then(interval_bounds_half_width);
+
+    let pooled_interval_half_width =
+        match (empirical_interval_half_width, simulated_interval_half_width) {
+            (Some(empirical_half_width), Some(simulated_half_width)) => {
+                let pooled = (empirical_half_width * empirical_half_width
+                    + simulated_half_width * simulated_half_width)
+                    .sqrt();
+                pooled.is_finite().then_some(pooled)
+            }
+            _ => None,
+        };
+
+    let standardized_delta = match (absolute_delta, pooled_interval_half_width) {
+        (Some(delta), Some(pooled_half_width)) if pooled_half_width > 0.0 => {
+            let standardized_value = delta / pooled_half_width;
+            standardized_value.is_finite().then_some(standardized_value)
+        }
+        _ => None,
+    };
+
+    DeltaUncertaintyComponents {
+        empirical_interval_half_width,
+        simulated_interval_half_width,
+        pooled_interval_half_width,
+        standardized_delta,
+    }
+}
+
+pub(crate) fn build_delta_uncertainty_context<T, F>(
+    empirical_interval_bounds: Option<(f64, f64)>,
+    simulated_interval_bounds: Option<(f64, f64)>,
+    absolute_delta: Option<f64>,
+    context_builder: F,
+) -> T
+where
+    F: FnOnce(DeltaUncertaintyComponents) -> T,
+{
+    let uncertainty_components = derive_delta_uncertainty_components(
+        empirical_interval_bounds,
+        simulated_interval_bounds,
+        absolute_delta,
+    );
+
+    context_builder(uncertainty_components)
+}
+
+fn interval_bounds_half_width(interval_bounds: (f64, f64)) -> Option<f64> {
+    let (lower_bound, upper_bound) = interval_bounds;
+    let half_width = (upper_bound - lower_bound) * 0.5;
+    if half_width.is_finite() && half_width >= 0.0 {
+        Some(half_width)
+    } else {
+        None
+    }
+}
+
 fn generate_block_bootstrap_resample<T>(
     source_series: &[T],
     requested_block_length: usize,
