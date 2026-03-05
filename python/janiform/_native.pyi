@@ -712,6 +712,11 @@ def run_open_closed_gap_leakage_regression_harness(
 ) -> str: ...
 
 
+def run_stylized_fact_horizon_comparison_report_generator(
+    generator_request_json: str,
+) -> str: ...
+
+
 def run_seeded_tick_event_simulation(
     seed: int,
     start_time_utc: str,
