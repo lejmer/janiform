@@ -9,6 +9,7 @@ from tests.fixture_validation import (
     CALENDAR_REGRESSION_FIXTURE_SET_ID,
     HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID,
     OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SET_ID,
+    STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SET_ID,
     CalendarRegressionCase,
     CalendarRegressionFixtureDocument,
     HourlyFactorRegressionCanonicalOutputCase,
@@ -18,6 +19,8 @@ from tests.fixture_validation import (
     OpenClosedGapBehaviorFixtureDocument,
     SeededTickSimulationParityCase,
     SeededTickSimulationParityFixtureDocument,
+    StylizedFactMetricRegressionCase,
+    StylizedFactMetricRegressionFixtureDocument,
     ValidationFixtureManifestDocument,
     ValidationFixtureManifestEntry,
     load_calendar_regression_fixture_document,
@@ -25,6 +28,7 @@ from tests.fixture_validation import (
     load_open_closed_gap_behavior_fixture_document,
     load_seeded_tick_simulation_parity_fixture_document,
     load_manifest_entry_payload,
+    load_stylized_fact_metric_regression_fixture_document,
     load_validation_fixture_manifest,
     sorted_manifest_entries,
 )
@@ -108,6 +112,17 @@ def open_closed_gap_behavior_manifest_entry(
             return manifest_entry
 
     raise ValueError(f"missing manifest fixture entry: {OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SET_ID}")
+
+
+@pytest.fixture(scope="session")
+def stylized_fact_metric_regression_manifest_entry(
+    validation_fixture_manifest_entries: list[ValidationFixtureManifestEntry],
+) -> ValidationFixtureManifestEntry:
+    for manifest_entry in validation_fixture_manifest_entries:
+        if manifest_entry["fixture_id"] == STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SET_ID:
+            return manifest_entry
+
+    raise ValueError(f"missing manifest fixture entry: {STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SET_ID}")
 
 
 @pytest.fixture(scope="session")
@@ -201,6 +216,33 @@ def open_closed_gap_behavior_cases(
     open_closed_gap_behavior_fixture_document: OpenClosedGapBehaviorFixtureDocument,
 ) -> list[OpenClosedGapBehaviorCase]:
     return list(open_closed_gap_behavior_fixture_document["cases"])
+
+
+@pytest.fixture(scope="session")
+def stylized_fact_metric_regression_fixture_path(
+    fixtures_root: Path,
+    stylized_fact_metric_regression_manifest_entry: ValidationFixtureManifestEntry,
+) -> Path:
+    return fixtures_root / stylized_fact_metric_regression_manifest_entry["relative_path"]
+
+
+@pytest.fixture(scope="session")
+def stylized_fact_metric_regression_fixture_document(
+    fixtures_root: Path,
+    stylized_fact_metric_regression_manifest_entry: ValidationFixtureManifestEntry,
+) -> StylizedFactMetricRegressionFixtureDocument:
+    fixture_payload_bytes: bytes = load_manifest_entry_payload(
+        fixtures_root,
+        stylized_fact_metric_regression_manifest_entry,
+    )
+    return load_stylized_fact_metric_regression_fixture_document(fixture_payload_bytes)
+
+
+@pytest.fixture(scope="session")
+def stylized_fact_metric_regression_cases(
+    stylized_fact_metric_regression_fixture_document: StylizedFactMetricRegressionFixtureDocument,
+) -> list[StylizedFactMetricRegressionCase]:
+    return list(stylized_fact_metric_regression_fixture_document["cases"])
 
 
 @pytest.fixture(scope="session")

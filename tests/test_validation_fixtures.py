@@ -8,11 +8,13 @@ from tests.fixture_validation import (
     CALENDAR_REGRESSION_FIXTURE_SET_ID,
     HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID,
     OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SET_ID,
+    STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SET_ID,
     CalendarRegressionCase,
     CalendarRegressionFixtureDocument,
     HourlyFactorRegressionFixtureDocument,
     OpenClosedGapBehaviorFixtureDocument,
     SeededTickSimulationParityFixtureDocument,
+    StylizedFactMetricRegressionFixtureDocument,
     ValidationFixtureManifestDocument,
     ValidationFixtureManifestEntry,
     compute_content_hash_hex,
@@ -21,12 +23,14 @@ from tests.fixture_validation import (
     load_open_closed_gap_behavior_fixture_document,
     load_manifest_entry_payload,
     load_seeded_tick_simulation_parity_fixture_document,
+    load_stylized_fact_metric_regression_fixture_document,
     sorted_manifest_entries,
     validate_calendar_regression_fixture_document,
     validate_open_closed_gap_behavior_calendar_integration,
     validate_hourly_factor_regression_fixture_document,
     validate_open_closed_gap_behavior_fixture_document,
     validate_seeded_tick_simulation_parity_fixture_document,
+    validate_stylized_fact_metric_regression_fixture_document,
     validate_validation_fixture_manifest_document,
 )
 
@@ -64,6 +68,18 @@ def test_manifest_open_closed_gap_fixture_entry_is_present(
 
     assert open_closed_gap_entry["domain"] == "gap_behavior"
     assert len(open_closed_gap_entry["exchange_codes"]) >= 2
+
+
+def test_manifest_stylized_fact_fixture_entry_is_present(
+    validation_fixture_manifest_entries: list[ValidationFixtureManifestEntry],
+) -> None:
+    stylized_fact_entry: ValidationFixtureManifestEntry = _find_entry_by_fixture_id(
+        validation_fixture_manifest_entries,
+        STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SET_ID,
+    )
+
+    assert stylized_fact_entry["domain"] == "stylized_facts"
+    assert len(stylized_fact_entry["exchange_codes"]) >= 1
 
 
 def test_manifest_loading_order_and_content_hashes_are_deterministic(
@@ -191,6 +207,28 @@ def test_seeded_tick_simulation_parity_fixture_loading_order_and_content_hash_ar
     assert first_content_hash == second_content_hash
 
 
+def test_stylized_fact_fixture_loading_order_and_content_hash_are_deterministic(
+    stylized_fact_metric_regression_fixture_path: Path,
+) -> None:
+    fixture_payload_bytes: bytes = stylized_fact_metric_regression_fixture_path.read_bytes()
+
+    first_document: StylizedFactMetricRegressionFixtureDocument = (
+        load_stylized_fact_metric_regression_fixture_document(fixture_payload_bytes)
+    )
+    second_document: StylizedFactMetricRegressionFixtureDocument = (
+        load_stylized_fact_metric_regression_fixture_document(fixture_payload_bytes)
+    )
+
+    first_case_order: list[str] = [fixture_case["fixture_id"] for fixture_case in first_document["cases"]]
+    second_case_order: list[str] = [fixture_case["fixture_id"] for fixture_case in second_document["cases"]]
+
+    first_content_hash: str = compute_content_hash_hex(fixture_payload_bytes)
+    second_content_hash: str = compute_content_hash_hex(fixture_payload_bytes)
+
+    assert first_case_order == second_case_order
+    assert first_content_hash == second_content_hash
+
+
 def test_validation_manifest_rejects_missing_required_fields(
     validation_fixture_manifest_document: ValidationFixtureManifestDocument,
 ) -> None:
@@ -233,6 +271,39 @@ def test_calendar_fixture_rejects_missing_required_fields(
 
     with pytest.raises(ValueError, match="missing required field 'cases'"):
         validate_calendar_regression_fixture_document(invalid_document)
+
+
+def test_stylized_fact_fixture_rejects_missing_required_fields(
+    stylized_fact_metric_regression_fixture_document: StylizedFactMetricRegressionFixtureDocument,
+) -> None:
+    invalid_document: dict[str, Any] = _copy_document(stylized_fact_metric_regression_fixture_document)
+    invalid_document.pop("cases")
+
+    with pytest.raises(ValueError, match="missing required field 'cases'"):
+        validate_stylized_fact_metric_regression_fixture_document(invalid_document)
+
+
+def test_stylized_fact_fixture_rejects_unknown_tolerance_policy_reference(
+    stylized_fact_metric_regression_fixture_document: StylizedFactMetricRegressionFixtureDocument,
+) -> None:
+    invalid_document: dict[str, Any] = _copy_document(stylized_fact_metric_regression_fixture_document)
+    invalid_document["cases"][0]["tolerance_policy_id"] = "missing_policy.v1"
+
+    with pytest.raises(ValueError, match="references an unknown policy"):
+        validate_stylized_fact_metric_regression_fixture_document(invalid_document)
+
+
+def test_stylized_fact_fixture_metadata_is_complete(
+    stylized_fact_metric_regression_fixture_document: StylizedFactMetricRegressionFixtureDocument,
+) -> None:
+    assert (
+        set(stylized_fact_metric_regression_fixture_document["canonical_regression_metadata"]["required_diagnostic_kinds"])
+        == {"activity_clustering", "tail_skew", "volatility_persistence", "gap_behavior"}
+    )
+    assert (
+        "sparse_insufficient_data"
+        in stylized_fact_metric_regression_fixture_document["canonical_regression_metadata"]["required_tags"]
+    )
 
 
 def test_calendar_fixture_rejects_invalid_expected_state_values(

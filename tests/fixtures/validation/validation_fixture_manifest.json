@@ -42,6 +42,16 @@
         "XTKS"
       ],
       "content_hash": "48ceca3db8cb6598"
+    },
+    {
+      "fixture_id": "stylized_fact_metric_regression_fixture_v1",
+      "domain": "stylized_facts",
+      "fixture_schema_version": "validation.stylized_fact.metric_regression.fixture.v1",
+      "relative_path": "stylized_facts/stylized_fact_metric_regression_fixture.json",
+      "exchange_codes": [
+        "XNYS"
+      ],
+      "content_hash": "67daca9a6f0de87b"
     }
   ]
 }

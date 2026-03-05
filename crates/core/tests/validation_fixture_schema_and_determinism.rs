@@ -19,6 +19,11 @@ use support::validation_fixture::{
     validate_open_closed_gap_behavior_scenario_fixture_document,
     validate_validation_fixture_manifest_document,
 };
+use support::stylized_fact_regression_fixture::{
+    STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SET_ID, StylizedFactMetricRegressionFixtureDocument,
+    load_stylized_fact_metric_regression_fixture_from_manifest,
+    validate_stylized_fact_metric_regression_fixture_document,
+};
 
 #[test]
 fn validation_fixture_manifest_loading_order_and_content_hashes_are_deterministic() {
@@ -115,6 +120,23 @@ fn open_closed_gap_behavior_fixture_document_is_valid_for_manifest_exchange_cove
 }
 
 #[test]
+fn stylized_fact_fixture_document_is_valid_for_manifest_exchange_coverage() {
+    let loaded_fixture = load_stylized_fact_metric_regression_fixture_from_manifest()
+        .expect("stylized fact regression fixture should load from shared manifest");
+
+    assert_eq!(
+        loaded_fixture.manifest_entry.fixture_id,
+        STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SET_ID
+    );
+    assert!(
+        loaded_fixture
+            .manifest_entry
+            .exchange_codes
+            .contains(&"XNYS".to_string())
+    );
+}
+
+#[test]
 fn open_closed_gap_behavior_fixture_loading_order_and_content_hash_are_deterministic() {
     let loaded_fixture = load_open_closed_gap_behavior_scenario_fixture_from_manifest()
         .expect("open and closed gap behavior fixture should load from shared manifest");
@@ -165,6 +187,39 @@ fn open_closed_gap_behavior_fixture_loading_order_and_content_hash_are_determini
 
     assert_eq!(first_case_order, second_case_order);
     assert_eq!(first_event_order, second_event_order);
+    assert_eq!(first_content_hash, second_content_hash);
+}
+
+#[test]
+fn stylized_fact_fixture_loading_order_and_content_hash_are_deterministic() {
+    let loaded_fixture = load_stylized_fact_metric_regression_fixture_from_manifest()
+        .expect("stylized fact regression fixture should load from shared manifest");
+    let fixture_payload = loaded_fixture.loaded_payload.payload_bytes.clone();
+
+    let first_document =
+        serde_json::from_slice::<StylizedFactMetricRegressionFixtureDocument>(&fixture_payload)
+            .expect("stylized fact regression fixture should parse");
+    let second_document =
+        serde_json::from_slice::<StylizedFactMetricRegressionFixtureDocument>(&fixture_payload)
+            .expect("stylized fact regression fixture should parse");
+    let first_case_order: Vec<String> = first_document
+        .cases
+        .iter()
+        .map(|fixture_case| fixture_case.fixture_id.clone())
+        .collect();
+    let second_case_order: Vec<String> = second_document
+        .cases
+        .iter()
+        .map(|fixture_case| fixture_case.fixture_id.clone())
+        .collect();
+    let first_content_hash = support::validation_fixture::compute_content_hash_hex(
+        loaded_fixture.loaded_payload.payload_bytes.as_slice(),
+    );
+    let second_content_hash = support::validation_fixture::compute_content_hash_hex(
+        loaded_fixture.loaded_payload.payload_bytes.as_slice(),
+    );
+
+    assert_eq!(first_case_order, second_case_order);
     assert_eq!(first_content_hash, second_content_hash);
 }
 
@@ -225,6 +280,36 @@ fn validation_fixture_manifest_rejects_malformed_content_hash_values() {
             .expect("manifest with malformed content_hash should still parse");
 
     let validation_result = validate_validation_fixture_manifest_document(&parsed_manifest);
+
+    assert!(validation_result.is_err());
+}
+
+#[test]
+fn stylized_fact_fixture_rejects_missing_required_fields() {
+    let loaded_fixture = load_stylized_fact_metric_regression_fixture_from_manifest()
+        .expect("stylized fact regression fixture should load");
+    let mut fixture_value =
+        serde_json::to_value(loaded_fixture.fixture_document).expect("fixture should serialize");
+
+    fixture_value
+        .as_object_mut()
+        .expect("fixture value should be an object")
+        .remove("cases");
+
+    let parse_result = serde_json::from_value::<StylizedFactMetricRegressionFixtureDocument>(
+        fixture_value,
+    );
+    assert!(parse_result.is_err());
+}
+
+#[test]
+fn stylized_fact_fixture_rejects_unknown_tolerance_policy_reference() {
+    let loaded_fixture = load_stylized_fact_metric_regression_fixture_from_manifest()
+        .expect("stylized fact regression fixture should load");
+    let mut fixture_document = loaded_fixture.fixture_document;
+    fixture_document.cases[0].tolerance_policy_id = "missing_policy.v1".to_string();
+
+    let validation_result = validate_stylized_fact_metric_regression_fixture_document(&fixture_document);
 
     assert!(validation_result.is_err());
 }

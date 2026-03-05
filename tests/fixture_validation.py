@@ -45,6 +45,17 @@ SEEDED_TICK_SIMULATION_EVENT_ORDERING_POLICY: str = (
     "timestamp_then_endogenous_before_exogenous_then_buy_before_sell_then_known_before_surprise_then_generation_order.v1"
 )
 SUPPORTED_MANIFEST_DOMAINS: set[str] = {"calendar", "seasonality", "hourly_factors", "gap_behavior"}
+STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SCHEMA_VERSION: str = (
+    "validation.stylized_fact.metric_regression.fixture.v1"
+)
+STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SET_ID: str = "stylized_fact_metric_regression_fixture_v1"
+STYLIZED_FACT_METRIC_REGRESSION_SCHEMA_FAMILY: str = "validation.stylized_fact.metric_regression.fixture"
+STYLIZED_FACT_METRIC_REGRESSION_SCHEMA_GENERATION: str = "v1"
+STYLIZED_FACT_METRIC_REGRESSION_FORWARD_EXTENSION_POLICY: str = "additive_fields_only.v1"
+STYLIZED_FACT_METRIC_REGRESSION_CASE_ORDER_POLICY: str = "preserve_declared_case_order.v1"
+STYLIZED_FACT_METRIC_REGRESSION_CONTENT_HASH_SCOPE_POLICY: str = "document_payload_bytes.v1"
+
+SUPPORTED_MANIFEST_DOMAINS.add("stylized_facts")
 
 
 type JsonObject = dict[str, Any]
@@ -355,6 +366,81 @@ class SeededTickSimulationParityFixtureDocument(TypedDict):
     determinism_metadata: SeededTickSimulationParityDeterminismMetadata
     canonical_regression_metadata: SeededTickSimulationParityCanonicalMetadata
     cases: list[SeededTickSimulationParityCase]
+
+
+class StylizedFactMetricRegressionSchemaMetadata(TypedDict):
+    schema_family: str
+    schema_generation: str
+    forward_extension_policy: str
+
+
+class StylizedFactMetricRegressionDeterminismMetadata(TypedDict):
+    case_order_policy: str
+    content_hash_scope: str
+    content_hash_algorithm: str
+
+
+class StylizedFactRegressionTolerancePolicy(TypedDict):
+    policy_id: str
+    policy_kind: str
+    policy_version: str
+    point_estimate_absolute_tolerance: float
+    absolute_delta_tolerance: float
+    confidence_interval_bound_absolute_tolerance: float
+    require_confidence_intervals: bool
+
+
+class StylizedFactMetricRegressionCanonicalMetadata(TypedDict):
+    required_tags: list[str]
+    required_diagnostic_kinds: list[str]
+    required_tolerance_policy_ids: list[str]
+    stable_fixture_ids: list[str]
+
+
+class StylizedFactMetricRegressionProvenance(TypedDict):
+    baseline_source: str
+    captured_at_utc: str
+    update_guidance: str
+
+
+class StylizedFactExpectedConfidenceInterval(TypedDict):
+    lower_bound: float
+    upper_bound: float
+    confidence_level: float
+
+
+class StylizedFactExpectedMetricRegressionEntry(TypedDict):
+    horizon_label: str
+    metric_id: str
+    metric_variant: str | None
+    expected_status: str
+    expected_empirical_value: float | None
+    expected_simulated_value: float | None
+    expected_absolute_delta: float | None
+    expected_empirical_confidence_interval: StylizedFactExpectedConfidenceInterval | None
+    expected_simulated_confidence_interval: StylizedFactExpectedConfidenceInterval | None
+
+
+class StylizedFactMetricRegressionCase(TypedDict):
+    fixture_id: str
+    diagnostic_kind: str
+    tolerance_policy_id: str
+    provenance: StylizedFactMetricRegressionProvenance
+    request_payload: dict[str, Any]
+    expected_metrics: list[StylizedFactExpectedMetricRegressionEntry]
+    tags: list[str]
+    description: str
+
+
+class StylizedFactMetricRegressionFixtureDocument(TypedDict):
+    schema_version: str
+    fixture_set_id: str
+    fixture_set_version: str
+    schema_metadata: StylizedFactMetricRegressionSchemaMetadata
+    determinism_metadata: StylizedFactMetricRegressionDeterminismMetadata
+    tolerance_policies: list[StylizedFactRegressionTolerancePolicy]
+    canonical_regression_metadata: StylizedFactMetricRegressionCanonicalMetadata
+    cases: list[StylizedFactMetricRegressionCase]
 
 
 def compute_content_hash_hex(payload_bytes: bytes) -> str:
@@ -1045,6 +1131,253 @@ def load_seeded_tick_simulation_parity_fixture_document(
     return validate_seeded_tick_simulation_parity_fixture_document(payload_value)
 
 
+def validate_stylized_fact_metric_regression_fixture_document(
+    raw_document: object,
+) -> StylizedFactMetricRegressionFixtureDocument:
+    document_map: JsonObject = _require_json_object(raw_document, "stylized fact metric regression fixture")
+    schema_version: str = _require_non_empty_string(
+        document_map,
+        "schema_version",
+        "stylized fact metric regression fixture",
+    )
+    if schema_version != STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SCHEMA_VERSION:
+        raise ValueError(f"unsupported stylized fact metric regression schema version: {schema_version}")
+
+    fixture_set_id: str = _require_non_empty_string(
+        document_map,
+        "fixture_set_id",
+        "stylized fact metric regression fixture",
+    )
+    if fixture_set_id != STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SET_ID:
+        raise ValueError(f"unexpected stylized fact metric regression fixture set id: {fixture_set_id}")
+
+    fixture_set_version: str = _require_non_empty_string(
+        document_map,
+        "fixture_set_version",
+        "stylized fact metric regression fixture",
+    )
+
+    schema_metadata: JsonObject = _require_json_object_field(
+        document_map,
+        "schema_metadata",
+        "stylized fact metric regression fixture",
+    )
+    if (
+        _require_non_empty_string(schema_metadata, "schema_family", "stylized fact schema_metadata")
+        != STYLIZED_FACT_METRIC_REGRESSION_SCHEMA_FAMILY
+    ):
+        raise ValueError("unexpected stylized fact metric regression schema family")
+    if (
+        _require_non_empty_string(schema_metadata, "schema_generation", "stylized fact schema_metadata")
+        != STYLIZED_FACT_METRIC_REGRESSION_SCHEMA_GENERATION
+    ):
+        raise ValueError("unexpected stylized fact metric regression schema generation")
+    if (
+        _require_non_empty_string(schema_metadata, "forward_extension_policy", "stylized fact schema_metadata")
+        != STYLIZED_FACT_METRIC_REGRESSION_FORWARD_EXTENSION_POLICY
+    ):
+        raise ValueError("unexpected stylized fact metric regression forward extension policy")
+
+    determinism_metadata: JsonObject = _require_json_object_field(
+        document_map,
+        "determinism_metadata",
+        "stylized fact metric regression fixture",
+    )
+    if (
+        _require_non_empty_string(
+            determinism_metadata,
+            "case_order_policy",
+            "stylized fact determinism_metadata",
+        )
+        != STYLIZED_FACT_METRIC_REGRESSION_CASE_ORDER_POLICY
+    ):
+        raise ValueError("unexpected stylized fact metric regression case order policy")
+    if (
+        _require_non_empty_string(
+            determinism_metadata,
+            "content_hash_scope",
+            "stylized fact determinism_metadata",
+        )
+        != STYLIZED_FACT_METRIC_REGRESSION_CONTENT_HASH_SCOPE_POLICY
+    ):
+        raise ValueError("unexpected stylized fact metric regression content hash scope policy")
+    if (
+        _require_non_empty_string(
+            determinism_metadata,
+            "content_hash_algorithm",
+            "stylized fact determinism_metadata",
+        )
+        != CONTENT_HASH_ALGORITHM_POLICY
+    ):
+        raise ValueError("unexpected stylized fact metric regression content hash algorithm")
+
+    tolerance_policy_values: JsonArray = _require_json_array_field(
+        document_map,
+        "tolerance_policies",
+        "stylized fact metric regression fixture",
+    )
+    if not tolerance_policy_values:
+        raise ValueError("stylized fact metric regression fixture must include tolerance_policies")
+
+    tolerance_policies: list[StylizedFactRegressionTolerancePolicy] = []
+    observed_tolerance_policy_ids: set[str] = set()
+    for policy_index, raw_policy in enumerate(tolerance_policy_values):
+        policy_map: JsonObject = _require_json_object(raw_policy, f"stylized fact tolerance_policies[{policy_index}]")
+        policy_id: str = _require_non_empty_string(policy_map, "policy_id", f"stylized fact tolerance_policies[{policy_index}]")
+        if policy_id in observed_tolerance_policy_ids:
+            raise ValueError(f"duplicate stylized fact tolerance policy id: {policy_id}")
+
+        observed_tolerance_policy_ids.add(policy_id)
+        policy_kind: str = _require_non_empty_string(
+            policy_map,
+            "policy_kind",
+            f"stylized fact tolerance_policies[{policy_index}]",
+        )
+        if policy_kind not in {"deterministic_exact_match", "bootstrap_confidence_interval"}:
+            raise ValueError(f"unsupported stylized fact policy_kind: {policy_kind}")
+
+        require_confidence_intervals: bool = _require_bool(
+            policy_map,
+            "require_confidence_intervals",
+            f"stylized fact tolerance_policies[{policy_index}]",
+        )
+        match policy_kind:
+            case "deterministic_exact_match":
+                if require_confidence_intervals:
+                    raise ValueError("deterministic exact-match policy cannot require confidence intervals")
+            case "bootstrap_confidence_interval":
+                if not require_confidence_intervals:
+                    raise ValueError("bootstrap confidence-interval policy must require confidence intervals")
+
+        tolerance_policies.append(
+            {
+                "policy_id": policy_id,
+                "policy_kind": policy_kind,
+                "policy_version": _require_non_empty_string(
+                    policy_map,
+                    "policy_version",
+                    f"stylized fact tolerance_policies[{policy_index}]",
+                ),
+                "point_estimate_absolute_tolerance": _require_non_negative_float(
+                    policy_map,
+                    "point_estimate_absolute_tolerance",
+                    f"stylized fact tolerance_policies[{policy_index}]",
+                ),
+                "absolute_delta_tolerance": _require_non_negative_float(
+                    policy_map,
+                    "absolute_delta_tolerance",
+                    f"stylized fact tolerance_policies[{policy_index}]",
+                ),
+                "confidence_interval_bound_absolute_tolerance": _require_non_negative_float(
+                    policy_map,
+                    "confidence_interval_bound_absolute_tolerance",
+                    f"stylized fact tolerance_policies[{policy_index}]",
+                ),
+                "require_confidence_intervals": require_confidence_intervals,
+            },
+        )
+
+    cases_raw: JsonArray = _require_json_array_field(
+        document_map,
+        "cases",
+        "stylized fact metric regression fixture",
+    )
+    if not cases_raw:
+        raise ValueError("stylized fact metric regression fixture must include cases")
+
+    observed_fixture_ids: set[str] = set()
+    observed_tags: set[str] = set()
+    observed_diagnostic_kinds: set[str] = set()
+    validated_cases: list[StylizedFactMetricRegressionCase] = []
+    for case_index, raw_case in enumerate(cases_raw):
+        case_map: JsonObject = _require_json_object(raw_case, f"stylized fact cases[{case_index}]")
+        validated_case = _validate_stylized_fact_metric_regression_case(
+            case_map,
+            f"stylized fact cases[{case_index}]",
+            observed_tolerance_policy_ids,
+        )
+        fixture_id = validated_case["fixture_id"]
+        if fixture_id in observed_fixture_ids:
+            raise ValueError(f"duplicate stylized fact fixture_id: {fixture_id}")
+
+        observed_fixture_ids.add(fixture_id)
+        observed_tags.update(validated_case["tags"])
+        observed_diagnostic_kinds.add(validated_case["diagnostic_kind"])
+        validated_cases.append(validated_case)
+
+    canonical_metadata_raw: JsonObject = _require_json_object_field(
+        document_map,
+        "canonical_regression_metadata",
+        "stylized fact metric regression fixture",
+    )
+    required_tags: list[str] = _require_non_empty_string_list(
+        canonical_metadata_raw,
+        "required_tags",
+        "stylized fact canonical_regression_metadata",
+    )
+    required_diagnostic_kinds: list[str] = _require_non_empty_string_list(
+        canonical_metadata_raw,
+        "required_diagnostic_kinds",
+        "stylized fact canonical_regression_metadata",
+    )
+    if set(required_diagnostic_kinds) != observed_diagnostic_kinds:
+        raise ValueError(
+            "stylized fact canonical_regression_metadata.required_diagnostic_kinds does not match observed diagnostic kinds",
+        )
+
+    required_tolerance_policy_ids: list[str] = _require_non_empty_string_list(
+        canonical_metadata_raw,
+        "required_tolerance_policy_ids",
+        "stylized fact canonical_regression_metadata",
+    )
+    if set(required_tolerance_policy_ids) != observed_tolerance_policy_ids:
+        raise ValueError(
+            "stylized fact canonical_regression_metadata.required_tolerance_policy_ids does not match observed tolerance policy ids",
+        )
+
+    stable_fixture_ids: list[str] = _require_non_empty_string_list(
+        canonical_metadata_raw,
+        "stable_fixture_ids",
+        "stylized fact canonical_regression_metadata",
+    )
+    _require_unique_fixture_ids(
+        stable_fixture_ids,
+        "stylized fact canonical_regression_metadata.stable_fixture_ids",
+    )
+
+    if set(required_tags) - observed_tags:
+        raise ValueError(
+            "stylized fact canonical_regression_metadata.required_tags must be present in case tags",
+        )
+    if set(stable_fixture_ids) != observed_fixture_ids:
+        raise ValueError(
+            "stylized fact canonical_regression_metadata.stable_fixture_ids does not match observed fixture ids",
+        )
+
+    return {
+        "schema_version": schema_version,
+        "fixture_set_id": fixture_set_id,
+        "fixture_set_version": fixture_set_version,
+        "schema_metadata": cast(StylizedFactMetricRegressionSchemaMetadata, schema_metadata),
+        "determinism_metadata": cast(StylizedFactMetricRegressionDeterminismMetadata, determinism_metadata),
+        "tolerance_policies": tolerance_policies,
+        "canonical_regression_metadata": {
+            "required_tags": required_tags,
+            "required_diagnostic_kinds": required_diagnostic_kinds,
+            "required_tolerance_policy_ids": required_tolerance_policy_ids,
+            "stable_fixture_ids": stable_fixture_ids,
+        },
+        "cases": validated_cases,
+    }
+
+
+def load_stylized_fact_metric_regression_fixture_document(
+    fixture_payload_bytes: bytes,
+) -> StylizedFactMetricRegressionFixtureDocument:
+    payload_value: object = json.loads(fixture_payload_bytes.decode("utf-8"))
+    return validate_stylized_fact_metric_regression_fixture_document(payload_value)
+
+
 def _validate_manifest_fixture_entry(raw_entry: JsonObject) -> ValidationFixtureManifestEntry:
     fixture_id: str = _require_non_empty_string(raw_entry, "fixture_id", "manifest fixture entry")
     domain: str = _require_non_empty_string(raw_entry, "domain", "manifest fixture entry")
@@ -1070,6 +1403,117 @@ def _validate_manifest_fixture_entry(raw_entry: JsonObject) -> ValidationFixture
         "relative_path": relative_path,
         "exchange_codes": exchange_codes,
         "content_hash": content_hash,
+    }
+
+
+def _validate_stylized_fact_metric_regression_case(
+    raw_case: JsonObject,
+    context: str,
+    observed_tolerance_policy_ids: set[str],
+) -> StylizedFactMetricRegressionCase:
+    fixture_id: str = _require_non_empty_string(raw_case, "fixture_id", context)
+    diagnostic_kind: str = _require_non_empty_string(raw_case, "diagnostic_kind", context)
+    if diagnostic_kind not in {
+        "activity_clustering",
+        "tail_skew",
+        "volatility_persistence",
+        "gap_behavior",
+    }:
+        raise ValueError(f"{context}.diagnostic_kind is unsupported: {diagnostic_kind}")
+
+    tolerance_policy_id: str = _require_non_empty_string(raw_case, "tolerance_policy_id", context)
+    if tolerance_policy_id not in observed_tolerance_policy_ids:
+        raise ValueError(f"{context}.tolerance_policy_id references an unknown policy: {tolerance_policy_id}")
+
+    provenance_raw: JsonObject = _require_json_object_field(raw_case, "provenance", context)
+    provenance: StylizedFactMetricRegressionProvenance = {
+        "baseline_source": _require_non_empty_string(
+            provenance_raw,
+            "baseline_source",
+            f"{context}.provenance",
+        ),
+        "captured_at_utc": _require_non_empty_string(
+            provenance_raw,
+            "captured_at_utc",
+            f"{context}.provenance",
+        ),
+        "update_guidance": _require_non_empty_string(
+            provenance_raw,
+            "update_guidance",
+            f"{context}.provenance",
+        ),
+    }
+
+    request_payload: JsonObject = _require_json_object_field(raw_case, "request_payload", context)
+    if not request_payload:
+        raise ValueError(f"{context}.request_payload must be a non-empty object")
+
+    expected_metrics_raw: JsonArray = _require_json_array_field(raw_case, "expected_metrics", context)
+    if not expected_metrics_raw:
+        raise ValueError(f"{context}.expected_metrics must include at least one entry")
+
+    expected_metrics: list[StylizedFactExpectedMetricRegressionEntry] = []
+    observed_metric_keys: set[tuple[str, str, str | None]] = set()
+    for metric_index, raw_metric in enumerate(expected_metrics_raw):
+        metric_map: JsonObject = _require_json_object(raw_metric, f"{context}.expected_metrics[{metric_index}]")
+        expected_metric = _validate_stylized_fact_expected_metric_entry(
+            metric_map,
+            f"{context}.expected_metrics[{metric_index}]",
+        )
+        metric_key = (
+            expected_metric["horizon_label"],
+            expected_metric["metric_id"],
+            expected_metric["metric_variant"],
+        )
+        if metric_key in observed_metric_keys:
+            raise ValueError(
+                f"{context}.expected_metrics contains duplicate entry for horizon={metric_key[0]} metric_id={metric_key[1]} metric_variant={metric_key[2]}",
+            )
+
+        observed_metric_keys.add(metric_key)
+        expected_metrics.append(expected_metric)
+
+    tags: list[str] = _require_non_empty_string_list(raw_case, "tags", context)
+    description: str = _require_non_empty_string(raw_case, "description", context)
+
+    return {
+        "fixture_id": fixture_id,
+        "diagnostic_kind": diagnostic_kind,
+        "tolerance_policy_id": tolerance_policy_id,
+        "provenance": provenance,
+        "request_payload": cast(dict[str, Any], request_payload),
+        "expected_metrics": expected_metrics,
+        "tags": tags,
+        "description": description,
+    }
+
+
+def _validate_stylized_fact_expected_metric_entry(
+    raw_metric: JsonObject,
+    context: str,
+) -> StylizedFactExpectedMetricRegressionEntry:
+    expected_status: str = _require_non_empty_string(raw_metric, "expected_status", context)
+    if expected_status not in {"available", "insufficient_data"}:
+        raise ValueError(f"{context}.expected_status is unsupported: {expected_status}")
+
+    return {
+        "horizon_label": _require_non_empty_string(raw_metric, "horizon_label", context),
+        "metric_id": _require_non_empty_string(raw_metric, "metric_id", context),
+        "metric_variant": _require_nullable_non_empty_string(raw_metric, "metric_variant", context),
+        "expected_status": expected_status,
+        "expected_empirical_value": _require_optional_number(raw_metric, "expected_empirical_value", context),
+        "expected_simulated_value": _require_optional_number(raw_metric, "expected_simulated_value", context),
+        "expected_absolute_delta": _require_optional_number(raw_metric, "expected_absolute_delta", context),
+        "expected_empirical_confidence_interval": _require_optional_confidence_interval(
+            raw_metric,
+            "expected_empirical_confidence_interval",
+            context,
+        ),
+        "expected_simulated_confidence_interval": _require_optional_confidence_interval(
+            raw_metric,
+            "expected_simulated_confidence_interval",
+            context,
+        ),
     }
 
 
@@ -2480,6 +2924,59 @@ def _require_bool(parent: JsonObject, field_name: str, context: str) -> bool:
         raise ValueError(f"field '{field_name}' in {context} must be a boolean")
 
     return raw_value
+
+
+def _require_nullable_non_empty_string(parent: JsonObject, field_name: str, context: str) -> str | None:
+    if field_name not in parent:
+        raise ValueError(f"missing required field '{field_name}' in {context}")
+
+    raw_value: object = parent[field_name]
+    if raw_value is None:
+        return None
+
+    if not isinstance(raw_value, str):
+        raise ValueError(f"field '{field_name}' in {context} must be a string or null")
+
+    normalized_value = raw_value.strip()
+    if not normalized_value:
+        raise ValueError(f"field '{field_name}' in {context} cannot be empty")
+
+    return normalized_value
+
+
+def _require_optional_number(parent: JsonObject, field_name: str, context: str) -> float | None:
+    if field_name not in parent:
+        raise ValueError(f"missing required field '{field_name}' in {context}")
+
+    raw_value = parent[field_name]
+    if raw_value is None:
+        return None
+
+    return _require_float_like(raw_value, f"field '{field_name}' in {context}")
+
+
+def _require_optional_confidence_interval(
+    parent: JsonObject,
+    field_name: str,
+    context: str,
+) -> StylizedFactExpectedConfidenceInterval | None:
+    if field_name not in parent:
+        raise ValueError(f"missing required field '{field_name}' in {context}")
+
+    raw_value = parent[field_name]
+    if raw_value is None:
+        return None
+
+    interval_map = _require_json_object(raw_value, f"field '{field_name}' in {context}")
+    return {
+        "lower_bound": _require_number(interval_map, "lower_bound", f"field '{field_name}' in {context}"),
+        "upper_bound": _require_number(interval_map, "upper_bound", f"field '{field_name}' in {context}"),
+        "confidence_level": _require_number(
+            interval_map,
+            "confidence_level",
+            f"field '{field_name}' in {context}",
+        ),
+    }
 
 
 def _require_number(parent: JsonObject, field_name: str, context: str) -> float:
