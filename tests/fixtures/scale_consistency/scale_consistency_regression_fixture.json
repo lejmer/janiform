@@ -1,0 +1,422 @@
+{
+  "schema_version": "validation.scale_consistency.regression.fixture.v1",
+  "fixture_set_id": "scale_consistency_regression_fixture_v1",
+  "fixture_set_version": "1.0.0",
+  "schema_metadata": {
+    "schema_family": "validation.scale_consistency.regression.fixture",
+    "schema_generation": "v1",
+    "forward_extension_policy": "additive_fields_only.v1"
+  },
+  "determinism_metadata": {
+    "case_order_policy": "preserve_declared_case_order.v1",
+    "content_hash_scope": "document_payload_bytes.v1",
+    "content_hash_algorithm": "fnv1a_64_hex_utf8.v1",
+    "repeated_run_comparison_policy": "repeat_full_harness_execution_and_require_identical_decision_and_report_outputs.v1"
+  },
+  "threshold_policy_reference": {
+    "policy_id": "scale_consistency_release_gate_policy_v1",
+    "policy_version": "1.0.0"
+  },
+  "canonical_regression_metadata": {
+    "required_tags": [
+      "stable_reference",
+      "subhour_grid",
+      "hourly_grid",
+      "pass_expected",
+      "fail_expected",
+      "benchmark_prerequisite"
+    ],
+    "required_interval_grid_labels": [
+      "subhour_grid",
+      "hourly_grid"
+    ],
+    "required_expected_scenario_statuses": [
+      "pass",
+      "fail"
+    ],
+    "stable_fixture_ids": [
+      "balanced_subhour_pass_v1",
+      "returns_hourly_fail_v1",
+      "event_hourly_fail_v1",
+      "benchmark_prerequisite_hourly_fail_v1"
+    ]
+  },
+  "cases": [
+    {
+      "fixture_id": "balanced_subhour_pass_v1",
+      "scenario_id": "scenario-balanced-subhour-pass",
+      "parameter_set_id": "regime-balanced-subhour",
+      "horizon_label": "thirty_minute",
+      "coarse_interval_delta": 0.5,
+      "fine_interval_delta": 0.25,
+      "expected_applied_interval_threshold_band_label": "subhour_grid",
+      "provenance": {
+        "baseline_source": "hand_curated_decision_fixture",
+        "captured_at_utc": "2026-03-06T00:00:00Z",
+        "update_guidance": "Update only when subhour decision thresholds or report rendering intentionally change."
+      },
+      "engine_benchmark_input": {
+        "source_report_schema_version": "benchmark.coarse_fine_consistency.report.v1",
+        "source_governance_scope_policy": "engine_level_consistency_only_model_level_multi_regime_governance_delegated_to_scale_consistency_validation_workflows.v1",
+        "benchmark_policy_id": "engine_benchmark_policy",
+        "benchmark_policy_version": "1.0.0",
+        "tolerance_policy_id": "engine_tolerance_policy",
+        "tolerance_policy_version": "1.0.0",
+        "status": "pass"
+      },
+      "metric_delta_input": {
+        "horizon_interval_count": 4,
+        "fine_subinterval_count_per_coarse_interval": 2,
+        "metric_deltas": [
+          {
+            "metric_id": "returns_central_variance",
+            "metric_category": "returns",
+            "delta_kind": "signed_difference",
+            "status": "computed",
+            "coarse_value": 1.2,
+            "fine_value": 1.15,
+            "delta_value": 0.05,
+            "absolute_delta": 0.05,
+            "computation_failures": []
+          },
+          {
+            "metric_id": "volatility_abs_return_acf_distribution_distance",
+            "metric_variant": "lag_grid_1",
+            "metric_category": "volatility",
+            "delta_kind": "absolute_distance",
+            "status": "computed",
+            "coarse_value": 0.1,
+            "fine_value": 0.0,
+            "delta_value": 0.1,
+            "absolute_delta": 0.1,
+            "computation_failures": []
+          },
+          {
+            "metric_id": "open_jump_abs_tail_expected_shortfall_ratio",
+            "metric_category": "events",
+            "delta_kind": "signed_difference",
+            "status": "computed",
+            "coarse_value": 1.18,
+            "fine_value": 1.06,
+            "delta_value": 0.12,
+            "absolute_delta": 0.12,
+            "computation_failures": []
+          }
+        ]
+      },
+      "expected_outcome": {
+        "expected_batch_status": "pass",
+        "expected_scenario_status": "pass",
+        "expected_failed_metric_count": 0,
+        "expected_metric_outcomes": [
+          {
+            "metric_id": "returns_central_variance",
+            "expected_status": "pass",
+            "expected_threshold_id": "subhour/returns_central_variance",
+            "expected_decision_reason_codes": []
+          },
+          {
+            "metric_id": "volatility_abs_return_acf_distribution_distance",
+            "metric_variant": "lag_grid_1",
+            "expected_status": "pass",
+            "expected_threshold_id": "subhour/volatility_abs_return_acf_distribution_distance",
+            "expected_decision_reason_codes": []
+          },
+          {
+            "metric_id": "open_jump_abs_tail_expected_shortfall_ratio",
+            "expected_status": "pass",
+            "expected_threshold_id": "subhour/open_jump_abs_tail_expected_shortfall_ratio",
+            "expected_decision_reason_codes": []
+          }
+        ],
+        "expected_primary_drift_category": null,
+        "expected_non_drift_failure_reason_codes": [],
+        "expected_rendered_summary": "Scale Consistency Report\nschema_version: validation.scale_consistency.report.v1\nstatus: pass\nsummary: total_scenarios=1 passed=1 failed=0 total_metrics=3 failed_metrics=0 returns_primary_drift=0 volatility_primary_drift=0 event_derived_primary_drift=0 uncategorized_failed=0\n- scenario_id=scenario-balanced-subhour-pass status=pass failed_metrics=0 primary_drift_category=none interval_band=subhour_grid\n  drift_diagnostics=none\n"
+      },
+      "tags": [
+        "stable_reference",
+        "subhour_grid",
+        "pass_expected"
+      ],
+      "description": "Balanced subhour fixture keeps all metric deltas inside policy bounds and should remain a clean pass."
+    },
+    {
+      "fixture_id": "returns_hourly_fail_v1",
+      "scenario_id": "scenario-returns-hourly-fail",
+      "parameter_set_id": "regime-returns-stress-hourly",
+      "horizon_label": "hourly",
+      "coarse_interval_delta": 1.0,
+      "fine_interval_delta": 0.25,
+      "expected_applied_interval_threshold_band_label": "hourly_grid",
+      "provenance": {
+        "baseline_source": "hand_curated_decision_fixture",
+        "captured_at_utc": "2026-03-06T00:00:00Z",
+        "update_guidance": "Update only when hourly return-threshold behavior or primary drift ranking intentionally changes."
+      },
+      "engine_benchmark_input": {
+        "source_report_schema_version": "benchmark.coarse_fine_consistency.report.v1",
+        "source_governance_scope_policy": "engine_level_consistency_only_model_level_multi_regime_governance_delegated_to_scale_consistency_validation_workflows.v1",
+        "benchmark_policy_id": "engine_benchmark_policy",
+        "benchmark_policy_version": "1.0.0",
+        "tolerance_policy_id": "engine_tolerance_policy",
+        "tolerance_policy_version": "1.0.0",
+        "status": "pass"
+      },
+      "metric_delta_input": {
+        "horizon_interval_count": 3,
+        "fine_subinterval_count_per_coarse_interval": 4,
+        "metric_deltas": [
+          {
+            "metric_id": "returns_central_variance",
+            "metric_category": "returns",
+            "delta_kind": "signed_difference",
+            "status": "computed",
+            "coarse_value": 1.45,
+            "fine_value": 0.83,
+            "delta_value": 0.62,
+            "absolute_delta": 0.62,
+            "computation_failures": []
+          },
+          {
+            "metric_id": "volatility_abs_return_acf_distribution_distance",
+            "metric_variant": "lag_grid_1",
+            "metric_category": "volatility",
+            "delta_kind": "absolute_distance",
+            "status": "computed",
+            "coarse_value": 0.18,
+            "fine_value": 0.0,
+            "delta_value": 0.18,
+            "absolute_delta": 0.18,
+            "computation_failures": []
+          },
+          {
+            "metric_id": "open_jump_abs_tail_expected_shortfall_ratio",
+            "metric_category": "events",
+            "delta_kind": "signed_difference",
+            "status": "computed",
+            "coarse_value": 1.24,
+            "fine_value": 1.04,
+            "delta_value": 0.2,
+            "absolute_delta": 0.2,
+            "computation_failures": []
+          }
+        ]
+      },
+      "expected_outcome": {
+        "expected_batch_status": "fail",
+        "expected_scenario_status": "fail",
+        "expected_failed_metric_count": 1,
+        "expected_metric_outcomes": [
+          {
+            "metric_id": "returns_central_variance",
+            "expected_status": "fail",
+            "expected_threshold_id": "hourly/returns_central_variance",
+            "expected_decision_reason_codes": [
+              "absolute_delta_threshold_exceeded"
+            ]
+          },
+          {
+            "metric_id": "volatility_abs_return_acf_distribution_distance",
+            "metric_variant": "lag_grid_1",
+            "expected_status": "pass",
+            "expected_threshold_id": "hourly/volatility_abs_return_acf_distribution_distance",
+            "expected_decision_reason_codes": []
+          },
+          {
+            "metric_id": "open_jump_abs_tail_expected_shortfall_ratio",
+            "expected_status": "pass",
+            "expected_threshold_id": "hourly/open_jump_abs_tail_expected_shortfall_ratio",
+            "expected_decision_reason_codes": []
+          }
+        ],
+        "expected_primary_drift_category": "returns",
+        "expected_non_drift_failure_reason_codes": [],
+        "expected_rendered_summary": "Scale Consistency Report\nschema_version: validation.scale_consistency.report.v1\nstatus: fail\nsummary: total_scenarios=1 passed=0 failed=1 total_metrics=3 failed_metrics=1 returns_primary_drift=1 volatility_primary_drift=0 event_derived_primary_drift=0 uncategorized_failed=0\n- scenario_id=scenario-returns-hourly-fail status=fail failed_metrics=1 primary_drift_category=returns interval_band=hourly_grid\n  drift_category=returns failed_metrics=1 missing_metrics=0 max_absolute_delta=Some(0.62) metrics=returns_central_variance@hourly/returns_central_variance\n"
+      },
+      "tags": [
+        "stable_reference",
+        "hourly_grid",
+        "fail_expected"
+      ],
+      "description": "Hourly return-stress fixture trips only the returns variance threshold and should classify to returns drift."
+    },
+    {
+      "fixture_id": "event_hourly_fail_v1",
+      "scenario_id": "scenario-event-hourly-fail",
+      "parameter_set_id": "regime-event-stress-hourly",
+      "horizon_label": "hourly",
+      "coarse_interval_delta": 1.0,
+      "fine_interval_delta": 0.25,
+      "expected_applied_interval_threshold_band_label": "hourly_grid",
+      "provenance": {
+        "baseline_source": "hand_curated_decision_fixture",
+        "captured_at_utc": "2026-03-06T00:00:00Z",
+        "update_guidance": "Update only when event-derived drift classification or missing-metric handling intentionally changes."
+      },
+      "engine_benchmark_input": {
+        "source_report_schema_version": "benchmark.coarse_fine_consistency.report.v1",
+        "source_governance_scope_policy": "engine_level_consistency_only_model_level_multi_regime_governance_delegated_to_scale_consistency_validation_workflows.v1",
+        "benchmark_policy_id": "engine_benchmark_policy",
+        "benchmark_policy_version": "1.0.0",
+        "tolerance_policy_id": "engine_tolerance_policy",
+        "tolerance_policy_version": "1.0.0",
+        "status": "pass"
+      },
+      "metric_delta_input": {
+        "horizon_interval_count": 3,
+        "fine_subinterval_count_per_coarse_interval": 4,
+        "metric_deltas": [
+          {
+            "metric_id": "open_jump_abs_tail_expected_shortfall_ratio",
+            "metric_category": "events",
+            "delta_kind": "signed_difference",
+            "status": "computed",
+            "coarse_value": 1.31,
+            "fine_value": 1.03,
+            "delta_value": 0.28,
+            "absolute_delta": 0.28,
+            "computation_failures": []
+          },
+          {
+            "metric_id": "closed_gap_abs_tail_expected_shortfall_ratio",
+            "metric_category": "events",
+            "delta_kind": "signed_difference",
+            "status": "missing",
+            "coarse_value": null,
+            "fine_value": null,
+            "delta_value": null,
+            "absolute_delta": null,
+            "computation_failures": [
+              {
+                "dataset_role": "coarse",
+                "reason_code": "missing_closed_gap_observations"
+              },
+              {
+                "dataset_role": "fine",
+                "reason_code": "missing_closed_gap_observations"
+              }
+            ]
+          }
+        ]
+      },
+      "expected_outcome": {
+        "expected_batch_status": "fail",
+        "expected_scenario_status": "fail",
+        "expected_failed_metric_count": 2,
+        "expected_metric_outcomes": [
+          {
+            "metric_id": "open_jump_abs_tail_expected_shortfall_ratio",
+            "expected_status": "fail",
+            "expected_threshold_id": "hourly/open_jump_abs_tail_expected_shortfall_ratio",
+            "expected_decision_reason_codes": [
+              "absolute_delta_threshold_exceeded"
+            ]
+          },
+          {
+            "metric_id": "closed_gap_abs_tail_expected_shortfall_ratio",
+            "expected_status": "fail",
+            "expected_threshold_id": "hourly/closed_gap_abs_tail_expected_shortfall_ratio",
+            "expected_decision_reason_codes": [
+              "metric_computation_missing"
+            ]
+          }
+        ],
+        "expected_primary_drift_category": "event_derived",
+        "expected_non_drift_failure_reason_codes": [],
+        "expected_rendered_summary": "Scale Consistency Report\nschema_version: validation.scale_consistency.report.v1\nstatus: fail\nsummary: total_scenarios=1 passed=0 failed=1 total_metrics=2 failed_metrics=2 returns_primary_drift=0 volatility_primary_drift=0 event_derived_primary_drift=1 uncategorized_failed=0\n- scenario_id=scenario-event-hourly-fail status=fail failed_metrics=2 primary_drift_category=event_derived interval_band=hourly_grid\n  drift_category=event_derived failed_metrics=2 missing_metrics=1 max_absolute_delta=Some(0.28) metrics=open_jump_abs_tail_expected_shortfall_ratio@hourly/open_jump_abs_tail_expected_shortfall_ratio,closed_gap_abs_tail_expected_shortfall_ratio@hourly/closed_gap_abs_tail_expected_shortfall_ratio\n"
+      },
+      "tags": [
+        "stable_reference",
+        "hourly_grid",
+        "fail_expected"
+      ],
+      "description": "Hourly event-stress fixture combines one threshold breach and one missing closed-gap metric to keep event-derived drift behavior locked down."
+    },
+    {
+      "fixture_id": "benchmark_prerequisite_hourly_fail_v1",
+      "scenario_id": "scenario-benchmark-prerequisite-hourly-fail",
+      "parameter_set_id": "regime-benchmark-prerequisite-hourly",
+      "horizon_label": "hourly",
+      "coarse_interval_delta": 1.0,
+      "fine_interval_delta": 0.25,
+      "expected_applied_interval_threshold_band_label": "hourly_grid",
+      "provenance": {
+        "baseline_source": "hand_curated_decision_fixture",
+        "captured_at_utc": "2026-03-06T00:00:00Z",
+        "update_guidance": "Update only when engine benchmark prerequisite handling or non-drift report rendering intentionally changes."
+      },
+      "engine_benchmark_input": {
+        "source_report_schema_version": "benchmark.coarse_fine_consistency.report.v1",
+        "source_governance_scope_policy": "engine_level_consistency_only_model_level_multi_regime_governance_delegated_to_scale_consistency_validation_workflows.v1",
+        "benchmark_policy_id": "engine_benchmark_policy",
+        "benchmark_policy_version": "1.0.0",
+        "tolerance_policy_id": "engine_tolerance_policy",
+        "tolerance_policy_version": "1.0.0",
+        "status": "fail"
+      },
+      "metric_delta_input": {
+        "horizon_interval_count": 2,
+        "fine_subinterval_count_per_coarse_interval": 4,
+        "metric_deltas": [
+          {
+            "metric_id": "returns_central_variance",
+            "metric_category": "returns",
+            "delta_kind": "signed_difference",
+            "status": "computed",
+            "coarse_value": 1.08,
+            "fine_value": 1.0,
+            "delta_value": 0.08,
+            "absolute_delta": 0.08,
+            "computation_failures": []
+          },
+          {
+            "metric_id": "open_jump_abs_tail_expected_shortfall_ratio",
+            "metric_category": "events",
+            "delta_kind": "signed_difference",
+            "status": "computed",
+            "coarse_value": 1.11,
+            "fine_value": 0.95,
+            "delta_value": 0.16,
+            "absolute_delta": 0.16,
+            "computation_failures": []
+          }
+        ]
+      },
+      "expected_outcome": {
+        "expected_batch_status": "fail",
+        "expected_scenario_status": "fail",
+        "expected_failed_metric_count": 2,
+        "expected_metric_outcomes": [
+          {
+            "metric_id": "returns_central_variance",
+            "expected_status": "fail",
+            "expected_threshold_id": "hourly/returns_central_variance",
+            "expected_decision_reason_codes": [
+              "engine_benchmark_prerequisite_failed"
+            ]
+          },
+          {
+            "metric_id": "open_jump_abs_tail_expected_shortfall_ratio",
+            "expected_status": "fail",
+            "expected_threshold_id": "hourly/open_jump_abs_tail_expected_shortfall_ratio",
+            "expected_decision_reason_codes": [
+              "engine_benchmark_prerequisite_failed"
+            ]
+          }
+        ],
+        "expected_primary_drift_category": null,
+        "expected_non_drift_failure_reason_codes": [
+          "engine_benchmark_prerequisite_failed"
+        ],
+        "expected_rendered_summary": "Scale Consistency Report\nschema_version: validation.scale_consistency.report.v1\nstatus: fail\nsummary: total_scenarios=1 passed=0 failed=1 total_metrics=2 failed_metrics=2 returns_primary_drift=0 volatility_primary_drift=0 event_derived_primary_drift=0 uncategorized_failed=1\n- scenario_id=scenario-benchmark-prerequisite-hourly-fail status=fail failed_metrics=2 primary_drift_category=none interval_band=hourly_grid\n  non_drift_failure_reason_codes=engine_benchmark_prerequisite_failed\n  drift_diagnostics=none\n"
+      },
+      "tags": [
+        "stable_reference",
+        "hourly_grid",
+        "fail_expected",
+        "benchmark_prerequisite"
+      ],
+      "description": "Benchmark-prerequisite fixture forces a fail even when metric deltas are inside the policy bounds so regression tests keep prerequisite governance intact."
+    }
+  ]
+}

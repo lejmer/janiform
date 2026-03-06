@@ -1,7 +1,7 @@
 import json
 import math
 from collections.abc import Mapping, Sequence
-from typing import Any, TypedDict, cast
+from typing import Any, Optional, TypedDict, cast
 
 from .api import native_module
 from .seasonality import SeasonalityInputValidationError
@@ -56,18 +56,18 @@ class StylizedFactHorizonComparisonTableSummaryRow(TypedDict):
     horizon_label: str
     metric_id: str
     metric_name: str
-    metric_variant: str | None
+    metric_variant: Optional[str]
     metric_class: str
     alignment_status: str
     status: str
-    absolute_delta: float | None
-    standardized_delta: float | None
+    absolute_delta: Optional[float]
+    standardized_delta: Optional[float]
     empirical_status: str
     simulated_status: str
-    empirical_value: float | None
-    simulated_value: float | None
-    empirical_confidence_interval: StylizedFactMetricIntervalBounds | None
-    simulated_confidence_interval: StylizedFactMetricIntervalBounds | None
+    empirical_value: Optional[float]
+    simulated_value: Optional[float]
+    empirical_confidence_interval: Optional[StylizedFactMetricIntervalBounds]
+    simulated_confidence_interval: Optional[StylizedFactMetricIntervalBounds]
     empirical_sample_coverage: StylizedFactMetricCoverageSummary
     simulated_sample_coverage: StylizedFactMetricCoverageSummary
     empirical_horizon_coverage_ratio: float
@@ -87,15 +87,15 @@ class StylizedFactHorizonComparisonPlotPoint(TypedDict):
     horizon_label: str
     metric_id: str
     metric_name: str
-    metric_variant: str | None
+    metric_variant: Optional[str]
     metric_class: str
     status: str
-    absolute_delta: float | None
-    standardized_delta: float | None
-    empirical_value: float | None
-    simulated_value: float | None
-    empirical_confidence_interval: StylizedFactMetricIntervalBounds | None
-    simulated_confidence_interval: StylizedFactMetricIntervalBounds | None
+    absolute_delta: Optional[float]
+    standardized_delta: Optional[float]
+    empirical_value: Optional[float]
+    simulated_value: Optional[float]
+    empirical_confidence_interval: Optional[StylizedFactMetricIntervalBounds]
+    simulated_confidence_interval: Optional[StylizedFactMetricIntervalBounds]
     empirical_sample_coverage: StylizedFactMetricCoverageSummary
     simulated_sample_coverage: StylizedFactMetricCoverageSummary
     empirical_horizon_coverage_ratio: float
@@ -140,7 +140,7 @@ class StylizedFactHorizonComparisonReportBundle(TypedDict):
     comparison_report: dict[str, Any]
     table_summary: StylizedFactHorizonComparisonTableSummary
     plot_payload: StylizedFactHorizonComparisonPlotPayload
-    artifact_export: StylizedFactHorizonComparisonArtifactExportReceipt | None
+    artifact_export: Optional[StylizedFactHorizonComparisonArtifactExportReceipt]
 
 
 def run_stylized_fact_horizon_comparison_report_generator(
@@ -148,7 +148,7 @@ def run_stylized_fact_horizon_comparison_report_generator(
     metric_catalog: Mapping[str, Any],
     comparison_request: Mapping[str, Any],
     execution_mode: str = "memory",
-    artifact_export: Mapping[str, Any] | None = None,
+    artifact_export: Optional[Mapping[str, Any]] = None,
 ) -> StylizedFactHorizonComparisonReportBundle:
     if execution_mode not in {"memory", "disk"}:
         raise SeasonalityInputValidationError("execution_mode must be either 'memory' or 'disk'")
@@ -188,7 +188,7 @@ def run_stylized_fact_horizon_comparison_report_generator(
 def render_stylized_fact_table_markdown(
     table_summary: Mapping[str, Any],
     *,
-    max_rows: int | None = None,
+    max_rows: Optional[int] = None,
 ) -> str:
     validated_summary = _validate_table_summary_payload(table_summary, "table_summary")
     rows: list[StylizedFactHorizonComparisonTableSummaryRow] = validated_summary["rows"]
@@ -338,7 +338,7 @@ def _validate_report_bundle_payload(
         f"{context}.plot_payload",
     )
 
-    artifact_export: StylizedFactHorizonComparisonArtifactExportReceipt | None
+    artifact_export: Optional[StylizedFactHorizonComparisonArtifactExportReceipt]
     raw_artifact_export = _require_field(report_bundle, "artifact_export", context)
     if raw_artifact_export is None:
         artifact_export = None
@@ -624,7 +624,7 @@ def _require_optional_interval_bounds(
     payload: Mapping[str, Any],
     field_name: str,
     context: str,
-) -> StylizedFactMetricIntervalBounds | None:
+) -> Optional[StylizedFactMetricIntervalBounds]:
     raw_interval = _require_field(payload, field_name, context)
     if raw_interval is None:
         return None
@@ -722,7 +722,7 @@ def _require_optional_float(
     payload: Mapping[str, Any],
     field_name: str,
     context: str,
-) -> float | None:
+) -> Optional[float]:
     value = _require_field(payload, field_name, context)
     if value is None:
         return None
@@ -740,7 +740,7 @@ def _require_optional_string(
     payload: Mapping[str, Any],
     field_name: str,
     context: str,
-) -> str | None:
+) -> Optional[str]:
     value = _require_field(payload, field_name, context)
     if value is None:
         return None
@@ -807,7 +807,7 @@ def _require_field(payload: Mapping[str, Any], field_name: str, context: str) ->
     return payload[field_name]
 
 
-def _format_optional_float(value: float | None) -> str:
+def _format_optional_float(value: Optional[float]) -> str:
     if value is None:
         return "n/a"
 

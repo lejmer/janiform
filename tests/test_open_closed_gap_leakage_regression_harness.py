@@ -275,6 +275,46 @@ def test_open_closed_gap_leakage_regression_harness_rejects_malformed_artifact_p
         )
 
 
+def test_open_closed_gap_leakage_regression_harness_rejects_invalid_component_vocabulary(
+    monkeypatch: pytest.MonkeyPatch,
+    calendar_registry,
+    open_closed_gap_behavior_cases: list[OpenClosedGapBehaviorCase],
+) -> None:
+    gap_behavior_cases = _to_gap_behavior_case_inputs(open_closed_gap_behavior_cases)
+    valid_report = run_open_closed_gap_leakage_regression_harness(
+        calendar_registry=calendar_registry,
+        gap_behavior_cases=gap_behavior_cases,
+    )
+
+    mutated_report: dict[str, Any] = json.loads(json.dumps(valid_report))
+    mutated_report["output_schema_metadata"]["canonical_component_vocabulary"] = [
+        "trading_return",
+        "open_jump",
+        "closed_gap",
+        "not_a_component",
+    ]
+
+    class FakeNativeModule:
+        def run_open_closed_gap_leakage_regression_harness(
+            self,
+            _calendar_registry: object,
+            _gap_behavior_cases: list[dict[str, Any]],
+            component_absolute_tolerance: float,
+        ) -> str:
+            return json.dumps(mutated_report)
+
+    monkeypatch.setattr(validation_module, "native_module", lambda: FakeNativeModule())
+
+    with pytest.raises(
+        SeasonalityInputValidationError,
+        match="canonical_component_vocabulary",
+    ):
+        run_open_closed_gap_leakage_regression_harness(
+            calendar_registry=calendar_registry,
+            gap_behavior_cases=gap_behavior_cases,
+        )
+
+
 def _to_gap_behavior_case_inputs(
     fixture_cases: list[OpenClosedGapBehaviorCase],
 ) -> list[GapLeakageCaseInput]:

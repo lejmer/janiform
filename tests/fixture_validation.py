@@ -1,10 +1,34 @@
 import json
 import math
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import Any, Optional, TypedDict, cast
 
 from janiform.calendar import CalendarRegistry
+from janiform.validation.enum import (
+    DeterministicRegressionCaseKind,
+    HourlySourceKind,
+    HourlyValidationOutcomeKind,
+    MarketState,
+    NewsArrivalComponent,
+    OpenClosedGapScenarioClass,
+    RegressionStatus,
+    ScaleConsistencyDatasetRole,
+    ScaleConsistencyDecisionReasonCode,
+    ScaleConsistencyDeltaKind,
+    ScaleConsistencyDriftCategory,
+    ScaleConsistencyFailureReasonCode,
+    ScaleConsistencyMetricCategory,
+    ScaleConsistencyMetricComputationStatus,
+    SeededTickSide,
+    StylizedFactDiagnosticKind,
+    StylizedFactExpectedMetricStatus,
+    StylizedFactTolerancePolicyKind,
+    ValidationFixtureDomain,
+    enum_values,
+    parse_str_enum,
+)
 
 VALIDATION_FIXTURE_MANIFEST_SCHEMA_VERSION: str = "validation.fixture.manifest.v1"
 MANIFEST_DETERMINISM_ORDER_POLICY: str = "lexicographic_by_fixture_id.v1"
@@ -44,7 +68,7 @@ SEEDED_TICK_SIMULATION_CONTENT_HASH_SCOPE_POLICY: str = "document_payload_bytes.
 SEEDED_TICK_SIMULATION_EVENT_ORDERING_POLICY: str = (
     "timestamp_then_endogenous_before_exogenous_then_buy_before_sell_then_known_before_surprise_then_generation_order.v1"
 )
-SUPPORTED_MANIFEST_DOMAINS: set[str] = {"calendar", "seasonality", "hourly_factors", "gap_behavior"}
+SUPPORTED_MANIFEST_DOMAINS: tuple[str, ...] = enum_values(ValidationFixtureDomain)
 STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SCHEMA_VERSION: str = (
     "validation.stylized_fact.metric_regression.fixture.v1"
 )
@@ -54,8 +78,20 @@ STYLIZED_FACT_METRIC_REGRESSION_SCHEMA_GENERATION: str = "v1"
 STYLIZED_FACT_METRIC_REGRESSION_FORWARD_EXTENSION_POLICY: str = "additive_fields_only.v1"
 STYLIZED_FACT_METRIC_REGRESSION_CASE_ORDER_POLICY: str = "preserve_declared_case_order.v1"
 STYLIZED_FACT_METRIC_REGRESSION_CONTENT_HASH_SCOPE_POLICY: str = "document_payload_bytes.v1"
-
-SUPPORTED_MANIFEST_DOMAINS.add("stylized_facts")
+SCALE_CONSISTENCY_REGRESSION_FIXTURE_SCHEMA_VERSION: str = (
+    "validation.scale_consistency.regression.fixture.v1"
+)
+SCALE_CONSISTENCY_REGRESSION_FIXTURE_SET_ID: str = "scale_consistency_regression_fixture_v1"
+SCALE_CONSISTENCY_REGRESSION_SCHEMA_FAMILY: str = (
+    "validation.scale_consistency.regression.fixture"
+)
+SCALE_CONSISTENCY_REGRESSION_SCHEMA_GENERATION: str = "v1"
+SCALE_CONSISTENCY_REGRESSION_FORWARD_EXTENSION_POLICY: str = "additive_fields_only.v1"
+SCALE_CONSISTENCY_REGRESSION_CASE_ORDER_POLICY: str = "preserve_declared_case_order.v1"
+SCALE_CONSISTENCY_REGRESSION_CONTENT_HASH_SCOPE_POLICY: str = "document_payload_bytes.v1"
+SCALE_CONSISTENCY_REGRESSION_REPEATED_RUN_COMPARISON_POLICY: str = (
+    "repeat_full_harness_execution_and_require_identical_decision_and_report_outputs.v1"
+)
 
 
 type JsonObject = dict[str, Any]
@@ -412,13 +448,13 @@ class StylizedFactExpectedConfidenceInterval(TypedDict):
 class StylizedFactExpectedMetricRegressionEntry(TypedDict):
     horizon_label: str
     metric_id: str
-    metric_variant: str | None
+    metric_variant: Optional[str]
     expected_status: str
-    expected_empirical_value: float | None
-    expected_simulated_value: float | None
-    expected_absolute_delta: float | None
-    expected_empirical_confidence_interval: StylizedFactExpectedConfidenceInterval | None
-    expected_simulated_confidence_interval: StylizedFactExpectedConfidenceInterval | None
+    expected_empirical_value: Optional[float]
+    expected_simulated_value: Optional[float]
+    expected_absolute_delta: Optional[float]
+    expected_empirical_confidence_interval: Optional[StylizedFactExpectedConfidenceInterval]
+    expected_simulated_confidence_interval: Optional[StylizedFactExpectedConfidenceInterval]
 
 
 class StylizedFactMetricRegressionCase(TypedDict):
@@ -441,6 +477,117 @@ class StylizedFactMetricRegressionFixtureDocument(TypedDict):
     tolerance_policies: list[StylizedFactRegressionTolerancePolicy]
     canonical_regression_metadata: StylizedFactMetricRegressionCanonicalMetadata
     cases: list[StylizedFactMetricRegressionCase]
+
+
+class ScaleConsistencyRegressionSchemaMetadata(TypedDict):
+    schema_family: str
+    schema_generation: str
+    forward_extension_policy: str
+
+
+class ScaleConsistencyRegressionDeterminismMetadata(TypedDict):
+    case_order_policy: str
+    content_hash_scope: str
+    content_hash_algorithm: str
+    repeated_run_comparison_policy: str
+
+
+class ScaleConsistencyRegressionThresholdPolicyReference(TypedDict):
+    policy_id: str
+    policy_version: str
+
+
+class ScaleConsistencyRegressionCanonicalMetadata(TypedDict):
+    required_tags: list[str]
+    required_interval_grid_labels: list[str]
+    required_expected_scenario_statuses: list[str]
+    stable_fixture_ids: list[str]
+
+
+class ScaleConsistencyRegressionProvenance(TypedDict):
+    baseline_source: str
+    captured_at_utc: str
+    update_guidance: str
+
+
+class ScaleConsistencyRegressionEngineBenchmarkInput(TypedDict):
+    source_report_schema_version: str
+    source_governance_scope_policy: str
+    benchmark_policy_id: str
+    benchmark_policy_version: str
+    tolerance_policy_id: str
+    tolerance_policy_version: str
+    status: str
+
+
+class ScaleConsistencyRegressionComputationFailure(TypedDict):
+    dataset_role: str
+    reason_code: str
+    lag_interval_count: Optional[int]
+
+
+class ScaleConsistencyRegressionMetricDelta(TypedDict):
+    metric_id: str
+    metric_variant: Optional[str]
+    metric_category: str
+    delta_kind: str
+    status: str
+    coarse_value: Optional[float]
+    fine_value: Optional[float]
+    delta_value: Optional[float]
+    absolute_delta: Optional[float]
+    computation_failures: list[ScaleConsistencyRegressionComputationFailure]
+
+
+class ScaleConsistencyRegressionMetricDeltaInput(TypedDict):
+    horizon_interval_count: int
+    fine_subinterval_count_per_coarse_interval: int
+    metric_deltas: list[ScaleConsistencyRegressionMetricDelta]
+
+
+class ScaleConsistencyRegressionExpectedMetricOutcome(TypedDict):
+    metric_id: str
+    metric_variant: Optional[str]
+    expected_status: str
+    expected_threshold_id: str
+    expected_decision_reason_codes: list[str]
+
+
+class ScaleConsistencyRegressionExpectedOutcome(TypedDict):
+    expected_batch_status: str
+    expected_scenario_status: str
+    expected_failed_metric_count: int
+    expected_metric_outcomes: list[ScaleConsistencyRegressionExpectedMetricOutcome]
+    expected_primary_drift_category: Optional[str]
+    expected_non_drift_failure_reason_codes: list[str]
+    expected_rendered_summary: str
+
+
+class ScaleConsistencyRegressionCase(TypedDict):
+    fixture_id: str
+    scenario_id: str
+    parameter_set_id: str
+    horizon_label: str
+    coarse_interval_delta: float
+    fine_interval_delta: float
+    expected_applied_interval_threshold_band_label: str
+    provenance: ScaleConsistencyRegressionProvenance
+    engine_benchmark_input: ScaleConsistencyRegressionEngineBenchmarkInput
+    metric_delta_input: ScaleConsistencyRegressionMetricDeltaInput
+    expected_outcome: ScaleConsistencyRegressionExpectedOutcome
+    tags: list[str]
+    description: str
+
+
+class ScaleConsistencyRegressionFixtureDocument(TypedDict):
+    schema_version: str
+    fixture_set_id: str
+    fixture_set_version: str
+    schema_metadata: ScaleConsistencyRegressionSchemaMetadata
+    determinism_metadata: ScaleConsistencyRegressionDeterminismMetadata
+    threshold_policy_reference: ScaleConsistencyRegressionThresholdPolicyReference
+    canonical_regression_metadata: ScaleConsistencyRegressionCanonicalMetadata
+    cases: list[ScaleConsistencyRegressionCase]
 
 
 def compute_content_hash_hex(payload_bytes: bytes) -> str:
@@ -1228,13 +1375,13 @@ def validate_stylized_fact_metric_regression_fixture_document(
             raise ValueError(f"duplicate stylized fact tolerance policy id: {policy_id}")
 
         observed_tolerance_policy_ids.add(policy_id)
-        policy_kind: str = _require_non_empty_string(
+        policy_kind = _require_enum_field(
             policy_map,
             "policy_kind",
             f"stylized fact tolerance_policies[{policy_index}]",
+            StylizedFactTolerancePolicyKind,
+            error_message="unsupported stylized fact policy_kind: {value}",
         )
-        if policy_kind not in {"deterministic_exact_match", "bootstrap_confidence_interval"}:
-            raise ValueError(f"unsupported stylized fact policy_kind: {policy_kind}")
 
         require_confidence_intervals: bool = _require_bool(
             policy_map,
@@ -1242,17 +1389,17 @@ def validate_stylized_fact_metric_regression_fixture_document(
             f"stylized fact tolerance_policies[{policy_index}]",
         )
         match policy_kind:
-            case "deterministic_exact_match":
+            case StylizedFactTolerancePolicyKind.DETERMINISTIC_EXACT_MATCH:
                 if require_confidence_intervals:
                     raise ValueError("deterministic exact-match policy cannot require confidence intervals")
-            case "bootstrap_confidence_interval":
+            case StylizedFactTolerancePolicyKind.BOOTSTRAP_CONFIDENCE_INTERVAL:
                 if not require_confidence_intervals:
                     raise ValueError("bootstrap confidence-interval policy must require confidence intervals")
 
         tolerance_policies.append(
             {
                 "policy_id": policy_id,
-                "policy_kind": policy_kind,
+                "policy_kind": policy_kind.value,
                 "policy_version": _require_non_empty_string(
                     policy_map,
                     "policy_version",
@@ -1378,11 +1525,567 @@ def load_stylized_fact_metric_regression_fixture_document(
     return validate_stylized_fact_metric_regression_fixture_document(payload_value)
 
 
+def validate_scale_consistency_regression_fixture_document(
+    raw_document: object,
+) -> ScaleConsistencyRegressionFixtureDocument:
+    document_map: JsonObject = _require_json_object(raw_document, "scale consistency regression fixture")
+    schema_version: str = _require_non_empty_string(
+        document_map,
+        "schema_version",
+        "scale consistency regression fixture",
+    )
+    if schema_version != SCALE_CONSISTENCY_REGRESSION_FIXTURE_SCHEMA_VERSION:
+        raise ValueError(
+            f"unsupported scale consistency regression fixture schema version: {schema_version}",
+        )
+
+    fixture_set_id: str = _require_non_empty_string(
+        document_map,
+        "fixture_set_id",
+        "scale consistency regression fixture",
+    )
+    if fixture_set_id != SCALE_CONSISTENCY_REGRESSION_FIXTURE_SET_ID:
+        raise ValueError(f"unexpected scale consistency regression fixture set id: {fixture_set_id}")
+
+    _require_non_empty_string(document_map, "fixture_set_version", "scale consistency regression fixture")
+
+    schema_metadata: JsonObject = _require_json_object_field(
+        document_map,
+        "schema_metadata",
+        "scale consistency regression fixture",
+    )
+
+    if _require_non_empty_string(schema_metadata, "schema_family", "schema_metadata") != (
+        SCALE_CONSISTENCY_REGRESSION_SCHEMA_FAMILY
+    ):
+        raise ValueError(
+            f"unexpected scale consistency regression schema family: {schema_metadata['schema_family']}",
+        )
+
+    if _require_non_empty_string(schema_metadata, "schema_generation", "schema_metadata") != (
+        SCALE_CONSISTENCY_REGRESSION_SCHEMA_GENERATION
+    ):
+        raise ValueError(
+            "unexpected scale consistency regression schema generation: "
+            f"{schema_metadata['schema_generation']}",
+        )
+
+    if _require_non_empty_string(schema_metadata, "forward_extension_policy", "schema_metadata") != (
+        SCALE_CONSISTENCY_REGRESSION_FORWARD_EXTENSION_POLICY
+    ):
+        raise ValueError(
+            "unexpected scale consistency regression forward extension policy: "
+            f"{schema_metadata['forward_extension_policy']}",
+        )
+
+    determinism_metadata: JsonObject = _require_json_object_field(
+        document_map,
+        "determinism_metadata",
+        "scale consistency regression fixture",
+    )
+
+    if _require_non_empty_string(determinism_metadata, "case_order_policy", "determinism_metadata") != (
+        SCALE_CONSISTENCY_REGRESSION_CASE_ORDER_POLICY
+    ):
+        raise ValueError(
+            "unexpected scale consistency regression case order policy: "
+            f"{determinism_metadata['case_order_policy']}",
+        )
+
+    if _require_non_empty_string(determinism_metadata, "content_hash_scope", "determinism_metadata") != (
+        SCALE_CONSISTENCY_REGRESSION_CONTENT_HASH_SCOPE_POLICY
+    ):
+        raise ValueError(
+            "unexpected scale consistency regression content hash scope policy: "
+            f"{determinism_metadata['content_hash_scope']}",
+        )
+
+    if _require_non_empty_string(determinism_metadata, "content_hash_algorithm", "determinism_metadata") != (
+        CONTENT_HASH_ALGORITHM_POLICY
+    ):
+        raise ValueError(
+            "unexpected scale consistency regression content hash algorithm policy: "
+            f"{determinism_metadata['content_hash_algorithm']}",
+        )
+
+    if _require_non_empty_string(
+        determinism_metadata,
+        "repeated_run_comparison_policy",
+        "determinism_metadata",
+    ) != SCALE_CONSISTENCY_REGRESSION_REPEATED_RUN_COMPARISON_POLICY:
+        raise ValueError(
+            "unexpected scale consistency regression repeated run comparison policy: "
+            f"{determinism_metadata['repeated_run_comparison_policy']}",
+        )
+
+    threshold_policy_reference: JsonObject = _require_json_object_field(
+        document_map,
+        "threshold_policy_reference",
+        "scale consistency regression fixture",
+    )
+
+    _require_non_empty_string(
+        threshold_policy_reference,
+        "policy_id",
+        "threshold_policy_reference",
+    )
+    _require_non_empty_string(
+        threshold_policy_reference,
+        "policy_version",
+        "threshold_policy_reference",
+    )
+
+    canonical_regression_metadata: JsonObject = _require_json_object_field(
+        document_map,
+        "canonical_regression_metadata",
+        "scale consistency regression fixture",
+    )
+    required_tags: list[str] = _require_string_array_field(
+        canonical_regression_metadata,
+        "required_tags",
+        "canonical_regression_metadata",
+    )
+    required_interval_grid_labels: list[str] = _require_string_array_field(
+        canonical_regression_metadata,
+        "required_interval_grid_labels",
+        "canonical_regression_metadata",
+    )
+    required_expected_scenario_statuses: list[str] = _require_string_array_field(
+        canonical_regression_metadata,
+        "required_expected_scenario_statuses",
+        "canonical_regression_metadata",
+    )
+    stable_fixture_ids: list[str] = _require_string_array_field(
+        canonical_regression_metadata,
+        "stable_fixture_ids",
+        "canonical_regression_metadata",
+    )
+
+    cases_raw: JsonArray = _require_json_array_field(
+        document_map,
+        "cases",
+        "scale consistency regression fixture",
+    )
+    if not cases_raw:
+        raise ValueError("scale consistency regression fixture requires at least one case")
+
+    validated_cases: list[ScaleConsistencyRegressionCase] = []
+    observed_fixture_ids: set[str] = set()
+    observed_scenario_ids: set[str] = set()
+    observed_tags: set[str] = set()
+    observed_interval_grid_labels: set[str] = set()
+    observed_scenario_statuses: set[str] = set()
+
+    for case_value in cases_raw:
+        case_map: JsonObject = _require_json_object(case_value, "scale consistency regression case")
+        validated_case: ScaleConsistencyRegressionCase = _validate_scale_consistency_regression_case(case_map)
+
+        fixture_id: str = validated_case["fixture_id"]
+        scenario_id: str = validated_case["scenario_id"]
+
+        if fixture_id in observed_fixture_ids:
+            raise ValueError(f"duplicate scale consistency regression fixture_id: {fixture_id}")
+        if scenario_id in observed_scenario_ids:
+            raise ValueError(f"duplicate scale consistency regression scenario_id: {scenario_id}")
+
+        observed_fixture_ids.add(fixture_id)
+        observed_scenario_ids.add(scenario_id)
+        observed_interval_grid_labels.add(validated_case["expected_applied_interval_threshold_band_label"])
+        observed_scenario_statuses.add(validated_case["expected_outcome"]["expected_scenario_status"])
+        observed_tags.update(validated_case["tags"])
+        validated_cases.append(validated_case)
+
+    for required_tag in required_tags:
+        if required_tag not in observed_tags:
+            raise ValueError(f"scale consistency regression fixture is missing required tag coverage `{required_tag}`")
+
+    for required_interval_grid_label in required_interval_grid_labels:
+        if required_interval_grid_label not in observed_interval_grid_labels:
+            raise ValueError(
+                "scale consistency regression fixture is missing required interval band coverage "
+                f"`{required_interval_grid_label}`",
+            )
+
+    for required_status in _parse_enum_list(
+        required_expected_scenario_statuses,
+        RegressionStatus,
+        "canonical_regression_metadata.required_expected_scenario_statuses",
+        error_message=(
+            "canonical_regression_metadata.required_expected_scenario_statuses must use `pass` or `fail`, "
+            "found `{value}`"
+        ),
+    ):
+        if required_status.value not in observed_scenario_statuses:
+            raise ValueError(
+                "scale consistency regression fixture is missing required scenario status coverage "
+                f"`{required_status.value}`",
+            )
+
+    if len(set(stable_fixture_ids)) != len(stable_fixture_ids):
+        raise ValueError("canonical_regression_metadata.stable_fixture_ids must be unique")
+
+    for stable_fixture_id in stable_fixture_ids:
+        if stable_fixture_id not in observed_fixture_ids:
+            raise ValueError(
+                "canonical_regression_metadata.stable_fixture_ids references unknown fixture_id "
+                f"`{stable_fixture_id}`",
+            )
+
+    return {
+        "schema_version": schema_version,
+        "fixture_set_id": fixture_set_id,
+        "fixture_set_version": cast(str, document_map["fixture_set_version"]),
+        "schema_metadata": cast(ScaleConsistencyRegressionSchemaMetadata, schema_metadata),
+        "determinism_metadata": cast(ScaleConsistencyRegressionDeterminismMetadata, determinism_metadata),
+        "threshold_policy_reference": cast(
+            ScaleConsistencyRegressionThresholdPolicyReference,
+            threshold_policy_reference,
+        ),
+        "canonical_regression_metadata": {
+            "required_tags": required_tags,
+            "required_interval_grid_labels": required_interval_grid_labels,
+            "required_expected_scenario_statuses": required_expected_scenario_statuses,
+            "stable_fixture_ids": stable_fixture_ids,
+        },
+        "cases": validated_cases,
+    }
+
+
+def load_scale_consistency_regression_fixture_document(
+    fixture_payload_bytes: bytes,
+) -> ScaleConsistencyRegressionFixtureDocument:
+    payload_value: object = json.loads(fixture_payload_bytes.decode("utf-8"))
+    return validate_scale_consistency_regression_fixture_document(payload_value)
+
+
+def _validate_scale_consistency_regression_case(
+    raw_case: JsonObject,
+) -> ScaleConsistencyRegressionCase:
+    context: str = "scale consistency regression case"
+    fixture_id: str = _require_non_empty_string(raw_case, "fixture_id", context)
+    scenario_id: str = _require_non_empty_string(raw_case, "scenario_id", context)
+    parameter_set_id: str = _require_non_empty_string(raw_case, "parameter_set_id", context)
+    horizon_label: str = _require_non_empty_string(raw_case, "horizon_label", context)
+    coarse_interval_delta: float = _require_positive_number(raw_case, "coarse_interval_delta", context)
+    fine_interval_delta: float = _require_positive_number(raw_case, "fine_interval_delta", context)
+
+    if fine_interval_delta >= coarse_interval_delta:
+        raise ValueError(
+            f"{context}.fine_interval_delta must be smaller than coarse_interval_delta for fixture_id `{fixture_id}`",
+        )
+
+    interval_ratio: float = coarse_interval_delta / fine_interval_delta
+    if not math.isclose(interval_ratio, round(interval_ratio), rel_tol=0.0, abs_tol=1e-9):
+        raise ValueError(
+            f"{context} must use an integer coarse-to-fine interval ratio for fixture_id `{fixture_id}`",
+        )
+
+    expected_applied_interval_threshold_band_label: str = _require_non_empty_string(
+        raw_case,
+        "expected_applied_interval_threshold_band_label",
+        context,
+    )
+
+    provenance_raw: JsonObject = _require_json_object_field(raw_case, "provenance", context)
+    provenance: ScaleConsistencyRegressionProvenance = {
+        "baseline_source": _require_non_empty_string(
+            provenance_raw,
+            "baseline_source",
+            f"{context}.provenance",
+        ),
+        "captured_at_utc": _require_non_empty_string(
+            provenance_raw,
+            "captured_at_utc",
+            f"{context}.provenance",
+        ),
+        "update_guidance": _require_non_empty_string(
+            provenance_raw,
+            "update_guidance",
+            f"{context}.provenance",
+        ),
+    }
+
+    engine_benchmark_input_raw: JsonObject = _require_json_object_field(
+        raw_case,
+        "engine_benchmark_input",
+        context,
+    )
+    engine_benchmark_input: ScaleConsistencyRegressionEngineBenchmarkInput = {
+        "source_report_schema_version": _require_non_empty_string(
+            engine_benchmark_input_raw,
+            "source_report_schema_version",
+            f"{context}.engine_benchmark_input",
+        ),
+        "source_governance_scope_policy": _require_non_empty_string(
+            engine_benchmark_input_raw,
+            "source_governance_scope_policy",
+            f"{context}.engine_benchmark_input",
+        ),
+        "benchmark_policy_id": _require_non_empty_string(
+            engine_benchmark_input_raw,
+            "benchmark_policy_id",
+            f"{context}.engine_benchmark_input",
+        ),
+        "benchmark_policy_version": _require_non_empty_string(
+            engine_benchmark_input_raw,
+            "benchmark_policy_version",
+            f"{context}.engine_benchmark_input",
+        ),
+        "tolerance_policy_id": _require_non_empty_string(
+            engine_benchmark_input_raw,
+            "tolerance_policy_id",
+            f"{context}.engine_benchmark_input",
+        ),
+        "tolerance_policy_version": _require_non_empty_string(
+            engine_benchmark_input_raw,
+            "tolerance_policy_version",
+            f"{context}.engine_benchmark_input",
+        ),
+        "status": _require_regression_status(
+            engine_benchmark_input_raw,
+            "status",
+            f"{context}.engine_benchmark_input",
+        ).value,
+    }
+
+    metric_delta_input_raw: JsonObject = _require_json_object_field(raw_case, "metric_delta_input", context)
+    horizon_interval_count: int = _require_positive_int(
+        metric_delta_input_raw,
+        "horizon_interval_count",
+        f"{context}.metric_delta_input",
+    )
+    fine_subinterval_count_per_coarse_interval: int = _require_positive_int(
+        metric_delta_input_raw,
+        "fine_subinterval_count_per_coarse_interval",
+        f"{context}.metric_delta_input",
+    )
+    metric_deltas_raw: JsonArray = _require_json_array_field(
+        metric_delta_input_raw,
+        "metric_deltas",
+        f"{context}.metric_delta_input",
+    )
+
+    if not metric_deltas_raw:
+        raise ValueError(f"{context}.metric_delta_input.metric_deltas must include at least one entry")
+
+    metric_deltas: list[ScaleConsistencyRegressionMetricDelta] = []
+    observed_metric_keys: set[tuple[str, Optional[str]]] = set()
+    for metric_index, raw_metric in enumerate(metric_deltas_raw):
+        metric_map: JsonObject = _require_json_object(
+            raw_metric,
+            f"{context}.metric_delta_input.metric_deltas[{metric_index}]",
+        )
+        metric_id: str = _require_non_empty_string(metric_map, "metric_id", context)
+        metric_variant: Optional[str] = _require_nullable_non_empty_string(metric_map, "metric_variant", context)
+        metric_key: tuple[str, Optional[str]] = (metric_id, metric_variant)
+
+        if metric_key in observed_metric_keys:
+            raise ValueError(
+                f"{context}.metric_delta_input.metric_deltas contains duplicate metric_id={metric_id} metric_variant={metric_variant}",
+            )
+
+        observed_metric_keys.add(metric_key)
+        metric_status = _require_metric_computation_status(metric_map, "status", context)
+
+        computation_failures_raw: JsonArray = _require_json_array_field(metric_map, "computation_failures", context)
+        computation_failures: list[ScaleConsistencyRegressionComputationFailure] = [
+            {
+                "dataset_role": _require_dataset_role(
+                    _require_json_object(
+                        raw_failure,
+                        f"{context}.metric_delta_input.metric_deltas[{metric_index}].computation_failures[{failure_index}]",
+                    ),
+                    "dataset_role",
+                    f"{context}.metric_delta_input.metric_deltas[{metric_index}].computation_failures[{failure_index}]",
+                ).value,
+                "reason_code": _require_failure_reason_code(
+                    _require_json_object(
+                        raw_failure,
+                        f"{context}.metric_delta_input.metric_deltas[{metric_index}].computation_failures[{failure_index}]",
+                    ),
+                    "reason_code",
+                    f"{context}.metric_delta_input.metric_deltas[{metric_index}].computation_failures[{failure_index}]",
+                ).value,
+                "lag_interval_count": _require_optional_positive_int(
+                    _require_json_object(
+                        raw_failure,
+                        f"{context}.metric_delta_input.metric_deltas[{metric_index}].computation_failures[{failure_index}]",
+                    ),
+                    "lag_interval_count",
+                    f"{context}.metric_delta_input.metric_deltas[{metric_index}].computation_failures[{failure_index}]",
+                ),
+            }
+            for failure_index, raw_failure in enumerate(computation_failures_raw)
+        ]
+
+        if metric_status is ScaleConsistencyMetricComputationStatus.MISSING and not computation_failures:
+            raise ValueError(
+                f"{context}.metric_delta_input.metric_deltas[{metric_index}] missing metrics must include computation_failures",
+            )
+
+        metric_deltas.append(
+            {
+                "metric_id": metric_id,
+                "metric_variant": metric_variant,
+                "metric_category": _require_metric_category(metric_map, "metric_category", context).value,
+                "delta_kind": _require_delta_kind(metric_map, "delta_kind", context).value,
+                "status": metric_status.value,
+                "coarse_value": _require_optional_number(metric_map, "coarse_value", context),
+                "fine_value": _require_optional_number(metric_map, "fine_value", context),
+                "delta_value": _require_optional_number(metric_map, "delta_value", context),
+                "absolute_delta": _require_optional_non_negative_number(
+                    metric_map,
+                    "absolute_delta",
+                    context,
+                ),
+                "computation_failures": computation_failures,
+            },
+        )
+
+    metric_delta_input: ScaleConsistencyRegressionMetricDeltaInput = {
+        "horizon_interval_count": horizon_interval_count,
+        "fine_subinterval_count_per_coarse_interval": fine_subinterval_count_per_coarse_interval,
+        "metric_deltas": metric_deltas,
+    }
+
+    expected_outcome_raw: JsonObject = _require_json_object_field(raw_case, "expected_outcome", context)
+    expected_metric_outcomes_raw: JsonArray = _require_json_array_field(
+        expected_outcome_raw,
+        "expected_metric_outcomes",
+        f"{context}.expected_outcome",
+    )
+    if len(expected_metric_outcomes_raw) != len(metric_deltas):
+        raise ValueError(f"{context}.expected_outcome.expected_metric_outcomes must cover every metric delta")
+
+    expected_metric_outcomes: list[ScaleConsistencyRegressionExpectedMetricOutcome] = []
+    observed_expected_metric_keys: set[tuple[str, Optional[str]]] = set()
+    for metric_index, raw_metric_outcome in enumerate(expected_metric_outcomes_raw):
+        metric_outcome_map: JsonObject = _require_json_object(
+            raw_metric_outcome,
+            f"{context}.expected_outcome.expected_metric_outcomes[{metric_index}]",
+        )
+        metric_id = _require_non_empty_string(metric_outcome_map, "metric_id", context)
+        metric_variant = _require_nullable_non_empty_string(metric_outcome_map, "metric_variant", context)
+        metric_key = (metric_id, metric_variant)
+
+        if metric_key not in observed_metric_keys:
+            raise ValueError(
+                f"{context}.expected_outcome.expected_metric_outcomes references unknown metric_id={metric_id} metric_variant={metric_variant}",
+            )
+
+        if metric_key in observed_expected_metric_keys:
+            raise ValueError(
+                f"{context}.expected_outcome.expected_metric_outcomes contains duplicate metric_id={metric_id} metric_variant={metric_variant}",
+            )
+
+        observed_expected_metric_keys.add(metric_key)
+        expected_metric_outcomes.append(
+            {
+                "metric_id": metric_id,
+                "metric_variant": metric_variant,
+                "expected_status": _require_regression_status(
+                    metric_outcome_map,
+                    "expected_status",
+                    f"{context}.expected_outcome.expected_metric_outcomes[{metric_index}]",
+                ).value,
+                "expected_threshold_id": _require_non_empty_string(
+                    metric_outcome_map,
+                    "expected_threshold_id",
+                    f"{context}.expected_outcome.expected_metric_outcomes[{metric_index}]",
+                ),
+                "expected_decision_reason_codes": _require_decision_reason_codes(
+                    metric_outcome_map,
+                    "expected_decision_reason_codes",
+                    f"{context}.expected_outcome.expected_metric_outcomes[{metric_index}]",
+                ),
+            },
+        )
+
+    expected_failed_metric_count: int = _require_non_negative_int(
+        expected_outcome_raw,
+        "expected_failed_metric_count",
+        f"{context}.expected_outcome",
+    )
+    observed_failed_metric_count: int = sum(
+        1
+        for expected_metric_outcome in expected_metric_outcomes
+        if expected_metric_outcome["expected_status"] == RegressionStatus.FAIL.value
+    )
+    if expected_failed_metric_count != observed_failed_metric_count:
+        raise ValueError(
+            f"{context}.expected_outcome.expected_failed_metric_count must equal the number of failing expected_metric_outcomes",
+        )
+
+    expected_primary_drift_category: Optional[str] = _require_nullable_enum(
+        expected_outcome_raw,
+        "expected_primary_drift_category",
+        f"{context}.expected_outcome",
+        ScaleConsistencyDriftCategory,
+    )
+
+    expected_outcome: ScaleConsistencyRegressionExpectedOutcome = {
+        "expected_batch_status": _require_regression_status(
+            expected_outcome_raw,
+            "expected_batch_status",
+            f"{context}.expected_outcome",
+        ).value,
+        "expected_scenario_status": _require_regression_status(
+            expected_outcome_raw,
+            "expected_scenario_status",
+            f"{context}.expected_outcome",
+        ).value,
+        "expected_failed_metric_count": expected_failed_metric_count,
+        "expected_metric_outcomes": expected_metric_outcomes,
+        "expected_primary_drift_category": expected_primary_drift_category,
+        "expected_non_drift_failure_reason_codes": _require_decision_reason_codes(
+            expected_outcome_raw,
+            "expected_non_drift_failure_reason_codes",
+            f"{context}.expected_outcome",
+        ),
+        "expected_rendered_summary": _require_non_empty_string(
+            expected_outcome_raw,
+            "expected_rendered_summary",
+            f"{context}.expected_outcome",
+        ),
+    }
+
+    if (
+        expected_outcome["expected_scenario_status"] == RegressionStatus.PASS.value
+        and expected_primary_drift_category is not None
+    ):
+        raise ValueError(
+            f"{context}.expected_outcome.expected_primary_drift_category must be null for pass scenarios",
+        )
+
+    tags: list[str] = _require_non_empty_string_list(raw_case, "tags", context)
+    description: str = _require_non_empty_string(raw_case, "description", context)
+
+    return {
+        "fixture_id": fixture_id,
+        "scenario_id": scenario_id,
+        "parameter_set_id": parameter_set_id,
+        "horizon_label": horizon_label,
+        "coarse_interval_delta": coarse_interval_delta,
+        "fine_interval_delta": fine_interval_delta,
+        "expected_applied_interval_threshold_band_label": expected_applied_interval_threshold_band_label,
+        "provenance": provenance,
+        "engine_benchmark_input": engine_benchmark_input,
+        "metric_delta_input": metric_delta_input,
+        "expected_outcome": expected_outcome,
+        "tags": tags,
+        "description": description,
+    }
+
+
 def _validate_manifest_fixture_entry(raw_entry: JsonObject) -> ValidationFixtureManifestEntry:
     fixture_id: str = _require_non_empty_string(raw_entry, "fixture_id", "manifest fixture entry")
-    domain: str = _require_non_empty_string(raw_entry, "domain", "manifest fixture entry")
-    if domain not in SUPPORTED_MANIFEST_DOMAINS:
-        raise ValueError(f"unsupported fixture domain: {domain}")
+    domain = _require_enum_field(
+        raw_entry,
+        "domain",
+        "manifest fixture entry",
+        ValidationFixtureDomain,
+        error_message="unsupported fixture domain: {value}",
+    )
 
     fixture_schema_version: str = _require_non_empty_string(
         raw_entry,
@@ -1398,7 +2101,7 @@ def _validate_manifest_fixture_entry(raw_entry: JsonObject) -> ValidationFixture
 
     return {
         "fixture_id": fixture_id,
-        "domain": domain,
+        "domain": domain.value,
         "fixture_schema_version": fixture_schema_version,
         "relative_path": relative_path,
         "exchange_codes": exchange_codes,
@@ -1412,14 +2115,13 @@ def _validate_stylized_fact_metric_regression_case(
     observed_tolerance_policy_ids: set[str],
 ) -> StylizedFactMetricRegressionCase:
     fixture_id: str = _require_non_empty_string(raw_case, "fixture_id", context)
-    diagnostic_kind: str = _require_non_empty_string(raw_case, "diagnostic_kind", context)
-    if diagnostic_kind not in {
-        "activity_clustering",
-        "tail_skew",
-        "volatility_persistence",
-        "gap_behavior",
-    }:
-        raise ValueError(f"{context}.diagnostic_kind is unsupported: {diagnostic_kind}")
+    diagnostic_kind = _require_enum_field(
+        raw_case,
+        "diagnostic_kind",
+        context,
+        StylizedFactDiagnosticKind,
+        error_message=f"{context}.diagnostic_kind is unsupported: {{value}}",
+    )
 
     tolerance_policy_id: str = _require_non_empty_string(raw_case, "tolerance_policy_id", context)
     if tolerance_policy_id not in observed_tolerance_policy_ids:
@@ -1453,7 +2155,7 @@ def _validate_stylized_fact_metric_regression_case(
         raise ValueError(f"{context}.expected_metrics must include at least one entry")
 
     expected_metrics: list[StylizedFactExpectedMetricRegressionEntry] = []
-    observed_metric_keys: set[tuple[str, str, str | None]] = set()
+    observed_metric_keys: set[tuple[str, str, Optional[str]]] = set()
     for metric_index, raw_metric in enumerate(expected_metrics_raw):
         metric_map: JsonObject = _require_json_object(raw_metric, f"{context}.expected_metrics[{metric_index}]")
         expected_metric = _validate_stylized_fact_expected_metric_entry(
@@ -1478,7 +2180,7 @@ def _validate_stylized_fact_metric_regression_case(
 
     return {
         "fixture_id": fixture_id,
-        "diagnostic_kind": diagnostic_kind,
+        "diagnostic_kind": diagnostic_kind.value,
         "tolerance_policy_id": tolerance_policy_id,
         "provenance": provenance,
         "request_payload": cast(dict[str, Any], request_payload),
@@ -1492,15 +2194,19 @@ def _validate_stylized_fact_expected_metric_entry(
     raw_metric: JsonObject,
     context: str,
 ) -> StylizedFactExpectedMetricRegressionEntry:
-    expected_status: str = _require_non_empty_string(raw_metric, "expected_status", context)
-    if expected_status not in {"available", "insufficient_data"}:
-        raise ValueError(f"{context}.expected_status is unsupported: {expected_status}")
+    expected_status = _require_enum_field(
+        raw_metric,
+        "expected_status",
+        context,
+        StylizedFactExpectedMetricStatus,
+        error_message=f"{context}.expected_status is unsupported: {{value}}",
+    )
 
     return {
         "horizon_label": _require_non_empty_string(raw_metric, "horizon_label", context),
         "metric_id": _require_non_empty_string(raw_metric, "metric_id", context),
         "metric_variant": _require_nullable_non_empty_string(raw_metric, "metric_variant", context),
-        "expected_status": expected_status,
+        "expected_status": expected_status.value,
         "expected_empirical_value": _require_optional_number(raw_metric, "expected_empirical_value", context),
         "expected_simulated_value": _require_optional_number(raw_metric, "expected_simulated_value", context),
         "expected_absolute_delta": _require_optional_number(raw_metric, "expected_absolute_delta", context),
@@ -1522,9 +2228,13 @@ def _validate_calendar_regression_case(raw_case: JsonObject) -> CalendarRegressi
     exchange_code: str = _require_non_empty_string(raw_case, "exchange_code", "calendar regression case")
     timestamp_utc: str = _require_non_empty_string(raw_case, "timestamp_utc", "calendar regression case")
 
-    expected_state: str = _require_non_empty_string(raw_case, "expected_state", "calendar regression case")
-    if expected_state not in {"open", "closed"}:
-        raise ValueError(f"unsupported expected_state in calendar regression case: {expected_state}")
+    expected_state = _require_enum_field(
+        raw_case,
+        "expected_state",
+        "calendar regression case",
+        MarketState,
+        error_message="unsupported expected_state in calendar regression case: {value}",
+    )
 
     tags: list[str] = _require_non_empty_string_list(raw_case, "tags", "calendar regression case")
     description: str = _require_non_empty_string(raw_case, "description", "calendar regression case")
@@ -1533,7 +2243,7 @@ def _validate_calendar_regression_case(raw_case: JsonObject) -> CalendarRegressi
         "fixture_id": fixture_id,
         "exchange_code": exchange_code,
         "timestamp_utc": timestamp_utc,
-        "expected_state": expected_state,
+        "expected_state": expected_state.value,
         "tags": tags,
         "description": description,
     }
@@ -1965,19 +2675,23 @@ def _validate_hourly_canonical_regression_metadata(
 
 
 def _validate_hourly_missing_data_expected_outcome(expected_outcome: JsonObject) -> None:
-    outcome_kind: str = _require_non_empty_string(expected_outcome, "outcome_kind", "expected_outcome")
+    outcome_kind = _require_enum_field(
+        expected_outcome,
+        "outcome_kind",
+        "expected_outcome",
+        HourlyValidationOutcomeKind,
+        error_message="unsupported expected_outcome.outcome_kind: {value}",
+    )
 
     match outcome_kind:
-        case "success":
+        case HourlyValidationOutcomeKind.SUCCESS:
             _require_float_list(expected_outcome, "expected_s_h", "expected_outcome")
             _require_non_negative_int(expected_outcome, "expected_sparse_interval_count", "expected_outcome")
             _require_non_negative_int(expected_outcome, "expected_interpolated_interval_count", "expected_outcome")
             _require_non_negative_int(expected_outcome, "expected_fallback_interval_count", "expected_outcome")
-        case "failure":
+        case HourlyValidationOutcomeKind.FAILURE:
             _require_non_empty_string(expected_outcome, "expected_error_variant", "expected_outcome")
             _require_non_empty_string(expected_outcome, "expected_error_message_substring", "expected_outcome")
-        case _:
-            raise ValueError(f"unsupported expected_outcome.outcome_kind: {outcome_kind}")
 
 
 def _validate_open_closed_gap_behavior_output_schema_metadata(
@@ -2029,11 +2743,9 @@ def _validate_open_closed_gap_behavior_canonical_metadata(
     )
 
     unsupported_required_scenario_classes = sorted(
-        {
-            required_scenario_class
-            for required_scenario_class in required_scenario_classes
-            if required_scenario_class not in {"known_only", "surprise_only", "mixed_news"}
-        },
+        required_scenario_class
+        for required_scenario_class in required_scenario_classes
+        if parse_str_enum(OpenClosedGapScenarioClass, required_scenario_class) is None
     )
     if unsupported_required_scenario_classes:
         raise ValueError(
@@ -2085,11 +2797,13 @@ def _validate_open_closed_gap_behavior_case(
     fixture_id: str = _require_non_empty_string(raw_case, "fixture_id", context)
     exchange_code: str = _require_non_empty_string(raw_case, "exchange_code", context)
 
-    scenario_class: str = _require_non_empty_string(raw_case, "scenario_class", context)
-    if scenario_class not in {"known_only", "surprise_only", "mixed_news"}:
-        raise ValueError(
-            f"{context}.scenario_class must be one of 'known_only', 'surprise_only', or 'mixed_news'",
-        )
+    scenario_class = _require_enum_field(
+        raw_case,
+        "scenario_class",
+        context,
+        OpenClosedGapScenarioClass,
+        error_message=f"{context}.scenario_class must be one of 'known_only', 'surprise_only', or 'mixed_news'",
+    )
 
     deterministic_replay_metadata_raw = _require_json_object_field(
         raw_case,
@@ -2179,19 +2893,19 @@ def _validate_open_closed_gap_behavior_case(
     for event_index, raw_event in enumerate(injected_events_raw):
         event_map: JsonObject = _require_json_object(raw_event, f"{context}.injected_events[{event_index}]")
 
-        news_arrival_component = _require_non_empty_string(
+        news_arrival_component = _require_enum_field(
             event_map,
             "news_arrival_component",
             f"{context}.injected_events[{event_index}]",
+            NewsArrivalComponent,
+            error_message=(
+                f"{context}.injected_events[{event_index}].news_arrival_component must be either 'known' or 'surprise'"
+            ),
         )
-        if news_arrival_component == "known":
+        if news_arrival_component is NewsArrivalComponent.KNOWN:
             known_event_count += 1
-        elif news_arrival_component == "surprise":
-            surprise_event_count += 1
         else:
-            raise ValueError(
-                f"{context}.injected_events[{event_index}].news_arrival_component must be either 'known' or 'surprise'",
-            )
+            surprise_event_count += 1
 
         injected_events.append(
             {
@@ -2201,7 +2915,7 @@ def _validate_open_closed_gap_behavior_case(
                     "timestamp_utc",
                     f"{context}.injected_events[{event_index}]",
                 ),
-                "news_arrival_component": news_arrival_component,
+                "news_arrival_component": news_arrival_component.value,
                 "shared_severity_mark": _require_non_negative_float(
                     event_map,
                     "shared_severity_mark",
@@ -2215,11 +2929,14 @@ def _validate_open_closed_gap_behavior_case(
             },
         )
 
-    if scenario_class == "known_only" and surprise_event_count > 0:
+    if scenario_class is OpenClosedGapScenarioClass.KNOWN_ONLY and surprise_event_count > 0:
         raise ValueError(f"{context}.scenario_class=known_only cannot include surprise events")
-    if scenario_class == "surprise_only" and known_event_count > 0:
+    if scenario_class is OpenClosedGapScenarioClass.SURPRISE_ONLY and known_event_count > 0:
         raise ValueError(f"{context}.scenario_class=surprise_only cannot include known events")
-    if scenario_class == "mixed_news" and (known_event_count == 0 or surprise_event_count == 0):
+    if (
+        scenario_class is OpenClosedGapScenarioClass.MIXED_NEWS
+        and (known_event_count == 0 or surprise_event_count == 0)
+    ):
         raise ValueError(
             f"{context}.scenario_class=mixed_news must include both known and surprise events",
         )
@@ -2241,7 +2958,7 @@ def _validate_open_closed_gap_behavior_case(
     return {
         "fixture_id": fixture_id,
         "exchange_code": exchange_code,
-        "scenario_class": scenario_class,
+        "scenario_class": scenario_class.value,
         "deterministic_replay_metadata": deterministic_replay_metadata,
         "issue_traceability": issue_traceability,
         "calendar_fixture_set_id": calendar_fixture_set_id,
@@ -2275,16 +2992,16 @@ def _validate_open_closed_gap_behavior_expected_outcome(
             raw_event_outcome,
             f"{case_context}.expected_outcome.event_outcomes[{event_index}]",
         )
-        expected_market_state: str = _require_non_empty_string(
+        expected_market_state = _require_enum_field(
             event_outcome,
             "expected_market_state",
             f"{case_context}.expected_outcome.event_outcomes[{event_index}]",
-        )
-        if expected_market_state not in {"open", "closed"}:
-            raise ValueError(
+            MarketState,
+            error_message=(
                 f"{case_context}.expected_outcome.event_outcomes[{event_index}].expected_market_state "
-                "must be either 'open' or 'closed'",
-            )
+                "must be either 'open' or 'closed'"
+            ),
+        )
 
         expected_open_jump_m_t_increment: float = _require_number(
             event_outcome,
@@ -2297,12 +3014,12 @@ def _validate_open_closed_gap_behavior_expected_outcome(
             f"{case_context}.expected_outcome.event_outcomes[{event_index}]",
         )
 
-        if expected_market_state == "open" and expected_closed_gap_g_t_increment != 0.0:
+        if expected_market_state is MarketState.OPEN and expected_closed_gap_g_t_increment != 0.0:
             raise ValueError(
                 f"{case_context}.expected_outcome.event_outcomes[{event_index}] "
                 "must set expected_closed_gap_g_t_increment=0.0 for open market state",
             )
-        if expected_market_state == "closed" and expected_open_jump_m_t_increment != 0.0:
+        if expected_market_state is MarketState.CLOSED and expected_open_jump_m_t_increment != 0.0:
             raise ValueError(
                 f"{case_context}.expected_outcome.event_outcomes[{event_index}] "
                 "must set expected_open_jump_m_t_increment=0.0 for closed market state",
@@ -2315,7 +3032,7 @@ def _validate_open_closed_gap_behavior_expected_outcome(
                     "event_id",
                     f"{case_context}.expected_outcome.event_outcomes[{event_index}]",
                 ),
-                "expected_market_state": expected_market_state,
+                "expected_market_state": expected_market_state.value,
                 "expected_activity_coupling_j_t_increment": _require_non_negative_float(
                     event_outcome,
                     "expected_activity_coupling_j_t_increment",
@@ -2398,10 +3115,10 @@ def _validate_open_closed_gap_behavior_summary(
     }
 
     observed_open_event_count: int = sum(
-        1 for event_outcome in event_outcomes if event_outcome["expected_market_state"] == "open"
+        1 for event_outcome in event_outcomes if event_outcome["expected_market_state"] == MarketState.OPEN.value
     )
     observed_closed_event_count: int = sum(
-        1 for event_outcome in event_outcomes if event_outcome["expected_market_state"] == "closed"
+        1 for event_outcome in event_outcomes if event_outcome["expected_market_state"] == MarketState.CLOSED.value
     )
     observed_total_activity_coupling_j_t_increment: float = sum(
         event_outcome["expected_activity_coupling_j_t_increment"] for event_outcome in event_outcomes
@@ -2558,11 +3275,12 @@ def _validate_seeded_tick_simulation_parity_case(
             raise ValueError("seeded tick simulation parity case.expected_side_sequence must only contain strings")
 
         normalized_side = raw_side.strip()
-        if normalized_side not in {"buy", "sell"}:
+        parsed_side = parse_str_enum(SeededTickSide, normalized_side)
+        if parsed_side is None:
             raise ValueError(
                 f"seeded tick simulation parity case.expected_side_sequence contains unsupported side: {raw_side}",
             )
-        expected_side_sequence.append(normalized_side)
+        expected_side_sequence.append(parsed_side.value)
 
     if len(expected_side_sequence) != len(expected_timestamps_utc_nanos):
         raise ValueError(
@@ -2699,13 +3417,19 @@ def _validate_seeded_tick_simulation_initial_excitation_state(
 
 
 def _validate_hourly_seasonality_source(raw_source: JsonObject, context: str) -> None:
-    source_kind: str = _require_non_empty_string(raw_source, "source_kind", context)
+    source_kind = _require_enum_field(
+        raw_source,
+        "source_kind",
+        context,
+        HourlySourceKind,
+        error_message=f"{context} contains unsupported source_kind value: {{value}}",
+    )
 
     match source_kind:
-        case "explicit":
+        case HourlySourceKind.EXPLICIT:
             _require_float_list(raw_source, "hourly_factors", context)
             _require_non_empty_string(raw_source, "materialization_method", context)
-        case "materialized":
+        case HourlySourceKind.MATERIALIZED:
             if "source_timestamp_utc" in raw_source:
                 raise ValueError(
                     f"{context} contains unsupported field 'source_timestamp_utc'; use 'source_timestamps_utc'",
@@ -2717,18 +3441,22 @@ def _validate_hourly_seasonality_source(raw_source: JsonObject, context: str) ->
             _require_non_empty_string(raw_source, "aggregation_method", context)
             _require_non_empty_string(raw_source, "sparse_fallback_policy", context)
             _require_non_negative_int(raw_source, "sparse_hour_minimum_observation_count", context)
-        case _:
-            raise ValueError(f"{context} contains unsupported source_kind value: {source_kind}")
 
 
 def _validate_hourly_news_intensity_source(raw_source: JsonObject, context: str) -> None:
-    source_kind: str = _require_non_empty_string(raw_source, "source_kind", context)
+    source_kind = _require_enum_field(
+        raw_source,
+        "source_kind",
+        context,
+        HourlySourceKind,
+        error_message=f"{context} contains unsupported source_kind value: {{value}}",
+    )
 
     match source_kind:
-        case "explicit":
+        case HourlySourceKind.EXPLICIT:
             _require_float_list(raw_source, "hourly_factors", context)
             _require_non_empty_string(raw_source, "materialization_method", context)
-        case "materialized":
+        case HourlySourceKind.MATERIALIZED:
             known_scheduled_event_timestamps_utc: JsonArray = _require_json_array_field(
                 raw_source,
                 "known_scheduled_event_timestamps_utc",
@@ -2761,8 +3489,6 @@ def _validate_hourly_news_intensity_source(raw_source: JsonObject, context: str)
                     raw_multiplier,
                     f"{context}.surprise_deterministic_time_multiplier_by_interval_index",
                 )
-        case _:
-            raise ValueError(f"{context} contains unsupported source_kind value: {source_kind}")
 
 
 def _extract_registry_exchange_codes(calendar_registry: JsonObject) -> set[str]:
@@ -2832,6 +3558,10 @@ def _require_non_empty_string_list(parent: JsonObject, field_name: str, context:
     return _normalize_non_empty_string_list(field_values, context)
 
 
+def _require_string_array_field(parent: JsonObject, field_name: str, context: str) -> list[str]:
+    return _require_non_empty_string_list(parent, field_name, context)
+
+
 def _normalize_non_empty_string_list(raw_values: JsonArray, context: str) -> list[str]:
     validated_values: list[str] = []
     for raw_value in raw_values:
@@ -2899,6 +3629,14 @@ def _require_non_negative_int(parent: JsonObject, field_name: str, context: str)
     return raw_value
 
 
+def _require_positive_int(parent: JsonObject, field_name: str, context: str) -> int:
+    value: int = _require_non_negative_int(parent, field_name, context)
+    if value <= 0:
+        raise ValueError(f"field '{field_name}' in {context} must be greater than zero")
+
+    return value
+
+
 def _require_non_negative_int_list(parent: JsonObject, field_name: str, context: str) -> list[int]:
     field_values: JsonArray = _require_json_array_field(parent, field_name, context)
     if not field_values:
@@ -2926,9 +3664,13 @@ def _require_bool(parent: JsonObject, field_name: str, context: str) -> bool:
     return raw_value
 
 
-def _require_nullable_non_empty_string(parent: JsonObject, field_name: str, context: str) -> str | None:
+def _require_nullable_non_empty_string(
+    parent: JsonObject,
+    field_name: str,
+    context: str,
+) -> Optional[str]:
     if field_name not in parent:
-        raise ValueError(f"missing required field '{field_name}' in {context}")
+        return None
 
     raw_value: object = parent[field_name]
     if raw_value is None:
@@ -2944,7 +3686,81 @@ def _require_nullable_non_empty_string(parent: JsonObject, field_name: str, cont
     return normalized_value
 
 
-def _require_optional_number(parent: JsonObject, field_name: str, context: str) -> float | None:
+def _require_enum_field[T: StrEnum](
+    parent: JsonObject,
+    field_name: str,
+    context: str,
+    enum_type: type[T],
+    *,
+    error_message: Optional[str] = None,
+) -> T:
+    value: str = _require_non_empty_string(parent, field_name, context)
+    return _parse_enum_value(
+        value,
+        enum_type,
+        f"field '{field_name}' in {context}",
+        error_message=error_message,
+    )
+
+
+def _require_nullable_enum[T: StrEnum](
+    parent: JsonObject,
+    field_name: str,
+    context: str,
+    enum_type: type[T],
+    *,
+    error_message: Optional[str] = None,
+) -> Optional[str]:
+    value: Optional[str] = _require_nullable_non_empty_string(parent, field_name, context)
+    if value is None:
+        return None
+
+    return _parse_enum_value(
+        value,
+        enum_type,
+        f"field '{field_name}' in {context}",
+        error_message=error_message,
+    ).value
+
+
+def _parse_enum_list[T: StrEnum](
+    raw_values: list[str],
+    enum_type: type[T],
+    context: str,
+    *,
+    error_message: Optional[str] = None,
+) -> list[T]:
+    return [
+        _parse_enum_value(
+            value,
+            enum_type,
+            f"{context}[{value_index}]",
+            error_message=error_message,
+        )
+        for value_index, value in enumerate(raw_values)
+    ]
+
+
+def _parse_enum_value[T: StrEnum](
+    value: str,
+    enum_type: type[T],
+    context: str,
+    *,
+    error_message: Optional[str] = None,
+) -> T:
+    member: Optional[T] = parse_str_enum(enum_type, value)
+    if member is None:
+        if error_message is not None:
+            raise ValueError(error_message.format(value=value))
+
+        raise ValueError(
+            f"{context} must be one of {list(enum_values(enum_type))}, found `{value}`",
+        )
+
+    return member
+
+
+def _require_optional_number(parent: JsonObject, field_name: str, context: str) -> Optional[float]:
     if field_name not in parent:
         raise ValueError(f"missing required field '{field_name}' in {context}")
 
@@ -2955,11 +3771,23 @@ def _require_optional_number(parent: JsonObject, field_name: str, context: str) 
     return _require_float_like(raw_value, f"field '{field_name}' in {context}")
 
 
+def _require_optional_non_negative_number(
+    parent: JsonObject,
+    field_name: str,
+    context: str,
+) -> Optional[float]:
+    value: Optional[float] = _require_optional_number(parent, field_name, context)
+    if value is not None and value < 0.0:
+        raise ValueError(f"field '{field_name}' in {context} must be non-negative when provided")
+
+    return value
+
+
 def _require_optional_confidence_interval(
     parent: JsonObject,
     field_name: str,
     context: str,
-) -> StylizedFactExpectedConfidenceInterval | None:
+) -> Optional[StylizedFactExpectedConfidenceInterval]:
     if field_name not in parent:
         raise ValueError(f"missing required field '{field_name}' in {context}")
 
@@ -2985,6 +3813,127 @@ def _require_number(parent: JsonObject, field_name: str, context: str) -> float:
         raise ValueError(f"missing required field '{field_name}' in {context}")
 
     return _require_float_like(raw_value, f"field '{field_name}' in {context}")
+
+
+def _require_positive_number(parent: JsonObject, field_name: str, context: str) -> float:
+    value: float = _require_number(parent, field_name, context)
+    if value <= 0.0:
+        raise ValueError(f"field '{field_name}' in {context} must be greater than zero")
+
+    return value
+
+
+def _require_regression_status(parent: JsonObject, field_name: str, context: str) -> RegressionStatus:
+    return _require_enum_field(
+        parent,
+        field_name,
+        context,
+        RegressionStatus,
+        error_message=f"field '{field_name}' in {context} must be `pass` or `fail`, found `{{value}}`",
+    )
+
+
+def _require_metric_computation_status(
+    parent: JsonObject,
+    field_name: str,
+    context: str,
+) -> ScaleConsistencyMetricComputationStatus:
+    return _require_enum_field(
+        parent,
+        field_name,
+        context,
+        ScaleConsistencyMetricComputationStatus,
+        error_message=(
+            f"field '{field_name}' in {context} must be `computed` or `missing`, found `{{value}}`"
+        ),
+    )
+
+
+def _require_metric_category(
+    parent: JsonObject,
+    field_name: str,
+    context: str,
+) -> ScaleConsistencyMetricCategory:
+    return _require_enum_field(
+        parent,
+        field_name,
+        context,
+        ScaleConsistencyMetricCategory,
+        error_message=(
+            f"field '{field_name}' in {context} must be `returns`, `volatility`, or `events`, found `{{value}}`"
+        ),
+    )
+
+
+def _require_delta_kind(parent: JsonObject, field_name: str, context: str) -> ScaleConsistencyDeltaKind:
+    return _require_enum_field(
+        parent,
+        field_name,
+        context,
+        ScaleConsistencyDeltaKind,
+        error_message=(
+            f"field '{field_name}' in {context} must be `signed_difference` or `absolute_distance`, found `{{value}}`"
+        ),
+    )
+
+
+def _require_dataset_role(parent: JsonObject, field_name: str, context: str) -> ScaleConsistencyDatasetRole:
+    return _require_enum_field(
+        parent,
+        field_name,
+        context,
+        ScaleConsistencyDatasetRole,
+        error_message=f"field '{field_name}' in {context} must be `coarse` or `fine`, found `{{value}}`",
+    )
+
+
+def _require_failure_reason_code(
+    parent: JsonObject,
+    field_name: str,
+    context: str,
+) -> ScaleConsistencyFailureReasonCode:
+    return _require_enum_field(
+        parent,
+        field_name,
+        context,
+        ScaleConsistencyFailureReasonCode,
+        error_message=f"field '{field_name}' in {context} has unsupported reason code `{{value}}`",
+    )
+
+
+def _require_optional_positive_int(parent: JsonObject, field_name: str, context: str) -> Optional[int]:
+    if field_name not in parent:
+        return None
+
+    raw_value: object = parent[field_name]
+    if raw_value is None:
+        return None
+
+    if not isinstance(raw_value, int) or isinstance(raw_value, bool):
+        raise ValueError(f"field '{field_name}' in {context} must be an integer or null")
+    if raw_value <= 0:
+        raise ValueError(f"field '{field_name}' in {context} must be greater than zero when provided")
+
+    return raw_value
+
+
+def _require_decision_reason_codes(parent: JsonObject, field_name: str, context: str) -> list[str]:
+    field_values: JsonArray = _require_json_array_field(parent, field_name, context)
+    normalized_values: list[str] = _normalize_non_empty_string_list(
+        field_values,
+        f"field '{field_name}' in {context}",
+    )
+    return [
+        decision_reason_code.value
+        for decision_reason_code in _parse_enum_list(
+            normalized_values,
+            ScaleConsistencyDecisionReasonCode,
+            f"field '{field_name}' in {context}",
+            error_message=(
+                f"field '{field_name}' in {context} contains unsupported decision reason code `{{value}}`"
+            ),
+        )
+    ]
 
 
 def _require_float_like(raw_value: object, context: str) -> float:

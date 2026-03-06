@@ -21,7 +21,7 @@ Each fixture entry defines:
 
 - `fixture_id`: Stable fixture set identifier.
 - `domain`: Fixture domain, currently `calendar`, `hourly_factors`, `gap_behavior`,
-  `stylized_facts`, and forward-extensible to `seasonality`.
+  `scale_consistency`, `stylized_facts`, and forward-extensible to `seasonality`.
 - `fixture_schema_version`: Target fixture document schema version.
 - `relative_path`: Fixture document path relative to `tests/fixtures`.
 - `exchange_codes`: Exchanges covered by the fixture.

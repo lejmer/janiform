@@ -1,3 +1,5 @@
+from typing import Optional
+
 __doc__: str
 
 
@@ -72,10 +74,10 @@ class TimestampEventPreprocessingResult:
     def filtered_record_count(self) -> int: ...
 
     @property
-    def first_event_timestamp_utc_nanos(self) -> int | None: ...
+    def first_event_timestamp_utc_nanos(self) -> Optional[int]: ...
 
     @property
-    def last_event_timestamp_utc_nanos(self) -> int | None: ...
+    def last_event_timestamp_utc_nanos(self) -> Optional[int]: ...
 
     @property
     def hour_bucket_count(self) -> int: ...
@@ -627,7 +629,7 @@ def compose_deterministic_seasonality_signal(
     day_of_year_log_component: object,
     *,
     intraday_minutes_per_bin: int = 1,
-    scheduled_event_overlays: object | None = None,
+    scheduled_event_overlays: Optional[object] = None,
 ) -> DeterministicSeasonalityCompositionResult: ...
 
 
@@ -678,8 +680,8 @@ def materialize_hourly_news_intensity_factors(
     range_end_utc: str,
     surprise_baseline_intensity: float,
     *,
-    known_scheduled_event_timestamps_utc: object | None = None,
-    surprise_deterministic_time_multiplier_by_interval_index: object | None = None,
+    known_scheduled_event_timestamps_utc: Optional[object] = None,
+    surprise_deterministic_time_multiplier_by_interval_index: Optional[object] = None,
 ) -> HourlyNewsIntensityMaterializationResult: ...
 
 
@@ -689,8 +691,8 @@ def provide_hourly_factor_contract(
     range_start_utc: str,
     range_end_utc: str,
     *,
-    seasonality_source: object | None = None,
-    news_intensity_source: object | None = None,
+    seasonality_source: Optional[object] = None,
+    news_intensity_source: Optional[object] = None,
 ) -> HourlyFactorContractResult: ...
 
 
