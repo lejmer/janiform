@@ -1,0 +1,99 @@
+{
+  "schema_version": "validation.scale_consistency.threshold_policy.v1",
+  "policy_id": "scale_consistency_release_gate_policy_v1",
+  "policy_version": "1.0.0",
+  "governance_scope_policy": "model_validation_release_and_calibration_governance_thresholds_with_engine_benchmark_prerequisite_inputs.v1",
+  "interval_threshold_bands": [
+    {
+      "interval_grid_label": "subhour_grid",
+      "delta_upper_bound": 0.5,
+      "metric_thresholds": [
+        {
+          "threshold_id": "subhour/returns_central_variance",
+          "metric_id": "returns_central_variance",
+          "max_absolute_delta": 0.35,
+          "rationale": "Subhour variance alignment must remain tight because aggregation noise is limited over short horizons."
+        },
+        {
+          "threshold_id": "subhour/returns_distribution_wasserstein_distance",
+          "metric_id": "returns_distribution_wasserstein_distance",
+          "max_absolute_delta": 0.25,
+          "rationale": "Subhour return-shape deltas should remain small under shared-random paired experiments."
+        },
+        {
+          "threshold_id": "subhour/volatility_abs_return_acf_distribution_distance",
+          "metric_id": "volatility_abs_return_acf_distribution_distance",
+          "max_absolute_delta": 0.15,
+          "rationale": "Volatility clustering alignment should stay within a narrow lag-distance tolerance on subhour grids."
+        },
+        {
+          "threshold_id": "subhour/open_jump_abs_tail_expected_shortfall_ratio",
+          "metric_id": "open_jump_abs_tail_expected_shortfall_ratio",
+          "max_absolute_delta": 0.20,
+          "rationale": "Open-jump tail severity should remain aligned after fine-path aggregation."
+        },
+        {
+          "threshold_id": "subhour/closed_gap_abs_tail_expected_shortfall_ratio",
+          "metric_id": "closed_gap_abs_tail_expected_shortfall_ratio",
+          "max_absolute_delta": 0.20,
+          "rationale": "Closed-gap tail severity should remain aligned after fine-path aggregation."
+        },
+        {
+          "threshold_id": "subhour/closed_gap_vs_open_jump_wasserstein_distance",
+          "metric_id": "closed_gap_vs_open_jump_wasserstein_distance",
+          "max_absolute_delta": 0.18,
+          "rationale": "The gap-versus-open-jump contrast should not drift materially on subhour grids."
+        }
+      ]
+    },
+    {
+      "interval_grid_label": "hourly_grid",
+      "delta_upper_bound": 1.0,
+      "metric_thresholds": [
+        {
+          "threshold_id": "hourly/returns_central_variance",
+          "metric_id": "returns_central_variance",
+          "max_absolute_delta": 0.50,
+          "rationale": "Hourly variance alignment can allow modest aggregation drift while remaining suitable for release gating."
+        },
+        {
+          "threshold_id": "hourly/returns_distribution_wasserstein_distance",
+          "metric_id": "returns_distribution_wasserstein_distance",
+          "max_absolute_delta": 0.40,
+          "rationale": "Hourly return-distribution distance should stay within a moderate governance band."
+        },
+        {
+          "threshold_id": "hourly/volatility_abs_return_acf_distribution_distance",
+          "metric_id": "volatility_abs_return_acf_distribution_distance",
+          "max_absolute_delta": 0.20,
+          "rationale": "Hourly volatility clustering distance can be looser than subhour distance while still protecting scale coherence."
+        },
+        {
+          "threshold_id": "hourly/open_jump_abs_tail_expected_shortfall_ratio",
+          "metric_id": "open_jump_abs_tail_expected_shortfall_ratio",
+          "max_absolute_delta": 0.25,
+          "rationale": "Hourly open-jump tail alignment should remain stable enough for calibration governance."
+        },
+        {
+          "threshold_id": "hourly/closed_gap_abs_tail_expected_shortfall_ratio",
+          "metric_id": "closed_gap_abs_tail_expected_shortfall_ratio",
+          "max_absolute_delta": 0.25,
+          "rationale": "Hourly closed-gap tail alignment should remain stable enough for calibration governance."
+        },
+        {
+          "threshold_id": "hourly/closed_gap_vs_open_jump_wasserstein_distance",
+          "metric_id": "closed_gap_vs_open_jump_wasserstein_distance",
+          "max_absolute_delta": 0.22,
+          "rationale": "Hourly open-versus-closed jump contrast should remain within a governed distance band."
+        }
+      ]
+    }
+  ],
+  "change_log": [
+    {
+      "policy_version": "1.0.0",
+      "recorded_at_utc": "2026-03-06T00:00:00Z",
+      "rationale": "Initial model-validation threshold policy for interval-aware scale-consistency release and calibration governance."
+    }
+  ]
+}
