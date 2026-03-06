@@ -7,6 +7,7 @@ use std::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 use crate::calibration::CalibrationExecutionMode;
+use crate::randomness::{SimulationRandomnessSubstreamDomain, derive_simulation_substream_seed};
 use crate::risk::{
     SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskIntervalFactorsError,
     SufficientStatisticsRiskModelInputs, SufficientStatisticsRiskModelInputsError,
@@ -24,6 +25,10 @@ pub const SCALE_CONSISTENCY_RANDOM_SEED_POLICY: &str =
     "explicit_seed_policy_required_with_shared_random_control_or_explicit_pair.v1";
 pub const SCALE_CONSISTENCY_EXECUTION_MODE_POLICY: &str =
     "memory_transport_only_disk_optional_artifact_output.v1";
+pub const SCALE_CONSISTENCY_RANDOM_CONTROL_METADATA_SCHEMA_VERSION: &str =
+    "validation.scale_consistency.random_control_metadata.v1";
+pub const SCALE_CONSISTENCY_RANDOM_CONTROL_SEED_RESOLUTION_POLICY: &str = "shared_random_control_derives_common_pair_seed_from_base_seed_via_simulation_substream_mixer_and_explicit_pair_passes_configured_seeds_directly.v1";
+pub const SCALE_CONSISTENCY_VARIANCE_REDUCTION_POLICY: &str = "shared_random_control_reuses_common_pair_seed_across_coarse_and_fine_and_explicit_pair_disables_cross_run_variance_reduction.v1";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -156,6 +161,39 @@ pub enum ScaleConsistencyRandomSeedPolicyKind {
     ExplicitPair,
 }
 
+/// Variance-reduction policy implied by one paired-run seed configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScaleConsistencyVarianceReductionPolicy {
+    CommonRandomNumbers,
+    IndependentStreams,
+}
+
+/// Provenance for one resolved coarse or fine seed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScaleConsistencyResolvedSeedSource {
+    DerivedFromSharedRandomControl,
+    ExplicitConfiguredSeed,
+}
+
+/// Machine-readable random-control metadata resolved for one paired run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScaleConsistencyRandomControlMetadata {
+    pub schema_version: String,
+    pub random_seed_policy_kind: ScaleConsistencyRandomSeedPolicyKind,
+    pub variance_reduction_policy: ScaleConsistencyVarianceReductionPolicy,
+    pub seed_resolution_policy: String,
+    pub paired_run_index: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared_random_control_base_seed: Option<u64>,
+    pub coarse_seed: u64,
+    pub fine_seed: u64,
+    pub coarse_seed_source: ScaleConsistencyResolvedSeedSource,
+    pub fine_seed_source: ScaleConsistencyResolvedSeedSource,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ScaleConsistencyRandomSeedPolicy {
@@ -170,6 +208,17 @@ impl ScaleConsistencyRandomSeedPolicy {
                 ScaleConsistencyRandomSeedPolicyKind::SharedRandomControl
             }
             Self::ExplicitPair { .. } => ScaleConsistencyRandomSeedPolicyKind::ExplicitPair,
+        }
+    }
+
+    pub const fn variance_reduction_policy(&self) -> ScaleConsistencyVarianceReductionPolicy {
+        match self {
+            Self::SharedRandomControl { .. } => {
+                ScaleConsistencyVarianceReductionPolicy::CommonRandomNumbers
+            }
+            Self::ExplicitPair { .. } => {
+                ScaleConsistencyVarianceReductionPolicy::IndependentStreams
+            }
         }
     }
 
@@ -188,6 +237,55 @@ impl ScaleConsistencyRandomSeedPolicy {
         }
 
         Ok(())
+    }
+
+    pub fn resolve_random_control_metadata(
+        &self,
+        paired_run_index: u64,
+    ) -> ScaleConsistencyRandomControlMetadata {
+        match self {
+            Self::SharedRandomControl { base_seed } => {
+                let shared_pair_seed = derive_simulation_substream_seed(
+                    *base_seed,
+                    SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment,
+                    paired_run_index,
+                );
+
+                ScaleConsistencyRandomControlMetadata {
+                    schema_version: SCALE_CONSISTENCY_RANDOM_CONTROL_METADATA_SCHEMA_VERSION
+                        .to_string(),
+                    random_seed_policy_kind: self.kind(),
+                    variance_reduction_policy: self.variance_reduction_policy(),
+                    seed_resolution_policy: SCALE_CONSISTENCY_RANDOM_CONTROL_SEED_RESOLUTION_POLICY
+                        .to_string(),
+                    paired_run_index,
+                    shared_random_control_base_seed: Some(*base_seed),
+                    coarse_seed: shared_pair_seed,
+                    fine_seed: shared_pair_seed,
+                    coarse_seed_source:
+                        ScaleConsistencyResolvedSeedSource::DerivedFromSharedRandomControl,
+                    fine_seed_source:
+                        ScaleConsistencyResolvedSeedSource::DerivedFromSharedRandomControl,
+                }
+            }
+            Self::ExplicitPair {
+                coarse_seed,
+                fine_seed,
+            } => ScaleConsistencyRandomControlMetadata {
+                schema_version: SCALE_CONSISTENCY_RANDOM_CONTROL_METADATA_SCHEMA_VERSION
+                    .to_string(),
+                random_seed_policy_kind: self.kind(),
+                variance_reduction_policy: self.variance_reduction_policy(),
+                seed_resolution_policy: SCALE_CONSISTENCY_RANDOM_CONTROL_SEED_RESOLUTION_POLICY
+                    .to_string(),
+                paired_run_index,
+                shared_random_control_base_seed: None,
+                coarse_seed: *coarse_seed,
+                fine_seed: *fine_seed,
+                coarse_seed_source: ScaleConsistencyResolvedSeedSource::ExplicitConfiguredSeed,
+                fine_seed_source: ScaleConsistencyResolvedSeedSource::ExplicitConfiguredSeed,
+            },
+        }
     }
 }
 
@@ -307,6 +405,14 @@ impl ScaleConsistencyPairedExperimentScenarioSpec {
         &self,
     ) -> Result<usize, ScaleConsistencyPairedExperimentScenarioSpecError> {
         validate_interval_pair(self.coarse_interval_delta, self.fine_interval_delta)
+    }
+
+    pub fn resolve_random_control_metadata(
+        &self,
+        paired_run_index: u64,
+    ) -> ScaleConsistencyRandomControlMetadata {
+        self.random_seed_policy
+            .resolve_random_control_metadata(paired_run_index)
     }
 }
 

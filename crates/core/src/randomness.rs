@@ -9,7 +9,7 @@ const SPLITMIX64_GAMMA: u64 = 0x9E37_79B9_7F4A_7C15;
 const SUBSTREAM_DOMAIN_MIXER: u64 = 0xA24B_AED4_963E_E407;
 const SUBSTREAM_INDEX_MIXER: u64 = 0x9FB2_1C65_1E98_DF25;
 
-/// Explicit substream domains for seeded tick-event simulation.
+/// Explicit substream domains for seeded simulation and validation workflows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u64)]
 pub enum SimulationRandomnessSubstreamDomain {
@@ -21,6 +21,7 @@ pub enum SimulationRandomnessSubstreamDomain {
     ExogenousNewsTimestamp = 6,
     ExogenousNewsSeverity = 7,
     ExogenousNewsReturnJump = 8,
+    ScaleConsistencyPairedExperiment = 9,
 }
 
 impl SimulationRandomnessSubstreamDomain {
