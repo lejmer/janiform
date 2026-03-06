@@ -5,6 +5,11 @@ use std::fs;
 
 use serde_json::Value;
 
+use support::stylized_fact_regression_fixture::{
+    STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SET_ID, StylizedFactMetricRegressionFixtureDocument,
+    load_stylized_fact_metric_regression_fixture_from_manifest,
+    validate_stylized_fact_metric_regression_fixture_document,
+};
 use support::validation_fixture::{
     CalendarRegressionFixtureDocument, HourlyFactorRegressionFixtureDocument,
     OPEN_CLOSED_GAP_BEHAVIOR_SCENARIO_FIXTURE_SET_ID, OpenClosedGapBehaviorScenarioFixtureDocument,
@@ -18,11 +23,6 @@ use support::validation_fixture::{
     validate_open_closed_gap_behavior_calendar_integration,
     validate_open_closed_gap_behavior_scenario_fixture_document,
     validate_validation_fixture_manifest_document,
-};
-use support::stylized_fact_regression_fixture::{
-    STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SET_ID, StylizedFactMetricRegressionFixtureDocument,
-    load_stylized_fact_metric_regression_fixture_from_manifest,
-    validate_stylized_fact_metric_regression_fixture_document,
 };
 
 #[test]
@@ -296,9 +296,8 @@ fn stylized_fact_fixture_rejects_missing_required_fields() {
         .expect("fixture value should be an object")
         .remove("cases");
 
-    let parse_result = serde_json::from_value::<StylizedFactMetricRegressionFixtureDocument>(
-        fixture_value,
-    );
+    let parse_result =
+        serde_json::from_value::<StylizedFactMetricRegressionFixtureDocument>(fixture_value);
     assert!(parse_result.is_err());
 }
 
@@ -309,7 +308,8 @@ fn stylized_fact_fixture_rejects_unknown_tolerance_policy_reference() {
     let mut fixture_document = loaded_fixture.fixture_document;
     fixture_document.cases[0].tolerance_policy_id = "missing_policy.v1".to_string();
 
-    let validation_result = validate_stylized_fact_metric_regression_fixture_document(&fixture_document);
+    let validation_result =
+        validate_stylized_fact_metric_regression_fixture_document(&fixture_document);
 
     assert!(validation_result.is_err());
 }
