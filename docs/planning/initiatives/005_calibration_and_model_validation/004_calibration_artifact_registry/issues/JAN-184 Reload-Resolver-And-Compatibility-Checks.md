@@ -1,4 +1,4 @@
-## ISSUE-006: Reload Resolver And Compatibility Checks
+## Reload Resolver And Compatibility Checks
 
 ### Description
 Implement reload resolver that reconstructs calibration runs from persisted artifacts with schema-evolution checks and clear failure diagnostics.

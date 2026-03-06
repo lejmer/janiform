@@ -1,4 +1,4 @@
-## ISSUE-005: Persistence Writer And Atomic Commit Flow
+## Persistence Writer And Atomic Commit Flow
 
 ### Description
 Implement `disk`-mode artifact persistence writer with atomic commit behavior so persisted calibration outputs are never left in partial states.

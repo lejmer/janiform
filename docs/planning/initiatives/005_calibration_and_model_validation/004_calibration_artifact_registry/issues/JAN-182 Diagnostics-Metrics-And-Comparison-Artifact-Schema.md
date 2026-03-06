@@ -1,4 +1,4 @@
-## ISSUE-004: Diagnostics Metrics And Comparison Artifact Schema
+## Diagnostics Metrics And Comparison Artifact Schema
 
 ### Description
 Implement schema for persisted diagnostics, metric outputs, and comparison results so calibration quality can be reviewed and replayed for persisted runs.

@@ -1,4 +1,4 @@
-## ISSUE-001: Artifact Manifest Schema And Versioning Policy
+## Artifact Manifest Schema And Versioning Policy
 
 ### Description
 Define the top-level artifact manifest schema and versioning policy for persisted calibration runs, including explicit pre-v0.1 schema-evolution rules.

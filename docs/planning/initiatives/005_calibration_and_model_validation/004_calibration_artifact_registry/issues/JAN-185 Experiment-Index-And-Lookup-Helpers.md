@@ -1,4 +1,4 @@
-## ISSUE-007: Experiment Index And Lookup Helpers
+## Experiment Index And Lookup Helpers
 
 ### Description
 Implement lightweight indexing and lookup helpers so teams can find persisted calibration runs by model version, data snapshot, metric outcomes, and timestamps.

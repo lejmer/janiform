@@ -1,4 +1,4 @@
-## ISSUE-003: Fitted Parameter And Optimizer State Artifacts
+## Fitted Parameter And Optimizer State Artifacts
 
 ### Description
 Define and persist artifacts for fitted parameters and optimizer state across calibration stages for persisted runs.

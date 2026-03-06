@@ -1,4 +1,4 @@
-## ISSUE-008: Round Trip Integrity And Corruption Regression Suite
+## Round Trip Integrity And Corruption Regression Suite
 
 ### Description
 Create regression suite that verifies persisted artifact round-trip integrity and robust handling of corrupted or incomplete artifact sets.
