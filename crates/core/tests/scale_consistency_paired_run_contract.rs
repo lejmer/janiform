@@ -3,17 +3,21 @@ use janiform_core::calibration::CalibrationExecutionMode;
 use janiform_core::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
 use janiform_core::news::GammaSeverityMarkConfiguration;
 use janiform_core::nig::NigSharedPlusShiftConfiguration;
+use janiform_core::randomness::{SimulationRandomnessStream, SplitMix64SimulationRandomnessStream};
 use janiform_core::risk::{
     SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskModelInputs,
 };
 use janiform_core::verification::{
     SCALE_CONSISTENCY_EXECUTION_MODE_POLICY, SCALE_CONSISTENCY_INTERVAL_RELATIONSHIP_POLICY,
     SCALE_CONSISTENCY_PAIRED_RUN_CONTRACT_SCHEMA_VERSION,
-    SCALE_CONSISTENCY_PAIRED_RUN_SPEC_SCHEMA_VERSION, SCALE_CONSISTENCY_RANDOM_SEED_POLICY,
-    ScaleConsistencyArtifactOutputConfig, ScaleConsistencyPairedExperimentScenarioSpecError,
-    ScaleConsistencyPairedRunContract, ScaleConsistencyPairedRunSpec,
-    ScaleConsistencyPairedRunSpecError, ScaleConsistencyPairedRunSpecErrorClassification,
-    ScaleConsistencyRandomSeedPolicy,
+    SCALE_CONSISTENCY_PAIRED_RUN_SPEC_SCHEMA_VERSION,
+    SCALE_CONSISTENCY_RANDOM_CONTROL_METADATA_SCHEMA_VERSION,
+    SCALE_CONSISTENCY_RANDOM_CONTROL_SEED_RESOLUTION_POLICY, SCALE_CONSISTENCY_RANDOM_SEED_POLICY,
+    SCALE_CONSISTENCY_VARIANCE_REDUCTION_POLICY, ScaleConsistencyArtifactOutputConfig,
+    ScaleConsistencyPairedExperimentScenarioSpecError, ScaleConsistencyPairedRunContract,
+    ScaleConsistencyPairedRunSpec, ScaleConsistencyPairedRunSpecError,
+    ScaleConsistencyPairedRunSpecErrorClassification, ScaleConsistencyRandomSeedPolicy,
+    ScaleConsistencyResolvedSeedSource, ScaleConsistencyVarianceReductionPolicy,
 };
 use serde_json::json;
 
@@ -70,6 +74,101 @@ fn scale_consistency_run_spec_parsing_validation_and_contract_construction_succe
     assert_eq!(
         contract.execution_mode_policy,
         SCALE_CONSISTENCY_EXECUTION_MODE_POLICY
+    );
+}
+
+#[test]
+fn scale_consistency_shared_random_control_metadata_captures_resolved_policy_and_seed_values() {
+    let scenario = build_valid_scenario();
+
+    let metadata = scenario.resolve_random_control_metadata(3);
+
+    assert_eq!(
+        metadata.schema_version,
+        SCALE_CONSISTENCY_RANDOM_CONTROL_METADATA_SCHEMA_VERSION
+    );
+    assert_eq!(
+        metadata.seed_resolution_policy,
+        SCALE_CONSISTENCY_RANDOM_CONTROL_SEED_RESOLUTION_POLICY
+    );
+    assert_eq!(
+        scenario.random_seed_policy.variance_reduction_policy(),
+        ScaleConsistencyVarianceReductionPolicy::CommonRandomNumbers
+    );
+    assert_eq!(metadata.paired_run_index, 3);
+    assert_eq!(metadata.shared_random_control_base_seed, Some(17));
+    assert_eq!(
+        metadata.variance_reduction_policy,
+        ScaleConsistencyVarianceReductionPolicy::CommonRandomNumbers
+    );
+    assert_eq!(
+        metadata.coarse_seed_source,
+        ScaleConsistencyResolvedSeedSource::DerivedFromSharedRandomControl
+    );
+    assert_eq!(
+        metadata.fine_seed_source,
+        ScaleConsistencyResolvedSeedSource::DerivedFromSharedRandomControl
+    );
+    assert_eq!(metadata.coarse_seed, metadata.fine_seed);
+    assert_eq!(metadata.coarse_seed, 7_120_523_531_281_242_402);
+}
+
+#[test]
+fn scale_consistency_random_control_resolution_is_deterministic_and_reproducible() {
+    let random_seed_policy =
+        ScaleConsistencyRandomSeedPolicy::SharedRandomControl { base_seed: 17 };
+
+    let first_metadata = random_seed_policy.resolve_random_control_metadata(3);
+    let second_metadata = random_seed_policy.resolve_random_control_metadata(3);
+    let shifted_metadata = random_seed_policy.resolve_random_control_metadata(4);
+
+    assert_eq!(first_metadata, second_metadata);
+    assert_ne!(first_metadata.coarse_seed, shifted_metadata.coarse_seed);
+    assert_eq!(
+        SCALE_CONSISTENCY_VARIANCE_REDUCTION_POLICY,
+        "shared_random_control_reuses_common_pair_seed_across_coarse_and_fine_and_explicit_pair_disables_cross_run_variance_reduction.v1"
+    );
+
+    let mut coarse_stream =
+        SplitMix64SimulationRandomnessStream::from_seed(first_metadata.coarse_seed);
+    let mut fine_stream = SplitMix64SimulationRandomnessStream::from_seed(first_metadata.fine_seed);
+    let coarse_draws = [
+        coarse_stream.next_u64(),
+        coarse_stream.next_u64(),
+        coarse_stream.next_u64(),
+    ];
+    let fine_draws = [
+        fine_stream.next_u64(),
+        fine_stream.next_u64(),
+        fine_stream.next_u64(),
+    ];
+
+    assert_eq!(coarse_draws, fine_draws);
+}
+
+#[test]
+fn scale_consistency_explicit_pair_metadata_preserves_manual_seed_pair_without_shared_control() {
+    let policy = ScaleConsistencyRandomSeedPolicy::ExplicitPair {
+        coarse_seed: 101,
+        fine_seed: 202,
+    };
+
+    let metadata = policy.resolve_random_control_metadata(9);
+
+    assert_eq!(metadata.shared_random_control_base_seed, None);
+    assert_eq!(
+        metadata.variance_reduction_policy,
+        ScaleConsistencyVarianceReductionPolicy::IndependentStreams
+    );
+    assert_eq!(metadata.coarse_seed, 101);
+    assert_eq!(metadata.fine_seed, 202);
+    assert_eq!(
+        metadata.coarse_seed_source,
+        ScaleConsistencyResolvedSeedSource::ExplicitConfiguredSeed
+    );
+    assert_eq!(
+        metadata.fine_seed_source,
+        ScaleConsistencyResolvedSeedSource::ExplicitConfiguredSeed
     );
 }
 
