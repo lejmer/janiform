@@ -24,6 +24,18 @@ const CLOSED_GAP_ABS_TAIL_EXPECTED_SHORTFALL_RATIO_METRIC_ID: &str =
 const CLOSED_GAP_VS_OPEN_JUMP_WASSERSTEIN_DISTANCE_METRIC_ID: &str =
     "closed_gap_vs_open_jump_wasserstein_distance";
 
+pub(crate) fn is_supported_scale_consistency_metric(metric_id: &str) -> bool {
+    matches!(
+        metric_id,
+        RETURNS_CENTRAL_VARIANCE_METRIC_ID
+            | RETURNS_DISTRIBUTION_WASSERSTEIN_DISTANCE_METRIC_ID
+            | VOLATILITY_ABS_RETURN_ACF_DISTRIBUTION_DISTANCE_METRIC_ID
+            | OPEN_JUMP_ABS_TAIL_EXPECTED_SHORTFALL_RATIO_METRIC_ID
+            | CLOSED_GAP_ABS_TAIL_EXPECTED_SHORTFALL_RATIO_METRIC_ID
+            | CLOSED_GAP_VS_OPEN_JUMP_WASSERSTEIN_DISTANCE_METRIC_ID
+    )
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct ResolvedMetricSpecification {
     pub(super) metric_id: String,
