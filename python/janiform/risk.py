@@ -2,7 +2,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from math import isfinite, sqrt
-from typing import Any, NotRequired, TypedDict, cast
+from typing import Any, NotRequired, Optional, TypedDict, cast
 
 from .pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 from .simulation import HawkesExcitationState, HawkesKernelParameters
@@ -164,8 +164,8 @@ class SufficientStatisticsRiskPathProvenance(TypedDict):
 class SufficientStatisticsRiskPathDiagnostics(TypedDict):
     schema_version: str
     simulated_interval_count: int
-    first_interval_index: int | None
-    last_interval_index: int | None
+    first_interval_index: Optional[int]
+    last_interval_index: Optional[int]
     cumulative_a_plus: float
     cumulative_a_minus: float
     cumulative_n_plus: int
@@ -402,8 +402,8 @@ def _build_risk_path_diagnostics(
         cumulative_total_return += return_components["total_return"]
         max_abs_total_return = max(max_abs_total_return, abs(return_components["total_return"]))
 
-    first_interval_index: int | None = records[0]["interval_index"] if records else None
-    last_interval_index: int | None = records[-1]["interval_index"] if records else None
+    first_interval_index: Optional[int] = records[0]["interval_index"] if records else None
+    last_interval_index: Optional[int] = records[-1]["interval_index"] if records else None
 
     return {
         "schema_version": SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION,
@@ -811,6 +811,7 @@ def _validate_kernel_loadings(
     plus_minus: float = _require_non_negative_finite_number(raw_loadings, "plus_minus", f"{field_path}.plus_minus")
     minus_plus: float = _require_non_negative_finite_number(raw_loadings, "minus_plus", f"{field_path}.minus_plus")
     minus_minus: float = _require_non_negative_finite_number(raw_loadings, "minus_minus", f"{field_path}.minus_minus")
+
     return {
         "plus_plus": plus_plus,
         "plus_minus": plus_minus,
@@ -829,6 +830,7 @@ def _validate_gamma_configuration(
         "scale_theta",
         f"{field_path}.scale_theta",
     )
+
     return {
         "shape_k": shape_k,
         "scale_theta": scale_theta,
@@ -844,6 +846,7 @@ def _validate_nig_configuration(
     delta: float = _require_positive_finite_number(raw_nig_configuration, "delta", f"{field_path}.delta")
     mu: float = _require_finite_number(raw_nig_configuration, "mu", f"{field_path}.mu")
     delta_beta: float = _require_finite_number(raw_nig_configuration, "delta_beta", f"{field_path}.delta_beta")
+
     if delta_beta >= 0.0:
         raise SufficientStatisticsRiskValidationError(
             SufficientStatisticsRiskValidationFailure(
@@ -890,6 +893,7 @@ def _validate_excitation_state(
         "y_minus_minus",
         f"{field_path}.y_minus_minus",
     )
+
     return {
         "y_plus_plus": y_plus_plus,
         "y_plus_minus": y_plus_minus,
@@ -933,6 +937,7 @@ def _validate_path_records(
                     message=f"must equal {record_position}",
                 )
             )
+
         if "schema_version" in raw_record:
             _validate_exact_string(
                 raw_record,
@@ -977,6 +982,7 @@ def _validate_sufficient_statistics(
     a_minus = _require_non_negative_finite_number(raw_statistics, "a_minus", f"{field_path}.a_minus")
     n_plus = _require_non_negative_integer(raw_statistics, "n_plus", f"{field_path}.n_plus")
     n_minus = _require_non_negative_integer(raw_statistics, "n_minus", f"{field_path}.n_minus")
+
     return {
         "a_plus": a_plus,
         "a_minus": a_minus,
@@ -1069,7 +1075,7 @@ def _validate_exact_integer(
     field_name: str,
     field_path: str,
     expected_value: int,
-    simulated_interval_count: int | None = None,
+    simulated_interval_count: Optional[int] = None,
 ) -> None:
     observed_value = _require_integer(raw_mapping, field_name, field_path)
     if observed_value != expected_value:
@@ -1091,7 +1097,7 @@ def _validate_exact_optional_integer(
     raw_mapping: Mapping[str, Any],
     field_name: str,
     field_path: str,
-    expected_value: int | None,
+    expected_value: Optional[int],
 ) -> None:
     if field_name not in raw_mapping:
         raise SufficientStatisticsRiskValidationError(

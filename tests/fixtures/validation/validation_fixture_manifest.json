@@ -1,7 +1,7 @@
 {
   "schema_version": "validation.fixture.manifest.v1",
   "manifest_id": "janiform_validation_fixtures_v0",
-  "manifest_version": "0.1.0",
+  "manifest_version": "0.2.0",
   "versioning_policy": {
     "schema_family": "validation.fixture.manifest",
     "v0_update_policy": "additive_only_and_major_on_breaking_change.v1"
@@ -42,6 +42,16 @@
         "XTKS"
       ],
       "content_hash": "48ceca3db8cb6598"
+    },
+    {
+      "fixture_id": "scale_consistency_regression_fixture_v1",
+      "domain": "scale_consistency",
+      "fixture_schema_version": "validation.scale_consistency.regression.fixture.v1",
+      "relative_path": "scale_consistency/scale_consistency_regression_fixture.json",
+      "exchange_codes": [
+        "XNYS"
+      ],
+      "content_hash": "e6d30f393f33141d"
     },
     {
       "fixture_id": "stylized_fact_metric_regression_fixture_v1",

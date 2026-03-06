@@ -75,6 +75,7 @@ pub enum ValidationFixtureDomain {
     Seasonality,
     HourlyFactors,
     GapBehavior,
+    ScaleConsistency,
     StylizedFacts,
 }
 

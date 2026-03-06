@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, cast
+from typing import Any, Optional, cast
 
 from janiform import (
     HourlyNewsIntensityProviderExplicitSource,
@@ -94,7 +94,7 @@ def _run_seeded_case(
 def _first_mismatch_diagnostic(
     payload: dict[str, Any],
     fixture_case: SeededTickSimulationParityCase,
-) -> str | None:
+) -> Optional[str]:
     fixture_id = fixture_case["fixture_id"]
     event_tape = cast(list[dict[str, Any]], payload["event_tape"])
 

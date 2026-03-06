@@ -8,11 +8,13 @@ from tests.fixture_validation import (
     CALENDAR_REGRESSION_FIXTURE_SET_ID,
     HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID,
     OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SET_ID,
+    SCALE_CONSISTENCY_REGRESSION_FIXTURE_SET_ID,
     STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SET_ID,
     CalendarRegressionCase,
     CalendarRegressionFixtureDocument,
     HourlyFactorRegressionFixtureDocument,
     OpenClosedGapBehaviorFixtureDocument,
+    ScaleConsistencyRegressionFixtureDocument,
     SeededTickSimulationParityFixtureDocument,
     StylizedFactMetricRegressionFixtureDocument,
     ValidationFixtureManifestDocument,
@@ -21,6 +23,7 @@ from tests.fixture_validation import (
     load_calendar_regression_fixture_document,
     load_hourly_factor_regression_fixture_document,
     load_open_closed_gap_behavior_fixture_document,
+    load_scale_consistency_regression_fixture_document,
     load_manifest_entry_payload,
     load_seeded_tick_simulation_parity_fixture_document,
     load_stylized_fact_metric_regression_fixture_document,
@@ -29,6 +32,7 @@ from tests.fixture_validation import (
     validate_open_closed_gap_behavior_calendar_integration,
     validate_hourly_factor_regression_fixture_document,
     validate_open_closed_gap_behavior_fixture_document,
+    validate_scale_consistency_regression_fixture_document,
     validate_seeded_tick_simulation_parity_fixture_document,
     validate_stylized_fact_metric_regression_fixture_document,
     validate_validation_fixture_manifest_document,
@@ -80,6 +84,18 @@ def test_manifest_stylized_fact_fixture_entry_is_present(
 
     assert stylized_fact_entry["domain"] == "stylized_facts"
     assert len(stylized_fact_entry["exchange_codes"]) >= 1
+
+
+def test_manifest_scale_consistency_fixture_entry_is_present(
+    validation_fixture_manifest_entries: list[ValidationFixtureManifestEntry],
+) -> None:
+    scale_consistency_entry: ValidationFixtureManifestEntry = _find_entry_by_fixture_id(
+        validation_fixture_manifest_entries,
+        SCALE_CONSISTENCY_REGRESSION_FIXTURE_SET_ID,
+    )
+
+    assert scale_consistency_entry["domain"] == "scale_consistency"
+    assert len(scale_consistency_entry["exchange_codes"]) >= 1
 
 
 def test_manifest_loading_order_and_content_hashes_are_deterministic(
@@ -229,6 +245,28 @@ def test_stylized_fact_fixture_loading_order_and_content_hash_are_deterministic(
     assert first_content_hash == second_content_hash
 
 
+def test_scale_consistency_fixture_loading_order_and_content_hash_are_deterministic(
+    scale_consistency_regression_fixture_path: Path,
+) -> None:
+    fixture_payload_bytes: bytes = scale_consistency_regression_fixture_path.read_bytes()
+
+    first_document: ScaleConsistencyRegressionFixtureDocument = (
+        load_scale_consistency_regression_fixture_document(fixture_payload_bytes)
+    )
+    second_document: ScaleConsistencyRegressionFixtureDocument = (
+        load_scale_consistency_regression_fixture_document(fixture_payload_bytes)
+    )
+
+    first_case_order: list[str] = [fixture_case["fixture_id"] for fixture_case in first_document["cases"]]
+    second_case_order: list[str] = [fixture_case["fixture_id"] for fixture_case in second_document["cases"]]
+
+    first_content_hash: str = compute_content_hash_hex(fixture_payload_bytes)
+    second_content_hash: str = compute_content_hash_hex(fixture_payload_bytes)
+
+    assert first_case_order == second_case_order
+    assert first_content_hash == second_content_hash
+
+
 def test_validation_manifest_rejects_missing_required_fields(
     validation_fixture_manifest_document: ValidationFixtureManifestDocument,
 ) -> None:
@@ -304,6 +342,53 @@ def test_stylized_fact_fixture_metadata_is_complete(
         "sparse_insufficient_data"
         in stylized_fact_metric_regression_fixture_document["canonical_regression_metadata"]["required_tags"]
     )
+
+
+def test_scale_consistency_fixture_rejects_missing_required_fields(
+    scale_consistency_regression_fixture_document: ScaleConsistencyRegressionFixtureDocument,
+) -> None:
+    invalid_document: dict[str, Any] = _copy_document(scale_consistency_regression_fixture_document)
+    invalid_document["cases"][0]["expected_outcome"].pop("expected_rendered_summary")
+
+    with pytest.raises(ValueError, match="missing required field 'expected_rendered_summary'"):
+        validate_scale_consistency_regression_fixture_document(invalid_document)
+
+
+def test_scale_consistency_fixture_metadata_is_complete(
+    scale_consistency_regression_fixture_document: ScaleConsistencyRegressionFixtureDocument,
+) -> None:
+    canonical_metadata = scale_consistency_regression_fixture_document["canonical_regression_metadata"]
+
+    assert set(canonical_metadata["required_interval_grid_labels"]) == {"subhour_grid", "hourly_grid"}
+    assert set(canonical_metadata["required_expected_scenario_statuses"]) == {"pass", "fail"}
+    assert "stable_reference" in canonical_metadata["required_tags"]
+    assert len(canonical_metadata["stable_fixture_ids"]) == 4
+
+
+def test_scale_consistency_fixture_rejects_invalid_required_expected_scenario_status_values(
+    scale_consistency_regression_fixture_document: ScaleConsistencyRegressionFixtureDocument,
+) -> None:
+    invalid_document: dict[str, Any] = _copy_document(scale_consistency_regression_fixture_document)
+    invalid_document["canonical_regression_metadata"]["required_expected_scenario_statuses"] = ["pass", "blocked"]
+
+    with pytest.raises(
+        ValueError,
+        match="required_expected_scenario_statuses must use `pass` or `fail`",
+    ):
+        validate_scale_consistency_regression_fixture_document(invalid_document)
+
+
+def test_scale_consistency_fixture_rejects_invalid_primary_drift_category_values(
+    scale_consistency_regression_fixture_document: ScaleConsistencyRegressionFixtureDocument,
+) -> None:
+    invalid_document: dict[str, Any] = _copy_document(scale_consistency_regression_fixture_document)
+    invalid_document["cases"][0]["expected_outcome"]["expected_primary_drift_category"] = "bad_category"
+
+    with pytest.raises(
+        ValueError,
+        match="expected_primary_drift_category.*must be one of",
+    ):
+        validate_scale_consistency_regression_fixture_document(invalid_document)
 
 
 def test_calendar_fixture_rejects_invalid_expected_state_values(
@@ -472,6 +557,16 @@ def test_open_closed_gap_fixture_rejects_event_mapping_mismatch(
     invalid_document["cases"][0]["expected_outcome"]["event_outcomes"][0]["event_id"] = "unknown_event_id"
 
     with pytest.raises(ValueError, match="event_id set must match injected_events event_id set"):
+        validate_open_closed_gap_behavior_fixture_document(invalid_document)
+
+
+def test_open_closed_gap_fixture_rejects_invalid_news_arrival_component_values(
+    open_closed_gap_behavior_fixture_document: OpenClosedGapBehaviorFixtureDocument,
+) -> None:
+    invalid_document: dict[str, Any] = _copy_document(open_closed_gap_behavior_fixture_document)
+    invalid_document["cases"][0]["injected_events"][0]["news_arrival_component"] = "late"
+
+    with pytest.raises(ValueError, match="news_arrival_component must be either 'known' or 'surprise'"):
         validate_open_closed_gap_behavior_fixture_document(invalid_document)
 
 

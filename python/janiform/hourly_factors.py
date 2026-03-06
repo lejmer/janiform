@@ -2,7 +2,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import ModuleType
-from typing import Any, cast
+from typing import Any, Optional, cast
 
 from .api import native_module
 from .calendar import (
@@ -69,7 +69,7 @@ class HourlyNewsIntensityProviderExplicitSource:
 class HourlyNewsIntensityProviderMaterializedSource:
     known_scheduled_event_timestamps_utc: Sequence[datetime]
     surprise_baseline_intensity: float
-    surprise_deterministic_time_multiplier_by_interval_index: Mapping[int, float] | None = None
+    surprise_deterministic_time_multiplier_by_interval_index: Optional[Mapping[int, float]] = None
 
 
 type HourlySeasonalityProviderSource = (
@@ -496,7 +496,7 @@ class HourlyNewsIntensityMaterializationSettings:
 
     known_scheduled_event_timestamps_utc: Sequence[datetime]
     surprise_baseline_intensity: float
-    surprise_deterministic_time_multiplier_by_interval_index: Mapping[int, float] | None = None
+    surprise_deterministic_time_multiplier_by_interval_index: Optional[Mapping[int, float]] = None
 
 
 class HourlyNewsIntensityMaterialization:
@@ -644,8 +644,8 @@ def provide_hourly_factor_contract(
     exchange_code: str,
     range_start_utc: datetime,
     range_end_utc: datetime,
-    seasonality_source: HourlySeasonalityProviderSource | None = None,
-    news_intensity_source: HourlyNewsIntensityProviderSource | None = None,
+    seasonality_source: Optional[HourlySeasonalityProviderSource] = None,
+    news_intensity_source: Optional[HourlyNewsIntensityProviderSource] = None,
 ) -> HourlyFactorContract:
     """
     Resolve one canonical hourly factor contract from shared seasonality and news-intensity sources.

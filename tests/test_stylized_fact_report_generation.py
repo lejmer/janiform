@@ -2,7 +2,7 @@ import json
 import sys
 from collections.abc import Mapping
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, Optional, cast
 
 import pytest
 
@@ -22,7 +22,7 @@ def test_report_generator_wrapper_parses_bundle_and_preserves_metric_class(
 
     class FakeNativeModule:
         def __init__(self) -> None:
-            self.last_request: dict[str, Any] | None = None
+            self.last_request: Optional[dict[str, Any]] = None
 
         def run_stylized_fact_horizon_comparison_report_generator(
             self,
