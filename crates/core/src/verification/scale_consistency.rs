@@ -12,6 +12,8 @@ use crate::risk::{
     SufficientStatisticsRiskModelInputs, SufficientStatisticsRiskModelInputsError,
 };
 
+use super::interval_grid::{PartitionedIntervalPair, PartitionedIntervalPairError};
+
 pub const SCALE_CONSISTENCY_PAIRED_RUN_SPEC_SCHEMA_VERSION: &str =
     "validation.scale_consistency.paired_run_spec.v1";
 pub const SCALE_CONSISTENCY_PAIRED_RUN_CONTRACT_SCHEMA_VERSION: &str =
@@ -22,8 +24,6 @@ pub const SCALE_CONSISTENCY_RANDOM_SEED_POLICY: &str =
     "explicit_seed_policy_required_with_shared_random_control_or_explicit_pair.v1";
 pub const SCALE_CONSISTENCY_EXECUTION_MODE_POLICY: &str =
     "memory_transport_only_disk_optional_artifact_output.v1";
-
-const SCALE_CONSISTENCY_INTERVAL_RATIO_TOLERANCE: f64 = 1.0e-9;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -623,19 +623,36 @@ fn validate_interval_pair(
     coarse_interval_delta: f64,
     fine_interval_delta: f64,
 ) -> Result<usize, ScaleConsistencyPairedExperimentScenarioSpecError> {
-    let implied_ratio = coarse_interval_delta / fine_interval_delta;
-    let rounded_ratio = implied_ratio.round();
-    if rounded_ratio < 2.0
-        || (implied_ratio - rounded_ratio).abs() > SCALE_CONSISTENCY_INTERVAL_RATIO_TOLERANCE
-    {
-        return Err(
-            ScaleConsistencyPairedExperimentScenarioSpecError::IntervalDeltaRatioMismatch {
-                coarse_interval_delta,
-                fine_interval_delta,
-                implied_ratio,
-            },
-        );
-    }
+    PartitionedIntervalPair::try_new(coarse_interval_delta, fine_interval_delta)
+        .map(|pair| pair.fine_subinterval_count_per_coarse_interval)
+        .map_err(map_interval_pair_error)
+}
 
-    Ok(rounded_ratio as usize)
+fn map_interval_pair_error(
+    source: PartitionedIntervalPairError,
+) -> ScaleConsistencyPairedExperimentScenarioSpecError {
+    match source {
+        PartitionedIntervalPairError::InvalidCoarseIntervalDelta { value } => {
+            ScaleConsistencyPairedExperimentScenarioSpecError::InvalidCoarseIntervalDelta { value }
+        }
+        PartitionedIntervalPairError::InvalidFineIntervalDelta { value } => {
+            ScaleConsistencyPairedExperimentScenarioSpecError::InvalidFineIntervalDelta { value }
+        }
+        PartitionedIntervalPairError::FineIntervalMustBeStrictlySmaller {
+            coarse_interval_delta,
+            fine_interval_delta,
+        } => ScaleConsistencyPairedExperimentScenarioSpecError::FineIntervalMustBeStrictlySmaller {
+            coarse_interval_delta,
+            fine_interval_delta,
+        },
+        PartitionedIntervalPairError::IntervalDeltaRatioMismatch {
+            coarse_interval_delta,
+            fine_interval_delta,
+            implied_ratio,
+        } => ScaleConsistencyPairedExperimentScenarioSpecError::IntervalDeltaRatioMismatch {
+            coarse_interval_delta,
+            fine_interval_delta,
+            implied_ratio,
+        },
+    }
 }
