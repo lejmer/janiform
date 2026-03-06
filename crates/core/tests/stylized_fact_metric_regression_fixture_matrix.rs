@@ -90,11 +90,12 @@ fn compare_case_against_reference(
         }
     };
 
-    let expected_metrics: BTreeMap<MetricKey, &StylizedFactExpectedMetricRegressionEntry> = fixture_case
-        .expected_metrics
-        .iter()
-        .map(|expected_metric| (MetricKey::from_expected(expected_metric), expected_metric))
-        .collect();
+    let expected_metrics: BTreeMap<MetricKey, &StylizedFactExpectedMetricRegressionEntry> =
+        fixture_case
+            .expected_metrics
+            .iter()
+            .map(|expected_metric| (MetricKey::from_expected(expected_metric), expected_metric))
+            .collect();
 
     let mut mismatches: Vec<String> = Vec::new();
 
@@ -104,7 +105,10 @@ fn compare_case_against_reference(
     {
         mismatches.push(format!(
             "fixture_id={} missing observed metric horizon={} metric_id={} metric_variant={:?}",
-            fixture_case.fixture_id, missing_key.horizon_label, missing_key.metric_id, missing_key.metric_variant
+            fixture_case.fixture_id,
+            missing_key.horizon_label,
+            missing_key.metric_id,
+            missing_key.metric_variant
         ));
     }
 
@@ -196,8 +200,12 @@ fn compare_case_against_reference(
             tolerance_policy.policy_kind,
             StylizedFactRegressionTolerancePolicyKind::DeterministicExactMatch
         ) {
-            if expected_metric.expected_empirical_confidence_interval.is_some()
-                || expected_metric.expected_simulated_confidence_interval.is_some()
+            if expected_metric
+                .expected_empirical_confidence_interval
+                .is_some()
+                || expected_metric
+                    .expected_simulated_confidence_interval
+                    .is_some()
             {
                 mismatches.push(format!(
                     "fixture_id={} horizon={} metric_id={} metric_variant={:?} deterministic exact-match policy should not define expected confidence intervals",
@@ -218,16 +226,21 @@ fn collect_observed_metrics(
 ) -> Result<BTreeMap<MetricKey, ObservedMetric>, String> {
     match fixture_case.diagnostic_kind {
         StylizedFactDiagnosticKind::ActivityClustering => {
-            let payload =
-                serde_json::from_value::<ActivityClusteringRequestPayload>(fixture_case.request_payload.clone())
-                    .map_err(|source| format!("activity_clustering request_payload parse failed: {source}"))?;
+            let payload = serde_json::from_value::<ActivityClusteringRequestPayload>(
+                fixture_case.request_payload.clone(),
+            )
+            .map_err(|source| {
+                format!("activity_clustering request_payload parse failed: {source}")
+            })?;
             let report = run_activity_clustering_diagnostics(payload.into_request())
                 .map_err(|source| format!("activity_clustering diagnostics failed: {source}"))?;
             Ok(activity_metrics_from_report(&report))
         }
         StylizedFactDiagnosticKind::TailSkew => {
-            let payload = serde_json::from_value::<TailSkewRequestPayload>(fixture_case.request_payload.clone())
-                .map_err(|source| format!("tail_skew request_payload parse failed: {source}"))?;
+            let payload = serde_json::from_value::<TailSkewRequestPayload>(
+                fixture_case.request_payload.clone(),
+            )
+            .map_err(|source| format!("tail_skew request_payload parse failed: {source}"))?;
             let report = run_tail_skew_diagnostics(payload.into_request())
                 .map_err(|source| format!("tail_skew diagnostics failed: {source}"))?;
             Ok(tail_skew_metrics_from_report(&report))
@@ -236,14 +249,18 @@ fn collect_observed_metrics(
             let payload = serde_json::from_value::<VolatilityPersistenceRequestPayload>(
                 fixture_case.request_payload.clone(),
             )
-            .map_err(|source| format!("volatility_persistence request_payload parse failed: {source}"))?;
+            .map_err(|source| {
+                format!("volatility_persistence request_payload parse failed: {source}")
+            })?;
             let report = run_volatility_persistence_diagnostics(payload.into_request())
                 .map_err(|source| format!("volatility_persistence diagnostics failed: {source}"))?;
             Ok(volatility_metrics_from_report(&report))
         }
         StylizedFactDiagnosticKind::GapBehavior => {
-            let payload = serde_json::from_value::<GapBehaviorRequestPayload>(fixture_case.request_payload.clone())
-                .map_err(|source| format!("gap_behavior request_payload parse failed: {source}"))?;
+            let payload = serde_json::from_value::<GapBehaviorRequestPayload>(
+                fixture_case.request_payload.clone(),
+            )
+            .map_err(|source| format!("gap_behavior request_payload parse failed: {source}"))?;
             let report = run_gap_behavior_diagnostics(payload.into_request())
                 .map_err(|source| format!("gap_behavior diagnostics failed: {source}"))?;
             Ok(gap_behavior_metrics_from_report(&report))
@@ -421,20 +438,20 @@ fn activity_metrics_from_report(
                     empirical_value: metric.empirical.value,
                     simulated_value: metric.simulated.value,
                     absolute_delta: metric.absolute_delta,
-                    empirical_confidence_interval: metric.empirical.confidence_interval.map(|interval| {
-                        ConfidenceIntervalSnapshot {
+                    empirical_confidence_interval: metric.empirical.confidence_interval.map(
+                        |interval| ConfidenceIntervalSnapshot {
                             lower_bound: interval.lower_bound,
                             upper_bound: interval.upper_bound,
                             confidence_level: interval.confidence_level,
-                        }
-                    }),
-                    simulated_confidence_interval: metric.simulated.confidence_interval.map(|interval| {
-                        ConfidenceIntervalSnapshot {
+                        },
+                    ),
+                    simulated_confidence_interval: metric.simulated.confidence_interval.map(
+                        |interval| ConfidenceIntervalSnapshot {
                             lower_bound: interval.lower_bound,
                             upper_bound: interval.upper_bound,
                             confidence_level: interval.confidence_level,
-                        }
-                    }),
+                        },
+                    ),
                     debug_context: format!(
                         "empirical_coverage={}/{} simulated_coverage={}/{}",
                         metric.empirical.sample_coverage.covered_interval_count,
@@ -467,20 +484,20 @@ fn tail_skew_metrics_from_report(
                     empirical_value: metric.empirical.value,
                     simulated_value: metric.simulated.value,
                     absolute_delta: metric.absolute_delta,
-                    empirical_confidence_interval: metric.empirical.confidence_interval.map(|interval| {
-                        ConfidenceIntervalSnapshot {
+                    empirical_confidence_interval: metric.empirical.confidence_interval.map(
+                        |interval| ConfidenceIntervalSnapshot {
                             lower_bound: interval.lower_bound,
                             upper_bound: interval.upper_bound,
                             confidence_level: interval.confidence_level,
-                        }
-                    }),
-                    simulated_confidence_interval: metric.simulated.confidence_interval.map(|interval| {
-                        ConfidenceIntervalSnapshot {
+                        },
+                    ),
+                    simulated_confidence_interval: metric.simulated.confidence_interval.map(
+                        |interval| ConfidenceIntervalSnapshot {
                             lower_bound: interval.lower_bound,
                             upper_bound: interval.upper_bound,
                             confidence_level: interval.confidence_level,
-                        }
-                    }),
+                        },
+                    ),
                     debug_context: format!(
                         "empirical_coverage={}/{} simulated_coverage={}/{}",
                         metric.empirical.sample_coverage.covered_interval_count,
@@ -531,10 +548,22 @@ fn volatility_metrics_from_report(
                         }),
                     debug_context: format!(
                         "empirical_coverage={}/{} simulated_coverage={}/{}",
-                        lag_comparison.empirical.sample_coverage.covered_interval_count,
-                        lag_comparison.empirical.sample_coverage.horizon_interval_count,
-                        lag_comparison.simulated.sample_coverage.covered_interval_count,
-                        lag_comparison.simulated.sample_coverage.horizon_interval_count
+                        lag_comparison
+                            .empirical
+                            .sample_coverage
+                            .covered_interval_count,
+                        lag_comparison
+                            .empirical
+                            .sample_coverage
+                            .horizon_interval_count,
+                        lag_comparison
+                            .simulated
+                            .sample_coverage
+                            .covered_interval_count,
+                        lag_comparison
+                            .simulated
+                            .sample_coverage
+                            .horizon_interval_count
                     ),
                 },
             );
@@ -565,20 +594,20 @@ fn gap_behavior_metrics_from_report(
                     empirical_value: metric.empirical.value,
                     simulated_value: metric.simulated.value,
                     absolute_delta: metric.absolute_delta,
-                    empirical_confidence_interval: metric.empirical.confidence_interval.map(|interval| {
-                        ConfidenceIntervalSnapshot {
+                    empirical_confidence_interval: metric.empirical.confidence_interval.map(
+                        |interval| ConfidenceIntervalSnapshot {
                             lower_bound: interval.lower_bound,
                             upper_bound: interval.upper_bound,
                             confidence_level: interval.confidence_level,
-                        }
-                    }),
-                    simulated_confidence_interval: metric.simulated.confidence_interval.map(|interval| {
-                        ConfidenceIntervalSnapshot {
+                        },
+                    ),
+                    simulated_confidence_interval: metric.simulated.confidence_interval.map(
+                        |interval| ConfidenceIntervalSnapshot {
                             lower_bound: interval.lower_bound,
                             upper_bound: interval.upper_bound,
                             confidence_level: interval.confidence_level,
-                        }
-                    }),
+                        },
+                    ),
                     debug_context: format!(
                         "empirical_coverage={}/{} simulated_coverage={}/{}",
                         metric.empirical.sample_coverage.covered_interval_count,
@@ -677,7 +706,9 @@ impl ActivityClusteringRequestPayload {
             bootstrap_configuration: ActivityClusteringBlockBootstrapConfiguration {
                 confidence_level: self.bootstrap_configuration.confidence_level,
                 replication_count: self.bootstrap_configuration.replication_count,
-                block_length_interval_count: self.bootstrap_configuration.block_length_interval_count,
+                block_length_interval_count: self
+                    .bootstrap_configuration
+                    .block_length_interval_count,
                 random_seed: self.bootstrap_configuration.random_seed,
             },
             sample_sufficiency_policy: self.sample_sufficiency_policy.into_policy(),
@@ -788,7 +819,9 @@ impl TailSkewRequestPayload {
             bootstrap_configuration: TailSkewBlockBootstrapConfiguration {
                 confidence_level: self.bootstrap_configuration.confidence_level,
                 replication_count: self.bootstrap_configuration.replication_count,
-                block_length_interval_count: self.bootstrap_configuration.block_length_interval_count,
+                block_length_interval_count: self
+                    .bootstrap_configuration
+                    .block_length_interval_count,
                 random_seed: self.bootstrap_configuration.random_seed,
             },
             sample_sufficiency_policy: self.sample_sufficiency_policy.into_policy(),
@@ -842,7 +875,9 @@ impl TailSkewSampleSufficiencyPayload {
             returns_left_tail_expected_shortfall_to_var_ratio: self
                 .returns_left_tail_expected_shortfall_to_var_ratio
                 .into_tail_policy(),
-            returns_bowley_skewness_quantile: self.returns_bowley_skewness_quantile.into_tail_policy(),
+            returns_bowley_skewness_quantile: self
+                .returns_bowley_skewness_quantile
+                .into_tail_policy(),
             returns_signed_tail_expected_shortfall_imbalance: self
                 .returns_signed_tail_expected_shortfall_imbalance
                 .into_tail_policy(),
@@ -897,7 +932,9 @@ impl VolatilityPersistenceRequestPayload {
             bootstrap_configuration: VolatilityPersistenceBlockBootstrapConfiguration {
                 confidence_level: self.bootstrap_configuration.confidence_level,
                 replication_count: self.bootstrap_configuration.replication_count,
-                block_length_interval_count: self.bootstrap_configuration.block_length_interval_count,
+                block_length_interval_count: self
+                    .bootstrap_configuration
+                    .block_length_interval_count,
                 random_seed: self.bootstrap_configuration.random_seed,
             },
             sample_sufficiency_policy: self.sample_sufficiency_policy.into_policy(),
@@ -993,7 +1030,9 @@ impl GapBehaviorRequestPayload {
             bootstrap_configuration: GapBehaviorBlockBootstrapConfiguration {
                 confidence_level: self.bootstrap_configuration.confidence_level,
                 replication_count: self.bootstrap_configuration.replication_count,
-                block_length_interval_count: self.bootstrap_configuration.block_length_interval_count,
+                block_length_interval_count: self
+                    .bootstrap_configuration
+                    .block_length_interval_count,
                 random_seed: self.bootstrap_configuration.random_seed,
             },
             sample_sufficiency_policy: self.sample_sufficiency_policy.into_policy(),

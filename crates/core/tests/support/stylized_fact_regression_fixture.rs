@@ -151,10 +151,13 @@ pub struct LoadedStylizedFactMetricRegressionFixture {
 pub fn load_stylized_fact_metric_regression_fixture_from_manifest()
 -> Result<LoadedStylizedFactMetricRegressionFixture, String> {
     let manifest = load_validation_fixture_manifest_document()?;
-    let manifest_entry =
-        find_manifest_entry_by_fixture_id(&manifest, STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SET_ID)?;
+    let manifest_entry = find_manifest_entry_by_fixture_id(
+        &manifest,
+        STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SET_ID,
+    )?;
 
-    if manifest_entry.fixture_schema_version != STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SCHEMA_VERSION
+    if manifest_entry.fixture_schema_version
+        != STYLIZED_FACT_METRIC_REGRESSION_FIXTURE_SCHEMA_VERSION
     {
         return Err(format!(
             "unexpected stylized fact regression fixture schema version in manifest: {}",
@@ -163,9 +166,8 @@ pub fn load_stylized_fact_metric_regression_fixture_from_manifest()
     }
 
     let loaded_payload = load_manifest_entry_payload(&fixtures_root_path(), &manifest_entry)?;
-    let fixture_document = parse_stylized_fact_metric_regression_fixture_document(
-        &loaded_payload.payload_bytes,
-    )?;
+    let fixture_document =
+        parse_stylized_fact_metric_regression_fixture_document(&loaded_payload.payload_bytes)?;
     validate_stylized_fact_metric_regression_fixture_document(&fixture_document)?;
 
     Ok(LoadedStylizedFactMetricRegressionFixture {
@@ -180,7 +182,9 @@ pub fn parse_stylized_fact_metric_regression_fixture_document(
     payload_bytes: &[u8],
 ) -> Result<StylizedFactMetricRegressionFixtureDocument, String> {
     serde_json::from_slice::<StylizedFactMetricRegressionFixtureDocument>(payload_bytes).map_err(
-        |source| format!("failed to parse stylized fact metric regression fixture document: {source}"),
+        |source| {
+            format!("failed to parse stylized fact metric regression fixture document: {source}")
+        },
     )
 }
 
@@ -206,7 +210,8 @@ pub fn validate_stylized_fact_metric_regression_fixture_document(
         "fixture_set_version",
     )?;
 
-    if fixture_document.schema_metadata.schema_family != STYLIZED_FACT_METRIC_REGRESSION_SCHEMA_FAMILY
+    if fixture_document.schema_metadata.schema_family
+        != STYLIZED_FACT_METRIC_REGRESSION_SCHEMA_FAMILY
     {
         return Err(format!(
             "unexpected stylized fact regression schema family: {}",
@@ -263,10 +268,14 @@ pub fn validate_stylized_fact_metric_regression_fixture_document(
         return Err("stylized fact regression fixture must include tolerance_policies".to_string());
     }
 
-    let mut policies_by_id: BTreeMap<&str, &StylizedFactRegressionTolerancePolicy> = BTreeMap::new();
+    let mut policies_by_id: BTreeMap<&str, &StylizedFactRegressionTolerancePolicy> =
+        BTreeMap::new();
     for policy in &fixture_document.tolerance_policies {
         require_non_empty(policy.policy_id.as_str(), "tolerance_policies.policy_id")?;
-        require_non_empty(policy.policy_version.as_str(), "tolerance_policies.policy_version")?;
+        require_non_empty(
+            policy.policy_version.as_str(),
+            "tolerance_policies.policy_version",
+        )?;
         validate_non_negative_finite(
             policy.point_estimate_absolute_tolerance,
             "tolerance_policies.point_estimate_absolute_tolerance",
@@ -299,7 +308,10 @@ pub fn validate_stylized_fact_metric_regression_fixture_document(
             }
         }
 
-        if policies_by_id.insert(policy.policy_id.as_str(), policy).is_some() {
+        if policies_by_id
+            .insert(policy.policy_id.as_str(), policy)
+            .is_some()
+        {
             return Err(format!(
                 "duplicate stylized fact regression tolerance policy id: {}",
                 policy.policy_id
@@ -374,8 +386,14 @@ pub fn validate_stylized_fact_metric_regression_fixture_document(
 
         let mut observed_metric_keys: BTreeSet<(String, String, Option<String>)> = BTreeSet::new();
         for expected_metric in &fixture_case.expected_metrics {
-            require_non_empty(expected_metric.horizon_label.as_str(), "expected_metrics.horizon_label")?;
-            require_non_empty(expected_metric.metric_id.as_str(), "expected_metrics.metric_id")?;
+            require_non_empty(
+                expected_metric.horizon_label.as_str(),
+                "expected_metrics.horizon_label",
+            )?;
+            require_non_empty(
+                expected_metric.metric_id.as_str(),
+                "expected_metrics.metric_id",
+            )?;
 
             let metric_key = (
                 expected_metric.horizon_label.clone(),
@@ -402,12 +420,16 @@ pub fn validate_stylized_fact_metric_regression_fixture_document(
         .is_empty()
     {
         return Err(
-            "stylized fact canonical_regression_metadata.required_tags must not be empty".to_string(),
+            "stylized fact canonical_regression_metadata.required_tags must not be empty"
+                .to_string(),
         );
     }
 
     for required_tag in &fixture_document.canonical_regression_metadata.required_tags {
-        require_non_empty(required_tag.as_str(), "canonical_regression_metadata.required_tags")?;
+        require_non_empty(
+            required_tag.as_str(),
+            "canonical_regression_metadata.required_tags",
+        )?;
         if !observed_tags.contains(required_tag.as_str()) {
             return Err(format!(
                 "stylized fact canonical_regression_metadata.required_tags is missing observed tag `{required_tag}`",
@@ -421,8 +443,11 @@ pub fn validate_stylized_fact_metric_regression_fixture_document(
         .iter()
         .map(String::as_str)
         .collect();
-    let observed_policy_ids: BTreeSet<&str> =
-        fixture_document.tolerance_policies.iter().map(|policy| policy.policy_id.as_str()).collect();
+    let observed_policy_ids: BTreeSet<&str> = fixture_document
+        .tolerance_policies
+        .iter()
+        .map(|policy| policy.policy_id.as_str())
+        .collect();
     if expected_policy_ids != observed_policy_ids {
         return Err(
             "stylized fact canonical_regression_metadata.required_tolerance_policy_ids does not match observed tolerance policy ids"
