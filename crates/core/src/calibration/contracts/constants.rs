@@ -41,5 +41,8 @@ pub const CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION: &str =
 pub const CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY: &str =
     "checkpoint_uri_with_run_id_and_stage_token.v1";
 pub const CALIBRATION_DISK_CHECKPOINT_WRITE_POLICY: &str = "atomic_tempfile_then_rename.v1";
+pub const CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_FAMILY: &str =
+    "calibration.artifact_registry.manifest";
+pub const CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_GENERATION: &str = "v1";
 pub const CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION: &str =
     "calibration.artifact_registry.manifest.v1";

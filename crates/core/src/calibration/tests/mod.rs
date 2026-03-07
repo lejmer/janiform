@@ -1,3 +1,4 @@
+mod artifact_manifest;
 mod support;
 
 mod core_adapters;

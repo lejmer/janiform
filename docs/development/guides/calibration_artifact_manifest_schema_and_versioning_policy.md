@@ -1,0 +1,108 @@
+# Calibration Artifact Manifest Schema And Versioning Policy
+
+This guide defines the top-level manifest contract for persisted calibration artifacts.
+
+## Scope
+
+- The manifest applies only to calibration runs with `execution_mode=disk`.
+- Persisted artifacts are optional overall.
+- CLI workflows default to persisted artifacts ON.
+- Imported package usage defaults to persisted artifacts OFF unless explicitly enabled.
+- `execution_mode=memory` runs do not require or emit this manifest.
+
+The manifest is intentionally minimal. It records lightweight references to persisted artifacts and does not embed large payloads directly.
+
+## Canonical schema
+
+Schema version:
+
+- `calibration.artifact_registry.manifest.v1`
+
+Top-level fields:
+
+- `schema_version`: exact manifest schema identifier.
+- `run_id`: calibration run identifier.
+- `execution_mode`: must be `disk`.
+- `artifact_references`: non-empty list of referenced persisted artifacts.
+
+Artifact reference fields:
+
+- `artifact_id`: unique identifier within the manifest.
+- `artifact_kind`: high-level category for the referenced artifact.
+- `artifact_reference`: lightweight URI or path-like reference to the persisted artifact.
+- `stage`: optional calibration stage when the artifact is stage-specific.
+
+Supported `artifact_kind` values:
+
+- `run_contract`
+- `dataset_snapshot`
+- `stage_output`
+- `stage_checkpoint`
+- `diagnostics`
+- `comparison`
+- `metadata`
+
+Example:
+
+```json
+{
+  "schema_version": "calibration.artifact_registry.manifest.v1",
+  "run_id": "run-001",
+  "execution_mode": "disk",
+  "artifact_references": [
+    {
+      "artifact_id": "run_contract",
+      "artifact_kind": "run_contract",
+      "artifact_reference": "artifact://run_contract/run-001"
+    },
+    {
+      "artifact_id": "seasonality_checkpoint",
+      "artifact_kind": "stage_checkpoint",
+      "artifact_reference": "artifact://stage_checkpoint/seasonality/run-001",
+      "stage": "seasonality"
+    }
+  ]
+}
+```
+
+## Validation rules
+
+Validation must reject:
+
+- missing required top-level fields
+- unsupported `schema_version`
+- `execution_mode` values other than `disk`
+- blank `run_id`
+- empty `artifact_references`
+- blank `artifact_id`
+- blank `artifact_reference`
+- duplicate `artifact_id` values within one manifest
+
+## Versioning policy
+
+Current implementation:
+
+- Janiform currently supports manifest schema `calibration.artifact_registry.manifest.v1` only.
+- In-repo producers and consumers are updated in lockstep during initial development.
+- Unsupported schema generations fail validation explicitly.
+
+Released-schema policy:
+
+- Additive compatible fields may be introduced without changing the schema family.
+- Breaking manifest changes must use an explicit schema version bump.
+- Every breaking schema change must ship with release notes that describe the contract change, affected fields, and the required upgrade action.
+- New readers must fail clearly on unsupported schema versions instead of guessing or silently coercing payloads.
+
+## Upgrade and deprecation guidance
+
+Upgrade guidance:
+
+- Prefer regenerating manifests with the current Janiform writer instead of editing files manually.
+- If migration tooling is provided in a future release, use that tooling to rewrite older manifests before reload.
+- Treat manifest schema upgrades as part of the persisted calibration artifact upgrade, not as an isolated file patch.
+
+Deprecation guidance:
+
+- When a future released schema supersedes an older one, release notes should mark the older schema as deprecated and state the intended removal window.
+- Deprecation notices should name the replacement schema version and any migration tooling.
+- If correctness or safety requires immediate removal, the release notes must state that no compatibility bridge is provided.

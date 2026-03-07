@@ -1,3 +1,4 @@
+mod artifact_manifest;
 mod constants;
 mod data_inputs;
 mod handoff_resume;
@@ -9,6 +10,7 @@ mod stage_graph;
 mod stage_seed;
 mod stage_types;
 
+pub use artifact_manifest::*;
 pub use constants::*;
 pub use data_inputs::*;
 pub use handoff_resume::*;
