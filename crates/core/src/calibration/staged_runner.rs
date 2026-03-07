@@ -5,8 +5,12 @@ use serde::Serialize;
 use crate::calendar::ExchangeCalendarRegistry;
 
 use super::artifact_registry::{
-    calibration_dataset_snapshot_artifact_reference,
+    CalibrationStageParameterArtifact, build_calibration_artifact_manifest,
+    build_calibration_stage_parameter_artifact, calibration_dataset_snapshot_artifact_reference,
+    load_calibration_stage_parameter_artifact_from_disk,
+    persist_calibration_artifact_manifest_to_disk,
     persist_calibration_dataset_snapshot_from_run_contract_to_disk,
+    persist_calibration_stage_parameter_artifact_to_disk,
 };
 use super::checkpointing::{
     CalibrationDiskCheckpointError, CalibrationInMemoryStagePayloadState,
@@ -213,6 +217,14 @@ pub enum CalibrationStagedRunFailure {
         artifact_reference: String,
         error_message: String,
     },
+    StageParameterArtifactIoFailed {
+        stage: CalibrationStage,
+        artifact_reference: String,
+        error_message: String,
+    },
+    ArtifactManifestPersistFailed {
+        error_message: String,
+    },
     MissingStageInput {
         stage: CalibrationStage,
     },
@@ -348,6 +360,7 @@ pub fn run_staged_calibration_with_checkpointing(
 
     let mut stage_reports = Vec::new();
     let mut emitted_checkpoints = Vec::new();
+    let mut persisted_stage_parameter_artifacts = Vec::<CalibrationStageParameterArtifact>::new();
     let mut payload_state = CalibrationInMemoryStagePayloadState::default();
     let mut resumed_from_checkpoint_reference = None;
     let mut resumed_from_last_successful_stage = None;
@@ -519,6 +532,52 @@ pub fn run_staged_calibration_with_checkpointing(
         };
     }
 
+    if run_spec.execution_mode == CalibrationExecutionMode::Disk && start_position > 0 {
+        let Some(disk_checkpoint_directory) = disk_checkpoint_directory else {
+            return build_staged_run_failure_report(
+                run_contract,
+                stage_reports,
+                emitted_checkpoints,
+                resumed_from_checkpoint_reference,
+                resumed_from_last_successful_stage,
+                None,
+                CalibrationStagedRunFailure::MissingDiskCheckpointDirectory,
+            );
+        };
+
+        for stage in execution_stage_order.iter().copied().take(start_position) {
+            let artifact_reference = expected_stage_output_artifact_reference(run_spec, stage);
+            let artifact_path = super::artifact_registry::calibration_stage_parameter_artifact_path(
+                disk_checkpoint_directory,
+                run_spec.run_id.as_str(),
+                stage,
+            );
+
+            let artifact = match load_calibration_stage_parameter_artifact_from_disk(
+                artifact_path.as_path(),
+            ) {
+                Ok(artifact) => artifact,
+                Err(source) => {
+                    return build_staged_run_failure_report(
+                        run_contract,
+                        stage_reports,
+                        emitted_checkpoints,
+                        resumed_from_checkpoint_reference,
+                        resumed_from_last_successful_stage,
+                        None,
+                        CalibrationStagedRunFailure::StageParameterArtifactIoFailed {
+                            stage,
+                            artifact_reference,
+                            error_message: source.to_string(),
+                        },
+                    );
+                }
+            };
+
+            persisted_stage_parameter_artifacts.push(artifact);
+        }
+    }
+
     if start_position >= execution_stage_order.len() {
         return CalibrationStagedRunReport {
             schema_version: CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,
@@ -580,6 +639,63 @@ pub fn run_staged_calibration_with_checkpointing(
 
         update_in_memory_payload_state(&mut payload_state, &stage_report);
 
+        if run_spec.execution_mode == CalibrationExecutionMode::Disk {
+            let Some(disk_checkpoint_directory) = disk_checkpoint_directory else {
+                return build_staged_run_failure_report(
+                    run_contract,
+                    stage_reports,
+                    emitted_checkpoints,
+                    resumed_from_checkpoint_reference,
+                    resumed_from_last_successful_stage,
+                    started_from_stage,
+                    CalibrationStagedRunFailure::MissingDiskCheckpointDirectory,
+                );
+            };
+
+            let stage_parameter_artifact =
+                match build_calibration_stage_parameter_artifact(run_contract, &stage_report) {
+                    Ok(artifact) => artifact,
+                    Err(source) => {
+                        return build_staged_run_failure_report(
+                            run_contract,
+                            stage_reports,
+                            emitted_checkpoints,
+                            resumed_from_checkpoint_reference,
+                            resumed_from_last_successful_stage,
+                            started_from_stage,
+                            CalibrationStagedRunFailure::StageParameterArtifactIoFailed {
+                                stage,
+                                artifact_reference: expected_stage_output_artifact_reference(
+                                    run_spec, stage,
+                                ),
+                                error_message: source.to_string(),
+                            },
+                        );
+                    }
+                };
+
+            if let Err(source) = persist_calibration_stage_parameter_artifact_to_disk(
+                disk_checkpoint_directory,
+                &stage_parameter_artifact,
+            ) {
+                return build_staged_run_failure_report(
+                    run_contract,
+                    stage_reports,
+                    emitted_checkpoints,
+                    resumed_from_checkpoint_reference,
+                    resumed_from_last_successful_stage,
+                    started_from_stage,
+                    CalibrationStagedRunFailure::StageParameterArtifactIoFailed {
+                        stage,
+                        artifact_reference: stage_parameter_artifact.artifact_reference.clone(),
+                        error_message: source.to_string(),
+                    },
+                );
+            }
+
+            persisted_stage_parameter_artifacts.push(stage_parameter_artifact);
+        }
+
         let checkpoint_metadata =
             match build_stage_checkpoint_metadata(run_contract, &stage_report, stage_position) {
                 Ok(checkpoint_metadata) => checkpoint_metadata,
@@ -633,6 +749,57 @@ pub fn run_staged_calibration_with_checkpointing(
         }
 
         emitted_checkpoints.push(checkpoint_metadata);
+    }
+
+    if run_spec.execution_mode == CalibrationExecutionMode::Disk {
+        let Some(disk_checkpoint_directory) = disk_checkpoint_directory else {
+            return build_staged_run_failure_report(
+                run_contract,
+                stage_reports,
+                emitted_checkpoints,
+                resumed_from_checkpoint_reference,
+                resumed_from_last_successful_stage,
+                started_from_stage,
+                CalibrationStagedRunFailure::MissingDiskCheckpointDirectory,
+            );
+        };
+
+        let manifest = match build_calibration_artifact_manifest(
+            run_contract,
+            persisted_stage_parameter_artifacts.as_slice(),
+            emitted_checkpoints.as_slice(),
+        ) {
+            Ok(manifest) => manifest,
+            Err(source) => {
+                return build_staged_run_failure_report(
+                    run_contract,
+                    stage_reports,
+                    emitted_checkpoints,
+                    resumed_from_checkpoint_reference,
+                    resumed_from_last_successful_stage,
+                    started_from_stage,
+                    CalibrationStagedRunFailure::ArtifactManifestPersistFailed {
+                        error_message: source.to_string(),
+                    },
+                );
+            }
+        };
+
+        if let Err(source) =
+            persist_calibration_artifact_manifest_to_disk(disk_checkpoint_directory, &manifest)
+        {
+            return build_staged_run_failure_report(
+                run_contract,
+                stage_reports,
+                emitted_checkpoints,
+                resumed_from_checkpoint_reference,
+                resumed_from_last_successful_stage,
+                started_from_stage,
+                CalibrationStagedRunFailure::ArtifactManifestPersistFailed {
+                    error_message: source.to_string(),
+                },
+            );
+        }
     }
 
     CalibrationStagedRunReport {
@@ -854,6 +1021,30 @@ fn expected_stage_handoff_artifact_reference(
         calibration_stage_token(from_stage),
         run_spec.run_id
     )
+}
+
+fn expected_stage_output_artifact_reference(
+    run_spec: &CalibrationRunSpec,
+    stage: CalibrationStage,
+) -> String {
+    let mut artifact_references = run_spec
+        .stage_handoffs
+        .iter()
+        .filter(|handoff| handoff.from_stage == stage)
+        .filter_map(|handoff| handoff.artifact_reference())
+        .filter(|artifact_reference| !artifact_reference.trim().is_empty())
+        .collect::<Vec<_>>();
+    artifact_references.sort();
+    artifact_references.dedup();
+
+    match artifact_references.as_slice() {
+        [artifact_reference] => (*artifact_reference).to_string(),
+        _ => format!(
+            "artifact://{}/{}",
+            calibration_stage_token(stage),
+            run_spec.run_id
+        ),
+    }
 }
 
 fn update_in_memory_payload_state(

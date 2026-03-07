@@ -25,12 +25,9 @@ pub const SCALE_CONSISTENCY_BATCH_CHECKPOINT_SCHEMA_VERSION: &str =
     "validation.scale_consistency.batch_checkpoint.v1";
 pub const SCALE_CONSISTENCY_BATCH_ORDERING_POLICY: &str =
     "preserve_run_spec_scenario_order_after_selection_resume_and_result_collation.v1";
-pub const SCALE_CONSISTENCY_BATCH_RESUME_POLICY: &str =
-    "memory_mode_uses_same_process_resume_only_and_disk_mode_uses_persisted_checkpoint_reference_only.v1";
-pub const SCALE_CONSISTENCY_BATCH_CHECKPOINT_REFERENCE_POLICY: &str =
-    "persisted_checkpoint_reference_is_a_json_checkpoint_file_path_and_memory_resume_uses_run_id_lookup.v1";
-pub const SCALE_CONSISTENCY_BATCH_ARTIFACT_PERSISTENCE_POLICY: &str =
-    "disk_mode_optionally_persists_checkpoint_and_report_json_files_when_artifact_output_is_configured.v1";
+pub const SCALE_CONSISTENCY_BATCH_RESUME_POLICY: &str = "memory_mode_uses_same_process_resume_only_and_disk_mode_uses_persisted_checkpoint_reference_only.v1";
+pub const SCALE_CONSISTENCY_BATCH_CHECKPOINT_REFERENCE_POLICY: &str = "persisted_checkpoint_reference_is_a_json_checkpoint_file_path_and_memory_resume_uses_run_id_lookup.v1";
+pub const SCALE_CONSISTENCY_BATCH_ARTIFACT_PERSISTENCE_POLICY: &str = "disk_mode_optionally_persists_checkpoint_and_report_json_files_when_artifact_output_is_configured.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

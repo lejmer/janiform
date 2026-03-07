@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::calibration::precheck_structured_hawkes_kernel_parameter_domain;
 use crate::hawkes::{
@@ -226,7 +226,7 @@ pub struct HawkesStageCandidateDiagnostic {
     pub validation_report: HawkesKernelParameterValidationReport,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HawkesStageFittedParameters {
     pub kernel_parameters: HawkesKernelParameters,
     pub structured_alpha: HawkesStructuredAlphaParameterization,

@@ -360,7 +360,7 @@ pub struct CalibrationOptimizerAdapterCandidateDiagnostic {
     pub seeded_tiebreak_key: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CalibrationOptimizerAdapterRunMetadata {
     pub schema_version: &'static str,
     pub backend_id: String,

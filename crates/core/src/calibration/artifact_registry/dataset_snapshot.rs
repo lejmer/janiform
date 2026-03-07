@@ -1,19 +1,20 @@
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::fs::{self, File};
-use std::io::Write;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::benchmarking::fnv1a_64;
-
-use super::contracts::{
+use super::super::contracts::{
     CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION, CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY,
     CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION, CALIBRATION_RUN_DATA_INPUTS_SCHEMA_VERSION,
     CALIBRATION_RUN_SPEC_SCHEMA_VERSION, CalibrationExecutionMode, CalibrationRunContract,
     CalibrationStage,
+};
+use super::shared::{
+    calibration_execution_mode_token, calibration_stage_token, compute_reference_checksum_hex,
+    validate_checksum_hex, write_json_file_atomically,
 };
 
 pub const CALIBRATION_DATASET_SNAPSHOT_ARTIFACT_SCHEMA_VERSION: &str =
@@ -27,8 +28,7 @@ pub const CALIBRATION_DATASET_SNAPSHOT_OUTPUT_SCHEMA_METADATA_VERSION: &str =
     "calibration.artifact_registry.dataset_snapshot.output_schema_metadata.v1";
 pub const CALIBRATION_DATASET_SNAPSHOT_PERSISTENCE_SCOPE_POLICY: &str =
     "artifact_required_only_for_execution_mode_disk_when_persistence_is_enabled.v1";
-pub const CALIBRATION_DATASET_SNAPSHOT_STAGE_INPUT_NAMING_POLICY: &str =
-    "trade_events_data_reference_maps_to_seasonality_and_option_surface_data_reference_maps_to_return_components.v1";
+pub const CALIBRATION_DATASET_SNAPSHOT_STAGE_INPUT_NAMING_POLICY: &str = "trade_events_data_reference_maps_to_seasonality_and_option_surface_data_reference_maps_to_return_components.v1";
 pub const CALIBRATION_DATASET_SNAPSHOT_CHECKSUM_ALGORITHM: &str = "fnv1a_64_hex_utf8.v1";
 pub const CALIBRATION_DATASET_REFERENCE_CHECKSUM_SCOPE: &str = "reference_string_utf8_bytes.v1";
 pub const CALIBRATION_DATASET_SNAPSHOT_CHECKSUM_SCOPE: &str =
@@ -356,7 +356,7 @@ impl CalibrationDatasetSnapshotArtifact {
 
     pub fn compute_snapshot_checksum_hex(&self) -> String {
         let payload = self.snapshot_checksum_payload();
-        format!("{:016x}", fnv1a_64(payload.as_bytes()))
+        format!("{:016x}", crate::benchmarking::fnv1a_64(payload.as_bytes()))
     }
 
     fn snapshot_checksum_payload(&self) -> String {
@@ -557,7 +557,24 @@ pub fn persist_calibration_dataset_snapshot_artifact_to_disk(
         }
     })?;
 
-    write_json_file_atomically(&artifact_path, artifact)?;
+    write_json_file_atomically(
+        &artifact_path,
+        artifact,
+        |error_message| CalibrationDatasetSnapshotArtifactIoError::SerializationFailed {
+            error_message,
+        },
+        |path, error_message| CalibrationDatasetSnapshotArtifactIoError::WriteFailed {
+            path: path.display().to_string(),
+            error_message,
+        },
+        |source_path, target_path, error_message| {
+            CalibrationDatasetSnapshotArtifactIoError::RenameFailed {
+                source_path: source_path.display().to_string(),
+                target_path: target_path.display().to_string(),
+                error_message,
+            }
+        },
+    )?;
     Ok(artifact_path)
 }
 
@@ -827,25 +844,6 @@ impl Display for CalibrationDatasetSnapshotArtifactIoError {
 
 impl Error for CalibrationDatasetSnapshotArtifactIoError {}
 
-fn calibration_execution_mode_token(execution_mode: CalibrationExecutionMode) -> &'static str {
-    match execution_mode {
-        CalibrationExecutionMode::Memory => "memory",
-        CalibrationExecutionMode::Disk => "disk",
-    }
-}
-
-fn calibration_stage_token(stage: CalibrationStage) -> &'static str {
-    match stage {
-        CalibrationStage::Seasonality => "seasonality",
-        CalibrationStage::Hawkes => "hawkes",
-        CalibrationStage::ReturnComponents => "return_components",
-    }
-}
-
-fn compute_reference_checksum_hex(data_reference: &str) -> String {
-    format!("{:016x}", fnv1a_64(data_reference.as_bytes()))
-}
-
 fn validate_exact_metadata_field(
     field: &'static str,
     expected: &'static str,
@@ -892,61 +890,6 @@ fn validate_exact_string_list(
             },
         );
     }
-
-    Ok(())
-}
-
-fn validate_checksum_hex<E>(checksum_hex: &str, error: E) -> Result<(), E> {
-    if checksum_hex.len() != 16
-        || checksum_hex
-            .chars()
-            .any(|character| !matches!(character, '0'..='9' | 'a'..='f'))
-    {
-        return Err(error);
-    }
-
-    Ok(())
-}
-
-fn write_json_file_atomically<T: Serialize>(
-    target_path: &Path,
-    payload: &T,
-) -> Result<(), CalibrationDatasetSnapshotArtifactIoError> {
-    let serialized = serde_json::to_vec_pretty(payload).map_err(|source| {
-        CalibrationDatasetSnapshotArtifactIoError::SerializationFailed {
-            error_message: source.to_string(),
-        }
-    })?;
-
-    let temporary_path = target_path.with_extension("json.tmp");
-    let mut temporary_file = File::create(&temporary_path).map_err(|source| {
-        CalibrationDatasetSnapshotArtifactIoError::WriteFailed {
-            path: temporary_path.display().to_string(),
-            error_message: source.to_string(),
-        }
-    })?;
-    temporary_file
-        .write_all(serialized.as_slice())
-        .map_err(
-            |source| CalibrationDatasetSnapshotArtifactIoError::WriteFailed {
-                path: temporary_path.display().to_string(),
-                error_message: source.to_string(),
-            },
-        )?;
-    temporary_file.sync_all().map_err(|source| {
-        CalibrationDatasetSnapshotArtifactIoError::WriteFailed {
-            path: temporary_path.display().to_string(),
-            error_message: source.to_string(),
-        }
-    })?;
-
-    fs::rename(&temporary_path, target_path).map_err(|source| {
-        CalibrationDatasetSnapshotArtifactIoError::RenameFailed {
-            source_path: temporary_path.display().to_string(),
-            target_path: target_path.display().to_string(),
-            error_message: source.to_string(),
-        }
-    })?;
 
     Ok(())
 }

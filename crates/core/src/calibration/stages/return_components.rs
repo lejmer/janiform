@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::news::{
     CoupledGapMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
@@ -1191,7 +1191,7 @@ pub struct ReturnComponentsStageCandidateDiagnostic {
     pub candidate_provenance: ReturnComponentsStageCandidateProvenance,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReturnComponentsStageFittedParameters {
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     pub news_process_configuration: NewsProcessConfiguration,
