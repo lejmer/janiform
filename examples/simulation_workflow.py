@@ -1,0 +1,63 @@
+import json
+
+from janiform.simulation import (
+    SeededTickSimulationRequest,
+    run_seeded_tick_event_simulation,
+)
+from janiform.simulation import load_hourly_factor_contract_for_simulation
+
+from ._shared import (
+    SIMULATION_RANGE_END_UTC,
+    SIMULATION_RANGE_START_UTC,
+    build_calendar_registry,
+    build_hawkes_kernel_parameters,
+    build_initial_excitation_state,
+    build_simulation_news_source,
+    build_simulation_seasonality_source,
+)
+
+
+def run_example() -> dict[str, object]:
+    calendar_registry = build_calendar_registry()
+    hourly_factor_contract = load_hourly_factor_contract_for_simulation(
+        calendar_registry=calendar_registry,
+        exchange_code="XNYS",
+        range_start_utc=SIMULATION_RANGE_START_UTC,
+        range_end_utc=SIMULATION_RANGE_END_UTC,
+        seasonality_source=build_simulation_seasonality_source(),
+        news_intensity_source=build_simulation_news_source(),
+    )
+    request = SeededTickSimulationRequest.from_runtime_inputs(
+        seed=17,
+        start_time_utc=SIMULATION_RANGE_START_UTC,
+        horizon_interval_count=hourly_factor_contract.interval_count,
+        kernel_parameters=build_hawkes_kernel_parameters(),
+        initial_excitation_state=build_initial_excitation_state(),
+        hourly_factor_contract=hourly_factor_contract,
+    )
+    response = run_seeded_tick_event_simulation(request)
+
+    first_event = response.event_tape[0].to_payload() if response.event_tape else None
+    last_event = response.event_tape[-1].to_payload() if response.event_tape else None
+
+    return {
+        "request_summary": {
+            "seed": request.seed,
+            "horizon_interval_count": request.horizon_interval_count,
+            "hourly_factor_interval_count": request.hourly_factor_summary.interval_count,
+        },
+        "response_summary": {
+            "schema_version": response.schema_version,
+            "event_count": len(response.event_tape),
+            "first_event": first_event,
+            "last_event": last_event,
+        },
+    }
+
+
+def main() -> None:
+    print(json.dumps(run_example(), indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()
