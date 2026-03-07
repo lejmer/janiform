@@ -11,6 +11,7 @@ use super::artifact_registry::{
     persist_calibration_artifact_manifest_to_disk,
     persist_calibration_dataset_snapshot_from_run_contract_to_disk,
     persist_calibration_stage_parameter_artifact_to_disk,
+    stage_output_artifact_references_for_stage,
 };
 use super::checkpointing::{
     CalibrationDiskCheckpointError, CalibrationInMemoryStagePayloadState,
@@ -768,6 +769,7 @@ pub fn run_staged_calibration_with_checkpointing(
             run_contract,
             persisted_stage_parameter_artifacts.as_slice(),
             emitted_checkpoints.as_slice(),
+            &[],
         ) {
             Ok(manifest) => manifest,
             Err(source) => {
@@ -1027,18 +1029,10 @@ fn expected_stage_output_artifact_reference(
     run_spec: &CalibrationRunSpec,
     stage: CalibrationStage,
 ) -> String {
-    let mut artifact_references = run_spec
-        .stage_handoffs
-        .iter()
-        .filter(|handoff| handoff.from_stage == stage)
-        .filter_map(|handoff| handoff.artifact_reference())
-        .filter(|artifact_reference| !artifact_reference.trim().is_empty())
-        .collect::<Vec<_>>();
-    artifact_references.sort();
-    artifact_references.dedup();
+    let artifact_references = stage_output_artifact_references_for_stage(run_spec, stage);
 
     match artifact_references.as_slice() {
-        [artifact_reference] => (*artifact_reference).to_string(),
+        [artifact_reference] => artifact_reference.clone(),
         _ => format!(
             "artifact://{}/{}",
             calibration_stage_token(stage),

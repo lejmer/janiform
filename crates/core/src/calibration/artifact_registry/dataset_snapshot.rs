@@ -1,7 +1,6 @@
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -13,8 +12,9 @@ use super::super::contracts::{
     CalibrationStage,
 };
 use super::shared::{
+    CalibrationArtifactIoError, CalibrationArtifactPersistenceKind,
     calibration_execution_mode_token, calibration_stage_token, compute_reference_checksum_hex,
-    validate_checksum_hex, write_json_file_atomically,
+    load_validated_json_artifact, persist_validated_json_artifact, validate_checksum_hex,
 };
 
 pub const CALIBRATION_DATASET_SNAPSHOT_ARTIFACT_SCHEMA_VERSION: &str =
@@ -536,84 +536,42 @@ pub fn calibration_dataset_snapshot_artifact_path(
 pub fn persist_calibration_dataset_snapshot_artifact_to_disk(
     disk_checkpoint_directory: &Path,
     artifact: &CalibrationDatasetSnapshotArtifact,
-) -> Result<PathBuf, CalibrationDatasetSnapshotArtifactIoError> {
-    artifact.validate().map_err(|source| {
-        CalibrationDatasetSnapshotArtifactIoError::ValidationFailed {
-            error_message: source.to_string(),
-        }
-    })?;
-
+) -> Result<PathBuf, CalibrationArtifactIoError> {
+    let artifact_kind = CalibrationArtifactPersistenceKind::DatasetSnapshot;
     let artifact_path = calibration_dataset_snapshot_artifact_path(
         disk_checkpoint_directory,
         artifact.run_id.as_str(),
     );
-    let run_directory = artifact_path
-        .parent()
-        .expect("dataset snapshot artifact path should always have a parent directory");
-    fs::create_dir_all(run_directory).map_err(|source| {
-        CalibrationDatasetSnapshotArtifactIoError::CreateDirectoryFailed {
-            path: run_directory.display().to_string(),
-            error_message: source.to_string(),
-        }
-    })?;
-
-    write_json_file_atomically(
-        &artifact_path,
+    persist_validated_json_artifact(
+        artifact_kind,
+        artifact_path.as_path(),
         artifact,
-        |error_message| CalibrationDatasetSnapshotArtifactIoError::SerializationFailed {
-            error_message,
-        },
-        |path, error_message| CalibrationDatasetSnapshotArtifactIoError::WriteFailed {
-            path: path.display().to_string(),
-            error_message,
-        },
-        |source_path, target_path, error_message| {
-            CalibrationDatasetSnapshotArtifactIoError::RenameFailed {
-                source_path: source_path.display().to_string(),
-                target_path: target_path.display().to_string(),
-                error_message,
-            }
-        },
-    )?;
-    Ok(artifact_path)
+        |payload| payload.validate().map_err(|source| source.to_string()),
+    )
 }
 
 pub fn persist_calibration_dataset_snapshot_from_run_contract_to_disk(
     disk_checkpoint_directory: &Path,
     run_contract: &CalibrationRunContract,
-) -> Result<PathBuf, CalibrationDatasetSnapshotArtifactIoError> {
+) -> Result<PathBuf, CalibrationArtifactIoError> {
+    let artifact_kind = CalibrationArtifactPersistenceKind::DatasetSnapshot;
     let artifact = build_calibration_dataset_snapshot_artifact(run_contract).map_err(|source| {
-        CalibrationDatasetSnapshotArtifactIoError::ValidationFailed {
-            error_message: source.to_string(),
-        }
+        CalibrationArtifactIoError::validation_failed(artifact_kind, source.to_string())
     })?;
     persist_calibration_dataset_snapshot_artifact_to_disk(disk_checkpoint_directory, &artifact)
 }
 
 pub fn load_calibration_dataset_snapshot_artifact_from_disk(
     artifact_path: &Path,
-) -> Result<CalibrationDatasetSnapshotArtifact, CalibrationDatasetSnapshotArtifactIoError> {
-    let content = fs::read_to_string(artifact_path).map_err(|source| {
-        CalibrationDatasetSnapshotArtifactIoError::ReadFailed {
-            path: artifact_path.display().to_string(),
-            error_message: source.to_string(),
-        }
-    })?;
-
-    let artifact: CalibrationDatasetSnapshotArtifact = serde_json::from_str(content.as_str())
-        .map_err(
-            |source| CalibrationDatasetSnapshotArtifactIoError::DeserializationFailed {
-                path: artifact_path.display().to_string(),
-                error_message: source.to_string(),
-            },
-        )?;
-    artifact.validate().map_err(|source| {
-        CalibrationDatasetSnapshotArtifactIoError::ValidationFailed {
-            error_message: source.to_string(),
-        }
-    })?;
-
-    Ok(artifact)
+) -> Result<CalibrationDatasetSnapshotArtifact, CalibrationArtifactIoError> {
+    let artifact_kind = CalibrationArtifactPersistenceKind::DatasetSnapshot;
+    load_validated_json_artifact(
+        artifact_kind,
+        artifact_path,
+        |payload: &CalibrationDatasetSnapshotArtifact| {
+            payload.validate().map_err(|source| source.to_string())
+        },
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -759,90 +717,6 @@ impl Display for CalibrationDatasetSnapshotArtifactValidationError {
 }
 
 impl Error for CalibrationDatasetSnapshotArtifactValidationError {}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CalibrationDatasetSnapshotArtifactIoError {
-    CreateDirectoryFailed {
-        path: String,
-        error_message: String,
-    },
-    SerializationFailed {
-        error_message: String,
-    },
-    WriteFailed {
-        path: String,
-        error_message: String,
-    },
-    RenameFailed {
-        source_path: String,
-        target_path: String,
-        error_message: String,
-    },
-    ReadFailed {
-        path: String,
-        error_message: String,
-    },
-    DeserializationFailed {
-        path: String,
-        error_message: String,
-    },
-    ValidationFailed {
-        error_message: String,
-    },
-}
-
-impl Display for CalibrationDatasetSnapshotArtifactIoError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::CreateDirectoryFailed {
-                path,
-                error_message,
-            } => write!(
-                formatter,
-                "failed to create dataset snapshot artifact directory `{path}`: {error_message}"
-            ),
-            Self::SerializationFailed { error_message } => write!(
-                formatter,
-                "failed to serialize dataset snapshot artifact: {error_message}"
-            ),
-            Self::WriteFailed {
-                path,
-                error_message,
-            } => write!(
-                formatter,
-                "failed to write dataset snapshot artifact `{path}`: {error_message}"
-            ),
-            Self::RenameFailed {
-                source_path,
-                target_path,
-                error_message,
-            } => write!(
-                formatter,
-                "failed to rename dataset snapshot artifact `{source_path}` -> `{target_path}`: {error_message}"
-            ),
-            Self::ReadFailed {
-                path,
-                error_message,
-            } => write!(
-                formatter,
-                "failed to read dataset snapshot artifact `{path}`: {error_message}"
-            ),
-            Self::DeserializationFailed {
-                path,
-                error_message,
-            } => write!(
-                formatter,
-                "failed to deserialize dataset snapshot artifact `{path}`: {error_message}"
-            ),
-            Self::ValidationFailed { error_message } => write!(
-                formatter,
-                "dataset snapshot artifact validation failed: {error_message}"
-            ),
-        }
-    }
-}
-
-impl Error for CalibrationDatasetSnapshotArtifactIoError {}
 
 fn validate_exact_metadata_field(
     field: &'static str,

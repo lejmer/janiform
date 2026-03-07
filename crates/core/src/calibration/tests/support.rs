@@ -36,7 +36,11 @@ pub(super) use crate::calibration::{
     CALIBRATION_STAGE_PARAMETER_OPTIMIZER_STATE_SCHEMA_VERSION,
     CALIBRATION_STAGE_PARAMETER_OUTPUT_SCHEMA_METADATA_VERSION,
     CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY,
-    CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION, CalibrationArtifactKind,
+    CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,
+    CALIBRATION_VALIDATION_METRIC_ARTIFACT_OUTPUT_SCHEMA_METADATA_VERSION,
+    CALIBRATION_VALIDATION_METRIC_ARTIFACT_SCHEMA_FAMILY,
+    CALIBRATION_VALIDATION_METRIC_ARTIFACT_SCHEMA_GENERATION,
+    CALIBRATION_VALIDATION_METRIC_ARTIFACT_SCHEMA_VERSION, CalibrationArtifactKind,
     CalibrationArtifactManifest, CalibrationArtifactManifestBuildError,
     CalibrationArtifactManifestError, CalibrationArtifactReference, CalibrationCallerSurface,
     CalibrationDatasetInputName, CalibrationDatasetSnapshotArtifact,
@@ -54,28 +58,41 @@ pub(super) use crate::calibration::{
     CalibrationStageParameterArtifactValidationError, CalibrationStageParameterPayload,
     CalibrationStageSeedOverride, CalibrationStageSeedSource, CalibrationStageSolverSettings,
     CalibrationStagedRunFailure, CalibrationStagedRunInputs, CalibrationStagedRunStageReport,
-    HawkesStageCandidateInput, HawkesStageExecutionFailure, HawkesStageExecutionInput,
-    HawkesStageObjectiveTermInput, OptionSurfaceCalibrationObservationError,
-    ReturnComponentsDetectedCloseOpenGapCandidate, ReturnComponentsDetectedIntradayJumpCandidate,
-    ReturnComponentsKnownNewsCalendarInput, ReturnComponentsRealizedKnownNewsReturnSample,
-    ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageExecutionFailure,
-    ReturnComponentsStageExecutionInput, ReturnComponentsStageObjectiveMetricWeights,
-    ReturnComponentsStageSignalSourceWindow, SeasonalityStageExecutionFailure,
-    SeasonalityStageExecutionInput, build_calibration_artifact_manifest,
-    build_calibration_dataset_snapshot_artifact, build_calibration_stage_parameter_artifact,
+    CalibrationValidationMetricArtifact,
+    CalibrationValidationMetricArtifactReferenceIntegrityError,
+    CalibrationValidationMetricArtifactRole, CalibrationValidationMetricArtifactValidationError,
+    CalibrationValidationMetricCollection, CalibrationValidationMetricConfidenceInterval,
+    CalibrationValidationMetricContext, CalibrationValidationMetricContextKind,
+    CalibrationValidationMetricManifestLink, CalibrationValidationMetricRecord,
+    CalibrationValidationMetricSourceKind, CalibrationValidationMetricStageOutputLink,
+    CalibrationValidationMetricStatus, CalibrationValidationMetricThresholdMetadata,
+    CalibrationValidationObservedValue, HawkesStageCandidateInput, HawkesStageExecutionFailure,
+    HawkesStageExecutionInput, HawkesStageObjectiveTermInput,
+    OptionSurfaceCalibrationObservationError, ReturnComponentsDetectedCloseOpenGapCandidate,
+    ReturnComponentsDetectedIntradayJumpCandidate, ReturnComponentsKnownNewsCalendarInput,
+    ReturnComponentsRealizedKnownNewsReturnSample, ReturnComponentsStageCandidateGenerationInput,
+    ReturnComponentsStageExecutionFailure, ReturnComponentsStageExecutionInput,
+    ReturnComponentsStageObjectiveMetricWeights, ReturnComponentsStageSignalSourceWindow,
+    SeasonalityStageExecutionFailure, SeasonalityStageExecutionInput,
+    build_calibration_artifact_manifest, build_calibration_dataset_snapshot_artifact,
+    build_calibration_stage_parameter_artifact,
     build_option_surface_calibration_observation_from_pricing_hooks,
-    calibration_artifact_manifest_path, calibration_checkpoint_reference_for_stage,
-    calibration_dataset_snapshot_artifact_path, calibration_last_success_checkpoint_reference,
-    calibration_stage_parameter_artifact_path, compose_calibration_weighted_objective,
-    default_calibration_execution_mode_for_surface, derive_calibration_stage_seed_from_global_seed,
+    calibration_artifact_manifest_path, calibration_artifact_manifest_reference,
+    calibration_checkpoint_reference_for_stage, calibration_dataset_snapshot_artifact_path,
+    calibration_last_success_checkpoint_reference, calibration_stage_parameter_artifact_path,
+    calibration_validation_metric_artifact_path, calibration_validation_metric_artifact_reference,
+    compose_calibration_weighted_objective, default_calibration_execution_mode_for_surface,
+    derive_calibration_stage_seed_from_global_seed,
     evaluate_calibration_martingale_condition_under_esscher_tilt,
     load_calibration_artifact_manifest_from_disk,
     load_calibration_dataset_snapshot_artifact_from_disk,
     load_calibration_stage_parameter_artifact_from_disk,
+    load_calibration_validation_metric_artifact_from_disk,
     persist_calibration_artifact_manifest_to_disk,
     persist_calibration_dataset_snapshot_artifact_to_disk,
-    persist_calibration_stage_parameter_artifact_to_disk, precheck_hawkes_kernel_parameter_domain,
-    precheck_structured_hawkes_kernel_parameter_domain,
+    persist_calibration_stage_parameter_artifact_to_disk,
+    persist_calibration_validation_metric_artifact_to_disk,
+    precheck_hawkes_kernel_parameter_domain, precheck_structured_hawkes_kernel_parameter_domain,
     resolve_calibration_execution_mode_for_surface, resolve_calibration_stage_execution_order,
     resolve_calibration_stage_seed_metadata, run_constrained_optimizer_adapter,
     run_hawkes_calibration_stage, run_return_components_calibration_stage,
@@ -208,6 +225,127 @@ pub(super) fn build_valid_artifact_manifest() -> CalibrationArtifactManifest {
         ],
     )
     .expect("artifact manifest should validate")
+}
+
+pub(super) fn build_validation_metric_artifact_fixture() -> CalibrationValidationMetricArtifact {
+    CalibrationValidationMetricArtifact::try_new(
+        "run-001",
+        CalibrationValidationMetricArtifactRole::Diagnostics,
+        vec![
+            CalibrationValidationMetricStageOutputLink {
+                stage: CalibrationStage::Seasonality,
+                artifact_reference: "artifact://seasonality/run-001".to_string(),
+                stage_output_schema_version:
+                    CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION.to_string(),
+            },
+            CalibrationValidationMetricStageOutputLink {
+                stage: CalibrationStage::Hawkes,
+                artifact_reference: "artifact://hawkes/run-001".to_string(),
+                stage_output_schema_version:
+                    CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION.to_string(),
+            },
+            CalibrationValidationMetricStageOutputLink {
+                stage: CalibrationStage::ReturnComponents,
+                artifact_reference: "artifact://return_components/run-001".to_string(),
+                stage_output_schema_version:
+                    CALIBRATION_RETURN_COMPONENTS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION.to_string(),
+            },
+        ],
+        vec![CalibrationValidationMetricCollection {
+            collection_id: "activity-clustering-1h".to_string(),
+            source_kind: CalibrationValidationMetricSourceKind::ActivityClustering,
+            source_schema_version: "validation.activity_clustering.report.v1".to_string(),
+            status: CalibrationValidationMetricStatus::Pass,
+            context: CalibrationValidationMetricContext {
+                context_kind: CalibrationValidationMetricContextKind::Horizon,
+                context_id: "1h".to_string(),
+                context_label: "1 Hour".to_string(),
+            },
+            primary_role_label: "empirical".to_string(),
+            secondary_role_label: Some("simulated".to_string()),
+            threshold_policy_id: "activity_clustering.default.v1".to_string(),
+            metrics: vec![CalibrationValidationMetricRecord {
+                metric_id: "returns_abs_quantile_shape_ratio_q99_q95".to_string(),
+                metric_name: "Returns Abs Quantile Shape Ratio Q99 Q95".to_string(),
+                metric_variant: None,
+                status: CalibrationValidationMetricStatus::Pass,
+                primary_value: CalibrationValidationObservedValue {
+                    value: Some(1.18),
+                    confidence_interval: Some(CalibrationValidationMetricConfidenceInterval {
+                        lower_bound: 1.11,
+                        upper_bound: 1.24,
+                        confidence_level: 0.95,
+                    }),
+                },
+                secondary_value: Some(CalibrationValidationObservedValue {
+                    value: Some(1.16),
+                    confidence_interval: Some(CalibrationValidationMetricConfidenceInterval {
+                        lower_bound: 1.10,
+                        upper_bound: 1.22,
+                        confidence_level: 0.95,
+                    }),
+                }),
+                delta_value: Some(-0.02),
+                absolute_delta: Some(0.02),
+                standardized_delta: Some(0.31),
+                threshold_metadata: CalibrationValidationMetricThresholdMetadata {
+                    threshold_policy_id: "activity_clustering.default.v1".to_string(),
+                    threshold_policy_version: Some("1.0.0".to_string()),
+                    threshold_id: Some("abs_delta_q99_q95".to_string()),
+                    threshold_rationale: Some(
+                        "Keep tail-shape gap below approved threshold".to_string(),
+                    ),
+                    max_absolute_delta: Some(0.05),
+                    max_standardized_delta: Some(1.0),
+                    absolute_delta_exceeds_threshold: Some(false),
+                    standardized_delta_exceeds_threshold: Some(false),
+                },
+            }],
+        }],
+    )
+    .expect("validation metric artifact fixture should validate")
+}
+
+pub(super) fn build_validation_metric_manifest_fixture() -> CalibrationArtifactManifest {
+    CalibrationArtifactManifest::try_new(
+        "run-001",
+        vec![
+            CalibrationArtifactReference {
+                artifact_id: "dataset_snapshot".to_string(),
+                artifact_kind: CalibrationArtifactKind::DatasetSnapshot,
+                artifact_reference: "artifact://dataset_snapshot/run-001".to_string(),
+                stage: None,
+            },
+            CalibrationArtifactReference {
+                artifact_id: "seasonality_stage_output".to_string(),
+                artifact_kind: CalibrationArtifactKind::StageOutput,
+                artifact_reference: "artifact://seasonality/run-001".to_string(),
+                stage: Some(CalibrationStage::Seasonality),
+            },
+            CalibrationArtifactReference {
+                artifact_id: "hawkes_stage_output".to_string(),
+                artifact_kind: CalibrationArtifactKind::StageOutput,
+                artifact_reference: "artifact://hawkes/run-001".to_string(),
+                stage: Some(CalibrationStage::Hawkes),
+            },
+            CalibrationArtifactReference {
+                artifact_id: "return_components_stage_output".to_string(),
+                artifact_kind: CalibrationArtifactKind::StageOutput,
+                artifact_reference: "artifact://return_components/run-001".to_string(),
+                stage: Some(CalibrationStage::ReturnComponents),
+            },
+            CalibrationArtifactReference {
+                artifact_id: "validation_metric_diagnostics".to_string(),
+                artifact_kind: CalibrationArtifactKind::Diagnostics,
+                artifact_reference: calibration_validation_metric_artifact_reference(
+                    "run-001",
+                    CalibrationValidationMetricArtifactRole::Diagnostics,
+                ),
+                stage: None,
+            },
+        ],
+    )
+    .expect("validation metric manifest fixture should validate")
 }
 
 pub(super) fn build_run_contract_with_mode_and_resume(

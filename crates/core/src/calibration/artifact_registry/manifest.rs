@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::super::checkpointing::CalibrationStageCheckpointMetadata;
@@ -10,7 +9,10 @@ use super::super::contracts::{
     CalibrationExecutionMode, CalibrationRunContract, CalibrationStage,
 };
 use super::dataset_snapshot::calibration_dataset_snapshot_artifact_reference;
-use super::shared::{calibration_stage_token, write_json_file_atomically};
+use super::shared::{
+    CalibrationArtifactIoError, CalibrationArtifactPersistenceKind, calibration_stage_token,
+    load_validated_json_artifact, persist_validated_json_artifact,
+};
 use super::stage_parameter::CalibrationStageParameterArtifact;
 
 pub fn calibration_artifact_manifest_path(
@@ -22,10 +24,15 @@ pub fn calibration_artifact_manifest_path(
         .join("artifact_manifest.json")
 }
 
+pub fn calibration_artifact_manifest_reference(run_id: &str) -> String {
+    format!("artifact://manifest/{run_id}")
+}
+
 pub fn build_calibration_artifact_manifest(
     run_contract: &CalibrationRunContract,
     stage_parameter_artifacts: &[CalibrationStageParameterArtifact],
     emitted_checkpoints: &[CalibrationStageCheckpointMetadata],
+    additional_artifact_references: &[CalibrationArtifactReference],
 ) -> Result<CalibrationArtifactManifest, CalibrationArtifactManifestBuildError> {
     if run_contract.run_spec.execution_mode != CalibrationExecutionMode::Disk {
         return Err(
@@ -121,6 +128,8 @@ pub fn build_calibration_artifact_manifest(
         });
     }
 
+    artifact_references.extend_from_slice(additional_artifact_references);
+
     CalibrationArtifactManifest::try_new(run_contract.run_spec.run_id.clone(), artifact_references)
         .map_err(
             |source| CalibrationArtifactManifestBuildError::ManifestValidationFailed {
@@ -132,70 +141,29 @@ pub fn build_calibration_artifact_manifest(
 pub fn persist_calibration_artifact_manifest_to_disk(
     disk_checkpoint_directory: &Path,
     manifest: &CalibrationArtifactManifest,
-) -> Result<PathBuf, CalibrationArtifactManifestIoError> {
-    manifest.validate().map_err(
-        |source| CalibrationArtifactManifestIoError::ValidationFailed {
-            error_message: source.to_string(),
-        },
-    )?;
-
+) -> Result<PathBuf, CalibrationArtifactIoError> {
+    let artifact_kind = CalibrationArtifactPersistenceKind::Manifest;
     let manifest_path =
         calibration_artifact_manifest_path(disk_checkpoint_directory, manifest.run_id.as_str());
-    let run_directory = manifest_path
-        .parent()
-        .expect("artifact manifest path should always have a parent directory");
-
-    fs::create_dir_all(run_directory).map_err(|source| {
-        CalibrationArtifactManifestIoError::CreateDirectoryFailed {
-            path: run_directory.display().to_string(),
-            error_message: source.to_string(),
-        }
-    })?;
-
-    write_json_file_atomically(
-        &manifest_path,
+    persist_validated_json_artifact(
+        artifact_kind,
+        manifest_path.as_path(),
         manifest,
-        |error_message| CalibrationArtifactManifestIoError::SerializationFailed { error_message },
-        |path, error_message| CalibrationArtifactManifestIoError::WriteFailed {
-            path: path.display().to_string(),
-            error_message,
-        },
-        |source_path, target_path, error_message| {
-            CalibrationArtifactManifestIoError::RenameFailed {
-                source_path: source_path.display().to_string(),
-                target_path: target_path.display().to_string(),
-                error_message,
-            }
-        },
-    )?;
-
-    Ok(manifest_path)
+        |payload| payload.validate().map_err(|source| source.to_string()),
+    )
 }
 
 pub fn load_calibration_artifact_manifest_from_disk(
     manifest_path: &Path,
-) -> Result<CalibrationArtifactManifest, CalibrationArtifactManifestIoError> {
-    let content = fs::read_to_string(manifest_path).map_err(|source| {
-        CalibrationArtifactManifestIoError::ReadFailed {
-            path: manifest_path.display().to_string(),
-            error_message: source.to_string(),
-        }
-    })?;
-
-    let manifest: CalibrationArtifactManifest =
-        serde_json::from_str(content.as_str()).map_err(|source| {
-            CalibrationArtifactManifestIoError::DeserializationFailed {
-                path: manifest_path.display().to_string(),
-                error_message: source.to_string(),
-            }
-        })?;
-    manifest.validate().map_err(
-        |source| CalibrationArtifactManifestIoError::ValidationFailed {
-            error_message: source.to_string(),
+) -> Result<CalibrationArtifactManifest, CalibrationArtifactIoError> {
+    let artifact_kind = CalibrationArtifactPersistenceKind::Manifest;
+    load_validated_json_artifact(
+        artifact_kind,
+        manifest_path,
+        |payload: &CalibrationArtifactManifest| {
+            payload.validate().map_err(|source| source.to_string())
         },
-    )?;
-
-    Ok(manifest)
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -285,87 +253,3 @@ impl Display for CalibrationArtifactManifestBuildError {
 }
 
 impl Error for CalibrationArtifactManifestBuildError {}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CalibrationArtifactManifestIoError {
-    CreateDirectoryFailed {
-        path: String,
-        error_message: String,
-    },
-    SerializationFailed {
-        error_message: String,
-    },
-    WriteFailed {
-        path: String,
-        error_message: String,
-    },
-    RenameFailed {
-        source_path: String,
-        target_path: String,
-        error_message: String,
-    },
-    ReadFailed {
-        path: String,
-        error_message: String,
-    },
-    DeserializationFailed {
-        path: String,
-        error_message: String,
-    },
-    ValidationFailed {
-        error_message: String,
-    },
-}
-
-impl Display for CalibrationArtifactManifestIoError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::CreateDirectoryFailed {
-                path,
-                error_message,
-            } => write!(
-                formatter,
-                "failed to create artifact manifest directory `{path}`: {error_message}"
-            ),
-            Self::SerializationFailed { error_message } => write!(
-                formatter,
-                "failed to serialize artifact manifest: {error_message}"
-            ),
-            Self::WriteFailed {
-                path,
-                error_message,
-            } => write!(
-                formatter,
-                "failed to write artifact manifest `{path}`: {error_message}"
-            ),
-            Self::RenameFailed {
-                source_path,
-                target_path,
-                error_message,
-            } => write!(
-                formatter,
-                "failed to rename artifact manifest `{source_path}` -> `{target_path}`: {error_message}"
-            ),
-            Self::ReadFailed {
-                path,
-                error_message,
-            } => write!(
-                formatter,
-                "failed to read artifact manifest `{path}`: {error_message}"
-            ),
-            Self::DeserializationFailed {
-                path,
-                error_message,
-            } => write!(
-                formatter,
-                "failed to deserialize artifact manifest `{path}`: {error_message}"
-            ),
-            Self::ValidationFailed { error_message } => write!(
-                formatter,
-                "artifact manifest validation failed: {error_message}"
-            ),
-        }
-    }
-}
-
-impl Error for CalibrationArtifactManifestIoError {}
