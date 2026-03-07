@@ -1,6 +1,7 @@
 //! Calibration-stage orchestration entrypoints and shared adapters.
 
 mod adapters;
+mod artifact_registry;
 mod checkpointing;
 mod contracts;
 mod objective;
@@ -13,6 +14,7 @@ mod test_support;
 mod tests;
 
 pub use adapters::*;
+pub use artifact_registry::*;
 pub use checkpointing::*;
 pub use contracts::*;
 pub use objective::*;
