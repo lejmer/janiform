@@ -409,6 +409,22 @@ pub(super) fn build_validation_metric_artifact_fixture() -> CalibrationValidatio
     .expect("validation metric artifact fixture should validate")
 }
 
+pub(super) fn build_stage_output_links(
+    stage_parameter_artifacts: &[CalibrationStageParameterArtifact],
+) -> Vec<CalibrationValidationMetricStageOutputLink> {
+    let mut stage_output_links = stage_parameter_artifacts
+        .iter()
+        .map(|artifact| CalibrationValidationMetricStageOutputLink {
+            stage: artifact.stage,
+            artifact_reference: artifact.artifact_reference.clone(),
+            stage_output_schema_version: artifact.stage_output_schema_version.clone(),
+        })
+        .collect::<Vec<_>>();
+    stage_output_links.sort_by_key(|link| link.stage);
+
+    stage_output_links
+}
+
 pub(super) fn build_validation_metric_manifest_fixture() -> CalibrationArtifactManifest {
     let index_metadata = build_valid_artifact_manifest().index_metadata;
 

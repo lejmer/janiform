@@ -1,4 +1,5 @@
 mod artifact_manifest;
+mod artifact_regression_suite;
 mod artifact_writer;
 mod dataset_snapshot_artifact;
 mod experiment_index;
