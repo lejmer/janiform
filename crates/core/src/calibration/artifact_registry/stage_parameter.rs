@@ -1,6 +1,5 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -21,7 +20,11 @@ use super::super::stages::seasonality::{
     SeasonalityStageNormalizationMetadata,
 };
 use super::dataset_snapshot::CALIBRATION_DATASET_SNAPSHOT_FORWARD_EXTENSION_POLICY;
-use super::shared::{calibration_stage_token, write_json_file_atomically};
+use super::shared::{
+    CalibrationArtifactIoError, CalibrationArtifactPersistenceKind, calibration_stage_token,
+    load_validated_json_artifact, persist_validated_json_artifact,
+    stage_output_artifact_references_for_stage,
+};
 
 pub const CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_VERSION: &str =
     "calibration.artifact_registry.stage_parameter.v1";
@@ -542,75 +545,32 @@ pub fn calibration_stage_parameter_artifact_path(
 pub fn persist_calibration_stage_parameter_artifact_to_disk(
     disk_checkpoint_directory: &Path,
     artifact: &CalibrationStageParameterArtifact,
-) -> Result<PathBuf, CalibrationStageParameterArtifactIoError> {
-    artifact.validate().map_err(|source| {
-        CalibrationStageParameterArtifactIoError::ValidationFailed {
-            error_message: source.to_string(),
-        }
-    })?;
-
+) -> Result<PathBuf, CalibrationArtifactIoError> {
+    let artifact_kind = CalibrationArtifactPersistenceKind::StageParameter;
     let artifact_path = calibration_stage_parameter_artifact_path(
         disk_checkpoint_directory,
         artifact.run_id.as_str(),
         artifact.stage,
     );
-    let run_directory = artifact_path
-        .parent()
-        .expect("stage parameter artifact path should always have a parent directory");
-
-    fs::create_dir_all(run_directory).map_err(|source| {
-        CalibrationStageParameterArtifactIoError::CreateDirectoryFailed {
-            path: run_directory.display().to_string(),
-            error_message: source.to_string(),
-        }
-    })?;
-
-    write_json_file_atomically(
-        &artifact_path,
+    persist_validated_json_artifact(
+        artifact_kind,
+        artifact_path.as_path(),
         artifact,
-        |error_message| CalibrationStageParameterArtifactIoError::SerializationFailed {
-            error_message,
-        },
-        |path, error_message| CalibrationStageParameterArtifactIoError::WriteFailed {
-            path: path.display().to_string(),
-            error_message,
-        },
-        |source_path, target_path, error_message| {
-            CalibrationStageParameterArtifactIoError::RenameFailed {
-                source_path: source_path.display().to_string(),
-                target_path: target_path.display().to_string(),
-                error_message,
-            }
-        },
-    )?;
-
-    Ok(artifact_path)
+        |payload| payload.validate().map_err(|source| source.to_string()),
+    )
 }
 
 pub fn load_calibration_stage_parameter_artifact_from_disk(
     artifact_path: &Path,
-) -> Result<CalibrationStageParameterArtifact, CalibrationStageParameterArtifactIoError> {
-    let content = fs::read_to_string(artifact_path).map_err(|source| {
-        CalibrationStageParameterArtifactIoError::ReadFailed {
-            path: artifact_path.display().to_string(),
-            error_message: source.to_string(),
-        }
-    })?;
-
-    let artifact: CalibrationStageParameterArtifact = serde_json::from_str(content.as_str())
-        .map_err(
-            |source| CalibrationStageParameterArtifactIoError::DeserializationFailed {
-                path: artifact_path.display().to_string(),
-                error_message: source.to_string(),
-            },
-        )?;
-    artifact.validate().map_err(|source| {
-        CalibrationStageParameterArtifactIoError::ValidationFailed {
-            error_message: source.to_string(),
-        }
-    })?;
-
-    Ok(artifact)
+) -> Result<CalibrationStageParameterArtifact, CalibrationArtifactIoError> {
+    let artifact_kind = CalibrationArtifactPersistenceKind::StageParameter;
+    load_validated_json_artifact(
+        artifact_kind,
+        artifact_path,
+        |payload: &CalibrationStageParameterArtifact| {
+            payload.validate().map_err(|source| source.to_string())
+        },
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -818,90 +778,6 @@ impl Display for CalibrationStageParameterArtifactValidationError {
 }
 
 impl Error for CalibrationStageParameterArtifactValidationError {}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CalibrationStageParameterArtifactIoError {
-    CreateDirectoryFailed {
-        path: String,
-        error_message: String,
-    },
-    SerializationFailed {
-        error_message: String,
-    },
-    WriteFailed {
-        path: String,
-        error_message: String,
-    },
-    RenameFailed {
-        source_path: String,
-        target_path: String,
-        error_message: String,
-    },
-    ReadFailed {
-        path: String,
-        error_message: String,
-    },
-    DeserializationFailed {
-        path: String,
-        error_message: String,
-    },
-    ValidationFailed {
-        error_message: String,
-    },
-}
-
-impl Display for CalibrationStageParameterArtifactIoError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::CreateDirectoryFailed {
-                path,
-                error_message,
-            } => write!(
-                formatter,
-                "failed to create stage parameter artifact directory `{path}`: {error_message}"
-            ),
-            Self::SerializationFailed { error_message } => write!(
-                formatter,
-                "failed to serialize stage parameter artifact: {error_message}"
-            ),
-            Self::WriteFailed {
-                path,
-                error_message,
-            } => write!(
-                formatter,
-                "failed to write stage parameter artifact `{path}`: {error_message}"
-            ),
-            Self::RenameFailed {
-                source_path,
-                target_path,
-                error_message,
-            } => write!(
-                formatter,
-                "failed to rename stage parameter artifact `{source_path}` -> `{target_path}`: {error_message}"
-            ),
-            Self::ReadFailed {
-                path,
-                error_message,
-            } => write!(
-                formatter,
-                "failed to read stage parameter artifact `{path}`: {error_message}"
-            ),
-            Self::DeserializationFailed {
-                path,
-                error_message,
-            } => write!(
-                formatter,
-                "failed to deserialize stage parameter artifact `{path}`: {error_message}"
-            ),
-            Self::ValidationFailed { error_message } => write!(
-                formatter,
-                "stage parameter artifact validation failed: {error_message}"
-            ),
-        }
-    }
-}
-
-impl Error for CalibrationStageParameterArtifactIoError {}
 
 fn build_stage_parameter_output_schema_metadata() -> CalibrationStageParameterOutputSchemaMetadata {
     CalibrationStageParameterOutputSchemaMetadata {
@@ -1210,16 +1086,7 @@ fn resolve_stage_output_artifact_reference(
     run_spec: &CalibrationRunSpec,
     stage: CalibrationStage,
 ) -> Result<String, CalibrationStageParameterArtifactBuildError> {
-    let mut artifact_references = run_spec
-        .stage_handoffs
-        .iter()
-        .filter(|handoff| handoff.from_stage == stage)
-        .filter_map(|handoff| handoff.artifact_reference())
-        .filter(|artifact_reference| !artifact_reference.trim().is_empty())
-        .map(str::to_string)
-        .collect::<Vec<_>>();
-    artifact_references.sort();
-    artifact_references.dedup();
+    let artifact_references = stage_output_artifact_references_for_stage(run_spec, stage);
 
     match artifact_references.as_slice() {
         [] => Ok(format!(

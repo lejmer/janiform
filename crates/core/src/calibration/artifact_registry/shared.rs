@@ -1,12 +1,15 @@
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 use std::fs::{self, File};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 use crate::benchmarking::fnv1a_64;
 
-use super::super::contracts::{CalibrationExecutionMode, CalibrationStage};
+use super::super::contracts::{CalibrationExecutionMode, CalibrationRunSpec, CalibrationStage};
 
 pub(crate) fn calibration_execution_mode_token(
     execution_mode: CalibrationExecutionMode,
@@ -24,6 +27,244 @@ pub(crate) fn calibration_stage_token(stage: CalibrationStage) -> &'static str {
         CalibrationStage::ReturnComponents => "return_components",
     }
 }
+
+pub(crate) fn stage_output_artifact_references_for_stage(
+    run_spec: &CalibrationRunSpec,
+    stage: CalibrationStage,
+) -> Vec<String> {
+    let mut artifact_references = run_spec
+        .stage_handoffs
+        .iter()
+        .filter(|handoff| handoff.from_stage == stage)
+        .filter_map(|handoff| handoff.artifact_reference())
+        .filter(|artifact_reference| !artifact_reference.trim().is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    artifact_references.sort();
+    artifact_references.dedup();
+    artifact_references
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CalibrationArtifactPersistenceKind {
+    Manifest,
+    DatasetSnapshot,
+    StageParameter,
+    ValidationMetric,
+}
+
+impl CalibrationArtifactPersistenceKind {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Manifest => "artifact manifest",
+            Self::DatasetSnapshot => "dataset snapshot artifact",
+            Self::StageParameter => "stage parameter artifact",
+            Self::ValidationMetric => "validation metric artifact",
+        }
+    }
+
+    const fn directory_label(self) -> &'static str {
+        match self {
+            Self::Manifest => "artifact manifest directory",
+            Self::DatasetSnapshot => "dataset snapshot artifact directory",
+            Self::StageParameter => "stage parameter artifact directory",
+            Self::ValidationMetric => "validation metric artifact directory",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CalibrationArtifactIoError {
+    CreateDirectoryFailed {
+        artifact_kind: CalibrationArtifactPersistenceKind,
+        path: String,
+        error_message: String,
+    },
+    SerializationFailed {
+        artifact_kind: CalibrationArtifactPersistenceKind,
+        error_message: String,
+    },
+    WriteFailed {
+        artifact_kind: CalibrationArtifactPersistenceKind,
+        path: String,
+        error_message: String,
+    },
+    RenameFailed {
+        artifact_kind: CalibrationArtifactPersistenceKind,
+        source_path: String,
+        target_path: String,
+        error_message: String,
+    },
+    ReadFailed {
+        artifact_kind: CalibrationArtifactPersistenceKind,
+        path: String,
+        error_message: String,
+    },
+    DeserializationFailed {
+        artifact_kind: CalibrationArtifactPersistenceKind,
+        path: String,
+        error_message: String,
+    },
+    ValidationFailed {
+        artifact_kind: CalibrationArtifactPersistenceKind,
+        error_message: String,
+    },
+}
+
+impl CalibrationArtifactIoError {
+    pub(crate) fn validation_failed(
+        artifact_kind: CalibrationArtifactPersistenceKind,
+        error_message: String,
+    ) -> Self {
+        Self::ValidationFailed {
+            artifact_kind,
+            error_message,
+        }
+    }
+
+    pub(crate) fn create_directory_failed(
+        artifact_kind: CalibrationArtifactPersistenceKind,
+        path: String,
+        error_message: String,
+    ) -> Self {
+        Self::CreateDirectoryFailed {
+            artifact_kind,
+            path,
+            error_message,
+        }
+    }
+
+    pub(crate) fn serialization_failed(
+        artifact_kind: CalibrationArtifactPersistenceKind,
+        error_message: String,
+    ) -> Self {
+        Self::SerializationFailed {
+            artifact_kind,
+            error_message,
+        }
+    }
+
+    pub(crate) fn write_failed(
+        artifact_kind: CalibrationArtifactPersistenceKind,
+        path: String,
+        error_message: String,
+    ) -> Self {
+        Self::WriteFailed {
+            artifact_kind,
+            path,
+            error_message,
+        }
+    }
+
+    pub(crate) fn rename_failed(
+        artifact_kind: CalibrationArtifactPersistenceKind,
+        source_path: String,
+        target_path: String,
+        error_message: String,
+    ) -> Self {
+        Self::RenameFailed {
+            artifact_kind,
+            source_path,
+            target_path,
+            error_message,
+        }
+    }
+
+    pub(crate) fn read_failed(
+        artifact_kind: CalibrationArtifactPersistenceKind,
+        path: String,
+        error_message: String,
+    ) -> Self {
+        Self::ReadFailed {
+            artifact_kind,
+            path,
+            error_message,
+        }
+    }
+
+    pub(crate) fn deserialization_failed(
+        artifact_kind: CalibrationArtifactPersistenceKind,
+        path: String,
+        error_message: String,
+    ) -> Self {
+        Self::DeserializationFailed {
+            artifact_kind,
+            path,
+            error_message,
+        }
+    }
+}
+
+impl Display for CalibrationArtifactIoError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::CreateDirectoryFailed {
+                artifact_kind,
+                path,
+                error_message,
+            } => write!(
+                formatter,
+                "failed to create {} `{path}`: {error_message}",
+                artifact_kind.directory_label()
+            ),
+            Self::SerializationFailed {
+                artifact_kind,
+                error_message,
+            } => write!(
+                formatter,
+                "failed to serialize {}: {error_message}",
+                artifact_kind.label()
+            ),
+            Self::WriteFailed {
+                artifact_kind,
+                path,
+                error_message,
+            } => write!(
+                formatter,
+                "failed to write {} `{path}`: {error_message}",
+                artifact_kind.label()
+            ),
+            Self::RenameFailed {
+                artifact_kind,
+                source_path,
+                target_path,
+                error_message,
+            } => write!(
+                formatter,
+                "failed to rename {} `{source_path}` -> `{target_path}`: {error_message}",
+                artifact_kind.label()
+            ),
+            Self::ReadFailed {
+                artifact_kind,
+                path,
+                error_message,
+            } => write!(
+                formatter,
+                "failed to read {} `{path}`: {error_message}",
+                artifact_kind.label()
+            ),
+            Self::DeserializationFailed {
+                artifact_kind,
+                path,
+                error_message,
+            } => write!(
+                formatter,
+                "failed to deserialize {} `{path}`: {error_message}",
+                artifact_kind.label()
+            ),
+            Self::ValidationFailed {
+                artifact_kind,
+                error_message,
+            } => write!(
+                formatter,
+                "{} validation failed: {error_message}",
+                artifact_kind.label()
+            ),
+        }
+    }
+}
+
+impl Error for CalibrationArtifactIoError {}
 
 pub(crate) fn compute_reference_checksum_hex(data_reference: &str) -> String {
     format!("{:016x}", fnv1a_64(data_reference.as_bytes()))
@@ -71,4 +312,87 @@ where
         .map_err(|source| rename_failed(&temporary_path, target_path, source.to_string()))?;
 
     Ok(())
+}
+
+pub(crate) fn persist_validated_json_artifact<T, Validate>(
+    artifact_kind: CalibrationArtifactPersistenceKind,
+    artifact_path: &Path,
+    payload: &T,
+    validate: Validate,
+) -> Result<PathBuf, CalibrationArtifactIoError>
+where
+    T: Serialize,
+    Validate: FnOnce(&T) -> Result<(), String>,
+{
+    validate(payload).map_err(|error_message| {
+        CalibrationArtifactIoError::validation_failed(artifact_kind, error_message)
+    })?;
+
+    let run_directory = artifact_path
+        .parent()
+        .expect("artifact path should always have a parent directory");
+    fs::create_dir_all(run_directory).map_err(|source| {
+        CalibrationArtifactIoError::create_directory_failed(
+            artifact_kind,
+            run_directory.display().to_string(),
+            source.to_string(),
+        )
+    })?;
+
+    write_json_file_atomically(
+        artifact_path,
+        payload,
+        |error_message| {
+            CalibrationArtifactIoError::serialization_failed(artifact_kind, error_message)
+        },
+        |path, error_message| {
+            CalibrationArtifactIoError::write_failed(
+                artifact_kind,
+                path.display().to_string(),
+                error_message,
+            )
+        },
+        |source_path, target_path, error_message| {
+            CalibrationArtifactIoError::rename_failed(
+                artifact_kind,
+                source_path.display().to_string(),
+                target_path.display().to_string(),
+                error_message,
+            )
+        },
+    )?;
+
+    Ok(artifact_path.to_path_buf())
+}
+
+pub(crate) fn load_validated_json_artifact<T, Validate>(
+    artifact_kind: CalibrationArtifactPersistenceKind,
+    artifact_path: &Path,
+    validate: Validate,
+) -> Result<T, CalibrationArtifactIoError>
+where
+    T: DeserializeOwned,
+    Validate: FnOnce(&T) -> Result<(), String>,
+{
+    let content = fs::read_to_string(artifact_path).map_err(|source| {
+        CalibrationArtifactIoError::read_failed(
+            artifact_kind,
+            artifact_path.display().to_string(),
+            source.to_string(),
+        )
+    })?;
+
+    let payload: T = serde_json::from_str(content.as_str()).map_err(|source| {
+        CalibrationArtifactIoError::deserialization_failed(
+            artifact_kind,
+            artifact_path.display().to_string(),
+            source.to_string(),
+        )
+    })?;
+
+    validate(&payload).map_err(|error_message| {
+        CalibrationArtifactIoError::validation_failed(artifact_kind, error_message)
+    })?;
+
+    Ok(payload)
 }
