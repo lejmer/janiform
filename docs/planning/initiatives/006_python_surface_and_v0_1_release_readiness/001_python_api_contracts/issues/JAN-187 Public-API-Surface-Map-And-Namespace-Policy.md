@@ -1,4 +1,4 @@
-## ISSUE-001: Public API Surface Map And Namespace Policy
+## Public API Surface Map And Namespace Policy
 
 ### Description
 Define the Python API surface map for simulation, calibration, and pricing workflows, including namespace boundaries between public and internal modules.

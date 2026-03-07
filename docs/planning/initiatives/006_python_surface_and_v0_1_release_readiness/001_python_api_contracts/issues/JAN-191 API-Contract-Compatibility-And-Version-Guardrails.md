@@ -1,4 +1,4 @@
-## ISSUE-005: API Contract Compatibility And Version Guardrails
+## API Contract Compatibility And Version Guardrails
 
 ### Description
 Define API contract-evolution guardrails for pre-v0.1 development and implement checks that keep intentional breaking changes explicit, reviewed, and documented.

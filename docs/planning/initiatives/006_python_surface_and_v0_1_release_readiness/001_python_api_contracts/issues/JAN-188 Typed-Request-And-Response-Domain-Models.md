@@ -1,4 +1,4 @@
-## ISSUE-002: Typed Request And Response Domain Models
+## Typed Request And Response Domain Models
 
 ### Description
 Implement explicit typed request and response models for core workflows so Python users interact with documented domain objects instead of loosely typed payloads.

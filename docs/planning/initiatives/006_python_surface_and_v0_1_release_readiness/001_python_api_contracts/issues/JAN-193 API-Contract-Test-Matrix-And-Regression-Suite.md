@@ -1,4 +1,4 @@
-## ISSUE-007: API Contract Test Matrix And Regression Suite
+## API Contract Test Matrix And Regression Suite
 
 ### Description
 Build a contract-focused test matrix that validates documented behavior across supported workflows and catches regressions in signatures, shapes, and semantics.

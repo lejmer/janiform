@@ -1,4 +1,4 @@
-## ISSUE-003: Error Taxonomy And Exception Contract
+## Error Taxonomy And Exception Contract
 
 ### Description
 Define Python-facing exception taxonomy and error contract so workflow failures are consistent, actionable, and deterministic for callers.

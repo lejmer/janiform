@@ -1,4 +1,4 @@
-## ISSUE-006: User Facing Examples And Quickstart Snippets
+## User Facing Examples And Quickstart Snippets
 
 ### Description
 Create user-facing examples for simulation, calibration, and pricing workflows that use the current documented public API contracts.
