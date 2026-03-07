@@ -128,10 +128,15 @@ Validation and serialization helpers:
 
 Python validation emits one structured failure with:
 
+- `error_id`
+- `workflow`
+- `entrypoint`
 - `field_path`
 - `message`
 
-so callers can surface actionable input errors without string parsing.
+See `docs/development/guides/python_error_taxonomy_and_exception_contract.md` for the shared
+validation, execution, and integration taxonomy and the deterministic message format used by both
+importable APIs and CLI surfaces.
 
 ## Benchmark Regression Fixture
 

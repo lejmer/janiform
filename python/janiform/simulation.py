@@ -22,30 +22,116 @@ from ._contracts import (
     serialize_deterministic_json,
 )
 from ._native_api import native_module
-from .calendar import CalendarRegistry
+from .calendar import (
+    CalendarInvalidTimestampError,
+    CalendarInvalidTimezoneError,
+    CalendarMissingExchangeError,
+    CalendarRegistry,
+)
+from .errors import (
+    ContractValidationFailure,
+    JaniformErrorDetails,
+    JaniformErrorCategory,
+    JaniformExecutionError,
+    JaniformIntegrationError,
+    JaniformValidationError,
+)
 from .hourly_factors import (
     HourlyFactorContract,
+    HourlyFactorProviderMissingInputError,
+    HourlyFactorProviderUnsupportedRangeError,
     HourlyNewsIntensityProviderSource,
     HourlySeasonalityProviderSource,
     provide_hourly_factor_contract,
 )
+from .seasonality import SeasonalityInputValidationError
+
+SIMULATION_VALIDATION_ERROR_ID = "simulation.validation.contract"
+SIMULATION_EXECUTION_ERROR_ID = "simulation.execution.run_failed"
+SIMULATION_INTEGRATION_NATIVE_MODULE_ERROR_ID = "simulation.integration.native_module_unavailable"
+SIMULATION_INTEGRATION_RESPONSE_ERROR_ID = "simulation.integration.invalid_native_response"
+SIMULATION_INTEGRATION_HOURLY_FACTOR_ERROR_ID = "simulation.integration.hourly_factor_contract_unavailable"
+
+SeededTickSimulationValidationFailure = ContractValidationFailure
 
 
-@dataclass(frozen=True, slots=True)
-class SeededTickSimulationValidationFailure:
-    field_path: str
-    message: str
+class SeededTickSimulationValidationError(JaniformValidationError):
+    pass
 
 
-class SeededTickSimulationValidationError(ValueError):
-    def __init__(self, failure: SeededTickSimulationValidationFailure) -> None:
-        self.failure: SeededTickSimulationValidationFailure = failure
-        super().__init__(f"{failure.field_path}: {failure.message}")
+def _simulation_failure(
+    field_path: str,
+    message: str,
+    *,
+    entrypoint: str = "contract",
+    error_id: str = SIMULATION_VALIDATION_ERROR_ID,
+    context: Optional[dict[str, str | int | float | bool | None]] = None,
+) -> SeededTickSimulationValidationFailure:
+    return SeededTickSimulationValidationFailure.from_context(
+        error_id=error_id,
+        workflow="simulation",
+        entrypoint=entrypoint,
+        field_path=field_path,
+        message=message,
+        context=context,
+    )
 
 
-def _simulation_error(field_path: str, message: str) -> SeededTickSimulationValidationError:
+def _simulation_error(
+    field_path: str,
+    message: str,
+    *,
+    entrypoint: str = "contract",
+    error_id: str = SIMULATION_VALIDATION_ERROR_ID,
+    context: Optional[dict[str, str | int | float | bool | None]] = None,
+) -> SeededTickSimulationValidationError:
     return SeededTickSimulationValidationError(
-        SeededTickSimulationValidationFailure(field_path=field_path, message=message)
+        _simulation_failure(
+            field_path,
+            message,
+            entrypoint=entrypoint,
+            error_id=error_id,
+            context=context,
+        )
+    )
+
+
+def _simulation_execution_error(
+    message: str,
+    *,
+    entrypoint: str,
+    context: Optional[dict[str, str | int | float | bool | None]] = None,
+) -> JaniformExecutionError:
+    return JaniformExecutionError(
+        JaniformErrorDetails.from_context(
+            error_id=SIMULATION_EXECUTION_ERROR_ID,
+            category=JaniformErrorCategory.EXECUTION,
+            workflow="simulation",
+            entrypoint=entrypoint,
+            message=message,
+            context=context,
+        )
+    )
+
+
+def _simulation_integration_error(
+    message: str,
+    *,
+    entrypoint: str,
+    error_id: str,
+    field_path: Optional[str] = None,
+    context: Optional[dict[str, str | int | float | bool | None]] = None,
+) -> JaniformIntegrationError:
+    return JaniformIntegrationError(
+        JaniformErrorDetails.from_context(
+            error_id=error_id,
+            category=JaniformErrorCategory.INTEGRATION,
+            workflow="simulation",
+            entrypoint=entrypoint,
+            message=message,
+            field_path=field_path,
+            context=context,
+        )
     )
 
 
@@ -568,15 +654,37 @@ def load_hourly_factor_contract_for_simulation(
     news_intensity_source: HourlyNewsIntensityProviderSource,
 ) -> HourlyFactorContract:
     """Load interval-aligned hourly factors for the simulation path."""
-
-    return provide_hourly_factor_contract(
-        calendar_registry=calendar_registry,
-        exchange_code=exchange_code,
-        range_start_utc=range_start_utc,
-        range_end_utc=range_end_utc,
-        seasonality_source=seasonality_source,
-        news_intensity_source=news_intensity_source,
-    )
+    try:
+        return provide_hourly_factor_contract(
+            calendar_registry=calendar_registry,
+            exchange_code=exchange_code,
+            range_start_utc=range_start_utc,
+            range_end_utc=range_end_utc,
+            seasonality_source=seasonality_source,
+            news_intensity_source=news_intensity_source,
+        )
+    except (
+        CalendarInvalidTimestampError,
+        CalendarInvalidTimezoneError,
+        CalendarMissingExchangeError,
+        HourlyFactorProviderMissingInputError,
+        HourlyFactorProviderUnsupportedRangeError,
+        SeasonalityInputValidationError,
+    ) as e:
+        raise _simulation_error(
+            "hourly_factor_contract",
+            str(e),
+            entrypoint="load_hourly_factor_contract_for_simulation",
+            context={"exchange_code": exchange_code},
+        ) from e
+    except ModuleNotFoundError as e:
+        raise _simulation_integration_error(
+            "native hourly-factor support is unavailable",
+            entrypoint="load_hourly_factor_contract_for_simulation",
+            error_id=SIMULATION_INTEGRATION_HOURLY_FACTOR_ERROR_ID,
+            field_path="hourly_factor_contract",
+            context={"exchange_code": exchange_code},
+        ) from e
 
 
 def validate_seeded_tick_simulation_response(
@@ -619,22 +727,51 @@ def run_seeded_tick_event_simulation(
         max_records_per_chunk=max_records_per_chunk,
         state_snapshot_capture=state_snapshot_capture,
     )
+    try:
+        native = native_module()
+    except ModuleNotFoundError as e:
+        raise _simulation_integration_error(
+            "native simulation module is unavailable",
+            entrypoint="run_seeded_tick_event_simulation",
+            error_id=SIMULATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
+            context={"module_name": "janiform._native"},
+        ) from e
 
-    native: ModuleType = native_module()
-    event_tape_json: str = native.run_seeded_tick_event_simulation(
-        request.seed,
-        request.start_time_utc.astimezone(UTC).isoformat(),
-        request.horizon_interval_count,
-        request.kernel_parameters.to_payload(),
-        request.initial_excitation_state.to_payload(),
-        request.hourly_factor_contract._native_result,
-        debug_trace_enabled=request.debug_trace_enabled,
-        sample_every_nth_transition=request.sample_every_nth_transition,
-        max_records_per_chunk=request.max_records_per_chunk,
-        state_snapshot_capture=request.state_snapshot_capture.value,
-    )
+    try:
+        event_tape_json: str = native.run_seeded_tick_event_simulation(
+            request.seed,
+            request.start_time_utc.astimezone(UTC).isoformat(),
+            request.horizon_interval_count,
+            request.kernel_parameters.to_payload(),
+            request.initial_excitation_state.to_payload(),
+            request.hourly_factor_contract._native_result,
+            debug_trace_enabled=request.debug_trace_enabled,
+            sample_every_nth_transition=request.sample_every_nth_transition,
+            max_records_per_chunk=request.max_records_per_chunk,
+            state_snapshot_capture=request.state_snapshot_capture.value,
+        )
+    except native.SeasonalityInputValidationError as e:
+        raise _simulation_execution_error(
+            "native simulation rejected the normalized run request",
+            entrypoint="run_seeded_tick_event_simulation",
+            context={"source_category": "native_validation"},
+        ) from e
+    except Exception as e:
+        raise _simulation_execution_error(
+            "seeded tick simulation failed during native execution",
+            entrypoint="run_seeded_tick_event_simulation",
+            context={"source_exception_type": type(e).__name__},
+        ) from e
 
-    return deserialize_seeded_tick_simulation_response(event_tape_json)
+    try:
+        return deserialize_seeded_tick_simulation_response(event_tape_json)
+    except SeededTickSimulationValidationError as e:
+        raise _simulation_integration_error(
+            "native simulation returned an invalid response payload",
+            entrypoint="run_seeded_tick_event_simulation",
+            error_id=SIMULATION_INTEGRATION_RESPONSE_ERROR_ID,
+            context={"source_error_id": e.error_id},
+        ) from e
 
 
 __all__ = [

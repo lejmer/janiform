@@ -20,6 +20,7 @@ from ._contracts import (
     validate_exact_string,
     validate_required_field_list,
 )
+from .errors import ContractValidationFailure, JaniformValidationError
 from .pricing import (
     GammaSeverityMarkConfiguration,
     NigSharedPlusShiftConfiguration,
@@ -112,23 +113,32 @@ SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_TAGS: tuple[str, ...] = (
     "validation",
 )
 DEFAULT_INTRADAY_RISK_INTERVAL_DELTA = 1.0
+RISK_VALIDATION_ERROR_ID = "risk.validation.contract"
+
+SufficientStatisticsRiskValidationFailure = ContractValidationFailure
 
 
-@dataclass(frozen=True, slots=True)
-class SufficientStatisticsRiskValidationFailure:
-    field_path: str
-    message: str
+class SufficientStatisticsRiskValidationError(JaniformValidationError):
+    pass
 
 
-class SufficientStatisticsRiskValidationError(ValueError):
-    def __init__(self, failure: SufficientStatisticsRiskValidationFailure) -> None:
-        self.failure: SufficientStatisticsRiskValidationFailure = failure
-        super().__init__(f"{failure.field_path}: {failure.message}")
-
-
-def _risk_error(field_path: str, message: str) -> SufficientStatisticsRiskValidationError:
+def _risk_error(
+    field_path: str,
+    message: str,
+    *,
+    entrypoint: str = "contract",
+    error_id: str = RISK_VALIDATION_ERROR_ID,
+    context: Optional[dict[str, str | int | float | bool | None]] = None,
+) -> SufficientStatisticsRiskValidationError:
     return SufficientStatisticsRiskValidationError(
-        SufficientStatisticsRiskValidationFailure(field_path=field_path, message=message)
+        SufficientStatisticsRiskValidationFailure.from_context(
+            error_id=error_id,
+            workflow="risk",
+            entrypoint=entrypoint,
+            field_path=field_path,
+            message=message,
+            context=context,
+        )
     )
 
 

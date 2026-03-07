@@ -16,6 +16,7 @@ from ._contracts import (
     require_string,
     serialize_deterministic_json,
 )
+from .errors import ContractValidationFailure, JaniformValidationError
 
 CALIBRATION_RUN_SPEC_SCHEMA_VERSION = "calibration.orchestration.run_spec.v1"
 CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION = "calibration.orchestration.staged_run.report.v1"
@@ -23,23 +24,32 @@ CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY = (
     "cli_defaults_to_disk_python_importable_api_defaults_to_memory.v1"
 )
 DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE = "memory"
+CALIBRATION_VALIDATION_ERROR_ID = "calibration.validation.contract"
+
+CalibrationValidationFailure = ContractValidationFailure
 
 
-@dataclass(frozen=True, slots=True)
-class CalibrationValidationFailure:
-    field_path: str
-    message: str
+class CalibrationValidationError(JaniformValidationError):
+    pass
 
 
-class CalibrationValidationError(ValueError):
-    def __init__(self, failure: CalibrationValidationFailure) -> None:
-        self.failure: CalibrationValidationFailure = failure
-        super().__init__(f"{failure.field_path}: {failure.message}")
-
-
-def _calibration_error(field_path: str, message: str) -> CalibrationValidationError:
+def _calibration_error(
+    field_path: str,
+    message: str,
+    *,
+    entrypoint: str = "contract",
+    error_id: str = CALIBRATION_VALIDATION_ERROR_ID,
+    context: Optional[dict[str, str | int | float | bool | None]] = None,
+) -> CalibrationValidationError:
     return CalibrationValidationError(
-        CalibrationValidationFailure(field_path=field_path, message=message)
+        CalibrationValidationFailure.from_context(
+            error_id=error_id,
+            workflow="calibration",
+            entrypoint=entrypoint,
+            field_path=field_path,
+            message=message,
+            context=context,
+        )
     )
 
 

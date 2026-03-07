@@ -5,13 +5,31 @@ from pathlib import Path
 from typing import Any, cast
 
 from . import __version__
-from .calendar import CalendarRegistry
+from .calendar import (
+    CalendarInvalidTimestampError,
+    CalendarInvalidTimezoneError,
+    CalendarMissingExchangeError,
+    CalendarRegistry,
+    CalendarRegistryLoadError,
+)
+from .errors import (
+    ContractValidationFailure,
+    JaniformError,
+    JaniformErrorDetails,
+    JaniformErrorCategory,
+    JaniformExecutionError,
+    JaniformValidationError,
+)
+from .seasonality import SeasonalityInputValidationError
 from .validation import run_open_closed_gap_leakage_regression_harness
 
 DEFAULT_CALENDAR_FIXTURE_PATH: str = "tests/fixtures/calendar/calendar_service_regression_matrix.json"
 DEFAULT_GAP_BEHAVIOR_FIXTURE_PATH: str = (
     "tests/fixtures/gap_behavior/open_closed_gap_behavior_scenarios.json"
 )
+CLI_OPEN_CLOSED_GAP_ENTRYPOINT = "regression.open_closed_gap_leakage"
+CLI_OPEN_CLOSED_GAP_VALIDATION_ERROR_ID = "cli.validation.open_closed_gap_leakage.invalid_input"
+CLI_OPEN_CLOSED_GAP_EXECUTION_ERROR_ID = "cli.execution.open_closed_gap_leakage.failed"
 
 
 def _build_parser() -> ArgumentParser:
@@ -92,8 +110,11 @@ def _run_open_closed_gap_leakage_regression_command(parsed_arguments: Namespace)
             gap_behavior_cases=gap_behavior_cases,
             component_absolute_tolerance=float(parsed_arguments.component_absolute_tolerance),
         )
+    except JaniformError as error:
+        sys.stderr.write(f"{error}\n")
+        return 1
     except Exception as error:
-        sys.stderr.write(f"open closed gap leakage regression command failed: {error}\n")
+        sys.stderr.write(f"{_classify_open_closed_gap_command_error(error)}\n")
         return 1
 
     summary = report["summary"]
@@ -173,6 +194,70 @@ def _run_open_closed_gap_leakage_regression_command(parsed_arguments: Namespace)
                     sys.stderr.write(f"  failure_kind={failure_kind}\n")
 
     return 1
+
+
+def _classify_open_closed_gap_command_error(error: Exception) -> JaniformError:
+    if isinstance(error, JaniformError):
+        return error
+
+    if isinstance(error, FileNotFoundError):
+        return JaniformValidationError(
+            ContractValidationFailure.from_context(
+                error_id=CLI_OPEN_CLOSED_GAP_VALIDATION_ERROR_ID,
+                workflow="cli",
+                entrypoint=CLI_OPEN_CLOSED_GAP_ENTRYPOINT,
+                field_path="fixture_path",
+                message="fixture file could not be found",
+                context={"path": error.filename},
+            )
+        )
+
+    if isinstance(error, json.JSONDecodeError):
+        return JaniformValidationError(
+            ContractValidationFailure.from_context(
+                error_id=CLI_OPEN_CLOSED_GAP_VALIDATION_ERROR_ID,
+                workflow="cli",
+                entrypoint=CLI_OPEN_CLOSED_GAP_ENTRYPOINT,
+                field_path="fixture_document",
+                message="fixture file must contain valid JSON",
+                context={
+                    "column_number": error.colno,
+                    "line_number": error.lineno,
+                },
+            )
+        )
+
+    if isinstance(
+        error,
+        (
+            CalendarInvalidTimestampError,
+            CalendarInvalidTimezoneError,
+            CalendarMissingExchangeError,
+            CalendarRegistryLoadError,
+            SeasonalityInputValidationError,
+            ValueError,
+        ),
+    ):
+        return JaniformValidationError(
+            ContractValidationFailure.from_context(
+                error_id=CLI_OPEN_CLOSED_GAP_VALIDATION_ERROR_ID,
+                workflow="cli",
+                entrypoint=CLI_OPEN_CLOSED_GAP_ENTRYPOINT,
+                field_path="command_input",
+                message=str(error),
+            )
+        )
+
+    return JaniformExecutionError(
+        JaniformErrorDetails.from_context(
+            error_id=CLI_OPEN_CLOSED_GAP_EXECUTION_ERROR_ID,
+            category=JaniformErrorCategory.EXECUTION,
+            workflow="cli",
+            entrypoint=CLI_OPEN_CLOSED_GAP_ENTRYPOINT,
+            message="open closed gap leakage regression command failed unexpectedly",
+            context={"source_exception_type": type(error).__name__},
+        )
+    )
 
 
 def _resolve_path_from_repository_root(repository_root: Path, path: Path) -> Path:

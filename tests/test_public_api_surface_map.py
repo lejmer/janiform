@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 import janiform
+import janiform.errors as errors_module
 import janiform.hourly_factors as hourly_factors_module
 import janiform.pricing as pricing_module
 import janiform.risk as risk_module
@@ -125,6 +126,22 @@ def test_private_modules_are_not_exposed_through_public_exports() -> None:
 
     with pytest.raises(ModuleNotFoundError):
         import_module("janiform.api")
+
+
+def test_errors_public_symbols_live_in_errors_module() -> None:
+    expected_exports = {
+        "ContractValidationFailure",
+        "JaniformError",
+        "JaniformErrorCategory",
+        "JaniformErrorDetails",
+        "JaniformExecutionError",
+        "JaniformIntegrationError",
+        "JaniformValidationError",
+        "format_janiform_error",
+    }
+
+    assert expected_exports <= set(errors_module.__all__)
+    assert expected_exports <= set(dir(errors_module))
 
 
 def test_calibration_public_symbols_live_in_calibration_module() -> None:

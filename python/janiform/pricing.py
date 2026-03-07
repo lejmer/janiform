@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Optional
 
 from ._contracts import (
     ContractModel,
@@ -15,13 +15,28 @@ from ._contracts import (
     require_string,
     serialize_deterministic_json,
 )
-from .calendar import CalendarRegistry
+from .calendar import (
+    CalendarInvalidTimestampError,
+    CalendarInvalidTimezoneError,
+    CalendarMissingExchangeError,
+    CalendarRegistry,
+)
+from .errors import (
+    ContractValidationFailure,
+    JaniformErrorDetails,
+    JaniformErrorCategory,
+    JaniformIntegrationError,
+    JaniformValidationError,
+)
 from .hourly_factors import (
     HourlyFactorContract,
+    HourlyFactorProviderMissingInputError,
+    HourlyFactorProviderUnsupportedRangeError,
     HourlyNewsIntensityProviderSource,
     HourlySeasonalityProviderSource,
     provide_hourly_factor_contract,
 )
+from .seasonality import SeasonalityInputValidationError
 from .simulation import (
     HawkesExcitationState,
     HawkesKernelParameters,
@@ -29,23 +44,71 @@ from .simulation import (
 )
 
 DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA = 1.0
+PRICING_VALIDATION_ERROR_ID = "pricing.validation.contract"
+PRICING_INTEGRATION_HOURLY_FACTOR_ERROR_ID = "pricing.integration.hourly_factor_contract_unavailable"
+
+VanillaOptionPricingValidationFailure = ContractValidationFailure
 
 
-@dataclass(frozen=True, slots=True)
-class VanillaOptionPricingValidationFailure:
-    field_path: str
-    message: str
+class VanillaOptionPricingValidationError(JaniformValidationError):
+    pass
 
 
-class VanillaOptionPricingValidationError(ValueError):
-    def __init__(self, failure: VanillaOptionPricingValidationFailure) -> None:
-        self.failure: VanillaOptionPricingValidationFailure = failure
-        super().__init__(f"{failure.field_path}: {failure.message}")
+def _pricing_failure(
+    field_path: str,
+    message: str,
+    *,
+    entrypoint: str = "contract",
+    error_id: str = PRICING_VALIDATION_ERROR_ID,
+    context: Optional[dict[str, str | int | float | bool | None]] = None,
+) -> VanillaOptionPricingValidationFailure:
+    return VanillaOptionPricingValidationFailure.from_context(
+        error_id=error_id,
+        workflow="pricing",
+        entrypoint=entrypoint,
+        field_path=field_path,
+        message=message,
+        context=context,
+    )
 
 
-def _pricing_error(field_path: str, message: str) -> VanillaOptionPricingValidationError:
+def _pricing_error(
+    field_path: str,
+    message: str,
+    *,
+    entrypoint: str = "contract",
+    error_id: str = PRICING_VALIDATION_ERROR_ID,
+    context: Optional[dict[str, str | int | float | bool | None]] = None,
+) -> VanillaOptionPricingValidationError:
     return VanillaOptionPricingValidationError(
-        VanillaOptionPricingValidationFailure(field_path=field_path, message=message)
+        _pricing_failure(
+            field_path,
+            message,
+            entrypoint=entrypoint,
+            error_id=error_id,
+            context=context,
+        )
+    )
+
+
+def _pricing_integration_error(
+    message: str,
+    *,
+    entrypoint: str,
+    error_id: str,
+    field_path: Optional[str] = None,
+    context: Optional[dict[str, str | int | float | bool | None]] = None,
+) -> JaniformIntegrationError:
+    return JaniformIntegrationError(
+        JaniformErrorDetails.from_context(
+            error_id=error_id,
+            category=JaniformErrorCategory.INTEGRATION,
+            workflow="pricing",
+            entrypoint=entrypoint,
+            message=message,
+            field_path=field_path,
+            context=context,
+        )
     )
 
 
@@ -498,14 +561,37 @@ def load_hourly_factor_contract_for_pricing(
             ),
         )
 
-    return provide_hourly_factor_contract(
-        calendar_registry=calendar_registry,
-        exchange_code=exchange_code,
-        range_start_utc=range_start_utc,
-        range_end_utc=range_end_utc,
-        seasonality_source=seasonality_source,
-        news_intensity_source=news_intensity_source,
-    )
+    try:
+        return provide_hourly_factor_contract(
+            calendar_registry=calendar_registry,
+            exchange_code=exchange_code,
+            range_start_utc=range_start_utc,
+            range_end_utc=range_end_utc,
+            seasonality_source=seasonality_source,
+            news_intensity_source=news_intensity_source,
+        )
+    except (
+        CalendarInvalidTimestampError,
+        CalendarInvalidTimezoneError,
+        CalendarMissingExchangeError,
+        HourlyFactorProviderMissingInputError,
+        HourlyFactorProviderUnsupportedRangeError,
+        SeasonalityInputValidationError,
+    ) as e:
+        raise _pricing_error(
+            "hourly_factor_contract",
+            str(e),
+            entrypoint="load_hourly_factor_contract_for_pricing",
+            context={"exchange_code": exchange_code},
+        ) from e
+    except ModuleNotFoundError as e:
+        raise _pricing_integration_error(
+            "native hourly-factor support is unavailable",
+            entrypoint="load_hourly_factor_contract_for_pricing",
+            error_id=PRICING_INTEGRATION_HOURLY_FACTOR_ERROR_ID,
+            field_path="hourly_factor_contract",
+            context={"exchange_code": exchange_code},
+        ) from e
 
 
 def validate_vanilla_option_pricing_request(
