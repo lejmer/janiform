@@ -249,22 +249,6 @@ fn persist_reload_fixture(run_id: &str) -> PersistedReloadFixture {
     }
 }
 
-fn build_stage_output_links(
-    stage_parameter_artifacts: &[CalibrationStageParameterArtifact],
-) -> Vec<CalibrationValidationMetricStageOutputLink> {
-    let mut stage_output_links = stage_parameter_artifacts
-        .iter()
-        .map(|artifact| CalibrationValidationMetricStageOutputLink {
-            stage: artifact.stage,
-            artifact_reference: artifact.artifact_reference.clone(),
-            stage_output_schema_version: artifact.stage_output_schema_version.clone(),
-        })
-        .collect::<Vec<_>>();
-    stage_output_links.sort_by_key(|link| link.stage);
-
-    stage_output_links
-}
-
 fn rewrite_json_document(artifact_path: &Path, update: impl FnOnce(&mut Value)) {
     let mut document: Value = serde_json::from_str(
         fs::read_to_string(artifact_path)
