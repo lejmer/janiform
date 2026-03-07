@@ -171,6 +171,7 @@ Validation rejects:
 
 For a disk-mode run with checkpoint root `{artifact_root}` and `run_id={run_id}`, the dataset snapshot artifact is written to:
 
-- `{artifact_root}/{run_id}/dataset_snapshot.artifact.json`
+- committed artifact path: `{artifact_root}/artifacts/runs/{run_id}/dataset_snapshot.artifact.json`
+- pending write path before commit: `{artifact_root}/artifacts/pending/{run_id}/dataset_snapshot.artifact.json`
 
-Writes use the same atomic tempfile then rename policy as staged checkpoint persistence.
+Writes remain atomic at the file level, and the full run is published atomically by renaming the pending run directory into the committed artifact directory.

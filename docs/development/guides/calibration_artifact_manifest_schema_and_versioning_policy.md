@@ -84,11 +84,21 @@ Validation must reject:
 - blank `artifact_reference`
 - duplicate `artifact_id` values within one manifest
 
-## Persistence path
+## Persistence path and commit flow
 
 For a disk-mode run with checkpoint root `{artifact_root}` and `run_id={run_id}`, the manifest is written to:
 
-- `{artifact_root}/{run_id}/artifact_manifest.json`
+- committed artifact path: `{artifact_root}/artifacts/runs/{run_id}/artifact_manifest.json`
+- pending run directory during execution: `{artifact_root}/artifacts/pending/{run_id}/`
+- quarantine directory for recovered partial writes: `{artifact_root}/artifacts/quarantine/`
+- resumable checkpoints remain separate under `{artifact_root}/checkpoints/{run_id}/`
+
+Commit semantics:
+
+- dataset snapshot, stage output artifacts, and the manifest are first written under the pending run directory
+- successful completion atomically publishes the full artifact set by renaming the pending run directory to the committed run directory
+- fresh non-resume runs quarantine stale pending or incomplete run directories instead of overwriting them
+- committed run directories are never overwritten silently
 
 ## Versioning policy
 

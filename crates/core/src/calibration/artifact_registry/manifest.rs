@@ -10,18 +10,24 @@ use super::super::contracts::{
 };
 use super::dataset_snapshot::calibration_dataset_snapshot_artifact_reference;
 use super::shared::{
-    CalibrationArtifactIoError, CalibrationArtifactPersistenceKind, calibration_stage_token,
+    CalibrationArtifactIoError, CalibrationArtifactPersistenceKind,
+    calibration_committed_artifact_run_directory, calibration_stage_token,
     load_validated_json_artifact, persist_validated_json_artifact,
 };
 use super::stage_parameter::CalibrationStageParameterArtifact;
 
 pub fn calibration_artifact_manifest_path(
-    disk_checkpoint_directory: &Path,
+    persistence_root_directory: &Path,
     run_id: &str,
 ) -> PathBuf {
-    disk_checkpoint_directory
-        .join(run_id)
-        .join("artifact_manifest.json")
+    let run_directory =
+        calibration_committed_artifact_run_directory(persistence_root_directory, run_id);
+
+    calibration_artifact_manifest_path_in_run_directory(run_directory.as_path())
+}
+
+pub(crate) fn calibration_artifact_manifest_path_in_run_directory(run_directory: &Path) -> PathBuf {
+    run_directory.join("artifact_manifest.json")
 }
 
 pub fn calibration_artifact_manifest_reference(run_id: &str) -> String {
@@ -139,12 +145,28 @@ pub fn build_calibration_artifact_manifest(
 }
 
 pub fn persist_calibration_artifact_manifest_to_disk(
-    disk_checkpoint_directory: &Path,
+    persistence_root_directory: &Path,
     manifest: &CalibrationArtifactManifest,
 ) -> Result<PathBuf, CalibrationArtifactIoError> {
     let artifact_kind = CalibrationArtifactPersistenceKind::Manifest;
     let manifest_path =
-        calibration_artifact_manifest_path(disk_checkpoint_directory, manifest.run_id.as_str());
+        calibration_artifact_manifest_path(persistence_root_directory, manifest.run_id.as_str());
+
+    persist_validated_json_artifact(
+        artifact_kind,
+        manifest_path.as_path(),
+        manifest,
+        |payload| payload.validate().map_err(|source| source.to_string()),
+    )
+}
+
+pub(crate) fn persist_calibration_artifact_manifest_to_run_directory(
+    run_directory: &Path,
+    manifest: &CalibrationArtifactManifest,
+) -> Result<PathBuf, CalibrationArtifactIoError> {
+    let artifact_kind = CalibrationArtifactPersistenceKind::Manifest;
+    let manifest_path = calibration_artifact_manifest_path_in_run_directory(run_directory);
+
     persist_validated_json_artifact(
         artifact_kind,
         manifest_path.as_path(),
@@ -157,6 +179,7 @@ pub fn load_calibration_artifact_manifest_from_disk(
     manifest_path: &Path,
 ) -> Result<CalibrationArtifactManifest, CalibrationArtifactIoError> {
     let artifact_kind = CalibrationArtifactPersistenceKind::Manifest;
+
     load_validated_json_artifact(
         artifact_kind,
         manifest_path,

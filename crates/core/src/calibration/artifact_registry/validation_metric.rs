@@ -12,7 +12,8 @@ use super::super::contracts::{
 use super::dataset_snapshot::CALIBRATION_DATASET_SNAPSHOT_FORWARD_EXTENSION_POLICY;
 use super::manifest::calibration_artifact_manifest_reference;
 use super::shared::{
-    CalibrationArtifactIoError, CalibrationArtifactPersistenceKind, load_validated_json_artifact,
+    CalibrationArtifactIoError, CalibrationArtifactPersistenceKind,
+    calibration_committed_artifact_run_directory, load_validated_json_artifact,
     persist_validated_json_artifact,
 };
 
@@ -594,26 +595,59 @@ pub fn calibration_validation_metric_artifact_reference(
 }
 
 pub fn calibration_validation_metric_artifact_path(
-    disk_checkpoint_directory: &Path,
+    persistence_root_directory: &Path,
     run_id: &str,
     artifact_role: CalibrationValidationMetricArtifactRole,
 ) -> PathBuf {
-    disk_checkpoint_directory.join(run_id).join(format!(
+    let run_directory =
+        calibration_committed_artifact_run_directory(persistence_root_directory, run_id);
+
+    calibration_validation_metric_artifact_path_in_run_directory(
+        run_directory.as_path(),
+        artifact_role,
+    )
+}
+
+pub(crate) fn calibration_validation_metric_artifact_path_in_run_directory(
+    run_directory: &Path,
+    artifact_role: CalibrationValidationMetricArtifactRole,
+) -> PathBuf {
+    run_directory.join(format!(
         "{}.validation_metric.artifact.json",
         artifact_role.artifact_token()
     ))
 }
 
 pub fn persist_calibration_validation_metric_artifact_to_disk(
-    disk_checkpoint_directory: &Path,
+    persistence_root_directory: &Path,
     artifact: &CalibrationValidationMetricArtifact,
 ) -> Result<PathBuf, CalibrationArtifactIoError> {
     let artifact_kind = CalibrationArtifactPersistenceKind::ValidationMetric;
     let artifact_path = calibration_validation_metric_artifact_path(
-        disk_checkpoint_directory,
+        persistence_root_directory,
         artifact.run_id.as_str(),
         artifact.artifact_role,
     );
+
+    persist_validated_json_artifact(
+        artifact_kind,
+        artifact_path.as_path(),
+        artifact,
+        |payload| payload.validate().map_err(|source| source.to_string()),
+    )
+}
+
+#[allow(dead_code)]
+pub(crate) fn persist_calibration_validation_metric_artifact_to_run_directory(
+    run_directory: &Path,
+    artifact: &CalibrationValidationMetricArtifact,
+) -> Result<PathBuf, CalibrationArtifactIoError> {
+    let artifact_kind = CalibrationArtifactPersistenceKind::ValidationMetric;
+    let artifact_path = calibration_validation_metric_artifact_path_in_run_directory(
+        run_directory,
+        artifact.artifact_role,
+    );
+
     persist_validated_json_artifact(
         artifact_kind,
         artifact_path.as_path(),
@@ -626,6 +660,7 @@ pub fn load_calibration_validation_metric_artifact_from_disk(
     artifact_path: &Path,
 ) -> Result<CalibrationValidationMetricArtifact, CalibrationArtifactIoError> {
     let artifact_kind = CalibrationArtifactPersistenceKind::ValidationMetric;
+
     load_validated_json_artifact(
         artifact_kind,
         artifact_path,
