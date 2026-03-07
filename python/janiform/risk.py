@@ -1,14 +1,38 @@
-import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
-from math import isfinite, sqrt
-from typing import Any, NotRequired, Optional, TypedDict, cast
+from typing import Any, Optional
 
-from .pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
-from .simulation import HawkesExcitationState, HawkesKernelParameters
+from ._contracts import (
+    ContractModel,
+    ValidationErrorFactory,
+    parse_json_object,
+    require_mapping,
+    require_non_negative_finite_number,
+    require_non_negative_finite_scalar,
+    require_non_negative_integer,
+    require_positive_finite_number,
+    require_positive_integer,
+    require_sequence,
+    serialize_deterministic_json,
+    validate_exact_integer,
+    validate_exact_number,
+    validate_exact_optional_integer,
+    validate_exact_string,
+    validate_required_field_list,
+)
+from .pricing import (
+    GammaSeverityMarkConfiguration,
+    NigSharedPlusShiftConfiguration,
+    VanillaOptionPricingValidationError,
+)
+from .simulation import (
+    HawkesExcitationState,
+    HawkesKernelParameters,
+    SeededTickSimulationValidationError,
+)
 
 SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY = (
-    "explicit_interval_aligned_s_h_and_nu_h_vectors_without_implicit_resampling.v1"
+    "explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1"
 )
 SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION = "risk.sufficient_statistics.run_request.v1"
 SUFFICIENT_STATISTICS_RISK_PATH_SCHEMA_VERSION = "risk.sufficient_statistics.path.v1"
@@ -90,39 +114,347 @@ SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_TAGS: tuple[str, ...] = (
 DEFAULT_INTRADAY_RISK_INTERVAL_DELTA = 1.0
 
 
-class SufficientStatisticsRiskEquationSpecification(TypedDict):
+@dataclass(frozen=True, slots=True)
+class SufficientStatisticsRiskValidationFailure:
+    field_path: str
+    message: str
+
+
+class SufficientStatisticsRiskValidationError(ValueError):
+    def __init__(self, failure: SufficientStatisticsRiskValidationFailure) -> None:
+        self.failure: SufficientStatisticsRiskValidationFailure = failure
+        super().__init__(f"{failure.field_path}: {failure.message}")
+
+
+def _risk_error(field_path: str, message: str) -> SufficientStatisticsRiskValidationError:
+    return SufficientStatisticsRiskValidationError(
+        SufficientStatisticsRiskValidationFailure(field_path=field_path, message=message)
+    )
+
+
+RISK_ERROR_FACTORY: ValidationErrorFactory = _risk_error
+
+
+@dataclass(frozen=True, slots=True)
+class SufficientStatisticsRiskEquationSpecification(ContractModel):
     hawkes_kernel_parameters: HawkesKernelParameters
     gamma_severity_mark_configuration: GammaSeverityMarkConfiguration
 
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> SufficientStatisticsRiskEquationSpecification:
+        if not isinstance(raw_payload, dict):
+            raise _risk_error(field_path, "must be an object")
 
-class SufficientStatisticsRiskIntervalFactors(TypedDict):
-    interval_delta: NotRequired[float]
-    s_h: list[float]
-    nu_h: list[float]
+        return SufficientStatisticsRiskEquationSpecification(
+            hawkes_kernel_parameters=HawkesKernelParameters.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "hawkes_kernel_parameters",
+                    f"{field_path}.hawkes_kernel_parameters",
+                    RISK_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.hawkes_kernel_parameters",
+            ),
+            gamma_severity_mark_configuration=GammaSeverityMarkConfiguration.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "gamma_severity_mark_configuration",
+                    f"{field_path}.gamma_severity_mark_configuration",
+                    RISK_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.gamma_severity_mark_configuration",
+            ),
+        )
 
 
-class SufficientStatisticsRiskModelInputs(TypedDict):
+@dataclass(frozen=True, slots=True)
+class SufficientStatisticsRiskIntervalFactors(ContractModel):
+    """Explicit interval factors with separate known and surprise news controls."""
+
+    interval_delta: float = DEFAULT_INTRADAY_RISK_INTERVAL_DELTA
+    s_h: tuple[float, ...] = ()
+    nu_h_known: tuple[float, ...] = ()
+    nu_h_surprise: tuple[float, ...] = ()
+
+    @property
+    def nu_h(self) -> tuple[float, ...]:
+        return tuple(
+            known_value + surprise_value
+            for known_value, surprise_value in zip(self.nu_h_known, self.nu_h_surprise)
+        )
+
+    def __post_init__(self) -> None:
+        require_non_negative_finite_scalar(self.interval_delta, "interval_delta", RISK_ERROR_FACTORY)
+
+        if self.interval_delta <= 0.0:
+            raise _risk_error("interval_delta", "must be strictly positive")
+        if len(self.s_h) == 0:
+            raise _risk_error("s_h", "must contain at least one interval factor")
+        if len(self.nu_h_known) != len(self.s_h):
+            raise _risk_error(
+                "nu_h_known",
+                f"must have the same length as s_h ({len(self.s_h)})",
+            )
+        if len(self.nu_h_surprise) != len(self.s_h):
+            raise _risk_error(
+                "nu_h_surprise",
+                f"must have the same length as s_h ({len(self.s_h)})",
+            )
+
+        for interval_index, value in enumerate(self.s_h):
+            require_non_negative_finite_scalar(value, f"s_h[{interval_index}]", RISK_ERROR_FACTORY)
+        for interval_index, value in enumerate(self.nu_h_known):
+            require_non_negative_finite_scalar(value, f"nu_h_known[{interval_index}]", RISK_ERROR_FACTORY)
+        for interval_index, value in enumerate(self.nu_h_surprise):
+            require_non_negative_finite_scalar(value, f"nu_h_surprise[{interval_index}]", RISK_ERROR_FACTORY)
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+        requested_interval_delta: float,
+    ) -> SufficientStatisticsRiskIntervalFactors:
+        if not isinstance(raw_payload, dict):
+            raise _risk_error(field_path, "must be an object")
+
+        raw_s_h = require_sequence(raw_payload, "s_h", f"{field_path}.s_h", RISK_ERROR_FACTORY)
+        raw_nu_h_known = require_sequence(
+            raw_payload,
+            "nu_h_known",
+            f"{field_path}.nu_h_known",
+            RISK_ERROR_FACTORY,
+        )
+        raw_nu_h_surprise = require_sequence(
+            raw_payload,
+            "nu_h_surprise",
+            f"{field_path}.nu_h_surprise",
+            RISK_ERROR_FACTORY,
+        )
+
+        if len(raw_s_h) == 0:
+            raise _risk_error(f"{field_path}.s_h", "must contain at least one interval factor")
+        if len(raw_nu_h_known) != len(raw_s_h):
+            raise _risk_error(
+                f"{field_path}.nu_h_known",
+                f"must have the same length as {field_path}.s_h ({len(raw_s_h)})",
+            )
+        if len(raw_nu_h_surprise) != len(raw_s_h):
+            raise _risk_error(
+                f"{field_path}.nu_h_surprise",
+                f"must have the same length as {field_path}.s_h ({len(raw_s_h)})",
+            )
+
+        interval_delta = (
+            require_positive_finite_number(
+                raw_payload,
+                "interval_delta",
+                f"{field_path}.interval_delta",
+                RISK_ERROR_FACTORY,
+            )
+            if "interval_delta" in raw_payload
+            else DEFAULT_INTRADAY_RISK_INTERVAL_DELTA
+        )
+        if interval_delta != requested_interval_delta:
+            raise _risk_error(
+                f"{field_path}.interval_delta",
+                (
+                    "must match interval_delta exactly under explicit factor alignment "
+                    f"without implicit resampling (interval_delta={requested_interval_delta}, "
+                    f"interval_factors.interval_delta={interval_delta})"
+                ),
+            )
+
+        s_h = tuple(
+            require_non_negative_finite_scalar(raw_value, f"{field_path}.s_h[{interval_index}]", RISK_ERROR_FACTORY)
+            for interval_index, raw_value in enumerate(raw_s_h)
+        )
+        nu_h_known = tuple(
+            require_non_negative_finite_scalar(
+                raw_value,
+                f"{field_path}.nu_h_known[{interval_index}]",
+                RISK_ERROR_FACTORY,
+            )
+            for interval_index, raw_value in enumerate(raw_nu_h_known)
+        )
+        nu_h_surprise = tuple(
+            require_non_negative_finite_scalar(
+                raw_value,
+                f"{field_path}.nu_h_surprise[{interval_index}]",
+                RISK_ERROR_FACTORY,
+            )
+            for interval_index, raw_value in enumerate(raw_nu_h_surprise)
+        )
+
+        return SufficientStatisticsRiskIntervalFactors(
+            interval_delta=interval_delta,
+            s_h=s_h,
+            nu_h_known=nu_h_known,
+            nu_h_surprise=nu_h_surprise,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SufficientStatisticsRiskModelInputs(ContractModel):
     equation_specification: SufficientStatisticsRiskEquationSpecification
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
     initial_excitation_state: HawkesExcitationState
 
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any) -> SufficientStatisticsRiskModelInputs:
+        if not isinstance(raw_payload, dict):
+            raise _risk_error("model_inputs", "must be an object")
 
-class SufficientStatisticsRiskRunRequest(TypedDict):
+        try:
+            return SufficientStatisticsRiskModelInputs(
+                equation_specification=SufficientStatisticsRiskEquationSpecification.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "equation_specification",
+                        "model_inputs.equation_specification",
+                        RISK_ERROR_FACTORY,
+                    ),
+                    field_path="model_inputs.equation_specification",
+                ),
+                nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "nig_shared_plus_shift_configuration",
+                        "model_inputs.nig_shared_plus_shift_configuration",
+                        RISK_ERROR_FACTORY,
+                    ),
+                    field_path="model_inputs.nig_shared_plus_shift_configuration",
+                ),
+                initial_excitation_state=HawkesExcitationState.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "initial_excitation_state",
+                        "model_inputs.initial_excitation_state",
+                        RISK_ERROR_FACTORY,
+                    ),
+                    field_path="model_inputs.initial_excitation_state",
+                ),
+            )
+        except SeededTickSimulationValidationError as e:
+            raise _risk_error(e.failure.field_path, e.failure.message) from e
+        except VanillaOptionPricingValidationError as e:
+            raise _risk_error(e.failure.field_path, e.failure.message) from e
+
+
+@dataclass(frozen=True, slots=True)
+class SufficientStatisticsRiskRunRequest(ContractModel):
     seed: int
     horizon_interval_count: int
-    interval_delta: NotRequired[float]
-    model_inputs: SufficientStatisticsRiskModelInputs
-    interval_factors: SufficientStatisticsRiskIntervalFactors
+    interval_delta: float = DEFAULT_INTRADAY_RISK_INTERVAL_DELTA
+    model_inputs: Optional[SufficientStatisticsRiskModelInputs] = None
+    interval_factors: Optional[SufficientStatisticsRiskIntervalFactors] = None
+
+    def __post_init__(self) -> None:
+        if self.seed < 0:
+            raise _risk_error("seed", "must be non-negative")
+        if self.horizon_interval_count <= 0:
+            raise _risk_error("horizon_interval_count", "must be strictly positive")
+        if self.interval_delta <= 0.0:
+            raise _risk_error("interval_delta", "must be strictly positive")
+        if self.model_inputs is None:
+            raise _risk_error("model_inputs", "is required")
+        if self.interval_factors is None:
+            raise _risk_error("interval_factors", "is required")
+
+        available_interval_count = len(self.interval_factors.s_h)
+
+        if self.horizon_interval_count > available_interval_count:
+            raise _risk_error(
+                "horizon_interval_count",
+                f"must not exceed available interval factors count ({available_interval_count})",
+            )
+
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any) -> SufficientStatisticsRiskRunRequest:
+        if not isinstance(raw_payload, dict):
+            raise _risk_error("risk_run_request", "must be an object")
+
+        interval_delta = (
+            require_positive_finite_number(
+                raw_payload,
+                "interval_delta",
+                "interval_delta",
+                RISK_ERROR_FACTORY,
+            )
+            if "interval_delta" in raw_payload
+            else DEFAULT_INTRADAY_RISK_INTERVAL_DELTA
+        )
+
+        return SufficientStatisticsRiskRunRequest(
+            seed=require_non_negative_integer(raw_payload, "seed", "seed", RISK_ERROR_FACTORY),
+            horizon_interval_count=require_positive_integer(
+                raw_payload,
+                "horizon_interval_count",
+                "horizon_interval_count",
+                RISK_ERROR_FACTORY,
+            ),
+            interval_delta=interval_delta,
+            model_inputs=SufficientStatisticsRiskModelInputs.from_mapping(
+                require_mapping(raw_payload, "model_inputs", "model_inputs", RISK_ERROR_FACTORY)
+            ),
+            interval_factors=SufficientStatisticsRiskIntervalFactors.from_mapping(
+                require_mapping(raw_payload, "interval_factors", "interval_factors", RISK_ERROR_FACTORY),
+                field_path="interval_factors",
+                requested_interval_delta=interval_delta,
+            ),
+        )
 
 
-class SufficientStatisticsIntervalStatistics(TypedDict):
+@dataclass(frozen=True, slots=True)
+class SufficientStatisticsIntervalStatistics(ContractModel):
     a_plus: float
     a_minus: float
     n_plus: int
     n_minus: int
 
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> SufficientStatisticsIntervalStatistics:
+        if not isinstance(raw_payload, dict):
+            raise _risk_error(field_path, "must be an object")
 
-class SufficientStatisticsRiskReturnComponents(TypedDict):
+        return SufficientStatisticsIntervalStatistics(
+            a_plus=require_non_negative_finite_number(
+                raw_payload,
+                "a_plus",
+                f"{field_path}.a_plus",
+                RISK_ERROR_FACTORY,
+            ),
+            a_minus=require_non_negative_finite_number(
+                raw_payload,
+                "a_minus",
+                f"{field_path}.a_minus",
+                RISK_ERROR_FACTORY,
+            ),
+            n_plus=require_non_negative_integer(
+                raw_payload,
+                "n_plus",
+                f"{field_path}.n_plus",
+                RISK_ERROR_FACTORY,
+            ),
+            n_minus=require_non_negative_integer(
+                raw_payload,
+                "n_minus",
+                f"{field_path}.n_minus",
+                RISK_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SufficientStatisticsRiskReturnComponents(ContractModel):
     buy_side_return: float
     sell_side_return: float
     trading_time_return: float
@@ -130,25 +462,113 @@ class SufficientStatisticsRiskReturnComponents(TypedDict):
     closed_gap_return: float
     total_return: float
 
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> SufficientStatisticsRiskReturnComponents:
+        if not isinstance(raw_payload, dict):
+            raise _risk_error(field_path, "must be an object")
 
-class SufficientStatisticsRiskPathRecord(TypedDict):
+        return SufficientStatisticsRiskReturnComponents(
+            buy_side_return=require_positive_or_negative(raw_payload, "buy_side_return", f"{field_path}.buy_side_return"),
+            sell_side_return=require_positive_or_negative(raw_payload, "sell_side_return", f"{field_path}.sell_side_return"),
+            trading_time_return=require_positive_or_negative(raw_payload, "trading_time_return", f"{field_path}.trading_time_return"),
+            open_jump_return=require_positive_or_negative(raw_payload, "open_jump_return", f"{field_path}.open_jump_return"),
+            closed_gap_return=require_positive_or_negative(raw_payload, "closed_gap_return", f"{field_path}.closed_gap_return"),
+            total_return=require_positive_or_negative(raw_payload, "total_return", f"{field_path}.total_return"),
+        )
+
+
+def require_positive_or_negative(raw_payload: dict[str, Any], field_name: str, field_path: str) -> float:
+    return require_positive_or_negative_impl(raw_payload, field_name, field_path)
+
+
+def require_positive_or_negative_impl(raw_payload: dict[str, Any], field_name: str, field_path: str) -> float:
+    return require_positive_or_negative_number(raw_payload, field_name, field_path)
+
+
+def require_positive_or_negative_number(raw_payload: dict[str, Any], field_name: str, field_path: str) -> float:
+    from ._contracts import require_finite_number
+
+    return require_finite_number(raw_payload, field_name, field_path, RISK_ERROR_FACTORY)
+
+
+@dataclass(frozen=True, slots=True)
+class SufficientStatisticsRiskPathRecord(ContractModel):
     interval_index: int
     sufficient_statistics: SufficientStatisticsIntervalStatistics
     return_components: SufficientStatisticsRiskReturnComponents
 
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+        expected_interval_index: int,
+    ) -> SufficientStatisticsRiskPathRecord:
+        if not isinstance(raw_payload, dict):
+            raise _risk_error(field_path, "must be an object")
 
-class SufficientStatisticsRiskPathOutputSchemaMetadata(TypedDict):
+        if "schema_version" in raw_payload:
+            validate_exact_string(
+                raw_payload,
+                "schema_version",
+                f"{field_path}.schema_version",
+                SUFFICIENT_STATISTICS_RISK_PATH_RECORD_SCHEMA_VERSION,
+                RISK_ERROR_FACTORY,
+            )
+
+        interval_index = require_non_negative_integer(
+            raw_payload,
+            "interval_index",
+            f"{field_path}.interval_index",
+            RISK_ERROR_FACTORY,
+        )
+        if interval_index != expected_interval_index:
+            raise _risk_error(
+                f"{field_path}.interval_index",
+                f"must equal {expected_interval_index}",
+            )
+
+        return SufficientStatisticsRiskPathRecord(
+            interval_index=interval_index,
+            sufficient_statistics=SufficientStatisticsIntervalStatistics.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "sufficient_statistics",
+                    f"{field_path}.sufficient_statistics",
+                    RISK_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.sufficient_statistics",
+            ),
+            return_components=SufficientStatisticsRiskReturnComponents.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "return_components",
+                    f"{field_path}.return_components",
+                    RISK_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.return_components",
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SufficientStatisticsRiskPathOutputSchemaMetadata(ContractModel):
     schema_version: str
     provenance_schema_version: str
     diagnostics_schema_version: str
     artifact_workflow_policy: str
     environment_metadata_policy: str
-    required_path_fields: list[str]
-    required_provenance_fields: list[str]
-    required_diagnostics_fields: list[str]
+    required_path_fields: tuple[str, ...]
+    required_provenance_fields: tuple[str, ...]
+    required_diagnostics_fields: tuple[str, ...]
 
 
-class SufficientStatisticsRiskPathProvenance(TypedDict):
+@dataclass(frozen=True, slots=True)
+class SufficientStatisticsRiskPathProvenance(ContractModel):
     schema_version: str
     artifact_workflow_policy: str
     environment_metadata_policy: str
@@ -158,10 +578,11 @@ class SufficientStatisticsRiskPathProvenance(TypedDict):
     interval_return_generation_policy: str
     interval_return_component_routing_policy: str
     batch_seed_partition_policy: str
-    artifact_workflow_tags: list[str]
+    artifact_workflow_tags: tuple[str, ...]
 
 
-class SufficientStatisticsRiskPathDiagnostics(TypedDict):
+@dataclass(frozen=True, slots=True)
+class SufficientStatisticsRiskPathDiagnostics(ContractModel):
     schema_version: str
     simulated_interval_count: int
     first_interval_index: Optional[int]
@@ -177,7 +598,8 @@ class SufficientStatisticsRiskPathDiagnostics(TypedDict):
     max_abs_total_return: float
 
 
-class SufficientStatisticsRiskPath(TypedDict):
+@dataclass(frozen=True, slots=True)
+class SufficientStatisticsRiskPath(ContractModel):
     schema_version: str
     run_request_schema_version: str
     output_schema_metadata: SufficientStatisticsRiskPathOutputSchemaMetadata
@@ -188,191 +610,144 @@ class SufficientStatisticsRiskPath(TypedDict):
     simulated_interval_count: int
     initial_excitation_state: HawkesExcitationState
     terminal_excitation_state: HawkesExcitationState
-    records: list[SufficientStatisticsRiskPathRecord]
+    records: tuple[SufficientStatisticsRiskPathRecord, ...]
 
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any) -> SufficientStatisticsRiskPath:
+        if not isinstance(raw_payload, dict):
+            raise _risk_error("risk_path", "must be an object")
 
-@dataclass(frozen=True, slots=True)
-class SufficientStatisticsRiskValidationFailure:
-    field_path: str
-    message: str
+        seed = require_non_negative_integer(raw_payload, "seed", "seed", RISK_ERROR_FACTORY)
 
+        interval_delta = require_positive_finite_number(
+            raw_payload,
+            "interval_delta",
+            "interval_delta",
+            RISK_ERROR_FACTORY,
+        )
 
-class SufficientStatisticsRiskValidationError(ValueError):
-    def __init__(self, failure: SufficientStatisticsRiskValidationFailure) -> None:
-        self.failure: SufficientStatisticsRiskValidationFailure = failure
-        super().__init__(f"{failure.field_path}: {failure.message}")
+        simulated_interval_count = require_positive_integer(
+            raw_payload,
+            "simulated_interval_count",
+            "simulated_interval_count",
+            RISK_ERROR_FACTORY,
+        )
 
+        records_payload = require_sequence(raw_payload, "records", "records", RISK_ERROR_FACTORY)
+        if len(records_payload) != simulated_interval_count:
+            raise _risk_error("records", f"must contain exactly {simulated_interval_count} records")
 
-def validate_sufficient_statistics_risk_run_request(
-    raw_request: Mapping[str, Any],
-) -> SufficientStatisticsRiskRunRequest:
-    seed: int = _require_non_negative_integer(raw_request, "seed", "seed")
-    horizon_interval_count: int = _require_positive_integer(
-        raw_request,
-        "horizon_interval_count",
-        "horizon_interval_count",
-    )
-    interval_delta: float = (
-        _require_positive_finite_number(raw_request, "interval_delta", "interval_delta")
-        if "interval_delta" in raw_request
-        else DEFAULT_INTRADAY_RISK_INTERVAL_DELTA
-    )
-    model_inputs: SufficientStatisticsRiskModelInputs = _validate_model_inputs(raw_request)
-    interval_factors: SufficientStatisticsRiskIntervalFactors = _validate_interval_factors(
-        raw_request,
-        "interval_factors",
-        "interval_factors",
-        requested_interval_delta=interval_delta,
-    )
-
-    available_interval_count: int = len(interval_factors["s_h"])
-    if horizon_interval_count > available_interval_count:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path="horizon_interval_count",
-                message=(
-                    f"must not exceed available interval factors count ({available_interval_count})"
-                ),
+        records = tuple(
+            SufficientStatisticsRiskPathRecord.from_mapping(
+                raw_record,
+                field_path=f"records[{record_position}]",
+                expected_interval_index=record_position,
             )
+            for record_position, raw_record in enumerate(records_payload)
         )
 
-    return {
-        "seed": seed,
-        "horizon_interval_count": horizon_interval_count,
-        "interval_delta": interval_delta,
-        "model_inputs": model_inputs,
-        "interval_factors": interval_factors,
-    }
+        output_schema_metadata = _build_risk_path_output_schema_metadata()
+        provenance = _build_risk_path_provenance()
+        diagnostics = _build_risk_path_diagnostics(records, simulated_interval_count)
 
+        if "schema_version" in raw_payload:
+            validate_exact_string(
+                raw_payload,
+                "schema_version",
+                "schema_version",
+                SUFFICIENT_STATISTICS_RISK_PATH_SCHEMA_VERSION,
+                RISK_ERROR_FACTORY,
+            )
+        if "run_request_schema_version" in raw_payload:
+            validate_exact_string(
+                raw_payload,
+                "run_request_schema_version",
+                "run_request_schema_version",
+                SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION,
+                RISK_ERROR_FACTORY,
+            )
+        if "output_schema_metadata" in raw_payload:
+            _validate_output_schema_metadata(
+                require_mapping(
+                    raw_payload,
+                    "output_schema_metadata",
+                    "output_schema_metadata",
+                    RISK_ERROR_FACTORY,
+                ),
+                output_schema_metadata,
+            )
+        if "provenance" in raw_payload:
+            _validate_path_provenance(
+                require_mapping(raw_payload, "provenance", "provenance", RISK_ERROR_FACTORY),
+                provenance,
+            )
+        if "diagnostics" in raw_payload:
+            _validate_path_diagnostics(
+                require_mapping(raw_payload, "diagnostics", "diagnostics", RISK_ERROR_FACTORY),
+                diagnostics,
+                simulated_interval_count,
+            )
 
-def validate_sufficient_statistics_risk_path(
-    raw_path: Mapping[str, Any],
-) -> SufficientStatisticsRiskPath:
-    seed: int = _require_non_negative_integer(raw_path, "seed", "seed")
-    interval_delta: float = _require_positive_finite_number(
-        raw_path,
-        "interval_delta",
-        "interval_delta",
-    )
-    simulated_interval_count: int = _require_positive_integer(
-        raw_path,
-        "simulated_interval_count",
-        "simulated_interval_count",
-    )
-    initial_excitation_state: HawkesExcitationState = _validate_excitation_state(
-        _require_mapping(raw_path, "initial_excitation_state", "initial_excitation_state"),
-        "initial_excitation_state",
-    )
-    terminal_excitation_state: HawkesExcitationState = _validate_excitation_state(
-        _require_mapping(raw_path, "terminal_excitation_state", "terminal_excitation_state"),
-        "terminal_excitation_state",
-    )
-    records = _validate_path_records(raw_path, "records", simulated_interval_count)
-    output_schema_metadata = _build_risk_path_output_schema_metadata()
-    provenance = _build_risk_path_provenance()
-    diagnostics = _build_risk_path_diagnostics(records, simulated_interval_count)
-
-    if "schema_version" in raw_path:
-        _validate_exact_string(
-            raw_path,
-            "schema_version",
-            "schema_version",
-            SUFFICIENT_STATISTICS_RISK_PATH_SCHEMA_VERSION,
-        )
-    if "run_request_schema_version" in raw_path:
-        _validate_exact_string(
-            raw_path,
-            "run_request_schema_version",
-            "run_request_schema_version",
-            SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION,
-        )
-    if "output_schema_metadata" in raw_path:
-        _validate_output_schema_metadata(
-            _require_mapping(raw_path, "output_schema_metadata", "output_schema_metadata"),
-            output_schema_metadata,
-            "output_schema_metadata",
-        )
-    if "provenance" in raw_path:
-        _validate_path_provenance(
-            _require_mapping(raw_path, "provenance", "provenance"),
-            provenance,
-            "provenance",
-        )
-    if "diagnostics" in raw_path:
-        _validate_path_diagnostics(
-            _require_mapping(raw_path, "diagnostics", "diagnostics"),
-            diagnostics,
-            "diagnostics",
-            simulated_interval_count,
-        )
-
-    return {
-        "schema_version": SUFFICIENT_STATISTICS_RISK_PATH_SCHEMA_VERSION,
-        "run_request_schema_version": SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION,
-        "output_schema_metadata": output_schema_metadata,
-        "provenance": provenance,
-        "diagnostics": diagnostics,
-        "seed": seed,
-        "interval_delta": interval_delta,
-        "simulated_interval_count": simulated_interval_count,
-        "initial_excitation_state": initial_excitation_state,
-        "terminal_excitation_state": terminal_excitation_state,
-        "records": records,
-    }
-
-
-def serialize_sufficient_statistics_risk_run_request(request: Mapping[str, Any]) -> str:
-    validated_request: SufficientStatisticsRiskRunRequest = (
-        validate_sufficient_statistics_risk_run_request(request)
-    )
-    return json.dumps(validated_request, sort_keys=True)
-
-
-def deserialize_sufficient_statistics_risk_run_request(
-    payload_json: str,
-) -> SufficientStatisticsRiskRunRequest:
-    raw_payload: Mapping[str, Any] = _parse_json_object(payload_json, "risk run request")
-    return validate_sufficient_statistics_risk_run_request(raw_payload)
-
-
-def serialize_sufficient_statistics_risk_path(path: Mapping[str, Any]) -> str:
-    validated_path: SufficientStatisticsRiskPath = validate_sufficient_statistics_risk_path(path)
-    return json.dumps(validated_path, sort_keys=True)
-
-
-def deserialize_sufficient_statistics_risk_path(payload_json: str) -> SufficientStatisticsRiskPath:
-    raw_payload: Mapping[str, Any] = _parse_json_object(payload_json, "risk path")
-    return validate_sufficient_statistics_risk_path(raw_payload)
+        try:
+            return SufficientStatisticsRiskPath(
+                schema_version=SUFFICIENT_STATISTICS_RISK_PATH_SCHEMA_VERSION,
+                run_request_schema_version=SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION,
+                output_schema_metadata=output_schema_metadata,
+                provenance=provenance,
+                diagnostics=diagnostics,
+                seed=seed,
+                interval_delta=interval_delta,
+                simulated_interval_count=simulated_interval_count,
+                initial_excitation_state=HawkesExcitationState.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "initial_excitation_state",
+                        "initial_excitation_state",
+                        RISK_ERROR_FACTORY,
+                    ),
+                    field_path="initial_excitation_state",
+                ),
+                terminal_excitation_state=HawkesExcitationState.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "terminal_excitation_state",
+                        "terminal_excitation_state",
+                        RISK_ERROR_FACTORY,
+                    ),
+                    field_path="terminal_excitation_state",
+                ),
+                records=records,
+            )
+        except SeededTickSimulationValidationError as e:
+            raise _risk_error(e.failure.field_path, e.failure.message) from e
 
 
 def _build_risk_path_output_schema_metadata() -> SufficientStatisticsRiskPathOutputSchemaMetadata:
-    return {
-        "schema_version": SUFFICIENT_STATISTICS_RISK_PATH_OUTPUT_SCHEMA_METADATA_VERSION,
-        "provenance_schema_version": SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE_SCHEMA_VERSION,
-        "diagnostics_schema_version": SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION,
-        "artifact_workflow_policy": SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_POLICY,
-        "environment_metadata_policy": SUFFICIENT_STATISTICS_RISK_PATH_ENVIRONMENT_METADATA_POLICY,
-        "required_path_fields": list(SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_FIELDS),
-        "required_provenance_fields": list(SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_PROVENANCE_FIELDS),
-        "required_diagnostics_fields": list(SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_DIAGNOSTICS_FIELDS),
-    }
+    return SufficientStatisticsRiskPathOutputSchemaMetadata(
+        schema_version=SUFFICIENT_STATISTICS_RISK_PATH_OUTPUT_SCHEMA_METADATA_VERSION,
+        provenance_schema_version=SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE_SCHEMA_VERSION,
+        diagnostics_schema_version=SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION,
+        artifact_workflow_policy=SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_POLICY,
+        environment_metadata_policy=SUFFICIENT_STATISTICS_RISK_PATH_ENVIRONMENT_METADATA_POLICY,
+        required_path_fields=SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_FIELDS,
+        required_provenance_fields=SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_PROVENANCE_FIELDS,
+        required_diagnostics_fields=SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_DIAGNOSTICS_FIELDS,
+    )
 
 
 def _build_risk_path_provenance() -> SufficientStatisticsRiskPathProvenance:
-    return {
-        "schema_version": SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE_SCHEMA_VERSION,
-        "artifact_workflow_policy": SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_POLICY,
-        "environment_metadata_policy": SUFFICIENT_STATISTICS_RISK_PATH_ENVIRONMENT_METADATA_POLICY,
-        "interval_factor_policy": SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY,
-        "transform_slice_sampling_policy": SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SAMPLING_POLICY,
-        "boundary_state_update_policy": SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY,
-        "interval_return_generation_policy": SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY,
-        "interval_return_component_routing_policy": (
-            SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY
-        ),
-        "batch_seed_partition_policy": SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY,
-        "artifact_workflow_tags": list(SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_TAGS),
-    }
+    return SufficientStatisticsRiskPathProvenance(
+        schema_version=SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE_SCHEMA_VERSION,
+        artifact_workflow_policy=SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_POLICY,
+        environment_metadata_policy=SUFFICIENT_STATISTICS_RISK_PATH_ENVIRONMENT_METADATA_POLICY,
+        interval_factor_policy=SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY,
+        transform_slice_sampling_policy=SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SAMPLING_POLICY,
+        boundary_state_update_policy=SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY,
+        interval_return_generation_policy=SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY,
+        interval_return_component_routing_policy=SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY,
+        batch_seed_partition_policy=SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY,
+        artifact_workflow_tags=SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_TAGS,
+    )
 
 
 def _build_risk_path_diagnostics(
@@ -390,977 +765,313 @@ def _build_risk_path_diagnostics(
     max_abs_total_return: float = 0.0
 
     for record in records:
-        sufficient_statistics = record["sufficient_statistics"]
-        return_components = record["return_components"]
-        cumulative_a_plus += sufficient_statistics["a_plus"]
-        cumulative_a_minus += sufficient_statistics["a_minus"]
-        cumulative_n_plus += sufficient_statistics["n_plus"]
-        cumulative_n_minus += sufficient_statistics["n_minus"]
-        cumulative_trading_time_return += return_components["trading_time_return"]
-        cumulative_open_jump_return += return_components["open_jump_return"]
-        cumulative_closed_gap_return += return_components["closed_gap_return"]
-        cumulative_total_return += return_components["total_return"]
-        max_abs_total_return = max(max_abs_total_return, abs(return_components["total_return"]))
+        cumulative_a_plus += record.sufficient_statistics.a_plus
+        cumulative_a_minus += record.sufficient_statistics.a_minus
+        cumulative_n_plus += record.sufficient_statistics.n_plus
+        cumulative_n_minus += record.sufficient_statistics.n_minus
+        cumulative_trading_time_return += record.return_components.trading_time_return
+        cumulative_open_jump_return += record.return_components.open_jump_return
+        cumulative_closed_gap_return += record.return_components.closed_gap_return
+        cumulative_total_return += record.return_components.total_return
+        max_abs_total_return = max(max_abs_total_return, abs(record.return_components.total_return))
 
-    first_interval_index: Optional[int] = records[0]["interval_index"] if records else None
-    last_interval_index: Optional[int] = records[-1]["interval_index"] if records else None
+    first_interval_index: Optional[int] = records[0].interval_index if records else None
+    last_interval_index: Optional[int] = records[-1].interval_index if records else None
 
-    return {
-        "schema_version": SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION,
-        "simulated_interval_count": simulated_interval_count,
-        "first_interval_index": first_interval_index,
-        "last_interval_index": last_interval_index,
-        "cumulative_a_plus": cumulative_a_plus,
-        "cumulative_a_minus": cumulative_a_minus,
-        "cumulative_n_plus": cumulative_n_plus,
-        "cumulative_n_minus": cumulative_n_minus,
-        "cumulative_trading_time_return": cumulative_trading_time_return,
-        "cumulative_open_jump_return": cumulative_open_jump_return,
-        "cumulative_closed_gap_return": cumulative_closed_gap_return,
-        "cumulative_total_return": cumulative_total_return,
-        "max_abs_total_return": max_abs_total_return,
-    }
+    return SufficientStatisticsRiskPathDiagnostics(
+        schema_version=SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION,
+        simulated_interval_count=simulated_interval_count,
+        first_interval_index=first_interval_index,
+        last_interval_index=last_interval_index,
+        cumulative_a_plus=cumulative_a_plus,
+        cumulative_a_minus=cumulative_a_minus,
+        cumulative_n_plus=cumulative_n_plus,
+        cumulative_n_minus=cumulative_n_minus,
+        cumulative_trading_time_return=cumulative_trading_time_return,
+        cumulative_open_jump_return=cumulative_open_jump_return,
+        cumulative_closed_gap_return=cumulative_closed_gap_return,
+        cumulative_total_return=cumulative_total_return,
+        max_abs_total_return=max_abs_total_return,
+    )
 
 
 def _validate_output_schema_metadata(
-    raw_metadata: Mapping[str, Any],
+    raw_payload: dict[str, Any] | Any,
     expected_metadata: SufficientStatisticsRiskPathOutputSchemaMetadata,
-    field_path: str,
 ) -> None:
-    _validate_exact_string(
-        raw_metadata,
+    validate_exact_string(
+        raw_payload,
         "schema_version",
-        f"{field_path}.schema_version",
-        expected_metadata["schema_version"],
+        "output_schema_metadata.schema_version",
+        expected_metadata.schema_version,
+        RISK_ERROR_FACTORY,
     )
-    _validate_exact_string(
-        raw_metadata,
+    validate_exact_string(
+        raw_payload,
         "provenance_schema_version",
-        f"{field_path}.provenance_schema_version",
-        expected_metadata["provenance_schema_version"],
+        "output_schema_metadata.provenance_schema_version",
+        expected_metadata.provenance_schema_version,
+        RISK_ERROR_FACTORY,
     )
-    _validate_exact_string(
-        raw_metadata,
+    validate_exact_string(
+        raw_payload,
         "diagnostics_schema_version",
-        f"{field_path}.diagnostics_schema_version",
-        expected_metadata["diagnostics_schema_version"],
+        "output_schema_metadata.diagnostics_schema_version",
+        expected_metadata.diagnostics_schema_version,
+        RISK_ERROR_FACTORY,
     )
-    _validate_exact_string(
-        raw_metadata,
+    validate_exact_string(
+        raw_payload,
         "artifact_workflow_policy",
-        f"{field_path}.artifact_workflow_policy",
-        expected_metadata["artifact_workflow_policy"],
+        "output_schema_metadata.artifact_workflow_policy",
+        expected_metadata.artifact_workflow_policy,
+        RISK_ERROR_FACTORY,
     )
-    _validate_exact_string(
-        raw_metadata,
+    validate_exact_string(
+        raw_payload,
         "environment_metadata_policy",
-        f"{field_path}.environment_metadata_policy",
-        expected_metadata["environment_metadata_policy"],
+        "output_schema_metadata.environment_metadata_policy",
+        expected_metadata.environment_metadata_policy,
+        RISK_ERROR_FACTORY,
     )
-    _validate_required_field_list(
-        raw_metadata,
+    validate_required_field_list(
+        raw_payload,
         "required_path_fields",
-        f"{field_path}.required_path_fields",
-        expected_metadata["required_path_fields"],
+        "output_schema_metadata.required_path_fields",
+        expected_metadata.required_path_fields,
+        RISK_ERROR_FACTORY,
     )
-    _validate_required_field_list(
-        raw_metadata,
+    validate_required_field_list(
+        raw_payload,
         "required_provenance_fields",
-        f"{field_path}.required_provenance_fields",
-        expected_metadata["required_provenance_fields"],
+        "output_schema_metadata.required_provenance_fields",
+        expected_metadata.required_provenance_fields,
+        RISK_ERROR_FACTORY,
     )
-    _validate_required_field_list(
-        raw_metadata,
+    validate_required_field_list(
+        raw_payload,
         "required_diagnostics_fields",
-        f"{field_path}.required_diagnostics_fields",
-        expected_metadata["required_diagnostics_fields"],
+        "output_schema_metadata.required_diagnostics_fields",
+        expected_metadata.required_diagnostics_fields,
+        RISK_ERROR_FACTORY,
     )
 
 
 def _validate_path_provenance(
-    raw_provenance: Mapping[str, Any],
+    raw_payload: dict[str, Any] | Any,
     expected_provenance: SufficientStatisticsRiskPathProvenance,
-    field_path: str,
 ) -> None:
-    _validate_exact_string(
-        raw_provenance,
+    validate_exact_string(
+        raw_payload,
         "schema_version",
-        f"{field_path}.schema_version",
-        expected_provenance["schema_version"],
+        "provenance.schema_version",
+        expected_provenance.schema_version,
+        RISK_ERROR_FACTORY,
     )
-    _validate_exact_string(
-        raw_provenance,
+    validate_exact_string(
+        raw_payload,
         "artifact_workflow_policy",
-        f"{field_path}.artifact_workflow_policy",
-        expected_provenance["artifact_workflow_policy"],
+        "provenance.artifact_workflow_policy",
+        expected_provenance.artifact_workflow_policy,
+        RISK_ERROR_FACTORY,
     )
-    _validate_exact_string(
-        raw_provenance,
+    validate_exact_string(
+        raw_payload,
         "environment_metadata_policy",
-        f"{field_path}.environment_metadata_policy",
-        expected_provenance["environment_metadata_policy"],
+        "provenance.environment_metadata_policy",
+        expected_provenance.environment_metadata_policy,
+        RISK_ERROR_FACTORY,
     )
-    _validate_exact_string(
-        raw_provenance,
+    validate_exact_string(
+        raw_payload,
         "interval_factor_policy",
-        f"{field_path}.interval_factor_policy",
-        expected_provenance["interval_factor_policy"],
+        "provenance.interval_factor_policy",
+        expected_provenance.interval_factor_policy,
+        RISK_ERROR_FACTORY,
     )
-    _validate_exact_string(
-        raw_provenance,
+    validate_exact_string(
+        raw_payload,
         "transform_slice_sampling_policy",
-        f"{field_path}.transform_slice_sampling_policy",
-        expected_provenance["transform_slice_sampling_policy"],
+        "provenance.transform_slice_sampling_policy",
+        expected_provenance.transform_slice_sampling_policy,
+        RISK_ERROR_FACTORY,
     )
-    _validate_exact_string(
-        raw_provenance,
+    validate_exact_string(
+        raw_payload,
         "boundary_state_update_policy",
-        f"{field_path}.boundary_state_update_policy",
-        expected_provenance["boundary_state_update_policy"],
+        "provenance.boundary_state_update_policy",
+        expected_provenance.boundary_state_update_policy,
+        RISK_ERROR_FACTORY,
     )
-    _validate_exact_string(
-        raw_provenance,
+    validate_exact_string(
+        raw_payload,
         "interval_return_generation_policy",
-        f"{field_path}.interval_return_generation_policy",
-        expected_provenance["interval_return_generation_policy"],
+        "provenance.interval_return_generation_policy",
+        expected_provenance.interval_return_generation_policy,
+        RISK_ERROR_FACTORY,
     )
-    _validate_exact_string(
-        raw_provenance,
+    validate_exact_string(
+        raw_payload,
         "interval_return_component_routing_policy",
-        f"{field_path}.interval_return_component_routing_policy",
-        expected_provenance["interval_return_component_routing_policy"],
+        "provenance.interval_return_component_routing_policy",
+        expected_provenance.interval_return_component_routing_policy,
+        RISK_ERROR_FACTORY,
     )
-    _validate_exact_string(
-        raw_provenance,
+    validate_exact_string(
+        raw_payload,
         "batch_seed_partition_policy",
-        f"{field_path}.batch_seed_partition_policy",
-        expected_provenance["batch_seed_partition_policy"],
+        "provenance.batch_seed_partition_policy",
+        expected_provenance.batch_seed_partition_policy,
+        RISK_ERROR_FACTORY,
     )
-    _validate_required_field_list(
-        raw_provenance,
+    validate_required_field_list(
+        raw_payload,
         "artifact_workflow_tags",
-        f"{field_path}.artifact_workflow_tags",
-        expected_provenance["artifact_workflow_tags"],
+        "provenance.artifact_workflow_tags",
+        expected_provenance.artifact_workflow_tags,
+        RISK_ERROR_FACTORY,
     )
 
 
 def _validate_path_diagnostics(
-    raw_diagnostics: Mapping[str, Any],
+    raw_payload: dict[str, Any] | Any,
     expected_diagnostics: SufficientStatisticsRiskPathDiagnostics,
-    field_path: str,
     simulated_interval_count: int,
 ) -> None:
-    _validate_exact_string(
-        raw_diagnostics,
+    validate_exact_string(
+        raw_payload,
         "schema_version",
-        f"{field_path}.schema_version",
-        expected_diagnostics["schema_version"],
+        "diagnostics.schema_version",
+        expected_diagnostics.schema_version,
+        RISK_ERROR_FACTORY,
     )
-    _validate_exact_integer(
-        raw_diagnostics,
+    validate_exact_integer(
+        raw_payload,
         "simulated_interval_count",
-        f"{field_path}.simulated_interval_count",
-        expected_diagnostics["simulated_interval_count"],
+        "diagnostics.simulated_interval_count",
+        expected_diagnostics.simulated_interval_count,
+        RISK_ERROR_FACTORY,
     )
-    _validate_exact_optional_integer(
-        raw_diagnostics,
+    validate_exact_optional_integer(
+        raw_payload,
         "first_interval_index",
-        f"{field_path}.first_interval_index",
-        expected_diagnostics["first_interval_index"],
+        "diagnostics.first_interval_index",
+        expected_diagnostics.first_interval_index,
+        RISK_ERROR_FACTORY,
     )
-    _validate_exact_optional_integer(
-        raw_diagnostics,
+    validate_exact_optional_integer(
+        raw_payload,
         "last_interval_index",
-        f"{field_path}.last_interval_index",
-        expected_diagnostics["last_interval_index"],
+        "diagnostics.last_interval_index",
+        expected_diagnostics.last_interval_index,
+        RISK_ERROR_FACTORY,
     )
-    _validate_exact_number(
-        raw_diagnostics,
+    validate_exact_number(
+        raw_payload,
         "cumulative_a_plus",
-        f"{field_path}.cumulative_a_plus",
-        expected_diagnostics["cumulative_a_plus"],
-        simulated_interval_count,
+        "diagnostics.cumulative_a_plus",
+        expected_diagnostics.cumulative_a_plus,
+        RISK_ERROR_FACTORY,
+        context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
-    _validate_exact_number(
-        raw_diagnostics,
+    validate_exact_number(
+        raw_payload,
         "cumulative_a_minus",
-        f"{field_path}.cumulative_a_minus",
-        expected_diagnostics["cumulative_a_minus"],
-        simulated_interval_count,
+        "diagnostics.cumulative_a_minus",
+        expected_diagnostics.cumulative_a_minus,
+        RISK_ERROR_FACTORY,
+        context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
-    _validate_exact_integer(
-        raw_diagnostics,
+    validate_exact_integer(
+        raw_payload,
         "cumulative_n_plus",
-        f"{field_path}.cumulative_n_plus",
-        expected_diagnostics["cumulative_n_plus"],
-        simulated_interval_count,
+        "diagnostics.cumulative_n_plus",
+        expected_diagnostics.cumulative_n_plus,
+        RISK_ERROR_FACTORY,
+        context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
-    _validate_exact_integer(
-        raw_diagnostics,
+    validate_exact_integer(
+        raw_payload,
         "cumulative_n_minus",
-        f"{field_path}.cumulative_n_minus",
-        expected_diagnostics["cumulative_n_minus"],
-        simulated_interval_count,
+        "diagnostics.cumulative_n_minus",
+        expected_diagnostics.cumulative_n_minus,
+        RISK_ERROR_FACTORY,
+        context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
-    _validate_exact_number(
-        raw_diagnostics,
+    validate_exact_number(
+        raw_payload,
         "cumulative_trading_time_return",
-        f"{field_path}.cumulative_trading_time_return",
-        expected_diagnostics["cumulative_trading_time_return"],
-        simulated_interval_count,
+        "diagnostics.cumulative_trading_time_return",
+        expected_diagnostics.cumulative_trading_time_return,
+        RISK_ERROR_FACTORY,
+        context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
-    _validate_exact_number(
-        raw_diagnostics,
+    validate_exact_number(
+        raw_payload,
         "cumulative_open_jump_return",
-        f"{field_path}.cumulative_open_jump_return",
-        expected_diagnostics["cumulative_open_jump_return"],
-        simulated_interval_count,
+        "diagnostics.cumulative_open_jump_return",
+        expected_diagnostics.cumulative_open_jump_return,
+        RISK_ERROR_FACTORY,
+        context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
-    _validate_exact_number(
-        raw_diagnostics,
+    validate_exact_number(
+        raw_payload,
         "cumulative_closed_gap_return",
-        f"{field_path}.cumulative_closed_gap_return",
-        expected_diagnostics["cumulative_closed_gap_return"],
-        simulated_interval_count,
+        "diagnostics.cumulative_closed_gap_return",
+        expected_diagnostics.cumulative_closed_gap_return,
+        RISK_ERROR_FACTORY,
+        context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
-    _validate_exact_number(
-        raw_diagnostics,
+    validate_exact_number(
+        raw_payload,
         "cumulative_total_return",
-        f"{field_path}.cumulative_total_return",
-        expected_diagnostics["cumulative_total_return"],
-        simulated_interval_count,
+        "diagnostics.cumulative_total_return",
+        expected_diagnostics.cumulative_total_return,
+        RISK_ERROR_FACTORY,
+        context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
-    _validate_exact_number(
-        raw_diagnostics,
+    validate_exact_number(
+        raw_payload,
         "max_abs_total_return",
-        f"{field_path}.max_abs_total_return",
-        expected_diagnostics["max_abs_total_return"],
-        simulated_interval_count,
+        "diagnostics.max_abs_total_return",
+        expected_diagnostics.max_abs_total_return,
+        RISK_ERROR_FACTORY,
+        context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
 
 
-def _validate_model_inputs(raw_request: Mapping[str, Any]) -> SufficientStatisticsRiskModelInputs:
-    raw_model_inputs: Mapping[str, Any] = _require_mapping(
-        raw_request,
-        "model_inputs",
-        "model_inputs",
-    )
-    raw_equation_specification: Mapping[str, Any] = _require_mapping(
-        raw_model_inputs,
-        "equation_specification",
-        "model_inputs.equation_specification",
-    )
-    raw_kernel_parameters: Mapping[str, Any] = _require_mapping(
-        raw_equation_specification,
-        "hawkes_kernel_parameters",
-        "model_inputs.equation_specification.hawkes_kernel_parameters",
-    )
-    raw_gamma_configuration: Mapping[str, Any] = _require_mapping(
-        raw_equation_specification,
-        "gamma_severity_mark_configuration",
-        "model_inputs.equation_specification.gamma_severity_mark_configuration",
-    )
-    raw_nig_configuration: Mapping[str, Any] = _require_mapping(
-        raw_model_inputs,
-        "nig_shared_plus_shift_configuration",
-        "model_inputs.nig_shared_plus_shift_configuration",
-    )
-    raw_initial_state: Mapping[str, Any] = _require_mapping(
-        raw_model_inputs,
-        "initial_excitation_state",
-        "model_inputs.initial_excitation_state",
-    )
+def validate_sufficient_statistics_risk_run_request(
+    raw_request: dict[str, Any] | Any,
+) -> SufficientStatisticsRiskRunRequest:
+    return SufficientStatisticsRiskRunRequest.from_mapping(raw_request)
 
-    kernel_parameters: HawkesKernelParameters = _validate_hawkes_kernel_parameters(
-        raw_kernel_parameters,
-        "model_inputs.equation_specification.hawkes_kernel_parameters",
-    )
-    gamma_configuration: GammaSeverityMarkConfiguration = _validate_gamma_configuration(
-        raw_gamma_configuration,
-        "model_inputs.equation_specification.gamma_severity_mark_configuration",
-    )
-    nig_configuration: NigSharedPlusShiftConfiguration = _validate_nig_configuration(
-        raw_nig_configuration,
-        "model_inputs.nig_shared_plus_shift_configuration",
-    )
-    initial_excitation_state: HawkesExcitationState = _validate_excitation_state(
-        raw_initial_state,
-        "model_inputs.initial_excitation_state",
-    )
 
-    return {
-        "equation_specification": {
-            "hawkes_kernel_parameters": kernel_parameters,
-            "gamma_severity_mark_configuration": gamma_configuration,
-        },
-        "nig_shared_plus_shift_configuration": nig_configuration,
-        "initial_excitation_state": initial_excitation_state,
-    }
+def validate_sufficient_statistics_risk_path(
+    raw_path: dict[str, Any] | Any,
+) -> SufficientStatisticsRiskPath:
+    return SufficientStatisticsRiskPath.from_mapping(raw_path)
 
 
-def _validate_interval_factors(
-    raw_payload: Mapping[str, Any],
-    field_name: str,
-    field_path: str,
-    *,
-    requested_interval_delta: float,
-) -> SufficientStatisticsRiskIntervalFactors:
-    raw_interval_factors: Mapping[str, Any] = _require_mapping(raw_payload, field_name, field_path)
-    raw_s_h: Sequence[object] = _require_sequence(raw_interval_factors, "s_h", f"{field_path}.s_h")
-    raw_nu_h: Sequence[object] = _require_sequence(raw_interval_factors, "nu_h", f"{field_path}.nu_h")
-    if len(raw_s_h) == 0:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=f"{field_path}.s_h",
-                message="must contain at least one interval factor",
-            )
-        )
-    if len(raw_nu_h) != len(raw_s_h):
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=f"{field_path}.nu_h",
-                message=f"must have the same length as {field_path}.s_h ({len(raw_s_h)})",
-            )
-        )
+def serialize_sufficient_statistics_risk_run_request(
+    request: SufficientStatisticsRiskRunRequest,
+) -> str:
+    return serialize_deterministic_json(request)
 
-    s_h: list[float] = []
-    nu_h: list[float] = []
-    for interval_index, raw_value in enumerate(raw_s_h):
-        value: float = _require_non_negative_finite_scalar(
-            raw_value,
-            field_path=f"{field_path}.s_h[{interval_index}]",
-        )
-        s_h.append(value)
-    for interval_index, raw_value in enumerate(raw_nu_h):
-        value = _require_non_negative_finite_scalar(
-            raw_value,
-            field_path=f"{field_path}.nu_h[{interval_index}]",
-        )
-        nu_h.append(value)
 
-    interval_factor_delta: float = (
-        _require_positive_finite_number(
-            raw_interval_factors,
-            "interval_delta",
-            f"{field_path}.interval_delta",
-        )
-        if "interval_delta" in raw_interval_factors
-        else DEFAULT_INTRADAY_RISK_INTERVAL_DELTA
-    )
-    if interval_factor_delta != requested_interval_delta:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=f"{field_path}.interval_delta",
-                message=(
-                    "must match interval_delta exactly under explicit factor alignment "
-                    f"without implicit resampling (interval_delta={requested_interval_delta}, "
-                    f"interval_factors.interval_delta={interval_factor_delta})"
-                ),
-            )
-        )
+def deserialize_sufficient_statistics_risk_run_request(
+    payload_json: str,
+) -> SufficientStatisticsRiskRunRequest:
+    raw_payload = parse_json_object(payload_json, "risk run request", RISK_ERROR_FACTORY)
+    return validate_sufficient_statistics_risk_run_request(dict(raw_payload))
 
-    return {
-        "interval_delta": interval_factor_delta,
-        "s_h": s_h,
-        "nu_h": nu_h,
-    }
 
+def serialize_sufficient_statistics_risk_path(path: SufficientStatisticsRiskPath) -> str:
+    return serialize_deterministic_json(path)
 
-def _validate_hawkes_kernel_parameters(
-    raw_kernel_parameters: Mapping[str, Any],
-    field_path: str,
-) -> HawkesKernelParameters:
-    raw_alpha: Mapping[str, Any] = _require_mapping(raw_kernel_parameters, "alpha", f"{field_path}.alpha")
-    raw_rho: Mapping[str, Any] = _require_mapping(raw_kernel_parameters, "rho", f"{field_path}.rho")
 
-    lambda_bar: float = _require_positive_finite_number(
-        raw_kernel_parameters,
-        "lambda_bar",
-        f"{field_path}.lambda_bar",
-    )
-    beta: float = _require_positive_finite_number(
-        raw_kernel_parameters,
-        "beta",
-        f"{field_path}.beta",
-    )
-    alpha = _validate_kernel_loadings(raw_alpha, f"{field_path}.alpha")
-    rho = _validate_kernel_loadings(raw_rho, f"{field_path}.rho")
-
-    spectral_radius: float = _compute_spectral_radius(alpha, beta)
-    if spectral_radius >= 1.0:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=f"{field_path}.alpha",
-                message=f"spectral radius(alpha / beta) must be < 1.0, found {spectral_radius}",
-            )
-        )
-
-    return {
-        "lambda_bar": lambda_bar,
-        "beta": beta,
-        "alpha": alpha,
-        "rho": rho,
-    }
-
-
-def _validate_kernel_loadings(
-    raw_loadings: Mapping[str, Any],
-    field_path: str,
-) -> dict[str, float]:
-    plus_plus: float = _require_non_negative_finite_number(raw_loadings, "plus_plus", f"{field_path}.plus_plus")
-    plus_minus: float = _require_non_negative_finite_number(raw_loadings, "plus_minus", f"{field_path}.plus_minus")
-    minus_plus: float = _require_non_negative_finite_number(raw_loadings, "minus_plus", f"{field_path}.minus_plus")
-    minus_minus: float = _require_non_negative_finite_number(raw_loadings, "minus_minus", f"{field_path}.minus_minus")
-
-    return {
-        "plus_plus": plus_plus,
-        "plus_minus": plus_minus,
-        "minus_plus": minus_plus,
-        "minus_minus": minus_minus,
-    }
-
-
-def _validate_gamma_configuration(
-    raw_gamma_configuration: Mapping[str, Any],
-    field_path: str,
-) -> GammaSeverityMarkConfiguration:
-    shape_k: float = _require_positive_finite_number(raw_gamma_configuration, "shape_k", f"{field_path}.shape_k")
-    scale_theta: float = _require_positive_finite_number(
-        raw_gamma_configuration,
-        "scale_theta",
-        f"{field_path}.scale_theta",
-    )
-
-    return {
-        "shape_k": shape_k,
-        "scale_theta": scale_theta,
-    }
-
-
-def _validate_nig_configuration(
-    raw_nig_configuration: Mapping[str, Any],
-    field_path: str,
-) -> NigSharedPlusShiftConfiguration:
-    alpha: float = _require_positive_finite_number(raw_nig_configuration, "alpha", f"{field_path}.alpha")
-    beta_0: float = _require_finite_number(raw_nig_configuration, "beta_0", f"{field_path}.beta_0")
-    delta: float = _require_positive_finite_number(raw_nig_configuration, "delta", f"{field_path}.delta")
-    mu: float = _require_finite_number(raw_nig_configuration, "mu", f"{field_path}.mu")
-    delta_beta: float = _require_finite_number(raw_nig_configuration, "delta_beta", f"{field_path}.delta_beta")
-
-    if delta_beta >= 0.0:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=f"{field_path}.delta_beta",
-                message="must be strictly negative",
-            )
-        )
-
-    if abs(beta_0) >= alpha:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=f"{field_path}.beta_0",
-                message="must satisfy abs(beta_0) < alpha",
-            )
-        )
-
-    derived_sell_beta: float = beta_0 + delta_beta
-    if abs(derived_sell_beta) >= alpha:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=f"{field_path}.delta_beta",
-                message="must satisfy abs(beta_0 + delta_beta) < alpha for sell-side parameters",
-            )
-        )
-
-    return {
-        "alpha": alpha,
-        "beta_0": beta_0,
-        "delta": delta,
-        "mu": mu,
-        "delta_beta": delta_beta,
-    }
-
-
-def _validate_excitation_state(
-    raw_state: Mapping[str, Any],
-    field_path: str,
-) -> HawkesExcitationState:
-    y_plus_plus: float = _require_non_negative_finite_number(raw_state, "y_plus_plus", f"{field_path}.y_plus_plus")
-    y_plus_minus: float = _require_non_negative_finite_number(raw_state, "y_plus_minus", f"{field_path}.y_plus_minus")
-    y_minus_plus: float = _require_non_negative_finite_number(raw_state, "y_minus_plus", f"{field_path}.y_minus_plus")
-    y_minus_minus: float = _require_non_negative_finite_number(
-        raw_state,
-        "y_minus_minus",
-        f"{field_path}.y_minus_minus",
-    )
-
-    return {
-        "y_plus_plus": y_plus_plus,
-        "y_plus_minus": y_plus_minus,
-        "y_minus_plus": y_minus_plus,
-        "y_minus_minus": y_minus_minus,
-    }
-
-
-def _validate_path_records(
-    raw_payload: Mapping[str, Any],
-    field_name: str,
-    simulated_interval_count: int,
-) -> list[SufficientStatisticsRiskPathRecord]:
-    records = _require_sequence(raw_payload, field_name, field_name)
-    if len(records) != simulated_interval_count:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=field_name,
-                message=f"must contain exactly {simulated_interval_count} records",
-            )
-        )
-
-    validated_records: list[SufficientStatisticsRiskPathRecord] = []
-    for record_position, raw_record in enumerate(records):
-        if not isinstance(raw_record, Mapping):
-            raise SufficientStatisticsRiskValidationError(
-                SufficientStatisticsRiskValidationFailure(
-                    field_path=f"{field_name}[{record_position}]",
-                    message="must be a mapping",
-                )
-            )
-        interval_index: int = _require_non_negative_integer(
-            raw_record,
-            "interval_index",
-            f"{field_name}[{record_position}].interval_index",
-        )
-        if interval_index != record_position:
-            raise SufficientStatisticsRiskValidationError(
-                SufficientStatisticsRiskValidationFailure(
-                    field_path=f"{field_name}[{record_position}].interval_index",
-                    message=f"must equal {record_position}",
-                )
-            )
-
-        if "schema_version" in raw_record:
-            _validate_exact_string(
-                raw_record,
-                "schema_version",
-                f"{field_name}[{record_position}].schema_version",
-                SUFFICIENT_STATISTICS_RISK_PATH_RECORD_SCHEMA_VERSION,
-            )
-
-        sufficient_statistics = _validate_sufficient_statistics(
-            _require_mapping(
-                raw_record,
-                "sufficient_statistics",
-                f"{field_name}[{record_position}].sufficient_statistics",
-            ),
-            f"{field_name}[{record_position}].sufficient_statistics",
-        )
-        return_components = _validate_return_components(
-            _require_mapping(
-                raw_record,
-                "return_components",
-                f"{field_name}[{record_position}].return_components",
-            ),
-            f"{field_name}[{record_position}].return_components",
-        )
-
-        validated_records.append(
-            {
-                "interval_index": interval_index,
-                "sufficient_statistics": sufficient_statistics,
-                "return_components": return_components,
-            }
-        )
-
-    return validated_records
-
-
-def _validate_sufficient_statistics(
-    raw_statistics: Mapping[str, Any],
-    field_path: str,
-) -> SufficientStatisticsIntervalStatistics:
-    a_plus = _require_non_negative_finite_number(raw_statistics, "a_plus", f"{field_path}.a_plus")
-    a_minus = _require_non_negative_finite_number(raw_statistics, "a_minus", f"{field_path}.a_minus")
-    n_plus = _require_non_negative_integer(raw_statistics, "n_plus", f"{field_path}.n_plus")
-    n_minus = _require_non_negative_integer(raw_statistics, "n_minus", f"{field_path}.n_minus")
-
-    return {
-        "a_plus": a_plus,
-        "a_minus": a_minus,
-        "n_plus": n_plus,
-        "n_minus": n_minus,
-    }
-
-
-def _validate_return_components(
-    raw_components: Mapping[str, Any],
-    field_path: str,
-) -> SufficientStatisticsRiskReturnComponents:
-    buy_side_return = _require_finite_number(raw_components, "buy_side_return", f"{field_path}.buy_side_return")
-    sell_side_return = _require_finite_number(raw_components, "sell_side_return", f"{field_path}.sell_side_return")
-    trading_time_return = _require_finite_number(
-        raw_components,
-        "trading_time_return",
-        f"{field_path}.trading_time_return",
-    )
-    open_jump_return = _require_finite_number(
-        raw_components,
-        "open_jump_return",
-        f"{field_path}.open_jump_return",
-    )
-    closed_gap_return = _require_finite_number(
-        raw_components,
-        "closed_gap_return",
-        f"{field_path}.closed_gap_return",
-    )
-    total_return = _require_finite_number(raw_components, "total_return", f"{field_path}.total_return")
-
-    return {
-        "buy_side_return": buy_side_return,
-        "sell_side_return": sell_side_return,
-        "trading_time_return": trading_time_return,
-        "open_jump_return": open_jump_return,
-        "closed_gap_return": closed_gap_return,
-        "total_return": total_return,
-    }
-
-
-def _validate_exact_string(
-    raw_mapping: Mapping[str, Any],
-    field_name: str,
-    field_path: str,
-    expected_value: str,
-) -> None:
-    observed_value = _require_string(raw_mapping, field_name, field_path)
-    if observed_value != expected_value:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=field_path,
-                message=f"must be {expected_value}, found {observed_value}",
-            )
-        )
-
-
-def _validate_required_field_list(
-    raw_mapping: Mapping[str, Any],
-    field_name: str,
-    field_path: str,
-    expected_field_names: Sequence[str],
-) -> None:
-    raw_values = _require_sequence(raw_mapping, field_name, field_path)
-    if len(raw_values) != len(expected_field_names):
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=field_path,
-                message=f"must contain exactly {len(expected_field_names)} entries",
-            )
-        )
-
-    for field_index, expected_field_name in enumerate(expected_field_names):
-        observed_field_name = _require_string(
-            {"value": raw_values[field_index]},
-            "value",
-            f"{field_path}[{field_index}]",
-        )
-        if observed_field_name != expected_field_name:
-            raise SufficientStatisticsRiskValidationError(
-                SufficientStatisticsRiskValidationFailure(
-                    field_path=f"{field_path}[{field_index}]",
-                    message=f"must be {expected_field_name}, found {observed_field_name}",
-                )
-            )
-
-
-def _validate_exact_integer(
-    raw_mapping: Mapping[str, Any],
-    field_name: str,
-    field_path: str,
-    expected_value: int,
-    simulated_interval_count: Optional[int] = None,
-) -> None:
-    observed_value = _require_integer(raw_mapping, field_name, field_path)
-    if observed_value != expected_value:
-        context_suffix = (
-            f" (simulated_interval_count={simulated_interval_count})"
-            if simulated_interval_count is not None
-            else ""
-        )
-
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=field_path,
-                message=f"must be {expected_value}, found {observed_value}{context_suffix}",
-            )
-        )
-
-
-def _validate_exact_optional_integer(
-    raw_mapping: Mapping[str, Any],
-    field_name: str,
-    field_path: str,
-    expected_value: Optional[int],
-) -> None:
-    if field_name not in raw_mapping:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(field_path=field_path, message="is required")
-        )
-
-    raw_value = raw_mapping[field_name]
-
-    if raw_value is None:
-        observed_value = None
-    elif isinstance(raw_value, int) and not isinstance(raw_value, bool):
-        observed_value = raw_value
-    else:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=field_path,
-                message="must be an integer or null",
-            )
-        )
-
-    if observed_value != expected_value:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=field_path,
-                message=f"must be {expected_value}, found {observed_value}",
-            )
-        )
-
-
-def _validate_exact_number(
-    raw_mapping: Mapping[str, Any],
-    field_name: str,
-    field_path: str,
-    expected_value: float,
-    simulated_interval_count: int,
-) -> None:
-    observed_value = _require_finite_number(raw_mapping, field_name, field_path)
-    if observed_value != expected_value:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=field_path,
-                message=(
-                    f"must be {expected_value}, found {observed_value} "
-                    f"(simulated_interval_count={simulated_interval_count})"
-                ),
-            )
-        )
-
-
-def _compute_spectral_radius(alpha: Mapping[str, float], beta: float) -> float:
-    normalized_plus_plus: float = alpha["plus_plus"] / beta
-    normalized_plus_minus: float = alpha["plus_minus"] / beta
-    normalized_minus_plus: float = alpha["minus_plus"] / beta
-    normalized_minus_minus: float = alpha["minus_minus"] / beta
-
-    trace: float = normalized_plus_plus + normalized_minus_minus
-    determinant: float = (
-        normalized_plus_plus * normalized_minus_minus
-        - normalized_plus_minus * normalized_minus_plus
-    )
-    discriminant: float = trace * trace - 4.0 * determinant
-    clipped_discriminant: float = discriminant if discriminant > 0.0 else 0.0
-    largest_eigenvalue: float = (trace + sqrt(clipped_discriminant)) / 2.0
-    smallest_eigenvalue: float = (trace - sqrt(clipped_discriminant)) / 2.0
-
-    return max(abs(largest_eigenvalue), abs(smallest_eigenvalue))
-
-
-def _parse_json_object(payload_json: str, context_label: str) -> Mapping[str, Any]:
-    try:
-        payload = json.loads(payload_json)
-    except json.JSONDecodeError as e:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=context_label,
-                message=f"must be valid JSON: {e.msg}",
-            )
-        ) from e
-
-    if not isinstance(payload, dict):
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=context_label,
-                message="must decode to a JSON object",
-            )
-        )
-
-    return cast(Mapping[str, Any], payload)
-
-
-def _require_mapping(raw_mapping: Mapping[str, Any], field_name: str, field_path: str) -> Mapping[str, Any]:
-    if field_name not in raw_mapping:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(field_path=field_path, message="is required")
-        )
-
-    value = raw_mapping[field_name]
-    if not isinstance(value, Mapping):
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=field_path,
-                message="must be a mapping",
-            )
-        )
-
-    return cast(Mapping[str, Any], value)
-
-
-def _require_string(raw_mapping: Mapping[str, Any], field_name: str, field_path: str) -> str:
-    if field_name not in raw_mapping:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(field_path=field_path, message="is required")
-        )
-
-    value = raw_mapping[field_name]
-    if not isinstance(value, str):
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=field_path,
-                message="must be a string",
-            )
-        )
-
-    return value
-
-
-def _require_sequence(raw_mapping: Mapping[str, Any], field_name: str, field_path: str) -> Sequence[object]:
-    if field_name not in raw_mapping:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(field_path=field_path, message="is required")
-        )
-
-    value = raw_mapping[field_name]
-    if isinstance(value, str) or not isinstance(value, Sequence):
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=field_path,
-                message="must be a sequence",
-            )
-        )
-
-    return cast(Sequence[object], value)
-
-
-def _require_non_negative_integer(
-    raw_mapping: Mapping[str, Any],
-    field_name: str,
-    field_path: str,
-) -> int:
-    value = _require_integer(raw_mapping, field_name, field_path)
-    if value < 0:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=field_path,
-                message="must be non-negative",
-            )
-        )
-
-    return value
-
-
-def _require_positive_integer(raw_mapping: Mapping[str, Any], field_name: str, field_path: str) -> int:
-    value = _require_integer(raw_mapping, field_name, field_path)
-    if value <= 0:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=field_path,
-                message="must be strictly positive",
-            )
-        )
-
-    return value
-
-
-def _require_integer(raw_mapping: Mapping[str, Any], field_name: str, field_path: str) -> int:
-    if field_name not in raw_mapping:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(field_path=field_path, message="is required")
-        )
-
-    value = raw_mapping[field_name]
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=field_path,
-                message="must be an integer",
-            )
-        )
-
-    return value
-
-
-def _require_positive_finite_number(raw_mapping: Mapping[str, Any], field_name: str, field_path: str) -> float:
-    value = _require_finite_number(raw_mapping, field_name, field_path)
-    if value <= 0.0:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=field_path,
-                message="must be strictly positive",
-            )
-        )
-
-    return value
-
-
-def _require_non_negative_finite_number(
-    raw_mapping: Mapping[str, Any],
-    field_name: str,
-    field_path: str,
-) -> float:
-    value = _require_finite_number(raw_mapping, field_name, field_path)
-    if value < 0.0:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=field_path,
-                message="must be non-negative",
-            )
-        )
-
-    return value
-
-
-def _require_finite_number(raw_mapping: Mapping[str, Any], field_name: str, field_path: str) -> float:
-    if field_name not in raw_mapping:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(field_path=field_path, message="is required")
-        )
-
-    return _require_finite_scalar(raw_mapping[field_name], field_path=field_path)
-
-
-def _require_non_negative_finite_scalar(raw_value: object, *, field_path: str) -> float:
-    value = _require_finite_scalar(raw_value, field_path=field_path)
-    if value < 0.0:
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=field_path,
-                message="must be non-negative",
-            )
-        )
-
-    return value
-
-
-def _require_finite_scalar(raw_value: object, *, field_path: str) -> float:
-    if not isinstance(raw_value, int | float) or isinstance(raw_value, bool):
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=field_path,
-                message="must be a number",
-            )
-        )
-
-    value = float(raw_value)
-    if not isfinite(value):
-        raise SufficientStatisticsRiskValidationError(
-            SufficientStatisticsRiskValidationFailure(
-                field_path=field_path,
-                message="must be finite",
-            )
-        )
-
-    return value
+def deserialize_sufficient_statistics_risk_path(payload_json: str) -> SufficientStatisticsRiskPath:
+    raw_payload = parse_json_object(payload_json, "risk path", RISK_ERROR_FACTORY)
+    return validate_sufficient_statistics_risk_path(dict(raw_payload))
 
 
 __all__ = [

@@ -7,6 +7,9 @@ from janiform.hourly_factors import (
     HourlySeasonalityProviderExplicitSource,
 )
 from janiform.simulation import (
+    HawkesExcitationState,
+    HawkesKernelParameters,
+    SeededTickSimulationResponse,
     load_hourly_factor_contract_for_simulation,
     run_seeded_tick_event_simulation,
 )
@@ -185,7 +188,7 @@ def _compute_batch_clustering_metrics(
             news_intensity=news_intensity,
         )
 
-        event_tape = cast(list[dict[str, Any]], payload["event_tape"])
+        event_tape = list(payload.event_tape)
 
         interval_event_counts = _collect_interval_event_counts(
             event_tape=event_tape,
@@ -227,12 +230,10 @@ def _compute_batch_asymmetry_metrics(
             news_intensity=news_intensity,
         )
 
-        event_tape = cast(list[dict[str, Any]], payload["event_tape"])
+        event_tape = list(payload.event_tape)
 
-        buy_event_count = sum(1 for event_record in event_tape if cast(str, event_record["side"]) == "buy")
-        sell_event_count = sum(
-            1 for event_record in event_tape if cast(str, event_record["side"]) == "sell"
-        )
+        buy_event_count = sum(1 for event_record in event_tape if event_record.side.value == "buy")
+        sell_event_count = sum(1 for event_record in event_tape if event_record.side.value == "sell")
 
         total_event_count = buy_event_count + sell_event_count
 
@@ -256,7 +257,7 @@ def _run_seeded_case(
     horizon_interval_count: int,
     seasonality_factor: float,
     news_intensity: float,
-) -> dict[str, Any]:
+) -> SeededTickSimulationResponse:
     range_end_utc = START_TIME_UTC + timedelta(hours=horizon_interval_count)
     hourly_factor_contract = load_hourly_factor_contract_for_simulation(
         calendar_registry=calendar_registry,
@@ -277,20 +278,20 @@ def _run_seeded_case(
         seed=seed,
         start_time_utc=START_TIME_UTC,
         horizon_interval_count=horizon_interval_count,
-        kernel_parameters=kernel_parameters,
-        initial_excitation_state={
+        kernel_parameters=HawkesKernelParameters.from_mapping(kernel_parameters),
+        initial_excitation_state=HawkesExcitationState.from_mapping({
             "y_plus_plus": 0.0,
             "y_plus_minus": 0.0,
             "y_minus_plus": 0.0,
             "y_minus_minus": 0.0,
-        },
+        }),
         hourly_factor_contract=hourly_factor_contract,
     )
 
 
 def _collect_interval_event_counts(
     *,
-    event_tape: list[dict[str, Any]],
+    event_tape: list[Any],
     horizon_interval_count: int,
 ) -> list[int]:
     interval_event_counts = [0] * horizon_interval_count
@@ -298,7 +299,7 @@ def _collect_interval_event_counts(
     start_time_utc_nanos = start_time_utc_seconds * 1_000_000_000
 
     for event_record in event_tape:
-        timestamp_utc_nanos = cast(int, event_record["timestamp_utc_nanos"])
+        timestamp_utc_nanos = event_record.timestamp_utc_nanos
         interval_position = (timestamp_utc_nanos - start_time_utc_nanos) // ONE_HOUR_NANOS
 
         if 0 <= interval_position < horizon_interval_count:
@@ -348,12 +349,12 @@ def _calculate_lag_one_autocorrelation(interval_event_counts: list[int]) -> floa
     return numerator / denominator
 
 
-def _has_non_grid_arrival(event_tape: list[dict[str, Any]]) -> bool:
+def _has_non_grid_arrival(event_tape: list[Any]) -> bool:
     start_time_utc_seconds = int(START_TIME_UTC.timestamp())
     start_time_utc_nanos = start_time_utc_seconds * 1_000_000_000
 
     for event_record in event_tape:
-        timestamp_utc_nanos = cast(int, event_record["timestamp_utc_nanos"])
+        timestamp_utc_nanos = event_record.timestamp_utc_nanos
         if (timestamp_utc_nanos - start_time_utc_nanos) % ONE_HOUR_NANOS != 0:
             return True
 

@@ -8,7 +8,7 @@ Status: active for the current pre-v0.1 milestone on March 7, 2026.
 
 This document defines the public Python namespace for Janiform's current pre-v0.1 milestone.
 It exists to keep the import surface minimal, task-oriented, and explicit while the simulation,
-pricing, and later calibration workflows are still evolving.
+pricing, risk, and calibration workflows are still evolving.
 
 ## Public package root
 
@@ -30,9 +30,20 @@ The package root `janiform` is intentionally minimal.
     - `HawkesKernelLoadings`
     - `HawkesKernelParameters`
     - `HawkesExcitationState`
-    - `SeededTickEventTape`
+    - `SeededTickEventSide`
+    - `SeededTickEventStateSnapshotCapture`
+    - `SeededTickEventStateSnapshot`
+    - `SeededTickEventRecord`
+    - `SeededTickEventTapeMetadata`
+    - `SeededTickSimulationRequest`
+    - `SeededTickSimulationResponse`
+    - `SeededTickSimulationValidationFailure`
+    - `SeededTickSimulationValidationError`
     - `load_hourly_factor_contract_for_simulation`
     - `run_seeded_tick_event_simulation`
+    - `validate_seeded_tick_simulation_response`
+    - `serialize_seeded_tick_simulation_response`
+    - `deserialize_seeded_tick_simulation_response`
 - `janiform.pricing`
   - Ownership: vanilla option pricing contract and pricing-side hourly factor loading
   - Public symbols:
@@ -74,6 +85,38 @@ The package root `janiform` is intentionally minimal.
     - `serialize_sufficient_statistics_risk_path`
     - `deserialize_sufficient_statistics_risk_run_request`
     - `deserialize_sufficient_statistics_risk_path`
+- `janiform.calibration`
+  - Ownership: staged calibration request and response contracts
+  - Public symbols:
+    - `CALIBRATION_RUN_SPEC_SCHEMA_VERSION`
+    - `CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION`
+    - `CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY`
+    - `DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE`
+    - `CalibrationExecutionMode`
+    - `CalibrationStage`
+    - `CalibrationStageExecutionStatus`
+    - `CalibrationHandoffTransport`
+    - `CalibrationResumeSource`
+    - `CalibrationRunDataInputs`
+    - `CalibrationStageSeedOverride`
+    - `CalibrationRunSeedSettings`
+    - `CalibrationOptimizerSettings`
+    - `CalibrationStageSolverSettings`
+    - `CalibrationStageHandoff`
+    - `CalibrationResumeSettings`
+    - `StagedCalibrationRequest`
+    - `CalibrationCheckpointMetadata`
+    - `CalibrationFailureDetails`
+    - `CalibrationStageReport`
+    - `StagedCalibrationResponse`
+    - `CalibrationValidationFailure`
+    - `CalibrationValidationError`
+    - `validate_staged_calibration_request`
+    - `validate_staged_calibration_response`
+    - `serialize_staged_calibration_request`
+    - `serialize_staged_calibration_response`
+    - `deserialize_staged_calibration_request`
+    - `deserialize_staged_calibration_response`
 
 ### Supporting public modules
 
@@ -90,12 +133,11 @@ The package root `janiform` is intentionally minimal.
 
 ## Calibration namespace status
 
-`janiform.calibration` is reserved for a future public workflow module, but it is not part of the
-current public surface map. No calibration module or calibration root export is public in this milestone.
+`janiform.calibration` is now public for typed request and response contracts.
 
-This is intentional. Typed calibration contracts and top-level calibration entrypoints are planned in:
+The module intentionally stops at contract objects and serialization helpers in this milestone.
+Top-level calibration orchestrator entrypoints still land under:
 
-- `JAN-188 Typed Request And Response Domain Models`
 - `JAN-190 Workflow Orchestrator API Entry Points`
 
 ## Private namespace policy
