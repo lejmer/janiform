@@ -38,6 +38,8 @@ This codebase is pre-v0.1 and has no external users.
 - `pytest` for Python tests
 - `maturin develop` for building (note: the venv for agents is `.venv-wsl`, not `.venv`)
 
+When running `cargo test`, do so with `TMPDIR=/tmp` so that verification stays inside the sandbox.
+
 ---
 
 ## Agent Heuristics and Checklist
