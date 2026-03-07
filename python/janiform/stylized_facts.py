@@ -3,7 +3,7 @@ import math
 from collections.abc import Mapping, Sequence
 from typing import Any, Optional, TypedDict, cast
 
-from .api import native_module
+from ._native_api import native_module
 from .seasonality import SeasonalityInputValidationError
 
 STYLIZED_FACT_HORIZON_COMPARISON_REPORT_SCHEMA_VERSION: str = (

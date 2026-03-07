@@ -3,7 +3,7 @@ from typing import Any, cast
 
 import pytest
 
-from janiform.api import native_module
+from janiform._native_api import native_module
 from janiform.calendar import (
     CalendarInvalidTimestampError,
     CalendarMissingExchangeError,

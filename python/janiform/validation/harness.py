@@ -16,7 +16,7 @@ from .types import (
     DeterministicRegressionHarnessReport,
     OpenClosedGapLeakageRegressionHarnessReport,
 )
-from ..api import native_module
+from .._native_api import native_module
 from ..calendar import CalendarRegistry
 from ..seasonality import SeasonalityInputValidationError
 

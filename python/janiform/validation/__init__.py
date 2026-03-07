@@ -112,7 +112,6 @@ __all__ = [
     "VALIDATION_INCOMPLETE_FIXTURE_COVERAGE_POLICY",
     "VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY",
     "VALIDATION_UNSUPPORTED_CALENDAR_SEGMENT_POLICY",
-    "native_module",
     "run_deterministic_regression_harness",
     "run_open_closed_gap_leakage_regression_harness",
 ]
