@@ -7,6 +7,7 @@ surface-calibration ingestion.
 
 The baseline pricing response contract remains unchanged.
 Optional run outputs are emitted only when explicitly selected.
+The canonical public execution path now emits them through `run_vanilla_option_pricing`.
 
 ## Selection Toggle
 
@@ -17,6 +18,8 @@ Optional run outputs are emitted only when explicitly selected.
 - `include_calibration_hooks`
 
 Default is all disabled.
+
+The selection object is carried on `VanillaOptionPricingExecutionInput`.
 
 ## Schema Versions
 

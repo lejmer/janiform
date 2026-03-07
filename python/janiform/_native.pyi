@@ -15,6 +15,9 @@ class CalendarInvalidTimezoneError(Exception): ...
 class CalendarTimestampParseError(ValueError): ...
 
 
+class PricingExecutionError(Exception): ...
+
+
 class SeasonalityInputValidationError(ValueError): ...
 
 
@@ -716,6 +719,11 @@ def run_open_closed_gap_leakage_regression_harness(
 
 def run_stylized_fact_horizon_comparison_report_generator(
     generator_request_json: str,
+) -> str: ...
+
+
+def run_vanilla_option_pricing(
+    execution_input_json: str,
 ) -> str: ...
 
 

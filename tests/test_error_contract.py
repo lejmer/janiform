@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 import janiform.cli as cli_module
+import janiform.pricing as pricing_module
 import janiform.simulation as simulation_module
 from janiform.calendar import CalendarMissingExchangeError, CalendarRegistry
 from janiform.errors import JaniformExecutionError, JaniformIntegrationError
@@ -12,6 +13,19 @@ from janiform.hourly_factors import (
     HourlyFactorContract,
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
+)
+from janiform.pricing import (
+    GammaSeverityMarkConfiguration,
+    NigSharedPlusShiftConfiguration,
+    VanillaOptionPayoffConfiguration,
+    VanillaOptionPayoffType,
+    VanillaOptionPricingExecutionInput,
+    VanillaOptionPricingIntervalFactors,
+    VanillaOptionPricingMarketInputs,
+    VanillaOptionPricingModelParameters,
+    VanillaOptionPricingOptionalOutputSelection,
+    VanillaOptionPricingRequest,
+    run_vanilla_option_pricing,
 )
 from janiform.simulation import (
     HawkesExcitationState,
@@ -172,6 +186,71 @@ def test_simulation_run_maps_invalid_native_response_to_integration_error(
     assert captured_error.value.context == {"source_error_id": "simulation.validation.contract"}
 
 
+def test_pricing_run_maps_missing_native_module_to_integration_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def missing_native_module() -> object:
+        raise ModuleNotFoundError("janiform._native")
+
+    monkeypatch.setattr(pricing_module, "native_module", missing_native_module)
+
+    with pytest.raises(JaniformIntegrationError) as captured_error:
+        run_vanilla_option_pricing(_valid_pricing_execution_input())
+
+    assert captured_error.value.error_id == "pricing.integration.native_module_unavailable"
+    assert captured_error.value.workflow == "pricing"
+    assert captured_error.value.entrypoint == "run_vanilla_option_pricing"
+    assert captured_error.value.context == {"module_name": "janiform._native"}
+
+
+def test_pricing_run_maps_native_execution_failure_to_execution_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class NativeExecutionError(Exception):
+        pass
+
+    class FakeNative:
+        PricingExecutionError = NativeExecutionError
+
+        @staticmethod
+        def run_vanilla_option_pricing(*args: object, **kwargs: object) -> str:
+            raise NativeExecutionError("native pricer failed")
+
+    monkeypatch.setattr(pricing_module, "native_module", lambda: FakeNative())
+
+    with pytest.raises(JaniformExecutionError) as captured_error:
+        run_vanilla_option_pricing(_valid_pricing_execution_input())
+
+    assert captured_error.value.error_id == "pricing.execution.run_failed"
+    assert captured_error.value.workflow == "pricing"
+    assert captured_error.value.entrypoint == "run_vanilla_option_pricing"
+    assert captured_error.value.context == {"source_exception_type": "NativeExecutionError"}
+
+
+def test_pricing_run_maps_invalid_native_response_to_integration_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class NativeExecutionError(Exception):
+        pass
+
+    class FakeNative:
+        PricingExecutionError = NativeExecutionError
+
+        @staticmethod
+        def run_vanilla_option_pricing(*args: object, **kwargs: object) -> str:
+            return "{}"
+
+    monkeypatch.setattr(pricing_module, "native_module", lambda: FakeNative())
+
+    with pytest.raises(JaniformIntegrationError) as captured_error:
+        run_vanilla_option_pricing(_valid_pricing_execution_input())
+
+    assert captured_error.value.error_id == "pricing.integration.invalid_native_response"
+    assert captured_error.value.workflow == "pricing"
+    assert captured_error.value.entrypoint == "run_vanilla_option_pricing"
+    assert captured_error.value.context == {"source_error_id": "pricing.validation.contract"}
+
+
 def test_cli_error_output_uses_shared_error_contract(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -234,4 +313,44 @@ def _valid_excitation_state() -> HawkesExcitationState:
         y_plus_minus=0.0,
         y_minus_plus=0.0,
         y_minus_minus=0.0,
+    )
+
+
+def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
+    return VanillaOptionPricingExecutionInput(
+        request=VanillaOptionPricingRequest(
+            market_inputs=VanillaOptionPricingMarketInputs(
+                spot=101.0,
+                strike=100.0,
+                maturity_interval=0.5,
+                risk_free_rate=0.02,
+                dividend_yield=0.01,
+            ),
+            payoff=VanillaOptionPayoffConfiguration(payoff_type=VanillaOptionPayoffType.CALL),
+            boundary_state=_valid_excitation_state(),
+            model_parameters=VanillaOptionPricingModelParameters(
+                hawkes_kernel_parameters=_valid_kernel_parameters(),
+                gamma_severity_mark_configuration=GammaSeverityMarkConfiguration(
+                    shape_k=1.8,
+                    scale_theta=0.7,
+                ),
+                nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
+                    alpha=2.3,
+                    beta_0=-0.8,
+                    delta=0.7,
+                    mu=0.1,
+                    delta_beta=-0.2,
+                ),
+            ),
+        ),
+        interval_factors=VanillaOptionPricingIntervalFactors(
+            s_h=1.1,
+            nu_h_known=0.03,
+            nu_h_surprise=0.05,
+        ),
+        optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
+            include_transform_diagnostics=True,
+            include_integration_quality_diagnostics=True,
+            include_calibration_hooks=True,
+        ),
     )

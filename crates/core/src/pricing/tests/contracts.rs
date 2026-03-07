@@ -9,6 +9,8 @@ use crate::pricing::{
     VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION, VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType, VanillaOptionPricingCalibrationHooksError,
     VanillaOptionPricingDiagnostics, VanillaOptionPricingDiagnosticsError,
+    VanillaOptionPricingExecutionInput, VanillaOptionPricingExecutionInputError,
+    VanillaOptionPricingIntervalFactors, VanillaOptionPricingIntervalFactorsError,
     VanillaOptionPricingMarketInputs, VanillaOptionPricingMarketInputsError,
     VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
     VanillaOptionPricingRequestError, VanillaOptionPricingResponse,
@@ -116,6 +118,65 @@ fn vanilla_option_request_accepts_explicit_non_hourly_interval_delta() {
     .expect("non-hourly interval delta should be accepted");
 
     assert_eq!(request.interval_delta, 0.5);
+}
+
+#[test]
+fn vanilla_option_pricing_execution_input_roundtrip_serialization_preserves_split_news_intensity() {
+    let execution_input = VanillaOptionPricingExecutionInput::try_new(
+        build_valid_vanilla_option_request(),
+        VanillaOptionPricingIntervalFactors::try_new(1.1, 0.03, 0.05)
+            .expect("interval factors should construct"),
+        VanillaOptionPricingOptionalOutputSelection::new(true, false, true),
+    )
+    .expect("execution input should construct");
+
+    let serialized_value =
+        serde_json::to_value(execution_input).expect("execution input payload should serialize");
+    let parsed_execution_input: VanillaOptionPricingExecutionInput =
+        serde_json::from_value(serialized_value)
+            .expect("serialized execution input should deserialize");
+
+    assert_eq!(parsed_execution_input, execution_input);
+    assert_eq!(parsed_execution_input.interval_factors.nu_h_known, 0.03);
+    assert_eq!(parsed_execution_input.interval_factors.nu_h_surprise, 0.05);
+}
+
+#[test]
+fn vanilla_option_pricing_execution_input_deserialization_requires_split_news_fields() {
+    let invalid_payload = json!({
+        "request": build_valid_vanilla_option_request(),
+        "interval_factors": {
+            "s_h": 1.0,
+            "nu_h_known": 0.03
+        },
+        "optional_output_selection": {
+            "include_transform_diagnostics": true,
+            "include_integration_quality_diagnostics": false,
+            "include_calibration_hooks": false
+        }
+    });
+
+    let error = serde_json::from_value::<VanillaOptionPricingExecutionInput>(invalid_payload)
+        .expect_err("missing surprise news intensity must fail deserialization");
+
+    assert!(error.to_string().contains("nu_h_surprise"));
+}
+
+#[test]
+fn vanilla_option_pricing_execution_input_rejects_negative_surprise_news_intensity() {
+    let error = VanillaOptionPricingExecutionInput::try_new(
+        build_valid_vanilla_option_request(),
+        VanillaOptionPricingIntervalFactors::new(1.0, 0.03, -0.01),
+        VanillaOptionPricingOptionalOutputSelection::default(),
+    )
+    .expect_err("negative surprise news intensity must fail execution input validation");
+
+    assert!(matches!(
+        error,
+        VanillaOptionPricingExecutionInputError::InvalidIntervalFactors {
+            source: VanillaOptionPricingIntervalFactorsError::InvalidNewsIntensity { .. }
+        }
+    ));
 }
 
 #[test]
