@@ -10,6 +10,8 @@ Implement top-level orchestrator functions for simulation, calibration, and pric
 - Entrypoint request and response docs use corrected known-surprise news semantics and open-jump versus closed-gap terminology where exposed.
 - Entrypoints are documented with usage examples.
 - Entrypoints avoid embedding workflow-specific glue logic in multiple locations.
+- Pricing entrypoint implementation depends on `JAN-195 Pricing Execution Inputs And Native Runner Contract`.
+- Calibration entrypoint implementation depends on `JAN-196 Calibration Execution Input Contracts And Staged Runner Bridge`.
 
 ### Unit tests
 - Typed response structure and required fields.
@@ -20,4 +22,6 @@ Implement top-level orchestrator functions for simulation, calibration, and pric
 ### Notes/Constraints
 - Keep entrypoints thin and orchestration-focused.
 - Reuse shared internal services for business logic execution.
+- Do not implement hidden dataset-reference resolution inside calibration orchestrators.
+- Do not collapse known and surprise pricing news-intensity inputs into one combined field when the underlying execution path requires the split semantics.
 - Pre-v0.1 policy applies: breaking contract and schema changes are allowed when they improve correctness and clarity.
