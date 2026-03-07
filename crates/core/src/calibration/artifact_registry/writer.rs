@@ -3,6 +3,7 @@ use std::fmt::{Display, Formatter};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use super::experiment_index::update_calibration_experiment_index_for_run;
 use super::manifest::calibration_artifact_manifest_path_in_run_directory;
 use super::shared::{
     calibration_committed_artifact_run_directory,
@@ -24,6 +25,7 @@ pub enum CalibrationArtifactRunPreparationMode {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CalibrationArtifactRunWriter {
+    persistence_root_directory: PathBuf,
     run_id: String,
     pending_run_directory: PathBuf,
     committed_run_directory: PathBuf,
@@ -119,6 +121,7 @@ impl CalibrationArtifactRunWriter {
         }
 
         Ok(Self {
+            persistence_root_directory: persistence_root_directory.to_path_buf(),
             run_id: run_id.to_string(),
             pending_run_directory,
             committed_run_directory,
@@ -164,6 +167,18 @@ impl CalibrationArtifactRunWriter {
                 error_message: source.to_string(),
             },
         )?;
+
+        update_calibration_experiment_index_for_run(
+            self.persistence_root_directory.as_path(),
+            self.run_id.as_str(),
+        )
+        .map_err(|source| {
+            CalibrationArtifactRunWriterError::ExperimentIndexUpdateFailed {
+                run_id: self.run_id.clone(),
+                path: self.committed_run_directory.display().to_string(),
+                error_message: source.to_string(),
+            }
+        })?;
 
         Ok(self.committed_run_directory)
     }
@@ -228,6 +243,11 @@ pub enum CalibrationArtifactRunWriterError {
         target_path: String,
         error_message: String,
     },
+    ExperimentIndexUpdateFailed {
+        run_id: String,
+        path: String,
+        error_message: String,
+    },
     QuarantineRenameFailed {
         run_id: String,
         source_path: String,
@@ -266,6 +286,14 @@ impl Display for CalibrationArtifactRunWriterError {
             } => write!(
                 formatter,
                 "failed to atomically commit run `{run_id}` from `{source_path}` to `{target_path}`: {error_message}"
+            ),
+            Self::ExperimentIndexUpdateFailed {
+                run_id,
+                path,
+                error_message,
+            } => write!(
+                formatter,
+                "run `{run_id}` committed in `{path}` but experiment index update failed: {error_message}"
             ),
             Self::QuarantineRenameFailed {
                 run_id,

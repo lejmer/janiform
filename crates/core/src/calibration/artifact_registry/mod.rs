@@ -1,4 +1,5 @@
 mod dataset_snapshot;
+mod experiment_index;
 mod manifest;
 mod reload;
 mod shared;
@@ -7,6 +8,7 @@ mod validation_metric;
 mod writer;
 
 pub use dataset_snapshot::*;
+pub use experiment_index::*;
 pub use manifest::*;
 pub use reload::*;
 pub use shared::*;

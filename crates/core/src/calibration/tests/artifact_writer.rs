@@ -53,6 +53,12 @@ fn calibration_artifact_storage_layout_paths_are_deterministic() {
         )
     );
     assert_eq!(
+        calibration_experiment_index_path_for_root(persistence_root_directory.as_path()),
+        PathBuf::from(
+            "/tmp/janiform-persistence-root/artifacts/index/calibration_experiment_index.json"
+        )
+    );
+    assert_eq!(
         calibration_stage_checkpoint_path(
             persistence_root_directory.as_path(),
             run_id,

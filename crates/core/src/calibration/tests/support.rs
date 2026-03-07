@@ -24,12 +24,18 @@ pub(super) use crate::calibration::{
     CALIBRATION_DATASET_SNAPSHOT_PERSISTENCE_SCOPE_POLICY,
     CALIBRATION_DATASET_SNAPSHOT_STAGE_INPUT_NAMING_POLICY,
     CALIBRATION_DISK_CHECKPOINT_WRITE_POLICY, CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY,
+    CALIBRATION_EXPERIMENT_INDEX_ORDERING_POLICY, CALIBRATION_EXPERIMENT_INDEX_REBUILD_POLICY,
+    CALIBRATION_EXPERIMENT_INDEX_SCHEMA_FAMILY, CALIBRATION_EXPERIMENT_INDEX_SCHEMA_GENERATION,
+    CALIBRATION_EXPERIMENT_INDEX_SCHEMA_VERSION,
     CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
+    CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_OBJECTIVE_COMPOSITION_SCHEMA_VERSION,
     CALIBRATION_RETURN_COMPONENTS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
+    CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION, CALIBRATION_RUN_DATA_INPUTS_SCHEMA_VERSION,
     CALIBRATION_RUN_SPEC_SCHEMA_VERSION, CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION,
     CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
+    CALIBRATION_SEASONALITY_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY, CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY,
     CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION, CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION,
     CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_FAMILY,
@@ -44,26 +50,31 @@ pub(super) use crate::calibration::{
     CALIBRATION_VALIDATION_METRIC_ARTIFACT_SCHEMA_GENERATION,
     CALIBRATION_VALIDATION_METRIC_ARTIFACT_SCHEMA_VERSION, CalibrationArtifactKind,
     CalibrationArtifactManifest, CalibrationArtifactManifestBuildError,
-    CalibrationArtifactManifestError, CalibrationArtifactReference,
+    CalibrationArtifactManifestError, CalibrationArtifactManifestIndexMetadata,
+    CalibrationArtifactManifestMetricStatus, CalibrationArtifactManifestMetricStatusCount,
+    CalibrationArtifactManifestModelVersion, CalibrationArtifactManifestValidationMetricRole,
+    CalibrationArtifactManifestValidationMetricSummary, CalibrationArtifactReference,
     CalibrationArtifactReloadComponent, CalibrationArtifactReloadError,
     CalibrationArtifactReloadRequest, CalibrationArtifactReloadRequestError,
     CalibrationArtifactRunPreparationMode, CalibrationArtifactRunWriter, CalibrationCallerSurface,
     CalibrationDatasetInputName, CalibrationDatasetSnapshotArtifact,
     CalibrationDatasetSnapshotArtifactValidationError, CalibrationExecutionMode,
-    CalibrationMemoryCheckpointStore, CalibrationObjectiveTermInput,
-    CalibrationOptimizerAdapterCandidateInput, CalibrationOptimizerAdapterConfiguration,
-    CalibrationOptimizerAdapterError, CalibrationOptimizerCandidateParameterValue,
-    CalibrationOptimizerParameterBound, CalibrationOptimizerSettings, CalibrationResumeSettings,
-    CalibrationResumeSettingsError, CalibrationRunContract, CalibrationRunContractError,
-    CalibrationRunDataInputs, CalibrationRunSeedSettings, CalibrationRunSpec,
-    CalibrationRunSpecError, CalibrationRunSpecErrorClassification, CalibrationStage,
-    CalibrationStageDependency, CalibrationStageExecutionStatus, CalibrationStageGraph,
-    CalibrationStageGraphError, CalibrationStageHandoff, CalibrationStageHandoffError,
-    CalibrationStageParameterArtifact, CalibrationStageParameterArtifactBuildError,
-    CalibrationStageParameterArtifactValidationError, CalibrationStageParameterPayload,
-    CalibrationStageSeedOverride, CalibrationStageSeedSource, CalibrationStageSolverSettings,
-    CalibrationStagedRunFailure, CalibrationStagedRunInputs, CalibrationStagedRunStageReport,
-    CalibrationValidationMetricArtifact,
+    CalibrationExperimentIndexDocument, CalibrationExperimentIndexError,
+    CalibrationExperimentIndexLookupRequest, CalibrationExperimentIndexLookupResponse,
+    CalibrationExperimentIndexRecord, CalibrationMemoryCheckpointStore,
+    CalibrationObjectiveTermInput, CalibrationOptimizerAdapterCandidateInput,
+    CalibrationOptimizerAdapterConfiguration, CalibrationOptimizerAdapterError,
+    CalibrationOptimizerCandidateParameterValue, CalibrationOptimizerParameterBound,
+    CalibrationOptimizerSettings, CalibrationResumeSettings, CalibrationResumeSettingsError,
+    CalibrationRunContract, CalibrationRunContractError, CalibrationRunDataInputs,
+    CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationRunSpecError,
+    CalibrationRunSpecErrorClassification, CalibrationStage, CalibrationStageDependency,
+    CalibrationStageExecutionStatus, CalibrationStageGraph, CalibrationStageGraphError,
+    CalibrationStageHandoff, CalibrationStageHandoffError, CalibrationStageParameterArtifact,
+    CalibrationStageParameterArtifactBuildError, CalibrationStageParameterArtifactValidationError,
+    CalibrationStageParameterPayload, CalibrationStageSeedOverride, CalibrationStageSeedSource,
+    CalibrationStageSolverSettings, CalibrationStagedRunFailure, CalibrationStagedRunInputs,
+    CalibrationStagedRunStageReport, CalibrationValidationMetricArtifact,
     CalibrationValidationMetricArtifactReferenceIntegrityError,
     CalibrationValidationMetricArtifactRole, CalibrationValidationMetricArtifactValidationError,
     CalibrationValidationMetricCollection, CalibrationValidationMetricConfidenceInterval,
@@ -85,27 +96,34 @@ pub(super) use crate::calibration::{
     calibration_artifact_manifest_path, calibration_artifact_manifest_reference,
     calibration_checkpoint_reference_for_stage, calibration_checkpoint_run_directory,
     calibration_committed_artifact_run_directory, calibration_dataset_snapshot_artifact_path,
-    calibration_last_success_checkpoint_path, calibration_last_success_checkpoint_reference,
-    calibration_stage_checkpoint_path, calibration_stage_parameter_artifact_path,
-    calibration_validation_metric_artifact_path, calibration_validation_metric_artifact_reference,
-    compose_calibration_weighted_objective, default_calibration_execution_mode_for_surface,
-    derive_calibration_stage_seed_from_global_seed,
+    calibration_experiment_index_path_for_root, calibration_last_success_checkpoint_path,
+    calibration_last_success_checkpoint_reference, calibration_stage_checkpoint_path,
+    calibration_stage_parameter_artifact_path, calibration_validation_metric_artifact_path,
+    calibration_validation_metric_artifact_reference, compose_calibration_weighted_objective,
+    default_calibration_execution_mode_for_surface, derive_calibration_stage_seed_from_global_seed,
     evaluate_calibration_martingale_condition_under_esscher_tilt,
     load_calibration_artifact_manifest_from_disk,
     load_calibration_dataset_snapshot_artifact_from_disk,
+    load_calibration_experiment_index_from_disk,
     load_calibration_stage_parameter_artifact_from_disk,
     load_calibration_validation_metric_artifact_from_disk,
-    persist_calibration_artifact_manifest_to_disk,
+    lookup_calibration_experiment_index_records, persist_calibration_artifact_manifest_to_disk,
+    persist_calibration_artifact_manifest_to_run_directory,
     persist_calibration_dataset_snapshot_artifact_to_disk,
+    persist_calibration_dataset_snapshot_artifact_to_run_directory,
+    persist_calibration_experiment_index_to_disk,
     persist_calibration_stage_parameter_artifact_to_disk,
+    persist_calibration_stage_parameter_artifact_to_run_directory,
     persist_calibration_validation_metric_artifact_to_disk,
+    persist_calibration_validation_metric_artifact_to_run_directory,
     precheck_hawkes_kernel_parameter_domain, precheck_structured_hawkes_kernel_parameter_domain,
-    reload_calibration_artifact_run_from_disk, resolve_calibration_execution_mode_for_surface,
-    resolve_calibration_stage_execution_order, resolve_calibration_stage_seed_metadata,
-    run_constrained_optimizer_adapter, run_hawkes_calibration_stage,
-    run_return_components_calibration_stage, run_seasonality_calibration_stage,
-    run_staged_calibration_with_checkpointing,
+    rebuild_calibration_experiment_index_from_disk, reload_calibration_artifact_run_from_disk,
+    resolve_calibration_execution_mode_for_surface, resolve_calibration_stage_execution_order,
+    resolve_calibration_stage_seed_metadata, run_constrained_optimizer_adapter,
+    run_hawkes_calibration_stage, run_return_components_calibration_stage,
+    run_seasonality_calibration_stage, run_staged_calibration_with_checkpointing,
     transform_nig_exponent_for_calibration_under_esscher_tilt,
+    update_calibration_experiment_index_for_run,
 };
 pub(super) use crate::complex_math::ComplexScalar;
 pub(super) use crate::hawkes::{
@@ -209,8 +227,85 @@ pub(super) fn build_valid_run_spec_with_mode(
 }
 
 pub(super) fn build_valid_artifact_manifest() -> CalibrationArtifactManifest {
+    let run_contract =
+        build_run_contract_with_mode_and_resume("run-001", CalibrationExecutionMode::Disk, None);
+    let dataset_snapshot =
+        build_calibration_dataset_snapshot_artifact(&run_contract).expect("dataset snapshot");
+
     CalibrationArtifactManifest::try_new(
         "run-001",
+        CalibrationArtifactManifestIndexMetadata {
+            committed_at_utc: "2026-03-05T12:30:00.000000000Z".to_string(),
+            committed_at_unix_nanos: utc_nanos(2026, 3, 5, 12, 30, 0),
+            exchange_code: dataset_snapshot.exchange_code.clone(),
+            dataset_snapshot_checksum: dataset_snapshot.snapshot_checksum.clone(),
+            trade_events_data_reference: run_contract
+                .run_spec
+                .data_inputs
+                .trade_events_data_reference
+                .clone(),
+            trade_events_reference_checksum: dataset_snapshot
+                .input_datasets
+                .iter()
+                .find(|input_dataset| {
+                    input_dataset.input_name
+                        == CalibrationDatasetInputName::TradeEventsDataReference
+                })
+                .expect("trade events dataset should exist")
+                .reference_checksum
+                .clone(),
+            option_surface_data_reference: run_contract
+                .run_spec
+                .data_inputs
+                .option_surface_data_reference
+                .clone(),
+            option_surface_reference_checksum: dataset_snapshot
+                .input_datasets
+                .iter()
+                .find(|input_dataset| {
+                    input_dataset.input_name
+                        == CalibrationDatasetInputName::OptionSurfaceDataReference
+                })
+                .map(|input_dataset| input_dataset.reference_checksum.clone()),
+            model_version: CalibrationArtifactManifestModelVersion {
+                run_contract_schema_version: CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION.to_string(),
+                run_spec_schema_version: CALIBRATION_RUN_SPEC_SCHEMA_VERSION.to_string(),
+                seasonality_stage_output_schema_version: Some(
+                    CALIBRATION_SEASONALITY_STAGE_OUTPUT_SCHEMA_VERSION.to_string(),
+                ),
+                hawkes_stage_output_schema_version: Some(
+                    CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION.to_string(),
+                ),
+                return_components_stage_output_schema_version: Some(
+                    CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION.to_string(),
+                ),
+                seasonality_estimator_version: Some(
+                    CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION.to_string(),
+                ),
+            },
+            validation_metric_summaries: vec![CalibrationArtifactManifestValidationMetricSummary {
+                artifact_role: CalibrationArtifactManifestValidationMetricRole::Diagnostics,
+                artifact_reference: "artifact://diagnostics/run-001".to_string(),
+                overall_status: CalibrationArtifactManifestMetricStatus::Fail,
+                collection_count: 1,
+                metric_count: 2,
+                collection_status_counts: vec![CalibrationArtifactManifestMetricStatusCount {
+                    status: CalibrationArtifactManifestMetricStatus::Fail,
+                    count: 1,
+                }],
+                metric_status_counts: vec![
+                    CalibrationArtifactManifestMetricStatusCount {
+                        status: CalibrationArtifactManifestMetricStatus::Pass,
+                        count: 1,
+                    },
+                    CalibrationArtifactManifestMetricStatusCount {
+                        status: CalibrationArtifactManifestMetricStatus::Fail,
+                        count: 1,
+                    },
+                ],
+                failing_metric_ids: vec!["tail_skew.hourly".to_string()],
+            }],
+        },
         vec![
             CalibrationArtifactReference {
                 artifact_id: "run_contract".to_string(),
@@ -315,8 +410,11 @@ pub(super) fn build_validation_metric_artifact_fixture() -> CalibrationValidatio
 }
 
 pub(super) fn build_validation_metric_manifest_fixture() -> CalibrationArtifactManifest {
+    let index_metadata = build_valid_artifact_manifest().index_metadata;
+
     CalibrationArtifactManifest::try_new(
         "run-001",
+        index_metadata,
         vec![
             CalibrationArtifactReference {
                 artifact_id: "dataset_snapshot".to_string(),
