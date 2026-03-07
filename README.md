@@ -53,6 +53,7 @@ janiform --help
 - Calibration dataset snapshot and input provenance schema: `docs/development/guides/calibration_dataset_snapshot_and_input_provenance_schema.md`
 - Calibration stage parameter and optimizer artifact schema: `docs/development/guides/calibration_stage_parameter_and_optimizer_artifact_schema.md`
 - Calibration diagnostics metrics and comparison artifact schema: `docs/development/guides/calibration_diagnostics_metrics_and_comparison_artifact_schema.md`
+- Calibration reload resolver and compatibility checks: `docs/development/guides/calibration_reload_resolver_and_compatibility_checks.md`
 - Staged calibration failure playbook: `docs/development/guides/staged_calibration_failure_playbook.md`
 - Open closed gap summary and diff report contract: `docs/development/guides/open_closed_gap_summary_and_diff_report_contract.md`
 - Scale-consistency threshold policy and decision contract: `docs/development/guides/scale_consistency_threshold_policy_and_decision_contract.md`
