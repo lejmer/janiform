@@ -24,6 +24,7 @@ It's Jani*form* because it's about form: a system whose geometry is essentially 
 - `crates/core/`: Rust core library
 - `crates/pybind/`: PyO3 extension module (`janiform._native`)
 - `python/janiform/`: Python package, CLI entrypoints, and typed workflow contracts
+- `examples/`: Executable public-API workflow examples for simulation, pricing, and calibration
 - `tests/`: Python tests and shared fixtures
 - `docs/`: Design and development documentation
 
@@ -33,7 +34,15 @@ It's Jani*form* because it's about form: a system whose geometry is essentially 
 maturin develop
 python3 -m janiform --help
 janiform --help
+PYTHONPATH=python python3 -m examples.pricing_workflow
 ```
+
+## Examples
+
+- Workflow examples and expected output summaries: `examples/README.md`
+- Seeded simulation example: `examples/simulation_workflow.py`
+- Vanilla option pricing example: `examples/pricing_workflow.py`
+- Staged calibration example with default `memory` mode and explicit `disk` override: `examples/calibration_workflow.py`
 
 ## Documentation
 
