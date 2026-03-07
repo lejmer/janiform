@@ -1,0 +1,1308 @@
+{
+  "scenarios": {
+    "calibration.orchestration.staged_run.report.v1::boundary_runtime_default_memory": {
+      "fields": {
+        "emitted_checkpoints": {
+          "item_profiles": [
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "seasonality"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "hawkes"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "return_components"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                }
+              },
+              "type": "object"
+            }
+          ],
+          "length": 3,
+          "type": "array"
+        },
+        "execution_mode": {
+          "type": "string",
+          "value": "memory"
+        },
+        "failure": {
+          "type": "null"
+        },
+        "failure_triage_policy": {
+          "type": "string",
+          "value": "mode_aware_failure_kind_and_checkpoint_context.v1"
+        },
+        "resumed_from_checkpoint_reference": {
+          "type": "null"
+        },
+        "resumed_from_last_successful_stage": {
+          "type": "null"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "string",
+          "value": "calibration.orchestration.staged_run.report.v1"
+        },
+        "stage_reports": {
+          "item_profiles": [
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "seasonality"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "seasonality"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "hawkes"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "hawkes"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "return_components"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "return_components"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            }
+          ],
+          "length": 3,
+          "type": "array"
+        },
+        "started_from_stage": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "value": "success"
+        }
+      },
+      "type": "object"
+    },
+    "calibration.orchestration.staged_run.report.v1::boundary_runtime_explicit_disk_override": {
+      "fields": {
+        "emitted_checkpoints": {
+          "item_profiles": [
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "seasonality"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "hawkes"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "return_components"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                }
+              },
+              "type": "object"
+            }
+          ],
+          "length": 3,
+          "type": "array"
+        },
+        "execution_mode": {
+          "type": "string",
+          "value": "disk"
+        },
+        "failure": {
+          "type": "null"
+        },
+        "failure_triage_policy": {
+          "type": "string",
+          "value": "mode_aware_failure_kind_and_checkpoint_context.v1"
+        },
+        "resumed_from_checkpoint_reference": {
+          "type": "null"
+        },
+        "resumed_from_last_successful_stage": {
+          "type": "null"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "string",
+          "value": "calibration.orchestration.staged_run.report.v1"
+        },
+        "stage_reports": {
+          "item_profiles": [
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "seasonality"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "seasonality"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "hawkes"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "hawkes"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "return_components"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "return_components"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            }
+          ],
+          "length": 3,
+          "type": "array"
+        },
+        "started_from_stage": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "value": "success"
+        }
+      },
+      "type": "object"
+    },
+    "calibration.orchestration.staged_run.report.v1::direct_response_validation_nominal": {
+      "fields": {
+        "emitted_checkpoints": {
+          "item_profiles": [],
+          "length": 0,
+          "type": "array"
+        },
+        "execution_mode": {
+          "type": "string",
+          "value": "memory"
+        },
+        "failure": {
+          "type": "null"
+        },
+        "failure_triage_policy": {
+          "type": "string",
+          "value": "mode_aware_failure_kind_and_checkpoint_context.v1"
+        },
+        "resumed_from_checkpoint_reference": {
+          "type": "null"
+        },
+        "resumed_from_last_successful_stage": {
+          "type": "null"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "string",
+          "value": "calibration.orchestration.staged_run.report.v1"
+        },
+        "stage_reports": {
+          "item_profiles": [
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "seasonality"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "seasonality"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
+            }
+          ],
+          "length": 1,
+          "type": "array"
+        },
+        "started_from_stage": {
+          "type": "null"
+        },
+        "status": {
+          "type": "string",
+          "value": "success"
+        }
+      },
+      "type": "object"
+    },
+    "pricing.vanilla_option.response.contract::direct_response_validation_nominal": {
+      "fields": {
+        "diagnostics": {
+          "fields": {
+            "boundary_state_norm": {
+              "type": "float"
+            },
+            "discount_factor": {
+              "type": "float"
+            },
+            "forward_price": {
+              "type": "float"
+            },
+            "maturity_interval": {
+              "type": "float"
+            }
+          },
+          "type": "object"
+        },
+        "price": {
+          "type": "float"
+        }
+      },
+      "type": "object"
+    },
+    "pricing.vanilla_option.run_result.v1::boundary_runtime_nominal": {
+      "fields": {
+        "calibration_hooks": {
+          "fields": {
+            "forward_moneyness": {
+              "type": "float"
+            },
+            "hook_policy": {
+              "type": "string",
+              "value": "derive_option_surface_inputs_from_pricing_response_and_optional_run_diagnostics.v1"
+            },
+            "integration_convergence_check_passed": {
+              "type": "bool"
+            },
+            "integration_numeric_quality_is_poor": {
+              "type": "bool"
+            },
+            "integration_truncation_check_passed": {
+              "type": "bool"
+            },
+            "log_moneyness": {
+              "type": "float"
+            },
+            "maturity_interval": {
+              "type": "float"
+            },
+            "option_price": {
+              "type": "float"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.calibration_hooks.v1"
+            },
+            "transform_status": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "output_schema_metadata": {
+          "fields": {
+            "calibration_hooks_schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.calibration_hooks.v1"
+            },
+            "required_calibration_hooks_fields": {
+              "item_profiles": [
+                {
+                  "type": "string",
+                  "value": "schema_version"
+                },
+                {
+                  "type": "string",
+                  "value": "hook_policy"
+                },
+                {
+                  "type": "string",
+                  "value": "option_price"
+                },
+                {
+                  "type": "string",
+                  "value": "log_moneyness"
+                },
+                {
+                  "type": "string",
+                  "value": "forward_moneyness"
+                },
+                {
+                  "type": "string",
+                  "value": "maturity_interval"
+                },
+                {
+                  "type": "string",
+                  "value": "transform_status"
+                },
+                {
+                  "type": "string",
+                  "value": "integration_numeric_quality_is_poor"
+                },
+                {
+                  "type": "string",
+                  "value": "integration_convergence_check_passed"
+                },
+                {
+                  "type": "string",
+                  "value": "integration_truncation_check_passed"
+                }
+              ],
+              "length": 10,
+              "type": "array"
+            },
+            "required_run_diagnostics_fields": {
+              "item_profiles": [
+                {
+                  "type": "string",
+                  "value": "schema_version"
+                },
+                {
+                  "type": "string",
+                  "value": "transform"
+                },
+                {
+                  "type": "string",
+                  "value": "integration_quality"
+                }
+              ],
+              "length": 3,
+              "type": "array"
+            },
+            "required_run_result_fields": {
+              "item_profiles": [
+                {
+                  "type": "string",
+                  "value": "schema_version"
+                },
+                {
+                  "type": "string",
+                  "value": "output_schema_metadata"
+                },
+                {
+                  "type": "string",
+                  "value": "response"
+                },
+                {
+                  "type": "string",
+                  "value": "run_diagnostics"
+                },
+                {
+                  "type": "string",
+                  "value": "calibration_hooks"
+                }
+              ],
+              "length": 5,
+              "type": "array"
+            },
+            "run_diagnostics_schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_diagnostics.v1"
+            },
+            "run_result_schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_result.v1"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_output_schema_metadata.v1"
+            }
+          },
+          "type": "object"
+        },
+        "response": {
+          "fields": {
+            "diagnostics": {
+              "fields": {
+                "boundary_state_norm": {
+                  "type": "float"
+                },
+                "discount_factor": {
+                  "type": "float"
+                },
+                "forward_price": {
+                  "type": "float"
+                },
+                "maturity_interval": {
+                  "type": "float"
+                }
+              },
+              "type": "object"
+            },
+            "price": {
+              "type": "float"
+            }
+          },
+          "type": "object"
+        },
+        "run_diagnostics": {
+          "fields": {
+            "integration_quality": {
+              "fields": {
+                "absolute_integral_estimate": {
+                  "type": "float"
+                },
+                "contour_damping_factor": {
+                  "type": "float"
+                },
+                "contour_imaginary_shift": {
+                  "type": "float"
+                },
+                "contour_policy": {
+                  "type": "string"
+                },
+                "discounted_call_price": {
+                  "type": "float"
+                },
+                "engine_policy": {
+                  "type": "string"
+                },
+                "integral_estimate": {
+                  "type": "float"
+                },
+                "integrand_evaluation_count": {
+                  "type": "int"
+                },
+                "integration_interval_width": {
+                  "type": "float"
+                },
+                "integration_step_count": {
+                  "type": "int"
+                },
+                "integration_upper_bound": {
+                  "type": "float"
+                },
+                "max_abs_integrand": {
+                  "type": "float"
+                },
+                "numeric_quality_diagnostics": {
+                  "fields": {
+                    "coarse_integral_estimate": {
+                      "type": "float"
+                    },
+                    "convergence_absolute_difference": {
+                      "type": "float"
+                    },
+                    "convergence_absolute_tolerance": {
+                      "type": "float"
+                    },
+                    "convergence_check_passed": {
+                      "type": "bool"
+                    },
+                    "convergence_check_policy": {
+                      "type": "string"
+                    },
+                    "convergence_relative_difference": {
+                      "type": "float"
+                    },
+                    "convergence_relative_tolerance": {
+                      "type": "float"
+                    },
+                    "insufficient_convergence_resolution": {
+                      "type": "bool"
+                    },
+                    "numeric_quality_is_poor": {
+                      "type": "bool"
+                    },
+                    "quality_gate": {
+                      "type": "string"
+                    },
+                    "quality_gate_policy": {
+                      "type": "string"
+                    },
+                    "stability_policy": {
+                      "type": "string"
+                    },
+                    "terminal_integrand_absolute_tolerance": {
+                      "type": "float"
+                    },
+                    "terminal_integrand_absolute_value": {
+                      "type": "float"
+                    },
+                    "terminal_integrand_ratio": {
+                      "type": "float"
+                    },
+                    "terminal_integrand_ratio_tolerance": {
+                      "type": "float"
+                    },
+                    "truncation_check_passed": {
+                      "type": "bool"
+                    },
+                    "truncation_check_policy": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "numeric_settings_policy": {
+                  "type": "string"
+                },
+                "quadrature_rule": {
+                  "type": "string"
+                },
+                "schema_version": {
+                  "type": "string",
+                  "value": "pricing.fourier_inversion.diagnostics.v1"
+                },
+                "stability_policy": {
+                  "type": "string"
+                },
+                "terminal_abs_integrand": {
+                  "type": "float"
+                }
+              },
+              "type": "object"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_diagnostics.v1"
+            },
+            "transform": {
+              "fields": {
+                "metadata": {
+                  "fields": {
+                    "blowup_termination_policy": {
+                      "type": "string"
+                    },
+                    "completed_step_count": {
+                      "type": "int"
+                    },
+                    "configured_step_count": {
+                      "type": "int"
+                    },
+                    "domain_guard_policy": {
+                      "type": "string"
+                    },
+                    "guard_failure": {
+                      "type": "null"
+                    },
+                    "integrator_method": {
+                      "type": "string"
+                    },
+                    "news_intensity": {
+                      "fields": {
+                        "known_nu_h": {
+                          "type": "float"
+                        },
+                        "surprise_nu_h": {
+                          "type": "float"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "news_intensity_usage_policy": {
+                      "type": "string"
+                    },
+                    "rhs_evaluation_count": {
+                      "type": "int"
+                    },
+                    "schema_version": {
+                      "type": "string",
+                      "value": "affine_oracle.integration_metadata.v1"
+                    },
+                    "status_flags": {
+                      "fields": {
+                        "blowup_terminated": {
+                          "type": "bool"
+                        },
+                        "completed": {
+                          "type": "bool"
+                        },
+                        "domain_guard_violation": {
+                          "type": "bool"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "step_size": {
+                      "type": "float"
+                    },
+                    "telemetry_mode": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "output": {
+                  "fields": {
+                    "c_at_delta": {
+                      "fields": {
+                        "imaginary": {
+                          "type": "float"
+                        },
+                        "real": {
+                          "type": "float"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "d_at_delta": {
+                      "fields": {
+                        "minus_minus": {
+                          "fields": {
+                            "imaginary": {
+                              "type": "float"
+                            },
+                            "real": {
+                              "type": "float"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "minus_plus": {
+                          "fields": {
+                            "imaginary": {
+                              "type": "float"
+                            },
+                            "real": {
+                              "type": "float"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "plus_minus": {
+                          "fields": {
+                            "imaginary": {
+                              "type": "float"
+                            },
+                            "real": {
+                              "type": "float"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "plus_plus": {
+                          "fields": {
+                            "imaginary": {
+                              "type": "float"
+                            },
+                            "real": {
+                              "type": "float"
+                            }
+                          },
+                          "type": "object"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "transform_value": {
+                      "fields": {
+                        "imaginary": {
+                          "type": "float"
+                        },
+                        "real": {
+                          "type": "float"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                },
+                "output_schema_metadata": {
+                  "fields": {
+                    "guard_failure_schema_version": {
+                      "type": "string"
+                    },
+                    "integration_metadata_schema_version": {
+                      "type": "string"
+                    },
+                    "required_guard_failure_fields": {
+                      "item_profiles": [
+                        {
+                          "type": "string"
+                        }
+                      ],
+                      "length": 6,
+                      "type": "array"
+                    },
+                    "required_metadata_fields": {
+                      "item_profiles": [
+                        {
+                          "type": "string"
+                        }
+                      ],
+                      "length": 13,
+                      "type": "array"
+                    },
+                    "required_result_fields": {
+                      "item_profiles": [
+                        {
+                          "type": "string"
+                        }
+                      ],
+                      "length": 6,
+                      "type": "array"
+                    },
+                    "required_telemetry_fields": {
+                      "item_profiles": [
+                        {
+                          "type": "string"
+                        }
+                      ],
+                      "length": 9,
+                      "type": "array"
+                    },
+                    "schema_version": {
+                      "type": "string",
+                      "value": "affine_oracle.integration_output_schema_metadata.v1"
+                    },
+                    "telemetry_schema_version": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "schema_version": {
+                  "type": "string",
+                  "value": "affine_oracle.integration_result.v1"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "completed"
+                },
+                "telemetry": {
+                  "type": "null"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "schema_version": {
+          "type": "string",
+          "value": "pricing.vanilla_option.run_result.v1"
+        }
+      },
+      "type": "object"
+    },
+    "pricing.vanilla_option.run_result.v1::direct_run_result_validation_edge_optional_outputs_omitted": {
+      "fields": {
+        "calibration_hooks": {
+          "type": "null"
+        },
+        "output_schema_metadata": {
+          "fields": {
+            "calibration_hooks_schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.calibration_hooks.v1"
+            },
+            "required_calibration_hooks_fields": {
+              "item_profiles": [
+                {
+                  "type": "string",
+                  "value": "schema_version"
+                },
+                {
+                  "type": "string",
+                  "value": "hook_policy"
+                },
+                {
+                  "type": "string",
+                  "value": "option_price"
+                },
+                {
+                  "type": "string",
+                  "value": "log_moneyness"
+                },
+                {
+                  "type": "string",
+                  "value": "forward_moneyness"
+                },
+                {
+                  "type": "string",
+                  "value": "maturity_interval"
+                },
+                {
+                  "type": "string",
+                  "value": "transform_status"
+                },
+                {
+                  "type": "string",
+                  "value": "integration_numeric_quality_is_poor"
+                },
+                {
+                  "type": "string",
+                  "value": "integration_convergence_check_passed"
+                },
+                {
+                  "type": "string",
+                  "value": "integration_truncation_check_passed"
+                }
+              ],
+              "length": 10,
+              "type": "array"
+            },
+            "required_run_diagnostics_fields": {
+              "item_profiles": [
+                {
+                  "type": "string",
+                  "value": "schema_version"
+                },
+                {
+                  "type": "string",
+                  "value": "transform"
+                },
+                {
+                  "type": "string",
+                  "value": "integration_quality"
+                }
+              ],
+              "length": 3,
+              "type": "array"
+            },
+            "required_run_result_fields": {
+              "item_profiles": [
+                {
+                  "type": "string",
+                  "value": "schema_version"
+                },
+                {
+                  "type": "string",
+                  "value": "output_schema_metadata"
+                },
+                {
+                  "type": "string",
+                  "value": "response"
+                },
+                {
+                  "type": "string",
+                  "value": "run_diagnostics"
+                },
+                {
+                  "type": "string",
+                  "value": "calibration_hooks"
+                }
+              ],
+              "length": 5,
+              "type": "array"
+            },
+            "run_diagnostics_schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_diagnostics.v1"
+            },
+            "run_result_schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_result.v1"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_output_schema_metadata.v1"
+            }
+          },
+          "type": "object"
+        },
+        "response": {
+          "fields": {
+            "diagnostics": {
+              "fields": {
+                "boundary_state_norm": {
+                  "type": "float"
+                },
+                "discount_factor": {
+                  "type": "float"
+                },
+                "forward_price": {
+                  "type": "float"
+                },
+                "maturity_interval": {
+                  "type": "float"
+                }
+              },
+              "type": "object"
+            },
+            "price": {
+              "type": "float"
+            }
+          },
+          "type": "object"
+        },
+        "run_diagnostics": {
+          "type": "null"
+        },
+        "schema_version": {
+          "type": "string",
+          "value": "pricing.vanilla_option.run_result.v1"
+        }
+      },
+      "type": "object"
+    },
+    "simulation.seeded_tick_event.path.v1::boundary_runtime_nominal": {
+      "fields": {
+        "event_tape": {
+          "item_profiles": [
+            {
+              "fields": {
+                "event_index": {
+                  "type": "int"
+                },
+                "side": {
+                  "type": "string"
+                },
+                "state_snapshot": {
+                  "type": "null"
+                },
+                "timestamp_utc_nanos": {
+                  "type": "int"
+                }
+              },
+              "type": "object"
+            }
+          ],
+          "length": 3,
+          "type": "array"
+        },
+        "metadata": {
+          "fields": {
+            "event_ordering_policy": {
+              "type": "string",
+              "value": "timestamp_then_endogenous_before_exogenous_then_buy_before_sell_then_known_before_surprise_then_generation_order.v1"
+            },
+            "event_record_schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick_event.record.v1"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick_event.tape_metadata.v1"
+            },
+            "side_encoding_policy": {
+              "type": "string",
+              "value": "lowercase_buy_or_sell.v1"
+            },
+            "state_snapshot_capture": {
+              "type": "string",
+              "value": "disabled"
+            },
+            "state_snapshot_capture_point_policy": {
+              "type": "null"
+            },
+            "state_snapshot_schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick_event.state_snapshot.v1"
+            },
+            "timestamp_representation_policy": {
+              "type": "string",
+              "value": "event_time_timestamp_utc_nanos_without_bucket_identifier.v1"
+            }
+          },
+          "type": "object"
+        },
+        "schema_version": {
+          "type": "string",
+          "value": "simulation.seeded_tick_event.path.v1"
+        }
+      },
+      "type": "object"
+    },
+    "simulation.seeded_tick_event.path.v1::direct_response_validation_nominal": {
+      "fields": {
+        "event_tape": {
+          "item_profiles": [
+            {
+              "fields": {
+                "event_index": {
+                  "type": "int"
+                },
+                "side": {
+                  "type": "string"
+                },
+                "state_snapshot": {
+                  "type": "null"
+                },
+                "timestamp_utc_nanos": {
+                  "type": "int"
+                }
+              },
+              "type": "object"
+            }
+          ],
+          "length": 1,
+          "type": "array"
+        },
+        "metadata": {
+          "fields": {
+            "event_ordering_policy": {
+              "type": "string",
+              "value": "deterministic_tie_break.v1"
+            },
+            "event_record_schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick_event.record.v1"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick_event.tape_metadata.v1"
+            },
+            "side_encoding_policy": {
+              "type": "string",
+              "value": "buy_sell.v1"
+            },
+            "state_snapshot_capture": {
+              "type": "string",
+              "value": "disabled"
+            },
+            "state_snapshot_capture_point_policy": {
+              "type": "null"
+            },
+            "state_snapshot_schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick_event.state_snapshot.v1"
+            },
+            "timestamp_representation_policy": {
+              "type": "string",
+              "value": "utc_nanos.v1"
+            }
+          },
+          "type": "object"
+        },
+        "schema_version": {
+          "type": "string",
+          "value": "simulation.seeded_tick_event.path.v1"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "schema_version": "python.workflow_response_schema_snapshot.v1"
+}
