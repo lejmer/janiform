@@ -10,6 +10,9 @@ This document defines the public Python namespace for Janiform's current pre-v0.
 It exists to keep the import surface minimal, task-oriented, and explicit while the simulation,
 pricing, risk, and calibration workflows are still evolving.
 
+Compatibility review and snapshot-update workflow for this public surface lives in
+`docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md`.
+
 ## Public package root
 
 The package root `janiform` is intentionally minimal.
