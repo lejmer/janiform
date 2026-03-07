@@ -1,0 +1,124 @@
+import json
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
+
+from janiform._api_contract_guardrails import (
+    PUBLIC_API_CONTRACT_APPROVAL_POLICY,
+    PUBLIC_API_CONTRACT_GUARDRAIL_MANIFEST_SCHEMA_VERSION,
+    PUBLIC_API_CONTRACT_SNAPSHOT_SCHEMA_VERSION,
+    PUBLIC_API_SURFACE_DOCUMENT_VERSION,
+    build_public_api_contract_snapshot,
+    compute_public_api_contract_snapshot_sha256,
+    public_api_contract_snapshot_matches_approved,
+    render_public_api_contract_snapshot_diff,
+    validate_public_api_contract_guardrail_manifest,
+)
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+PUBLIC_API_CONTRACT_FIXTURE_ROOT = REPOSITORY_ROOT / "tests" / "fixtures" / "python_api_contracts"
+PUBLIC_API_CONTRACT_SNAPSHOT_PATH = (
+    PUBLIC_API_CONTRACT_FIXTURE_ROOT / "public_api_contract_snapshot.json"
+)
+PUBLIC_API_CONTRACT_GUARDRAIL_MANIFEST_PATH = (
+    PUBLIC_API_CONTRACT_FIXTURE_ROOT / "public_api_contract_guardrails.json"
+)
+
+
+def test_public_api_contract_snapshot_matches_checked_in_fixture() -> None:
+    approved_snapshot = _load_json_document(PUBLIC_API_CONTRACT_SNAPSHOT_PATH)
+    current_snapshot = build_public_api_contract_snapshot()
+
+    assert public_api_contract_snapshot_matches_approved(current_snapshot, approved_snapshot), (
+        "Public API contract drift detected. "
+        "Update the public contract docs, regenerate the snapshot fixture, and record the rationale "
+        "in tests/fixtures/python_api_contracts/public_api_contract_guardrails.json.\n\n"
+        + render_public_api_contract_snapshot_diff(approved_snapshot, current_snapshot)
+    )
+
+
+def test_public_api_contract_guardrail_manifest_approves_checked_in_snapshot() -> None:
+    approved_snapshot = _load_json_document(PUBLIC_API_CONTRACT_SNAPSHOT_PATH)
+    guardrail_manifest = _load_json_document(PUBLIC_API_CONTRACT_GUARDRAIL_MANIFEST_PATH)
+
+    validate_public_api_contract_guardrail_manifest(guardrail_manifest, approved_snapshot)
+
+
+def test_public_api_contract_guardrail_rejects_undocumented_snapshot_drift() -> None:
+    approved_snapshot = _minimal_snapshot(module_exports=["ExistingSymbol"])
+    current_snapshot = _minimal_snapshot(module_exports=["ExistingSymbol", "NewSymbol"])
+    guardrail_manifest = _guardrail_manifest_for_snapshot(approved_snapshot)
+
+    diff = render_public_api_contract_snapshot_diff(approved_snapshot, current_snapshot)
+
+    assert not public_api_contract_snapshot_matches_approved(current_snapshot, approved_snapshot)
+    assert "NewSymbol" in diff
+    validate_public_api_contract_guardrail_manifest(guardrail_manifest, approved_snapshot)
+
+
+def test_public_api_contract_guardrail_accepts_documented_snapshot_update() -> None:
+    approved_snapshot = _minimal_snapshot(module_exports=["ExistingSymbol", "NewSymbol"])
+    guardrail_manifest = _guardrail_manifest_for_snapshot(approved_snapshot)
+
+    assert public_api_contract_snapshot_matches_approved(approved_snapshot, approved_snapshot)
+    validate_public_api_contract_guardrail_manifest(guardrail_manifest, approved_snapshot)
+
+
+def _load_json_document(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise TypeError(f"{path} must contain a JSON object")
+
+    return payload
+
+
+def _minimal_snapshot(*, module_exports: list[str]) -> dict[str, Any]:
+    return {
+        "schema_version": PUBLIC_API_CONTRACT_SNAPSHOT_SCHEMA_VERSION,
+        "public_api_surface_document_version": PUBLIC_API_SURFACE_DOCUMENT_VERSION,
+        "package_root": {
+            "module_name": "janiform",
+            "exports": ["__version__"],
+        },
+        "public_modules": {
+            "janiform.simulation": {
+                "module_name": "janiform.simulation",
+                "exports": module_exports,
+                "schema_identifiers": [
+                    {
+                        "name": "SIMULATION_EXAMPLE_SCHEMA_VERSION",
+                        "value": "simulation.example.v1",
+                        "public_exported": False,
+                    }
+                ],
+                "symbols": {
+                    export_name: {
+                        "kind": "function",
+                        "signature": "() -> None",
+                    }
+                    for export_name in module_exports
+                },
+            }
+        },
+    }
+
+
+def _guardrail_manifest_for_snapshot(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    snapshot_sha256 = compute_public_api_contract_snapshot_sha256(snapshot)
+    return {
+        "schema_version": PUBLIC_API_CONTRACT_GUARDRAIL_MANIFEST_SCHEMA_VERSION,
+        "public_api_surface_document_version": PUBLIC_API_SURFACE_DOCUMENT_VERSION,
+        "approval_policy": PUBLIC_API_CONTRACT_APPROVAL_POLICY,
+        "approved_snapshot_sha256": snapshot_sha256,
+        "change_log": [
+            {
+                "snapshot_sha256": snapshot_sha256,
+                "approved_on": "2026-03-07",
+                "summary": "Synthetic approval for test coverage.",
+                "rationale": "Synthetic test manifest proving that approved snapshot updates are accepted.",
+                "docs_updated": [
+                    "docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md"
+                ],
+            }
+        ],
+    }

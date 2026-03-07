@@ -39,6 +39,7 @@ janiform --help
 
 - Design model and rationale: `docs/design/janiform_design_brainstorm_notes.md`
 - Python public API surface map and namespace policy: `docs/development/guides/python_public_api_surface_map_and_namespace_policy.md`
+- Python API contract compatibility and version guardrails: `docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md`
 - Python error taxonomy and exception contract: `docs/development/guides/python_error_taxonomy_and_exception_contract.md`
 - Typed staged calibration request, execution input, response contracts, and orchestrator: `python/janiform/calibration.py`
 - Calendar and seasonality API contracts: `docs/development/guides/calendar_and_seasonality_api_contracts.md`
@@ -78,5 +79,6 @@ The detailed calendar and seasonality sections were moved out of this README int
 ```bash
 python3 -m py_compile python/janiform/*.py tests/conftest.py
 cargo check --workspace
+PYTHONPATH=python .venv-wsl/bin/python3.14 -m pytest tests/test_api_contract_guardrails.py
 python3 -m janiform regression open-closed-gap-leakage
 ```
