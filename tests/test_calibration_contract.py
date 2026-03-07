@@ -1,8 +1,13 @@
 import json
 
 import pytest
+from tests.calibration_test_support import (
+    build_valid_execution_input_model,
+    build_valid_execution_input_payload,
+)
 
 from janiform.calibration import (
+    CalibrationOptimizerSettings,
     CalibrationExecutionMode,
     CalibrationRunDataInputs,
     CalibrationRunSeedSettings,
@@ -12,12 +17,13 @@ from janiform.calibration import (
     CalibrationStageSolverSettings,
     CalibrationValidationError,
     StagedCalibrationRequest,
-    StagedCalibrationResponse,
-    CalibrationOptimizerSettings,
+    deserialize_staged_calibration_execution_input,
     deserialize_staged_calibration_request,
     deserialize_staged_calibration_response,
+    serialize_staged_calibration_execution_input,
     serialize_staged_calibration_request,
     serialize_staged_calibration_response,
+    validate_staged_calibration_execution_input,
     validate_staged_calibration_request,
     validate_staged_calibration_response,
 )
@@ -70,6 +76,41 @@ def test_staged_calibration_request_rejects_disk_only_handoff_in_memory_mode() -
     assert captured_error.value.failure.entrypoint == "contract"
     assert captured_error.value.failure.field_path == "stage_handoffs.transport"
     assert "requires execution_mode=disk" in captured_error.value.failure.message
+
+
+def test_staged_calibration_execution_input_roundtrip_serialization_is_deterministic() -> None:
+    execution_input = build_valid_execution_input_model()
+
+    serialized_execution_input = serialize_staged_calibration_execution_input(execution_input)
+    deserialized_execution_input = deserialize_staged_calibration_execution_input(
+        serialized_execution_input
+    )
+
+    assert deserialized_execution_input == execution_input
+    assert json.loads(serialized_execution_input)["request"]["execution_mode"] == "memory"
+
+
+def test_staged_calibration_execution_input_requires_explicit_selected_stage_inputs() -> None:
+    execution_input_payload = build_valid_execution_input_payload()
+    del execution_input_payload["seasonality_stage_input"]
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        validate_staged_calibration_execution_input(execution_input_payload)
+
+    assert captured_error.value.failure.field_path == "seasonality_stage_input"
+    assert "required when selected_stages contains seasonality" in captured_error.value.failure.message
+
+
+def test_staged_calibration_execution_input_requires_disk_runtime_resources_for_disk_mode() -> None:
+    execution_input_payload = build_valid_execution_input_payload()
+    execution_input_payload["request"]["execution_mode"] = "disk"
+    execution_input_payload["runtime_resources"] = {}
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        validate_staged_calibration_execution_input(execution_input_payload)
+
+    assert captured_error.value.failure.field_path == "runtime_resources.disk_checkpoint_directory"
+    assert "required when execution_mode=disk" in captured_error.value.failure.message
 
 
 def test_staged_calibration_response_roundtrip_serialization_is_deterministic() -> None:
@@ -143,6 +184,10 @@ def _valid_request_payload() -> dict[str, object]:
     return _valid_request_model().to_payload()
 
 
+def _valid_execution_input_payload() -> dict[str, object]:
+    return build_valid_execution_input_payload()
+
+
 def _valid_response_payload() -> dict[str, object]:
     return {
         "schema_version": "calibration.orchestration.staged_run.report.v1",
@@ -162,3 +207,16 @@ def _valid_response_payload() -> dict[str, object]:
         ],
         "emitted_checkpoints": [],
     }
+
+
+def _solver_settings(stage: CalibrationStage) -> CalibrationStageSolverSettings:
+    return CalibrationStageSolverSettings(
+        stage=stage,
+        optimizer_settings=CalibrationOptimizerSettings(
+            solver_name="lbfgs",
+            max_iterations=250,
+            absolute_tolerance=1e-8,
+            relative_tolerance=1e-6,
+            constraint_penalty_weight=10.0,
+        ),
+    )

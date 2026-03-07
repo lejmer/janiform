@@ -18,6 +18,9 @@ class CalendarTimestampParseError(ValueError): ...
 class PricingExecutionError(Exception): ...
 
 
+class CalibrationExecutionError(Exception): ...
+
+
 class SeasonalityInputValidationError(ValueError): ...
 
 
@@ -595,6 +598,16 @@ class CalendarRegistry:
     ) -> TimestampEventPreprocessingResult: ...
 
 
+class CalibrationMemoryCheckpointStore:
+    def __init__(self) -> None: ...
+
+    def checkpoint_count_for_run(self, run_id: str) -> int: ...
+
+    def checkpoint_reference_for_stage(self, run_id: str, stage: str) -> Optional[str]: ...
+
+    def last_checkpoint_reference_for_run(self, run_id: str) -> Optional[str]: ...
+
+
 def estimate_intraday_seasonality(
     exchange_local_minute_of_day: object,
     *,
@@ -724,6 +737,13 @@ def run_stylized_fact_horizon_comparison_report_generator(
 
 def run_vanilla_option_pricing(
     execution_input_json: str,
+) -> str: ...
+
+
+def run_staged_calibration(
+    execution_input_json: str,
+    calendar_registry: CalendarRegistry,
+    memory_checkpoint_store: Optional[CalibrationMemoryCheckpointStore] = None,
 ) -> str: ...
 
 
