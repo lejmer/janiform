@@ -39,6 +39,7 @@ janiform --help
 
 - Design model and rationale: `docs/design/janiform_design_brainstorm_notes.md`
 - Python public API surface map and namespace policy: `docs/development/guides/python_public_api_surface_map_and_namespace_policy.md`
+- Python error taxonomy and exception contract: `docs/development/guides/python_error_taxonomy_and_exception_contract.md`
 - Typed staged calibration request and response contracts: `python/janiform/calibration.py`
 - Calendar and seasonality API contracts: `docs/development/guides/calendar_and_seasonality_api_contracts.md`
 - Hawkes parameter validation report: `docs/development/guides/hawkes_parameter_validation_report.md`

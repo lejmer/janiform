@@ -166,11 +166,15 @@ Validation and serialization helpers:
 
 Python validation emits one structured failure with:
 
+- `error_id`
+- `workflow`
+- `entrypoint`
 - `field_path`
 - `message`
 
-This allows downstream portfolio risk pipelines to route input issues without
-string parsing.
+See `docs/development/guides/python_error_taxonomy_and_exception_contract.md` for the shared
+exception taxonomy, stable identifiers, and deterministic message format used by importable APIs
+and CLI surfaces.
 
 ## Interval factor policy
 

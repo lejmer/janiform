@@ -64,6 +64,9 @@ def test_simulation_request_rejects_non_positive_sampling_stride() -> None:
             sample_every_nth_transition=0,
         )
 
+    assert captured_error.value.failure.error_id == "simulation.validation.contract"
+    assert captured_error.value.failure.workflow == "simulation"
+    assert captured_error.value.failure.entrypoint == "contract"
     assert captured_error.value.failure.field_path == "sample_every_nth_transition"
     assert captured_error.value.failure.message == "must be strictly positive"
 
@@ -86,6 +89,7 @@ def test_simulation_response_rejects_invalid_side_with_structured_error() -> Non
     with pytest.raises(SeededTickSimulationValidationError) as captured_error:
         validate_seeded_tick_simulation_response(response_payload)
 
+    assert captured_error.value.failure.error_id == "simulation.validation.contract"
     assert captured_error.value.failure.field_path == "seeded_tick_simulation_response.event_tape[0].side"
     assert "must be one of: buy, sell" in captured_error.value.failure.message
 

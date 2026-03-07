@@ -80,6 +80,9 @@ def test_vanilla_option_request_rejects_incomplete_payload_with_structured_error
     with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
         validate_vanilla_option_pricing_request(request_payload)
 
+    assert captured_error.value.failure.error_id == "pricing.validation.contract"
+    assert captured_error.value.failure.workflow == "pricing"
+    assert captured_error.value.failure.entrypoint == "contract"
     assert captured_error.value.failure.field_path == "market_inputs.strike"
     assert captured_error.value.failure.message == "is required"
 
@@ -136,6 +139,7 @@ def test_vanilla_option_response_rejects_negative_price_with_structured_error() 
     with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
         validate_vanilla_option_pricing_response(response_payload)
 
+    assert captured_error.value.failure.error_id == "pricing.validation.contract"
     assert captured_error.value.failure.field_path == "price"
     assert captured_error.value.failure.message == "must be non-negative"
 

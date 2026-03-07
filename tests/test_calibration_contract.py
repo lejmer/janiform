@@ -65,6 +65,9 @@ def test_staged_calibration_request_rejects_disk_only_handoff_in_memory_mode() -
     with pytest.raises(CalibrationValidationError) as captured_error:
         validate_staged_calibration_request(request_payload)
 
+    assert captured_error.value.failure.error_id == "calibration.validation.contract"
+    assert captured_error.value.failure.workflow == "calibration"
+    assert captured_error.value.failure.entrypoint == "contract"
     assert captured_error.value.failure.field_path == "stage_handoffs.transport"
     assert "requires execution_mode=disk" in captured_error.value.failure.message
 
@@ -87,6 +90,7 @@ def test_staged_calibration_response_rejects_missing_stage_reports() -> None:
     with pytest.raises(CalibrationValidationError) as captured_error:
         validate_staged_calibration_response(response_payload)
 
+    assert captured_error.value.failure.error_id == "calibration.validation.contract"
     assert captured_error.value.failure.field_path == "stage_reports"
     assert captured_error.value.failure.message == "is required"
 

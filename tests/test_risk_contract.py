@@ -63,6 +63,9 @@ def test_risk_run_request_rejects_sub_hour_interval_without_compatible_factor_de
     with pytest.raises(SufficientStatisticsRiskValidationError) as captured_error:
         validate_sufficient_statistics_risk_run_request(request_payload)
 
+    assert captured_error.value.failure.error_id == "risk.validation.contract"
+    assert captured_error.value.failure.workflow == "risk"
+    assert captured_error.value.failure.entrypoint == "contract"
     assert captured_error.value.failure.field_path == "interval_factors.interval_delta"
     assert "must match interval_delta exactly" in captured_error.value.failure.message
 
@@ -178,6 +181,7 @@ def test_risk_path_rejects_non_sequential_interval_index_with_structured_error()
     with pytest.raises(SufficientStatisticsRiskValidationError) as captured_error:
         validate_sufficient_statistics_risk_path(path_payload)
 
+    assert captured_error.value.failure.error_id == "risk.validation.contract"
     assert captured_error.value.failure.field_path == "records[0].interval_index"
     assert captured_error.value.failure.message == "must equal 0"
 
