@@ -23,7 +23,7 @@ It's Jani*form* because it's about form: a system whose geometry is essentially 
 
 - `crates/core/`: Rust core library
 - `crates/pybind/`: PyO3 extension module (`janiform._native`)
-- `python/janiform/`: Python package and CLI entrypoints
+- `python/janiform/`: Python package, CLI entrypoints, and typed workflow contracts
 - `tests/`: Python tests and shared fixtures
 - `docs/`: Design and development documentation
 
@@ -39,6 +39,7 @@ janiform --help
 
 - Design model and rationale: `docs/design/janiform_design_brainstorm_notes.md`
 - Python public API surface map and namespace policy: `docs/development/guides/python_public_api_surface_map_and_namespace_policy.md`
+- Typed staged calibration request and response contracts: `python/janiform/calibration.py`
 - Calendar and seasonality API contracts: `docs/development/guides/calendar_and_seasonality_api_contracts.md`
 - Hawkes parameter validation report: `docs/development/guides/hawkes_parameter_validation_report.md`
 - Hawkes failure diagnostics report: `docs/development/guides/hawkes_failure_diagnostics_report.md`

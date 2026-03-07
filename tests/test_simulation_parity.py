@@ -6,6 +6,8 @@ from janiform.hourly_factors import (
     HourlySeasonalityProviderExplicitSource,
 )
 from janiform.simulation import (
+    HawkesExcitationState,
+    HawkesKernelParameters,
     load_hourly_factor_contract_for_simulation,
     run_seeded_tick_event_simulation,
 )
@@ -42,7 +44,7 @@ def test_seeded_tick_simulation_mismatch_diagnostics_are_actionable(
 ) -> None:
     fixture_case = seeded_tick_simulation_parity_cases[0]
     payload = _run_seeded_case(calendar_registry, fixture_case)
-    observed_first_side = cast(str, cast(list[dict[str, Any]], payload["event_tape"])[0]["side"])
+    observed_first_side = payload.event_tape[0].side.value
     mismatched_first_side = "sell" if observed_first_side == "buy" else "buy"
     mutated_fixture_case = cast(
         SeededTickSimulationParityCase,
@@ -64,7 +66,7 @@ def test_seeded_tick_simulation_mismatch_diagnostics_are_actionable(
 def _run_seeded_case(
     calendar_registry,
     fixture_case: SeededTickSimulationParityCase,
-) -> dict[str, Any]:
+) -> Any:
     range_start_utc = datetime.fromisoformat(fixture_case["range_start_utc"].replace("Z", "+00:00"))
     range_end_utc = datetime.fromisoformat(fixture_case["range_end_utc"].replace("Z", "+00:00"))
 
@@ -87,21 +89,21 @@ def _run_seeded_case(
         seed=fixture_case["seed"],
         start_time_utc=range_start_utc,
         horizon_interval_count=fixture_case["horizon_interval_count"],
-        kernel_parameters=fixture_case["kernel_parameters"],
-        initial_excitation_state=fixture_case["initial_excitation_state"],
+        kernel_parameters=HawkesKernelParameters.from_mapping(fixture_case["kernel_parameters"]),
+        initial_excitation_state=HawkesExcitationState.from_mapping(fixture_case["initial_excitation_state"]),
         hourly_factor_contract=hourly_factor_contract,
     )
 
 
 def _first_mismatch_diagnostic(
-    payload: dict[str, Any],
+    payload: Any,
     fixture_case: SeededTickSimulationParityCase,
 ) -> Optional[str]:
     fixture_id = fixture_case["fixture_id"]
-    event_tape = cast(list[dict[str, Any]], payload["event_tape"])
+    event_tape = list(payload.event_tape)
 
-    observed_timestamps = [cast(int, event_record["timestamp_utc_nanos"]) for event_record in event_tape]
-    observed_side_sequence = [cast(str, event_record["side"]) for event_record in event_tape]
+    observed_timestamps = [event_record.timestamp_utc_nanos for event_record in event_tape]
+    observed_side_sequence = [event_record.side.value for event_record in event_tape]
 
     if len(observed_timestamps) != fixture_case["expected_total_event_count"]:
         return (

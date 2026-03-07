@@ -1,11 +1,20 @@
-import json
-from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from math import isfinite, sqrt
-from typing import Any, NotRequired, TypedDict
+from typing import Any
 
+from ._contracts import (
+    ContractModel,
+    ValidationErrorFactory,
+    parse_json_object,
+    require_finite_number,
+    require_mapping,
+    require_non_negative_finite_number,
+    require_positive_finite_number,
+    require_positive_finite_scalar,
+    require_string,
+    serialize_deterministic_json,
+)
 from .calendar import CalendarRegistry
 from .hourly_factors import (
     HourlyFactorContract,
@@ -13,65 +22,13 @@ from .hourly_factors import (
     HourlySeasonalityProviderSource,
     provide_hourly_factor_contract,
 )
-from .simulation import HawkesExcitationState, HawkesKernelParameters
+from .simulation import (
+    HawkesExcitationState,
+    HawkesKernelParameters,
+    SeededTickSimulationValidationError,
+)
 
 DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA = 1.0
-
-
-class VanillaOptionPayoffType(StrEnum):
-    CALL = 'call'
-    PUT = 'put'
-
-
-class GammaSeverityMarkConfiguration(TypedDict):
-    shape_k: float
-    scale_theta: float
-
-
-class NigSharedPlusShiftConfiguration(TypedDict):
-    alpha: float
-    beta_0: float
-    delta: float
-    mu: float
-    delta_beta: float
-
-
-class VanillaOptionPayoffConfiguration(TypedDict):
-    payoff_type: VanillaOptionPayoffType
-
-
-class VanillaOptionPricingModelParameters(TypedDict):
-    hawkes_kernel_parameters: HawkesKernelParameters
-    gamma_severity_mark_configuration: GammaSeverityMarkConfiguration
-    nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
-
-
-class VanillaOptionPricingMarketInputs(TypedDict):
-    spot: float
-    strike: float
-    maturity_interval: float
-    risk_free_rate: float
-    dividend_yield: float
-
-
-class VanillaOptionPricingRequest(TypedDict):
-    market_inputs: VanillaOptionPricingMarketInputs
-    payoff: VanillaOptionPayoffConfiguration
-    boundary_state: HawkesExcitationState
-    model_parameters: VanillaOptionPricingModelParameters
-    interval_delta: NotRequired[float]
-
-
-class VanillaOptionPricingDiagnostics(TypedDict):
-    forward_price: float
-    discount_factor: float
-    maturity_interval: float
-    boundary_state_norm: float
-
-
-class VanillaOptionPricingResponse(TypedDict):
-    price: float
-    diagnostics: VanillaOptionPricingDiagnostics
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +43,435 @@ class VanillaOptionPricingValidationError(ValueError):
         super().__init__(f"{failure.field_path}: {failure.message}")
 
 
+def _pricing_error(field_path: str, message: str) -> VanillaOptionPricingValidationError:
+    return VanillaOptionPricingValidationError(
+        VanillaOptionPricingValidationFailure(field_path=field_path, message=message)
+    )
+
+
+PRICING_ERROR_FACTORY: ValidationErrorFactory = _pricing_error
+
+
+class VanillaOptionPayoffType(StrEnum):
+    CALL = 'call'
+    PUT = 'put'
+
+
+@dataclass(frozen=True, slots=True)
+class GammaSeverityMarkConfiguration(ContractModel):
+    """Gamma mark law used for news severity in the pricing contract."""
+
+    shape_k: float
+    scale_theta: float
+
+    def __post_init__(self) -> None:
+        require_positive_finite_number(
+            {"shape_k": self.shape_k},
+            "shape_k",
+            "shape_k",
+            PRICING_ERROR_FACTORY,
+        )
+        require_positive_finite_number(
+            {"scale_theta": self.scale_theta},
+            "scale_theta",
+            "scale_theta",
+            PRICING_ERROR_FACTORY,
+        )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> GammaSeverityMarkConfiguration:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        return GammaSeverityMarkConfiguration(
+            shape_k=require_positive_finite_number(
+                raw_payload,
+                "shape_k",
+                f"{field_path}.shape_k",
+                PRICING_ERROR_FACTORY,
+            ),
+            scale_theta=require_positive_finite_number(
+                raw_payload,
+                "scale_theta",
+                f"{field_path}.scale_theta",
+                PRICING_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class NigSharedPlusShiftConfiguration(ContractModel):
+    """Shared NIG core with one sell-side skew shift."""
+
+    alpha: float
+    beta_0: float
+    delta: float
+    mu: float
+    delta_beta: float
+
+    def __post_init__(self) -> None:
+        require_positive_finite_number(
+            {"alpha": self.alpha},
+            "alpha",
+            "alpha",
+            PRICING_ERROR_FACTORY,
+        )
+        require_finite_number({"beta_0": self.beta_0}, "beta_0", "beta_0", PRICING_ERROR_FACTORY)
+        require_positive_finite_number(
+            {"delta": self.delta},
+            "delta",
+            "delta",
+            PRICING_ERROR_FACTORY,
+        )
+        require_finite_number({"mu": self.mu}, "mu", "mu", PRICING_ERROR_FACTORY)
+        require_finite_number(
+            {"delta_beta": self.delta_beta},
+            "delta_beta",
+            "delta_beta",
+            PRICING_ERROR_FACTORY,
+        )
+
+        if self.delta_beta >= 0.0:
+            raise _pricing_error("delta_beta", "must be strictly negative")
+        if self.alpha <= abs(self.beta_0):
+            raise _pricing_error("alpha", "must be strictly greater than abs(beta_0)")
+        if self.alpha <= abs(self.beta_0 + self.delta_beta):
+            raise _pricing_error(
+                "delta_beta",
+                "must satisfy abs(beta_0 + delta_beta) < alpha",
+            )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> NigSharedPlusShiftConfiguration:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        alpha = require_positive_finite_number(
+            raw_payload,
+            "alpha",
+            f"{field_path}.alpha",
+            PRICING_ERROR_FACTORY,
+        )
+        beta_0 = require_finite_number(
+            raw_payload,
+            "beta_0",
+            f"{field_path}.beta_0",
+            PRICING_ERROR_FACTORY,
+        )
+        delta = require_positive_finite_number(
+            raw_payload,
+            "delta",
+            f"{field_path}.delta",
+            PRICING_ERROR_FACTORY,
+        )
+        mu = require_finite_number(raw_payload, "mu", f"{field_path}.mu", PRICING_ERROR_FACTORY)
+        delta_beta = require_finite_number(
+            raw_payload,
+            "delta_beta",
+            f"{field_path}.delta_beta",
+            PRICING_ERROR_FACTORY,
+        )
+
+        if delta_beta >= 0.0:
+            raise _pricing_error(f"{field_path}.delta_beta", "must be strictly negative")
+
+        if alpha <= abs(beta_0):
+            raise _pricing_error(
+                f"{field_path}.alpha",
+                f"alpha must be strictly greater than abs(beta_0), received alpha={alpha} and beta_0={beta_0}",
+            )
+
+        if alpha <= abs(beta_0 + delta_beta):
+            raise _pricing_error(
+                f"{field_path}.delta_beta",
+                (
+                    "alpha must be strictly greater than abs(beta_0 + delta_beta), "
+                    f"received alpha={alpha}, beta_0={beta_0}, delta_beta={delta_beta}"
+                ),
+            )
+
+        return NigSharedPlusShiftConfiguration(
+            alpha=alpha,
+            beta_0=beta_0,
+            delta=delta,
+            mu=mu,
+            delta_beta=delta_beta,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class VanillaOptionPayoffConfiguration(ContractModel):
+    """Payoff selection for vanilla pricing."""
+
+    payoff_type: VanillaOptionPayoffType
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> VanillaOptionPayoffConfiguration:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        raw_payoff_type = require_string(
+            raw_payload,
+            "payoff_type",
+            f"{field_path}.payoff_type",
+            PRICING_ERROR_FACTORY,
+        )
+        try:
+            payoff_type = VanillaOptionPayoffType(raw_payoff_type)
+        except ValueError as e:
+            raise _pricing_error(
+                f"{field_path}.payoff_type",
+                f"must be one of: call, put, received '{raw_payoff_type}'",
+            ) from e
+
+        return VanillaOptionPayoffConfiguration(payoff_type=payoff_type)
+
+
+@dataclass(frozen=True, slots=True)
+class VanillaOptionPricingMarketInputs(ContractModel):
+    """Market inputs required for one vanilla option valuation."""
+
+    spot: float
+    strike: float
+    maturity_interval: float
+    risk_free_rate: float
+    dividend_yield: float
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> VanillaOptionPricingMarketInputs:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        return VanillaOptionPricingMarketInputs(
+            spot=require_positive_finite_number(
+                raw_payload,
+                "spot",
+                f"{field_path}.spot",
+                PRICING_ERROR_FACTORY,
+            ),
+            strike=require_positive_finite_number(
+                raw_payload,
+                "strike",
+                f"{field_path}.strike",
+                PRICING_ERROR_FACTORY,
+            ),
+            maturity_interval=require_positive_finite_number(
+                raw_payload,
+                "maturity_interval",
+                f"{field_path}.maturity_interval",
+                PRICING_ERROR_FACTORY,
+            ),
+            risk_free_rate=require_finite_number(
+                raw_payload,
+                "risk_free_rate",
+                f"{field_path}.risk_free_rate",
+                PRICING_ERROR_FACTORY,
+            ),
+            dividend_yield=require_finite_number(
+                raw_payload,
+                "dividend_yield",
+                f"{field_path}.dividend_yield",
+                PRICING_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class VanillaOptionPricingModelParameters(ContractModel):
+    """Model-side pricing inputs across Hawkes, news, and NIG layers."""
+
+    hawkes_kernel_parameters: HawkesKernelParameters
+    gamma_severity_mark_configuration: GammaSeverityMarkConfiguration
+    nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> VanillaOptionPricingModelParameters:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        try:
+            return VanillaOptionPricingModelParameters(
+                hawkes_kernel_parameters=HawkesKernelParameters.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "hawkes_kernel_parameters",
+                        f"{field_path}.hawkes_kernel_parameters",
+                        PRICING_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.hawkes_kernel_parameters",
+                ),
+                gamma_severity_mark_configuration=GammaSeverityMarkConfiguration.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "gamma_severity_mark_configuration",
+                        f"{field_path}.gamma_severity_mark_configuration",
+                        PRICING_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.gamma_severity_mark_configuration",
+                ),
+                nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "nig_shared_plus_shift_configuration",
+                        f"{field_path}.nig_shared_plus_shift_configuration",
+                        PRICING_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.nig_shared_plus_shift_configuration",
+                ),
+            )
+        except SeededTickSimulationValidationError as e:
+            raise _pricing_error(e.failure.field_path, e.failure.message) from e
+
+
+@dataclass(frozen=True, slots=True)
+class VanillaOptionPricingRequest(ContractModel):
+    """Typed pricing request with hourly intraday default `interval_delta=1.0`."""
+
+    market_inputs: VanillaOptionPricingMarketInputs
+    payoff: VanillaOptionPayoffConfiguration
+    boundary_state: HawkesExcitationState
+    model_parameters: VanillaOptionPricingModelParameters
+    interval_delta: float = DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
+
+    def __post_init__(self) -> None:
+        require_positive_finite_scalar(
+            self.interval_delta,
+            "interval_delta",
+            PRICING_ERROR_FACTORY,
+        )
+
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any) -> VanillaOptionPricingRequest:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error("vanilla_option_pricing_request", "must be an object")
+
+        interval_delta = (
+            require_positive_finite_number(
+                raw_payload,
+                "interval_delta",
+                "interval_delta",
+                PRICING_ERROR_FACTORY,
+            )
+            if "interval_delta" in raw_payload
+            else DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
+        )
+
+        try:
+            return VanillaOptionPricingRequest(
+                market_inputs=VanillaOptionPricingMarketInputs.from_mapping(
+                    require_mapping(raw_payload, "market_inputs", "market_inputs", PRICING_ERROR_FACTORY),
+                    field_path="market_inputs",
+                ),
+                payoff=VanillaOptionPayoffConfiguration.from_mapping(
+                    require_mapping(raw_payload, "payoff", "payoff", PRICING_ERROR_FACTORY),
+                    field_path="payoff",
+                ),
+                boundary_state=HawkesExcitationState.from_mapping(
+                    require_mapping(raw_payload, "boundary_state", "boundary_state", PRICING_ERROR_FACTORY),
+                    field_path="boundary_state",
+                ),
+                model_parameters=VanillaOptionPricingModelParameters.from_mapping(
+                    require_mapping(raw_payload, "model_parameters", "model_parameters", PRICING_ERROR_FACTORY),
+                    field_path="model_parameters",
+                ),
+                interval_delta=interval_delta,
+            )
+        except SeededTickSimulationValidationError as e:
+            raise _pricing_error(e.failure.field_path, e.failure.message) from e
+
+
+@dataclass(frozen=True, slots=True)
+class VanillaOptionPricingDiagnostics(ContractModel):
+    """User-facing diagnostics returned alongside the option price."""
+
+    forward_price: float
+    discount_factor: float
+    maturity_interval: float
+    boundary_state_norm: float
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> VanillaOptionPricingDiagnostics:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        return VanillaOptionPricingDiagnostics(
+            forward_price=require_positive_finite_number(
+                raw_payload,
+                "forward_price",
+                f"{field_path}.forward_price",
+                PRICING_ERROR_FACTORY,
+            ),
+            discount_factor=require_positive_finite_number(
+                raw_payload,
+                "discount_factor",
+                f"{field_path}.discount_factor",
+                PRICING_ERROR_FACTORY,
+            ),
+            maturity_interval=require_positive_finite_number(
+                raw_payload,
+                "maturity_interval",
+                f"{field_path}.maturity_interval",
+                PRICING_ERROR_FACTORY,
+            ),
+            boundary_state_norm=require_non_negative_finite_number(
+                raw_payload,
+                "boundary_state_norm",
+                f"{field_path}.boundary_state_norm",
+                PRICING_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class VanillaOptionPricingResponse(ContractModel):
+    """Typed pricing response."""
+
+    price: float
+    diagnostics: VanillaOptionPricingDiagnostics
+
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any) -> VanillaOptionPricingResponse:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error("vanilla_option_pricing_response", "must be an object")
+
+        return VanillaOptionPricingResponse(
+            price=require_non_negative_finite_number(
+                raw_payload,
+                "price",
+                "price",
+                PRICING_ERROR_FACTORY,
+            ),
+            diagnostics=VanillaOptionPricingDiagnostics.from_mapping(
+                require_mapping(raw_payload, "diagnostics", "diagnostics", PRICING_ERROR_FACTORY),
+                field_path="diagnostics",
+            ),
+        )
+
+
 def load_hourly_factor_contract_for_pricing(
     *,
     calendar_registry: CalendarRegistry,
@@ -97,19 +483,19 @@ def load_hourly_factor_contract_for_pricing(
     interval_delta: float = DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA,
 ) -> HourlyFactorContract:
     """Load interval-aligned hourly factors for the pricing path."""
-    parsed_interval_delta = _require_positive_finite_scalar(
+
+    parsed_interval_delta = require_positive_finite_scalar(
         interval_delta,
-        field_path="interval_delta",
+        "interval_delta",
+        PRICING_ERROR_FACTORY,
     )
     if parsed_interval_delta != DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA:
-        raise VanillaOptionPricingValidationError(
-            VanillaOptionPricingValidationFailure(
-                field_path="interval_delta",
-                message=(
-                    "hourly factor provider supports only interval_delta=1.0 "
-                    f"for hourly boundaries, received {parsed_interval_delta}"
-                ),
-            )
+        raise _pricing_error(
+            "interval_delta",
+            (
+                "hourly factor provider supports only interval_delta=1.0 "
+                f"for hourly boundaries, received {parsed_interval_delta}"
+            ),
         )
 
     return provide_hourly_factor_contract(
@@ -123,526 +509,33 @@ def load_hourly_factor_contract_for_pricing(
 
 
 def validate_vanilla_option_pricing_request(
-    raw_request: Mapping[str, Any],
+    raw_request: dict[str, Any] | Any,
 ) -> VanillaOptionPricingRequest:
-    market_inputs = _require_mapping(raw_request, "market_inputs", "market_inputs")
-    payoff = _require_mapping(raw_request, "payoff", "payoff")
-    boundary_state = _require_mapping(raw_request, "boundary_state", "boundary_state")
-    model_parameters = _require_mapping(raw_request, "model_parameters", "model_parameters")
-
-    spot = _require_positive_finite_number(market_inputs, "spot", "market_inputs.spot")
-    strike = _require_positive_finite_number(market_inputs, "strike", "market_inputs.strike")
-    maturity_interval = _require_positive_finite_number(
-        market_inputs,
-        "maturity_interval",
-        "market_inputs.maturity_interval",
-    )
-    risk_free_rate = _require_finite_number(
-        market_inputs,
-        "risk_free_rate",
-        "market_inputs.risk_free_rate",
-    )
-    dividend_yield = _require_finite_number(
-        market_inputs,
-        "dividend_yield",
-        "market_inputs.dividend_yield",
-    )
-
-    payoff_type = _require_payoff_type(payoff, "payoff_type", "payoff.payoff_type")
-
-    y_plus_plus = _require_non_negative_finite_number(
-        boundary_state,
-        "y_plus_plus",
-        "boundary_state.y_plus_plus",
-    )
-    y_plus_minus = _require_non_negative_finite_number(
-        boundary_state,
-        "y_plus_minus",
-        "boundary_state.y_plus_minus",
-    )
-    y_minus_plus = _require_non_negative_finite_number(
-        boundary_state,
-        "y_minus_plus",
-        "boundary_state.y_minus_plus",
-    )
-    y_minus_minus = _require_non_negative_finite_number(
-        boundary_state,
-        "y_minus_minus",
-        "boundary_state.y_minus_minus",
-    )
-
-    parsed_model_parameters = _validate_model_parameters(model_parameters)
-    interval_delta = (
-        _require_positive_finite_number(raw_request, "interval_delta", "interval_delta")
-        if "interval_delta" in raw_request
-        else DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
-    )
-
-    return {
-        "market_inputs": {
-            "spot": spot,
-            "strike": strike,
-            "maturity_interval": maturity_interval,
-            "risk_free_rate": risk_free_rate,
-            "dividend_yield": dividend_yield,
-        },
-        "payoff": {
-            "payoff_type": payoff_type,
-        },
-        "boundary_state": {
-            "y_plus_plus": y_plus_plus,
-            "y_plus_minus": y_plus_minus,
-            "y_minus_plus": y_minus_plus,
-            "y_minus_minus": y_minus_minus,
-        },
-        "model_parameters": parsed_model_parameters,
-        "interval_delta": interval_delta,
-    }
+    return VanillaOptionPricingRequest.from_mapping(raw_request)
 
 
 def validate_vanilla_option_pricing_response(
-    raw_response: Mapping[str, Any],
+    raw_response: dict[str, Any] | Any,
 ) -> VanillaOptionPricingResponse:
-    price = _require_non_negative_finite_number(raw_response, "price", "price")
-    diagnostics = _require_mapping(raw_response, "diagnostics", "diagnostics")
-
-    forward_price = _require_positive_finite_number(
-        diagnostics,
-        "forward_price",
-        "diagnostics.forward_price",
-    )
-    discount_factor = _require_positive_finite_number(
-        diagnostics,
-        "discount_factor",
-        "diagnostics.discount_factor",
-    )
-    maturity_interval = _require_positive_finite_number(
-        diagnostics,
-        "maturity_interval",
-        "diagnostics.maturity_interval",
-    )
-    boundary_state_norm = _require_non_negative_finite_number(
-        diagnostics,
-        "boundary_state_norm",
-        "diagnostics.boundary_state_norm",
-    )
-
-    return {
-        "price": price,
-        "diagnostics": {
-            "forward_price": forward_price,
-            "discount_factor": discount_factor,
-            "maturity_interval": maturity_interval,
-            "boundary_state_norm": boundary_state_norm,
-        },
-    }
+    return VanillaOptionPricingResponse.from_mapping(raw_response)
 
 
-def serialize_vanilla_option_pricing_request(request: Mapping[str, Any]) -> str:
-    validated_request = validate_vanilla_option_pricing_request(request)
-    return json.dumps(validated_request, sort_keys=True)
+def serialize_vanilla_option_pricing_request(request: VanillaOptionPricingRequest) -> str:
+    return serialize_deterministic_json(request)
 
 
 def deserialize_vanilla_option_pricing_request(payload_json: str) -> VanillaOptionPricingRequest:
-    raw_payload = _parse_json_object(payload_json, "vanilla option request")
-    return validate_vanilla_option_pricing_request(raw_payload)
+    raw_payload = parse_json_object(payload_json, "vanilla option request", PRICING_ERROR_FACTORY)
+    return validate_vanilla_option_pricing_request(dict(raw_payload))
 
 
-def serialize_vanilla_option_pricing_response(response: Mapping[str, Any]) -> str:
-    validated_response = validate_vanilla_option_pricing_response(response)
-    return json.dumps(validated_response, sort_keys=True)
+def serialize_vanilla_option_pricing_response(response: VanillaOptionPricingResponse) -> str:
+    return serialize_deterministic_json(response)
 
 
 def deserialize_vanilla_option_pricing_response(payload_json: str) -> VanillaOptionPricingResponse:
-    raw_payload = _parse_json_object(payload_json, "vanilla option response")
-    return validate_vanilla_option_pricing_response(raw_payload)
-
-
-def _validate_model_parameters(
-    raw_model_parameters: Mapping[str, Any],
-) -> VanillaOptionPricingModelParameters:
-    raw_kernel_parameters = _require_mapping(
-        raw_model_parameters,
-        "hawkes_kernel_parameters",
-        "model_parameters.hawkes_kernel_parameters",
-    )
-    raw_alpha = _require_mapping(
-        raw_kernel_parameters,
-        "alpha",
-        "model_parameters.hawkes_kernel_parameters.alpha",
-    )
-    raw_rho = _require_mapping(
-        raw_kernel_parameters,
-        "rho",
-        "model_parameters.hawkes_kernel_parameters.rho",
-    )
-
-    lambda_bar = _require_positive_finite_number(
-        raw_kernel_parameters,
-        "lambda_bar",
-        "model_parameters.hawkes_kernel_parameters.lambda_bar",
-    )
-    beta = _require_positive_finite_number(
-        raw_kernel_parameters,
-        "beta",
-        "model_parameters.hawkes_kernel_parameters.beta",
-    )
-
-    alpha_plus_plus = _require_non_negative_finite_number(
-        raw_alpha,
-        "plus_plus",
-        "model_parameters.hawkes_kernel_parameters.alpha.plus_plus",
-    )
-    alpha_plus_minus = _require_non_negative_finite_number(
-        raw_alpha,
-        "plus_minus",
-        "model_parameters.hawkes_kernel_parameters.alpha.plus_minus",
-    )
-    alpha_minus_plus = _require_non_negative_finite_number(
-        raw_alpha,
-        "minus_plus",
-        "model_parameters.hawkes_kernel_parameters.alpha.minus_plus",
-    )
-    alpha_minus_minus = _require_non_negative_finite_number(
-        raw_alpha,
-        "minus_minus",
-        "model_parameters.hawkes_kernel_parameters.alpha.minus_minus",
-    )
-
-    rho_plus_plus = _require_non_negative_finite_number(
-        raw_rho,
-        "plus_plus",
-        "model_parameters.hawkes_kernel_parameters.rho.plus_plus",
-    )
-    rho_plus_minus = _require_non_negative_finite_number(
-        raw_rho,
-        "plus_minus",
-        "model_parameters.hawkes_kernel_parameters.rho.plus_minus",
-    )
-    rho_minus_plus = _require_non_negative_finite_number(
-        raw_rho,
-        "minus_plus",
-        "model_parameters.hawkes_kernel_parameters.rho.minus_plus",
-    )
-    rho_minus_minus = _require_non_negative_finite_number(
-        raw_rho,
-        "minus_minus",
-        "model_parameters.hawkes_kernel_parameters.rho.minus_minus",
-    )
-
-    spectral_radius = _compute_hawkes_alpha_over_beta_spectral_radius(
-        alpha_plus_plus,
-        alpha_plus_minus,
-        alpha_minus_plus,
-        alpha_minus_minus,
-        beta,
-    )
-    if spectral_radius >= 1.0:
-        raise VanillaOptionPricingValidationError(
-            VanillaOptionPricingValidationFailure(
-                field_path="model_parameters.hawkes_kernel_parameters",
-                message=(
-                    "alpha_over_beta spectral radius must be strictly below 1 "
-                    f"for stability, found {spectral_radius}"
-                ),
-            )
-        )
-
-    raw_gamma_configuration = _require_mapping(
-        raw_model_parameters,
-        "gamma_severity_mark_configuration",
-        "model_parameters.gamma_severity_mark_configuration",
-    )
-    shape_k = _require_positive_finite_number(
-        raw_gamma_configuration,
-        "shape_k",
-        "model_parameters.gamma_severity_mark_configuration.shape_k",
-    )
-    scale_theta = _require_positive_finite_number(
-        raw_gamma_configuration,
-        "scale_theta",
-        "model_parameters.gamma_severity_mark_configuration.scale_theta",
-    )
-
-    raw_nig_configuration = _require_mapping(
-        raw_model_parameters,
-        "nig_shared_plus_shift_configuration",
-        "model_parameters.nig_shared_plus_shift_configuration",
-    )
-    alpha = _require_positive_finite_number(
-        raw_nig_configuration,
-        "alpha",
-        "model_parameters.nig_shared_plus_shift_configuration.alpha",
-    )
-    beta_0 = _require_finite_number(
-        raw_nig_configuration,
-        "beta_0",
-        "model_parameters.nig_shared_plus_shift_configuration.beta_0",
-    )
-    delta = _require_positive_finite_number(
-        raw_nig_configuration,
-        "delta",
-        "model_parameters.nig_shared_plus_shift_configuration.delta",
-    )
-    mu = _require_finite_number(
-        raw_nig_configuration,
-        "mu",
-        "model_parameters.nig_shared_plus_shift_configuration.mu",
-    )
-    delta_beta = _require_finite_number(
-        raw_nig_configuration,
-        "delta_beta",
-        "model_parameters.nig_shared_plus_shift_configuration.delta_beta",
-    )
-    if delta_beta >= 0.0:
-        raise VanillaOptionPricingValidationError(
-            VanillaOptionPricingValidationFailure(
-                field_path="model_parameters.nig_shared_plus_shift_configuration.delta_beta",
-                message="must be strictly negative",
-            )
-        )
-
-    if alpha <= abs(beta_0):
-        raise VanillaOptionPricingValidationError(
-            VanillaOptionPricingValidationFailure(
-                field_path="model_parameters.nig_shared_plus_shift_configuration.alpha",
-                message=(
-                    "alpha must be strictly greater than abs(beta_0), "
-                    f"received alpha={alpha} and beta_0={beta_0}"
-                ),
-            )
-        )
-
-    derived_sell_beta = beta_0 + delta_beta
-    if alpha <= abs(derived_sell_beta):
-        raise VanillaOptionPricingValidationError(
-            VanillaOptionPricingValidationFailure(
-                field_path="model_parameters.nig_shared_plus_shift_configuration.delta_beta",
-                message=(
-                    "alpha must be strictly greater than abs(beta_0 + delta_beta), "
-                    f"received alpha={alpha}, beta_0={beta_0}, delta_beta={delta_beta}"
-                ),
-            )
-        )
-
-    return {
-        "hawkes_kernel_parameters": {
-            "lambda_bar": lambda_bar,
-            "beta": beta,
-            "alpha": {
-                "plus_plus": alpha_plus_plus,
-                "plus_minus": alpha_plus_minus,
-                "minus_plus": alpha_minus_plus,
-                "minus_minus": alpha_minus_minus,
-            },
-            "rho": {
-                "plus_plus": rho_plus_plus,
-                "plus_minus": rho_plus_minus,
-                "minus_plus": rho_minus_plus,
-                "minus_minus": rho_minus_minus,
-            },
-        },
-        "gamma_severity_mark_configuration": {
-            "shape_k": shape_k,
-            "scale_theta": scale_theta,
-        },
-        "nig_shared_plus_shift_configuration": {
-            "alpha": alpha,
-            "beta_0": beta_0,
-            "delta": delta,
-            "mu": mu,
-            "delta_beta": delta_beta,
-        },
-    }
-
-
-def _require_payoff_type(
-    mapping: Mapping[str, Any],
-    field_name: str,
-    field_path: str,
-) -> VanillaOptionPayoffType:
-    raw_value = _require_field(mapping, field_name, field_path)
-    if not isinstance(raw_value, str):
-        raise VanillaOptionPricingValidationError(
-            VanillaOptionPricingValidationFailure(
-                field_path=field_path,
-                message="must be one of: call, put",
-            )
-        )
-
-    try:
-        return VanillaOptionPayoffType(raw_value)
-    except ValueError as error:
-        raise VanillaOptionPricingValidationError(
-            VanillaOptionPricingValidationFailure(
-                field_path=field_path,
-                message=f"must be one of: call, put, received '{raw_value}'",
-            )
-        ) from error
-
-
-def _compute_hawkes_alpha_over_beta_spectral_radius(
-    alpha_plus_plus: float,
-    alpha_plus_minus: float,
-    alpha_minus_plus: float,
-    alpha_minus_minus: float,
-    beta: float,
-) -> float:
-    a = alpha_plus_plus / beta
-    b = alpha_plus_minus / beta
-    c = alpha_minus_plus / beta
-    d = alpha_minus_minus / beta
-
-    trace = a + d
-    determinant = a * d - b * c
-    radicand = trace * trace - 4.0 * determinant
-    safe_radicand = max(radicand, 0.0)
-
-    return 0.5 * (trace + sqrt(safe_radicand))
-
-
-def _parse_json_object(payload_json: str, payload_label: str) -> Mapping[str, Any]:
-    try:
-        parsed_payload = json.loads(payload_json)
-    except json.JSONDecodeError as error:
-        raise VanillaOptionPricingValidationError(
-            VanillaOptionPricingValidationFailure(
-                field_path=payload_label,
-                message=f"must be valid JSON: {error.msg}",
-            )
-        ) from error
-
-    if not isinstance(parsed_payload, dict):
-        raise VanillaOptionPricingValidationError(
-            VanillaOptionPricingValidationFailure(
-                field_path=payload_label,
-                message="must decode to a JSON object",
-            )
-        )
-
-    return parsed_payload
-
-
-def _require_mapping(
-    mapping: Mapping[str, Any],
-    field_name: str,
-    field_path: str,
-) -> Mapping[str, Any]:
-    raw_value = _require_field(mapping, field_name, field_path)
-    if not isinstance(raw_value, Mapping):
-        raise VanillaOptionPricingValidationError(
-            VanillaOptionPricingValidationFailure(
-                field_path=field_path,
-                message="must be an object",
-            )
-        )
-
-    return raw_value
-
-
-def _require_field(
-    mapping: Mapping[str, Any],
-    field_name: str,
-    field_path: str,
-) -> object:
-    if field_name not in mapping:
-        raise VanillaOptionPricingValidationError(
-            VanillaOptionPricingValidationFailure(
-                field_path=field_path,
-                message="is required",
-            )
-        )
-
-    return mapping[field_name]
-
-
-def _require_positive_finite_number(
-    mapping: Mapping[str, Any],
-    field_name: str,
-    field_path: str,
-) -> float:
-    value = _require_finite_number(mapping, field_name, field_path)
-    if value <= 0.0:
-        raise VanillaOptionPricingValidationError(
-            VanillaOptionPricingValidationFailure(
-                field_path=field_path,
-                message="must be strictly positive",
-            )
-        )
-
-    return value
-
-
-def _require_non_negative_finite_number(
-    mapping: Mapping[str, Any],
-    field_name: str,
-    field_path: str,
-) -> float:
-    value = _require_finite_number(mapping, field_name, field_path)
-    if value < 0.0:
-        raise VanillaOptionPricingValidationError(
-            VanillaOptionPricingValidationFailure(
-                field_path=field_path,
-                message="must be non-negative",
-            )
-        )
-
-    return value
-
-
-def _require_finite_number(
-    mapping: Mapping[str, Any],
-    field_name: str,
-    field_path: str,
-) -> float:
-    raw_value = _require_field(mapping, field_name, field_path)
-    if not isinstance(raw_value, (int, float)):
-        raise VanillaOptionPricingValidationError(
-            VanillaOptionPricingValidationFailure(
-                field_path=field_path,
-                message="must be a finite number",
-            )
-        )
-
-    numeric_value = float(raw_value)
-    if not isfinite(numeric_value):
-        raise VanillaOptionPricingValidationError(
-            VanillaOptionPricingValidationFailure(
-                field_path=field_path,
-                message="must be a finite number",
-            )
-        )
-
-    return numeric_value
-
-
-def _require_positive_finite_scalar(value: object, *, field_path: str) -> float:
-    if not isinstance(value, (int, float)):
-        raise VanillaOptionPricingValidationError(
-            VanillaOptionPricingValidationFailure(
-                field_path=field_path,
-                message="must be a finite number",
-            )
-        )
-
-    numeric_value = float(value)
-    if not isfinite(numeric_value):
-        raise VanillaOptionPricingValidationError(
-            VanillaOptionPricingValidationFailure(
-                field_path=field_path,
-                message="must be a finite number",
-            )
-        )
-
-    if numeric_value <= 0.0:
-        raise VanillaOptionPricingValidationError(
-            VanillaOptionPricingValidationFailure(
-                field_path=field_path,
-                message="must be strictly positive",
-            )
-        )
-
-    return numeric_value
+    raw_payload = parse_json_object(payload_json, "vanilla option response", PRICING_ERROR_FACTORY)
+    return validate_vanilla_option_pricing_response(dict(raw_payload))
 
 
 __all__ = [

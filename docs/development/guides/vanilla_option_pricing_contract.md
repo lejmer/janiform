@@ -112,8 +112,8 @@ Deserialization is validation-aware and rejects malformed or incomplete payloads
 The Python-facing contract is in `janiform.pricing`:
 
 - `VanillaOptionPayoffType`
-- `VanillaOptionPricingRequest` (typed dict)
-- `VanillaOptionPricingResponse` (typed dict)
+- `VanillaOptionPricingRequest` (frozen dataclass)
+- `VanillaOptionPricingResponse` (frozen dataclass)
 - `VanillaOptionPricingValidationFailure`
 - `VanillaOptionPricingValidationError`
 

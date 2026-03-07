@@ -31,9 +31,20 @@ def test_simulation_public_symbols_live_in_simulation_module() -> None:
         "HawkesExcitationState",
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
-        "SeededTickEventTape",
+        "SeededTickEventRecord",
+        "SeededTickEventSide",
+        "SeededTickEventStateSnapshot",
+        "SeededTickEventStateSnapshotCapture",
+        "SeededTickEventTapeMetadata",
+        "SeededTickSimulationRequest",
+        "SeededTickSimulationResponse",
+        "SeededTickSimulationValidationError",
+        "SeededTickSimulationValidationFailure",
+        "deserialize_seeded_tick_simulation_response",
         "load_hourly_factor_contract_for_simulation",
         "run_seeded_tick_event_simulation",
+        "serialize_seeded_tick_simulation_response",
+        "validate_seeded_tick_simulation_response",
     }
 
     assert expected_exports <= set(simulation_module.__all__)
@@ -116,9 +127,43 @@ def test_private_modules_are_not_exposed_through_public_exports() -> None:
         import_module("janiform.api")
 
 
-def test_calibration_module_is_not_public_in_current_milestone() -> None:
-    with pytest.raises(ModuleNotFoundError):
-        import_module("janiform.calibration")
+def test_calibration_public_symbols_live_in_calibration_module() -> None:
+    calibration_module = import_module("janiform.calibration")
+
+    expected_exports = {
+        "CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY",
+        "CALIBRATION_RUN_SPEC_SCHEMA_VERSION",
+        "CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION",
+        "CalibrationCheckpointMetadata",
+        "CalibrationExecutionMode",
+        "CalibrationFailureDetails",
+        "CalibrationHandoffTransport",
+        "CalibrationOptimizerSettings",
+        "CalibrationResumeSettings",
+        "CalibrationResumeSource",
+        "CalibrationRunDataInputs",
+        "CalibrationRunSeedSettings",
+        "CalibrationStage",
+        "CalibrationStageExecutionStatus",
+        "CalibrationStageHandoff",
+        "CalibrationStageReport",
+        "CalibrationStageSeedOverride",
+        "CalibrationStageSolverSettings",
+        "CalibrationValidationError",
+        "CalibrationValidationFailure",
+        "DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE",
+        "StagedCalibrationRequest",
+        "StagedCalibrationResponse",
+        "deserialize_staged_calibration_request",
+        "deserialize_staged_calibration_response",
+        "serialize_staged_calibration_request",
+        "serialize_staged_calibration_response",
+        "validate_staged_calibration_request",
+        "validate_staged_calibration_response",
+    }
+
+    assert expected_exports <= set(calibration_module.__all__)
+    assert expected_exports <= set(dir(calibration_module))
 
 
 def test_readme_links_public_api_surface_policy() -> None:

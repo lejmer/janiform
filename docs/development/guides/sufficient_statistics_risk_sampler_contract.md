@@ -153,6 +153,8 @@ The Python-facing contract is in `janiform.risk`:
 - `SufficientStatisticsRiskValidationFailure`
 - `SufficientStatisticsRiskValidationError`
 
+The public Python models are frozen dataclasses with deterministic JSON serialization.
+
 Validation and serialization helpers:
 
 - `validate_sufficient_statistics_risk_run_request`
