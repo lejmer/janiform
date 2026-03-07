@@ -8,15 +8,27 @@ from janiform.pricing import (
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
     VanillaOptionPricingDiagnostics,
+    VanillaOptionPricingExecutionInput,
+    VanillaOptionPricingIntervalFactors,
     VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters,
+    VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingRequest,
     VanillaOptionPricingResponse,
+    VanillaOptionPricingRunDiagnostics,
+    VanillaOptionPricingRunOutputSchemaMetadata,
+    VanillaOptionPricingRunResult,
     VanillaOptionPricingValidationError,
+    deserialize_vanilla_option_pricing_execution_input,
     deserialize_vanilla_option_pricing_request,
     deserialize_vanilla_option_pricing_response,
+    deserialize_vanilla_option_pricing_run_result,
+    run_vanilla_option_pricing,
+    serialize_vanilla_option_pricing_execution_input,
     serialize_vanilla_option_pricing_request,
     serialize_vanilla_option_pricing_response,
+    serialize_vanilla_option_pricing_run_result,
+    validate_vanilla_option_pricing_execution_input,
     validate_vanilla_option_pricing_request,
     validate_vanilla_option_pricing_response,
 )
@@ -144,6 +156,63 @@ def test_vanilla_option_response_rejects_negative_price_with_structured_error() 
     assert captured_error.value.failure.message == "must be non-negative"
 
 
+def test_vanilla_option_pricing_execution_input_roundtrip_preserves_split_news_intensity() -> None:
+    execution_input = _valid_execution_input_model()
+
+    serialized_execution_input = serialize_vanilla_option_pricing_execution_input(execution_input)
+    deserialized_execution_input = deserialize_vanilla_option_pricing_execution_input(
+        serialized_execution_input
+    )
+
+    assert deserialized_execution_input == execution_input
+    assert deserialized_execution_input.interval_factors.nu_h_known == pytest.approx(0.03)
+    assert deserialized_execution_input.interval_factors.nu_h_surprise == pytest.approx(0.05)
+
+
+def test_vanilla_option_pricing_execution_input_rejects_missing_surprise_news_intensity() -> None:
+    execution_input_payload = _valid_execution_input_model().to_payload()
+    del execution_input_payload["interval_factors"]["nu_h_surprise"]
+
+    with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
+        validate_vanilla_option_pricing_execution_input(execution_input_payload)
+
+    assert captured_error.value.failure.field_path == "interval_factors.nu_h_surprise"
+    assert captured_error.value.failure.message == "is required"
+
+
+def test_run_vanilla_option_pricing_executes_native_workflow_with_optional_outputs() -> None:
+    run_result = run_vanilla_option_pricing(_valid_runtime_execution_input_model())
+
+    assert isinstance(run_result, VanillaOptionPricingRunResult)
+    assert run_result.response.price >= 0.0
+    assert run_result.response.diagnostics.forward_price > 0.0
+    assert run_result.run_diagnostics is not None
+    assert run_result.run_diagnostics.transform is not None
+    assert run_result.run_diagnostics.integration_quality is not None
+    assert run_result.calibration_hooks is not None
+    assert run_result.calibration_hooks.option_price == pytest.approx(run_result.response.price)
+
+
+def test_vanilla_option_pricing_run_result_roundtrip_preserves_required_schema_fields() -> None:
+    run_result = run_vanilla_option_pricing(_valid_runtime_execution_input_model())
+
+    serialized_run_result = serialize_vanilla_option_pricing_run_result(run_result)
+    deserialized_run_result = deserialize_vanilla_option_pricing_run_result(serialized_run_result)
+
+    assert deserialized_run_result == run_result
+    assert deserialized_run_result.schema_version == "pricing.vanilla_option.run_result.v1"
+    assert (
+        deserialized_run_result.output_schema_metadata.required_run_result_fields
+        == (
+            "schema_version",
+            "output_schema_metadata",
+            "response",
+            "run_diagnostics",
+            "calibration_hooks",
+        )
+    )
+
+
 def _valid_request_model() -> VanillaOptionPricingRequest:
     return VanillaOptionPricingRequest(
         market_inputs=VanillaOptionPricingMarketInputs(
@@ -188,6 +257,54 @@ def _valid_request_model() -> VanillaOptionPricingRequest:
                 mu=0.1,
                 delta_beta=-0.2,
             ),
+        ),
+    )
+
+
+def _valid_execution_input_model() -> VanillaOptionPricingExecutionInput:
+    return VanillaOptionPricingExecutionInput(
+        request=_valid_request_model(),
+        interval_factors=VanillaOptionPricingIntervalFactors(
+            s_h=1.1,
+            nu_h_known=0.03,
+            nu_h_surprise=0.05,
+        ),
+        optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
+            include_transform_diagnostics=True,
+            include_integration_quality_diagnostics=True,
+            include_calibration_hooks=True,
+        ),
+    )
+
+
+def _valid_runtime_execution_input_model() -> VanillaOptionPricingExecutionInput:
+    return VanillaOptionPricingExecutionInput(
+        request=VanillaOptionPricingRequest(
+            market_inputs=VanillaOptionPricingMarketInputs(
+                spot=101.0,
+                strike=100.0,
+                maturity_interval=1.0,
+                risk_free_rate=0.02,
+                dividend_yield=0.01,
+            ),
+            payoff=VanillaOptionPayoffConfiguration(payoff_type=VanillaOptionPayoffType.CALL),
+            boundary_state=HawkesExcitationState(
+                y_plus_plus=0.0,
+                y_plus_minus=0.0,
+                y_minus_plus=0.0,
+                y_minus_minus=0.0,
+            ),
+            model_parameters=_valid_request_model().model_parameters,
+        ),
+        interval_factors=VanillaOptionPricingIntervalFactors(
+            s_h=1.0,
+            nu_h_known=0.0,
+            nu_h_surprise=0.0,
+        ),
+        optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
+            include_transform_diagnostics=True,
+            include_integration_quality_diagnostics=True,
+            include_calibration_hooks=True,
         ),
     )
 

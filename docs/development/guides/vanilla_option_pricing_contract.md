@@ -12,6 +12,26 @@ The contract is for public pricing payloads only:
 - response price and non-engine-specific diagnostics
 
 This contract intentionally excludes Fourier integration settings and solver internals.
+Executable interval factors for real pricing runs live in a separate execution contract.
+
+## Executable Pricing Input
+
+The orchestrated pricing path uses:
+
+- `VanillaOptionPricingExecutionInput`
+- `VanillaOptionPricingIntervalFactors`
+- `VanillaOptionPricingOptionalOutputSelection`
+- `run_vanilla_option_pricing`
+
+`VanillaOptionPricingIntervalFactors` carries the current interval inputs needed by the native
+runner:
+
+- `s_h`
+- `nu_h_known`
+- `nu_h_surprise`
+
+The execution path preserves known-scheduled and surprise news intensity separately and does not
+require callers to collapse them into only one combined `nu_h`.
 
 ## Fourier Integration Stability Controls
 
@@ -43,6 +63,8 @@ Baseline response semantics remain unchanged.
 Optional pricing run outputs are available through:
 
 - `VanillaOptionPricingOptionalOutputSelection`
+- `VanillaOptionPricingExecutionInput`
+- `run_vanilla_option_pricing`
 - `build_vanilla_option_pricing_run_result`
 - `VanillaOptionPricingRunResult`
 
@@ -66,12 +88,19 @@ The canonical Rust types are in `janiform_core::pricing`:
 - `VanillaOptionPricingRequest`
 - `VanillaOptionPricingDiagnostics`
 - `VanillaOptionPricingResponse`
+- `VanillaOptionPricingIntervalFactors`
+- `VanillaOptionPricingExecutionInput`
+- `VanillaOptionPricingOptionalOutputSelection`
+- `VanillaOptionPricingRunResult`
 
 Validation entrypoints:
 
 - `VanillaOptionPricingRequest::try_new`
 - `VanillaOptionPricingResponse::try_new`
+- `VanillaOptionPricingIntervalFactors::try_new`
+- `VanillaOptionPricingExecutionInput::try_new`
 - `validate_pricing_martingale_condition_under_esscher_tilt`
+- `run_vanilla_option_pricing`
 
 Structured request validation errors:
 
@@ -107,6 +136,15 @@ Deserialization is validation-aware and rejects malformed or incomplete payloads
 - Non-hourly values are allowed in request validation and solver input construction when compatible interval factors are supplied by the caller.
 - The hourly factor provider path remains hourly-only and rejects `interval_delta != 1.0` with a structured validation error.
 
+## Hourly Factor Feeding Rules
+
+- The shared hourly factor provider remains useful for hourly alignment and combined-factor loading.
+- The executable pricing path needs explicit `s_h`, `nu_h_known`, and `nu_h_surprise` values so
+  the solver bridge keeps corrected known-versus-surprise news semantics intact.
+- When the caller already materialized split news components through
+  `janiform.hourly_factors.materialize_hourly_news_intensity_factors`, those split interval values
+  should be copied into `VanillaOptionPricingIntervalFactors`.
+
 ## Python-facing contract
 
 The Python-facing contract is in `janiform.pricing`:
@@ -114,6 +152,10 @@ The Python-facing contract is in `janiform.pricing`:
 - `VanillaOptionPayoffType`
 - `VanillaOptionPricingRequest` (frozen dataclass)
 - `VanillaOptionPricingResponse` (frozen dataclass)
+- `VanillaOptionPricingIntervalFactors` (frozen dataclass)
+- `VanillaOptionPricingExecutionInput` (frozen dataclass)
+- `VanillaOptionPricingOptionalOutputSelection` (frozen dataclass)
+- `VanillaOptionPricingRunResult` (frozen dataclass)
 - `VanillaOptionPricingValidationFailure`
 - `VanillaOptionPricingValidationError`
 
@@ -121,10 +163,17 @@ Validation and serialization helpers:
 
 - `validate_vanilla_option_pricing_request`
 - `validate_vanilla_option_pricing_response`
+- `validate_vanilla_option_pricing_execution_input`
+- `validate_vanilla_option_pricing_run_result`
 - `serialize_vanilla_option_pricing_request`
 - `deserialize_vanilla_option_pricing_request`
 - `serialize_vanilla_option_pricing_response`
 - `deserialize_vanilla_option_pricing_response`
+- `serialize_vanilla_option_pricing_execution_input`
+- `deserialize_vanilla_option_pricing_execution_input`
+- `serialize_vanilla_option_pricing_run_result`
+- `deserialize_vanilla_option_pricing_run_result`
+- `run_vanilla_option_pricing`
 
 Python validation emits one structured failure with:
 

@@ -45,10 +45,14 @@ The package root `janiform` is intentionally minimal.
     - `serialize_seeded_tick_simulation_response`
     - `deserialize_seeded_tick_simulation_response`
 - `janiform.pricing`
-  - Ownership: vanilla option pricing contract and pricing-side hourly factor loading
+  - Ownership: vanilla option pricing contract, execution input, native runner, and pricing-side hourly factor loading
   - Public symbols:
     - `GammaSeverityMarkConfiguration`
     - `NigSharedPlusShiftConfiguration`
+    - `VanillaOptionPricingCalibrationHooks`
+    - `VanillaOptionPricingExecutionInput`
+    - `VanillaOptionPricingIntervalFactors`
+    - `VanillaOptionPricingOptionalOutputSelection`
     - `VanillaOptionPayoffConfiguration`
     - `VanillaOptionPayoffType`
     - `VanillaOptionPricingDiagnostics`
@@ -56,15 +60,25 @@ The package root `janiform` is intentionally minimal.
     - `VanillaOptionPricingModelParameters`
     - `VanillaOptionPricingRequest`
     - `VanillaOptionPricingResponse`
+    - `VanillaOptionPricingRunDiagnostics`
+    - `VanillaOptionPricingRunOutputSchemaMetadata`
+    - `VanillaOptionPricingRunResult`
     - `VanillaOptionPricingValidationError`
     - `VanillaOptionPricingValidationFailure`
     - `load_hourly_factor_contract_for_pricing`
+    - `run_vanilla_option_pricing`
+    - `validate_vanilla_option_pricing_execution_input`
     - `validate_vanilla_option_pricing_request`
     - `validate_vanilla_option_pricing_response`
+    - `validate_vanilla_option_pricing_run_result`
+    - `serialize_vanilla_option_pricing_execution_input`
     - `serialize_vanilla_option_pricing_request`
     - `serialize_vanilla_option_pricing_response`
+    - `serialize_vanilla_option_pricing_run_result`
+    - `deserialize_vanilla_option_pricing_execution_input`
     - `deserialize_vanilla_option_pricing_request`
     - `deserialize_vanilla_option_pricing_response`
+    - `deserialize_vanilla_option_pricing_run_result`
 - `janiform.risk`
   - Ownership: sufficient-statistics risk workflow contract
   - Public symbols:
