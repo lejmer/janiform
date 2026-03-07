@@ -13,8 +13,9 @@ use super::super::contracts::{
 };
 use super::shared::{
     CalibrationArtifactIoError, CalibrationArtifactPersistenceKind,
-    calibration_execution_mode_token, calibration_stage_token, compute_reference_checksum_hex,
-    load_validated_json_artifact, persist_validated_json_artifact, validate_checksum_hex,
+    calibration_committed_artifact_run_directory, calibration_execution_mode_token,
+    calibration_stage_token, compute_reference_checksum_hex, load_validated_json_artifact,
+    persist_validated_json_artifact, validate_checksum_hex,
 };
 
 pub const CALIBRATION_DATASET_SNAPSHOT_ARTIFACT_SCHEMA_VERSION: &str =
@@ -525,21 +526,27 @@ pub fn calibration_dataset_snapshot_artifact_reference(run_id: &str) -> String {
 }
 
 pub fn calibration_dataset_snapshot_artifact_path(
-    disk_checkpoint_directory: &Path,
+    persistence_root_directory: &Path,
     run_id: &str,
 ) -> PathBuf {
-    disk_checkpoint_directory
-        .join(run_id)
-        .join("dataset_snapshot.artifact.json")
+    let run_directory =
+        calibration_committed_artifact_run_directory(persistence_root_directory, run_id);
+    calibration_dataset_snapshot_artifact_path_in_run_directory(run_directory.as_path())
+}
+
+pub(crate) fn calibration_dataset_snapshot_artifact_path_in_run_directory(
+    run_directory: &Path,
+) -> PathBuf {
+    run_directory.join("dataset_snapshot.artifact.json")
 }
 
 pub fn persist_calibration_dataset_snapshot_artifact_to_disk(
-    disk_checkpoint_directory: &Path,
+    persistence_root_directory: &Path,
     artifact: &CalibrationDatasetSnapshotArtifact,
 ) -> Result<PathBuf, CalibrationArtifactIoError> {
     let artifact_kind = CalibrationArtifactPersistenceKind::DatasetSnapshot;
     let artifact_path = calibration_dataset_snapshot_artifact_path(
-        disk_checkpoint_directory,
+        persistence_root_directory,
         artifact.run_id.as_str(),
     );
     persist_validated_json_artifact(
@@ -550,21 +557,38 @@ pub fn persist_calibration_dataset_snapshot_artifact_to_disk(
     )
 }
 
+pub(crate) fn persist_calibration_dataset_snapshot_artifact_to_run_directory(
+    run_directory: &Path,
+    artifact: &CalibrationDatasetSnapshotArtifact,
+) -> Result<PathBuf, CalibrationArtifactIoError> {
+    let artifact_kind = CalibrationArtifactPersistenceKind::DatasetSnapshot;
+    let artifact_path = calibration_dataset_snapshot_artifact_path_in_run_directory(run_directory);
+
+    persist_validated_json_artifact(
+        artifact_kind,
+        artifact_path.as_path(),
+        artifact,
+        |payload| payload.validate().map_err(|source| source.to_string()),
+    )
+}
+
 pub fn persist_calibration_dataset_snapshot_from_run_contract_to_disk(
-    disk_checkpoint_directory: &Path,
+    persistence_root_directory: &Path,
     run_contract: &CalibrationRunContract,
 ) -> Result<PathBuf, CalibrationArtifactIoError> {
     let artifact_kind = CalibrationArtifactPersistenceKind::DatasetSnapshot;
     let artifact = build_calibration_dataset_snapshot_artifact(run_contract).map_err(|source| {
         CalibrationArtifactIoError::validation_failed(artifact_kind, source.to_string())
     })?;
-    persist_calibration_dataset_snapshot_artifact_to_disk(disk_checkpoint_directory, &artifact)
+
+    persist_calibration_dataset_snapshot_artifact_to_disk(persistence_root_directory, &artifact)
 }
 
 pub fn load_calibration_dataset_snapshot_artifact_from_disk(
     artifact_path: &Path,
 ) -> Result<CalibrationDatasetSnapshotArtifact, CalibrationArtifactIoError> {
     let artifact_kind = CalibrationArtifactPersistenceKind::DatasetSnapshot;
+
     load_validated_json_artifact(
         artifact_kind,
         artifact_path,

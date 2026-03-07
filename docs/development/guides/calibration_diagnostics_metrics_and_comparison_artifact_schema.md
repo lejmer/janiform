@@ -171,9 +171,11 @@ Validation rejects:
 For a disk-mode run with checkpoint root `{artifact_root}` and `run_id={run_id}`:
 
 - Diagnostics role artifact:
-  `{artifact_root}/{run_id}/diagnostics.validation_metric.artifact.json`
+  `{artifact_root}/artifacts/runs/{run_id}/diagnostics.validation_metric.artifact.json`
 - Comparison role artifact:
-  `{artifact_root}/{run_id}/comparison.validation_metric.artifact.json`
+  `{artifact_root}/artifacts/runs/{run_id}/comparison.validation_metric.artifact.json`
+
+Pending exports use the same filenames under `{artifact_root}/artifacts/pending/{run_id}/` until the run-level commit publishes the full artifact set.
 
 Canonical artifact references:
 

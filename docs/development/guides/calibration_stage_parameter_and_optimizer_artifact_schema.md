@@ -146,8 +146,9 @@ Validation rejects:
 
 For a disk-mode run with checkpoint root `{artifact_root}` and `run_id={run_id}`:
 
-- Seasonality stage artifact: `{artifact_root}/{run_id}/seasonality.stage_parameter.artifact.json`
-- Hawkes stage artifact: `{artifact_root}/{run_id}/hawkes.stage_parameter.artifact.json`
-- Return-components stage artifact: `{artifact_root}/{run_id}/return_components.stage_parameter.artifact.json`
+- committed seasonality stage artifact: `{artifact_root}/artifacts/runs/{run_id}/seasonality.stage_parameter.artifact.json`
+- committed Hawkes stage artifact: `{artifact_root}/artifacts/runs/{run_id}/hawkes.stage_parameter.artifact.json`
+- committed return-components stage artifact: `{artifact_root}/artifacts/runs/{run_id}/return_components.stage_parameter.artifact.json`
+- pending stage artifacts during execution use the same filenames under `{artifact_root}/artifacts/pending/{run_id}/`
 
-Writes use the same atomic tempfile then rename policy as staged checkpoint persistence.
+Each stage artifact is written atomically within the pending run directory, and the full run becomes visible only after the pending directory is atomically renamed into the committed artifact directory.

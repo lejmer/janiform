@@ -5,12 +5,15 @@ use serde::Serialize;
 use crate::calendar::ExchangeCalendarRegistry;
 
 use super::artifact_registry::{
+    CalibrationArtifactRunPreparationMode, CalibrationArtifactRunWriter,
     CalibrationStageParameterArtifact, build_calibration_artifact_manifest,
-    build_calibration_stage_parameter_artifact, calibration_dataset_snapshot_artifact_reference,
+    build_calibration_dataset_snapshot_artifact, build_calibration_stage_parameter_artifact,
+    calibration_dataset_snapshot_artifact_reference,
+    calibration_stage_parameter_artifact_path_in_run_directory,
     load_calibration_stage_parameter_artifact_from_disk,
-    persist_calibration_artifact_manifest_to_disk,
-    persist_calibration_dataset_snapshot_from_run_contract_to_disk,
-    persist_calibration_stage_parameter_artifact_to_disk,
+    persist_calibration_artifact_manifest_to_run_directory,
+    persist_calibration_dataset_snapshot_artifact_to_run_directory,
+    persist_calibration_stage_parameter_artifact_to_run_directory,
     stage_output_artifact_references_for_stage,
 };
 use super::checkpointing::{
@@ -323,40 +326,6 @@ pub fn run_staged_calibration_with_checkpointing(
         );
     }
 
-    if run_spec.execution_mode == CalibrationExecutionMode::Disk {
-        let Some(disk_checkpoint_directory) = disk_checkpoint_directory else {
-            return build_staged_run_failure_report(
-                run_contract,
-                Vec::new(),
-                Vec::new(),
-                None,
-                None,
-                None,
-                CalibrationStagedRunFailure::MissingDiskCheckpointDirectory,
-            );
-        };
-
-        if let Err(source) = persist_calibration_dataset_snapshot_from_run_contract_to_disk(
-            disk_checkpoint_directory,
-            run_contract,
-        ) {
-            return build_staged_run_failure_report(
-                run_contract,
-                Vec::new(),
-                Vec::new(),
-                None,
-                None,
-                None,
-                CalibrationStagedRunFailure::DatasetSnapshotPersistFailed {
-                    artifact_reference: calibration_dataset_snapshot_artifact_reference(
-                        run_spec.run_id.as_str(),
-                    ),
-                    error_message: source.to_string(),
-                },
-            );
-        }
-    }
-
     let execution_stage_order = run_contract.execution_stage_order.clone();
 
     let mut stage_reports = Vec::new();
@@ -533,24 +502,81 @@ pub fn run_staged_calibration_with_checkpointing(
         };
     }
 
-    if run_spec.execution_mode == CalibrationExecutionMode::Disk && start_position > 0 {
+    let dataset_snapshot_artifact = if run_spec.execution_mode == CalibrationExecutionMode::Disk {
+        match build_calibration_dataset_snapshot_artifact(run_contract) {
+            Ok(artifact) => Some(artifact),
+            Err(source) => {
+                return build_staged_run_failure_report(
+                    run_contract,
+                    Vec::new(),
+                    Vec::new(),
+                    resumed_from_checkpoint_reference,
+                    resumed_from_last_successful_stage,
+                    None,
+                    CalibrationStagedRunFailure::DatasetSnapshotPersistFailed {
+                        artifact_reference: calibration_dataset_snapshot_artifact_reference(
+                            run_spec.run_id.as_str(),
+                        ),
+                        error_message: source.to_string(),
+                    },
+                );
+            }
+        }
+    } else {
+        None
+    };
+
+    let artifact_run_writer = if run_spec.execution_mode == CalibrationExecutionMode::Disk {
         let Some(disk_checkpoint_directory) = disk_checkpoint_directory else {
             return build_staged_run_failure_report(
                 run_contract,
-                stage_reports,
-                emitted_checkpoints,
+                Vec::new(),
+                Vec::new(),
                 resumed_from_checkpoint_reference,
                 resumed_from_last_successful_stage,
                 None,
                 CalibrationStagedRunFailure::MissingDiskCheckpointDirectory,
             );
         };
+        let preparation_mode = if run_spec.resume_settings.is_some() {
+            CalibrationArtifactRunPreparationMode::ResumeRun
+        } else {
+            CalibrationArtifactRunPreparationMode::FreshRun
+        };
+
+        match CalibrationArtifactRunWriter::prepare(
+            disk_checkpoint_directory,
+            run_spec.run_id.as_str(),
+            preparation_mode,
+        ) {
+            Ok(writer) => Some(writer),
+            Err(source) => {
+                return build_staged_run_failure_report(
+                    run_contract,
+                    Vec::new(),
+                    Vec::new(),
+                    resumed_from_checkpoint_reference,
+                    resumed_from_last_successful_stage,
+                    None,
+                    CalibrationStagedRunFailure::ArtifactManifestPersistFailed {
+                        error_message: source.to_string(),
+                    },
+                );
+            }
+        }
+    } else {
+        None
+    };
+
+    if run_spec.execution_mode == CalibrationExecutionMode::Disk && start_position > 0 {
+        let artifact_run_writer = artifact_run_writer
+            .as_ref()
+            .expect("disk-mode execution should have prepared an artifact run writer");
 
         for stage in execution_stage_order.iter().copied().take(start_position) {
             let artifact_reference = expected_stage_output_artifact_reference(run_spec, stage);
-            let artifact_path = super::artifact_registry::calibration_stage_parameter_artifact_path(
-                disk_checkpoint_directory,
-                run_spec.run_id.as_str(),
+            let artifact_path = calibration_stage_parameter_artifact_path_in_run_directory(
+                artifact_run_writer.pending_run_directory(),
                 stage,
             );
 
@@ -641,17 +667,9 @@ pub fn run_staged_calibration_with_checkpointing(
         update_in_memory_payload_state(&mut payload_state, &stage_report);
 
         if run_spec.execution_mode == CalibrationExecutionMode::Disk {
-            let Some(disk_checkpoint_directory) = disk_checkpoint_directory else {
-                return build_staged_run_failure_report(
-                    run_contract,
-                    stage_reports,
-                    emitted_checkpoints,
-                    resumed_from_checkpoint_reference,
-                    resumed_from_last_successful_stage,
-                    started_from_stage,
-                    CalibrationStagedRunFailure::MissingDiskCheckpointDirectory,
-                );
-            };
+            let artifact_run_writer = artifact_run_writer
+                .as_ref()
+                .expect("disk-mode execution should have prepared an artifact run writer");
 
             let stage_parameter_artifact =
                 match build_calibration_stage_parameter_artifact(run_contract, &stage_report) {
@@ -675,8 +693,8 @@ pub fn run_staged_calibration_with_checkpointing(
                     }
                 };
 
-            if let Err(source) = persist_calibration_stage_parameter_artifact_to_disk(
-                disk_checkpoint_directory,
+            if let Err(source) = persist_calibration_stage_parameter_artifact_to_run_directory(
+                artifact_run_writer.pending_run_directory(),
                 &stage_parameter_artifact,
             ) {
                 return build_staged_run_failure_report(
@@ -753,7 +771,16 @@ pub fn run_staged_calibration_with_checkpointing(
     }
 
     if run_spec.execution_mode == CalibrationExecutionMode::Disk {
-        let Some(disk_checkpoint_directory) = disk_checkpoint_directory else {
+        let artifact_run_writer = artifact_run_writer
+            .expect("disk-mode execution should have prepared an artifact run writer");
+        let dataset_snapshot_artifact = dataset_snapshot_artifact
+            .as_ref()
+            .expect("disk-mode execution should have built a dataset snapshot artifact");
+
+        if let Err(source) = persist_calibration_dataset_snapshot_artifact_to_run_directory(
+            artifact_run_writer.pending_run_directory(),
+            dataset_snapshot_artifact,
+        ) {
             return build_staged_run_failure_report(
                 run_contract,
                 stage_reports,
@@ -761,9 +788,14 @@ pub fn run_staged_calibration_with_checkpointing(
                 resumed_from_checkpoint_reference,
                 resumed_from_last_successful_stage,
                 started_from_stage,
-                CalibrationStagedRunFailure::MissingDiskCheckpointDirectory,
+                CalibrationStagedRunFailure::DatasetSnapshotPersistFailed {
+                    artifact_reference: calibration_dataset_snapshot_artifact_reference(
+                        run_spec.run_id.as_str(),
+                    ),
+                    error_message: source.to_string(),
+                },
             );
-        };
+        }
 
         let manifest = match build_calibration_artifact_manifest(
             run_contract,
@@ -787,9 +819,24 @@ pub fn run_staged_calibration_with_checkpointing(
             }
         };
 
-        if let Err(source) =
-            persist_calibration_artifact_manifest_to_disk(disk_checkpoint_directory, &manifest)
-        {
+        if let Err(source) = persist_calibration_artifact_manifest_to_run_directory(
+            artifact_run_writer.pending_run_directory(),
+            &manifest,
+        ) {
+            return build_staged_run_failure_report(
+                run_contract,
+                stage_reports,
+                emitted_checkpoints,
+                resumed_from_checkpoint_reference,
+                resumed_from_last_successful_stage,
+                started_from_stage,
+                CalibrationStagedRunFailure::ArtifactManifestPersistFailed {
+                    error_message: source.to_string(),
+                },
+            );
+        }
+
+        if let Err(source) = artifact_run_writer.commit() {
             return build_staged_run_failure_report(
                 run_contract,
                 stage_reports,

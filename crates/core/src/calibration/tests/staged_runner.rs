@@ -215,17 +215,19 @@ fn staged_runner_full_workflow_is_reproducible_across_repeated_runs_in_both_mode
         None,
         Some(checkpoint_directory.as_path()),
     );
+    let second_checkpoint_directory = temporary_checkpoint_directory("repeat-full-disk-second");
     let second_disk_report = run_staged_calibration_with_checkpointing(
         &disk_contract,
         &calendar_registry,
         staged_run_inputs(true, true, true),
         None,
-        Some(checkpoint_directory.as_path()),
+        Some(second_checkpoint_directory.as_path()),
     );
 
     assert_eq!(first_disk_report, second_disk_report);
 
     let _ = fs::remove_dir_all(checkpoint_directory);
+    let _ = fs::remove_dir_all(second_checkpoint_directory);
 }
 
 #[test]
@@ -406,6 +408,49 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
 
     let _ = fs::remove_dir_all(disk_checkpoint_directory);
     let _ = fs::remove_dir_all(memory_checkpoint_directory);
+}
+
+#[test]
+fn staged_runner_rejects_silent_overwrite_of_committed_disk_artifacts() {
+    let calendar_registry = calibration_stage_test_registry();
+    let checkpoint_directory = temporary_checkpoint_directory("disk-overwrite-protection");
+    let run_contract = build_run_contract_with_mode_and_resume(
+        "run-disk-overwrite-protection",
+        CalibrationExecutionMode::Disk,
+        None,
+    );
+
+    let first_report = run_staged_calibration_with_checkpointing(
+        &run_contract,
+        &calendar_registry,
+        staged_run_inputs(true, true, true),
+        None,
+        Some(checkpoint_directory.as_path()),
+    );
+    assert_eq!(
+        first_report.status,
+        CalibrationStageExecutionStatus::Success
+    );
+
+    let second_report = run_staged_calibration_with_checkpointing(
+        &run_contract,
+        &calendar_registry,
+        staged_run_inputs(true, true, true),
+        None,
+        Some(checkpoint_directory.as_path()),
+    );
+    assert_eq!(
+        second_report.status,
+        CalibrationStageExecutionStatus::Failure
+    );
+    match second_report.failure {
+        Some(CalibrationStagedRunFailure::ArtifactManifestPersistFailed { error_message }) => {
+            assert!(error_message.contains("already exists"));
+        }
+        _ => panic!("expected committed artifact overwrite to fail before execution"),
+    }
+
+    let _ = fs::remove_dir_all(checkpoint_directory);
 }
 
 #[test]
@@ -839,15 +884,22 @@ fn staged_runner_resume_from_last_and_selected_stage_work_in_disk_mode() {
     );
     assert_eq!(initial_report.emitted_checkpoints.len(), 2);
     assert!(
-        checkpoint_directory
-            .join(run_id)
-            .join("hawkes.checkpoint.json")
-            .exists()
+        calibration_stage_checkpoint_path(
+            checkpoint_directory.as_path(),
+            run_id,
+            CalibrationStage::Hawkes,
+        )
+        .exists()
     );
     assert!(
+        calibration_last_success_checkpoint_path(checkpoint_directory.as_path(), run_id).exists()
+    );
+    assert!(!calibration_artifact_manifest_path(checkpoint_directory.as_path(), run_id).exists());
+    assert!(
         checkpoint_directory
+            .join("artifacts")
+            .join("pending")
             .join(run_id)
-            .join("last-success.checkpoint.json")
             .exists()
     );
 
@@ -876,6 +928,29 @@ fn staged_runner_resume_from_last_and_selected_stage_work_in_disk_mode() {
         Some(CalibrationStage::ReturnComponents)
     );
     assert_eq!(resume_from_last_report.stage_reports.len(), 1);
+    assert!(calibration_artifact_manifest_path(checkpoint_directory.as_path(), run_id).exists());
+    assert!(
+        !checkpoint_directory
+            .join("artifacts")
+            .join("pending")
+            .join(run_id)
+            .exists()
+    );
+
+    let second_checkpoint_directory = temporary_checkpoint_directory("disk-resume-selected-stage");
+    let second_initial_run_contract =
+        build_run_contract_with_mode_and_resume(run_id, CalibrationExecutionMode::Disk, None);
+    let second_initial_report = run_staged_calibration_with_checkpointing(
+        &second_initial_run_contract,
+        &calendar_registry,
+        staged_run_inputs(true, true, false),
+        None,
+        Some(second_checkpoint_directory.as_path()),
+    );
+    assert_eq!(
+        second_initial_report.status,
+        CalibrationStageExecutionStatus::Failure
+    );
 
     let resume_from_stage_contract = build_run_contract_with_mode_and_resume(
         run_id,
@@ -890,7 +965,7 @@ fn staged_runner_resume_from_last_and_selected_stage_work_in_disk_mode() {
         &calendar_registry,
         staged_run_inputs(false, true, true),
         None,
-        Some(checkpoint_directory.as_path()),
+        Some(second_checkpoint_directory.as_path()),
     );
     assert_eq!(
         resume_from_stage_report.status,
@@ -903,6 +978,7 @@ fn staged_runner_resume_from_last_and_selected_stage_work_in_disk_mode() {
     assert_eq!(resume_from_stage_report.stage_reports.len(), 2);
 
     let _ = fs::remove_dir_all(checkpoint_directory);
+    let _ = fs::remove_dir_all(second_checkpoint_directory);
 }
 
 #[test]

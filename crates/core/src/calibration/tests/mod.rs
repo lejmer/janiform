@@ -1,4 +1,5 @@
 mod artifact_manifest;
+mod artifact_writer;
 mod dataset_snapshot_artifact;
 mod stage_parameter_artifact;
 mod support;

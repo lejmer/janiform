@@ -3,10 +3,11 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::fs::{self, File};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use super::artifact_registry::calibration_checkpoint_run_directory;
 use super::contracts::{
     CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION, CALIBRATION_DISK_CHECKPOINT_WRITE_POLICY,
     CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY, CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION,
@@ -612,10 +613,13 @@ impl Display for CalibrationDiskCheckpointError {
 impl Error for CalibrationDiskCheckpointError {}
 
 pub(crate) fn persist_stage_checkpoint_to_disk(
-    disk_checkpoint_directory: &Path,
+    persistence_root_directory: &Path,
     checkpoint_metadata: &CalibrationStageCheckpointMetadata,
 ) -> Result<(), CalibrationDiskCheckpointError> {
-    let run_directory = disk_checkpoint_directory.join(checkpoint_metadata.run_id.as_str());
+    let run_directory = calibration_checkpoint_run_directory(
+        persistence_root_directory,
+        checkpoint_metadata.run_id.as_str(),
+    );
     fs::create_dir_all(&run_directory).map_err(|source| {
         CalibrationDiskCheckpointError::CreateDirectoryFailed {
             path: run_directory.display().to_string(),
@@ -623,20 +627,21 @@ pub(crate) fn persist_stage_checkpoint_to_disk(
         }
     })?;
 
-    let stage_checkpoint_path = run_directory.join(format!(
-        "{}.checkpoint.json",
-        calibration_stage_token(checkpoint_metadata.completed_stage)
-    ));
+    let stage_checkpoint_path = calibration_stage_checkpoint_path_in_run_directory(
+        &run_directory,
+        checkpoint_metadata.completed_stage,
+    );
     write_checkpoint_file_atomically(&stage_checkpoint_path, checkpoint_metadata)?;
 
-    let last_success_checkpoint_path = run_directory.join("last-success.checkpoint.json");
+    let last_success_checkpoint_path =
+        calibration_last_success_checkpoint_path_in_run_directory(&run_directory);
     write_checkpoint_file_atomically(&last_success_checkpoint_path, checkpoint_metadata)?;
 
     Ok(())
 }
 
 pub(crate) fn load_stage_checkpoint_from_disk(
-    disk_checkpoint_directory: &Path,
+    persistence_root_directory: &Path,
     checkpoint_reference: &str,
 ) -> Result<CalibrationStageCheckpointMetadata, CalibrationDiskCheckpointError> {
     let parsed_reference = parse_checkpoint_reference(checkpoint_reference).map_err(|source| {
@@ -646,15 +651,17 @@ pub(crate) fn load_stage_checkpoint_from_disk(
         }
     })?;
 
-    let run_directory = disk_checkpoint_directory.join(parsed_reference.run_id.as_str());
+    let run_directory = calibration_checkpoint_run_directory(
+        persistence_root_directory,
+        parsed_reference.run_id.as_str(),
+    );
     let checkpoint_path = match parsed_reference.target {
         CalibrationCheckpointReferenceTarget::LastSuccess => {
-            run_directory.join("last-success.checkpoint.json")
+            calibration_last_success_checkpoint_path_in_run_directory(&run_directory)
         }
-        CalibrationCheckpointReferenceTarget::Stage(stage) => run_directory.join(format!(
-            "{}.checkpoint.json",
-            calibration_stage_token(stage)
-        )),
+        CalibrationCheckpointReferenceTarget::Stage(stage) => {
+            calibration_stage_checkpoint_path_in_run_directory(&run_directory, stage)
+        }
     };
 
     let content = fs::read_to_string(&checkpoint_path).map_err(|source| {
@@ -711,6 +718,37 @@ fn write_checkpoint_file_atomically(
     })?;
 
     Ok(())
+}
+
+pub fn calibration_stage_checkpoint_path(
+    persistence_root_directory: &Path,
+    run_id: &str,
+    stage: CalibrationStage,
+) -> PathBuf {
+    let run_directory = calibration_checkpoint_run_directory(persistence_root_directory, run_id);
+    calibration_stage_checkpoint_path_in_run_directory(&run_directory, stage)
+}
+
+pub fn calibration_last_success_checkpoint_path(
+    persistence_root_directory: &Path,
+    run_id: &str,
+) -> PathBuf {
+    let run_directory = calibration_checkpoint_run_directory(persistence_root_directory, run_id);
+    calibration_last_success_checkpoint_path_in_run_directory(&run_directory)
+}
+
+fn calibration_stage_checkpoint_path_in_run_directory(
+    run_directory: &Path,
+    stage: CalibrationStage,
+) -> PathBuf {
+    run_directory.join(format!(
+        "{}.checkpoint.json",
+        calibration_stage_token(stage)
+    ))
+}
+
+fn calibration_last_success_checkpoint_path_in_run_directory(run_directory: &Path) -> PathBuf {
+    run_directory.join("last-success.checkpoint.json")
 }
 
 pub(crate) fn calibration_stage_token(stage: CalibrationStage) -> &'static str {

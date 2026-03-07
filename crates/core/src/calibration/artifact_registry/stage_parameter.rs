@@ -21,7 +21,8 @@ use super::super::stages::seasonality::{
 };
 use super::dataset_snapshot::CALIBRATION_DATASET_SNAPSHOT_FORWARD_EXTENSION_POLICY;
 use super::shared::{
-    CalibrationArtifactIoError, CalibrationArtifactPersistenceKind, calibration_stage_token,
+    CalibrationArtifactIoError, CalibrationArtifactPersistenceKind,
+    calibration_committed_artifact_run_directory, calibration_stage_token,
     load_validated_json_artifact, persist_validated_json_artifact,
     stage_output_artifact_references_for_stage,
 };
@@ -532,26 +533,53 @@ pub fn build_calibration_stage_parameter_artifact(
 }
 
 pub fn calibration_stage_parameter_artifact_path(
-    disk_checkpoint_directory: &Path,
+    persistence_root_directory: &Path,
     run_id: &str,
     stage: CalibrationStage,
 ) -> PathBuf {
-    disk_checkpoint_directory.join(run_id).join(format!(
+    let run_directory =
+        calibration_committed_artifact_run_directory(persistence_root_directory, run_id);
+
+    calibration_stage_parameter_artifact_path_in_run_directory(run_directory.as_path(), stage)
+}
+
+pub(crate) fn calibration_stage_parameter_artifact_path_in_run_directory(
+    run_directory: &Path,
+    stage: CalibrationStage,
+) -> PathBuf {
+    run_directory.join(format!(
         "{}.stage_parameter.artifact.json",
         calibration_stage_token(stage)
     ))
 }
 
 pub fn persist_calibration_stage_parameter_artifact_to_disk(
-    disk_checkpoint_directory: &Path,
+    persistence_root_directory: &Path,
     artifact: &CalibrationStageParameterArtifact,
 ) -> Result<PathBuf, CalibrationArtifactIoError> {
     let artifact_kind = CalibrationArtifactPersistenceKind::StageParameter;
     let artifact_path = calibration_stage_parameter_artifact_path(
-        disk_checkpoint_directory,
+        persistence_root_directory,
         artifact.run_id.as_str(),
         artifact.stage,
     );
+
+    persist_validated_json_artifact(
+        artifact_kind,
+        artifact_path.as_path(),
+        artifact,
+        |payload| payload.validate().map_err(|source| source.to_string()),
+    )
+}
+
+pub(crate) fn persist_calibration_stage_parameter_artifact_to_run_directory(
+    run_directory: &Path,
+    artifact: &CalibrationStageParameterArtifact,
+) -> Result<PathBuf, CalibrationArtifactIoError> {
+    let artifact_kind = CalibrationArtifactPersistenceKind::StageParameter;
+    let artifact_path =
+        calibration_stage_parameter_artifact_path_in_run_directory(run_directory, artifact.stage);
+
     persist_validated_json_artifact(
         artifact_kind,
         artifact_path.as_path(),
@@ -564,6 +592,7 @@ pub fn load_calibration_stage_parameter_artifact_from_disk(
     artifact_path: &Path,
 ) -> Result<CalibrationStageParameterArtifact, CalibrationArtifactIoError> {
     let artifact_kind = CalibrationArtifactPersistenceKind::StageParameter;
+
     load_validated_json_artifact(
         artifact_kind,
         artifact_path,
