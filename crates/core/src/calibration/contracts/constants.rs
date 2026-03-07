@@ -1,4 +1,6 @@
 pub const CALIBRATION_RUN_SPEC_SCHEMA_VERSION: &str = "calibration.orchestration.run_spec.v1";
+pub const CALIBRATION_RUN_DATA_INPUTS_SCHEMA_VERSION: &str =
+    "calibration.orchestration.data_inputs.v1";
 pub const CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION: &str = "calibration.orchestration.stage_graph.v1";
 pub const CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION: &str =
     "calibration.orchestration.run_contract.v1";

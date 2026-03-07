@@ -229,6 +229,76 @@ fn staged_runner_full_workflow_is_reproducible_across_repeated_runs_in_both_mode
 }
 
 #[test]
+fn staged_runner_persists_dataset_snapshot_artifact_only_for_disk_mode_runs() {
+    let calendar_registry = calibration_stage_test_registry();
+
+    let disk_checkpoint_directory = temporary_checkpoint_directory("disk-dataset-snapshot");
+    let disk_contract = build_run_contract_with_mode_and_resume(
+        "run-disk-dataset-snapshot",
+        CalibrationExecutionMode::Disk,
+        None,
+    );
+    let disk_report = run_staged_calibration_with_checkpointing(
+        &disk_contract,
+        &calendar_registry,
+        staged_run_inputs(true, true, true),
+        None,
+        Some(disk_checkpoint_directory.as_path()),
+    );
+    assert_eq!(disk_report.status, CalibrationStageExecutionStatus::Success);
+
+    let disk_artifact_path = calibration_dataset_snapshot_artifact_path(
+        disk_checkpoint_directory.as_path(),
+        disk_contract.run_spec.run_id.as_str(),
+    );
+    let disk_artifact =
+        load_calibration_dataset_snapshot_artifact_from_disk(disk_artifact_path.as_path())
+            .expect("disk-mode run should persist dataset snapshot artifact");
+    assert_eq!(disk_artifact.run_id, disk_contract.run_spec.run_id);
+    assert_eq!(disk_artifact.execution_mode, CalibrationExecutionMode::Disk);
+    assert_eq!(
+        disk_artifact
+            .input_datasets
+            .iter()
+            .map(|input_dataset| input_dataset.input_name)
+            .collect::<Vec<CalibrationDatasetInputName>>(),
+        vec![
+            CalibrationDatasetInputName::TradeEventsDataReference,
+            CalibrationDatasetInputName::OptionSurfaceDataReference,
+        ]
+    );
+
+    let memory_checkpoint_directory = temporary_checkpoint_directory("memory-dataset-snapshot");
+    let memory_contract = build_run_contract_with_mode_and_resume(
+        "run-memory-dataset-snapshot",
+        CalibrationExecutionMode::Memory,
+        None,
+    );
+    let mut checkpoint_store = CalibrationMemoryCheckpointStore::new();
+    let memory_report = run_staged_calibration_with_checkpointing(
+        &memory_contract,
+        &calendar_registry,
+        staged_run_inputs(true, true, true),
+        Some(&mut checkpoint_store),
+        Some(memory_checkpoint_directory.as_path()),
+    );
+    assert_eq!(
+        memory_report.status,
+        CalibrationStageExecutionStatus::Success
+    );
+    assert!(
+        !calibration_dataset_snapshot_artifact_path(
+            memory_checkpoint_directory.as_path(),
+            memory_contract.run_spec.run_id.as_str(),
+        )
+        .exists()
+    );
+
+    let _ = fs::remove_dir_all(disk_checkpoint_directory);
+    let _ = fs::remove_dir_all(memory_checkpoint_directory);
+}
+
+#[test]
 fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
     let calendar_registry = calibration_stage_test_registry();
 
@@ -511,6 +581,7 @@ fn staged_calibration_failure_playbook_is_machine_readable_and_complete() {
         "missing_memory_checkpoint_store",
         "missing_disk_checkpoint_directory",
         "missing_resume_checkpoint_for_run",
+        "dataset_snapshot_persist_failed",
         "missing_stage_input",
         "missing_in_memory_upstream_payload",
         "invalid_checkpoint_reference",

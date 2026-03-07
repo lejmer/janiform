@@ -3,6 +3,8 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
+use super::CALIBRATION_RUN_DATA_INPUTS_SCHEMA_VERSION;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CalibrationRunDataInputs {
     pub exchange_code: String,
@@ -42,6 +44,10 @@ impl CalibrationRunDataInputs {
         }
 
         Ok(())
+    }
+
+    pub const fn schema_version() -> &'static str {
+        CALIBRATION_RUN_DATA_INPUTS_SCHEMA_VERSION
     }
 }
 

@@ -60,6 +60,14 @@ On every failure, capture these fields from `CalibrationStagedRunReport`:
   - Execute a non-resume run first to seed checkpoints.
   - Retry same-process resume in the same process lifetime.
 
+### `dataset_snapshot_persist_failed`
+- Triage:
+  - Confirm `execution_mode=disk` and persistence is enabled for this run.
+  - Check write permissions and free space for the run artifact directory.
+- Remediation:
+  - Fix filesystem permissions or capacity issues.
+  - Re-run from the beginning so the dataset snapshot artifact is recreated before stage execution.
+
 ### `missing_stage_input`
 - Triage:
   - Identify missing stage from `failure.stage`.

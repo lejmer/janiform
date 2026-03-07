@@ -47,6 +47,17 @@
       ]
     },
     {
+      "failure_kind": "dataset_snapshot_persist_failed",
+      "triage_steps": [
+        "Confirm execution_mode is disk and persistence is enabled for this run",
+        "Check dataset snapshot artifact directory permissions and free space"
+      ],
+      "remediation_steps": [
+        "Fix filesystem permissions or storage limits",
+        "Rerun from the beginning so the dataset snapshot artifact is recreated"
+      ]
+    },
+    {
       "failure_kind": "missing_stage_input",
       "triage_steps": [
         "Identify missing stage from failure payload",

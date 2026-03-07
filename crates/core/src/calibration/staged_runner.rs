@@ -4,6 +4,10 @@ use serde::Serialize;
 
 use crate::calendar::ExchangeCalendarRegistry;
 
+use super::artifact_registry::{
+    calibration_dataset_snapshot_artifact_reference,
+    persist_calibration_dataset_snapshot_from_run_contract_to_disk,
+};
 use super::checkpointing::{
     CalibrationDiskCheckpointError, CalibrationInMemoryStagePayloadState,
     CalibrationMemoryCheckpointStore, CalibrationStageCheckpointMetadata,
@@ -205,6 +209,10 @@ pub enum CalibrationStagedRunFailure {
     MissingResumeCheckpointForRun {
         run_id: String,
     },
+    DatasetSnapshotPersistFailed {
+        artifact_reference: String,
+        error_message: String,
+    },
     MissingStageInput {
         stage: CalibrationStage,
     },
@@ -300,6 +308,40 @@ pub fn run_staged_calibration_with_checkpointing(
             None,
             CalibrationStagedRunFailure::MissingDiskCheckpointDirectory,
         );
+    }
+
+    if run_spec.execution_mode == CalibrationExecutionMode::Disk {
+        let Some(disk_checkpoint_directory) = disk_checkpoint_directory else {
+            return build_staged_run_failure_report(
+                run_contract,
+                Vec::new(),
+                Vec::new(),
+                None,
+                None,
+                None,
+                CalibrationStagedRunFailure::MissingDiskCheckpointDirectory,
+            );
+        };
+
+        if let Err(source) = persist_calibration_dataset_snapshot_from_run_contract_to_disk(
+            disk_checkpoint_directory,
+            run_contract,
+        ) {
+            return build_staged_run_failure_report(
+                run_contract,
+                Vec::new(),
+                Vec::new(),
+                None,
+                None,
+                None,
+                CalibrationStagedRunFailure::DatasetSnapshotPersistFailed {
+                    artifact_reference: calibration_dataset_snapshot_artifact_reference(
+                        run_spec.run_id.as_str(),
+                    ),
+                    error_message: source.to_string(),
+                },
+            );
+        }
     }
 
     let execution_stage_order = run_contract.execution_stage_order.clone();

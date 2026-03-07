@@ -1,4 +1,5 @@
 mod artifact_manifest;
+mod dataset_snapshot_artifact;
 mod support;
 
 mod core_adapters;
