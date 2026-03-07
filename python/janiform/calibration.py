@@ -112,6 +112,23 @@ def _calibration_integration_error(
 CALIBRATION_ERROR_FACTORY: ValidationErrorFactory = _calibration_error
 
 
+def _parse_calibration_execution_mode(
+    raw_value: object,
+    *,
+    field_path: str,
+) -> CalibrationExecutionMode:
+    if not isinstance(raw_value, str):
+        raise _calibration_error(field_path, "must be a string")
+
+    try:
+        return CalibrationExecutionMode(raw_value)
+    except ValueError as e:
+        raise _calibration_error(
+            field_path,
+            f"must be one of: memory, disk, received '{raw_value}'",
+        ) from e
+
+
 class CalibrationExecutionMode(StrEnum):
     MEMORY = 'memory'
     DISK = 'disk'
@@ -544,8 +561,9 @@ class StagedCalibrationRequest(ContractModel):
 
             return f"{field_path_prefix}.{field_name}"
 
-        execution_mode = CalibrationExecutionMode(
-            raw_payload.get("execution_mode", DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE)
+        execution_mode = _parse_calibration_execution_mode(
+            raw_payload.get("execution_mode", DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE),
+            field_path=prefixed("execution_mode"),
         )
 
         raw_selected_stages = require_sequence(
@@ -2040,8 +2058,9 @@ class CalibrationCheckpointMetadata(ContractModel):
                 f"{field_path}.completed_stage_position",
                 CALIBRATION_ERROR_FACTORY,
             ),
-            execution_mode=CalibrationExecutionMode(
-                require_string(raw_payload, "execution_mode", f"{field_path}.execution_mode", CALIBRATION_ERROR_FACTORY)
+            execution_mode=_parse_calibration_execution_mode(
+                require_string(raw_payload, "execution_mode", f"{field_path}.execution_mode", CALIBRATION_ERROR_FACTORY),
+                field_path=f"{field_path}.execution_mode",
             ),
         )
 
@@ -2110,8 +2129,9 @@ class CalibrationStageReport(ContractModel):
                 require_string(raw_payload, "status", f"{field_path}.status", CALIBRATION_ERROR_FACTORY)
             ),
             run_id=require_non_empty_string(raw_payload, "run_id", f"{field_path}.run_id", CALIBRATION_ERROR_FACTORY),
-            execution_mode=CalibrationExecutionMode(
-                require_string(raw_payload, "execution_mode", f"{field_path}.execution_mode", CALIBRATION_ERROR_FACTORY)
+            execution_mode=_parse_calibration_execution_mode(
+                require_string(raw_payload, "execution_mode", f"{field_path}.execution_mode", CALIBRATION_ERROR_FACTORY),
+                field_path=f"{field_path}.execution_mode",
             ),
             handoff_policy=require_non_empty_string(
                 raw_payload,
@@ -2177,8 +2197,9 @@ class StagedCalibrationResponse(ContractModel):
                 CALIBRATION_ERROR_FACTORY,
             ),
             run_id=require_non_empty_string(raw_payload, "run_id", "run_id", CALIBRATION_ERROR_FACTORY),
-            execution_mode=CalibrationExecutionMode(
-                require_string(raw_payload, "execution_mode", "execution_mode", CALIBRATION_ERROR_FACTORY)
+            execution_mode=_parse_calibration_execution_mode(
+                require_string(raw_payload, "execution_mode", "execution_mode", CALIBRATION_ERROR_FACTORY),
+                field_path="execution_mode",
             ),
             status=CalibrationStageExecutionStatus(
                 require_string(raw_payload, "status", "status", CALIBRATION_ERROR_FACTORY)
