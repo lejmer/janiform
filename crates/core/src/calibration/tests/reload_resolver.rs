@@ -227,17 +227,14 @@ fn persist_reload_fixture(run_id: &str) -> PersistedReloadFixture {
 
     let manifest = build_calibration_artifact_manifest(
         &run_contract,
+        &dataset_snapshot,
         stage_parameter_artifacts.as_slice(),
         &[],
-        &[CalibrationArtifactReference {
-            artifact_id: "validation_metric_diagnostics".to_string(),
-            artifact_kind: CalibrationArtifactKind::Diagnostics,
-            artifact_reference: calibration_validation_metric_artifact_reference(
-                run_id,
-                CalibrationValidationMetricArtifactRole::Diagnostics,
-            ),
-            stage: None,
-        }],
+        &[diagnostics_artifact.clone()],
+        &[],
+        Utc.with_ymd_and_hms(2026, 3, 4, 11, 30, 0)
+            .single()
+            .expect("fixture timestamp should be valid"),
     )
     .expect("artifact manifest should build");
     persist_calibration_artifact_manifest_to_disk(root_directory.as_path(), &manifest)

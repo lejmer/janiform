@@ -102,7 +102,7 @@ const CALIBRATION_VALIDATION_METRIC_SOURCE_KIND_VOCABULARY: [&str; 6] = [
 const CALIBRATION_VALIDATION_METRIC_CONTEXT_KIND_VOCABULARY: [&str; 5] =
     ["run", "batch", "horizon", "scenario", "stage"];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CalibrationValidationMetricArtifactRole {
     Diagnostics,

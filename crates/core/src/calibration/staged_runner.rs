@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use chrono::Utc;
 use serde::Serialize;
 
 use crate::calendar::ExchangeCalendarRegistry;
@@ -799,9 +800,12 @@ pub fn run_staged_calibration_with_checkpointing(
 
         let manifest = match build_calibration_artifact_manifest(
             run_contract,
+            dataset_snapshot_artifact,
             persisted_stage_parameter_artifacts.as_slice(),
             emitted_checkpoints.as_slice(),
             &[],
+            &[],
+            Utc::now(),
         ) {
             Ok(manifest) => manifest,
             Err(source) => {

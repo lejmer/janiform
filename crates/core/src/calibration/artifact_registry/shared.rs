@@ -22,6 +22,15 @@ pub fn calibration_committed_artifact_runs_root_directory(
     persistence_root_directory.join("artifacts").join("runs")
 }
 
+pub fn calibration_experiment_index_root_directory(persistence_root_directory: &Path) -> PathBuf {
+    persistence_root_directory.join("artifacts").join("index")
+}
+
+pub fn calibration_experiment_index_path(persistence_root_directory: &Path) -> PathBuf {
+    calibration_experiment_index_root_directory(persistence_root_directory)
+        .join("calibration_experiment_index.json")
+}
+
 pub(crate) fn calibration_pending_artifact_runs_root_directory(
     persistence_root_directory: &Path,
 ) -> PathBuf {
@@ -97,6 +106,7 @@ pub enum CalibrationArtifactPersistenceKind {
     DatasetSnapshot,
     StageParameter,
     ValidationMetric,
+    ExperimentIndex,
 }
 
 impl CalibrationArtifactPersistenceKind {
@@ -106,6 +116,7 @@ impl CalibrationArtifactPersistenceKind {
             Self::DatasetSnapshot => "dataset snapshot artifact",
             Self::StageParameter => "stage parameter artifact",
             Self::ValidationMetric => "validation metric artifact",
+            Self::ExperimentIndex => "experiment index artifact",
         }
     }
 
@@ -115,6 +126,7 @@ impl CalibrationArtifactPersistenceKind {
             Self::DatasetSnapshot => "dataset snapshot artifact directory",
             Self::StageParameter => "stage parameter artifact directory",
             Self::ValidationMetric => "validation metric artifact directory",
+            Self::ExperimentIndex => "experiment index artifact directory",
         }
     }
 }
