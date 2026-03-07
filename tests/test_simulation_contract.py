@@ -10,9 +10,9 @@ from janiform.simulation import (
     SeededTickEventSide,
     SeededTickEventStateSnapshotCapture,
     SeededTickSimulationRequest,
-    SeededTickSimulationResponse,
     SeededTickSimulationValidationError,
     deserialize_seeded_tick_simulation_response,
+    run_seeded_tick_event_simulation,
     serialize_seeded_tick_simulation_response,
     validate_seeded_tick_simulation_response,
 )
@@ -92,6 +92,23 @@ def test_simulation_response_rejects_invalid_side_with_structured_error() -> Non
     assert captured_error.value.failure.error_id == "simulation.validation.contract"
     assert captured_error.value.failure.field_path == "seeded_tick_simulation_response.event_tape[0].side"
     assert "must be one of: buy, sell" in captured_error.value.failure.message
+
+
+def test_simulation_entrypoint_rejects_request_without_runtime_hourly_factor_handle() -> None:
+    request = SeededTickSimulationRequest(
+        seed=17,
+        start_time_utc=datetime(2026, 2, 2, tzinfo=UTC),
+        horizon_interval_count=2,
+        kernel_parameters=_valid_kernel_parameters(),
+        initial_excitation_state=_valid_excitation_state(),
+        hourly_factor_summary=_valid_hourly_factor_summary(),
+    )
+
+    with pytest.raises(SeededTickSimulationValidationError) as captured_error:
+        run_seeded_tick_event_simulation(request)
+
+    assert captured_error.value.failure.field_path == "hourly_factor_summary"
+    assert "runtime hourly factor contract handle is unavailable" in captured_error.value.failure.message
 
 
 def _valid_kernel_parameters() -> HawkesKernelParameters:

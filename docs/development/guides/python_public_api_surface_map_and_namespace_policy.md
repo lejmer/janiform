@@ -152,6 +152,7 @@ The package root `janiform` is intentionally minimal.
     - `StagedCalibrationResponse`
     - `CalibrationValidationFailure`
     - `CalibrationValidationError`
+    - `run_staged_calibration`
     - `validate_staged_calibration_execution_input`
     - `validate_staged_calibration_request`
     - `validate_staged_calibration_response`
@@ -177,12 +178,12 @@ The package root `janiform` is intentionally minimal.
 
 ## Calibration namespace status
 
-`janiform.calibration` is now public for typed request, execution-input, and response contracts.
+`janiform.calibration` is now public for typed request, execution-input, response, and
+top-level orchestration entrypoints.
 
-The module intentionally stops at contract objects and serialization helpers in this milestone.
-Top-level calibration orchestrator entrypoints still land under:
+The public staged-calibration entrypoint is:
 
-- `JAN-190 Workflow Orchestrator API Entry Points`
+- `run_staged_calibration`
 
 ## Private namespace policy
 

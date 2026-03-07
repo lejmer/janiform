@@ -1210,6 +1210,15 @@ def deserialize_vanilla_option_pricing_run_result(payload_json: str) -> VanillaO
 def run_vanilla_option_pricing(
     execution_input: VanillaOptionPricingExecutionInput,
 ) -> VanillaOptionPricingRunResult:
+    """Run vanilla option pricing from the explicit execution contract.
+
+    Example:
+        run_result = run_vanilla_option_pricing(execution_input)
+
+    The execution input keeps `nu_h_known` and `nu_h_surprise` separate so the
+    pricing path does not collapse corrected known-surprise news semantics.
+    """
+
     normalized_execution_input = validate_vanilla_option_pricing_execution_input(
         execution_input.to_payload()
     )
