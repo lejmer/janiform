@@ -2,9 +2,11 @@ from datetime import UTC, datetime, timedelta
 from math import log
 from typing import Any, TypedDict, cast
 
-from janiform import (
+from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
+)
+from janiform.simulation import (
     load_hourly_factor_contract_for_simulation,
     run_seeded_tick_event_simulation,
 )

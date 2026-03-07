@@ -1,4 +1,4 @@
-## ISSUE-004: Workflow Orchestrator API Entry Points
+## Workflow Orchestrator API Entry Points
 
 ### Description
 Implement top-level orchestrator functions for simulation, calibration, and pricing that call into shared core services through explicit Python contracts.

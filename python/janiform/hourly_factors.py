@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from types import ModuleType
 from typing import Any, Optional, cast
 
-from .api import native_module
+from ._native_api import native_module
 from .calendar import (
     CalendarInvalidTimestampError,
     CalendarInvalidTimezoneError,

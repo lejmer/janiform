@@ -1,4 +1,4 @@
-## ISSUE-008: Experimental Endpoint Isolation And Feature Flags
+## Experimental Endpoint Isolation And Feature Flags
 
 ### Description
 Establish mechanism to isolate preview Python endpoints from the primary public API while still allowing controlled iteration during pre-v0.1 development.

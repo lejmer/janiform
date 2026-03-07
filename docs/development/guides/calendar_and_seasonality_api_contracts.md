@@ -8,7 +8,7 @@ It contains the detailed contract material moved from the repo root `README.md`.
 ```python
 from datetime import UTC, datetime
 
-from janiform import CalendarRegistry, MarketState
+from janiform.calendar import CalendarRegistry, MarketState
 
 calendar_registry_json = """
 {

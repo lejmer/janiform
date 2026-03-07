@@ -38,6 +38,7 @@ janiform --help
 ## Documentation
 
 - Design model and rationale: `docs/design/janiform_design_brainstorm_notes.md`
+- Python public API surface map and namespace policy: `docs/development/guides/python_public_api_surface_map_and_namespace_policy.md`
 - Calendar and seasonality API contracts: `docs/development/guides/calendar_and_seasonality_api_contracts.md`
 - Hawkes parameter validation report: `docs/development/guides/hawkes_parameter_validation_report.md`
 - Hawkes failure diagnostics report: `docs/development/guides/hawkes_failure_diagnostics_report.md`

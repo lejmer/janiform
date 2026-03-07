@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from types import ModuleType
 
-from .api import native_module
+from ._native_api import native_module
 
 
 class CalendarError(Exception):

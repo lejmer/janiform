@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from types import ModuleType
 from typing import Any, TypedDict, cast
 
-from .api import native_module
+from ._native_api import native_module
 from .calendar import CalendarRegistry
 from .hourly_factors import (
     HourlyFactorContract,

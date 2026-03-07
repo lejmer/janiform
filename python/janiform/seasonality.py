@@ -8,7 +8,7 @@ from enum import StrEnum
 from types import ModuleType
 from typing import Any, Optional, cast
 
-from .api import native_module
+from ._native_api import native_module
 from .calendar import (
     CalendarInvalidTimezoneError,
     CalendarMissingExchangeError,
