@@ -11,6 +11,7 @@ create_exception!(_native, CalendarMissingExchangeError, PyException);
 create_exception!(_native, CalendarRegistryLoadError, PyException);
 create_exception!(_native, CalendarTimestampParseError, PyValueError);
 create_exception!(_native, PricingExecutionError, PyException);
+create_exception!(_native, CalibrationExecutionError, PyException);
 create_exception!(_native, SeasonalityInputValidationError, PyValueError);
 create_exception!(_native, HourlyFactorProviderMissingInputError, PyValueError);
 create_exception!(
@@ -41,6 +42,10 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add(
         "PricingExecutionError",
         module.py().get_type::<PricingExecutionError>(),
+    )?;
+    module.add(
+        "CalibrationExecutionError",
+        module.py().get_type::<CalibrationExecutionError>(),
     )?;
     module.add(
         "SeasonalityInputValidationError",

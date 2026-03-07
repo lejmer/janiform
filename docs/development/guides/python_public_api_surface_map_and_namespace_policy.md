@@ -100,24 +100,51 @@ The package root `janiform` is intentionally minimal.
     - `deserialize_sufficient_statistics_risk_run_request`
     - `deserialize_sufficient_statistics_risk_path`
 - `janiform.calibration`
-  - Ownership: staged calibration request and response contracts
+  - Ownership: staged calibration request, execution-input, and response contracts
   - Public symbols:
     - `CALIBRATION_RUN_SPEC_SCHEMA_VERSION`
+    - `CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION`
     - `CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION`
     - `CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY`
     - `DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE`
+    - `CalibrationTimestampEventSessionFilter`
+    - `CalibrationIntradaySmoothingKernel`
     - `CalibrationExecutionMode`
     - `CalibrationStage`
     - `CalibrationStageExecutionStatus`
     - `CalibrationHandoffTransport`
     - `CalibrationResumeSource`
     - `CalibrationRunDataInputs`
+    - `CalibrationTimestampEventRecord`
+    - `CalibrationScheduledEventOverlay`
+    - `CalibrationIntradaySeasonalityEstimatorSettings`
+    - `CalibrationDayOfWeekSeasonalityEstimatorSettings`
+    - `CalibrationDayOfYearSeasonalityEstimatorSettings`
+    - `CalibrationSeasonalityStageExecutionSettings`
+    - `CalibrationSeasonalityStageExecutionInput`
+    - `CalibrationHawkesStructuredAlphaParameterization`
+    - `CalibrationHawkesStructuredRhoParameterization`
+    - `CalibrationHawkesStructuredRhoSelfDominancePolicy`
+    - `CalibrationObjectiveTermInput`
+    - `CalibrationHawkesStageCandidateInput`
+    - `CalibrationReturnComponentsSignalSourceWindow`
+    - `CalibrationReturnComponentsKnownNewsCalendarInput`
+    - `CalibrationReturnComponentsKnownNewsReturnSample`
+    - `CalibrationReturnComponentsDetectedIntradayJumpCandidate`
+    - `CalibrationReturnComponentsDetectedCloseOpenGapCandidate`
+    - `CalibrationReturnComponentsObjectiveMetricWeights`
+    - `CalibrationDoubleExponentialBaseShockConfiguration`
+    - `CalibrationCoupledGapMarkConfiguration`
+    - `CalibrationSharedNewsMarkLawConfiguration`
+    - `CalibrationReturnComponentsStageCandidateGenerationInput`
     - `CalibrationStageSeedOverride`
     - `CalibrationRunSeedSettings`
     - `CalibrationOptimizerSettings`
     - `CalibrationStageSolverSettings`
     - `CalibrationStageHandoff`
     - `CalibrationResumeSettings`
+    - `CalibrationStagedExecutionRuntimeResources`
+    - `StagedCalibrationExecutionInput`
     - `StagedCalibrationRequest`
     - `CalibrationCheckpointMetadata`
     - `CalibrationFailureDetails`
@@ -125,10 +152,13 @@ The package root `janiform` is intentionally minimal.
     - `StagedCalibrationResponse`
     - `CalibrationValidationFailure`
     - `CalibrationValidationError`
+    - `validate_staged_calibration_execution_input`
     - `validate_staged_calibration_request`
     - `validate_staged_calibration_response`
+    - `serialize_staged_calibration_execution_input`
     - `serialize_staged_calibration_request`
     - `serialize_staged_calibration_response`
+    - `deserialize_staged_calibration_execution_input`
     - `deserialize_staged_calibration_request`
     - `deserialize_staged_calibration_response`
 
@@ -147,7 +177,7 @@ The package root `janiform` is intentionally minimal.
 
 ## Calibration namespace status
 
-`janiform.calibration` is now public for typed request and response contracts.
+`janiform.calibration` is now public for typed request, execution-input, and response contracts.
 
 The module intentionally stops at contract objects and serialization helpers in this milestone.
 Top-level calibration orchestrator entrypoints still land under:
