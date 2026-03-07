@@ -9,6 +9,7 @@ pub(super) use crate::calendar::{
     ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, TimestampEventInputRecord,
 };
 pub(super) use crate::calibration::{
+    CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_FAMILY, CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_GENERATION,
     CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION,
     CALIBRATION_CONSTRAINED_OPTIMIZER_ADAPTER_RUN_SCHEMA_VERSION,
     CALIBRATION_DISK_CHECKPOINT_WRITE_POLICY, CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY,
@@ -21,26 +22,27 @@ pub(super) use crate::calibration::{
     CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY, CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY,
     CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION, CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION,
     CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY,
-    CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION, CalibrationCallerSurface,
-    CalibrationExecutionMode, CalibrationMemoryCheckpointStore, CalibrationObjectiveTermInput,
-    CalibrationOptimizerAdapterCandidateInput, CalibrationOptimizerAdapterConfiguration,
-    CalibrationOptimizerAdapterError, CalibrationOptimizerCandidateParameterValue,
-    CalibrationOptimizerParameterBound, CalibrationOptimizerSettings, CalibrationResumeSettings,
-    CalibrationResumeSettingsError, CalibrationRunContract, CalibrationRunContractError,
-    CalibrationRunDataInputs, CalibrationRunSeedSettings, CalibrationRunSpec,
-    CalibrationRunSpecError, CalibrationRunSpecErrorClassification, CalibrationStage,
-    CalibrationStageDependency, CalibrationStageExecutionStatus, CalibrationStageGraph,
-    CalibrationStageGraphError, CalibrationStageHandoff, CalibrationStageHandoffError,
-    CalibrationStageSeedOverride, CalibrationStageSeedSource, CalibrationStageSolverSettings,
-    CalibrationStagedRunFailure, CalibrationStagedRunInputs, CalibrationStagedRunStageReport,
-    HawkesStageCandidateInput, HawkesStageExecutionFailure, HawkesStageExecutionInput,
-    HawkesStageObjectiveTermInput, OptionSurfaceCalibrationObservationError,
-    ReturnComponentsDetectedCloseOpenGapCandidate, ReturnComponentsDetectedIntradayJumpCandidate,
-    ReturnComponentsKnownNewsCalendarInput, ReturnComponentsRealizedKnownNewsReturnSample,
-    ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageExecutionFailure,
-    ReturnComponentsStageExecutionInput, ReturnComponentsStageObjectiveMetricWeights,
-    ReturnComponentsStageSignalSourceWindow, SeasonalityStageExecutionFailure,
-    SeasonalityStageExecutionInput,
+    CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION, CalibrationArtifactKind,
+    CalibrationArtifactManifest, CalibrationArtifactManifestError, CalibrationArtifactReference,
+    CalibrationCallerSurface, CalibrationExecutionMode, CalibrationMemoryCheckpointStore,
+    CalibrationObjectiveTermInput, CalibrationOptimizerAdapterCandidateInput,
+    CalibrationOptimizerAdapterConfiguration, CalibrationOptimizerAdapterError,
+    CalibrationOptimizerCandidateParameterValue, CalibrationOptimizerParameterBound,
+    CalibrationOptimizerSettings, CalibrationResumeSettings, CalibrationResumeSettingsError,
+    CalibrationRunContract, CalibrationRunContractError, CalibrationRunDataInputs,
+    CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationRunSpecError,
+    CalibrationRunSpecErrorClassification, CalibrationStage, CalibrationStageDependency,
+    CalibrationStageExecutionStatus, CalibrationStageGraph, CalibrationStageGraphError,
+    CalibrationStageHandoff, CalibrationStageHandoffError, CalibrationStageSeedOverride,
+    CalibrationStageSeedSource, CalibrationStageSolverSettings, CalibrationStagedRunFailure,
+    CalibrationStagedRunInputs, CalibrationStagedRunStageReport, HawkesStageCandidateInput,
+    HawkesStageExecutionFailure, HawkesStageExecutionInput, HawkesStageObjectiveTermInput,
+    OptionSurfaceCalibrationObservationError, ReturnComponentsDetectedCloseOpenGapCandidate,
+    ReturnComponentsDetectedIntradayJumpCandidate, ReturnComponentsKnownNewsCalendarInput,
+    ReturnComponentsRealizedKnownNewsReturnSample, ReturnComponentsStageCandidateGenerationInput,
+    ReturnComponentsStageExecutionFailure, ReturnComponentsStageExecutionInput,
+    ReturnComponentsStageObjectiveMetricWeights, ReturnComponentsStageSignalSourceWindow,
+    SeasonalityStageExecutionFailure, SeasonalityStageExecutionInput,
     build_option_surface_calibration_observation_from_pricing_hooks,
     calibration_checkpoint_reference_for_stage, calibration_last_success_checkpoint_reference,
     compose_calibration_weighted_objective, default_calibration_execution_mode_for_surface,
@@ -152,6 +154,33 @@ pub(super) fn build_valid_run_spec_with_mode(
         build_solver_settings_for_all_stages(),
     )
     .expect("run spec should validate")
+}
+
+pub(super) fn build_valid_artifact_manifest() -> CalibrationArtifactManifest {
+    CalibrationArtifactManifest::try_new(
+        "run-001",
+        vec![
+            CalibrationArtifactReference {
+                artifact_id: "run_contract".to_string(),
+                artifact_kind: CalibrationArtifactKind::RunContract,
+                artifact_reference: "artifact://run_contract/run-001".to_string(),
+                stage: None,
+            },
+            CalibrationArtifactReference {
+                artifact_id: "seasonality_checkpoint".to_string(),
+                artifact_kind: CalibrationArtifactKind::StageCheckpoint,
+                artifact_reference: "artifact://stage_checkpoint/seasonality/run-001".to_string(),
+                stage: Some(CalibrationStage::Seasonality),
+            },
+            CalibrationArtifactReference {
+                artifact_id: "stylized_fact_report".to_string(),
+                artifact_kind: CalibrationArtifactKind::Diagnostics,
+                artifact_reference: "artifact://diagnostics/stylized_facts/run-001".to_string(),
+                stage: None,
+            },
+        ],
+    )
+    .expect("artifact manifest should validate")
 }
 
 pub(super) fn build_run_contract_with_mode_and_resume(

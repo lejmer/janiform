@@ -441,7 +441,9 @@ pub fn validate_scale_consistency_regression_fixture_document(
     validate_fixture_document_identity(fixture_document)?;
     validate_fixture_document_metadata(fixture_document)?;
     validate_threshold_policy_reference(&fixture_document.threshold_policy_reference)?;
-    validate_canonical_regression_metadata_presence(&fixture_document.canonical_regression_metadata)?;
+    validate_canonical_regression_metadata_presence(
+        &fixture_document.canonical_regression_metadata,
+    )?;
 
     let observed_coverage = validate_fixture_cases(&fixture_document.cases)?;
     validate_required_coverage(
@@ -563,7 +565,8 @@ fn validate_determinism_metadata(
             determinism_metadata.case_order_policy
         ));
     }
-    if determinism_metadata.content_hash_scope != SCALE_CONSISTENCY_REGRESSION_CONTENT_HASH_SCOPE_POLICY
+    if determinism_metadata.content_hash_scope
+        != SCALE_CONSISTENCY_REGRESSION_CONTENT_HASH_SCOPE_POLICY
     {
         return Err(format!(
             "unexpected scale consistency regression content hash scope policy: {}",
@@ -609,7 +612,10 @@ fn validate_canonical_regression_metadata_presence(
     if canonical_regression_metadata.required_tags.is_empty() {
         return Err("scale consistency regression fixture must declare required_tags".to_string());
     }
-    if canonical_regression_metadata.required_interval_grid_labels.is_empty() {
+    if canonical_regression_metadata
+        .required_interval_grid_labels
+        .is_empty()
+    {
         return Err(
             "scale consistency regression fixture must declare required_interval_grid_labels"
                 .to_string(),
@@ -875,7 +881,10 @@ fn validate_fixture_case_metric_delta(
         metric_delta.absolute_delta,
         "cases.metric_deltas.absolute_delta",
     )?;
-    validate_optional_finite(metric_delta.coarse_value, "cases.metric_deltas.coarse_value")?;
+    validate_optional_finite(
+        metric_delta.coarse_value,
+        "cases.metric_deltas.coarse_value",
+    )?;
     validate_optional_finite(metric_delta.fine_value, "cases.metric_deltas.fine_value")?;
     validate_optional_finite(metric_delta.delta_value, "cases.metric_deltas.delta_value")?;
 
@@ -991,12 +1000,12 @@ fn record_fixture_case_coverage<'a>(
             .expected_applied_interval_threshold_band_label
             .as_str(),
     );
-    observed_coverage
-        .expected_status_labels
-        .insert(match fixture_case.expected_outcome.expected_scenario_status {
+    observed_coverage.expected_status_labels.insert(
+        match fixture_case.expected_outcome.expected_scenario_status {
             RegressionCaseStatus::Pass => "pass",
             RegressionCaseStatus::Fail => "fail",
-        });
+        },
+    );
 }
 
 fn validate_required_coverage(
@@ -1059,7 +1068,11 @@ fn validate_stable_fixture_ids(
             stable_fixture_id.as_str(),
             "canonical_regression_metadata.stable_fixture_ids",
         )?;
-        if !observed_coverage.fixture_ids.contains(stable_fixture_id.as_str()) {
+
+        if !observed_coverage
+            .fixture_ids
+            .contains(stable_fixture_id.as_str())
+        {
             return Err(format!(
                 "scale consistency regression fixture stable_fixture_ids references unknown fixture_id `{stable_fixture_id}`"
             ));
