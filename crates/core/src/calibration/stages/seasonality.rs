@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::calendar::{
     ExchangeCalendarRegistry, TimestampEventInputRecord, TimestampEventSessionFilter,
@@ -74,7 +74,7 @@ pub enum CalibrationStageExecutionStatus {
     Failure,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SeasonalityStageNormalizationMetadata {
     pub normalization_policy: String,
     pub fit_window_event_count: usize,

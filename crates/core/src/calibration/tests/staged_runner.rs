@@ -299,6 +299,116 @@ fn staged_runner_persists_dataset_snapshot_artifact_only_for_disk_mode_runs() {
 }
 
 #[test]
+fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_mode_runs() {
+    let calendar_registry = calibration_stage_test_registry();
+
+    let disk_checkpoint_directory =
+        temporary_checkpoint_directory("disk-stage-parameter-artifacts");
+    let disk_contract = build_run_contract_with_mode_and_resume(
+        "run-disk-stage-parameter-artifacts",
+        CalibrationExecutionMode::Disk,
+        None,
+    );
+    let disk_report = run_staged_calibration_with_checkpointing(
+        &disk_contract,
+        &calendar_registry,
+        staged_run_inputs(true, true, true),
+        None,
+        Some(disk_checkpoint_directory.as_path()),
+    );
+    assert_eq!(disk_report.status, CalibrationStageExecutionStatus::Success);
+
+    for stage in [
+        CalibrationStage::Seasonality,
+        CalibrationStage::Hawkes,
+        CalibrationStage::ReturnComponents,
+    ] {
+        let artifact_path = calibration_stage_parameter_artifact_path(
+            disk_checkpoint_directory.as_path(),
+            disk_contract.run_spec.run_id.as_str(),
+            stage,
+        );
+        let artifact = load_calibration_stage_parameter_artifact_from_disk(artifact_path.as_path())
+            .expect("disk-mode run should persist stage parameter artifact");
+        assert_eq!(artifact.run_id, disk_contract.run_spec.run_id);
+        assert_eq!(artifact.execution_mode, CalibrationExecutionMode::Disk);
+        assert_eq!(artifact.stage, stage);
+    }
+
+    let manifest_path = calibration_artifact_manifest_path(
+        disk_checkpoint_directory.as_path(),
+        disk_contract.run_spec.run_id.as_str(),
+    );
+    let manifest = load_calibration_artifact_manifest_from_disk(manifest_path.as_path())
+        .expect("disk-mode run should persist artifact manifest");
+    assert_eq!(manifest.run_id, disk_contract.run_spec.run_id);
+    assert_eq!(manifest.execution_mode, CalibrationExecutionMode::Disk);
+    assert_eq!(
+        manifest
+            .artifact_references
+            .iter()
+            .filter(|artifact_reference| artifact_reference.artifact_kind
+                == CalibrationArtifactKind::StageOutput)
+            .count(),
+        3
+    );
+    assert_eq!(
+        manifest
+            .artifact_references
+            .iter()
+            .filter(|artifact_reference| artifact_reference.artifact_kind
+                == CalibrationArtifactKind::StageCheckpoint)
+            .count(),
+        3
+    );
+
+    let memory_checkpoint_directory =
+        temporary_checkpoint_directory("memory-stage-parameter-artifacts");
+    let memory_contract = build_run_contract_with_mode_and_resume(
+        "run-memory-stage-parameter-artifacts",
+        CalibrationExecutionMode::Memory,
+        None,
+    );
+    let mut checkpoint_store = CalibrationMemoryCheckpointStore::new();
+    let memory_report = run_staged_calibration_with_checkpointing(
+        &memory_contract,
+        &calendar_registry,
+        staged_run_inputs(true, true, true),
+        Some(&mut checkpoint_store),
+        Some(memory_checkpoint_directory.as_path()),
+    );
+    assert_eq!(
+        memory_report.status,
+        CalibrationStageExecutionStatus::Success
+    );
+
+    for stage in [
+        CalibrationStage::Seasonality,
+        CalibrationStage::Hawkes,
+        CalibrationStage::ReturnComponents,
+    ] {
+        assert!(
+            !calibration_stage_parameter_artifact_path(
+                memory_checkpoint_directory.as_path(),
+                memory_contract.run_spec.run_id.as_str(),
+                stage,
+            )
+            .exists()
+        );
+    }
+    assert!(
+        !calibration_artifact_manifest_path(
+            memory_checkpoint_directory.as_path(),
+            memory_contract.run_spec.run_id.as_str(),
+        )
+        .exists()
+    );
+
+    let _ = fs::remove_dir_all(disk_checkpoint_directory);
+    let _ = fs::remove_dir_all(memory_checkpoint_directory);
+}
+
+#[test]
 fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
     let calendar_registry = calibration_stage_test_registry();
 

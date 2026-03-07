@@ -56,6 +56,12 @@ Example:
       "artifact_reference": "artifact://run_contract/run-001"
     },
     {
+      "artifact_id": "seasonality_stage_output",
+      "artifact_kind": "stage_output",
+      "artifact_reference": "artifact://seasonality/run-001",
+      "stage": "seasonality"
+    },
+    {
       "artifact_id": "seasonality_checkpoint",
       "artifact_kind": "stage_checkpoint",
       "artifact_reference": "artifact://stage_checkpoint/seasonality/run-001",
@@ -77,6 +83,12 @@ Validation must reject:
 - blank `artifact_id`
 - blank `artifact_reference`
 - duplicate `artifact_id` values within one manifest
+
+## Persistence path
+
+For a disk-mode run with checkpoint root `{artifact_root}` and `run_id={run_id}`, the manifest is written to:
+
+- `{artifact_root}/{run_id}/artifact_manifest.json`
 
 ## Versioning policy
 
