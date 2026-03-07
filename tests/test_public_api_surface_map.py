@@ -215,6 +215,7 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
         "deserialize_staged_calibration_execution_input",
         "deserialize_staged_calibration_request",
         "deserialize_staged_calibration_response",
+        "run_staged_calibration",
         "serialize_staged_calibration_execution_input",
         "serialize_staged_calibration_request",
         "serialize_staged_calibration_response",

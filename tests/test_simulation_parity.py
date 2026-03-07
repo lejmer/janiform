@@ -8,6 +8,7 @@ from janiform.hourly_factors import (
 from janiform.simulation import (
     HawkesExcitationState,
     HawkesKernelParameters,
+    SeededTickSimulationRequest,
     load_hourly_factor_contract_for_simulation,
     run_seeded_tick_event_simulation,
 )
@@ -85,7 +86,7 @@ def _run_seeded_case(
         ),
     )
 
-    return run_seeded_tick_event_simulation(
+    request = SeededTickSimulationRequest.from_runtime_inputs(
         seed=fixture_case["seed"],
         start_time_utc=range_start_utc,
         horizon_interval_count=fixture_case["horizon_interval_count"],
@@ -93,6 +94,8 @@ def _run_seeded_case(
         initial_excitation_state=HawkesExcitationState.from_mapping(fixture_case["initial_excitation_state"]),
         hourly_factor_contract=hourly_factor_contract,
     )
+
+    return run_seeded_tick_event_simulation(request)
 
 
 def _first_mismatch_diagnostic(

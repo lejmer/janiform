@@ -703,29 +703,41 @@ def deserialize_seeded_tick_simulation_response(payload_json: str) -> SeededTick
 
 
 def run_seeded_tick_event_simulation(
-    *,
-    seed: int,
-    start_time_utc: datetime,
-    horizon_interval_count: int,
-    kernel_parameters: HawkesKernelParameters,
-    initial_excitation_state: HawkesExcitationState,
-    hourly_factor_contract: HourlyFactorContract,
-    debug_trace_enabled: bool = False,
-    sample_every_nth_transition: int = 1,
-    max_records_per_chunk: int = 1024,
-    state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED,
+    request: SeededTickSimulationRequest,
 ) -> SeededTickSimulationResponse:
-    request = SeededTickSimulationRequest.from_runtime_inputs(
-        seed=seed,
-        start_time_utc=start_time_utc,
-        horizon_interval_count=horizon_interval_count,
-        kernel_parameters=kernel_parameters,
-        initial_excitation_state=initial_excitation_state,
-        hourly_factor_contract=hourly_factor_contract,
-        debug_trace_enabled=debug_trace_enabled,
-        sample_every_nth_transition=sample_every_nth_transition,
-        max_records_per_chunk=max_records_per_chunk,
-        state_snapshot_capture=state_snapshot_capture,
+    """Run the seeded tick simulator from a typed request.
+
+    Example:
+        request = SeededTickSimulationRequest.from_runtime_inputs(
+            seed=17,
+            start_time_utc=start_time_utc,
+            horizon_interval_count=2,
+            kernel_parameters=kernel_parameters,
+            initial_excitation_state=initial_excitation_state,
+            hourly_factor_contract=hourly_factor_contract,
+        )
+        response = run_seeded_tick_event_simulation(request)
+    """
+
+    if not isinstance(request, SeededTickSimulationRequest):
+        raise _simulation_error("request", "must be a SeededTickSimulationRequest")
+
+    normalized_request = SeededTickSimulationRequest(
+        seed=request.seed,
+        start_time_utc=require_datetime_utc(
+            request.start_time_utc,
+            "start_time_utc",
+            SIMULATION_ERROR_FACTORY,
+        ),
+        horizon_interval_count=request.horizon_interval_count,
+        kernel_parameters=request.kernel_parameters,
+        initial_excitation_state=request.initial_excitation_state,
+        hourly_factor_summary=request.hourly_factor_summary,
+        debug_trace_enabled=request.debug_trace_enabled,
+        sample_every_nth_transition=request.sample_every_nth_transition,
+        max_records_per_chunk=request.max_records_per_chunk,
+        state_snapshot_capture=request.state_snapshot_capture,
+        _hourly_factor_contract=request.hourly_factor_contract,
     )
     try:
         native = native_module()
@@ -739,16 +751,16 @@ def run_seeded_tick_event_simulation(
 
     try:
         event_tape_json: str = native.run_seeded_tick_event_simulation(
-            request.seed,
-            request.start_time_utc.astimezone(UTC).isoformat(),
-            request.horizon_interval_count,
-            request.kernel_parameters.to_payload(),
-            request.initial_excitation_state.to_payload(),
-            request.hourly_factor_contract._native_result,
-            debug_trace_enabled=request.debug_trace_enabled,
-            sample_every_nth_transition=request.sample_every_nth_transition,
-            max_records_per_chunk=request.max_records_per_chunk,
-            state_snapshot_capture=request.state_snapshot_capture.value,
+            normalized_request.seed,
+            normalized_request.start_time_utc.astimezone(UTC).isoformat(),
+            normalized_request.horizon_interval_count,
+            normalized_request.kernel_parameters.to_payload(),
+            normalized_request.initial_excitation_state.to_payload(),
+            normalized_request.hourly_factor_contract._native_result,
+            debug_trace_enabled=normalized_request.debug_trace_enabled,
+            sample_every_nth_transition=normalized_request.sample_every_nth_transition,
+            max_records_per_chunk=normalized_request.max_records_per_chunk,
+            state_snapshot_capture=normalized_request.state_snapshot_capture.value,
         )
     except native.SeasonalityInputValidationError as e:
         raise _simulation_execution_error(

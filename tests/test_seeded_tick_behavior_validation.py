@@ -9,6 +9,7 @@ from janiform.hourly_factors import (
 from janiform.simulation import (
     HawkesExcitationState,
     HawkesKernelParameters,
+    SeededTickSimulationRequest,
     SeededTickSimulationResponse,
     load_hourly_factor_contract_for_simulation,
     run_seeded_tick_event_simulation,
@@ -274,7 +275,7 @@ def _run_seeded_case(
         ),
     )
 
-    return run_seeded_tick_event_simulation(
+    request = SeededTickSimulationRequest.from_runtime_inputs(
         seed=seed,
         start_time_utc=START_TIME_UTC,
         horizon_interval_count=horizon_interval_count,
@@ -287,6 +288,8 @@ def _run_seeded_case(
         }),
         hourly_factor_contract=hourly_factor_contract,
     )
+
+    return run_seeded_tick_event_simulation(request)
 
 
 def _collect_interval_event_counts(

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import janiform.calibration as calibration_module
 import janiform.cli as cli_module
 import janiform.pricing as pricing_module
 import janiform.simulation as simulation_module
@@ -36,6 +37,7 @@ from janiform.simulation import (
     load_hourly_factor_contract_for_simulation,
     run_seeded_tick_event_simulation,
 )
+from tests.calibration_test_support import build_valid_execution_input_model
 
 START_TIME_UTC = datetime(2026, 2, 2, tzinfo=UTC)
 
@@ -99,22 +101,13 @@ def test_simulation_run_maps_missing_native_module_to_integration_error(
     calendar_registry: CalendarRegistry,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    hourly_factor_contract = _valid_hourly_factor_contract(calendar_registry)
-
     def missing_native_module() -> object:
         raise ModuleNotFoundError("janiform._native")
 
     monkeypatch.setattr(simulation_module, "native_module", missing_native_module)
 
     with pytest.raises(JaniformIntegrationError) as captured_error:
-        run_seeded_tick_event_simulation(
-            seed=17,
-            start_time_utc=START_TIME_UTC,
-            horizon_interval_count=2,
-            kernel_parameters=_valid_kernel_parameters(),
-            initial_excitation_state=_valid_excitation_state(),
-            hourly_factor_contract=hourly_factor_contract,
-        )
+        run_seeded_tick_event_simulation(_valid_simulation_request(calendar_registry))
 
     assert captured_error.value.error_id == "simulation.integration.native_module_unavailable"
     assert captured_error.value.workflow == "simulation"
@@ -139,14 +132,7 @@ def test_simulation_run_maps_native_validation_failure_to_execution_error(
     monkeypatch.setattr(simulation_module, "native_module", lambda: FakeNative())
 
     with pytest.raises(JaniformExecutionError) as captured_error:
-        run_seeded_tick_event_simulation(
-            seed=17,
-            start_time_utc=START_TIME_UTC,
-            horizon_interval_count=2,
-            kernel_parameters=_valid_kernel_parameters(),
-            initial_excitation_state=_valid_excitation_state(),
-            hourly_factor_contract=_valid_hourly_factor_contract(calendar_registry),
-        )
+        run_seeded_tick_event_simulation(_valid_simulation_request(calendar_registry))
 
     assert captured_error.value.error_id == "simulation.execution.run_failed"
     assert captured_error.value.workflow == "simulation"
@@ -171,14 +157,7 @@ def test_simulation_run_maps_invalid_native_response_to_integration_error(
     monkeypatch.setattr(simulation_module, "native_module", lambda: FakeNative())
 
     with pytest.raises(JaniformIntegrationError) as captured_error:
-        run_seeded_tick_event_simulation(
-            seed=17,
-            start_time_utc=START_TIME_UTC,
-            horizon_interval_count=2,
-            kernel_parameters=_valid_kernel_parameters(),
-            initial_excitation_state=_valid_excitation_state(),
-            hourly_factor_contract=_valid_hourly_factor_contract(calendar_registry),
-        )
+        run_seeded_tick_event_simulation(_valid_simulation_request(calendar_registry))
 
     assert captured_error.value.error_id == "simulation.integration.invalid_native_response"
     assert captured_error.value.workflow == "simulation"
@@ -251,6 +230,83 @@ def test_pricing_run_maps_invalid_native_response_to_integration_error(
     assert captured_error.value.context == {"source_error_id": "pricing.validation.contract"}
 
 
+def test_calibration_run_maps_missing_native_module_to_integration_error(
+    calendar_registry: CalendarRegistry,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def missing_native_module() -> object:
+        raise ModuleNotFoundError("janiform._native")
+
+    monkeypatch.setattr(calibration_module, "native_module", missing_native_module)
+
+    with pytest.raises(JaniformIntegrationError) as captured_error:
+        calibration_module.run_staged_calibration(
+            build_valid_execution_input_model(),
+            calendar_registry=calendar_registry,
+        )
+
+    assert captured_error.value.error_id == "calibration.integration.native_module_unavailable"
+    assert captured_error.value.workflow == "calibration"
+    assert captured_error.value.entrypoint == "run_staged_calibration"
+    assert captured_error.value.context == {"module_name": "janiform._native"}
+
+
+def test_calibration_run_maps_native_execution_failure_to_execution_error(
+    calendar_registry: CalendarRegistry,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class NativeExecutionError(Exception):
+        pass
+
+    class FakeNative:
+        CalibrationExecutionError = NativeExecutionError
+
+        @staticmethod
+        def run_staged_calibration(*args: object, **kwargs: object) -> str:
+            raise NativeExecutionError("native calibration failed")
+
+    monkeypatch.setattr(calibration_module, "native_module", lambda: FakeNative())
+
+    with pytest.raises(JaniformExecutionError) as captured_error:
+        calibration_module.run_staged_calibration(
+            build_valid_execution_input_model(),
+            calendar_registry=calendar_registry,
+        )
+
+    assert captured_error.value.error_id == "calibration.execution.run_failed"
+    assert captured_error.value.workflow == "calibration"
+    assert captured_error.value.entrypoint == "run_staged_calibration"
+    assert captured_error.value.context == {"source_exception_type": "NativeExecutionError"}
+
+
+def test_calibration_run_maps_invalid_native_response_to_integration_error(
+    calendar_registry: CalendarRegistry,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class NativeExecutionError(Exception):
+        pass
+
+    class FakeNative:
+        CalibrationExecutionError = NativeExecutionError
+
+        @staticmethod
+        def run_staged_calibration(*args: object, **kwargs: object) -> str:
+            return "{}"
+
+    monkeypatch.setattr(calibration_module, "native_module", lambda: FakeNative())
+
+    with pytest.raises(JaniformIntegrationError) as captured_error:
+        calibration_module.run_staged_calibration(
+            build_valid_execution_input_model(),
+            calendar_registry=calendar_registry,
+        )
+
+    assert captured_error.value.error_id == "calibration.integration.invalid_native_response"
+    assert captured_error.value.workflow == "calibration"
+    assert captured_error.value.entrypoint == "run_staged_calibration"
+    assert captured_error.value.context == {"source_error_id": "calibration.validation.contract"}
+
+
 def test_cli_error_output_uses_shared_error_contract(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -285,6 +341,17 @@ def _valid_hourly_factor_contract(calendar_registry: CalendarRegistry) -> Hourly
         range_end_utc=START_TIME_UTC + timedelta(hours=2),
         seasonality_source=HourlySeasonalityProviderExplicitSource(hourly_factors=[1.0, 1.0]),
         news_intensity_source=HourlyNewsIntensityProviderExplicitSource(hourly_factors=[0.1, 0.1]),
+    )
+
+
+def _valid_simulation_request(calendar_registry: CalendarRegistry) -> SeededTickSimulationRequest:
+    return SeededTickSimulationRequest.from_runtime_inputs(
+        seed=17,
+        start_time_utc=START_TIME_UTC,
+        horizon_interval_count=2,
+        kernel_parameters=_valid_kernel_parameters(),
+        initial_excitation_state=_valid_excitation_state(),
+        hourly_factor_contract=_valid_hourly_factor_contract(calendar_registry),
     )
 
 

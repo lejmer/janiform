@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import StrEnum
+from types import ModuleType
 from typing import Any, Optional
 
 from ._contracts import (
@@ -18,7 +19,16 @@ from ._contracts import (
     require_string,
     serialize_deterministic_json,
 )
-from .errors import ContractValidationFailure, JaniformValidationError
+from ._native_api import native_module
+from .calendar import CalendarRegistry
+from .errors import (
+    ContractValidationFailure,
+    JaniformErrorCategory,
+    JaniformErrorDetails,
+    JaniformExecutionError,
+    JaniformIntegrationError,
+    JaniformValidationError,
+)
 from .pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 
 CALIBRATION_RUN_SPEC_SCHEMA_VERSION = "calibration.orchestration.run_spec.v1"
@@ -29,6 +39,9 @@ CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY = (
 )
 DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE = "memory"
 CALIBRATION_VALIDATION_ERROR_ID = "calibration.validation.contract"
+CALIBRATION_EXECUTION_ERROR_ID = "calibration.execution.run_failed"
+CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID = "calibration.integration.native_module_unavailable"
+CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID = "calibration.integration.invalid_native_response"
 
 CalibrationValidationFailure = ContractValidationFailure
 
@@ -52,6 +65,45 @@ def _calibration_error(
             entrypoint=entrypoint,
             field_path=field_path,
             message=message,
+            context=context,
+        )
+    )
+
+
+def _calibration_execution_error(
+    message: str,
+    *,
+    entrypoint: str,
+    context: Optional[dict[str, str | int | float | bool | None]] = None,
+) -> JaniformExecutionError:
+    return JaniformExecutionError(
+        JaniformErrorDetails.from_context(
+            error_id=CALIBRATION_EXECUTION_ERROR_ID,
+            category=JaniformErrorCategory.EXECUTION,
+            workflow="calibration",
+            entrypoint=entrypoint,
+            message=message,
+            context=context,
+        )
+    )
+
+
+def _calibration_integration_error(
+    message: str,
+    *,
+    entrypoint: str,
+    error_id: str,
+    field_path: Optional[str] = None,
+    context: Optional[dict[str, str | int | float | bool | None]] = None,
+) -> JaniformIntegrationError:
+    return JaniformIntegrationError(
+        JaniformErrorDetails.from_context(
+            error_id=error_id,
+            category=JaniformErrorCategory.INTEGRATION,
+            workflow="calibration",
+            entrypoint=entrypoint,
+            message=message,
+            field_path=field_path,
             context=context,
         )
     )
@@ -2205,6 +2257,71 @@ def deserialize_staged_calibration_response(payload_json: str) -> StagedCalibrat
     return validate_staged_calibration_response(dict(raw_payload))
 
 
+def run_staged_calibration(
+    execution_input: StagedCalibrationExecutionInput,
+    *,
+    calendar_registry: CalendarRegistry,
+) -> StagedCalibrationResponse:
+    """Run staged calibration from the explicit execution contract.
+
+    Example:
+        response = run_staged_calibration(
+            execution_input,
+            calendar_registry=calendar_registry,
+        )
+
+    Return-components stage inputs keep known-news open-window jumps and
+    closed-window gaps explicit instead of collapsing them into one field.
+    """
+
+    if not isinstance(execution_input, StagedCalibrationExecutionInput):
+        raise _calibration_error("execution_input", "must be a StagedCalibrationExecutionInput")
+    if not isinstance(calendar_registry, CalendarRegistry):
+        raise _calibration_error("calendar_registry", "must be a CalendarRegistry")
+
+    normalized_execution_input = validate_staged_calibration_execution_input(
+        execution_input.to_payload()
+    )
+
+    try:
+        native: ModuleType = native_module()
+    except ModuleNotFoundError as e:
+        raise _calibration_integration_error(
+            "native calibration module is unavailable",
+            entrypoint="run_staged_calibration",
+            error_id=CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
+            context={"module_name": "janiform._native"},
+        ) from e
+
+    try:
+        response_json: str = native.run_staged_calibration(
+            serialize_staged_calibration_execution_input(normalized_execution_input),
+            calendar_registry._native_registry,
+        )
+    except native.CalibrationExecutionError as e:
+        raise _calibration_execution_error(
+            "staged calibration failed during native execution",
+            entrypoint="run_staged_calibration",
+            context={"source_exception_type": type(e).__name__},
+        ) from e
+    except Exception as e:
+        raise _calibration_execution_error(
+            "staged calibration failed during native execution",
+            entrypoint="run_staged_calibration",
+            context={"source_exception_type": type(e).__name__},
+        ) from e
+
+    try:
+        return deserialize_staged_calibration_response(response_json)
+    except CalibrationValidationError as e:
+        raise _calibration_integration_error(
+            "native calibration returned an invalid response payload",
+            entrypoint="run_staged_calibration",
+            error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
+            context={"source_error_id": e.error_id},
+        ) from e
+
+
 __all__ = [
     "CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY",
     "CALIBRATION_RUN_SPEC_SCHEMA_VERSION",
@@ -2259,6 +2376,7 @@ __all__ = [
     "deserialize_staged_calibration_execution_input",
     "deserialize_staged_calibration_request",
     "deserialize_staged_calibration_response",
+    "run_staged_calibration",
     "serialize_staged_calibration_execution_input",
     "serialize_staged_calibration_request",
     "serialize_staged_calibration_response",
