@@ -13,6 +13,7 @@ from pyarrow import parquet as pyarrow_parquet
 
 import janiform.calibration as calibration_module
 import janiform.cli as cli_module
+import janiform.cli._commands as cli_commands_module
 import janiform.pricing as pricing_module
 import janiform.simulation as simulation_module
 from janiform.calendar import CalendarRegistry
@@ -907,7 +908,7 @@ def test_simulation_cli_maps_request_json_to_runtime_request(
         captured_request["request"] = request_model
         return simulation_module.run_seeded_tick_event_simulation(request_model)
 
-    monkeypatch.setattr(cli_module, "run_seeded_tick_event_simulation", capturing_runner)
+    monkeypatch.setattr(cli_commands_module, "run_seeded_tick_event_simulation", capturing_runner)
 
     request_path = _write_json_path(tmp_path / "simulation_request.json", request.to_payload())
     calendar_registry_path = _write_json_path(
@@ -948,7 +949,7 @@ def test_pricing_cli_maps_execution_input_json_to_runtime_contract(
         captured_execution_input["execution_input"] = execution_input_model
         return pricing_module.run_vanilla_option_pricing(execution_input_model)
 
-    monkeypatch.setattr(cli_module, "run_vanilla_option_pricing", capturing_runner)
+    monkeypatch.setattr(cli_commands_module, "run_vanilla_option_pricing", capturing_runner)
 
     execution_input_path = _write_json_path(
         tmp_path / "pricing_execution_input.json",
@@ -994,7 +995,7 @@ def test_calibration_cli_defaults_execution_mode_to_disk(
             calendar_registry=CalendarRegistry(calendar_registry_json),
         )
 
-    monkeypatch.setattr(cli_module, "run_staged_calibration", capturing_runner)
+    monkeypatch.setattr(cli_commands_module, "run_staged_calibration", capturing_runner)
 
     execution_input_path = _write_json_path(
         tmp_path / "calibration_execution_input.json",
@@ -1050,7 +1051,7 @@ def test_calibration_cli_honors_explicit_memory_override(
             calendar_registry=CalendarRegistry(calendar_registry_json),
         )
 
-    monkeypatch.setattr(cli_module, "run_staged_calibration", capturing_runner)
+    monkeypatch.setattr(cli_commands_module, "run_staged_calibration", capturing_runner)
 
     execution_input_path = _write_json_path(
         tmp_path / "calibration_execution_input.json",
@@ -1087,7 +1088,7 @@ def test_calibration_cli_honors_explicit_memory_override(
 def test_calibration_cli_resolves_relative_disk_checkpoint_directory_from_repository_root() -> None:
     execution_input = build_valid_execution_input_model()
     relative_checkpoint_directory = Path("tmp") / "cli-checkpoints"
-    repository_root = Path(cli_module.__file__).resolve().parents[2]
+    repository_root = Path(cli_module.__file__).resolve().parents[3]
     resolved_checkpoint_directory = cli_module._resolve_path_from_repository_root(
         repository_root,
         relative_checkpoint_directory,
@@ -1136,7 +1137,7 @@ def test_calibration_cli_runtime_failures_return_runtime_exit_code(
             )
         )
 
-    monkeypatch.setattr(cli_module, "run_staged_calibration", failing_runner)
+    monkeypatch.setattr(cli_commands_module, "run_staged_calibration", failing_runner)
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
@@ -1169,7 +1170,7 @@ def test_pricing_cli_unexpected_failures_return_internal_exit_code(
     def broken_runner(_: VanillaOptionPricingExecutionInput) -> pricing_module.VanillaOptionPricingRunResult:
         raise RuntimeError("unexpected pricing bug")
 
-    monkeypatch.setattr(cli_module, "run_vanilla_option_pricing", broken_runner)
+    monkeypatch.setattr(cli_commands_module, "run_vanilla_option_pricing", broken_runner)
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [

@@ -10,8 +10,7 @@ import pyarrow
 from pyarrow import compute as pyarrow_compute
 from pyarrow import parquet as pyarrow_parquet
 
-from ._contracts import ContractModel
-from .calibration import (
+from ._common import (
     CalibrationDuplicateRecordPolicy,
     CalibrationInputFileFormat,
     CalibrationInputFileReference,
@@ -22,9 +21,10 @@ from .calibration import (
     CalibrationOptionSurfaceColumnMapping,
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
-    MarketDataCalibrationRequest,
     _calibration_error,
 )
+from ._requests import MarketDataCalibrationRequest
+from .._contracts import ContractModel
 
 
 CALIBRATION_MARKET_DATA_INGESTION_ERROR_ID = "calibration.validation.market_data_ingestion"

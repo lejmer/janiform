@@ -5,7 +5,9 @@ from pathlib import Path
 import pytest
 
 import janiform.calibration as calibration_module
+import janiform.calibration._staged as calibration_staged_module
 import janiform.cli as cli_module
+import janiform.cli._commands as cli_commands_module
 import janiform.pricing as pricing_module
 import janiform.simulation as simulation_module
 from janiform.calendar import CalendarMissingExchangeError, CalendarRegistry
@@ -237,7 +239,7 @@ def test_calibration_run_maps_missing_native_module_to_integration_error(
     def missing_native_module() -> object:
         raise ModuleNotFoundError("janiform._native")
 
-    monkeypatch.setattr(calibration_module, "native_module", missing_native_module)
+    monkeypatch.setattr(calibration_staged_module, "native_module", missing_native_module)
 
     with pytest.raises(JaniformIntegrationError) as captured_error:
         calibration_module.run_staged_calibration(
@@ -265,7 +267,7 @@ def test_calibration_run_maps_native_execution_failure_to_execution_error(
         def run_staged_calibration(*args: object, **kwargs: object) -> str:
             raise NativeExecutionError("native calibration failed")
 
-    monkeypatch.setattr(calibration_module, "native_module", lambda: FakeNative())
+    monkeypatch.setattr(calibration_staged_module, "native_module", lambda: FakeNative())
 
     with pytest.raises(JaniformExecutionError) as captured_error:
         calibration_module.run_staged_calibration(
@@ -293,7 +295,7 @@ def test_calibration_run_maps_invalid_native_response_to_integration_error(
         def run_staged_calibration(*args: object, **kwargs: object) -> str:
             return "{}"
 
-    monkeypatch.setattr(calibration_module, "native_module", lambda: FakeNative())
+    monkeypatch.setattr(calibration_staged_module, "native_module", lambda: FakeNative())
 
     with pytest.raises(JaniformIntegrationError) as captured_error:
         calibration_module.run_staged_calibration(
@@ -314,7 +316,7 @@ def test_cli_error_output_uses_shared_error_contract(
     def broken_load_json_document(path: object, context: object) -> dict[str, object]:
         raise ValueError("gap behavior fixture must include list field `cases`")
 
-    monkeypatch.setattr(cli_module, "_load_json_document", broken_load_json_document)
+    monkeypatch.setattr(cli_commands_module, "_load_json_document", broken_load_json_document)
 
     exit_code = cli_module._run_open_closed_gap_leakage_regression_command(
         Namespace(

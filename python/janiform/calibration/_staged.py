@@ -1,0 +1,1757 @@
+from dataclasses import dataclass
+from enum import StrEnum
+from types import ModuleType
+from typing import Any, Optional
+
+from ._common import (
+    CALIBRATION_ERROR_FACTORY,
+    CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
+    CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
+    CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
+    CalibrationExecutionMode,
+    CalibrationStage,
+    CalibrationStageExecutionStatus,
+    CalibrationValidationError,
+    _calibration_error,
+    _calibration_execution_error,
+    _calibration_integration_error,
+    _parse_calibration_execution_mode,
+    _require_bool,
+)
+from ._requests import StagedCalibrationRequest
+from .._contracts import (
+    ContractModel,
+    parse_json_object,
+    require_finite_number,
+    require_integer,
+    require_mapping,
+    require_non_empty_string,
+    require_non_negative_finite_number,
+    require_non_negative_integer,
+    require_positive_finite_number,
+    require_positive_integer,
+    require_sequence,
+    require_string,
+    serialize_deterministic_json,
+)
+from .._native_api import native_module
+from ..calendar import CalendarRegistry
+from ..pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
+
+class CalibrationTimestampEventSessionFilter(StrEnum):
+    ALL = 'all'
+    OPEN_ONLY = 'open_only'
+    CLOSED_ONLY = 'closed_only'
+
+
+class CalibrationIntradaySmoothingKernel(StrEnum):
+    GAUSSIAN = 'gaussian'
+    UNIFORM = 'uniform'
+
+
+def _require_timestamp_utc_nanos(raw_payload: dict[str, Any], field_name: str, field_path: str) -> int:
+    return require_integer(raw_payload, field_name, field_path, CALIBRATION_ERROR_FACTORY)
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationTimestampEventRecord(ContractModel):
+    source_record_position: int
+    timestamp_utc_nanos: int
+
+    def __post_init__(self) -> None:
+        if self.source_record_position < 0:
+            raise _calibration_error("source_record_position", "must be non-negative")
+
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationTimestampEventRecord:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationTimestampEventRecord(
+            source_record_position=require_non_negative_integer(
+                raw_payload,
+                "source_record_position",
+                f"{field_path}.source_record_position",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            timestamp_utc_nanos=_require_timestamp_utc_nanos(
+                raw_payload,
+                "timestamp_utc_nanos",
+                f"{field_path}.timestamp_utc_nanos",
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationScheduledEventOverlay(ContractModel):
+    overlay_id: str
+    start_timestamp_utc_nanos: int
+    end_timestamp_utc_nanos: int
+    log_adjustment: float
+    precedence: int
+    enabled: bool
+    source_label: str
+
+    def __post_init__(self) -> None:
+        if not self.overlay_id.strip():
+            raise _calibration_error("overlay_id", "must be a non-empty string")
+        if not self.source_label.strip():
+            raise _calibration_error("source_label", "must be a non-empty string")
+        if self.precedence < 0:
+            raise _calibration_error("precedence", "must be non-negative")
+
+        require_finite_number(
+            {"log_adjustment": self.log_adjustment},
+            "log_adjustment",
+            "log_adjustment",
+            CALIBRATION_ERROR_FACTORY,
+        )
+
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationScheduledEventOverlay:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationScheduledEventOverlay(
+            overlay_id=require_non_empty_string(
+                raw_payload,
+                "overlay_id",
+                f"{field_path}.overlay_id",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            start_timestamp_utc_nanos=_require_timestamp_utc_nanos(
+                raw_payload,
+                "start_timestamp_utc_nanos",
+                f"{field_path}.start_timestamp_utc_nanos",
+            ),
+            end_timestamp_utc_nanos=_require_timestamp_utc_nanos(
+                raw_payload,
+                "end_timestamp_utc_nanos",
+                f"{field_path}.end_timestamp_utc_nanos",
+            ),
+            log_adjustment=require_finite_number(
+                raw_payload,
+                "log_adjustment",
+                f"{field_path}.log_adjustment",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            precedence=require_non_negative_integer(
+                raw_payload,
+                "precedence",
+                f"{field_path}.precedence",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            enabled=_require_bool(raw_payload, "enabled", f"{field_path}.enabled"),
+            source_label=require_non_empty_string(
+                raw_payload,
+                "source_label",
+                f"{field_path}.source_label",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationIntradaySeasonalityEstimatorSettings(ContractModel):
+    minutes_per_bin: int
+    smoothing_kernel: CalibrationIntradaySmoothingKernel
+    smoothing_bandwidth_bins: float
+    minimum_bin_events: int
+    pseudocount: float
+
+    def __post_init__(self) -> None:
+        if self.minutes_per_bin <= 0:
+            raise _calibration_error("minutes_per_bin", "must be strictly positive")
+        if self.minimum_bin_events <= 0:
+            raise _calibration_error("minimum_bin_events", "must be strictly positive")
+        if self.smoothing_bandwidth_bins <= 0.0:
+            raise _calibration_error("smoothing_bandwidth_bins", "must be strictly positive")
+        if self.pseudocount <= 0.0:
+            raise _calibration_error("pseudocount", "must be strictly positive")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationIntradaySeasonalityEstimatorSettings:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationIntradaySeasonalityEstimatorSettings(
+            minutes_per_bin=require_positive_integer(
+                raw_payload,
+                "minutes_per_bin",
+                f"{field_path}.minutes_per_bin",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            smoothing_kernel=CalibrationIntradaySmoothingKernel(
+                require_string(
+                    raw_payload,
+                    "smoothing_kernel",
+                    f"{field_path}.smoothing_kernel",
+                    CALIBRATION_ERROR_FACTORY,
+                )
+            ),
+            smoothing_bandwidth_bins=require_positive_finite_number(
+                raw_payload,
+                "smoothing_bandwidth_bins",
+                f"{field_path}.smoothing_bandwidth_bins",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            minimum_bin_events=require_positive_integer(
+                raw_payload,
+                "minimum_bin_events",
+                f"{field_path}.minimum_bin_events",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            pseudocount=require_positive_finite_number(
+                raw_payload,
+                "pseudocount",
+                f"{field_path}.pseudocount",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationDayOfWeekSeasonalityEstimatorSettings(ContractModel):
+    minimum_bucket_events: int
+    pseudocount: float
+
+    def __post_init__(self) -> None:
+        if self.minimum_bucket_events <= 0:
+            raise _calibration_error("minimum_bucket_events", "must be strictly positive")
+        if self.pseudocount <= 0.0:
+            raise _calibration_error("pseudocount", "must be strictly positive")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationDayOfWeekSeasonalityEstimatorSettings:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationDayOfWeekSeasonalityEstimatorSettings(
+            minimum_bucket_events=require_positive_integer(
+                raw_payload,
+                "minimum_bucket_events",
+                f"{field_path}.minimum_bucket_events",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            pseudocount=require_positive_finite_number(
+                raw_payload,
+                "pseudocount",
+                f"{field_path}.pseudocount",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationDayOfYearSeasonalityEstimatorSettings(ContractModel):
+    minimum_bucket_events: int
+    pseudocount: float
+
+    def __post_init__(self) -> None:
+        if self.minimum_bucket_events <= 0:
+            raise _calibration_error("minimum_bucket_events", "must be strictly positive")
+        if self.pseudocount <= 0.0:
+            raise _calibration_error("pseudocount", "must be strictly positive")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationDayOfYearSeasonalityEstimatorSettings:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationDayOfYearSeasonalityEstimatorSettings(
+            minimum_bucket_events=require_positive_integer(
+                raw_payload,
+                "minimum_bucket_events",
+                f"{field_path}.minimum_bucket_events",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            pseudocount=require_positive_finite_number(
+                raw_payload,
+                "pseudocount",
+                f"{field_path}.pseudocount",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationSeasonalityStageExecutionSettings(ContractModel):
+    session_filter: CalibrationTimestampEventSessionFilter
+    sparse_hour_event_threshold: int
+    intraday_settings: CalibrationIntradaySeasonalityEstimatorSettings
+    day_of_week_settings: CalibrationDayOfWeekSeasonalityEstimatorSettings
+    day_of_year_settings: CalibrationDayOfYearSeasonalityEstimatorSettings
+
+    def __post_init__(self) -> None:
+        if self.sparse_hour_event_threshold < 0:
+            raise _calibration_error("sparse_hour_event_threshold", "must be non-negative")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationSeasonalityStageExecutionSettings:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationSeasonalityStageExecutionSettings(
+            session_filter=CalibrationTimestampEventSessionFilter(
+                require_string(
+                    raw_payload,
+                    "session_filter",
+                    f"{field_path}.session_filter",
+                    CALIBRATION_ERROR_FACTORY,
+                )
+            ),
+            sparse_hour_event_threshold=require_non_negative_integer(
+                raw_payload,
+                "sparse_hour_event_threshold",
+                f"{field_path}.sparse_hour_event_threshold",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            intraday_settings=CalibrationIntradaySeasonalityEstimatorSettings.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "intraday_settings",
+                    f"{field_path}.intraday_settings",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.intraday_settings",
+            ),
+            day_of_week_settings=CalibrationDayOfWeekSeasonalityEstimatorSettings.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "day_of_week_settings",
+                    f"{field_path}.day_of_week_settings",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.day_of_week_settings",
+            ),
+            day_of_year_settings=CalibrationDayOfYearSeasonalityEstimatorSettings.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "day_of_year_settings",
+                    f"{field_path}.day_of_year_settings",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.day_of_year_settings",
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationSeasonalityStageExecutionInput(ContractModel):
+    timestamp_event_records: tuple[CalibrationTimestampEventRecord, ...]
+    scheduled_event_overlays: tuple[CalibrationScheduledEventOverlay, ...] = ()
+    settings: Optional[CalibrationSeasonalityStageExecutionSettings] = None
+    dataset_id_override: Optional[str] = None
+    estimator_version_override: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if len(self.timestamp_event_records) == 0:
+            raise _calibration_error("timestamp_event_records", "must include at least one event record")
+        if self.dataset_id_override is not None and not self.dataset_id_override.strip():
+            raise _calibration_error("dataset_id_override", "must be non-empty when provided")
+        if self.estimator_version_override is not None and not self.estimator_version_override.strip():
+            raise _calibration_error("estimator_version_override", "must be non-empty when provided")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationSeasonalityStageExecutionInput:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        raw_records = require_sequence(
+            raw_payload,
+            "timestamp_event_records",
+            f"{field_path}.timestamp_event_records",
+            CALIBRATION_ERROR_FACTORY,
+        )
+        raw_overlays = raw_payload.get("scheduled_event_overlays", [])
+        if isinstance(raw_overlays, str) or not isinstance(raw_overlays, list):
+            raise _calibration_error(f"{field_path}.scheduled_event_overlays", "must be a sequence")
+
+        dataset_id_override = raw_payload.get("dataset_id_override")
+        estimator_version_override = raw_payload.get("estimator_version_override")
+        if dataset_id_override is not None and not isinstance(dataset_id_override, str):
+            raise _calibration_error(f"{field_path}.dataset_id_override", "must be a string when provided")
+        if estimator_version_override is not None and not isinstance(estimator_version_override, str):
+            raise _calibration_error(
+                f"{field_path}.estimator_version_override",
+                "must be a string when provided",
+            )
+
+        return CalibrationSeasonalityStageExecutionInput(
+            timestamp_event_records=tuple(
+                CalibrationTimestampEventRecord.from_mapping(
+                    raw_record,
+                    field_path=f"{field_path}.timestamp_event_records[{record_index}]",
+                )
+                for record_index, raw_record in enumerate(raw_records)
+            ),
+            scheduled_event_overlays=tuple(
+                CalibrationScheduledEventOverlay.from_mapping(
+                    raw_overlay,
+                    field_path=f"{field_path}.scheduled_event_overlays[{overlay_index}]",
+                )
+                for overlay_index, raw_overlay in enumerate(raw_overlays)
+            ),
+            settings=(
+                CalibrationSeasonalityStageExecutionSettings.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "settings",
+                        f"{field_path}.settings",
+                        CALIBRATION_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.settings",
+                )
+                if "settings" in raw_payload and raw_payload["settings"] is not None
+                else None
+            ),
+            dataset_id_override=dataset_id_override,
+            estimator_version_override=estimator_version_override,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationHawkesStructuredAlphaParameterization(ContractModel):
+    a_self: float
+    a_cross: float
+    delta_self: float
+    delta_cross: float
+
+    def __post_init__(self) -> None:
+        if self.a_self <= 0.0:
+            raise _calibration_error("a_self", "must be strictly positive")
+        if self.a_cross < 0.0:
+            raise _calibration_error("a_cross", "must be non-negative")
+        if self.delta_self < 0.0:
+            raise _calibration_error("delta_self", "must be non-negative")
+        if self.delta_cross < 0.0:
+            raise _calibration_error("delta_cross", "must be non-negative")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationHawkesStructuredAlphaParameterization:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationHawkesStructuredAlphaParameterization(
+            a_self=require_positive_finite_number(
+                raw_payload,
+                "a_self",
+                f"{field_path}.a_self",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            a_cross=require_non_negative_finite_number(
+                raw_payload,
+                "a_cross",
+                f"{field_path}.a_cross",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            delta_self=require_non_negative_finite_number(
+                raw_payload,
+                "delta_self",
+                f"{field_path}.delta_self",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            delta_cross=require_non_negative_finite_number(
+                raw_payload,
+                "delta_cross",
+                f"{field_path}.delta_cross",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationHawkesStructuredRhoParameterization(ContractModel):
+    r_self: float
+    r_cross: float
+    delta_self_r: float
+    delta_cross_r: float
+
+    def __post_init__(self) -> None:
+        if self.r_self <= 0.0:
+            raise _calibration_error("r_self", "must be strictly positive")
+        if self.r_cross < 0.0:
+            raise _calibration_error("r_cross", "must be non-negative")
+        if self.delta_self_r < 0.0:
+            raise _calibration_error("delta_self_r", "must be non-negative")
+        if self.delta_cross_r < 0.0:
+            raise _calibration_error("delta_cross_r", "must be non-negative")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationHawkesStructuredRhoParameterization:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationHawkesStructuredRhoParameterization(
+            r_self=require_positive_finite_number(
+                raw_payload,
+                "r_self",
+                f"{field_path}.r_self",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            r_cross=require_non_negative_finite_number(
+                raw_payload,
+                "r_cross",
+                f"{field_path}.r_cross",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            delta_self_r=require_non_negative_finite_number(
+                raw_payload,
+                "delta_self_r",
+                f"{field_path}.delta_self_r",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            delta_cross_r=require_non_negative_finite_number(
+                raw_payload,
+                "delta_cross_r",
+                f"{field_path}.delta_cross_r",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationHawkesStructuredRhoSelfDominancePolicy(ContractModel):
+    minimum_self_to_cross_ratio: float
+
+    def __post_init__(self) -> None:
+        if self.minimum_self_to_cross_ratio < 0.0:
+            raise _calibration_error("minimum_self_to_cross_ratio", "must be non-negative")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationHawkesStructuredRhoSelfDominancePolicy:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationHawkesStructuredRhoSelfDominancePolicy(
+            minimum_self_to_cross_ratio=require_non_negative_finite_number(
+                raw_payload,
+                "minimum_self_to_cross_ratio",
+                f"{field_path}.minimum_self_to_cross_ratio",
+                CALIBRATION_ERROR_FACTORY,
+            )
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationObjectiveTermInput(ContractModel):
+    term_id: str
+    weight: float
+    observed_score: float
+
+    def __post_init__(self) -> None:
+        if not self.term_id.strip():
+            raise _calibration_error("term_id", "must be a non-empty string")
+        if self.weight < 0.0:
+            raise _calibration_error("weight", "must be non-negative")
+
+        require_finite_number(
+            {"observed_score": self.observed_score},
+            "observed_score",
+            "observed_score",
+            CALIBRATION_ERROR_FACTORY,
+        )
+
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationObjectiveTermInput:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationObjectiveTermInput(
+            term_id=require_non_empty_string(
+                raw_payload,
+                "term_id",
+                f"{field_path}.term_id",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            weight=require_non_negative_finite_number(
+                raw_payload,
+                "weight",
+                f"{field_path}.weight",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            observed_score=require_finite_number(
+                raw_payload,
+                "observed_score",
+                f"{field_path}.observed_score",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationHawkesStageCandidateInput(ContractModel):
+    candidate_id: str
+    lambda_bar: float
+    beta: float
+    structured_alpha: CalibrationHawkesStructuredAlphaParameterization
+    structured_rho: CalibrationHawkesStructuredRhoParameterization
+    self_dominance_policy: Optional[CalibrationHawkesStructuredRhoSelfDominancePolicy] = None
+    stability_numeric_tolerance: float = 0.0
+    objective_terms: tuple[CalibrationObjectiveTermInput, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.candidate_id.strip():
+            raise _calibration_error("candidate_id", "must be a non-empty string")
+
+        require_finite_number({"lambda_bar": self.lambda_bar}, "lambda_bar", "lambda_bar", CALIBRATION_ERROR_FACTORY)
+        require_finite_number({"beta": self.beta}, "beta", "beta", CALIBRATION_ERROR_FACTORY)
+        require_non_negative_finite_number(
+            {"stability_numeric_tolerance": self.stability_numeric_tolerance},
+            "stability_numeric_tolerance",
+            "stability_numeric_tolerance",
+            CALIBRATION_ERROR_FACTORY,
+        )
+
+        if len(self.objective_terms) == 0:
+            raise _calibration_error("objective_terms", "must include at least one objective term")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationHawkesStageCandidateInput:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        raw_objective_terms = require_sequence(
+            raw_payload,
+            "objective_terms",
+            f"{field_path}.objective_terms",
+            CALIBRATION_ERROR_FACTORY,
+        )
+
+        return CalibrationHawkesStageCandidateInput(
+            candidate_id=require_non_empty_string(
+                raw_payload,
+                "candidate_id",
+                f"{field_path}.candidate_id",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            lambda_bar=require_finite_number(
+                raw_payload,
+                "lambda_bar",
+                f"{field_path}.lambda_bar",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            beta=require_finite_number(
+                raw_payload,
+                "beta",
+                f"{field_path}.beta",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            structured_alpha=CalibrationHawkesStructuredAlphaParameterization.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "structured_alpha",
+                    f"{field_path}.structured_alpha",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.structured_alpha",
+            ),
+            structured_rho=CalibrationHawkesStructuredRhoParameterization.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "structured_rho",
+                    f"{field_path}.structured_rho",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.structured_rho",
+            ),
+            self_dominance_policy=(
+                CalibrationHawkesStructuredRhoSelfDominancePolicy.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "self_dominance_policy",
+                        f"{field_path}.self_dominance_policy",
+                        CALIBRATION_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.self_dominance_policy",
+                )
+                if "self_dominance_policy" in raw_payload and raw_payload["self_dominance_policy"] is not None
+                else None
+            ),
+            stability_numeric_tolerance=require_non_negative_finite_number(
+                raw_payload,
+                "stability_numeric_tolerance",
+                f"{field_path}.stability_numeric_tolerance",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            objective_terms=tuple(
+                CalibrationObjectiveTermInput.from_mapping(
+                    raw_term,
+                    field_path=f"{field_path}.objective_terms[{term_index}]",
+                )
+                for term_index, raw_term in enumerate(raw_objective_terms)
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationReturnComponentsSignalSourceWindow(ContractModel):
+    window_start_utc_nanos: int
+    window_end_utc_nanos: int
+
+    def __post_init__(self) -> None:
+        if self.window_end_utc_nanos <= self.window_start_utc_nanos:
+            raise _calibration_error("window_end_utc_nanos", "must be strictly greater than window_start_utc_nanos")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationReturnComponentsSignalSourceWindow:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationReturnComponentsSignalSourceWindow(
+            window_start_utc_nanos=_require_timestamp_utc_nanos(
+                raw_payload,
+                "window_start_utc_nanos",
+                f"{field_path}.window_start_utc_nanos",
+            ),
+            window_end_utc_nanos=_require_timestamp_utc_nanos(
+                raw_payload,
+                "window_end_utc_nanos",
+                f"{field_path}.window_end_utc_nanos",
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationReturnComponentsKnownNewsCalendarInput(ContractModel):
+    source_window: CalibrationReturnComponentsSignalSourceWindow
+    scheduled_event_timestamps_utc_nanos: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        previous_timestamp: Optional[int] = None
+        for timestamp_utc_nanos in self.scheduled_event_timestamps_utc_nanos:
+            if previous_timestamp is not None and timestamp_utc_nanos <= previous_timestamp:
+                raise _calibration_error(
+                    "scheduled_event_timestamps_utc_nanos",
+                    "must be strictly increasing",
+                )
+            previous_timestamp = timestamp_utc_nanos
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationReturnComponentsKnownNewsCalendarInput:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        raw_timestamps = require_sequence(
+            raw_payload,
+            "scheduled_event_timestamps_utc_nanos",
+            f"{field_path}.scheduled_event_timestamps_utc_nanos",
+            CALIBRATION_ERROR_FACTORY,
+        )
+
+        return CalibrationReturnComponentsKnownNewsCalendarInput(
+            source_window=CalibrationReturnComponentsSignalSourceWindow.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "source_window",
+                    f"{field_path}.source_window",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.source_window",
+            ),
+            scheduled_event_timestamps_utc_nanos=tuple(
+                require_integer(
+                    {"value": raw_timestamp},
+                    "value",
+                    f"{field_path}.scheduled_event_timestamps_utc_nanos[{timestamp_index}]",
+                    CALIBRATION_ERROR_FACTORY,
+                )
+                for timestamp_index, raw_timestamp in enumerate(raw_timestamps)
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationReturnComponentsKnownNewsReturnSample(ContractModel):
+    event_timestamp_utc_nanos: int
+    open_window_jump_return: float
+    closed_window_gap_return: float
+
+    def __post_init__(self) -> None:
+        require_finite_number(
+            {"open_window_jump_return": self.open_window_jump_return},
+            "open_window_jump_return",
+            "open_window_jump_return",
+            CALIBRATION_ERROR_FACTORY,
+        )
+        require_finite_number(
+            {"closed_window_gap_return": self.closed_window_gap_return},
+            "closed_window_gap_return",
+            "closed_window_gap_return",
+            CALIBRATION_ERROR_FACTORY,
+        )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationReturnComponentsKnownNewsReturnSample:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationReturnComponentsKnownNewsReturnSample(
+            event_timestamp_utc_nanos=_require_timestamp_utc_nanos(
+                raw_payload,
+                "event_timestamp_utc_nanos",
+                f"{field_path}.event_timestamp_utc_nanos",
+            ),
+            open_window_jump_return=require_finite_number(
+                raw_payload,
+                "open_window_jump_return",
+                f"{field_path}.open_window_jump_return",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            closed_window_gap_return=require_finite_number(
+                raw_payload,
+                "closed_window_gap_return",
+                f"{field_path}.closed_window_gap_return",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationReturnComponentsDetectedIntradayJumpCandidate(ContractModel):
+    jump_timestamp_utc_nanos: int
+    jump_return: float
+    post_shock_activity_lift: float
+
+    def __post_init__(self) -> None:
+        require_finite_number({"jump_return": self.jump_return}, "jump_return", "jump_return", CALIBRATION_ERROR_FACTORY)
+        if self.post_shock_activity_lift < 0.0:
+            raise _calibration_error("post_shock_activity_lift", "must be non-negative")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationReturnComponentsDetectedIntradayJumpCandidate:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationReturnComponentsDetectedIntradayJumpCandidate(
+            jump_timestamp_utc_nanos=_require_timestamp_utc_nanos(
+                raw_payload,
+                "jump_timestamp_utc_nanos",
+                f"{field_path}.jump_timestamp_utc_nanos",
+            ),
+            jump_return=require_finite_number(
+                raw_payload,
+                "jump_return",
+                f"{field_path}.jump_return",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            post_shock_activity_lift=require_non_negative_finite_number(
+                raw_payload,
+                "post_shock_activity_lift",
+                f"{field_path}.post_shock_activity_lift",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationReturnComponentsObservedCloseOpenBoundaryObservation(ContractModel):
+    close_timestamp_utc_nanos: int
+    close_price: float
+    open_timestamp_utc_nanos: int
+    open_price: float
+    post_shock_activity_lift: float
+
+    def __post_init__(self) -> None:
+        if self.open_timestamp_utc_nanos <= self.close_timestamp_utc_nanos:
+            raise _calibration_error("open_timestamp_utc_nanos", "must be strictly greater than close_timestamp_utc_nanos")
+
+        require_positive_finite_number({"close_price": self.close_price}, "close_price", "close_price", CALIBRATION_ERROR_FACTORY)
+        require_positive_finite_number({"open_price": self.open_price}, "open_price", "open_price", CALIBRATION_ERROR_FACTORY)
+        if self.post_shock_activity_lift < 0.0:
+            raise _calibration_error("post_shock_activity_lift", "must be non-negative")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationReturnComponentsObservedCloseOpenBoundaryObservation:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationReturnComponentsObservedCloseOpenBoundaryObservation(
+            close_timestamp_utc_nanos=_require_timestamp_utc_nanos(
+                raw_payload,
+                "close_timestamp_utc_nanos",
+                f"{field_path}.close_timestamp_utc_nanos",
+            ),
+            close_price=require_positive_finite_number(
+                raw_payload,
+                "close_price",
+                f"{field_path}.close_price",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            open_timestamp_utc_nanos=_require_timestamp_utc_nanos(
+                raw_payload,
+                "open_timestamp_utc_nanos",
+                f"{field_path}.open_timestamp_utc_nanos",
+            ),
+            open_price=require_positive_finite_number(
+                raw_payload,
+                "open_price",
+                f"{field_path}.open_price",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            post_shock_activity_lift=require_non_negative_finite_number(
+                raw_payload,
+                "post_shock_activity_lift",
+                f"{field_path}.post_shock_activity_lift",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationReturnComponentsCloseOpenGapDetectionPolicy(ContractModel):
+    material_gap_absolute_return_tolerance: float
+
+    def __post_init__(self) -> None:
+        if self.material_gap_absolute_return_tolerance < 0.0:
+            raise _calibration_error("material_gap_absolute_return_tolerance", "must be non-negative")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationReturnComponentsCloseOpenGapDetectionPolicy:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationReturnComponentsCloseOpenGapDetectionPolicy(
+            material_gap_absolute_return_tolerance=require_non_negative_finite_number(
+                raw_payload,
+                "material_gap_absolute_return_tolerance",
+                f"{field_path}.material_gap_absolute_return_tolerance",
+                CALIBRATION_ERROR_FACTORY,
+            )
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationReturnComponentsObjectiveMetricWeights(ContractModel):
+    open_jump_fit_weight: float
+    closed_gap_fit_weight: float
+    activity_coupling_fit_weight: float
+
+    def __post_init__(self) -> None:
+        if self.open_jump_fit_weight < 0.0:
+            raise _calibration_error("open_jump_fit_weight", "must be non-negative")
+        if self.closed_gap_fit_weight < 0.0:
+            raise _calibration_error("closed_gap_fit_weight", "must be non-negative")
+        if self.activity_coupling_fit_weight < 0.0:
+            raise _calibration_error("activity_coupling_fit_weight", "must be non-negative")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationReturnComponentsObjectiveMetricWeights:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationReturnComponentsObjectiveMetricWeights(
+            open_jump_fit_weight=require_non_negative_finite_number(
+                raw_payload,
+                "open_jump_fit_weight",
+                f"{field_path}.open_jump_fit_weight",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            closed_gap_fit_weight=require_non_negative_finite_number(
+                raw_payload,
+                "closed_gap_fit_weight",
+                f"{field_path}.closed_gap_fit_weight",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            activity_coupling_fit_weight=require_non_negative_finite_number(
+                raw_payload,
+                "activity_coupling_fit_weight",
+                f"{field_path}.activity_coupling_fit_weight",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationDoubleExponentialBaseShockConfiguration(ContractModel):
+    probability_positive: float
+    eta_plus: float
+    eta_minus: float
+
+    def __post_init__(self) -> None:
+        if self.probability_positive <= 0.0 or self.probability_positive >= 1.0:
+            raise _calibration_error("probability_positive", "must be strictly between 0 and 1")
+        if self.eta_plus <= 0.0:
+            raise _calibration_error("eta_plus", "must be strictly positive")
+        if self.eta_minus <= 0.0:
+            raise _calibration_error("eta_minus", "must be strictly positive")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationDoubleExponentialBaseShockConfiguration:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationDoubleExponentialBaseShockConfiguration(
+            probability_positive=require_finite_number(
+                raw_payload,
+                "probability_positive",
+                f"{field_path}.probability_positive",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            eta_plus=require_positive_finite_number(
+                raw_payload,
+                "eta_plus",
+                f"{field_path}.eta_plus",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            eta_minus=require_positive_finite_number(
+                raw_payload,
+                "eta_minus",
+                f"{field_path}.eta_minus",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationCoupledGapMarkConfiguration(ContractModel):
+    sigma_g: float
+
+    def __post_init__(self) -> None:
+        if self.sigma_g < 0.0:
+            raise _calibration_error("sigma_g", "must be non-negative")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationCoupledGapMarkConfiguration:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationCoupledGapMarkConfiguration(
+            sigma_g=require_non_negative_finite_number(
+                raw_payload,
+                "sigma_g",
+                f"{field_path}.sigma_g",
+                CALIBRATION_ERROR_FACTORY,
+            )
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationSharedNewsMarkLawConfiguration(ContractModel):
+    gamma_severity_marks: GammaSeverityMarkConfiguration
+    double_exponential_base_shock: CalibrationDoubleExponentialBaseShockConfiguration
+    coupled_gap_marks: CalibrationCoupledGapMarkConfiguration
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationSharedNewsMarkLawConfiguration:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationSharedNewsMarkLawConfiguration(
+            gamma_severity_marks=GammaSeverityMarkConfiguration.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "gamma_severity_marks",
+                    f"{field_path}.gamma_severity_marks",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.gamma_severity_marks",
+            ),
+            double_exponential_base_shock=CalibrationDoubleExponentialBaseShockConfiguration.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "double_exponential_base_shock",
+                    f"{field_path}.double_exponential_base_shock",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.double_exponential_base_shock",
+            ),
+            coupled_gap_marks=CalibrationCoupledGapMarkConfiguration.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "coupled_gap_marks",
+                    f"{field_path}.coupled_gap_marks",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.coupled_gap_marks",
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationReturnComponentsStageCandidateGenerationInput(ContractModel):
+    known_news_calendar: CalibrationReturnComponentsKnownNewsCalendarInput
+    realized_known_news_return_samples: tuple[CalibrationReturnComponentsKnownNewsReturnSample, ...]
+    detected_intraday_jump_candidates: tuple[CalibrationReturnComponentsDetectedIntradayJumpCandidate, ...]
+    observed_close_open_boundary_observations: tuple[CalibrationReturnComponentsObservedCloseOpenBoundaryObservation, ...]
+    close_open_gap_detection_policy: CalibrationReturnComponentsCloseOpenGapDetectionPolicy
+    nig_shared_plus_shift_candidates: tuple[NigSharedPlusShiftConfiguration, ...]
+    shared_mark_law_template: CalibrationSharedNewsMarkLawConfiguration
+    objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights
+
+    def __post_init__(self) -> None:
+        if len(self.detected_intraday_jump_candidates) == 0:
+            raise _calibration_error(
+                "detected_intraday_jump_candidates",
+                "must include at least one intraday jump candidate",
+            )
+        if len(self.nig_shared_plus_shift_candidates) == 0:
+            raise _calibration_error(
+                "nig_shared_plus_shift_candidates",
+                "must include at least one NIG candidate",
+            )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationReturnComponentsStageCandidateGenerationInput:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        known_news_return_samples = require_sequence(
+            raw_payload,
+            "realized_known_news_return_samples",
+            f"{field_path}.realized_known_news_return_samples",
+            CALIBRATION_ERROR_FACTORY,
+        )
+        intraday_jump_candidates = require_sequence(
+            raw_payload,
+            "detected_intraday_jump_candidates",
+            f"{field_path}.detected_intraday_jump_candidates",
+            CALIBRATION_ERROR_FACTORY,
+        )
+        boundary_observations = require_sequence(
+            raw_payload,
+            "observed_close_open_boundary_observations",
+            f"{field_path}.observed_close_open_boundary_observations",
+            CALIBRATION_ERROR_FACTORY,
+        )
+        nig_candidates = require_sequence(
+            raw_payload,
+            "nig_shared_plus_shift_candidates",
+            f"{field_path}.nig_shared_plus_shift_candidates",
+            CALIBRATION_ERROR_FACTORY,
+        )
+
+        return CalibrationReturnComponentsStageCandidateGenerationInput(
+            known_news_calendar=CalibrationReturnComponentsKnownNewsCalendarInput.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "known_news_calendar",
+                    f"{field_path}.known_news_calendar",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.known_news_calendar",
+            ),
+            realized_known_news_return_samples=tuple(
+                CalibrationReturnComponentsKnownNewsReturnSample.from_mapping(
+                    raw_sample,
+                    field_path=f"{field_path}.realized_known_news_return_samples[{sample_index}]",
+                )
+                for sample_index, raw_sample in enumerate(known_news_return_samples)
+            ),
+            detected_intraday_jump_candidates=tuple(
+                CalibrationReturnComponentsDetectedIntradayJumpCandidate.from_mapping(
+                    raw_candidate,
+                    field_path=f"{field_path}.detected_intraday_jump_candidates[{candidate_index}]",
+                )
+                for candidate_index, raw_candidate in enumerate(intraday_jump_candidates)
+            ),
+            observed_close_open_boundary_observations=tuple(
+                CalibrationReturnComponentsObservedCloseOpenBoundaryObservation.from_mapping(
+                    raw_candidate,
+                    field_path=f"{field_path}.observed_close_open_boundary_observations[{candidate_index}]",
+                )
+                for candidate_index, raw_candidate in enumerate(boundary_observations)
+            ),
+            close_open_gap_detection_policy=CalibrationReturnComponentsCloseOpenGapDetectionPolicy.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "close_open_gap_detection_policy",
+                    f"{field_path}.close_open_gap_detection_policy",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.close_open_gap_detection_policy",
+            ),
+            nig_shared_plus_shift_candidates=tuple(
+                NigSharedPlusShiftConfiguration.from_mapping(
+                    raw_candidate,
+                    field_path=f"{field_path}.nig_shared_plus_shift_candidates[{candidate_index}]",
+                )
+                for candidate_index, raw_candidate in enumerate(nig_candidates)
+            ),
+            shared_mark_law_template=CalibrationSharedNewsMarkLawConfiguration.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "shared_mark_law_template",
+                    f"{field_path}.shared_mark_law_template",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.shared_mark_law_template",
+            ),
+            objective_metric_weights=CalibrationReturnComponentsObjectiveMetricWeights.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "objective_metric_weights",
+                    f"{field_path}.objective_metric_weights",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.objective_metric_weights",
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationStagedExecutionRuntimeResources(ContractModel):
+    disk_checkpoint_directory: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.disk_checkpoint_directory is not None and not self.disk_checkpoint_directory.strip():
+            raise _calibration_error("disk_checkpoint_directory", "must be non-empty when provided")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationStagedExecutionRuntimeResources:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        disk_checkpoint_directory = raw_payload.get("disk_checkpoint_directory")
+        if disk_checkpoint_directory is not None and not isinstance(disk_checkpoint_directory, str):
+            raise _calibration_error(
+                f"{field_path}.disk_checkpoint_directory",
+                "must be a string when provided",
+            )
+
+        return CalibrationStagedExecutionRuntimeResources(
+            disk_checkpoint_directory=disk_checkpoint_directory,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class StagedCalibrationExecutionInput(ContractModel):
+    schema_version: str
+    request: StagedCalibrationRequest
+    seasonality_stage_input: Optional[CalibrationSeasonalityStageExecutionInput] = None
+    hawkes_candidate_inputs: Optional[tuple[CalibrationHawkesStageCandidateInput, ...]] = None
+    return_components_candidate_generation_input: Optional[
+        CalibrationReturnComponentsStageCandidateGenerationInput
+    ] = None
+    runtime_resources: Optional[CalibrationStagedExecutionRuntimeResources] = None
+
+    def __post_init__(self) -> None:
+        if self.schema_version != CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION:
+            raise _calibration_error(
+                "schema_version",
+                f"must be `{CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION}`",
+            )
+
+        selected_stage_set = set(self.request.selected_stages)
+
+        if CalibrationStage.SEASONALITY in selected_stage_set and self.seasonality_stage_input is None:
+            raise _calibration_error(
+                "seasonality_stage_input",
+                "is required when selected_stages contains seasonality",
+            )
+        if CalibrationStage.SEASONALITY not in selected_stage_set and self.seasonality_stage_input is not None:
+            raise _calibration_error(
+                "seasonality_stage_input",
+                "must not be provided when seasonality is not selected",
+            )
+
+        if CalibrationStage.HAWKES in selected_stage_set and self.hawkes_candidate_inputs is None:
+            raise _calibration_error(
+                "hawkes_candidate_inputs",
+                "is required when selected_stages contains hawkes",
+            )
+        if CalibrationStage.HAWKES not in selected_stage_set and self.hawkes_candidate_inputs is not None:
+            raise _calibration_error(
+                "hawkes_candidate_inputs",
+                "must not be provided when hawkes is not selected",
+            )
+        if self.hawkes_candidate_inputs is not None and len(self.hawkes_candidate_inputs) == 0:
+            raise _calibration_error(
+                "hawkes_candidate_inputs",
+                "must include at least one Hawkes candidate when provided",
+            )
+
+        if (
+            CalibrationStage.RETURN_COMPONENTS in selected_stage_set
+            and self.return_components_candidate_generation_input is None
+        ):
+            raise _calibration_error(
+                "return_components_candidate_generation_input",
+                "is required when selected_stages contains return_components",
+            )
+        if (
+            CalibrationStage.RETURN_COMPONENTS not in selected_stage_set
+            and self.return_components_candidate_generation_input is not None
+        ):
+            raise _calibration_error(
+                "return_components_candidate_generation_input",
+                "must not be provided when return_components is not selected",
+            )
+
+        match self.request.execution_mode:
+            case CalibrationExecutionMode.MEMORY:
+                if self.runtime_resources is not None and self.runtime_resources.disk_checkpoint_directory is not None:
+                    raise _calibration_error(
+                        "runtime_resources.disk_checkpoint_directory",
+                        "is only supported when execution_mode=disk",
+                    )
+            case CalibrationExecutionMode.DISK:
+                if (
+                    self.runtime_resources is None
+                    or self.runtime_resources.disk_checkpoint_directory is None
+                ):
+                    raise _calibration_error(
+                        "runtime_resources.disk_checkpoint_directory",
+                        "is required when execution_mode=disk",
+                    )
+
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any) -> StagedCalibrationExecutionInput:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error("staged_calibration_execution_input", "must be an object")
+
+        raw_hawkes_candidate_inputs = raw_payload.get("hawkes_candidate_inputs")
+        if raw_hawkes_candidate_inputs is not None and (
+            isinstance(raw_hawkes_candidate_inputs, str) or not isinstance(raw_hawkes_candidate_inputs, list)
+        ):
+            raise _calibration_error("hawkes_candidate_inputs", "must be a sequence when provided")
+
+        return StagedCalibrationExecutionInput(
+            schema_version=require_non_empty_string(
+                raw_payload,
+                "schema_version",
+                "schema_version",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            request=StagedCalibrationRequest.from_mapping(
+                require_mapping(raw_payload, "request", "request", CALIBRATION_ERROR_FACTORY),
+                field_path_prefix="request",
+            ),
+            seasonality_stage_input=(
+                CalibrationSeasonalityStageExecutionInput.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "seasonality_stage_input",
+                        "seasonality_stage_input",
+                        CALIBRATION_ERROR_FACTORY,
+                    ),
+                    field_path="seasonality_stage_input",
+                )
+                if "seasonality_stage_input" in raw_payload and raw_payload["seasonality_stage_input"] is not None
+                else None
+            ),
+            hawkes_candidate_inputs=(
+                tuple(
+                    CalibrationHawkesStageCandidateInput.from_mapping(
+                        raw_candidate,
+                        field_path=f"hawkes_candidate_inputs[{candidate_index}]",
+                    )
+                    for candidate_index, raw_candidate in enumerate(raw_hawkes_candidate_inputs)
+                )
+                if raw_hawkes_candidate_inputs is not None
+                else None
+            ),
+            return_components_candidate_generation_input=(
+                CalibrationReturnComponentsStageCandidateGenerationInput.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "return_components_candidate_generation_input",
+                        "return_components_candidate_generation_input",
+                        CALIBRATION_ERROR_FACTORY,
+                    ),
+                    field_path="return_components_candidate_generation_input",
+                )
+                if (
+                    "return_components_candidate_generation_input" in raw_payload
+                    and raw_payload["return_components_candidate_generation_input"] is not None
+                )
+                else None
+            ),
+            runtime_resources=(
+                CalibrationStagedExecutionRuntimeResources.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "runtime_resources",
+                        "runtime_resources",
+                        CALIBRATION_ERROR_FACTORY,
+                    ),
+                    field_path="runtime_resources",
+                )
+                if "runtime_resources" in raw_payload and raw_payload["runtime_resources"] is not None
+                else None
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationCheckpointMetadata(ContractModel):
+    checkpoint_reference: str
+    completed_stage: CalibrationStage
+    completed_stage_position: int
+    execution_mode: CalibrationExecutionMode
+
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationCheckpointMetadata:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationCheckpointMetadata(
+            checkpoint_reference=require_non_empty_string(
+                raw_payload,
+                "checkpoint_reference",
+                f"{field_path}.checkpoint_reference",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            completed_stage=CalibrationStage(
+                require_string(raw_payload, "completed_stage", f"{field_path}.completed_stage", CALIBRATION_ERROR_FACTORY)
+            ),
+            completed_stage_position=require_non_negative_integer(
+                raw_payload,
+                "completed_stage_position",
+                f"{field_path}.completed_stage_position",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            execution_mode=_parse_calibration_execution_mode(
+                require_string(raw_payload, "execution_mode", f"{field_path}.execution_mode", CALIBRATION_ERROR_FACTORY),
+                field_path=f"{field_path}.execution_mode",
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationFailureDetails(ContractModel):
+    failure_kind: str
+    error_message: Optional[str] = None
+    stage: Optional[CalibrationStage] = None
+    checkpoint_reference: Optional[str] = None
+    artifact_reference: Optional[str] = None
+    run_id: Optional[str] = None
+
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationFailureDetails:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        raw_stage = raw_payload.get("stage")
+        if raw_stage is not None and not isinstance(raw_stage, str):
+            raise _calibration_error(f"{field_path}.stage", "must be a string when provided")
+
+        return CalibrationFailureDetails(
+            failure_kind=require_non_empty_string(
+                raw_payload,
+                "failure_kind",
+                f"{field_path}.failure_kind",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            error_message=raw_payload.get("error_message"),
+            stage=CalibrationStage(raw_stage) if raw_stage is not None else None,
+            checkpoint_reference=raw_payload.get("checkpoint_reference"),
+            artifact_reference=raw_payload.get("artifact_reference"),
+            run_id=raw_payload.get("run_id"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationStageReport(ContractModel):
+    stage_report_kind: CalibrationStage
+    stage: CalibrationStage
+    status: CalibrationStageExecutionStatus
+    run_id: str
+    execution_mode: CalibrationExecutionMode
+    handoff_policy: str
+    failure: Optional[CalibrationFailureDetails] = None
+
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationStageReport:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationStageReport(
+            stage_report_kind=CalibrationStage(
+                require_string(
+                    raw_payload,
+                    "stage_report_kind",
+                    f"{field_path}.stage_report_kind",
+                    CALIBRATION_ERROR_FACTORY,
+                )
+            ),
+            stage=CalibrationStage(
+                require_string(raw_payload, "stage", f"{field_path}.stage", CALIBRATION_ERROR_FACTORY)
+            ),
+            status=CalibrationStageExecutionStatus(
+                require_string(raw_payload, "status", f"{field_path}.status", CALIBRATION_ERROR_FACTORY)
+            ),
+            run_id=require_non_empty_string(raw_payload, "run_id", f"{field_path}.run_id", CALIBRATION_ERROR_FACTORY),
+            execution_mode=_parse_calibration_execution_mode(
+                require_string(raw_payload, "execution_mode", f"{field_path}.execution_mode", CALIBRATION_ERROR_FACTORY),
+                field_path=f"{field_path}.execution_mode",
+            ),
+            handoff_policy=require_non_empty_string(
+                raw_payload,
+                "handoff_policy",
+                f"{field_path}.handoff_policy",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            failure=(
+                CalibrationFailureDetails.from_mapping(raw_payload["failure"], field_path=f"{field_path}.failure")
+                if "failure" in raw_payload and raw_payload["failure"] is not None
+                else None
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class StagedCalibrationResponse(ContractModel):
+    """Typed staged-calibration response."""
+
+    schema_version: str
+    failure_triage_policy: str
+    run_id: str
+    execution_mode: CalibrationExecutionMode
+    status: CalibrationStageExecutionStatus
+    stage_reports: tuple[CalibrationStageReport, ...]
+    emitted_checkpoints: tuple[CalibrationCheckpointMetadata, ...]
+    resumed_from_checkpoint_reference: Optional[str] = None
+    resumed_from_last_successful_stage: Optional[CalibrationStage] = None
+    started_from_stage: Optional[CalibrationStage] = None
+    failure: Optional[CalibrationFailureDetails] = None
+
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any) -> StagedCalibrationResponse:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error("staged_calibration_response", "must be an object")
+
+        raw_stage_reports = require_sequence(
+            raw_payload,
+            "stage_reports",
+            "stage_reports",
+            CALIBRATION_ERROR_FACTORY,
+        )
+        raw_emitted_checkpoints = require_sequence(
+            raw_payload,
+            "emitted_checkpoints",
+            "emitted_checkpoints",
+            CALIBRATION_ERROR_FACTORY,
+        )
+        raw_resumed_stage = raw_payload.get("resumed_from_last_successful_stage")
+        raw_started_stage = raw_payload.get("started_from_stage")
+
+        return StagedCalibrationResponse(
+            schema_version=require_non_empty_string(
+                raw_payload,
+                "schema_version",
+                "schema_version",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            failure_triage_policy=require_non_empty_string(
+                raw_payload,
+                "failure_triage_policy",
+                "failure_triage_policy",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            run_id=require_non_empty_string(raw_payload, "run_id", "run_id", CALIBRATION_ERROR_FACTORY),
+            execution_mode=_parse_calibration_execution_mode(
+                require_string(raw_payload, "execution_mode", "execution_mode", CALIBRATION_ERROR_FACTORY),
+                field_path="execution_mode",
+            ),
+            status=CalibrationStageExecutionStatus(
+                require_string(raw_payload, "status", "status", CALIBRATION_ERROR_FACTORY)
+            ),
+            stage_reports=tuple(
+                CalibrationStageReport.from_mapping(
+                    raw_stage_report,
+                    field_path=f"stage_reports[{stage_report_index}]",
+                )
+                for stage_report_index, raw_stage_report in enumerate(raw_stage_reports)
+            ),
+            emitted_checkpoints=tuple(
+                CalibrationCheckpointMetadata.from_mapping(
+                    raw_checkpoint,
+                    field_path=f"emitted_checkpoints[{checkpoint_index}]",
+                )
+                for checkpoint_index, raw_checkpoint in enumerate(raw_emitted_checkpoints)
+            ),
+            resumed_from_checkpoint_reference=raw_payload.get("resumed_from_checkpoint_reference"),
+            resumed_from_last_successful_stage=(
+                CalibrationStage(raw_resumed_stage)
+                if raw_resumed_stage is not None
+                else None
+            ),
+            started_from_stage=CalibrationStage(raw_started_stage) if raw_started_stage is not None else None,
+            failure=(
+                CalibrationFailureDetails.from_mapping(raw_payload["failure"], field_path="failure")
+                if "failure" in raw_payload and raw_payload["failure"] is not None
+                else None
+            ),
+        )
+
+def validate_staged_calibration_execution_input(
+    raw_execution_input: dict[str, Any] | Any,
+) -> StagedCalibrationExecutionInput:
+    return StagedCalibrationExecutionInput.from_mapping(raw_execution_input)
+
+
+def validate_staged_calibration_response(raw_response: dict[str, Any] | Any) -> StagedCalibrationResponse:
+    return StagedCalibrationResponse.from_mapping(raw_response)
+
+
+def serialize_staged_calibration_execution_input(execution_input: StagedCalibrationExecutionInput) -> str:
+    return serialize_deterministic_json(execution_input)
+
+
+def deserialize_staged_calibration_execution_input(payload_json: str) -> StagedCalibrationExecutionInput:
+    raw_payload = parse_json_object(
+        payload_json,
+        "staged calibration execution input",
+        CALIBRATION_ERROR_FACTORY,
+    )
+    return validate_staged_calibration_execution_input(dict(raw_payload))
+
+
+def serialize_staged_calibration_response(response: StagedCalibrationResponse) -> str:
+    return serialize_deterministic_json(response)
+
+
+def deserialize_staged_calibration_response(payload_json: str) -> StagedCalibrationResponse:
+    raw_payload = parse_json_object(payload_json, "staged calibration response", CALIBRATION_ERROR_FACTORY)
+    return validate_staged_calibration_response(dict(raw_payload))
+
+
+def run_staged_calibration(
+    execution_input: StagedCalibrationExecutionInput,
+    *,
+    calendar_registry: CalendarRegistry,
+) -> StagedCalibrationResponse:
+    """Run staged calibration from the explicit execution contract.
+
+    Example:
+        response = run_staged_calibration(
+            execution_input,
+            calendar_registry=calendar_registry,
+        )
+
+    Return-components stage inputs keep known-news open-window jumps and
+    closed-window gaps explicit while deriving surprise close-open gaps
+    from raw boundary observations inside Janiform.
+    """
+
+    if not isinstance(execution_input, StagedCalibrationExecutionInput):
+        raise _calibration_error("execution_input", "must be a StagedCalibrationExecutionInput")
+    if not isinstance(calendar_registry, CalendarRegistry):
+        raise _calibration_error("calendar_registry", "must be a CalendarRegistry")
+
+    normalized_execution_input = validate_staged_calibration_execution_input(
+        execution_input.to_payload()
+    )
+
+    try:
+        native: ModuleType = native_module()
+    except ModuleNotFoundError as e:
+        raise _calibration_integration_error(
+            "native calibration module is unavailable",
+            entrypoint="run_staged_calibration",
+            error_id=CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
+            context={"module_name": "janiform._native"},
+        ) from e
+
+    try:
+        response_json: str = native.run_staged_calibration(
+            serialize_staged_calibration_execution_input(normalized_execution_input),
+            calendar_registry._native_registry,
+        )
+    except native.CalibrationExecutionError as e:
+        raise _calibration_execution_error(
+            "staged calibration failed during native execution",
+            entrypoint="run_staged_calibration",
+            context={"source_exception_type": type(e).__name__},
+        ) from e
+    except Exception as e:
+        raise _calibration_execution_error(
+            "staged calibration failed during native execution",
+            entrypoint="run_staged_calibration",
+            context={"source_exception_type": type(e).__name__},
+        ) from e
+
+    try:
+        return deserialize_staged_calibration_response(response_json)
+    except CalibrationValidationError as e:
+        raise _calibration_integration_error(
+            "native calibration returned an invalid response payload",
+            entrypoint="run_staged_calibration",
+            error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
+            context={"source_error_id": e.error_id},
+        ) from e

@@ -5,7 +5,7 @@ import pyarrow as pa
 import pytest
 from pyarrow import parquet as pyarrow_parquet
 
-from janiform._market_data_translation import (
+from janiform.calibration._market_data_translation import (
     translate_market_data_request_to_staged_execution_input,
 )
 from janiform.calibration import (
