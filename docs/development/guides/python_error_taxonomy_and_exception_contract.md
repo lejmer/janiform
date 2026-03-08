@@ -175,19 +175,19 @@ Public module: `janiform.cli`
 
 Current command coverage:
 
-- `janiform regression open-closed-gap-leakage`
+- `janiform dev regression open-closed-gap-leakage`
 
 Validation failures:
 
 - class: `JaniformValidationError`
 - identifier: `cli.validation.open_closed_gap_leakage.invalid_input`
-- entrypoint: `regression.open_closed_gap_leakage`
+- entrypoint: `dev.regression.open_closed_gap_leakage`
 
 Execution failures:
 
 - class: `JaniformExecutionError`
 - identifier: `cli.execution.open_closed_gap_leakage.failed`
-- entrypoint: `regression.open_closed_gap_leakage`
+- entrypoint: `dev.regression.open_closed_gap_leakage`
 
 Expected failure modes:
 

@@ -1,0 +1,57 @@
+from contextlib import redirect_stdout
+from io import StringIO
+
+import pytest
+
+from janiform import cli as cli_module
+
+
+def test_cli_top_level_help_lists_primary_and_developer_namespaces() -> None:
+    help_output = _render_help([])
+
+    assert "simulation" in help_output
+    assert "calibration" in help_output
+    assert "pricing" in help_output
+    assert "dev" in help_output
+
+
+def test_simulation_help_lists_seeded_tick_workflow() -> None:
+    help_output = _render_help(["simulation"])
+
+    assert "seeded-ticks" in help_output
+
+
+def test_calibration_help_lists_staged_workflow() -> None:
+    help_output = _render_help(["calibration"])
+
+    assert "staged" in help_output
+
+
+def test_pricing_help_lists_vanilla_option_workflow() -> None:
+    help_output = _render_help(["pricing"])
+
+    assert "vanilla-option" in help_output
+
+
+def test_developer_help_lists_regression_namespace() -> None:
+    help_output = _render_help(["dev"])
+
+    assert "regression" in help_output
+
+
+def test_regression_help_lists_open_closed_gap_command() -> None:
+    help_output = _render_help(["dev", "regression"])
+
+    assert "open-closed-gap-leakage" in help_output
+
+
+def _render_help(arguments: list[str]) -> str:
+    parser = cli_module._build_parser()
+    stdout_buffer = StringIO()
+
+    with pytest.raises(SystemExit) as captured_exit:
+        with redirect_stdout(stdout_buffer):
+            parser.parse_args([*arguments, "--help"])
+
+    assert captured_exit.value.code == 0
+    return stdout_buffer.getvalue()
