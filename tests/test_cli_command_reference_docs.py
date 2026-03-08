@@ -23,6 +23,7 @@ def test_cli_command_reference_doc_contains_required_sections_and_commands() -> 
         "## Pricing",
         "## Market-Data Calibration",
         "## Advanced Staged Calibration",
+        "## Developer Regression",
     ]
     for required_section in required_sections:
         assert required_section in reference_document
@@ -32,6 +33,7 @@ def test_cli_command_reference_doc_contains_required_sections_and_commands() -> 
         "janiform pricing vanilla-option",
         "janiform calibration market-data",
         "janiform calibration staged",
+        "janiform dev regression deterministic",
     ]
     for required_command in required_commands:
         assert required_command in reference_document
@@ -57,6 +59,7 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     pricing_help = _normalize_help_output(_render_help(["pricing", "vanilla-option"]))
     market_data_help = _normalize_help_output(_render_help(["calibration", "market-data"]))
     staged_help = _normalize_help_output(_render_help(["calibration", "staged"]))
+    deterministic_help = _normalize_help_output(_render_help(["dev", "regression", "deterministic"]))
 
     shared_expectations: tuple[str, ...] = (
         "--output {human,json}",
@@ -75,6 +78,9 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     assert "--workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface}" in market_data_help
     assert "--execution-mode {disk,memory}" in market_data_help
     assert "--execution-mode {disk,memory}" in staged_help
+    assert "--calendar-registry-json PATH" in deterministic_help
+    assert "--calendar-cases-json PATH" in deterministic_help
+    assert "--seasonality-cases-json PATH" in deterministic_help
 
 
 def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path: Path) -> None:
@@ -260,6 +266,29 @@ def test_cli_command_reference_doc_examples_smoke_for_advanced_staged_workflow(t
     payload = json.loads(stdout_text)
     assert payload["execution_mode"] == "memory"
     assert payload["status"] == "success"
+
+
+def test_cli_command_reference_doc_examples_smoke_for_developer_regression_workflow() -> None:
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "dev",
+            "regression",
+            "deterministic",
+            "--calendar-registry-json",
+            str(REPOSITORY_ROOT / "tests" / "fixtures" / "calendar" / "calendar_service_regression_matrix.json"),
+            "--calendar-cases-json",
+            str(REPOSITORY_ROOT / "tests" / "fixtures" / "calendar" / "calendar_service_regression_matrix.json"),
+            "--seasonality-cases-json",
+            str(REPOSITORY_ROOT / "tests" / "fixtures" / "hourly_factors" / "hourly_factor_regression_matrix.json"),
+            "--output",
+            "json",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
+    payload = json.loads(stdout_text)
+    assert payload["schema_version"] == "validation.deterministic_regression_harness.report.v1"
+    assert payload["summary"]["failed_case_count"] == 0
 
 
 def _cli_command_reference_text() -> str:

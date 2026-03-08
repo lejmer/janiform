@@ -305,6 +305,39 @@ janiform calibration staged \
   --output json
 ```
 
+## Developer Regression
+
+These commands live under `dev regression` because they are intended for validation,
+fixture maintenance, and CI checks rather than end-user workflows.
+
+### Deterministic Calendar And Hourly-Factor Harness
+
+```text
+janiform dev regression deterministic --calendar-registry-json PATH --calendar-cases-json PATH --seasonality-cases-json PATH [--seasonality-absolute-tolerance FLOAT] [--news-intensity-absolute-tolerance FLOAT] [--output {human,json}]
+```
+
+Options:
+
+- `--calendar-registry-json`: `calendar.registry.v1` contract file or wrapper with `calendar_registry`
+- `--calendar-cases-json`: calendar regression fixture document with top-level `cases`
+- `--seasonality-cases-json`: hourly-factor regression fixture document with top-level `canonical_output_cases`
+- `--seasonality-absolute-tolerance FLOAT`: absolute tolerance for `s_h` comparisons
+- `--news-intensity-absolute-tolerance FLOAT`: absolute tolerance for `nu_h` comparisons
+- `--output {human,json}`: human-readable summary or full machine-readable harness report
+
+Example:
+
+```bash
+janiform dev regression deterministic \
+  --calendar-registry-json tests/fixtures/calendar/calendar_service_regression_matrix.json \
+  --calendar-cases-json tests/fixtures/calendar/calendar_service_regression_matrix.json \
+  --seasonality-cases-json tests/fixtures/hourly_factors/hourly_factor_regression_matrix.json \
+  --output json
+```
+
+This command reuses the public Python entrypoint `janiform.validation.run_deterministic_regression_harness`
+and emits `validation.deterministic_regression_harness.report.v1` when `--output json` is selected.
+
 ## See Also
 
 - `docs/development/guides/cli_command_architecture_and_namespace_layout.md`

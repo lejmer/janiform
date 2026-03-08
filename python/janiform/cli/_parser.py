@@ -40,6 +40,7 @@ from .. import __version__
 from ..calibration import CalibrationDuplicateRecordPolicy, CalibrationExecutionMode
 from ..errors import ContractValidationFailure, JaniformValidationError
 
+
 def _add_output_mode_argument(
     parser: ArgumentParser,
     *,
@@ -460,7 +461,10 @@ def _build_pricing_parser(subparsers) -> None:
 
 
 def _build_developer_parser(subparsers) -> None:
-    from ._commands import _run_open_closed_gap_leakage_regression_command
+    from ._commands import (
+        _run_deterministic_regression_command,
+        _run_open_closed_gap_leakage_regression_command,
+    )
 
     developer_parser = subparsers.add_parser(
         "dev",
@@ -477,6 +481,51 @@ def _build_developer_parser(subparsers) -> None:
     )
     regression_parser.set_defaults(help_target=regression_parser)
     regression_subparsers = regression_parser.add_subparsers(dest="regression_command")
+
+    deterministic_regression_parser = regression_subparsers.add_parser(
+        "deterministic",
+        help="Run deterministic calendar and hourly-factor regression harness.",
+        description="Run deterministic calendar and hourly-factor regression harness.",
+    )
+    deterministic_regression_parser.set_defaults(
+        handler=_run_deterministic_regression_command,
+        help_target=deterministic_regression_parser,
+    )
+
+    _add_output_mode_argument(
+        deterministic_regression_parser,
+        default_output_mode=CliOutputMode.HUMAN,
+    )
+    _add_required_json_path_argument(
+        deterministic_regression_parser,
+        flag_name="--calendar-registry-json",
+        contract_label="a calendar registry JSON object consumed by the deterministic regression harness",
+    )
+    _add_required_json_path_argument(
+        deterministic_regression_parser,
+        flag_name="--calendar-cases-json",
+        contract_label="a calendar regression case document with a top-level `cases` list",
+    )
+    _add_required_json_path_argument(
+        deterministic_regression_parser,
+        flag_name="--seasonality-cases-json",
+        contract_label=(
+            "an hourly-factor regression case document with a top-level `canonical_output_cases` list"
+        ),
+    )
+
+    deterministic_regression_parser.add_argument(
+        "--seasonality-absolute-tolerance",
+        type=float,
+        default=1e-12,
+        help="Absolute tolerance for deterministic seasonality factor mismatch detection.",
+    )
+    deterministic_regression_parser.add_argument(
+        "--news-intensity-absolute-tolerance",
+        type=float,
+        default=1e-12,
+        help="Absolute tolerance for deterministic news-intensity mismatch detection.",
+    )
 
     gap_leakage_parser = regression_subparsers.add_parser(
         "open-closed-gap-leakage",

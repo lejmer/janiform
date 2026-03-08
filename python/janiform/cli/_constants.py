@@ -72,6 +72,9 @@ CLI_CALIBRATION_MARKET_DATA_INTERNAL_ERROR_ID = "cli.internal.calibration.market
 CLI_CALIBRATION_STAGED_ENTRYPOINT = "calibration.staged"
 CLI_CALIBRATION_STAGED_VALIDATION_ERROR_ID = "cli.validation.calibration.staged.invalid_input"
 CLI_CALIBRATION_STAGED_INTERNAL_ERROR_ID = "cli.internal.calibration.staged.failed"
+CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT = "dev.regression.deterministic"
+CLI_DETERMINISTIC_REGRESSION_VALIDATION_ERROR_ID = "cli.validation.deterministic_regression.invalid_input"
+CLI_DETERMINISTIC_REGRESSION_INTERNAL_ERROR_ID = "cli.internal.deterministic_regression.failed"
 CLI_OPEN_CLOSED_GAP_ENTRYPOINT = "dev.regression.open_closed_gap_leakage"
 CLI_OPEN_CLOSED_GAP_VALIDATION_ERROR_ID = "cli.validation.open_closed_gap_leakage.invalid_input"
 CLI_OPEN_CLOSED_GAP_INTERNAL_ERROR_ID = "cli.internal.open_closed_gap_leakage.failed"
@@ -155,6 +158,9 @@ __all__ = [
     "CLI_COMMAND_CONFIG_HELP",
     "CLI_COMMAND_CONFIG_SCHEMA_VERSION",
     "CLI_CONFIG_JSON_ENV_VAR",
+    "CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT",
+    "CLI_DETERMINISTIC_REGRESSION_INTERNAL_ERROR_ID",
+    "CLI_DETERMINISTIC_REGRESSION_VALIDATION_ERROR_ID",
     "CLI_DIRECTORY_METAVAR",
     "CLI_MARKET_DATA_SUMMARY_FIELD_SELECTION_POLICY",
     "CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION",

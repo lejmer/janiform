@@ -175,7 +175,20 @@ Public module: `janiform.cli`
 
 Current command coverage:
 
+- `janiform dev regression deterministic`
 - `janiform dev regression open-closed-gap-leakage`
+
+Validation failures for `janiform dev regression deterministic`:
+
+- class: `JaniformValidationError`
+- identifier: `cli.validation.deterministic_regression.invalid_input`
+- entrypoint: `dev.regression.deterministic`
+
+Internal failures for `janiform dev regression deterministic`:
+
+- class: `JaniformIntegrationError`
+- identifier: `cli.internal.deterministic_regression.failed`
+- entrypoint: `dev.regression.deterministic`
 
 Validation failures:
 
@@ -183,10 +196,10 @@ Validation failures:
 - identifier: `cli.validation.open_closed_gap_leakage.invalid_input`
 - entrypoint: `dev.regression.open_closed_gap_leakage`
 
-Execution failures:
+Internal failures:
 
-- class: `JaniformExecutionError`
-- identifier: `cli.execution.open_closed_gap_leakage.failed`
+- class: `JaniformIntegrationError`
+- identifier: `cli.internal.open_closed_gap_leakage.failed`
 - entrypoint: `dev.regression.open_closed_gap_leakage`
 
 Expected failure modes:

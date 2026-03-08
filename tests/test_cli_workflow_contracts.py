@@ -92,11 +92,59 @@ def test_cli_shared_path_flags_use_standardized_repository_relative_help_text() 
         _normalize_help_output(_render_help(["pricing", "vanilla-option"])),
         _normalize_help_output(_render_help(["calibration", "market-data"])),
         _normalize_help_output(_render_help(["calibration", "staged"])),
+        _normalize_help_output(_render_help(["dev", "regression", "deterministic"])),
         _normalize_help_output(_render_help(["dev", "regression", "open-closed-gap-leakage"])),
     )
 
     for help_output in help_outputs:
         assert cli_module.CLI_REPOSITORY_RELATIVE_PATH_POLICY in help_output
+
+
+def test_deterministic_regression_cli_help_documents_required_inputs() -> None:
+    help_output = _normalize_help_output(_render_help(["dev", "regression", "deterministic"]))
+
+    assert "--output {human,json}" in help_output
+    assert "--calendar-registry-json PATH" in help_output
+    assert "--calendar-cases-json PATH" in help_output
+    assert "--seasonality-cases-json PATH" in help_output
+    assert "--seasonality-absolute-tolerance" in help_output
+    assert "--news-intensity-absolute-tolerance" in help_output
+
+
+def test_deterministic_regression_cli_parser_requires_case_inputs() -> None:
+    parser = cli_module._build_parser()
+
+    with pytest.raises(SystemExit) as captured_exit:
+        parser.parse_args(
+            [
+                "dev",
+                "regression",
+                "deterministic",
+                "--calendar-registry-json",
+                "calendar.json",
+            ]
+        )
+
+    assert captured_exit.value.code == 2
+
+
+def test_deterministic_regression_cli_parser_defaults_output_to_human() -> None:
+    parser = cli_module._build_parser()
+    parsed_arguments = parser.parse_args(
+        [
+            "dev",
+            "regression",
+            "deterministic",
+            "--calendar-registry-json",
+            "calendar.json",
+            "--calendar-cases-json",
+            "calendar-cases.json",
+            "--seasonality-cases-json",
+            "seasonality-cases.json",
+        ]
+    )
+
+    assert parsed_arguments.output == "human"
 
 
 def test_calibration_cli_parser_defaults_execution_mode_to_disk() -> None:
@@ -245,6 +293,136 @@ def test_calibration_cli_parser_accepts_explicit_memory_execution_mode() -> None
     )
 
     assert parsed_arguments.execution_mode == CalibrationExecutionMode.MEMORY.value
+
+
+def test_deterministic_regression_cli_runs_fixture_backed_harness(
+    calendar_regression_fixture_path: Path,
+    hourly_factor_regression_fixture_path: Path,
+) -> None:
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "dev",
+            "regression",
+            "deterministic",
+            "--calendar-registry-json",
+            str(calendar_regression_fixture_path),
+            "--calendar-cases-json",
+            str(calendar_regression_fixture_path),
+            "--seasonality-cases-json",
+            str(hourly_factor_regression_fixture_path),
+            "--output",
+            "json",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
+
+    payload = orjson.loads(stdout_text)
+    assert payload["schema_version"] == "validation.deterministic_regression_harness.report.v1"
+    assert payload["summary"]["failed_case_count"] == 0
+    assert stderr_text == ""
+
+
+def test_deterministic_regression_cli_rejects_malformed_calendar_cases_document(
+    calendar_regression_fixture_path: Path,
+    hourly_factor_regression_fixture_path: Path,
+    tmp_path: Path,
+) -> None:
+    malformed_calendar_cases_path = _write_json_path(
+        tmp_path / "malformed-calendar-cases.json",
+        {
+            "schema_version": "calendar.service.regression.v1",
+            "calendar_registry": {"schema_version": "calendar.registry.v1", "exchanges": []},
+            "cases": ["not-a-case-object"],
+        },
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "dev",
+            "regression",
+            "deterministic",
+            "--calendar-registry-json",
+            str(calendar_regression_fixture_path),
+            "--calendar-cases-json",
+            str(malformed_calendar_cases_path),
+            "--seasonality-cases-json",
+            str(hourly_factor_regression_fixture_path),
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert stdout_text == ""
+    assert '[cli.validation.deterministic_regression.invalid_input]' in stderr_text
+    assert 'field_path="calendar_cases_document"' in stderr_text
+    assert 'field_path="seasonality_cases_document"' not in stderr_text
+    assert "calendar cases document case must be an object" in stderr_text
+
+
+def test_deterministic_regression_cli_rejects_malformed_seasonality_cases_document(
+    calendar_regression_fixture_path: Path,
+    hourly_factor_regression_fixture_path: Path,
+    tmp_path: Path,
+) -> None:
+    malformed_seasonality_cases_document = orjson.loads(
+        hourly_factor_regression_fixture_path.read_text(encoding="utf-8")
+    )
+    malformed_seasonality_cases_document["canonical_output_cases"][0]["seasonality_source"][
+        "source_timestamp_utc"
+    ] = malformed_seasonality_cases_document["canonical_output_cases"][0]["seasonality_source"].pop(
+        "source_timestamps_utc"
+    )
+    malformed_seasonality_cases_path = _write_json_path(
+        tmp_path / "malformed-seasonality-cases.json",
+        malformed_seasonality_cases_document,
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "dev",
+            "regression",
+            "deterministic",
+            "--calendar-registry-json",
+            str(calendar_regression_fixture_path),
+            "--calendar-cases-json",
+            str(calendar_regression_fixture_path),
+            "--seasonality-cases-json",
+            str(malformed_seasonality_cases_path),
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert stdout_text == ""
+    assert '[cli.validation.deterministic_regression.invalid_input]' in stderr_text
+    assert 'field_path="seasonality_cases_document"' in stderr_text
+    assert "source_timestamps_utc" in stderr_text
+
+
+def test_deterministic_regression_cli_missing_input_file_returns_validation_error(
+    calendar_regression_fixture_path: Path,
+    tmp_path: Path,
+) -> None:
+    missing_seasonality_path = tmp_path / "missing-seasonality-cases.json"
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "dev",
+            "regression",
+            "deterministic",
+            "--calendar-registry-json",
+            str(calendar_regression_fixture_path),
+            "--calendar-cases-json",
+            str(calendar_regression_fixture_path),
+            "--seasonality-cases-json",
+            str(missing_seasonality_path),
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert stdout_text == ""
+    assert '[cli.validation.deterministic_regression.invalid_input]' in stderr_text
+    assert 'field_path="seasonality_cases_json"' in stderr_text
+    assert '"path": ' in stderr_text
 
 
 def test_market_data_calibration_cli_maps_flags_to_summary_contract(

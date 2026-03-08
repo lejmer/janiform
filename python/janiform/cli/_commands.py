@@ -14,6 +14,9 @@ from ._constants import (
     CLI_CALIBRATION_STAGED_ENTRYPOINT,
     CLI_CALIBRATION_STAGED_INTERNAL_ERROR_ID,
     CLI_CALIBRATION_STAGED_VALIDATION_ERROR_ID,
+    CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT,
+    CLI_DETERMINISTIC_REGRESSION_INTERNAL_ERROR_ID,
+    CLI_DETERMINISTIC_REGRESSION_VALIDATION_ERROR_ID,
     CLI_MARKET_DATA_SUMMARY_FIELD_SELECTION_POLICY,
     CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION,
     CLI_OPEN_CLOSED_GAP_ENTRYPOINT,
@@ -68,7 +71,10 @@ from ..simulation import (
     load_hourly_factor_contract_for_simulation,
     run_seeded_tick_event_simulation,
 )
-from ..validation import run_open_closed_gap_leakage_regression_harness
+from ..validation import (
+    run_deterministic_regression_harness,
+    run_open_closed_gap_leakage_regression_harness,
+)
 
 
 def _run_simulation_seeded_ticks_command(parsed_arguments: Namespace) -> int:
@@ -560,6 +566,70 @@ def _render_calibration_staged_human_output(response_payload: dict[str, Any]) ->
     )
 
 
+def _run_deterministic_regression_command(parsed_arguments: Namespace) -> int:
+    repository_root = Path(__file__).resolve().parents[3]
+    calendar_registry_path = _resolve_path_from_repository_root(
+        repository_root,
+        cast(Path, parsed_arguments.calendar_registry_json),
+    )
+    calendar_cases_path = _resolve_path_from_repository_root(
+        repository_root,
+        cast(Path, parsed_arguments.calendar_cases_json),
+    )
+    seasonality_cases_path = _resolve_path_from_repository_root(
+        repository_root,
+        cast(Path, parsed_arguments.seasonality_cases_json),
+    )
+
+    file_field_path = "calendar_registry_json"
+    document_field_path = "calendar_registry_document"
+
+    try:
+        calendar_registry_document = _load_json_document(calendar_registry_path, "calendar registry")
+        file_field_path = "calendar_cases_json"
+        document_field_path = "calendar_cases_document"
+        calendar_cases_document = _load_json_document(calendar_cases_path, "calendar cases")
+        file_field_path = "seasonality_cases_json"
+        document_field_path = "seasonality_cases_document"
+        seasonality_cases_document = _load_json_document(seasonality_cases_path, "seasonality cases")
+
+        document_field_path = "calendar_registry_document"
+        calendar_registry = _build_calendar_registry_from_document(calendar_registry_document)
+        document_field_path = "calendar_cases_document"
+        calendar_cases = _extract_calendar_cases(calendar_cases_document)
+        document_field_path = "seasonality_cases_document"
+        seasonality_cases = _extract_seasonality_cases(seasonality_cases_document)
+        report = run_deterministic_regression_harness(
+            calendar_registry=calendar_registry,
+            calendar_cases=calendar_cases,
+            seasonality_cases=seasonality_cases,
+            seasonality_absolute_tolerance=float(parsed_arguments.seasonality_absolute_tolerance),
+            news_intensity_absolute_tolerance=float(parsed_arguments.news_intensity_absolute_tolerance),
+        )
+    except JaniformError as e:
+        return _write_cli_error(e)
+    except Exception as e:
+        return _write_cli_error(
+            _classify_workflow_command_error(
+                e,
+                entrypoint=CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT,
+                validation_error_id=CLI_DETERMINISTIC_REGRESSION_VALIDATION_ERROR_ID,
+                internal_error_id=CLI_DETERMINISTIC_REGRESSION_INTERNAL_ERROR_ID,
+                file_field_path=file_field_path,
+                document_field_path=document_field_path,
+            )
+        )
+
+    output_mode = CliOutputMode(cast(str, parsed_arguments.output))
+    failed_case_count = cast(dict[str, int], report["summary"])["failed_case_count"]
+    if output_mode == CliOutputMode.JSON:
+        _write_contract_json(report)
+        return int(CliExitCode.SUCCESS if failed_case_count == 0 else CliExitCode.RUNTIME_ERROR)
+
+    _write_deterministic_regression_human_output(report)
+    return int(CliExitCode.SUCCESS if failed_case_count == 0 else CliExitCode.RUNTIME_ERROR)
+
+
 def _run_open_closed_gap_leakage_regression_command(parsed_arguments: Namespace) -> int:
     repository_root = Path(__file__).resolve().parents[3]
     calendar_fixture_path = _resolve_path_from_repository_root(
@@ -937,6 +1007,34 @@ def _write_command_output(
             sys.stdout.write(human_output_factory())
 
 
+def _write_deterministic_regression_human_output(report: dict[str, Any]) -> None:
+    summary = cast(dict[str, int], report["summary"])
+    if summary["failed_case_count"] == 0:
+        sys.stdout.write(
+            "deterministic regression passed: "
+            f"{summary['passed_case_count']}/{summary['total_case_count']} cases\n",
+        )
+        return
+
+    sys.stderr.write(
+        "deterministic regression failed: "
+        f"{summary['failed_case_count']}/{summary['total_case_count']} cases\n",
+    )
+
+    for case_report in cast(list[dict[str, Any]], report["case_reports"]):
+        if case_report["status"] != "fail":
+            continue
+
+        failure = cast(dict[str, Any] | None, case_report["failure"])
+        failure_kind = failure["failure_kind"] if failure is not None else "unknown"
+        sys.stderr.write(
+            f"fixture_id={case_report['fixture_id']} "
+            f"case_kind={case_report['case_kind']} "
+            f"failure_kind={failure_kind} "
+            f"summary={case_report['summary']}\n",
+        )
+
+
 def _write_open_closed_gap_human_output(report: dict[str, Any]) -> None:
     summary = cast(dict[str, int], report["summary"])
     behavior_diff_report_summary = cast(
@@ -1122,6 +1220,40 @@ def _extract_gap_behavior_cases(
     return parsed_cases
 
 
+def _extract_calendar_cases(
+    calendar_cases_document: dict[str, Any],
+) -> list[dict[str, Any]]:
+    raw_cases: object = calendar_cases_document.get("cases")
+    if not isinstance(raw_cases, list):
+        raise ValueError("calendar cases document must include list field `cases`")
+
+    parsed_cases: list[dict[str, Any]] = []
+    for raw_case in raw_cases:
+        if not isinstance(raw_case, dict):
+            raise ValueError("calendar cases document case must be an object")
+
+        parsed_cases.append(cast(dict[str, Any], raw_case))
+
+    return parsed_cases
+
+
+def _extract_seasonality_cases(
+    seasonality_cases_document: dict[str, Any],
+) -> list[dict[str, Any]]:
+    raw_cases: object = seasonality_cases_document.get("canonical_output_cases")
+    if not isinstance(raw_cases, list):
+        raise ValueError("seasonality cases document must include list field `canonical_output_cases`")
+
+    parsed_cases: list[dict[str, Any]] = []
+    for raw_case in raw_cases:
+        if not isinstance(raw_case, dict):
+            raise ValueError("seasonality cases document case must be an object")
+
+        parsed_cases.append(cast(dict[str, Any], raw_case))
+
+    return parsed_cases
+
+
 def main() -> None:
     from ._parser import _parse_cli_arguments
 
@@ -1146,8 +1278,10 @@ __all__ = [
     '_classify_open_closed_gap_command_error',
     '_classify_workflow_command_error',
     '_exit_code_for_error',
+    '_extract_calendar_cases',
     '_extract_calendar_registry_payload',
     '_extract_gap_behavior_cases',
+    '_extract_seasonality_cases',
     '_load_json_document',
     '_optional_enum_value',
     '_override_calibration_execution_mode',
@@ -1160,12 +1294,14 @@ __all__ = [
     '_resolve_path_from_repository_root',
     '_run_calibration_market_data_command',
     '_run_calibration_staged_command',
+    '_run_deterministic_regression_command',
     '_run_open_closed_gap_leakage_regression_command',
     '_run_pricing_vanilla_option_command',
     '_run_simulation_seeded_ticks_command',
     '_write_cli_error',
     '_write_command_output',
     '_write_contract_json',
+    '_write_deterministic_regression_human_output',
     '_write_open_closed_gap_human_output',
     'main',
 ]

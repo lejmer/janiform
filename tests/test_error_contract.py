@@ -335,6 +335,51 @@ def test_cli_error_output_uses_shared_error_contract(
     assert 'field_path="command_input"' in captured.err
 
 
+def test_deterministic_regression_cli_error_output_uses_shared_error_contract(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def broken_load_json_document(path: object, context: object) -> dict[str, object]:
+        if context == "calendar registry":
+            return {"schema_version": "calendar.registry.v1", "exchanges": []}
+        if context == "calendar cases":
+            return {"cases": []}
+        return {"canonical_output_cases": []}
+
+    def broken_extract_calendar_cases(_: dict[str, object]) -> list[dict[str, object]]:
+        raise ValueError("calendar cases document case must be an object")
+
+    def build_placeholder_calendar_registry(_: dict[str, object]) -> object:
+        return object()
+
+    monkeypatch.setattr(cli_commands_module, "_load_json_document", broken_load_json_document)
+    monkeypatch.setattr(
+        cli_commands_module,
+        "_build_calendar_registry_from_document",
+        build_placeholder_calendar_registry,
+    )
+    monkeypatch.setattr(cli_commands_module, "_extract_calendar_cases", broken_extract_calendar_cases)
+
+    exit_code = cli_module._run_deterministic_regression_command(
+        Namespace(
+            calendar_registry_json=Path("calendar-registry.json"),
+            calendar_cases_json=Path("calendar-cases.json"),
+            seasonality_cases_json=Path("seasonality-cases.json"),
+            seasonality_absolute_tolerance=1e-12,
+            news_intensity_absolute_tolerance=1e-12,
+            output="human",
+        )
+    )
+
+    captured = capsys.readouterr()
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert '[cli.validation.deterministic_regression.invalid_input]' in captured.err
+    assert 'workflow="cli"' in captured.err
+    assert 'entrypoint="dev.regression.deterministic"' in captured.err
+    assert 'field_path="calendar_cases_document"' in captured.err
+
+
 def _valid_hourly_factor_contract(calendar_registry: CalendarRegistry) -> HourlyFactorContract:
     return load_hourly_factor_contract_for_simulation(
         calendar_registry=calendar_registry,
