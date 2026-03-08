@@ -13,6 +13,9 @@ pricing, risk, and calibration workflows are still evolving.
 Compatibility review and snapshot-update workflow for this public surface lives in
 `docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md`.
 
+Experimental namespace policy lives in
+`docs/development/guides/python_experimental_api_policy.md`.
+
 ## Public package root
 
 The package root `janiform` is intentionally minimal.
@@ -187,6 +190,16 @@ top-level orchestration entrypoints.
 The public staged-calibration entrypoint is:
 
 - `run_staged_calibration`
+
+## Experimental namespace policy
+
+`janiform.experimental` is a separate preview namespace for opt-in workflow iteration.
+
+- Preview endpoint modules live under `janiform.experimental`
+- The current landing zone for future preview entrypoints is `janiform.experimental.api`
+- Preview modules require explicit opt-in through `JANIFORM_EXPERIMENTAL`
+- Preview modules are not part of the primary public API contract or snapshot guardrails
+- Preview modules must never be re-exported from `janiform` or from primary public modules
 
 ## Private namespace policy
 

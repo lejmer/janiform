@@ -29,6 +29,11 @@ These checks are intentionally narrow.
 Internal helper refactors, private-module changes, and non-public implementation details do not count as breaking
 changes unless they modify one of the tracked public contract records above.
 
+The `janiform.experimental` namespace is excluded from these guardrails by default.
+Preview endpoints are covered by the opt-in lifecycle policy in
+`docs/development/guides/python_experimental_api_policy.md` until they are promoted into
+the primary public surface.
+
 ## Guardrail artifacts
 
 The verification baseline is stored in:
