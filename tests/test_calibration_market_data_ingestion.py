@@ -5,7 +5,7 @@ import pyarrow as pa
 import pytest
 from pyarrow import parquet as pyarrow_parquet
 
-from janiform._market_data_ingestion import load_market_data_calibration_inputs
+from janiform.calibration._market_data_ingestion import load_market_data_calibration_inputs
 from janiform.calibration import (
     CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,
     CalibrationDuplicateRecordPolicy,
