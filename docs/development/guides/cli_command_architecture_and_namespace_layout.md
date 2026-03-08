@@ -76,6 +76,7 @@ Additional policy notes:
 - Shared concepts use long flags only. Short aliases are forbidden for script readability.
 - File and directory inputs use explicit path-named flags such as `--request-json`,
   `--execution-input-json`, `--calendar-registry-json`, and `--disk-checkpoint-directory`.
+- Primary workflow commands also accept `--config-json PATH` for non-interactive automation.
 - Primary workflow commands share `--output {human,json}`:
   - `json` is the deterministic machine-readable mode for automation
   - `human` is the concise operator-oriented text mode
@@ -88,6 +89,58 @@ Additional policy notes:
     used to rehydrate runtime calendar-aware inputs.
   - `--execution-input-json` always means the typed workflow execution-input contract for
     the selected command.
+
+## Automation and precedence
+
+- Primary workflow commands are non-interactive by default:
+  - they do not prompt for missing values
+  - they do not read from stdin as a fallback input channel
+  - when required inputs are missing, they fail with the documented validation exit code
+- Argument precedence is explicit and stable:
+  1. explicit CLI flags
+  2. environment variables
+  3. `--config-json` or `JANIFORM_CLI_CONFIG_JSON`
+  4. built-in command defaults
+- Supported automation environment variables:
+  - `JANIFORM_CLI_CONFIG_JSON`: path to a `cli.command_config.v1` file for the selected primary command
+  - `JANIFORM_CLI_OUTPUT`: default value for `--output`
+  - `JANIFORM_CLI_CALIBRATION_EXECUTION_MODE`: default value for calibration `--execution-mode`
+  - `JANIFORM_CLI_CALIBRATION_DISK_CHECKPOINT_DIRECTORY`: default value for calibration `--disk-checkpoint-directory`
+- Relative paths supplied through CLI flags, environment variables, or command-config files are all
+  resolved from the repository root.
+
+### Command-config document
+
+`--config-json` and `JANIFORM_CLI_CONFIG_JSON` point to a JSON object with schema
+`cli.command_config.v1`:
+
+```json
+{
+  "schema_version": "cli.command_config.v1",
+  "command": "calibration.market-data",
+  "arguments": {
+    "run-id": "market-data-run-001",
+    "workflow-scope": "seasonality_only",
+    "tick-data-path": "tests/fixtures/calibration/ticks.csv",
+    "tick-data-format": "csv",
+    "tick-data-provenance-label": "primary-feed",
+    "tick-timestamp-column": "timestamp_utc",
+    "exchange-code": "XNYS",
+    "session-definition-path": "tests/fixtures/calibration/sessions.json",
+    "session-definition-format": "json",
+    "session-definition-provenance-label": "calendar-registry",
+    "session-timezone": "America/New_York",
+    "timestamp-timezone": "UTC",
+    "execution-mode": "disk",
+    "disk-checkpoint-directory": "tmp/checkpoints",
+    "output": "json"
+  }
+}
+```
+
+- `command` must match the selected CLI command exactly.
+- `arguments` uses the long flag names without the leading `--`.
+- Flag-style boolean arguments use JSON booleans. Set them to `true` to enable the flag.
 
 ## Current workflow command contracts
 
@@ -139,6 +192,7 @@ Required arguments:
 - `--timestamp-timezone`
 
 Optional arguments:
+- `--config-json PATH`
 - `--tick-price-input-policy {explicit_price_column,trade_price_column,bid_ask_midpoint,close_price_column}`
 - `--tick-price-column`
 - `--tick-trade-price-column`
@@ -173,6 +227,7 @@ Optional arguments:
 Behavior:
 - This is the recommended calibration CLI boundary for market users.
 - The command validates file-driven request fields, provenance labels, and normalization-policy selections.
+- The command can be driven entirely from `--config-json` plus environment defaults without any stdin input.
 - `--output json` writes deterministic JSON for `cli.calibration.market_data.summary.v1`.
 - The summary schema is intentionally user-facing and includes:
   - `request_schema_version` so downstream tooling can trace back to `calibration.market_data.request.v1`
@@ -191,6 +246,7 @@ Required arguments:
 - `--calendar-registry-json`: `calendar.registry.v1` JSON object or a wrapper object with `calendar_registry`
 
 Optional arguments:
+- `--config-json PATH`
 - `--execution-mode {disk,memory}`: defaults to `disk` on the CLI
 - `--disk-checkpoint-directory`: required when the effective execution mode is `disk` and the input JSON does not already provide one
 
@@ -198,10 +254,13 @@ Behavior:
 - This is the advanced or internal calibration command path.
 - Option precedence is explicit:
   1. `--execution-mode`, when supplied, overrides `request.execution_mode` from `--execution-input-json`.
-  2. When `--execution-mode` is omitted, the CLI default `disk` still overrides the
-     execution-input payload so the command behaves predictably in automation.
+  2. When `--execution-mode` is omitted, `JANIFORM_CLI_CALIBRATION_EXECUTION_MODE`
+     overrides command-config values, and the CLI default `disk` still overrides the
+     execution-input payload when neither higher-precedence source supplies a value.
   3. `--disk-checkpoint-directory`, when supplied, overrides
      `runtime_resources.disk_checkpoint_directory` from `--execution-input-json`.
+  4. `JANIFORM_CLI_CALIBRATION_DISK_CHECKPOINT_DIRECTORY` overrides command-config values
+     when the flag is omitted.
 - Validation rejects `--disk-checkpoint-directory` when `--execution-mode memory` is selected.
 - Return-components stage inputs keep known-news open-jump and closed-gap semantics explicit.
 
