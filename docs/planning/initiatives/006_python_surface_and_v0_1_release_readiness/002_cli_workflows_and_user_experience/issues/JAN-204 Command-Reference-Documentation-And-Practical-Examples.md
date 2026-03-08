@@ -1,4 +1,4 @@
-## ISSUE-008: Command Reference Documentation And Practical Examples
+## Command Reference Documentation And Practical Examples
 
 ### Description
 Write command reference documentation and practical examples for common CLI workflows to support onboarding and daily usage.

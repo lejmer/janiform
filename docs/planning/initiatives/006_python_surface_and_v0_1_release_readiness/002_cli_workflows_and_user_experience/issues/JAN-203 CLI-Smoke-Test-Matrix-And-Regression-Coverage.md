@@ -1,4 +1,4 @@
-## ISSUE-007: CLI Smoke Test Matrix And Regression Coverage
+## CLI Smoke Test Matrix And Regression Coverage
 
 ### Description
 Build smoke-test matrix for representative CLI workflows and add regression checks for command contracts, outputs, and exit codes.

@@ -1,4 +1,4 @@
-## ISSUE-005: Exit Code And Error Handling Policy
+## Exit Code And Error Handling Policy
 
 ### Description
 Define explicit exit-code and error-handling policy so CLI behavior is predictable in automated scripts and CI workflows.

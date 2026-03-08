@@ -1,4 +1,4 @@
-## ISSUE-001: CLI Command Architecture And Namespace Layout
+## CLI Command Architecture And Namespace Layout
 
 ### Description
 Define the top-level CLI command architecture and namespace layout for simulation, calibration, and pricing workflows.

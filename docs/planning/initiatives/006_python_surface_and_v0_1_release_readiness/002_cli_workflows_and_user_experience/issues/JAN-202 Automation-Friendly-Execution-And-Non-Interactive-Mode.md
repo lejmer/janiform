@@ -1,4 +1,4 @@
-## ISSUE-006: Automation Friendly Execution And Non Interactive Mode
+## Automation Friendly Execution And Non Interactive Mode
 
 ### Description
 Ensure CLI supports non-interactive execution patterns required for scripting, scheduled jobs, and CI automation.

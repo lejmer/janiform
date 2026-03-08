@@ -1,4 +1,4 @@
-## ISSUE-004: Structured Output Modes And Schema Contracts
+## Structured Output Modes And Schema Contracts
 
 ### Description
 Implement structured output modes for CLI commands so workflows can integrate reliably with automation pipelines.

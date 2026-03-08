@@ -1,4 +1,4 @@
-## ISSUE-002: Simulation Calibration Pricing Command Contracts
+## Simulation Calibration Pricing Command Contracts
 
 ### Description
 Define and implement command-level input and output contracts for the core workflow commands.

@@ -1,4 +1,4 @@
-## ISSUE-003: Consistent Argument Pattern And Flag Standards
+## Consistent Argument Pattern And Flag Standards
 
 ### Description
 Establish argument and flag standards so command usage is predictable across workflows and easy to script.
