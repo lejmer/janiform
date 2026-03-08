@@ -1,9 +1,11 @@
 import json
 import sys
 from argparse import ArgumentParser, Namespace
+from collections.abc import Callable
 from datetime import timedelta
+from enum import StrEnum
 from pathlib import Path
-from typing import Any, cast, Optional
+from typing import Any, Optional, cast
 
 from . import __version__
 from .calibration import (
@@ -114,6 +116,36 @@ CLI_CALIBRATION_STAGED_EXECUTION_ERROR_ID = "cli.execution.calibration.staged.fa
 CLI_OPEN_CLOSED_GAP_ENTRYPOINT = "dev.regression.open_closed_gap_leakage"
 CLI_OPEN_CLOSED_GAP_VALIDATION_ERROR_ID = "cli.validation.open_closed_gap_leakage.invalid_input"
 CLI_OPEN_CLOSED_GAP_EXECUTION_ERROR_ID = "cli.execution.open_closed_gap_leakage.failed"
+CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION = "cli.calibration.market_data.summary.v1"
+CLI_MARKET_DATA_SUMMARY_FIELD_SELECTION_POLICY = "user_facing_workflow_metadata_only.v1"
+CLI_OUTPUT_MODE_HELP = (
+    "Output mode. Use json for deterministic machine-readable output and human for concise "
+    "operator-oriented text."
+)
+
+
+class CliOutputMode(StrEnum):
+    HUMAN = 'human'
+    JSON = 'json'
+
+
+CLI_OUTPUT_MODE_CHOICES: tuple[str, str] = (
+    CliOutputMode.HUMAN.value,
+    CliOutputMode.JSON.value,
+)
+
+
+def _add_output_mode_argument(
+    parser: ArgumentParser,
+    *,
+    default_output_mode: CliOutputMode,
+) -> None:
+    parser.add_argument(
+        "--output",
+        choices=CLI_OUTPUT_MODE_CHOICES,
+        default=default_output_mode.value,
+        help=f"{CLI_OUTPUT_MODE_HELP} Default: {default_output_mode.value}.",
+    )
 
 
 def _add_required_json_path_argument(
@@ -172,6 +204,10 @@ def _build_simulation_parser(subparsers) -> None:
         help_target=simulation_seeded_ticks_parser,
     )
 
+    _add_output_mode_argument(
+        simulation_seeded_ticks_parser,
+        default_output_mode=CliOutputMode.JSON,
+    )
     _add_required_json_path_argument(
         simulation_seeded_ticks_parser,
         flag_name="--request-json",
@@ -188,6 +224,11 @@ def _build_simulation_parser(subparsers) -> None:
 
 
 def _add_market_data_calibration_arguments(calibration_market_data_parser: ArgumentParser) -> None:
+    _add_output_mode_argument(
+        calibration_market_data_parser,
+        default_output_mode=CliOutputMode.JSON,
+    )
+
     calibration_market_data_parser.add_argument(
         "--run-id",
         required=True,
@@ -385,6 +426,10 @@ def _add_market_data_calibration_arguments(calibration_market_data_parser: Argum
 
 
 def _add_staged_calibration_arguments(calibration_staged_parser: ArgumentParser) -> None:
+    _add_output_mode_argument(
+        calibration_staged_parser,
+        default_output_mode=CliOutputMode.JSON,
+    )
     _add_required_json_path_argument(
         calibration_staged_parser,
         flag_name="--execution-input-json",
@@ -394,7 +439,6 @@ def _add_staged_calibration_arguments(calibration_staged_parser: ArgumentParser)
             "close-open boundary observations for internal gap detection."
         ),
     )
-
     _add_required_json_path_argument(
         calibration_staged_parser,
         flag_name="--calendar-registry-json",
@@ -433,8 +477,8 @@ def _build_calibration_parser(subparsers) -> None:
         help="Market-data calibration request workflow.",
         description=(
             "Market-data calibration request workflow. "
-            "This command validates file-driven inputs and emits a normalized "
-            "calibration.market_data.request.v1 payload."
+            "This command validates file-driven inputs and emits a user-facing "
+            "market-data calibration summary."
         ),
     )
     calibration_market_data_parser.set_defaults(
@@ -475,6 +519,10 @@ def _build_pricing_parser(subparsers) -> None:
         handler=_run_pricing_vanilla_option_command,
         help_target=pricing_vanilla_option_parser,
     )
+    _add_output_mode_argument(
+        pricing_vanilla_option_parser,
+        default_output_mode=CliOutputMode.JSON,
+    )
 
     _add_required_json_path_argument(
         pricing_vanilla_option_parser,
@@ -511,6 +559,10 @@ def _build_developer_parser(subparsers) -> None:
         help_target=gap_leakage_parser,
     )
 
+    _add_output_mode_argument(
+        gap_leakage_parser,
+        default_output_mode=CliOutputMode.HUMAN,
+    )
     _add_optional_path_argument(
         parser=gap_leakage_parser,
         flag_name="--calendar-fixture-path",
@@ -588,7 +640,12 @@ def _run_simulation_seeded_ticks_command(parsed_arguments: Namespace) -> int:
         )
         return 1
 
-    _write_contract_json(response.to_payload())
+    _write_command_output(
+        parsed_arguments,
+        json_payload=response.to_payload(),
+        human_output_factory=lambda: _render_simulation_seeded_ticks_human_output(response.to_payload()),
+    )
+
     return 0
 
 
@@ -619,7 +676,11 @@ def _run_pricing_vanilla_option_command(parsed_arguments: Namespace) -> int:
         )
         return 1
 
-    _write_contract_json(run_result.to_payload())
+    _write_command_output(
+        parsed_arguments,
+        json_payload=run_result.to_payload(),
+        human_output_factory=lambda: _render_pricing_vanilla_option_human_output(run_result.to_payload()),
+    )
     return 0
 
 
@@ -638,7 +699,12 @@ def _run_calibration_market_data_command(parsed_arguments: Namespace) -> int:
         sys.stderr.write(f"{_classify_market_data_command_error(error)}\n")
         return 1
 
-    _write_contract_json(request.to_payload())
+    _write_command_output(
+        parsed_arguments,
+        json_payload=_build_market_data_calibration_summary_payload(request),
+        human_output_factory=lambda: _render_market_data_calibration_human_output(request),
+    )
+
     return 0
 
 
@@ -689,7 +755,11 @@ def _run_calibration_staged_command(parsed_arguments: Namespace) -> int:
         )
         return 1
 
-    _write_contract_json(response.to_payload())
+    _write_command_output(
+        parsed_arguments,
+        json_payload=response.to_payload(),
+        human_output_factory=lambda: _render_calibration_staged_human_output(response.to_payload()),
+    )
 
     return 0
 
@@ -841,6 +911,159 @@ def _build_market_data_calibration_request_from_arguments(
     return validate_market_data_calibration_request(payload)
 
 
+def _build_market_data_calibration_summary_payload(request: MarketDataCalibrationRequest) -> dict[str, Any]:
+    return {
+        "schema_version": CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION,
+        "command": CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT,
+        "request_schema_version": request.schema_version,
+        "run_id": request.run_id,
+        "workflow_scope": request.workflow_scope.value,
+        "session_context": {
+            "exchange_code": request.session_configuration.exchange_code,
+            "session_timezone": request.session_configuration.session_timezone,
+        },
+        "input_files": {
+            "tick_data": request.tick_data_source.to_payload(),
+            "session_definition": request.session_configuration.session_definition_source.to_payload(),
+            "known_news": (
+                request.known_news_inputs.calendar_source.to_payload()
+                if request.known_news_inputs is not None
+                else None
+            ),
+            "option_surface": (
+                request.option_surface_source.to_payload()
+                if request.option_surface_source is not None
+                else None
+            ),
+        },
+        "column_mapping": request.column_mapping.to_payload(),
+        "normalization_policy": request.normalization_policy.to_payload(),
+        "output_artifact_locations": {
+            "disk_checkpoint_directory": request.output_preferences.disk_checkpoint_directory,
+        },
+        "output_emission_policy": {
+            "execution_mode": request.output_preferences.execution_mode.value,
+            "emit_input_provenance_report": request.output_preferences.emit_input_provenance_report,
+            "emit_derived_staged_execution_input": request.output_preferences.emit_derived_staged_execution_input,
+        },
+        "output_schema_metadata": {
+            "schema_family": "cli.workflow.command_summary",
+            "field_selection_policy": CLI_MARKET_DATA_SUMMARY_FIELD_SELECTION_POLICY,
+            "required_sections": [
+                "run_id",
+                "workflow_scope",
+                "session_context",
+                "input_files",
+                "column_mapping",
+                "normalization_policy",
+                "output_artifact_locations",
+                "output_emission_policy",
+            ],
+            "optional_input_sections": [
+                "input_files.known_news",
+                "input_files.option_surface",
+                "column_mapping.known_news",
+                "column_mapping.option_surface",
+            ],
+        },
+    }
+
+
+def _render_market_data_calibration_human_output(request: MarketDataCalibrationRequest) -> str:
+    lines: list[str] = [
+        (
+            "calibration market-data request prepared: "
+            f"run_id={request.run_id} "
+            f"workflow_scope={request.workflow_scope.value} "
+            f"execution_mode={request.output_preferences.execution_mode.value}"
+        ),
+        (
+            "tick_data: "
+            f"path={request.tick_data_source.path} "
+            f"format={request.tick_data_source.file_format.value} "
+            f"provenance_label={request.tick_data_source.provenance_label}"
+        ),
+        (
+            "session_definition: "
+            f"path={request.session_configuration.session_definition_source.path} "
+            f"format={request.session_configuration.session_definition_source.file_format.value} "
+            f"exchange_code={request.session_configuration.exchange_code} "
+            f"session_timezone={request.session_configuration.session_timezone}"
+        ),
+    ]
+
+    if request.known_news_inputs is not None:
+        lines.append(
+            (
+                "known_news: "
+                f"path={request.known_news_inputs.calendar_source.path} "
+                f"format={request.known_news_inputs.calendar_source.file_format.value} "
+                f"provenance_label={request.known_news_inputs.calendar_source.provenance_label}"
+            )
+        )
+
+    if request.option_surface_source is not None:
+        lines.append(
+            (
+                "option_surface: "
+                f"path={request.option_surface_source.path} "
+                f"format={request.option_surface_source.file_format.value} "
+                f"provenance_label={request.option_surface_source.provenance_label}"
+            )
+        )
+
+    lines.append(
+        (
+            "normalization_policy: "
+            f"timestamp_timezone={request.normalization_policy.timestamp_timezone} "
+            f"sort_records_by_timestamp={str(request.normalization_policy.sort_records_by_timestamp).lower()} "
+            f"duplicate_record_policy={request.normalization_policy.duplicate_record_policy.value} "
+            f"tick_price_input_policy={_optional_enum_value(request.normalization_policy.tick_price_input_policy)} "
+            f"option_quote_input_policy={_optional_enum_value(request.normalization_policy.option_quote_input_policy)}"
+        )
+    )
+    lines.append(
+        (
+            "artifact_targets: "
+            f"disk_checkpoint_directory={request.output_preferences.disk_checkpoint_directory or 'none'} "
+            f"emit_input_provenance_report={str(request.output_preferences.emit_input_provenance_report).lower()} "
+            f"emit_derived_staged_execution_input={str(request.output_preferences.emit_derived_staged_execution_input).lower()}"
+        )
+    )
+
+    return "\n".join(lines) + "\n"
+
+
+def _render_simulation_seeded_ticks_human_output(response_payload: dict[str, Any]) -> str:
+    return (
+        "simulation seeded-ticks completed: "
+        f"schema_version={response_payload['schema_version']} "
+        f"event_count={len(cast(list[dict[str, Any]], response_payload['event_tape']))} "
+        f"event_record_schema_version={cast(dict[str, Any], response_payload['metadata'])['event_record_schema_version']}\n"
+    )
+
+
+def _render_pricing_vanilla_option_human_output(run_result_payload: dict[str, Any]) -> str:
+    response_payload = cast(dict[str, Any], run_result_payload["response"])
+    return (
+        "pricing vanilla-option completed: "
+        f"schema_version={run_result_payload['schema_version']} "
+        f"price={response_payload['price']} "
+        f"delta={response_payload['delta']}\n"
+    )
+
+
+def _render_calibration_staged_human_output(response_payload: dict[str, Any]) -> str:
+    return (
+        "calibration staged completed: "
+        f"run_id={response_payload['run_id']} "
+        f"execution_mode={response_payload['execution_mode']} "
+        f"status={response_payload['status']} "
+        f"stage_report_count={len(cast(list[dict[str, Any]], response_payload['stage_reports']))} "
+        f"checkpoint_count={len(cast(list[dict[str, Any]], response_payload['emitted_checkpoints']))}\n"
+    )
+
+
 def _run_open_closed_gap_leakage_regression_command(parsed_arguments: Namespace) -> int:
     repository_root = Path(__file__).resolve().parents[2]
     calendar_fixture_path = _resolve_path_from_repository_root(
@@ -874,84 +1097,14 @@ def _run_open_closed_gap_leakage_regression_command(parsed_arguments: Namespace)
         sys.stderr.write(f"{_classify_open_closed_gap_command_error(error)}\n")
         return 1
 
-    summary = report["summary"]
-    behavior_diff_report_summary = cast(
-        dict[str, int],
-        cast(dict[str, Any], report["behavior_diff_report"])["summary"],
-    )
-    if summary["failed_case_count"] == 0:
-        sys.stdout.write(
-            "open closed gap leakage regression passed: "
-            f"{summary['passed_case_count']}/{summary['total_case_count']} scenarios, "
-            f"semantic_mismatches={summary['total_semantic_mismatch_failure_count']}, "
-            f"diff_regression_cases={behavior_diff_report_summary['regression_case_count']}\n",
-        )
-        return 0
+    output_mode = CliOutputMode(cast(str, parsed_arguments.output))
+    failed_case_count = cast(dict[str, int], report["summary"])["failed_case_count"]
+    if output_mode == CliOutputMode.JSON:
+        _write_contract_json(report)
+        return 0 if failed_case_count == 0 else 1
 
-    sys.stderr.write(
-        "open closed gap leakage regression failed: "
-        f"{summary['failed_case_count']}/{summary['total_case_count']} scenarios, "
-        f"semantic_mismatches={summary['total_semantic_mismatch_failure_count']}\n",
-    )
-
-    for case_report in report["case_reports"]:
-        if case_report["status"] != "fail":
-            continue
-
-        sys.stderr.write(
-            f"scenario_id={case_report['fixture_id']} exchange_code={case_report['exchange_code']} "
-            f"semantic_mismatch_failure_count={case_report['semantic_mismatch_failure_count']} "
-            f"max_absolute_mismatch={case_report['max_absolute_mismatch']}\n",
-        )
-
-        contribution_summary = cast(dict[str, Any], case_report["contribution_summary"])
-
-        sys.stderr.write(
-            "  contributions "
-            f"activity_expected={contribution_summary['expected_activity_coupling_total']} "
-            f"activity_observed={contribution_summary['observed_activity_coupling_total']} "
-            f"trading_expected={contribution_summary['expected_trading_return_total']} "
-            f"trading_observed={contribution_summary['observed_trading_return_total']} "
-            f"open_jump_expected={contribution_summary['expected_open_jump_total']} "
-            f"open_jump_observed={contribution_summary['observed_open_jump_total']} "
-            f"closed_gap_expected={contribution_summary['expected_closed_gap_total']} "
-            f"closed_gap_observed={contribution_summary['observed_closed_gap_total']}\n",
-        )
-
-        behavior_diff = cast(dict[str, Any], case_report["behavior_diff"])
-        for diff_metric in cast(list[dict[str, Any]], behavior_diff["metrics"]):
-            if not cast(bool, diff_metric["regression_detected"]):
-                continue
-
-            sys.stderr.write(
-                "  diff_regression "
-                f"metric_id={diff_metric['metric_id']} "
-                f"semantic_bucket={diff_metric['semantic_bucket']} "
-                f"expected={diff_metric['expected_value']} "
-                f"observed={diff_metric['observed_value']} "
-                f"absolute_difference={diff_metric['absolute_difference']} "
-                f"absolute_tolerance={diff_metric['absolute_tolerance']}\n",
-            )
-
-        for failure in case_report["failures"]:
-            failure_kind = cast(str, failure["failure_kind"])
-            match failure_kind:
-                case "semantic_mismatch":
-                    sys.stderr.write(
-                        f"  failure_kind={failure_kind} event_id={failure['event_id']} "
-                        f"event_timestamp_utc={failure['event_timestamp_utc']} "
-                        f"semantic_bucket={failure['semantic_bucket']} "
-                        f"mismatch_kind={failure['mismatch_kind']} "
-                        f"absolute_difference={failure['absolute_difference']}\n",
-                    )
-                case "dispatch_error":
-                    sys.stderr.write(
-                        f"  failure_kind={failure_kind} error_message={failure['error_message']}\n",
-                    )
-                case _:
-                    sys.stderr.write(f"  failure_kind={failure_kind}\n")
-
-    return 1
+    _write_open_closed_gap_human_output(report)
+    return 0 if failed_case_count == 0 else 1
 
 
 def _classify_open_closed_gap_command_error(error: Exception) -> JaniformError:
@@ -1249,6 +1402,103 @@ def _load_json_document(path: Path, context: str) -> dict[str, Any]:
 
 def _write_contract_json(payload: dict[str, Any]) -> None:
     sys.stdout.write(f"{json.dumps(payload, sort_keys=True)}\n")
+
+
+def _write_command_output(
+    parsed_arguments: Namespace,
+    *,
+    json_payload: dict[str, Any],
+    human_output_factory: Callable[[], str],
+) -> None:
+    output_mode = CliOutputMode(cast(str, parsed_arguments.output))
+    match output_mode:
+        case CliOutputMode.JSON:
+            _write_contract_json(json_payload)
+        case CliOutputMode.HUMAN:
+            sys.stdout.write(human_output_factory())
+
+
+def _write_open_closed_gap_human_output(report: dict[str, Any]) -> None:
+    summary = cast(dict[str, int], report["summary"])
+    behavior_diff_report_summary = cast(
+        dict[str, int],
+        cast(dict[str, Any], report["behavior_diff_report"])["summary"],
+    )
+    if summary["failed_case_count"] == 0:
+        sys.stdout.write(
+            "open closed gap leakage regression passed: "
+            f"{summary['passed_case_count']}/{summary['total_case_count']} scenarios, "
+            f"semantic_mismatches={summary['total_semantic_mismatch_failure_count']}, "
+            f"diff_regression_cases={behavior_diff_report_summary['regression_case_count']}\n",
+        )
+        return
+
+    sys.stderr.write(
+        "open closed gap leakage regression failed: "
+        f"{summary['failed_case_count']}/{summary['total_case_count']} scenarios, "
+        f"semantic_mismatches={summary['total_semantic_mismatch_failure_count']}\n",
+    )
+
+    for case_report in cast(list[dict[str, Any]], report["case_reports"]):
+        if case_report["status"] != "fail":
+            continue
+
+        sys.stderr.write(
+            f"scenario_id={case_report['fixture_id']} exchange_code={case_report['exchange_code']} "
+            f"semantic_mismatch_failure_count={case_report['semantic_mismatch_failure_count']} "
+            f"max_absolute_mismatch={case_report['max_absolute_mismatch']}\n",
+        )
+
+        contribution_summary = cast(dict[str, Any], case_report["contribution_summary"])
+
+        sys.stderr.write(
+            "  contributions "
+            f"activity_expected={contribution_summary['expected_activity_coupling_total']} "
+            f"activity_observed={contribution_summary['observed_activity_coupling_total']} "
+            f"trading_expected={contribution_summary['expected_trading_return_total']} "
+            f"trading_observed={contribution_summary['observed_trading_return_total']} "
+            f"open_jump_expected={contribution_summary['expected_open_jump_total']} "
+            f"open_jump_observed={contribution_summary['observed_open_jump_total']} "
+            f"closed_gap_expected={contribution_summary['expected_closed_gap_total']} "
+            f"closed_gap_observed={contribution_summary['observed_closed_gap_total']}\n",
+        )
+
+        behavior_diff = cast(dict[str, Any], case_report["behavior_diff"])
+        for diff_metric in cast(list[dict[str, Any]], behavior_diff["metrics"]):
+            if not cast(bool, diff_metric["regression_detected"]):
+                continue
+
+            sys.stderr.write(
+                "  diff_regression "
+                f"metric_id={diff_metric['metric_id']} "
+                f"semantic_bucket={diff_metric['semantic_bucket']} "
+                f"expected={diff_metric['expected_value']} "
+                f"observed={diff_metric['observed_value']} "
+                f"absolute_difference={diff_metric['absolute_difference']} "
+                f"absolute_tolerance={diff_metric['absolute_tolerance']}\n",
+            )
+
+        for failure in cast(list[dict[str, Any]], case_report["failures"]):
+            failure_kind = cast(str, failure["failure_kind"])
+            match failure_kind:
+                case "semantic_mismatch":
+                    sys.stderr.write(
+                        f"  failure_kind={failure_kind} event_id={failure['event_id']} "
+                        f"event_timestamp_utc={failure['event_timestamp_utc']} "
+                        f"semantic_bucket={failure['semantic_bucket']} "
+                        f"mismatch_kind={failure['mismatch_kind']} "
+                        f"absolute_difference={failure['absolute_difference']}\n",
+                    )
+                case "dispatch_error":
+                    sys.stderr.write(
+                        f"  failure_kind={failure_kind} error_message={failure['error_message']}\n",
+                    )
+                case _:
+                    sys.stderr.write(f"  failure_kind={failure_kind}\n")
+
+
+def _optional_enum_value(value: StrEnum | None) -> str:
+    return value.value if value is not None else "none"
 
 
 def _build_calendar_registry(calendar_fixture_document: dict[str, Any]) -> CalendarRegistry:

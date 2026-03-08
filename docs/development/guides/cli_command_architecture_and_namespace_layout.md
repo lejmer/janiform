@@ -58,6 +58,9 @@ janiform
 - Shared concepts use long flags only. Short aliases are forbidden for script readability.
 - File and directory inputs use explicit path-named flags such as `--request-json`,
   `--execution-input-json`, `--calendar-registry-json`, and `--disk-checkpoint-directory`.
+- Primary workflow commands share `--output {human,json}`:
+  - `json` is the deterministic machine-readable mode for automation
+  - `human` is the concise operator-oriented text mode
 - CLI help uses `PATH` for file-like values and `DIRECTORY` for directory overrides so
   the shape of each argument is consistent across commands.
 - All CLI path flags accept absolute paths. Relative paths are resolved from the
@@ -85,7 +88,8 @@ Behavior:
 - Validation fails if the public request summary does not reproduce the same hourly-factor contract.
 
 Output:
-- Writes deterministic JSON for `simulation.seeded_tick_event.path.v1` to stdout.
+- `--output json` writes deterministic JSON for `simulation.seeded_tick_event.path.v1` to stdout.
+- `--output human` writes a concise completion summary with event-count metadata.
 
 ### `janiform pricing vanilla-option`
 
@@ -97,7 +101,8 @@ Behavior:
 - Interval factors keep `nu_h_known` and `nu_h_surprise` separate.
 
 Output:
-- Writes deterministic JSON for `pricing.vanilla_option.run_result.v1` to stdout.
+- `--output json` writes deterministic JSON for `pricing.vanilla_option.run_result.v1` to stdout.
+- `--output human` writes a concise completion summary with price and delta.
 
 ### `janiform calibration market-data`
 
@@ -150,7 +155,15 @@ Optional arguments:
 Behavior:
 - This is the recommended calibration CLI boundary for market users.
 - The command validates file-driven request fields, provenance labels, and normalization-policy selections.
-- The command writes deterministic JSON for `calibration.market_data.request.v1` to stdout.
+- `--output json` writes deterministic JSON for `cli.calibration.market_data.summary.v1`.
+- The summary schema is intentionally user-facing and includes:
+  - `request_schema_version` so downstream tooling can trace back to `calibration.market_data.request.v1`
+  - `input_files` for tick data, session definitions, and optional known-news or option-surface files
+  - `column_mapping` and `normalization_policy`
+  - `workflow_scope`, `session_context`, and output artifact targets
+  - `output_schema_metadata` with the field-selection policy `user_facing_workflow_metadata_only.v1`
+- The default structured summary does not embed internal staged execution payload sections.
+- `--output human` writes a concise operator-oriented summary of the same user-facing metadata.
 - Translation into the canonical staged execution input remains a lower-level step documented separately.
 
 ### `janiform calibration staged`
@@ -175,4 +188,5 @@ Behavior:
 - Return-components stage inputs keep known-news open-jump and closed-gap semantics explicit.
 
 Output:
-- Writes deterministic JSON for `calibration.orchestration.staged_run.report.v1` to stdout.
+- `--output json` writes deterministic JSON for `calibration.orchestration.staged_run.report.v1` to stdout.
+- `--output human` writes a concise completion summary with run id, execution mode, and stage counts.
