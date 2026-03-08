@@ -173,13 +173,18 @@ def _market_data_ingestion_error(
     message: str,
     *,
     context: Optional[dict[str, str | int | float | bool | None]] = None,
+    normalization_step: Optional[str] = None,
 ) -> Exception:
+    error_context: dict[str, str | int | float | bool | None] = dict(context or {})
+    if normalization_step is not None:
+        error_context["normalization_step"] = normalization_step
+
     return _calibration_error(
         field_path,
         message,
         entrypoint=CALIBRATION_MARKET_DATA_INGESTION_ENTRYPOINT,
         error_id=CALIBRATION_MARKET_DATA_INGESTION_ERROR_ID,
-        context=context,
+        context=error_context or None,
     )
 
 
@@ -201,24 +206,28 @@ def _load_source_rows(
                 raise _market_data_ingestion_error(
                     f"{field_path}.file_format",
                     f"must be one of: csv, parquet, received '{file_reference.file_format.value}'",
+                    normalization_step="source_loading",
                 )
     except FileNotFoundError as e:
         raise _market_data_ingestion_error(
             f"{field_path}.path",
             "does not exist",
             context={"path": file_reference.path},
+            normalization_step="source_loading",
         ) from e
     except OSError as e:
         raise _market_data_ingestion_error(
             f"{field_path}.path",
             f"could not be read: {e}",
             context={"path": file_reference.path},
+            normalization_step="source_loading",
         ) from e
     except pyarrow.ArrowInvalid as e:
         raise _market_data_ingestion_error(
             f"{field_path}.path",
             f"could not be parsed as {file_reference.file_format.value}: {e}",
             context={"path": file_reference.path},
+            normalization_step="source_loading",
         ) from e
 
     table = _stringify_timestamp_columns(table)
@@ -243,6 +252,7 @@ def _load_csv_source_rows(
                     f"{field_path}.path",
                     "could not be parsed as csv: missing header row",
                     context={"path": file_reference.path},
+                    normalization_step="source_loading",
                 )
 
             rows = tuple(dict(source_row) for source_row in reader)
@@ -251,18 +261,21 @@ def _load_csv_source_rows(
             f"{field_path}.path",
             "does not exist",
             context={"path": file_reference.path},
+            normalization_step="source_loading",
         ) from e
     except OSError as e:
         raise _market_data_ingestion_error(
             f"{field_path}.path",
             f"could not be read: {e}",
             context={"path": file_reference.path},
+            normalization_step="source_loading",
         ) from e
     except csv.Error as e:
         raise _market_data_ingestion_error(
             f"{field_path}.path",
             f"could not be parsed as csv: {e}",
             context={"path": file_reference.path},
+            normalization_step="source_loading",
         ) from e
 
     return _LoadedSourceRows(
@@ -879,6 +892,7 @@ def _deduplicate_records[RecordType: _HasSourceRowNumber](
                             "duplicate_source_row_number": record.source_row_number,
                             "source_path": source_path,
                         },
+                        normalization_step="duplicate_record_normalization",
                     )
                 seen_row_numbers[deduplication_key] = record.source_row_number
 
@@ -920,6 +934,7 @@ def _normalize_timestamp_value(
             field_path,
             "is required and cannot be null",
             context={"source_path": source_path},
+            normalization_step="timestamp_normalization",
         )
 
     if isinstance(raw_value, datetime):
@@ -931,6 +946,7 @@ def _normalize_timestamp_value(
                 field_path,
                 "is required and cannot be blank",
                 context={"source_path": source_path},
+                normalization_step="timestamp_normalization",
             )
 
         try:
@@ -940,12 +956,14 @@ def _normalize_timestamp_value(
                 field_path,
                 "must be an ISO 8601 timestamp string or a parquet timestamp column",
                 context={"source_path": source_path, "raw_value": stripped_value},
+                normalization_step="timestamp_normalization",
             ) from e
     else:
         raise _market_data_ingestion_error(
             field_path,
             "must be an ISO 8601 timestamp string or a parquet timestamp column",
             context={"source_path": source_path, "received_type": type(raw_value).__name__},
+            normalization_step="timestamp_normalization",
         )
 
     if parsed_value.tzinfo is None:
@@ -954,6 +972,7 @@ def _normalize_timestamp_value(
                 field_path,
                 "contains a naive timestamp. Provide a timezone-aware value or configure the source timezone explicitly.",
                 context={"source_path": source_path},
+                normalization_step="timestamp_normalization",
             )
 
         return _localize_naive_datetime(
@@ -980,6 +999,7 @@ def _localize_naive_datetime(
             field_path,
             f"references unknown timezone '{source_timezone}'",
             context={"source_path": source_path},
+            normalization_step="timestamp_timezone_normalization",
         ) from e
 
     aware_fold_zero = parsed_value.replace(tzinfo=time_zone, fold=0)
@@ -992,6 +1012,7 @@ def _localize_naive_datetime(
             field_path,
             "falls into a nonexistent local-time gap. Provide explicit UTC offsets or normalize the source file.",
             context={"source_path": source_path, "source_timezone": source_timezone},
+            normalization_step="timestamp_timezone_normalization",
         )
 
     if (
@@ -1004,6 +1025,7 @@ def _localize_naive_datetime(
             "is ambiguous in the configured source timezone due to a daylight-saving transition. "
             "Provide explicit UTC offsets in the file.",
             context={"source_path": source_path, "source_timezone": source_timezone},
+            normalization_step="timestamp_timezone_normalization",
         )
 
     if roundtrip_fold_zero == parsed_value:
@@ -1032,6 +1054,7 @@ def _normalize_required_numeric_value(
             field_path,
             "is required and cannot be blank",
             context={"source_path": source_path},
+            normalization_step="numeric_value_normalization",
         )
 
     return normalized_value
@@ -1060,6 +1083,7 @@ def _normalize_optional_numeric_value(
                 field_path,
                 "must be a finite numeric value when provided",
                 context={"source_path": source_path, "raw_value": stripped_value},
+                normalization_step="numeric_value_normalization",
             ) from e
     else:
         if isinstance(raw_value, bool) or not isinstance(raw_value, int | float):
@@ -1067,6 +1091,7 @@ def _normalize_optional_numeric_value(
                 field_path,
                 "must be a finite numeric value when provided",
                 context={"source_path": source_path, "received_type": type(raw_value).__name__},
+                normalization_step="numeric_value_normalization",
             )
 
         numeric_value = float(raw_value)
@@ -1076,6 +1101,7 @@ def _normalize_optional_numeric_value(
             field_path,
             "must be a finite numeric value when provided",
             context={"source_path": source_path},
+            normalization_step="numeric_value_normalization",
         )
 
     if not allow_negative and numeric_value < 0.0:
@@ -1083,6 +1109,7 @@ def _normalize_optional_numeric_value(
             field_path,
             "must be non-negative",
             context={"source_path": source_path},
+            normalization_step="numeric_value_normalization",
         )
 
     if not allow_zero and numeric_value <= 0.0:
@@ -1090,6 +1117,7 @@ def _normalize_optional_numeric_value(
             field_path,
             "must be strictly positive",
             context={"source_path": source_path},
+            normalization_step="numeric_value_normalization",
         )
 
     return numeric_value
@@ -1106,6 +1134,7 @@ def _normalize_option_type(
         field_path=field_path,
         source_path=source_path,
     ).lower()
+
     match text_value:
         case "call" | "c":
             return "call"
@@ -1116,6 +1145,7 @@ def _normalize_option_type(
                 field_path,
                 "must be one of: call, put, c, p",
                 context={"source_path": source_path, "raw_value": text_value},
+                normalization_step="option_type_normalization",
             )
 
 
@@ -1135,6 +1165,7 @@ def _normalize_required_text_value(
             field_path,
             "is required and cannot be blank",
             context={"source_path": source_path},
+            normalization_step="text_value_normalization",
         )
 
     return normalized_value
@@ -1153,6 +1184,7 @@ def _normalize_optional_text_value(
             field_path,
             "must be a string when provided",
             context={"source_path": source_path, "received_type": type(raw_value).__name__},
+            normalization_step="text_value_normalization",
         )
 
     stripped_value = raw_value.strip()
@@ -1183,4 +1215,5 @@ def _validate_mapped_columns_exist(
         f"Missing columns: {missing_column_text}. Available columns: {available_column_text}. "
         "Update the explicit column mapping so Janiform does not have to guess the schema.",
         context={"source_path": source_path},
+        normalization_step="column_mapping_validation",
     )

@@ -326,7 +326,7 @@ def test_cli_error_output_uses_shared_error_contract(
 
     captured = capsys.readouterr()
 
-    assert exit_code == 1
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert '[cli.validation.open_closed_gap_leakage.invalid_input]' in captured.err
     assert 'workflow="cli"' in captured.err
     assert 'entrypoint="dev.regression.open_closed_gap_leakage"' in captured.err

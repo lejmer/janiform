@@ -53,6 +53,24 @@ janiform
 - `janiform dev --help` lists internal-only utility groups.
 - Incomplete command paths print the help for the selected namespace branch.
 
+## Exit codes
+
+The CLI uses a small stable exit-code map so shell scripts and CI jobs can classify failures
+without parsing English text:
+
+- `0`: success
+- `2`: validation error or usage error
+- `3`: runtime workflow failure after input validation succeeded
+- `4`: internal failure or integration-boundary failure
+
+Additional policy notes:
+
+- `argparse` usage failures are part of the validation bucket and therefore also exit with `2`.
+- Primary workflow commands write one structured error line to stderr and never emit tracebacks in
+  normal operation.
+- File-driven calibration validation errors include the failing file path, the field or column
+  path, and a `normalization_step` context field when the failure occurs during preprocessing.
+
 ## Common argument standards
 
 - Shared concepts use long flags only. Short aliases are forbidden for script readability.

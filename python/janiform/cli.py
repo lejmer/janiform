@@ -3,11 +3,12 @@ import sys
 from argparse import ArgumentParser, Namespace
 from collections.abc import Callable
 from datetime import timedelta
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from pathlib import Path
 from typing import Any, Optional, cast
 
 from . import __version__
+from ._market_data_ingestion import load_market_data_calibration_inputs
 from .calibration import (
     CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,
     CalibrationDuplicateRecordPolicy,
@@ -33,9 +34,9 @@ from .calendar import (
 from .errors import (
     ContractValidationFailure,
     JaniformError,
-    JaniformExecutionError,
     JaniformErrorDetails,
     JaniformErrorCategory,
+    JaniformIntegrationError,
     JaniformValidationError,
 )
 from .hourly_factors import (
@@ -103,25 +104,32 @@ CLI_CALIBRATION_MARKET_DATA_EXECUTION_MODE_HELP = (
 )
 CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT = "simulation.seeded_ticks"
 CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID = "cli.validation.simulation.seeded_ticks.invalid_input"
-CLI_SIMULATION_SEEDED_TICKS_EXECUTION_ERROR_ID = "cli.execution.simulation.seeded_ticks.failed"
+CLI_SIMULATION_SEEDED_TICKS_INTERNAL_ERROR_ID = "cli.internal.simulation.seeded_ticks.failed"
 CLI_PRICING_VANILLA_OPTION_ENTRYPOINT = "pricing.vanilla_option"
 CLI_PRICING_VANILLA_OPTION_VALIDATION_ERROR_ID = "cli.validation.pricing.vanilla_option.invalid_input"
-CLI_PRICING_VANILLA_OPTION_EXECUTION_ERROR_ID = "cli.execution.pricing.vanilla_option.failed"
+CLI_PRICING_VANILLA_OPTION_INTERNAL_ERROR_ID = "cli.internal.pricing.vanilla_option.failed"
 CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT = "calibration.market_data"
 CLI_CALIBRATION_MARKET_DATA_VALIDATION_ERROR_ID = "cli.validation.calibration.market_data.invalid_input"
-CLI_CALIBRATION_MARKET_DATA_EXECUTION_ERROR_ID = "cli.execution.calibration.market_data.failed"
+CLI_CALIBRATION_MARKET_DATA_INTERNAL_ERROR_ID = "cli.internal.calibration.market_data.failed"
 CLI_CALIBRATION_STAGED_ENTRYPOINT = "calibration.staged"
 CLI_CALIBRATION_STAGED_VALIDATION_ERROR_ID = "cli.validation.calibration.staged.invalid_input"
-CLI_CALIBRATION_STAGED_EXECUTION_ERROR_ID = "cli.execution.calibration.staged.failed"
+CLI_CALIBRATION_STAGED_INTERNAL_ERROR_ID = "cli.internal.calibration.staged.failed"
 CLI_OPEN_CLOSED_GAP_ENTRYPOINT = "dev.regression.open_closed_gap_leakage"
 CLI_OPEN_CLOSED_GAP_VALIDATION_ERROR_ID = "cli.validation.open_closed_gap_leakage.invalid_input"
-CLI_OPEN_CLOSED_GAP_EXECUTION_ERROR_ID = "cli.execution.open_closed_gap_leakage.failed"
+CLI_OPEN_CLOSED_GAP_INTERNAL_ERROR_ID = "cli.internal.open_closed_gap_leakage.failed"
 CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION = "cli.calibration.market_data.summary.v1"
 CLI_MARKET_DATA_SUMMARY_FIELD_SELECTION_POLICY = "user_facing_workflow_metadata_only.v1"
 CLI_OUTPUT_MODE_HELP = (
     "Output mode. Use json for deterministic machine-readable output and human for concise "
     "operator-oriented text."
 )
+
+
+class CliExitCode(IntEnum):
+    SUCCESS = 0
+    VALIDATION_ERROR = 2
+    RUNTIME_ERROR = 3
+    INTERNAL_ERROR = 4
 
 
 class CliOutputMode(StrEnum):
@@ -624,21 +632,19 @@ def _run_simulation_seeded_ticks_command(parsed_arguments: Namespace) -> int:
             calendar_registry=calendar_registry,
         )
         response = run_seeded_tick_event_simulation(request_with_runtime_contract)
-    except JaniformError as error:
-        sys.stderr.write(f"{error}\n")
-        return 1
-    except Exception as error:
-        sys.stderr.write(
-            f"{_classify_workflow_command_error(
-                error,
+    except JaniformError as e:
+        return _write_cli_error(e)
+    except Exception as e:
+        return _write_cli_error(
+            _classify_workflow_command_error(
+                e,
                 entrypoint=CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT,
                 validation_error_id=CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID,
-                execution_error_id=CLI_SIMULATION_SEEDED_TICKS_EXECUTION_ERROR_ID,
-                file_field_path='request_json',
-                document_field_path='request_document',
-            )}\n"
+                internal_error_id=CLI_SIMULATION_SEEDED_TICKS_INTERNAL_ERROR_ID,
+                file_field_path="request_json",
+                document_field_path="request_document",
+            )
         )
-        return 1
 
     _write_command_output(
         parsed_arguments,
@@ -646,7 +652,7 @@ def _run_simulation_seeded_ticks_command(parsed_arguments: Namespace) -> int:
         human_output_factory=lambda: _render_simulation_seeded_ticks_human_output(response.to_payload()),
     )
 
-    return 0
+    return int(CliExitCode.SUCCESS)
 
 
 def _run_pricing_vanilla_option_command(parsed_arguments: Namespace) -> int:
@@ -660,28 +666,27 @@ def _run_pricing_vanilla_option_command(parsed_arguments: Namespace) -> int:
         execution_input_document = _load_json_document(execution_input_path, "pricing execution input")
         execution_input = validate_vanilla_option_pricing_execution_input(execution_input_document)
         run_result = run_vanilla_option_pricing(execution_input)
-    except JaniformError as error:
-        sys.stderr.write(f"{error}\n")
-        return 1
-    except Exception as error:
-        sys.stderr.write(
-            f"{_classify_workflow_command_error(
-                error,
+    except JaniformError as e:
+        return _write_cli_error(e)
+    except Exception as e:
+        return _write_cli_error(
+            _classify_workflow_command_error(
+                e,
                 entrypoint=CLI_PRICING_VANILLA_OPTION_ENTRYPOINT,
                 validation_error_id=CLI_PRICING_VANILLA_OPTION_VALIDATION_ERROR_ID,
-                execution_error_id=CLI_PRICING_VANILLA_OPTION_EXECUTION_ERROR_ID,
-                file_field_path='execution_input_json',
-                document_field_path='execution_input_document',
-            )}\n"
+                internal_error_id=CLI_PRICING_VANILLA_OPTION_INTERNAL_ERROR_ID,
+                file_field_path="execution_input_json",
+                document_field_path="execution_input_document",
+            )
         )
-        return 1
 
     _write_command_output(
         parsed_arguments,
         json_payload=run_result.to_payload(),
         human_output_factory=lambda: _render_pricing_vanilla_option_human_output(run_result.to_payload()),
     )
-    return 0
+
+    return int(CliExitCode.SUCCESS)
 
 
 def _run_calibration_market_data_command(parsed_arguments: Namespace) -> int:
@@ -692,12 +697,11 @@ def _run_calibration_market_data_command(parsed_arguments: Namespace) -> int:
             parsed_arguments,
             repository_root=repository_root,
         )
-    except JaniformError as error:
-        sys.stderr.write(f"{error}\n")
-        return 1
-    except Exception as error:
-        sys.stderr.write(f"{_classify_market_data_command_error(error)}\n")
-        return 1
+        _preflight_market_data_calibration_request(request)
+    except JaniformError as e:
+        return _write_cli_error(e)
+    except Exception as e:
+        return _write_cli_error(_classify_market_data_command_error(e))
 
     _write_command_output(
         parsed_arguments,
@@ -705,7 +709,7 @@ def _run_calibration_market_data_command(parsed_arguments: Namespace) -> int:
         human_output_factory=lambda: _render_market_data_calibration_human_output(request),
     )
 
-    return 0
+    return int(CliExitCode.SUCCESS)
 
 
 def _run_calibration_staged_command(parsed_arguments: Namespace) -> int:
@@ -739,21 +743,19 @@ def _run_calibration_staged_command(parsed_arguments: Namespace) -> int:
             normalized_execution_input,
             calendar_registry=calendar_registry,
         )
-    except JaniformError as error:
-        sys.stderr.write(f"{error}\n")
-        return 1
-    except Exception as error:
-        sys.stderr.write(
-            f"{_classify_workflow_command_error(
-                error,
+    except JaniformError as e:
+        return _write_cli_error(e)
+    except Exception as e:
+        return _write_cli_error(
+            _classify_workflow_command_error(
+                e,
                 entrypoint=CLI_CALIBRATION_STAGED_ENTRYPOINT,
                 validation_error_id=CLI_CALIBRATION_STAGED_VALIDATION_ERROR_ID,
-                execution_error_id=CLI_CALIBRATION_STAGED_EXECUTION_ERROR_ID,
-                file_field_path='execution_input_json',
-                document_field_path='execution_input_document',
-            )}\n"
+                internal_error_id=CLI_CALIBRATION_STAGED_INTERNAL_ERROR_ID,
+                file_field_path="execution_input_json",
+                document_field_path="execution_input_document",
+            )
         )
-        return 1
 
     _write_command_output(
         parsed_arguments,
@@ -761,7 +763,7 @@ def _run_calibration_staged_command(parsed_arguments: Namespace) -> int:
         human_output_factory=lambda: _render_calibration_staged_human_output(response.to_payload()),
     )
 
-    return 0
+    return int(CliExitCode.SUCCESS)
 
 
 def _build_market_data_calibration_request_from_arguments(
@@ -1090,21 +1092,19 @@ def _run_open_closed_gap_leakage_regression_command(parsed_arguments: Namespace)
             gap_behavior_cases=gap_behavior_cases,
             component_absolute_tolerance=float(parsed_arguments.component_absolute_tolerance),
         )
-    except JaniformError as error:
-        sys.stderr.write(f"{error}\n")
-        return 1
-    except Exception as error:
-        sys.stderr.write(f"{_classify_open_closed_gap_command_error(error)}\n")
-        return 1
+    except JaniformError as e:
+        return _write_cli_error(e)
+    except Exception as e:
+        return _write_cli_error(_classify_open_closed_gap_command_error(e))
 
     output_mode = CliOutputMode(cast(str, parsed_arguments.output))
     failed_case_count = cast(dict[str, int], report["summary"])["failed_case_count"]
     if output_mode == CliOutputMode.JSON:
         _write_contract_json(report)
-        return 0 if failed_case_count == 0 else 1
+        return int(CliExitCode.SUCCESS if failed_case_count == 0 else CliExitCode.RUNTIME_ERROR)
 
     _write_open_closed_gap_human_output(report)
-    return 0 if failed_case_count == 0 else 1
+    return int(CliExitCode.SUCCESS if failed_case_count == 0 else CliExitCode.RUNTIME_ERROR)
 
 
 def _classify_open_closed_gap_command_error(error: Exception) -> JaniformError:
@@ -1159,10 +1159,10 @@ def _classify_open_closed_gap_command_error(error: Exception) -> JaniformError:
             )
         )
 
-    return JaniformExecutionError(
+    return JaniformIntegrationError(
         JaniformErrorDetails.from_context(
-            error_id=CLI_OPEN_CLOSED_GAP_EXECUTION_ERROR_ID,
-            category=JaniformErrorCategory.EXECUTION,
+            error_id=CLI_OPEN_CLOSED_GAP_INTERNAL_ERROR_ID,
+            category=JaniformErrorCategory.INTEGRATION,
             workflow="cli",
             entrypoint=CLI_OPEN_CLOSED_GAP_ENTRYPOINT,
             message="open closed gap leakage regression command failed unexpectedly",
@@ -1186,10 +1186,10 @@ def _classify_market_data_command_error(error: Exception) -> JaniformError:
             )
         )
 
-    return JaniformExecutionError(
+    return JaniformIntegrationError(
         JaniformErrorDetails.from_context(
-            error_id=CLI_CALIBRATION_MARKET_DATA_EXECUTION_ERROR_ID,
-            category=JaniformErrorCategory.EXECUTION,
+            error_id=CLI_CALIBRATION_MARKET_DATA_INTERNAL_ERROR_ID,
+            category=JaniformErrorCategory.INTEGRATION,
             workflow="cli",
             entrypoint=CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT,
             message="market-data calibration command failed unexpectedly",
@@ -1292,7 +1292,7 @@ def _classify_workflow_command_error(
     *,
     entrypoint: str,
     validation_error_id: str,
-    execution_error_id: str,
+    internal_error_id: str,
     file_field_path: str,
     document_field_path: str,
 ) -> JaniformError:
@@ -1307,6 +1307,18 @@ def _classify_workflow_command_error(
                 entrypoint=entrypoint,
                 field_path=file_field_path,
                 message="input file could not be found",
+                context={"path": error.filename},
+            )
+        )
+
+    if isinstance(error, OSError):
+        return JaniformValidationError(
+            ContractValidationFailure.from_context(
+                error_id=validation_error_id,
+                workflow="cli",
+                entrypoint=entrypoint,
+                field_path=file_field_path,
+                message=f"input file could not be read: {error}",
                 context={"path": error.filename},
             )
         )
@@ -1347,16 +1359,58 @@ def _classify_workflow_command_error(
             )
         )
 
-    return JaniformExecutionError(
+    return JaniformIntegrationError(
         JaniformErrorDetails.from_context(
-            error_id=execution_error_id,
-            category=JaniformErrorCategory.EXECUTION,
+            error_id=internal_error_id,
+            category=JaniformErrorCategory.INTEGRATION,
             workflow="cli",
             entrypoint=entrypoint,
             message="workflow command failed unexpectedly",
             context={"source_exception_type": type(error).__name__},
         )
     )
+
+
+def _preflight_market_data_calibration_request(request: MarketDataCalibrationRequest) -> None:
+    _preflight_market_data_session_definition(request)
+    load_market_data_calibration_inputs(request)
+
+
+def _preflight_market_data_session_definition(request: MarketDataCalibrationRequest) -> None:
+    session_source = request.session_configuration.session_definition_source
+    session_definition_path = Path(session_source.path)
+
+    if session_source.file_format == CalibrationInputFileFormat.JSON:
+        try:
+            session_definition_document = _load_json_document(
+                session_definition_path,
+                "session definition",
+            )
+            _build_calendar_registry_from_document(session_definition_document)
+        except Exception as e:
+            raise _classify_workflow_command_error(
+                e,
+                entrypoint=CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT,
+                validation_error_id=CLI_CALIBRATION_MARKET_DATA_VALIDATION_ERROR_ID,
+                internal_error_id=CLI_CALIBRATION_MARKET_DATA_INTERNAL_ERROR_ID,
+                file_field_path="session_configuration.session_definition_source.path",
+                document_field_path="session_configuration.session_definition_source",
+            ) from e
+
+        return
+
+    try:
+        with open(session_definition_path, "rb") as input_file:
+            input_file.read(1)
+    except Exception as e:
+        raise _classify_workflow_command_error(
+            e,
+            entrypoint=CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT,
+            validation_error_id=CLI_CALIBRATION_MARKET_DATA_VALIDATION_ERROR_ID,
+            internal_error_id=CLI_CALIBRATION_MARKET_DATA_INTERNAL_ERROR_ID,
+            file_field_path="session_configuration.session_definition_source.path",
+            document_field_path="session_configuration.session_definition_source",
+        ) from e
 
 
 def _resolve_path_from_repository_root(repository_root: Path, path: Path) -> Path:
@@ -1402,6 +1456,21 @@ def _load_json_document(path: Path, context: str) -> dict[str, Any]:
 
 def _write_contract_json(payload: dict[str, Any]) -> None:
     sys.stdout.write(f"{json.dumps(payload, sort_keys=True)}\n")
+
+
+def _write_cli_error(error: JaniformError) -> int:
+    sys.stderr.write(f"{error}\n")
+    return int(_exit_code_for_error(error))
+
+
+def _exit_code_for_error(error: JaniformError) -> CliExitCode:
+    match error.category:
+        case JaniformErrorCategory.VALIDATION:
+            return CliExitCode.VALIDATION_ERROR
+        case JaniformErrorCategory.EXECUTION:
+            return CliExitCode.RUNTIME_ERROR
+        case JaniformErrorCategory.INTEGRATION:
+            return CliExitCode.INTERNAL_ERROR
 
 
 def _write_command_output(

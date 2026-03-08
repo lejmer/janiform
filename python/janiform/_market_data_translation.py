@@ -361,6 +361,7 @@ def _load_calendar_registry(request: MarketDataCalibrationRequest) -> CalendarRe
         raise _translation_error(
             "session_configuration.session_definition_source.file_format",
             "must be json for market-data translation",
+            context={"translation_step": "session_definition_loading"},
         )
 
     try:
@@ -370,13 +371,19 @@ def _load_calendar_registry(request: MarketDataCalibrationRequest) -> CalendarRe
         raise _translation_error(
             "session_configuration.session_definition_source.path",
             "does not exist",
-            context={"path": session_source.path},
+            context={
+                "path": session_source.path,
+                "translation_step": "session_definition_loading",
+            },
         ) from e
     except OSError as e:
         raise _translation_error(
             "session_configuration.session_definition_source.path",
             f"could not be read: {e}",
-            context={"path": session_source.path},
+            context={
+                "path": session_source.path,
+                "translation_step": "session_definition_loading",
+            },
         ) from e
 
     try:
@@ -384,8 +391,11 @@ def _load_calendar_registry(request: MarketDataCalibrationRequest) -> CalendarRe
     except CalendarRegistryLoadError as e:
         raise _translation_error(
             "session_configuration.session_definition_source.path",
-            f"does not contain a valid calendar registry: {error}",
-            context={"path": session_source.path},
+            f"does not contain a valid calendar registry: {e}",
+            context={
+                "path": session_source.path,
+                "translation_step": "session_definition_loading",
+            },
         ) from e
 
 

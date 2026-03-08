@@ -238,6 +238,11 @@ def test_load_market_data_calibration_inputs_rejects_malformed_tick_timestamp(
     assert captured_error.value.failure.error_id == "calibration.validation.market_data_ingestion"
     assert captured_error.value.failure.field_path == "tick_data_source.rows[1].timestamp_utc"
     assert "ISO 8601" in captured_error.value.failure.message
+    assert captured_error.value.failure.context == {
+        "normalization_step": "timestamp_normalization",
+        "raw_value": "not-a-timestamp",
+        "source_path": str(tick_data_path),
+    }
 
 
 def test_load_market_data_calibration_inputs_keep_last_duplicate_policy_uses_last_source_row(
@@ -324,6 +329,10 @@ def test_load_market_data_calibration_inputs_rejects_missing_mapped_columns_with
     assert captured_error.value.failure.field_path == "column_mapping.tick_data"
     assert "Missing columns: trade_price" in captured_error.value.failure.message
     assert "Update the explicit column mapping" in captured_error.value.failure.message
+    assert captured_error.value.failure.context == {
+        "normalization_step": "column_mapping_validation",
+        "source_path": str(tick_data_path),
+    }
 
 
 def test_load_market_data_calibration_inputs_normalizes_known_news_parquet_sources(
