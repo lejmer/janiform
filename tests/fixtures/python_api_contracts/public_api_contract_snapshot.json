@@ -116,6 +116,7 @@
     "janiform.calibration": {
       "exports": [
         "CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY",
+        "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
         "CALIBRATION_RUN_SPEC_SCHEMA_VERSION",
         "CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION",
         "CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION",
@@ -124,6 +125,7 @@
         "CalibrationDayOfWeekSeasonalityEstimatorSettings",
         "CalibrationDayOfYearSeasonalityEstimatorSettings",
         "CalibrationDoubleExponentialBaseShockConfiguration",
+        "CalibrationDuplicateRecordPolicy",
         "CalibrationExecutionMode",
         "CalibrationFailureDetails",
         "CalibrationHandoffTransport",
@@ -131,10 +133,20 @@
         "CalibrationHawkesStructuredAlphaParameterization",
         "CalibrationHawkesStructuredRhoParameterization",
         "CalibrationHawkesStructuredRhoSelfDominancePolicy",
+        "CalibrationInputFileFormat",
+        "CalibrationInputFileReference",
         "CalibrationIntradaySeasonalityEstimatorSettings",
         "CalibrationIntradaySmoothingKernel",
+        "CalibrationKnownNewsColumnMapping",
+        "CalibrationKnownNewsInput",
+        "CalibrationMarketDataColumnMapping",
+        "CalibrationMarketDataNormalizationPolicy",
+        "CalibrationMarketDataOutputPreferences",
+        "CalibrationMarketDataWorkflowScope",
         "CalibrationObjectiveTermInput",
         "CalibrationOptimizerSettings",
+        "CalibrationOptionQuoteInputPolicy",
+        "CalibrationOptionSurfaceColumnMapping",
         "CalibrationResumeSettings",
         "CalibrationResumeSource",
         "CalibrationReturnComponentsCloseOpenGapDetectionPolicy",
@@ -150,6 +162,7 @@
         "CalibrationScheduledEventOverlay",
         "CalibrationSeasonalityStageExecutionInput",
         "CalibrationSeasonalityStageExecutionSettings",
+        "CalibrationSessionConfigurationInput",
         "CalibrationSharedNewsMarkLawConfiguration",
         "CalibrationStage",
         "CalibrationStageExecutionStatus",
@@ -158,27 +171,38 @@
         "CalibrationStageSeedOverride",
         "CalibrationStageSolverSettings",
         "CalibrationStagedExecutionRuntimeResources",
+        "CalibrationTickDataColumnMapping",
+        "CalibrationTickPriceInputPolicy",
         "CalibrationTimestampEventRecord",
         "CalibrationTimestampEventSessionFilter",
         "CalibrationValidationError",
         "CalibrationValidationFailure",
         "DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE",
+        "MarketDataCalibrationRequest",
         "StagedCalibrationExecutionInput",
         "StagedCalibrationRequest",
         "StagedCalibrationResponse",
+        "deserialize_market_data_calibration_request",
         "deserialize_staged_calibration_execution_input",
         "deserialize_staged_calibration_request",
         "deserialize_staged_calibration_response",
         "run_staged_calibration",
+        "serialize_market_data_calibration_request",
         "serialize_staged_calibration_execution_input",
         "serialize_staged_calibration_request",
         "serialize_staged_calibration_response",
+        "validate_market_data_calibration_request",
         "validate_staged_calibration_execution_input",
         "validate_staged_calibration_request",
         "validate_staged_calibration_response"
       ],
       "module_name": "janiform.calibration",
       "schema_identifiers": [
+        {
+          "name": "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "calibration.market_data.request.v1"
+        },
         {
           "name": "CALIBRATION_RUN_SPEC_SCHEMA_VERSION",
           "public_exported": true,
@@ -199,6 +223,10 @@
         "CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY": {
           "kind": "constant",
           "value": "cli_defaults_to_disk_python_importable_api_defaults_to_memory.v1"
+        },
+        "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "calibration.market_data.request.v1"
         },
         "CALIBRATION_RUN_SPEC_SCHEMA_VERSION": {
           "kind": "constant",
@@ -253,6 +281,23 @@
           ],
           "kind": "contract_model",
           "signature": "(probability_positive: float, eta_plus: float, eta_minus: float) -> None"
+        },
+        "CalibrationDuplicateRecordPolicy": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "ERROR",
+              "value": "error"
+            },
+            {
+              "name": "KEEP_FIRST",
+              "value": "keep_first"
+            },
+            {
+              "name": "KEEP_LAST",
+              "value": "keep_last"
+            }
+          ]
         },
         "CalibrationExecutionMode": {
           "kind": "enum",
@@ -333,6 +378,32 @@
           "kind": "contract_model",
           "signature": "(minimum_self_to_cross_ratio: float) -> None"
         },
+        "CalibrationInputFileFormat": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "CSV",
+              "value": "csv"
+            },
+            {
+              "name": "PARQUET",
+              "value": "parquet"
+            },
+            {
+              "name": "JSON",
+              "value": "json"
+            }
+          ]
+        },
+        "CalibrationInputFileReference": {
+          "field_names": [
+            "path",
+            "file_format",
+            "provenance_label"
+          ],
+          "kind": "contract_model",
+          "signature": "(path: str, file_format: janiform.calibration.CalibrationInputFileFormat, provenance_label: str) -> None"
+        },
         "CalibrationIntradaySeasonalityEstimatorSettings": {
           "field_names": [
             "minutes_per_bin",
@@ -357,6 +428,69 @@
             }
           ]
         },
+        "CalibrationKnownNewsColumnMapping": {
+          "field_names": [
+            "event_timestamp_column",
+            "event_identifier_column"
+          ],
+          "kind": "contract_model",
+          "signature": "(event_timestamp_column: str, event_identifier_column: str | None = None) -> None"
+        },
+        "CalibrationKnownNewsInput": {
+          "field_names": [
+            "calendar_source",
+            "calendar_timezone"
+          ],
+          "kind": "contract_model",
+          "signature": "(calendar_source: janiform.calibration.CalibrationInputFileReference, calendar_timezone: str | None = None) -> None"
+        },
+        "CalibrationMarketDataColumnMapping": {
+          "field_names": [
+            "tick_data",
+            "option_surface",
+            "known_news"
+          ],
+          "kind": "contract_model",
+          "signature": "(tick_data: janiform.calibration.CalibrationTickDataColumnMapping, option_surface: janiform.calibration.CalibrationOptionSurfaceColumnMapping | None = None, known_news: janiform.calibration.CalibrationKnownNewsColumnMapping | None = None) -> None"
+        },
+        "CalibrationMarketDataNormalizationPolicy": {
+          "field_names": [
+            "timestamp_timezone",
+            "sort_records_by_timestamp",
+            "duplicate_record_policy",
+            "tick_price_input_policy",
+            "option_quote_input_policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(timestamp_timezone: str, sort_records_by_timestamp: bool = True, duplicate_record_policy: janiform.calibration.CalibrationDuplicateRecordPolicy = <CalibrationDuplicateRecordPolicy.ERROR: 'error'>, tick_price_input_policy: janiform.calibration.CalibrationTickPriceInputPolicy | None = None, option_quote_input_policy: janiform.calibration.CalibrationOptionQuoteInputPolicy | None = None) -> None"
+        },
+        "CalibrationMarketDataOutputPreferences": {
+          "field_names": [
+            "execution_mode",
+            "disk_checkpoint_directory",
+            "emit_derived_staged_execution_input",
+            "emit_input_provenance_report"
+          ],
+          "kind": "contract_model",
+          "signature": "(execution_mode: janiform.calibration.CalibrationExecutionMode = <CalibrationExecutionMode.MEMORY: 'memory'>, disk_checkpoint_directory: str | None = None, emit_derived_staged_execution_input: bool = False, emit_input_provenance_report: bool = True) -> None"
+        },
+        "CalibrationMarketDataWorkflowScope": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "SEASONALITY_ONLY",
+              "value": "seasonality_only"
+            },
+            {
+              "name": "FULL_WITHOUT_OPTION_SURFACE",
+              "value": "full_without_option_surface"
+            },
+            {
+              "name": "FULL_WITH_OPTION_SURFACE",
+              "value": "full_with_option_surface"
+            }
+          ]
+        },
         "CalibrationObjectiveTermInput": {
           "field_names": [
             "term_id",
@@ -376,6 +510,37 @@
           ],
           "kind": "contract_model",
           "signature": "(solver_name: str, max_iterations: int, absolute_tolerance: float, relative_tolerance: float, constraint_penalty_weight: float) -> None"
+        },
+        "CalibrationOptionQuoteInputPolicy": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "MID_PRICE_COLUMN",
+              "value": "mid_price_column"
+            },
+            {
+              "name": "BID_ASK_MIDPOINT",
+              "value": "bid_ask_midpoint"
+            },
+            {
+              "name": "IMPLIED_VOLATILITY_COLUMN",
+              "value": "implied_volatility_column"
+            }
+          ]
+        },
+        "CalibrationOptionSurfaceColumnMapping": {
+          "field_names": [
+            "quote_timestamp_column",
+            "expiry_timestamp_column",
+            "strike_column",
+            "option_type_column",
+            "mid_price_column",
+            "bid_column",
+            "ask_column",
+            "implied_volatility_column"
+          ],
+          "kind": "contract_model",
+          "signature": "(quote_timestamp_column: str, expiry_timestamp_column: str, strike_column: str, option_type_column: str, mid_price_column: str | None = None, bid_column: str | None = None, ask_column: str | None = None, implied_volatility_column: str | None = None) -> None"
         },
         "CalibrationResumeSettings": {
           "field_names": [
@@ -526,6 +691,15 @@
           "kind": "contract_model",
           "signature": "(session_filter: janiform.calibration.CalibrationTimestampEventSessionFilter, sparse_hour_event_threshold: int, intraday_settings: janiform.calibration.CalibrationIntradaySeasonalityEstimatorSettings, day_of_week_settings: janiform.calibration.CalibrationDayOfWeekSeasonalityEstimatorSettings, day_of_year_settings: janiform.calibration.CalibrationDayOfYearSeasonalityEstimatorSettings) -> None"
         },
+        "CalibrationSessionConfigurationInput": {
+          "field_names": [
+            "exchange_code",
+            "session_definition_source",
+            "session_timezone"
+          ],
+          "kind": "contract_model",
+          "signature": "(exchange_code: str, session_definition_source: janiform.calibration.CalibrationInputFileReference, session_timezone: str) -> None"
+        },
         "CalibrationSharedNewsMarkLawConfiguration": {
           "field_names": [
             "gamma_severity_marks",
@@ -611,6 +785,39 @@
           "kind": "contract_model",
           "signature": "(disk_checkpoint_directory: str | None = None) -> None"
         },
+        "CalibrationTickDataColumnMapping": {
+          "field_names": [
+            "timestamp_column",
+            "price_column",
+            "trade_price_column",
+            "bid_column",
+            "ask_column",
+            "close_price_column"
+          ],
+          "kind": "contract_model",
+          "signature": "(timestamp_column: str, price_column: str | None = None, trade_price_column: str | None = None, bid_column: str | None = None, ask_column: str | None = None, close_price_column: str | None = None) -> None"
+        },
+        "CalibrationTickPriceInputPolicy": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "EXPLICIT_PRICE_COLUMN",
+              "value": "explicit_price_column"
+            },
+            {
+              "name": "TRADE_PRICE_COLUMN",
+              "value": "trade_price_column"
+            },
+            {
+              "name": "BID_ASK_MIDPOINT",
+              "value": "bid_ask_midpoint"
+            },
+            {
+              "name": "CLOSE_PRICE_COLUMN",
+              "value": "close_price_column"
+            }
+          ]
+        },
         "CalibrationTimestampEventRecord": {
           "field_names": [
             "source_record_position",
@@ -664,6 +871,22 @@
           "kind": "constant",
           "value": "memory"
         },
+        "MarketDataCalibrationRequest": {
+          "field_names": [
+            "schema_version",
+            "run_id",
+            "tick_data_source",
+            "session_configuration",
+            "column_mapping",
+            "workflow_scope",
+            "normalization_policy",
+            "output_preferences",
+            "option_surface_source",
+            "known_news_inputs"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: str, run_id: str, tick_data_source: janiform.calibration.CalibrationInputFileReference, session_configuration: janiform.calibration.CalibrationSessionConfigurationInput, column_mapping: janiform.calibration.CalibrationMarketDataColumnMapping, workflow_scope: janiform.calibration.CalibrationMarketDataWorkflowScope, normalization_policy: janiform.calibration.CalibrationMarketDataNormalizationPolicy, output_preferences: janiform.calibration.CalibrationMarketDataOutputPreferences, option_surface_source: janiform.calibration.CalibrationInputFileReference | None = None, known_news_inputs: janiform.calibration.CalibrationKnownNewsInput | None = None) -> None"
+        },
         "StagedCalibrationExecutionInput": {
           "field_names": [
             "schema_version",
@@ -707,6 +930,10 @@
           "kind": "contract_model",
           "signature": "(schema_version: str, failure_triage_policy: str, run_id: str, execution_mode: janiform.calibration.CalibrationExecutionMode, status: janiform.calibration.CalibrationStageExecutionStatus, stage_reports: tuple[janiform.calibration.CalibrationStageReport, ...], emitted_checkpoints: tuple[janiform.calibration.CalibrationCheckpointMetadata, ...], resumed_from_checkpoint_reference: str | None = None, resumed_from_last_successful_stage: janiform.calibration.CalibrationStage | None = None, started_from_stage: janiform.calibration.CalibrationStage | None = None, failure: janiform.calibration.CalibrationFailureDetails | None = None) -> None"
         },
+        "deserialize_market_data_calibration_request": {
+          "kind": "function",
+          "signature": "(payload_json: str) -> janiform.calibration.MarketDataCalibrationRequest"
+        },
         "deserialize_staged_calibration_execution_input": {
           "kind": "function",
           "signature": "(payload_json: str) -> janiform.calibration.StagedCalibrationExecutionInput"
@@ -723,6 +950,10 @@
           "kind": "function",
           "signature": "(execution_input: janiform.calibration.StagedCalibrationExecutionInput, *, calendar_registry: janiform.calendar.CalendarRegistry) -> janiform.calibration.StagedCalibrationResponse"
         },
+        "serialize_market_data_calibration_request": {
+          "kind": "function",
+          "signature": "(request: janiform.calibration.MarketDataCalibrationRequest) -> str"
+        },
         "serialize_staged_calibration_execution_input": {
           "kind": "function",
           "signature": "(execution_input: janiform.calibration.StagedCalibrationExecutionInput) -> str"
@@ -734,6 +965,10 @@
         "serialize_staged_calibration_response": {
           "kind": "function",
           "signature": "(response: janiform.calibration.StagedCalibrationResponse) -> str"
+        },
+        "validate_market_data_calibration_request": {
+          "kind": "function",
+          "signature": "(raw_request: dict[str, Any] | Any) -> janiform.calibration.MarketDataCalibrationRequest"
         },
         "validate_staged_calibration_execution_input": {
           "kind": "function",
@@ -2173,6 +2408,7 @@
         "SeededTickEventStateSnapshot",
         "SeededTickEventStateSnapshotCapture",
         "SeededTickEventTapeMetadata",
+        "SeededTickSimulationHourlyFactorSummary",
         "SeededTickSimulationRequest",
         "SeededTickSimulationResponse",
         "SeededTickSimulationValidationError",
@@ -2277,6 +2513,19 @@
           ],
           "kind": "contract_model",
           "signature": "(schema_version: str, event_record_schema_version: str, state_snapshot_schema_version: str, event_ordering_policy: str, timestamp_representation_policy: str, side_encoding_policy: str, state_snapshot_capture: janiform.simulation.SeededTickEventStateSnapshotCapture, state_snapshot_capture_point_policy: str | None = None) -> None"
+        },
+        "SeededTickSimulationHourlyFactorSummary": {
+          "field_names": [
+            "schema_version",
+            "exchange_code",
+            "interval_count",
+            "interval_start_utc_nanos",
+            "interval_end_utc_nanos",
+            "s_h",
+            "nu_h"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: str, exchange_code: str, interval_count: int, interval_start_utc_nanos: tuple[int, ...], interval_end_utc_nanos: tuple[int, ...], s_h: tuple[float, ...], nu_h: tuple[float, ...]) -> None"
         },
         "SeededTickSimulationRequest": {
           "field_names": [

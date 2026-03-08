@@ -17,6 +17,7 @@ janiform
 ├── simulation
 │   └── seeded-ticks
 ├── calibration
+│   ├── market-data
 │   └── staged
 ├── pricing
 │   └── vanilla-option
@@ -38,7 +39,8 @@ janiform
   `janiform.simulation`, `janiform.calibration`, and `janiform.pricing`.
 - Subcommand names stay short while preserving the specific workflow identity:
   - `seeded-ticks` for the seeded tick-event simulator
-  - `staged` for staged calibration orchestration
+  - `market-data` for the recommended file-driven calibration request boundary
+  - `staged` for advanced staged calibration orchestration
   - `vanilla-option` for vanilla option pricing
 - Developer-only validation harnesses remain explicit about their function:
   - `dev regression open-closed-gap-leakage`
@@ -47,7 +49,7 @@ janiform
 
 - `janiform --help` lists the four top-level namespaces in the order above.
 - `janiform simulation --help`, `janiform calibration --help`, and `janiform pricing --help`
-  each list their current workflow subcommand.
+  each list their current workflow subcommands.
 - `janiform dev --help` lists internal-only utility groups.
 - Incomplete command paths print the help for the selected namespace branch.
 
@@ -97,6 +99,60 @@ Behavior:
 Output:
 - Writes deterministic JSON for `pricing.vanilla_option.run_result.v1` to stdout.
 
+### `janiform calibration market-data`
+
+Required arguments:
+- `--run-id`
+- `--workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface}`
+- `--tick-data-path`
+- `--tick-data-format {csv,parquet}`
+- `--tick-data-provenance-label`
+- `--tick-timestamp-column`
+- `--exchange-code`
+- `--session-definition-path`
+- `--session-definition-format {csv,parquet,json}`
+- `--session-definition-provenance-label`
+- `--session-timezone`
+- `--timestamp-timezone`
+
+Optional arguments:
+- `--tick-price-input-policy {explicit_price_column,trade_price_column,bid_ask_midpoint,close_price_column}`
+- `--tick-price-column`
+- `--tick-trade-price-column`
+- `--tick-bid-column`
+- `--tick-ask-column`
+- `--tick-close-price-column`
+- `--known-news-path`
+- `--known-news-format {csv,parquet,json}`
+- `--known-news-provenance-label`
+- `--known-news-timezone`
+- `--known-news-timestamp-column`
+- `--known-news-event-id-column`
+- `--option-surface-path`
+- `--option-surface-format {csv,parquet}`
+- `--option-surface-provenance-label`
+- `--option-quote-input-policy {mid_price_column,bid_ask_midpoint,implied_volatility_column}`
+- `--option-quote-timestamp-column`
+- `--option-expiry-column`
+- `--option-strike-column`
+- `--option-type-column`
+- `--option-mid-price-column`
+- `--option-bid-column`
+- `--option-ask-column`
+- `--option-implied-volatility-column`
+- `--duplicate-record-policy {error,keep_first,keep_last}`
+- `--disable-timestamp-sort`
+- `--execution-mode {disk,memory}`: defaults to `disk` on the CLI
+- `--disk-checkpoint-directory`: required when the effective execution mode is `disk`
+- `--emit-derived-staged-execution-input`
+- `--omit-input-provenance-report`
+
+Behavior:
+- This is the recommended calibration CLI boundary for market users.
+- The command validates file-driven request fields, provenance labels, and normalization-policy selections.
+- The command writes deterministic JSON for `calibration.market_data.request.v1` to stdout.
+- Translation into the canonical staged execution input remains a lower-level step documented separately.
+
 ### `janiform calibration staged`
 
 Required arguments:
@@ -108,6 +164,7 @@ Optional arguments:
 - `--disk-checkpoint-directory`: required when the effective execution mode is `disk` and the input JSON does not already provide one
 
 Behavior:
+- This is the advanced or internal calibration command path.
 - Option precedence is explicit:
   1. `--execution-mode`, when supplied, overrides `request.execution_mode` from `--execution-input-json`.
   2. When `--execution-mode` is omitted, the CLI default `disk` still overrides the

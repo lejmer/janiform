@@ -12,7 +12,9 @@ import janiform.pricing as pricing_module
 import janiform.simulation as simulation_module
 from janiform.calendar import CalendarRegistry
 from janiform.calibration import (
+    CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,
     CalibrationExecutionMode,
+    CalibrationMarketDataWorkflowScope,
     StagedCalibrationExecutionInput,
     StagedCalibrationResponse,
 )
@@ -58,10 +60,22 @@ def test_calibration_cli_help_documents_mode_and_runtime_arguments() -> None:
     assert "overrides runtime_resources.disk_checkpoint_directory from --execution-input-json" in help_output
 
 
+def test_market_data_calibration_cli_help_documents_user_facing_file_inputs() -> None:
+    help_output = _normalize_help_output(_render_help(["calibration", "market-data"]))
+
+    assert "--tick-data-path PATH" in help_output
+    assert "--session-definition-path PATH" in help_output
+    assert "--workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface}" in help_output
+    assert "--tick-price-input-policy" in help_output
+    assert "--execution-mode {disk,memory}" in help_output
+    assert "market_data.request.v1" in help_output
+
+
 def test_cli_shared_path_flags_use_standardized_repository_relative_help_text() -> None:
     help_outputs = (
         _normalize_help_output(_render_help(["simulation", "seeded-ticks"])),
         _normalize_help_output(_render_help(["pricing", "vanilla-option"])),
+        _normalize_help_output(_render_help(["calibration", "market-data"])),
         _normalize_help_output(_render_help(["calibration", "staged"])),
         _normalize_help_output(_render_help(["dev", "regression", "open-closed-gap-leakage"])),
     )
@@ -86,6 +100,42 @@ def test_calibration_cli_parser_defaults_execution_mode_to_disk() -> None:
     assert parsed_arguments.execution_mode == CalibrationExecutionMode.DISK.value
 
 
+def test_market_data_calibration_cli_parser_defaults_execution_mode_to_disk() -> None:
+    parser = cli_module._build_parser()
+    parsed_arguments = parser.parse_args(
+        [
+            "calibration",
+            "market-data",
+            "--run-id",
+            "run-001",
+            "--workflow-scope",
+            "seasonality_only",
+            "--tick-data-path",
+            "ticks.csv",
+            "--tick-data-format",
+            "csv",
+            "--tick-data-provenance-label",
+            "tick-feed",
+            "--tick-timestamp-column",
+            "timestamp_utc",
+            "--exchange-code",
+            "XNYS",
+            "--session-definition-path",
+            "sessions.json",
+            "--session-definition-format",
+            "json",
+            "--session-definition-provenance-label",
+            "session-registry",
+            "--session-timezone",
+            "America/New_York",
+            "--timestamp-timezone",
+            "UTC",
+        ]
+    )
+
+    assert parsed_arguments.execution_mode == CalibrationExecutionMode.DISK.value
+
+
 def test_calibration_cli_parser_accepts_explicit_memory_execution_mode() -> None:
     parser = cli_module._build_parser()
     parsed_arguments = parser.parse_args(
@@ -102,6 +152,92 @@ def test_calibration_cli_parser_accepts_explicit_memory_execution_mode() -> None
     )
 
     assert parsed_arguments.execution_mode == CalibrationExecutionMode.MEMORY.value
+
+
+def test_market_data_calibration_cli_maps_flags_to_request_contract(tmp_path: Path) -> None:
+    checkpoint_directory = tmp_path / "checkpoints"
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "calibration",
+            "market-data",
+            "--run-id",
+            "market-data-run-001",
+            "--workflow-scope",
+            "full_with_option_surface",
+            "--tick-data-path",
+            "data/ticks.csv",
+            "--tick-data-format",
+            "csv",
+            "--tick-data-provenance-label",
+            "ticks-primary",
+            "--tick-timestamp-column",
+            "timestamp_utc",
+            "--tick-price-input-policy",
+            "trade_price_column",
+            "--tick-trade-price-column",
+            "trade_price",
+            "--exchange-code",
+            "XNYS",
+            "--session-definition-path",
+            "config/sessions.json",
+            "--session-definition-format",
+            "json",
+            "--session-definition-provenance-label",
+            "session-calendar",
+            "--session-timezone",
+            "America/New_York",
+            "--known-news-path",
+            "config/known-news.csv",
+            "--known-news-format",
+            "csv",
+            "--known-news-provenance-label",
+            "known-news",
+            "--known-news-timezone",
+            "UTC",
+            "--known-news-timestamp-column",
+            "event_timestamp_utc",
+            "--known-news-event-id-column",
+            "event_code",
+            "--option-surface-path",
+            "data/options.parquet",
+            "--option-surface-format",
+            "parquet",
+            "--option-surface-provenance-label",
+            "options-close",
+            "--option-quote-input-policy",
+            "bid_ask_midpoint",
+            "--option-quote-timestamp-column",
+            "quote_timestamp_utc",
+            "--option-expiry-column",
+            "expiry_utc",
+            "--option-strike-column",
+            "strike",
+            "--option-type-column",
+            "option_type",
+            "--option-bid-column",
+            "bid",
+            "--option-ask-column",
+            "ask",
+            "--timestamp-timezone",
+            "UTC",
+            "--execution-mode",
+            "disk",
+            "--disk-checkpoint-directory",
+            str(checkpoint_directory),
+            "--emit-derived-staged-execution-input",
+        ]
+    )
+
+    assert exit_code == 0, stderr_text
+
+    request_payload = json.loads(stdout_text)
+    assert request_payload["schema_version"] == CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION
+    assert request_payload["workflow_scope"] == CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE.value
+    assert request_payload["output_preferences"]["execution_mode"] == "disk"
+    assert request_payload["output_preferences"]["disk_checkpoint_directory"] == str(checkpoint_directory)
+    assert request_payload["option_surface_source"]["file_format"] == "parquet"
+    assert request_payload["column_mapping"]["known_news"]["event_timestamp_column"] == "event_timestamp_utc"
 
 
 def test_simulation_cli_maps_request_json_to_runtime_request(

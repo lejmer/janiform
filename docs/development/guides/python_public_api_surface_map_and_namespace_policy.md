@@ -41,6 +41,7 @@ The package root `janiform` is intentionally minimal.
     - `SeededTickEventStateSnapshot`
     - `SeededTickEventRecord`
     - `SeededTickEventTapeMetadata`
+    - `SeededTickSimulationHourlyFactorSummary`
     - `SeededTickSimulationRequest`
     - `SeededTickSimulationResponse`
     - `SeededTickSimulationValidationFailure`
@@ -106,13 +107,29 @@ The package root `janiform` is intentionally minimal.
     - `deserialize_sufficient_statistics_risk_run_request`
     - `deserialize_sufficient_statistics_risk_path`
 - `janiform.calibration`
-  - Ownership: staged calibration request, execution-input, and response contracts
+  - Ownership: market-data calibration request contracts plus advanced staged calibration execution contracts
   - Public symbols:
+    - `CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION`
     - `CALIBRATION_RUN_SPEC_SCHEMA_VERSION`
     - `CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION`
     - `CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION`
     - `CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY`
     - `DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE`
+    - `CalibrationInputFileFormat`
+    - `CalibrationDuplicateRecordPolicy`
+    - `CalibrationTickPriceInputPolicy`
+    - `CalibrationOptionQuoteInputPolicy`
+    - `CalibrationMarketDataWorkflowScope`
+    - `CalibrationInputFileReference`
+    - `CalibrationSessionConfigurationInput`
+    - `CalibrationKnownNewsInput`
+    - `CalibrationTickDataColumnMapping`
+    - `CalibrationOptionSurfaceColumnMapping`
+    - `CalibrationKnownNewsColumnMapping`
+    - `CalibrationMarketDataColumnMapping`
+    - `CalibrationMarketDataNormalizationPolicy`
+    - `CalibrationMarketDataOutputPreferences`
+    - `MarketDataCalibrationRequest`
     - `CalibrationTimestampEventSessionFilter`
     - `CalibrationIntradaySmoothingKernel`
     - `CalibrationExecutionMode`
@@ -159,6 +176,9 @@ The package root `janiform` is intentionally minimal.
     - `StagedCalibrationResponse`
     - `CalibrationValidationFailure`
     - `CalibrationValidationError`
+    - `validate_market_data_calibration_request`
+    - `serialize_market_data_calibration_request`
+    - `deserialize_market_data_calibration_request`
     - `run_staged_calibration`
     - `validate_staged_calibration_execution_input`
     - `validate_staged_calibration_request`
@@ -185,10 +205,15 @@ The package root `janiform` is intentionally minimal.
 
 ## Calibration namespace status
 
-`janiform.calibration` is now public for typed request, execution-input, response, and
-top-level orchestration entrypoints.
+`janiform.calibration` is now public for the recommended market-data request contract,
+advanced staged execution-input and response contracts, and top-level staged orchestration.
 
-The public staged-calibration entrypoint is:
+The recommended public request boundary is:
+
+- `MarketDataCalibrationRequest`
+- `validate_market_data_calibration_request`
+
+The advanced staged-calibration entrypoint is:
 
 - `run_staged_calibration`
 

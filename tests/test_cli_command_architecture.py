@@ -24,6 +24,7 @@ def test_simulation_help_lists_seeded_tick_workflow() -> None:
 def test_calibration_help_lists_staged_workflow() -> None:
     help_output = _render_help(["calibration"])
 
+    assert "market-data" in help_output
     assert "staged" in help_output
 
 

@@ -7,10 +7,18 @@ from typing import Any, cast, Optional
 
 from . import __version__
 from .calibration import (
+    CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,
+    CalibrationDuplicateRecordPolicy,
     CalibrationExecutionMode,
+    CalibrationInputFileFormat,
+    CalibrationMarketDataWorkflowScope,
+    CalibrationOptionQuoteInputPolicy,
     CalibrationStagedExecutionRuntimeResources,
+    CalibrationTickPriceInputPolicy,
+    MarketDataCalibrationRequest,
     StagedCalibrationExecutionInput,
     run_staged_calibration,
+    validate_market_data_calibration_request,
     validate_staged_calibration_execution_input,
 )
 from .calendar import (
@@ -53,9 +61,43 @@ CLI_CALIBRATION_EXECUTION_MODE_CHOICES: tuple[str, str] = (
     CalibrationExecutionMode.DISK.value,
     CalibrationExecutionMode.MEMORY.value,
 )
+CLI_CALIBRATION_TICK_FILE_FORMAT_CHOICES: tuple[str, str] = (
+    CalibrationInputFileFormat.CSV.value,
+    CalibrationInputFileFormat.PARQUET.value,
+)
+CLI_CALIBRATION_STRUCTURED_FILE_FORMAT_CHOICES: tuple[str, str, str] = (
+    CalibrationInputFileFormat.CSV.value,
+    CalibrationInputFileFormat.PARQUET.value,
+    CalibrationInputFileFormat.JSON.value,
+)
+CLI_CALIBRATION_MARKET_DATA_SCOPE_CHOICES: tuple[str, str, str] = (
+    CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY.value,
+    CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE.value,
+    CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE.value,
+)
+CLI_CALIBRATION_DUPLICATE_RECORD_POLICY_CHOICES: tuple[str, str, str] = (
+    CalibrationDuplicateRecordPolicy.ERROR.value,
+    CalibrationDuplicateRecordPolicy.KEEP_FIRST.value,
+    CalibrationDuplicateRecordPolicy.KEEP_LAST.value,
+)
+CLI_CALIBRATION_TICK_PRICE_POLICY_CHOICES: tuple[str, str, str, str] = (
+    CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN.value,
+    CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN.value,
+    CalibrationTickPriceInputPolicy.BID_ASK_MIDPOINT.value,
+    CalibrationTickPriceInputPolicy.CLOSE_PRICE_COLUMN.value,
+)
+CLI_CALIBRATION_OPTION_QUOTE_POLICY_CHOICES: tuple[str, str, str] = (
+    CalibrationOptionQuoteInputPolicy.MID_PRICE_COLUMN.value,
+    CalibrationOptionQuoteInputPolicy.BID_ASK_MIDPOINT.value,
+    CalibrationOptionQuoteInputPolicy.IMPLIED_VOLATILITY_COLUMN.value,
+)
 CLI_CALIBRATION_EXECUTION_MODE_HELP = (
     "Calibration execution mode override. Precedence: --execution-mode, then the CLI default "
     "disk. This overrides request.execution_mode from --execution-input-json."
+)
+CLI_CALIBRATION_MARKET_DATA_EXECUTION_MODE_HELP = (
+    "Calibration execution mode recorded in the market-data request. The CLI default is disk so "
+    "automation-friendly runs keep persistence explicit."
 )
 CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT = "simulation.seeded_ticks"
 CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID = "cli.validation.simulation.seeded_ticks.invalid_input"
@@ -63,6 +105,9 @@ CLI_SIMULATION_SEEDED_TICKS_EXECUTION_ERROR_ID = "cli.execution.simulation.seede
 CLI_PRICING_VANILLA_OPTION_ENTRYPOINT = "pricing.vanilla_option"
 CLI_PRICING_VANILLA_OPTION_VALIDATION_ERROR_ID = "cli.validation.pricing.vanilla_option.invalid_input"
 CLI_PRICING_VANILLA_OPTION_EXECUTION_ERROR_ID = "cli.execution.pricing.vanilla_option.failed"
+CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT = "calibration.market_data"
+CLI_CALIBRATION_MARKET_DATA_VALIDATION_ERROR_ID = "cli.validation.calibration.market_data.invalid_input"
+CLI_CALIBRATION_MARKET_DATA_EXECUTION_ERROR_ID = "cli.execution.calibration.market_data.failed"
 CLI_CALIBRATION_STAGED_ENTRYPOINT = "calibration.staged"
 CLI_CALIBRATION_STAGED_VALIDATION_ERROR_ID = "cli.validation.calibration.staged.invalid_input"
 CLI_CALIBRATION_STAGED_EXECUTION_ERROR_ID = "cli.execution.calibration.staged.failed"
@@ -108,20 +153,7 @@ def _add_optional_path_argument(
     )
 
 
-def _build_parser() -> ArgumentParser:
-    parser: ArgumentParser = ArgumentParser(
-        prog="janiform",
-        description="Command line interface for Janiform workflows and developer utilities.",
-    )
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.set_defaults(
-        command=None,
-        handler=None,
-        help_target=parser,
-    )
-
-    subparsers = parser.add_subparsers(dest="command")
-
+def _build_simulation_parser(subparsers) -> None:
     simulation_parser = subparsers.add_parser(
         "simulation",
         help="Simulation workflows.",
@@ -154,24 +186,205 @@ def _build_parser() -> ArgumentParser:
         contract_label="a calendar registry JSON object used to rehydrate hourly factors",
     )
 
-    calibration_parser = subparsers.add_parser(
-        "calibration",
-        help="Calibration workflows.",
-        description="Calibration workflows.",
-    )
-    calibration_parser.set_defaults(help_target=calibration_parser)
-    calibration_subparsers = calibration_parser.add_subparsers(dest="calibration_command")
 
-    calibration_staged_parser = calibration_subparsers.add_parser(
-        "staged",
-        help="Staged calibration workflow.",
-        description="Staged calibration workflow.",
+def _add_market_data_calibration_arguments(calibration_market_data_parser: ArgumentParser) -> None:
+    calibration_market_data_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Stable run identifier recorded in the market-data request payload.",
     )
-    calibration_staged_parser.set_defaults(
-        handler=_run_calibration_staged_command,
-        help_target=calibration_staged_parser,
+    calibration_market_data_parser.add_argument(
+        "--workflow-scope",
+        required=True,
+        choices=CLI_CALIBRATION_MARKET_DATA_SCOPE_CHOICES,
+        help=(
+            "High-level calibration scope. Use seasonality_only for activity-only estimation, "
+            "full_without_option_surface for full calibration from tick data only, and "
+            "full_with_option_surface when option-surface data is supplied."
+        ),
+    )
+    calibration_market_data_parser.add_argument(
+        "--tick-data-path",
+        type=Path,
+        required=True,
+        metavar=CLI_PATH_METAVAR,
+        help=f"Path to the input tick-data file. {CLI_REPOSITORY_RELATIVE_PATH_POLICY}",
+    )
+    calibration_market_data_parser.add_argument(
+        "--tick-data-format",
+        required=True,
+        choices=CLI_CALIBRATION_TICK_FILE_FORMAT_CHOICES,
+        help="Tick-data file format.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--tick-data-provenance-label",
+        required=True,
+        help="Stable provenance label recorded for the tick-data source.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--tick-timestamp-column",
+        required=True,
+        help="Tick-data timestamp column name.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--tick-price-input-policy",
+        choices=CLI_CALIBRATION_TICK_PRICE_POLICY_CHOICES,
+        help="Explicit tick-price normalization policy for non-seasonality workflows.",
+    )
+    calibration_market_data_parser.add_argument("--tick-price-column", help="Tick-data explicit price column.")
+    calibration_market_data_parser.add_argument(
+        "--tick-trade-price-column",
+        help="Tick-data trade price column.",
+    )
+    calibration_market_data_parser.add_argument("--tick-bid-column", help="Tick-data bid column.")
+    calibration_market_data_parser.add_argument("--tick-ask-column", help="Tick-data ask column.")
+    calibration_market_data_parser.add_argument(
+        "--tick-close-price-column",
+        help="Tick-data close price column.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--exchange-code",
+        required=True,
+        help="Exchange code used to resolve session state and hourly factors.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--session-definition-path",
+        type=Path,
+        required=True,
+        metavar=CLI_PATH_METAVAR,
+        help=f"Path to the session-definition file. {CLI_REPOSITORY_RELATIVE_PATH_POLICY}",
+    )
+    calibration_market_data_parser.add_argument(
+        "--session-definition-format",
+        required=True,
+        choices=CLI_CALIBRATION_STRUCTURED_FILE_FORMAT_CHOICES,
+        help="Session-definition file format.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--session-definition-provenance-label",
+        required=True,
+        help="Stable provenance label recorded for the session-definition source.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--session-timezone",
+        required=True,
+        help="Timezone used to interpret session-definition timestamps.",
     )
 
+    _add_optional_path_argument(
+        parser=calibration_market_data_parser,
+        flag_name="--known-news-path",
+        help_text="Optional path to the known-news calendar file.",
+    )
+
+    calibration_market_data_parser.add_argument(
+        "--known-news-format",
+        choices=CLI_CALIBRATION_STRUCTURED_FILE_FORMAT_CHOICES,
+        help="Known-news calendar file format.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--known-news-provenance-label",
+        help="Stable provenance label recorded for the known-news source.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--known-news-timezone",
+        help="Optional timezone for known-news timestamps.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--known-news-timestamp-column",
+        help="Known-news timestamp column name for csv or parquet inputs.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--known-news-event-id-column",
+        help="Optional known-news event identifier column name.",
+    )
+
+    _add_optional_path_argument(
+        parser=calibration_market_data_parser,
+        flag_name="--option-surface-path",
+        help_text="Optional path to the option-surface file.",
+    )
+
+    calibration_market_data_parser.add_argument(
+        "--option-surface-format",
+        choices=CLI_CALIBRATION_TICK_FILE_FORMAT_CHOICES,
+        help="Option-surface file format.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--option-surface-provenance-label",
+        help="Stable provenance label recorded for the option-surface source.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--option-quote-input-policy",
+        choices=CLI_CALIBRATION_OPTION_QUOTE_POLICY_CHOICES,
+        help="Explicit option-quote normalization policy.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--option-quote-timestamp-column",
+        help="Option-surface quote timestamp column name.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--option-expiry-column",
+        help="Option-surface expiry column name.",
+    )
+    calibration_market_data_parser.add_argument("--option-strike-column", help="Option-surface strike column name.")
+    calibration_market_data_parser.add_argument("--option-type-column", help="Option-surface option type column name.")
+    calibration_market_data_parser.add_argument(
+        "--option-mid-price-column",
+        help="Option-surface mid-price column name.",
+    )
+    calibration_market_data_parser.add_argument("--option-bid-column", help="Option-surface bid column name.")
+    calibration_market_data_parser.add_argument("--option-ask-column", help="Option-surface ask column name.")
+    calibration_market_data_parser.add_argument(
+        "--option-implied-volatility-column",
+        help="Option-surface implied volatility column name.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--timestamp-timezone",
+        required=True,
+        help="Timezone used to normalize tick-data timestamps before staged translation.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--duplicate-record-policy",
+        choices=CLI_CALIBRATION_DUPLICATE_RECORD_POLICY_CHOICES,
+        default=CalibrationDuplicateRecordPolicy.ERROR.value,
+        help="Duplicate-record normalization policy recorded in provenance.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--disable-timestamp-sort",
+        action="store_true",
+        help="Record that source data should not be re-sorted by timestamp before translation.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--execution-mode",
+        choices=CLI_CALIBRATION_EXECUTION_MODE_CHOICES,
+        default=CalibrationExecutionMode.DISK.value,
+        help=CLI_CALIBRATION_MARKET_DATA_EXECUTION_MODE_HELP,
+    )
+
+    _add_optional_path_argument(
+        parser=calibration_market_data_parser,
+        flag_name="--disk-checkpoint-directory",
+        directory=True,
+        help_text=(
+            "Disk checkpoint directory recorded in output_preferences. Required when "
+            "--execution-mode disk is selected."
+        ),
+    )
+
+    calibration_market_data_parser.add_argument(
+        "--emit-derived-staged-execution-input",
+        action="store_true",
+        help="Request emission of the derived staged execution input for replay or debugging.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--omit-input-provenance-report",
+        action="store_true",
+        help="Disable provenance-report emission in output_preferences.",
+    )
+
+
+def _add_staged_calibration_arguments(calibration_staged_parser: ArgumentParser) -> None:
     _add_required_json_path_argument(
         calibration_staged_parser,
         flag_name="--execution-input-json",
@@ -181,6 +394,7 @@ def _build_parser() -> ArgumentParser:
             "close-open boundary observations for internal gap detection."
         ),
     )
+
     _add_required_json_path_argument(
         calibration_staged_parser,
         flag_name="--calendar-registry-json",
@@ -204,6 +418,46 @@ def _build_parser() -> ArgumentParser:
         ),
     )
 
+
+def _build_calibration_parser(subparsers) -> None:
+    calibration_parser = subparsers.add_parser(
+        "calibration",
+        help="Calibration workflows.",
+        description="Calibration workflows.",
+    )
+    calibration_parser.set_defaults(help_target=calibration_parser)
+    calibration_subparsers = calibration_parser.add_subparsers(dest="calibration_command")
+
+    calibration_market_data_parser = calibration_subparsers.add_parser(
+        "market-data",
+        help="Market-data calibration request workflow.",
+        description=(
+            "Market-data calibration request workflow. "
+            "This command validates file-driven inputs and emits a normalized "
+            "calibration.market_data.request.v1 payload."
+        ),
+    )
+    calibration_market_data_parser.set_defaults(
+        handler=_run_calibration_market_data_command,
+        help_target=calibration_market_data_parser,
+    )
+
+    _add_market_data_calibration_arguments(calibration_market_data_parser)
+
+    calibration_staged_parser = calibration_subparsers.add_parser(
+        "staged",
+        help="Staged calibration workflow.",
+        description="Staged calibration workflow.",
+    )
+    calibration_staged_parser.set_defaults(
+        handler=_run_calibration_staged_command,
+        help_target=calibration_staged_parser,
+    )
+
+    _add_staged_calibration_arguments(calibration_staged_parser)
+
+
+def _build_pricing_parser(subparsers) -> None:
     pricing_parser = subparsers.add_parser(
         "pricing",
         help="Pricing workflows.",
@@ -226,11 +480,11 @@ def _build_parser() -> ArgumentParser:
         pricing_vanilla_option_parser,
         flag_name="--execution-input-json",
         contract_label="a vanilla-option pricing execution-input JSON object",
-        semantic_note=(
-            "Interval factors keep known and surprise news intensity separate."
-        ),
+        semantic_note="Interval factors keep known and surprise news intensity separate.",
     )
 
+
+def _build_developer_parser(subparsers) -> None:
     developer_parser = subparsers.add_parser(
         "dev",
         help="Developer-only utilities.",
@@ -277,17 +531,27 @@ def _build_parser() -> ArgumentParser:
         help="Absolute tolerance for component-level semantic mismatch detection.",
     )
 
+
+def _build_parser() -> ArgumentParser:
+    parser: ArgumentParser = ArgumentParser(
+        prog="janiform",
+        description="Command line interface for Janiform workflows and developer utilities.",
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.set_defaults(
+        command=None,
+        handler=None,
+        help_target=parser,
+    )
+
+    subparsers = parser.add_subparsers(dest="command")
+
+    _build_simulation_parser(subparsers)
+    _build_calibration_parser(subparsers)
+    _build_pricing_parser(subparsers)
+    _build_developer_parser(subparsers)
+
     return parser
-
-
-def main() -> None:
-    parser: ArgumentParser = _build_parser()
-    parsed_arguments: Namespace = parser.parse_args()
-    handler = parsed_arguments.handler
-    if handler is not None:
-        raise SystemExit(handler(parsed_arguments))
-
-    parsed_arguments.help_target.print_help()
 
 
 def _run_simulation_seeded_ticks_command(parsed_arguments: Namespace) -> int:
@@ -359,6 +623,25 @@ def _run_pricing_vanilla_option_command(parsed_arguments: Namespace) -> int:
     return 0
 
 
+def _run_calibration_market_data_command(parsed_arguments: Namespace) -> int:
+    repository_root = Path(__file__).resolve().parents[2]
+
+    try:
+        request = _build_market_data_calibration_request_from_arguments(
+            parsed_arguments,
+            repository_root=repository_root,
+        )
+    except JaniformError as error:
+        sys.stderr.write(f"{error}\n")
+        return 1
+    except Exception as error:
+        sys.stderr.write(f"{_classify_market_data_command_error(error)}\n")
+        return 1
+
+    _write_contract_json(request.to_payload())
+    return 0
+
+
 def _run_calibration_staged_command(parsed_arguments: Namespace) -> int:
     repository_root = Path(__file__).resolve().parents[2]
     execution_input_path = _resolve_path_from_repository_root(
@@ -409,6 +692,153 @@ def _run_calibration_staged_command(parsed_arguments: Namespace) -> int:
     _write_contract_json(response.to_payload())
 
     return 0
+
+
+def _build_market_data_calibration_request_from_arguments(
+    parsed_arguments: Namespace,
+    *,
+    repository_root: Path,
+) -> MarketDataCalibrationRequest:
+    tick_data_path = _require_path_argument(
+        repository_root,
+        cast(Path | None, parsed_arguments.tick_data_path),
+        argument_name="tick_data_path",
+    )
+    session_definition_path = _require_path_argument(
+        repository_root,
+        cast(Path | None, parsed_arguments.session_definition_path),
+        argument_name="session_definition_path",
+    )
+    disk_checkpoint_directory_argument = cast(Path | None, parsed_arguments.disk_checkpoint_directory)
+    disk_checkpoint_directory = (
+        _resolve_path_from_repository_root(repository_root, disk_checkpoint_directory_argument)
+        if disk_checkpoint_directory_argument is not None
+        else None
+    )
+
+    option_surface_path_argument = cast(Path | None, parsed_arguments.option_surface_path)
+    option_surface_path = (
+        _resolve_path_from_repository_root(repository_root, option_surface_path_argument)
+        if option_surface_path_argument is not None
+        else None
+    )
+    known_news_path_argument = cast(Path | None, parsed_arguments.known_news_path)
+    known_news_path = (
+        _resolve_path_from_repository_root(repository_root, known_news_path_argument)
+        if known_news_path_argument is not None
+        else None
+    )
+
+    _reject_orphan_market_data_arguments(
+        option_surface_path is not None,
+        (
+            ("option_surface_format", parsed_arguments.option_surface_format),
+            ("option_surface_provenance_label", parsed_arguments.option_surface_provenance_label),
+            ("option_quote_input_policy", parsed_arguments.option_quote_input_policy),
+            ("option_quote_timestamp_column", parsed_arguments.option_quote_timestamp_column),
+            ("option_expiry_column", parsed_arguments.option_expiry_column),
+            ("option_strike_column", parsed_arguments.option_strike_column),
+            ("option_type_column", parsed_arguments.option_type_column),
+            ("option_mid_price_column", parsed_arguments.option_mid_price_column),
+            ("option_bid_column", parsed_arguments.option_bid_column),
+            ("option_ask_column", parsed_arguments.option_ask_column),
+            ("option_implied_volatility_column", parsed_arguments.option_implied_volatility_column),
+        ),
+        message="option-surface flags require --option-surface-path",
+    )
+    _reject_orphan_market_data_arguments(
+        known_news_path is not None,
+        (
+            ("known_news_format", parsed_arguments.known_news_format),
+            ("known_news_provenance_label", parsed_arguments.known_news_provenance_label),
+            ("known_news_timezone", parsed_arguments.known_news_timezone),
+            ("known_news_timestamp_column", parsed_arguments.known_news_timestamp_column),
+            ("known_news_event_id_column", parsed_arguments.known_news_event_id_column),
+        ),
+        message="known-news flags require --known-news-path",
+    )
+
+    payload: dict[str, Any] = {
+        "schema_version": CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,
+        "run_id": cast(str, parsed_arguments.run_id),
+        "tick_data_source": {
+            "path": str(tick_data_path),
+            "file_format": cast(str, parsed_arguments.tick_data_format),
+            "provenance_label": cast(str, parsed_arguments.tick_data_provenance_label),
+        },
+        "session_configuration": {
+            "exchange_code": cast(str, parsed_arguments.exchange_code),
+            "session_definition_source": {
+                "path": str(session_definition_path),
+                "file_format": cast(str, parsed_arguments.session_definition_format),
+                "provenance_label": cast(str, parsed_arguments.session_definition_provenance_label),
+            },
+            "session_timezone": cast(str, parsed_arguments.session_timezone),
+        },
+        "column_mapping": {
+            "tick_data": {
+                "timestamp_column": cast(str, parsed_arguments.tick_timestamp_column),
+                "price_column": cast(Optional[str], parsed_arguments.tick_price_column),
+                "trade_price_column": cast(Optional[str], parsed_arguments.tick_trade_price_column),
+                "bid_column": cast(Optional[str], parsed_arguments.tick_bid_column),
+                "ask_column": cast(Optional[str], parsed_arguments.tick_ask_column),
+                "close_price_column": cast(Optional[str], parsed_arguments.tick_close_price_column),
+            },
+        },
+        "workflow_scope": cast(str, parsed_arguments.workflow_scope),
+        "normalization_policy": {
+            "timestamp_timezone": cast(str, parsed_arguments.timestamp_timezone),
+            "sort_records_by_timestamp": not bool(parsed_arguments.disable_timestamp_sort),
+            "duplicate_record_policy": cast(str, parsed_arguments.duplicate_record_policy),
+            "tick_price_input_policy": cast(Optional[str], parsed_arguments.tick_price_input_policy),
+            "option_quote_input_policy": cast(Optional[str], parsed_arguments.option_quote_input_policy),
+        },
+        "output_preferences": {
+            "execution_mode": cast(str, parsed_arguments.execution_mode),
+            "disk_checkpoint_directory": (
+                str(disk_checkpoint_directory)
+                if disk_checkpoint_directory is not None
+                else None
+            ),
+            "emit_derived_staged_execution_input": bool(parsed_arguments.emit_derived_staged_execution_input),
+            "emit_input_provenance_report": not bool(parsed_arguments.omit_input_provenance_report),
+        },
+    }
+
+    if option_surface_path is not None:
+        payload["option_surface_source"] = {
+            "path": str(option_surface_path),
+            "file_format": cast(Optional[str], parsed_arguments.option_surface_format),
+            "provenance_label": cast(Optional[str], parsed_arguments.option_surface_provenance_label),
+        }
+        payload["column_mapping"]["option_surface"] = {
+            "quote_timestamp_column": cast(Optional[str], parsed_arguments.option_quote_timestamp_column),
+            "expiry_timestamp_column": cast(Optional[str], parsed_arguments.option_expiry_column),
+            "strike_column": cast(Optional[str], parsed_arguments.option_strike_column),
+            "option_type_column": cast(Optional[str], parsed_arguments.option_type_column),
+            "mid_price_column": cast(Optional[str], parsed_arguments.option_mid_price_column),
+            "bid_column": cast(Optional[str], parsed_arguments.option_bid_column),
+            "ask_column": cast(Optional[str], parsed_arguments.option_ask_column),
+            "implied_volatility_column": cast(Optional[str], parsed_arguments.option_implied_volatility_column),
+        }
+
+    if known_news_path is not None:
+        payload["known_news_inputs"] = {
+            "calendar_source": {
+                "path": str(known_news_path),
+                "file_format": cast(Optional[str], parsed_arguments.known_news_format),
+                "provenance_label": cast(Optional[str], parsed_arguments.known_news_provenance_label),
+            },
+            "calendar_timezone": cast(Optional[str], parsed_arguments.known_news_timezone),
+        }
+
+        if parsed_arguments.known_news_timestamp_column is not None:
+            payload["column_mapping"]["known_news"] = {
+                "event_timestamp_column": cast(str, parsed_arguments.known_news_timestamp_column),
+                "event_identifier_column": cast(Optional[str], parsed_arguments.known_news_event_id_column),
+            }
+
+    return validate_market_data_calibration_request(payload)
 
 
 def _run_open_closed_gap_leakage_regression_command(parsed_arguments: Namespace) -> int:
@@ -492,6 +922,7 @@ def _run_open_closed_gap_leakage_regression_command(parsed_arguments: Namespace)
         for diff_metric in cast(list[dict[str, Any]], behavior_diff["metrics"]):
             if not cast(bool, diff_metric["regression_detected"]):
                 continue
+
             sys.stderr.write(
                 "  diff_regression "
                 f"metric_id={diff_metric['metric_id']} "
@@ -582,6 +1013,33 @@ def _classify_open_closed_gap_command_error(error: Exception) -> JaniformError:
             workflow="cli",
             entrypoint=CLI_OPEN_CLOSED_GAP_ENTRYPOINT,
             message="open closed gap leakage regression command failed unexpectedly",
+            context={"source_exception_type": type(error).__name__},
+        )
+    )
+
+
+def _classify_market_data_command_error(error: Exception) -> JaniformError:
+    if isinstance(error, JaniformError):
+        return error
+
+    if isinstance(error, ValueError):
+        return JaniformValidationError(
+            ContractValidationFailure.from_context(
+                error_id=CLI_CALIBRATION_MARKET_DATA_VALIDATION_ERROR_ID,
+                workflow="cli",
+                entrypoint=CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT,
+                field_path="command_input",
+                message=str(error),
+            )
+        )
+
+    return JaniformExecutionError(
+        JaniformErrorDetails.from_context(
+            error_id=CLI_CALIBRATION_MARKET_DATA_EXECUTION_ERROR_ID,
+            category=JaniformErrorCategory.EXECUTION,
+            workflow="cli",
+            entrypoint=CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT,
+            message="market-data calibration command failed unexpectedly",
             context={"source_exception_type": type(error).__name__},
         )
     )
@@ -755,6 +1213,32 @@ def _resolve_path_from_repository_root(repository_root: Path, path: Path) -> Pat
     return repository_root / path
 
 
+def _require_path_argument(
+    repository_root: Path,
+    path: Path | None,
+    *,
+    argument_name: str,
+) -> Path:
+    if path is None:
+        raise ValueError(f"--{argument_name.replace('_', '-')} is required")
+
+    return _resolve_path_from_repository_root(repository_root, path)
+
+
+def _reject_orphan_market_data_arguments(
+    has_primary_path: bool,
+    optional_arguments: tuple[tuple[str, object], ...],
+    *,
+    message: str,
+) -> None:
+    if has_primary_path:
+        return
+
+    for _, argument_value in optional_arguments:
+        if argument_value is not None:
+            raise ValueError(message)
+
+
 def _load_json_document(path: Path, context: str) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
@@ -867,3 +1351,14 @@ def _extract_gap_behavior_cases(
         )
 
     return parsed_cases
+
+
+def main() -> None:
+    parser: ArgumentParser = _build_parser()
+    parsed_arguments: Namespace = parser.parse_args()
+
+    handler = parsed_arguments.handler
+    if handler is not None:
+        raise SystemExit(handler(parsed_arguments))
+
+    parsed_arguments.help_target.print_help()
