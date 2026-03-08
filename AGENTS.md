@@ -37,8 +37,10 @@ This codebase is pre-v0.1 and has no external users.
 - `./scripts/bootstrap-win.ps1 .venv` for Windows-based bootstrapping (if no venv exists)
 - `./scripts/build-linux.sh .venv-linux` for Linux/WSL-based building
 - `./scripts/build-win.ps1 .venv` for Windows-based building
-- `./scripts/test-linux.sh .venv-linux -- [cmd-line arguments for pytest]` for running tests on Linux/WSL
-- `./scripts/test-win.ps1 .venv -- [cmd-line arguments for pytest]` for running tests on Windows
+- `./scripts/test-rust-linux.sh .venv-linux -- [cmd-line arguments for nextest]` for running tests on Linux/WSL
+- `./scripts/test-rust-win.ps1 .venv -- [cmd-line arguments for nextest]` for running tests on Windows
+- `./scripts/test-python-linux.sh .venv-linux -- [cmd-line arguments for pytest]` for running tests on Linux/WSL
+- `./scripts/test-python-win.ps1 .venv -- [cmd-line arguments for pytest]` for running tests on Windows
 - `cargo` for Rust
 - `python3` for Python
 
