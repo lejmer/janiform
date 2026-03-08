@@ -36,6 +36,7 @@ from tests.calibration_test_support import build_valid_execution_input_model
 def test_simulation_cli_help_documents_required_contract_inputs() -> None:
     help_output = _normalize_help_output(_render_help(["simulation", "seeded-ticks"]))
 
+    assert "--output {human,json}" in help_output
     assert "--request-json PATH" in help_output
     assert "--calendar-registry-json PATH" in help_output
     assert cli_module.CLI_REPOSITORY_RELATIVE_PATH_POLICY in help_output
@@ -44,6 +45,7 @@ def test_simulation_cli_help_documents_required_contract_inputs() -> None:
 def test_pricing_cli_help_documents_execution_input_contract() -> None:
     help_output = _normalize_help_output(_render_help(["pricing", "vanilla-option"]))
 
+    assert "--output {human,json}" in help_output
     assert "--execution-input-json PATH" in help_output
     assert cli_module.CLI_REPOSITORY_RELATIVE_PATH_POLICY in help_output
 
@@ -51,6 +53,7 @@ def test_pricing_cli_help_documents_execution_input_contract() -> None:
 def test_calibration_cli_help_documents_mode_and_runtime_arguments() -> None:
     help_output = _normalize_help_output(_render_help(["calibration", "staged"]))
 
+    assert "--output {human,json}" in help_output
     assert "--execution-input-json PATH" in help_output
     assert "--calendar-registry-json PATH" in help_output
     assert "--execution-mode {disk,memory}" in help_output
@@ -63,12 +66,13 @@ def test_calibration_cli_help_documents_mode_and_runtime_arguments() -> None:
 def test_market_data_calibration_cli_help_documents_user_facing_file_inputs() -> None:
     help_output = _normalize_help_output(_render_help(["calibration", "market-data"]))
 
+    assert "--output {human,json}" in help_output
     assert "--tick-data-path PATH" in help_output
     assert "--session-definition-path PATH" in help_output
     assert "--workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface}" in help_output
     assert "--tick-price-input-policy" in help_output
     assert "--execution-mode {disk,memory}" in help_output
-    assert "market_data.request.v1" in help_output
+    assert "market-data calibration summary" in help_output
 
 
 def test_cli_shared_path_flags_use_standardized_repository_relative_help_text() -> None:
@@ -136,6 +140,84 @@ def test_market_data_calibration_cli_parser_defaults_execution_mode_to_disk() ->
     assert parsed_arguments.execution_mode == CalibrationExecutionMode.DISK.value
 
 
+def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
+    parser = cli_module._build_parser()
+    simulation_arguments = parser.parse_args(
+        [
+            "simulation",
+            "seeded-ticks",
+            "--request-json",
+            "simulation.json",
+            "--calendar-registry-json",
+            "calendar.json",
+        ]
+    )
+    pricing_arguments = parser.parse_args(
+        [
+            "pricing",
+            "vanilla-option",
+            "--execution-input-json",
+            "pricing.json",
+        ]
+    )
+    staged_arguments = parser.parse_args(
+        [
+            "calibration",
+            "staged",
+            "--execution-input-json",
+            "calibration.json",
+            "--calendar-registry-json",
+            "calendar.json",
+        ]
+    )
+
+    assert simulation_arguments.output == "json"
+    assert pricing_arguments.output == "json"
+    assert staged_arguments.output == "json"
+
+
+def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
+    parser = cli_module._build_parser()
+    simulation_arguments = parser.parse_args(
+        [
+            "simulation",
+            "seeded-ticks",
+            "--request-json",
+            "simulation.json",
+            "--calendar-registry-json",
+            "calendar.json",
+            "--output",
+            "human",
+        ]
+    )
+    pricing_arguments = parser.parse_args(
+        [
+            "pricing",
+            "vanilla-option",
+            "--execution-input-json",
+            "pricing.json",
+            "--output",
+            "human",
+        ]
+    )
+    staged_arguments = parser.parse_args(
+        [
+            "calibration",
+            "staged",
+            "--execution-input-json",
+            "calibration.json",
+            "--calendar-registry-json",
+            "calendar.json",
+            "--output",
+            "human",
+        ]
+    )
+
+    assert simulation_arguments.output == "human"
+    assert pricing_arguments.output == "human"
+    assert staged_arguments.output == "human"
+
+
 def test_calibration_cli_parser_accepts_explicit_memory_execution_mode() -> None:
     parser = cli_module._build_parser()
     parsed_arguments = parser.parse_args(
@@ -154,7 +236,7 @@ def test_calibration_cli_parser_accepts_explicit_memory_execution_mode() -> None
     assert parsed_arguments.execution_mode == CalibrationExecutionMode.MEMORY.value
 
 
-def test_market_data_calibration_cli_maps_flags_to_request_contract(tmp_path: Path) -> None:
+def test_market_data_calibration_cli_maps_flags_to_summary_contract(tmp_path: Path) -> None:
     checkpoint_directory = tmp_path / "checkpoints"
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
@@ -231,13 +313,70 @@ def test_market_data_calibration_cli_maps_flags_to_request_contract(tmp_path: Pa
 
     assert exit_code == 0, stderr_text
 
-    request_payload = json.loads(stdout_text)
-    assert request_payload["schema_version"] == CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION
-    assert request_payload["workflow_scope"] == CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE.value
-    assert request_payload["output_preferences"]["execution_mode"] == "disk"
-    assert request_payload["output_preferences"]["disk_checkpoint_directory"] == str(checkpoint_directory)
-    assert request_payload["option_surface_source"]["file_format"] == "parquet"
-    assert request_payload["column_mapping"]["known_news"]["event_timestamp_column"] == "event_timestamp_utc"
+    summary_payload = json.loads(stdout_text)
+    assert summary_payload["schema_version"] == cli_module.CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION
+    assert summary_payload["request_schema_version"] == CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION
+    assert summary_payload["workflow_scope"] == CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE.value
+    assert summary_payload["session_context"]["exchange_code"] == "XNYS"
+    assert summary_payload["input_files"]["tick_data"]["path"].endswith("data/ticks.csv")
+    assert summary_payload["input_files"]["option_surface"]["file_format"] == "parquet"
+    assert summary_payload["column_mapping"]["known_news"]["event_timestamp_column"] == "event_timestamp_utc"
+    assert summary_payload["output_artifact_locations"]["disk_checkpoint_directory"] == str(checkpoint_directory)
+    assert summary_payload["output_emission_policy"]["execution_mode"] == "disk"
+    assert summary_payload["output_emission_policy"]["emit_derived_staged_execution_input"] is True
+    assert summary_payload["output_schema_metadata"]["field_selection_policy"] == (
+        cli_module.CLI_MARKET_DATA_SUMMARY_FIELD_SELECTION_POLICY
+    )
+
+    assert "request" not in summary_payload
+    assert "runtime_resources" not in summary_payload
+    assert "selected_stages" not in stdout_text
+    assert "seasonality_stage_input" not in stdout_text
+
+    assert stdout_text == f"{json.dumps(summary_payload, sort_keys=True)}\n"
+
+
+def test_market_data_calibration_cli_supports_human_output_mode(tmp_path: Path) -> None:
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "calibration",
+            "market-data",
+            "--run-id",
+            "market-data-run-002",
+            "--workflow-scope",
+            "seasonality_only",
+            "--tick-data-path",
+            "data/ticks.csv",
+            "--tick-data-format",
+            "csv",
+            "--tick-data-provenance-label",
+            "ticks-primary",
+            "--tick-timestamp-column",
+            "timestamp_utc",
+            "--exchange-code",
+            "XNYS",
+            "--session-definition-path",
+            "config/sessions.json",
+            "--session-definition-format",
+            "json",
+            "--session-definition-provenance-label",
+            "session-calendar",
+            "--session-timezone",
+            "America/New_York",
+            "--timestamp-timezone",
+            "UTC",
+            "--execution-mode",
+            "memory",
+            "--output",
+            "human",
+        ]
+    )
+
+    assert exit_code == 0, stderr_text
+    assert stdout_text.startswith("calibration market-data request prepared:")
+    assert "workflow_scope=seasonality_only" in stdout_text
+    assert "execution_mode=memory" in stdout_text
+    assert stderr_text == ""
 
 
 def test_simulation_cli_maps_request_json_to_runtime_request(
