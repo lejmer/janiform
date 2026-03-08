@@ -10,6 +10,7 @@ def test_cli_top_level_help_lists_primary_and_developer_namespaces() -> None:
     help_output = _render_help([])
 
     assert "simulation" in help_output
+    assert "seasonality" in help_output
     assert "calibration" in help_output
     assert "pricing" in help_output
     assert "stylized-facts" in help_output
@@ -20,6 +21,12 @@ def test_simulation_help_lists_seeded_tick_workflow() -> None:
     help_output = _render_help(["simulation"])
 
     assert "seeded-ticks" in help_output
+
+
+def test_seasonality_help_lists_preprocess_timestamp_workflow() -> None:
+    help_output = _render_help(["seasonality"])
+
+    assert "preprocess-timestamps" in help_output
 
 
 def test_calibration_help_lists_staged_workflow() -> None:

@@ -4,6 +4,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from datetime import UTC, datetime, timedelta
 from io import StringIO
 from pathlib import Path
+from typing import cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import orjson
@@ -47,6 +48,20 @@ def test_simulation_cli_help_documents_required_contract_inputs() -> None:
     assert "--request-json PATH" in help_output
     assert "--calendar-registry-json PATH" in help_output
     assert cli_module.CLI_REPOSITORY_RELATIVE_PATH_POLICY in help_output
+
+
+def test_seasonality_cli_help_documents_preprocessing_contract() -> None:
+    help_output = _normalize_help_output(_render_help(["seasonality", "preprocess-timestamps"]))
+
+    assert "--config-json PATH" in help_output
+    assert "--output {human,json}" in help_output
+    assert "--event-records-json PATH" in help_output
+    assert "--calendar-registry-json PATH" in help_output
+    assert "--exchange-code EXCHANGE_CODE" in help_output
+    assert "--timestamp-field-name TIMESTAMP_FIELD_NAME" in help_output
+    assert "--session-filter {all,open_only,closed_only}" in help_output
+    assert "--sparse-hour-event-threshold SPARSE_HOUR_EVENT_THRESHOLD" in help_output
+    assert "downstream seasonality or calibration workflows" in help_output
 
 
 def test_pricing_cli_help_documents_execution_input_contract() -> None:
@@ -100,6 +115,7 @@ def test_market_data_calibration_cli_help_documents_user_facing_file_inputs() ->
 def test_cli_shared_path_flags_use_standardized_repository_relative_help_text() -> None:
     help_outputs = (
         _normalize_help_output(_render_help(["simulation", "seeded-ticks"])),
+        _normalize_help_output(_render_help(["seasonality", "preprocess-timestamps"])),
         _normalize_help_output(_render_help(["pricing", "vanilla-option"])),
         _normalize_help_output(_render_help(["stylized-facts", "horizon-comparison"])),
         _normalize_help_output(_render_help(["calibration", "market-data"])),
@@ -211,6 +227,49 @@ def test_market_data_calibration_cli_parser_defaults_execution_mode_to_disk() ->
     assert parsed_arguments.execution_mode == CalibrationExecutionMode.DISK.value
 
 
+def test_seasonality_preprocess_cli_parser_uses_expected_defaults() -> None:
+    parser = cli_module._build_parser()
+    parsed_arguments = parser.parse_args(
+        [
+            "seasonality",
+            "preprocess-timestamps",
+            "--event-records-json",
+            "events.json",
+            "--calendar-registry-json",
+            "calendar.json",
+            "--exchange-code",
+            "XNYS",
+        ]
+    )
+
+    assert parsed_arguments.output == "json"
+    assert parsed_arguments.timestamp_field_name == "timestamp"
+    assert parsed_arguments.session_filter == "open_only"
+    assert parsed_arguments.sparse_hour_event_threshold == 1
+
+
+def test_seasonality_preprocess_cli_parser_rejects_invalid_session_filter() -> None:
+    parser = cli_module._build_parser()
+
+    with pytest.raises(SystemExit) as captured_exit:
+        parser.parse_args(
+            [
+                "seasonality",
+                "preprocess-timestamps",
+                "--event-records-json",
+                "events.json",
+                "--calendar-registry-json",
+                "calendar.json",
+                "--exchange-code",
+                "XNYS",
+                "--session-filter",
+                "intraday_only",
+            ]
+        )
+
+    assert captured_exit.value.code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+
+
 def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
     parser = cli_module._build_parser()
     simulation_arguments = parser.parse_args(
@@ -221,6 +280,18 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
             "simulation.json",
             "--calendar-registry-json",
             "calendar.json",
+        ]
+    )
+    seasonality_arguments = parser.parse_args(
+        [
+            "seasonality",
+            "preprocess-timestamps",
+            "--event-records-json",
+            "events.json",
+            "--calendar-registry-json",
+            "calendar.json",
+            "--exchange-code",
+            "XNYS",
         ]
     )
     pricing_arguments = parser.parse_args(
@@ -253,6 +324,7 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
     )
 
     assert simulation_arguments.output == "json"
+    assert seasonality_arguments.output == "json"
     assert pricing_arguments.output == "json"
     assert stylized_facts_arguments.output == "json"
     assert staged_arguments.output == "json"
@@ -268,6 +340,20 @@ def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
             "simulation.json",
             "--calendar-registry-json",
             "calendar.json",
+            "--output",
+            "human",
+        ]
+    )
+    seasonality_arguments = parser.parse_args(
+        [
+            "seasonality",
+            "preprocess-timestamps",
+            "--event-records-json",
+            "events.json",
+            "--calendar-registry-json",
+            "calendar.json",
+            "--exchange-code",
+            "XNYS",
             "--output",
             "human",
         ]
@@ -308,9 +394,272 @@ def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
     )
 
     assert simulation_arguments.output == "human"
+    assert seasonality_arguments.output == "human"
     assert pricing_arguments.output == "human"
     assert stylized_facts_arguments.output == "human"
     assert staged_arguments.output == "human"
+
+
+def test_seasonality_preprocess_cli_maps_flags_to_canonical_payload(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    event_records_path = _write_event_records_document(
+        tmp_path / "event-records.json",
+        [
+            {"timestamp": "2026-02-02T14:30:00Z"},
+            {"timestamp": "2026-02-02T16:30:00Z"},
+            {"timestamp": "2026-02-02T16:31:00Z"},
+        ],
+    )
+    calendar_registry_path = _write_json_path(
+        tmp_path / "calendar-registry.json",
+        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "seasonality",
+            "preprocess-timestamps",
+            "--event-records-json",
+            str(event_records_path),
+            "--calendar-registry-json",
+            str(calendar_registry_path),
+            "--exchange-code",
+            "XNYS",
+            "--session-filter",
+            "all",
+            "--sparse-hour-event-threshold",
+            "2",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
+
+    payload = orjson.loads(stdout_text)
+    assert payload["schema_version"] == "seasonality.timestamp_event.preprocessed.v1"
+    assert payload["input_schema_version"] == "seasonality.timestamp_event.v1"
+    assert payload["exchange_code"] == "XNYS"
+    assert payload["exchange_timezone_name"] == "America/New_York"
+    assert payload["source_record_positions"] == [0, 1, 2]
+    assert payload["timestamp_utc_nanos"] == [
+        _utc_nanos(2026, 2, 2, 14, 30, 0),
+        _utc_nanos(2026, 2, 2, 16, 30, 0),
+        _utc_nanos(2026, 2, 2, 16, 31, 0),
+    ]
+    assert payload["exchange_local_day_of_week"] == [1, 1, 1]
+    assert payload["market_state_codes"] == [1, 1, 1]
+    assert payload["accepted_record_count"] == 3
+    assert payload["filtered_record_count"] == 0
+    assert payload["missing_hour_bucket_utc_nanos"] == [_utc_nanos(2026, 2, 2, 15, 0, 0)]
+    assert payload["sparse_hour_bucket_utc_nanos"] == [_utc_nanos(2026, 2, 2, 14, 0, 0)]
+    assert payload["missing_hour_bucket_count"] == 1
+    assert payload["sparse_hour_bucket_count"] == 1
+
+    assert stdout_text == f"{json.dumps(payload, sort_keys=True)}\n"
+    assert stderr_text == ""
+
+
+def test_seasonality_preprocess_cli_supports_human_output_mode(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    event_records_path = _write_event_records_document(
+        tmp_path / "event-records-human.json",
+        [{"timestamp": "2026-02-02T14:30:00Z"}],
+    )
+    calendar_registry_path = _write_json_path(
+        tmp_path / "calendar-registry-human.json",
+        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "seasonality",
+            "preprocess-timestamps",
+            "--event-records-json",
+            str(event_records_path),
+            "--calendar-registry-json",
+            str(calendar_registry_path),
+            "--exchange-code",
+            "XNYS",
+            "--output",
+            "human",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
+    assert stdout_text.startswith("seasonality preprocess-timestamps completed:")
+    assert "accepted_record_count=1" in stdout_text
+    assert "coverage_diagnostics:" in stdout_text
+    assert stderr_text == ""
+
+
+def test_seasonality_preprocess_cli_unknown_exchange_returns_validation_error(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    event_records_path = _write_event_records_document(
+        tmp_path / "event-records-unknown-exchange.json",
+        [{"timestamp": "2026-02-02T14:30:00Z"}],
+    )
+    calendar_registry_path = _write_json_path(
+        tmp_path / "calendar-registry-unknown-exchange.json",
+        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "seasonality",
+            "preprocess-timestamps",
+            "--event-records-json",
+            str(event_records_path),
+            "--calendar-registry-json",
+            str(calendar_registry_path),
+            "--exchange-code",
+            "XBAD",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert stdout_text == ""
+    assert '[cli.validation.seasonality.preprocess_timestamps.invalid_input]' in stderr_text
+    assert 'field_path="exchange_code"' in stderr_text
+
+
+def test_seasonality_preprocess_cli_missing_timestamp_field_returns_validation_error(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    event_records_path = _write_event_records_document(
+        tmp_path / "event-records-missing-timestamp.json",
+        [{"event_id": "a"}],
+    )
+    calendar_registry_path = _write_json_path(
+        tmp_path / "calendar-registry-missing-timestamp.json",
+        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "seasonality",
+            "preprocess-timestamps",
+            "--event-records-json",
+            str(event_records_path),
+            "--calendar-registry-json",
+            str(calendar_registry_path),
+            "--exchange-code",
+            "XNYS",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert stdout_text == ""
+    assert '[cli.validation.seasonality.preprocess_timestamps.invalid_input]' in stderr_text
+    assert 'field_path="event_records_document"' in stderr_text
+    assert "missing required field 'timestamp'" in stderr_text
+
+
+def test_seasonality_preprocess_cli_invalid_timestamp_returns_validation_error(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    event_records_path = _write_event_records_document(
+        tmp_path / "event-records-invalid-timestamp.json",
+        [{"timestamp": "not-a-timestamp"}],
+    )
+    calendar_registry_path = _write_json_path(
+        tmp_path / "calendar-registry-invalid-timestamp.json",
+        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "seasonality",
+            "preprocess-timestamps",
+            "--event-records-json",
+            str(event_records_path),
+            "--calendar-registry-json",
+            str(calendar_registry_path),
+            "--exchange-code",
+            "XNYS",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert stdout_text == ""
+    assert '[cli.validation.seasonality.preprocess_timestamps.invalid_input]' in stderr_text
+    assert 'field_path="event_records_document"' in stderr_text
+    assert "invalid timestamp" in stderr_text
+
+
+def test_seasonality_preprocess_cli_rejects_malformed_event_records_document(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    event_records_path = _write_json_path(
+        tmp_path / "event-records-malformed.json",
+        {"event_records": ["not-an-object"]},
+    )
+    calendar_registry_path = _write_json_path(
+        tmp_path / "calendar-registry-malformed.json",
+        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "seasonality",
+            "preprocess-timestamps",
+            "--event-records-json",
+            str(event_records_path),
+            "--calendar-registry-json",
+            str(calendar_registry_path),
+            "--exchange-code",
+            "XNYS",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert stdout_text == ""
+    assert '[cli.validation.seasonality.preprocess_timestamps.invalid_input]' in stderr_text
+    assert 'field_path="event_records_document"' in stderr_text
+    assert "event records document record must be an object" in stderr_text
+
+
+def test_seasonality_preprocess_cli_invalid_calendar_timezone_returns_validation_error(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    calendar_registry_payload = cast(dict[str, object], orjson.loads(calendar_registry_json))
+    exchanges = cast(list[dict[str, object]], calendar_registry_payload["exchanges"])
+    exchanges[0]["timezone_name"] = "Mars/Phobos"
+    event_records_path = _write_event_records_document(
+        tmp_path / "event-records-invalid-timezone.json",
+        [{"timestamp": "2026-02-02T14:30:00Z"}],
+    )
+    calendar_registry_path = _write_json_path(
+        tmp_path / "calendar-registry-invalid-timezone.json",
+        calendar_registry_payload,
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "seasonality",
+            "preprocess-timestamps",
+            "--event-records-json",
+            str(event_records_path),
+            "--calendar-registry-json",
+            str(calendar_registry_path),
+            "--exchange-code",
+            "XNYS",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert stdout_text == ""
+    assert '[cli.validation.seasonality.preprocess_timestamps.invalid_input]' in stderr_text
+    assert 'field_path="calendar_registry_document"' in stderr_text
+    assert "timezone" in stderr_text.lower()
 
 
 def test_calibration_cli_parser_accepts_explicit_memory_execution_mode() -> None:
@@ -1605,6 +1954,13 @@ def _write_json_path(path: Path, payload: dict[str, object]) -> Path:
     return path
 
 
+def _write_event_records_document(path: Path, event_records: list[dict[str, object]]) -> Path:
+    return _write_json_path(
+        path,
+        {"event_records": event_records},
+    )
+
+
 def _write_cli_command_config(
     path: Path,
     *,
@@ -1718,6 +2074,17 @@ def _write_market_data_input_files(
         file_paths["option_surface"] = option_surface_path
 
     return file_paths
+
+
+def _utc_nanos(
+    year: int,
+    month: int,
+    day: int,
+    hour: int,
+    minute: int,
+    second: int,
+) -> int:
+    return int(datetime(year, month, day, hour, minute, second, tzinfo=UTC).timestamp() * 1_000_000_000)
 
 
 def _timezone_key_is_available(timezone_name: str) -> bool:

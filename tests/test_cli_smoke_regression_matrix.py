@@ -50,6 +50,10 @@ def _smoke_scenarios() -> tuple[CliSmokeScenario, ...]:
             build_invocation=_build_simulation_smoke_invocation,
         ),
         CliSmokeScenario(
+            scenario_id="seasonality_preprocess_timestamps_json_nominal",
+            build_invocation=_build_seasonality_preprocess_smoke_invocation,
+        ),
+        CliSmokeScenario(
             scenario_id="pricing_vanilla_option_json_nominal",
             build_invocation=_build_pricing_smoke_invocation,
         ),
@@ -161,6 +165,52 @@ def _build_pricing_smoke_invocation(_: str, tmp_path: Path) -> CliSmokeInvocatio
             str(execution_input_path),
         ],
         validate_stdout=_validate_pricing_smoke_stdout,
+    )
+
+
+def _build_seasonality_preprocess_smoke_invocation(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> CliSmokeInvocation:
+    event_records_path = _write_json_path(
+        tmp_path / "timestamp_event_records.json",
+        {
+            "event_records": [
+                {"timestamp": "2026-02-02T14:30:00Z"},
+                {"timestamp": "2026-02-02T16:30:00Z"},
+                {"timestamp": "2026-02-02T16:31:00Z"},
+            ]
+        },
+    )
+    calendar_registry_path = _write_json_path(
+        tmp_path / "calendar_registry.json",
+        json.loads(calendar_registry_json),
+    )
+
+    def validate_stdout(stdout_text: str) -> None:
+        payload = _parse_json_command_output(stdout_text)
+        assert payload["schema_version"] == "seasonality.timestamp_event.preprocessed.v1"
+        assert payload["exchange_code"] == "XNYS"
+        assert payload["accepted_record_count"] == 3
+        assert payload["missing_hour_bucket_count"] == 1
+        assert payload["sparse_hour_bucket_count"] == 1
+
+    return CliSmokeInvocation(
+        command_arguments=[
+            "seasonality",
+            "preprocess-timestamps",
+            "--event-records-json",
+            str(event_records_path),
+            "--calendar-registry-json",
+            str(calendar_registry_path),
+            "--exchange-code",
+            "XNYS",
+            "--session-filter",
+            "all",
+            "--sparse-hour-event-threshold",
+            "2",
+        ],
+        validate_stdout=validate_stdout,
     )
 
 
@@ -637,5 +687,5 @@ def test_cli_regression_matrix_preserves_exit_codes_and_key_argument_paths(
 
 
 def test_cli_smoke_matrix_remains_bounded_for_merge_time_execution() -> None:
-    assert len(CLI_SMOKE_SCENARIOS) == 7
+    assert len(CLI_SMOKE_SCENARIOS) == 8
     assert len(CLI_REGRESSION_SCENARIOS) == 4

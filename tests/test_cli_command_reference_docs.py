@@ -20,6 +20,7 @@ def test_cli_command_reference_doc_contains_required_sections_and_commands() -> 
         "## Shared Setup",
         "## Shared Conventions",
         "## Simulation",
+        "## Seasonality",
         "## Pricing",
         "## Stylized Facts",
         "## Market-Data Calibration",
@@ -31,6 +32,7 @@ def test_cli_command_reference_doc_contains_required_sections_and_commands() -> 
 
     required_commands: list[str] = [
         "janiform simulation seeded-ticks",
+        "janiform seasonality preprocess-timestamps",
         "janiform pricing vanilla-option",
         "janiform stylized-facts horizon-comparison",
         "janiform calibration market-data",
@@ -60,6 +62,7 @@ def test_cli_command_reference_doc_documents_execution_modes_and_market_data_inp
 def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     reference_document = _cli_command_reference_text()
     simulation_help = _normalize_help_output(_render_help(["simulation", "seeded-ticks"]))
+    seasonality_help = _normalize_help_output(_render_help(["seasonality", "preprocess-timestamps"]))
     pricing_help = _normalize_help_output(_render_help(["pricing", "vanilla-option"]))
     stylized_facts_help = _normalize_help_output(_render_help(["stylized-facts", "horizon-comparison"]))
     market_data_help = _normalize_help_output(_render_help(["calibration", "market-data"]))
@@ -72,6 +75,7 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
         "--workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface}",
         "--execution-input-json PATH",
         "--request-json PATH",
+        "--event-records-json PATH",
         "--calendar-registry-json PATH",
         "--metric-catalog-json PATH",
         "--comparison-request-json PATH",
@@ -81,6 +85,8 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
 
     assert "--request-json PATH" in simulation_help
     assert "--calendar-registry-json PATH" in simulation_help
+    assert "--event-records-json PATH" in seasonality_help
+    assert "--session-filter {all,open_only,closed_only}" in seasonality_help
     assert "--execution-input-json PATH" in pricing_help
     assert "--metric-catalog-json PATH" in stylized_facts_help
     assert "--comparison-request-json PATH" in stylized_facts_help
@@ -111,6 +117,28 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path
     assert simulation_exit_code == int(cli_module.CliExitCode.SUCCESS), simulation_stderr
     simulation_payload = orjson.loads(simulation_stdout)
     assert simulation_payload["schema_version"] == "simulation.seeded_tick_event.path.v1"
+
+    seasonality_exit_code, seasonality_stdout, seasonality_stderr = _invoke_cli(
+        [
+            "seasonality",
+            "preprocess-timestamps",
+            "--event-records-json",
+            documented_paths["timestamp_event_records_json"],
+            "--calendar-registry-json",
+            documented_paths["calendar_registry_json"],
+            "--exchange-code",
+            "XNYS",
+            "--session-filter",
+            "all",
+            "--output",
+            "json",
+        ]
+    )
+    assert seasonality_exit_code == int(cli_module.CliExitCode.SUCCESS), seasonality_stderr
+
+    seasonality_payload = orjson.loads(seasonality_stdout)
+    assert seasonality_payload["schema_version"] == "seasonality.timestamp_event.preprocessed.v1"
+    assert seasonality_payload["accepted_record_count"] == 3
 
     pricing_exit_code, pricing_stdout, pricing_stderr = _invoke_cli(
         [
