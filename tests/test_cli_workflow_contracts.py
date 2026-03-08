@@ -318,7 +318,7 @@ def test_market_data_calibration_cli_maps_flags_to_summary_contract(tmp_path: Pa
     assert summary_payload["request_schema_version"] == CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION
     assert summary_payload["workflow_scope"] == CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE.value
     assert summary_payload["session_context"]["exchange_code"] == "XNYS"
-    assert summary_payload["input_files"]["tick_data"]["path"].endswith("data/ticks.csv")
+    assert Path(summary_payload["input_files"]["tick_data"]["path"]).parts[-2:] == ("data", "ticks.csv")
     assert summary_payload["input_files"]["option_surface"]["file_format"] == "parquet"
     assert summary_payload["column_mapping"]["known_news"]["event_timestamp_column"] == "event_timestamp_utc"
     assert summary_payload["output_artifact_locations"]["disk_checkpoint_directory"] == str(checkpoint_directory)
