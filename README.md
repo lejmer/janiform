@@ -34,6 +34,7 @@ It's Jani*form* because it's about form: a system whose geometry is essentially 
 maturin develop
 python3 -m janiform --help
 janiform --help
+janiform calibration market-data --help
 PYTHONPATH=python python3 -m examples.pricing_workflow
 ```
 
@@ -52,7 +53,7 @@ PYTHONPATH=python python3 -m examples.pricing_workflow
 - Python experimental API policy: `docs/development/guides/python_experimental_api_policy.md`
 - Python API contract compatibility and version guardrails: `docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md`
 - Python error taxonomy and exception contract: `docs/development/guides/python_error_taxonomy_and_exception_contract.md`
-- Typed staged calibration request, execution input, response contracts, and orchestrator: `python/janiform/calibration.py`
+- Market-data calibration request contract plus advanced staged calibration execution contracts: `python/janiform/calibration.py`
 - Calendar and seasonality API contracts: `docs/development/guides/calendar_and_seasonality_api_contracts.md`
 - Hawkes parameter validation report: `docs/development/guides/hawkes_parameter_validation_report.md`
 - Hawkes failure diagnostics report: `docs/development/guides/hawkes_failure_diagnostics_report.md`

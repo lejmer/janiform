@@ -7,26 +7,100 @@ from tests.calibration_test_support import (
 )
 
 from janiform.calibration import (
+    CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,
     CalibrationOptimizerSettings,
+    CalibrationDuplicateRecordPolicy,
     CalibrationExecutionMode,
+    CalibrationInputFileFormat,
+    CalibrationInputFileReference,
+    CalibrationKnownNewsColumnMapping,
+    CalibrationKnownNewsInput,
+    CalibrationMarketDataColumnMapping,
+    CalibrationMarketDataNormalizationPolicy,
+    CalibrationMarketDataOutputPreferences,
+    CalibrationMarketDataWorkflowScope,
+    CalibrationOptionQuoteInputPolicy,
+    CalibrationOptionSurfaceColumnMapping,
     CalibrationRunDataInputs,
     CalibrationRunSeedSettings,
+    CalibrationSessionConfigurationInput,
     CalibrationStage,
     CalibrationStageExecutionStatus,
     CalibrationStageSeedOverride,
     CalibrationStageSolverSettings,
+    CalibrationTickDataColumnMapping,
+    CalibrationTickPriceInputPolicy,
     CalibrationValidationError,
+    MarketDataCalibrationRequest,
     StagedCalibrationRequest,
+    deserialize_market_data_calibration_request,
     deserialize_staged_calibration_execution_input,
     deserialize_staged_calibration_request,
     deserialize_staged_calibration_response,
+    serialize_market_data_calibration_request,
     serialize_staged_calibration_execution_input,
     serialize_staged_calibration_request,
     serialize_staged_calibration_response,
+    validate_market_data_calibration_request,
     validate_staged_calibration_execution_input,
     validate_staged_calibration_request,
     validate_staged_calibration_response,
 )
+
+
+def test_market_data_calibration_request_defaults_python_execution_mode_to_memory() -> None:
+    request_payload = _valid_market_data_request_payload()
+    del request_payload["output_preferences"]["execution_mode"]
+
+    validated_request = validate_market_data_calibration_request(request_payload)
+
+    assert validated_request.output_preferences.execution_mode == CalibrationExecutionMode.MEMORY
+
+
+def test_market_data_calibration_request_roundtrip_serialization_is_deterministic() -> None:
+    request = _valid_market_data_request_model()
+
+    serialized_request = serialize_market_data_calibration_request(request)
+    deserialized_request = deserialize_market_data_calibration_request(serialized_request)
+
+    assert deserialized_request == request
+    assert json.loads(serialized_request)["schema_version"] == CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION
+
+
+def test_market_data_calibration_request_requires_option_surface_for_option_scope() -> None:
+    request_payload = _valid_market_data_request_payload()
+    request_payload["workflow_scope"] = CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE.value
+    del request_payload["option_surface_source"]
+    del request_payload["column_mapping"]["option_surface"]
+    request_payload["normalization_policy"]["option_quote_input_policy"] = None
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        validate_market_data_calibration_request(request_payload)
+
+    assert captured_error.value.failure.field_path == "option_surface_source"
+    assert "full_with_option_surface" in captured_error.value.failure.message
+
+
+def test_market_data_calibration_request_requires_tick_provenance_label() -> None:
+    request_payload = _valid_market_data_request_payload()
+    del request_payload["tick_data_source"]["provenance_label"]
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        validate_market_data_calibration_request(request_payload)
+
+    assert captured_error.value.failure.field_path == "tick_data_source.provenance_label"
+    assert captured_error.value.failure.message == "is required"
+
+
+def test_market_data_calibration_request_requires_known_news_column_mapping_for_csv_sources() -> None:
+    request_payload = _valid_market_data_request_payload()
+    del request_payload["column_mapping"]["known_news"]
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        validate_market_data_calibration_request(request_payload)
+
+    assert captured_error.value.failure.field_path == "column_mapping.known_news"
+    assert "csv or parquet" in captured_error.value.failure.message
 
 
 def test_staged_calibration_request_defaults_execution_mode_to_memory() -> None:
@@ -211,8 +285,77 @@ def _valid_request_model() -> StagedCalibrationRequest:
     )
 
 
+def _valid_market_data_request_model() -> MarketDataCalibrationRequest:
+    return MarketDataCalibrationRequest(
+        schema_version=CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,
+        run_id="market-data-run-001",
+        tick_data_source=CalibrationInputFileReference(
+            path="/tmp/ticks.csv",
+            file_format=CalibrationInputFileFormat.CSV,
+            provenance_label="tick-feed-primary",
+        ),
+        session_configuration=CalibrationSessionConfigurationInput(
+            exchange_code="XNYS",
+            session_definition_source=CalibrationInputFileReference(
+                path="/tmp/sessions.json",
+                file_format=CalibrationInputFileFormat.JSON,
+                provenance_label="session-calendar-v1",
+            ),
+            session_timezone="America/New_York",
+        ),
+        column_mapping=CalibrationMarketDataColumnMapping(
+            tick_data=CalibrationTickDataColumnMapping(
+                timestamp_column="timestamp_utc",
+                trade_price_column="trade_price",
+            ),
+            option_surface=CalibrationOptionSurfaceColumnMapping(
+                quote_timestamp_column="quote_timestamp_utc",
+                expiry_timestamp_column="expiry_utc",
+                strike_column="strike",
+                option_type_column="option_type",
+                bid_column="bid",
+                ask_column="ask",
+            ),
+            known_news=CalibrationKnownNewsColumnMapping(
+                event_timestamp_column="event_timestamp_utc",
+                event_identifier_column="event_code",
+            ),
+        ),
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE,
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+            option_quote_input_policy=CalibrationOptionQuoteInputPolicy.BID_ASK_MIDPOINT,
+        ),
+        output_preferences=CalibrationMarketDataOutputPreferences(
+            execution_mode=CalibrationExecutionMode.MEMORY,
+            emit_derived_staged_execution_input=True,
+            emit_input_provenance_report=True,
+        ),
+        option_surface_source=CalibrationInputFileReference(
+            path="/tmp/options.parquet",
+            file_format=CalibrationInputFileFormat.PARQUET,
+            provenance_label="option-surface-close-001",
+        ),
+        known_news_inputs=CalibrationKnownNewsInput(
+            calendar_source=CalibrationInputFileReference(
+                path="/tmp/known-news.csv",
+                file_format=CalibrationInputFileFormat.CSV,
+                provenance_label="known-news-calendar",
+            ),
+            calendar_timezone="UTC",
+        ),
+    )
+
+
 def _valid_request_payload() -> dict[str, object]:
     return _valid_request_model().to_payload()
+
+
+def _valid_market_data_request_payload() -> dict[str, object]:
+    return _valid_market_data_request_model().to_payload()
 
 
 def _valid_execution_input_payload() -> dict[str, object]:

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import StrEnum
 from types import ModuleType
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from ._contracts import (
     ContractModel,
@@ -32,6 +32,7 @@ from .errors import (
 from .pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 
 CALIBRATION_RUN_SPEC_SCHEMA_VERSION = "calibration.orchestration.run_spec.v1"
+CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION = "calibration.market_data.request.v1"
 CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION = "calibration.orchestration.staged_execution_input.v1"
 CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION = "calibration.orchestration.staged_run.report.v1"
 CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY = (
@@ -127,6 +128,17 @@ def _parse_calibration_execution_mode(
             field_path,
             f"must be one of: memory, disk, received '{raw_value}'",
         ) from e
+
+
+def _require_bool(raw_payload: dict[str, Any], field_name: str, field_path: str) -> bool:
+    if field_name not in raw_payload:
+        raise _calibration_error(field_path, "is required")
+
+    value = raw_payload[field_name]
+    if not isinstance(value, bool):
+        raise _calibration_error(field_path, "must be a boolean")
+
+    return value
 
 
 class CalibrationExecutionMode(StrEnum):
@@ -461,6 +473,800 @@ class CalibrationResumeSettings(ContractModel):
         )
 
 
+class CalibrationInputFileFormat(StrEnum):
+    CSV = 'csv'
+    PARQUET = 'parquet'
+    JSON = 'json'
+
+
+class CalibrationMarketDataWorkflowScope(StrEnum):
+    SEASONALITY_ONLY = 'seasonality_only'
+    FULL_WITHOUT_OPTION_SURFACE = 'full_without_option_surface'
+    FULL_WITH_OPTION_SURFACE = 'full_with_option_surface'
+
+
+class CalibrationDuplicateRecordPolicy(StrEnum):
+    ERROR = 'error'
+    KEEP_FIRST = 'keep_first'
+    KEEP_LAST = 'keep_last'
+
+
+class CalibrationTickPriceInputPolicy(StrEnum):
+    EXPLICIT_PRICE_COLUMN = 'explicit_price_column'
+    TRADE_PRICE_COLUMN = 'trade_price_column'
+    BID_ASK_MIDPOINT = 'bid_ask_midpoint'
+    CLOSE_PRICE_COLUMN = 'close_price_column'
+
+
+class CalibrationOptionQuoteInputPolicy(StrEnum):
+    MID_PRICE_COLUMN = 'mid_price_column'
+    BID_ASK_MIDPOINT = 'bid_ask_midpoint'
+    IMPLIED_VOLATILITY_COLUMN = 'implied_volatility_column'
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationInputFileReference(ContractModel):
+    path: str
+    file_format: CalibrationInputFileFormat
+    provenance_label: str
+
+    def __post_init__(self) -> None:
+        if not self.path.strip():
+            raise _calibration_error("path", "must be a non-empty string")
+        if not self.provenance_label.strip():
+            raise _calibration_error("provenance_label", "must be a non-empty string")
+
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationInputFileReference:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationInputFileReference(
+            path=require_non_empty_string(
+                raw_payload,
+                "path",
+                f"{field_path}.path",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            file_format=CalibrationInputFileFormat(
+                require_string(
+                    raw_payload,
+                    "file_format",
+                    f"{field_path}.file_format",
+                    CALIBRATION_ERROR_FACTORY,
+                )
+            ),
+            provenance_label=require_non_empty_string(
+                raw_payload,
+                "provenance_label",
+                f"{field_path}.provenance_label",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationSessionConfigurationInput(ContractModel):
+    exchange_code: str
+    session_definition_source: CalibrationInputFileReference
+    session_timezone: str
+
+    def __post_init__(self) -> None:
+        if not self.exchange_code.strip():
+            raise _calibration_error("exchange_code", "must be a non-empty string")
+        if not self.session_timezone.strip():
+            raise _calibration_error("session_timezone", "must be a non-empty string")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationSessionConfigurationInput:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationSessionConfigurationInput(
+            exchange_code=require_non_empty_string(
+                raw_payload,
+                "exchange_code",
+                f"{field_path}.exchange_code",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            session_definition_source=CalibrationInputFileReference.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "session_definition_source",
+                    f"{field_path}.session_definition_source",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.session_definition_source",
+            ),
+            session_timezone=require_non_empty_string(
+                raw_payload,
+                "session_timezone",
+                f"{field_path}.session_timezone",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationKnownNewsInput(ContractModel):
+    calendar_source: CalibrationInputFileReference
+    calendar_timezone: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.calendar_timezone is not None and not self.calendar_timezone.strip():
+            raise _calibration_error("calendar_timezone", "must be non-empty when provided")
+
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationKnownNewsInput:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        raw_calendar_timezone = raw_payload.get("calendar_timezone")
+        if raw_calendar_timezone is not None and not isinstance(raw_calendar_timezone, str):
+            raise _calibration_error(f"{field_path}.calendar_timezone", "must be a string when provided")
+
+        return CalibrationKnownNewsInput(
+            calendar_source=CalibrationInputFileReference.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "calendar_source",
+                    f"{field_path}.calendar_source",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.calendar_source",
+            ),
+            calendar_timezone=raw_calendar_timezone,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationTickDataColumnMapping(ContractModel):
+    timestamp_column: str
+    price_column: Optional[str] = None
+    trade_price_column: Optional[str] = None
+    bid_column: Optional[str] = None
+    ask_column: Optional[str] = None
+    close_price_column: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if not self.timestamp_column.strip():
+            raise _calibration_error("timestamp_column", "must be a non-empty string")
+
+        for field_name, field_value in (
+            ("price_column", self.price_column),
+            ("trade_price_column", self.trade_price_column),
+            ("bid_column", self.bid_column),
+            ("ask_column", self.ask_column),
+            ("close_price_column", self.close_price_column),
+        ):
+            if field_value is not None and not field_value.strip():
+                raise _calibration_error(field_name, "must be non-empty when provided")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationTickDataColumnMapping:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        raw_optional_fields = {
+            "price_column": raw_payload.get("price_column"),
+            "trade_price_column": raw_payload.get("trade_price_column"),
+            "bid_column": raw_payload.get("bid_column"),
+            "ask_column": raw_payload.get("ask_column"),
+            "close_price_column": raw_payload.get("close_price_column"),
+        }
+        for field_name, field_value in raw_optional_fields.items():
+            if field_value is not None and not isinstance(field_value, str):
+                raise _calibration_error(f"{field_path}.{field_name}", "must be a string when provided")
+
+        return CalibrationTickDataColumnMapping(
+            timestamp_column=require_non_empty_string(
+                raw_payload,
+                "timestamp_column",
+                f"{field_path}.timestamp_column",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            price_column=cast(Optional[str], raw_optional_fields["price_column"]),
+            trade_price_column=cast(Optional[str], raw_optional_fields["trade_price_column"]),
+            bid_column=cast(Optional[str], raw_optional_fields["bid_column"]),
+            ask_column=cast(Optional[str], raw_optional_fields["ask_column"]),
+            close_price_column=cast(Optional[str], raw_optional_fields["close_price_column"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationOptionSurfaceColumnMapping(ContractModel):
+    quote_timestamp_column: str
+    expiry_timestamp_column: str
+    strike_column: str
+    option_type_column: str
+    mid_price_column: Optional[str] = None
+    bid_column: Optional[str] = None
+    ask_column: Optional[str] = None
+    implied_volatility_column: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        for field_name, field_value in (
+            ("quote_timestamp_column", self.quote_timestamp_column),
+            ("expiry_timestamp_column", self.expiry_timestamp_column),
+            ("strike_column", self.strike_column),
+            ("option_type_column", self.option_type_column),
+        ):
+            if not field_value.strip():
+                raise _calibration_error(field_name, "must be a non-empty string")
+
+        for field_name, field_value in (
+            ("mid_price_column", self.mid_price_column),
+            ("bid_column", self.bid_column),
+            ("ask_column", self.ask_column),
+            ("implied_volatility_column", self.implied_volatility_column),
+        ):
+            if field_value is not None and not field_value.strip():
+                raise _calibration_error(field_name, "must be non-empty when provided")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationOptionSurfaceColumnMapping:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        raw_optional_fields = {
+            "mid_price_column": raw_payload.get("mid_price_column"),
+            "bid_column": raw_payload.get("bid_column"),
+            "ask_column": raw_payload.get("ask_column"),
+            "implied_volatility_column": raw_payload.get("implied_volatility_column"),
+        }
+        for field_name, field_value in raw_optional_fields.items():
+            if field_value is not None and not isinstance(field_value, str):
+                raise _calibration_error(f"{field_path}.{field_name}", "must be a string when provided")
+
+        return CalibrationOptionSurfaceColumnMapping(
+            quote_timestamp_column=require_non_empty_string(
+                raw_payload,
+                "quote_timestamp_column",
+                f"{field_path}.quote_timestamp_column",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            expiry_timestamp_column=require_non_empty_string(
+                raw_payload,
+                "expiry_timestamp_column",
+                f"{field_path}.expiry_timestamp_column",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            strike_column=require_non_empty_string(
+                raw_payload,
+                "strike_column",
+                f"{field_path}.strike_column",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            option_type_column=require_non_empty_string(
+                raw_payload,
+                "option_type_column",
+                f"{field_path}.option_type_column",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            mid_price_column=cast(Optional[str], raw_optional_fields["mid_price_column"]),
+            bid_column=cast(Optional[str], raw_optional_fields["bid_column"]),
+            ask_column=cast(Optional[str], raw_optional_fields["ask_column"]),
+            implied_volatility_column=cast(Optional[str], raw_optional_fields["implied_volatility_column"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationKnownNewsColumnMapping(ContractModel):
+    event_timestamp_column: str
+    event_identifier_column: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if not self.event_timestamp_column.strip():
+            raise _calibration_error("event_timestamp_column", "must be a non-empty string")
+        if self.event_identifier_column is not None and not self.event_identifier_column.strip():
+            raise _calibration_error("event_identifier_column", "must be non-empty when provided")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationKnownNewsColumnMapping:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        raw_event_identifier_column = raw_payload.get("event_identifier_column")
+        if raw_event_identifier_column is not None and not isinstance(raw_event_identifier_column, str):
+            raise _calibration_error(
+                f"{field_path}.event_identifier_column",
+                "must be a string when provided",
+            )
+
+        return CalibrationKnownNewsColumnMapping(
+            event_timestamp_column=require_non_empty_string(
+                raw_payload,
+                "event_timestamp_column",
+                f"{field_path}.event_timestamp_column",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            event_identifier_column=cast(Optional[str], raw_event_identifier_column),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationMarketDataColumnMapping(ContractModel):
+    tick_data: CalibrationTickDataColumnMapping
+    option_surface: Optional[CalibrationOptionSurfaceColumnMapping] = None
+    known_news: Optional[CalibrationKnownNewsColumnMapping] = None
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationMarketDataColumnMapping:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationMarketDataColumnMapping(
+            tick_data=CalibrationTickDataColumnMapping.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "tick_data",
+                    f"{field_path}.tick_data",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.tick_data",
+            ),
+            option_surface=(
+                CalibrationOptionSurfaceColumnMapping.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "option_surface",
+                        f"{field_path}.option_surface",
+                        CALIBRATION_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.option_surface",
+                )
+                if "option_surface" in raw_payload and raw_payload["option_surface"] is not None
+                else None
+            ),
+            known_news=(
+                CalibrationKnownNewsColumnMapping.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "known_news",
+                        f"{field_path}.known_news",
+                        CALIBRATION_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.known_news",
+                )
+                if "known_news" in raw_payload and raw_payload["known_news"] is not None
+                else None
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationMarketDataNormalizationPolicy(ContractModel):
+    timestamp_timezone: str
+    sort_records_by_timestamp: bool = True
+    duplicate_record_policy: CalibrationDuplicateRecordPolicy = CalibrationDuplicateRecordPolicy.ERROR
+    tick_price_input_policy: Optional[CalibrationTickPriceInputPolicy] = None
+    option_quote_input_policy: Optional[CalibrationOptionQuoteInputPolicy] = None
+
+    def __post_init__(self) -> None:
+        if not self.timestamp_timezone.strip():
+            raise _calibration_error("timestamp_timezone", "must be a non-empty string")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationMarketDataNormalizationPolicy:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        raw_tick_price_input_policy = raw_payload.get("tick_price_input_policy")
+        if raw_tick_price_input_policy is not None and not isinstance(raw_tick_price_input_policy, str):
+            raise _calibration_error(f"{field_path}.tick_price_input_policy", "must be a string when provided")
+
+        raw_option_quote_input_policy = raw_payload.get("option_quote_input_policy")
+        if raw_option_quote_input_policy is not None and not isinstance(raw_option_quote_input_policy, str):
+            raise _calibration_error(f"{field_path}.option_quote_input_policy", "must be a string when provided")
+
+        return CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone=require_non_empty_string(
+                raw_payload,
+                "timestamp_timezone",
+                f"{field_path}.timestamp_timezone",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            sort_records_by_timestamp=_require_bool(
+                raw_payload,
+                "sort_records_by_timestamp",
+                f"{field_path}.sort_records_by_timestamp",
+            ),
+            duplicate_record_policy=CalibrationDuplicateRecordPolicy(
+                require_string(
+                    raw_payload,
+                    "duplicate_record_policy",
+                    f"{field_path}.duplicate_record_policy",
+                    CALIBRATION_ERROR_FACTORY,
+                )
+            ),
+            tick_price_input_policy=(
+                CalibrationTickPriceInputPolicy(raw_tick_price_input_policy)
+                if raw_tick_price_input_policy is not None
+                else None
+            ),
+            option_quote_input_policy=(
+                CalibrationOptionQuoteInputPolicy(raw_option_quote_input_policy)
+                if raw_option_quote_input_policy is not None
+                else None
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationMarketDataOutputPreferences(ContractModel):
+    execution_mode: CalibrationExecutionMode = CalibrationExecutionMode.MEMORY
+    disk_checkpoint_directory: Optional[str] = None
+    emit_derived_staged_execution_input: bool = False
+    emit_input_provenance_report: bool = True
+
+    def __post_init__(self) -> None:
+        if self.disk_checkpoint_directory is not None and not self.disk_checkpoint_directory.strip():
+            raise _calibration_error("disk_checkpoint_directory", "must be non-empty when provided")
+
+        if self.execution_mode == CalibrationExecutionMode.MEMORY and self.disk_checkpoint_directory is not None:
+            raise _calibration_error(
+                "disk_checkpoint_directory",
+                "is only supported when execution_mode=disk",
+            )
+
+        if self.execution_mode == CalibrationExecutionMode.DISK and self.disk_checkpoint_directory is None:
+            raise _calibration_error(
+                "disk_checkpoint_directory",
+                "is required when execution_mode=disk",
+            )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationMarketDataOutputPreferences:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        raw_disk_checkpoint_directory = raw_payload.get("disk_checkpoint_directory")
+        if raw_disk_checkpoint_directory is not None and not isinstance(raw_disk_checkpoint_directory, str):
+            raise _calibration_error(
+                f"{field_path}.disk_checkpoint_directory",
+                "must be a string when provided",
+            )
+
+        return CalibrationMarketDataOutputPreferences(
+            execution_mode=_parse_calibration_execution_mode(
+                raw_payload.get("execution_mode", DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE),
+                field_path=f"{field_path}.execution_mode",
+            ),
+            disk_checkpoint_directory=cast(Optional[str], raw_disk_checkpoint_directory),
+            emit_derived_staged_execution_input=_require_bool(
+                raw_payload,
+                "emit_derived_staged_execution_input",
+                f"{field_path}.emit_derived_staged_execution_input",
+            ),
+            emit_input_provenance_report=_require_bool(
+                raw_payload,
+                "emit_input_provenance_report",
+                f"{field_path}.emit_input_provenance_report",
+            ),
+        )
+
+
+def _validate_tick_price_input_policy(
+    *,
+    workflow_scope: CalibrationMarketDataWorkflowScope,
+    column_mapping: CalibrationTickDataColumnMapping,
+    normalization_policy: CalibrationMarketDataNormalizationPolicy,
+) -> None:
+    tick_price_input_policy = normalization_policy.tick_price_input_policy
+    if workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY:
+        if tick_price_input_policy is not None:
+            raise _calibration_error(
+                "normalization_policy.tick_price_input_policy",
+                "must not be provided when workflow_scope=seasonality_only",
+            )
+        return
+
+    if tick_price_input_policy is None:
+        raise _calibration_error(
+            "normalization_policy.tick_price_input_policy",
+            "is required when workflow_scope includes return calibration",
+        )
+
+    match tick_price_input_policy:
+        case CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN:
+            if column_mapping.price_column is None:
+                raise _calibration_error(
+                    "column_mapping.tick_data.price_column",
+                    "is required when tick_price_input_policy=explicit_price_column",
+                )
+        case CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN:
+            if column_mapping.trade_price_column is None:
+                raise _calibration_error(
+                    "column_mapping.tick_data.trade_price_column",
+                    "is required when tick_price_input_policy=trade_price_column",
+                )
+        case CalibrationTickPriceInputPolicy.BID_ASK_MIDPOINT:
+            if column_mapping.bid_column is None or column_mapping.ask_column is None:
+                raise _calibration_error(
+                    "column_mapping.tick_data",
+                    "bid_column and ask_column are required when tick_price_input_policy=bid_ask_midpoint",
+                )
+        case CalibrationTickPriceInputPolicy.CLOSE_PRICE_COLUMN:
+            if column_mapping.close_price_column is None:
+                raise _calibration_error(
+                    "column_mapping.tick_data.close_price_column",
+                    "is required when tick_price_input_policy=close_price_column",
+                )
+
+
+def _validate_option_surface_scope(
+    *,
+    workflow_scope: CalibrationMarketDataWorkflowScope,
+    option_surface_source: Optional[CalibrationInputFileReference],
+    option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping],
+    option_quote_input_policy: Optional[CalibrationOptionQuoteInputPolicy],
+) -> None:
+    if workflow_scope == CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE:
+        if option_surface_source is None:
+            raise _calibration_error(
+                "option_surface_source",
+                "is required when workflow_scope=full_with_option_surface",
+            )
+        if option_surface_column_mapping is None:
+            raise _calibration_error(
+                "column_mapping.option_surface",
+                "is required when workflow_scope=full_with_option_surface",
+            )
+        if option_quote_input_policy is None:
+            raise _calibration_error(
+                "normalization_policy.option_quote_input_policy",
+                "is required when workflow_scope=full_with_option_surface",
+            )
+    else:
+        if option_surface_source is not None:
+            raise _calibration_error(
+                "option_surface_source",
+                "must not be provided unless workflow_scope=full_with_option_surface",
+            )
+        if option_surface_column_mapping is not None:
+            raise _calibration_error(
+                "column_mapping.option_surface",
+                "must not be provided unless workflow_scope=full_with_option_surface",
+            )
+        if option_quote_input_policy is not None:
+            raise _calibration_error(
+                "normalization_policy.option_quote_input_policy",
+                "must not be provided unless workflow_scope=full_with_option_surface",
+            )
+        return
+
+    if option_surface_column_mapping is None or option_quote_input_policy is None:
+        return
+
+    match option_quote_input_policy:
+        case CalibrationOptionQuoteInputPolicy.MID_PRICE_COLUMN:
+            if option_surface_column_mapping.mid_price_column is None:
+                raise _calibration_error(
+                    "column_mapping.option_surface.mid_price_column",
+                    "is required when option_quote_input_policy=mid_price_column",
+                )
+        case CalibrationOptionQuoteInputPolicy.BID_ASK_MIDPOINT:
+            if option_surface_column_mapping.bid_column is None or option_surface_column_mapping.ask_column is None:
+                raise _calibration_error(
+                    "column_mapping.option_surface",
+                    "bid_column and ask_column are required when option_quote_input_policy=bid_ask_midpoint",
+                )
+        case CalibrationOptionQuoteInputPolicy.IMPLIED_VOLATILITY_COLUMN:
+            if option_surface_column_mapping.implied_volatility_column is None:
+                raise _calibration_error(
+                    "column_mapping.option_surface.implied_volatility_column",
+                    "is required when option_quote_input_policy=implied_volatility_column",
+                )
+
+
+def _validate_known_news_inputs(
+    *,
+    known_news_inputs: Optional[CalibrationKnownNewsInput],
+    known_news_column_mapping: Optional[CalibrationKnownNewsColumnMapping],
+) -> None:
+    if known_news_inputs is None and known_news_column_mapping is not None:
+        raise _calibration_error(
+            "column_mapping.known_news",
+            "must not be provided when known_news_inputs is omitted",
+        )
+
+    if known_news_inputs is None:
+        return
+
+    if (
+        known_news_inputs.calendar_source.file_format in (CalibrationInputFileFormat.CSV, CalibrationInputFileFormat.PARQUET)
+        and known_news_column_mapping is None
+    ):
+        raise _calibration_error(
+            "column_mapping.known_news",
+            "is required when known_news_inputs.calendar_source uses csv or parquet",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class MarketDataCalibrationRequest(ContractModel):
+    """User-facing market-data-first calibration request."""
+
+    schema_version: str
+    run_id: str
+    tick_data_source: CalibrationInputFileReference
+    session_configuration: CalibrationSessionConfigurationInput
+    column_mapping: CalibrationMarketDataColumnMapping
+    workflow_scope: CalibrationMarketDataWorkflowScope
+    normalization_policy: CalibrationMarketDataNormalizationPolicy
+    output_preferences: CalibrationMarketDataOutputPreferences
+    option_surface_source: Optional[CalibrationInputFileReference] = None
+    known_news_inputs: Optional[CalibrationKnownNewsInput] = None
+
+    def __post_init__(self) -> None:
+        if self.schema_version != CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION:
+            raise _calibration_error(
+                "schema_version",
+                f"must be `{CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION}`",
+            )
+
+        if not self.run_id.strip():
+            raise _calibration_error("run_id", "must be a non-empty string")
+
+        if self.tick_data_source.file_format not in (CalibrationInputFileFormat.CSV, CalibrationInputFileFormat.PARQUET):
+            raise _calibration_error(
+                "tick_data_source.file_format",
+                "must be one of: csv, parquet",
+            )
+
+        if (
+            self.option_surface_source is not None
+            and self.option_surface_source.file_format not in (CalibrationInputFileFormat.CSV, CalibrationInputFileFormat.PARQUET)
+        ):
+            raise _calibration_error(
+                "option_surface_source.file_format",
+                "must be one of: csv, parquet",
+            )
+
+        _validate_tick_price_input_policy(
+            workflow_scope=self.workflow_scope,
+            column_mapping=self.column_mapping.tick_data,
+            normalization_policy=self.normalization_policy,
+        )
+        _validate_option_surface_scope(
+            workflow_scope=self.workflow_scope,
+            option_surface_source=self.option_surface_source,
+            option_surface_column_mapping=self.column_mapping.option_surface,
+            option_quote_input_policy=self.normalization_policy.option_quote_input_policy,
+        )
+        _validate_known_news_inputs(
+            known_news_inputs=self.known_news_inputs,
+            known_news_column_mapping=self.column_mapping.known_news,
+        )
+
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any) -> MarketDataCalibrationRequest:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error("market_data_calibration_request", "must be an object")
+
+        return MarketDataCalibrationRequest(
+            schema_version=require_non_empty_string(
+                raw_payload,
+                "schema_version",
+                "schema_version",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            run_id=require_non_empty_string(
+                raw_payload,
+                "run_id",
+                "run_id",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            tick_data_source=CalibrationInputFileReference.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "tick_data_source",
+                    "tick_data_source",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path="tick_data_source",
+            ),
+            session_configuration=CalibrationSessionConfigurationInput.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "session_configuration",
+                    "session_configuration",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path="session_configuration",
+            ),
+            column_mapping=CalibrationMarketDataColumnMapping.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "column_mapping",
+                    "column_mapping",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path="column_mapping",
+            ),
+            workflow_scope=CalibrationMarketDataWorkflowScope(
+                require_string(
+                    raw_payload,
+                    "workflow_scope",
+                    "workflow_scope",
+                    CALIBRATION_ERROR_FACTORY,
+                )
+            ),
+            normalization_policy=CalibrationMarketDataNormalizationPolicy.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "normalization_policy",
+                    "normalization_policy",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path="normalization_policy",
+            ),
+            output_preferences=CalibrationMarketDataOutputPreferences.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "output_preferences",
+                    "output_preferences",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path="output_preferences",
+            ),
+            option_surface_source=(
+                CalibrationInputFileReference.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "option_surface_source",
+                        "option_surface_source",
+                        CALIBRATION_ERROR_FACTORY,
+                    ),
+                    field_path="option_surface_source",
+                )
+                if "option_surface_source" in raw_payload and raw_payload["option_surface_source"] is not None
+                else None
+            ),
+            known_news_inputs=(
+                CalibrationKnownNewsInput.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "known_news_inputs",
+                        "known_news_inputs",
+                        CALIBRATION_ERROR_FACTORY,
+                    ),
+                    field_path="known_news_inputs",
+                )
+                if "known_news_inputs" in raw_payload and raw_payload["known_news_inputs"] is not None
+                else None
+            ),
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class StagedCalibrationRequest(ContractModel):
     """Typed staged-calibration request with Python default `execution_mode=memory`."""
@@ -644,17 +1450,6 @@ class CalibrationTimestampEventSessionFilter(StrEnum):
 class CalibrationIntradaySmoothingKernel(StrEnum):
     GAUSSIAN = 'gaussian'
     UNIFORM = 'uniform'
-
-
-def _require_bool(raw_payload: dict[str, Any], field_name: str, field_path: str) -> bool:
-    if field_name not in raw_payload:
-        raise _calibration_error(field_path, "is required")
-
-    value = raw_payload[field_name]
-    if not isinstance(value, bool):
-        raise _calibration_error(field_path, "must be a boolean")
-
-    return value
 
 
 def _require_timestamp_utc_nanos(raw_payload: dict[str, Any], field_name: str, field_path: str) -> int:
@@ -2277,6 +3072,10 @@ def validate_staged_calibration_request(raw_request: dict[str, Any] | Any) -> St
     return StagedCalibrationRequest.from_mapping(raw_request)
 
 
+def validate_market_data_calibration_request(raw_request: dict[str, Any] | Any) -> MarketDataCalibrationRequest:
+    return MarketDataCalibrationRequest.from_mapping(raw_request)
+
+
 def validate_staged_calibration_execution_input(
     raw_execution_input: dict[str, Any] | Any,
 ) -> StagedCalibrationExecutionInput:
@@ -2291,6 +3090,10 @@ def serialize_staged_calibration_request(request: StagedCalibrationRequest) -> s
     return serialize_deterministic_json(request)
 
 
+def serialize_market_data_calibration_request(request: MarketDataCalibrationRequest) -> str:
+    return serialize_deterministic_json(request)
+
+
 def serialize_staged_calibration_execution_input(execution_input: StagedCalibrationExecutionInput) -> str:
     return serialize_deterministic_json(execution_input)
 
@@ -2298,6 +3101,11 @@ def serialize_staged_calibration_execution_input(execution_input: StagedCalibrat
 def deserialize_staged_calibration_request(payload_json: str) -> StagedCalibrationRequest:
     raw_payload = parse_json_object(payload_json, "staged calibration request", CALIBRATION_ERROR_FACTORY)
     return validate_staged_calibration_request(dict(raw_payload))
+
+
+def deserialize_market_data_calibration_request(payload_json: str) -> MarketDataCalibrationRequest:
+    raw_payload = parse_json_object(payload_json, "market-data calibration request", CALIBRATION_ERROR_FACTORY)
+    return validate_market_data_calibration_request(dict(raw_payload))
 
 
 def deserialize_staged_calibration_execution_input(payload_json: str) -> StagedCalibrationExecutionInput:
@@ -2386,6 +3194,7 @@ def run_staged_calibration(
 
 __all__ = [
     "CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY",
+    "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
     "CALIBRATION_RUN_SPEC_SCHEMA_VERSION",
     "CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION",
     "CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION",
@@ -2396,14 +3205,25 @@ __all__ = [
     "CalibrationDoubleExponentialBaseShockConfiguration",
     "CalibrationExecutionMode",
     "CalibrationFailureDetails",
+    "CalibrationDuplicateRecordPolicy",
     "CalibrationHawkesStageCandidateInput",
     "CalibrationHawkesStructuredAlphaParameterization",
     "CalibrationHawkesStructuredRhoParameterization",
     "CalibrationHawkesStructuredRhoSelfDominancePolicy",
     "CalibrationHandoffTransport",
+    "CalibrationInputFileFormat",
+    "CalibrationInputFileReference",
     "CalibrationIntradaySeasonalityEstimatorSettings",
     "CalibrationIntradaySmoothingKernel",
+    "CalibrationKnownNewsColumnMapping",
+    "CalibrationKnownNewsInput",
+    "CalibrationMarketDataColumnMapping",
+    "CalibrationMarketDataNormalizationPolicy",
+    "CalibrationMarketDataOutputPreferences",
+    "CalibrationMarketDataWorkflowScope",
     "CalibrationOptimizerSettings",
+    "CalibrationOptionQuoteInputPolicy",
+    "CalibrationOptionSurfaceColumnMapping",
     "CalibrationObjectiveTermInput",
     "CalibrationReturnComponentsCloseOpenGapDetectionPolicy",
     "CalibrationReturnComponentsDetectedIntradayJumpCandidate",
@@ -2420,6 +3240,7 @@ __all__ = [
     "CalibrationScheduledEventOverlay",
     "CalibrationSeasonalityStageExecutionInput",
     "CalibrationSeasonalityStageExecutionSettings",
+    "CalibrationSessionConfigurationInput",
     "CalibrationSharedNewsMarkLawConfiguration",
     "CalibrationStage",
     "CalibrationStageExecutionStatus",
@@ -2430,19 +3251,25 @@ __all__ = [
     "CalibrationStagedExecutionRuntimeResources",
     "CalibrationTimestampEventRecord",
     "CalibrationTimestampEventSessionFilter",
+    "CalibrationTickDataColumnMapping",
+    "CalibrationTickPriceInputPolicy",
     "CalibrationValidationError",
     "CalibrationValidationFailure",
     "DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE",
+    "MarketDataCalibrationRequest",
     "StagedCalibrationExecutionInput",
     "StagedCalibrationRequest",
     "StagedCalibrationResponse",
+    "deserialize_market_data_calibration_request",
     "deserialize_staged_calibration_execution_input",
     "deserialize_staged_calibration_request",
     "deserialize_staged_calibration_response",
     "run_staged_calibration",
+    "serialize_market_data_calibration_request",
     "serialize_staged_calibration_execution_input",
     "serialize_staged_calibration_request",
     "serialize_staged_calibration_response",
+    "validate_market_data_calibration_request",
     "validate_staged_calibration_execution_input",
     "validate_staged_calibration_request",
     "validate_staged_calibration_response",
