@@ -143,7 +143,7 @@ def _build_parser() -> ArgumentParser:
         flag_name="--execution-input-json",
         help_text=(
             "Path to a staged calibration execution-input JSON object with explicit known-news "
-            "open-jump and closed-gap stage inputs."
+            "return samples and raw close-open boundary observations for internal gap detection."
         ),
     )
     _add_required_json_path_argument(

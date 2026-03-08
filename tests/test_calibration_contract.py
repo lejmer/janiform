@@ -113,6 +113,37 @@ def test_staged_calibration_execution_input_requires_disk_runtime_resources_for_
     assert "required when execution_mode=disk" in captured_error.value.failure.message
 
 
+def test_staged_calibration_execution_input_requires_close_open_boundary_price_fields() -> None:
+    execution_input_payload = build_valid_execution_input_payload()
+    boundary_observation = execution_input_payload["return_components_candidate_generation_input"][
+        "observed_close_open_boundary_observations"
+    ][0]
+    del boundary_observation["close_price"]
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        validate_staged_calibration_execution_input(execution_input_payload)
+
+    assert (
+        captured_error.value.failure.field_path
+        == "return_components_candidate_generation_input.observed_close_open_boundary_observations[0].close_price"
+    )
+    assert captured_error.value.failure.message == "is required"
+
+
+def test_staged_calibration_execution_input_requires_close_open_gap_detection_policy() -> None:
+    execution_input_payload = build_valid_execution_input_payload()
+    del execution_input_payload["return_components_candidate_generation_input"]["close_open_gap_detection_policy"]
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        validate_staged_calibration_execution_input(execution_input_payload)
+
+    assert (
+        captured_error.value.failure.field_path
+        == "return_components_candidate_generation_input.close_open_gap_detection_policy"
+    )
+    assert captured_error.value.failure.message == "is required"
+
+
 def test_staged_calibration_response_roundtrip_serialization_is_deterministic() -> None:
     response_payload = _valid_response_payload()
 

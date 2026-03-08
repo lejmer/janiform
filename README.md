@@ -42,7 +42,7 @@ PYTHONPATH=python python3 -m examples.pricing_workflow
 - Workflow examples and expected output summaries: `examples/README.md`
 - Seeded simulation example: `examples/simulation_workflow.py`
 - Vanilla option pricing example: `examples/pricing_workflow.py`
-- Staged calibration example with default `memory` mode and explicit `disk` override: `examples/calibration_workflow.py`
+- Staged calibration example with default `memory` mode, explicit `disk` override, and internal close-open gap detection from raw boundary observations: `examples/calibration_workflow.py`
 
 ## Documentation
 

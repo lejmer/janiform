@@ -34,10 +34,10 @@ use super::staged_runner::{
 };
 use super::stages::hawkes::HawkesStageCandidateInput;
 use super::stages::return_components::{
-    ReturnComponentsDetectedCloseOpenGapCandidate, ReturnComponentsDetectedIntradayJumpCandidate,
-    ReturnComponentsKnownNewsCalendarInput, ReturnComponentsRealizedKnownNewsReturnSample,
-    ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageObjectiveMetricWeights,
-    ReturnComponentsStageSignalSourceWindow,
+    ReturnComponentsCloseOpenGapDetectionPolicy, ReturnComponentsDetectedIntradayJumpCandidate,
+    ReturnComponentsKnownNewsCalendarInput, ReturnComponentsObservedCloseOpenBoundaryObservation,
+    ReturnComponentsRealizedKnownNewsReturnSample, ReturnComponentsStageCandidateGenerationInput,
+    ReturnComponentsStageObjectiveMetricWeights, ReturnComponentsStageSignalSourceWindow,
 };
 use super::stages::seasonality::{
     SeasonalityStageExecutionInput, SeasonalityStageExecutionSettings,
@@ -279,11 +279,18 @@ pub struct CalibrationReturnComponentsDetectedIntradayJumpCandidate {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CalibrationReturnComponentsDetectedCloseOpenGapCandidate {
+pub struct CalibrationReturnComponentsObservedCloseOpenBoundaryObservation {
     pub close_timestamp_utc_nanos: i64,
+    pub close_price: f64,
     pub open_timestamp_utc_nanos: i64,
-    pub gap_return: f64,
+    pub open_price: f64,
     pub post_shock_activity_lift: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CalibrationReturnComponentsCloseOpenGapDetectionPolicy {
+    pub material_gap_absolute_return_tolerance: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -309,8 +316,9 @@ pub struct CalibrationReturnComponentsStageCandidateGenerationInput {
     pub realized_known_news_return_samples: Vec<CalibrationReturnComponentsKnownNewsReturnSample>,
     pub detected_intraday_jump_candidates:
         Vec<CalibrationReturnComponentsDetectedIntradayJumpCandidate>,
-    pub detected_close_open_gap_candidates:
-        Vec<CalibrationReturnComponentsDetectedCloseOpenGapCandidate>,
+    pub observed_close_open_boundary_observations:
+        Vec<CalibrationReturnComponentsObservedCloseOpenBoundaryObservation>,
+    pub close_open_gap_detection_policy: CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
     pub nig_shared_plus_shift_candidates: Vec<NigSharedPlusShiftConfiguration>,
     pub shared_mark_law_template: CalibrationSharedNewsMarkLawConfiguration,
     pub objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights,
@@ -638,11 +646,12 @@ impl CalibrationReturnComponentsStageCandidateGenerationInput {
                 .into_iter()
                 .map(CalibrationReturnComponentsDetectedIntradayJumpCandidate::into_core)
                 .collect(),
-            detected_close_open_gap_candidates: self
-                .detected_close_open_gap_candidates
+            observed_close_open_boundary_observations: self
+                .observed_close_open_boundary_observations
                 .into_iter()
-                .map(CalibrationReturnComponentsDetectedCloseOpenGapCandidate::into_core)
+                .map(CalibrationReturnComponentsObservedCloseOpenBoundaryObservation::into_core)
                 .collect(),
+            close_open_gap_detection_policy: self.close_open_gap_detection_policy.into_core(),
             nig_shared_plus_shift_candidates: self.nig_shared_plus_shift_candidates,
             shared_mark_law_template: self.shared_mark_law_template.into_core(),
             objective_metric_weights: self.objective_metric_weights.into_core(),
@@ -688,14 +697,23 @@ impl CalibrationReturnComponentsDetectedIntradayJumpCandidate {
     }
 }
 
-impl CalibrationReturnComponentsDetectedCloseOpenGapCandidate {
-    fn into_core(self) -> ReturnComponentsDetectedCloseOpenGapCandidate {
-        ReturnComponentsDetectedCloseOpenGapCandidate {
+impl CalibrationReturnComponentsObservedCloseOpenBoundaryObservation {
+    fn into_core(self) -> ReturnComponentsObservedCloseOpenBoundaryObservation {
+        ReturnComponentsObservedCloseOpenBoundaryObservation {
             close_timestamp_utc_nanos: self.close_timestamp_utc_nanos,
+            close_price: self.close_price,
             open_timestamp_utc_nanos: self.open_timestamp_utc_nanos,
-            gap_return: self.gap_return,
+            open_price: self.open_price,
             post_shock_activity_lift: self.post_shock_activity_lift,
         }
+    }
+}
+
+impl CalibrationReturnComponentsCloseOpenGapDetectionPolicy {
+    fn into_core(self) -> ReturnComponentsCloseOpenGapDetectionPolicy {
+        ReturnComponentsCloseOpenGapDetectionPolicy::new(
+            self.material_gap_absolute_return_tolerance,
+        )
     }
 }
 
@@ -834,14 +852,19 @@ mod tests {
                             post_shock_activity_lift: 1.35,
                         },
                     ],
-                    detected_close_open_gap_candidates: vec![
-                        CalibrationReturnComponentsDetectedCloseOpenGapCandidate {
+                    observed_close_open_boundary_observations: vec![
+                        CalibrationReturnComponentsObservedCloseOpenBoundaryObservation {
                             close_timestamp_utc_nanos: 1_770_066_000_000_000_000,
-                            open_timestamp_utc_nanos: 1_770_128_600_000_000_000,
-                            gap_return: -0.013,
+                            close_price: 100.0,
+                            open_timestamp_utc_nanos: 1_770_215_400_000_000_000,
+                            open_price: 98.70858118310978,
                             post_shock_activity_lift: 1.40,
                         },
                     ],
+                    close_open_gap_detection_policy:
+                        CalibrationReturnComponentsCloseOpenGapDetectionPolicy {
+                            material_gap_absolute_return_tolerance: 0.005,
+                        },
                     nig_shared_plus_shift_candidates: vec![
                         NigSharedPlusShiftConfiguration::try_new(2.45, -0.70, 0.62, 0.08, -0.15)
                             .expect("nig candidate should validate"),

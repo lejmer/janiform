@@ -2,8 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::calendar::{ExchangeCalendarRegistry, MarketState};
 use crate::news::{
     CoupledGapMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
@@ -32,7 +34,7 @@ use super::hawkes::{HawkesStageFittedPayload, HawkesStageObjectiveTermDiagnostic
 use super::seasonality::CalibrationStageExecutionStatus;
 
 const RETURN_COMPONENTS_STAGE_CANDIDATE_GENERATION_POLICY: &str =
-    "known_calendar_and_observed_jump_gap_signals_to_candidate_families.v1";
+    "known_calendar_observed_jump_and_session_boundary_signals_to_candidate_families.v1";
 const RETURN_COMPONENTS_STAGE_SIGNAL_PREPROCESSING_POLICY: &str =
     "timestamp_sorted_finite_signal_filtering_with_deterministic_quantile_binning.v1";
 const RETURN_COMPONENTS_STAGE_OBJECTIVE_METRIC_BUCKET_POLICY: &str =
@@ -266,6 +268,99 @@ impl ReturnComponentsDetectedCloseOpenGapCandidate {
     }
 }
 
+/// Raw observed close-open boundary input used to derive material gap candidates internally.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ReturnComponentsObservedCloseOpenBoundaryObservation {
+    pub close_timestamp_utc_nanos: i64,
+    pub close_price: f64,
+    pub open_timestamp_utc_nanos: i64,
+    pub open_price: f64,
+    pub post_shock_activity_lift: f64,
+}
+
+impl ReturnComponentsObservedCloseOpenBoundaryObservation {
+    fn validate(
+        self,
+        source_window: ReturnComponentsStageSignalSourceWindow,
+    ) -> Result<(), ReturnComponentsStageCandidateGenerationInputError> {
+        if self.close_timestamp_utc_nanos < source_window.window_start_utc_nanos
+            || self.open_timestamp_utc_nanos >= source_window.window_end_utc_nanos
+        {
+            return Err(
+                ReturnComponentsStageCandidateGenerationInputError::CloseOpenBoundaryOutsideSourceWindow {
+                    close_timestamp_utc_nanos: self.close_timestamp_utc_nanos,
+                    open_timestamp_utc_nanos: self.open_timestamp_utc_nanos,
+                    window_start_utc_nanos: source_window.window_start_utc_nanos,
+                    window_end_utc_nanos: source_window.window_end_utc_nanos,
+                },
+            );
+        }
+        if self.open_timestamp_utc_nanos <= self.close_timestamp_utc_nanos {
+            return Err(
+                ReturnComponentsStageCandidateGenerationInputError::NonIncreasingCloseOpenBoundaryWindow {
+                    close_timestamp_utc_nanos: self.close_timestamp_utc_nanos,
+                    open_timestamp_utc_nanos: self.open_timestamp_utc_nanos,
+                },
+            );
+        }
+        if !self.close_price.is_finite() || self.close_price <= 0.0 {
+            return Err(
+                ReturnComponentsStageCandidateGenerationInputError::InvalidCloseBoundaryPrice {
+                    close_timestamp_utc_nanos: self.close_timestamp_utc_nanos,
+                    value: self.close_price,
+                },
+            );
+        }
+        if !self.open_price.is_finite() || self.open_price <= 0.0 {
+            return Err(
+                ReturnComponentsStageCandidateGenerationInputError::InvalidOpenBoundaryPrice {
+                    open_timestamp_utc_nanos: self.open_timestamp_utc_nanos,
+                    value: self.open_price,
+                },
+            );
+        }
+        if !self.post_shock_activity_lift.is_finite() || self.post_shock_activity_lift < 0.0 {
+            return Err(
+                ReturnComponentsStageCandidateGenerationInputError::InvalidCloseOpenBoundaryActivityLift {
+                    close_timestamp_utc_nanos: self.close_timestamp_utc_nanos,
+                    open_timestamp_utc_nanos: self.open_timestamp_utc_nanos,
+                    value: self.post_shock_activity_lift,
+                },
+            );
+        }
+
+        Ok(())
+    }
+}
+
+/// Explicit materiality rule for deriving close-open gap candidates from raw observations.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ReturnComponentsCloseOpenGapDetectionPolicy {
+    pub material_gap_absolute_return_tolerance: f64,
+}
+
+impl ReturnComponentsCloseOpenGapDetectionPolicy {
+    pub const fn new(material_gap_absolute_return_tolerance: f64) -> Self {
+        Self {
+            material_gap_absolute_return_tolerance,
+        }
+    }
+
+    fn validate(self) -> Result<(), ReturnComponentsStageCandidateGenerationInputError> {
+        if !self.material_gap_absolute_return_tolerance.is_finite()
+            || self.material_gap_absolute_return_tolerance < 0.0
+        {
+            return Err(
+                ReturnComponentsStageCandidateGenerationInputError::InvalidCloseOpenGapMaterialityTolerance {
+                    value: self.material_gap_absolute_return_tolerance,
+                },
+            );
+        }
+
+        Ok(())
+    }
+}
+
 /// Objective metric-bucket weights for candidate generation and evaluation.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ReturnComponentsStageObjectiveMetricWeights {
@@ -321,7 +416,9 @@ pub struct ReturnComponentsStageCandidateGenerationInput {
     pub known_news_calendar: ReturnComponentsKnownNewsCalendarInput,
     pub realized_known_news_return_samples: Vec<ReturnComponentsRealizedKnownNewsReturnSample>,
     pub detected_intraday_jump_candidates: Vec<ReturnComponentsDetectedIntradayJumpCandidate>,
-    pub detected_close_open_gap_candidates: Vec<ReturnComponentsDetectedCloseOpenGapCandidate>,
+    pub observed_close_open_boundary_observations:
+        Vec<ReturnComponentsObservedCloseOpenBoundaryObservation>,
+    pub close_open_gap_detection_policy: ReturnComponentsCloseOpenGapDetectionPolicy,
     pub nig_shared_plus_shift_candidates: Vec<NigSharedPlusShiftConfiguration>,
     pub shared_mark_law_template: SharedNewsMarkLawConfiguration,
     pub objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights,
@@ -341,11 +438,6 @@ impl ReturnComponentsStageCandidateGenerationInput {
                 ReturnComponentsStageCandidateGenerationInputError::MissingIntradayJumpCandidates,
             );
         }
-        if self.detected_close_open_gap_candidates.is_empty() {
-            return Err(
-                ReturnComponentsStageCandidateGenerationInputError::MissingCloseOpenGapCandidates,
-            );
-        }
         if self.nig_shared_plus_shift_candidates.is_empty() {
             return Err(ReturnComponentsStageCandidateGenerationInputError::MissingNigCandidates);
         }
@@ -356,9 +448,11 @@ impl ReturnComponentsStageCandidateGenerationInput {
         for jump_candidate in &self.detected_intraday_jump_candidates {
             jump_candidate.validate(self.known_news_calendar.source_window)?;
         }
-        for gap_candidate in &self.detected_close_open_gap_candidates {
-            gap_candidate.validate(self.known_news_calendar.source_window)?;
+        for boundary_observation in &self.observed_close_open_boundary_observations {
+            boundary_observation.validate(self.known_news_calendar.source_window)?;
         }
+
+        self.close_open_gap_detection_policy.validate()?;
 
         for (candidate_position, nig_candidate) in
             self.nig_shared_plus_shift_candidates.iter().enumerate()
@@ -407,7 +501,6 @@ pub enum ReturnComponentsStageCandidateGenerationInputError {
     },
     MissingKnownNewsReturnSamples,
     MissingIntradayJumpCandidates,
-    MissingCloseOpenGapCandidates,
     MissingNigCandidates,
     KnownNewsReturnSampleOutsideSourceWindow {
         event_timestamp_utc_nanos: i64,
@@ -435,6 +528,32 @@ pub enum ReturnComponentsStageCandidateGenerationInputError {
         jump_timestamp_utc_nanos: i64,
         value: f64,
     },
+    CloseOpenBoundaryOutsideSourceWindow {
+        close_timestamp_utc_nanos: i64,
+        open_timestamp_utc_nanos: i64,
+        window_start_utc_nanos: i64,
+        window_end_utc_nanos: i64,
+    },
+    NonIncreasingCloseOpenBoundaryWindow {
+        close_timestamp_utc_nanos: i64,
+        open_timestamp_utc_nanos: i64,
+    },
+    InvalidCloseBoundaryPrice {
+        close_timestamp_utc_nanos: i64,
+        value: f64,
+    },
+    InvalidOpenBoundaryPrice {
+        open_timestamp_utc_nanos: i64,
+        value: f64,
+    },
+    InvalidCloseOpenBoundaryActivityLift {
+        close_timestamp_utc_nanos: i64,
+        open_timestamp_utc_nanos: i64,
+        value: f64,
+    },
+    InvalidCloseOpenGapMaterialityTolerance {
+        value: f64,
+    },
     CloseOpenGapOutsideSourceWindow {
         close_timestamp_utc_nanos: i64,
         open_timestamp_utc_nanos: i64,
@@ -454,6 +573,23 @@ pub enum ReturnComponentsStageCandidateGenerationInputError {
         close_timestamp_utc_nanos: i64,
         open_timestamp_utc_nanos: i64,
         value: f64,
+    },
+    CloseOpenBoundaryStateResolutionFailed {
+        exchange_code: String,
+        timestamp_utc_nanos: i64,
+        error_message: String,
+    },
+    InvalidCloseBoundaryTransition {
+        exchange_code: String,
+        close_timestamp_utc_nanos: i64,
+        previous_state: MarketState,
+        boundary_state: MarketState,
+    },
+    InvalidOpenBoundaryTransition {
+        exchange_code: String,
+        open_timestamp_utc_nanos: i64,
+        previous_state: MarketState,
+        boundary_state: MarketState,
     },
     InvalidNigCandidate {
         candidate_position: usize,
@@ -503,10 +639,6 @@ impl Display for ReturnComponentsStageCandidateGenerationInputError {
                 formatter,
                 "candidate generation requires at least one detected_intraday_jump_candidate"
             ),
-            Self::MissingCloseOpenGapCandidates => write!(
-                formatter,
-                "candidate generation requires at least one detected_close_open_gap_candidate"
-            ),
             Self::MissingNigCandidates => write!(
                 formatter,
                 "candidate generation requires at least one nig_shared_plus_shift_candidate"
@@ -555,6 +687,48 @@ impl Display for ReturnComponentsStageCandidateGenerationInputError {
                 formatter,
                 "intraday post-shock activity lift at {jump_timestamp_utc_nanos} must be finite and non-negative, found {value}"
             ),
+            Self::CloseOpenBoundaryOutsideSourceWindow {
+                close_timestamp_utc_nanos,
+                open_timestamp_utc_nanos,
+                window_start_utc_nanos,
+                window_end_utc_nanos,
+            } => write!(
+                formatter,
+                "close-open boundary window [{close_timestamp_utc_nanos}, {open_timestamp_utc_nanos}] is outside source window [{window_start_utc_nanos}, {window_end_utc_nanos})"
+            ),
+            Self::NonIncreasingCloseOpenBoundaryWindow {
+                close_timestamp_utc_nanos,
+                open_timestamp_utc_nanos,
+            } => write!(
+                formatter,
+                "close-open boundary window must be increasing, found close={close_timestamp_utc_nanos} and open={open_timestamp_utc_nanos}"
+            ),
+            Self::InvalidCloseBoundaryPrice {
+                close_timestamp_utc_nanos,
+                value,
+            } => write!(
+                formatter,
+                "close boundary price at {close_timestamp_utc_nanos} must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidOpenBoundaryPrice {
+                open_timestamp_utc_nanos,
+                value,
+            } => write!(
+                formatter,
+                "open boundary price at {open_timestamp_utc_nanos} must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidCloseOpenBoundaryActivityLift {
+                close_timestamp_utc_nanos,
+                open_timestamp_utc_nanos,
+                value,
+            } => write!(
+                formatter,
+                "close-open boundary post-shock activity lift for window [{close_timestamp_utc_nanos}, {open_timestamp_utc_nanos}] must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidCloseOpenGapMaterialityTolerance { value } => write!(
+                formatter,
+                "close_open_gap_detection_policy.material_gap_absolute_return_tolerance must be finite and non-negative, found {value}"
+            ),
             Self::CloseOpenGapOutsideSourceWindow {
                 close_timestamp_utc_nanos,
                 open_timestamp_utc_nanos,
@@ -586,6 +760,32 @@ impl Display for ReturnComponentsStageCandidateGenerationInputError {
             } => write!(
                 formatter,
                 "close-open post-shock activity lift for window [{close_timestamp_utc_nanos}, {open_timestamp_utc_nanos}] must be finite and non-negative, found {value}"
+            ),
+            Self::CloseOpenBoundaryStateResolutionFailed {
+                exchange_code,
+                timestamp_utc_nanos,
+                error_message,
+            } => write!(
+                formatter,
+                "failed to resolve market state for exchange `{exchange_code}` at boundary timestamp {timestamp_utc_nanos}: {error_message}"
+            ),
+            Self::InvalidCloseBoundaryTransition {
+                exchange_code,
+                close_timestamp_utc_nanos,
+                previous_state,
+                boundary_state,
+            } => write!(
+                formatter,
+                "close boundary for exchange `{exchange_code}` at {close_timestamp_utc_nanos} must transition from open to closed, found previous={previous_state:?} and boundary={boundary_state:?}"
+            ),
+            Self::InvalidOpenBoundaryTransition {
+                exchange_code,
+                open_timestamp_utc_nanos,
+                previous_state,
+                boundary_state,
+            } => write!(
+                formatter,
+                "open boundary for exchange `{exchange_code}` at {open_timestamp_utc_nanos} must transition from closed to open, found previous={previous_state:?} and boundary={boundary_state:?}"
             ),
             Self::InvalidNigCandidate {
                 candidate_position,
@@ -1316,6 +1516,7 @@ struct ReturnComponentsStageCandidateGenerationOutput {
 /// Execute the return-components stage with NIG and coupled-gap parameter constraints.
 pub fn run_return_components_calibration_stage(
     run_spec: &CalibrationRunSpec,
+    calendar_registry: &ExchangeCalendarRegistry,
     stage_input: ReturnComponentsStageExecutionInput,
 ) -> ReturnComponentsStageExecutionReport {
     if let Err(source) = run_spec.validate() {
@@ -1356,6 +1557,22 @@ pub fn run_return_components_calibration_stage(
             },
         );
     }
+
+    let prepared_candidate_generation_input = match prepare_candidate_generation_input(
+        &run_spec.data_inputs.exchange_code,
+        calendar_registry,
+        stage_input.candidate_generation_input.clone(),
+    ) {
+        Ok(prepared_candidate_generation_input) => prepared_candidate_generation_input,
+        Err(source) => {
+            return build_return_components_stage_failure_report(
+                run_spec,
+                ReturnComponentsStageExecutionFailure::InvalidCandidateGenerationInput {
+                    error_message: source.to_string(),
+                },
+            );
+        }
+    };
 
     let expected_activity_handoff = run_spec.stage_handoffs.iter().find(|stage_handoff| {
         stage_handoff.from_stage == CalibrationStage::Hawkes
@@ -1422,7 +1639,13 @@ pub fn run_return_components_calibration_stage(
     let candidate_generation_seed = stage_seed;
 
     let generated_candidates = match generate_return_components_stage_candidate_inputs(
-        &stage_input.candidate_generation_input,
+        &prepared_candidate_generation_input.candidate_generation_input,
+        prepared_candidate_generation_input
+            .derived_close_open_gap_candidates
+            .as_slice(),
+        prepared_candidate_generation_input
+            .close_open_gap_detection_filter
+            .as_str(),
         candidate_generation_seed,
     ) {
         Ok(output) => output,
@@ -1764,6 +1987,8 @@ pub fn run_return_components_calibration_stage(
 
 fn generate_return_components_stage_candidate_inputs(
     candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
+    derived_close_open_gap_candidates: &[ReturnComponentsDetectedCloseOpenGapCandidate],
+    close_open_gap_detection_filter: &str,
     stage_seed: u64,
 ) -> Result<
     ReturnComponentsStageCandidateGenerationOutput,
@@ -1771,7 +1996,10 @@ fn generate_return_components_stage_candidate_inputs(
 > {
     candidate_generation_input.validate()?;
 
-    let sorted_signals = sort_candidate_generation_signals(candidate_generation_input);
+    let sorted_signals = sort_candidate_generation_signals(
+        candidate_generation_input,
+        derived_close_open_gap_candidates,
+    );
     let summary_statistics =
         summarize_candidate_generation_signals(candidate_generation_input, &sorted_signals);
 
@@ -1798,6 +2026,7 @@ fn generate_return_components_stage_candidate_inputs(
         jump_abs_return_bin_edges,
         gap_abs_return_bin_edges,
         summary_statistics,
+        close_open_gap_detection_filter,
     );
     let candidate_family_counts =
         build_candidate_family_counts(candidate_generation_input, &candidate_family_sets);
@@ -1827,6 +2056,13 @@ struct ReturnComponentsStageSortedSignalInputs {
 }
 
 #[derive(Debug, Clone)]
+struct ReturnComponentsStagePreparedCandidateGenerationInput {
+    candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
+    derived_close_open_gap_candidates: Vec<ReturnComponentsDetectedCloseOpenGapCandidate>,
+    close_open_gap_detection_filter: String,
+}
+
+#[derive(Debug, Clone)]
 struct ReturnComponentsStageCandidateFamilySets {
     known_arrival_families: Vec<ReturnComponentsKnownNewsArrivalCandidateFamily>,
     surprise_arrival_families: Vec<ReturnComponentsSurpriseNewsArrivalCandidateFamily>,
@@ -1836,6 +2072,7 @@ struct ReturnComponentsStageCandidateFamilySets {
 
 fn sort_candidate_generation_signals(
     candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
+    derived_close_open_gap_candidates: &[ReturnComponentsDetectedCloseOpenGapCandidate],
 ) -> ReturnComponentsStageSortedSignalInputs {
     let mut known_return_samples = candidate_generation_input
         .realized_known_news_return_samples
@@ -1847,9 +2084,7 @@ fn sort_candidate_generation_signals(
         .clone();
     intraday_jump_candidates.sort_by_key(|candidate| candidate.jump_timestamp_utc_nanos);
 
-    let mut close_open_gap_candidates = candidate_generation_input
-        .detected_close_open_gap_candidates
-        .clone();
+    let mut close_open_gap_candidates = derived_close_open_gap_candidates.to_vec();
     close_open_gap_candidates.sort_by_key(|candidate| {
         (
             candidate.close_timestamp_utc_nanos,
@@ -2140,6 +2375,7 @@ fn build_candidate_provenance_template(
     jump_abs_return_bin_edges: Vec<f64>,
     gap_abs_return_bin_edges: Vec<f64>,
     summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
+    close_open_gap_detection_filter: &str,
 ) -> ReturnComponentsStageCandidateProvenance {
     ReturnComponentsStageCandidateProvenance {
         source_windows: vec![
@@ -2159,7 +2395,7 @@ fn build_candidate_provenance_template(
                 window_end_utc_nanos: source_window.window_end_utc_nanos,
             },
             ReturnComponentsStageCandidateSourceWindow {
-                source_name: "detected_close_open_gap_candidates".to_string(),
+                source_name: "observed_close_open_boundary_observations".to_string(),
                 window_start_utc_nanos: source_window.window_start_utc_nanos,
                 window_end_utc_nanos: source_window.window_end_utc_nanos,
             },
@@ -2168,9 +2404,11 @@ fn build_candidate_provenance_template(
         preprocessing_filters: vec![
             "reject_non_finite_known_news_returns".to_string(),
             "reject_non_finite_intraday_jump_returns".to_string(),
-            "reject_non_finite_close_open_gap_returns".to_string(),
+            "reject_non_finite_and_non_positive_close_open_boundary_prices".to_string(),
             "enforce_non_negative_post_shock_activity_lift".to_string(),
             "sort_intraday_jumps_by_jump_timestamp".to_string(),
+            "validate_close_open_session_boundary_transitions".to_string(),
+            close_open_gap_detection_filter.to_string(),
             "sort_close_open_gaps_by_close_then_open_timestamp".to_string(),
             "deterministic_nearest_rank_quantile_binning".to_string(),
         ],
@@ -2200,6 +2438,139 @@ fn build_candidate_family_counts(
             .len(),
         activity_coupling_family_count: candidate_family_sets.activity_coupling_families.len(),
     }
+}
+
+fn prepare_candidate_generation_input(
+    exchange_code: &str,
+    calendar_registry: &ExchangeCalendarRegistry,
+    candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
+) -> Result<
+    ReturnComponentsStagePreparedCandidateGenerationInput,
+    ReturnComponentsStageCandidateGenerationInputError,
+> {
+    let derived_close_open_gap_candidates = derive_close_open_gap_candidates(
+        exchange_code,
+        calendar_registry,
+        candidate_generation_input.known_news_calendar.source_window,
+        candidate_generation_input
+            .observed_close_open_boundary_observations
+            .as_slice(),
+        candidate_generation_input.close_open_gap_detection_policy,
+    )?;
+    let close_open_gap_detection_filter = format!(
+        "derive_close_open_log_gap_candidates_abs_gt_{:.6}",
+        candidate_generation_input
+            .close_open_gap_detection_policy
+            .material_gap_absolute_return_tolerance
+    );
+
+    Ok(ReturnComponentsStagePreparedCandidateGenerationInput {
+        candidate_generation_input,
+        derived_close_open_gap_candidates,
+        close_open_gap_detection_filter,
+    })
+}
+
+fn derive_close_open_gap_candidates(
+    exchange_code: &str,
+    calendar_registry: &ExchangeCalendarRegistry,
+    source_window: ReturnComponentsStageSignalSourceWindow,
+    observed_close_open_boundary_observations: &[ReturnComponentsObservedCloseOpenBoundaryObservation],
+    detection_policy: ReturnComponentsCloseOpenGapDetectionPolicy,
+) -> Result<
+    Vec<ReturnComponentsDetectedCloseOpenGapCandidate>,
+    ReturnComponentsStageCandidateGenerationInputError,
+> {
+    let mut derived_close_open_gap_candidates = Vec::new();
+
+    for observed_boundary in observed_close_open_boundary_observations {
+        observed_boundary.validate(source_window)?;
+        validate_close_open_boundary_transition(
+            exchange_code,
+            calendar_registry,
+            observed_boundary.close_timestamp_utc_nanos,
+            observed_boundary.open_timestamp_utc_nanos,
+        )?;
+
+        let gap_return = (observed_boundary.open_price / observed_boundary.close_price).ln();
+        if gap_return.abs() <= detection_policy.material_gap_absolute_return_tolerance {
+            continue;
+        }
+
+        let derived_candidate = ReturnComponentsDetectedCloseOpenGapCandidate {
+            close_timestamp_utc_nanos: observed_boundary.close_timestamp_utc_nanos,
+            open_timestamp_utc_nanos: observed_boundary.open_timestamp_utc_nanos,
+            gap_return,
+            post_shock_activity_lift: observed_boundary.post_shock_activity_lift,
+        };
+        derived_candidate.validate(source_window)?;
+        derived_close_open_gap_candidates.push(derived_candidate);
+    }
+
+    Ok(derived_close_open_gap_candidates)
+}
+
+fn validate_close_open_boundary_transition(
+    exchange_code: &str,
+    calendar_registry: &ExchangeCalendarRegistry,
+    close_timestamp_utc_nanos: i64,
+    open_timestamp_utc_nanos: i64,
+) -> Result<(), ReturnComponentsStageCandidateGenerationInputError> {
+    let close_previous_state = resolve_market_state_at_nanos(
+        calendar_registry,
+        exchange_code,
+        close_timestamp_utc_nanos.saturating_sub(1),
+    )?;
+    let close_boundary_state =
+        resolve_market_state_at_nanos(calendar_registry, exchange_code, close_timestamp_utc_nanos)?;
+    if close_previous_state != MarketState::Open || close_boundary_state != MarketState::Closed {
+        return Err(
+            ReturnComponentsStageCandidateGenerationInputError::InvalidCloseBoundaryTransition {
+                exchange_code: exchange_code.to_string(),
+                close_timestamp_utc_nanos,
+                previous_state: close_previous_state,
+                boundary_state: close_boundary_state,
+            },
+        );
+    }
+
+    let open_previous_state = resolve_market_state_at_nanos(
+        calendar_registry,
+        exchange_code,
+        open_timestamp_utc_nanos.saturating_sub(1),
+    )?;
+    let open_boundary_state =
+        resolve_market_state_at_nanos(calendar_registry, exchange_code, open_timestamp_utc_nanos)?;
+    if open_previous_state != MarketState::Closed || open_boundary_state != MarketState::Open {
+        return Err(
+            ReturnComponentsStageCandidateGenerationInputError::InvalidOpenBoundaryTransition {
+                exchange_code: exchange_code.to_string(),
+                open_timestamp_utc_nanos,
+                previous_state: open_previous_state,
+                boundary_state: open_boundary_state,
+            },
+        );
+    }
+
+    Ok(())
+}
+
+fn resolve_market_state_at_nanos(
+    calendar_registry: &ExchangeCalendarRegistry,
+    exchange_code: &str,
+    timestamp_utc_nanos: i64,
+) -> Result<MarketState, ReturnComponentsStageCandidateGenerationInputError> {
+    let timestamp_utc = DateTime::<Utc>::from_timestamp_nanos(timestamp_utc_nanos);
+
+    calendar_registry
+        .resolve_market_state_at_utc(exchange_code, timestamp_utc)
+        .map_err(|source| {
+            ReturnComponentsStageCandidateGenerationInputError::CloseOpenBoundaryStateResolutionFailed {
+                exchange_code: exchange_code.to_string(),
+                timestamp_utc_nanos,
+                error_message: source.to_string(),
+            }
+        })
 }
 
 fn enumerate_candidate_inputs(
@@ -2581,5 +2952,172 @@ fn build_return_components_stage_failure_report(
         fitted_stage_payload: None,
         metadata: None,
         failure: Some(failure),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{TimeZone, Utc};
+
+    use super::*;
+    use crate::calendar::ExchangeCalendarRegistryLoader;
+
+    #[test]
+    fn derived_close_open_gap_detection_filters_zero_gap_boundaries() {
+        let calendar_registry = test_calendar_registry();
+
+        let derived_candidates = derive_close_open_gap_candidates(
+            "XNYS",
+            &calendar_registry,
+            test_source_window(),
+            &[ReturnComponentsObservedCloseOpenBoundaryObservation {
+                close_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 21, 0, 0),
+                close_price: 100.0,
+                open_timestamp_utc_nanos: utc_nanos(2026, 2, 3, 14, 30, 0),
+                open_price: 100.0,
+                post_shock_activity_lift: 1.25,
+            }],
+            ReturnComponentsCloseOpenGapDetectionPolicy::new(0.005),
+        )
+        .expect("zero-gap boundary should validate");
+
+        assert!(derived_candidates.is_empty());
+    }
+
+    #[test]
+    fn derived_close_open_gap_detection_emits_overnight_gap_candidate() {
+        let calendar_registry = test_calendar_registry();
+
+        let derived_candidates = derive_close_open_gap_candidates(
+            "XNYS",
+            &calendar_registry,
+            test_source_window(),
+            &[ReturnComponentsObservedCloseOpenBoundaryObservation {
+                close_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 21, 0, 0),
+                close_price: 100.0,
+                open_timestamp_utc_nanos: utc_nanos(2026, 2, 3, 14, 30, 0),
+                open_price: 100.0 * (-0.013_f64).exp(),
+                post_shock_activity_lift: 1.40,
+            }],
+            ReturnComponentsCloseOpenGapDetectionPolicy::new(0.005),
+        )
+        .expect("overnight boundary should validate");
+
+        assert_eq!(derived_candidates.len(), 1);
+        assert_eq!(
+            derived_candidates[0].close_timestamp_utc_nanos,
+            utc_nanos(2026, 2, 2, 21, 0, 0)
+        );
+        assert_eq!(
+            derived_candidates[0].open_timestamp_utc_nanos,
+            utc_nanos(2026, 2, 3, 14, 30, 0)
+        );
+        assert!((derived_candidates[0].gap_return + 0.013).abs() <= 1e-12);
+        assert_eq!(derived_candidates[0].post_shock_activity_lift, 1.40);
+    }
+
+    #[test]
+    fn derived_close_open_gap_detection_emits_weekend_gap_candidate() {
+        let calendar_registry = test_calendar_registry();
+
+        let derived_candidates = derive_close_open_gap_candidates(
+            "XNYS",
+            &calendar_registry,
+            test_source_window(),
+            &[ReturnComponentsObservedCloseOpenBoundaryObservation {
+                close_timestamp_utc_nanos: utc_nanos(2026, 2, 6, 21, 0, 0),
+                close_price: 100.0,
+                open_timestamp_utc_nanos: utc_nanos(2026, 2, 9, 14, 30, 0),
+                open_price: 100.0 * 0.012_f64.exp(),
+                post_shock_activity_lift: 1.15,
+            }],
+            ReturnComponentsCloseOpenGapDetectionPolicy::new(0.005),
+        )
+        .expect("weekend boundary should validate");
+
+        assert_eq!(derived_candidates.len(), 1);
+        assert_eq!(
+            derived_candidates[0].close_timestamp_utc_nanos,
+            utc_nanos(2026, 2, 6, 21, 0, 0)
+        );
+        assert_eq!(
+            derived_candidates[0].open_timestamp_utc_nanos,
+            utc_nanos(2026, 2, 9, 14, 30, 0)
+        );
+        assert!((derived_candidates[0].gap_return - 0.012).abs() <= 1e-12);
+        assert_eq!(derived_candidates[0].post_shock_activity_lift, 1.15);
+    }
+
+    #[test]
+    fn derived_close_open_gap_detection_rejects_non_boundary_timestamps() {
+        let calendar_registry = test_calendar_registry();
+
+        let error = derive_close_open_gap_candidates(
+            "XNYS",
+            &calendar_registry,
+            test_source_window(),
+            &[ReturnComponentsObservedCloseOpenBoundaryObservation {
+                close_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 20, 0, 0),
+                close_price: 100.0,
+                open_timestamp_utc_nanos: utc_nanos(2026, 2, 3, 14, 30, 0),
+                open_price: 100.0 * (-0.013_f64).exp(),
+                post_shock_activity_lift: 1.40,
+            }],
+            ReturnComponentsCloseOpenGapDetectionPolicy::new(0.005),
+        )
+        .expect_err("non-boundary close timestamp must fail");
+
+        assert!(matches!(
+            error,
+            ReturnComponentsStageCandidateGenerationInputError::InvalidCloseBoundaryTransition { .. }
+        ));
+    }
+
+    fn test_source_window() -> ReturnComponentsStageSignalSourceWindow {
+        ReturnComponentsStageSignalSourceWindow {
+            window_start_utc_nanos: utc_nanos(2026, 2, 2, 13, 0, 0),
+            window_end_utc_nanos: utc_nanos(2026, 2, 10, 0, 0, 0),
+        }
+    }
+
+    fn test_calendar_registry() -> ExchangeCalendarRegistry {
+        ExchangeCalendarRegistryLoader::load_from_json(
+            r#"
+{
+  "schema_version": "calendar.registry.v1",
+  "artifact_date": "2026-01-31",
+  "exchanges": [
+    {
+      "schema_version": "calendar.v1",
+      "exchange_code": "XNYS",
+      "exchange_name": "New York Stock Exchange",
+      "timezone_name": "America/New_York",
+      "rule_metadata": {
+        "holiday_calendar_code": "US_EQUITIES",
+        "early_close_rule_set": "US_EQUITIES_EARLY_CLOSE"
+      },
+      "regular_sessions": [
+        {"weekday": "Monday", "windows": [{"label": "regular", "open_time": "09:30", "close_time": "16:00"}]},
+        {"weekday": "Tuesday", "windows": [{"label": "regular", "open_time": "09:30", "close_time": "16:00"}]},
+        {"weekday": "Wednesday", "windows": [{"label": "regular", "open_time": "09:30", "close_time": "16:00"}]},
+        {"weekday": "Thursday", "windows": [{"label": "regular", "open_time": "09:30", "close_time": "16:00"}]},
+        {"weekday": "Friday", "windows": [{"label": "regular", "open_time": "09:30", "close_time": "16:00"}]}
+      ],
+      "holiday_dates": [],
+      "early_close_sessions": []
+    }
+  ]
+}
+"#,
+        )
+        .expect("calendar registry fixture should load")
+    }
+
+    fn utc_nanos(year: i32, month: u32, day: u32, hour: u32, minute: u32, second: u32) -> i64 {
+        Utc.with_ymd_and_hms(year, month, day, hour, minute, second)
+            .single()
+            .expect("fixture timestamp should be valid")
+            .timestamp_nanos_opt()
+            .expect("fixture timestamp nanos should fit in i64")
     }
 }

@@ -84,8 +84,9 @@ pub(super) use crate::calibration::{
     CalibrationValidationMetricStatus, CalibrationValidationMetricThresholdMetadata,
     CalibrationValidationObservedValue, HawkesStageCandidateInput, HawkesStageExecutionFailure,
     HawkesStageExecutionInput, HawkesStageObjectiveTermInput,
-    OptionSurfaceCalibrationObservationError, ReturnComponentsDetectedCloseOpenGapCandidate,
+    OptionSurfaceCalibrationObservationError, ReturnComponentsCloseOpenGapDetectionPolicy,
     ReturnComponentsDetectedIntradayJumpCandidate, ReturnComponentsKnownNewsCalendarInput,
+    ReturnComponentsObservedCloseOpenBoundaryObservation,
     ReturnComponentsRealizedKnownNewsReturnSample, ReturnComponentsStageCandidateGenerationInput,
     ReturnComponentsStageExecutionFailure, ReturnComponentsStageExecutionInput,
     ReturnComponentsStageObjectiveMetricWeights, ReturnComponentsStageSignalSourceWindow,
@@ -839,20 +840,23 @@ pub(super) fn return_components_stage_candidate_generation_fixture()
                 post_shock_activity_lift: 0.95,
             },
         ],
-        detected_close_open_gap_candidates: vec![
-            ReturnComponentsDetectedCloseOpenGapCandidate {
+        observed_close_open_boundary_observations: vec![
+            ReturnComponentsObservedCloseOpenBoundaryObservation {
                 close_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 21, 0, 0),
+                close_price: 100.0,
                 open_timestamp_utc_nanos: utc_nanos(2026, 2, 3, 14, 30, 0),
-                gap_return: -0.013,
+                open_price: 98.70858118310978,
                 post_shock_activity_lift: 1.40,
             },
-            ReturnComponentsDetectedCloseOpenGapCandidate {
+            ReturnComponentsObservedCloseOpenBoundaryObservation {
                 close_timestamp_utc_nanos: utc_nanos(2026, 2, 3, 21, 0, 0),
+                close_price: 100.0,
                 open_timestamp_utc_nanos: utc_nanos(2026, 2, 4, 14, 30, 0),
-                gap_return: 0.008,
+                open_price: 100.80320855069357,
                 post_shock_activity_lift: 1.05,
             },
         ],
+        close_open_gap_detection_policy: ReturnComponentsCloseOpenGapDetectionPolicy::new(0.005),
         nig_shared_plus_shift_candidates: vec![
             NigSharedPlusShiftConfiguration::try_new(2.30, -0.80, 0.70, 0.10, -0.20)
                 .expect("high-loss NIG configuration should validate"),

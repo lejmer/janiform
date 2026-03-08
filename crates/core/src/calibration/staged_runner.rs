@@ -1026,6 +1026,7 @@ fn run_stage_for_staged_execution(
             Ok(CalibrationStagedRunStageReport::ReturnComponents(
                 run_return_components_calibration_stage(
                     run_spec,
+                    calendar_registry,
                     ReturnComponentsStageExecutionInput {
                         activity_input,
                         candidate_generation_input,

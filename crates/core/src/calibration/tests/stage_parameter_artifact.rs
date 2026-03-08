@@ -22,6 +22,7 @@ fn calibration_stage_parameter_artifacts_round_trip_per_stage_preserve_stage_pay
     );
     let return_components_report = run_return_components_calibration_stage(
         &run_contract.run_spec,
+        &calendar_registry,
         ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
             "artifact://hawkes/run-001",
             return_components_stage_candidate_generation_fixture(),
@@ -242,6 +243,7 @@ fn calibration_stage_parameter_artifacts_round_trip_per_stage_preserve_stage_pay
 #[test]
 fn calibration_stage_parameter_artifact_validation_rejects_missing_outputs_and_malformed_payloads()
 {
+    let calendar_registry = calibration_stage_test_registry();
     let run_contract =
         build_run_contract_with_mode_and_resume("run-001", CalibrationExecutionMode::Disk, None);
 
@@ -294,6 +296,7 @@ fn calibration_stage_parameter_artifact_validation_rejects_missing_outputs_and_m
         &CalibrationStagedRunStageReport::ReturnComponents(
             run_return_components_calibration_stage(
                 &run_contract.run_spec,
+                &calendar_registry,
                 ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
                     "artifact://hawkes/run-001",
                     return_components_stage_candidate_generation_fixture(),

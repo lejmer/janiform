@@ -1505,17 +1505,19 @@ class CalibrationReturnComponentsDetectedIntradayJumpCandidate(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
-class CalibrationReturnComponentsDetectedCloseOpenGapCandidate(ContractModel):
+class CalibrationReturnComponentsObservedCloseOpenBoundaryObservation(ContractModel):
     close_timestamp_utc_nanos: int
+    close_price: float
     open_timestamp_utc_nanos: int
-    gap_return: float
+    open_price: float
     post_shock_activity_lift: float
 
     def __post_init__(self) -> None:
         if self.open_timestamp_utc_nanos <= self.close_timestamp_utc_nanos:
             raise _calibration_error("open_timestamp_utc_nanos", "must be strictly greater than close_timestamp_utc_nanos")
 
-        require_finite_number({"gap_return": self.gap_return}, "gap_return", "gap_return", CALIBRATION_ERROR_FACTORY)
+        require_positive_finite_number({"close_price": self.close_price}, "close_price", "close_price", CALIBRATION_ERROR_FACTORY)
+        require_positive_finite_number({"open_price": self.open_price}, "open_price", "open_price", CALIBRATION_ERROR_FACTORY)
         if self.post_shock_activity_lift < 0.0:
             raise _calibration_error("post_shock_activity_lift", "must be non-negative")
 
@@ -1524,25 +1526,31 @@ class CalibrationReturnComponentsDetectedCloseOpenGapCandidate(ContractModel):
         raw_payload: dict[str, Any] | Any,
         *,
         field_path: str,
-    ) -> CalibrationReturnComponentsDetectedCloseOpenGapCandidate:
+    ) -> CalibrationReturnComponentsObservedCloseOpenBoundaryObservation:
         if not isinstance(raw_payload, dict):
             raise _calibration_error(field_path, "must be an object")
 
-        return CalibrationReturnComponentsDetectedCloseOpenGapCandidate(
+        return CalibrationReturnComponentsObservedCloseOpenBoundaryObservation(
             close_timestamp_utc_nanos=_require_timestamp_utc_nanos(
                 raw_payload,
                 "close_timestamp_utc_nanos",
                 f"{field_path}.close_timestamp_utc_nanos",
+            ),
+            close_price=require_positive_finite_number(
+                raw_payload,
+                "close_price",
+                f"{field_path}.close_price",
+                CALIBRATION_ERROR_FACTORY,
             ),
             open_timestamp_utc_nanos=_require_timestamp_utc_nanos(
                 raw_payload,
                 "open_timestamp_utc_nanos",
                 f"{field_path}.open_timestamp_utc_nanos",
             ),
-            gap_return=require_finite_number(
+            open_price=require_positive_finite_number(
                 raw_payload,
-                "gap_return",
-                f"{field_path}.gap_return",
+                "open_price",
+                f"{field_path}.open_price",
                 CALIBRATION_ERROR_FACTORY,
             ),
             post_shock_activity_lift=require_non_negative_finite_number(
@@ -1551,6 +1559,33 @@ class CalibrationReturnComponentsDetectedCloseOpenGapCandidate(ContractModel):
                 f"{field_path}.post_shock_activity_lift",
                 CALIBRATION_ERROR_FACTORY,
             ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationReturnComponentsCloseOpenGapDetectionPolicy(ContractModel):
+    material_gap_absolute_return_tolerance: float
+
+    def __post_init__(self) -> None:
+        if self.material_gap_absolute_return_tolerance < 0.0:
+            raise _calibration_error("material_gap_absolute_return_tolerance", "must be non-negative")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationReturnComponentsCloseOpenGapDetectionPolicy:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationReturnComponentsCloseOpenGapDetectionPolicy(
+            material_gap_absolute_return_tolerance=require_non_negative_finite_number(
+                raw_payload,
+                "material_gap_absolute_return_tolerance",
+                f"{field_path}.material_gap_absolute_return_tolerance",
+                CALIBRATION_ERROR_FACTORY,
+            )
         )
 
 
@@ -1722,7 +1757,8 @@ class CalibrationReturnComponentsStageCandidateGenerationInput(ContractModel):
     known_news_calendar: CalibrationReturnComponentsKnownNewsCalendarInput
     realized_known_news_return_samples: tuple[CalibrationReturnComponentsKnownNewsReturnSample, ...]
     detected_intraday_jump_candidates: tuple[CalibrationReturnComponentsDetectedIntradayJumpCandidate, ...]
-    detected_close_open_gap_candidates: tuple[CalibrationReturnComponentsDetectedCloseOpenGapCandidate, ...]
+    observed_close_open_boundary_observations: tuple[CalibrationReturnComponentsObservedCloseOpenBoundaryObservation, ...]
+    close_open_gap_detection_policy: CalibrationReturnComponentsCloseOpenGapDetectionPolicy
     nig_shared_plus_shift_candidates: tuple[NigSharedPlusShiftConfiguration, ...]
     shared_mark_law_template: CalibrationSharedNewsMarkLawConfiguration
     objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights
@@ -1737,11 +1773,6 @@ class CalibrationReturnComponentsStageCandidateGenerationInput(ContractModel):
             raise _calibration_error(
                 "detected_intraday_jump_candidates",
                 "must include at least one intraday jump candidate",
-            )
-        if len(self.detected_close_open_gap_candidates) == 0:
-            raise _calibration_error(
-                "detected_close_open_gap_candidates",
-                "must include at least one close-open gap candidate",
             )
         if len(self.nig_shared_plus_shift_candidates) == 0:
             raise _calibration_error(
@@ -1770,10 +1801,10 @@ class CalibrationReturnComponentsStageCandidateGenerationInput(ContractModel):
             f"{field_path}.detected_intraday_jump_candidates",
             CALIBRATION_ERROR_FACTORY,
         )
-        close_open_gap_candidates = require_sequence(
+        boundary_observations = require_sequence(
             raw_payload,
-            "detected_close_open_gap_candidates",
-            f"{field_path}.detected_close_open_gap_candidates",
+            "observed_close_open_boundary_observations",
+            f"{field_path}.observed_close_open_boundary_observations",
             CALIBRATION_ERROR_FACTORY,
         )
         nig_candidates = require_sequence(
@@ -1807,12 +1838,21 @@ class CalibrationReturnComponentsStageCandidateGenerationInput(ContractModel):
                 )
                 for candidate_index, raw_candidate in enumerate(intraday_jump_candidates)
             ),
-            detected_close_open_gap_candidates=tuple(
-                CalibrationReturnComponentsDetectedCloseOpenGapCandidate.from_mapping(
+            observed_close_open_boundary_observations=tuple(
+                CalibrationReturnComponentsObservedCloseOpenBoundaryObservation.from_mapping(
                     raw_candidate,
-                    field_path=f"{field_path}.detected_close_open_gap_candidates[{candidate_index}]",
+                    field_path=f"{field_path}.observed_close_open_boundary_observations[{candidate_index}]",
                 )
-                for candidate_index, raw_candidate in enumerate(close_open_gap_candidates)
+                for candidate_index, raw_candidate in enumerate(boundary_observations)
+            ),
+            close_open_gap_detection_policy=CalibrationReturnComponentsCloseOpenGapDetectionPolicy.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "close_open_gap_detection_policy",
+                    f"{field_path}.close_open_gap_detection_policy",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.close_open_gap_detection_policy",
             ),
             nig_shared_plus_shift_candidates=tuple(
                 NigSharedPlusShiftConfiguration.from_mapping(
@@ -2292,7 +2332,8 @@ def run_staged_calibration(
         )
 
     Return-components stage inputs keep known-news open-window jumps and
-    closed-window gaps explicit instead of collapsing them into one field.
+    closed-window gaps explicit while deriving surprise close-open gaps
+    from raw boundary observations inside Janiform.
     """
 
     if not isinstance(execution_input, StagedCalibrationExecutionInput):
@@ -2364,10 +2405,11 @@ __all__ = [
     "CalibrationIntradaySmoothingKernel",
     "CalibrationOptimizerSettings",
     "CalibrationObjectiveTermInput",
-    "CalibrationReturnComponentsDetectedCloseOpenGapCandidate",
+    "CalibrationReturnComponentsCloseOpenGapDetectionPolicy",
     "CalibrationReturnComponentsDetectedIntradayJumpCandidate",
     "CalibrationReturnComponentsKnownNewsCalendarInput",
     "CalibrationReturnComponentsKnownNewsReturnSample",
+    "CalibrationReturnComponentsObservedCloseOpenBoundaryObservation",
     "CalibrationReturnComponentsObjectiveMetricWeights",
     "CalibrationReturnComponentsSignalSourceWindow",
     "CalibrationReturnComponentsStageCandidateGenerationInput",

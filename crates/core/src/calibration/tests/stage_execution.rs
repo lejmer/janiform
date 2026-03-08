@@ -417,6 +417,7 @@ fn hawkes_stage_execution_is_deterministic_under_fixed_seed_and_solver_settings(
 #[test]
 fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_handoffs() {
     let hawkes_payload = build_hawkes_stage_success_payload();
+    let calendar_registry = calibration_stage_test_registry();
     let memory_run_spec =
         build_return_components_stage_pipeline_run_spec(CalibrationExecutionMode::Memory);
     let disk_run_spec =
@@ -424,6 +425,7 @@ fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_hando
 
     let memory_report = run_return_components_calibration_stage(
         &memory_run_spec,
+        &calendar_registry,
         ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
             hawkes_payload.clone(),
             return_components_stage_candidate_generation_fixture(),
@@ -431,6 +433,7 @@ fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_hando
     );
     let disk_report = run_return_components_calibration_stage(
         &disk_run_spec,
+        &calendar_registry,
         ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
             "artifact://hawkes/run-001",
             return_components_stage_candidate_generation_fixture(),
@@ -486,7 +489,7 @@ fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_hando
     );
     assert_eq!(
         memory_payload.candidate_generation_policy,
-        "known_calendar_and_observed_jump_gap_signals_to_candidate_families.v1"
+        "known_calendar_observed_jump_and_session_boundary_signals_to_candidate_families.v1"
     );
 
     for candidate_diagnostic in &memory_payload.candidate_diagnostics {
@@ -534,6 +537,7 @@ fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_hando
 #[test]
 fn return_components_stage_execution_supports_standalone_runs_in_memory_and_disk_modes() {
     let hawkes_payload = build_hawkes_stage_success_payload();
+    let calendar_registry = calibration_stage_test_registry();
     let memory_run_spec =
         build_return_components_stage_standalone_run_spec(CalibrationExecutionMode::Memory);
     let disk_run_spec =
@@ -541,6 +545,7 @@ fn return_components_stage_execution_supports_standalone_runs_in_memory_and_disk
 
     let memory_report = run_return_components_calibration_stage(
         &memory_run_spec,
+        &calendar_registry,
         ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
             hawkes_payload,
             return_components_stage_candidate_generation_fixture(),
@@ -548,6 +553,7 @@ fn return_components_stage_execution_supports_standalone_runs_in_memory_and_disk
     );
     let disk_report = run_return_components_calibration_stage(
         &disk_run_spec,
+        &calendar_registry,
         ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
             "artifact://hawkes/standalone",
             return_components_stage_candidate_generation_fixture(),
@@ -568,6 +574,7 @@ fn return_components_stage_execution_supports_standalone_runs_in_memory_and_disk
 #[test]
 fn return_components_stage_execution_rejects_incomplete_candidate_generation_inputs() {
     let hawkes_payload = build_hawkes_stage_success_payload();
+    let calendar_registry = calibration_stage_test_registry();
     let run_spec =
         build_return_components_stage_pipeline_run_spec(CalibrationExecutionMode::Memory);
 
@@ -578,6 +585,7 @@ fn return_components_stage_execution_rejects_incomplete_candidate_generation_inp
 
     let report = run_return_components_calibration_stage(
         &run_spec,
+        &calendar_registry,
         ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
             hawkes_payload,
             candidate_generation_input,
@@ -594,11 +602,13 @@ fn return_components_stage_execution_rejects_incomplete_candidate_generation_inp
 #[test]
 fn return_components_stage_execution_reports_missing_dependency_stage_outputs() {
     let hawkes_payload = build_hawkes_stage_success_payload();
+    let calendar_registry = calibration_stage_test_registry();
 
     let memory_run_spec =
         build_return_components_stage_pipeline_run_spec(CalibrationExecutionMode::Memory);
     let memory_failure_report = run_return_components_calibration_stage(
         &memory_run_spec,
+        &calendar_registry,
         ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
             "artifact://hawkes/run-001",
             return_components_stage_candidate_generation_fixture(),
@@ -617,6 +627,7 @@ fn return_components_stage_execution_reports_missing_dependency_stage_outputs() 
         build_return_components_stage_pipeline_run_spec(CalibrationExecutionMode::Disk);
     let disk_failure_report = run_return_components_calibration_stage(
         &disk_run_spec,
+        &calendar_registry,
         ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
             hawkes_payload,
             return_components_stage_candidate_generation_fixture(),
@@ -635,6 +646,7 @@ fn return_components_stage_execution_reports_missing_dependency_stage_outputs() 
 #[test]
 fn return_components_stage_execution_is_deterministic_under_fixed_settings() {
     let hawkes_payload = build_hawkes_stage_success_payload();
+    let calendar_registry = calibration_stage_test_registry();
     let memory_run_spec =
         build_return_components_stage_pipeline_run_spec(CalibrationExecutionMode::Memory);
     let disk_run_spec =
@@ -642,6 +654,7 @@ fn return_components_stage_execution_is_deterministic_under_fixed_settings() {
 
     let first_memory_report = run_return_components_calibration_stage(
         &memory_run_spec,
+        &calendar_registry,
         ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
             hawkes_payload.clone(),
             return_components_stage_candidate_generation_fixture(),
@@ -649,6 +662,7 @@ fn return_components_stage_execution_is_deterministic_under_fixed_settings() {
     );
     let second_memory_report = run_return_components_calibration_stage(
         &memory_run_spec,
+        &calendar_registry,
         ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
             hawkes_payload,
             return_components_stage_candidate_generation_fixture(),
@@ -656,6 +670,7 @@ fn return_components_stage_execution_is_deterministic_under_fixed_settings() {
     );
     let first_disk_report = run_return_components_calibration_stage(
         &disk_run_spec,
+        &calendar_registry,
         ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
             "artifact://hawkes/run-001",
             return_components_stage_candidate_generation_fixture(),
@@ -663,6 +678,7 @@ fn return_components_stage_execution_is_deterministic_under_fixed_settings() {
     );
     let second_disk_report = run_return_components_calibration_stage(
         &disk_run_spec,
+        &calendar_registry,
         ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
             "artifact://hawkes/run-001",
             return_components_stage_candidate_generation_fixture(),

@@ -91,6 +91,8 @@ This example shows both calibration execution-mode paths:
 - default Python importable API behavior by constructing `StagedCalibrationRequest(...)` without
   an explicit `execution_mode`, which yields `memory`
 - explicit `execution_mode=disk` override with a checkpoint directory
+- return-components candidate generation from raw close/open boundary observations plus an explicit
+  material-gap tolerance instead of caller-supplied detected gap candidates
 
 Expected summary shape:
 

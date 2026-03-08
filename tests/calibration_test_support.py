@@ -13,10 +13,11 @@ from janiform.calibration import (
     CalibrationIntradaySmoothingKernel,
     CalibrationObjectiveTermInput,
     CalibrationOptimizerSettings,
-    CalibrationReturnComponentsDetectedCloseOpenGapCandidate,
+    CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
     CalibrationReturnComponentsDetectedIntradayJumpCandidate,
     CalibrationReturnComponentsKnownNewsCalendarInput,
     CalibrationReturnComponentsKnownNewsReturnSample,
+    CalibrationReturnComponentsObservedCloseOpenBoundaryObservation,
     CalibrationReturnComponentsObjectiveMetricWeights,
     CalibrationReturnComponentsSignalSourceWindow,
     CalibrationReturnComponentsStageCandidateGenerationInput,
@@ -180,13 +181,17 @@ def build_valid_execution_input_model(
                     post_shock_activity_lift=1.35,
                 ),
             ),
-            detected_close_open_gap_candidates=(
-                CalibrationReturnComponentsDetectedCloseOpenGapCandidate(
+            observed_close_open_boundary_observations=(
+                CalibrationReturnComponentsObservedCloseOpenBoundaryObservation(
                     close_timestamp_utc_nanos=1770066000000000000,
-                    open_timestamp_utc_nanos=1770129000000000000,
-                    gap_return=-0.013,
+                    close_price=100.0,
+                    open_timestamp_utc_nanos=1770215400000000000,
+                    open_price=98.70858118310978,
                     post_shock_activity_lift=1.40,
                 ),
+            ),
+            close_open_gap_detection_policy=CalibrationReturnComponentsCloseOpenGapDetectionPolicy(
+                material_gap_absolute_return_tolerance=0.005,
             ),
             nig_shared_plus_shift_candidates=(
                 NigSharedPlusShiftConfiguration(
