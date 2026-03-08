@@ -48,6 +48,7 @@ PYTHONPATH=python python3 -m examples.pricing_workflow
 
 - Design model and rationale: `docs/design/janiform_design_brainstorm_notes.md`
 - Python public API surface map and namespace policy: `docs/development/guides/python_public_api_surface_map_and_namespace_policy.md`
+- Python experimental API policy: `docs/development/guides/python_experimental_api_policy.md`
 - Python API contract compatibility and version guardrails: `docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md`
 - Python error taxonomy and exception contract: `docs/development/guides/python_error_taxonomy_and_exception_contract.md`
 - Typed staged calibration request, execution input, response contracts, and orchestrator: `python/janiform/calibration.py`
