@@ -79,7 +79,59 @@ Expected summary shape:
 }
 ```
 
-## Calibration
+## Market-Data Calibration
+
+Run:
+
+```bash
+PYTHONPATH=python python3 -m examples.market_data_calibration_workflow
+```
+
+This example shows the recommended market-data-first preparation path:
+- tick-data `csv` with explicit known-news inputs
+- tick-data `parquet` with the same user-facing contract
+- optional option-surface `parquet` input layered onto the same workflow
+- preparation diagnostics and provenance summaries that explain what Janiform loaded,
+  how it normalized the files, and which staged calibration scope it derived
+
+Expected summary shape:
+
+```json
+{
+  "tick_csv_primary": {
+    "preparation_schema_version": "calibration.market_data.preparation.v1",
+    "workflow_scope": "full_without_option_surface",
+    "tick_data_format": "csv",
+    "selected_stages": ["seasonality", "hawkes", "return_components"],
+    "known_news_event_count": 2,
+    "option_surface_record_count": 0,
+    "prepared_execution_mode": "memory",
+    "prepared_stage_count": 3
+  },
+  "tick_parquet_primary": {
+    "preparation_schema_version": "calibration.market_data.preparation.v1",
+    "workflow_scope": "full_without_option_surface",
+    "tick_data_format": "parquet",
+    "selected_stages": ["seasonality", "hawkes", "return_components"],
+    "known_news_event_count": 2,
+    "option_surface_record_count": 0,
+    "prepared_execution_mode": "memory",
+    "prepared_stage_count": 3
+  },
+  "tick_csv_with_option_surface": {
+    "preparation_schema_version": "calibration.market_data.preparation.v1",
+    "workflow_scope": "full_with_option_surface",
+    "tick_data_format": "csv",
+    "selected_stages": ["seasonality", "hawkes", "return_components"],
+    "known_news_event_count": 2,
+    "option_surface_record_count": 1,
+    "prepared_execution_mode": "memory",
+    "prepared_stage_count": 3
+  }
+}
+```
+
+## Advanced Staged Calibration
 
 Run:
 
@@ -87,7 +139,7 @@ Run:
 PYTHONPATH=python python3 -m examples.calibration_workflow
 ```
 
-This example shows both calibration execution-mode paths:
+This example is the expert-oriented staged path and shows both execution-mode overrides:
 - default Python importable API behavior by constructing `StagedCalibrationRequest(...)` without
   an explicit `execution_mode`, which yields `memory`
 - explicit `execution_mode=disk` override with a checkpoint directory

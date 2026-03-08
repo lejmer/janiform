@@ -53,6 +53,10 @@ def _smoke_scenarios() -> tuple[CliSmokeScenario, ...]:
             build_invocation=_build_market_data_smoke_invocation,
         ),
         CliSmokeScenario(
+            scenario_id="calibration_market_data_parquet_option_surface_default_disk",
+            build_invocation=_build_market_data_parquet_option_surface_smoke_invocation,
+        ),
+        CliSmokeScenario(
             scenario_id="calibration_staged_default_disk_override",
             build_invocation=_build_staged_disk_smoke_invocation,
         ),
@@ -167,6 +171,8 @@ def _build_market_data_smoke_invocation(calendar_registry_json: str, tmp_path: P
         assert payload["column_mapping"]["known_news"]["event_timestamp_column"] == "event_timestamp_utc"
         assert payload["output_emission_policy"]["execution_mode"] == "disk"
         assert payload["output_artifact_locations"]["disk_checkpoint_directory"] == str(checkpoint_directory)
+        assert payload["diagnostics_summary"]["tick_record_count"] == 4
+        assert payload["provenance_summary"]["tick_data_summary"]["file_format"] == "csv"
 
     return CliSmokeInvocation(
         command_arguments=[
@@ -206,6 +212,100 @@ def _build_market_data_smoke_invocation(calendar_registry_json: str, tmp_path: P
             "event_timestamp_utc",
             "--known-news-event-id-column",
             "event_code",
+            "--timestamp-timezone",
+            "UTC",
+            "--disk-checkpoint-directory",
+            str(checkpoint_directory),
+        ],
+        validate_stdout=validate_stdout,
+    )
+
+
+def _build_market_data_parquet_option_surface_smoke_invocation(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> CliSmokeInvocation:
+    market_data_paths = _write_market_data_input_files(
+        tmp_path,
+        calendar_registry_json=calendar_registry_json,
+        include_known_news=True,
+        include_option_surface=True,
+        tick_data_format="parquet",
+    )
+    checkpoint_directory = tmp_path / "market-data-parquet-smoke-checkpoints"
+
+    def validate_stdout(stdout_text: str) -> None:
+        payload = _parse_json_command_output(stdout_text)
+        assert payload["schema_version"] == cli_module.CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION
+        assert payload["workflow_scope"] == "full_with_option_surface"
+        assert payload["input_files"]["tick_data"]["file_format"] == "parquet"
+        assert payload["input_files"]["option_surface"]["file_format"] == "parquet"
+        assert payload["diagnostics_summary"]["option_surface_record_count"] == 1
+        assert payload["provenance_summary"]["option_surface_summary"]["file_format"] == "parquet"
+        assert payload["output_artifact_locations"]["disk_checkpoint_directory"] == str(checkpoint_directory)
+
+    return CliSmokeInvocation(
+        command_arguments=[
+            "calibration",
+            "market-data",
+            "--run-id",
+            "cli-smoke-market-data-parquet",
+            "--workflow-scope",
+            "full_with_option_surface",
+            "--tick-data-path",
+            str(market_data_paths["tick_data"]),
+            "--tick-data-format",
+            "parquet",
+            "--tick-data-provenance-label",
+            "smoke-parquet-ticks",
+            "--tick-timestamp-column",
+            "timestamp_utc",
+            "--tick-price-input-policy",
+            "trade_price_column",
+            "--tick-trade-price-column",
+            "trade_price",
+            "--exchange-code",
+            "XNYS",
+            "--session-definition-path",
+            str(market_data_paths["session_definition"]),
+            "--session-definition-format",
+            "json",
+            "--session-definition-provenance-label",
+            "smoke-session-calendar",
+            "--session-timezone",
+            "America/New_York",
+            "--known-news-path",
+            str(market_data_paths["known_news"]),
+            "--known-news-format",
+            "csv",
+            "--known-news-provenance-label",
+            "smoke-known-news",
+            "--known-news-timezone",
+            "UTC",
+            "--known-news-timestamp-column",
+            "event_timestamp_utc",
+            "--known-news-event-id-column",
+            "event_code",
+            "--option-surface-path",
+            str(market_data_paths["option_surface"]),
+            "--option-surface-format",
+            "parquet",
+            "--option-surface-provenance-label",
+            "smoke-option-surface",
+            "--option-quote-input-policy",
+            "bid_ask_midpoint",
+            "--option-quote-timestamp-column",
+            "quote_timestamp_utc",
+            "--option-expiry-column",
+            "expiry_utc",
+            "--option-strike-column",
+            "strike",
+            "--option-type-column",
+            "option_type",
+            "--option-bid-column",
+            "bid",
+            "--option-ask-column",
+            "ask",
             "--timestamp-timezone",
             "UTC",
             "--disk-checkpoint-directory",
@@ -486,5 +586,5 @@ def test_cli_regression_matrix_preserves_exit_codes_and_key_argument_paths(
 
 
 def test_cli_smoke_matrix_remains_bounded_for_merge_time_execution() -> None:
-    assert len(CLI_SMOKE_SCENARIOS) == 5
+    assert len(CLI_SMOKE_SCENARIOS) == 6
     assert len(CLI_REGRESSION_SCENARIOS) == 4

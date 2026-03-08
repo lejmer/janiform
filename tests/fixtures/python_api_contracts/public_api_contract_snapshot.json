@@ -116,6 +116,7 @@
     "janiform.calibration": {
       "exports": [
         "CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY",
+        "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
         "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
         "CALIBRATION_RUN_SPEC_SCHEMA_VERSION",
         "CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION",
@@ -178,7 +179,11 @@
         "CalibrationValidationError",
         "CalibrationValidationFailure",
         "DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE",
+        "MarketDataCalibrationPreparationDiagnostics",
+        "MarketDataCalibrationPreparationProvenance",
         "MarketDataCalibrationRequest",
+        "MarketDataCalibrationSourceSummary",
+        "PreparedMarketDataCalibration",
         "StagedCalibrationExecutionInput",
         "StagedCalibrationRequest",
         "StagedCalibrationResponse",
@@ -186,6 +191,8 @@
         "deserialize_staged_calibration_execution_input",
         "deserialize_staged_calibration_request",
         "deserialize_staged_calibration_response",
+        "prepare_market_data_calibration",
+        "run_market_data_calibration",
         "run_staged_calibration",
         "serialize_market_data_calibration_request",
         "serialize_staged_calibration_execution_input",
@@ -198,6 +205,11 @@
       ],
       "module_name": "janiform.calibration",
       "schema_identifiers": [
+        {
+          "name": "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "calibration.market_data.preparation.v1"
+        },
         {
           "name": "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
           "public_exported": true,
@@ -223,6 +235,10 @@
         "CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY": {
           "kind": "constant",
           "value": "cli_defaults_to_disk_python_importable_api_defaults_to_memory.v1"
+        },
+        "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "calibration.market_data.preparation.v1"
         },
         "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION": {
           "kind": "constant",
@@ -871,6 +887,46 @@
           "kind": "constant",
           "value": "memory"
         },
+        "MarketDataCalibrationPreparationDiagnostics": {
+          "field_names": [
+            "workflow_scope",
+            "selected_stages",
+            "executed_preprocessing_steps",
+            "tick_record_count",
+            "option_surface_record_count",
+            "known_news_event_count",
+            "known_news_events_outside_source_window_count",
+            "session_open_tick_count",
+            "session_closed_tick_count",
+            "known_news_open_event_count",
+            "known_news_closed_event_count",
+            "seasonality_overlay_count",
+            "hawkes_candidate_count",
+            "known_news_return_sample_count",
+            "intraday_jump_candidate_count",
+            "close_open_boundary_observation_count",
+            "material_close_open_gap_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(workflow_scope: janiform.calibration.CalibrationMarketDataWorkflowScope, selected_stages: tuple[janiform.calibration.CalibrationStage, ...], executed_preprocessing_steps: tuple[str, ...], tick_record_count: int, option_surface_record_count: int, known_news_event_count: int, known_news_events_outside_source_window_count: int, session_open_tick_count: int, session_closed_tick_count: int, known_news_open_event_count: int, known_news_closed_event_count: int, seasonality_overlay_count: int, hawkes_candidate_count: int, known_news_return_sample_count: int, intraday_jump_candidate_count: int, close_open_boundary_observation_count: int, material_close_open_gap_count: int) -> None"
+        },
+        "MarketDataCalibrationPreparationProvenance": {
+          "field_names": [
+            "tick_data_summary",
+            "option_surface_summary",
+            "known_news_summary",
+            "normalization_policy",
+            "workflow_scope",
+            "selected_stages",
+            "session_definition_path",
+            "derived_trade_events_data_reference",
+            "derived_option_surface_data_reference",
+            "derivation_policies",
+            "deterministic_defaults_applied"
+          ],
+          "kind": "contract_model",
+          "signature": "(tick_data_summary: janiform.calibration.MarketDataCalibrationSourceSummary, option_surface_summary: janiform.calibration.MarketDataCalibrationSourceSummary | None, known_news_summary: janiform.calibration.MarketDataCalibrationSourceSummary | None, normalization_policy: janiform.calibration.CalibrationMarketDataNormalizationPolicy, workflow_scope: janiform.calibration.CalibrationMarketDataWorkflowScope, selected_stages: tuple[janiform.calibration.CalibrationStage, ...], session_definition_path: str, derived_trade_events_data_reference: str, derived_option_surface_data_reference: str | None, derivation_policies: tuple[str, ...], deterministic_defaults_applied: tuple[str, ...]) -> None"
+        },
         "MarketDataCalibrationRequest": {
           "field_names": [
             "schema_version",
@@ -886,6 +942,33 @@
           ],
           "kind": "contract_model",
           "signature": "(schema_version: str, run_id: str, tick_data_source: janiform.calibration.CalibrationInputFileReference, session_configuration: janiform.calibration.CalibrationSessionConfigurationInput, column_mapping: janiform.calibration.CalibrationMarketDataColumnMapping, workflow_scope: janiform.calibration.CalibrationMarketDataWorkflowScope, normalization_policy: janiform.calibration.CalibrationMarketDataNormalizationPolicy, output_preferences: janiform.calibration.CalibrationMarketDataOutputPreferences, option_surface_source: janiform.calibration.CalibrationInputFileReference | None = None, known_news_inputs: janiform.calibration.CalibrationKnownNewsInput | None = None) -> None"
+        },
+        "MarketDataCalibrationSourceSummary": {
+          "field_names": [
+            "path",
+            "file_format",
+            "provenance_label",
+            "source_row_count",
+            "retained_row_count",
+            "dropped_duplicate_row_count",
+            "sort_records_by_timestamp",
+            "applied_timestamp_timezone",
+            "canonical_value_field",
+            "value_mapping_policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(path: str, file_format: janiform.calibration.CalibrationInputFileFormat, provenance_label: str, source_row_count: int, retained_row_count: int, dropped_duplicate_row_count: int, sort_records_by_timestamp: bool, applied_timestamp_timezone: str | None, canonical_value_field: str | None = None, value_mapping_policy: str | None = None) -> None"
+        },
+        "PreparedMarketDataCalibration": {
+          "field_names": [
+            "schema_version",
+            "request",
+            "execution_input",
+            "diagnostics",
+            "provenance"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: str, request: janiform.calibration.MarketDataCalibrationRequest, execution_input: janiform.calibration.StagedCalibrationExecutionInput, diagnostics: janiform.calibration.MarketDataCalibrationPreparationDiagnostics, provenance: janiform.calibration.MarketDataCalibrationPreparationProvenance) -> None"
         },
         "StagedCalibrationExecutionInput": {
           "field_names": [
@@ -945,6 +1028,14 @@
         "deserialize_staged_calibration_response": {
           "kind": "function",
           "signature": "(payload_json: str) -> janiform.calibration.StagedCalibrationResponse"
+        },
+        "prepare_market_data_calibration": {
+          "kind": "function",
+          "signature": "(request: janiform.calibration.MarketDataCalibrationRequest) -> janiform.calibration.PreparedMarketDataCalibration"
+        },
+        "run_market_data_calibration": {
+          "kind": "function",
+          "signature": "(request: janiform.calibration.MarketDataCalibrationRequest) -> janiform.calibration.StagedCalibrationResponse"
         },
         "run_staged_calibration": {
           "kind": "function",
