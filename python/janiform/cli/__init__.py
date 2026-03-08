@@ -1,6 +1,7 @@
 from ._commands import (
     _override_calibration_execution_mode,
     _resolve_path_from_repository_root,
+    _run_deterministic_regression_command,
     _run_open_closed_gap_leakage_regression_command,
     main,
 )
@@ -28,6 +29,9 @@ from ._constants import (
     CLI_COMMAND_CONFIG_HELP,
     CLI_COMMAND_CONFIG_SCHEMA_VERSION,
     CLI_CONFIG_JSON_ENV_VAR,
+    CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT,
+    CLI_DETERMINISTIC_REGRESSION_INTERNAL_ERROR_ID,
+    CLI_DETERMINISTIC_REGRESSION_VALIDATION_ERROR_ID,
     CLI_DIRECTORY_METAVAR,
     CLI_MARKET_DATA_SUMMARY_FIELD_SELECTION_POLICY,
     CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION,
@@ -78,6 +82,9 @@ __all__ = [
     "CLI_COMMAND_CONFIG_HELP",
     "CLI_COMMAND_CONFIG_SCHEMA_VERSION",
     "CLI_CONFIG_JSON_ENV_VAR",
+    "CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT",
+    "CLI_DETERMINISTIC_REGRESSION_INTERNAL_ERROR_ID",
+    "CLI_DETERMINISTIC_REGRESSION_VALIDATION_ERROR_ID",
     "CLI_DIRECTORY_METAVAR",
     "CLI_MARKET_DATA_SUMMARY_FIELD_SELECTION_POLICY",
     "CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION",
@@ -105,6 +112,7 @@ __all__ = [
     "_override_calibration_execution_mode",
     "_parse_cli_arguments",
     "_resolve_path_from_repository_root",
+    "_run_deterministic_regression_command",
     "_run_open_closed_gap_leakage_regression_command",
     "main",
 ]

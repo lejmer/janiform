@@ -40,9 +40,10 @@ def test_developer_help_lists_regression_namespace() -> None:
     assert "regression" in help_output
 
 
-def test_regression_help_lists_open_closed_gap_command() -> None:
+def test_regression_help_lists_developer_regression_commands() -> None:
     help_output = _render_help(["dev", "regression"])
 
+    assert "deterministic" in help_output
     assert "open-closed-gap-leakage" in help_output
 
 

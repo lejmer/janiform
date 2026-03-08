@@ -23,6 +23,7 @@ janiform
 │   └── vanilla-option
 └── dev
     └── regression
+        ├── deterministic
         └── open-closed-gap-leakage
 ```
 
@@ -43,6 +44,7 @@ janiform
   - `staged` for advanced staged calibration orchestration
   - `vanilla-option` for vanilla option pricing
 - Developer-only validation harnesses remain explicit about their function:
+  - `dev regression deterministic`
   - `dev regression open-closed-gap-leakage`
 
 ## Help-output expectations
