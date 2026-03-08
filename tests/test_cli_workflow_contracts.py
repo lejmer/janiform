@@ -4,7 +4,9 @@ from datetime import UTC, datetime, timedelta
 from io import StringIO
 from pathlib import Path
 
+import pyarrow as pa
 import pytest
+from pyarrow import parquet as pyarrow_parquet
 
 import janiform.calibration as calibration_module
 import janiform.cli as cli_module
@@ -18,6 +20,7 @@ from janiform.calibration import (
     StagedCalibrationExecutionInput,
     StagedCalibrationResponse,
 )
+from janiform.errors import JaniformErrorCategory, JaniformErrorDetails, JaniformExecutionError
 from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
@@ -236,7 +239,16 @@ def test_calibration_cli_parser_accepts_explicit_memory_execution_mode() -> None
     assert parsed_arguments.execution_mode == CalibrationExecutionMode.MEMORY.value
 
 
-def test_market_data_calibration_cli_maps_flags_to_summary_contract(tmp_path: Path) -> None:
+def test_market_data_calibration_cli_maps_flags_to_summary_contract(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    market_data_paths = _write_market_data_input_files(
+        tmp_path,
+        calendar_registry_json=calendar_registry_json,
+        include_known_news=True,
+        include_option_surface=True,
+    )
     checkpoint_directory = tmp_path / "checkpoints"
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
@@ -248,7 +260,7 @@ def test_market_data_calibration_cli_maps_flags_to_summary_contract(tmp_path: Pa
             "--workflow-scope",
             "full_with_option_surface",
             "--tick-data-path",
-            "data/ticks.csv",
+            str(market_data_paths["tick_data"]),
             "--tick-data-format",
             "csv",
             "--tick-data-provenance-label",
@@ -262,7 +274,7 @@ def test_market_data_calibration_cli_maps_flags_to_summary_contract(tmp_path: Pa
             "--exchange-code",
             "XNYS",
             "--session-definition-path",
-            "config/sessions.json",
+            str(market_data_paths["session_definition"]),
             "--session-definition-format",
             "json",
             "--session-definition-provenance-label",
@@ -270,7 +282,7 @@ def test_market_data_calibration_cli_maps_flags_to_summary_contract(tmp_path: Pa
             "--session-timezone",
             "America/New_York",
             "--known-news-path",
-            "config/known-news.csv",
+            str(market_data_paths["known_news"]),
             "--known-news-format",
             "csv",
             "--known-news-provenance-label",
@@ -282,7 +294,7 @@ def test_market_data_calibration_cli_maps_flags_to_summary_contract(tmp_path: Pa
             "--known-news-event-id-column",
             "event_code",
             "--option-surface-path",
-            "data/options.parquet",
+            str(market_data_paths["option_surface"]),
             "--option-surface-format",
             "parquet",
             "--option-surface-provenance-label",
@@ -311,7 +323,7 @@ def test_market_data_calibration_cli_maps_flags_to_summary_contract(tmp_path: Pa
         ]
     )
 
-    assert exit_code == 0, stderr_text
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
 
     summary_payload = json.loads(stdout_text)
     assert summary_payload["schema_version"] == cli_module.CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION
@@ -336,7 +348,15 @@ def test_market_data_calibration_cli_maps_flags_to_summary_contract(tmp_path: Pa
     assert stdout_text == f"{json.dumps(summary_payload, sort_keys=True)}\n"
 
 
-def test_market_data_calibration_cli_supports_human_output_mode(tmp_path: Path) -> None:
+def test_market_data_calibration_cli_supports_human_output_mode(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    market_data_paths = _write_market_data_input_files(
+        tmp_path,
+        calendar_registry_json=calendar_registry_json,
+    )
+
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
             "calibration",
@@ -346,7 +366,7 @@ def test_market_data_calibration_cli_supports_human_output_mode(tmp_path: Path) 
             "--workflow-scope",
             "seasonality_only",
             "--tick-data-path",
-            "data/ticks.csv",
+            str(market_data_paths["tick_data"]),
             "--tick-data-format",
             "csv",
             "--tick-data-provenance-label",
@@ -356,7 +376,7 @@ def test_market_data_calibration_cli_supports_human_output_mode(tmp_path: Path) 
             "--exchange-code",
             "XNYS",
             "--session-definition-path",
-            "config/sessions.json",
+            str(market_data_paths["session_definition"]),
             "--session-definition-format",
             "json",
             "--session-definition-provenance-label",
@@ -372,11 +392,320 @@ def test_market_data_calibration_cli_supports_human_output_mode(tmp_path: Path) 
         ]
     )
 
-    assert exit_code == 0, stderr_text
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
     assert stdout_text.startswith("calibration market-data request prepared:")
     assert "workflow_scope=seasonality_only" in stdout_text
     assert "execution_mode=memory" in stdout_text
     assert stderr_text == ""
+
+
+def test_market_data_cli_parser_rejects_unsupported_tick_data_format() -> None:
+    parser = cli_module._build_parser()
+
+    with pytest.raises(SystemExit) as captured_exit:
+        parser.parse_args(
+            [
+                "calibration",
+                "market-data",
+                "--run-id",
+                "market-data-run-unsupported-format",
+                "--workflow-scope",
+                "seasonality_only",
+                "--tick-data-path",
+                "ticks.json",
+                "--tick-data-format",
+                "json",
+                "--tick-data-provenance-label",
+                "ticks-primary",
+                "--tick-timestamp-column",
+                "timestamp_utc",
+                "--exchange-code",
+                "XNYS",
+                "--session-definition-path",
+                "sessions.json",
+                "--session-definition-format",
+                "json",
+                "--session-definition-provenance-label",
+                "session-calendar",
+                "--session-timezone",
+                "America/New_York",
+                "--timestamp-timezone",
+                "UTC",
+            ]
+        )
+
+    assert captured_exit.value.code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+
+
+def test_market_data_cli_missing_tick_file_returns_validation_exit_code(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    market_data_paths = _write_market_data_input_files(
+        tmp_path,
+        calendar_registry_json=calendar_registry_json,
+    )
+    missing_tick_path = tmp_path / "data" / "missing-ticks.csv"
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "calibration",
+            "market-data",
+            "--run-id",
+            "market-data-run-missing-tick-file",
+            "--workflow-scope",
+            "seasonality_only",
+            "--tick-data-path",
+            str(missing_tick_path),
+            "--tick-data-format",
+            "csv",
+            "--tick-data-provenance-label",
+            "ticks-primary",
+            "--tick-timestamp-column",
+            "timestamp_utc",
+            "--exchange-code",
+            "XNYS",
+            "--session-definition-path",
+            str(market_data_paths["session_definition"]),
+            "--session-definition-format",
+            "json",
+            "--session-definition-provenance-label",
+            "session-calendar",
+            "--session-timezone",
+            "America/New_York",
+            "--timestamp-timezone",
+            "UTC",
+            "--execution-mode",
+            "memory",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert stdout_text == ""
+    assert 'field_path="tick_data_source.path"' in stderr_text
+    assert f'"path": "{missing_tick_path}"' in stderr_text
+    assert '"normalization_step": "source_loading"' in stderr_text
+
+
+def test_market_data_cli_ambiguous_timestamp_reports_file_field_and_normalization_step(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    market_data_paths = _write_market_data_input_files(
+        tmp_path,
+        calendar_registry_json=calendar_registry_json,
+        ambiguous_tick_timestamp=True,
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "calibration",
+            "market-data",
+            "--run-id",
+            "market-data-run-ambiguous-timestamp",
+            "--workflow-scope",
+            "seasonality_only",
+            "--tick-data-path",
+            str(market_data_paths["tick_data"]),
+            "--tick-data-format",
+            "csv",
+            "--tick-data-provenance-label",
+            "ticks-primary",
+            "--tick-timestamp-column",
+            "timestamp_utc",
+            "--exchange-code",
+            "XNYS",
+            "--session-definition-path",
+            str(market_data_paths["session_definition"]),
+            "--session-definition-format",
+            "json",
+            "--session-definition-provenance-label",
+            "session-calendar",
+            "--session-timezone",
+            "America/New_York",
+            "--timestamp-timezone",
+            "America/New_York",
+            "--execution-mode",
+            "memory",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert stdout_text == ""
+    assert 'field_path="tick_data_source.rows[1].timestamp_utc"' in stderr_text
+    assert f'"source_path": "{market_data_paths["tick_data"]}"' in stderr_text
+    assert '"normalization_step": "timestamp_timezone_normalization"' in stderr_text
+    assert "daylight-saving transition" in stderr_text
+
+
+def test_market_data_cli_missing_required_column_reports_source_file_and_normalization_step(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    market_data_paths = _write_market_data_input_files(
+        tmp_path,
+        calendar_registry_json=calendar_registry_json,
+        tick_trade_price_column_name="last_trade",
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "calibration",
+            "market-data",
+            "--run-id",
+            "market-data-run-missing-column",
+            "--workflow-scope",
+            "full_without_option_surface",
+            "--tick-data-path",
+            str(market_data_paths["tick_data"]),
+            "--tick-data-format",
+            "csv",
+            "--tick-data-provenance-label",
+            "ticks-primary",
+            "--tick-timestamp-column",
+            "timestamp_utc",
+            "--tick-price-input-policy",
+            "trade_price_column",
+            "--tick-trade-price-column",
+            "trade_price",
+            "--exchange-code",
+            "XNYS",
+            "--session-definition-path",
+            str(market_data_paths["session_definition"]),
+            "--session-definition-format",
+            "json",
+            "--session-definition-provenance-label",
+            "session-calendar",
+            "--session-timezone",
+            "America/New_York",
+            "--timestamp-timezone",
+            "UTC",
+            "--execution-mode",
+            "memory",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert stdout_text == ""
+    assert 'field_path="column_mapping.tick_data"' in stderr_text
+    assert "Missing columns: trade_price" in stderr_text
+    assert f'"source_path": "{market_data_paths["tick_data"]}"' in stderr_text
+    assert '"normalization_step": "column_mapping_validation"' in stderr_text
+
+
+def test_market_data_cli_invalid_session_definition_returns_validation_exit_code(
+    tmp_path: Path,
+) -> None:
+    invalid_session_definition = tmp_path / "config" / "invalid-sessions.json"
+    invalid_session_definition.parent.mkdir(parents=True, exist_ok=True)
+    invalid_session_definition.write_text("{}", encoding="utf-8")
+
+    tick_data_path = tmp_path / "data" / "ticks.csv"
+    tick_data_path.parent.mkdir(parents=True, exist_ok=True)
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc",
+                "2026-02-02T14:30:00Z",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "calibration",
+            "market-data",
+            "--run-id",
+            "market-data-run-invalid-session-definition",
+            "--workflow-scope",
+            "seasonality_only",
+            "--tick-data-path",
+            str(tick_data_path),
+            "--tick-data-format",
+            "csv",
+            "--tick-data-provenance-label",
+            "ticks-primary",
+            "--tick-timestamp-column",
+            "timestamp_utc",
+            "--exchange-code",
+            "XNYS",
+            "--session-definition-path",
+            str(invalid_session_definition),
+            "--session-definition-format",
+            "json",
+            "--session-definition-provenance-label",
+            "session-calendar",
+            "--session-timezone",
+            "America/New_York",
+            "--timestamp-timezone",
+            "UTC",
+            "--execution-mode",
+            "memory",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert stdout_text == ""
+    assert 'field_path="session_configuration.session_definition_source"' in stderr_text
+    assert "calendar.registry.v1" in stderr_text
+
+
+def test_market_data_cli_inconsistent_known_news_inputs_return_validation_exit_code(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    market_data_paths = _write_market_data_input_files(
+        tmp_path,
+        calendar_registry_json=calendar_registry_json,
+        include_known_news=True,
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "calibration",
+            "market-data",
+            "--run-id",
+            "market-data-run-inconsistent-known-news",
+            "--workflow-scope",
+            "seasonality_only",
+            "--tick-data-path",
+            str(market_data_paths["tick_data"]),
+            "--tick-data-format",
+            "csv",
+            "--tick-data-provenance-label",
+            "ticks-primary",
+            "--tick-timestamp-column",
+            "timestamp_utc",
+            "--exchange-code",
+            "XNYS",
+            "--session-definition-path",
+            str(market_data_paths["session_definition"]),
+            "--session-definition-format",
+            "json",
+            "--session-definition-provenance-label",
+            "session-calendar",
+            "--session-timezone",
+            "America/New_York",
+            "--known-news-path",
+            str(market_data_paths["known_news"]),
+            "--known-news-format",
+            "csv",
+            "--known-news-provenance-label",
+            "known-news",
+            "--known-news-timezone",
+            "UTC",
+            "--timestamp-timezone",
+            "UTC",
+            "--execution-mode",
+            "memory",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert stdout_text == ""
+    assert 'field_path="column_mapping.known_news"' in stderr_text
+    assert "csv or parquet" in stderr_text
 
 
 def test_simulation_cli_maps_request_json_to_runtime_request(
@@ -410,7 +739,7 @@ def test_simulation_cli_maps_request_json_to_runtime_request(
         ]
     )
 
-    assert exit_code == 0, stderr_text
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
     assert captured_request["request"].hourly_factor_summary == request.hourly_factor_summary
     assert captured_request["request"].hourly_factor_contract.interval_count == request.horizon_interval_count
 
@@ -448,7 +777,7 @@ def test_pricing_cli_maps_execution_input_json_to_runtime_contract(
         ]
     )
 
-    assert exit_code == 0, stderr_text
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
     assert captured_execution_input["execution_input"].request.payoff.payoff_type.value == "call"
     assert captured_execution_input["execution_input"].interval_factors.nu_h_known == pytest.approx(0.01)
     assert captured_execution_input["execution_input"].interval_factors.nu_h_surprise == pytest.approx(0.02)
@@ -503,7 +832,7 @@ def test_calibration_cli_defaults_execution_mode_to_disk(
         ]
     )
 
-    assert exit_code == 0, stderr_text
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
 
     normalized_execution_input = captured_execution_input["execution_input"]
     assert normalized_execution_input.request.execution_mode == CalibrationExecutionMode.DISK
@@ -558,7 +887,7 @@ def test_calibration_cli_honors_explicit_memory_override(
         ]
     )
 
-    assert exit_code == 0, stderr_text
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
 
     normalized_execution_input = captured_execution_input["execution_input"]
     assert normalized_execution_input.request.execution_mode == CalibrationExecutionMode.MEMORY
@@ -588,6 +917,88 @@ def test_calibration_cli_resolves_relative_disk_checkpoint_directory_from_reposi
     )
 
 
+def test_calibration_cli_runtime_failures_return_runtime_exit_code(
+    calendar_registry_json: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    execution_input_path = _write_json_path(
+        tmp_path / "calibration_execution_input.json",
+        build_valid_execution_input_model().to_payload(),
+    )
+    calendar_registry_path = _write_json_path(
+        tmp_path / "calendar_registry.json",
+        json.loads(calendar_registry_json),
+    )
+
+    def failing_runner(
+        execution_input_model: StagedCalibrationExecutionInput,
+        *,
+        calendar_registry: CalendarRegistry,
+    ) -> StagedCalibrationResponse:
+        del execution_input_model
+        del calendar_registry
+
+        raise JaniformExecutionError(
+            JaniformErrorDetails.from_context(
+                error_id="calibration.execution.run_failed",
+                category=JaniformErrorCategory.EXECUTION,
+                workflow="calibration",
+                entrypoint="run_staged_calibration",
+                message="native calibration failed",
+            )
+        )
+
+    monkeypatch.setattr(cli_module, "run_staged_calibration", failing_runner)
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "calibration",
+            "staged",
+            "--execution-input-json",
+            str(execution_input_path),
+            "--calendar-registry-json",
+            str(calendar_registry_path),
+            "--execution-mode",
+            "memory",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.RUNTIME_ERROR)
+    assert stdout_text == ""
+    assert '[calibration.execution.run_failed]' in stderr_text
+    assert 'category="execution"' in stderr_text
+
+
+def test_pricing_cli_unexpected_failures_return_internal_exit_code(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    execution_input_path = _write_json_path(
+        tmp_path / "pricing_execution_input.json",
+        _build_pricing_execution_input().to_payload(),
+    )
+
+    def broken_runner(_: VanillaOptionPricingExecutionInput) -> pricing_module.VanillaOptionPricingRunResult:
+        raise RuntimeError("unexpected pricing bug")
+
+    monkeypatch.setattr(cli_module, "run_vanilla_option_pricing", broken_runner)
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "pricing",
+            "vanilla-option",
+            "--execution-input-json",
+            str(execution_input_path),
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.INTERNAL_ERROR)
+    assert stdout_text == ""
+    assert '[cli.internal.pricing.vanilla_option.failed]' in stderr_text
+    assert 'category="integration"' in stderr_text
+
+
 def test_calibration_cli_requires_disk_checkpoint_directory_when_defaulting_to_disk(
     calendar_registry_json: str,
     tmp_path: Path,
@@ -612,7 +1023,7 @@ def test_calibration_cli_requires_disk_checkpoint_directory_when_defaulting_to_d
         ]
     )
 
-    assert exit_code == 1
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert stdout_text == ""
 
     assert 'field_path="runtime_resources.disk_checkpoint_directory"' in stderr_text
@@ -648,7 +1059,7 @@ def test_calibration_cli_rejects_disk_checkpoint_directory_in_memory_mode(
         ]
     )
 
-    assert exit_code == 1
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert stdout_text == ""
 
     assert 'field_path="disk_checkpoint_directory"' in stderr_text
@@ -686,7 +1097,7 @@ def test_calibration_cli_rejects_malformed_close_open_boundary_observation(
         ]
     )
 
-    assert exit_code == 1
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert stdout_text == ""
     assert (
         'field_path="return_components_candidate_generation_input.observed_close_open_boundary_observations[0].open_price"'
@@ -783,3 +1194,82 @@ def _normalize_help_output(help_output: str) -> str:
 def _write_json_path(path: Path, payload: dict[str, object]) -> Path:
     path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
     return path
+
+
+def _write_market_data_input_files(
+    tmp_path: Path,
+    *,
+    calendar_registry_json: str,
+    include_known_news: bool = False,
+    include_option_surface: bool = False,
+    ambiguous_tick_timestamp: bool = False,
+    tick_trade_price_column_name: str = "trade_price",
+) -> dict[str, Path]:
+    data_directory = tmp_path / "data"
+    config_directory = tmp_path / "config"
+
+    data_directory.mkdir(parents=True, exist_ok=True)
+    config_directory.mkdir(parents=True, exist_ok=True)
+
+    tick_data_path = data_directory / "ticks.csv"
+    if ambiguous_tick_timestamp:
+        tick_data_path.write_text(
+            "\n".join(
+                [
+                    "timestamp_utc",
+                    "2026-11-01T01:30:00",
+                ]
+            ),
+            encoding="utf-8",
+        )
+    else:
+        tick_data_path.write_text(
+            "\n".join(
+                [
+                    f"timestamp_utc,{tick_trade_price_column_name}",
+                    "2026-02-02T14:30:00Z,100.0",
+                    "2026-02-02T15:00:00Z,101.0",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+    session_definition_path = config_directory / "sessions.json"
+    session_definition_path.write_text(calendar_registry_json, encoding="utf-8")
+
+    file_paths: dict[str, Path] = {
+        "tick_data": tick_data_path,
+        "session_definition": session_definition_path,
+    }
+
+    if include_known_news:
+        known_news_path = config_directory / "known-news.csv"
+        known_news_path.write_text(
+            "\n".join(
+                [
+                    "event_timestamp_utc,event_code",
+                    "2026-02-02T15:05:00Z,open_macro",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        file_paths["known_news"] = known_news_path
+
+    if include_option_surface:
+        option_surface_path = data_directory / "options.parquet"
+        pyarrow_parquet.write_table(
+            pa.table(
+                {
+                    "quote_timestamp_utc": [datetime(2026, 2, 2, 20, 0, tzinfo=UTC)],
+                    "expiry_utc": [datetime(2026, 3, 20, 20, 0, tzinfo=UTC)],
+                    "strike": [100.0],
+                    "option_type": ["C"],
+                    "bid": [4.0],
+                    "ask": [5.0],
+                }
+            ),
+            option_surface_path,
+        )
+        file_paths["option_surface"] = option_surface_path
+
+    return file_paths
