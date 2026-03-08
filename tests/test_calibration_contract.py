@@ -245,6 +245,26 @@ def test_staged_calibration_execution_input_requires_close_open_gap_detection_po
     assert captured_error.value.failure.message == "is required"
 
 
+def test_staged_calibration_execution_input_allows_empty_known_news_return_samples() -> None:
+    execution_input_payload = build_valid_execution_input_payload()
+    execution_input_payload["return_components_candidate_generation_input"][
+        "realized_known_news_return_samples"
+    ] = []
+
+    validated_execution_input = validate_staged_calibration_execution_input(
+        execution_input_payload
+    )
+
+    assert (
+        validated_execution_input.return_components_candidate_generation_input
+        is not None
+    )
+    assert (
+        validated_execution_input.return_components_candidate_generation_input.realized_known_news_return_samples
+        == ()
+    )
+
+
 def test_staged_calibration_response_roundtrip_serialization_is_deterministic() -> None:
     response_payload = _valid_response_payload()
 

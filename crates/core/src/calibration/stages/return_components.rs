@@ -428,11 +428,6 @@ impl ReturnComponentsStageCandidateGenerationInput {
     fn validate(&self) -> Result<(), ReturnComponentsStageCandidateGenerationInputError> {
         self.known_news_calendar.validate()?;
 
-        if self.realized_known_news_return_samples.is_empty() {
-            return Err(
-                ReturnComponentsStageCandidateGenerationInputError::MissingKnownNewsReturnSamples,
-            );
-        }
         if self.detected_intraday_jump_candidates.is_empty() {
             return Err(
                 ReturnComponentsStageCandidateGenerationInputError::MissingIntradayJumpCandidates,
@@ -499,7 +494,6 @@ pub enum ReturnComponentsStageCandidateGenerationInputError {
         window_start_utc_nanos: i64,
         window_end_utc_nanos: i64,
     },
-    MissingKnownNewsReturnSamples,
     MissingIntradayJumpCandidates,
     MissingNigCandidates,
     KnownNewsReturnSampleOutsideSourceWindow {
@@ -630,10 +624,6 @@ impl Display for ReturnComponentsStageCandidateGenerationInputError {
             } => write!(
                 formatter,
                 "known-news calendar timestamp {timestamp_utc_nanos} is outside source window [{window_start_utc_nanos}, {window_end_utc_nanos})"
-            ),
-            Self::MissingKnownNewsReturnSamples => write!(
-                formatter,
-                "candidate generation requires at least one realized_known_news_return_sample"
             ),
             Self::MissingIntradayJumpCandidates => write!(
                 formatter,
