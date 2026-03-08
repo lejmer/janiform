@@ -2559,11 +2559,6 @@ class CalibrationReturnComponentsStageCandidateGenerationInput(ContractModel):
     objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights
 
     def __post_init__(self) -> None:
-        if len(self.realized_known_news_return_samples) == 0:
-            raise _calibration_error(
-                "realized_known_news_return_samples",
-                "must include at least one known-news return sample",
-            )
         if len(self.detected_intraday_jump_candidates) == 0:
             raise _calibration_error(
                 "detected_intraday_jump_candidates",
