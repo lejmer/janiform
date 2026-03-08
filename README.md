@@ -100,46 +100,64 @@ Or if you are running a JetBrains IDE with uv:
 
 ## Testing
 
-When developing you regularly need to run tests. The easiest way to build is to use the test scripts.
+When developing you regularly need to run tests. The easiest way to do that is to use the test scripts.
 
 ### Linux
 
 ```bash
-./scripts/test-linux.sh .venv-linux
+./scripts/test-python-linux.sh .venv-linux
+./scripts/test-rust-linux.sh .venv-linux
 ```
 
 Or if you are running a JetBrains IDE with uv:
 
 ```bash
-./scripts/test-linux.sh .venv
+./scripts/test-python-linux.sh .venv
+./scripts/test-rust-linux.sh .venv
 ```
 
 ### Windows
 
 ```powershell
-./scripts/test-win.ps1 .venv
+./scripts/test-python-win.ps1 .venv
+./scripts/test-rust-win.ps1 .venv
 ```
 
 Or if you are running a JetBrains IDE with uv:
 
 ```powershell
-./scripts/test-win.ps1 .venv
+./scripts/test-python-win.ps1 .venv
+./scripts/test-rust-win.ps1 .venv
 ```
 
 ## Test script syntax
 
-The test scripts can pass command line arguments on to **pytest**. To achieve this, use the following syntax:
+The Python test scripts pass command line arguments on to **pytest**:
 
 ### Linux
 
 ```bash
-./scripts/test-linux.sh [venv-folder] -- [pytest-command-line-arguments]
+./scripts/test-python-linux.sh [venv-folder] -- [pytest-command-line-arguments]
 ```
 
 ### Windows
 
 ```powershell
-./scripts/test-win.ps1 [venv-folder] -- [pytest-command-line-arguments]
+./scripts/test-python-win.ps1 [venv-folder] [pytest-command-line-arguments]
+```
+
+The Rust test scripts pass command line arguments on to `cargo nextest run` when nextest is installed, otherwise they pass them on to `cargo test`:
+
+### Linux
+
+```bash
+./scripts/test-rust-linux.sh [venv-folder] -- [cargo-command-line-arguments]
+```
+
+### Windows
+
+```powershell
+./scripts/test-rust-win.ps1 [venv-folder] [cargo-command-line-arguments]
 ```
 
 ### Example on Linux
@@ -147,7 +165,7 @@ The test scripts can pass command line arguments on to **pytest**. To achieve th
 This tells the script to use the `.venv-linux` venv, and to pass on the `-v` command line argument to **pytest**.
 
 ```bash
-./scripts/test-linux.sh .venv-linux -- -v
+./scripts/test-python-linux.sh .venv-linux -- -v
 ```
 
 ## Project Layout
