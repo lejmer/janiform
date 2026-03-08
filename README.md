@@ -34,7 +34,7 @@ janiform calibration market-data --help
 python -m examples.pricing_workflow
 ```
 
-## Developer Setup
+## Developer Environment Setup
 
 ### Linux
 Make sure you have **Rust >=1.89** and either **uv** or **Python >=3.12** installed first.
@@ -69,6 +69,86 @@ Or if you are running a JetBrains IDE with uv:
 ```
 
 This automatically installs all missing dependencies, including **maturin**, the build system, and **pytest**.
+
+## Building
+
+When developing you regularly need to build. The easiest way to build is to use the build scripts.
+
+### Linux
+
+```bash
+./scripts/build-linux.sh .venv-linux
+```
+
+Or if you are running a JetBrains IDE with uv:
+
+```bash
+./scripts/build-linux.sh .venv
+```
+
+### Windows
+
+```powershell
+./scripts/build-win.ps1 .venv
+```
+
+Or if you are running a JetBrains IDE with uv:
+
+```powershell
+./scripts/build-win.ps1 .venv
+```
+
+## Testing
+
+When developing you regularly need to run tests. The easiest way to build is to use the test scripts.
+
+### Linux
+
+```bash
+./scripts/test-linux.sh .venv-linux
+```
+
+Or if you are running a JetBrains IDE with uv:
+
+```bash
+./scripts/test-linux.sh .venv
+```
+
+### Windows
+
+```powershell
+./scripts/test-win.ps1 .venv
+```
+
+Or if you are running a JetBrains IDE with uv:
+
+```powershell
+./scripts/test-win.ps1 .venv
+```
+
+## Test script syntax
+
+The test scripts can pass command line arguments on to **pytest**. To achieve this, use the following syntax:
+
+### Linux
+
+```bash
+./scripts/test-linux.sh [venv-folder] -- [pytest-command-line-arguments]
+```
+
+### Windows
+
+```powershell
+./scripts/test-win.ps1 [venv-folder] -- [pytest-command-line-arguments]
+```
+
+### Example on Linux
+
+This tells the script to use the `.venv-linux` venv, and to pass on the `-v` command line argument to **pytest**.
+
+```bash
+./scripts/test-linux.sh .venv-linux -- -v
+```
 
 ## Project Layout
 
