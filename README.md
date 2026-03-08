@@ -21,6 +21,7 @@ On Linux:
 ```bash
 ./scripts/bootstrap-linux.sh
 janiform --help
+janiform stylized-facts horizon-comparison --help
 janiform calibration market-data --help
 python3 -m examples.market_data_calibration_workflow
 python3 -m examples.pricing_workflow
@@ -31,6 +32,7 @@ On Windows:
 ```powershell
 ./scripts/bootstrap-win.ps1
 janiform --help
+janiform stylized-facts horizon-comparison --help
 janiform calibration market-data --help
 python -m examples.market_data_calibration_workflow
 python -m examples.pricing_workflow

@@ -21,6 +21,7 @@ def test_cli_command_reference_doc_contains_required_sections_and_commands() -> 
         "## Shared Conventions",
         "## Simulation",
         "## Pricing",
+        "## Stylized Facts",
         "## Market-Data Calibration",
         "## Advanced Staged Calibration",
         "## Developer Regression",
@@ -31,6 +32,7 @@ def test_cli_command_reference_doc_contains_required_sections_and_commands() -> 
     required_commands: list[str] = [
         "janiform simulation seeded-ticks",
         "janiform pricing vanilla-option",
+        "janiform stylized-facts horizon-comparison",
         "janiform calibration market-data",
         "janiform calibration staged",
         "janiform dev regression deterministic",
@@ -45,7 +47,9 @@ def test_cli_command_reference_doc_documents_execution_modes_and_market_data_inp
 
     assert "--execution-mode {disk,memory}" in reference_document
     assert "The CLI default is `disk` for calibration commands." in reference_document
+    assert "The stylized-fact report command defaults to `memory`." in reference_document
     assert "--disk-checkpoint-directory" in reference_document
+    assert "--artifact-export-json" in reference_document
     assert "--known-news-path" in reference_document
     assert "--option-surface-path" in reference_document
     assert "advanced or internal calibration path" in normalized_document
@@ -57,6 +61,7 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     reference_document = _cli_command_reference_text()
     simulation_help = _normalize_help_output(_render_help(["simulation", "seeded-ticks"]))
     pricing_help = _normalize_help_output(_render_help(["pricing", "vanilla-option"]))
+    stylized_facts_help = _normalize_help_output(_render_help(["stylized-facts", "horizon-comparison"]))
     market_data_help = _normalize_help_output(_render_help(["calibration", "market-data"]))
     staged_help = _normalize_help_output(_render_help(["calibration", "staged"]))
     deterministic_help = _normalize_help_output(_render_help(["dev", "regression", "deterministic"]))
@@ -68,6 +73,8 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
         "--execution-input-json PATH",
         "--request-json PATH",
         "--calendar-registry-json PATH",
+        "--metric-catalog-json PATH",
+        "--comparison-request-json PATH",
     )
     for expected_text in shared_expectations:
         assert expected_text in reference_document
@@ -75,6 +82,9 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     assert "--request-json PATH" in simulation_help
     assert "--calendar-registry-json PATH" in simulation_help
     assert "--execution-input-json PATH" in pricing_help
+    assert "--metric-catalog-json PATH" in stylized_facts_help
+    assert "--comparison-request-json PATH" in stylized_facts_help
+    assert "--artifact-export-json PATH" in stylized_facts_help
     assert "--workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface}" in market_data_help
     assert "--execution-mode {disk,memory}" in market_data_help
     assert "--execution-mode {disk,memory}" in staged_help
@@ -115,6 +125,48 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path
     assert pricing_exit_code == int(cli_module.CliExitCode.SUCCESS), pricing_stderr
     pricing_payload = orjson.loads(pricing_stdout)
     assert pricing_payload["schema_version"] == "pricing.vanilla_option.run_result.v1"
+
+    stylized_facts_memory_exit_code, stylized_facts_memory_stdout, stylized_facts_memory_stderr = _invoke_cli(
+        [
+            "stylized-facts",
+            "horizon-comparison",
+            "--metric-catalog-json",
+            documented_paths["stylized_fact_metric_catalog_json"],
+            "--comparison-request-json",
+            documented_paths["stylized_fact_comparison_request_json"],
+            "--execution-mode",
+            "memory",
+            "--output",
+            "json",
+        ]
+    )
+    assert stylized_facts_memory_exit_code == int(cli_module.CliExitCode.SUCCESS), stylized_facts_memory_stderr
+
+    stylized_facts_memory_payload = orjson.loads(stylized_facts_memory_stdout)
+    assert stylized_facts_memory_payload["schema_version"] == "validation.stylized_fact.horizon_comparison.report_bundle.v1"
+    assert stylized_facts_memory_payload["artifact_export"] is None
+
+    stylized_facts_disk_exit_code, stylized_facts_disk_stdout, stylized_facts_disk_stderr = _invoke_cli(
+        [
+            "stylized-facts",
+            "horizon-comparison",
+            "--metric-catalog-json",
+            documented_paths["stylized_fact_metric_catalog_json"],
+            "--comparison-request-json",
+            documented_paths["stylized_fact_comparison_request_json"],
+            "--artifact-export-json",
+            documented_paths["stylized_fact_artifact_export_json"],
+            "--execution-mode",
+            "disk",
+            "--output",
+            "json",
+        ]
+    )
+    assert stylized_facts_disk_exit_code == int(cli_module.CliExitCode.SUCCESS), stylized_facts_disk_stderr
+
+    stylized_facts_disk_payload = orjson.loads(stylized_facts_disk_stdout)
+    assert stylized_facts_disk_payload["artifact_export"]["file_stem"] == "stylized_fact_horizon_report"
+    assert len(stylized_facts_disk_payload["artifact_export"]["exported_files"]) == 3
 
     market_data_default_exit_code, market_data_default_stdout, market_data_default_stderr = _invoke_cli(
         [

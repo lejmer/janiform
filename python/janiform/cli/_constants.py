@@ -66,6 +66,13 @@ CLI_SIMULATION_SEEDED_TICKS_INTERNAL_ERROR_ID = "cli.internal.simulation.seeded_
 CLI_PRICING_VANILLA_OPTION_ENTRYPOINT = "pricing.vanilla_option"
 CLI_PRICING_VANILLA_OPTION_VALIDATION_ERROR_ID = "cli.validation.pricing.vanilla_option.invalid_input"
 CLI_PRICING_VANILLA_OPTION_INTERNAL_ERROR_ID = "cli.internal.pricing.vanilla_option.failed"
+CLI_STYLIZED_FACTS_HORIZON_COMPARISON_ENTRYPOINT = "stylized_facts.horizon_comparison"
+CLI_STYLIZED_FACTS_HORIZON_COMPARISON_VALIDATION_ERROR_ID = (
+    "cli.validation.stylized_facts.horizon_comparison.invalid_input"
+)
+CLI_STYLIZED_FACTS_HORIZON_COMPARISON_INTERNAL_ERROR_ID = (
+    "cli.internal.stylized_facts.horizon_comparison.failed"
+)
 CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT = "calibration.market_data"
 CLI_CALIBRATION_MARKET_DATA_VALIDATION_ERROR_ID = "cli.validation.calibration.market_data.invalid_input"
 CLI_CALIBRATION_MARKET_DATA_INTERNAL_ERROR_ID = "cli.internal.calibration.market_data.failed"
@@ -108,12 +115,16 @@ CLI_PRIMARY_COMMAND_TREE: dict[str, dict[str, dict[str, dict[str, Any]]]] = {
     "pricing": {
         "vanilla-option": {},
     },
+    "stylized-facts": {
+        "horizon-comparison": {},
+    },
 }
 CLI_PRIMARY_COMMAND_IDENTIFIERS: dict[tuple[str, ...], str] = {
     ("simulation", "seeded-ticks"): "simulation.seeded-ticks",
     ("calibration", "market-data"): "calibration.market-data",
     ("calibration", "staged"): "calibration.staged",
     ("pricing", "vanilla-option"): "pricing.vanilla-option",
+    ("stylized-facts", "horizon-comparison"): "stylized-facts.horizon-comparison",
 }
 
 
@@ -180,6 +191,9 @@ __all__ = [
     "CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT",
     "CLI_SIMULATION_SEEDED_TICKS_INTERNAL_ERROR_ID",
     "CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID",
+    "CLI_STYLIZED_FACTS_HORIZON_COMPARISON_ENTRYPOINT",
+    "CLI_STYLIZED_FACTS_HORIZON_COMPARISON_INTERNAL_ERROR_ID",
+    "CLI_STYLIZED_FACTS_HORIZON_COMPARISON_VALIDATION_ERROR_ID",
     "CliExitCode",
     "CliOutputMode",
     "DEFAULT_CALENDAR_FIXTURE_PATH",

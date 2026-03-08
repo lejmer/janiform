@@ -11,6 +11,9 @@ from ._shared import (
     SIMULATION_RANGE_END_UTC,
     SIMULATION_RANGE_START_UTC,
     build_calibration_execution_input,
+    build_stylized_fact_artifact_export_config,
+    build_stylized_fact_horizon_comparison_request,
+    build_stylized_fact_metric_catalog,
     build_calendar_registry,
     build_hawkes_kernel_parameters,
     build_initial_excitation_state,
@@ -76,6 +79,31 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
         encoding="utf-8",
     )
 
+    stylized_fact_metric_catalog_path = output_directory / "stylized_fact_metric_catalog.json"
+    stylized_fact_metric_catalog_path.write_text(
+        json.dumps(build_stylized_fact_metric_catalog(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    stylized_fact_comparison_request_path = output_directory / "stylized_fact_comparison_request.json"
+    stylized_fact_comparison_request_path.write_text(
+        json.dumps(build_stylized_fact_horizon_comparison_request(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    stylized_fact_export_config_path = output_directory / "stylized_fact_artifact_export.json"
+    stylized_fact_export_config_path.write_text(
+        json.dumps(
+            build_stylized_fact_artifact_export_config(
+                export_directory=output_directory / "stylized-facts-export",
+            ),
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
     output_paths: dict[str, str] = {
         "calendar_registry_json": str(calendar_registry_path),
         "calibration_execution_input_json": str(calibration_execution_input_path),
@@ -84,6 +112,9 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
         "pricing_execution_input_json": str(pricing_execution_input_path),
         "session_definition_json": str(market_data_paths["session_definition"]),
         "simulation_request_json": str(simulation_request_path),
+        "stylized_fact_artifact_export_json": str(stylized_fact_export_config_path),
+        "stylized_fact_comparison_request_json": str(stylized_fact_comparison_request_path),
+        "stylized_fact_metric_catalog_json": str(stylized_fact_metric_catalog_path),
         "tick_data_csv": str(market_data_paths["tick_csv"]),
         "tick_data_parquet": str(market_data_paths["tick_parquet"]),
     }

@@ -12,6 +12,7 @@ def test_cli_top_level_help_lists_primary_and_developer_namespaces() -> None:
     assert "simulation" in help_output
     assert "calibration" in help_output
     assert "pricing" in help_output
+    assert "stylized-facts" in help_output
     assert "dev" in help_output
 
 
@@ -32,6 +33,12 @@ def test_pricing_help_lists_vanilla_option_workflow() -> None:
     help_output = _render_help(["pricing"])
 
     assert "vanilla-option" in help_output
+
+
+def test_stylized_facts_help_lists_horizon_comparison_workflow() -> None:
+    help_output = _render_help(["stylized-facts"])
+
+    assert "horizon-comparison" in help_output
 
 
 def test_developer_help_lists_regression_namespace() -> None:

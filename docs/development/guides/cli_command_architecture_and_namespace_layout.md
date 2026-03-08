@@ -21,6 +21,8 @@ janiform
 │   └── staged
 ├── pricing
 │   └── vanilla-option
+├── stylized-facts
+│   └── horizon-comparison
 └── dev
     └── regression
         ├── deterministic
@@ -29,7 +31,7 @@ janiform
 
 ## Namespace policy
 
-- `simulation`, `calibration`, and `pricing` are the primary user-facing workflow groups.
+- `simulation`, `calibration`, `pricing`, and `stylized-facts` are the primary user-facing workflow groups.
 - `dev` is reserved for internal and developer-only utilities.
 - Developer-only commands must not be placed beside primary workflow groups at the top level.
 - Command aliases are forbidden because they add ambiguity to automation and shell scripts.
@@ -37,20 +39,22 @@ janiform
 ## Naming policy
 
 - Top-level command groups use the same workflow nouns as the public Python modules:
-  `janiform.simulation`, `janiform.calibration`, and `janiform.pricing`.
+  `janiform.simulation`, `janiform.calibration`, `janiform.pricing`, and `janiform.stylized_facts`.
 - Subcommand names stay short while preserving the specific workflow identity:
   - `seeded-ticks` for the seeded tick-event simulator
   - `market-data` for the recommended file-driven calibration request boundary
   - `staged` for advanced staged calibration orchestration
   - `vanilla-option` for vanilla option pricing
+  - `horizon-comparison` for stylized-fact horizon-comparison report generation
 - Developer-only validation harnesses remain explicit about their function:
   - `dev regression deterministic`
   - `dev regression open-closed-gap-leakage`
 
 ## Help-output expectations
 
-- `janiform --help` lists the four top-level namespaces in the order above.
-- `janiform simulation --help`, `janiform calibration --help`, and `janiform pricing --help`
+- `janiform --help` lists the five top-level namespaces in the order above.
+- `janiform simulation --help`, `janiform calibration --help`, `janiform pricing --help`, and
+  `janiform stylized-facts --help`
   each list their current workflow subcommands.
 - `janiform dev --help` lists internal-only utility groups.
 - Incomplete command paths print the help for the selected namespace branch.
@@ -176,6 +180,29 @@ Behavior:
 Output:
 - `--output json` writes deterministic JSON for `pricing.vanilla_option.run_result.v1` to stdout.
 - `--output human` writes a concise completion summary with price and delta.
+
+### `janiform stylized-facts horizon-comparison`
+
+Required arguments:
+- `--metric-catalog-json`: stylized-fact metric catalog JSON object
+- `--comparison-request-json`: stylized-fact horizon-comparison request JSON object
+
+Optional arguments:
+- `--config-json PATH`
+- `--artifact-export-json PATH`: stylized-fact artifact-export config JSON object
+- `--execution-mode {disk,memory}`: defaults to `memory` to match the public Python workflow
+- `--output {human,json}`
+
+Behavior:
+- The command reuses `janiform.stylized_facts.run_stylized_fact_horizon_comparison_report_generator`.
+- File inputs are loaded as JSON objects and passed through the existing Python validation path.
+- Artifact export config is caller-supplied as a JSON object instead of separate CLI-only flags.
+- Export is valid only when `--execution-mode disk` is selected.
+
+Output:
+- `--output json` writes deterministic JSON for `validation.stylized_fact.horizon_comparison.report_bundle.v1`.
+- `--output human` writes a concise summary over the same canonical report bundle, including
+  report status and any exported artifact metadata.
 
 ### `janiform calibration market-data`
 

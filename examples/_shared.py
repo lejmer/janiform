@@ -1,7 +1,7 @@
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import pyarrow as pa
 from pyarrow import parquet as pyarrow_parquet
@@ -102,6 +102,92 @@ CALENDAR_REGISTRY_JSON: str = json.dumps(
 
 SIMULATION_RANGE_START_UTC: datetime = datetime(2026, 2, 2, 14, 0, 0, tzinfo=UTC)
 SIMULATION_RANGE_END_UTC: datetime = datetime(2026, 2, 2, 17, 0, 0, tzinfo=UTC)
+STYLIZED_FACT_METRIC_CATALOG_REQUIRED_FIELDS: tuple[str, ...] = (
+    "schema_version",
+    "catalog_id",
+    "catalog_version",
+    "schema_metadata",
+    "naming_conventions",
+    "uncertainty_policy",
+    "insufficient_data_semantics",
+    "output_schema_metadata",
+    "metrics",
+)
+STYLIZED_FACT_METRIC_REQUIRED_FIELDS: tuple[str, ...] = (
+    "metric_id",
+    "metric_name",
+    "metric_class",
+    "metric_family",
+    "domain",
+    "definition",
+    "unit",
+    "horizon_applicability",
+    "sample_dependence",
+    "uncertainty",
+    "sample_sufficiency",
+    "tags",
+)
+STYLIZED_FACT_SECONDARY_METRIC_REQUIRED_FIELDS: tuple[str, ...] = (
+    "metric_id",
+    "metric_name",
+    "metric_class",
+    "metric_family",
+    "domain",
+    "definition",
+    "unit",
+    "horizon_applicability",
+    "sample_dependence",
+    "uncertainty",
+    "sample_sufficiency",
+    "estimator_metadata",
+    "secondary_moment_variant",
+    "tags",
+)
+STYLIZED_FACT_UNCERTAINTY_REQUIRED_FIELDS: tuple[str, ...] = (
+    "default_method",
+    "confidence_level",
+    "bootstrap_replication_count",
+    "block_length_horizon_count",
+    "override_policy",
+)
+STYLIZED_FACT_SAMPLE_SUFFICIENCY_REQUIRED_FIELDS: tuple[str, ...] = (
+    "minimum_sample_count",
+    "minimum_effective_sample_count",
+    "minimum_tail_observation_count",
+    "minimum_horizon_coverage_ratio",
+)
+STYLIZED_FACT_ESTIMATOR_METADATA_REQUIRED_FIELDS: tuple[str, ...] = (
+    "estimator_id",
+    "estimator_version",
+    "estimator_family",
+    "bias_correction",
+    "finite_sample_adjustment",
+)
+STYLIZED_FACT_METRIC_CLASS_VOCABULARY: tuple[str, ...] = (
+    "primary_robust",
+    "secondary_moment",
+)
+STYLIZED_FACT_METRIC_FAMILY_VOCABULARY: tuple[str, ...] = (
+    "quantile_shape",
+    "tail_risk",
+    "distribution_distance",
+    "l_moment",
+    "central_moment",
+)
+STYLIZED_FACT_DOMAIN_VOCABULARY: tuple[str, ...] = (
+    "activity_clustering",
+    "heavy_tails",
+    "skew",
+    "volatility_persistence",
+    "open_window_direct_jump_behavior",
+    "closed_window_gap_behavior",
+)
+STYLIZED_FACT_UNCERTAINTY_METHOD_VOCABULARY: tuple[str, ...] = (
+    "block_bootstrap",
+    "stationary_bootstrap",
+    "circular_block_bootstrap",
+    "analytical_asymptotic",
+)
 
 
 def build_calendar_registry() -> CalendarRegistry:
@@ -212,6 +298,313 @@ def build_pricing_optional_output_selection() -> VanillaOptionPricingOptionalOut
         include_integration_quality_diagnostics=True,
         include_calibration_hooks=True,
     )
+
+
+def build_stylized_fact_metric_catalog() -> dict[str, Any]:
+    return {
+        "schema_version": "validation.stylized_fact.metric_catalog.v1",
+        "catalog_id": "stylized_fact_metric_catalog",
+        "catalog_version": "1.0.0",
+        "schema_metadata": {
+            "schema_family": "validation.stylized_fact.metric_catalog",
+            "schema_generation": "v1",
+            "forward_extension_policy": "additive_fields_only.v1",
+        },
+        "naming_conventions": {
+            "naming_policy": "snake_case_metric_ids_used_as_canonical_output_keys.v1",
+            "metric_id_format": "snake_case",
+            "horizon_label_policy": "explicit_horizon_bucket_labels_with_no_implicit_interpolation.v1",
+            "canonical_primary_metric_class_label": "primary_robust",
+            "canonical_secondary_metric_class_label": "secondary_moment",
+        },
+        "uncertainty_policy": {
+            "default_policy_id": "dependent_return_series_default_block_bootstrap_with_approved_overrides.v1",
+            "dependent_return_series_default_method": "block_bootstrap",
+            "default_confidence_level": 0.95,
+            "default_bootstrap_replication_count": 2000,
+            "default_block_length_horizon_count": 5,
+            "override_approval_policy": "allow_only_explicitly_whitelisted_uncertainty_methods.v1",
+            "approved_override_methods": [
+                "stationary_bootstrap",
+                "circular_block_bootstrap",
+                "analytical_asymptotic",
+            ],
+        },
+        "insufficient_data_semantics": {
+            "status_code": "insufficient_data",
+            "decision_policy": "emit_insufficient_data_with_coverage_and_skip_threshold_decision.v1",
+            "non_terminal_decision_state": True,
+            "required_result_fields": [
+                "status",
+                "sample_coverage",
+                "required_minimums",
+                "observed_counts",
+            ],
+        },
+        "output_schema_metadata": {
+            "schema_version": "validation.stylized_fact.metric_catalog.output_schema_metadata.v1",
+            "required_catalog_fields": list(STYLIZED_FACT_METRIC_CATALOG_REQUIRED_FIELDS),
+            "required_metric_fields": list(STYLIZED_FACT_METRIC_REQUIRED_FIELDS),
+            "required_primary_metric_fields": list(STYLIZED_FACT_METRIC_REQUIRED_FIELDS),
+            "required_secondary_metric_fields": list(STYLIZED_FACT_SECONDARY_METRIC_REQUIRED_FIELDS),
+            "required_uncertainty_fields": list(STYLIZED_FACT_UNCERTAINTY_REQUIRED_FIELDS),
+            "required_sample_sufficiency_fields": list(STYLIZED_FACT_SAMPLE_SUFFICIENCY_REQUIRED_FIELDS),
+            "required_estimator_metadata_fields": list(STYLIZED_FACT_ESTIMATOR_METADATA_REQUIRED_FIELDS),
+            "canonical_metric_class_vocabulary": list(STYLIZED_FACT_METRIC_CLASS_VOCABULARY),
+            "canonical_metric_family_vocabulary": list(STYLIZED_FACT_METRIC_FAMILY_VOCABULARY),
+            "canonical_domain_vocabulary": list(STYLIZED_FACT_DOMAIN_VOCABULARY),
+            "canonical_uncertainty_method_vocabulary": list(STYLIZED_FACT_UNCERTAINTY_METHOD_VOCABULARY),
+        },
+        "metrics": [
+            _build_stylized_fact_primary_metric(
+                metric_id="returns_abs_quantile_shape_ratio_q99_q95",
+                metric_name="Returns Abs Quantile Shape Ratio Q99 Q95",
+                metric_family="quantile_shape",
+                domain="heavy_tails",
+                definition="ratio of absolute return 99th to 95th percentile",
+                unit="ratio",
+                minimum_sample_count=500,
+                minimum_effective_sample_count=350,
+                minimum_tail_observation_count=None,
+                minimum_horizon_coverage_ratio=0.85,
+                tags=["returns", "heavy_tails", "quantile_shape"],
+            ),
+            _build_stylized_fact_secondary_metric(
+                metric_id="returns_l_moment_lambda2",
+                metric_name="Returns L Moment Lambda2",
+                metric_family="l_moment",
+                domain="heavy_tails",
+                definition="second L-moment for return dispersion",
+                unit="return_units",
+                minimum_sample_count=300,
+                minimum_effective_sample_count=240,
+                minimum_tail_observation_count=None,
+                minimum_horizon_coverage_ratio=0.8,
+                estimator_metadata={
+                    "estimator_id": "pwms_l_moment_estimator",
+                    "estimator_version": "1.0.0",
+                    "estimator_family": "l_moment",
+                    "bias_correction": "none",
+                    "finite_sample_adjustment": "pwm_unbiased_order_statistic_weights",
+                },
+                secondary_moment_variant={
+                    "variant": "l_moment",
+                    "moment_order": 2,
+                    "ratio_denominator_order": None,
+                },
+                tags=["returns", "l_moment", "dispersion"],
+            ),
+        ],
+    }
+
+
+def build_stylized_fact_horizon_comparison_request() -> dict[str, Any]:
+    return {
+        "metric_catalog_id": "stylized_fact_metric_catalog",
+        "metric_catalog_version": "1.0.0",
+        "threshold_policy": {
+            "policy_id": "stylized_fact_delta_policy.v1",
+            "default_max_absolute_delta": 0.2,
+            "default_max_standardized_delta": 5.0,
+            "metric_threshold_overrides": [
+                {
+                    "metric_id": "returns_l_moment_lambda2",
+                    "metric_variant": None,
+                    "max_absolute_delta": 0.25,
+                    "max_standardized_delta": 4.0,
+                }
+            ],
+        },
+        "calibration_runs": [
+            {
+                "calibration_run_id": "run_001",
+                "empirical_dataset_id": "empirical_set",
+                "simulated_dataset_id": "simulated_set",
+                "empirical_metrics": [
+                    _build_stylized_fact_observed_metric(
+                        horizon_label="1h",
+                        metric_id="returns_abs_quantile_shape_ratio_q99_q95",
+                        metric_name="Returns Abs Quantile Shape Ratio Q99 Q95",
+                        value=1.0,
+                    ),
+                    _build_stylized_fact_observed_metric(
+                        horizon_label="1h",
+                        metric_id="returns_l_moment_lambda2",
+                        metric_name="Returns L Moment Lambda2",
+                        value=None,
+                    ),
+                ],
+                "simulated_metrics": [
+                    _build_stylized_fact_observed_metric(
+                        horizon_label="1h",
+                        metric_id="returns_abs_quantile_shape_ratio_q99_q95",
+                        metric_name="Returns Abs Quantile Shape Ratio Q99 Q95",
+                        value=1.1,
+                    ),
+                    _build_stylized_fact_observed_metric(
+                        horizon_label="1h",
+                        metric_id="returns_l_moment_lambda2",
+                        metric_name="Returns L Moment Lambda2",
+                        value=0.4,
+                    ),
+                ],
+            }
+        ],
+    }
+
+
+def build_stylized_fact_artifact_export_config(
+    *,
+    export_directory: Path,
+    file_stem: str = "stylized_fact_horizon_report",
+) -> dict[str, Any]:
+    return {
+        "export_directory": str(export_directory),
+        "file_stem": file_stem,
+    }
+
+
+def _build_stylized_fact_uncertainty_config() -> dict[str, Any]:
+    return {
+        "default_method": "block_bootstrap",
+        "confidence_level": 0.95,
+        "bootstrap_replication_count": 2000,
+        "block_length_horizon_count": 5,
+        "override_policy": {
+            "override_allowed": False,
+            "approved_alternative_methods": [],
+        },
+    }
+
+
+def _build_stylized_fact_sample_sufficiency(
+    *,
+    minimum_sample_count: int,
+    minimum_effective_sample_count: int,
+    minimum_tail_observation_count: Optional[int],
+    minimum_horizon_coverage_ratio: float,
+) -> dict[str, Any]:
+    return {
+        "minimum_sample_count": minimum_sample_count,
+        "minimum_effective_sample_count": minimum_effective_sample_count,
+        "minimum_tail_observation_count": minimum_tail_observation_count,
+        "minimum_horizon_coverage_ratio": minimum_horizon_coverage_ratio,
+    }
+
+
+def _build_stylized_fact_primary_metric(
+    *,
+    metric_id: str,
+    metric_name: str,
+    metric_family: str,
+    domain: str,
+    definition: str,
+    unit: str,
+    minimum_sample_count: int,
+    minimum_effective_sample_count: int,
+    minimum_tail_observation_count: Optional[int],
+    minimum_horizon_coverage_ratio: float,
+    tags: list[str],
+) -> dict[str, Any]:
+    return {
+        "metric_id": metric_id,
+        "metric_name": metric_name,
+        "metric_class": "primary_robust",
+        "metric_family": metric_family,
+        "domain": domain,
+        "definition": definition,
+        "unit": unit,
+        "horizon_applicability": "all_configured_horizons",
+        "sample_dependence": "dependent_return_series",
+        "uncertainty": _build_stylized_fact_uncertainty_config(),
+        "sample_sufficiency": _build_stylized_fact_sample_sufficiency(
+            minimum_sample_count=minimum_sample_count,
+            minimum_effective_sample_count=minimum_effective_sample_count,
+            minimum_tail_observation_count=minimum_tail_observation_count,
+            minimum_horizon_coverage_ratio=minimum_horizon_coverage_ratio,
+        ),
+        "tags": tags,
+    }
+
+
+def _build_stylized_fact_secondary_metric(
+    *,
+    metric_id: str,
+    metric_name: str,
+    metric_family: str,
+    domain: str,
+    definition: str,
+    unit: str,
+    minimum_sample_count: int,
+    minimum_effective_sample_count: int,
+    minimum_tail_observation_count: Optional[int],
+    minimum_horizon_coverage_ratio: float,
+    estimator_metadata: dict[str, Any],
+    secondary_moment_variant: dict[str, Any],
+    tags: list[str],
+) -> dict[str, Any]:
+    return {
+        "metric_id": metric_id,
+        "metric_name": metric_name,
+        "metric_class": "secondary_moment",
+        "metric_family": metric_family,
+        "domain": domain,
+        "definition": definition,
+        "unit": unit,
+        "horizon_applicability": "all_configured_horizons",
+        "sample_dependence": "dependent_return_series",
+        "uncertainty": _build_stylized_fact_uncertainty_config(),
+        "sample_sufficiency": _build_stylized_fact_sample_sufficiency(
+            minimum_sample_count=minimum_sample_count,
+            minimum_effective_sample_count=minimum_effective_sample_count,
+            minimum_tail_observation_count=minimum_tail_observation_count,
+            minimum_horizon_coverage_ratio=minimum_horizon_coverage_ratio,
+        ),
+        "estimator_metadata": estimator_metadata,
+        "secondary_moment_variant": secondary_moment_variant,
+        "tags": tags,
+    }
+
+
+def _build_stylized_fact_observed_metric(
+    *,
+    horizon_label: str,
+    metric_id: str,
+    metric_name: str,
+    value: Optional[float],
+) -> dict[str, Any]:
+    confidence_interval: Optional[dict[str, Any]] = None
+    if value is not None:
+        confidence_interval = {
+            "lower_bound": value - 0.05,
+            "upper_bound": value + 0.05,
+            "confidence_level": 0.95,
+        }
+
+    return {
+        "horizon_label": horizon_label,
+        "horizon_duration_nanos": 3_600_000_000_000,
+        "metric_id": metric_id,
+        "metric_name": metric_name,
+        "metric_variant": None,
+        "value": value,
+        "confidence_interval": confidence_interval,
+        "sample_coverage": {
+            "horizon_interval_count": 12,
+            "covered_interval_count": 10,
+        },
+        "observed_counts": {
+            "sample_count": 100,
+            "effective_sample_count": 80,
+            "tail_observation_count": 20,
+        },
+        "required_minimums": {
+            "minimum_sample_count": 10,
+            "minimum_effective_sample_count": 8,
+            "minimum_tail_observation_count": 1,
+            "minimum_horizon_coverage_ratio": 0.75,
+        },
+    }
 
 
 def write_market_data_fixture_files(working_directory: Path) -> dict[str, Path]:
