@@ -1067,6 +1067,7 @@ __all__ = [
     "SeededTickEventStateSnapshot",
     "SeededTickEventStateSnapshotCapture",
     "SeededTickEventTapeMetadata",
+    "SeededTickSimulationHourlyFactorSummary",
     "SeededTickSimulationRequest",
     "SeededTickSimulationResponse",
     "SeededTickSimulationValidationError",

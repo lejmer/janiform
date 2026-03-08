@@ -51,6 +51,21 @@ janiform
 - `janiform dev --help` lists internal-only utility groups.
 - Incomplete command paths print the help for the selected namespace branch.
 
+## Common argument standards
+
+- Shared concepts use long flags only. Short aliases are forbidden for script readability.
+- File and directory inputs use explicit path-named flags such as `--request-json`,
+  `--execution-input-json`, `--calendar-registry-json`, and `--disk-checkpoint-directory`.
+- CLI help uses `PATH` for file-like values and `DIRECTORY` for directory overrides so
+  the shape of each argument is consistent across commands.
+- All CLI path flags accept absolute paths. Relative paths are resolved from the
+  repository root so scripts behave the same even when invoked from another directory.
+- Shared path flags keep the same semantics wherever they appear:
+  - `--calendar-registry-json` always means a `calendar.registry.v1` payload or wrapper
+    used to rehydrate runtime calendar-aware inputs.
+  - `--execution-input-json` always means the typed workflow execution-input contract for
+    the selected command.
+
 ## Current workflow command contracts
 
 The current pre-v0.1 CLI uses explicit JSON contract files at the command boundary so the
@@ -93,8 +108,12 @@ Optional arguments:
 - `--disk-checkpoint-directory`: required when the effective execution mode is `disk` and the input JSON does not already provide one
 
 Behavior:
-- The CLI default deliberately overrides the importable-Python default and normalizes the
-  execution input to `execution_mode=disk` unless `--execution-mode memory` is supplied.
+- Option precedence is explicit:
+  1. `--execution-mode`, when supplied, overrides `request.execution_mode` from `--execution-input-json`.
+  2. When `--execution-mode` is omitted, the CLI default `disk` still overrides the
+     execution-input payload so the command behaves predictably in automation.
+  3. `--disk-checkpoint-directory`, when supplied, overrides
+     `runtime_resources.disk_checkpoint_directory` from `--execution-input-json`.
 - Validation rejects `--disk-checkpoint-directory` when `--execution-mode memory` is selected.
 - Return-components stage inputs keep known-news open-jump and closed-gap semantics explicit.
 
