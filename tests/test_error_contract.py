@@ -329,7 +329,7 @@ def test_cli_error_output_uses_shared_error_contract(
     assert exit_code == 1
     assert '[cli.validation.open_closed_gap_leakage.invalid_input]' in captured.err
     assert 'workflow="cli"' in captured.err
-    assert 'entrypoint="regression.open_closed_gap_leakage"' in captured.err
+    assert 'entrypoint="dev.regression.open_closed_gap_leakage"' in captured.err
     assert 'field_path="command_input"' in captured.err
 
 

@@ -47,6 +47,7 @@ PYTHONPATH=python python3 -m examples.pricing_workflow
 ## Documentation
 
 - Design model and rationale: `docs/design/janiform_design_brainstorm_notes.md`
+- CLI command architecture and namespace layout: `docs/development/guides/cli_command_architecture_and_namespace_layout.md`
 - Python public API surface map and namespace policy: `docs/development/guides/python_public_api_surface_map_and_namespace_policy.md`
 - Python experimental API policy: `docs/development/guides/python_experimental_api_policy.md`
 - Python API contract compatibility and version guardrails: `docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md`
@@ -90,5 +91,5 @@ The detailed calendar and seasonality sections were moved out of this README int
 python3 -m py_compile python/janiform/*.py tests/conftest.py
 cargo check --workspace
 PYTHONPATH=python .venv-wsl/bin/python3.14 -m pytest tests/test_api_contract_guardrails.py
-python3 -m janiform regression open-closed-gap-leakage
+python3 -m janiform dev regression open-closed-gap-leakage
 ```

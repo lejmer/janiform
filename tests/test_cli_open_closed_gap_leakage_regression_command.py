@@ -21,6 +21,7 @@ def test_cli_open_closed_gap_leakage_regression_command_smoke() -> None:
             sys.executable,
             "-m",
             "janiform",
+            "dev",
             "regression",
             "open-closed-gap-leakage",
         ],

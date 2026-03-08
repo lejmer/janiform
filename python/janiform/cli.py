@@ -27,7 +27,7 @@ DEFAULT_CALENDAR_FIXTURE_PATH: str = "tests/fixtures/calendar/calendar_service_r
 DEFAULT_GAP_BEHAVIOR_FIXTURE_PATH: str = (
     "tests/fixtures/gap_behavior/open_closed_gap_behavior_scenarios.json"
 )
-CLI_OPEN_CLOSED_GAP_ENTRYPOINT = "regression.open_closed_gap_leakage"
+CLI_OPEN_CLOSED_GAP_ENTRYPOINT = "dev.regression.open_closed_gap_leakage"
 CLI_OPEN_CLOSED_GAP_VALIDATION_ERROR_ID = "cli.validation.open_closed_gap_leakage.invalid_input"
 CLI_OPEN_CLOSED_GAP_EXECUTION_ERROR_ID = "cli.execution.open_closed_gap_leakage.failed"
 
@@ -35,21 +35,86 @@ CLI_OPEN_CLOSED_GAP_EXECUTION_ERROR_ID = "cli.execution.open_closed_gap_leakage.
 def _build_parser() -> ArgumentParser:
     parser: ArgumentParser = ArgumentParser(
         prog="janiform",
-        description="Command line interface for Janiform.",
+        description="Command line interface for Janiform workflows and developer utilities.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.set_defaults(command=None, regression_command=None)
+    parser.set_defaults(
+        command=None,
+        handler=None,
+        help_target=parser,
+    )
 
     subparsers = parser.add_subparsers(dest="command")
-    regression_parser = subparsers.add_parser(
-        "regression",
-        help="Run regression validation suites.",
+
+    simulation_parser = subparsers.add_parser(
+        "simulation",
+        help="Simulation workflows.",
+        description="Simulation workflows.",
     )
+    simulation_parser.set_defaults(help_target=simulation_parser)
+    simulation_subparsers = simulation_parser.add_subparsers(dest="simulation_command")
+
+    simulation_seeded_ticks_parser = simulation_subparsers.add_parser(
+        "seeded-ticks",
+        help="Seeded tick event simulation workflow.",
+        description="Seeded tick event simulation workflow.",
+    )
+    simulation_seeded_ticks_parser.set_defaults(help_target=simulation_seeded_ticks_parser)
+
+    calibration_parser = subparsers.add_parser(
+        "calibration",
+        help="Calibration workflows.",
+        description="Calibration workflows.",
+    )
+    calibration_parser.set_defaults(help_target=calibration_parser)
+    calibration_subparsers = calibration_parser.add_subparsers(dest="calibration_command")
+
+    calibration_staged_parser = calibration_subparsers.add_parser(
+        "staged",
+        help="Staged calibration workflow.",
+        description="Staged calibration workflow.",
+    )
+    calibration_staged_parser.set_defaults(help_target=calibration_staged_parser)
+
+    pricing_parser = subparsers.add_parser(
+        "pricing",
+        help="Pricing workflows.",
+        description="Pricing workflows.",
+    )
+    pricing_parser.set_defaults(help_target=pricing_parser)
+    pricing_subparsers = pricing_parser.add_subparsers(dest="pricing_command")
+
+    pricing_vanilla_option_parser = pricing_subparsers.add_parser(
+        "vanilla-option",
+        help="Vanilla option pricing workflow.",
+        description="Vanilla option pricing workflow.",
+    )
+    pricing_vanilla_option_parser.set_defaults(help_target=pricing_vanilla_option_parser)
+
+    developer_parser = subparsers.add_parser(
+        "dev",
+        help="Developer-only utilities.",
+        description="Developer-only utilities.",
+    )
+    developer_parser.set_defaults(help_target=developer_parser)
+    developer_subparsers = developer_parser.add_subparsers(dest="developer_command")
+
+    regression_parser = developer_subparsers.add_parser(
+        "regression",
+        help="Regression validation suites.",
+        description="Regression validation suites.",
+    )
+    regression_parser.set_defaults(help_target=regression_parser)
     regression_subparsers = regression_parser.add_subparsers(dest="regression_command")
 
     gap_leakage_parser = regression_subparsers.add_parser(
         "open-closed-gap-leakage",
         help="Run open and closed gap leakage regression harness.",
+        description="Run open and closed gap leakage regression harness.",
+    )
+    gap_leakage_parser.set_defaults(
+        handler=_run_open_closed_gap_leakage_regression_command,
+        help_target=gap_leakage_parser,
     )
     gap_leakage_parser.add_argument(
         "--calendar-fixture-path",
@@ -76,12 +141,11 @@ def _build_parser() -> ArgumentParser:
 def main() -> None:
     parser: ArgumentParser = _build_parser()
     parsed_arguments: Namespace = parser.parse_args()
+    handler = parsed_arguments.handler
+    if handler is not None:
+        raise SystemExit(handler(parsed_arguments))
 
-    match parsed_arguments.command, parsed_arguments.regression_command:
-        case "regression", "open-closed-gap-leakage":
-            raise SystemExit(_run_open_closed_gap_leakage_regression_command(parsed_arguments))
-        case _:
-            return
+    parsed_arguments.help_target.print_help()
 
 
 def _run_open_closed_gap_leakage_regression_command(parsed_arguments: Namespace) -> int:
