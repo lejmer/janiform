@@ -5,9 +5,10 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Optional, TypedDict, cast
 
+import orjson
+
 from janiform.calendar import CalendarRegistry
 from janiform.validation.enum import (
-    DeterministicRegressionCaseKind,
     HourlySourceKind,
     HourlyValidationOutcomeKind,
     MarketState,
@@ -818,7 +819,7 @@ def validate_calendar_regression_fixture_document(
 def load_calendar_regression_fixture_document(
     fixture_payload_bytes: bytes,
 ) -> CalendarRegressionFixtureDocument:
-    payload_value: object = json.loads(fixture_payload_bytes.decode("utf-8"))
+    payload_value: object = orjson.loads(fixture_payload_bytes.decode("utf-8"))
     return validate_calendar_regression_fixture_document(payload_value)
 
 
@@ -915,7 +916,7 @@ def validate_hourly_factor_regression_fixture_document(
 def load_hourly_factor_regression_fixture_document(
     fixture_payload_bytes: bytes,
 ) -> HourlyFactorRegressionFixtureDocument:
-    payload_value: object = json.loads(fixture_payload_bytes.decode("utf-8"))
+    payload_value: object = orjson.loads(fixture_payload_bytes.decode("utf-8"))
     return validate_hourly_factor_regression_fixture_document(payload_value)
 
 
@@ -1074,7 +1075,7 @@ def validate_open_closed_gap_behavior_fixture_document(
 def load_open_closed_gap_behavior_fixture_document(
     fixture_payload_bytes: bytes,
 ) -> OpenClosedGapBehaviorFixtureDocument:
-    payload_value: object = json.loads(fixture_payload_bytes.decode("utf-8"))
+    payload_value: object = orjson.loads(fixture_payload_bytes.decode("utf-8"))
     return validate_open_closed_gap_behavior_fixture_document(payload_value)
 
 
@@ -1274,7 +1275,7 @@ def validate_seeded_tick_simulation_parity_fixture_document(
 def load_seeded_tick_simulation_parity_fixture_document(
     fixture_payload_bytes: bytes,
 ) -> SeededTickSimulationParityFixtureDocument:
-    payload_value: object = json.loads(fixture_payload_bytes.decode("utf-8"))
+    payload_value: object = orjson.loads(fixture_payload_bytes.decode("utf-8"))
     return validate_seeded_tick_simulation_parity_fixture_document(payload_value)
 
 
@@ -1521,7 +1522,7 @@ def validate_stylized_fact_metric_regression_fixture_document(
 def load_stylized_fact_metric_regression_fixture_document(
     fixture_payload_bytes: bytes,
 ) -> StylizedFactMetricRegressionFixtureDocument:
-    payload_value: object = json.loads(fixture_payload_bytes.decode("utf-8"))
+    payload_value: object = orjson.loads(fixture_payload_bytes.decode("utf-8"))
     return validate_stylized_fact_metric_regression_fixture_document(payload_value)
 
 
@@ -1754,7 +1755,7 @@ def validate_scale_consistency_regression_fixture_document(
 def load_scale_consistency_regression_fixture_document(
     fixture_payload_bytes: bytes,
 ) -> ScaleConsistencyRegressionFixtureDocument:
-    payload_value: object = json.loads(fixture_payload_bytes.decode("utf-8"))
+    payload_value: object = orjson.loads(fixture_payload_bytes.decode("utf-8"))
     return validate_scale_consistency_regression_fixture_document(payload_value)
 
 
@@ -3506,7 +3507,7 @@ def _extract_registry_exchange_codes(calendar_registry: JsonObject) -> set[str]:
 
 
 def _read_json_document(document_path: Path) -> object:
-    return json.loads(document_path.read_text(encoding="utf-8"))
+    return orjson.loads(document_path.read_text(encoding="utf-8"))
 
 
 def _require_json_object(value: object, context: str) -> JsonObject:

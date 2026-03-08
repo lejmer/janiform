@@ -3,6 +3,8 @@ import math
 from collections.abc import Mapping, Sequence
 from typing import Any, Optional, TypedDict, cast
 
+import orjson
+
 from ._native_api import native_module
 from .seasonality import SeasonalityInputValidationError
 
@@ -176,7 +178,7 @@ def run_stylized_fact_horizon_comparison_report_generator(
     )
 
     try:
-        parsed_report_bundle: object = json.loads(report_bundle_json)
+        parsed_report_bundle: object = orjson.loads(report_bundle_json)
     except json.JSONDecodeError as e:
         raise SeasonalityInputValidationError(
             f"stylized fact report bundle must be valid JSON: {e.msg}",

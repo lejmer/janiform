@@ -1,6 +1,7 @@
 import json
 from typing import Any, cast
 
+import orjson
 import pytest
 
 import janiform.validation as validation_module
@@ -286,7 +287,7 @@ def test_open_closed_gap_leakage_regression_harness_rejects_invalid_component_vo
         gap_behavior_cases=gap_behavior_cases,
     )
 
-    mutated_report: dict[str, Any] = json.loads(json.dumps(valid_report))
+    mutated_report: dict[str, Any] = orjson.loads(json.dumps(valid_report))
     mutated_report["output_schema_metadata"]["canonical_component_vocabulary"] = [
         "trading_return",
         "open_jump",

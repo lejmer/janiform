@@ -1,6 +1,7 @@
 import json
 from typing import Any, cast
 
+import orjson
 import pytest
 
 import janiform.validation as validation_module
@@ -289,7 +290,7 @@ def _case_report_by_fixture_id(
 
 
 def _copy_case_list(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return cast(list[dict[str, Any]], json.loads(json.dumps(cases)))
+    return cast(list[dict[str, Any]], orjson.loads(json.dumps(cases)))
 
 
 def _threshold_configuration(

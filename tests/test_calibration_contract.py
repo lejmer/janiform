@@ -1,5 +1,6 @@
 import json
 
+import orjson
 import pytest
 from tests.calibration_test_support import (
     build_valid_execution_input_model,
@@ -64,7 +65,7 @@ def test_market_data_calibration_request_roundtrip_serialization_is_deterministi
     deserialized_request = deserialize_market_data_calibration_request(serialized_request)
 
     assert deserialized_request == request
-    assert json.loads(serialized_request)["schema_version"] == CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION
+    assert orjson.loads(serialized_request)["schema_version"] == CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION
 
 
 def test_market_data_calibration_request_requires_option_surface_for_option_scope() -> None:
