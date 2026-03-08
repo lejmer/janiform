@@ -9,7 +9,7 @@ In this team, we organize all work into *Initiatives*, *Projects* and *Issues*. 
 ## Writing Initiatives
 
 When writing an Initiative:
-1. Create a folder in `docs/planning/initiatives/` and name it based on the name of the Initiative (use snake_case), prefixed by a monotonically increasing ID. This is the root folder for the Initiative.
+1. Create a folder in `planning/initiatives/` and name it based on the name of the Initiative (use snake_case), prefixed by a monotonically increasing ID. This is the root folder for the Initiative.
 2. In the root of the Initiative, create a file called `description.md`. It should contain:
    - The name of the Initiative (formatted as header level 2, `##`).
    - The desired outcome.
@@ -19,7 +19,7 @@ When writing an Initiative:
 ## Writing Projects for an Initiative
 
 When writing a Project:
-1. Create a folder in `docs/planning/initiatives/<initiative_name>/` and name it based on the name of the Project (use snake_case), prefixed by a monotonically increasing ID. This is the root folder for the Project.
+1. Create a folder in `planning/initiatives/<initiative_name>/` and name it based on the name of the Project (use snake_case), prefixed by a monotonically increasing ID. This is the root folder for the Project.
 2. Create a subfolder in the root of the Project called `issues`.
 3. In the root of the Project, create a file called `description.md`. It should contain:
    - The name of the Project (formatted as header level 2, `##`).
@@ -31,7 +31,7 @@ When writing a Project:
 ## Writing Issues for a Project
 
 When writing an Issue:
-1. Locate the Project in `docs/planning/projects/`.
+1. Locate the Project in `planning/initiatives/`.
 2. Create a file in the `issues` folder of the project:
    - Name it in the following way:
      - `<Issue ID> <Issue name>.md`.
