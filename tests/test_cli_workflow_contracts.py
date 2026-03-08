@@ -64,6 +64,22 @@ def test_seasonality_cli_help_documents_preprocessing_contract() -> None:
     assert "downstream seasonality or calibration workflows" in help_output
 
 
+def test_seasonality_cli_help_documents_diagnostics_contract() -> None:
+    help_output = _normalize_help_output(_render_help(["seasonality", "diagnostics"]))
+
+    assert "--config-json PATH" in help_output
+    assert "--output {human,json}" in help_output
+    assert "--event-records-json PATH" in help_output
+    assert "--calendar-registry-json PATH" in help_output
+    assert "--dataset-id DATASET_ID" in help_output
+    assert "--exchange-code EXCHANGE_CODE" in help_output
+    assert "--intraday-minutes-per-bin INTRADAY_MINUTES_PER_BIN" in help_output
+    assert "--intraday-smoothing-kernel {gaussian,uniform}" in help_output
+    assert "--day-of-week-minimum-bucket-events DAY_OF_WEEK_MINIMUM_BUCKET_EVENTS" in help_output
+    assert "--day-of-year-minimum-bucket-events DAY_OF_YEAR_MINIMUM_BUCKET_EVENTS" in help_output
+    assert "canonical diagnostics report" in help_output
+
+
 def test_pricing_cli_help_documents_execution_input_contract() -> None:
     help_output = _normalize_help_output(_render_help(["pricing", "vanilla-option"]))
 
@@ -115,6 +131,7 @@ def test_market_data_calibration_cli_help_documents_user_facing_file_inputs() ->
 def test_cli_shared_path_flags_use_standardized_repository_relative_help_text() -> None:
     help_outputs = (
         _normalize_help_output(_render_help(["simulation", "seeded-ticks"])),
+        _normalize_help_output(_render_help(["seasonality", "diagnostics"])),
         _normalize_help_output(_render_help(["seasonality", "preprocess-timestamps"])),
         _normalize_help_output(_render_help(["pricing", "vanilla-option"])),
         _normalize_help_output(_render_help(["stylized-facts", "horizon-comparison"])),
@@ -248,6 +265,39 @@ def test_seasonality_preprocess_cli_parser_uses_expected_defaults() -> None:
     assert parsed_arguments.sparse_hour_event_threshold == 1
 
 
+def test_seasonality_diagnostics_cli_parser_uses_expected_defaults() -> None:
+    parser = cli_module._build_parser()
+    parsed_arguments = parser.parse_args(
+        [
+            "seasonality",
+            "diagnostics",
+            "--dataset-id",
+            "dataset-alpha",
+            "--event-records-json",
+            "events.json",
+            "--calendar-registry-json",
+            "calendar.json",
+            "--exchange-code",
+            "XNYS",
+        ]
+    )
+
+    assert parsed_arguments.output == "json"
+    assert parsed_arguments.timestamp_field_name == "timestamp"
+    assert parsed_arguments.session_filter == "open_only"
+    assert parsed_arguments.sparse_hour_event_threshold == 1
+    assert parsed_arguments.intraday_minutes_per_bin == 1
+    assert parsed_arguments.intraday_smoothing_kernel == "gaussian"
+    assert parsed_arguments.intraday_smoothing_bandwidth_bins == 3.0
+    assert parsed_arguments.intraday_minimum_bin_events == 1
+    assert parsed_arguments.intraday_pseudocount == 1e-6
+    assert parsed_arguments.day_of_week_minimum_bucket_events == 1
+    assert parsed_arguments.day_of_week_pseudocount == 1e-6
+    assert parsed_arguments.day_of_year_minimum_bucket_events == 1
+    assert parsed_arguments.day_of_year_pseudocount == 1e-6
+    assert parsed_arguments.estimator_version == "seasonality_estimator.v1"
+
+
 def test_seasonality_preprocess_cli_parser_rejects_invalid_session_filter() -> None:
     parser = cli_module._build_parser()
 
@@ -270,6 +320,61 @@ def test_seasonality_preprocess_cli_parser_rejects_invalid_session_filter() -> N
     assert captured_exit.value.code == int(cli_module.CliExitCode.VALIDATION_ERROR)
 
 
+def test_seasonality_diagnostics_cli_parser_accepts_estimator_overrides() -> None:
+    parser = cli_module._build_parser()
+    parsed_arguments = parser.parse_args(
+        [
+            "seasonality",
+            "diagnostics",
+            "--dataset-id",
+            "dataset-alpha",
+            "--event-records-json",
+            "events.json",
+            "--calendar-registry-json",
+            "calendar.json",
+            "--exchange-code",
+            "XNYS",
+            "--session-filter",
+            "all",
+            "--sparse-hour-event-threshold",
+            "2",
+            "--intraday-minutes-per-bin",
+            "30",
+            "--intraday-smoothing-kernel",
+            "uniform",
+            "--intraday-smoothing-bandwidth-bins",
+            "1.5",
+            "--intraday-minimum-bin-events",
+            "3",
+            "--intraday-pseudocount",
+            "0.25",
+            "--day-of-week-minimum-bucket-events",
+            "4",
+            "--day-of-week-pseudocount",
+            "0.5",
+            "--day-of-year-minimum-bucket-events",
+            "5",
+            "--day-of-year-pseudocount",
+            "0.75",
+            "--estimator-version",
+            "seasonality_estimator.dev",
+        ]
+    )
+
+    assert parsed_arguments.session_filter == "all"
+    assert parsed_arguments.sparse_hour_event_threshold == 2
+    assert parsed_arguments.intraday_minutes_per_bin == 30
+    assert parsed_arguments.intraday_smoothing_kernel == "uniform"
+    assert parsed_arguments.intraday_smoothing_bandwidth_bins == 1.5
+    assert parsed_arguments.intraday_minimum_bin_events == 3
+    assert parsed_arguments.intraday_pseudocount == 0.25
+    assert parsed_arguments.day_of_week_minimum_bucket_events == 4
+    assert parsed_arguments.day_of_week_pseudocount == 0.5
+    assert parsed_arguments.day_of_year_minimum_bucket_events == 5
+    assert parsed_arguments.day_of_year_pseudocount == 0.75
+    assert parsed_arguments.estimator_version == "seasonality_estimator.dev"
+
+
 def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
     parser = cli_module._build_parser()
     simulation_arguments = parser.parse_args(
@@ -280,6 +385,20 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
             "simulation.json",
             "--calendar-registry-json",
             "calendar.json",
+        ]
+    )
+    seasonality_diagnostics_arguments = parser.parse_args(
+        [
+            "seasonality",
+            "diagnostics",
+            "--dataset-id",
+            "dataset-alpha",
+            "--event-records-json",
+            "events.json",
+            "--calendar-registry-json",
+            "calendar.json",
+            "--exchange-code",
+            "XNYS",
         ]
     )
     seasonality_arguments = parser.parse_args(
@@ -324,6 +443,7 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
     )
 
     assert simulation_arguments.output == "json"
+    assert seasonality_diagnostics_arguments.output == "json"
     assert seasonality_arguments.output == "json"
     assert pricing_arguments.output == "json"
     assert stylized_facts_arguments.output == "json"
@@ -340,6 +460,22 @@ def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
             "simulation.json",
             "--calendar-registry-json",
             "calendar.json",
+            "--output",
+            "human",
+        ]
+    )
+    seasonality_diagnostics_arguments = parser.parse_args(
+        [
+            "seasonality",
+            "diagnostics",
+            "--dataset-id",
+            "dataset-alpha",
+            "--event-records-json",
+            "events.json",
+            "--calendar-registry-json",
+            "calendar.json",
+            "--exchange-code",
+            "XNYS",
             "--output",
             "human",
         ]
@@ -394,6 +530,7 @@ def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
     )
 
     assert simulation_arguments.output == "human"
+    assert seasonality_diagnostics_arguments.output == "human"
     assert seasonality_arguments.output == "human"
     assert pricing_arguments.output == "human"
     assert stylized_facts_arguments.output == "human"
@@ -493,6 +630,207 @@ def test_seasonality_preprocess_cli_supports_human_output_mode(
     assert "accepted_record_count=1" in stdout_text
     assert "coverage_diagnostics:" in stdout_text
     assert stderr_text == ""
+
+
+def test_seasonality_diagnostics_cli_generates_canonical_report_from_event_records(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    event_records_path = _write_event_records_document(
+        tmp_path / "seasonality-diagnostics-events.json",
+        _seasonality_diagnostics_event_records(),
+    )
+    calendar_registry_path = _write_json_path(
+        tmp_path / "seasonality-diagnostics-calendar.json",
+        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "seasonality",
+            "diagnostics",
+            "--dataset-id",
+            "dataset-alpha",
+            "--event-records-json",
+            str(event_records_path),
+            "--calendar-registry-json",
+            str(calendar_registry_path),
+            "--exchange-code",
+            "XNYS",
+            "--session-filter",
+            "all",
+            "--intraday-minutes-per-bin",
+            "30",
+            "--intraday-smoothing-kernel",
+            "uniform",
+            "--intraday-smoothing-bandwidth-bins",
+            "1.5",
+            "--day-of-week-minimum-bucket-events",
+            "2",
+            "--day-of-year-minimum-bucket-events",
+            "2",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
+
+    payload = orjson.loads(stdout_text)
+    assert payload["schema_version"] == "seasonality.diagnostics.report.v1"
+    assert payload["dataset_id"] == "dataset-alpha"
+    assert payload["intraday_component_summary"]["component_name"] == "intraday"
+    assert payload["day_of_week_component_summary"]["component_name"] == "day_of_week"
+    assert payload["day_of_year_component_summary"]["component_name"] == "day_of_year"
+    assert payload["reproducibility_metadata"]["estimator_version"] == "seasonality_estimator.v1"
+    assert payload["fit_quality_metrics"]["combined_factor_mean"] > 0.0
+
+    assert stdout_text == f"{json.dumps(payload, sort_keys=True)}\n"
+    assert stderr_text == ""
+
+
+def test_seasonality_diagnostics_cli_supports_human_output_mode(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    event_records_path = _write_event_records_document(
+        tmp_path / "seasonality-diagnostics-human-events.json",
+        _seasonality_diagnostics_event_records(),
+    )
+    calendar_registry_path = _write_json_path(
+        tmp_path / "seasonality-diagnostics-human-calendar.json",
+        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "seasonality",
+            "diagnostics",
+            "--dataset-id",
+            "dataset-alpha",
+            "--event-records-json",
+            str(event_records_path),
+            "--calendar-registry-json",
+            str(calendar_registry_path),
+            "--exchange-code",
+            "XNYS",
+            "--session-filter",
+            "all",
+            "--output",
+            "human",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
+    assert stdout_text.startswith("seasonality diagnostics completed:")
+    assert "fit_quality:" in stdout_text
+    assert "component_sparsity:" in stdout_text
+    assert "reproducibility:" in stdout_text
+    assert stderr_text == ""
+
+
+def test_seasonality_diagnostics_cli_invalid_estimator_setting_returns_validation_error(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    event_records_path = _write_event_records_document(
+        tmp_path / "seasonality-diagnostics-invalid-estimator-events.json",
+        _seasonality_diagnostics_event_records(),
+    )
+    calendar_registry_path = _write_json_path(
+        tmp_path / "seasonality-diagnostics-invalid-estimator-calendar.json",
+        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "seasonality",
+            "diagnostics",
+            "--dataset-id",
+            "dataset-alpha",
+            "--event-records-json",
+            str(event_records_path),
+            "--calendar-registry-json",
+            str(calendar_registry_path),
+            "--exchange-code",
+            "XNYS",
+            "--intraday-minutes-per-bin",
+            "0",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert stdout_text == ""
+    assert '[cli.validation.seasonality.diagnostics.invalid_input]' in stderr_text
+    assert 'field_path="intraday_minutes_per_bin"' in stderr_text
+    assert 'message="must be strictly positive"' in stderr_text
+
+
+def test_seasonality_diagnostics_cli_rejects_malformed_event_records_document(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    event_records_path = _write_json_path(
+        tmp_path / "seasonality-diagnostics-malformed-events.json",
+        {"event_records": ["not-an-object"]},
+    )
+    calendar_registry_path = _write_json_path(
+        tmp_path / "seasonality-diagnostics-malformed-calendar.json",
+        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "seasonality",
+            "diagnostics",
+            "--dataset-id",
+            "dataset-alpha",
+            "--event-records-json",
+            str(event_records_path),
+            "--calendar-registry-json",
+            str(calendar_registry_path),
+            "--exchange-code",
+            "XNYS",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert stdout_text == ""
+    assert '[cli.validation.seasonality.diagnostics.invalid_input]' in stderr_text
+    assert 'field_path="event_records_document"' in stderr_text
+    assert "event records document record must be an object" in stderr_text
+
+
+def test_seasonality_diagnostics_cli_unknown_exchange_returns_validation_error(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    event_records_path = _write_event_records_document(
+        tmp_path / "seasonality-diagnostics-unknown-exchange-events.json",
+        _seasonality_diagnostics_event_records(),
+    )
+    calendar_registry_path = _write_json_path(
+        tmp_path / "seasonality-diagnostics-unknown-exchange-calendar.json",
+        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "seasonality",
+            "diagnostics",
+            "--dataset-id",
+            "dataset-alpha",
+            "--event-records-json",
+            str(event_records_path),
+            "--calendar-registry-json",
+            str(calendar_registry_path),
+            "--exchange-code",
+            "XBAD",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert stdout_text == ""
+    assert '[cli.validation.seasonality.diagnostics.invalid_input]' in stderr_text
+    assert 'field_path="exchange_code"' in stderr_text
 
 
 def test_seasonality_preprocess_cli_unknown_exchange_returns_validation_error(
@@ -1959,6 +2297,19 @@ def _write_event_records_document(path: Path, event_records: list[dict[str, obje
         path,
         {"event_records": event_records},
     )
+
+
+def _seasonality_diagnostics_event_records() -> list[dict[str, object]]:
+    return [
+        {"timestamp": "2026-02-02T14:30:00Z"},
+        {"timestamp": "2026-02-02T15:30:00Z"},
+        {"timestamp": "2026-02-03T14:45:00Z"},
+        {"timestamp": "2026-02-04T14:30:00Z"},
+        {"timestamp": "2026-02-05T15:15:00Z"},
+        {"timestamp": "2026-02-06T14:30:00Z"},
+        {"timestamp": "2026-02-09T14:30:00Z"},
+        {"timestamp": "2026-02-10T15:00:00Z"},
+    ]
 
 
 def _write_cli_command_config(

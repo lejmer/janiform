@@ -17,6 +17,7 @@ janiform
 ├── simulation
 │   └── seeded-ticks
 ├── seasonality
+│   ├── diagnostics
 │   └── preprocess-timestamps
 ├── calibration
 │   ├── market-data
@@ -46,6 +47,7 @@ janiform
   `janiform.stylized_facts`.
 - Subcommand names stay short while preserving the specific workflow identity:
   - `seeded-ticks` for the seeded tick-event simulator
+  - `diagnostics` for the primary end-to-end seasonality estimation and diagnostics workflow
   - `preprocess-timestamps` for standalone timestamp-event preprocessing against the exchange
     calendar registry
   - `market-data` for the recommended file-driven calibration request boundary
@@ -173,6 +175,46 @@ Behavior:
 Output:
 - `--output json` writes deterministic JSON for `simulation.seeded_tick_event.path.v1` to stdout.
 - `--output human` writes a concise completion summary with event-count metadata.
+
+### `janiform seasonality diagnostics`
+
+Required arguments:
+- `--dataset-id`
+- `--event-records-json`: JSON object with top-level `event_records`
+- `--calendar-registry-json`: `calendar.registry.v1` JSON object or a wrapper object with `calendar_registry`
+- `--exchange-code`
+
+Optional arguments:
+- `--config-json PATH`
+- `--timestamp-field-name`: defaults to `timestamp`
+- `--session-filter {all,open_only,closed_only}`: defaults to `open_only`
+- `--sparse-hour-event-threshold`: defaults to `1`
+- `--intraday-minutes-per-bin`: defaults to `1`
+- `--intraday-smoothing-kernel {gaussian,uniform}`: defaults to `gaussian`
+- `--intraday-smoothing-bandwidth-bins`: defaults to `3.0`
+- `--intraday-minimum-bin-events`: defaults to `1`
+- `--intraday-pseudocount`: defaults to `1e-6`
+- `--day-of-week-minimum-bucket-events`: defaults to `1`
+- `--day-of-week-pseudocount`: defaults to `1e-6`
+- `--day-of-year-minimum-bucket-events`: defaults to `1`
+- `--day-of-year-pseudocount`: defaults to `1e-6`
+- `--estimator-version`: defaults to `seasonality_estimator.v1`
+- `--output {human,json}`
+
+Behavior:
+- The command reuses `janiform.seasonality.preprocess_timestamp_events`,
+  `estimate_intraday_seasonality`, `estimate_day_of_week_seasonality`,
+  `estimate_day_of_year_seasonality`, `compose_deterministic_seasonality_signal`, and
+  `generate_seasonality_diagnostics_report`.
+- Event records are validated against the public timestamp-event preprocessing contract.
+- The command stays on the raw timestamp-event boundary so users do not need to chain
+  intermediate estimation steps unless they are debugging.
+
+Output:
+- `--output json` writes the canonical diagnostics report payload from
+  `seasonality.diagnostics.report.v1` to stdout.
+- `--output human` writes a concise summary over the same report with fit-quality,
+  sparsity, and reproducibility highlights.
 
 ### `janiform seasonality preprocess-timestamps`
 

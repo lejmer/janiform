@@ -9,7 +9,7 @@ from ..calibration import (
     CalibrationOptionQuoteInputPolicy,
     CalibrationTickPriceInputPolicy,
 )
-from ..seasonality import SessionFilter
+from ..seasonality import IntradaySmoothingKernel, SessionFilter
 
 
 DEFAULT_CALENDAR_FIXTURE_PATH: str = "tests/fixtures/calendar/calendar_service_regression_matrix.json"
@@ -58,6 +58,10 @@ CLI_SEASONALITY_SESSION_FILTER_CHOICES: tuple[str, str, str] = (
     SessionFilter.OPEN_ONLY.value,
     SessionFilter.CLOSED_ONLY.value,
 )
+CLI_SEASONALITY_INTRADAY_SMOOTHING_KERNEL_CHOICES: tuple[str, str] = (
+    IntradaySmoothingKernel.GAUSSIAN.value,
+    IntradaySmoothingKernel.UNIFORM.value,
+)
 CLI_CALIBRATION_EXECUTION_MODE_HELP = (
     "Calibration execution mode override. Precedence: --execution-mode, then the CLI default "
     "disk. This overrides request.execution_mode from --execution-input-json."
@@ -86,6 +90,9 @@ CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID = (
 CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_INTERNAL_ERROR_ID = (
     "cli.internal.seasonality.preprocess_timestamps.failed"
 )
+CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT = "seasonality.diagnostics"
+CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID = "cli.validation.seasonality.diagnostics.invalid_input"
+CLI_SEASONALITY_DIAGNOSTICS_INTERNAL_ERROR_ID = "cli.internal.seasonality.diagnostics.failed"
 CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT = "calibration.market_data"
 CLI_CALIBRATION_MARKET_DATA_VALIDATION_ERROR_ID = "cli.validation.calibration.market_data.invalid_input"
 CLI_CALIBRATION_MARKET_DATA_INTERNAL_ERROR_ID = "cli.internal.calibration.market_data.failed"
@@ -122,6 +129,7 @@ CLI_PRIMARY_COMMAND_TREE: dict[str, dict[str, dict[str, dict[str, Any]]]] = {
         "seeded-ticks": {},
     },
     "seasonality": {
+        "diagnostics": {},
         "preprocess-timestamps": {},
     },
     "calibration": {
@@ -137,6 +145,7 @@ CLI_PRIMARY_COMMAND_TREE: dict[str, dict[str, dict[str, dict[str, Any]]]] = {
 }
 CLI_PRIMARY_COMMAND_IDENTIFIERS: dict[tuple[str, ...], str] = {
     ("simulation", "seeded-ticks"): "simulation.seeded-ticks",
+    ("seasonality", "diagnostics"): "seasonality.diagnostics",
     ("seasonality", "preprocess-timestamps"): "seasonality.preprocess-timestamps",
     ("calibration", "market-data"): "calibration.market-data",
     ("calibration", "staged"): "calibration.staged",
@@ -205,6 +214,10 @@ __all__ = [
     "CLI_PRIMARY_COMMAND_IDENTIFIERS",
     "CLI_PRIMARY_COMMAND_TREE",
     "CLI_REPOSITORY_RELATIVE_PATH_POLICY",
+    "CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT",
+    "CLI_SEASONALITY_DIAGNOSTICS_INTERNAL_ERROR_ID",
+    "CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID",
+    "CLI_SEASONALITY_INTRADAY_SMOOTHING_KERNEL_CHOICES",
     "CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_ENTRYPOINT",
     "CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_INTERNAL_ERROR_ID",
     "CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID",

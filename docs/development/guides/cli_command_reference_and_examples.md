@@ -93,10 +93,64 @@ janiform simulation seeded-ticks \
 
 ## Seasonality
 
-Use this command when you want to validate timestamp-event inputs against the exchange calendar
-registry before running downstream seasonality estimation, diagnostics, or file-driven calibration.
+Use this command when you want one task-oriented CLI path from raw timestamp-event input to the
+canonical seasonality diagnostics report. Use the standalone preprocessing command only when you
+want to debug timestamp normalization or inspect calendar coverage before the full workflow.
 
 ### Synopsis
+
+```text
+janiform seasonality diagnostics --dataset-id DATASET_ID --event-records-json PATH --calendar-registry-json PATH --exchange-code EXCHANGE_CODE [--timestamp-field-name TIMESTAMP_FIELD_NAME] [--session-filter {all,open_only,closed_only}] [--sparse-hour-event-threshold SPARSE_HOUR_EVENT_THRESHOLD] [--intraday-minutes-per-bin INTRADAY_MINUTES_PER_BIN] [--intraday-smoothing-kernel {gaussian,uniform}] [--intraday-smoothing-bandwidth-bins INTRADAY_SMOOTHING_BANDWIDTH_BINS] [--intraday-minimum-bin-events INTRADAY_MINIMUM_BIN_EVENTS] [--intraday-pseudocount INTRADAY_PSEUDOCOUNT] [--day-of-week-minimum-bucket-events DAY_OF_WEEK_MINIMUM_BUCKET_EVENTS] [--day-of-week-pseudocount DAY_OF_WEEK_PSEUDOCOUNT] [--day-of-year-minimum-bucket-events DAY_OF_YEAR_MINIMUM_BUCKET_EVENTS] [--day-of-year-pseudocount DAY_OF_YEAR_PSEUDOCOUNT] [--estimator-version ESTIMATOR_VERSION] [--output {human,json}]
+```
+
+### Options
+
+- `--dataset-id`: stable identifier recorded in the diagnostics report
+- `--event-records-json`: JSON object with top-level `event_records`
+- `--calendar-registry-json`: `calendar.registry.v1` contract file
+- `--exchange-code`: exchange identifier used for session classification
+- `--timestamp-field-name`: timestamp field name in each event record, default `timestamp`
+- `--session-filter {all,open_only,closed_only}`: accepted-state filter, default `open_only`
+- `--sparse-hour-event-threshold`: sparse-hour diagnostic threshold, default `1`
+- `--intraday-minutes-per-bin`: intraday estimator bin width, default `1`
+- `--intraday-smoothing-kernel {gaussian,uniform}`: intraday smoothing kernel, default `gaussian`
+- `--intraday-smoothing-bandwidth-bins`: intraday smoothing bandwidth in bins, default `3.0`
+- `--intraday-minimum-bin-events`: intraday sparse-bin threshold, default `1`
+- `--intraday-pseudocount`: intraday pseudocount, default `1e-6`
+- `--day-of-week-minimum-bucket-events`: weekly sparse-bucket threshold, default `1`
+- `--day-of-week-pseudocount`: weekly pseudocount, default `1e-6`
+- `--day-of-year-minimum-bucket-events`: yearly sparse-bucket threshold, default `1`
+- `--day-of-year-pseudocount`: yearly pseudocount, default `1e-6`
+- `--estimator-version`: reproducibility metadata label, default `seasonality_estimator.v1`
+- `--output {human,json}`: operator summary or machine-readable diagnostics report
+
+### Example: Primary End-To-End Seasonality Diagnostics
+
+```bash
+janiform seasonality diagnostics \
+  --dataset-id cli-docs-dataset \
+  --event-records-json tmp/cli-docs/timestamp_event_records.json \
+  --calendar-registry-json tmp/cli-docs/calendar_registry.json \
+  --exchange-code XNYS \
+  --session-filter all \
+  --intraday-minutes-per-bin 30 \
+  --output json
+```
+
+### Example: Diagnostics Output Redirected For Validation Tooling
+
+```bash
+janiform seasonality diagnostics \
+  --dataset-id cli-docs-dataset \
+  --event-records-json tmp/cli-docs/timestamp_event_records.json \
+  --calendar-registry-json tmp/cli-docs/calendar_registry.json \
+  --exchange-code XNYS \
+  --session-filter all \
+  --output json \
+  > tmp/cli-docs/seasonality_diagnostics_report.json
+```
+
+### Standalone Preprocessing For Debugging
 
 ```text
 janiform seasonality preprocess-timestamps --event-records-json PATH --calendar-registry-json PATH --exchange-code EXCHANGE_CODE [--timestamp-field-name TIMESTAMP_FIELD_NAME] [--session-filter {all,open_only,closed_only}] [--sparse-hour-event-threshold SPARSE_HOUR_EVENT_THRESHOLD] [--output {human,json}]

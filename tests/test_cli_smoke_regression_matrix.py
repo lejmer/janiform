@@ -54,6 +54,10 @@ def _smoke_scenarios() -> tuple[CliSmokeScenario, ...]:
             build_invocation=_build_seasonality_preprocess_smoke_invocation,
         ),
         CliSmokeScenario(
+            scenario_id="seasonality_diagnostics_json_nominal",
+            build_invocation=_build_seasonality_diagnostics_smoke_invocation,
+        ),
+        CliSmokeScenario(
             scenario_id="pricing_vanilla_option_json_nominal",
             build_invocation=_build_pricing_smoke_invocation,
         ),
@@ -209,6 +213,56 @@ def _build_seasonality_preprocess_smoke_invocation(
             "all",
             "--sparse-hour-event-threshold",
             "2",
+        ],
+        validate_stdout=validate_stdout,
+    )
+
+
+def _build_seasonality_diagnostics_smoke_invocation(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> CliSmokeInvocation:
+    event_records_path = _write_json_path(
+        tmp_path / "seasonality_diagnostics_event_records.json",
+        {
+            "event_records": [
+                {"timestamp": "2026-02-02T14:30:00Z"},
+                {"timestamp": "2026-02-02T15:30:00Z"},
+                {"timestamp": "2026-02-03T14:45:00Z"},
+                {"timestamp": "2026-02-04T14:30:00Z"},
+                {"timestamp": "2026-02-05T15:15:00Z"},
+                {"timestamp": "2026-02-06T14:30:00Z"},
+            ]
+        },
+    )
+    calendar_registry_path = _write_json_path(
+        tmp_path / "seasonality_diagnostics_calendar_registry.json",
+        json.loads(calendar_registry_json),
+    )
+
+    def validate_stdout(stdout_text: str) -> None:
+        payload = _parse_json_command_output(stdout_text)
+        assert payload["schema_version"] == "seasonality.diagnostics.report.v1"
+        assert payload["dataset_id"] == "seasonality-smoke"
+        assert payload["intraday_component_summary"]["component_name"] == "intraday"
+        assert payload["fit_quality_metrics"]["combined_factor_mean"] > 0.0
+
+    return CliSmokeInvocation(
+        command_arguments=[
+            "seasonality",
+            "diagnostics",
+            "--dataset-id",
+            "seasonality-smoke",
+            "--event-records-json",
+            str(event_records_path),
+            "--calendar-registry-json",
+            str(calendar_registry_path),
+            "--exchange-code",
+            "XNYS",
+            "--session-filter",
+            "all",
+            "--intraday-minutes-per-bin",
+            "30",
         ],
         validate_stdout=validate_stdout,
     )
@@ -687,5 +741,5 @@ def test_cli_regression_matrix_preserves_exit_codes_and_key_argument_paths(
 
 
 def test_cli_smoke_matrix_remains_bounded_for_merge_time_execution() -> None:
-    assert len(CLI_SMOKE_SCENARIOS) == 8
+    assert len(CLI_SMOKE_SCENARIOS) == 9
     assert len(CLI_REGRESSION_SCENARIOS) == 4
