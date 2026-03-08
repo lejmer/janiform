@@ -22,6 +22,7 @@ On Linux:
 ./scripts/bootstrap-linux.sh
 janiform --help
 janiform calibration market-data --help
+python3 -m examples.market_data_calibration_workflow
 python3 -m examples.pricing_workflow
 ```
 
@@ -31,6 +32,7 @@ On Windows:
 ./scripts/bootstrap-win.ps1
 janiform --help
 janiform calibration market-data --help
+python -m examples.market_data_calibration_workflow
 python -m examples.pricing_workflow
 ```
 
@@ -182,7 +184,8 @@ This tells the script to use the `.venv-linux` venv, and to pass on the `-v` com
 - Workflow examples and expected output summaries: `examples/README.md`
 - Seeded simulation example: `examples/simulation_workflow.py`
 - Vanilla option pricing example: `examples/pricing_workflow.py`
-- Staged calibration example with default `memory` mode, explicit `disk` override, and internal close-open gap detection from raw boundary observations: `examples/calibration_workflow.py`
+- Primary market-data calibration example with tick-data `csv`, tick-data `parquet`, explicit known-news inputs, and optional option-surface files: `examples/market_data_calibration_workflow.py`
+- Advanced staged calibration example with default `memory` mode, explicit `disk` override, and internal close-open gap detection from raw boundary observations: `examples/calibration_workflow.py`
 
 ## CLI Automation
 

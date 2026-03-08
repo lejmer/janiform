@@ -130,6 +130,11 @@ The package root `janiform` is intentionally minimal.
     - `CalibrationMarketDataNormalizationPolicy`
     - `CalibrationMarketDataOutputPreferences`
     - `MarketDataCalibrationRequest`
+    - `CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION`
+    - `MarketDataCalibrationSourceSummary`
+    - `MarketDataCalibrationPreparationDiagnostics`
+    - `MarketDataCalibrationPreparationProvenance`
+    - `PreparedMarketDataCalibration`
     - `CalibrationTimestampEventSessionFilter`
     - `CalibrationIntradaySmoothingKernel`
     - `CalibrationExecutionMode`
@@ -177,6 +182,8 @@ The package root `janiform` is intentionally minimal.
     - `CalibrationValidationFailure`
     - `CalibrationValidationError`
     - `validate_market_data_calibration_request`
+    - `prepare_market_data_calibration`
+    - `run_market_data_calibration`
     - `serialize_market_data_calibration_request`
     - `deserialize_market_data_calibration_request`
     - `run_staged_calibration`
@@ -212,6 +219,8 @@ The recommended public request boundary is:
 
 - `MarketDataCalibrationRequest`
 - `validate_market_data_calibration_request`
+- `prepare_market_data_calibration`
+- `run_market_data_calibration`
 
 The advanced staged-calibration entrypoint is:
 

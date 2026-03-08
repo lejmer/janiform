@@ -226,16 +226,21 @@ Optional arguments:
 
 Behavior:
 - This is the recommended calibration CLI boundary for market users.
-- The command validates file-driven request fields, provenance labels, and normalization-policy selections.
+- The command validates file-driven request fields, provenance labels, normalization-policy selections,
+  and the derived staged calibration scope.
 - The command can be driven entirely from `--config-json` plus environment defaults without any stdin input.
 - `--output json` writes deterministic JSON for `cli.calibration.market_data.summary.v1`.
 - The summary schema is intentionally user-facing and includes:
   - `request_schema_version` so downstream tooling can trace back to `calibration.market_data.request.v1`
+  - `preparation_schema_version` so downstream tooling can tie the summary to the prepared staged-input boundary
   - `input_files` for tick data, session definitions, and optional known-news or option-surface files
   - `column_mapping` and `normalization_policy`
   - `workflow_scope`, `session_context`, and output artifact targets
+  - `diagnostics_summary` with selected stages, preprocessing steps, and workflow-level record counts
+  - `provenance_summary` with loaded-source summaries, derived dataset references, and deterministic derivation policies
   - `output_schema_metadata` with the field-selection policy `user_facing_workflow_metadata_only.v1`
-- The default structured summary does not embed internal staged execution payload sections.
+- The default structured summary does not embed full internal staged execution payload sections like
+  `seasonality_stage_input`, but it does expose the selected staged scope for support triage.
 - `--output human` writes a concise operator-oriented summary of the same user-facing metadata.
 - Translation into the canonical staged execution input remains a lower-level step documented separately.
 

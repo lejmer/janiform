@@ -81,6 +81,7 @@ def test_market_data_calibration_cli_help_documents_user_facing_file_inputs() ->
     assert "--tick-price-input-policy" in help_output
     assert "--execution-mode {disk,memory}" in help_output
     assert "market-data calibration summary" in help_output
+    assert "preprocessing diagnostics and provenance" in help_output
     assert "explicit flags override environment variables" in help_output
 
 
@@ -334,6 +335,7 @@ def test_market_data_calibration_cli_maps_flags_to_summary_contract(
     summary_payload = orjson.loads(stdout_text)
     assert summary_payload["schema_version"] == cli_module.CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION
     assert summary_payload["request_schema_version"] == CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION
+    assert summary_payload["preparation_schema_version"] == calibration_module.CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION
     assert summary_payload["workflow_scope"] == CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE.value
     assert summary_payload["session_context"]["exchange_code"] == "XNYS"
     assert Path(summary_payload["input_files"]["tick_data"]["path"]).parts[-2:] == ("data", "ticks.csv")
@@ -342,13 +344,21 @@ def test_market_data_calibration_cli_maps_flags_to_summary_contract(
     assert summary_payload["output_artifact_locations"]["disk_checkpoint_directory"] == str(checkpoint_directory)
     assert summary_payload["output_emission_policy"]["execution_mode"] == "disk"
     assert summary_payload["output_emission_policy"]["emit_derived_staged_execution_input"] is True
+    assert summary_payload["diagnostics_summary"]["selected_stages"] == [
+        "seasonality",
+        "hawkes",
+        "return_components",
+    ]
+    assert "known_news_overlay_derivation" in summary_payload["diagnostics_summary"]["executed_preprocessing_steps"]
+    assert summary_payload["provenance_summary"]["tick_data_summary"]["file_format"] == "csv"
+    assert summary_payload["provenance_summary"]["option_surface_summary"]["file_format"] == "parquet"
+    assert summary_payload["provenance_summary"]["known_news_summary"]["file_format"] == "csv"
     assert summary_payload["output_schema_metadata"]["field_selection_policy"] == (
         cli_module.CLI_MARKET_DATA_SUMMARY_FIELD_SELECTION_POLICY
     )
 
     assert "request" not in summary_payload
     assert "runtime_resources" not in summary_payload
-    assert "selected_stages" not in stdout_text
     assert "seasonality_stage_input" not in stdout_text
 
     assert stdout_text == f"{json.dumps(summary_payload, sort_keys=True)}\n"
@@ -402,6 +412,9 @@ def test_market_data_calibration_cli_supports_human_output_mode(
     assert stdout_text.startswith("calibration market-data request prepared:")
     assert "workflow_scope=seasonality_only" in stdout_text
     assert "execution_mode=memory" in stdout_text
+    assert "workflow_diagnostics:" in stdout_text
+    assert "loaded_data_summary:" in stdout_text
+    assert "derived_references:" in stdout_text
     assert stderr_text == ""
 
 
@@ -821,8 +834,8 @@ def test_market_data_cli_invalid_session_definition_returns_validation_exit_code
 
     assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert stdout_text == ""
-    assert 'field_path="session_configuration.session_definition_source"' in stderr_text
-    assert "calendar.registry.v1" in stderr_text
+    assert 'field_path="session_configuration.session_definition_source.path"' in stderr_text
+    assert "valid calendar registry" in stderr_text
 
 
 def test_market_data_cli_inconsistent_known_news_inputs_return_validation_exit_code(
@@ -1401,6 +1414,7 @@ def _write_market_data_input_files(
     include_option_surface: bool = False,
     ambiguous_tick_timestamp: bool = False,
     tick_trade_price_column_name: str = "trade_price",
+    tick_data_format: str = "csv",
 ) -> dict[str, Path]:
     data_directory = tmp_path / "data"
     config_directory = tmp_path / "config"
@@ -1408,27 +1422,45 @@ def _write_market_data_input_files(
     data_directory.mkdir(parents=True, exist_ok=True)
     config_directory.mkdir(parents=True, exist_ok=True)
 
-    tick_data_path = data_directory / "ticks.csv"
-    if ambiguous_tick_timestamp:
-        tick_data_path.write_text(
-            "\n".join(
-                [
-                    "timestamp_utc",
-                    "2026-11-01T01:30:00",
-                ]
-            ),
-            encoding="utf-8",
-        )
+    tick_data_path = data_directory / f"ticks.{tick_data_format}"
+    if tick_data_format == "csv":
+        if ambiguous_tick_timestamp:
+            tick_data_path.write_text(
+                "\n".join(
+                    [
+                        "timestamp_utc",
+                        "2026-11-01T01:30:00",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+        else:
+            tick_data_path.write_text(
+                "\n".join(
+                    [
+                        f"timestamp_utc,{tick_trade_price_column_name}",
+                        "2026-02-02T14:30:00Z,100.0",
+                        "2026-02-02T15:00:00Z,101.0",
+                        "2026-02-02T20:59:00Z,102.0",
+                        "2026-02-04T14:30:00Z,95.0",
+                    ]
+                ),
+                encoding="utf-8",
+            )
     else:
-        tick_data_path.write_text(
-            "\n".join(
-                [
-                    f"timestamp_utc,{tick_trade_price_column_name}",
-                    "2026-02-02T14:30:00Z,100.0",
-                    "2026-02-02T15:00:00Z,101.0",
-                ]
+        pyarrow_parquet.write_table(
+            pa.table(
+                {
+                    "timestamp_utc": [
+                        datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
+                        datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+                        datetime(2026, 2, 2, 20, 59, tzinfo=UTC),
+                        datetime(2026, 2, 4, 14, 30, tzinfo=UTC),
+                    ],
+                    tick_trade_price_column_name: [100.0, 101.0, 102.0, 95.0],
+                }
             ),
-            encoding="utf-8",
+            tick_data_path,
         )
 
     session_definition_path = config_directory / "sessions.json"
@@ -1446,6 +1478,7 @@ def _write_market_data_input_files(
                 [
                     "event_timestamp_utc,event_code",
                     "2026-02-02T15:05:00Z,open_macro",
+                    "2026-02-02T22:00:00Z,closed_macro",
                 ]
             ),
             encoding="utf-8",

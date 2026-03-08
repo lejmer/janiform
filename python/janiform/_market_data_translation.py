@@ -72,6 +72,7 @@ _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 class MarketDataTranslationDiagnostics:
     workflow_scope: CalibrationMarketDataWorkflowScope
     selected_stages: tuple[CalibrationStage, ...]
+    executed_preprocessing_steps: tuple[str, ...]
     tick_record_count: int
     option_surface_record_count: int
     known_news_event_count: int
@@ -251,6 +252,11 @@ def translate_market_data_request_to_staged_execution_input(
     diagnostics = MarketDataTranslationDiagnostics(
         workflow_scope=normalized_request.workflow_scope,
         selected_stages=selected_stages,
+        executed_preprocessing_steps=_executed_preprocessing_steps(
+            workflow_scope=normalized_request.workflow_scope,
+            option_surface_present=loaded_inputs.option_surface is not None,
+            known_news_present=loaded_inputs.known_news is not None,
+        ),
         tick_record_count=len(loaded_inputs.tick_data.records),
         option_surface_record_count=(
             len(loaded_inputs.option_surface.records)
@@ -338,6 +344,40 @@ def translate_market_data_request_to_staged_execution_input(
         diagnostics=diagnostics,
         provenance=provenance,
     )
+
+
+def _executed_preprocessing_steps(
+    *,
+    workflow_scope: CalibrationMarketDataWorkflowScope,
+    option_surface_present: bool,
+    known_news_present: bool,
+) -> tuple[str, ...]:
+    preprocessing_steps: list[str] = [
+        "source_loading",
+        "column_mapping_validation",
+        "timestamp_timezone_normalization",
+        "duplicate_record_resolution",
+        "timestamp_sorting",
+        "session_state_resolution",
+        "workflow_scope_selection",
+    ]
+
+    if known_news_present:
+        preprocessing_steps.extend(
+            [
+                "known_news_window_filtering",
+                "known_news_overlay_derivation",
+            ]
+        )
+
+    if workflow_scope != CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY:
+        preprocessing_steps.append("hawkes_candidate_generation")
+        preprocessing_steps.append("return_components_candidate_generation")
+
+    if option_surface_present:
+        preprocessing_steps.append("option_surface_quote_normalization")
+
+    return tuple(preprocessing_steps)
 
 
 def _translation_error(

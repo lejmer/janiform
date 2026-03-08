@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Any, NoReturn, Optional, cast
 
 from . import __version__
-from ._market_data_ingestion import load_market_data_calibration_inputs
 from .calibration import (
+    CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
     CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,
     CalibrationDuplicateRecordPolicy,
     CalibrationExecutionMode,
@@ -20,7 +20,9 @@ from .calibration import (
     CalibrationStagedExecutionRuntimeResources,
     CalibrationTickPriceInputPolicy,
     MarketDataCalibrationRequest,
+    PreparedMarketDataCalibration,
     StagedCalibrationExecutionInput,
+    prepare_market_data_calibration,
     run_staged_calibration,
     validate_market_data_calibration_request,
     validate_staged_calibration_execution_input,
@@ -530,7 +532,7 @@ def _build_calibration_parser(subparsers) -> None:
         description=(
             "Market-data calibration request workflow. "
             "This command validates file-driven inputs and emits a user-facing "
-            "market-data calibration summary."
+            "market-data calibration summary with preprocessing diagnostics and provenance."
         ),
     )
     calibration_market_data_parser.set_defaults(
@@ -1081,7 +1083,7 @@ def _run_calibration_market_data_command(parsed_arguments: Namespace) -> int:
             parsed_arguments,
             repository_root=repository_root,
         )
-        _preflight_market_data_calibration_request(request)
+        prepared_calibration = prepare_market_data_calibration(request)
     except JaniformError as e:
         return _write_cli_error(e)
     except Exception as e:
@@ -1089,8 +1091,8 @@ def _run_calibration_market_data_command(parsed_arguments: Namespace) -> int:
 
     _write_command_output(
         parsed_arguments,
-        json_payload=_build_market_data_calibration_summary_payload(request),
-        human_output_factory=lambda: _render_market_data_calibration_human_output(request),
+        json_payload=_build_market_data_calibration_summary_payload(prepared_calibration),
+        human_output_factory=lambda: _render_market_data_calibration_human_output(prepared_calibration),
     )
 
     return int(CliExitCode.SUCCESS)
@@ -1297,11 +1299,16 @@ def _build_market_data_calibration_request_from_arguments(
     return validate_market_data_calibration_request(payload)
 
 
-def _build_market_data_calibration_summary_payload(request: MarketDataCalibrationRequest) -> dict[str, Any]:
+def _build_market_data_calibration_summary_payload(
+    prepared_calibration: PreparedMarketDataCalibration,
+) -> dict[str, Any]:
+    request = prepared_calibration.request
+
     return {
         "schema_version": CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION,
         "command": CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT,
         "request_schema_version": request.schema_version,
+        "preparation_schema_version": prepared_calibration.schema_version,
         "run_id": request.run_id,
         "workflow_scope": request.workflow_scope.value,
         "session_context": {
@@ -1332,6 +1339,8 @@ def _build_market_data_calibration_summary_payload(request: MarketDataCalibratio
             "emit_input_provenance_report": request.output_preferences.emit_input_provenance_report,
             "emit_derived_staged_execution_input": request.output_preferences.emit_derived_staged_execution_input,
         },
+        "diagnostics_summary": prepared_calibration.diagnostics.to_payload(),
+        "provenance_summary": prepared_calibration.provenance.to_payload(),
         "output_schema_metadata": {
             "schema_family": "cli.workflow.command_summary",
             "field_selection_policy": CLI_MARKET_DATA_SUMMARY_FIELD_SELECTION_POLICY,
@@ -1344,18 +1353,29 @@ def _build_market_data_calibration_summary_payload(request: MarketDataCalibratio
                 "normalization_policy",
                 "output_artifact_locations",
                 "output_emission_policy",
+                "diagnostics_summary",
+                "provenance_summary",
             ],
             "optional_input_sections": [
                 "input_files.known_news",
                 "input_files.option_surface",
                 "column_mapping.known_news",
                 "column_mapping.option_surface",
+                "provenance_summary.option_surface_summary",
+                "provenance_summary.known_news_summary",
             ],
         },
     }
 
 
-def _render_market_data_calibration_human_output(request: MarketDataCalibrationRequest) -> str:
+def _render_market_data_calibration_human_output(
+    prepared_calibration: PreparedMarketDataCalibration,
+) -> str:
+    request = prepared_calibration.request
+
+    selected_stages = ",".join(stage.value for stage in prepared_calibration.diagnostics.selected_stages)
+    preprocessing_steps = ",".join(prepared_calibration.diagnostics.executed_preprocessing_steps)
+
     lines: list[str] = [
         (
             "calibration market-data request prepared: "
@@ -1375,6 +1395,18 @@ def _render_market_data_calibration_human_output(request: MarketDataCalibrationR
             f"format={request.session_configuration.session_definition_source.file_format.value} "
             f"exchange_code={request.session_configuration.exchange_code} "
             f"session_timezone={request.session_configuration.session_timezone}"
+        ),
+        (
+            "workflow_diagnostics: "
+            f"preparation_schema_version={CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION} "
+            f"selected_stages={selected_stages} "
+            f"preprocessing_steps={preprocessing_steps}"
+        ),
+        (
+            "loaded_data_summary: "
+            f"tick_records={prepared_calibration.diagnostics.tick_record_count} "
+            f"known_news_events={prepared_calibration.diagnostics.known_news_event_count} "
+            f"option_surface_records={prepared_calibration.diagnostics.option_surface_record_count}"
         ),
     ]
 
@@ -1398,6 +1430,13 @@ def _render_market_data_calibration_human_output(request: MarketDataCalibrationR
             )
         )
 
+    lines.append(
+        (
+            "derived_references: "
+            f"trade_events={prepared_calibration.provenance.derived_trade_events_data_reference} "
+            f"option_surface={prepared_calibration.provenance.derived_option_surface_data_reference or 'none'}"
+        )
+    )
     lines.append(
         (
             "normalization_policy: "
@@ -1753,50 +1792,6 @@ def _classify_workflow_command_error(
             context={"source_exception_type": type(error).__name__},
         )
     )
-
-
-def _preflight_market_data_calibration_request(request: MarketDataCalibrationRequest) -> None:
-    _preflight_market_data_session_definition(request)
-    load_market_data_calibration_inputs(request)
-
-
-def _preflight_market_data_session_definition(request: MarketDataCalibrationRequest) -> None:
-    session_source = request.session_configuration.session_definition_source
-    session_definition_path = Path(session_source.path)
-
-    if session_source.file_format == CalibrationInputFileFormat.JSON:
-        try:
-            session_definition_document = _load_json_document(
-                session_definition_path,
-                "session definition",
-            )
-            _build_calendar_registry_from_document(session_definition_document)
-        except Exception as e:
-            raise _classify_workflow_command_error(
-                e,
-                entrypoint=CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT,
-                validation_error_id=CLI_CALIBRATION_MARKET_DATA_VALIDATION_ERROR_ID,
-                internal_error_id=CLI_CALIBRATION_MARKET_DATA_INTERNAL_ERROR_ID,
-                file_field_path="session_configuration.session_definition_source.path",
-                document_field_path="session_configuration.session_definition_source",
-            ) from e
-
-        return
-
-    try:
-        with open(session_definition_path, "rb") as input_file:
-            input_file.read(1)
-    except Exception as e:
-        raise _classify_workflow_command_error(
-            e,
-            entrypoint=CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT,
-            validation_error_id=CLI_CALIBRATION_MARKET_DATA_VALIDATION_ERROR_ID,
-            internal_error_id=CLI_CALIBRATION_MARKET_DATA_INTERNAL_ERROR_ID,
-            file_field_path="session_configuration.session_definition_source.path",
-            document_field_path="session_configuration.session_definition_source",
-        ) from e
-
-
 def _resolve_path_from_repository_root(repository_root: Path, path: Path) -> Path:
     if path.is_absolute():
         return path

@@ -9,6 +9,7 @@ from janiform._market_data_translation import (
     translate_market_data_request_to_staged_execution_input,
 )
 from janiform.calibration import (
+    CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
     CalibrationDuplicateRecordPolicy,
     CalibrationExecutionMode,
     CalibrationInputFileFormat,
@@ -26,7 +27,9 @@ from janiform.calibration import (
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
     MarketDataCalibrationRequest,
+    prepare_market_data_calibration,
     run_staged_calibration,
+    run_market_data_calibration,
 )
 
 
@@ -227,6 +230,145 @@ def test_translate_market_data_request_without_known_news_runs_staged_calibratio
     )
     assert response.execution_mode == CalibrationExecutionMode.MEMORY
     assert response.status.value == "success"
+
+
+def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenance(
+    tmp_path: Path,
+    calendar_registry_json: str,
+) -> None:
+    session_definition_path = _write_session_definition(tmp_path, calendar_registry_json)
+
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price",
+                "2026-02-02T14:30:00Z,100.0",
+                "2026-02-02T15:00:00Z,101.0",
+                "2026-02-02T15:10:00Z,104.0",
+                "2026-02-02T20:59:00Z,102.0",
+                "2026-02-04T14:30:00Z,90.0",
+                "2026-02-04T14:40:00Z,100.0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    known_news_path = tmp_path / "known_news.csv"
+    known_news_path.write_text(
+        "\n".join(
+            [
+                "event_timestamp_utc,event_code",
+                "2026-02-02T15:05:00Z,open_macro",
+                "2026-02-02T22:00:00Z,closed_macro",
+                "2026-02-10T15:00:00Z,outside_window",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    request = _build_market_data_request(
+        session_definition_path=session_definition_path,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            trade_price_column="trade_price",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+        ),
+        known_news_inputs=CalibrationKnownNewsInput(
+            calendar_source=CalibrationInputFileReference(
+                path=str(known_news_path),
+                file_format=CalibrationInputFileFormat.CSV,
+                provenance_label="known-news",
+            ),
+            calendar_timezone="UTC",
+        ),
+        known_news_column_mapping=CalibrationKnownNewsColumnMapping(
+            event_timestamp_column="event_timestamp_utc",
+            event_identifier_column="event_code",
+        ),
+    )
+
+    prepared = prepare_market_data_calibration(request)
+
+    assert prepared.schema_version == CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION
+    assert prepared.request.run_id == request.run_id
+    assert prepared.execution_input.request.execution_mode == CalibrationExecutionMode.MEMORY
+    assert prepared.diagnostics.selected_stages == (
+        CalibrationStage.SEASONALITY,
+        CalibrationStage.HAWKES,
+        CalibrationStage.RETURN_COMPONENTS,
+    )
+    assert prepared.diagnostics.executed_preprocessing_steps == (
+        "source_loading",
+        "column_mapping_validation",
+        "timestamp_timezone_normalization",
+        "duplicate_record_resolution",
+        "timestamp_sorting",
+        "session_state_resolution",
+        "workflow_scope_selection",
+        "known_news_window_filtering",
+        "known_news_overlay_derivation",
+        "hawkes_candidate_generation",
+        "return_components_candidate_generation",
+    )
+    assert prepared.diagnostics.known_news_event_count == 2
+    assert prepared.diagnostics.known_news_events_outside_source_window_count == 1
+    assert prepared.provenance.tick_data_summary.file_format == CalibrationInputFileFormat.CSV
+    assert prepared.provenance.known_news_summary is not None
+    assert prepared.provenance.derived_trade_events_data_reference == (
+        "market_data://market_data_translation_run/ticks/ticks_primary"
+    )
+
+
+def test_run_market_data_calibration_executes_market_data_first_workflow(
+    tmp_path: Path,
+    calendar_registry_json: str,
+) -> None:
+    session_definition_path = _write_session_definition(tmp_path, calendar_registry_json)
+
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price",
+                "2026-02-02T14:30:00Z,100.0",
+                "2026-02-02T15:00:00Z,101.0",
+                "2026-02-02T15:10:00Z,103.0",
+                "2026-02-02T20:59:00Z,102.0",
+                "2026-02-04T14:30:00Z,95.0",
+                "2026-02-04T14:40:00Z,98.0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    request = _build_market_data_request(
+        session_definition_path=session_definition_path,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            trade_price_column="trade_price",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+        ),
+    )
+
+    response = run_market_data_calibration(request)
+
+    assert response.execution_mode == CalibrationExecutionMode.MEMORY
+    assert response.status.value == "success"
+    assert len(response.stage_reports) == 3
 
 
 def test_translate_market_data_request_full_with_option_surface_sets_option_reference(

@@ -1,29 +1,40 @@
 {
-  "schema_version": "python.public_api_contract.guardrail_manifest.v1",
-  "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_1",
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "9c450deecc8eb0cacf9b439d380a58ad73e6aaee48a81bc79c3157a61d08d63a",
+  "approved_snapshot_sha256": "755eb7fa5226593fd99c93fb0df97a0fdb265e24d50ab7d2824b39dbb42adf5b",
   "change_log": [
     {
-      "snapshot_sha256": "358a892617b023f392f0dc8ac52eabac32045ff6750e62e5c02e6be86753ee6c",
       "approved_on": "2026-03-08",
-      "summary": "Replace staged close-open gap candidate inputs with raw boundary observations and explicit detection policy.",
-      "rationale": "The staged calibration surface now derives close-open gap candidates internally from raw boundary observations so callers no longer perform mechanical preprocessing outside Janiform.",
       "docs_updated": [
         "README.md",
         "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
-      ]
+      ],
+      "rationale": "The staged calibration surface now derives close-open gap candidates internally from raw boundary observations so callers no longer perform mechanical preprocessing outside Janiform.",
+      "snapshot_sha256": "358a892617b023f392f0dc8ac52eabac32045ff6750e62e5c02e6be86753ee6c",
+      "summary": "Replace staged close-open gap candidate inputs with raw boundary observations and explicit detection policy."
     },
     {
-      "snapshot_sha256": "9c450deecc8eb0cacf9b439d380a58ad73e6aaee48a81bc79c3157a61d08d63a",
       "approved_on": "2026-03-08",
-      "summary": "Add the market-data calibration request contract and recommended CLI entry point.",
-      "rationale": "Calibration now exposes a market-data-first request boundary with explicit provenance and normalization selections while keeping staged execution as the advanced path.",
       "docs_updated": [
         "README.md",
         "docs/development/guides/cli_command_architecture_and_namespace_layout.md",
         "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
-      ]
+      ],
+      "rationale": "Calibration now exposes a market-data-first request boundary with explicit provenance and normalization selections while keeping staged execution as the advanced path.",
+      "snapshot_sha256": "9c450deecc8eb0cacf9b439d380a58ad73e6aaee48a81bc79c3157a61d08d63a",
+      "summary": "Add the market-data calibration request contract and recommended CLI entry point."
+    },
+    {
+      "approved_on": "2026-03-08",
+      "docs_updated": [
+        "README.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
+        "docs/development/guides/cli_command_architecture_and_namespace_layout.md"
+      ],
+      "rationale": "The market-data-first calibration surface now exposes a public preparation result with diagnostics and provenance, plus a direct market-data runner, so examples and tooling can stay on the user-facing path instead of dropping to staged orchestration.",
+      "snapshot_sha256": "755eb7fa5226593fd99c93fb0df97a0fdb265e24d50ab7d2824b39dbb42adf5b",
+      "summary": "Add public market-data preparation and run entrypoints with surfaced diagnostics."
     }
-  ]
+  ],
+  "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_1",
+  "schema_version": "python.public_api_contract.guardrail_manifest.v1"
 }

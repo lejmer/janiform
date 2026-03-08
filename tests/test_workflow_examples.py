@@ -2,6 +2,7 @@ import ast
 from pathlib import Path
 
 from examples.calibration_workflow import run_example as run_calibration_example
+from examples.market_data_calibration_workflow import run_example as run_market_data_calibration_example
 from examples.pricing_workflow import run_example as run_pricing_example
 from examples.simulation_workflow import run_example as run_simulation_example
 
@@ -79,6 +80,101 @@ def test_pricing_example_runs_with_deterministic_summary() -> None:
     }
 
 
+def test_market_data_calibration_example_runs_with_user_facing_preparation_summary(
+    tmp_path: Path,
+) -> None:
+    summary = run_market_data_calibration_example(working_directory=tmp_path)
+
+    assert summary == {
+        "tick_csv_primary": {
+            "derived_option_surface_data_reference": None,
+            "derived_trade_events_data_reference": "market_data://market_data_csv_primary/ticks/primary_tick_feed",
+            "executed_preprocessing_steps": [
+                "source_loading",
+                "column_mapping_validation",
+                "timestamp_timezone_normalization",
+                "duplicate_record_resolution",
+                "timestamp_sorting",
+                "session_state_resolution",
+                "workflow_scope_selection",
+                "known_news_window_filtering",
+                "known_news_overlay_derivation",
+                "hawkes_candidate_generation",
+                "return_components_candidate_generation",
+            ],
+            "known_news_event_count": 2,
+            "material_close_open_gap_count": 1,
+            "option_surface_record_count": 0,
+            "preparation_schema_version": "calibration.market_data.preparation.v1",
+            "prepared_execution_mode": "memory",
+            "prepared_stage_count": 3,
+            "selected_stages": ["seasonality", "hawkes", "return_components"],
+            "tick_data_format": "csv",
+            "tick_record_count": 6,
+            "workflow_scope": "full_without_option_surface",
+        },
+        "tick_csv_with_option_surface": {
+            "derived_option_surface_data_reference": (
+                "market_data://market_data_option_surface_primary/options/options_close"
+            ),
+            "derived_trade_events_data_reference": (
+                "market_data://market_data_option_surface_primary/ticks/primary_tick_feed"
+            ),
+            "executed_preprocessing_steps": [
+                "source_loading",
+                "column_mapping_validation",
+                "timestamp_timezone_normalization",
+                "duplicate_record_resolution",
+                "timestamp_sorting",
+                "session_state_resolution",
+                "workflow_scope_selection",
+                "known_news_window_filtering",
+                "known_news_overlay_derivation",
+                "hawkes_candidate_generation",
+                "return_components_candidate_generation",
+                "option_surface_quote_normalization",
+            ],
+            "known_news_event_count": 2,
+            "material_close_open_gap_count": 1,
+            "option_surface_record_count": 1,
+            "preparation_schema_version": "calibration.market_data.preparation.v1",
+            "prepared_execution_mode": "memory",
+            "prepared_stage_count": 3,
+            "selected_stages": ["seasonality", "hawkes", "return_components"],
+            "tick_data_format": "csv",
+            "tick_record_count": 6,
+            "workflow_scope": "full_with_option_surface",
+        },
+        "tick_parquet_primary": {
+            "derived_option_surface_data_reference": None,
+            "derived_trade_events_data_reference": "market_data://market_data_parquet_primary/ticks/primary_tick_feed",
+            "executed_preprocessing_steps": [
+                "source_loading",
+                "column_mapping_validation",
+                "timestamp_timezone_normalization",
+                "duplicate_record_resolution",
+                "timestamp_sorting",
+                "session_state_resolution",
+                "workflow_scope_selection",
+                "known_news_window_filtering",
+                "known_news_overlay_derivation",
+                "hawkes_candidate_generation",
+                "return_components_candidate_generation",
+            ],
+            "known_news_event_count": 2,
+            "material_close_open_gap_count": 1,
+            "option_surface_record_count": 0,
+            "preparation_schema_version": "calibration.market_data.preparation.v1",
+            "prepared_execution_mode": "memory",
+            "prepared_stage_count": 3,
+            "selected_stages": ["seasonality", "hawkes", "return_components"],
+            "tick_data_format": "parquet",
+            "tick_record_count": 6,
+            "workflow_scope": "full_without_option_surface",
+        },
+    }
+
+
 def test_calibration_example_runs_with_default_and_override_modes(tmp_path: Path) -> None:
     summary = run_calibration_example(disk_checkpoint_directory=tmp_path)
 
@@ -107,6 +203,7 @@ def test_readme_references_examples_documentation() -> None:
     assert "examples/README.md" in readme_text
     assert "examples/simulation_workflow.py" in readme_text
     assert "examples/pricing_workflow.py" in readme_text
+    assert "examples/market_data_calibration_workflow.py" in readme_text
     assert "examples/calibration_workflow.py" in readme_text
 
 
