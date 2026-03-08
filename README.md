@@ -232,6 +232,7 @@ Supported automation environment variables:
 
 - Design model and rationale: `docs/design/janiform_design_brainstorm_notes.md`
 - CLI command architecture and namespace layout: `docs/development/guides/cli_command_architecture_and_namespace_layout.md`
+- CLI command reference and practical examples: `docs/development/guides/cli_command_reference_and_examples.md`
 - Python public API surface map and namespace policy: `docs/development/guides/python_public_api_surface_map_and_namespace_policy.md`
 - Python experimental API policy: `docs/development/guides/python_experimental_api_policy.md`
 - Python API contract compatibility and version guardrails: `docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md`

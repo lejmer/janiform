@@ -1,10 +1,6 @@
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
-
-import pyarrow as pa
-from pyarrow import parquet as pyarrow_parquet
 
 from janiform.calibration import (
     CalibrationDuplicateRecordPolicy,
@@ -26,11 +22,11 @@ from janiform.calibration import (
     prepare_market_data_calibration,
 )
 
-from ._shared import CALENDAR_REGISTRY_JSON
+from ._shared import write_market_data_fixture_files
 
 
 def run_example(*, working_directory: Path) -> dict[str, object]:
-    file_paths = _write_market_data_fixture_files(working_directory)
+    file_paths = write_market_data_fixture_files(working_directory)
 
     csv_request = _build_market_data_request(
         run_id="market-data-csv-primary",
@@ -189,88 +185,6 @@ def _build_market_data_request(
             calendar_timezone="UTC",
         ),
     )
-
-
-def _write_market_data_fixture_files(working_directory: Path) -> dict[str, Path]:
-    data_directory = working_directory / "data"
-    config_directory = working_directory / "config"
-    data_directory.mkdir(parents=True, exist_ok=True)
-    config_directory.mkdir(parents=True, exist_ok=True)
-
-    session_definition_path = config_directory / "sessions.json"
-    session_definition_path.write_text(CALENDAR_REGISTRY_JSON, encoding="utf-8")
-
-    tick_csv_path = data_directory / "ticks.csv"
-    tick_csv_path.write_text(
-        "\n".join(
-            [
-                "timestamp_utc,trade_price",
-                "2026-02-02T14:30:00Z,100.0",
-                "2026-02-02T15:00:00Z,101.0",
-                "2026-02-02T15:10:00Z,104.0",
-                "2026-02-02T20:59:00Z,102.0",
-                "2026-02-04T14:30:00Z,90.0",
-                "2026-02-04T14:40:00Z,100.0",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    tick_parquet_path = data_directory / "ticks.parquet"
-    pyarrow_parquet.write_table(
-        pa.table(
-            {
-                "timestamp_utc": [
-                    datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
-                    datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
-                    datetime(2026, 2, 2, 15, 10, tzinfo=UTC),
-                    datetime(2026, 2, 2, 20, 59, tzinfo=UTC),
-                    datetime(2026, 2, 4, 14, 30, tzinfo=UTC),
-                    datetime(2026, 2, 4, 14, 40, tzinfo=UTC),
-                ],
-                "trade_price": [100.0, 101.0, 104.0, 102.0, 90.0, 100.0],
-            }
-        ),
-        tick_parquet_path,
-    )
-
-    known_news_path = config_directory / "known-news.csv"
-    known_news_path.write_text(
-        "\n".join(
-            [
-                "event_timestamp_utc,event_code",
-                "2026-02-02T15:05:00Z,open_macro",
-                "2026-02-02T22:00:00Z,closed_macro",
-                "2026-02-10T15:00:00Z,outside_window",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    option_surface_path = data_directory / "options.parquet"
-    pyarrow_parquet.write_table(
-        pa.table(
-            {
-                "quote_timestamp_utc": [datetime(2026, 2, 2, 20, 0, tzinfo=UTC)],
-                "expiry_utc": [datetime(2026, 3, 20, 20, 0, tzinfo=UTC)],
-                "strike": [100.0],
-                "option_type": ["C"],
-                "bid": [4.0],
-                "ask": [5.0],
-            }
-        ),
-        option_surface_path,
-    )
-
-    return {
-        "session_definition": session_definition_path,
-        "tick_csv": tick_csv_path,
-        "tick_parquet": tick_parquet_path,
-        "known_news": known_news_path,
-        "option_surface": option_surface_path,
-    }
-
-
 def main() -> None:
     with TemporaryDirectory(prefix="janiform-market-data-example-") as working_directory:
         summary = run_example(working_directory=Path(working_directory))
