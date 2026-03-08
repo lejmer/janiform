@@ -46,6 +46,17 @@ DEFAULT_CALENDAR_FIXTURE_PATH: str = "tests/fixtures/calendar/calendar_service_r
 DEFAULT_GAP_BEHAVIOR_FIXTURE_PATH: str = (
     "tests/fixtures/gap_behavior/open_closed_gap_behavior_scenarios.json"
 )
+CLI_PATH_METAVAR = "PATH"
+CLI_DIRECTORY_METAVAR = "DIRECTORY"
+CLI_REPOSITORY_RELATIVE_PATH_POLICY = "Relative paths are resolved from the repository root."
+CLI_CALIBRATION_EXECUTION_MODE_CHOICES: tuple[str, str] = (
+    CalibrationExecutionMode.DISK.value,
+    CalibrationExecutionMode.MEMORY.value,
+)
+CLI_CALIBRATION_EXECUTION_MODE_HELP = (
+    "Calibration execution mode override. Precedence: --execution-mode, then the CLI default "
+    "disk. This overrides request.execution_mode from --execution-input-json."
+)
 CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT = "simulation.seeded_ticks"
 CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID = "cli.validation.simulation.seeded_ticks.invalid_input"
 CLI_SIMULATION_SEEDED_TICKS_EXECUTION_ERROR_ID = "cli.execution.simulation.seeded_ticks.failed"
@@ -64,13 +75,36 @@ def _add_required_json_path_argument(
     parser: ArgumentParser,
     *,
     flag_name: str,
-    help_text: str,
+    contract_label: str,
+    semantic_note: str | None = None,
 ) -> None:
+    help_segments: list[str] = [f"Path to {contract_label}.", CLI_REPOSITORY_RELATIVE_PATH_POLICY]
+    if semantic_note is not None:
+        help_segments.append(semantic_note)
+
     parser.add_argument(
         flag_name,
         type=Path,
         required=True,
-        help=help_text,
+        metavar=CLI_PATH_METAVAR,
+        help=" ".join(help_segments),
+    )
+
+
+def _add_optional_path_argument(
+    parser: ArgumentParser,
+    *,
+    flag_name: str,
+    help_text: str,
+    default: Path | None = None,
+    directory: bool = False,
+) -> None:
+    parser.add_argument(
+        flag_name,
+        type=Path,
+        default=default,
+        metavar=CLI_DIRECTORY_METAVAR if directory else CLI_PATH_METAVAR,
+        help=f"{help_text} {CLI_REPOSITORY_RELATIVE_PATH_POLICY}",
     )
 
 
@@ -109,15 +143,15 @@ def _build_parser() -> ArgumentParser:
     _add_required_json_path_argument(
         simulation_seeded_ticks_parser,
         flag_name="--request-json",
-        help_text=(
-            "Path to a seeded-tick simulation request JSON object. "
+        contract_label="a seeded-tick simulation request JSON object",
+        semantic_note=(
             "The request summary must preserve open-jump versus closed-gap hourly factors."
         ),
     )
     _add_required_json_path_argument(
         simulation_seeded_ticks_parser,
         flag_name="--calendar-registry-json",
-        help_text="Path to a calendar registry JSON object used to rehydrate hourly factors.",
+        contract_label="a calendar registry JSON object used to rehydrate hourly factors",
     )
 
     calibration_parser = subparsers.add_parser(
@@ -141,27 +175,33 @@ def _build_parser() -> ArgumentParser:
     _add_required_json_path_argument(
         calibration_staged_parser,
         flag_name="--execution-input-json",
-        help_text=(
-            "Path to a staged calibration execution-input JSON object with explicit known-news "
-            "return samples and raw close-open boundary observations for internal gap detection."
+        contract_label="a staged calibration execution-input JSON object",
+        semantic_note=(
+            "The execution input must provide explicit known-news return samples and raw "
+            "close-open boundary observations for internal gap detection."
         ),
     )
     _add_required_json_path_argument(
         calibration_staged_parser,
         flag_name="--calendar-registry-json",
-        help_text="Path to a calendar registry JSON object consumed by the staged calibration runner.",
+        contract_label="a calendar registry JSON object consumed by the staged calibration runner",
     )
 
     calibration_staged_parser.add_argument(
         "--execution-mode",
-        choices=("disk", "memory"),
-        default="disk",
-        help="Calibration execution mode. CLI default is disk.",
+        choices=CLI_CALIBRATION_EXECUTION_MODE_CHOICES,
+        default=CalibrationExecutionMode.DISK.value,
+        help=CLI_CALIBRATION_EXECUTION_MODE_HELP,
     )
-    calibration_staged_parser.add_argument(
-        "--disk-checkpoint-directory",
-        type=Path,
-        help="Checkpoint directory required for disk execution mode when not already present in the input JSON.",
+
+    _add_optional_path_argument(
+        parser=calibration_staged_parser,
+        flag_name="--disk-checkpoint-directory",
+        directory=True,
+        help_text=(
+            "Checkpoint directory override. Use only with --execution-mode disk. When provided, "
+            "this overrides runtime_resources.disk_checkpoint_directory from --execution-input-json."
+        ),
     )
 
     pricing_parser = subparsers.add_parser(
@@ -185,8 +225,8 @@ def _build_parser() -> ArgumentParser:
     _add_required_json_path_argument(
         pricing_vanilla_option_parser,
         flag_name="--execution-input-json",
-        help_text=(
-            "Path to a vanilla-option pricing execution-input JSON object. "
+        contract_label="a vanilla-option pricing execution-input JSON object",
+        semantic_note=(
             "Interval factors keep known and surprise news intensity separate."
         ),
     )
@@ -216,18 +256,20 @@ def _build_parser() -> ArgumentParser:
         handler=_run_open_closed_gap_leakage_regression_command,
         help_target=gap_leakage_parser,
     )
-    gap_leakage_parser.add_argument(
-        "--calendar-fixture-path",
-        type=Path,
+
+    _add_optional_path_argument(
+        parser=gap_leakage_parser,
+        flag_name="--calendar-fixture-path",
         default=Path(DEFAULT_CALENDAR_FIXTURE_PATH),
-        help="Path to calendar regression fixture JSON.",
+        help_text="Path to the calendar regression fixture JSON.",
     )
-    gap_leakage_parser.add_argument(
-        "--gap-behavior-fixture-path",
-        type=Path,
+    _add_optional_path_argument(
+        parser=gap_leakage_parser,
+        flag_name="--gap-behavior-fixture-path",
         default=Path(DEFAULT_GAP_BEHAVIOR_FIXTURE_PATH),
-        help="Path to open and closed gap behavior fixture JSON.",
+        help_text="Path to the open and closed gap behavior fixture JSON.",
     )
+
     gap_leakage_parser.add_argument(
         "--component-absolute-tolerance",
         type=float,
@@ -327,6 +369,12 @@ def _run_calibration_staged_command(parsed_arguments: Namespace) -> int:
         repository_root,
         cast(Path, parsed_arguments.calendar_registry_json),
     )
+    disk_checkpoint_directory_argument = cast(Path | None, parsed_arguments.disk_checkpoint_directory)
+    disk_checkpoint_directory = (
+        _resolve_path_from_repository_root(repository_root, disk_checkpoint_directory_argument)
+        if disk_checkpoint_directory_argument is not None
+        else None
+    )
 
     try:
         execution_input_document = _load_json_document(execution_input_path, "calibration execution input")
@@ -335,7 +383,7 @@ def _run_calibration_staged_command(parsed_arguments: Namespace) -> int:
         normalized_execution_input = _override_calibration_execution_mode(
             execution_input=execution_input,
             execution_mode=CalibrationExecutionMode(cast(str, parsed_arguments.execution_mode)),
-            disk_checkpoint_directory=cast(Path | None, parsed_arguments.disk_checkpoint_directory),
+            disk_checkpoint_directory=disk_checkpoint_directory,
         )
         calendar_registry = _build_calendar_registry_from_document(calendar_registry_document)
         response = run_staged_calibration(
@@ -359,6 +407,7 @@ def _run_calibration_staged_command(parsed_arguments: Namespace) -> int:
         return 1
 
     _write_contract_json(response.to_payload())
+
     return 0
 
 

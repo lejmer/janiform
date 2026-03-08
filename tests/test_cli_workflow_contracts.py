@@ -32,25 +32,76 @@ from tests.calibration_test_support import build_valid_execution_input_model
 
 
 def test_simulation_cli_help_documents_required_contract_inputs() -> None:
-    help_output = _render_help(["simulation", "seeded-ticks"])
+    help_output = _normalize_help_output(_render_help(["simulation", "seeded-ticks"]))
 
-    assert "--request-json" in help_output
-    assert "--calendar-registry-json" in help_output
+    assert "--request-json PATH" in help_output
+    assert "--calendar-registry-json PATH" in help_output
+    assert cli_module.CLI_REPOSITORY_RELATIVE_PATH_POLICY in help_output
 
 
 def test_pricing_cli_help_documents_execution_input_contract() -> None:
-    help_output = _render_help(["pricing", "vanilla-option"])
+    help_output = _normalize_help_output(_render_help(["pricing", "vanilla-option"]))
 
-    assert "--execution-input-json" in help_output
+    assert "--execution-input-json PATH" in help_output
+    assert cli_module.CLI_REPOSITORY_RELATIVE_PATH_POLICY in help_output
 
 
 def test_calibration_cli_help_documents_mode_and_runtime_arguments() -> None:
-    help_output = _render_help(["calibration", "staged"])
+    help_output = _normalize_help_output(_render_help(["calibration", "staged"]))
 
-    assert "--execution-input-json" in help_output
-    assert "--calendar-registry-json" in help_output
+    assert "--execution-input-json PATH" in help_output
+    assert "--calendar-registry-json PATH" in help_output
     assert "--execution-mode {disk,memory}" in help_output
-    assert "--disk-checkpoint-directory" in help_output
+    assert "Precedence: --execution-mode, then the CLI default disk." in help_output
+    assert "overrides request.execution_mode" in help_output
+    assert "--disk-checkpoint-directory DIRECTORY" in help_output
+    assert "overrides runtime_resources.disk_checkpoint_directory from --execution-input-json" in help_output
+
+
+def test_cli_shared_path_flags_use_standardized_repository_relative_help_text() -> None:
+    help_outputs = (
+        _normalize_help_output(_render_help(["simulation", "seeded-ticks"])),
+        _normalize_help_output(_render_help(["pricing", "vanilla-option"])),
+        _normalize_help_output(_render_help(["calibration", "staged"])),
+        _normalize_help_output(_render_help(["dev", "regression", "open-closed-gap-leakage"])),
+    )
+
+    for help_output in help_outputs:
+        assert cli_module.CLI_REPOSITORY_RELATIVE_PATH_POLICY in help_output
+
+
+def test_calibration_cli_parser_defaults_execution_mode_to_disk() -> None:
+    parser = cli_module._build_parser()
+    parsed_arguments = parser.parse_args(
+        [
+            "calibration",
+            "staged",
+            "--execution-input-json",
+            "calibration.json",
+            "--calendar-registry-json",
+            "calendar.json",
+        ]
+    )
+
+    assert parsed_arguments.execution_mode == CalibrationExecutionMode.DISK.value
+
+
+def test_calibration_cli_parser_accepts_explicit_memory_execution_mode() -> None:
+    parser = cli_module._build_parser()
+    parsed_arguments = parser.parse_args(
+        [
+            "calibration",
+            "staged",
+            "--execution-input-json",
+            "calibration.json",
+            "--calendar-registry-json",
+            "calendar.json",
+            "--execution-mode",
+            "memory",
+        ]
+    )
+
+    assert parsed_arguments.execution_mode == CalibrationExecutionMode.MEMORY.value
 
 
 def test_simulation_cli_maps_request_json_to_runtime_request(
@@ -242,6 +293,26 @@ def test_calibration_cli_honors_explicit_memory_override(
     assert command_output["execution_mode"] == "memory"
 
 
+def test_calibration_cli_resolves_relative_disk_checkpoint_directory_from_repository_root() -> None:
+    execution_input = build_valid_execution_input_model()
+    relative_checkpoint_directory = Path("tmp") / "cli-checkpoints"
+    repository_root = Path(cli_module.__file__).resolve().parents[2]
+    resolved_checkpoint_directory = cli_module._resolve_path_from_repository_root(
+        repository_root,
+        relative_checkpoint_directory,
+    )
+    normalized_execution_input = cli_module._override_calibration_execution_mode(
+        execution_input=execution_input,
+        execution_mode=CalibrationExecutionMode.DISK,
+        disk_checkpoint_directory=resolved_checkpoint_directory,
+    )
+
+    assert normalized_execution_input.runtime_resources is not None
+    assert normalized_execution_input.runtime_resources.disk_checkpoint_directory == str(
+        repository_root / relative_checkpoint_directory
+    )
+
+
 def test_calibration_cli_requires_disk_checkpoint_directory_when_defaulting_to_disk(
     calendar_registry_json: str,
     tmp_path: Path,
@@ -428,6 +499,10 @@ def _render_help(arguments: list[str]) -> str:
 
     assert captured_exit.value.code == 0
     return stdout_buffer.getvalue()
+
+
+def _normalize_help_output(help_output: str) -> str:
+    return " ".join(help_output.split())
 
 
 def _write_json_path(path: Path, payload: dict[str, object]) -> Path:
