@@ -460,6 +460,66 @@ def _build_pricing_parser(subparsers) -> None:
     )
 
 
+def _build_stylized_facts_parser(subparsers) -> None:
+    from ._commands import _run_stylized_facts_horizon_comparison_command
+
+    stylized_facts_parser = subparsers.add_parser(
+        "stylized-facts",
+        help="Stylized-fact reporting workflows.",
+        description="Stylized-fact reporting workflows.",
+    )
+    stylized_facts_parser.set_defaults(help_target=stylized_facts_parser)
+    stylized_facts_subparsers = stylized_facts_parser.add_subparsers(dest="stylized_facts_command")
+
+    horizon_comparison_parser = stylized_facts_subparsers.add_parser(
+        "horizon-comparison",
+        help="Generate a stylized-fact horizon-comparison report bundle.",
+        description=(
+            "Generate a stylized-fact horizon-comparison report bundle from a metric catalog, "
+            "a comparison request, and optional artifact-export settings."
+        ),
+    )
+    horizon_comparison_parser.set_defaults(
+        handler=_run_stylized_facts_horizon_comparison_command,
+        help_target=horizon_comparison_parser,
+    )
+
+    _add_command_config_argument(horizon_comparison_parser)
+    _add_output_mode_argument(
+        horizon_comparison_parser,
+        default_output_mode=CliOutputMode.JSON,
+    )
+    _add_required_json_path_argument(
+        horizon_comparison_parser,
+        flag_name="--metric-catalog-json",
+        contract_label="a stylized-fact metric catalog JSON object",
+    )
+    _add_required_json_path_argument(
+        horizon_comparison_parser,
+        flag_name="--comparison-request-json",
+        contract_label="a stylized-fact horizon-comparison request JSON object",
+    )
+    _add_optional_path_argument(
+        parser=horizon_comparison_parser,
+        flag_name="--artifact-export-json",
+        help_text=(
+            "Optional path to a stylized-fact artifact-export config JSON object. "
+            "This payload is passed through the public workflow validation path and requires "
+            "--execution-mode disk."
+        ),
+    )
+
+    horizon_comparison_parser.add_argument(
+        "--execution-mode",
+        choices=CLI_CALIBRATION_EXECUTION_MODE_CHOICES,
+        default=CalibrationExecutionMode.MEMORY.value,
+        help=(
+            "Execution mode passed through to janiform.stylized_facts. Default: memory. "
+            "Use disk when artifact export is requested."
+        ),
+    )
+
+
 def _build_developer_parser(subparsers) -> None:
     from ._commands import (
         _run_deterministic_regression_command,
@@ -579,6 +639,7 @@ def _build_parser() -> ArgumentParser:
     _build_simulation_parser(subparsers)
     _build_calibration_parser(subparsers)
     _build_pricing_parser(subparsers)
+    _build_stylized_facts_parser(subparsers)
     _build_developer_parser(subparsers)
 
     return parser
@@ -937,6 +998,7 @@ __all__ = [
     '_build_environment_argument_vector',
     '_build_pricing_parser',
     '_build_simulation_parser',
+    '_build_stylized_facts_parser',
     '_extract_explicit_option_value',
     '_extract_primary_command_path',
     '_load_cli_command_config_document',

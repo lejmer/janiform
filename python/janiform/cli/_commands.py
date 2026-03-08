@@ -28,6 +28,9 @@ from ._constants import (
     CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT,
     CLI_SIMULATION_SEEDED_TICKS_INTERNAL_ERROR_ID,
     CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID,
+    CLI_STYLIZED_FACTS_HORIZON_COMPARISON_ENTRYPOINT,
+    CLI_STYLIZED_FACTS_HORIZON_COMPARISON_INTERNAL_ERROR_ID,
+    CLI_STYLIZED_FACTS_HORIZON_COMPARISON_VALIDATION_ERROR_ID,
     CliExitCode,
     CliOutputMode,
 )
@@ -71,6 +74,7 @@ from ..simulation import (
     load_hourly_factor_contract_for_simulation,
     run_seeded_tick_event_simulation,
 )
+from ..stylized_facts import run_stylized_fact_horizon_comparison_report_generator
 from ..validation import (
     run_deterministic_regression_harness,
     run_open_closed_gap_leakage_regression_harness,
@@ -147,6 +151,77 @@ def _run_pricing_vanilla_option_command(parsed_arguments: Namespace) -> int:
         parsed_arguments,
         json_payload=run_result.to_payload(),
         human_output_factory=lambda: _render_pricing_vanilla_option_human_output(run_result.to_payload()),
+    )
+
+    return int(CliExitCode.SUCCESS)
+
+
+def _run_stylized_facts_horizon_comparison_command(parsed_arguments: Namespace) -> int:
+    repository_root = Path(__file__).resolve().parents[3]
+    metric_catalog_path = _resolve_path_from_repository_root(
+        repository_root,
+        cast(Path, parsed_arguments.metric_catalog_json),
+    )
+    comparison_request_path = _resolve_path_from_repository_root(
+        repository_root,
+        cast(Path, parsed_arguments.comparison_request_json),
+    )
+    artifact_export_path_argument = cast(Path | None, parsed_arguments.artifact_export_json)
+    artifact_export_path = (
+        _resolve_path_from_repository_root(repository_root, artifact_export_path_argument)
+        if artifact_export_path_argument is not None
+        else None
+    )
+
+    file_field_path = "metric_catalog_json"
+    document_field_path = "metric_catalog_document"
+
+    try:
+        metric_catalog_document = _load_json_document(metric_catalog_path, "stylized-fact metric catalog")
+        file_field_path = "comparison_request_json"
+        document_field_path = "comparison_request_document"
+        comparison_request_document = _load_json_document(
+            comparison_request_path,
+            "stylized-fact comparison request",
+        )
+
+        artifact_export_document: Optional[dict[str, Any]] = None
+        if artifact_export_path is not None:
+            file_field_path = "artifact_export_json"
+            document_field_path = "artifact_export_document"
+            artifact_export_document = _load_json_document(
+                artifact_export_path,
+                "stylized-fact artifact export config",
+            )
+
+        document_field_path = "command_input"
+        report_bundle = run_stylized_fact_horizon_comparison_report_generator(
+            metric_catalog=metric_catalog_document,
+            comparison_request=comparison_request_document,
+            execution_mode=cast(str, parsed_arguments.execution_mode),
+            artifact_export=artifact_export_document,
+        )
+    except JaniformError as e:
+        return _write_cli_error(e)
+    except Exception as e:
+        return _write_cli_error(
+            _classify_workflow_command_error(
+                e,
+                entrypoint=CLI_STYLIZED_FACTS_HORIZON_COMPARISON_ENTRYPOINT,
+                validation_error_id=CLI_STYLIZED_FACTS_HORIZON_COMPARISON_VALIDATION_ERROR_ID,
+                internal_error_id=CLI_STYLIZED_FACTS_HORIZON_COMPARISON_INTERNAL_ERROR_ID,
+                file_field_path=file_field_path,
+                document_field_path=document_field_path,
+            )
+        )
+
+    _write_command_output(
+        parsed_arguments,
+        json_payload=cast(dict[str, Any], report_bundle),
+        human_output_factory=lambda: _render_stylized_facts_horizon_comparison_human_output(
+            report_bundle,
+            execution_mode=cast(str, parsed_arguments.execution_mode),
+        ),
     )
 
     return int(CliExitCode.SUCCESS)
@@ -553,6 +628,48 @@ def _render_pricing_vanilla_option_human_output(run_result_payload: dict[str, An
         f"price={response_payload['price']} "
         f"delta={response_payload['delta']}\n"
     )
+
+
+def _render_stylized_facts_horizon_comparison_human_output(
+    report_bundle: dict[str, Any],
+    *,
+    execution_mode: str,
+) -> str:
+    comparison_report = cast(dict[str, Any], report_bundle["comparison_report"])
+    summary = cast(dict[str, Any], comparison_report["summary"])
+    lines: list[str] = [
+        (
+            "stylized-facts horizon-comparison completed: "
+            f"schema_version={report_bundle['schema_version']} "
+            f"execution_mode={execution_mode} "
+            f"status={comparison_report['status']} "
+            f"metric_catalog_id={comparison_report['metric_catalog_id']} "
+            f"run_count={summary['total_run_count']} "
+            f"table_row_count={len(cast(list[dict[str, Any]], report_bundle['table_summary']['rows']))}"
+        ),
+        (
+            "decision_counts: "
+            f"run_pass={summary['run_decision_counts']['pass_count']} "
+            f"run_fail={summary['run_decision_counts']['fail_count']} "
+            f"run_insufficient_data={summary['run_decision_counts']['insufficient_data_count']} "
+            f"metric_pass={summary['metric_decision_counts']['pass_count']} "
+            f"metric_fail={summary['metric_decision_counts']['fail_count']} "
+            f"metric_insufficient_data={summary['metric_decision_counts']['insufficient_data_count']}"
+        ),
+    ]
+
+    artifact_export = cast(Optional[dict[str, Any]], report_bundle["artifact_export"])
+    if artifact_export is not None:
+        lines.append(
+            (
+                "artifact_export: "
+                f"export_directory={artifact_export['export_directory']} "
+                f"file_stem={artifact_export['file_stem']} "
+                f"exported_file_count={len(cast(list[dict[str, Any]], artifact_export['exported_files']))}"
+            )
+        )
+
+    return "\n".join(lines) + "\n"
 
 
 def _render_calibration_staged_human_output(response_payload: dict[str, Any]) -> str:
@@ -1290,6 +1407,7 @@ __all__ = [
     '_render_market_data_calibration_human_output',
     '_render_pricing_vanilla_option_human_output',
     '_render_simulation_seeded_ticks_human_output',
+    '_render_stylized_facts_horizon_comparison_human_output',
     '_require_path_argument',
     '_resolve_path_from_repository_root',
     '_run_calibration_market_data_command',
@@ -1298,6 +1416,7 @@ __all__ = [
     '_run_open_closed_gap_leakage_regression_command',
     '_run_pricing_vanilla_option_command',
     '_run_simulation_seeded_ticks_command',
+    '_run_stylized_facts_horizon_comparison_command',
     '_write_cli_error',
     '_write_command_output',
     '_write_contract_json',

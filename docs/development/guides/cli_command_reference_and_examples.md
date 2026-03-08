@@ -33,6 +33,9 @@ The generated files include:
 - `tmp/cli-docs/calendar_registry.json`
 - `tmp/cli-docs/simulation_request.json`
 - `tmp/cli-docs/pricing_execution_input.json`
+- `tmp/cli-docs/stylized_fact_metric_catalog.json`
+- `tmp/cli-docs/stylized_fact_comparison_request.json`
+- `tmp/cli-docs/stylized_fact_artifact_export.json`
 - `tmp/cli-docs/calibration_execution_input.json`
 - `tmp/cli-docs/data/ticks.csv`
 - `tmp/cli-docs/data/ticks.parquet`
@@ -48,6 +51,9 @@ The generated files include:
 - Calibration commands share `--execution-mode {disk,memory}`.
 - The CLI default is `disk` for calibration commands.
 - `--disk-checkpoint-directory` is required when the effective calibration execution mode is `disk`.
+- The stylized-fact report command defaults to `memory`.
+- Stylized-fact artifact export uses `--artifact-export-json PATH` so the export contract stays the
+  same across Python and CLI entrypoints.
 
 ## Simulation
 
@@ -102,6 +108,51 @@ janiform pricing vanilla-option --execution-input-json PATH [--output {human,jso
 ```bash
 janiform pricing vanilla-option \
   --execution-input-json tmp/cli-docs/pricing_execution_input.json \
+  --output json
+```
+
+## Stylized Facts
+
+### Synopsis
+
+```text
+janiform stylized-facts horizon-comparison --metric-catalog-json PATH --comparison-request-json PATH [--artifact-export-json PATH] [--execution-mode {disk,memory}] [--output {human,json}]
+```
+
+### Options
+
+- `--metric-catalog-json`: stylized-fact metric catalog contract file
+- `--comparison-request-json`: stylized-fact horizon-comparison request contract file
+- `--artifact-export-json`: optional artifact-export config contract file
+- `--execution-mode {disk,memory}`: report execution mode, default `memory`
+- `--output {human,json}`: operator summary or machine-readable report bundle
+
+### Execution-Mode Semantics
+
+- If `--execution-mode` is omitted, the command uses `memory`.
+- Use `--execution-mode disk` together with `--artifact-export-json` when deterministic report,
+  table-summary, and plot-payload files should be written to disk.
+- Artifact export config is passed through the same validation path used by
+  `janiform.stylized_facts.run_stylized_fact_horizon_comparison_report_generator`.
+
+### Example: In-Memory Report Bundle
+
+```bash
+janiform stylized-facts horizon-comparison \
+  --metric-catalog-json tmp/cli-docs/stylized_fact_metric_catalog.json \
+  --comparison-request-json tmp/cli-docs/stylized_fact_comparison_request.json \
+  --execution-mode memory \
+  --output json
+```
+
+### Example: Disk-Backed Artifact Export
+
+```bash
+janiform stylized-facts horizon-comparison \
+  --metric-catalog-json tmp/cli-docs/stylized_fact_metric_catalog.json \
+  --comparison-request-json tmp/cli-docs/stylized_fact_comparison_request.json \
+  --artifact-export-json tmp/cli-docs/stylized_fact_artifact_export.json \
+  --execution-mode disk \
   --output json
 ```
 

@@ -57,6 +57,17 @@ def test_pricing_cli_help_documents_execution_input_contract() -> None:
     assert cli_module.CLI_REPOSITORY_RELATIVE_PATH_POLICY in help_output
 
 
+def test_stylized_facts_cli_help_documents_report_generation_contract() -> None:
+    help_output = _normalize_help_output(_render_help(["stylized-facts", "horizon-comparison"]))
+
+    assert "--output {human,json}" in help_output
+    assert "--metric-catalog-json PATH" in help_output
+    assert "--comparison-request-json PATH" in help_output
+    assert "--artifact-export-json PATH" in help_output
+    assert "--execution-mode {disk,memory}" in help_output
+    assert cli_module.CLI_REPOSITORY_RELATIVE_PATH_POLICY in help_output
+
+
 def test_calibration_cli_help_documents_mode_and_runtime_arguments() -> None:
     help_output = _normalize_help_output(_render_help(["calibration", "staged"]))
 
@@ -90,6 +101,7 @@ def test_cli_shared_path_flags_use_standardized_repository_relative_help_text() 
     help_outputs = (
         _normalize_help_output(_render_help(["simulation", "seeded-ticks"])),
         _normalize_help_output(_render_help(["pricing", "vanilla-option"])),
+        _normalize_help_output(_render_help(["stylized-facts", "horizon-comparison"])),
         _normalize_help_output(_render_help(["calibration", "market-data"])),
         _normalize_help_output(_render_help(["calibration", "staged"])),
         _normalize_help_output(_render_help(["dev", "regression", "deterministic"])),
@@ -219,6 +231,16 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
             "pricing.json",
         ]
     )
+    stylized_facts_arguments = parser.parse_args(
+        [
+            "stylized-facts",
+            "horizon-comparison",
+            "--metric-catalog-json",
+            "metric-catalog.json",
+            "--comparison-request-json",
+            "comparison-request.json",
+        ]
+    )
     staged_arguments = parser.parse_args(
         [
             "calibration",
@@ -232,6 +254,7 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
 
     assert simulation_arguments.output == "json"
     assert pricing_arguments.output == "json"
+    assert stylized_facts_arguments.output == "json"
     assert staged_arguments.output == "json"
 
 
@@ -259,6 +282,18 @@ def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
             "human",
         ]
     )
+    stylized_facts_arguments = parser.parse_args(
+        [
+            "stylized-facts",
+            "horizon-comparison",
+            "--metric-catalog-json",
+            "metric-catalog.json",
+            "--comparison-request-json",
+            "comparison-request.json",
+            "--output",
+            "human",
+        ]
+    )
     staged_arguments = parser.parse_args(
         [
             "calibration",
@@ -274,6 +309,7 @@ def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
 
     assert simulation_arguments.output == "human"
     assert pricing_arguments.output == "human"
+    assert stylized_facts_arguments.output == "human"
     assert staged_arguments.output == "human"
 
 
