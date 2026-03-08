@@ -103,6 +103,33 @@ def test_market_data_calibration_request_requires_known_news_column_mapping_for_
     assert "csv or parquet" in captured_error.value.failure.message
 
 
+def test_market_data_calibration_request_rejects_unsupported_tick_data_file_formats() -> None:
+    request_payload = _valid_market_data_request_payload()
+    request_payload["tick_data_source"]["file_format"] = "json"
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        validate_market_data_calibration_request(request_payload)
+
+    assert captured_error.value.failure.field_path == "tick_data_source.file_format"
+    assert captured_error.value.failure.message == "must be one of: csv, parquet"
+
+
+def test_market_data_calibration_request_requires_bid_and_ask_mapping_for_tick_midpoint_policy() -> None:
+    request_payload = _valid_market_data_request_payload()
+    request_payload["workflow_scope"] = CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE.value
+    del request_payload["option_surface_source"]
+    del request_payload["column_mapping"]["option_surface"]
+    request_payload["normalization_policy"]["option_quote_input_policy"] = None
+    request_payload["normalization_policy"]["tick_price_input_policy"] = "bid_ask_midpoint"
+    del request_payload["column_mapping"]["tick_data"]["trade_price_column"]
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        validate_market_data_calibration_request(request_payload)
+
+    assert captured_error.value.failure.field_path == "column_mapping.tick_data"
+    assert "bid_column and ask_column" in captured_error.value.failure.message
+
+
 def test_staged_calibration_request_defaults_execution_mode_to_memory() -> None:
     request_payload = _valid_request_payload()
     del request_payload["execution_mode"]

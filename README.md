@@ -9,15 +9,146 @@ The name *Janiform* comes from the Roman god *Janus* who is a god with two faces
 
 It's Jani*form* because it's about form: a system whose geometry is essentially bifacial.
 
-## Baseline Support
+## Prerequisites
 
-- Python: `>=3.12`
+- Python: `>=3.12` or `uv`
 - Rust: `>=1.89`
 
-## Tooling
+## Quickstart
 
-- Build backend: `maturin`
-- Python-Rust bindings: `PyO3`
+On Linux:
+
+```bash
+./scripts/bootstrap-linux.sh
+janiform --help
+janiform calibration market-data --help
+python3 -m examples.pricing_workflow
+```
+
+On Windows:
+
+```powershell
+./scripts/bootstrap-win.ps1
+janiform --help
+janiform calibration market-data --help
+python -m examples.pricing_workflow
+```
+
+## Developer Environment Setup
+
+### Linux
+Make sure you have **Rust >=1.89** and either **uv** or **Python >=3.12** installed first.
+
+To set up your environment properly, run:
+
+```bash
+./scripts/bootstrap-linux.sh
+```
+
+Or if you are running a JetBrains IDE with uv:
+
+```powershell
+./scripts/bootstrap-linux.sh .venv
+```
+
+This automatically installs all missing dependencies, including **maturin**, the build system, and **pytest**.
+
+### Windows
+Make sure you have **Rust >=1.89** and either **uv** or **Python >=3.12** installed first.
+
+To set up your environment properly, run:
+
+```powershell
+./scripts/bootstrap-win.ps1
+```
+
+Or if you are running a JetBrains IDE with uv:
+
+```powershell
+./scripts/bootstrap-win.ps1 .venv
+```
+
+This automatically installs all missing dependencies, including **maturin**, the build system, and **pytest**.
+
+## Building
+
+When developing you regularly need to build. The easiest way to build is to use the build scripts.
+
+### Linux
+
+```bash
+./scripts/build-linux.sh .venv-linux
+```
+
+Or if you are running a JetBrains IDE with uv:
+
+```bash
+./scripts/build-linux.sh .venv
+```
+
+### Windows
+
+```powershell
+./scripts/build-win.ps1 .venv
+```
+
+Or if you are running a JetBrains IDE with uv:
+
+```powershell
+./scripts/build-win.ps1 .venv
+```
+
+## Testing
+
+When developing you regularly need to run tests. The easiest way to build is to use the test scripts.
+
+### Linux
+
+```bash
+./scripts/test-linux.sh .venv-linux
+```
+
+Or if you are running a JetBrains IDE with uv:
+
+```bash
+./scripts/test-linux.sh .venv
+```
+
+### Windows
+
+```powershell
+./scripts/test-win.ps1 .venv
+```
+
+Or if you are running a JetBrains IDE with uv:
+
+```powershell
+./scripts/test-win.ps1 .venv
+```
+
+## Test script syntax
+
+The test scripts can pass command line arguments on to **pytest**. To achieve this, use the following syntax:
+
+### Linux
+
+```bash
+./scripts/test-linux.sh [venv-folder] -- [pytest-command-line-arguments]
+```
+
+### Windows
+
+```powershell
+./scripts/test-win.ps1 [venv-folder] -- [pytest-command-line-arguments]
+```
+
+### Example on Linux
+
+This tells the script to use the `.venv-linux` venv, and to pass on the `-v` command line argument to **pytest**.
+
+```bash
+./scripts/test-linux.sh .venv-linux -- -v
+```
 
 ## Project Layout
 
@@ -27,16 +158,6 @@ It's Jani*form* because it's about form: a system whose geometry is essentially 
 - `examples/`: Executable public-API workflow examples for simulation, pricing, and calibration
 - `tests/`: Python tests and shared fixtures
 - `docs/`: Design and development documentation
-
-## Quickstart
-
-```bash
-maturin develop
-python3 -m janiform --help
-janiform --help
-janiform calibration market-data --help
-PYTHONPATH=python python3 -m examples.pricing_workflow
-```
 
 ## Examples
 
@@ -85,12 +206,3 @@ PYTHONPATH=python python3 -m examples.pricing_workflow
 - Planning artifacts: `docs/planning/`
 
 The detailed calendar and seasonality sections were moved out of this README into the development guide above to keep the repo root documentation concise.
-
-## Developer Commands
-
-```bash
-python3 -m py_compile python/janiform/*.py tests/conftest.py
-cargo check --workspace
-PYTHONPATH=python .venv-wsl/bin/python3.14 -m pytest tests/test_api_contract_guardrails.py
-python3 -m janiform dev regression open-closed-gap-leakage
-```

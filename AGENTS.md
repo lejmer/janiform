@@ -33,10 +33,14 @@ This codebase is pre-v0.1 and has no external users.
 ---
 
 ## Available Tooling
+- `./scripts/bootstrap-linux.sh .venv-linux` for Linux/WSL-based bootstrapping (if no venv exists)
+- `./scripts/bootstrap-win.ps1 .venv` for Windows-based bootstrapping (if no venv exists)
+- `./scripts/build-linux.sh .venv-linux` for Linux/WSL-based building
+- `./scripts/build-win.ps1 .venv` for Windows-based building
+- `./scripts/test-linux.sh .venv-linux -- [cmd-line arguments for pytest]` for running tests on Linux/WSL
+- `./scripts/test-win.ps1 .venv -- [cmd-line arguments for pytest]` for running tests on Windows
 - `cargo` for Rust
 - `python3` for Python
-- `pytest` for Python tests
-- `maturin develop` for building (note: the venv for agents is `.venv-wsl`, not `.venv`)
 
 When running `cargo test`, do so with `TMPDIR=/tmp` so that verification stays inside the sandbox.
 

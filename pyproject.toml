@@ -10,6 +10,7 @@ requires-python = ">=3.12"
 dynamic = ["version"]
 dependencies = [
     "orjson>=3.11.7",
+    "pyarrow>=23.0.1",
 ]
 
 [project.optional-dependencies]
@@ -19,6 +20,7 @@ test = [
 ]
 dev = [
     "janiform[test]",
+    "maturin>=1.9,<2.0",
 ]
 
 [project.scripts]
