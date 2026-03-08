@@ -2,16 +2,15 @@
   "schema_version": "python.public_api_contract.guardrail_manifest.v1",
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_1",
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "29a54367363ba017977e3f714d1f2b337d03e374710c8b99d52d93d547cc233e",
+  "approved_snapshot_sha256": "358a892617b023f392f0dc8ac52eabac32045ff6750e62e5c02e6be86753ee6c",
   "change_log": [
     {
-      "snapshot_sha256": "29a54367363ba017977e3f714d1f2b337d03e374710c8b99d52d93d547cc233e",
-      "approved_on": "2026-03-07",
-      "summary": "Establish the baseline public Python API contract snapshot for pre-v0.1 review gating.",
-      "rationale": "Freeze the current public module exports, callable signatures, enum values, policy identifiers, execution defaults, and schema identifiers so future breaks require an explicit rationale and synchronized doc updates.",
+      "snapshot_sha256": "358a892617b023f392f0dc8ac52eabac32045ff6750e62e5c02e6be86753ee6c",
+      "approved_on": "2026-03-08",
+      "summary": "Replace staged close-open gap candidate inputs with raw boundary observations and explicit detection policy.",
+      "rationale": "The staged calibration surface now derives close-open gap candidates internally from raw boundary observations so callers no longer perform mechanical preprocessing outside Janiform.",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md",
         "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
       ]
     }

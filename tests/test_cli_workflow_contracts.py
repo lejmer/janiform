@@ -309,6 +309,46 @@ def test_calibration_cli_rejects_disk_checkpoint_directory_in_memory_mode(
     assert 'message="--disk-checkpoint-directory requires --execution-mode disk"' in stderr_text
 
 
+def test_calibration_cli_rejects_malformed_close_open_boundary_observation(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    execution_input_payload = build_valid_execution_input_model().to_payload()
+    del execution_input_payload["return_components_candidate_generation_input"][
+        "observed_close_open_boundary_observations"
+    ][0]["open_price"]
+
+    execution_input_path = _write_json_path(
+        tmp_path / "calibration_execution_input.json",
+        execution_input_payload,
+    )
+    calendar_registry_path = _write_json_path(
+        tmp_path / "calendar_registry.json",
+        json.loads(calendar_registry_json),
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "calibration",
+            "staged",
+            "--execution-input-json",
+            str(execution_input_path),
+            "--calendar-registry-json",
+            str(calendar_registry_path),
+            "--execution-mode",
+            "memory",
+        ]
+    )
+
+    assert exit_code == 1
+    assert stdout_text == ""
+    assert (
+        'field_path="return_components_candidate_generation_input.observed_close_open_boundary_observations[0].open_price"'
+        in stderr_text
+    )
+    assert 'message="is required"' in stderr_text
+
+
 def _build_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
     from examples._shared import (
         build_pricing_interval_factors,

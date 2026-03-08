@@ -137,7 +137,8 @@ The package root `janiform` is intentionally minimal.
     - `CalibrationReturnComponentsKnownNewsCalendarInput`
     - `CalibrationReturnComponentsKnownNewsReturnSample`
     - `CalibrationReturnComponentsDetectedIntradayJumpCandidate`
-    - `CalibrationReturnComponentsDetectedCloseOpenGapCandidate`
+    - `CalibrationReturnComponentsObservedCloseOpenBoundaryObservation`
+    - `CalibrationReturnComponentsCloseOpenGapDetectionPolicy`
     - `CalibrationReturnComponentsObjectiveMetricWeights`
     - `CalibrationDoubleExponentialBaseShockConfiguration`
     - `CalibrationCoupledGapMarkConfiguration`

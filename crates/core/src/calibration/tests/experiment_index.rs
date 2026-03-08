@@ -284,6 +284,7 @@ fn commit_indexed_run(
     );
     let return_components_report = run_return_components_calibration_stage(
         &run_contract.run_spec,
+        &calendar_registry,
         ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
             format!("artifact://hawkes/{run_id}"),
             return_components_stage_candidate_generation_fixture(),

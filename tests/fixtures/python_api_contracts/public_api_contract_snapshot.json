@@ -137,11 +137,12 @@
         "CalibrationOptimizerSettings",
         "CalibrationResumeSettings",
         "CalibrationResumeSource",
-        "CalibrationReturnComponentsDetectedCloseOpenGapCandidate",
+        "CalibrationReturnComponentsCloseOpenGapDetectionPolicy",
         "CalibrationReturnComponentsDetectedIntradayJumpCandidate",
         "CalibrationReturnComponentsKnownNewsCalendarInput",
         "CalibrationReturnComponentsKnownNewsReturnSample",
         "CalibrationReturnComponentsObjectiveMetricWeights",
+        "CalibrationReturnComponentsObservedCloseOpenBoundaryObservation",
         "CalibrationReturnComponentsSignalSourceWindow",
         "CalibrationReturnComponentsStageCandidateGenerationInput",
         "CalibrationRunDataInputs",
@@ -398,15 +399,12 @@
             }
           ]
         },
-        "CalibrationReturnComponentsDetectedCloseOpenGapCandidate": {
+        "CalibrationReturnComponentsCloseOpenGapDetectionPolicy": {
           "field_names": [
-            "close_timestamp_utc_nanos",
-            "open_timestamp_utc_nanos",
-            "gap_return",
-            "post_shock_activity_lift"
+            "material_gap_absolute_return_tolerance"
           ],
           "kind": "contract_model",
-          "signature": "(close_timestamp_utc_nanos: int, open_timestamp_utc_nanos: int, gap_return: float, post_shock_activity_lift: float) -> None"
+          "signature": "(material_gap_absolute_return_tolerance: float) -> None"
         },
         "CalibrationReturnComponentsDetectedIntradayJumpCandidate": {
           "field_names": [
@@ -443,6 +441,17 @@
           "kind": "contract_model",
           "signature": "(open_jump_fit_weight: float, closed_gap_fit_weight: float, activity_coupling_fit_weight: float) -> None"
         },
+        "CalibrationReturnComponentsObservedCloseOpenBoundaryObservation": {
+          "field_names": [
+            "close_timestamp_utc_nanos",
+            "close_price",
+            "open_timestamp_utc_nanos",
+            "open_price",
+            "post_shock_activity_lift"
+          ],
+          "kind": "contract_model",
+          "signature": "(close_timestamp_utc_nanos: int, close_price: float, open_timestamp_utc_nanos: int, open_price: float, post_shock_activity_lift: float) -> None"
+        },
         "CalibrationReturnComponentsSignalSourceWindow": {
           "field_names": [
             "window_start_utc_nanos",
@@ -456,13 +465,14 @@
             "known_news_calendar",
             "realized_known_news_return_samples",
             "detected_intraday_jump_candidates",
-            "detected_close_open_gap_candidates",
+            "observed_close_open_boundary_observations",
+            "close_open_gap_detection_policy",
             "nig_shared_plus_shift_candidates",
             "shared_mark_law_template",
             "objective_metric_weights"
           ],
           "kind": "contract_model",
-          "signature": "(known_news_calendar: janiform.calibration.CalibrationReturnComponentsKnownNewsCalendarInput, realized_known_news_return_samples: tuple[janiform.calibration.CalibrationReturnComponentsKnownNewsReturnSample, ...], detected_intraday_jump_candidates: tuple[janiform.calibration.CalibrationReturnComponentsDetectedIntradayJumpCandidate, ...], detected_close_open_gap_candidates: tuple[janiform.calibration.CalibrationReturnComponentsDetectedCloseOpenGapCandidate, ...], nig_shared_plus_shift_candidates: tuple[janiform.pricing.NigSharedPlusShiftConfiguration, ...], shared_mark_law_template: janiform.calibration.CalibrationSharedNewsMarkLawConfiguration, objective_metric_weights: janiform.calibration.CalibrationReturnComponentsObjectiveMetricWeights) -> None"
+          "signature": "(known_news_calendar: janiform.calibration.CalibrationReturnComponentsKnownNewsCalendarInput, realized_known_news_return_samples: tuple[janiform.calibration.CalibrationReturnComponentsKnownNewsReturnSample, ...], detected_intraday_jump_candidates: tuple[janiform.calibration.CalibrationReturnComponentsDetectedIntradayJumpCandidate, ...], observed_close_open_boundary_observations: tuple[janiform.calibration.CalibrationReturnComponentsObservedCloseOpenBoundaryObservation, ...], close_open_gap_detection_policy: janiform.calibration.CalibrationReturnComponentsCloseOpenGapDetectionPolicy, nig_shared_plus_shift_candidates: tuple[janiform.pricing.NigSharedPlusShiftConfiguration, ...], shared_mark_law_template: janiform.calibration.CalibrationSharedNewsMarkLawConfiguration, objective_metric_weights: janiform.calibration.CalibrationReturnComponentsObjectiveMetricWeights) -> None"
         },
         "CalibrationRunDataInputs": {
           "field_names": [
