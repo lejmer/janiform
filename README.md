@@ -184,6 +184,47 @@ This tells the script to use the `.venv-linux` venv, and to pass on the `-v` com
 - Vanilla option pricing example: `examples/pricing_workflow.py`
 - Staged calibration example with default `memory` mode, explicit `disk` override, and internal close-open gap detection from raw boundary observations: `examples/calibration_workflow.py`
 
+## CLI Automation
+
+Primary workflow commands are automation-friendly by default:
+
+- No prompts or stdin fallback paths
+- `--output json` by default for machine-readable execution
+- Stable precedence: explicit CLI flags override environment variables, environment variables override command-config files, and command-config files override built-in defaults
+
+Primary commands also accept `--config-json PATH` with schema `cli.command_config.v1`. The config document uses long flag names without the leading `--` inside its `arguments` object. For example:
+
+```json
+{
+  "schema_version": "cli.command_config.v1",
+  "command": "calibration.market-data",
+  "arguments": {
+    "run-id": "market-data-run-001",
+    "workflow-scope": "seasonality_only",
+    "tick-data-path": "data/ticks.csv",
+    "tick-data-format": "csv",
+    "tick-data-provenance-label": "primary-feed",
+    "tick-timestamp-column": "timestamp_utc",
+    "exchange-code": "XNYS",
+    "session-definition-path": "config/sessions.json",
+    "session-definition-format": "json",
+    "session-definition-provenance-label": "calendar-registry",
+    "session-timezone": "America/New_York",
+    "timestamp-timezone": "UTC",
+    "execution-mode": "disk",
+    "disk-checkpoint-directory": "tmp/checkpoints",
+    "output": "json"
+  }
+}
+```
+
+Supported automation environment variables:
+
+- `JANIFORM_CLI_CONFIG_JSON`
+- `JANIFORM_CLI_OUTPUT`
+- `JANIFORM_CLI_CALIBRATION_EXECUTION_MODE`
+- `JANIFORM_CLI_CALIBRATION_DISK_CHECKPOINT_DIRECTORY`
+
 ## Documentation
 
 - Design model and rationale: `docs/design/janiform_design_brainstorm_notes.md`

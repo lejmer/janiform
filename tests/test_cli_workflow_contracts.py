@@ -1,4 +1,5 @@
 import json
+import sys
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import UTC, datetime, timedelta
 from io import StringIO
@@ -58,6 +59,7 @@ def test_pricing_cli_help_documents_execution_input_contract() -> None:
 def test_calibration_cli_help_documents_mode_and_runtime_arguments() -> None:
     help_output = _normalize_help_output(_render_help(["calibration", "staged"]))
 
+    assert "--config-json PATH" in help_output
     assert "--output {human,json}" in help_output
     assert "--execution-input-json PATH" in help_output
     assert "--calendar-registry-json PATH" in help_output
@@ -71,6 +73,7 @@ def test_calibration_cli_help_documents_mode_and_runtime_arguments() -> None:
 def test_market_data_calibration_cli_help_documents_user_facing_file_inputs() -> None:
     help_output = _normalize_help_output(_render_help(["calibration", "market-data"]))
 
+    assert "--config-json PATH" in help_output
     assert "--output {human,json}" in help_output
     assert "--tick-data-path PATH" in help_output
     assert "--session-definition-path PATH" in help_output
@@ -78,6 +81,7 @@ def test_market_data_calibration_cli_help_documents_user_facing_file_inputs() ->
     assert "--tick-price-input-policy" in help_output
     assert "--execution-mode {disk,memory}" in help_output
     assert "market-data calibration summary" in help_output
+    assert "explicit flags override environment variables" in help_output
 
 
 def test_cli_shared_path_flags_use_standardized_repository_relative_help_text() -> None:
@@ -398,6 +402,170 @@ def test_market_data_calibration_cli_supports_human_output_mode(
     assert stdout_text.startswith("calibration market-data request prepared:")
     assert "workflow_scope=seasonality_only" in stdout_text
     assert "execution_mode=memory" in stdout_text
+    assert stderr_text == ""
+
+
+def test_market_data_calibration_cli_supports_config_driven_non_interactive_execution(
+    calendar_registry_json: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    market_data_paths = _write_market_data_input_files(
+        tmp_path,
+        calendar_registry_json=calendar_registry_json,
+        include_known_news=True,
+    )
+
+    checkpoint_directory = tmp_path / "config-checkpoints"
+
+    config_path = _write_cli_command_config(
+        tmp_path / "market_data_config.json",
+        command="calibration.market-data",
+        arguments={
+            "run-id": "market-data-config-run",
+            "workflow-scope": "seasonality_only",
+            "tick-data-path": str(market_data_paths["tick_data"]),
+            "tick-data-format": "csv",
+            "tick-data-provenance-label": "ticks-primary",
+            "tick-timestamp-column": "timestamp_utc",
+            "exchange-code": "XNYS",
+            "session-definition-path": str(market_data_paths["session_definition"]),
+            "session-definition-format": "json",
+            "session-definition-provenance-label": "session-calendar",
+            "session-timezone": "America/New_York",
+            "known-news-path": str(market_data_paths["known_news"]),
+            "known-news-format": "csv",
+            "known-news-provenance-label": "known-news",
+            "known-news-timezone": "UTC",
+            "known-news-timestamp-column": "event_timestamp_utc",
+            "known-news-event-id-column": "event_code",
+            "timestamp-timezone": "UTC",
+            "execution-mode": "disk",
+            "disk-checkpoint-directory": str(checkpoint_directory),
+            "output": "json",
+        },
+    )
+
+    monkeypatch.setattr(sys, "stdin", _ExplodingStdin())
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "calibration",
+            "market-data",
+            "--config-json",
+            str(config_path),
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
+    assert stderr_text == ""
+
+    summary_payload = orjson.loads(stdout_text)
+    assert summary_payload["run_id"] == "market-data-config-run"
+    assert summary_payload["input_files"]["known_news"]["file_format"] == "csv"
+    assert summary_payload["output_emission_policy"]["execution_mode"] == "disk"
+    assert summary_payload["output_artifact_locations"]["disk_checkpoint_directory"] == str(checkpoint_directory)
+
+
+def test_market_data_calibration_cli_environment_overrides_command_config_defaults(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    market_data_paths = _write_market_data_input_files(
+        tmp_path,
+        calendar_registry_json=calendar_registry_json,
+    )
+
+    environment_checkpoint_directory = tmp_path / "environment-checkpoints"
+
+    config_path = _write_cli_command_config(
+        tmp_path / "market_data_precedence_config.json",
+        command="calibration.market-data",
+        arguments={
+            "run-id": "market-data-env-override-run",
+            "workflow-scope": "seasonality_only",
+            "tick-data-path": str(market_data_paths["tick_data"]),
+            "tick-data-format": "csv",
+            "tick-data-provenance-label": "ticks-primary",
+            "tick-timestamp-column": "timestamp_utc",
+            "exchange-code": "XNYS",
+            "session-definition-path": str(market_data_paths["session_definition"]),
+            "session-definition-format": "json",
+            "session-definition-provenance-label": "session-calendar",
+            "session-timezone": "America/New_York",
+            "timestamp-timezone": "UTC",
+            "execution-mode": "memory",
+            "output": "human",
+        },
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "calibration",
+            "market-data",
+            "--config-json",
+            str(config_path),
+        ],
+        environment={
+            cli_module.CLI_OUTPUT_ENV_VAR: "json",
+            cli_module.CLI_CALIBRATION_EXECUTION_MODE_ENV_VAR: "disk",
+            cli_module.CLI_CALIBRATION_DISK_CHECKPOINT_DIRECTORY_ENV_VAR: str(environment_checkpoint_directory),
+        },
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
+    assert stderr_text == ""
+
+    summary_payload = orjson.loads(stdout_text)
+    assert summary_payload["output_emission_policy"]["execution_mode"] == "disk"
+    assert summary_payload["output_artifact_locations"]["disk_checkpoint_directory"] == str(
+        environment_checkpoint_directory
+    )
+
+
+def test_cli_explicit_flags_override_environment_defaults(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    market_data_paths = _write_market_data_input_files(
+        tmp_path,
+        calendar_registry_json=calendar_registry_json,
+    )
+
+    config_path = _write_cli_command_config(
+        tmp_path / "market_data_output_config.json",
+        command="calibration.market-data",
+        arguments={
+            "run-id": "market-data-cli-override-run",
+            "workflow-scope": "seasonality_only",
+            "tick-data-path": str(market_data_paths["tick_data"]),
+            "tick-data-format": "csv",
+            "tick-data-provenance-label": "ticks-primary",
+            "tick-timestamp-column": "timestamp_utc",
+            "exchange-code": "XNYS",
+            "session-definition-path": str(market_data_paths["session_definition"]),
+            "session-definition-format": "json",
+            "session-definition-provenance-label": "session-calendar",
+            "session-timezone": "America/New_York",
+            "timestamp-timezone": "UTC",
+            "execution-mode": "disk",
+            "disk-checkpoint-directory": str(tmp_path / "cli-override-checkpoints"),
+        },
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "calibration",
+            "market-data",
+            "--config-json",
+            str(config_path),
+            "--output",
+            "human",
+        ],
+        environment={cli_module.CLI_OUTPUT_ENV_VAR: "json"},
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
+    assert stdout_text.startswith("calibration market-data request prepared:")
     assert stderr_text == ""
 
 
@@ -1169,9 +1337,16 @@ def _build_simulation_request(calendar_registry_json: str) -> SeededTickSimulati
     )
 
 
-def _invoke_cli(arguments: list[str]) -> tuple[int, str, str]:
-    parser = cli_module._build_parser()
-    parsed_arguments = parser.parse_args(arguments)
+def _invoke_cli(
+    arguments: list[str],
+    *,
+    environment: dict[str, str] | None = None,
+) -> tuple[int, str, str]:
+    parsed_arguments = cli_module._parse_cli_arguments(
+        arguments,
+        environment={} if environment is None else environment,
+    )
+
     stdout_buffer = StringIO()
     stderr_buffer = StringIO()
 
@@ -1200,6 +1375,22 @@ def _normalize_help_output(help_output: str) -> str:
 def _write_json_path(path: Path, payload: dict[str, object]) -> Path:
     path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
     return path
+
+
+def _write_cli_command_config(
+    path: Path,
+    *,
+    command: str,
+    arguments: dict[str, object],
+) -> Path:
+    return _write_json_path(
+        path,
+        {
+            "schema_version": cli_module.CLI_COMMAND_CONFIG_SCHEMA_VERSION,
+            "command": command,
+            "arguments": arguments,
+        },
+    )
 
 
 def _write_market_data_input_files(
@@ -1288,3 +1479,16 @@ def _timezone_key_is_available(timezone_name: str) -> bool:
         return False
 
     return True
+
+
+class _ExplodingStdin:
+    encoding = "utf-8"
+
+    def isatty(self) -> bool:
+        raise AssertionError("CLI should not inspect stdin for automation-friendly commands")
+
+    def read(self, *_args: object, **_kwargs: object) -> str:
+        raise AssertionError("CLI should not read stdin for automation-friendly commands")
+
+    def readline(self, *_args: object, **_kwargs: object) -> str:
+        raise AssertionError("CLI should not read stdin for automation-friendly commands")
