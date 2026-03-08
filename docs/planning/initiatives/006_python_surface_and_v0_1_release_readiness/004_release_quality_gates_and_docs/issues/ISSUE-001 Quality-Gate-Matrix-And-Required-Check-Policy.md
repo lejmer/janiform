@@ -8,6 +8,7 @@ Define the v0.1 quality-gate matrix and required-check policy for merge and rele
 - Policy distinguishes merge-time checks from release-branch checks
 - Required-check ownership and escalation paths are documented
 - Matrix is versioned and linked from release docs
+- Matrix includes at least one required check that exercises the user-facing market-data calibration workflow rather than only internal orchestration contracts
 
 ### Unit tests
 - Validation checks for completeness of required check IDs

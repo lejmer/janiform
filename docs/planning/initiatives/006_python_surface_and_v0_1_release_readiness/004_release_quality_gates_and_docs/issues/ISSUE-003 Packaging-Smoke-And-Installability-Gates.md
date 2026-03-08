@@ -8,10 +8,12 @@ Add packaging smoke-test gates that validate installation and basic runtime comm
 - Smoke checks validate importability and minimal CLI execution
 - Failures provide concise diagnostics tied to packaging stage
 - Packaging gate behavior is documented in release-readiness docs
+- Packaging smoke planning includes one minimal market-data calibration invocation using packaged commands and fixture files
 
 ### Unit tests
 - Smoke tests for package build and install commands and post-install import and CLI availability checks
 - Expected failure behavior on broken package artifacts
+- Validation that packaged calibration smoke can locate fixture inputs and report missing-runtime-dependency failures clearly
 
 ### Notes/Constraints
 - Keep smoke checks lightweight for reliable CI runtimes

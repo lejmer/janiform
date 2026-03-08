@@ -8,6 +8,7 @@ Create the v0.1 release checklist with explicit owners, objective exit criteria,
 - Each checklist item has owner, status, and objective completion criteria
 - Evidence links are captured for completed checklist items
 - Checklist template supports reuse for future releases
+- Checklist includes explicit evidence that the primary calibration workflow has been validated from real market-data files or representative fixtures
 
 ### Unit tests
 - Validation checks for owner and exit-criteria completeness and status-transition rules in checklist artifacts

@@ -8,11 +8,13 @@ Implement final release-readiness reporting and signoff workflow that summarizes
 - Signoff workflow defines required approvers and blocking conditions
 - Report format supports machine-readable and human-readable views
 - Workflow includes explicit rollback or defer path when gates fail
+- Readiness reporting calls out whether the market-data-first calibration workflow is ready, partially ready, or still blocked behind advanced-contract-only usage
 
 ### Unit tests
 - Signoff-state transitions and blocking behavior
 - Readiness-report schema and required sections
 - Deterministic report generation from fixed inputs
+- Coverage that workflow-readiness summaries include user-facing calibration status and supporting evidence links
 
 ### Notes/Constraints
 - Keep signoff workflow lightweight but enforceable

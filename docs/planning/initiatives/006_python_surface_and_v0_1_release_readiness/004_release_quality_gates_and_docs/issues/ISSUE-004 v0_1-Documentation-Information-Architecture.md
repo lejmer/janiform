@@ -8,9 +8,11 @@ Define and implement the v0.1 documentation structure covering installation, qui
 - Required v0.1 sections are present and internally linked
 - Content ownership and update policy are documented
 - Documentation map is aligned with current repository layout
+- Information architecture gives calibration users a clear first path from raw market files to a successful run before exposing advanced internal execution-contract docs
 
 ### Unit tests
 - Documentation checks for required section presence, Link-check or reference-validation checks for internal docs navigation, and Consistency checks between docs map and actual file paths
+- Validation that the docs map contains a market-data calibration quickstart and an explicitly separate advanced staged-calibration reference
 
 ### Notes/Constraints
 - Keep docs structure stable for v0.1
