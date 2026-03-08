@@ -32,12 +32,14 @@ from ._constants import (
     CLI_PRIMARY_COMMAND_IDENTIFIERS,
     CLI_PRIMARY_COMMAND_TREE,
     CLI_REPOSITORY_RELATIVE_PATH_POLICY,
+    CLI_SEASONALITY_SESSION_FILTER_CHOICES,
     CliOutputMode,
     DEFAULT_CALENDAR_FIXTURE_PATH,
     DEFAULT_GAP_BEHAVIOR_FIXTURE_PATH,
 )
 from .. import __version__
 from ..calibration import CalibrationDuplicateRecordPolicy, CalibrationExecutionMode
+from ..seasonality import SessionFilter
 from ..errors import ContractValidationFailure, JaniformValidationError
 
 
@@ -138,6 +140,79 @@ def _build_simulation_parser(subparsers) -> None:
         simulation_seeded_ticks_parser,
         flag_name="--calendar-registry-json",
         contract_label="a calendar registry JSON object used to rehydrate hourly factors",
+    )
+
+
+def _build_seasonality_parser(subparsers) -> None:
+    from ._commands import _run_seasonality_preprocess_timestamps_command
+
+    seasonality_parser = subparsers.add_parser(
+        "seasonality",
+        help="Seasonality preprocessing workflows.",
+        description="Seasonality preprocessing workflows.",
+    )
+    seasonality_parser.set_defaults(help_target=seasonality_parser)
+    seasonality_subparsers = seasonality_parser.add_subparsers(dest="seasonality_command")
+
+    preprocess_timestamps_parser = seasonality_subparsers.add_parser(
+        "preprocess-timestamps",
+        help="Preprocess timestamp events against the exchange calendar registry.",
+        description=(
+            "Preprocess timestamp events against the exchange calendar registry. "
+            "This standalone step validates timestamp records, applies session filtering, "
+            "and emits deterministic preprocessing diagnostics for downstream "
+            "seasonality or calibration workflows."
+        ),
+    )
+    preprocess_timestamps_parser.set_defaults(
+        handler=_run_seasonality_preprocess_timestamps_command,
+        help_target=preprocess_timestamps_parser,
+    )
+
+    _add_command_config_argument(preprocess_timestamps_parser)
+    _add_output_mode_argument(
+        preprocess_timestamps_parser,
+        default_output_mode=CliOutputMode.JSON,
+    )
+    _add_required_json_path_argument(
+        preprocess_timestamps_parser,
+        flag_name="--event-records-json",
+        contract_label="an event-record document with a top-level `event_records` list",
+        semantic_note=(
+            "Each record must include a timezone-aware timestamp string compatible with the "
+            "public janiform.seasonality preprocessing contract."
+        ),
+    )
+    _add_required_json_path_argument(
+        preprocess_timestamps_parser,
+        flag_name="--calendar-registry-json",
+        contract_label="a calendar registry JSON object used for exchange session classification",
+    )
+
+    preprocess_timestamps_parser.add_argument(
+        "--exchange-code",
+        required=True,
+        help="Exchange code used to resolve session state for all timestamp events.",
+    )
+    preprocess_timestamps_parser.add_argument(
+        "--timestamp-field-name",
+        default="timestamp",
+        help="Timestamp field name inside each event record. Default: timestamp.",
+    )
+    preprocess_timestamps_parser.add_argument(
+        "--session-filter",
+        choices=CLI_SEASONALITY_SESSION_FILTER_CHOICES,
+        default=SessionFilter.OPEN_ONLY.value,
+        help=(
+            "Session filter applied after exchange calendar classification. "
+            "Default: open_only."
+        ),
+    )
+    preprocess_timestamps_parser.add_argument(
+        "--sparse-hour-event-threshold",
+        type=int,
+        default=1,
+        help="Minimum accepted events per hour before a bucket is flagged as sparse. Default: 1.",
     )
 
 
@@ -637,6 +712,7 @@ def _build_parser() -> ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     _build_simulation_parser(subparsers)
+    _build_seasonality_parser(subparsers)
     _build_calibration_parser(subparsers)
     _build_pricing_parser(subparsers)
     _build_stylized_facts_parser(subparsers)

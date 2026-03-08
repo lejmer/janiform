@@ -35,6 +35,22 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
         json.dumps(json.loads(CALENDAR_REGISTRY_JSON), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    timestamp_event_records_path = output_directory / "timestamp_event_records.json"
+    timestamp_event_records_path.write_text(
+        json.dumps(
+            {
+                "event_records": [
+                    {"timestamp": "2026-02-02T14:30:00Z"},
+                    {"timestamp": "2026-02-02T16:30:00Z"},
+                    {"timestamp": "2026-02-02T16:31:00Z"},
+                ]
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
     calendar_registry = build_calendar_registry()
     hourly_factor_contract = load_hourly_factor_contract_for_simulation(
@@ -117,7 +133,9 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
         "stylized_fact_metric_catalog_json": str(stylized_fact_metric_catalog_path),
         "tick_data_csv": str(market_data_paths["tick_csv"]),
         "tick_data_parquet": str(market_data_paths["tick_parquet"]),
+        "timestamp_event_records_json": str(timestamp_event_records_path),
     }
+
     return output_paths
 
 

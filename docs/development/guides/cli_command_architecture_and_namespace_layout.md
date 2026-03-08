@@ -16,6 +16,8 @@ developer utilities and aligns command names with the public Python workflow mod
 janiform
 ├── simulation
 │   └── seeded-ticks
+├── seasonality
+│   └── preprocess-timestamps
 ├── calibration
 │   ├── market-data
 │   └── staged
@@ -31,7 +33,8 @@ janiform
 
 ## Namespace policy
 
-- `simulation`, `calibration`, `pricing`, and `stylized-facts` are the primary user-facing workflow groups.
+- `simulation`, `seasonality`, `calibration`, `pricing`, and `stylized-facts` are the primary
+  user-facing workflow groups.
 - `dev` is reserved for internal and developer-only utilities.
 - Developer-only commands must not be placed beside primary workflow groups at the top level.
 - Command aliases are forbidden because they add ambiguity to automation and shell scripts.
@@ -39,9 +42,12 @@ janiform
 ## Naming policy
 
 - Top-level command groups use the same workflow nouns as the public Python modules:
-  `janiform.simulation`, `janiform.calibration`, `janiform.pricing`, and `janiform.stylized_facts`.
+  `janiform.simulation`, `janiform.seasonality`, `janiform.calibration`, `janiform.pricing`, and
+  `janiform.stylized_facts`.
 - Subcommand names stay short while preserving the specific workflow identity:
   - `seeded-ticks` for the seeded tick-event simulator
+  - `preprocess-timestamps` for standalone timestamp-event preprocessing against the exchange
+    calendar registry
   - `market-data` for the recommended file-driven calibration request boundary
   - `staged` for advanced staged calibration orchestration
   - `vanilla-option` for vanilla option pricing
@@ -52,9 +58,9 @@ janiform
 
 ## Help-output expectations
 
-- `janiform --help` lists the five top-level namespaces in the order above.
-- `janiform simulation --help`, `janiform calibration --help`, `janiform pricing --help`, and
-  `janiform stylized-facts --help`
+- `janiform --help` lists the six top-level namespaces in the order above.
+- `janiform simulation --help`, `janiform seasonality --help`, `janiform calibration --help`,
+  `janiform pricing --help`, and `janiform stylized-facts --help`
   each list their current workflow subcommands.
 - `janiform dev --help` lists internal-only utility groups.
 - Incomplete command paths print the help for the selected namespace branch.
@@ -167,6 +173,31 @@ Behavior:
 Output:
 - `--output json` writes deterministic JSON for `simulation.seeded_tick_event.path.v1` to stdout.
 - `--output human` writes a concise completion summary with event-count metadata.
+
+### `janiform seasonality preprocess-timestamps`
+
+Required arguments:
+- `--event-records-json`: JSON object with top-level `event_records`
+- `--calendar-registry-json`: `calendar.registry.v1` JSON object or a wrapper object with `calendar_registry`
+- `--exchange-code`
+
+Optional arguments:
+- `--config-json PATH`
+- `--timestamp-field-name`: defaults to `timestamp`
+- `--session-filter {all,open_only,closed_only}`: defaults to `open_only`
+- `--sparse-hour-event-threshold`: defaults to `1`
+- `--output {human,json}`
+
+Behavior:
+- The command reuses `janiform.seasonality.preprocess_timestamp_events`.
+- Event records are validated against the public timestamp-event preprocessing contract.
+- Session filtering and sparse-hour diagnostics are applied through the canonical calendar registry.
+
+Output:
+- `--output json` writes the canonical preprocessing payload fields from
+  `seasonality.timestamp_event.preprocessed.v1` to stdout.
+- `--output human` writes a concise completion summary with accepted-record and coverage-diagnostic
+  metadata.
 
 ### `janiform pricing vanilla-option`
 

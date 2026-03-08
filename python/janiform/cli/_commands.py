@@ -25,6 +25,9 @@ from ._constants import (
     CLI_PRICING_VANILLA_OPTION_ENTRYPOINT,
     CLI_PRICING_VANILLA_OPTION_INTERNAL_ERROR_ID,
     CLI_PRICING_VANILLA_OPTION_VALIDATION_ERROR_ID,
+    CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_ENTRYPOINT,
+    CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_INTERNAL_ERROR_ID,
+    CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID,
     CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT,
     CLI_SIMULATION_SEEDED_TICKS_INTERNAL_ERROR_ID,
     CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID,
@@ -67,7 +70,11 @@ from ..hourly_factors import (
     HourlySeasonalityProviderExplicitSource,
 )
 from ..pricing import run_vanilla_option_pricing, validate_vanilla_option_pricing_execution_input
-from ..seasonality import SeasonalityInputValidationError
+from ..seasonality import (
+    SeasonalityInputValidationError,
+    SessionFilter,
+    preprocess_timestamp_events,
+)
 from ..simulation import (
     SeededTickSimulationHourlyFactorSummary,
     SeededTickSimulationRequest,
@@ -151,6 +158,58 @@ def _run_pricing_vanilla_option_command(parsed_arguments: Namespace) -> int:
         parsed_arguments,
         json_payload=run_result.to_payload(),
         human_output_factory=lambda: _render_pricing_vanilla_option_human_output(run_result.to_payload()),
+    )
+
+    return int(CliExitCode.SUCCESS)
+
+
+def _run_seasonality_preprocess_timestamps_command(parsed_arguments: Namespace) -> int:
+    repository_root = Path(__file__).resolve().parents[3]
+    event_records_path = _resolve_path_from_repository_root(
+        repository_root,
+        cast(Path, parsed_arguments.event_records_json),
+    )
+    calendar_registry_path = _resolve_path_from_repository_root(
+        repository_root,
+        cast(Path, parsed_arguments.calendar_registry_json),
+    )
+
+    file_field_path = "event_records_json"
+    document_field_path = "event_records_document"
+
+    try:
+        event_records_document = _load_json_document(event_records_path, "event records")
+        event_records = _extract_event_records(event_records_document)
+        file_field_path = "calendar_registry_json"
+        document_field_path = "calendar_registry_document"
+        calendar_registry_document = _load_json_document(calendar_registry_path, "calendar registry")
+        calendar_registry = _build_calendar_registry_from_document(calendar_registry_document)
+        document_field_path = "event_records_document"
+        preprocessed_events = preprocess_timestamp_events(
+            event_records,
+            exchange_code=cast(str, parsed_arguments.exchange_code),
+            calendar_registry=calendar_registry,
+            timestamp_field_name=cast(str, parsed_arguments.timestamp_field_name),
+            session_filter=SessionFilter(cast(str, parsed_arguments.session_filter)),
+            sparse_hour_event_threshold=int(parsed_arguments.sparse_hour_event_threshold),
+        )
+    except JaniformError as e:
+        return _write_cli_error(e)
+    except Exception as e:
+        return _write_cli_error(
+            _classify_seasonality_preprocess_command_error(
+                e,
+                file_field_path=file_field_path,
+                document_field_path=document_field_path,
+            )
+        )
+
+    payload = _build_timestamp_event_preprocessing_payload(preprocessed_events)
+
+    _write_command_output(
+        parsed_arguments,
+        json_payload=payload,
+        human_output_factory=lambda: _render_seasonality_preprocess_timestamps_human_output(payload),
     )
 
     return int(CliExitCode.SUCCESS)
@@ -630,6 +689,29 @@ def _render_pricing_vanilla_option_human_output(run_result_payload: dict[str, An
     )
 
 
+def _render_seasonality_preprocess_timestamps_human_output(payload: dict[str, Any]) -> str:
+    lines: list[str] = [
+        (
+            "seasonality preprocess-timestamps completed: "
+            f"schema_version={payload['schema_version']} "
+            f"exchange_code={payload['exchange_code']} "
+            f"exchange_timezone_name={payload['exchange_timezone_name']} "
+            f"accepted_record_count={payload['accepted_record_count']} "
+            f"filtered_record_count={payload['filtered_record_count']}"
+        ),
+        (
+            "coverage_diagnostics: "
+            f"hour_bucket_count={payload['hour_bucket_count']} "
+            f"missing_hour_bucket_count={payload['missing_hour_bucket_count']} "
+            f"sparse_hour_bucket_count={payload['sparse_hour_bucket_count']} "
+            f"first_event_timestamp_utc_nanos={payload['first_event_timestamp_utc_nanos']} "
+            f"last_event_timestamp_utc_nanos={payload['last_event_timestamp_utc_nanos']}"
+        ),
+    ]
+
+    return "\n".join(lines) + "\n"
+
+
 def _render_stylized_facts_horizon_comparison_human_output(
     report_bundle: dict[str, Any],
     *,
@@ -849,6 +931,58 @@ def _classify_open_closed_gap_command_error(error: Exception) -> JaniformError:
             message="open closed gap leakage regression command failed unexpectedly",
             context={"source_exception_type": type(error).__name__},
         )
+    )
+
+
+def _classify_seasonality_preprocess_command_error(
+    error: Exception,
+    *,
+    file_field_path: str,
+    document_field_path: str,
+) -> JaniformError:
+    if isinstance(error, JaniformError):
+        return error
+
+    if isinstance(error, CalendarMissingExchangeError):
+        return JaniformValidationError(
+            ContractValidationFailure.from_context(
+                error_id=CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID,
+                workflow="cli",
+                entrypoint=CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_ENTRYPOINT,
+                field_path="exchange_code",
+                message=str(error),
+            )
+        )
+
+    if isinstance(error, CalendarInvalidTimezoneError):
+        return JaniformValidationError(
+            ContractValidationFailure.from_context(
+                error_id=CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID,
+                workflow="cli",
+                entrypoint=CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_ENTRYPOINT,
+                field_path="calendar_registry_document",
+                message=str(error),
+            )
+        )
+
+    if isinstance(error, SeasonalityInputValidationError):
+        return JaniformValidationError(
+            ContractValidationFailure.from_context(
+                error_id=CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID,
+                workflow="cli",
+                entrypoint=CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_ENTRYPOINT,
+                field_path="event_records_document",
+                message=str(error),
+            )
+        )
+
+    return _classify_workflow_command_error(
+        error,
+        entrypoint=CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_ENTRYPOINT,
+        validation_error_id=CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID,
+        internal_error_id=CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_INTERNAL_ERROR_ID,
+        file_field_path=file_field_path,
+        document_field_path=document_field_path,
     )
 
 
@@ -1235,6 +1369,32 @@ def _optional_enum_value(value: Optional[StrEnum]) -> str:
     return value.value if value is not None else "none"
 
 
+def _build_timestamp_event_preprocessing_payload(preprocessed_events: object) -> dict[str, Any]:
+    return {
+        "schema_version": cast(str, preprocessed_events.schema_version),
+        "input_schema_version": cast(str, preprocessed_events.input_schema_version),
+        "exchange_code": cast(str, preprocessed_events.exchange_code),
+        "exchange_timezone_name": cast(str, preprocessed_events.exchange_timezone_name),
+        "source_record_positions": list(cast(list[int], preprocessed_events.source_record_positions)),
+        "timestamp_utc_nanos": list(cast(list[int], preprocessed_events.timestamp_utc_nanos)),
+        "exchange_local_minute_of_day": list(cast(list[int], preprocessed_events.exchange_local_minute_of_day)),
+        "exchange_local_day_of_week": list(cast(bytes, preprocessed_events.exchange_local_day_of_week)),
+        "exchange_local_day_of_year": list(cast(list[int], preprocessed_events.exchange_local_day_of_year)),
+        "market_state_codes": list(cast(bytes, preprocessed_events.market_state_codes)),
+        "missing_hour_bucket_utc_nanos": list(cast(list[int], preprocessed_events.missing_hour_bucket_utc_nanos)),
+        "sparse_hour_bucket_utc_nanos": list(cast(list[int], preprocessed_events.sparse_hour_bucket_utc_nanos)),
+        "input_record_count": cast(int, preprocessed_events.input_record_count),
+        "validated_record_count": cast(int, preprocessed_events.validated_record_count),
+        "accepted_record_count": cast(int, preprocessed_events.accepted_record_count),
+        "filtered_record_count": cast(int, preprocessed_events.filtered_record_count),
+        "first_event_timestamp_utc_nanos": cast(Optional[int], preprocessed_events.first_event_timestamp_utc_nanos),
+        "last_event_timestamp_utc_nanos": cast(Optional[int], preprocessed_events.last_event_timestamp_utc_nanos),
+        "hour_bucket_count": cast(int, preprocessed_events.hour_bucket_count),
+        "missing_hour_bucket_count": cast(int, preprocessed_events.missing_hour_bucket_count),
+        "sparse_hour_bucket_count": cast(int, preprocessed_events.sparse_hour_bucket_count),
+    }
+
+
 def _build_calendar_registry(calendar_fixture_document: dict[str, Any]) -> CalendarRegistry:
     return _build_calendar_registry_from_document(calendar_fixture_document)
 
@@ -1337,6 +1497,23 @@ def _extract_gap_behavior_cases(
     return parsed_cases
 
 
+def _extract_event_records(
+    event_records_document: dict[str, Any],
+) -> list[dict[str, Any]]:
+    raw_event_records: object = event_records_document.get("event_records")
+    if not isinstance(raw_event_records, list):
+        raise ValueError("event records document must include list field `event_records`")
+
+    parsed_event_records: list[dict[str, Any]] = []
+    for raw_event_record in raw_event_records:
+        if not isinstance(raw_event_record, dict):
+            raise ValueError("event records document record must be an object")
+
+        parsed_event_records.append(cast(dict[str, Any], raw_event_record))
+
+    return parsed_event_records
+
+
 def _extract_calendar_cases(
     calendar_cases_document: dict[str, Any],
 ) -> list[dict[str, Any]]:
@@ -1391,12 +1568,15 @@ __all__ = [
     '_build_calendar_registry_from_document',
     '_build_market_data_calibration_request_from_arguments',
     '_build_market_data_calibration_summary_payload',
+    '_build_timestamp_event_preprocessing_payload',
     '_classify_market_data_command_error',
     '_classify_open_closed_gap_command_error',
+    '_classify_seasonality_preprocess_command_error',
     '_classify_workflow_command_error',
     '_exit_code_for_error',
     '_extract_calendar_cases',
     '_extract_calendar_registry_payload',
+    '_extract_event_records',
     '_extract_gap_behavior_cases',
     '_extract_seasonality_cases',
     '_load_json_document',
@@ -1406,6 +1586,7 @@ __all__ = [
     '_render_calibration_staged_human_output',
     '_render_market_data_calibration_human_output',
     '_render_pricing_vanilla_option_human_output',
+    '_render_seasonality_preprocess_timestamps_human_output',
     '_render_simulation_seeded_ticks_human_output',
     '_render_stylized_facts_horizon_comparison_human_output',
     '_require_path_argument',
@@ -1415,6 +1596,7 @@ __all__ = [
     '_run_deterministic_regression_command',
     '_run_open_closed_gap_leakage_regression_command',
     '_run_pricing_vanilla_option_command',
+    '_run_seasonality_preprocess_timestamps_command',
     '_run_simulation_seeded_ticks_command',
     '_run_stylized_facts_horizon_comparison_command',
     '_write_cli_error',

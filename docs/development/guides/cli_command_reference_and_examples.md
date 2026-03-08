@@ -32,6 +32,7 @@ The generated files include:
 
 - `tmp/cli-docs/calendar_registry.json`
 - `tmp/cli-docs/simulation_request.json`
+- `tmp/cli-docs/timestamp_event_records.json`
 - `tmp/cli-docs/pricing_execution_input.json`
 - `tmp/cli-docs/stylized_fact_metric_catalog.json`
 - `tmp/cli-docs/stylized_fact_comparison_request.json`
@@ -88,6 +89,52 @@ janiform simulation seeded-ticks \
   --calendar-registry-json tmp/cli-docs/calendar_registry.json \
   --output json \
   > tmp/cli-docs/simulation_result.json
+```
+
+## Seasonality
+
+Use this command when you want to validate timestamp-event inputs against the exchange calendar
+registry before running downstream seasonality estimation, diagnostics, or file-driven calibration.
+
+### Synopsis
+
+```text
+janiform seasonality preprocess-timestamps --event-records-json PATH --calendar-registry-json PATH --exchange-code EXCHANGE_CODE [--timestamp-field-name TIMESTAMP_FIELD_NAME] [--session-filter {all,open_only,closed_only}] [--sparse-hour-event-threshold SPARSE_HOUR_EVENT_THRESHOLD] [--output {human,json}]
+```
+
+### Options
+
+- `--event-records-json`: JSON object with top-level `event_records`
+- `--calendar-registry-json`: `calendar.registry.v1` contract file
+- `--exchange-code`: exchange identifier used for session classification
+- `--timestamp-field-name`: timestamp field name in each event record, default `timestamp`
+- `--session-filter {all,open_only,closed_only}`: accepted-state filter, default `open_only`
+- `--sparse-hour-event-threshold`: sparse-hour diagnostic threshold, default `1`
+- `--output {human,json}`: operator summary or machine-readable preprocessing payload
+
+### Example: Standalone Preprocessing Before Downstream Seasonality
+
+```bash
+janiform seasonality preprocess-timestamps \
+  --event-records-json tmp/cli-docs/timestamp_event_records.json \
+  --calendar-registry-json tmp/cli-docs/calendar_registry.json \
+  --exchange-code XNYS \
+  --session-filter all \
+  --sparse-hour-event-threshold 2 \
+  --output json
+```
+
+### Example: Preprocessing Output Redirected For Calibration Triage
+
+```bash
+janiform seasonality preprocess-timestamps \
+  --event-records-json tmp/cli-docs/timestamp_event_records.json \
+  --calendar-registry-json tmp/cli-docs/calendar_registry.json \
+  --exchange-code XNYS \
+  --session-filter all \
+  --sparse-hour-event-threshold 2 \
+  --output json \
+  > tmp/cli-docs/preprocessed_timestamp_events.json
 ```
 
 ## Pricing

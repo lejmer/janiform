@@ -9,6 +9,7 @@ from ..calibration import (
     CalibrationOptionQuoteInputPolicy,
     CalibrationTickPriceInputPolicy,
 )
+from ..seasonality import SessionFilter
 
 
 DEFAULT_CALENDAR_FIXTURE_PATH: str = "tests/fixtures/calendar/calendar_service_regression_matrix.json"
@@ -52,6 +53,11 @@ CLI_CALIBRATION_OPTION_QUOTE_POLICY_CHOICES: tuple[str, str, str] = (
     CalibrationOptionQuoteInputPolicy.BID_ASK_MIDPOINT.value,
     CalibrationOptionQuoteInputPolicy.IMPLIED_VOLATILITY_COLUMN.value,
 )
+CLI_SEASONALITY_SESSION_FILTER_CHOICES: tuple[str, str, str] = (
+    SessionFilter.ALL.value,
+    SessionFilter.OPEN_ONLY.value,
+    SessionFilter.CLOSED_ONLY.value,
+)
 CLI_CALIBRATION_EXECUTION_MODE_HELP = (
     "Calibration execution mode override. Precedence: --execution-mode, then the CLI default "
     "disk. This overrides request.execution_mode from --execution-input-json."
@@ -72,6 +78,13 @@ CLI_STYLIZED_FACTS_HORIZON_COMPARISON_VALIDATION_ERROR_ID = (
 )
 CLI_STYLIZED_FACTS_HORIZON_COMPARISON_INTERNAL_ERROR_ID = (
     "cli.internal.stylized_facts.horizon_comparison.failed"
+)
+CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_ENTRYPOINT = "seasonality.preprocess_timestamps"
+CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID = (
+    "cli.validation.seasonality.preprocess_timestamps.invalid_input"
+)
+CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_INTERNAL_ERROR_ID = (
+    "cli.internal.seasonality.preprocess_timestamps.failed"
 )
 CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT = "calibration.market_data"
 CLI_CALIBRATION_MARKET_DATA_VALIDATION_ERROR_ID = "cli.validation.calibration.market_data.invalid_input"
@@ -108,6 +121,9 @@ CLI_PRIMARY_COMMAND_TREE: dict[str, dict[str, dict[str, dict[str, Any]]]] = {
     "simulation": {
         "seeded-ticks": {},
     },
+    "seasonality": {
+        "preprocess-timestamps": {},
+    },
     "calibration": {
         "market-data": {},
         "staged": {},
@@ -121,6 +137,7 @@ CLI_PRIMARY_COMMAND_TREE: dict[str, dict[str, dict[str, dict[str, Any]]]] = {
 }
 CLI_PRIMARY_COMMAND_IDENTIFIERS: dict[tuple[str, ...], str] = {
     ("simulation", "seeded-ticks"): "simulation.seeded-ticks",
+    ("seasonality", "preprocess-timestamps"): "seasonality.preprocess-timestamps",
     ("calibration", "market-data"): "calibration.market-data",
     ("calibration", "staged"): "calibration.staged",
     ("pricing", "vanilla-option"): "pricing.vanilla-option",
@@ -188,6 +205,10 @@ __all__ = [
     "CLI_PRIMARY_COMMAND_IDENTIFIERS",
     "CLI_PRIMARY_COMMAND_TREE",
     "CLI_REPOSITORY_RELATIVE_PATH_POLICY",
+    "CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_ENTRYPOINT",
+    "CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_INTERNAL_ERROR_ID",
+    "CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID",
+    "CLI_SEASONALITY_SESSION_FILTER_CHOICES",
     "CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT",
     "CLI_SIMULATION_SEEDED_TICKS_INTERNAL_ERROR_ID",
     "CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID",
