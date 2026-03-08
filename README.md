@@ -9,15 +9,66 @@ The name *Janiform* comes from the Roman god *Janus* who is a god with two faces
 
 It's Jani*form* because it's about form: a system whose geometry is essentially bifacial.
 
-## Baseline Support
+## Prerequisites
 
-- Python: `>=3.12`
+- Python: `>=3.12` or `uv`
 - Rust: `>=1.89`
 
-## Tooling
+## Quickstart
 
-- Build backend: `maturin`
-- Python-Rust bindings: `PyO3`
+On Linux:
+
+```bash
+./scripts/bootstrap-linux.sh
+janiform --help
+janiform calibration market-data --help
+python3 -m examples.pricing_workflow
+```
+
+On Windows:
+
+```powershell
+./scripts/bootstrap-win.ps1
+janiform --help
+janiform calibration market-data --help
+python -m examples.pricing_workflow
+```
+
+## Developer Setup
+
+### Linux
+Make sure you have **Rust >=1.89** and either **uv** or **Python >=3.12** installed first.
+
+To set up your environment properly, run:
+
+```bash
+./scripts/bootstrap-linux.sh
+```
+
+Or if you are running a JetBrains IDE with uv:
+
+```powershell
+./scripts/bootstrap-linux.sh .venv
+```
+
+This automatically installs all missing dependencies, including **maturin**, the build system, and **pytest**.
+
+### Windows
+Make sure you have **Rust >=1.89** and either **uv** or **Python >=3.12** installed first.
+
+To set up your environment properly, run:
+
+```powershell
+./scripts/bootstrap-win.ps1
+```
+
+Or if you are running a JetBrains IDE with uv:
+
+```powershell
+./scripts/bootstrap-win.ps1 .venv
+```
+
+This automatically installs all missing dependencies, including **maturin**, the build system, and **pytest**.
 
 ## Project Layout
 
@@ -27,16 +78,6 @@ It's Jani*form* because it's about form: a system whose geometry is essentially 
 - `examples/`: Executable public-API workflow examples for simulation, pricing, and calibration
 - `tests/`: Python tests and shared fixtures
 - `docs/`: Design and development documentation
-
-## Quickstart
-
-```bash
-maturin develop
-python3 -m janiform --help
-janiform --help
-janiform calibration market-data --help
-PYTHONPATH=python python3 -m examples.pricing_workflow
-```
 
 ## Examples
 
@@ -85,12 +126,3 @@ PYTHONPATH=python python3 -m examples.pricing_workflow
 - Planning artifacts: `docs/planning/`
 
 The detailed calendar and seasonality sections were moved out of this README into the development guide above to keep the repo root documentation concise.
-
-## Developer Commands
-
-```bash
-python3 -m py_compile python/janiform/*.py tests/conftest.py
-cargo check --workspace
-PYTHONPATH=python .venv-wsl/bin/python3.14 -m pytest tests/test_api_contract_guardrails.py
-python3 -m janiform dev regression open-closed-gap-leakage
-```
