@@ -26,6 +26,7 @@ def test_simulation_help_lists_seeded_tick_workflow() -> None:
 def test_seasonality_help_lists_preprocess_timestamp_workflow() -> None:
     help_output = _render_help(["seasonality"])
 
+    assert "diagnostics" in help_output
     assert "preprocess-timestamps" in help_output
 
 

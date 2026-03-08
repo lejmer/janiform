@@ -25,6 +25,9 @@ from ._constants import (
     CLI_PRICING_VANILLA_OPTION_ENTRYPOINT,
     CLI_PRICING_VANILLA_OPTION_INTERNAL_ERROR_ID,
     CLI_PRICING_VANILLA_OPTION_VALIDATION_ERROR_ID,
+    CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
+    CLI_SEASONALITY_DIAGNOSTICS_INTERNAL_ERROR_ID,
+    CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
     CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_ENTRYPOINT,
     CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_INTERNAL_ERROR_ID,
     CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID,
@@ -71,8 +74,17 @@ from ..hourly_factors import (
 )
 from ..pricing import run_vanilla_option_pricing, validate_vanilla_option_pricing_execution_input
 from ..seasonality import (
+    DayOfWeekSeasonalityEstimatorSettings,
+    DayOfYearSeasonalityEstimatorSettings,
+    IntradaySeasonalityEstimatorSettings,
+    IntradaySmoothingKernel,
     SeasonalityInputValidationError,
     SessionFilter,
+    compose_deterministic_seasonality_signal,
+    estimate_day_of_week_seasonality,
+    estimate_day_of_year_seasonality,
+    estimate_intraday_seasonality,
+    generate_seasonality_diagnostics_report,
     preprocess_timestamp_events,
 )
 from ..simulation import (
@@ -210,6 +222,112 @@ def _run_seasonality_preprocess_timestamps_command(parsed_arguments: Namespace) 
         parsed_arguments,
         json_payload=payload,
         human_output_factory=lambda: _render_seasonality_preprocess_timestamps_human_output(payload),
+    )
+
+    return int(CliExitCode.SUCCESS)
+
+
+def _run_seasonality_diagnostics_command(parsed_arguments: Namespace) -> int:
+    repository_root = Path(__file__).resolve().parents[3]
+    event_records_path = _resolve_path_from_repository_root(
+        repository_root,
+        cast(Path, parsed_arguments.event_records_json),
+    )
+    calendar_registry_path = _resolve_path_from_repository_root(
+        repository_root,
+        cast(Path, parsed_arguments.calendar_registry_json),
+    )
+
+    file_field_path = "event_records_json"
+    document_field_path = "event_records_document"
+
+    try:
+        event_records_document = _load_json_document(event_records_path, "event records")
+        event_records = _extract_event_records(event_records_document)
+        file_field_path = "calendar_registry_json"
+        document_field_path = "calendar_registry_document"
+        calendar_registry_document = _load_json_document(calendar_registry_path, "calendar registry")
+        calendar_registry = _build_calendar_registry_from_document(calendar_registry_document)
+        document_field_path = "command_input"
+        dataset_id = _require_non_empty_cli_string(
+            cast(str, parsed_arguments.dataset_id),
+            field_path="dataset_id",
+            error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
+            entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
+        )
+        estimator_version = _require_non_empty_cli_string(
+            cast(str, parsed_arguments.estimator_version),
+            field_path="estimator_version",
+            error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
+            entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
+        )
+        sparse_hour_event_threshold = _require_positive_integer_cli_argument(
+            int(parsed_arguments.sparse_hour_event_threshold),
+            field_path="sparse_hour_event_threshold",
+            error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
+            entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
+        )
+        intraday_settings = _build_intraday_seasonality_settings_from_arguments(parsed_arguments)
+        day_of_week_settings = _build_day_of_week_seasonality_settings_from_arguments(parsed_arguments)
+        day_of_year_settings = _build_day_of_year_seasonality_settings_from_arguments(parsed_arguments)
+        document_field_path = "event_records_document"
+        preprocessed_events = preprocess_timestamp_events(
+            event_records,
+            exchange_code=cast(str, parsed_arguments.exchange_code),
+            calendar_registry=calendar_registry,
+            timestamp_field_name=cast(str, parsed_arguments.timestamp_field_name),
+            session_filter=SessionFilter(cast(str, parsed_arguments.session_filter)),
+            sparse_hour_event_threshold=sparse_hour_event_threshold,
+        )
+        document_field_path = "command_input"
+        intraday_estimate = estimate_intraday_seasonality(
+            preprocessed_events,
+            settings=intraday_settings,
+        )
+        day_of_week_estimate = estimate_day_of_week_seasonality(
+            preprocessed_events,
+            settings=day_of_week_settings,
+        )
+        day_of_year_estimate = estimate_day_of_year_seasonality(
+            preprocessed_events,
+            settings=day_of_year_settings,
+        )
+        composition = compose_deterministic_seasonality_signal(
+            preprocessed_events,
+            intraday_estimate,
+            day_of_week_estimate,
+            day_of_year_estimate,
+        )
+        report = generate_seasonality_diagnostics_report(
+            dataset_id,
+            preprocessed_events,
+            intraday_estimate,
+            day_of_week_estimate,
+            day_of_year_estimate,
+            composition,
+            estimator_version=estimator_version,
+        )
+    except JaniformError as e:
+        return _write_cli_error(e)
+    except Exception as e:
+        return _write_cli_error(
+            _classify_seasonality_diagnostics_command_error(
+                e,
+                file_field_path=file_field_path,
+                document_field_path=document_field_path,
+            )
+        )
+
+    _write_command_output(
+        parsed_arguments,
+        json_payload=report,
+        human_output_factory=lambda: _render_seasonality_diagnostics_human_output(
+            report,
+            preprocessed_events=preprocessed_events,
+            intraday_estimate=intraday_estimate,
+            day_of_week_estimate=day_of_week_estimate,
+            day_of_year_estimate=day_of_year_estimate,
+        ),
     )
 
     return int(CliExitCode.SUCCESS)
@@ -712,6 +830,57 @@ def _render_seasonality_preprocess_timestamps_human_output(payload: dict[str, An
     return "\n".join(lines) + "\n"
 
 
+def _render_seasonality_diagnostics_human_output(
+    report: dict[str, Any],
+    *,
+    preprocessed_events: object,
+    intraday_estimate: object,
+    day_of_week_estimate: object,
+    day_of_year_estimate: object,
+) -> str:
+    fit_quality_metrics = cast(dict[str, Any], report["fit_quality_metrics"])
+    reproducibility_metadata = cast(dict[str, Any], report["reproducibility_metadata"])
+    input_snapshot = cast(dict[str, Any], reproducibility_metadata["input_snapshot"])
+    overlay_component_summary = cast(Optional[dict[str, Any]], report["overlay_component_summary"])
+    active_overlay_event_count = (
+        overlay_component_summary["active_overlay_event_count"]
+        if overlay_component_summary is not None
+        else 0
+    )
+
+    lines: list[str] = [
+        (
+            "seasonality diagnostics completed: "
+            f"schema_version={report['schema_version']} "
+            f"dataset_id={report['dataset_id']} "
+            f"exchange_code={preprocessed_events.exchange_code} "
+            f"accepted_record_count={preprocessed_events.accepted_record_count} "
+            f"filtered_record_count={preprocessed_events.filtered_record_count}"
+        ),
+        (
+            "fit_quality: "
+            f"combined_factor_mean={fit_quality_metrics['combined_factor_mean']} "
+            f"normalization_anchor_error={fit_quality_metrics['normalization_anchor_error']} "
+            f"missing_hour_bucket_count={preprocessed_events.missing_hour_bucket_count} "
+            f"sparse_hour_bucket_count={preprocessed_events.sparse_hour_bucket_count}"
+        ),
+        (
+            "component_sparsity: "
+            f"intraday_sparse_bin_count={intraday_estimate.sparse_bin_count} "
+            f"day_of_week_sparse_bucket_count={day_of_week_estimate.sparse_bucket_count} "
+            f"day_of_year_sparse_bucket_count={day_of_year_estimate.sparse_bucket_count} "
+            f"active_overlay_event_count={active_overlay_event_count}"
+        ),
+        (
+            "reproducibility: "
+            f"estimator_version={reproducibility_metadata['estimator_version']} "
+            f"snapshot_fingerprint_hex={input_snapshot['snapshot_fingerprint_hex']}"
+        ),
+    ]
+
+    return "\n".join(lines) + "\n"
+
+
 def _render_stylized_facts_horizon_comparison_human_output(
     report_bundle: dict[str, Any],
     *,
@@ -981,6 +1150,58 @@ def _classify_seasonality_preprocess_command_error(
         entrypoint=CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_ENTRYPOINT,
         validation_error_id=CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID,
         internal_error_id=CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_INTERNAL_ERROR_ID,
+        file_field_path=file_field_path,
+        document_field_path=document_field_path,
+    )
+
+
+def _classify_seasonality_diagnostics_command_error(
+    error: Exception,
+    *,
+    file_field_path: str,
+    document_field_path: str,
+) -> JaniformError:
+    if isinstance(error, JaniformError):
+        return error
+
+    if isinstance(error, CalendarMissingExchangeError):
+        return JaniformValidationError(
+            ContractValidationFailure.from_context(
+                error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
+                workflow="cli",
+                entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
+                field_path="exchange_code",
+                message=str(error),
+            )
+        )
+
+    if isinstance(error, CalendarInvalidTimezoneError):
+        return JaniformValidationError(
+            ContractValidationFailure.from_context(
+                error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
+                workflow="cli",
+                entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
+                field_path="calendar_registry_document",
+                message=str(error),
+            )
+        )
+
+    if isinstance(error, SeasonalityInputValidationError):
+        return JaniformValidationError(
+            ContractValidationFailure.from_context(
+                error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
+                workflow="cli",
+                entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
+                field_path=document_field_path,
+                message=str(error),
+            )
+        )
+
+    return _classify_workflow_command_error(
+        error,
+        entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
+        validation_error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
+        internal_error_id=CLI_SEASONALITY_DIAGNOSTICS_INTERNAL_ERROR_ID,
         file_field_path=file_field_path,
         document_field_path=document_field_path,
     )
@@ -1369,6 +1590,139 @@ def _optional_enum_value(value: Optional[StrEnum]) -> str:
     return value.value if value is not None else "none"
 
 
+def _build_intraday_seasonality_settings_from_arguments(
+    parsed_arguments: Namespace,
+) -> IntradaySeasonalityEstimatorSettings:
+    return IntradaySeasonalityEstimatorSettings(
+        minutes_per_bin=_require_positive_integer_cli_argument(
+            int(parsed_arguments.intraday_minutes_per_bin),
+            field_path="intraday_minutes_per_bin",
+            error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
+            entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
+        ),
+        smoothing_kernel=IntradaySmoothingKernel(cast(str, parsed_arguments.intraday_smoothing_kernel)),
+        smoothing_bandwidth_bins=_require_positive_float_cli_argument(
+            float(parsed_arguments.intraday_smoothing_bandwidth_bins),
+            field_path="intraday_smoothing_bandwidth_bins",
+            error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
+            entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
+        ),
+        minimum_bin_events=_require_positive_integer_cli_argument(
+            int(parsed_arguments.intraday_minimum_bin_events),
+            field_path="intraday_minimum_bin_events",
+            error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
+            entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
+        ),
+        pseudocount=_require_positive_float_cli_argument(
+            float(parsed_arguments.intraday_pseudocount),
+            field_path="intraday_pseudocount",
+            error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
+            entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
+        ),
+    )
+
+
+def _build_day_of_week_seasonality_settings_from_arguments(
+    parsed_arguments: Namespace,
+) -> DayOfWeekSeasonalityEstimatorSettings:
+    return DayOfWeekSeasonalityEstimatorSettings(
+        minimum_bucket_events=_require_positive_integer_cli_argument(
+            int(parsed_arguments.day_of_week_minimum_bucket_events),
+            field_path="day_of_week_minimum_bucket_events",
+            error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
+            entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
+        ),
+        pseudocount=_require_positive_float_cli_argument(
+            float(parsed_arguments.day_of_week_pseudocount),
+            field_path="day_of_week_pseudocount",
+            error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
+            entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
+        ),
+    )
+
+
+def _build_day_of_year_seasonality_settings_from_arguments(
+    parsed_arguments: Namespace,
+) -> DayOfYearSeasonalityEstimatorSettings:
+    return DayOfYearSeasonalityEstimatorSettings(
+        minimum_bucket_events=_require_positive_integer_cli_argument(
+            int(parsed_arguments.day_of_year_minimum_bucket_events),
+            field_path="day_of_year_minimum_bucket_events",
+            error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
+            entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
+        ),
+        pseudocount=_require_positive_float_cli_argument(
+            float(parsed_arguments.day_of_year_pseudocount),
+            field_path="day_of_year_pseudocount",
+            error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
+            entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
+        ),
+    )
+
+
+def _require_non_empty_cli_string(
+    value: str,
+    *,
+    field_path: str,
+    error_id: str,
+    entrypoint: str,
+) -> str:
+    if value.strip():
+        return value
+
+    raise JaniformValidationError(
+        ContractValidationFailure.from_context(
+            error_id=error_id,
+            workflow="cli",
+            entrypoint=entrypoint,
+            field_path=field_path,
+            message="must be a non-empty string",
+        )
+    )
+
+
+def _require_positive_integer_cli_argument(
+    value: int,
+    *,
+    field_path: str,
+    error_id: str,
+    entrypoint: str,
+) -> int:
+    if value > 0:
+        return value
+
+    raise JaniformValidationError(
+        ContractValidationFailure.from_context(
+            error_id=error_id,
+            workflow="cli",
+            entrypoint=entrypoint,
+            field_path=field_path,
+            message="must be strictly positive",
+        )
+    )
+
+
+def _require_positive_float_cli_argument(
+    value: float,
+    *,
+    field_path: str,
+    error_id: str,
+    entrypoint: str,
+) -> float:
+    if value > 0.0:
+        return value
+
+    raise JaniformValidationError(
+        ContractValidationFailure.from_context(
+            error_id=error_id,
+            workflow="cli",
+            entrypoint=entrypoint,
+            field_path=field_path,
+            message="must be strictly positive",
+        )
+    )
+
+
 def _build_timestamp_event_preprocessing_payload(preprocessed_events: object) -> dict[str, Any]:
     return {
         "schema_version": cast(str, preprocessed_events.schema_version),
@@ -1566,11 +1920,15 @@ __all__ = [
     '_attach_runtime_hourly_factor_contract',
     '_build_calendar_registry',
     '_build_calendar_registry_from_document',
+    '_build_day_of_week_seasonality_settings_from_arguments',
+    '_build_day_of_year_seasonality_settings_from_arguments',
+    '_build_intraday_seasonality_settings_from_arguments',
     '_build_market_data_calibration_request_from_arguments',
     '_build_market_data_calibration_summary_payload',
     '_build_timestamp_event_preprocessing_payload',
     '_classify_market_data_command_error',
     '_classify_open_closed_gap_command_error',
+    '_classify_seasonality_diagnostics_command_error',
     '_classify_seasonality_preprocess_command_error',
     '_classify_workflow_command_error',
     '_exit_code_for_error',
@@ -1586,16 +1944,21 @@ __all__ = [
     '_render_calibration_staged_human_output',
     '_render_market_data_calibration_human_output',
     '_render_pricing_vanilla_option_human_output',
+    '_render_seasonality_diagnostics_human_output',
     '_render_seasonality_preprocess_timestamps_human_output',
     '_render_simulation_seeded_ticks_human_output',
     '_render_stylized_facts_horizon_comparison_human_output',
+    '_require_non_empty_cli_string',
     '_require_path_argument',
+    '_require_positive_float_cli_argument',
+    '_require_positive_integer_cli_argument',
     '_resolve_path_from_repository_root',
     '_run_calibration_market_data_command',
     '_run_calibration_staged_command',
     '_run_deterministic_regression_command',
     '_run_open_closed_gap_leakage_regression_command',
     '_run_pricing_vanilla_option_command',
+    '_run_seasonality_diagnostics_command',
     '_run_seasonality_preprocess_timestamps_command',
     '_run_simulation_seeded_ticks_command',
     '_run_stylized_facts_horizon_comparison_command',
