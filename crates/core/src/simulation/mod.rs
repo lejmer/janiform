@@ -3,6 +3,7 @@
 mod api;
 mod artifacts;
 mod coarse;
+mod coarse_runtime;
 mod config;
 mod constants;
 mod error;
@@ -30,10 +31,14 @@ pub use coarse::{
     COARSE_SIMULATION_PATH_OUTPUT_SCHEMA_METADATA_VERSION,
     COARSE_SIMULATION_PATH_PROVENANCE_SCHEMA_VERSION, COARSE_SIMULATION_PATH_RECORD_SCHEMA_VERSION,
     COARSE_SIMULATION_PATH_SCHEMA_VERSION, COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION,
-    CoarseSimulationPath, CoarseSimulationPathDiagnostics, CoarseSimulationPathError,
+    CoarseSimulationModelInputs, CoarseSimulationModelInputsError, CoarseSimulationPath,
+    CoarseSimulationPathDiagnostics, CoarseSimulationPathError,
     CoarseSimulationPathOutputSchemaMetadata, CoarseSimulationPathProvenance,
     CoarseSimulationPathRecord, CoarseSimulationPathRecordError, CoarseSimulationRunRequest,
     CoarseSimulationRunRequestError,
+};
+pub use coarse_runtime::{
+    CoarseSimulationRunError, run_coarse_simulation, run_coarse_simulation_with_randomness_factory,
 };
 pub use config::{
     SeededTickEventStateSnapshotCapture, SeededTickSimulationDebugTraceOptions,

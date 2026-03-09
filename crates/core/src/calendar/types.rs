@@ -3,10 +3,10 @@ use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Datelike, Utc, Weekday as ChronoWeekday};
 use chrono_tz::Tz;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Weekday used by regular exchange sessions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
 pub enum TradingWeekday {
     Monday,
     Tuesday,
@@ -154,7 +154,7 @@ pub struct TimestampEventPreprocessingOutput {
 }
 
 /// Artifact structure loaded from versioned calendar configuration data.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExchangeCalendarArtifact {
     pub schema_version: String,
@@ -170,7 +170,7 @@ pub struct ExchangeCalendarArtifact {
 }
 
 /// Artifact metadata for holiday and early close rule resolution.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CalendarRuleMetadataArtifact {
     pub holiday_calendar_code: String,
@@ -178,7 +178,7 @@ pub struct CalendarRuleMetadataArtifact {
 }
 
 /// Regular session windows for a weekday in artifact form.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RegularSessionArtifact {
     pub weekday: TradingWeekday,
@@ -186,7 +186,7 @@ pub struct RegularSessionArtifact {
 }
 
 /// Session window in artifact form.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SessionWindowArtifact {
     pub label: String,
@@ -195,7 +195,7 @@ pub struct SessionWindowArtifact {
 }
 
 /// Truncated session windows for one explicit early-close date.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct EarlyCloseSessionArtifact {
     pub date: String,
@@ -345,7 +345,7 @@ impl Display for SessionTime {
 }
 
 /// Versioned artifact containing exchange calendar entries for registry construction.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExchangeCalendarRegistryArtifact {
     pub schema_version: String,

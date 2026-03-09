@@ -22,6 +22,9 @@ pub enum SimulationRandomnessSubstreamDomain {
     ExogenousNewsSeverity = 7,
     ExogenousNewsReturnJump = 8,
     ScaleConsistencyPairedExperiment = 9,
+    ExogenousNewsMarks = 10,
+    CoarseTradingTimeReturn = 11,
+    CoarseStatisticsSampling = 12,
 }
 
 impl SimulationRandomnessSubstreamDomain {

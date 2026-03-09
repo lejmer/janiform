@@ -1170,7 +1170,7 @@ fn resolve_news_event_market_state(
         )
 }
 
-fn derive_known_news_interval_slice_bounds(
+pub(crate) fn derive_known_news_interval_slice_bounds(
     known_scheduled_news_event_timestamps_utc_nanos: &[i64],
     known_scheduled_news_start_position: usize,
     interval_start_utc_nanos: i64,
@@ -1230,7 +1230,7 @@ pub(crate) fn validate_known_scheduled_news_timestamps(
     Ok(())
 }
 
-fn sample_interval_timestamp_utc_nanos<R>(
+pub(crate) fn sample_interval_timestamp_utc_nanos<R>(
     interval_start_utc_nanos: i64,
     interval_duration_nanos: i64,
     randomness_stream: &mut R,
@@ -1249,7 +1249,10 @@ where
     interval_start_utc_nanos + timestamp_offset_nanos.min(interval_duration_nanos - 1)
 }
 
-fn sample_count_from_expectation<R>(expected_count: f64, randomness_stream: &mut R) -> u64
+pub(crate) fn sample_count_from_expectation<R>(
+    expected_count: f64,
+    randomness_stream: &mut R,
+) -> u64
 where
     R: SimulationRandomnessStream,
 {
