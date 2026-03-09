@@ -2,6 +2,7 @@
 
 mod api;
 mod artifacts;
+mod coarse;
 mod config;
 mod constants;
 mod error;
@@ -19,6 +20,20 @@ pub use artifacts::{
     SeededTickEventStateSnapshot, SeededTickEventTapeMetadata, SeededTickEventTapeOutput,
     SeededTickSimulationNewsEventMarketState, SeededTickSimulationNewsRoutingTotals,
     SeededTickSimulationRunResult,
+};
+pub use coarse::{
+    COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY, COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY,
+    COARSE_SIMULATION_ENVIRONMENT_METADATA_POLICY,
+    COARSE_SIMULATION_INTERVAL_FACTOR_ALIGNMENT_POLICY,
+    COARSE_SIMULATION_INTERVAL_IDENTIFIER_POLICY, COARSE_SIMULATION_INTERVAL_TIMING_POLICY,
+    COARSE_SIMULATION_PATH_DIAGNOSTICS_SCHEMA_VERSION,
+    COARSE_SIMULATION_PATH_OUTPUT_SCHEMA_METADATA_VERSION,
+    COARSE_SIMULATION_PATH_PROVENANCE_SCHEMA_VERSION, COARSE_SIMULATION_PATH_RECORD_SCHEMA_VERSION,
+    COARSE_SIMULATION_PATH_SCHEMA_VERSION, COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION,
+    CoarseSimulationPath, CoarseSimulationPathDiagnostics, CoarseSimulationPathError,
+    CoarseSimulationPathOutputSchemaMetadata, CoarseSimulationPathProvenance,
+    CoarseSimulationPathRecord, CoarseSimulationPathRecordError, CoarseSimulationRunRequest,
+    CoarseSimulationRunRequestError,
 };
 pub use config::{
     SeededTickEventStateSnapshotCapture, SeededTickSimulationDebugTraceOptions,
