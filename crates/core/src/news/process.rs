@@ -77,6 +77,17 @@ impl NewsProcessConfiguration {
         })
     }
 
+    pub fn validate(&self) -> Result<(), NewsProcessConfigurationError> {
+        Self::try_new_with_schema_version(
+            self.schema_version,
+            self.arrivals.clone(),
+            self.shared_mark_law,
+            self.known_component_mark_scales,
+            self.surprise_component_mark_scales,
+        )
+        .map(|_| ())
+    }
+
     /// Build the default composable interface wiring.
     ///
     /// Component mapping:

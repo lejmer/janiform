@@ -21,20 +21,39 @@ tests, while the coarse simulation workflow contract is the simulation-facing bo
 
 Canonical Rust types live in `janiform_core::simulation`:
 
+- `CoarseSimulationModelInputs`
 - `CoarseSimulationRunRequest`
 - `CoarseSimulationPathRecord`
 - `CoarseSimulationPathOutputSchemaMetadata`
 - `CoarseSimulationPathProvenance`
 - `CoarseSimulationPathDiagnostics`
 - `CoarseSimulationPath`
+- `run_coarse_simulation`
 
 Validation entrypoints:
 
+- `CoarseSimulationModelInputs::try_new`
+- `CoarseSimulationModelInputs::validate`
 - `CoarseSimulationRunRequest::try_new`
 - `CoarseSimulationRunRequest::validate`
 - `CoarseSimulationPathRecord::try_new`
 - `CoarseSimulationPath::try_new`
 - `CoarseSimulationPath::validate`
+
+## Model Inputs
+
+`CoarseSimulationModelInputs` wraps the shared sufficient-statistics risk inputs and adds
+the simulation-specific data needed to generate direct jump components inside the workflow:
+
+- `risk_model_inputs`
+- `news_process_configuration`
+- `calendar_registry_artifact`
+- `exchange_code`
+
+The news-process payload carries the shared mark-law and component scaling configuration used for
+both Hawkes activity loading and direct return-jump generation. The calendar payload is resolved
+through the canonical exchange-calendar service so open-window `M` and closed-window `G` routing
+follow the same market-state semantics used elsewhere in the model.
 
 ## Time Anchor And Interval Semantics
 
@@ -78,6 +97,8 @@ Alignment is validated by:
 - requiring `horizon_interval_count <= interval_factors.s_h.len()`
 - interpreting `interval_factors` row `0` as aligned to the requested
   `start_time_utc_nanos`
+- requiring `interval_factors.nu_h_known * Delta` to match the count of known scheduled
+  news timestamps that fall inside each requested interval
 - rejecting implicit factor interpolation or resampling
 
 Policy identifiers:
@@ -103,6 +124,16 @@ Policy identifiers:
 - top-level initial and terminal Hawkes excitation state
 - deterministic metadata and provenance blocks
 - deterministic diagnostics for downstream validation and analytics
+
+Interval return components are generated inside `run_coarse_simulation`:
+
+- sufficient statistics are sampled from the exponential-affine transform slices
+- known-news timestamps are taken from `news_process_configuration`
+- surprise-news arrivals are sampled from `nu_h_surprise`
+- shared severity and coupled jump marks are sampled from the shared news-process mark law
+- market state is resolved per news timestamp through the calendar service
+- routed open-window jumps accumulate into `open_jump_return`
+- routed closed-window jumps accumulate into `closed_gap_return`
 
 Schema identifiers:
 

@@ -2326,6 +2326,11 @@ impl SimulationRandomnessStream for FixtureRandomnessStream {
                         .wrapping_add(1),
                 )
             }
+            SimulationRandomnessSubstreamDomain::ExogenousNewsMarks
+            | SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
+            | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling => {
+                self.substream_index.wrapping_add(self.draw_count)
+            }
             SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment => {
                 self.substream_index.wrapping_add(self.draw_count)
             }
@@ -2403,7 +2408,10 @@ impl SimulationRandomnessFactory for ScriptedRandomnessFactory {
             SimulationRandomnessSubstreamDomain::ExogenousNewsReturnJump => {
                 self.news_return_jump_draws.clone()
             }
-            SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment => Vec::new(),
+            SimulationRandomnessSubstreamDomain::ExogenousNewsMarks
+            | SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
+            | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
+            | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment => Vec::new(),
         };
 
         ScriptedRandomnessStream::new(draws)
@@ -2462,7 +2470,10 @@ impl SimulationRandomnessFactory for BoundaryAdjacentRandomnessFactory {
             SimulationRandomnessSubstreamDomain::ExogenousNewsTimestamp => vec![],
             SimulationRandomnessSubstreamDomain::ExogenousNewsSeverity => vec![],
             SimulationRandomnessSubstreamDomain::ExogenousNewsReturnJump => vec![],
-            SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment => vec![],
+            SimulationRandomnessSubstreamDomain::ExogenousNewsMarks
+            | SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
+            | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
+            | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment => vec![],
         };
 
         ScriptedRandomnessStream::new(draws)

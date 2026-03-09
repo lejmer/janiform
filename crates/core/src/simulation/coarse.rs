@@ -6,7 +6,12 @@ use std::fmt::{Display, Formatter};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::calendar::{
+    ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact, ExchangeCalendarRegistryLoadError,
+    ExchangeCalendarRegistryLookupError,
+};
 use crate::hawkes::HawkesExcitationState;
+use crate::news::{NewsProcessConfiguration, NewsProcessConfigurationError};
 use crate::risk::{
     SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY,
     SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY,
@@ -102,6 +107,157 @@ const COARSE_SIMULATION_PATH_REQUIRED_DIAGNOSTICS_FIELDS: [&str; 15] = [
     "max_abs_total_return",
 ];
 
+/// Simulation-specific coarse model inputs that extend the shared risk sampler state
+/// with canonical news-process and calendar-routing configuration.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CoarseSimulationModelInputs {
+    pub risk_model_inputs: SufficientStatisticsRiskModelInputs,
+    pub news_process_configuration: NewsProcessConfiguration,
+    pub calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
+    pub exchange_code: String,
+}
+
+impl CoarseSimulationModelInputs {
+    pub fn try_new(
+        risk_model_inputs: SufficientStatisticsRiskModelInputs,
+        news_process_configuration: NewsProcessConfiguration,
+        calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
+        exchange_code: impl Into<String>,
+    ) -> Result<Self, CoarseSimulationModelInputsError> {
+        let model_inputs = Self {
+            risk_model_inputs,
+            news_process_configuration,
+            calendar_registry_artifact,
+            exchange_code: exchange_code.into(),
+        };
+        model_inputs.validate()?;
+        Ok(model_inputs)
+    }
+
+    pub fn validate(&self) -> Result<(), CoarseSimulationModelInputsError> {
+        self.risk_model_inputs.validate().map_err(|source| {
+            CoarseSimulationModelInputsError::InvalidRiskModelInputs { source }
+        })?;
+        self.news_process_configuration
+            .validate()
+            .map_err(|source| {
+                CoarseSimulationModelInputsError::InvalidNewsProcessConfiguration { source }
+            })?;
+
+        if self.exchange_code.trim().is_empty() {
+            return Err(CoarseSimulationModelInputsError::InvalidExchangeCode {
+                value: self.exchange_code.clone(),
+            });
+        }
+
+        let calendar_registry = self.load_calendar_registry().map_err(|source| {
+            CoarseSimulationModelInputsError::InvalidCalendarRegistry { source }
+        })?;
+        calendar_registry
+            .get_required(&self.exchange_code)
+            .map_err(|source| {
+                CoarseSimulationModelInputsError::ExchangeCodeMissingFromCalendarRegistry {
+                    exchange_code: self.exchange_code.clone(),
+                    source,
+                }
+            })?;
+
+        Ok(())
+    }
+
+    pub fn load_calendar_registry(
+        &self,
+    ) -> Result<ExchangeCalendarRegistry, ExchangeCalendarRegistryLoadError> {
+        ExchangeCalendarRegistry::from_artifact(self.calendar_registry_artifact.clone())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CoarseSimulationModelInputsError {
+    InvalidRiskModelInputs {
+        source: SufficientStatisticsRiskModelInputsError,
+    },
+    InvalidNewsProcessConfiguration {
+        source: NewsProcessConfigurationError,
+    },
+    InvalidCalendarRegistry {
+        source: ExchangeCalendarRegistryLoadError,
+    },
+    InvalidExchangeCode {
+        value: String,
+    },
+    ExchangeCodeMissingFromCalendarRegistry {
+        exchange_code: String,
+        source: ExchangeCalendarRegistryLookupError,
+    },
+}
+
+impl Display for CoarseSimulationModelInputsError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidRiskModelInputs { source } => {
+                write!(formatter, "risk_model_inputs are invalid: {source}")
+            }
+            Self::InvalidNewsProcessConfiguration { source } => {
+                write!(formatter, "news_process_configuration is invalid: {source}")
+            }
+            Self::InvalidCalendarRegistry { source } => {
+                write!(formatter, "calendar_registry_artifact is invalid: {source}")
+            }
+            Self::InvalidExchangeCode { value } => {
+                write!(
+                    formatter,
+                    "exchange_code must be a non-empty string, found `{value}`"
+                )
+            }
+            Self::ExchangeCodeMissingFromCalendarRegistry {
+                exchange_code,
+                source,
+            } => write!(
+                formatter,
+                "exchange_code `{exchange_code}` must exist in calendar_registry_artifact: {source}"
+            ),
+        }
+    }
+}
+
+impl Error for CoarseSimulationModelInputsError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidRiskModelInputs { source } => Some(source),
+            Self::InvalidNewsProcessConfiguration { source } => Some(source),
+            Self::InvalidCalendarRegistry { source } => Some(source),
+            Self::ExchangeCodeMissingFromCalendarRegistry { source, .. } => Some(source),
+            Self::InvalidExchangeCode { .. } => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CoarseSimulationModelInputsPayload {
+    risk_model_inputs: SufficientStatisticsRiskModelInputs,
+    news_process_configuration: NewsProcessConfiguration,
+    calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
+    exchange_code: String,
+}
+
+impl<'de> Deserialize<'de> for CoarseSimulationModelInputs {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let payload = CoarseSimulationModelInputsPayload::deserialize(deserializer)?;
+        Self::try_new(
+            payload.risk_model_inputs,
+            payload.news_process_configuration,
+            payload.calendar_registry_artifact,
+            payload.exchange_code,
+        )
+        .map_err(serde::de::Error::custom)
+    }
+}
+
 /// Typed coarse-interval simulation run request anchored to a real UTC start timestamp.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -111,7 +267,7 @@ pub struct CoarseSimulationRunRequest {
     pub start_time_utc_nanos: i64,
     pub horizon_interval_count: usize,
     pub interval_delta: f64,
-    pub model_inputs: SufficientStatisticsRiskModelInputs,
+    pub model_inputs: CoarseSimulationModelInputs,
     pub interval_factors: SufficientStatisticsRiskIntervalFactors,
 }
 
@@ -121,7 +277,7 @@ impl CoarseSimulationRunRequest {
         start_time_utc_nanos: i64,
         horizon_interval_count: usize,
         interval_delta: f64,
-        model_inputs: SufficientStatisticsRiskModelInputs,
+        model_inputs: CoarseSimulationModelInputs,
         interval_factors: SufficientStatisticsRiskIntervalFactors,
     ) -> Result<Self, CoarseSimulationRunRequestError> {
         let request = Self {
@@ -236,7 +392,7 @@ pub enum CoarseSimulationRunRequestError {
         source: CoarseSimulationTimeIndexError,
     },
     InvalidModelInputs {
-        source: SufficientStatisticsRiskModelInputsError,
+        source: CoarseSimulationModelInputsError,
     },
     InvalidIntervalFactors {
         source: SufficientStatisticsRiskIntervalFactorsError,
@@ -1537,8 +1693,17 @@ mod tests {
     use serde_json::json;
 
     use crate::affine_oracle::ExponentialAffineTransformEquationSpecification;
+    use crate::calendar::{
+        CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarRegistryArtifact,
+        RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
+    };
     use crate::hawkes::{HawkesKernelLoadings, HawkesKernelParameters};
-    use crate::news::GammaSeverityMarkConfiguration;
+    use crate::news::{
+        CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
+        GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
+        NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
+        SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
+    };
     use crate::nig::NigSharedPlusShiftConfiguration;
 
     use super::*;
@@ -1570,6 +1735,7 @@ mod tests {
             serialized["interval_factors"]["nu_h_known"],
             json!([0.12, 0.03])
         );
+        assert_eq!(serialized["model_inputs"]["exchange_code"], json!("XNYS"));
     }
 
     #[test]
@@ -1786,7 +1952,7 @@ mod tests {
         }
     }
 
-    fn build_model_inputs() -> SufficientStatisticsRiskModelInputs {
+    fn build_model_inputs() -> CoarseSimulationModelInputs {
         let hawkes_kernel_parameters = HawkesKernelParameters::try_new(
             0.8,
             1.6,
@@ -1810,13 +1976,20 @@ mod tests {
                 .expect("gamma marks should construct"),
         )
         .expect("equation specification should construct");
-        SufficientStatisticsRiskModelInputs::try_new(
+        let risk_model_inputs = SufficientStatisticsRiskModelInputs::try_new(
             equation_specification,
             NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
                 .expect("nig configuration should construct"),
             build_initial_state(),
         )
-        .expect("model inputs should construct")
+        .expect("risk model inputs should construct");
+        CoarseSimulationModelInputs::try_new(
+            risk_model_inputs,
+            build_news_process_configuration(),
+            build_calendar_registry_artifact(),
+            "XNYS",
+        )
+        .expect("coarse model inputs should construct")
     }
 
     fn build_interval_factors(
@@ -1829,5 +2002,97 @@ mod tests {
             interval_delta,
         )
         .expect("interval factors should construct")
+    }
+
+    fn build_news_process_configuration() -> NewsProcessConfiguration {
+        NewsProcessConfiguration::try_new(
+            NewsArrivalConfiguration {
+                known: KnownNewsArrivalConfiguration {
+                    scheduled_event_timestamps_utc_nanos: vec![1_704_069_000_000_000_000],
+                },
+                surprise: SurpriseNewsArrivalConfiguration {
+                    baseline_intensity: 0.2,
+                },
+            },
+            SharedNewsMarkLawConfiguration {
+                gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.4, 0.6)
+                    .expect("gamma marks should construct"),
+                double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::try_new(
+                    0.45, 1.2, 1.1,
+                )
+                .expect("base shock configuration should construct"),
+                coupled_gap_marks: CoupledGapMarkConfiguration::new(0.8),
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 0.7,
+                return_jump_scale: 1.1,
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 0.5,
+                return_jump_scale: 0.9,
+            },
+        )
+        .expect("news process configuration should construct")
+    }
+
+    fn build_calendar_registry_artifact() -> ExchangeCalendarRegistryArtifact {
+        ExchangeCalendarRegistryArtifact {
+            schema_version: "calendar.registry.v1".to_string(),
+            artifact_date: "2024-01-02".to_string(),
+            exchanges: vec![ExchangeCalendarArtifact {
+                schema_version: "calendar.v1".to_string(),
+                exchange_code: "XNYS".to_string(),
+                exchange_name: "New York Stock Exchange".to_string(),
+                timezone_name: Some("America/New_York".to_string()),
+                rule_metadata: CalendarRuleMetadataArtifact {
+                    holiday_calendar_code: "US_EQUITIES".to_string(),
+                    early_close_rule_set: None,
+                },
+                regular_sessions: vec![
+                    RegularSessionArtifact {
+                        weekday: TradingWeekday::Monday,
+                        windows: vec![SessionWindowArtifact {
+                            label: "regular".to_string(),
+                            open_time: "09:30".to_string(),
+                            close_time: "16:00".to_string(),
+                        }],
+                    },
+                    RegularSessionArtifact {
+                        weekday: TradingWeekday::Tuesday,
+                        windows: vec![SessionWindowArtifact {
+                            label: "regular".to_string(),
+                            open_time: "09:30".to_string(),
+                            close_time: "16:00".to_string(),
+                        }],
+                    },
+                    RegularSessionArtifact {
+                        weekday: TradingWeekday::Wednesday,
+                        windows: vec![SessionWindowArtifact {
+                            label: "regular".to_string(),
+                            open_time: "09:30".to_string(),
+                            close_time: "16:00".to_string(),
+                        }],
+                    },
+                    RegularSessionArtifact {
+                        weekday: TradingWeekday::Thursday,
+                        windows: vec![SessionWindowArtifact {
+                            label: "regular".to_string(),
+                            open_time: "09:30".to_string(),
+                            close_time: "16:00".to_string(),
+                        }],
+                    },
+                    RegularSessionArtifact {
+                        weekday: TradingWeekday::Friday,
+                        windows: vec![SessionWindowArtifact {
+                            label: "regular".to_string(),
+                            open_time: "09:30".to_string(),
+                            close_time: "16:00".to_string(),
+                        }],
+                    },
+                ],
+                holiday_dates: vec![],
+                early_close_sessions: vec![],
+            }],
+        }
     }
 }
