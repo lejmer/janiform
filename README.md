@@ -252,6 +252,7 @@ Supported automation environment variables:
 - NIG cross-engine interface and reference fixtures: `docs/development/guides/nig_cross_engine_interface_and_reference_fixtures.md`
 - Return decomposition API contract: `docs/development/guides/return_decomposition_api_contract.md`
 - Coarse simulation workflow contract: `docs/development/guides/coarse_simulation_workflow_contract.md`
+- Coarse versus seeded-tick scale consistency regression contract: `docs/development/guides/coarse_seeded_tick_scale_consistency_regression_contract.md`
 - Vanilla option pricing contract: `docs/development/guides/vanilla_option_pricing_contract.md`
   - Includes `interval_delta` (`Delta`) semantics with hourly (`1.0`) intraday default and configurable non-hourly support when compatible factors are supplied
 - Sufficient-statistics risk sampler contract: `docs/development/guides/sufficient_statistics_risk_sampler_contract.md`
