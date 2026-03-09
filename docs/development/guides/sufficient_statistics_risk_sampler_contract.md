@@ -3,6 +3,10 @@
 This guide defines the public v0.1 run request and path output contract for the
 sufficient-statistics risk simulation pipeline.
 
+For the simulation-facing coarse workflow boundary with explicit time anchoring
+and interval boundary timestamps, see
+`docs/development/guides/coarse_simulation_workflow_contract.md`.
+
 ## Scope
 
 The contract covers:
