@@ -103,6 +103,19 @@ def _add_optional_path_argument(
     )
 
 
+def _add_required_datetime_argument(
+    parser: ArgumentParser,
+    *,
+    flag_name: str,
+    help_text: str,
+) -> None:
+    parser.add_argument(
+        flag_name,
+        required=True,
+        help=f"{help_text} Use an ISO 8601 timezone-aware timestamp.",
+    )
+
+
 def _build_simulation_parser(subparsers) -> None:
     from ._commands import _run_simulation_seeded_ticks_command
 
@@ -342,6 +355,151 @@ def _build_seasonality_parser(subparsers) -> None:
         type=int,
         default=1,
         help="Minimum accepted events per hour before a bucket is flagged as sparse. Default: 1.",
+    )
+
+
+def _add_hourly_factor_common_arguments(parser: ArgumentParser) -> None:
+    _add_command_config_argument(parser)
+    _add_output_mode_argument(
+        parser,
+        default_output_mode=CliOutputMode.JSON,
+    )
+    _add_required_json_path_argument(
+        parser,
+        flag_name="--calendar-registry-json",
+        contract_label="a calendar registry JSON object used to resolve exchange-local hour labels",
+    )
+    parser.add_argument(
+        "--exchange-code",
+        required=True,
+        help="Exchange code used to resolve session state and hourly-factor alignment.",
+    )
+    _add_required_datetime_argument(
+        parser,
+        flag_name="--range-start-utc",
+        help_text="Inclusive UTC range start aligned to the first target hour bucket.",
+    )
+    _add_required_datetime_argument(
+        parser,
+        flag_name="--range-end-utc",
+        help_text="Exclusive UTC range end aligned to the final target hour bucket boundary.",
+    )
+
+
+def _build_hourly_factors_parser(subparsers) -> None:
+    from ._commands import (
+        _run_hourly_factor_build_contract_command,
+        _run_hourly_factor_materialize_news_intensity_command,
+        _run_hourly_factor_materialize_seasonality_command,
+    )
+
+    hourly_factors_parser = subparsers.add_parser(
+        "hourly-factors",
+        help="Hourly factor materialization and contract-building workflows.",
+        description="Hourly factor materialization and contract-building workflows.",
+    )
+    hourly_factors_parser.set_defaults(help_target=hourly_factors_parser)
+    hourly_factors_subparsers = hourly_factors_parser.add_subparsers(dest="hourly_factors_command")
+
+    materialize_seasonality_parser = hourly_factors_subparsers.add_parser(
+        "materialize-seasonality",
+        help="Materialize hourly seasonality factors from timestamped source samples.",
+        description=(
+            "Materialize hourly seasonality factors from timestamped source samples. "
+            "The command preserves the canonical hourly seasonality materialization report shape."
+        ),
+    )
+    materialize_seasonality_parser.set_defaults(
+        handler=_run_hourly_factor_materialize_seasonality_command,
+        help_target=materialize_seasonality_parser,
+    )
+    _add_hourly_factor_common_arguments(materialize_seasonality_parser)
+    _add_required_json_path_argument(
+        materialize_seasonality_parser,
+        flag_name="--materialization-input-json",
+        contract_label=(
+            "an hourly seasonality materialization input document with source timestamps, source factors, "
+            "and optional materialization settings"
+        ),
+    )
+
+    materialize_news_intensity_parser = hourly_factors_subparsers.add_parser(
+        "materialize-news-intensity",
+        help="Materialize hourly news-intensity factors from known-news and surprise controls.",
+        description=(
+            "Materialize hourly news-intensity factors from known-news and surprise controls. "
+            "The command preserves the canonical hourly news-intensity materialization report shape."
+        ),
+    )
+    materialize_news_intensity_parser.set_defaults(
+        handler=_run_hourly_factor_materialize_news_intensity_command,
+        help_target=materialize_news_intensity_parser,
+    )
+    _add_hourly_factor_common_arguments(materialize_news_intensity_parser)
+    _add_required_json_path_argument(
+        materialize_news_intensity_parser,
+        flag_name="--materialization-input-json",
+        contract_label=(
+            "an hourly news-intensity materialization input document with known-news timestamps, "
+            "surprise baseline intensity, and optional interval multipliers"
+        ),
+    )
+
+    build_contract_parser = hourly_factors_subparsers.add_parser(
+        "build-contract",
+        help="Build the combined hourly-factor contract for downstream simulation or pricing workflows.",
+        description=(
+            "Build the combined hourly-factor contract for downstream simulation or pricing workflows. "
+            "Seasonality and news-intensity inputs can come from explicit hourly-factor source documents "
+            "or from canonical materialization report files produced by Janiform."
+        ),
+    )
+    build_contract_parser.set_defaults(
+        handler=_run_hourly_factor_build_contract_command,
+        help_target=build_contract_parser,
+    )
+    _add_hourly_factor_common_arguments(build_contract_parser)
+
+    seasonality_source_group = build_contract_parser.add_mutually_exclusive_group(required=True)
+    seasonality_source_group.add_argument(
+        "--seasonality-explicit-source-json",
+        type=Path,
+        metavar=CLI_PATH_METAVAR,
+        help=(
+            "Path to an explicit seasonality source document with `hourly_factors` and optional "
+            f"`materialization_method`. {CLI_REPOSITORY_RELATIVE_PATH_POLICY}"
+        ),
+    )
+    seasonality_source_group.add_argument(
+        "--seasonality-materialized-source-json",
+        type=Path,
+        metavar=CLI_PATH_METAVAR,
+        help=(
+            "Path to a canonical hourly seasonality materialization report produced by "
+            "`hourly-factors materialize-seasonality`. "
+            f"{CLI_REPOSITORY_RELATIVE_PATH_POLICY}"
+        ),
+    )
+
+    news_source_group = build_contract_parser.add_mutually_exclusive_group(required=True)
+    news_source_group.add_argument(
+        "--news-intensity-explicit-source-json",
+        type=Path,
+        metavar=CLI_PATH_METAVAR,
+        help=(
+            "Path to an explicit news-intensity source document with `hourly_factors` and optional "
+            f"`materialization_method`. {CLI_REPOSITORY_RELATIVE_PATH_POLICY}"
+        ),
+    )
+    news_source_group.add_argument(
+        "--news-intensity-materialized-source-json",
+        type=Path,
+        metavar=CLI_PATH_METAVAR,
+        help=(
+            "Path to a canonical hourly news-intensity materialization report produced by "
+            "`hourly-factors materialize-news-intensity`. "
+            f"{CLI_REPOSITORY_RELATIVE_PATH_POLICY}"
+        ),
     )
 
 
@@ -842,6 +1000,7 @@ def _build_parser() -> ArgumentParser:
 
     _build_simulation_parser(subparsers)
     _build_seasonality_parser(subparsers)
+    _build_hourly_factors_parser(subparsers)
     _build_calibration_parser(subparsers)
     _build_pricing_parser(subparsers)
     _build_stylized_facts_parser(subparsers)
@@ -1199,6 +1358,7 @@ __all__ = [
     '_build_command_config_argument_vector',
     '_build_configurable_action_map',
     '_build_developer_parser',
+    '_build_hourly_factors_parser',
     '_build_parser',
     '_build_environment_argument_vector',
     '_build_pricing_parser',

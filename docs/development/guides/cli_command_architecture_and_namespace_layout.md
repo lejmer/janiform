@@ -19,6 +19,10 @@ janiform
 ├── seasonality
 │   ├── diagnostics
 │   └── preprocess-timestamps
+├── hourly-factors
+│   ├── materialize-seasonality
+│   ├── materialize-news-intensity
+│   └── build-contract
 ├── calibration
 │   ├── market-data
 │   └── staged
@@ -34,8 +38,8 @@ janiform
 
 ## Namespace policy
 
-- `simulation`, `seasonality`, `calibration`, `pricing`, and `stylized-facts` are the primary
-  user-facing workflow groups.
+- `simulation`, `seasonality`, `hourly-factors`, `calibration`, `pricing`, and `stylized-facts`
+  are the primary user-facing workflow groups.
 - `dev` is reserved for internal and developer-only utilities.
 - Developer-only commands must not be placed beside primary workflow groups at the top level.
 - Command aliases are forbidden because they add ambiguity to automation and shell scripts.
@@ -43,13 +47,16 @@ janiform
 ## Naming policy
 
 - Top-level command groups use the same workflow nouns as the public Python modules:
-  `janiform.simulation`, `janiform.seasonality`, `janiform.calibration`, `janiform.pricing`, and
-  `janiform.stylized_facts`.
+  `janiform.simulation`, `janiform.seasonality`, `janiform.hourly_factors`,
+  `janiform.calibration`, `janiform.pricing`, and `janiform.stylized_facts`.
 - Subcommand names stay short while preserving the specific workflow identity:
   - `seeded-ticks` for the seeded tick-event simulator
   - `diagnostics` for the primary end-to-end seasonality estimation and diagnostics workflow
   - `preprocess-timestamps` for standalone timestamp-event preprocessing against the exchange
     calendar registry
+  - `materialize-seasonality` for materializing hourly `s_h` from timestamped source samples
+  - `materialize-news-intensity` for materializing hourly `nu_h` from known-news and surprise controls
+  - `build-contract` for building the combined hourly-factor contract from explicit or materialized artifacts
   - `market-data` for the recommended file-driven calibration request boundary
   - `staged` for advanced staged calibration orchestration
   - `vanilla-option` for vanilla option pricing
@@ -60,9 +67,9 @@ janiform
 
 ## Help-output expectations
 
-- `janiform --help` lists the six top-level namespaces in the order above.
-- `janiform simulation --help`, `janiform seasonality --help`, `janiform calibration --help`,
-  `janiform pricing --help`, and `janiform stylized-facts --help`
+- `janiform --help` lists the seven top-level namespaces in the order above.
+- `janiform simulation --help`, `janiform seasonality --help`, `janiform hourly-factors --help`,
+  `janiform calibration --help`, `janiform pricing --help`, and `janiform stylized-facts --help`
   each list their current workflow subcommands.
 - `janiform dev --help` lists internal-only utility groups.
 - Incomplete command paths print the help for the selected namespace branch.
@@ -253,6 +260,69 @@ Behavior:
 Output:
 - `--output json` writes deterministic JSON for `pricing.vanilla_option.run_result.v1` to stdout.
 - `--output human` writes a concise completion summary with price and delta.
+
+### `janiform hourly-factors materialize-seasonality`
+
+Required arguments:
+- `--calendar-registry-json`: `calendar.registry.v1` JSON object or a wrapper object with `calendar_registry`
+- `--exchange-code`
+- `--range-start-utc`
+- `--range-end-utc`
+- `--materialization-input-json`: JSON object with `source_timestamps_utc`,
+  `source_seasonality_factors`, and optional materialization settings
+
+Behavior:
+- The command reuses `janiform.hourly_factors.materialize_hourly_seasonality_factors`.
+- Output stays on the canonical seasonality materialization report shape so the emitted file can be
+  reviewed directly or reused in downstream hourly-factor contract building.
+
+Output:
+- `--output json` writes the canonical materialization report payload from
+  `seasonality.hourly_s_h.materialization.v1` to stdout.
+- `--output human` writes a concise completion summary with sparse, interpolated, and fallback counts.
+
+### `janiform hourly-factors materialize-news-intensity`
+
+Required arguments:
+- `--calendar-registry-json`: `calendar.registry.v1` JSON object or a wrapper object with `calendar_registry`
+- `--exchange-code`
+- `--range-start-utc`
+- `--range-end-utc`
+- `--materialization-input-json`: JSON object with `known_scheduled_event_timestamps_utc`,
+  `surprise_baseline_intensity`, and optional interval multipliers
+
+Behavior:
+- The command reuses `janiform.hourly_factors.materialize_hourly_news_intensity_factors`.
+- Output stays on the canonical news-intensity materialization report shape so the emitted file can
+  be reviewed directly or reused in downstream hourly-factor contract building.
+
+Output:
+- `--output json` writes the canonical materialization report payload from
+  `seasonality.hourly_nu_h.materialization.v1` to stdout.
+- `--output human` writes a concise completion summary with known-arrival and non-zero interval counts.
+
+### `janiform hourly-factors build-contract`
+
+Required arguments:
+- `--calendar-registry-json`: `calendar.registry.v1` JSON object or a wrapper object with `calendar_registry`
+- `--exchange-code`
+- `--range-start-utc`
+- `--range-end-utc`
+- exactly one of `--seasonality-explicit-source-json` or `--seasonality-materialized-source-json`
+- exactly one of `--news-intensity-explicit-source-json` or `--news-intensity-materialized-source-json`
+
+Behavior:
+- Explicit source files carry hourly factor arrays directly.
+- Materialized source files are the canonical outputs emitted by the two hourly-factor materialization
+  commands above.
+- The command validates that materialized-source artifacts match the requested exchange and UTC range,
+  then reuses `janiform.hourly_factors.build_hourly_factor_contract`.
+- The resulting contract is ready for downstream simulation or pricing request preparation.
+
+Output:
+- `--output json` writes the canonical contract payload from
+  `seasonality.hourly_factor.contract.v1` to stdout.
+- `--output human` writes a concise completion summary with contract metadata and timezone-transition counts.
 
 ### `janiform stylized-facts horizon-comparison`
 

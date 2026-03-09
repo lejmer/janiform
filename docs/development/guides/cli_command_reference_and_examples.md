@@ -33,6 +33,12 @@ The generated files include:
 - `tmp/cli-docs/calendar_registry.json`
 - `tmp/cli-docs/simulation_request.json`
 - `tmp/cli-docs/timestamp_event_records.json`
+- `tmp/cli-docs/hourly_factor_seasonality_materialization_input.json`
+- `tmp/cli-docs/hourly_factor_news_materialization_input.json`
+- `tmp/cli-docs/hourly_factor_explicit_seasonality_source.json`
+- `tmp/cli-docs/hourly_factor_explicit_news_source.json`
+- `tmp/cli-docs/hourly_factor_materialized_seasonality.json`
+- `tmp/cli-docs/hourly_factor_materialized_news_intensity.json`
 - `tmp/cli-docs/pricing_execution_input.json`
 - `tmp/cli-docs/stylized_fact_metric_catalog.json`
 - `tmp/cli-docs/stylized_fact_comparison_request.json`
@@ -211,6 +217,129 @@ janiform pricing vanilla-option \
   --execution-input-json tmp/cli-docs/pricing_execution_input.json \
   --output json
 ```
+
+## Hourly Factors
+
+Use these commands when you want reusable hourly `s_h`, hourly `nu_h`, or the combined contract
+consumed by downstream simulation and pricing workflows. The recommended scriptable path is:
+
+1. materialize `s_h` and `nu_h` to canonical report files when you start from timestamped source data
+2. build the combined hourly-factor contract from those materialized artifacts
+3. feed the contract-aligned arrays into simulation or pricing request preparation
+
+### Materialize Hourly Seasonality
+
+```text
+janiform hourly-factors materialize-seasonality --calendar-registry-json PATH --exchange-code EXCHANGE_CODE --range-start-utc RANGE_START_UTC --range-end-utc RANGE_END_UTC --materialization-input-json PATH [--output {human,json}]
+```
+
+### Options
+
+- `--calendar-registry-json`: `calendar.registry.v1` contract file
+- `--exchange-code`: exchange identifier used for exchange-local hour labeling
+- `--range-start-utc`: inclusive UTC start timestamp for the target hourly range
+- `--range-end-utc`: exclusive UTC end timestamp for the target hourly range
+- `--materialization-input-json`: JSON object with `source_timestamps_utc`,
+  `source_seasonality_factors`, and optional settings fields
+- `--output {human,json}`: operator summary or machine-readable materialization report
+
+### Example: Materialize `s_h` And Save The Canonical Report
+
+```bash
+janiform hourly-factors materialize-seasonality \
+  --calendar-registry-json tmp/cli-docs/calendar_registry.json \
+  --exchange-code XNYS \
+  --range-start-utc 2026-02-02T14:00:00Z \
+  --range-end-utc 2026-02-02T17:00:00Z \
+  --materialization-input-json tmp/cli-docs/hourly_factor_seasonality_materialization_input.json \
+  --output json \
+  > tmp/cli-docs/hourly_factor_seasonality_report.json
+```
+
+### Materialize Hourly News Intensity
+
+```text
+janiform hourly-factors materialize-news-intensity --calendar-registry-json PATH --exchange-code EXCHANGE_CODE --range-start-utc RANGE_START_UTC --range-end-utc RANGE_END_UTC --materialization-input-json PATH [--output {human,json}]
+```
+
+### Options
+
+- `--calendar-registry-json`: `calendar.registry.v1` contract file
+- `--exchange-code`: exchange identifier used for exchange-local hour labeling
+- `--range-start-utc`: inclusive UTC start timestamp for the target hourly range
+- `--range-end-utc`: exclusive UTC end timestamp for the target hourly range
+- `--materialization-input-json`: JSON object with `known_scheduled_event_timestamps_utc`,
+  `surprise_baseline_intensity`, and optional `surprise_deterministic_time_multiplier_by_interval_index`
+- `--output {human,json}`: operator summary or machine-readable materialization report
+
+### Example: Materialize `nu_h` And Save The Canonical Report
+
+```bash
+janiform hourly-factors materialize-news-intensity \
+  --calendar-registry-json tmp/cli-docs/calendar_registry.json \
+  --exchange-code XNYS \
+  --range-start-utc 2026-02-02T14:00:00Z \
+  --range-end-utc 2026-02-02T17:00:00Z \
+  --materialization-input-json tmp/cli-docs/hourly_factor_news_materialization_input.json \
+  --output json \
+  > tmp/cli-docs/hourly_factor_news_report.json
+```
+
+### Build The Combined Hourly-Factor Contract
+
+```text
+janiform hourly-factors build-contract --calendar-registry-json PATH --exchange-code EXCHANGE_CODE --range-start-utc RANGE_START_UTC --range-end-utc RANGE_END_UTC (--seasonality-explicit-source-json PATH | --seasonality-materialized-source-json PATH) (--news-intensity-explicit-source-json PATH | --news-intensity-materialized-source-json PATH) [--output {human,json}]
+```
+
+### Options
+
+- `--calendar-registry-json`: `calendar.registry.v1` contract file
+- `--exchange-code`: exchange identifier used for exchange-local hour labeling
+- `--range-start-utc`: inclusive UTC start timestamp for the target hourly range
+- `--range-end-utc`: exclusive UTC end timestamp for the target hourly range
+- `--seasonality-explicit-source-json`: explicit hourly `s_h` source with `hourly_factors`
+- `--seasonality-materialized-source-json`: canonical report emitted by
+  `hourly-factors materialize-seasonality`
+- `--news-intensity-explicit-source-json`: explicit hourly `nu_h` source with `hourly_factors`
+- `--news-intensity-materialized-source-json`: canonical report emitted by
+  `hourly-factors materialize-news-intensity`
+- `--output {human,json}`: operator summary or machine-readable contract
+
+### Example: Build The Contract From Materialized Artifacts
+
+```bash
+janiform hourly-factors build-contract \
+  --calendar-registry-json tmp/cli-docs/calendar_registry.json \
+  --exchange-code XNYS \
+  --range-start-utc 2026-02-02T14:00:00Z \
+  --range-end-utc 2026-02-02T17:00:00Z \
+  --seasonality-materialized-source-json tmp/cli-docs/hourly_factor_materialized_seasonality.json \
+  --news-intensity-materialized-source-json tmp/cli-docs/hourly_factor_materialized_news_intensity.json \
+  --output json \
+  > tmp/cli-docs/hourly_factor_contract.json
+```
+
+### Example: Build The Contract From Explicit Precomputed Arrays
+
+```bash
+janiform hourly-factors build-contract \
+  --calendar-registry-json tmp/cli-docs/calendar_registry.json \
+  --exchange-code XNYS \
+  --range-start-utc 2026-02-02T14:00:00Z \
+  --range-end-utc 2026-02-02T17:00:00Z \
+  --seasonality-explicit-source-json tmp/cli-docs/hourly_factor_explicit_seasonality_source.json \
+  --news-intensity-explicit-source-json tmp/cli-docs/hourly_factor_explicit_news_source.json \
+  --output json
+```
+
+### Integration Notes
+
+- The materialization reports preserve the canonical report shapes used by the Python library.
+- The combined contract preserves the canonical `seasonality.hourly_factor.contract.v1` shape.
+- Simulation workflows still rehydrate runtime hourly-factor handles from their request summaries.
+- Pricing workflows still keep `nu_h_known` and `nu_h_surprise` separate inside pricing execution
+  inputs, so the combined `nu_h` contract is primarily a shared reusable artifact for upstream
+  preparation and validation.
 
 ## Stylized Facts
 
