@@ -158,6 +158,12 @@ Artifact policies:
 - `COARSE_SIMULATION_ENVIRONMENT_METADATA_POLICY`
   - value: `exclude_environment_specific_metadata.v1`
 
+Deterministic provenance includes:
+
+- `batch_seed_partition_policy`
+  - value:
+    `path_seed_partitioned_from_root_seed_and_path_index_with_shared_substream_mixer.v1`
+
 ## Relationship To The Sufficient-Statistics Risk Sampler
 
 The sufficient-statistics risk sampler contract remains available in
