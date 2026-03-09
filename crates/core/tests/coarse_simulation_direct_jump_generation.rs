@@ -16,7 +16,7 @@ use janiform_core::risk::{
 };
 use janiform_core::simulation::{
     COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION, CoarseSimulationModelInputs,
-    CoarseSimulationRunRequest, run_coarse_simulation,
+    CoarseSimulationRunError, CoarseSimulationRunRequest, run_coarse_simulation,
 };
 use serde_json::json;
 
@@ -49,6 +49,95 @@ fn coarse_simulation_direct_jump_generation_is_seed_deterministic() {
 }
 
 #[test]
+fn coarse_simulation_single_interval_runner_emits_canonical_non_hourly_path_artifact() {
+    let start_time_utc_nanos = 1_704_205_800_000_000_000;
+    let run_request = build_run_request(
+        3_010,
+        start_time_utc_nanos,
+        1,
+        0.5,
+        vec![1_704_206_700_000_000_000],
+        vec![2.0],
+        vec![0.0],
+    );
+
+    let path = run_coarse_simulation(run_request).expect("single-interval coarse run should work");
+
+    assert_eq!(path.simulated_interval_count, 1);
+    assert_eq!(path.records.len(), 1);
+    assert_eq!(path.start_time_utc_nanos, start_time_utc_nanos);
+    assert_eq!(path.end_time_utc_nanos, 1_704_207_600_000_000_000);
+    assert_eq!(path.records[0].interval_index, 0);
+    assert_eq!(
+        path.records[0].interval_start_utc_nanos,
+        start_time_utc_nanos
+    );
+    assert_eq!(
+        path.records[0].interval_end_utc_nanos,
+        1_704_207_600_000_000_000
+    );
+    assert!(
+        path.records[0].return_components.open_jump_return.abs() > 0.0,
+        "open-window direct jump should flow through the coarse runner"
+    );
+
+    let serialized = serde_json::to_value(&path).expect("path should serialize");
+    assert_eq!(
+        serialized["output_schema_metadata"]["required_provenance_fields"],
+        json!([
+            "schema_version",
+            "artifact_workflow_policy",
+            "environment_metadata_policy",
+            "interval_timing_policy",
+            "interval_identifier_policy",
+            "interval_factor_alignment_policy",
+            "compatible_interval_grid_policy",
+            "interval_factor_policy",
+            "transform_slice_sampling_policy",
+            "boundary_state_update_policy",
+            "interval_return_generation_policy",
+            "interval_return_component_routing_policy",
+            "batch_seed_partition_policy"
+        ])
+    );
+
+    path.validate()
+        .expect("single-interval coarse path should satisfy the artifact contract");
+}
+
+#[test]
+fn coarse_simulation_multi_interval_runner_carries_boundary_state_across_intervals() {
+    let run_request = build_run_request(
+        3_011,
+        1_704_205_800_000_000_000,
+        2,
+        0.5,
+        vec![1_704_206_700_000_000_000, 1_704_208_500_000_000_000],
+        vec![2.0, 2.0],
+        vec![0.0, 0.0],
+    );
+
+    let path = run_coarse_simulation(run_request).expect("multi-interval coarse run should work");
+
+    assert_eq!(path.records.len(), 2);
+    assert_eq!(
+        path.records[0].interval_end_utc_nanos,
+        path.records[1].interval_start_utc_nanos
+    );
+    assert_eq!(path.end_time_utc_nanos, 1_704_209_400_000_000_000);
+    assert_ne!(
+        path.initial_excitation_state,
+        path.terminal_excitation_state
+    );
+    assert_eq!(path.diagnostics.simulated_interval_count, 2);
+    assert_eq!(path.diagnostics.first_interval_index, 0);
+    assert_eq!(path.diagnostics.last_interval_index, 1);
+
+    path.validate()
+        .expect("multi-interval coarse path should satisfy the artifact contract");
+}
+
+#[test]
 fn coarse_simulation_routes_open_window_and_closed_window_news_into_separate_components() {
     let run_request = build_run_request(
         3_002,
@@ -70,6 +159,149 @@ fn coarse_simulation_routes_open_window_and_closed_window_news_into_separate_com
     assert!(
         return_components.closed_gap_return.abs() > 0.0,
         "closed-window known news must contribute to G_t"
+    );
+}
+
+#[test]
+fn coarse_simulation_rejects_known_news_factor_misalignment_at_runner_boundary() {
+    let error = run_coarse_simulation(build_run_request(
+        3_012,
+        1_704_205_800_000_000_000,
+        1,
+        0.5,
+        vec![1_704_206_700_000_000_000],
+        vec![0.0],
+        vec![0.0],
+    ))
+    .expect_err("known-news intensity mismatch must fail during coarse-run orchestration");
+
+    assert!(matches!(
+        error,
+        CoarseSimulationRunError::KnownNewsFactorAlignmentFailure {
+            interval_index: 0,
+            expected_known_nu_h: 0.0,
+            derived_known_nu_h: 2.0,
+        }
+    ));
+}
+
+#[test]
+fn coarse_simulation_surfaces_transform_slice_solver_failures() {
+    let model_inputs = build_model_inputs_with_components(
+        build_risk_model_inputs(
+            HawkesKernelParameters::try_new(
+                0.8,
+                1.0e308,
+                HawkesKernelLoadings {
+                    plus_plus: 0.0,
+                    plus_minus: 0.0,
+                    minus_plus: 0.0,
+                    minus_minus: 0.0,
+                },
+                HawkesKernelLoadings {
+                    plus_plus: 0.08,
+                    plus_minus: 0.04,
+                    minus_plus: 0.05,
+                    minus_minus: 0.1,
+                },
+            )
+            .expect("solver-failure kernel parameters should construct"),
+            GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
+                .expect("solver-failure gamma configuration should construct"),
+        ),
+        build_news_process_configuration(
+            vec![],
+            GammaSeverityMarkConfiguration::try_new(1.5, 0.9)
+                .expect("news gamma configuration should construct"),
+            default_known_component_mark_scales(),
+            default_surprise_component_mark_scales(),
+        ),
+    );
+    let run_request = build_run_request_with_model_inputs(
+        3_013,
+        1_704_205_800_000_000_000,
+        1.0,
+        model_inputs,
+        SufficientStatisticsRiskIntervalFactors::try_new(
+            vec![1.0],
+            vec![0.0],
+            vec![0.2],
+            Some(1.0),
+        )
+        .expect("solver-failure interval factors should construct"),
+    );
+
+    let error = run_coarse_simulation(run_request)
+        .expect_err("extreme solver inputs must surface a runner-level solve failure");
+
+    assert!(matches!(
+        error,
+        CoarseSimulationRunError::TransformSliceSolveFailure {
+            interval_index: 0,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn coarse_simulation_surfaces_boundary_state_update_failures() {
+    let model_inputs = build_model_inputs_with_components(
+        build_risk_model_inputs(
+            HawkesKernelParameters::try_new(
+                0.8,
+                1.6,
+                HawkesKernelLoadings {
+                    plus_plus: 0.2,
+                    plus_minus: 0.1,
+                    minus_plus: 0.1,
+                    minus_minus: 0.25,
+                },
+                HawkesKernelLoadings {
+                    plus_plus: 6.0e307,
+                    plus_minus: 6.0e307,
+                    minus_plus: 6.0e307,
+                    minus_minus: 6.0e307,
+                },
+            )
+            .expect("boundary-failure kernel parameters should construct"),
+            GammaSeverityMarkConfiguration::try_new(1.8, 1.0e-308)
+                .expect("boundary-failure gamma configuration should construct"),
+        ),
+        build_news_process_configuration(
+            vec![1_704_206_700_000_000_000],
+            GammaSeverityMarkConfiguration::try_new(1.5, 0.9)
+                .expect("news gamma configuration should construct"),
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 8.0,
+                return_jump_scale: 1.2,
+            },
+            default_surprise_component_mark_scales(),
+        ),
+    );
+    let run_request = build_run_request_with_model_inputs(
+        3_014,
+        1_704_205_800_000_000_000,
+        1.0,
+        model_inputs,
+        SufficientStatisticsRiskIntervalFactors::try_new(
+            vec![1.0],
+            vec![1.0],
+            vec![0.0],
+            Some(1.0),
+        )
+        .expect("boundary-failure interval factors should construct"),
+    );
+
+    let error = run_coarse_simulation(run_request)
+        .expect_err("overflowing boundary-state loadings must surface through the runner");
+
+    assert!(
+        matches!(error, CoarseSimulationRunError::InvalidPathArtifact { .. }),
+        "unexpected boundary-update error: {error:?}"
+    );
+    assert!(
+        error.to_string().contains("terminal_excitation_state"),
+        "boundary update should surface through the invalid terminal-state artifact guard: {error}"
     );
 }
 
@@ -124,10 +356,9 @@ fn build_run_request(
     nu_h_known: Vec<f64>,
     nu_h_surprise: Vec<f64>,
 ) -> CoarseSimulationRunRequest {
-    CoarseSimulationRunRequest::try_new(
+    build_run_request_with_model_inputs(
         seed,
         start_time_utc_nanos,
-        horizon_interval_count,
         interval_delta,
         build_model_inputs(known_news_timestamps_utc_nanos),
         SufficientStatisticsRiskIntervalFactors::try_new(
@@ -138,12 +369,29 @@ fn build_run_request(
         )
         .expect("interval factors should construct"),
     )
+}
+
+fn build_run_request_with_model_inputs(
+    seed: u64,
+    start_time_utc_nanos: i64,
+    interval_delta: f64,
+    model_inputs: CoarseSimulationModelInputs,
+    interval_factors: SufficientStatisticsRiskIntervalFactors,
+) -> CoarseSimulationRunRequest {
+    CoarseSimulationRunRequest::try_new(
+        seed,
+        start_time_utc_nanos,
+        interval_factors.s_h.len(),
+        interval_delta,
+        model_inputs,
+        interval_factors,
+    )
     .expect("run request should construct")
 }
 
 fn build_model_inputs(known_news_timestamps_utc_nanos: Vec<i64>) -> CoarseSimulationModelInputs {
-    let risk_model_inputs = SufficientStatisticsRiskModelInputs::try_new(
-        ExponentialAffineTransformEquationSpecification::try_new(
+    build_model_inputs_with_components(
+        build_risk_model_inputs(
             HawkesKernelParameters::try_new(
                 0.8,
                 1.6,
@@ -163,53 +411,97 @@ fn build_model_inputs(known_news_timestamps_utc_nanos: Vec<i64>) -> CoarseSimula
             .expect("kernel parameters should construct"),
             GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
                 .expect("gamma severity configuration should construct"),
-        )
-        .expect("equation specification should construct"),
-        NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
-            .expect("nig configuration should construct"),
-        HawkesExcitationState {
-            y_plus_plus: 0.2,
-            y_plus_minus: 0.1,
-            y_minus_plus: 0.1,
-            y_minus_minus: 0.3,
-        },
+        ),
+        build_news_process_configuration(
+            known_news_timestamps_utc_nanos,
+            GammaSeverityMarkConfiguration::try_new(1.5, 0.9)
+                .expect("gamma severity configuration should construct"),
+            default_known_component_mark_scales(),
+            default_surprise_component_mark_scales(),
+        ),
     )
-    .expect("risk model inputs should construct");
+}
 
+fn build_model_inputs_with_components(
+    risk_model_inputs: SufficientStatisticsRiskModelInputs,
+    news_process_configuration: NewsProcessConfiguration,
+) -> CoarseSimulationModelInputs {
     CoarseSimulationModelInputs::try_new(
         risk_model_inputs,
-        NewsProcessConfiguration::try_new(
-            NewsArrivalConfiguration {
-                known: KnownNewsArrivalConfiguration {
-                    scheduled_event_timestamps_utc_nanos: known_news_timestamps_utc_nanos,
-                },
-                surprise: SurpriseNewsArrivalConfiguration {
-                    baseline_intensity: 0.0,
-                },
-            },
-            SharedNewsMarkLawConfiguration {
-                gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.5, 0.9)
-                    .expect("gamma severity configuration should construct"),
-                double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::try_new(
-                    0.4, 1.3, 1.1,
-                )
-                .expect("base shock configuration should construct"),
-                coupled_gap_marks: CoupledGapMarkConfiguration::new(0.75),
-            },
-            NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 0.6,
-                return_jump_scale: 1.2,
-            },
-            NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 0.5,
-                return_jump_scale: 0.8,
-            },
-        )
-        .expect("news process configuration should construct"),
+        news_process_configuration,
         build_calendar_registry_artifact(),
         "XNYS",
     )
     .expect("coarse simulation model inputs should construct")
+}
+
+fn build_risk_model_inputs(
+    kernel_parameters: HawkesKernelParameters,
+    gamma_severity_configuration: GammaSeverityMarkConfiguration,
+) -> SufficientStatisticsRiskModelInputs {
+    SufficientStatisticsRiskModelInputs::try_new(
+        ExponentialAffineTransformEquationSpecification::try_new(
+            kernel_parameters,
+            gamma_severity_configuration,
+        )
+        .expect("equation specification should construct"),
+        NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+            .expect("nig configuration should construct"),
+        default_initial_excitation_state(),
+    )
+    .expect("risk model inputs should construct")
+}
+
+fn build_news_process_configuration(
+    known_news_timestamps_utc_nanos: Vec<i64>,
+    gamma_severity_configuration: GammaSeverityMarkConfiguration,
+    known_component_mark_scales: NewsComponentMarkScaleConfiguration,
+    surprise_component_mark_scales: NewsComponentMarkScaleConfiguration,
+) -> NewsProcessConfiguration {
+    NewsProcessConfiguration::try_new(
+        NewsArrivalConfiguration {
+            known: KnownNewsArrivalConfiguration {
+                scheduled_event_timestamps_utc_nanos: known_news_timestamps_utc_nanos,
+            },
+            surprise: SurpriseNewsArrivalConfiguration {
+                baseline_intensity: 0.0,
+            },
+        },
+        SharedNewsMarkLawConfiguration {
+            gamma_severity_marks: gamma_severity_configuration,
+            double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::try_new(
+                0.4, 1.3, 1.1,
+            )
+            .expect("base shock configuration should construct"),
+            coupled_gap_marks: CoupledGapMarkConfiguration::new(0.75),
+        },
+        known_component_mark_scales,
+        surprise_component_mark_scales,
+    )
+    .expect("news process configuration should construct")
+}
+
+fn default_known_component_mark_scales() -> NewsComponentMarkScaleConfiguration {
+    NewsComponentMarkScaleConfiguration {
+        activity_coupling_scale: 0.6,
+        return_jump_scale: 1.2,
+    }
+}
+
+fn default_surprise_component_mark_scales() -> NewsComponentMarkScaleConfiguration {
+    NewsComponentMarkScaleConfiguration {
+        activity_coupling_scale: 0.5,
+        return_jump_scale: 0.8,
+    }
+}
+
+fn default_initial_excitation_state() -> HawkesExcitationState {
+    HawkesExcitationState {
+        y_plus_plus: 0.2,
+        y_plus_minus: 0.1,
+        y_minus_plus: 0.1,
+        y_minus_minus: 0.3,
+    }
 }
 
 fn build_calendar_registry_artifact() -> ExchangeCalendarRegistryArtifact {

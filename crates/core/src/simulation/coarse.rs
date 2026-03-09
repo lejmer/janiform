@@ -75,7 +75,7 @@ const COARSE_SIMULATION_PATH_RECORD_REQUIRED_FIELDS: [&str; 6] = [
     "sufficient_statistics",
     "return_components",
 ];
-const COARSE_SIMULATION_PATH_REQUIRED_PROVENANCE_FIELDS: [&str; 12] = [
+const COARSE_SIMULATION_PATH_REQUIRED_PROVENANCE_FIELDS: [&str; 13] = [
     "schema_version",
     "artifact_workflow_policy",
     "environment_metadata_policy",
@@ -88,6 +88,7 @@ const COARSE_SIMULATION_PATH_REQUIRED_PROVENANCE_FIELDS: [&str; 12] = [
     "boundary_state_update_policy",
     "interval_return_generation_policy",
     "interval_return_component_routing_policy",
+    "batch_seed_partition_policy",
 ];
 const COARSE_SIMULATION_PATH_REQUIRED_DIAGNOSTICS_FIELDS: [&str; 15] = [
     "schema_version",
