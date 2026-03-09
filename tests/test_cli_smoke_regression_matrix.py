@@ -58,6 +58,10 @@ def _smoke_scenarios() -> tuple[CliSmokeScenario, ...]:
             build_invocation=_build_seasonality_diagnostics_smoke_invocation,
         ),
         CliSmokeScenario(
+            scenario_id="hourly_factors_build_contract_explicit_json_nominal",
+            build_invocation=_build_hourly_factors_build_contract_smoke_invocation,
+        ),
+        CliSmokeScenario(
             scenario_id="pricing_vanilla_option_json_nominal",
             build_invocation=_build_pricing_smoke_invocation,
         ),
@@ -169,6 +173,50 @@ def _build_pricing_smoke_invocation(_: str, tmp_path: Path) -> CliSmokeInvocatio
             str(execution_input_path),
         ],
         validate_stdout=_validate_pricing_smoke_stdout,
+    )
+
+
+def _build_hourly_factors_build_contract_smoke_invocation(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> CliSmokeInvocation:
+    calendar_registry_path = _write_json_path(
+        tmp_path / "calendar_registry.json",
+        json.loads(calendar_registry_json),
+    )
+    seasonality_source_path = _write_json_path(
+        tmp_path / "hourly_factor_seasonality_source.json",
+        {
+            "hourly_factors": [1.0, 0.9, 1.1],
+            "materialization_method": "shared_precomputed_hourly_s_h.v1",
+        },
+    )
+    news_source_path = _write_json_path(
+        tmp_path / "hourly_factor_news_source.json",
+        {
+            "hourly_factors": [0.2, 0.0, 0.3],
+            "materialization_method": "shared_precomputed_hourly_nu_h.v1",
+        },
+    )
+
+    return CliSmokeInvocation(
+        command_arguments=[
+            "hourly-factors",
+            "build-contract",
+            "--calendar-registry-json",
+            str(calendar_registry_path),
+            "--exchange-code",
+            "XNYS",
+            "--range-start-utc",
+            "2026-02-02T14:00:00Z",
+            "--range-end-utc",
+            "2026-02-02T17:00:00Z",
+            "--seasonality-explicit-source-json",
+            str(seasonality_source_path),
+            "--news-intensity-explicit-source-json",
+            str(news_source_path),
+        ],
+        validate_stdout=_validate_hourly_factors_build_contract_smoke_stdout,
     )
 
 
@@ -657,6 +705,13 @@ def _validate_pricing_smoke_stdout(stdout_text: str) -> None:
     assert payload["response"]["diagnostics"]["forward_price"] > 0.0
 
 
+def _validate_hourly_factors_build_contract_smoke_stdout(stdout_text: str) -> None:
+    payload = _parse_json_command_output(stdout_text)
+    assert payload["schema_version"] == "seasonality.hourly_factor.contract.v1"
+    assert payload["s_h"] == [1.0, 0.9, 1.1]
+    assert payload["nu_h"] == [0.2, 0.0, 0.3]
+
+
 def _parse_json_command_output(stdout_text: str) -> dict[str, Any]:
     payload: Any = json.loads(stdout_text)
     assert isinstance(payload, dict)
@@ -741,5 +796,5 @@ def test_cli_regression_matrix_preserves_exit_codes_and_key_argument_paths(
 
 
 def test_cli_smoke_matrix_remains_bounded_for_merge_time_execution() -> None:
-    assert len(CLI_SMOKE_SCENARIOS) == 9
+    assert len(CLI_SMOKE_SCENARIOS) == 10
     assert len(CLI_REGRESSION_SCENARIOS) == 4

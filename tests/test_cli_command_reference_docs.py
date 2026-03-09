@@ -21,6 +21,7 @@ def test_cli_command_reference_doc_contains_required_sections_and_commands() -> 
         "## Shared Conventions",
         "## Simulation",
         "## Seasonality",
+        "## Hourly Factors",
         "## Pricing",
         "## Stylized Facts",
         "## Market-Data Calibration",
@@ -34,6 +35,9 @@ def test_cli_command_reference_doc_contains_required_sections_and_commands() -> 
         "janiform simulation seeded-ticks",
         "janiform seasonality diagnostics",
         "janiform seasonality preprocess-timestamps",
+        "janiform hourly-factors materialize-seasonality",
+        "janiform hourly-factors materialize-news-intensity",
+        "janiform hourly-factors build-contract",
         "janiform pricing vanilla-option",
         "janiform stylized-facts horizon-comparison",
         "janiform calibration market-data",
@@ -65,6 +69,12 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     simulation_help = _normalize_help_output(_render_help(["simulation", "seeded-ticks"]))
     seasonality_diagnostics_help = _normalize_help_output(_render_help(["seasonality", "diagnostics"]))
     seasonality_help = _normalize_help_output(_render_help(["seasonality", "preprocess-timestamps"]))
+    hourly_factors_seasonality_help = _normalize_help_output(
+        _render_help(["hourly-factors", "materialize-seasonality"])
+    )
+    hourly_factors_contract_help = _normalize_help_output(
+        _render_help(["hourly-factors", "build-contract"])
+    )
     pricing_help = _normalize_help_output(_render_help(["pricing", "vanilla-option"]))
     stylized_facts_help = _normalize_help_output(_render_help(["stylized-facts", "horizon-comparison"]))
     market_data_help = _normalize_help_output(_render_help(["calibration", "market-data"]))
@@ -80,6 +90,8 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
         "--dataset-id DATASET_ID",
         "--event-records-json PATH",
         "--calendar-registry-json PATH",
+        "--range-start-utc RANGE_START_UTC",
+        "--range-end-utc RANGE_END_UTC",
         "--metric-catalog-json PATH",
         "--comparison-request-json PATH",
     )
@@ -92,6 +104,9 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     assert "--calendar-registry-json PATH" in simulation_help
     assert "--event-records-json PATH" in seasonality_help
     assert "--session-filter {all,open_only,closed_only}" in seasonality_help
+    assert "--materialization-input-json PATH" in hourly_factors_seasonality_help
+    assert "--seasonality-explicit-source-json PATH" in hourly_factors_contract_help
+    assert "--news-intensity-materialized-source-json PATH" in hourly_factors_contract_help
     assert "--execution-input-json PATH" in pricing_help
     assert "--metric-catalog-json PATH" in stylized_facts_help
     assert "--comparison-request-json PATH" in stylized_facts_help
@@ -168,6 +183,74 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path
     preprocess_payload = orjson.loads(preprocess_stdout)
     assert preprocess_payload["schema_version"] == "seasonality.timestamp_event.preprocessed.v1"
     assert preprocess_payload["accepted_record_count"] == 3
+
+    hourly_factor_seasonality_exit_code, hourly_factor_seasonality_stdout, hourly_factor_seasonality_stderr = _invoke_cli(
+        [
+            "hourly-factors",
+            "materialize-seasonality",
+            "--calendar-registry-json",
+            documented_paths["calendar_registry_json"],
+            "--exchange-code",
+            "XNYS",
+            "--range-start-utc",
+            "2026-02-02T14:00:00Z",
+            "--range-end-utc",
+            "2026-02-02T17:00:00Z",
+            "--materialization-input-json",
+            documented_paths["hourly_factor_seasonality_materialization_input_json"],
+            "--output",
+            "json",
+        ]
+    )
+    assert hourly_factor_seasonality_exit_code == int(cli_module.CliExitCode.SUCCESS), hourly_factor_seasonality_stderr
+    hourly_factor_seasonality_payload = orjson.loads(hourly_factor_seasonality_stdout)
+    assert hourly_factor_seasonality_payload["schema_version"] == "seasonality.hourly_s_h.materialization.v1"
+
+    hourly_factor_news_exit_code, hourly_factor_news_stdout, hourly_factor_news_stderr = _invoke_cli(
+        [
+            "hourly-factors",
+            "materialize-news-intensity",
+            "--calendar-registry-json",
+            documented_paths["calendar_registry_json"],
+            "--exchange-code",
+            "XNYS",
+            "--range-start-utc",
+            "2026-02-02T14:00:00Z",
+            "--range-end-utc",
+            "2026-02-02T17:00:00Z",
+            "--materialization-input-json",
+            documented_paths["hourly_factor_news_materialization_input_json"],
+            "--output",
+            "json",
+        ]
+    )
+    assert hourly_factor_news_exit_code == int(cli_module.CliExitCode.SUCCESS), hourly_factor_news_stderr
+    hourly_factor_news_payload = orjson.loads(hourly_factor_news_stdout)
+    assert hourly_factor_news_payload["schema_version"] == "seasonality.hourly_nu_h.materialization.v1"
+
+    hourly_factor_contract_exit_code, hourly_factor_contract_stdout, hourly_factor_contract_stderr = _invoke_cli(
+        [
+            "hourly-factors",
+            "build-contract",
+            "--calendar-registry-json",
+            documented_paths["calendar_registry_json"],
+            "--exchange-code",
+            "XNYS",
+            "--range-start-utc",
+            "2026-02-02T14:00:00Z",
+            "--range-end-utc",
+            "2026-02-02T17:00:00Z",
+            "--seasonality-materialized-source-json",
+            documented_paths["hourly_factor_materialized_seasonality_json"],
+            "--news-intensity-materialized-source-json",
+            documented_paths["hourly_factor_materialized_news_intensity_json"],
+            "--output",
+            "json",
+        ]
+    )
+    assert hourly_factor_contract_exit_code == int(cli_module.CliExitCode.SUCCESS), hourly_factor_contract_stderr
+    hourly_factor_contract_payload = orjson.loads(hourly_factor_contract_stdout)
+    assert hourly_factor_contract_payload["schema_version"] == "seasonality.hourly_factor.contract.v1"
 
     pricing_exit_code, pricing_stdout, pricing_stderr = _invoke_cli(
         [

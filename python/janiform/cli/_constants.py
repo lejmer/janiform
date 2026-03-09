@@ -93,6 +93,29 @@ CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_INTERNAL_ERROR_ID = (
 CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT = "seasonality.diagnostics"
 CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID = "cli.validation.seasonality.diagnostics.invalid_input"
 CLI_SEASONALITY_DIAGNOSTICS_INTERNAL_ERROR_ID = "cli.internal.seasonality.diagnostics.failed"
+CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_ENTRYPOINT = "hourly_factors.materialize_seasonality"
+CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_VALIDATION_ERROR_ID = (
+    "cli.validation.hourly_factors.materialize_seasonality.invalid_input"
+)
+CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_INTERNAL_ERROR_ID = (
+    "cli.internal.hourly_factors.materialize_seasonality.failed"
+)
+CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_ENTRYPOINT = (
+    "hourly_factors.materialize_news_intensity"
+)
+CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_VALIDATION_ERROR_ID = (
+    "cli.validation.hourly_factors.materialize_news_intensity.invalid_input"
+)
+CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_INTERNAL_ERROR_ID = (
+    "cli.internal.hourly_factors.materialize_news_intensity.failed"
+)
+CLI_HOURLY_FACTORS_BUILD_CONTRACT_ENTRYPOINT = "hourly_factors.build_contract"
+CLI_HOURLY_FACTORS_BUILD_CONTRACT_VALIDATION_ERROR_ID = (
+    "cli.validation.hourly_factors.build_contract.invalid_input"
+)
+CLI_HOURLY_FACTORS_BUILD_CONTRACT_INTERNAL_ERROR_ID = (
+    "cli.internal.hourly_factors.build_contract.failed"
+)
 CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT = "calibration.market_data"
 CLI_CALIBRATION_MARKET_DATA_VALIDATION_ERROR_ID = "cli.validation.calibration.market_data.invalid_input"
 CLI_CALIBRATION_MARKET_DATA_INTERNAL_ERROR_ID = "cli.internal.calibration.market_data.failed"
@@ -132,6 +155,11 @@ CLI_PRIMARY_COMMAND_TREE: dict[str, dict[str, dict[str, dict[str, Any]]]] = {
         "diagnostics": {},
         "preprocess-timestamps": {},
     },
+    "hourly-factors": {
+        "materialize-seasonality": {},
+        "materialize-news-intensity": {},
+        "build-contract": {},
+    },
     "calibration": {
         "market-data": {},
         "staged": {},
@@ -147,6 +175,9 @@ CLI_PRIMARY_COMMAND_IDENTIFIERS: dict[tuple[str, ...], str] = {
     ("simulation", "seeded-ticks"): "simulation.seeded-ticks",
     ("seasonality", "diagnostics"): "seasonality.diagnostics",
     ("seasonality", "preprocess-timestamps"): "seasonality.preprocess-timestamps",
+    ("hourly-factors", "materialize-seasonality"): "hourly-factors.materialize-seasonality",
+    ("hourly-factors", "materialize-news-intensity"): "hourly-factors.materialize-news-intensity",
+    ("hourly-factors", "build-contract"): "hourly-factors.build-contract",
     ("calibration", "market-data"): "calibration.market-data",
     ("calibration", "staged"): "calibration.staged",
     ("pricing", "vanilla-option"): "pricing.vanilla-option",
@@ -195,6 +226,15 @@ __all__ = [
     "CLI_COMMAND_CONFIG_HELP",
     "CLI_COMMAND_CONFIG_SCHEMA_VERSION",
     "CLI_CONFIG_JSON_ENV_VAR",
+    "CLI_HOURLY_FACTORS_BUILD_CONTRACT_ENTRYPOINT",
+    "CLI_HOURLY_FACTORS_BUILD_CONTRACT_INTERNAL_ERROR_ID",
+    "CLI_HOURLY_FACTORS_BUILD_CONTRACT_VALIDATION_ERROR_ID",
+    "CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_ENTRYPOINT",
+    "CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_INTERNAL_ERROR_ID",
+    "CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_VALIDATION_ERROR_ID",
+    "CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_ENTRYPOINT",
+    "CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_INTERNAL_ERROR_ID",
+    "CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_VALIDATION_ERROR_ID",
     "CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT",
     "CLI_DETERMINISTIC_REGRESSION_INTERNAL_ERROR_ID",
     "CLI_DETERMINISTIC_REGRESSION_VALIDATION_ERROR_ID",

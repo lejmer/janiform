@@ -59,6 +59,7 @@ from ._staged import (
 )
 from ..calendar import CalendarRegistry, CalendarRegistryLoadError, MarketState
 from ..pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
+from .._timestamps import datetime_to_utc_nanos
 
 
 CALIBRATION_MARKET_DATA_TRANSLATION_ERROR_ID = "calibration.validation.market_data_translation"
@@ -538,10 +539,10 @@ def _build_source_window(
 ) -> CalibrationReturnComponentsSignalSourceWindow:
     window_start_timestamp = min(record.timestamp for record in tick_records)
     window_end_timestamp = max(record.timestamp for record in tick_records)
-    window_end_utc_nanos = _datetime_to_utc_nanos(window_end_timestamp) + 1
+    window_end_utc_nanos = datetime_to_utc_nanos(window_end_timestamp) + 1
 
     return CalibrationReturnComponentsSignalSourceWindow(
-        window_start_utc_nanos=_datetime_to_utc_nanos(window_start_timestamp),
+        window_start_utc_nanos=datetime_to_utc_nanos(window_start_timestamp),
         window_end_utc_nanos=window_end_utc_nanos,
     )
 
@@ -559,7 +560,7 @@ def _resolve_known_news_records(
     retained_records: list[_ResolvedKnownNewsRecord] = []
     outside_source_window_count = 0
     for known_news_record in known_news_source.records:
-        timestamp_utc_nanos = _datetime_to_utc_nanos(known_news_record.event_timestamp)
+        timestamp_utc_nanos = datetime_to_utc_nanos(known_news_record.event_timestamp)
         if (
             timestamp_utc_nanos < source_window.window_start_utc_nanos
             or timestamp_utc_nanos >= source_window.window_end_utc_nanos
@@ -590,7 +591,7 @@ def _build_seasonality_stage_input(
         timestamp_event_records=tuple(
             CalibrationTimestampEventRecord(
                 source_record_position=tick_record.source_row_number - 1,
-                timestamp_utc_nanos=_datetime_to_utc_nanos(tick_record.timestamp),
+                timestamp_utc_nanos=datetime_to_utc_nanos(tick_record.timestamp),
             )
             for tick_record in tick_data.records
         ),
@@ -601,10 +602,10 @@ def _build_seasonality_stage_input(
                     if known_news_record.record.event_identifier is not None
                     else f"known_news_{position + 1}"
                 ),
-                start_timestamp_utc_nanos=_datetime_to_utc_nanos(
+                start_timestamp_utc_nanos=datetime_to_utc_nanos(
                     known_news_record.record.event_timestamp
                 ),
-                end_timestamp_utc_nanos=_datetime_to_utc_nanos(
+                end_timestamp_utc_nanos=datetime_to_utc_nanos(
                     known_news_record.record.event_timestamp
                 ),
                 log_adjustment=0.0,
@@ -769,7 +770,7 @@ def _build_return_components_candidate_generation_input(
         known_news_calendar=CalibrationReturnComponentsKnownNewsCalendarInput(
             source_window=source_window,
             scheduled_event_timestamps_utc_nanos=tuple(
-                _datetime_to_utc_nanos(known_news_record.record.event_timestamp)
+                datetime_to_utc_nanos(known_news_record.record.event_timestamp)
                 for known_news_record in retained_known_news
             ),
         ),
@@ -832,13 +833,13 @@ def _derive_close_open_boundary_observations(
 
         observations_by_boundary[
             (
-                _datetime_to_utc_nanos(close_boundary),
-                _datetime_to_utc_nanos(open_boundary),
+                datetime_to_utc_nanos(close_boundary),
+                datetime_to_utc_nanos(open_boundary),
             )
         ] = CalibrationReturnComponentsObservedCloseOpenBoundaryObservation(
-            close_timestamp_utc_nanos=_datetime_to_utc_nanos(close_boundary),
+            close_timestamp_utc_nanos=datetime_to_utc_nanos(close_boundary),
             close_price=previous_tick.price,
-            open_timestamp_utc_nanos=_datetime_to_utc_nanos(open_boundary),
+            open_timestamp_utc_nanos=datetime_to_utc_nanos(open_boundary),
             open_price=current_tick.price,
             post_shock_activity_lift=_activity_lift(
                 open_boundary,
@@ -863,7 +864,7 @@ def _derive_known_news_return_samples(
     return_samples: list[CalibrationReturnComponentsKnownNewsReturnSample] = []
     for known_news_record in retained_known_news:
         event_timestamp: datetime = known_news_record.record.event_timestamp
-        event_timestamp_utc_nanos: int = _datetime_to_utc_nanos(event_timestamp)
+        event_timestamp_utc_nanos: int = datetime_to_utc_nanos(event_timestamp)
 
         match known_news_record.market_state:
             case MarketState.OPEN:
@@ -946,7 +947,7 @@ def _derive_intraday_jump_candidates(
 
     return tuple(
         CalibrationReturnComponentsDetectedIntradayJumpCandidate(
-            jump_timestamp_utc_nanos=_datetime_to_utc_nanos(candidate_timestamp),
+            jump_timestamp_utc_nanos=datetime_to_utc_nanos(candidate_timestamp),
             jump_return=jump_return,
             post_shock_activity_lift=_activity_lift(
                 candidate_timestamp,
@@ -1352,16 +1353,6 @@ def _runtime_resources_from_request(
 
     return CalibrationStagedExecutionRuntimeResources(
         disk_checkpoint_directory=request.output_preferences.disk_checkpoint_directory,
-    )
-
-
-def _datetime_to_utc_nanos(timestamp_utc: datetime) -> int:
-    normalized_timestamp: datetime = timestamp_utc.astimezone(UTC)
-    delta: timedelta = normalized_timestamp - _EPOCH
-
-    return (
-        ((delta.days * 24 * 60 * 60) + delta.seconds) * 1_000_000_000
-        + delta.microseconds * 1_000
     )
 
 

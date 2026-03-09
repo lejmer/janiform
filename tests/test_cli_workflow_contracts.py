@@ -133,6 +133,9 @@ def test_cli_shared_path_flags_use_standardized_repository_relative_help_text() 
         _normalize_help_output(_render_help(["simulation", "seeded-ticks"])),
         _normalize_help_output(_render_help(["seasonality", "diagnostics"])),
         _normalize_help_output(_render_help(["seasonality", "preprocess-timestamps"])),
+        _normalize_help_output(_render_help(["hourly-factors", "materialize-seasonality"])),
+        _normalize_help_output(_render_help(["hourly-factors", "materialize-news-intensity"])),
+        _normalize_help_output(_render_help(["hourly-factors", "build-contract"])),
         _normalize_help_output(_render_help(["pricing", "vanilla-option"])),
         _normalize_help_output(_render_help(["stylized-facts", "horizon-comparison"])),
         _normalize_help_output(_render_help(["calibration", "market-data"])),
@@ -413,6 +416,40 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
             "XNYS",
         ]
     )
+    hourly_factor_materialization_arguments = parser.parse_args(
+        [
+            "hourly-factors",
+            "materialize-seasonality",
+            "--calendar-registry-json",
+            "calendar.json",
+            "--exchange-code",
+            "XNYS",
+            "--range-start-utc",
+            "2026-02-02T14:00:00Z",
+            "--range-end-utc",
+            "2026-02-02T17:00:00Z",
+            "--materialization-input-json",
+            "seasonality-input.json",
+        ]
+    )
+    hourly_factor_contract_arguments = parser.parse_args(
+        [
+            "hourly-factors",
+            "build-contract",
+            "--calendar-registry-json",
+            "calendar.json",
+            "--exchange-code",
+            "XNYS",
+            "--range-start-utc",
+            "2026-02-02T14:00:00Z",
+            "--range-end-utc",
+            "2026-02-02T17:00:00Z",
+            "--seasonality-explicit-source-json",
+            "seasonality-source.json",
+            "--news-intensity-explicit-source-json",
+            "news-source.json",
+        ]
+    )
     pricing_arguments = parser.parse_args(
         [
             "pricing",
@@ -445,6 +482,8 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
     assert simulation_arguments.output == "json"
     assert seasonality_diagnostics_arguments.output == "json"
     assert seasonality_arguments.output == "json"
+    assert hourly_factor_materialization_arguments.output == "json"
+    assert hourly_factor_contract_arguments.output == "json"
     assert pricing_arguments.output == "json"
     assert stylized_facts_arguments.output == "json"
     assert staged_arguments.output == "json"
@@ -494,6 +533,44 @@ def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
             "human",
         ]
     )
+    hourly_factor_materialization_arguments = parser.parse_args(
+        [
+            "hourly-factors",
+            "materialize-seasonality",
+            "--calendar-registry-json",
+            "calendar.json",
+            "--exchange-code",
+            "XNYS",
+            "--range-start-utc",
+            "2026-02-02T14:00:00Z",
+            "--range-end-utc",
+            "2026-02-02T17:00:00Z",
+            "--materialization-input-json",
+            "seasonality-input.json",
+            "--output",
+            "human",
+        ]
+    )
+    hourly_factor_contract_arguments = parser.parse_args(
+        [
+            "hourly-factors",
+            "build-contract",
+            "--calendar-registry-json",
+            "calendar.json",
+            "--exchange-code",
+            "XNYS",
+            "--range-start-utc",
+            "2026-02-02T14:00:00Z",
+            "--range-end-utc",
+            "2026-02-02T17:00:00Z",
+            "--seasonality-explicit-source-json",
+            "seasonality-source.json",
+            "--news-intensity-explicit-source-json",
+            "news-source.json",
+            "--output",
+            "human",
+        ]
+    )
     pricing_arguments = parser.parse_args(
         [
             "pricing",
@@ -532,6 +609,8 @@ def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
     assert simulation_arguments.output == "human"
     assert seasonality_diagnostics_arguments.output == "human"
     assert seasonality_arguments.output == "human"
+    assert hourly_factor_materialization_arguments.output == "human"
+    assert hourly_factor_contract_arguments.output == "human"
     assert pricing_arguments.output == "human"
     assert stylized_facts_arguments.output == "human"
     assert staged_arguments.output == "human"
