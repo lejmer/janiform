@@ -15,6 +15,7 @@ ALLOWED_JANIFORM_IMPORTS = {
     "janiform.calibration",
     "janiform.hourly_factors",
     "janiform.pricing",
+    "janiform.risk",
     "janiform.simulation",
 }
 
