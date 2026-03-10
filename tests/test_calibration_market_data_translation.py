@@ -88,13 +88,13 @@ def test_translate_market_data_request_derives_boundaries_known_news_and_diagnos
     tick_data_path.write_text(
         "\n".join(
             [
-                "timestamp_utc,trade_price",
-                "2026-02-02T14:30:00Z,100.0",
-                "2026-02-02T15:00:00Z,101.0",
-                "2026-02-02T15:10:00Z,104.0",
-                "2026-02-02T20:59:00Z,102.0",
-                "2026-02-04T14:30:00Z,90.0",
-                "2026-02-04T14:40:00Z,100.0",
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T15:00:00Z,101.0,buy",
+                "2026-02-02T15:10:00Z,104.0,sell",
+                "2026-02-02T20:59:00Z,102.0,sell",
+                "2026-02-04T14:30:00Z,90.0,buy",
+                "2026-02-04T14:40:00Z,100.0,sell",
             ]
         ),
         encoding="utf-8",
@@ -120,6 +120,7 @@ def test_translate_market_data_request_derives_boundaries_known_news_and_diagnos
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
             trade_price_column="trade_price",
+            trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
@@ -189,13 +190,13 @@ def test_translate_market_data_request_without_known_news_runs_staged_calibratio
     tick_data_path.write_text(
         "\n".join(
             [
-                "timestamp_utc,trade_price",
-                "2026-02-02T14:30:00Z,100.0",
-                "2026-02-02T15:00:00Z,101.0",
-                "2026-02-02T15:10:00Z,103.0",
-                "2026-02-02T20:59:00Z,102.0",
-                "2026-02-04T14:30:00Z,95.0",
-                "2026-02-04T14:40:00Z,98.0",
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T15:00:00Z,101.0,buy",
+                "2026-02-02T15:10:00Z,103.0,sell",
+                "2026-02-02T20:59:00Z,102.0,sell",
+                "2026-02-04T14:30:00Z,95.0,buy",
+                "2026-02-04T14:40:00Z,98.0,sell",
             ]
         ),
         encoding="utf-8",
@@ -208,6 +209,7 @@ def test_translate_market_data_request_without_known_news_runs_staged_calibratio
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
             trade_price_column="trade_price",
+            trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
@@ -242,13 +244,13 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
     tick_data_path.write_text(
         "\n".join(
             [
-                "timestamp_utc,trade_price",
-                "2026-02-02T14:30:00Z,100.0",
-                "2026-02-02T15:00:00Z,101.0",
-                "2026-02-02T15:10:00Z,104.0",
-                "2026-02-02T20:59:00Z,102.0",
-                "2026-02-04T14:30:00Z,90.0",
-                "2026-02-04T14:40:00Z,100.0",
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T15:00:00Z,101.0,buy",
+                "2026-02-02T15:10:00Z,104.0,sell",
+                "2026-02-02T20:59:00Z,102.0,sell",
+                "2026-02-04T14:30:00Z,90.0,buy",
+                "2026-02-04T14:40:00Z,100.0,sell",
             ]
         ),
         encoding="utf-8",
@@ -273,6 +275,7 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
             trade_price_column="trade_price",
+            trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
@@ -336,13 +339,13 @@ def test_run_market_data_calibration_executes_market_data_first_workflow(
     tick_data_path.write_text(
         "\n".join(
             [
-                "timestamp_utc,trade_price",
-                "2026-02-02T14:30:00Z,100.0",
-                "2026-02-02T15:00:00Z,101.0",
-                "2026-02-02T15:10:00Z,103.0",
-                "2026-02-02T20:59:00Z,102.0",
-                "2026-02-04T14:30:00Z,95.0",
-                "2026-02-04T14:40:00Z,98.0",
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T15:00:00Z,101.0,buy",
+                "2026-02-02T15:10:00Z,103.0,sell",
+                "2026-02-02T20:59:00Z,102.0,sell",
+                "2026-02-04T14:30:00Z,95.0,buy",
+                "2026-02-04T14:40:00Z,98.0,sell",
             ]
         ),
         encoding="utf-8",
@@ -355,6 +358,7 @@ def test_run_market_data_calibration_executes_market_data_first_workflow(
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
             trade_price_column="trade_price",
+            trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
@@ -381,13 +385,13 @@ def test_translate_market_data_request_full_with_option_surface_sets_option_refe
     tick_data_path.write_text(
         "\n".join(
             [
-                "timestamp_utc,trade_price",
-                "2026-02-02T14:30:00Z,100.0",
-                "2026-02-02T15:00:00Z,101.0",
-                "2026-02-02T15:10:00Z,103.0",
-                "2026-02-02T20:59:00Z,102.0",
-                "2026-02-04T14:30:00Z,95.0",
-                "2026-02-04T14:40:00Z,99.0",
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T15:00:00Z,101.0,buy",
+                "2026-02-02T15:10:00Z,103.0,sell",
+                "2026-02-02T20:59:00Z,102.0,sell",
+                "2026-02-04T14:30:00Z,95.0,buy",
+                "2026-02-04T14:40:00Z,99.0,sell",
             ]
         ),
         encoding="utf-8",
@@ -415,6 +419,7 @@ def test_translate_market_data_request_full_with_option_surface_sets_option_refe
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
             trade_price_column="trade_price",
+            trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",

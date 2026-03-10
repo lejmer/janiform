@@ -1,8 +1,9 @@
 import hashlib
 import inspect
 import json
+import annotationlib
 from collections.abc import Mapping
-from dataclasses import fields, is_dataclass
+from dataclasses import MISSING, fields, is_dataclass
 from difflib import unified_diff
 from enum import Enum
 from importlib import import_module
@@ -288,20 +289,57 @@ def _contract_model_field_names(contract_model_type: type[object]) -> list[str]:
 
 
 def _contract_model_signature(contract_model_type: type[object]) -> Optional[str]:
-    signature = _safe_signature(contract_model_type)
-    if signature is None:
-        return None
-
     if not is_dataclass(contract_model_type):
-        return signature
+        raw_signature = _resolve_signature(contract_model_type)
+        if raw_signature is None:
+            return None
 
-    raw_signature = inspect.signature(contract_model_type)
-    public_parameters = [
-        parameter
-        for parameter in raw_signature.parameters.values()
-        if not parameter.name.startswith("_")
-    ]
-    return str(raw_signature.replace(parameters=public_parameters))
+        return str(raw_signature)
+
+    return _dataclass_contract_model_signature(contract_model_type)
+
+
+def _dataclass_contract_model_signature(contract_model_type: type[object]) -> Optional[str]:
+    try:
+        annotation_strings = annotationlib.get_annotations(
+            contract_model_type,
+            format=annotationlib.Format.STRING,
+        )
+    except Exception:
+        annotation_strings = {}
+
+    parameters: list[str] = []
+    for field in fields(contract_model_type):
+        if field.name.startswith("_"):
+            continue
+
+        annotation_text = _format_contract_model_field_annotation(
+            annotation_strings.get(field.name),
+            field.type,
+        )
+        parameter_text = f"{field.name}: {annotation_text}"
+
+        if field.default is not MISSING:
+            parameter_text += f" = {field.default!r}"
+        elif field.default_factory is not MISSING:
+            parameter_text += " = <factory>"
+
+        parameters.append(parameter_text)
+
+    return f"({', '.join(parameters)}) -> 'None'"
+
+
+def _format_contract_model_field_annotation(
+    annotation_text: object,
+    fallback_annotation: object,
+) -> str:
+    if isinstance(annotation_text, str) and annotation_text.strip():
+        return repr(annotation_text)
+
+    if hasattr(fallback_annotation, "__name__"):
+        return repr(getattr(fallback_annotation, "__name__"))
+
+    return repr(str(fallback_annotation))
 
 
 def _public_method_signatures(class_type: type[object]) -> dict[str, str]:
@@ -341,10 +379,25 @@ def _snapshot_constant_value(value: object) -> Any:
 
 
 def _safe_signature(value: object) -> Optional[str]:
-    try:
-        return str(inspect.signature(value))
-    except (TypeError, ValueError):
+    signature = _resolve_signature(value)
+    if signature is None:
         return None
+
+    return str(signature)
+
+
+def _resolve_signature(value: object) -> Optional[inspect.Signature]:
+    try:
+        return inspect.signature(
+            value,
+            eval_str=False,
+            annotation_format=inspect.Format.STRING,
+        )
+    except (NameError, TypeError, ValueError):
+        try:
+            return inspect.signature(value)
+        except (NameError, TypeError, ValueError):
+            return None
 
 
 def _require_non_empty_string(mapping: Mapping[str, Any], field_name: str) -> str:

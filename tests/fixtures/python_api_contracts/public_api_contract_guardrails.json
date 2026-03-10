@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "a7dda4981972a2c1184326ae1ec3bb99666f1aeb9e30a8d46a35d5995ef2244b",
+  "approved_snapshot_sha256": "6e0d465d0f865fdc83cd727053891a14dc84dc18662dd702982ad5dd472482ab",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -64,6 +64,27 @@
       "rationale": "The simulation surface now lives in a package with private submodules, so public imports stay stable while API introspection records the defining submodule for shared contracts and workflow types.",
       "snapshot_sha256": "a7dda4981972a2c1184326ae1ec3bb99666f1aeb9e30a8d46a35d5995ef2244b",
       "summary": "Record janiform.simulation package-backed re-exports without module-origin shims."
+    },
+    {
+      "approved_on": "2026-03-10",
+      "docs_updated": [
+        "README.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
+        "docs/development/guides/seeded_tick_event_tape_schema.md"
+      ],
+      "rationale": "The public Python contracts now treat signed trade labels as the canonical Hawkes calibration input and expose seeded simulation as a priced fine path with derived event replay, so the approved snapshot must match the new design-faithful workflow surface.",
+      "snapshot_sha256": "66a69ecac6c6689f360bbc512bd82773444f1d012078dbd9bc33e7ea34f876b7",
+      "summary": "Record the signed-trade calibration surface and canonical seeded priced fine path."
+    },
+    {
+      "approved_on": "2026-03-10",
+      "docs_updated": [
+        "docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "The guardrail now snapshots stringified callable annotations so Linux and Windows produce the same approved public API signature records even when annotation evaluation availability differs between environments.",
+      "snapshot_sha256": "6e0d465d0f865fdc83cd727053891a14dc84dc18662dd702982ad5dd472482ab",
+      "summary": "Normalize public API guardrail signatures for cross-platform snapshot stability."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_1",

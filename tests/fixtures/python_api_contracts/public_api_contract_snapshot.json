@@ -66,11 +66,11 @@
         },
         "CalendarRegistry": {
           "base_classes": [],
-          "constructor_signature": "(registry_json: str) -> None",
+          "constructor_signature": "(registry_json: 'str') -> 'None'",
           "kind": "class",
           "origin_module": "janiform.calendar",
           "public_methods": {
-            "resolve_market_state": "(self, exchange_code: str, timestamp_utc: datetime.datetime) -> janiform.calendar.MarketState"
+            "resolve_market_state": "(self, exchange_code: 'str', timestamp_utc: 'datetime') -> 'MarketState'"
           },
           "qualname": "CalendarRegistry"
         },
@@ -109,7 +109,7 @@
         },
         "resolve_market_state": {
           "kind": "function",
-          "signature": "(registry_json: str, exchange_code: str, timestamp_utc: datetime.datetime) -> janiform.calendar.MarketState"
+          "signature": "(registry_json: 'str', exchange_code: 'str', timestamp_utc: 'datetime') -> 'MarketState'"
         }
       }
     },
@@ -176,6 +176,7 @@
         "CalibrationTickPriceInputPolicy",
         "CalibrationTimestampEventRecord",
         "CalibrationTimestampEventSessionFilter",
+        "CalibrationTradeSign",
         "CalibrationValidationError",
         "CalibrationValidationFailure",
         "DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE",
@@ -264,14 +265,14 @@
             "execution_mode"
           ],
           "kind": "contract_model",
-          "signature": "(checkpoint_reference: str, completed_stage: janiform.calibration._common.CalibrationStage, completed_stage_position: int, execution_mode: janiform.calibration._common.CalibrationExecutionMode) -> None"
+          "signature": "(checkpoint_reference: 'str', completed_stage: 'CalibrationStage', completed_stage_position: 'int', execution_mode: 'CalibrationExecutionMode') -> 'None'"
         },
         "CalibrationCoupledGapMarkConfiguration": {
           "field_names": [
             "sigma_g"
           ],
           "kind": "contract_model",
-          "signature": "(sigma_g: float) -> None"
+          "signature": "(sigma_g: 'float') -> 'None'"
         },
         "CalibrationDayOfWeekSeasonalityEstimatorSettings": {
           "field_names": [
@@ -279,7 +280,7 @@
             "pseudocount"
           ],
           "kind": "contract_model",
-          "signature": "(minimum_bucket_events: int, pseudocount: float) -> None"
+          "signature": "(minimum_bucket_events: 'int', pseudocount: 'float') -> 'None'"
         },
         "CalibrationDayOfYearSeasonalityEstimatorSettings": {
           "field_names": [
@@ -287,7 +288,7 @@
             "pseudocount"
           ],
           "kind": "contract_model",
-          "signature": "(minimum_bucket_events: int, pseudocount: float) -> None"
+          "signature": "(minimum_bucket_events: 'int', pseudocount: 'float') -> 'None'"
         },
         "CalibrationDoubleExponentialBaseShockConfiguration": {
           "field_names": [
@@ -296,7 +297,7 @@
             "eta_minus"
           ],
           "kind": "contract_model",
-          "signature": "(probability_positive: float, eta_plus: float, eta_minus: float) -> None"
+          "signature": "(probability_positive: 'float', eta_plus: 'float', eta_minus: 'float') -> 'None'"
         },
         "CalibrationDuplicateRecordPolicy": {
           "kind": "enum",
@@ -338,7 +339,7 @@
             "run_id"
           ],
           "kind": "contract_model",
-          "signature": "(failure_kind: str, error_message: str | None = None, stage: janiform.calibration._common.CalibrationStage | None = None, checkpoint_reference: str | None = None, artifact_reference: str | None = None, run_id: str | None = None) -> None"
+          "signature": "(failure_kind: 'str', error_message: 'Optional[str]' = None, stage: 'Optional[CalibrationStage]' = None, checkpoint_reference: 'Optional[str]' = None, artifact_reference: 'Optional[str]' = None, run_id: 'Optional[str]' = None) -> 'None'"
         },
         "CalibrationHandoffTransport": {
           "kind": "enum",
@@ -365,7 +366,7 @@
             "objective_terms"
           ],
           "kind": "contract_model",
-          "signature": "(candidate_id: str, lambda_bar: float, beta: float, structured_alpha: janiform.calibration._staged.CalibrationHawkesStructuredAlphaParameterization, structured_rho: janiform.calibration._staged.CalibrationHawkesStructuredRhoParameterization, self_dominance_policy: janiform.calibration._staged.CalibrationHawkesStructuredRhoSelfDominancePolicy | None = None, stability_numeric_tolerance: float = 0.0, objective_terms: tuple[janiform.calibration._staged.CalibrationObjectiveTermInput, ...] = ()) -> None"
+          "signature": "(candidate_id: 'str', lambda_bar: 'float', beta: 'float', structured_alpha: 'CalibrationHawkesStructuredAlphaParameterization', structured_rho: 'CalibrationHawkesStructuredRhoParameterization', self_dominance_policy: 'Optional[CalibrationHawkesStructuredRhoSelfDominancePolicy]' = None, stability_numeric_tolerance: 'float' = 0.0, objective_terms: 'tuple[CalibrationObjectiveTermInput, ...]' = ()) -> 'None'"
         },
         "CalibrationHawkesStructuredAlphaParameterization": {
           "field_names": [
@@ -375,7 +376,7 @@
             "delta_cross"
           ],
           "kind": "contract_model",
-          "signature": "(a_self: float, a_cross: float, delta_self: float, delta_cross: float) -> None"
+          "signature": "(a_self: 'float', a_cross: 'float', delta_self: 'float', delta_cross: 'float') -> 'None'"
         },
         "CalibrationHawkesStructuredRhoParameterization": {
           "field_names": [
@@ -385,14 +386,14 @@
             "delta_cross_r"
           ],
           "kind": "contract_model",
-          "signature": "(r_self: float, r_cross: float, delta_self_r: float, delta_cross_r: float) -> None"
+          "signature": "(r_self: 'float', r_cross: 'float', delta_self_r: 'float', delta_cross_r: 'float') -> 'None'"
         },
         "CalibrationHawkesStructuredRhoSelfDominancePolicy": {
           "field_names": [
             "minimum_self_to_cross_ratio"
           ],
           "kind": "contract_model",
-          "signature": "(minimum_self_to_cross_ratio: float) -> None"
+          "signature": "(minimum_self_to_cross_ratio: 'float') -> 'None'"
         },
         "CalibrationInputFileFormat": {
           "kind": "enum",
@@ -418,7 +419,7 @@
             "provenance_label"
           ],
           "kind": "contract_model",
-          "signature": "(path: str, file_format: janiform.calibration._common.CalibrationInputFileFormat, provenance_label: str) -> None"
+          "signature": "(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str') -> 'None'"
         },
         "CalibrationIntradaySeasonalityEstimatorSettings": {
           "field_names": [
@@ -429,7 +430,7 @@
             "pseudocount"
           ],
           "kind": "contract_model",
-          "signature": "(minutes_per_bin: int, smoothing_kernel: janiform.calibration._staged.CalibrationIntradaySmoothingKernel, smoothing_bandwidth_bins: float, minimum_bin_events: int, pseudocount: float) -> None"
+          "signature": "(minutes_per_bin: 'int', smoothing_kernel: 'CalibrationIntradaySmoothingKernel', smoothing_bandwidth_bins: 'float', minimum_bin_events: 'int', pseudocount: 'float') -> 'None'"
         },
         "CalibrationIntradaySmoothingKernel": {
           "kind": "enum",
@@ -450,7 +451,7 @@
             "event_identifier_column"
           ],
           "kind": "contract_model",
-          "signature": "(event_timestamp_column: str, event_identifier_column: str | None = None) -> None"
+          "signature": "(event_timestamp_column: 'str', event_identifier_column: 'Optional[str]' = None) -> 'None'"
         },
         "CalibrationKnownNewsInput": {
           "field_names": [
@@ -458,7 +459,7 @@
             "calendar_timezone"
           ],
           "kind": "contract_model",
-          "signature": "(calendar_source: janiform.calibration._common.CalibrationInputFileReference, calendar_timezone: str | None = None) -> None"
+          "signature": "(calendar_source: 'CalibrationInputFileReference', calendar_timezone: 'Optional[str]' = None) -> 'None'"
         },
         "CalibrationMarketDataColumnMapping": {
           "field_names": [
@@ -467,7 +468,7 @@
             "known_news"
           ],
           "kind": "contract_model",
-          "signature": "(tick_data: janiform.calibration._common.CalibrationTickDataColumnMapping, option_surface: janiform.calibration._common.CalibrationOptionSurfaceColumnMapping | None = None, known_news: janiform.calibration._common.CalibrationKnownNewsColumnMapping | None = None) -> None"
+          "signature": "(tick_data: 'CalibrationTickDataColumnMapping', option_surface: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, known_news: 'Optional[CalibrationKnownNewsColumnMapping]' = None) -> 'None'"
         },
         "CalibrationMarketDataNormalizationPolicy": {
           "field_names": [
@@ -478,7 +479,7 @@
             "option_quote_input_policy"
           ],
           "kind": "contract_model",
-          "signature": "(timestamp_timezone: str, sort_records_by_timestamp: bool = True, duplicate_record_policy: janiform.calibration._common.CalibrationDuplicateRecordPolicy = <CalibrationDuplicateRecordPolicy.ERROR: 'error'>, tick_price_input_policy: janiform.calibration._common.CalibrationTickPriceInputPolicy | None = None, option_quote_input_policy: janiform.calibration._common.CalibrationOptionQuoteInputPolicy | None = None) -> None"
+          "signature": "(timestamp_timezone: 'str', sort_records_by_timestamp: 'bool' = True, duplicate_record_policy: 'CalibrationDuplicateRecordPolicy' = <CalibrationDuplicateRecordPolicy.ERROR: 'error'>, tick_price_input_policy: 'Optional[CalibrationTickPriceInputPolicy]' = None, option_quote_input_policy: 'Optional[CalibrationOptionQuoteInputPolicy]' = None) -> 'None'"
         },
         "CalibrationMarketDataOutputPreferences": {
           "field_names": [
@@ -488,7 +489,7 @@
             "emit_input_provenance_report"
           ],
           "kind": "contract_model",
-          "signature": "(execution_mode: janiform.calibration._common.CalibrationExecutionMode = <CalibrationExecutionMode.MEMORY: 'memory'>, disk_checkpoint_directory: str | None = None, emit_derived_staged_execution_input: bool = False, emit_input_provenance_report: bool = True) -> None"
+          "signature": "(execution_mode: 'CalibrationExecutionMode' = <CalibrationExecutionMode.MEMORY: 'memory'>, disk_checkpoint_directory: 'Optional[str]' = None, emit_derived_staged_execution_input: 'bool' = False, emit_input_provenance_report: 'bool' = True) -> 'None'"
         },
         "CalibrationMarketDataWorkflowScope": {
           "kind": "enum",
@@ -514,7 +515,7 @@
             "observed_score"
           ],
           "kind": "contract_model",
-          "signature": "(term_id: str, weight: float, observed_score: float) -> None"
+          "signature": "(term_id: 'str', weight: 'float', observed_score: 'float') -> 'None'"
         },
         "CalibrationOptimizerSettings": {
           "field_names": [
@@ -525,7 +526,7 @@
             "constraint_penalty_weight"
           ],
           "kind": "contract_model",
-          "signature": "(solver_name: str, max_iterations: int, absolute_tolerance: float, relative_tolerance: float, constraint_penalty_weight: float) -> None"
+          "signature": "(solver_name: 'str', max_iterations: 'int', absolute_tolerance: 'float', relative_tolerance: 'float', constraint_penalty_weight: 'float') -> 'None'"
         },
         "CalibrationOptionQuoteInputPolicy": {
           "kind": "enum",
@@ -556,7 +557,7 @@
             "implied_volatility_column"
           ],
           "kind": "contract_model",
-          "signature": "(quote_timestamp_column: str, expiry_timestamp_column: str, strike_column: str, option_type_column: str, mid_price_column: str | None = None, bid_column: str | None = None, ask_column: str | None = None, implied_volatility_column: str | None = None) -> None"
+          "signature": "(quote_timestamp_column: 'str', expiry_timestamp_column: 'str', strike_column: 'str', option_type_column: 'str', mid_price_column: 'Optional[str]' = None, bid_column: 'Optional[str]' = None, ask_column: 'Optional[str]' = None, implied_volatility_column: 'Optional[str]' = None) -> 'None'"
         },
         "CalibrationResumeSettings": {
           "field_names": [
@@ -565,7 +566,7 @@
             "checkpoint_reference"
           ],
           "kind": "contract_model",
-          "signature": "(source: janiform.calibration._common.CalibrationResumeSource, resume_from_stage: janiform.calibration._common.CalibrationStage | None = None, checkpoint_reference: str | None = None) -> None"
+          "signature": "(source: 'CalibrationResumeSource', resume_from_stage: 'Optional[CalibrationStage]' = None, checkpoint_reference: 'Optional[str]' = None) -> 'None'"
         },
         "CalibrationResumeSource": {
           "kind": "enum",
@@ -585,7 +586,7 @@
             "material_gap_absolute_return_tolerance"
           ],
           "kind": "contract_model",
-          "signature": "(material_gap_absolute_return_tolerance: float) -> None"
+          "signature": "(material_gap_absolute_return_tolerance: 'float') -> 'None'"
         },
         "CalibrationReturnComponentsDetectedIntradayJumpCandidate": {
           "field_names": [
@@ -594,7 +595,7 @@
             "post_shock_activity_lift"
           ],
           "kind": "contract_model",
-          "signature": "(jump_timestamp_utc_nanos: int, jump_return: float, post_shock_activity_lift: float) -> None"
+          "signature": "(jump_timestamp_utc_nanos: 'int', jump_return: 'float', post_shock_activity_lift: 'float') -> 'None'"
         },
         "CalibrationReturnComponentsKnownNewsCalendarInput": {
           "field_names": [
@@ -602,7 +603,7 @@
             "scheduled_event_timestamps_utc_nanos"
           ],
           "kind": "contract_model",
-          "signature": "(source_window: janiform.calibration._staged.CalibrationReturnComponentsSignalSourceWindow, scheduled_event_timestamps_utc_nanos: tuple[int, ...]) -> None"
+          "signature": "(source_window: 'CalibrationReturnComponentsSignalSourceWindow', scheduled_event_timestamps_utc_nanos: 'tuple[int, ...]') -> 'None'"
         },
         "CalibrationReturnComponentsKnownNewsReturnSample": {
           "field_names": [
@@ -611,7 +612,7 @@
             "closed_window_gap_return"
           ],
           "kind": "contract_model",
-          "signature": "(event_timestamp_utc_nanos: int, open_window_jump_return: float, closed_window_gap_return: float) -> None"
+          "signature": "(event_timestamp_utc_nanos: 'int', open_window_jump_return: 'float', closed_window_gap_return: 'float') -> 'None'"
         },
         "CalibrationReturnComponentsObjectiveMetricWeights": {
           "field_names": [
@@ -620,7 +621,7 @@
             "activity_coupling_fit_weight"
           ],
           "kind": "contract_model",
-          "signature": "(open_jump_fit_weight: float, closed_gap_fit_weight: float, activity_coupling_fit_weight: float) -> None"
+          "signature": "(open_jump_fit_weight: 'float', closed_gap_fit_weight: 'float', activity_coupling_fit_weight: 'float') -> 'None'"
         },
         "CalibrationReturnComponentsObservedCloseOpenBoundaryObservation": {
           "field_names": [
@@ -631,7 +632,7 @@
             "post_shock_activity_lift"
           ],
           "kind": "contract_model",
-          "signature": "(close_timestamp_utc_nanos: int, close_price: float, open_timestamp_utc_nanos: int, open_price: float, post_shock_activity_lift: float) -> None"
+          "signature": "(close_timestamp_utc_nanos: 'int', close_price: 'float', open_timestamp_utc_nanos: 'int', open_price: 'float', post_shock_activity_lift: 'float') -> 'None'"
         },
         "CalibrationReturnComponentsSignalSourceWindow": {
           "field_names": [
@@ -639,7 +640,7 @@
             "window_end_utc_nanos"
           ],
           "kind": "contract_model",
-          "signature": "(window_start_utc_nanos: int, window_end_utc_nanos: int) -> None"
+          "signature": "(window_start_utc_nanos: 'int', window_end_utc_nanos: 'int') -> 'None'"
         },
         "CalibrationReturnComponentsStageCandidateGenerationInput": {
           "field_names": [
@@ -653,7 +654,7 @@
             "objective_metric_weights"
           ],
           "kind": "contract_model",
-          "signature": "(known_news_calendar: janiform.calibration._staged.CalibrationReturnComponentsKnownNewsCalendarInput, realized_known_news_return_samples: tuple[janiform.calibration._staged.CalibrationReturnComponentsKnownNewsReturnSample, ...], detected_intraday_jump_candidates: tuple[janiform.calibration._staged.CalibrationReturnComponentsDetectedIntradayJumpCandidate, ...], observed_close_open_boundary_observations: tuple[janiform.calibration._staged.CalibrationReturnComponentsObservedCloseOpenBoundaryObservation, ...], close_open_gap_detection_policy: janiform.calibration._staged.CalibrationReturnComponentsCloseOpenGapDetectionPolicy, nig_shared_plus_shift_candidates: tuple[janiform.pricing.NigSharedPlusShiftConfiguration, ...], shared_mark_law_template: janiform.calibration._staged.CalibrationSharedNewsMarkLawConfiguration, objective_metric_weights: janiform.calibration._staged.CalibrationReturnComponentsObjectiveMetricWeights) -> None"
+          "signature": "(known_news_calendar: 'CalibrationReturnComponentsKnownNewsCalendarInput', realized_known_news_return_samples: 'tuple[CalibrationReturnComponentsKnownNewsReturnSample, ...]', detected_intraday_jump_candidates: 'tuple[CalibrationReturnComponentsDetectedIntradayJumpCandidate, ...]', observed_close_open_boundary_observations: 'tuple[CalibrationReturnComponentsObservedCloseOpenBoundaryObservation, ...]', close_open_gap_detection_policy: 'CalibrationReturnComponentsCloseOpenGapDetectionPolicy', nig_shared_plus_shift_candidates: 'tuple[NigSharedPlusShiftConfiguration, ...]', shared_mark_law_template: 'CalibrationSharedNewsMarkLawConfiguration', objective_metric_weights: 'CalibrationReturnComponentsObjectiveMetricWeights') -> 'None'"
         },
         "CalibrationRunDataInputs": {
           "field_names": [
@@ -662,7 +663,7 @@
             "option_surface_data_reference"
           ],
           "kind": "contract_model",
-          "signature": "(exchange_code: str, trade_events_data_reference: str, option_surface_data_reference: str | None = None) -> None"
+          "signature": "(exchange_code: 'str', trade_events_data_reference: 'str', option_surface_data_reference: 'Optional[str]' = None) -> 'None'"
         },
         "CalibrationRunSeedSettings": {
           "field_names": [
@@ -670,7 +671,7 @@
             "stage_seed_overrides"
           ],
           "kind": "contract_model",
-          "signature": "(global_seed: int, stage_seed_overrides: tuple[janiform.calibration._common.CalibrationStageSeedOverride, ...] = ()) -> None"
+          "signature": "(global_seed: 'int', stage_seed_overrides: 'tuple[CalibrationStageSeedOverride, ...]' = ()) -> 'None'"
         },
         "CalibrationScheduledEventOverlay": {
           "field_names": [
@@ -683,7 +684,7 @@
             "source_label"
           ],
           "kind": "contract_model",
-          "signature": "(overlay_id: str, start_timestamp_utc_nanos: int, end_timestamp_utc_nanos: int, log_adjustment: float, precedence: int, enabled: bool, source_label: str) -> None"
+          "signature": "(overlay_id: 'str', start_timestamp_utc_nanos: 'int', end_timestamp_utc_nanos: 'int', log_adjustment: 'float', precedence: 'int', enabled: 'bool', source_label: 'str') -> 'None'"
         },
         "CalibrationSeasonalityStageExecutionInput": {
           "field_names": [
@@ -694,7 +695,7 @@
             "estimator_version_override"
           ],
           "kind": "contract_model",
-          "signature": "(timestamp_event_records: tuple[janiform.calibration._staged.CalibrationTimestampEventRecord, ...], scheduled_event_overlays: tuple[janiform.calibration._staged.CalibrationScheduledEventOverlay, ...] = (), settings: janiform.calibration._staged.CalibrationSeasonalityStageExecutionSettings | None = None, dataset_id_override: str | None = None, estimator_version_override: str | None = None) -> None"
+          "signature": "(timestamp_event_records: 'tuple[CalibrationTimestampEventRecord, ...]', scheduled_event_overlays: 'tuple[CalibrationScheduledEventOverlay, ...]' = (), settings: 'Optional[CalibrationSeasonalityStageExecutionSettings]' = None, dataset_id_override: 'Optional[str]' = None, estimator_version_override: 'Optional[str]' = None) -> 'None'"
         },
         "CalibrationSeasonalityStageExecutionSettings": {
           "field_names": [
@@ -705,7 +706,7 @@
             "day_of_year_settings"
           ],
           "kind": "contract_model",
-          "signature": "(session_filter: janiform.calibration._staged.CalibrationTimestampEventSessionFilter, sparse_hour_event_threshold: int, intraday_settings: janiform.calibration._staged.CalibrationIntradaySeasonalityEstimatorSettings, day_of_week_settings: janiform.calibration._staged.CalibrationDayOfWeekSeasonalityEstimatorSettings, day_of_year_settings: janiform.calibration._staged.CalibrationDayOfYearSeasonalityEstimatorSettings) -> None"
+          "signature": "(session_filter: 'CalibrationTimestampEventSessionFilter', sparse_hour_event_threshold: 'int', intraday_settings: 'CalibrationIntradaySeasonalityEstimatorSettings', day_of_week_settings: 'CalibrationDayOfWeekSeasonalityEstimatorSettings', day_of_year_settings: 'CalibrationDayOfYearSeasonalityEstimatorSettings') -> 'None'"
         },
         "CalibrationSessionConfigurationInput": {
           "field_names": [
@@ -714,7 +715,7 @@
             "session_timezone"
           ],
           "kind": "contract_model",
-          "signature": "(exchange_code: str, session_definition_source: janiform.calibration._common.CalibrationInputFileReference, session_timezone: str) -> None"
+          "signature": "(exchange_code: 'str', session_definition_source: 'CalibrationInputFileReference', session_timezone: 'str') -> 'None'"
         },
         "CalibrationSharedNewsMarkLawConfiguration": {
           "field_names": [
@@ -723,7 +724,7 @@
             "coupled_gap_marks"
           ],
           "kind": "contract_model",
-          "signature": "(gamma_severity_marks: janiform.pricing.GammaSeverityMarkConfiguration, double_exponential_base_shock: janiform.calibration._staged.CalibrationDoubleExponentialBaseShockConfiguration, coupled_gap_marks: janiform.calibration._staged.CalibrationCoupledGapMarkConfiguration) -> None"
+          "signature": "(gamma_severity_marks: 'GammaSeverityMarkConfiguration', double_exponential_base_shock: 'CalibrationDoubleExponentialBaseShockConfiguration', coupled_gap_marks: 'CalibrationCoupledGapMarkConfiguration') -> 'None'"
         },
         "CalibrationStage": {
           "kind": "enum",
@@ -763,7 +764,7 @@
             "artifact_reference"
           ],
           "kind": "contract_model",
-          "signature": "(from_stage: janiform.calibration._common.CalibrationStage, to_stage: janiform.calibration._common.CalibrationStage, transport: janiform.calibration._common.CalibrationHandoffTransport, artifact_reference: str | None = None) -> None"
+          "signature": "(from_stage: 'CalibrationStage', to_stage: 'CalibrationStage', transport: 'CalibrationHandoffTransport', artifact_reference: 'Optional[str]' = None) -> 'None'"
         },
         "CalibrationStageReport": {
           "field_names": [
@@ -776,7 +777,7 @@
             "failure"
           ],
           "kind": "contract_model",
-          "signature": "(stage_report_kind: janiform.calibration._common.CalibrationStage, stage: janiform.calibration._common.CalibrationStage, status: janiform.calibration._common.CalibrationStageExecutionStatus, run_id: str, execution_mode: janiform.calibration._common.CalibrationExecutionMode, handoff_policy: str, failure: janiform.calibration._staged.CalibrationFailureDetails | None = None) -> None"
+          "signature": "(stage_report_kind: 'CalibrationStage', stage: 'CalibrationStage', status: 'CalibrationStageExecutionStatus', run_id: 'str', execution_mode: 'CalibrationExecutionMode', handoff_policy: 'str', failure: 'Optional[CalibrationFailureDetails]' = None) -> 'None'"
         },
         "CalibrationStageSeedOverride": {
           "field_names": [
@@ -784,7 +785,7 @@
             "seed"
           ],
           "kind": "contract_model",
-          "signature": "(stage: janiform.calibration._common.CalibrationStage, seed: int) -> None"
+          "signature": "(stage: 'CalibrationStage', seed: 'int') -> 'None'"
         },
         "CalibrationStageSolverSettings": {
           "field_names": [
@@ -792,26 +793,27 @@
             "optimizer_settings"
           ],
           "kind": "contract_model",
-          "signature": "(stage: janiform.calibration._common.CalibrationStage, optimizer_settings: janiform.calibration._common.CalibrationOptimizerSettings) -> None"
+          "signature": "(stage: 'CalibrationStage', optimizer_settings: 'CalibrationOptimizerSettings') -> 'None'"
         },
         "CalibrationStagedExecutionRuntimeResources": {
           "field_names": [
             "disk_checkpoint_directory"
           ],
           "kind": "contract_model",
-          "signature": "(disk_checkpoint_directory: str | None = None) -> None"
+          "signature": "(disk_checkpoint_directory: 'Optional[str]' = None) -> 'None'"
         },
         "CalibrationTickDataColumnMapping": {
           "field_names": [
             "timestamp_column",
             "price_column",
             "trade_price_column",
+            "trade_sign_column",
             "bid_column",
             "ask_column",
             "close_price_column"
           ],
           "kind": "contract_model",
-          "signature": "(timestamp_column: str, price_column: str | None = None, trade_price_column: str | None = None, bid_column: str | None = None, ask_column: str | None = None, close_price_column: str | None = None) -> None"
+          "signature": "(timestamp_column: 'str', price_column: 'Optional[str]' = None, trade_price_column: 'Optional[str]' = None, trade_sign_column: 'Optional[str]' = None, bid_column: 'Optional[str]' = None, ask_column: 'Optional[str]' = None, close_price_column: 'Optional[str]' = None) -> 'None'"
         },
         "CalibrationTickPriceInputPolicy": {
           "kind": "enum",
@@ -840,7 +842,7 @@
             "timestamp_utc_nanos"
           ],
           "kind": "contract_model",
-          "signature": "(source_record_position: int, timestamp_utc_nanos: int) -> None"
+          "signature": "(source_record_position: 'int', timestamp_utc_nanos: 'int') -> 'None'"
         },
         "CalibrationTimestampEventSessionFilter": {
           "kind": "enum",
@@ -859,6 +861,19 @@
             }
           ]
         },
+        "CalibrationTradeSign": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "BUY",
+              "value": "buy"
+            },
+            {
+              "name": "SELL",
+              "value": "sell"
+            }
+          ]
+        },
         "CalibrationValidationError": {
           "base_classes": [
             "JaniformValidationError",
@@ -866,7 +881,7 @@
             "Exception",
             "BaseException"
           ],
-          "constructor_signature": "(failure: janiform.errors.ContractValidationFailure) -> None",
+          "constructor_signature": "(failure: 'ContractValidationFailure') -> 'None'",
           "kind": "exception_class",
           "origin_module": "janiform.calibration._common",
           "qualname": "CalibrationValidationError"
@@ -881,7 +896,7 @@
             "context_items"
           ],
           "kind": "contract_model",
-          "signature": "(error_id: str, workflow: str, entrypoint: str, field_path: str, message: str, context_items: tuple[tuple[str, ErrorContextValue], ...] = ()) -> None"
+          "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
         },
         "DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE": {
           "kind": "constant",
@@ -908,7 +923,7 @@
             "material_close_open_gap_count"
           ],
           "kind": "contract_model",
-          "signature": "(workflow_scope: janiform.calibration._common.CalibrationMarketDataWorkflowScope, selected_stages: tuple[janiform.calibration._common.CalibrationStage, ...], executed_preprocessing_steps: tuple[str, ...], tick_record_count: int, option_surface_record_count: int, known_news_event_count: int, known_news_events_outside_source_window_count: int, session_open_tick_count: int, session_closed_tick_count: int, known_news_open_event_count: int, known_news_closed_event_count: int, seasonality_overlay_count: int, hawkes_candidate_count: int, known_news_return_sample_count: int, intraday_jump_candidate_count: int, close_open_boundary_observation_count: int, material_close_open_gap_count: int) -> None"
+          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', seasonality_overlay_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
         },
         "MarketDataCalibrationPreparationProvenance": {
           "field_names": [
@@ -925,7 +940,7 @@
             "deterministic_defaults_applied"
           ],
           "kind": "contract_model",
-          "signature": "(tick_data_summary: janiform.calibration._market_data.MarketDataCalibrationSourceSummary, option_surface_summary: janiform.calibration._market_data.MarketDataCalibrationSourceSummary | None, known_news_summary: janiform.calibration._market_data.MarketDataCalibrationSourceSummary | None, normalization_policy: janiform.calibration._common.CalibrationMarketDataNormalizationPolicy, workflow_scope: janiform.calibration._common.CalibrationMarketDataWorkflowScope, selected_stages: tuple[janiform.calibration._common.CalibrationStage, ...], session_definition_path: str, derived_trade_events_data_reference: str, derived_option_surface_data_reference: str | None, derivation_policies: tuple[str, ...], deterministic_defaults_applied: tuple[str, ...]) -> None"
+          "signature": "(tick_data_summary: 'MarketDataCalibrationSourceSummary', option_surface_summary: 'Optional[MarketDataCalibrationSourceSummary]', known_news_summary: 'Optional[MarketDataCalibrationSourceSummary]', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', session_definition_path: 'str', derived_trade_events_data_reference: 'str', derived_option_surface_data_reference: 'Optional[str]', derivation_policies: 'tuple[str, ...]', deterministic_defaults_applied: 'tuple[str, ...]') -> 'None'"
         },
         "MarketDataCalibrationRequest": {
           "field_names": [
@@ -941,7 +956,7 @@
             "known_news_inputs"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, run_id: str, tick_data_source: janiform.calibration._common.CalibrationInputFileReference, session_configuration: janiform.calibration._common.CalibrationSessionConfigurationInput, column_mapping: janiform.calibration._common.CalibrationMarketDataColumnMapping, workflow_scope: janiform.calibration._common.CalibrationMarketDataWorkflowScope, normalization_policy: janiform.calibration._common.CalibrationMarketDataNormalizationPolicy, output_preferences: janiform.calibration._common.CalibrationMarketDataOutputPreferences, option_surface_source: janiform.calibration._common.CalibrationInputFileReference | None = None, known_news_inputs: janiform.calibration._common.CalibrationKnownNewsInput | None = None) -> None"
+          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', column_mapping: 'CalibrationMarketDataColumnMapping', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', option_surface_source: 'Optional[CalibrationInputFileReference]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None) -> 'None'"
         },
         "MarketDataCalibrationSourceSummary": {
           "field_names": [
@@ -957,7 +972,7 @@
             "value_mapping_policy"
           ],
           "kind": "contract_model",
-          "signature": "(path: str, file_format: janiform.calibration._common.CalibrationInputFileFormat, provenance_label: str, source_row_count: int, retained_row_count: int, dropped_duplicate_row_count: int, sort_records_by_timestamp: bool, applied_timestamp_timezone: str | None, canonical_value_field: str | None = None, value_mapping_policy: str | None = None) -> None"
+          "signature": "(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', source_row_count: 'int', retained_row_count: 'int', dropped_duplicate_row_count: 'int', sort_records_by_timestamp: 'bool', applied_timestamp_timezone: 'Optional[str]', canonical_value_field: 'Optional[str]' = None, value_mapping_policy: 'Optional[str]' = None) -> 'None'"
         },
         "PreparedMarketDataCalibration": {
           "field_names": [
@@ -968,7 +983,7 @@
             "provenance"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, request: janiform.calibration._requests.MarketDataCalibrationRequest, execution_input: janiform.calibration._staged.StagedCalibrationExecutionInput, diagnostics: janiform.calibration._market_data.MarketDataCalibrationPreparationDiagnostics, provenance: janiform.calibration._market_data.MarketDataCalibrationPreparationProvenance) -> None"
+          "signature": "(schema_version: 'str', request: 'MarketDataCalibrationRequest', execution_input: 'StagedCalibrationExecutionInput', diagnostics: 'MarketDataCalibrationPreparationDiagnostics', provenance: 'MarketDataCalibrationPreparationProvenance') -> 'None'"
         },
         "StagedCalibrationExecutionInput": {
           "field_names": [
@@ -980,7 +995,7 @@
             "runtime_resources"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, request: janiform.calibration._requests.StagedCalibrationRequest, seasonality_stage_input: janiform.calibration._staged.CalibrationSeasonalityStageExecutionInput | None = None, hawkes_candidate_inputs: tuple[janiform.calibration._staged.CalibrationHawkesStageCandidateInput, ...] | None = None, return_components_candidate_generation_input: janiform.calibration._staged.CalibrationReturnComponentsStageCandidateGenerationInput | None = None, runtime_resources: janiform.calibration._staged.CalibrationStagedExecutionRuntimeResources | None = None) -> None"
+          "signature": "(schema_version: 'str', request: 'StagedCalibrationRequest', seasonality_stage_input: 'Optional[CalibrationSeasonalityStageExecutionInput]' = None, hawkes_candidate_inputs: 'Optional[tuple[CalibrationHawkesStageCandidateInput, ...]]' = None, return_components_candidate_generation_input: 'Optional[CalibrationReturnComponentsStageCandidateGenerationInput]' = None, runtime_resources: 'Optional[CalibrationStagedExecutionRuntimeResources]' = None) -> 'None'"
         },
         "StagedCalibrationRequest": {
           "field_names": [
@@ -994,7 +1009,7 @@
             "resume_settings"
           ],
           "kind": "contract_model",
-          "signature": "(run_id: str, data_inputs: janiform.calibration._common.CalibrationRunDataInputs, execution_mode: janiform.calibration._common.CalibrationExecutionMode = <CalibrationExecutionMode.MEMORY: 'memory'>, selected_stages: tuple[janiform.calibration._common.CalibrationStage, ...] = (), seed_settings: janiform.calibration._common.CalibrationRunSeedSettings | None = None, optimizer_settings_by_stage: tuple[janiform.calibration._common.CalibrationStageSolverSettings, ...] = (), stage_handoffs: tuple[janiform.calibration._common.CalibrationStageHandoff, ...] = (), resume_settings: janiform.calibration._common.CalibrationResumeSettings | None = None) -> None"
+          "signature": "(run_id: 'str', data_inputs: 'CalibrationRunDataInputs', execution_mode: 'CalibrationExecutionMode' = <CalibrationExecutionMode.MEMORY: 'memory'>, selected_stages: 'tuple[CalibrationStage, ...]' = (), seed_settings: 'Optional[CalibrationRunSeedSettings]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), stage_handoffs: 'tuple[CalibrationStageHandoff, ...]' = (), resume_settings: 'Optional[CalibrationResumeSettings]' = None) -> 'None'"
         },
         "StagedCalibrationResponse": {
           "field_names": [
@@ -1011,67 +1026,67 @@
             "failure"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, failure_triage_policy: str, run_id: str, execution_mode: janiform.calibration._common.CalibrationExecutionMode, status: janiform.calibration._common.CalibrationStageExecutionStatus, stage_reports: tuple[janiform.calibration._staged.CalibrationStageReport, ...], emitted_checkpoints: tuple[janiform.calibration._staged.CalibrationCheckpointMetadata, ...], resumed_from_checkpoint_reference: str | None = None, resumed_from_last_successful_stage: janiform.calibration._common.CalibrationStage | None = None, started_from_stage: janiform.calibration._common.CalibrationStage | None = None, failure: janiform.calibration._staged.CalibrationFailureDetails | None = None) -> None"
+          "signature": "(schema_version: 'str', failure_triage_policy: 'str', run_id: 'str', execution_mode: 'CalibrationExecutionMode', status: 'CalibrationStageExecutionStatus', stage_reports: 'tuple[CalibrationStageReport, ...]', emitted_checkpoints: 'tuple[CalibrationCheckpointMetadata, ...]', resumed_from_checkpoint_reference: 'Optional[str]' = None, resumed_from_last_successful_stage: 'Optional[CalibrationStage]' = None, started_from_stage: 'Optional[CalibrationStage]' = None, failure: 'Optional[CalibrationFailureDetails]' = None) -> 'None'"
         },
         "deserialize_market_data_calibration_request": {
           "kind": "function",
-          "signature": "(payload_json: str) -> janiform.calibration._requests.MarketDataCalibrationRequest"
+          "signature": "(payload_json: 'str') -> 'MarketDataCalibrationRequest'"
         },
         "deserialize_staged_calibration_execution_input": {
           "kind": "function",
-          "signature": "(payload_json: str) -> janiform.calibration._staged.StagedCalibrationExecutionInput"
+          "signature": "(payload_json: 'str') -> 'StagedCalibrationExecutionInput'"
         },
         "deserialize_staged_calibration_request": {
           "kind": "function",
-          "signature": "(payload_json: str) -> janiform.calibration._requests.StagedCalibrationRequest"
+          "signature": "(payload_json: 'str') -> 'StagedCalibrationRequest'"
         },
         "deserialize_staged_calibration_response": {
           "kind": "function",
-          "signature": "(payload_json: str) -> janiform.calibration._staged.StagedCalibrationResponse"
+          "signature": "(payload_json: 'str') -> 'StagedCalibrationResponse'"
         },
         "prepare_market_data_calibration": {
           "kind": "function",
-          "signature": "(request: janiform.calibration._requests.MarketDataCalibrationRequest) -> janiform.calibration._market_data.PreparedMarketDataCalibration"
+          "signature": "(request: 'MarketDataCalibrationRequest') -> 'PreparedMarketDataCalibration'"
         },
         "run_market_data_calibration": {
           "kind": "function",
-          "signature": "(request: janiform.calibration._requests.MarketDataCalibrationRequest) -> janiform.calibration._staged.StagedCalibrationResponse"
+          "signature": "(request: 'MarketDataCalibrationRequest') -> 'StagedCalibrationResponse'"
         },
         "run_staged_calibration": {
           "kind": "function",
-          "signature": "(execution_input: janiform.calibration._staged.StagedCalibrationExecutionInput, *, calendar_registry: janiform.calendar.CalendarRegistry) -> janiform.calibration._staged.StagedCalibrationResponse"
+          "signature": "(execution_input: 'StagedCalibrationExecutionInput', *, calendar_registry: 'CalendarRegistry') -> 'StagedCalibrationResponse'"
         },
         "serialize_market_data_calibration_request": {
           "kind": "function",
-          "signature": "(request: janiform.calibration._requests.MarketDataCalibrationRequest) -> str"
+          "signature": "(request: 'MarketDataCalibrationRequest') -> 'str'"
         },
         "serialize_staged_calibration_execution_input": {
           "kind": "function",
-          "signature": "(execution_input: janiform.calibration._staged.StagedCalibrationExecutionInput) -> str"
+          "signature": "(execution_input: 'StagedCalibrationExecutionInput') -> 'str'"
         },
         "serialize_staged_calibration_request": {
           "kind": "function",
-          "signature": "(request: janiform.calibration._requests.StagedCalibrationRequest) -> str"
+          "signature": "(request: 'StagedCalibrationRequest') -> 'str'"
         },
         "serialize_staged_calibration_response": {
           "kind": "function",
-          "signature": "(response: janiform.calibration._staged.StagedCalibrationResponse) -> str"
+          "signature": "(response: 'StagedCalibrationResponse') -> 'str'"
         },
         "validate_market_data_calibration_request": {
           "kind": "function",
-          "signature": "(raw_request: dict[str, Any] | Any) -> janiform.calibration._requests.MarketDataCalibrationRequest"
+          "signature": "(raw_request: 'dict[str, Any] | Any') -> 'MarketDataCalibrationRequest'"
         },
         "validate_staged_calibration_execution_input": {
           "kind": "function",
-          "signature": "(raw_execution_input: dict[str, Any] | Any) -> janiform.calibration._staged.StagedCalibrationExecutionInput"
+          "signature": "(raw_execution_input: 'dict[str, Any] | Any') -> 'StagedCalibrationExecutionInput'"
         },
         "validate_staged_calibration_request": {
           "kind": "function",
-          "signature": "(raw_request: dict[str, Any] | Any) -> janiform.calibration._requests.StagedCalibrationRequest"
+          "signature": "(raw_request: 'dict[str, Any] | Any') -> 'StagedCalibrationRequest'"
         },
         "validate_staged_calibration_response": {
           "kind": "function",
-          "signature": "(raw_response: dict[str, Any] | Any) -> janiform.calibration._staged.StagedCalibrationResponse"
+          "signature": "(raw_response: 'dict[str, Any] | Any') -> 'StagedCalibrationResponse'"
         }
       }
     },
@@ -1100,7 +1115,7 @@
             "context_items"
           ],
           "kind": "contract_model",
-          "signature": "(error_id: str, workflow: str, entrypoint: str, field_path: str, message: str, context_items: tuple[tuple[str, ErrorContextValue], ...] = ()) -> None"
+          "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
         },
         "ErrorContextValue": {
           "kind": "constant",
@@ -1111,7 +1126,7 @@
             "Exception",
             "BaseException"
           ],
-          "constructor_signature": "(details: janiform.errors.JaniformErrorDetails) -> None",
+          "constructor_signature": "(details: 'JaniformErrorDetails') -> 'None'",
           "kind": "exception_class",
           "origin_module": "janiform.errors",
           "qualname": "JaniformError"
@@ -1144,7 +1159,7 @@
             "context_items"
           ],
           "kind": "contract_model",
-          "signature": "(error_id: str, category: janiform.errors.JaniformErrorCategory, workflow: str, entrypoint: str, message: str, field_path: str | None = None, context_items: tuple[tuple[str, ErrorContextValue], ...] = ()) -> None"
+          "signature": "(error_id: 'str', category: 'JaniformErrorCategory', workflow: 'str', entrypoint: 'str', message: 'str', field_path: 'Optional[str]' = None, context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
         },
         "JaniformExecutionError": {
           "base_classes": [
@@ -1152,7 +1167,7 @@
             "Exception",
             "BaseException"
           ],
-          "constructor_signature": "(details: janiform.errors.JaniformErrorDetails) -> None",
+          "constructor_signature": "(details: 'JaniformErrorDetails') -> 'None'",
           "kind": "exception_class",
           "origin_module": "janiform.errors",
           "qualname": "JaniformExecutionError"
@@ -1163,7 +1178,7 @@
             "Exception",
             "BaseException"
           ],
-          "constructor_signature": "(details: janiform.errors.JaniformErrorDetails) -> None",
+          "constructor_signature": "(details: 'JaniformErrorDetails') -> 'None'",
           "kind": "exception_class",
           "origin_module": "janiform.errors",
           "qualname": "JaniformIntegrationError"
@@ -1174,14 +1189,14 @@
             "Exception",
             "BaseException"
           ],
-          "constructor_signature": "(failure: janiform.errors.ContractValidationFailure) -> None",
+          "constructor_signature": "(failure: 'ContractValidationFailure') -> 'None'",
           "kind": "exception_class",
           "origin_module": "janiform.errors",
           "qualname": "JaniformValidationError"
         },
         "format_janiform_error": {
           "kind": "function",
-          "signature": "(details: janiform.errors.JaniformErrorDetails) -> str"
+          "signature": "(details: 'JaniformErrorDetails') -> 'str'"
         }
       }
     },
@@ -1441,7 +1456,7 @@
         },
         "HourlyFactorContract": {
           "base_classes": [],
-          "constructor_signature": "(native_result: object) -> None",
+          "constructor_signature": "(native_result: 'object') -> 'None'",
           "kind": "class",
           "origin_module": "janiform.hourly_factors",
           "qualname": "HourlyFactorContract"
@@ -1455,7 +1470,7 @@
             "required_metadata_fields"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, required_fields: tuple[str, ...], interval_boundary_policy: str, interval_alignment_policy: str, required_metadata_fields: tuple[str, ...]) -> None"
+          "signature": "(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'"
         },
         "HourlyFactorProviderError": {
           "base_classes": [
@@ -1488,7 +1503,7 @@
         },
         "HourlyNewsIntensityMaterialization": {
           "base_classes": [],
-          "constructor_signature": "(native_result: object) -> None",
+          "constructor_signature": "(native_result: 'object') -> 'None'",
           "kind": "class",
           "origin_module": "janiform.hourly_factors",
           "qualname": "HourlyNewsIntensityMaterialization"
@@ -1502,7 +1517,7 @@
             "required_metadata_fields"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, required_fields: tuple[str, ...], interval_boundary_policy: str, interval_alignment_policy: str, required_metadata_fields: tuple[str, ...]) -> None"
+          "signature": "(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'"
         },
         "HourlyNewsIntensityMaterializationSettings": {
           "field_names": [
@@ -1511,7 +1526,7 @@
             "surprise_deterministic_time_multiplier_by_interval_index"
           ],
           "kind": "contract_model",
-          "signature": "(known_scheduled_event_timestamps_utc: collections.abc.Sequence[datetime.datetime], surprise_baseline_intensity: float, surprise_deterministic_time_multiplier_by_interval_index: collections.abc.Mapping[int, float] | None = None) -> None"
+          "signature": "(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'"
         },
         "HourlyNewsIntensityProviderExplicitSource": {
           "field_names": [
@@ -1519,7 +1534,7 @@
             "materialization_method"
           ],
           "kind": "contract_model",
-          "signature": "(hourly_factors: collections.abc.Sequence[float], materialization_method: str = 'explicit_hourly_input.v1') -> None"
+          "signature": "(hourly_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'None'"
         },
         "HourlyNewsIntensityProviderMaterializedSource": {
           "field_names": [
@@ -1528,7 +1543,7 @@
             "surprise_deterministic_time_multiplier_by_interval_index"
           ],
           "kind": "contract_model",
-          "signature": "(known_scheduled_event_timestamps_utc: collections.abc.Sequence[datetime.datetime], surprise_baseline_intensity: float, surprise_deterministic_time_multiplier_by_interval_index: collections.abc.Mapping[int, float] | None = None) -> None"
+          "signature": "(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'"
         },
         "HourlyNewsIntensityProviderSource": {
           "kind": "constant",
@@ -1536,7 +1551,7 @@
         },
         "HourlySeasonalityMaterialization": {
           "base_classes": [],
-          "constructor_signature": "(native_result: object) -> None",
+          "constructor_signature": "(native_result: 'object') -> 'None'",
           "kind": "class",
           "origin_module": "janiform.hourly_factors",
           "qualname": "HourlySeasonalityMaterialization"
@@ -1550,7 +1565,7 @@
             "required_metadata_fields"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, required_fields: tuple[str, ...], interval_boundary_policy: str, interval_alignment_policy: str, required_metadata_fields: tuple[str, ...]) -> None"
+          "signature": "(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'"
         },
         "HourlySeasonalityMaterializationSettings": {
           "field_names": [
@@ -1560,7 +1575,7 @@
             "sparse_hour_minimum_observation_count"
           ],
           "kind": "contract_model",
-          "signature": "(interpolation_method: str = 'previous_observation_carry_forward.v1', aggregation_method: str = 'mean_of_observations.v1', sparse_fallback_policy: str = 'global_mean.v1', sparse_hour_minimum_observation_count: int = 1) -> None"
+          "signature": "(interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_hour_minimum_observation_count: 'int' = 1) -> 'None'"
         },
         "HourlySeasonalityProviderExplicitSource": {
           "field_names": [
@@ -1568,7 +1583,7 @@
             "materialization_method"
           ],
           "kind": "contract_model",
-          "signature": "(hourly_factors: collections.abc.Sequence[float], materialization_method: str = 'explicit_hourly_input.v1') -> None"
+          "signature": "(hourly_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'None'"
         },
         "HourlySeasonalityProviderMaterializedSource": {
           "field_names": [
@@ -1580,7 +1595,7 @@
             "sparse_hour_minimum_observation_count"
           ],
           "kind": "contract_model",
-          "signature": "(source_timestamps_utc: collections.abc.Sequence[datetime.datetime], source_seasonality_factors: collections.abc.Sequence[float], interpolation_method: str = 'previous_observation_carry_forward.v1', aggregation_method: str = 'mean_of_observations.v1', sparse_fallback_policy: str = 'global_mean.v1', sparse_hour_minimum_observation_count: int = 1) -> None"
+          "signature": "(source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_hour_minimum_observation_count: 'int' = 1) -> 'None'"
         },
         "HourlySeasonalityProviderSource": {
           "kind": "constant",
@@ -1588,19 +1603,19 @@
         },
         "build_hourly_factor_contract": {
           "kind": "function",
-          "signature": "(*, calendar_registry: janiform.calendar.CalendarRegistry, exchange_code: str, range_start_utc: datetime.datetime, range_end_utc: datetime.datetime, seasonality_hourly_factors: collections.abc.Sequence[float], news_intensity_hourly_factors: collections.abc.Sequence[float], seasonality_materialization_method: str = 'explicit_hourly_input.v1', news_intensity_materialization_method: str = 'explicit_hourly_input.v1') -> janiform.hourly_factors.HourlyFactorContract"
+          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', seasonality_hourly_factors: 'Sequence[float]', news_intensity_hourly_factors: 'Sequence[float]', seasonality_materialization_method: 'str' = 'explicit_hourly_input.v1', news_intensity_materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'HourlyFactorContract'"
         },
         "materialize_hourly_news_intensity_factors": {
           "kind": "function",
-          "signature": "(*, calendar_registry: janiform.calendar.CalendarRegistry, exchange_code: str, range_start_utc: datetime.datetime, range_end_utc: datetime.datetime, settings: janiform.hourly_factors.HourlyNewsIntensityMaterializationSettings) -> janiform.hourly_factors.HourlyNewsIntensityMaterialization"
+          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', settings: 'HourlyNewsIntensityMaterializationSettings') -> 'HourlyNewsIntensityMaterialization'"
         },
         "materialize_hourly_seasonality_factors": {
           "kind": "function",
-          "signature": "(*, calendar_registry: janiform.calendar.CalendarRegistry, exchange_code: str, range_start_utc: datetime.datetime, range_end_utc: datetime.datetime, source_timestamps_utc: collections.abc.Sequence[datetime.datetime], source_seasonality_factors: collections.abc.Sequence[float], settings: janiform.hourly_factors.HourlySeasonalityMaterializationSettings = HourlySeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_hour_minimum_observation_count=1)) -> janiform.hourly_factors.HourlySeasonalityMaterialization"
+          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', settings: 'HourlySeasonalityMaterializationSettings' = HourlySeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_hour_minimum_observation_count=1)) -> 'HourlySeasonalityMaterialization'"
         },
         "provide_hourly_factor_contract": {
           "kind": "function",
-          "signature": "(*, calendar_registry: janiform.calendar.CalendarRegistry, exchange_code: str, range_start_utc: datetime.datetime, range_end_utc: datetime.datetime, seasonality_source: HourlySeasonalityProviderSource | None = None, news_intensity_source: HourlyNewsIntensityProviderSource | None = None) -> janiform.hourly_factors.HourlyFactorContract"
+          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', seasonality_source: 'Optional[HourlySeasonalityProviderSource]' = None, news_intensity_source: 'Optional[HourlyNewsIntensityProviderSource]' = None) -> 'HourlyFactorContract'"
         }
       }
     },
@@ -1669,7 +1684,7 @@
             "scale_theta"
           ],
           "kind": "contract_model",
-          "signature": "(shape_k: float, scale_theta: float) -> None"
+          "signature": "(shape_k: 'float', scale_theta: 'float') -> 'None'"
         },
         "NigSharedPlusShiftConfiguration": {
           "field_names": [
@@ -1680,14 +1695,14 @@
             "delta_beta"
           ],
           "kind": "contract_model",
-          "signature": "(alpha: float, beta_0: float, delta: float, mu: float, delta_beta: float) -> None"
+          "signature": "(alpha: 'float', beta_0: 'float', delta: 'float', mu: 'float', delta_beta: 'float') -> 'None'"
         },
         "VanillaOptionPayoffConfiguration": {
           "field_names": [
             "payoff_type"
           ],
           "kind": "contract_model",
-          "signature": "(payoff_type: janiform.pricing.VanillaOptionPayoffType) -> None"
+          "signature": "(payoff_type: 'VanillaOptionPayoffType') -> 'None'"
         },
         "VanillaOptionPayoffType": {
           "kind": "enum",
@@ -1716,7 +1731,7 @@
             "integration_truncation_check_passed"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, hook_policy: str, option_price: float, log_moneyness: float, forward_moneyness: float, maturity_interval: float, transform_status: str | None, integration_numeric_quality_is_poor: bool | None, integration_convergence_check_passed: bool | None, integration_truncation_check_passed: bool | None) -> None"
+          "signature": "(schema_version: 'str', hook_policy: 'str', option_price: 'float', log_moneyness: 'float', forward_moneyness: 'float', maturity_interval: 'float', transform_status: 'Optional[str]', integration_numeric_quality_is_poor: 'Optional[bool]', integration_convergence_check_passed: 'Optional[bool]', integration_truncation_check_passed: 'Optional[bool]') -> 'None'"
         },
         "VanillaOptionPricingDiagnostics": {
           "field_names": [
@@ -1726,7 +1741,7 @@
             "boundary_state_norm"
           ],
           "kind": "contract_model",
-          "signature": "(forward_price: float, discount_factor: float, maturity_interval: float, boundary_state_norm: float) -> None"
+          "signature": "(forward_price: 'float', discount_factor: 'float', maturity_interval: 'float', boundary_state_norm: 'float') -> 'None'"
         },
         "VanillaOptionPricingExecutionInput": {
           "field_names": [
@@ -1735,7 +1750,7 @@
             "optional_output_selection"
           ],
           "kind": "contract_model",
-          "signature": "(request: janiform.pricing.VanillaOptionPricingRequest, interval_factors: janiform.pricing.VanillaOptionPricingIntervalFactors, optional_output_selection: janiform.pricing.VanillaOptionPricingOptionalOutputSelection = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> None"
+          "signature": "(request: 'VanillaOptionPricingRequest', interval_factors: 'VanillaOptionPricingIntervalFactors', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'"
         },
         "VanillaOptionPricingIntervalFactors": {
           "field_names": [
@@ -1744,7 +1759,7 @@
             "nu_h_surprise"
           ],
           "kind": "contract_model",
-          "signature": "(s_h: float, nu_h_known: float, nu_h_surprise: float) -> None"
+          "signature": "(s_h: 'float', nu_h_known: 'float', nu_h_surprise: 'float') -> 'None'"
         },
         "VanillaOptionPricingMarketInputs": {
           "field_names": [
@@ -1755,7 +1770,7 @@
             "dividend_yield"
           ],
           "kind": "contract_model",
-          "signature": "(spot: float, strike: float, maturity_interval: float, risk_free_rate: float, dividend_yield: float) -> None"
+          "signature": "(spot: 'float', strike: 'float', maturity_interval: 'float', risk_free_rate: 'float', dividend_yield: 'float') -> 'None'"
         },
         "VanillaOptionPricingModelParameters": {
           "field_names": [
@@ -1764,7 +1779,7 @@
             "nig_shared_plus_shift_configuration"
           ],
           "kind": "contract_model",
-          "signature": "(hawkes_kernel_parameters: janiform.simulation._shared.HawkesKernelParameters, gamma_severity_mark_configuration: janiform.pricing.GammaSeverityMarkConfiguration, nig_shared_plus_shift_configuration: janiform.pricing.NigSharedPlusShiftConfiguration) -> None"
+          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', gamma_severity_mark_configuration: 'GammaSeverityMarkConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration') -> 'None'"
         },
         "VanillaOptionPricingOptionalOutputSelection": {
           "field_names": [
@@ -1773,7 +1788,7 @@
             "include_calibration_hooks"
           ],
           "kind": "contract_model",
-          "signature": "(include_transform_diagnostics: bool = False, include_integration_quality_diagnostics: bool = False, include_calibration_hooks: bool = False) -> None"
+          "signature": "(include_transform_diagnostics: 'bool' = False, include_integration_quality_diagnostics: 'bool' = False, include_calibration_hooks: 'bool' = False) -> 'None'"
         },
         "VanillaOptionPricingRequest": {
           "field_names": [
@@ -1784,7 +1799,7 @@
             "interval_delta"
           ],
           "kind": "contract_model",
-          "signature": "(market_inputs: janiform.pricing.VanillaOptionPricingMarketInputs, payoff: janiform.pricing.VanillaOptionPayoffConfiguration, boundary_state: janiform.simulation._shared.HawkesExcitationState, model_parameters: janiform.pricing.VanillaOptionPricingModelParameters, interval_delta: float = 1.0) -> None"
+          "signature": "(market_inputs: 'VanillaOptionPricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_state: 'HawkesExcitationState', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float' = 1.0) -> 'None'"
         },
         "VanillaOptionPricingResponse": {
           "field_names": [
@@ -1792,7 +1807,7 @@
             "diagnostics"
           ],
           "kind": "contract_model",
-          "signature": "(price: float, diagnostics: janiform.pricing.VanillaOptionPricingDiagnostics) -> None"
+          "signature": "(price: 'float', diagnostics: 'VanillaOptionPricingDiagnostics') -> 'None'"
         },
         "VanillaOptionPricingRunDiagnostics": {
           "field_names": [
@@ -1801,7 +1816,7 @@
             "integration_quality"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, transform: dict[str, Any] | None, integration_quality: dict[str, Any] | None) -> None"
+          "signature": "(schema_version: 'str', transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]') -> 'None'"
         },
         "VanillaOptionPricingRunOutputSchemaMetadata": {
           "field_names": [
@@ -1814,7 +1829,7 @@
             "required_calibration_hooks_fields"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, run_result_schema_version: str, run_diagnostics_schema_version: str, calibration_hooks_schema_version: str, required_run_result_fields: tuple[str, ...], required_run_diagnostics_fields: tuple[str, ...], required_calibration_hooks_fields: tuple[str, ...]) -> None"
+          "signature": "(schema_version: 'str', run_result_schema_version: 'str', run_diagnostics_schema_version: 'str', calibration_hooks_schema_version: 'str', required_run_result_fields: 'tuple[str, ...]', required_run_diagnostics_fields: 'tuple[str, ...]', required_calibration_hooks_fields: 'tuple[str, ...]') -> 'None'"
         },
         "VanillaOptionPricingRunResult": {
           "field_names": [
@@ -1825,7 +1840,7 @@
             "calibration_hooks"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, output_schema_metadata: janiform.pricing.VanillaOptionPricingRunOutputSchemaMetadata, response: janiform.pricing.VanillaOptionPricingResponse, run_diagnostics: janiform.pricing.VanillaOptionPricingRunDiagnostics | None, calibration_hooks: janiform.pricing.VanillaOptionPricingCalibrationHooks | None) -> None"
+          "signature": "(schema_version: 'str', output_schema_metadata: 'VanillaOptionPricingRunOutputSchemaMetadata', response: 'VanillaOptionPricingResponse', run_diagnostics: 'Optional[VanillaOptionPricingRunDiagnostics]', calibration_hooks: 'Optional[VanillaOptionPricingCalibrationHooks]') -> 'None'"
         },
         "VanillaOptionPricingValidationError": {
           "base_classes": [
@@ -1834,7 +1849,7 @@
             "Exception",
             "BaseException"
           ],
-          "constructor_signature": "(failure: janiform.errors.ContractValidationFailure) -> None",
+          "constructor_signature": "(failure: 'ContractValidationFailure') -> 'None'",
           "kind": "exception_class",
           "origin_module": "janiform.pricing",
           "qualname": "VanillaOptionPricingValidationError"
@@ -1849,63 +1864,63 @@
             "context_items"
           ],
           "kind": "contract_model",
-          "signature": "(error_id: str, workflow: str, entrypoint: str, field_path: str, message: str, context_items: tuple[tuple[str, ErrorContextValue], ...] = ()) -> None"
+          "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
         },
         "deserialize_vanilla_option_pricing_execution_input": {
           "kind": "function",
-          "signature": "(payload_json: str) -> janiform.pricing.VanillaOptionPricingExecutionInput"
+          "signature": "(payload_json: 'str') -> 'VanillaOptionPricingExecutionInput'"
         },
         "deserialize_vanilla_option_pricing_request": {
           "kind": "function",
-          "signature": "(payload_json: str) -> janiform.pricing.VanillaOptionPricingRequest"
+          "signature": "(payload_json: 'str') -> 'VanillaOptionPricingRequest'"
         },
         "deserialize_vanilla_option_pricing_response": {
           "kind": "function",
-          "signature": "(payload_json: str) -> janiform.pricing.VanillaOptionPricingResponse"
+          "signature": "(payload_json: 'str') -> 'VanillaOptionPricingResponse'"
         },
         "deserialize_vanilla_option_pricing_run_result": {
           "kind": "function",
-          "signature": "(payload_json: str) -> janiform.pricing.VanillaOptionPricingRunResult"
+          "signature": "(payload_json: 'str') -> 'VanillaOptionPricingRunResult'"
         },
         "load_hourly_factor_contract_for_pricing": {
           "kind": "function",
-          "signature": "(*, calendar_registry: janiform.calendar.CalendarRegistry, exchange_code: str, range_start_utc: datetime.datetime, range_end_utc: datetime.datetime, seasonality_source: HourlySeasonalityProviderSource, news_intensity_source: HourlyNewsIntensityProviderSource, interval_delta: float = 1.0) -> janiform.hourly_factors.HourlyFactorContract"
+          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', seasonality_source: 'HourlySeasonalityProviderSource', news_intensity_source: 'HourlyNewsIntensityProviderSource', interval_delta: 'float' = 1.0) -> 'HourlyFactorContract'"
         },
         "run_vanilla_option_pricing": {
           "kind": "function",
-          "signature": "(execution_input: janiform.pricing.VanillaOptionPricingExecutionInput) -> janiform.pricing.VanillaOptionPricingRunResult"
+          "signature": "(execution_input: 'VanillaOptionPricingExecutionInput') -> 'VanillaOptionPricingRunResult'"
         },
         "serialize_vanilla_option_pricing_execution_input": {
           "kind": "function",
-          "signature": "(execution_input: janiform.pricing.VanillaOptionPricingExecutionInput) -> str"
+          "signature": "(execution_input: 'VanillaOptionPricingExecutionInput') -> 'str'"
         },
         "serialize_vanilla_option_pricing_request": {
           "kind": "function",
-          "signature": "(request: janiform.pricing.VanillaOptionPricingRequest) -> str"
+          "signature": "(request: 'VanillaOptionPricingRequest') -> 'str'"
         },
         "serialize_vanilla_option_pricing_response": {
           "kind": "function",
-          "signature": "(response: janiform.pricing.VanillaOptionPricingResponse) -> str"
+          "signature": "(response: 'VanillaOptionPricingResponse') -> 'str'"
         },
         "serialize_vanilla_option_pricing_run_result": {
           "kind": "function",
-          "signature": "(run_result: janiform.pricing.VanillaOptionPricingRunResult) -> str"
+          "signature": "(run_result: 'VanillaOptionPricingRunResult') -> 'str'"
         },
         "validate_vanilla_option_pricing_execution_input": {
           "kind": "function",
-          "signature": "(raw_execution_input: dict[str, Any] | Any) -> janiform.pricing.VanillaOptionPricingExecutionInput"
+          "signature": "(raw_execution_input: 'dict[str, Any] | Any') -> 'VanillaOptionPricingExecutionInput'"
         },
         "validate_vanilla_option_pricing_request": {
           "kind": "function",
-          "signature": "(raw_request: dict[str, Any] | Any) -> janiform.pricing.VanillaOptionPricingRequest"
+          "signature": "(raw_request: 'dict[str, Any] | Any') -> 'VanillaOptionPricingRequest'"
         },
         "validate_vanilla_option_pricing_response": {
           "kind": "function",
-          "signature": "(raw_response: dict[str, Any] | Any) -> janiform.pricing.VanillaOptionPricingResponse"
+          "signature": "(raw_response: 'dict[str, Any] | Any') -> 'VanillaOptionPricingResponse'"
         },
         "validate_vanilla_option_pricing_run_result": {
           "kind": "function",
-          "signature": "(raw_run_result: dict[str, Any] | Any) -> janiform.pricing.VanillaOptionPricingRunResult"
+          "signature": "(raw_run_result: 'dict[str, Any] | Any') -> 'VanillaOptionPricingRunResult'"
         }
       }
     },
@@ -1993,7 +2008,7 @@
             "n_minus"
           ],
           "kind": "contract_model",
-          "signature": "(a_plus: float, a_minus: float, n_plus: int, n_minus: int) -> None"
+          "signature": "(a_plus: 'float', a_minus: 'float', n_plus: 'int', n_minus: 'int') -> 'None'"
         },
         "SufficientStatisticsRiskEquationSpecification": {
           "field_names": [
@@ -2001,7 +2016,7 @@
             "gamma_severity_mark_configuration"
           ],
           "kind": "contract_model",
-          "signature": "(hawkes_kernel_parameters: janiform.simulation._shared.HawkesKernelParameters, gamma_severity_mark_configuration: janiform.pricing.GammaSeverityMarkConfiguration) -> None"
+          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', gamma_severity_mark_configuration: 'GammaSeverityMarkConfiguration') -> 'None'"
         },
         "SufficientStatisticsRiskIntervalFactors": {
           "field_names": [
@@ -2011,7 +2026,7 @@
             "nu_h_surprise"
           ],
           "kind": "contract_model",
-          "signature": "(interval_delta: float = 1.0, s_h: tuple[float, ...] = (), nu_h_known: tuple[float, ...] = (), nu_h_surprise: tuple[float, ...] = ()) -> None"
+          "signature": "(interval_delta: 'float' = 1.0, s_h: 'tuple[float, ...]' = (), nu_h_known: 'tuple[float, ...]' = (), nu_h_surprise: 'tuple[float, ...]' = ()) -> 'None'"
         },
         "SufficientStatisticsRiskModelInputs": {
           "field_names": [
@@ -2020,7 +2035,7 @@
             "initial_excitation_state"
           ],
           "kind": "contract_model",
-          "signature": "(equation_specification: janiform.risk.SufficientStatisticsRiskEquationSpecification, nig_shared_plus_shift_configuration: janiform.pricing.NigSharedPlusShiftConfiguration, initial_excitation_state: janiform.simulation._shared.HawkesExcitationState) -> None"
+          "signature": "(equation_specification: 'SufficientStatisticsRiskEquationSpecification', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', initial_excitation_state: 'HawkesExcitationState') -> 'None'"
         },
         "SufficientStatisticsRiskPath": {
           "field_names": [
@@ -2037,7 +2052,7 @@
             "records"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, run_request_schema_version: str, output_schema_metadata: janiform.risk.SufficientStatisticsRiskPathOutputSchemaMetadata, provenance: janiform.risk.SufficientStatisticsRiskPathProvenance, diagnostics: janiform.risk.SufficientStatisticsRiskPathDiagnostics, seed: int, interval_delta: float, simulated_interval_count: int, initial_excitation_state: janiform.simulation._shared.HawkesExcitationState, terminal_excitation_state: janiform.simulation._shared.HawkesExcitationState, records: tuple[janiform.risk.SufficientStatisticsRiskPathRecord, ...]) -> None"
+          "signature": "(schema_version: 'str', run_request_schema_version: 'str', output_schema_metadata: 'SufficientStatisticsRiskPathOutputSchemaMetadata', provenance: 'SufficientStatisticsRiskPathProvenance', diagnostics: 'SufficientStatisticsRiskPathDiagnostics', seed: 'int', interval_delta: 'float', simulated_interval_count: 'int', initial_excitation_state: 'HawkesExcitationState', terminal_excitation_state: 'HawkesExcitationState', records: 'tuple[SufficientStatisticsRiskPathRecord, ...]') -> 'None'"
         },
         "SufficientStatisticsRiskPathDiagnostics": {
           "field_names": [
@@ -2056,7 +2071,7 @@
             "max_abs_total_return"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, simulated_interval_count: int, first_interval_index: int | None, last_interval_index: int | None, cumulative_a_plus: float, cumulative_a_minus: float, cumulative_n_plus: int, cumulative_n_minus: int, cumulative_trading_time_return: float, cumulative_open_jump_return: float, cumulative_closed_gap_return: float, cumulative_total_return: float, max_abs_total_return: float) -> None"
+          "signature": "(schema_version: 'str', simulated_interval_count: 'int', first_interval_index: 'Optional[int]', last_interval_index: 'Optional[int]', cumulative_a_plus: 'float', cumulative_a_minus: 'float', cumulative_n_plus: 'int', cumulative_n_minus: 'int', cumulative_trading_time_return: 'float', cumulative_open_jump_return: 'float', cumulative_closed_gap_return: 'float', cumulative_total_return: 'float', max_abs_total_return: 'float') -> 'None'"
         },
         "SufficientStatisticsRiskPathOutputSchemaMetadata": {
           "field_names": [
@@ -2070,7 +2085,7 @@
             "required_diagnostics_fields"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, provenance_schema_version: str, diagnostics_schema_version: str, artifact_workflow_policy: str, environment_metadata_policy: str, required_path_fields: tuple[str, ...], required_provenance_fields: tuple[str, ...], required_diagnostics_fields: tuple[str, ...]) -> None"
+          "signature": "(schema_version: 'str', provenance_schema_version: 'str', diagnostics_schema_version: 'str', artifact_workflow_policy: 'str', environment_metadata_policy: 'str', required_path_fields: 'tuple[str, ...]', required_provenance_fields: 'tuple[str, ...]', required_diagnostics_fields: 'tuple[str, ...]') -> 'None'"
         },
         "SufficientStatisticsRiskPathProvenance": {
           "field_names": [
@@ -2086,7 +2101,7 @@
             "artifact_workflow_tags"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, artifact_workflow_policy: str, environment_metadata_policy: str, interval_factor_policy: str, transform_slice_sampling_policy: str, boundary_state_update_policy: str, interval_return_generation_policy: str, interval_return_component_routing_policy: str, batch_seed_partition_policy: str, artifact_workflow_tags: tuple[str, ...]) -> None"
+          "signature": "(schema_version: 'str', artifact_workflow_policy: 'str', environment_metadata_policy: 'str', interval_factor_policy: 'str', transform_slice_sampling_policy: 'str', boundary_state_update_policy: 'str', interval_return_generation_policy: 'str', interval_return_component_routing_policy: 'str', batch_seed_partition_policy: 'str', artifact_workflow_tags: 'tuple[str, ...]') -> 'None'"
         },
         "SufficientStatisticsRiskPathRecord": {
           "field_names": [
@@ -2095,7 +2110,7 @@
             "return_components"
           ],
           "kind": "contract_model",
-          "signature": "(interval_index: int, sufficient_statistics: janiform.risk.SufficientStatisticsIntervalStatistics, return_components: janiform.risk.SufficientStatisticsRiskReturnComponents) -> None"
+          "signature": "(interval_index: 'int', sufficient_statistics: 'SufficientStatisticsIntervalStatistics', return_components: 'SufficientStatisticsRiskReturnComponents') -> 'None'"
         },
         "SufficientStatisticsRiskReturnComponents": {
           "field_names": [
@@ -2107,7 +2122,7 @@
             "total_return"
           ],
           "kind": "contract_model",
-          "signature": "(buy_side_return: float, sell_side_return: float, trading_time_return: float, open_jump_return: float, closed_gap_return: float, total_return: float) -> None"
+          "signature": "(buy_side_return: 'float', sell_side_return: 'float', trading_time_return: 'float', open_jump_return: 'float', closed_gap_return: 'float', total_return: 'float') -> 'None'"
         },
         "SufficientStatisticsRiskRunRequest": {
           "field_names": [
@@ -2118,7 +2133,7 @@
             "interval_factors"
           ],
           "kind": "contract_model",
-          "signature": "(seed: int, horizon_interval_count: int, interval_delta: float = 1.0, model_inputs: janiform.risk.SufficientStatisticsRiskModelInputs | None = None, interval_factors: janiform.risk.SufficientStatisticsRiskIntervalFactors | None = None) -> None"
+          "signature": "(seed: 'int', horizon_interval_count: 'int', interval_delta: 'float' = 1.0, model_inputs: 'Optional[SufficientStatisticsRiskModelInputs]' = None, interval_factors: 'Optional[SufficientStatisticsRiskIntervalFactors]' = None) -> 'None'"
         },
         "SufficientStatisticsRiskValidationError": {
           "base_classes": [
@@ -2127,7 +2142,7 @@
             "Exception",
             "BaseException"
           ],
-          "constructor_signature": "(failure: janiform.errors.ContractValidationFailure) -> None",
+          "constructor_signature": "(failure: 'ContractValidationFailure') -> 'None'",
           "kind": "exception_class",
           "origin_module": "janiform.risk",
           "qualname": "SufficientStatisticsRiskValidationError"
@@ -2142,31 +2157,31 @@
             "context_items"
           ],
           "kind": "contract_model",
-          "signature": "(error_id: str, workflow: str, entrypoint: str, field_path: str, message: str, context_items: tuple[tuple[str, ErrorContextValue], ...] = ()) -> None"
+          "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
         },
         "deserialize_sufficient_statistics_risk_path": {
           "kind": "function",
-          "signature": "(payload_json: str) -> janiform.risk.SufficientStatisticsRiskPath"
+          "signature": "(payload_json: 'str') -> 'SufficientStatisticsRiskPath'"
         },
         "deserialize_sufficient_statistics_risk_run_request": {
           "kind": "function",
-          "signature": "(payload_json: str) -> janiform.risk.SufficientStatisticsRiskRunRequest"
+          "signature": "(payload_json: 'str') -> 'SufficientStatisticsRiskRunRequest'"
         },
         "serialize_sufficient_statistics_risk_path": {
           "kind": "function",
-          "signature": "(path: janiform.risk.SufficientStatisticsRiskPath) -> str"
+          "signature": "(path: 'SufficientStatisticsRiskPath') -> 'str'"
         },
         "serialize_sufficient_statistics_risk_run_request": {
           "kind": "function",
-          "signature": "(request: janiform.risk.SufficientStatisticsRiskRunRequest) -> str"
+          "signature": "(request: 'SufficientStatisticsRiskRunRequest') -> 'str'"
         },
         "validate_sufficient_statistics_risk_path": {
           "kind": "function",
-          "signature": "(raw_path: dict[str, Any] | Any) -> janiform.risk.SufficientStatisticsRiskPath"
+          "signature": "(raw_path: 'dict[str, Any] | Any') -> 'SufficientStatisticsRiskPath'"
         },
         "validate_sufficient_statistics_risk_run_request": {
           "kind": "function",
-          "signature": "(raw_request: dict[str, Any] | Any) -> janiform.risk.SufficientStatisticsRiskRunRequest"
+          "signature": "(raw_request: 'dict[str, Any] | Any') -> 'SufficientStatisticsRiskRunRequest'"
         }
       }
     },
@@ -2284,7 +2299,7 @@
             "pseudocount"
           ],
           "kind": "contract_model",
-          "signature": "(minimum_bucket_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> None"
+          "signature": "(minimum_bucket_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'"
         },
         "DayOfYearSeasonalityEstimate": {
           "base_classes": [],
@@ -2299,7 +2314,7 @@
             "pseudocount"
           ],
           "kind": "contract_model",
-          "signature": "(minimum_bucket_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> None"
+          "signature": "(minimum_bucket_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'"
         },
         "DeterministicSeasonalityComposition": {
           "base_classes": [],
@@ -2328,7 +2343,7 @@
             "pseudocount"
           ],
           "kind": "contract_model",
-          "signature": "(minutes_per_bin: 'int' = 1, smoothing_kernel: 'IntradaySmoothingKernel' = <IntradaySmoothingKernel.GAUSSIAN: 'gaussian'>, smoothing_bandwidth_bins: 'float' = 3.0, minimum_bin_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> None"
+          "signature": "(minutes_per_bin: 'int' = 1, smoothing_kernel: 'IntradaySmoothingKernel' = <IntradaySmoothingKernel.GAUSSIAN: 'gaussian'>, smoothing_bandwidth_bins: 'float' = 3.0, minimum_bin_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'"
         },
         "IntradaySmoothingKernel": {
           "kind": "enum",
@@ -2366,7 +2381,7 @@
             "source_label"
           ],
           "kind": "contract_model",
-          "signature": "(overlay_id: 'str', start_timestamp_utc: 'str | datetime', end_timestamp_utc: 'str | datetime', log_adjustment: 'float', precedence: 'int' = 0, enabled: 'bool' = True, source_label: 'str' = 'configuration') -> None"
+          "signature": "(overlay_id: 'str', start_timestamp_utc: 'str | datetime', end_timestamp_utc: 'str | datetime', log_adjustment: 'float', precedence: 'int' = 0, enabled: 'bool' = True, source_label: 'str' = 'configuration') -> 'None'"
         },
         "SeasonalityDiagnosticsBatchInput": {
           "field_names": [
@@ -2378,7 +2393,7 @@
             "composition"
           ],
           "kind": "contract_model",
-          "signature": "(dataset_id: 'str', preprocessed_events: 'TimestampEventPreprocessingResult', intraday_estimate: 'IntradaySeasonalityEstimate', day_of_week_estimate: 'DayOfWeekSeasonalityEstimate', day_of_year_estimate: 'DayOfYearSeasonalityEstimate', composition: 'DeterministicSeasonalityComposition') -> None"
+          "signature": "(dataset_id: 'str', preprocessed_events: 'TimestampEventPreprocessingResult', intraday_estimate: 'IntradaySeasonalityEstimate', day_of_week_estimate: 'DayOfWeekSeasonalityEstimate', day_of_year_estimate: 'DayOfYearSeasonalityEstimate', composition: 'DeterministicSeasonalityComposition') -> 'None'"
         },
         "SeasonalityInputValidationError": {
           "base_classes": [
@@ -2446,7 +2461,7 @@
             "ordering_policy"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', required_fields: 'tuple[str, ...]', timestamp_field_name: 'str', accepted_timestamp_types: 'tuple[str, ...]', timezone_requirement: 'str', ordering_policy: 'str') -> None"
+          "signature": "(schema_version: 'str', required_fields: 'tuple[str, ...]', timestamp_field_name: 'str', accepted_timestamp_types: 'tuple[str, ...]', timezone_requirement: 'str', ordering_policy: 'str') -> 'None'"
         },
         "TimestampEventPreprocessingResult": {
           "base_classes": [],
@@ -2512,6 +2527,7 @@
         "CoarseSimulationRunRequest",
         "CoupledGapMarkConfiguration",
         "DoubleExponentialBaseShockConfiguration",
+        "GammaSeverityMarkConfiguration",
         "HawkesExcitationState",
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
@@ -2519,6 +2535,10 @@
         "NewsArrivalConfiguration",
         "NewsComponentMarkScaleConfiguration",
         "NewsProcessConfiguration",
+        "SeededFinePathMetadata",
+        "SeededFinePathNewsArrivalComponent",
+        "SeededFinePathRecord",
+        "SeededFinePathTransitionKind",
         "SeededTickEventRecord",
         "SeededTickEventSide",
         "SeededTickEventStateSnapshot",
@@ -2639,7 +2659,7 @@
             "exchange_code"
           ],
           "kind": "contract_model",
-          "signature": "(risk_model_inputs: Any, news_process_configuration: janiform.simulation._coarse.NewsProcessConfiguration, calendar_registry_artifact: dict[str, typing.Any], exchange_code: str) -> None"
+          "signature": "(risk_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'"
         },
         "CoarseSimulationPath": {
           "field_names": [
@@ -2658,7 +2678,7 @@
             "records"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, run_request_schema_version: str, output_schema_metadata: janiform.simulation._coarse.CoarseSimulationPathOutputSchemaMetadata, provenance: janiform.simulation._coarse.CoarseSimulationPathProvenance, diagnostics: janiform.simulation._coarse.CoarseSimulationPathDiagnostics, seed: int, start_time_utc_nanos: int, end_time_utc_nanos: int, interval_delta: float, simulated_interval_count: int, initial_excitation_state: janiform.simulation._shared.HawkesExcitationState, terminal_excitation_state: janiform.simulation._shared.HawkesExcitationState, records: tuple[janiform.simulation._coarse.CoarseSimulationPathRecord, ...]) -> None"
+          "signature": "(schema_version: 'str', run_request_schema_version: 'str', output_schema_metadata: 'CoarseSimulationPathOutputSchemaMetadata', provenance: 'CoarseSimulationPathProvenance', diagnostics: 'CoarseSimulationPathDiagnostics', seed: 'int', start_time_utc_nanos: 'int', end_time_utc_nanos: 'int', interval_delta: 'float', simulated_interval_count: 'int', initial_excitation_state: 'HawkesExcitationState', terminal_excitation_state: 'HawkesExcitationState', records: 'tuple[CoarseSimulationPathRecord, ...]') -> 'None'"
         },
         "CoarseSimulationPathDiagnostics": {
           "field_names": [
@@ -2679,7 +2699,7 @@
             "max_abs_total_return"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, simulated_interval_count: int, first_interval_index: int, last_interval_index: int, first_interval_start_utc_nanos: int, last_interval_end_utc_nanos: int, cumulative_a_plus: float, cumulative_a_minus: float, cumulative_n_plus: int, cumulative_n_minus: int, cumulative_trading_time_return: float, cumulative_open_jump_return: float, cumulative_closed_gap_return: float, cumulative_total_return: float, max_abs_total_return: float) -> None"
+          "signature": "(schema_version: 'str', simulated_interval_count: 'int', first_interval_index: 'int', last_interval_index: 'int', first_interval_start_utc_nanos: 'int', last_interval_end_utc_nanos: 'int', cumulative_a_plus: 'float', cumulative_a_minus: 'float', cumulative_n_plus: 'int', cumulative_n_minus: 'int', cumulative_trading_time_return: 'float', cumulative_open_jump_return: 'float', cumulative_closed_gap_return: 'float', cumulative_total_return: 'float', max_abs_total_return: 'float') -> 'None'"
         },
         "CoarseSimulationPathOutputSchemaMetadata": {
           "field_names": [
@@ -2694,7 +2714,7 @@
             "required_diagnostics_fields"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, provenance_schema_version: str, diagnostics_schema_version: str, artifact_workflow_policy: str, environment_metadata_policy: str, required_path_fields: tuple[str, ...], required_record_fields: tuple[str, ...], required_provenance_fields: tuple[str, ...], required_diagnostics_fields: tuple[str, ...]) -> None"
+          "signature": "(schema_version: 'str', provenance_schema_version: 'str', diagnostics_schema_version: 'str', artifact_workflow_policy: 'str', environment_metadata_policy: 'str', required_path_fields: 'tuple[str, ...]', required_record_fields: 'tuple[str, ...]', required_provenance_fields: 'tuple[str, ...]', required_diagnostics_fields: 'tuple[str, ...]') -> 'None'"
         },
         "CoarseSimulationPathProvenance": {
           "field_names": [
@@ -2713,7 +2733,7 @@
             "batch_seed_partition_policy"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, artifact_workflow_policy: str, environment_metadata_policy: str, interval_timing_policy: str, interval_identifier_policy: str, interval_factor_alignment_policy: str, compatible_interval_grid_policy: str, interval_factor_policy: str, transform_slice_sampling_policy: str, boundary_state_update_policy: str, interval_return_generation_policy: str, interval_return_component_routing_policy: str, batch_seed_partition_policy: str) -> None"
+          "signature": "(schema_version: 'str', artifact_workflow_policy: 'str', environment_metadata_policy: 'str', interval_timing_policy: 'str', interval_identifier_policy: 'str', interval_factor_alignment_policy: 'str', compatible_interval_grid_policy: 'str', interval_factor_policy: 'str', transform_slice_sampling_policy: 'str', boundary_state_update_policy: 'str', interval_return_generation_policy: 'str', interval_return_component_routing_policy: 'str', batch_seed_partition_policy: 'str') -> 'None'"
         },
         "CoarseSimulationPathRecord": {
           "field_names": [
@@ -2725,7 +2745,7 @@
             "return_components"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, interval_index: int, interval_start_utc_nanos: int, interval_end_utc_nanos: int, sufficient_statistics: Any, return_components: Any) -> None"
+          "signature": "(schema_version: 'str', interval_index: 'int', interval_start_utc_nanos: 'int', interval_end_utc_nanos: 'int', sufficient_statistics: 'Any', return_components: 'Any') -> 'None'"
         },
         "CoarseSimulationRunRequest": {
           "field_names": [
@@ -2738,14 +2758,14 @@
             "interval_factors"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, seed: int, start_time_utc_nanos: int, horizon_interval_count: int, interval_delta: float, model_inputs: janiform.simulation._coarse.CoarseSimulationModelInputs, interval_factors: Any) -> None"
+          "signature": "(schema_version: 'str', seed: 'int', start_time_utc_nanos: 'int', horizon_interval_count: 'int', interval_delta: 'float', model_inputs: 'CoarseSimulationModelInputs', interval_factors: 'Any') -> 'None'"
         },
         "CoupledGapMarkConfiguration": {
           "field_names": [
             "sigma_g"
           ],
           "kind": "contract_model",
-          "signature": "(sigma_g: float) -> None"
+          "signature": "(sigma_g: 'float') -> 'None'"
         },
         "DoubleExponentialBaseShockConfiguration": {
           "field_names": [
@@ -2754,7 +2774,15 @@
             "eta_minus"
           ],
           "kind": "contract_model",
-          "signature": "(probability_positive: float, eta_plus: float, eta_minus: float) -> None"
+          "signature": "(probability_positive: 'float', eta_plus: 'float', eta_minus: 'float') -> 'None'"
+        },
+        "GammaSeverityMarkConfiguration": {
+          "field_names": [
+            "shape_k",
+            "scale_theta"
+          ],
+          "kind": "contract_model",
+          "signature": "(shape_k: 'float', scale_theta: 'float') -> 'None'"
         },
         "HawkesExcitationState": {
           "field_names": [
@@ -2764,7 +2792,7 @@
             "y_minus_minus"
           ],
           "kind": "contract_model",
-          "signature": "(y_plus_plus: float, y_plus_minus: float, y_minus_plus: float, y_minus_minus: float) -> None"
+          "signature": "(y_plus_plus: 'float', y_plus_minus: 'float', y_minus_plus: 'float', y_minus_minus: 'float') -> 'None'"
         },
         "HawkesKernelLoadings": {
           "field_names": [
@@ -2774,7 +2802,7 @@
             "minus_minus"
           ],
           "kind": "contract_model",
-          "signature": "(plus_plus: float, plus_minus: float, minus_plus: float, minus_minus: float) -> None"
+          "signature": "(plus_plus: 'float', plus_minus: 'float', minus_plus: 'float', minus_minus: 'float') -> 'None'"
         },
         "HawkesKernelParameters": {
           "field_names": [
@@ -2784,14 +2812,14 @@
             "rho"
           ],
           "kind": "contract_model",
-          "signature": "(lambda_bar: float, beta: float, alpha: janiform.simulation._shared.HawkesKernelLoadings, rho: janiform.simulation._shared.HawkesKernelLoadings) -> None"
+          "signature": "(lambda_bar: 'float', beta: 'float', alpha: 'HawkesKernelLoadings', rho: 'HawkesKernelLoadings') -> 'None'"
         },
         "KnownNewsArrivalConfiguration": {
           "field_names": [
             "scheduled_event_timestamps_utc_nanos"
           ],
           "kind": "contract_model",
-          "signature": "(scheduled_event_timestamps_utc_nanos: tuple[int, ...]) -> None"
+          "signature": "(scheduled_event_timestamps_utc_nanos: 'tuple[int, ...]') -> 'None'"
         },
         "NewsArrivalConfiguration": {
           "field_names": [
@@ -2799,7 +2827,7 @@
             "surprise"
           ],
           "kind": "contract_model",
-          "signature": "(known: janiform.simulation._coarse.KnownNewsArrivalConfiguration, surprise: janiform.simulation._coarse.SurpriseNewsArrivalConfiguration) -> None"
+          "signature": "(known: 'KnownNewsArrivalConfiguration', surprise: 'SurpriseNewsArrivalConfiguration') -> 'None'"
         },
         "NewsComponentMarkScaleConfiguration": {
           "field_names": [
@@ -2807,7 +2835,7 @@
             "return_jump_scale"
           ],
           "kind": "contract_model",
-          "signature": "(activity_coupling_scale: float, return_jump_scale: float) -> None"
+          "signature": "(activity_coupling_scale: 'float', return_jump_scale: 'float') -> 'None'"
         },
         "NewsProcessConfiguration": {
           "field_names": [
@@ -2818,7 +2846,70 @@
             "surprise_component_mark_scales"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, arrivals: janiform.simulation._coarse.NewsArrivalConfiguration, shared_mark_law: janiform.simulation._coarse.SharedNewsMarkLawConfiguration, known_component_mark_scales: janiform.simulation._coarse.NewsComponentMarkScaleConfiguration, surprise_component_mark_scales: janiform.simulation._coarse.NewsComponentMarkScaleConfiguration) -> None"
+          "signature": "(schema_version: 'str', arrivals: 'NewsArrivalConfiguration', shared_mark_law: 'SharedNewsMarkLawConfiguration', known_component_mark_scales: 'NewsComponentMarkScaleConfiguration', surprise_component_mark_scales: 'NewsComponentMarkScaleConfiguration') -> 'None'"
+        },
+        "SeededFinePathMetadata": {
+          "field_names": [
+            "schema_version",
+            "path_record_schema_version",
+            "event_projection_record_schema_version",
+            "transition_ordering_policy",
+            "timestamp_representation_policy",
+            "side_encoding_policy",
+            "state_snapshot_capture",
+            "state_snapshot_capture_point_policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', path_record_schema_version: 'str', event_projection_record_schema_version: 'str', transition_ordering_policy: 'str', timestamp_representation_policy: 'str', side_encoding_policy: 'str', state_snapshot_capture: 'SeededTickEventStateSnapshotCapture', state_snapshot_capture_point_policy: 'Optional[str]' = None) -> 'None'"
+        },
+        "SeededFinePathNewsArrivalComponent": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "KNOWN",
+              "value": "known"
+            },
+            {
+              "name": "SURPRISE",
+              "value": "surprise"
+            }
+          ]
+        },
+        "SeededFinePathRecord": {
+          "field_names": [
+            "transition_index",
+            "timestamp_utc_nanos",
+            "transition_kind",
+            "side",
+            "news_arrival_component",
+            "market_state",
+            "return_components",
+            "cumulative_log_return",
+            "state_snapshot"
+          ],
+          "kind": "contract_model",
+          "signature": "(transition_index: 'int', timestamp_utc_nanos: 'int', transition_kind: 'SeededFinePathTransitionKind', side: 'Optional[SeededTickEventSide]', news_arrival_component: 'Optional[SeededFinePathNewsArrivalComponent]', market_state: 'MarketState', return_components: 'SufficientStatisticsRiskReturnComponents', cumulative_log_return: 'float', state_snapshot: 'Optional[SeededTickEventStateSnapshot]' = None) -> 'None'"
+        },
+        "SeededFinePathTransitionKind": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "BUY_TRADE",
+              "value": "buy_trade"
+            },
+            {
+              "name": "SELL_TRADE",
+              "value": "sell_trade"
+            },
+            {
+              "name": "EXOGENOUS_NEWS",
+              "value": "exogenous_news"
+            },
+            {
+              "name": "INTERVAL_BOUNDARY_DRIFT",
+              "value": "interval_boundary_drift"
+            }
+          ]
         },
         "SeededTickEventRecord": {
           "field_names": [
@@ -2828,7 +2919,7 @@
             "state_snapshot"
           ],
           "kind": "contract_model",
-          "signature": "(event_index: int, timestamp_utc_nanos: int, side: janiform.simulation._shared.SeededTickEventSide, state_snapshot: janiform.simulation._seeded.SeededTickEventStateSnapshot | None = None) -> None"
+          "signature": "(event_index: 'int', timestamp_utc_nanos: 'int', side: 'SeededTickEventSide', state_snapshot: 'Optional[SeededTickEventStateSnapshot]' = None) -> 'None'"
         },
         "SeededTickEventSide": {
           "kind": "enum",
@@ -2853,7 +2944,7 @@
             "deseasonalized_lambda_minus"
           ],
           "kind": "contract_model",
-          "signature": "(y_plus_plus: float, y_plus_minus: float, y_minus_plus: float, y_minus_minus: float, deseasonalized_lambda_plus: float, deseasonalized_lambda_minus: float) -> None"
+          "signature": "(y_plus_plus: 'float', y_plus_minus: 'float', y_minus_plus: 'float', y_minus_minus: 'float', deseasonalized_lambda_plus: 'float', deseasonalized_lambda_minus: 'float') -> 'None'"
         },
         "SeededTickEventStateSnapshotCapture": {
           "kind": "enum",
@@ -2880,7 +2971,7 @@
             "state_snapshot_capture_point_policy"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, event_record_schema_version: str, state_snapshot_schema_version: str, event_ordering_policy: str, timestamp_representation_policy: str, side_encoding_policy: str, state_snapshot_capture: janiform.simulation._shared.SeededTickEventStateSnapshotCapture, state_snapshot_capture_point_policy: str | None = None) -> None"
+          "signature": "(schema_version: 'str', event_record_schema_version: 'str', state_snapshot_schema_version: 'str', event_ordering_policy: 'str', timestamp_representation_policy: 'str', side_encoding_policy: 'str', state_snapshot_capture: 'SeededTickEventStateSnapshotCapture', state_snapshot_capture_point_policy: 'Optional[str]' = None) -> 'None'"
         },
         "SeededTickSimulationHourlyFactorSummary": {
           "field_names": [
@@ -2893,7 +2984,7 @@
             "nu_h"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, exchange_code: str, interval_count: int, interval_start_utc_nanos: tuple[int, ...], interval_end_utc_nanos: tuple[int, ...], s_h: tuple[float, ...], nu_h: tuple[float, ...]) -> None"
+          "signature": "(schema_version: 'str', exchange_code: 'str', interval_count: 'int', interval_start_utc_nanos: 'tuple[int, ...]', interval_end_utc_nanos: 'tuple[int, ...]', s_h: 'tuple[float, ...]', nu_h: 'tuple[float, ...]') -> 'None'"
         },
         "SeededTickSimulationRequest": {
           "field_names": [
@@ -2901,6 +2992,8 @@
             "start_time_utc",
             "horizon_interval_count",
             "kernel_parameters",
+            "nig_shared_plus_shift_configuration",
+            "news_process_configuration",
             "initial_excitation_state",
             "hourly_factor_summary",
             "debug_trace_enabled",
@@ -2909,16 +3002,17 @@
             "state_snapshot_capture"
           ],
           "kind": "contract_model",
-          "signature": "(seed: int, start_time_utc: datetime.datetime, horizon_interval_count: int, kernel_parameters: janiform.simulation._shared.HawkesKernelParameters, initial_excitation_state: janiform.simulation._shared.HawkesExcitationState, hourly_factor_summary: janiform.simulation._seeded.SeededTickSimulationHourlyFactorSummary, debug_trace_enabled: bool = False, sample_every_nth_transition: int = 1, max_records_per_chunk: int = 1024, state_snapshot_capture: janiform.simulation._shared.SeededTickEventStateSnapshotCapture = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> None"
+          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
         },
         "SeededTickSimulationResponse": {
           "field_names": [
             "schema_version",
             "metadata",
+            "fine_path",
             "event_tape"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, metadata: janiform.simulation._seeded.SeededTickEventTapeMetadata, event_tape: tuple[janiform.simulation._seeded.SeededTickEventRecord, ...]) -> None"
+          "signature": "(schema_version: 'str', metadata: 'SeededFinePathMetadata', fine_path: 'tuple[SeededFinePathRecord, ...]', event_tape: 'tuple[SeededTickEventRecord, ...]' = ()) -> 'None'"
         },
         "SeededTickSimulationValidationError": {
           "base_classes": [
@@ -2927,7 +3021,7 @@
             "Exception",
             "BaseException"
           ],
-          "constructor_signature": "(failure: janiform.errors.ContractValidationFailure) -> None",
+          "constructor_signature": "(failure: 'ContractValidationFailure') -> 'None'",
           "kind": "exception_class",
           "origin_module": "janiform.simulation._shared",
           "qualname": "SeededTickSimulationValidationError"
@@ -2942,7 +3036,7 @@
             "context_items"
           ],
           "kind": "contract_model",
-          "signature": "(error_id: str, workflow: str, entrypoint: str, field_path: str, message: str, context_items: tuple[tuple[str, ErrorContextValue], ...] = ()) -> None"
+          "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
         },
         "SharedNewsMarkLawConfiguration": {
           "field_names": [
@@ -2951,62 +3045,62 @@
             "coupled_gap_marks"
           ],
           "kind": "contract_model",
-          "signature": "(gamma_severity_marks: Any, double_exponential_base_shock: janiform.simulation._coarse.DoubleExponentialBaseShockConfiguration, coupled_gap_marks: janiform.simulation._coarse.CoupledGapMarkConfiguration) -> None"
+          "signature": "(gamma_severity_marks: 'Any', double_exponential_base_shock: 'DoubleExponentialBaseShockConfiguration', coupled_gap_marks: 'CoupledGapMarkConfiguration') -> 'None'"
         },
         "SurpriseNewsArrivalConfiguration": {
           "field_names": [
             "baseline_intensity"
           ],
           "kind": "contract_model",
-          "signature": "(baseline_intensity: float) -> None"
+          "signature": "(baseline_intensity: 'float') -> 'None'"
         },
         "deserialize_coarse_simulation_path": {
           "kind": "function",
-          "signature": "(payload_json: str) -> janiform.simulation._coarse.CoarseSimulationPath"
+          "signature": "(payload_json: 'str') -> 'CoarseSimulationPath'"
         },
         "deserialize_coarse_simulation_run_request": {
           "kind": "function",
-          "signature": "(payload_json: str) -> janiform.simulation._coarse.CoarseSimulationRunRequest"
+          "signature": "(payload_json: 'str') -> 'CoarseSimulationRunRequest'"
         },
         "deserialize_seeded_tick_simulation_response": {
           "kind": "function",
-          "signature": "(payload_json: str) -> janiform.simulation._seeded.SeededTickSimulationResponse"
+          "signature": "(payload_json: 'str') -> 'SeededTickSimulationResponse'"
         },
         "load_hourly_factor_contract_for_simulation": {
           "kind": "function",
-          "signature": "(*, calendar_registry: janiform.calendar.CalendarRegistry, exchange_code: str, range_start_utc: datetime.datetime, range_end_utc: datetime.datetime, seasonality_source: HourlySeasonalityProviderSource, news_intensity_source: HourlyNewsIntensityProviderSource) -> janiform.hourly_factors.HourlyFactorContract"
+          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', seasonality_source: 'HourlySeasonalityProviderSource', news_intensity_source: 'HourlyNewsIntensityProviderSource') -> 'HourlyFactorContract'"
         },
         "run_coarse_simulation": {
           "kind": "function",
-          "signature": "(request: janiform.simulation._coarse.CoarseSimulationRunRequest) -> janiform.simulation._coarse.CoarseSimulationPath"
+          "signature": "(request: 'CoarseSimulationRunRequest') -> 'CoarseSimulationPath'"
         },
         "run_seeded_tick_event_simulation": {
           "kind": "function",
-          "signature": "(request: janiform.simulation._seeded.SeededTickSimulationRequest) -> janiform.simulation._seeded.SeededTickSimulationResponse"
+          "signature": "(request: 'SeededTickSimulationRequest') -> 'SeededTickSimulationResponse'"
         },
         "serialize_coarse_simulation_path": {
           "kind": "function",
-          "signature": "(path: janiform.simulation._coarse.CoarseSimulationPath) -> str"
+          "signature": "(path: 'CoarseSimulationPath') -> 'str'"
         },
         "serialize_coarse_simulation_run_request": {
           "kind": "function",
-          "signature": "(request: janiform.simulation._coarse.CoarseSimulationRunRequest) -> str"
+          "signature": "(request: 'CoarseSimulationRunRequest') -> 'str'"
         },
         "serialize_seeded_tick_simulation_response": {
           "kind": "function",
-          "signature": "(response: janiform.simulation._seeded.SeededTickSimulationResponse) -> str"
+          "signature": "(response: 'SeededTickSimulationResponse') -> 'str'"
         },
         "validate_coarse_simulation_path": {
           "kind": "function",
-          "signature": "(raw_path: dict[str, Any] | Any) -> janiform.simulation._coarse.CoarseSimulationPath"
+          "signature": "(raw_path: 'dict[str, Any] | Any') -> 'CoarseSimulationPath'"
         },
         "validate_coarse_simulation_run_request": {
           "kind": "function",
-          "signature": "(raw_request: dict[str, Any] | Any) -> janiform.simulation._coarse.CoarseSimulationRunRequest"
+          "signature": "(raw_request: 'dict[str, Any] | Any') -> 'CoarseSimulationRunRequest'"
         },
         "validate_seeded_tick_simulation_response": {
           "kind": "function",
-          "signature": "(raw_response: dict[str, Any] | Any) -> janiform.simulation._seeded.SeededTickSimulationResponse"
+          "signature": "(raw_response: 'dict[str, Any] | Any') -> 'SeededTickSimulationResponse'"
         }
       }
     },
@@ -3141,19 +3235,19 @@
         },
         "build_stylized_fact_plotly_figure": {
           "kind": "function",
-          "signature": "(plot_payload: collections.abc.Mapping[str, typing.Any], *, title: str = 'Stylized Fact Absolute Delta By Horizon') -> Any"
+          "signature": "(plot_payload: 'Mapping[str, Any]', *, title: 'str' = 'Stylized Fact Absolute Delta By Horizon') -> 'Any'"
         },
         "build_stylized_fact_plotly_figure_from_report_bundle": {
           "kind": "function",
-          "signature": "(report_bundle: collections.abc.Mapping[str, typing.Any], *, title: str = 'Stylized Fact Absolute Delta By Horizon') -> Any"
+          "signature": "(report_bundle: 'Mapping[str, Any]', *, title: 'str' = 'Stylized Fact Absolute Delta By Horizon') -> 'Any'"
         },
         "render_stylized_fact_table_markdown": {
           "kind": "function",
-          "signature": "(table_summary: collections.abc.Mapping[str, typing.Any], *, max_rows: int | None = None) -> str"
+          "signature": "(table_summary: 'Mapping[str, Any]', *, max_rows: 'Optional[int]' = None) -> 'str'"
         },
         "run_stylized_fact_horizon_comparison_report_generator": {
           "kind": "function",
-          "signature": "(*, metric_catalog: collections.abc.Mapping[str, typing.Any], comparison_request: collections.abc.Mapping[str, typing.Any], execution_mode: str = 'memory', artifact_export: collections.abc.Mapping[str, Any] | None = None) -> janiform.stylized_facts.StylizedFactHorizonComparisonReportBundle"
+          "signature": "(*, metric_catalog: 'Mapping[str, Any]', comparison_request: 'Mapping[str, Any]', execution_mode: 'str' = 'memory', artifact_export: 'Optional[Mapping[str, Any]]' = None) -> 'StylizedFactHorizonComparisonReportBundle'"
         }
       }
     },
@@ -3435,11 +3529,11 @@
         },
         "run_deterministic_regression_harness": {
           "kind": "function",
-          "signature": "(*, calendar_registry: janiform.calendar.CalendarRegistry, calendar_cases: collections.abc.Sequence[collections.abc.Mapping[str, typing.Any]], seasonality_cases: collections.abc.Sequence[collections.abc.Mapping[str, typing.Any]], seasonality_absolute_tolerance: float = 1e-12, news_intensity_absolute_tolerance: float = 1e-12) -> janiform.validation.types.DeterministicRegressionHarnessReport"
+          "signature": "(*, calendar_registry: 'CalendarRegistry', calendar_cases: 'Sequence[Mapping[str, Any]]', seasonality_cases: 'Sequence[Mapping[str, Any]]', seasonality_absolute_tolerance: 'float' = 1e-12, news_intensity_absolute_tolerance: 'float' = 1e-12) -> 'DeterministicRegressionHarnessReport'"
         },
         "run_open_closed_gap_leakage_regression_harness": {
           "kind": "function",
-          "signature": "(*, calendar_registry: janiform.calendar.CalendarRegistry, gap_behavior_cases: collections.abc.Sequence[collections.abc.Mapping[str, typing.Any]], component_absolute_tolerance: float = 1e-12) -> janiform.validation.types.OpenClosedGapLeakageRegressionHarnessReport"
+          "signature": "(*, calendar_registry: 'CalendarRegistry', gap_behavior_cases: 'Sequence[Mapping[str, Any]]', component_absolute_tolerance: 'float' = 1e-12) -> 'OpenClosedGapLeakageRegressionHarnessReport'"
         }
       }
     }

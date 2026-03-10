@@ -86,8 +86,12 @@ pub struct SeededTickCoarseComparableIntervalRecord {
     pub a_minus: f64,
     pub n_plus: u64,
     pub n_minus: u64,
+    pub buy_side_return: f64,
+    pub sell_side_return: f64,
+    pub trading_time_return: f64,
     pub open_jump_return: f64,
     pub closed_gap_return: f64,
+    pub total_return: f64,
     pub terminal_excitation_state: HawkesExcitationState,
 }
 
@@ -99,8 +103,12 @@ pub struct SeededTickCoarseComparablePathDiagnostics {
     pub cumulative_a_minus: f64,
     pub cumulative_n_plus: u64,
     pub cumulative_n_minus: u64,
+    pub cumulative_buy_side_return: f64,
+    pub cumulative_sell_side_return: f64,
+    pub cumulative_trading_time_return: f64,
     pub cumulative_open_jump_return: f64,
     pub cumulative_closed_gap_return: f64,
+    pub cumulative_total_return: f64,
 }
 
 /// Coarse-comparable path reconstructed from a seeded-tick run on a finer grid.
@@ -165,7 +173,8 @@ pub fn aggregate_seeded_tick_run_to_coarse_comparable_path(
     }
 
     let flat_trace_records = flatten_trace_records(debug_trace);
-    let fine_records = reconstruct_fine_interval_records(run_config, &flat_trace_records)?;
+    let fine_records =
+        reconstruct_fine_interval_records(run_config, run_result, &flat_trace_records)?;
     let observed_fine_terminal_state = fine_records
         .last()
         .map(|record| record.terminal_excitation_state)
@@ -246,6 +255,9 @@ pub enum SeededTickCoarseAggregationError {
         expected_interval_end_utc_nanos: i64,
         observed_timestamp_utc_nanos: i64,
     },
+    MissingFinePathTransitionRecord {
+        transition_index: u64,
+    },
     FinalStateMismatch,
 }
 
@@ -314,6 +326,10 @@ impl Display for SeededTickCoarseAggregationError {
             } => write!(
                 formatter,
                 "fine interval {interval_index} boundary timestamp mismatch, expected {expected_interval_end_utc_nanos}, found {observed_timestamp_utc_nanos}"
+            ),
+            Self::MissingFinePathTransitionRecord { transition_index } => write!(
+                formatter,
+                "seeded fine_path is missing transition record {transition_index} required for return aggregation"
             ),
             Self::FinalStateMismatch => write!(
                 formatter,
@@ -418,8 +434,10 @@ pub struct CoarseSeededTickConsistencyThresholds {
     pub mean_cumulative_a_minus_absolute_tolerance: f64,
     pub mean_cumulative_n_plus_absolute_tolerance: f64,
     pub mean_cumulative_n_minus_absolute_tolerance: f64,
+    pub mean_cumulative_trading_time_return_absolute_tolerance: f64,
     pub open_jump_wasserstein_distance_tolerance: f64,
     pub closed_gap_wasserstein_distance_tolerance: f64,
+    pub total_return_wasserstein_distance_tolerance: f64,
     pub terminal_state_l1_mean_tolerance: f64,
 }
 
@@ -432,8 +450,10 @@ impl Default for CoarseSeededTickConsistencyThresholds {
             mean_cumulative_a_minus_absolute_tolerance: 3.0,
             mean_cumulative_n_plus_absolute_tolerance: 3.0,
             mean_cumulative_n_minus_absolute_tolerance: 3.0,
+            mean_cumulative_trading_time_return_absolute_tolerance: 2.0,
             open_jump_wasserstein_distance_tolerance: 2.0,
             closed_gap_wasserstein_distance_tolerance: 2.0,
+            total_return_wasserstein_distance_tolerance: 3.0,
             terminal_state_l1_mean_tolerance: 2.5,
         }
     }
@@ -476,12 +496,20 @@ impl CoarseSeededTickConsistencyThresholds {
                 self.mean_cumulative_n_minus_absolute_tolerance,
             ),
             (
+                "mean_cumulative_trading_time_return_absolute_tolerance",
+                self.mean_cumulative_trading_time_return_absolute_tolerance,
+            ),
+            (
                 "open_jump_wasserstein_distance_tolerance",
                 self.open_jump_wasserstein_distance_tolerance,
             ),
             (
                 "closed_gap_wasserstein_distance_tolerance",
                 self.closed_gap_wasserstein_distance_tolerance,
+            ),
+            (
+                "total_return_wasserstein_distance_tolerance",
+                self.total_return_wasserstein_distance_tolerance,
             ),
             (
                 "terminal_state_l1_mean_tolerance",
@@ -958,6 +986,41 @@ fn build_statistical_checks(
                 .cumulative_closed_gap_return
         })
         .collect::<Vec<_>>();
+    let coarse_trading_time = scenario
+        .paired_paths
+        .iter()
+        .map(|paired_path| {
+            paired_path
+                .coarse_path
+                .diagnostics
+                .cumulative_trading_time_return
+        })
+        .collect::<Vec<_>>();
+    let fine_trading_time = scenario
+        .paired_paths
+        .iter()
+        .map(|paired_path| {
+            paired_path
+                .aggregated_fine_path
+                .diagnostics
+                .cumulative_trading_time_return
+        })
+        .collect::<Vec<_>>();
+    let coarse_total_return = scenario
+        .paired_paths
+        .iter()
+        .map(|paired_path| paired_path.coarse_path.diagnostics.cumulative_total_return)
+        .collect::<Vec<_>>();
+    let fine_total_return = scenario
+        .paired_paths
+        .iter()
+        .map(|paired_path| {
+            paired_path
+                .aggregated_fine_path
+                .diagnostics
+                .cumulative_total_return
+        })
+        .collect::<Vec<_>>();
     let terminal_state_l1_distances = scenario
         .paired_paths
         .iter()
@@ -998,6 +1061,13 @@ fn build_statistical_checks(
             &fine_cumulative_n_minus,
             thresholds.mean_cumulative_n_minus_absolute_tolerance,
         ),
+        build_mean_delta_check(
+            "mean_cumulative_trading_time_return",
+            CoarseSeededTickDiagnosticBucket::SufficientStatisticsSampling,
+            &coarse_trading_time,
+            &fine_trading_time,
+            thresholds.mean_cumulative_trading_time_return_absolute_tolerance,
+        ),
         build_wasserstein_check(
             "open_jump_cumulative_wasserstein_distance",
             CoarseSeededTickDiagnosticBucket::DirectJumpGeneration,
@@ -1011,6 +1081,13 @@ fn build_statistical_checks(
             &coarse_closed_gap,
             &fine_closed_gap,
             thresholds.closed_gap_wasserstein_distance_tolerance,
+        ),
+        build_wasserstein_check(
+            "total_return_cumulative_wasserstein_distance",
+            CoarseSeededTickDiagnosticBucket::SufficientStatisticsSampling,
+            &coarse_total_return,
+            &fine_total_return,
+            thresholds.total_return_wasserstein_distance_tolerance,
         ),
         CoarseSeededTickStatisticalCheck {
             check_id: "terminal_state_l1_mean_distance",
@@ -1092,6 +1169,7 @@ fn calculate_mean(values: &[f64]) -> f64 {
 
 fn reconstruct_fine_interval_records(
     run_config: &SeededTickSimulationRunConfig,
+    run_result: &SeededTickSimulationRunResult,
     flat_trace_records: &[&SeededTickEventDebugTraceRecord],
 ) -> Result<Vec<SeededTickCoarseComparableIntervalRecord>, SeededTickCoarseAggregationError> {
     let horizon_interval_count = run_config.horizon_interval_count;
@@ -1099,6 +1177,11 @@ fn reconstruct_fine_interval_records(
     let lambda_bar = kernel_parameters.lambda_bar;
     let beta = kernel_parameters.beta;
     let contract = &run_config.model_inputs.hourly_factor_contract;
+    let fine_path_by_transition_index = run_result
+        .fine_path
+        .iter()
+        .map(|record| (record.transition_index, &record.return_components))
+        .collect::<std::collections::BTreeMap<_, _>>();
     let mut interval_trace_records: Vec<Vec<&SeededTickEventDebugTraceRecord>> =
         (0..horizon_interval_count).map(|_| Vec::new()).collect();
 
@@ -1136,6 +1219,12 @@ fn reconstruct_fine_interval_records(
         let mut a_minus = 0.0;
         let mut n_plus = 0_u64;
         let mut n_minus = 0_u64;
+        let mut buy_side_return = 0.0;
+        let mut sell_side_return = 0.0;
+        let mut trading_time_return = 0.0;
+        let mut open_jump_return = 0.0;
+        let mut closed_gap_return = 0.0;
+        let mut total_return = 0.0;
 
         for trace_record in trace_records {
             let elapsed_hours = trace_record.elapsed_hours_since_previous_update;
@@ -1167,6 +1256,21 @@ fn reconstruct_fine_interval_records(
                 SeededTickEventDebugTraceTransitionKind::ExogenousNews
                 | SeededTickEventDebugTraceTransitionKind::IntervalBoundaryDrift => {}
             }
+
+            let return_components = fine_path_by_transition_index
+                .get(&trace_record.transition_index)
+                .copied()
+                .ok_or(
+                    SeededTickCoarseAggregationError::MissingFinePathTransitionRecord {
+                        transition_index: trace_record.transition_index,
+                    },
+                )?;
+            buy_side_return += return_components.buy_side_return;
+            sell_side_return += return_components.sell_side_return;
+            trading_time_return += return_components.trading_time_return;
+            open_jump_return += return_components.open_jump_return;
+            closed_gap_return += return_components.closed_gap_return;
+            total_return += return_components.total_return;
 
             current_state = snapshot_to_excitation_state(trace_record.state_after_transition);
         }
@@ -1211,8 +1315,20 @@ fn reconstruct_fine_interval_records(
             a_minus,
             n_plus,
             n_minus,
-            open_jump_return: interval_open_jump_return,
-            closed_gap_return: interval_closed_gap_return,
+            buy_side_return,
+            sell_side_return,
+            trading_time_return,
+            open_jump_return: if is_effectively_zero(open_jump_return) {
+                interval_open_jump_return
+            } else {
+                open_jump_return
+            },
+            closed_gap_return: if is_effectively_zero(closed_gap_return) {
+                interval_closed_gap_return
+            } else {
+                closed_gap_return
+            },
+            total_return,
             terminal_excitation_state: current_state,
         });
 
@@ -1250,6 +1366,12 @@ fn aggregate_fine_records_to_coarse_records(
                 .iter()
                 .map(|record| record.n_minus)
                 .fold(0_u64, u64::saturating_add),
+            buy_side_return: fine_window.iter().map(|record| record.buy_side_return).sum(),
+            sell_side_return: fine_window.iter().map(|record| record.sell_side_return).sum(),
+            trading_time_return: fine_window
+                .iter()
+                .map(|record| record.trading_time_return)
+                .sum(),
             open_jump_return: fine_window
                 .iter()
                 .map(|record| record.open_jump_return)
@@ -1258,6 +1380,7 @@ fn aggregate_fine_records_to_coarse_records(
                 .iter()
                 .map(|record| record.closed_gap_return)
                 .sum(),
+            total_return: fine_window.iter().map(|record| record.total_return).sum(),
             terminal_excitation_state: last_record.terminal_excitation_state,
         });
     }
@@ -1280,8 +1403,15 @@ fn derive_seeded_tick_comparable_diagnostics(
             .iter()
             .map(|record| record.n_minus)
             .fold(0_u64, u64::saturating_add),
+        cumulative_buy_side_return: records.iter().map(|record| record.buy_side_return).sum(),
+        cumulative_sell_side_return: records.iter().map(|record| record.sell_side_return).sum(),
+        cumulative_trading_time_return: records
+            .iter()
+            .map(|record| record.trading_time_return)
+            .sum(),
         cumulative_open_jump_return: records.iter().map(|record| record.open_jump_return).sum(),
         cumulative_closed_gap_return: records.iter().map(|record| record.closed_gap_return).sum(),
+        cumulative_total_return: records.iter().map(|record| record.total_return).sum(),
     }
 }
 

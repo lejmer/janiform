@@ -1192,15 +1192,123 @@
           "length": 3,
           "type": "array"
         },
+        "fine_path": {
+          "item_profiles": [
+            {
+              "fields": {
+                "cumulative_log_return": {
+                  "type": "float"
+                },
+                "market_state": {
+                  "type": "string"
+                },
+                "news_arrival_component": {
+                  "type": "null"
+                },
+                "return_components": {
+                  "fields": {
+                    "buy_side_return": {
+                      "type": "float"
+                    },
+                    "closed_gap_return": {
+                      "type": "float"
+                    },
+                    "open_jump_return": {
+                      "type": "float"
+                    },
+                    "sell_side_return": {
+                      "type": "float"
+                    },
+                    "total_return": {
+                      "type": "float"
+                    },
+                    "trading_time_return": {
+                      "type": "float"
+                    }
+                  },
+                  "type": "object"
+                },
+                "side": {
+                  "type": "string"
+                },
+                "state_snapshot": {
+                  "type": "null"
+                },
+                "timestamp_utc_nanos": {
+                  "type": "int"
+                },
+                "transition_index": {
+                  "type": "int"
+                },
+                "transition_kind": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "fields": {
+                "cumulative_log_return": {
+                  "type": "float"
+                },
+                "market_state": {
+                  "type": "string"
+                },
+                "news_arrival_component": {
+                  "type": "null"
+                },
+                "return_components": {
+                  "fields": {
+                    "buy_side_return": {
+                      "type": "float"
+                    },
+                    "closed_gap_return": {
+                      "type": "float"
+                    },
+                    "open_jump_return": {
+                      "type": "float"
+                    },
+                    "sell_side_return": {
+                      "type": "float"
+                    },
+                    "total_return": {
+                      "type": "float"
+                    },
+                    "trading_time_return": {
+                      "type": "float"
+                    }
+                  },
+                  "type": "object"
+                },
+                "side": {
+                  "type": "null"
+                },
+                "state_snapshot": {
+                  "type": "null"
+                },
+                "timestamp_utc_nanos": {
+                  "type": "int"
+                },
+                "transition_index": {
+                  "type": "int"
+                },
+                "transition_kind": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          ],
+          "length": 5,
+          "type": "array"
+        },
         "metadata": {
           "fields": {
-            "event_ordering_policy": {
-              "type": "string",
-              "value": "timestamp_then_endogenous_before_exogenous_then_buy_before_sell_then_known_before_surprise_then_generation_order.v1"
+            "event_projection_record_schema_version": {
+              "type": "string"
             },
-            "event_record_schema_version": {
-              "type": "string",
-              "value": "simulation.seeded_tick_event.record.v1"
+            "path_record_schema_version": {
+              "type": "string"
             },
             "schema_version": {
               "type": "string",
@@ -1217,13 +1325,12 @@
             "state_snapshot_capture_point_policy": {
               "type": "null"
             },
-            "state_snapshot_schema_version": {
-              "type": "string",
-              "value": "simulation.seeded_tick_event.state_snapshot.v1"
-            },
             "timestamp_representation_policy": {
               "type": "string",
               "value": "event_time_timestamp_utc_nanos_without_bucket_identifier.v1"
+            },
+            "transition_ordering_policy": {
+              "type": "string"
             }
           },
           "type": "object"
@@ -1260,15 +1367,71 @@
           "length": 1,
           "type": "array"
         },
+        "fine_path": {
+          "item_profiles": [
+            {
+              "fields": {
+                "cumulative_log_return": {
+                  "type": "float"
+                },
+                "market_state": {
+                  "type": "string"
+                },
+                "news_arrival_component": {
+                  "type": "null"
+                },
+                "return_components": {
+                  "fields": {
+                    "buy_side_return": {
+                      "type": "float"
+                    },
+                    "closed_gap_return": {
+                      "type": "float"
+                    },
+                    "open_jump_return": {
+                      "type": "float"
+                    },
+                    "sell_side_return": {
+                      "type": "float"
+                    },
+                    "total_return": {
+                      "type": "float"
+                    },
+                    "trading_time_return": {
+                      "type": "float"
+                    }
+                  },
+                  "type": "object"
+                },
+                "side": {
+                  "type": "string"
+                },
+                "state_snapshot": {
+                  "type": "null"
+                },
+                "timestamp_utc_nanos": {
+                  "type": "int"
+                },
+                "transition_index": {
+                  "type": "int"
+                },
+                "transition_kind": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          ],
+          "length": 1,
+          "type": "array"
+        },
         "metadata": {
           "fields": {
-            "event_ordering_policy": {
-              "type": "string",
-              "value": "deterministic_tie_break.v1"
+            "event_projection_record_schema_version": {
+              "type": "string"
             },
-            "event_record_schema_version": {
-              "type": "string",
-              "value": "simulation.seeded_tick_event.record.v1"
+            "path_record_schema_version": {
+              "type": "string"
             },
             "schema_version": {
               "type": "string",
@@ -1285,13 +1448,12 @@
             "state_snapshot_capture_point_policy": {
               "type": "null"
             },
-            "state_snapshot_schema_version": {
-              "type": "string",
-              "value": "simulation.seeded_tick_event.state_snapshot.v1"
-            },
             "timestamp_representation_policy": {
               "type": "string",
               "value": "utc_nanos.v1"
+            },
+            "transition_ordering_policy": {
+              "type": "string"
             }
           },
           "type": "object"

@@ -15,7 +15,8 @@ pub use api::{
     sample_nig_trading_time_increment_with_edge_mode,
 };
 pub use artifacts::{
-    SeededTickEventDebugTraceChunk, SeededTickEventDebugTraceMetadata,
+    SeededFinePathMetadata, SeededFinePathOutput, SeededFinePathRecord,
+    SeededFinePathTransitionKind, SeededTickEventDebugTraceChunk, SeededTickEventDebugTraceMetadata,
     SeededTickEventDebugTraceOutput, SeededTickEventDebugTraceRecord,
     SeededTickEventDebugTraceTransitionKind, SeededTickEventRecord, SeededTickEventSide,
     SeededTickEventStateSnapshot, SeededTickEventTapeMetadata, SeededTickEventTapeOutput,
@@ -42,8 +43,7 @@ pub use coarse_runtime::{
 };
 pub use config::{
     SeededTickEventStateSnapshotCapture, SeededTickSimulationDebugTraceOptions,
-    SeededTickSimulationModelInputs, SeededTickSimulationNewsMarkScales,
-    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
+    SeededTickSimulationModelInputs, SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
 };
 pub use constants::{
     SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNK_SCHEMA_VERSION,

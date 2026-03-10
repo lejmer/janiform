@@ -61,9 +61,14 @@ The package root `janiform` is intentionally minimal.
     - `CoarseSimulationPathProvenance`
     - `CoarseSimulationPathDiagnostics`
     - `CoarseSimulationPath`
+    - `GammaSeverityMarkConfiguration`
     - `HawkesKernelLoadings`
     - `HawkesKernelParameters`
     - `HawkesExcitationState`
+    - `SeededFinePathTransitionKind`
+    - `SeededFinePathNewsArrivalComponent`
+    - `SeededFinePathRecord`
+    - `SeededFinePathMetadata`
     - `SeededTickEventSide`
     - `SeededTickEventStateSnapshotCapture`
     - `SeededTickEventStateSnapshot`
@@ -153,6 +158,7 @@ The package root `janiform` is intentionally minimal.
     - `CalibrationInputFileFormat`
     - `CalibrationDuplicateRecordPolicy`
     - `CalibrationTickPriceInputPolicy`
+    - `CalibrationTradeSign`
     - `CalibrationOptionQuoteInputPolicy`
     - `CalibrationMarketDataWorkflowScope`
     - `CalibrationInputFileReference`

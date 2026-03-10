@@ -6,11 +6,21 @@ from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
 )
+from janiform.pricing import NigSharedPlusShiftConfiguration
 from janiform.simulation import (
+    CoupledGapMarkConfiguration,
+    DoubleExponentialBaseShockConfiguration,
+    GammaSeverityMarkConfiguration,
     HawkesExcitationState,
     HawkesKernelParameters,
+    KnownNewsArrivalConfiguration,
+    NewsArrivalConfiguration,
+    NewsComponentMarkScaleConfiguration,
+    NewsProcessConfiguration,
     SeededTickSimulationRequest,
     SeededTickSimulationResponse,
+    SharedNewsMarkLawConfiguration,
+    SurpriseNewsArrivalConfiguration,
     load_hourly_factor_contract_for_simulation,
     run_seeded_tick_event_simulation,
 )
@@ -280,6 +290,44 @@ def _run_seeded_case(
         start_time_utc=START_TIME_UTC,
         horizon_interval_count=horizon_interval_count,
         kernel_parameters=HawkesKernelParameters.from_mapping(kernel_parameters),
+        nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
+            alpha=2.3,
+            beta_0=-0.8,
+            delta=0.7,
+            mu=0.1,
+            delta_beta=-0.2,
+        ),
+        news_process_configuration=NewsProcessConfiguration(
+            schema_version="news.process.configuration.v1",
+            arrivals=NewsArrivalConfiguration(
+                known=KnownNewsArrivalConfiguration(
+                    scheduled_event_timestamps_utc_nanos=(),
+                ),
+                surprise=SurpriseNewsArrivalConfiguration(
+                    baseline_intensity=0.0,
+                ),
+            ),
+            shared_mark_law=SharedNewsMarkLawConfiguration(
+                gamma_severity_marks=GammaSeverityMarkConfiguration(
+                    shape_k=1.5,
+                    scale_theta=0.9,
+                ),
+                double_exponential_base_shock=DoubleExponentialBaseShockConfiguration(
+                    probability_positive=0.4,
+                    eta_plus=1.3,
+                    eta_minus=1.1,
+                ),
+                coupled_gap_marks=CoupledGapMarkConfiguration(sigma_g=0.75),
+            ),
+            known_component_mark_scales=NewsComponentMarkScaleConfiguration(
+                activity_coupling_scale=0.6,
+                return_jump_scale=1.2,
+            ),
+            surprise_component_mark_scales=NewsComponentMarkScaleConfiguration(
+                activity_coupling_scale=0.6,
+                return_jump_scale=1.2,
+            ),
+        ),
         initial_excitation_state=HawkesExcitationState.from_mapping({
             "y_plus_plus": 0.0,
             "y_plus_minus": 0.0,

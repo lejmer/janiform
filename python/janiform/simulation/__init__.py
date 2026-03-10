@@ -36,6 +36,10 @@ from ._coarse import (
     validate_coarse_simulation_run_request,
 )
 from ._seeded import (
+    SeededFinePathMetadata,
+    SeededFinePathNewsArrivalComponent,
+    SeededFinePathRecord,
+    SeededFinePathTransitionKind,
     SeededTickEventRecord,
     SeededTickEventStateSnapshot,
     SeededTickEventTapeMetadata,
@@ -57,6 +61,16 @@ from ._shared import (
     SeededTickSimulationValidationError,
     SeededTickSimulationValidationFailure,
 )
+
+
+def __getattr__(name: str) -> object:
+    if name == "GammaSeverityMarkConfiguration":
+        from ..pricing import GammaSeverityMarkConfiguration
+
+        return GammaSeverityMarkConfiguration
+
+    raise AttributeError(f"module 'janiform.simulation' has no attribute {name!r}")
+
 
 __all__ = [
     "COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY",
@@ -80,6 +94,7 @@ __all__ = [
     "CoarseSimulationRunRequest",
     "CoupledGapMarkConfiguration",
     "DoubleExponentialBaseShockConfiguration",
+    "GammaSeverityMarkConfiguration",
     "HawkesExcitationState",
     "HawkesKernelLoadings",
     "HawkesKernelParameters",
@@ -87,6 +102,10 @@ __all__ = [
     "NewsArrivalConfiguration",
     "NewsComponentMarkScaleConfiguration",
     "NewsProcessConfiguration",
+    "SeededFinePathMetadata",
+    "SeededFinePathNewsArrivalComponent",
+    "SeededFinePathRecord",
+    "SeededFinePathTransitionKind",
     "SeededTickEventRecord",
     "SeededTickEventSide",
     "SeededTickEventStateSnapshot",

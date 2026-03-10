@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import StrEnum
 from types import ModuleType
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from ._common import (
     CALIBRATION_ERROR_FACTORY,
@@ -36,7 +36,29 @@ from .._contracts import (
 )
 from .._native_api import native_module
 from ..calendar import CalendarRegistry
-from ..pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
+
+if TYPE_CHECKING:
+    from ..pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
+
+
+def _parse_gamma_severity_mark_configuration(
+    raw_payload: dict[str, Any] | Any,
+    *,
+    field_path: str,
+) -> Any:
+    from ..pricing import GammaSeverityMarkConfiguration
+
+    return GammaSeverityMarkConfiguration.from_mapping(raw_payload, field_path=field_path)
+
+
+def _parse_nig_shared_plus_shift_configuration(
+    raw_payload: dict[str, Any] | Any,
+    *,
+    field_path: str,
+) -> Any:
+    from ..pricing import NigSharedPlusShiftConfiguration
+
+    return NigSharedPlusShiftConfiguration.from_mapping(raw_payload, field_path=field_path)
 
 class CalibrationTimestampEventSessionFilter(StrEnum):
     ALL = 'all'
@@ -1114,7 +1136,7 @@ class CalibrationSharedNewsMarkLawConfiguration(ContractModel):
             raise _calibration_error(field_path, "must be an object")
 
         return CalibrationSharedNewsMarkLawConfiguration(
-            gamma_severity_marks=GammaSeverityMarkConfiguration.from_mapping(
+            gamma_severity_marks=_parse_gamma_severity_mark_configuration(
                 require_mapping(
                     raw_payload,
                     "gamma_severity_marks",
@@ -1242,7 +1264,7 @@ class CalibrationReturnComponentsStageCandidateGenerationInput(ContractModel):
                 field_path=f"{field_path}.close_open_gap_detection_policy",
             ),
             nig_shared_plus_shift_candidates=tuple(
-                NigSharedPlusShiftConfiguration.from_mapping(
+                _parse_nig_shared_plus_shift_configuration(
                     raw_candidate,
                     field_path=f"{field_path}.nig_shared_plus_shift_candidates[{candidate_index}]",
                 )

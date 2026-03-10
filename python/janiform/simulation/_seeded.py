@@ -1,11 +1,13 @@
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Optional, cast
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 from .._contracts import (
     ContractModel,
     parse_json_object,
     require_datetime_utc,
+    require_finite_number,
     require_mapping,
     require_non_negative_finite_number,
     require_non_negative_finite_scalar,
@@ -21,6 +23,7 @@ from ..calendar import (
     CalendarInvalidTimezoneError,
     CalendarMissingExchangeError,
     CalendarRegistry,
+    MarketState,
 )
 from ..hourly_factors import (
     HourlyFactorContract,
@@ -30,7 +33,10 @@ from ..hourly_factors import (
     HourlySeasonalityProviderSource,
     provide_hourly_factor_contract,
 )
+from ..pricing import NigSharedPlusShiftConfiguration
+from ..risk import SufficientStatisticsRiskReturnComponents
 from ..seasonality import SeasonalityInputValidationError
+from ._coarse import NewsProcessConfiguration
 from ._shared import (
     HawkesExcitationState,
     HawkesKernelParameters,
@@ -46,6 +52,17 @@ from ._shared import (
     _simulation_execution_error,
     _simulation_integration_error,
 )
+
+def _parse_nig_shared_plus_shift_configuration(
+    raw_payload: dict[str, Any] | Any,
+    *,
+    field_path: str,
+) -> Any:
+    from ..pricing import NigSharedPlusShiftConfiguration
+
+    return NigSharedPlusShiftConfiguration.from_mapping(raw_payload, field_path=field_path)
+
+
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,6 +250,8 @@ class SeededTickSimulationRequest(ContractModel):
     start_time_utc: datetime
     horizon_interval_count: int
     kernel_parameters: HawkesKernelParameters
+    nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
+    news_process_configuration: NewsProcessConfiguration
     initial_excitation_state: HawkesExcitationState
     hourly_factor_summary: SeededTickSimulationHourlyFactorSummary
     debug_trace_enabled: bool = False
@@ -284,6 +303,8 @@ class SeededTickSimulationRequest(ContractModel):
         start_time_utc: datetime,
         horizon_interval_count: int,
         kernel_parameters: HawkesKernelParameters,
+        nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+        news_process_configuration: NewsProcessConfiguration,
         initial_excitation_state: HawkesExcitationState,
         hourly_factor_contract: HourlyFactorContract,
         debug_trace_enabled: bool = False,
@@ -301,6 +322,8 @@ class SeededTickSimulationRequest(ContractModel):
             start_time_utc=normalized_start_time_utc,
             horizon_interval_count=horizon_interval_count,
             kernel_parameters=kernel_parameters,
+            nig_shared_plus_shift_configuration=nig_shared_plus_shift_configuration,
+            news_process_configuration=news_process_configuration,
             initial_excitation_state=initial_excitation_state,
             hourly_factor_summary=SeededTickSimulationHourlyFactorSummary.from_contract(hourly_factor_contract),
             debug_trace_enabled=debug_trace_enabled,
@@ -378,6 +401,23 @@ class SeededTickSimulationRequest(ContractModel):
                     SIMULATION_ERROR_FACTORY,
                 ),
                 field_path="kernel_parameters",
+            ),
+            nig_shared_plus_shift_configuration=_parse_nig_shared_plus_shift_configuration(
+                require_mapping(
+                    raw_payload,
+                    "nig_shared_plus_shift_configuration",
+                    "nig_shared_plus_shift_configuration",
+                    SIMULATION_ERROR_FACTORY,
+                ),
+                field_path="nig_shared_plus_shift_configuration",
+            ),
+            news_process_configuration=NewsProcessConfiguration.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "news_process_configuration",
+                    "news_process_configuration",
+                    SIMULATION_ERROR_FACTORY,
+                )
             ),
             initial_excitation_state=HawkesExcitationState.from_mapping(
                 require_mapping(
@@ -591,13 +631,227 @@ class SeededTickEventTapeMetadata(ContractModel):
         )
 
 
+class SeededFinePathTransitionKind(StrEnum):
+    BUY_TRADE = 'buy_trade'
+    SELL_TRADE = 'sell_trade'
+    EXOGENOUS_NEWS = 'exogenous_news'
+    INTERVAL_BOUNDARY_DRIFT = 'interval_boundary_drift'
+
+
+class SeededFinePathNewsArrivalComponent(StrEnum):
+    KNOWN = 'known'
+    SURPRISE = 'surprise'
+
+
+@dataclass(frozen=True, slots=True)
+class SeededFinePathMetadata(ContractModel):
+    schema_version: str
+    path_record_schema_version: str
+    event_projection_record_schema_version: str
+    transition_ordering_policy: str
+    timestamp_representation_policy: str
+    side_encoding_policy: str
+    state_snapshot_capture: SeededTickEventStateSnapshotCapture
+    state_snapshot_capture_point_policy: Optional[str] = None
+
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> SeededFinePathMetadata:
+        if not isinstance(raw_payload, dict):
+            raise _simulation_error(field_path, "must be an object")
+
+        raw_capture = require_string(
+            raw_payload,
+            "state_snapshot_capture",
+            f"{field_path}.state_snapshot_capture",
+            SIMULATION_ERROR_FACTORY,
+        )
+        try:
+            capture = SeededTickEventStateSnapshotCapture(raw_capture)
+        except ValueError as e:
+            raise _simulation_error(
+                f"{field_path}.state_snapshot_capture",
+                "must be either 'disabled' or 'post_event_transition'",
+            ) from e
+
+        raw_capture_policy = raw_payload.get("state_snapshot_capture_point_policy")
+        if raw_capture_policy is not None and not isinstance(raw_capture_policy, str):
+            raise _simulation_error(
+                f"{field_path}.state_snapshot_capture_point_policy",
+                "must be a string when provided",
+            )
+
+        return SeededFinePathMetadata(
+            schema_version=require_string(raw_payload, "schema_version", f"{field_path}.schema_version", SIMULATION_ERROR_FACTORY),
+            path_record_schema_version=require_string(
+                raw_payload,
+                "path_record_schema_version",
+                f"{field_path}.path_record_schema_version",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            event_projection_record_schema_version=require_string(
+                raw_payload,
+                "event_projection_record_schema_version",
+                f"{field_path}.event_projection_record_schema_version",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            transition_ordering_policy=require_string(
+                raw_payload,
+                "transition_ordering_policy",
+                f"{field_path}.transition_ordering_policy",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            timestamp_representation_policy=require_string(
+                raw_payload,
+                "timestamp_representation_policy",
+                f"{field_path}.timestamp_representation_policy",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            side_encoding_policy=require_string(
+                raw_payload,
+                "side_encoding_policy",
+                f"{field_path}.side_encoding_policy",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            state_snapshot_capture=capture,
+            state_snapshot_capture_point_policy=cast(Optional[str], raw_capture_policy),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SeededFinePathRecord(ContractModel):
+    transition_index: int
+    timestamp_utc_nanos: int
+    transition_kind: SeededFinePathTransitionKind
+    side: Optional[SeededTickEventSide]
+    news_arrival_component: Optional[SeededFinePathNewsArrivalComponent]
+    market_state: MarketState
+    return_components: SufficientStatisticsRiskReturnComponents
+    cumulative_log_return: float
+    state_snapshot: Optional[SeededTickEventStateSnapshot] = None
+
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> SeededFinePathRecord:
+        if not isinstance(raw_payload, dict):
+            raise _simulation_error(field_path, "must be an object")
+
+        raw_transition_kind = require_string(
+            raw_payload,
+            "transition_kind",
+            f"{field_path}.transition_kind",
+            SIMULATION_ERROR_FACTORY,
+        )
+        try:
+            transition_kind = SeededFinePathTransitionKind(raw_transition_kind)
+        except ValueError as e:
+            raise _simulation_error(
+                f"{field_path}.transition_kind",
+                (
+                    "must be one of: buy_trade, sell_trade, exogenous_news, interval_boundary_drift, "
+                    f"received '{raw_transition_kind}'"
+                ),
+            ) from e
+
+        raw_side = raw_payload.get("side")
+        side: Optional[SeededTickEventSide]
+        if raw_side is None:
+            side = None
+        elif not isinstance(raw_side, str):
+            raise _simulation_error(f"{field_path}.side", "must be a string when provided")
+        else:
+            try:
+                side = SeededTickEventSide(raw_side)
+            except ValueError as e:
+                raise _simulation_error(
+                    f"{field_path}.side",
+                    f"must be one of: buy, sell, received '{raw_side}'",
+                ) from e
+
+        raw_news_arrival_component = raw_payload.get("news_arrival_component")
+        news_arrival_component: Optional[SeededFinePathNewsArrivalComponent]
+        if raw_news_arrival_component is None:
+            news_arrival_component = None
+        elif not isinstance(raw_news_arrival_component, str):
+            raise _simulation_error(
+                f"{field_path}.news_arrival_component",
+                "must be a string when provided",
+            )
+        else:
+            try:
+                news_arrival_component = SeededFinePathNewsArrivalComponent(raw_news_arrival_component)
+            except ValueError as e:
+                raise _simulation_error(
+                    f"{field_path}.news_arrival_component",
+                    f"must be one of: known, surprise, received '{raw_news_arrival_component}'",
+                ) from e
+
+        raw_market_state = require_string(
+            raw_payload,
+            "market_state",
+            f"{field_path}.market_state",
+            SIMULATION_ERROR_FACTORY,
+        )
+        try:
+            market_state = MarketState(raw_market_state)
+        except ValueError as e:
+            raise _simulation_error(
+                f"{field_path}.market_state",
+                f"must be one of: open, closed, received '{raw_market_state}'",
+            ) from e
+
+        raw_state_snapshot = raw_payload.get("state_snapshot")
+        state_snapshot = (
+            SeededTickEventStateSnapshot.from_mapping(
+                raw_state_snapshot,
+                field_path=f"{field_path}.state_snapshot",
+            )
+            if raw_state_snapshot is not None
+            else None
+        )
+
+        return SeededFinePathRecord(
+            transition_index=require_non_negative_integer(
+                raw_payload,
+                "transition_index",
+                f"{field_path}.transition_index",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            timestamp_utc_nanos=require_non_negative_integer(
+                raw_payload,
+                "timestamp_utc_nanos",
+                f"{field_path}.timestamp_utc_nanos",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            transition_kind=transition_kind,
+            side=side,
+            news_arrival_component=news_arrival_component,
+            market_state=market_state,
+            return_components=SufficientStatisticsRiskReturnComponents.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "return_components",
+                    f"{field_path}.return_components",
+                    SIMULATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.return_components",
+            ),
+            cumulative_log_return=require_finite_number(
+                raw_payload,
+                "cumulative_log_return",
+                f"{field_path}.cumulative_log_return",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            state_snapshot=state_snapshot,
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class SeededTickSimulationResponse(ContractModel):
-    """Typed seeded-tick simulation response containing the canonical event tape."""
+    """Typed seeded-tick simulation response containing the canonical priced fine path."""
 
     schema_version: str
-    metadata: SeededTickEventTapeMetadata
-    event_tape: tuple[SeededTickEventRecord, ...]
+    metadata: SeededFinePathMetadata
+    fine_path: tuple[SeededFinePathRecord, ...]
+    event_tape: tuple[SeededTickEventRecord, ...] = ()
 
     @staticmethod
     def from_mapping(
@@ -608,13 +862,13 @@ class SeededTickSimulationResponse(ContractModel):
         if not isinstance(raw_payload, dict):
             raise _simulation_error(field_path, "must be an object")
 
-        event_tape_items = require_sequence(raw_payload, "event_tape", f"{field_path}.event_tape", SIMULATION_ERROR_FACTORY)
-        event_tape = tuple(
-            SeededTickEventRecord.from_mapping(
+        fine_path_items = require_sequence(raw_payload, "fine_path", f"{field_path}.fine_path", SIMULATION_ERROR_FACTORY)
+        fine_path = tuple(
+            SeededFinePathRecord.from_mapping(
                 raw_item,
-                field_path=f"{field_path}.event_tape[{event_index}]",
+                field_path=f"{field_path}.fine_path[{transition_index}]",
             )
-            for event_index, raw_item in enumerate(event_tape_items)
+            for transition_index, raw_item in enumerate(fine_path_items)
         )
 
         return SeededTickSimulationResponse(
@@ -624,12 +878,33 @@ class SeededTickSimulationResponse(ContractModel):
                 f"{field_path}.schema_version",
                 SIMULATION_ERROR_FACTORY,
             ),
-            metadata=SeededTickEventTapeMetadata.from_mapping(
+            metadata=SeededFinePathMetadata.from_mapping(
                 require_mapping(raw_payload, "metadata", f"{field_path}.metadata", SIMULATION_ERROR_FACTORY),
                 field_path=f"{field_path}.metadata",
             ),
-            event_tape=event_tape,
+            fine_path=fine_path,
+            event_tape=_project_event_tape_from_fine_path(fine_path),
         )
+
+
+def _project_event_tape_from_fine_path(
+    fine_path: tuple[SeededFinePathRecord, ...],
+) -> tuple[SeededTickEventRecord, ...]:
+    event_records: list[SeededTickEventRecord] = []
+    for fine_path_record in fine_path:
+        if fine_path_record.side is None:
+            continue
+
+        event_records.append(
+            SeededTickEventRecord(
+                event_index=len(event_records),
+                timestamp_utc_nanos=fine_path_record.timestamp_utc_nanos,
+                side=fine_path_record.side,
+                state_snapshot=fine_path_record.state_snapshot,
+            )
+        )
+
+    return tuple(event_records)
 
 
 def load_hourly_factor_contract_for_simulation(
@@ -719,6 +994,8 @@ def run_seeded_tick_event_simulation(
         ),
         horizon_interval_count=request.horizon_interval_count,
         kernel_parameters=request.kernel_parameters,
+        nig_shared_plus_shift_configuration=request.nig_shared_plus_shift_configuration,
+        news_process_configuration=request.news_process_configuration,
         initial_excitation_state=request.initial_excitation_state,
         hourly_factor_summary=request.hourly_factor_summary,
         debug_trace_enabled=request.debug_trace_enabled,
@@ -738,13 +1015,15 @@ def run_seeded_tick_event_simulation(
         ) from e
 
     try:
-        event_tape_json: str = native.run_seeded_tick_event_simulation(
+        fine_path_json: str = native.run_seeded_tick_event_simulation(
             normalized_request.seed,
             normalized_request.start_time_utc.astimezone(UTC).isoformat(),
             normalized_request.horizon_interval_count,
             normalized_request.kernel_parameters.to_payload(),
+            normalized_request.nig_shared_plus_shift_configuration.to_payload(),
             normalized_request.initial_excitation_state.to_payload(),
             normalized_request.hourly_factor_contract._native_result,
+            serialize_deterministic_json(normalized_request.news_process_configuration),
             debug_trace_enabled=normalized_request.debug_trace_enabled,
             sample_every_nth_transition=normalized_request.sample_every_nth_transition,
             max_records_per_chunk=normalized_request.max_records_per_chunk,
@@ -764,7 +1043,7 @@ def run_seeded_tick_event_simulation(
         ) from e
 
     try:
-        return deserialize_seeded_tick_simulation_response(event_tape_json)
+        return deserialize_seeded_tick_simulation_response(fine_path_json)
     except SeededTickSimulationValidationError as e:
         raise _simulation_integration_error(
             "native simulation returned an invalid response payload",

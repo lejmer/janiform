@@ -32,11 +32,20 @@ from janiform.pricing import (
     run_vanilla_option_pricing,
 )
 from janiform.simulation import (
+    CoupledGapMarkConfiguration,
+    DoubleExponentialBaseShockConfiguration,
+    GammaSeverityMarkConfiguration as SimulationGammaSeverityMarkConfiguration,
     HawkesExcitationState,
     HawkesKernelLoadings,
     HawkesKernelParameters,
+    KnownNewsArrivalConfiguration,
+    NewsArrivalConfiguration,
+    NewsComponentMarkScaleConfiguration,
+    NewsProcessConfiguration,
     SeededTickSimulationRequest,
     SeededTickSimulationValidationError,
+    SharedNewsMarkLawConfiguration,
+    SurpriseNewsArrivalConfiguration,
     load_hourly_factor_contract_for_simulation,
     run_seeded_tick_event_simulation,
 )
@@ -52,6 +61,44 @@ def test_validation_error_string_format_is_stable() -> None:
             start_time_utc=START_TIME_UTC,
             horizon_interval_count=2,
             kernel_parameters=_valid_kernel_parameters(),
+            nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
+                alpha=2.3,
+                beta_0=-0.8,
+                delta=0.7,
+                mu=0.1,
+                delta_beta=-0.2,
+            ),
+            news_process_configuration=NewsProcessConfiguration(
+                schema_version="news.process.configuration.v1",
+                arrivals=NewsArrivalConfiguration(
+                    known=KnownNewsArrivalConfiguration(
+                        scheduled_event_timestamps_utc_nanos=(),
+                    ),
+                    surprise=SurpriseNewsArrivalConfiguration(
+                        baseline_intensity=0.0,
+                    ),
+                ),
+                shared_mark_law=SharedNewsMarkLawConfiguration(
+                    gamma_severity_marks=SimulationGammaSeverityMarkConfiguration(
+                        shape_k=1.5,
+                        scale_theta=0.9,
+                    ),
+                    double_exponential_base_shock=DoubleExponentialBaseShockConfiguration(
+                        probability_positive=0.4,
+                        eta_plus=1.3,
+                        eta_minus=1.1,
+                    ),
+                    coupled_gap_marks=CoupledGapMarkConfiguration(sigma_g=0.75),
+                ),
+                known_component_mark_scales=NewsComponentMarkScaleConfiguration(
+                    activity_coupling_scale=0.6,
+                    return_jump_scale=1.2,
+                ),
+                surprise_component_mark_scales=NewsComponentMarkScaleConfiguration(
+                    activity_coupling_scale=0.6,
+                    return_jump_scale=1.2,
+                ),
+            ),
             initial_excitation_state=_valid_excitation_state(),
             hourly_factor_summary=simulation_module.SeededTickSimulationHourlyFactorSummary(
                 schema_version="seasonality.hourly_factor.contract.v1",
@@ -398,6 +445,44 @@ def _valid_simulation_request(calendar_registry: CalendarRegistry) -> SeededTick
         start_time_utc=START_TIME_UTC,
         horizon_interval_count=2,
         kernel_parameters=_valid_kernel_parameters(),
+        nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
+            alpha=2.3,
+            beta_0=-0.8,
+            delta=0.7,
+            mu=0.1,
+            delta_beta=-0.2,
+        ),
+        news_process_configuration=NewsProcessConfiguration(
+            schema_version="news.process.configuration.v1",
+            arrivals=NewsArrivalConfiguration(
+                known=KnownNewsArrivalConfiguration(
+                    scheduled_event_timestamps_utc_nanos=(),
+                ),
+                surprise=SurpriseNewsArrivalConfiguration(
+                    baseline_intensity=0.0,
+                ),
+            ),
+            shared_mark_law=SharedNewsMarkLawConfiguration(
+                gamma_severity_marks=SimulationGammaSeverityMarkConfiguration(
+                    shape_k=1.5,
+                    scale_theta=0.9,
+                ),
+                double_exponential_base_shock=DoubleExponentialBaseShockConfiguration(
+                    probability_positive=0.4,
+                    eta_plus=1.3,
+                    eta_minus=1.1,
+                ),
+                coupled_gap_marks=CoupledGapMarkConfiguration(sigma_g=0.75),
+            ),
+            known_component_mark_scales=NewsComponentMarkScaleConfiguration(
+                activity_coupling_scale=0.6,
+                return_jump_scale=1.2,
+            ),
+            surprise_component_mark_scales=NewsComponentMarkScaleConfiguration(
+                activity_coupling_scale=0.6,
+                return_jump_scale=1.2,
+            ),
+        ),
         initial_excitation_state=_valid_excitation_state(),
         hourly_factor_contract=_valid_hourly_factor_contract(calendar_registry),
     )

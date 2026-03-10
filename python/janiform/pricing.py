@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from types import ModuleType
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from ._contracts import (
     ContractModel,
@@ -43,11 +43,8 @@ from .hourly_factors import (
     provide_hourly_factor_contract,
 )
 from .seasonality import SeasonalityInputValidationError
-from .simulation import (
-    HawkesExcitationState,
-    HawkesKernelParameters,
-    SeededTickSimulationValidationError,
-)
+if TYPE_CHECKING:
+    from .simulation import HawkesExcitationState, HawkesKernelParameters
 
 DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA = 1.0
 VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION = "pricing.vanilla_option.run_result.v1"
@@ -173,6 +170,26 @@ def _pricing_execution_error(
 
 
 PRICING_ERROR_FACTORY: ValidationErrorFactory = _pricing_error
+
+
+def _parse_hawkes_kernel_parameters(
+    raw_payload: dict[str, Any] | Any,
+    *,
+    field_path: str,
+) -> Any:
+    from .simulation import HawkesKernelParameters
+
+    return HawkesKernelParameters.from_mapping(raw_payload, field_path=field_path)
+
+
+def _parse_hawkes_excitation_state(
+    raw_payload: dict[str, Any] | Any,
+    *,
+    field_path: str,
+) -> Any:
+    from .simulation import HawkesExcitationState
+
+    return HawkesExcitationState.from_mapping(raw_payload, field_path=field_path)
 
 
 def require_boolean(
@@ -449,7 +466,7 @@ class VanillaOptionPricingModelParameters(ContractModel):
 
         try:
             return VanillaOptionPricingModelParameters(
-                hawkes_kernel_parameters=HawkesKernelParameters.from_mapping(
+                hawkes_kernel_parameters=_parse_hawkes_kernel_parameters(
                     require_mapping(
                         raw_payload,
                         "hawkes_kernel_parameters",
@@ -477,7 +494,7 @@ class VanillaOptionPricingModelParameters(ContractModel):
                     field_path=f"{field_path}.nig_shared_plus_shift_configuration",
                 ),
             )
-        except SeededTickSimulationValidationError as e:
+        except JaniformValidationError as e:
             raise _pricing_error(e.failure.field_path, e.failure.message) from e
 
 
@@ -524,7 +541,7 @@ class VanillaOptionPricingRequest(ContractModel):
                     require_mapping(raw_payload, "payoff", "payoff", PRICING_ERROR_FACTORY),
                     field_path="payoff",
                 ),
-                boundary_state=HawkesExcitationState.from_mapping(
+                boundary_state=_parse_hawkes_excitation_state(
                     require_mapping(raw_payload, "boundary_state", "boundary_state", PRICING_ERROR_FACTORY),
                     field_path="boundary_state",
                 ),
@@ -534,7 +551,7 @@ class VanillaOptionPricingRequest(ContractModel):
                 ),
                 interval_delta=interval_delta,
             )
-        except SeededTickSimulationValidationError as e:
+        except JaniformValidationError as e:
             raise _pricing_error(e.failure.field_path, e.failure.message) from e
 
 

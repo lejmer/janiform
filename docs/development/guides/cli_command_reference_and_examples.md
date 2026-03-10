@@ -67,7 +67,7 @@ The generated files include:
 
 Use `coarse-interval` when you want a direct Delta-spaced path artifact for analytics, pricing
 validation, or risk-style simulation at the interval boundary. Use `seeded-ticks` when you need
-fine event tapes, event ordering, or tick replay diagnostics.
+a priced fine path, transition ordering, or tick replay diagnostics.
 
 ### Coarse-Interval Synopsis
 
@@ -455,6 +455,7 @@ Common normalization and output options:
 - `--tick-price-input-policy {explicit_price_column,trade_price_column,bid_ask_midpoint,close_price_column}`
 - `--tick-price-column`
 - `--tick-trade-price-column`
+- `--tick-trade-sign-column`
 - `--tick-bid-column`
 - `--tick-ask-column`
 - `--tick-close-price-column`
@@ -545,6 +546,7 @@ janiform calibration market-data \
   --tick-timestamp-column timestamp_utc \
   --tick-price-input-policy trade_price_column \
   --tick-trade-price-column trade_price \
+  --tick-trade-sign-column trade_sign \
   --exchange-code XNYS \
   --session-definition-path tmp/cli-docs/config/sessions.json \
   --session-definition-format json \

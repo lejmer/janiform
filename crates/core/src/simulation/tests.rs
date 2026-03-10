@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 
-use crate::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, MarketState};
+use crate::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
 use crate::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters, HawkesTransitionStep,
 };
@@ -13,7 +13,13 @@ use crate::hourly_factors::{
     HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
     HourlyFactorMaterializationMetadata,
 };
-use crate::news::{NewsArrivalComponent, NewsReturnJumpRoutingTarget};
+use crate::news::{
+    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
+    GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalComponent,
+    NewsArrivalConfiguration, NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
+    NewsReturnJumpRoutingTarget, SharedNewsMarkLawConfiguration,
+    SurpriseNewsArrivalConfiguration,
+};
 use crate::nig::{NIG_TRADING_TIME_INCREMENT_COMPOSITION_POLICY, NigSharedPlusShiftConfiguration};
 use crate::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
@@ -39,7 +45,7 @@ use crate::simulation::{
     SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY, SeededTickEventDebugTraceTransitionKind,
     SeededTickEventSide, SeededTickEventStateSnapshotCapture,
     SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
-    SeededTickSimulationNewsEventMarketState, SeededTickSimulationNewsMarkScales,
+    SeededTickSimulationNewsEventMarketState,
     SeededTickSimulationRunConfig, SeededTickSimulationRunError, SeededTickSimulationRunOptions,
     run_seeded_tick_event_simulation, run_seeded_tick_event_simulation_with_randomness_factory,
     sample_nig_trading_time_increment, sample_nig_trading_time_increment_with_edge_mode,
@@ -162,10 +168,75 @@ fn trading_time_assembler_is_seed_deterministic() {
 }
 
 fn valid_nig_driver_parameters() -> crate::nig::NigBuySellDriverParameters {
-    NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
-        .expect("test shared-plus-shift payload should construct")
+    valid_nig_shared_plus_shift_configuration()
         .derive_driver_parameters()
         .expect("test shared-plus-shift payload should derive drivers")
+}
+
+fn valid_nig_shared_plus_shift_configuration() -> NigSharedPlusShiftConfiguration {
+    NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+        .expect("test shared-plus-shift payload should construct")
+}
+
+fn build_news_process_configuration(
+    known_news_timestamps_utc_nanos: Vec<i64>,
+) -> NewsProcessConfiguration {
+    NewsProcessConfiguration::try_new(
+        NewsArrivalConfiguration {
+            known: KnownNewsArrivalConfiguration {
+                scheduled_event_timestamps_utc_nanos: known_news_timestamps_utc_nanos,
+            },
+            surprise: SurpriseNewsArrivalConfiguration {
+                baseline_intensity: 0.0,
+            },
+        },
+        SharedNewsMarkLawConfiguration {
+            gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.5, 0.9)
+                .expect("news gamma severity configuration should construct"),
+            double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::try_new(
+                0.4, 1.3, 1.1,
+            )
+            .expect("news base shock configuration should construct"),
+            coupled_gap_marks: CoupledGapMarkConfiguration::new(0.75),
+        },
+        default_news_component_mark_scales(),
+        default_news_component_mark_scales(),
+    )
+    .expect("news process configuration should construct")
+}
+
+fn default_news_component_mark_scales() -> NewsComponentMarkScaleConfiguration {
+    NewsComponentMarkScaleConfiguration {
+        activity_coupling_scale: 0.6,
+        return_jump_scale: 1.2,
+    }
+}
+
+fn sample_expected_shared_news_marks(
+    randomness_stream: &mut dyn SimulationRandomnessStream,
+) -> (f64, f64) {
+    let sampled_mark_payload = build_news_process_configuration(Vec::new())
+        .default_mark_pipeline()
+        .sample_coupled_marks(randomness_stream)
+        .expect("shared news mark sampling should succeed for test configuration");
+
+    (
+        sampled_mark_payload.shared_severity_mark,
+        sampled_mark_payload
+            .coupled_gap_mark_construction
+            .gap_jump_mark,
+    )
+}
+
+fn set_known_news_timestamps(
+    model_inputs: &mut SeededTickSimulationModelInputs,
+    known_news_timestamps_utc_nanos: Vec<i64>,
+) {
+    model_inputs
+        .news_process_configuration
+        .arrivals
+        .known
+        .scheduled_event_timestamps_utc_nanos = known_news_timestamps_utc_nanos;
 }
 
 #[test]
@@ -548,10 +619,10 @@ fn seeded_simulation_debug_trace_captures_transition_ordering_and_carryover_cont
         })
         .expect("trace should include one exogenous news transition");
     let mut expected_severity_stream = ScriptedRandomnessStream::new(vec![0.5, 0.25, 0.5]);
+    let (expected_shared_severity_mark, _) =
+        sample_expected_shared_news_marks(&mut expected_severity_stream);
     let expected_activity_coupling_mark =
-        super::constants::SEEDED_TICK_EXOGENOUS_NEWS_SHARED_GAMMA_CONFIGURATION
-            .sample_severity_mark(&mut expected_severity_stream)
-            .expect("expected shared gamma sample should construct in debug-trace fixture");
+        default_news_component_mark_scales().activity_coupling_scale * expected_shared_severity_mark;
     assert_float_close(
         exogenous_news_record
             .exogenous_news_activity_coupling_mark
@@ -1075,7 +1146,7 @@ fn seeded_simulation_scheduler_applies_known_before_surprise_tie_ordering_policy
     let tied_timestamp_utc_nanos = start_utc_nanos + ((ONE_HOUR_NANOS as f64 * 0.3).floor() as i64);
 
     let mut model_inputs = one_interval_model_inputs(1.0, 1.0, 2.0);
-    model_inputs.known_scheduled_news_event_timestamps_utc_nanos = vec![tied_timestamp_utc_nanos];
+    set_known_news_timestamps(&mut model_inputs, vec![tied_timestamp_utc_nanos]);
 
     let run_config = SeededTickSimulationRunConfig::try_new(
         2_009,
@@ -1182,7 +1253,7 @@ fn seeded_simulation_surprise_sampling_is_invariant_to_known_timestamp_profile_w
                 &[1.0],
                 &[1.75],
             );
-            model_inputs.known_scheduled_news_event_timestamps_utc_nanos = known_timestamps.clone();
+            set_known_news_timestamps(&mut model_inputs, known_timestamps.clone());
 
             let run_config = SeededTickSimulationRunConfig::try_new(
                 seed,
@@ -1263,11 +1334,14 @@ fn seeded_simulation_news_component_counts_follow_known_plus_surprise_decomposit
         &[2.75, 1.4],
     );
 
-    model_inputs.known_scheduled_news_event_timestamps_utc_nanos = vec![
+    set_known_news_timestamps(
+        &mut model_inputs,
+        vec![
         start_utc_nanos + ONE_HOUR_NANOS / 10,
         start_utc_nanos + 3 * ONE_HOUR_NANOS / 5,
         second_interval_start_utc_nanos + ONE_HOUR_NANOS / 3,
-    ];
+    ],
+    );
 
     let run_config = SeededTickSimulationRunConfig::try_new(
         9_317,
@@ -1372,8 +1446,7 @@ fn seeded_simulation_known_open_news_timestamp_updates_m_t_not_g_t() {
         &[0.0],
     );
 
-    model_inputs.known_scheduled_news_event_timestamps_utc_nanos =
-        vec![known_open_timestamp_utc_nanos];
+    set_known_news_timestamps(&mut model_inputs, vec![known_open_timestamp_utc_nanos]);
 
     let run_config = SeededTickSimulationRunConfig::try_new(
         2_010,
@@ -1404,6 +1477,10 @@ fn seeded_simulation_known_open_news_timestamp_updates_m_t_not_g_t() {
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("open-window news routing run should complete");
+    let mut expected_mark_stream = ScriptedRandomnessStream::new(vec![0.5, 0.25, 0.5, 0.25, 0.5]);
+    let (expected_shared_severity_mark, expected_shared_return_jump_mark) =
+        sample_expected_shared_news_marks(&mut expected_mark_stream);
+    let expected_mark_scales = default_news_component_mark_scales();
 
     let trace_records = run_result
         .debug_trace_output
@@ -1430,11 +1507,13 @@ fn seeded_simulation_known_open_news_timestamp_updates_m_t_not_g_t() {
         run_result
             .news_routing_totals
             .cumulative_open_window_return_jump_m_t_increment,
+        expected_mark_scales.return_jump_scale * expected_shared_return_jump_mark,
+    );
+    assert_float_close(
         run_result
             .news_routing_totals
-            .cumulative_activity_coupling_j_t_increment
-            .sqrt()
-            * -(1.0 - 0.5_f64).ln(),
+            .cumulative_activity_coupling_j_t_increment,
+        expected_mark_scales.activity_coupling_scale * expected_shared_severity_mark,
     );
     assert_float_close(
         run_result
@@ -1459,8 +1538,7 @@ fn seeded_simulation_known_closed_news_timestamp_updates_g_t_not_m_t() {
         &[0.0],
     );
 
-    model_inputs.known_scheduled_news_event_timestamps_utc_nanos =
-        vec![known_closed_timestamp_utc_nanos];
+    set_known_news_timestamps(&mut model_inputs, vec![known_closed_timestamp_utc_nanos]);
 
     let run_config = SeededTickSimulationRunConfig::try_new(
         2_011,
@@ -1491,6 +1569,10 @@ fn seeded_simulation_known_closed_news_timestamp_updates_g_t_not_m_t() {
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("closed-window news routing run should complete");
+    let mut expected_mark_stream = ScriptedRandomnessStream::new(vec![0.5, 0.25, 0.5, 0.25, 0.5]);
+    let (expected_shared_severity_mark, expected_shared_return_jump_mark) =
+        sample_expected_shared_news_marks(&mut expected_mark_stream);
+    let expected_mark_scales = default_news_component_mark_scales();
 
     let trace_records = run_result
         .debug_trace_output
@@ -1523,11 +1605,13 @@ fn seeded_simulation_known_closed_news_timestamp_updates_g_t_not_m_t() {
         run_result
             .news_routing_totals
             .cumulative_closed_window_gap_g_t_increment,
+        expected_mark_scales.return_jump_scale * expected_shared_return_jump_mark,
+    );
+    assert_float_close(
         run_result
             .news_routing_totals
-            .cumulative_activity_coupling_j_t_increment
-            .sqrt()
-            * -(1.0 - 0.5_f64).ln(),
+            .cumulative_activity_coupling_j_t_increment,
+        expected_mark_scales.activity_coupling_scale * expected_shared_severity_mark,
     );
 }
 
@@ -1553,10 +1637,13 @@ fn seeded_simulation_calendar_resolution_is_source_of_truth_for_early_close_boun
         &[0.0, 0.0],
     );
 
-    model_inputs.known_scheduled_news_event_timestamps_utc_nanos = vec![
+    set_known_news_timestamps(
+        &mut model_inputs,
+        vec![
         open_window_timestamp_utc_nanos,
         early_close_boundary_timestamp_utc_nanos,
-    ];
+    ],
+    );
 
     let run_config = SeededTickSimulationRunConfig::try_new(
         2_012,
@@ -1666,7 +1753,7 @@ fn seeded_simulation_rejects_invalid_generated_news_return_jump_mark() {
 
     assert!(matches!(
         error,
-        SeededTickSimulationRunError::InvalidGeneratedNewsReturnJumpMark { value } if value.is_nan()
+        SeededTickSimulationRunError::NewsMarkSamplingFailure { interval_index: 0, .. }
     ));
 }
 
@@ -1674,61 +1761,40 @@ fn seeded_simulation_rejects_invalid_generated_news_return_jump_mark() {
 fn seeded_exogenous_mark_sampling_matches_shared_gamma_kou_reference_contract_for_fixed_seed() {
     let root_seed = 98_771_u64;
     let interval_index = 3_u64;
-    let mark_scales = SeededTickSimulationNewsMarkScales {
+    let mark_scales = NewsComponentMarkScaleConfiguration {
         activity_coupling_scale: 1.35,
         return_jump_scale: 0.85,
     };
 
-    let severity_substream_seed = derive_simulation_substream_seed(
+    let news_mark_substream_seed = derive_simulation_substream_seed(
         root_seed,
-        SimulationRandomnessSubstreamDomain::ExogenousNewsSeverity,
+        SimulationRandomnessSubstreamDomain::ExogenousNewsMarks,
         interval_index,
     );
-    let return_jump_substream_seed = derive_simulation_substream_seed(
-        root_seed,
-        SimulationRandomnessSubstreamDomain::ExogenousNewsReturnJump,
-        interval_index,
-    );
-    let mut observed_severity_stream =
-        SplitMix64SimulationRandomnessStream::from_seed(severity_substream_seed);
-    let mut observed_return_jump_stream =
-        SplitMix64SimulationRandomnessStream::from_seed(return_jump_substream_seed);
+    let mut observed_mark_stream =
+        SplitMix64SimulationRandomnessStream::from_seed(news_mark_substream_seed);
+    let observed_event_input = super::runtime::build_timestamped_news_event_input(
+        &build_news_process_configuration(Vec::new()).default_mark_pipeline(),
+        NewsArrivalComponent::Surprise,
+        1_704_067_200_000_000_000,
+        0,
+        mark_scales,
+        &mut observed_mark_stream,
+        interval_index as usize,
+    )
+    .expect("seeded exogenous mark sampling should succeed for valid fixed-seed setup");
 
-    let (observed_activity_coupling_mark, observed_return_jump_mark) =
-        super::runtime::sample_exogenous_news_marks(
-            &mut observed_severity_stream,
-            &mut observed_return_jump_stream,
-            mark_scales,
-        )
-        .expect("seeded exogenous mark sampling should succeed for valid fixed-seed setup");
-
-    let mut expected_severity_stream =
-        SplitMix64SimulationRandomnessStream::from_seed(severity_substream_seed);
-    let mut expected_return_jump_stream =
-        SplitMix64SimulationRandomnessStream::from_seed(return_jump_substream_seed);
-    let expected_shared_severity_mark =
-        super::constants::SEEDED_TICK_EXOGENOUS_NEWS_SHARED_GAMMA_CONFIGURATION
-            .sample_severity_mark(&mut expected_severity_stream)
-            .expect("shared gamma mark sample should succeed");
-    let expected_shared_base_shock_mark =
-        super::constants::SEEDED_TICK_EXOGENOUS_NEWS_SHARED_BASE_SHOCK_CONFIGURATION
-            .sample_base_shock_mark(&mut expected_return_jump_stream)
-            .expect("shared Kou base-shock sample should succeed");
-    let expected_shared_return_jump_mark =
-        super::constants::SEEDED_TICK_EXOGENOUS_NEWS_SHARED_COUPLED_RETURN_JUMP_CONFIGURATION
-            .construct_gap_jump_mark(
-                expected_shared_severity_mark,
-                expected_shared_base_shock_mark,
-            )
-            .expect("shared coupled return-jump mark should construct")
-            .gap_jump_mark;
+    let mut expected_mark_stream =
+        SplitMix64SimulationRandomnessStream::from_seed(news_mark_substream_seed);
+    let (expected_shared_severity_mark, expected_shared_return_jump_mark) =
+        sample_expected_shared_news_marks(&mut expected_mark_stream);
 
     assert_float_close(
-        observed_activity_coupling_mark,
+        observed_event_input.shared_severity_mark,
         mark_scales.activity_coupling_scale * expected_shared_severity_mark,
     );
     assert_float_close(
-        observed_return_jump_mark,
+        observed_event_input.coupled_return_jump_mark,
         mark_scales.return_jump_scale * expected_shared_return_jump_mark,
     );
 }
@@ -1738,29 +1804,21 @@ fn seeded_exogenous_mark_sampling_preserves_shared_gamma_kou_sign_and_scale_stat
     let root_seed = 98_772_u64;
     let interval_index = 4_u64;
     let sample_count = 8_192_u64;
-    let mark_scales = SeededTickSimulationNewsMarkScales {
+    let mark_scales = NewsComponentMarkScaleConfiguration {
         activity_coupling_scale: 1.1,
         return_jump_scale: 0.9,
     };
 
-    let severity_substream_seed = derive_simulation_substream_seed(
+    let news_mark_substream_seed = derive_simulation_substream_seed(
         root_seed,
-        SimulationRandomnessSubstreamDomain::ExogenousNewsSeverity,
+        SimulationRandomnessSubstreamDomain::ExogenousNewsMarks,
         interval_index,
     );
-    let return_jump_substream_seed = derive_simulation_substream_seed(
-        root_seed,
-        SimulationRandomnessSubstreamDomain::ExogenousNewsReturnJump,
-        interval_index,
-    );
-    let mut observed_severity_stream =
-        SplitMix64SimulationRandomnessStream::from_seed(severity_substream_seed);
-    let mut observed_return_jump_stream =
-        SplitMix64SimulationRandomnessStream::from_seed(return_jump_substream_seed);
-    let mut expected_severity_stream =
-        SplitMix64SimulationRandomnessStream::from_seed(severity_substream_seed);
-    let mut expected_return_jump_stream =
-        SplitMix64SimulationRandomnessStream::from_seed(return_jump_substream_seed);
+    let mut observed_mark_stream =
+        SplitMix64SimulationRandomnessStream::from_seed(news_mark_substream_seed);
+    let mut expected_mark_stream =
+        SplitMix64SimulationRandomnessStream::from_seed(news_mark_substream_seed);
+    let mark_pipeline = build_news_process_configuration(Vec::new()).default_mark_pipeline();
 
     let mut observed_activity_sum = 0.0;
     let mut expected_activity_sum = 0.0;
@@ -1771,30 +1829,21 @@ fn seeded_exogenous_mark_sampling_preserves_shared_gamma_kou_sign_and_scale_stat
     let mut expected_positive_return_count = 0_u64;
 
     for _sample_index in 0..sample_count {
-        let (observed_activity_coupling_mark, observed_return_jump_mark) =
-            super::runtime::sample_exogenous_news_marks(
-                &mut observed_severity_stream,
-                &mut observed_return_jump_stream,
-                mark_scales,
-            )
-            .expect("seeded exogenous mark sampling should succeed for valid setup");
+        let observed_event_input = super::runtime::build_timestamped_news_event_input(
+            &mark_pipeline,
+            NewsArrivalComponent::Surprise,
+            1_704_067_200_000_000_000,
+            0,
+            mark_scales,
+            &mut observed_mark_stream,
+            interval_index as usize,
+        )
+        .expect("seeded exogenous mark sampling should succeed for valid setup");
+        let observed_activity_coupling_mark = observed_event_input.shared_severity_mark;
+        let observed_return_jump_mark = observed_event_input.coupled_return_jump_mark;
 
-        let expected_shared_severity_mark =
-            super::constants::SEEDED_TICK_EXOGENOUS_NEWS_SHARED_GAMMA_CONFIGURATION
-                .sample_severity_mark(&mut expected_severity_stream)
-                .expect("shared gamma mark sampling should succeed");
-        let expected_shared_base_shock_mark =
-            super::constants::SEEDED_TICK_EXOGENOUS_NEWS_SHARED_BASE_SHOCK_CONFIGURATION
-                .sample_base_shock_mark(&mut expected_return_jump_stream)
-                .expect("shared base-shock sampling should succeed");
-        let expected_shared_return_jump_mark =
-            super::constants::SEEDED_TICK_EXOGENOUS_NEWS_SHARED_COUPLED_RETURN_JUMP_CONFIGURATION
-                .construct_gap_jump_mark(
-                    expected_shared_severity_mark,
-                    expected_shared_base_shock_mark,
-                )
-                .expect("shared coupled return-jump mark construction should succeed")
-                .gap_jump_mark;
+        let (expected_shared_severity_mark, expected_shared_return_jump_mark) =
+            sample_expected_shared_news_marks(&mut expected_mark_stream);
 
         let expected_activity_coupling_mark =
             mark_scales.activity_coupling_scale * expected_shared_severity_mark;
@@ -1842,22 +1891,6 @@ fn seeded_exogenous_mark_sampling_preserves_shared_gamma_kou_sign_and_scale_stat
     assert_float_close(observed_positive_frequency, expected_positive_frequency);
 }
 
-#[test]
-fn seeded_simulation_rejects_invalid_news_routing_state_violations() {
-    let error =
-        super::runtime::validate_news_return_jump_routing_state(MarketState::Open, 0.1, 0.2)
-            .expect_err("open-window routing with non-zero closed-gap increment must fail");
-
-    assert!(matches!(
-        error,
-        SeededTickSimulationRunError::InvalidNewsRoutingStateViolation {
-            market_state: MarketState::Open,
-            open_window_return_jump_increment,
-            closed_window_gap_increment,
-        } if (open_window_return_jump_increment - 0.1).abs() <= 1e-12
-            && (closed_window_gap_increment - 0.2).abs() <= 1e-12
-    ));
-}
 
 #[test]
 fn seeded_simulation_boundary_adjacent_event_times_are_not_snapped_to_hour_edges() {
@@ -1965,6 +1998,72 @@ fn seeded_simulation_state_snapshot_captures_post_event_transition_boundary() {
     assert_float_close(snapshot.y_minus_minus, 0.0);
     assert_float_close(snapshot.deseasonalized_lambda_plus, 0.9);
     assert_float_close(snapshot.deseasonalized_lambda_minus, 0.7);
+}
+
+#[test]
+fn seeded_simulation_fine_path_schema_exposes_required_priced_fields() {
+    let run_config = SeededTickSimulationRunConfig::try_new(
+        8_047,
+        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        1,
+        one_interval_model_inputs(1.0, 0.5, 0.0),
+        None,
+    )
+    .expect("fine-path schema run config should initialize");
+
+    let scripted_factory = ScriptedRandomnessFactory::new(
+        vec![0.0],
+        vec![1.0],
+        vec![0.25],
+        vec![],
+        vec![0.0],
+        vec![],
+        vec![],
+        vec![],
+    );
+
+    let run_result =
+        run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
+            .expect("fine-path schema run should complete");
+
+    let serialized_fine_path = run_result
+        .serialize_fine_path_json()
+        .expect("fine path serialization should succeed");
+    let fine_path_payload: Value =
+        serde_json::from_str(&serialized_fine_path).expect("fine path JSON should parse");
+
+    let fine_path_records = fine_path_payload["fine_path"]
+        .as_array()
+        .expect("fine_path must serialize as an array");
+    assert_eq!(fine_path_records.len(), 2);
+
+    let first_record = fine_path_records[0]
+        .as_object()
+        .expect("fine-path record must serialize as an object");
+    for required_field in [
+        "transition_index",
+        "timestamp_utc_nanos",
+        "transition_kind",
+        "market_state",
+        "return_components",
+        "cumulative_log_return",
+    ] {
+        assert!(first_record.contains_key(required_field));
+    }
+
+    let return_components = first_record["return_components"]
+        .as_object()
+        .expect("return_components must serialize as an object");
+    for required_component_field in [
+        "buy_side_return",
+        "sell_side_return",
+        "trading_time_return",
+        "open_jump_return",
+        "closed_gap_return",
+        "total_return",
+    ] {
+        assert!(return_components.contains_key(required_component_field));
+    }
 }
 
 #[test]
@@ -2372,6 +2471,53 @@ impl ScriptedRandomnessFactory {
             news_return_jump_draws,
         }
     }
+
+    fn combined_news_mark_draws(&self) -> Vec<f64> {
+        const SEVERITY_DRAWS_PER_EVENT: usize = 3;
+        const BASE_SHOCK_DRAWS_PER_EVENT: usize = 2;
+
+        let severity_chunks = self
+            .news_severity_draws
+            .chunks(SEVERITY_DRAWS_PER_EVENT);
+        let base_shock_chunks = self
+            .news_return_jump_draws
+            .chunks(BASE_SHOCK_DRAWS_PER_EVENT);
+        let combined_capacity = self
+            .news_severity_draws
+            .len()
+            .saturating_add(self.news_return_jump_draws.len());
+        let mut combined_draws = Vec::with_capacity(combined_capacity);
+
+        for (severity_chunk, base_shock_chunk) in severity_chunks.zip(base_shock_chunks) {
+            combined_draws.extend_from_slice(severity_chunk);
+            combined_draws.extend_from_slice(base_shock_chunk);
+        }
+
+        let paired_event_count = self
+            .news_severity_draws
+            .len()
+            .div_ceil(SEVERITY_DRAWS_PER_EVENT)
+            .min(
+                self.news_return_jump_draws
+                    .len()
+                    .div_ceil(BASE_SHOCK_DRAWS_PER_EVENT),
+            );
+        let paired_severity_draw_count = paired_event_count * SEVERITY_DRAWS_PER_EVENT;
+        let paired_base_shock_draw_count = paired_event_count * BASE_SHOCK_DRAWS_PER_EVENT;
+
+        if paired_severity_draw_count < self.news_severity_draws.len() {
+            combined_draws.extend_from_slice(
+                &self.news_severity_draws[paired_severity_draw_count..],
+            );
+        }
+        if paired_base_shock_draw_count < self.news_return_jump_draws.len() {
+            combined_draws.extend_from_slice(
+                &self.news_return_jump_draws[paired_base_shock_draw_count..],
+            );
+        }
+
+        combined_draws
+    }
 }
 
 impl SimulationRandomnessFactory for ScriptedRandomnessFactory {
@@ -2408,8 +2554,10 @@ impl SimulationRandomnessFactory for ScriptedRandomnessFactory {
             SimulationRandomnessSubstreamDomain::ExogenousNewsReturnJump => {
                 self.news_return_jump_draws.clone()
             }
-            SimulationRandomnessSubstreamDomain::ExogenousNewsMarks
-            | SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
+            SimulationRandomnessSubstreamDomain::ExogenousNewsMarks => {
+                self.combined_news_mark_draws()
+            }
+            SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment => Vec::new(),
         };
@@ -2460,7 +2608,7 @@ impl SimulationRandomnessFactory for BoundaryAdjacentRandomnessFactory {
             SimulationRandomnessSubstreamDomain::EndogenousSellEventCount => vec![0.0],
             SimulationRandomnessSubstreamDomain::EndogenousBuyEventTimestamp => {
                 if substream_index == 0 {
-                    vec![0.367_879_441_172_81]
+                    vec![0.135_410_650_56]
                 } else {
                     vec![0.999_999_999_999]
                 }
@@ -2546,9 +2694,8 @@ fn one_interval_model_inputs(
             },
         },
         calendar_registry: build_seeded_simulation_calendar_registry(),
-        known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
-        known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
-        surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
+        nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
+        news_process_configuration: build_news_process_configuration(Vec::new()),
     }
 }
 
@@ -2646,7 +2793,7 @@ fn two_interval_boundary_adjacent_model_inputs() -> SeededTickSimulationModelInp
     model_inputs.initial_excitation_state = HawkesExcitationState {
         y_plus_plus: 0.0,
         y_plus_minus: 0.0,
-        y_minus_plus: -10.0,
+        y_minus_plus: 0.0,
         y_minus_minus: 0.0,
     };
 
@@ -2773,9 +2920,8 @@ fn valid_model_inputs() -> SeededTickSimulationModelInputs {
             },
         },
         calendar_registry: build_seeded_simulation_calendar_registry(),
-        known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
-        known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
-        surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
+        nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
+        news_process_configuration: build_news_process_configuration(Vec::new()),
     }
 }
 

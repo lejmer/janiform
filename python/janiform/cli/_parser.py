@@ -155,16 +155,17 @@ def _build_simulation_parser(subparsers) -> None:
         contract_label="a coarse-interval simulation request JSON object",
         semantic_note=(
             "Use coarse-interval simulation for direct Delta-spaced paths. Use seeded-ticks when "
-            "you need fine event tapes or tick replay."
+            "you need a priced fine path or tick replay."
         ),
     )
 
     simulation_seeded_ticks_parser = simulation_subparsers.add_parser(
         "seeded-ticks",
-        help="Seeded tick event simulation workflow.",
+        help="Seeded tick priced fine-path simulation workflow.",
         description=(
-            "Seeded tick event simulation workflow. Use this command when you need fine-scale tick "
-            "events and replay rather than direct coarse-interval paths."
+            "Seeded tick priced fine-path simulation workflow. Use this command when you need the "
+            "canonical fine-scale priced path, its derived event replay, or direct news and return "
+            "component realization rather than coarse-interval aggregation."
         ),
     )
     simulation_seeded_ticks_parser.set_defaults(
@@ -592,6 +593,10 @@ def _add_market_data_calibration_arguments(calibration_market_data_parser: Argum
     calibration_market_data_parser.add_argument(
         "--tick-trade-price-column",
         help="Tick-data trade price column.",
+    )
+    calibration_market_data_parser.add_argument(
+        "--tick-trade-sign-column",
+        help="Tick-data trade sign column required for canonical full-model Hawkes calibration.",
     )
     calibration_market_data_parser.add_argument("--tick-bid-column", help="Tick-data bid column.")
     calibration_market_data_parser.add_argument("--tick-ask-column", help="Tick-data ask column.")

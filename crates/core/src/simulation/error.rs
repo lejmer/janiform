@@ -5,8 +5,13 @@ use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Utc};
 
-use crate::calendar::{ExchangeCalendarResolveError, MarketState};
+use crate::calendar::ExchangeCalendarResolveError;
 use crate::hawkes::HawkesTransitionError;
+use crate::news::NewsProcessConfigurationError;
+use crate::news::{NewsMarkInterfaceError, SharedNewsEventDispatchError};
+use crate::nig::NigSharedPlusShiftConfigurationError;
+use crate::return_decomposition::ReturnDecompositionValidationError;
+use crate::risk::SufficientStatisticsRiskReturnComponentsError;
 
 /// Structured simulator run failure with explicit validation diagnostics.
 #[derive(Debug, Clone, PartialEq)]
@@ -59,13 +64,11 @@ pub enum SeededTickSimulationRunError {
         previous_timestamp_utc_nanos: i64,
         current_timestamp_utc_nanos: i64,
     },
-    InvalidNewsComponentActivityCouplingScale {
-        component: &'static str,
-        value: f64,
+    InvalidNigSharedPlusShiftConfiguration {
+        source: NigSharedPlusShiftConfigurationError,
     },
-    InvalidNewsComponentReturnJumpScale {
-        component: &'static str,
-        value: f64,
+    InvalidNewsProcessConfiguration {
+        source: NewsProcessConfigurationError,
     },
     InvalidGeneratedNewsActivityCouplingMark {
         value: f64,
@@ -73,19 +76,34 @@ pub enum SeededTickSimulationRunError {
     InvalidGeneratedNewsReturnJumpMark {
         value: f64,
     },
+    NewsMarkSamplingFailure {
+        interval_index: usize,
+        source: NewsMarkInterfaceError,
+    },
+    SharedNewsDispatchFailure {
+        interval_index: usize,
+        source: SharedNewsEventDispatchError,
+    },
     NewsMarketStateResolutionFailed {
         exchange_code: String,
         timestamp_utc_nanos: i64,
         source: ExchangeCalendarResolveError,
     },
-    InvalidNewsRoutingStateViolation {
-        market_state: MarketState,
-        open_window_return_jump_increment: f64,
-        closed_window_gap_increment: f64,
-    },
     InvalidAccumulatedNewsRoutingTotal {
         field: &'static str,
         value: f64,
+    },
+    InvalidReturnDecomposition {
+        interval_index: usize,
+        source: ReturnDecompositionValidationError,
+    },
+    TradingTimeSamplingFailure {
+        interval_index: usize,
+        source: crate::nig::NigTradingTimeIncrementSamplingError,
+    },
+    InvalidReturnComponents {
+        interval_index: usize,
+        source: SufficientStatisticsRiskReturnComponentsError,
     },
     InvalidTransitionStep {
         source: HawkesTransitionError,
@@ -172,13 +190,13 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "known_scheduled_news_event_timestamps_utc_nanos must be strictly increasing, found previous={previous_timestamp_utc_nanos} and current={current_timestamp_utc_nanos}"
             ),
-            Self::InvalidNewsComponentActivityCouplingScale { component, value } => write!(
+            Self::InvalidNigSharedPlusShiftConfiguration { source } => write!(
                 formatter,
-                "{component} news activity_coupling_scale must be finite and non-negative, found {value}"
+                "nig_shared_plus_shift_configuration is invalid: {source}"
             ),
-            Self::InvalidNewsComponentReturnJumpScale { component, value } => write!(
+            Self::InvalidNewsProcessConfiguration { source } => write!(
                 formatter,
-                "{component} news return_jump_scale must be finite and non-negative, found {value}"
+                "news_process_configuration is invalid: {source}"
             ),
             Self::InvalidGeneratedNewsActivityCouplingMark { value } => write!(
                 formatter,
@@ -188,6 +206,20 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "generated exogenous news return-jump mark must be finite, found {value}"
             ),
+            Self::NewsMarkSamplingFailure {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} news mark sampling failed: {source}"
+            ),
+            Self::SharedNewsDispatchFailure {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} shared news dispatch failed: {source}"
+            ),
             Self::NewsMarketStateResolutionFailed {
                 exchange_code,
                 timestamp_utc_nanos,
@@ -196,17 +228,30 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "failed to resolve market state for exchange `{exchange_code}` at timestamp {timestamp_utc_nanos}: {source}"
             ),
-            Self::InvalidNewsRoutingStateViolation {
-                market_state,
-                open_window_return_jump_increment,
-                closed_window_gap_increment,
-            } => write!(
-                formatter,
-                "invalid news routing state for market_state={market_state}, open_window_return_jump_increment={open_window_return_jump_increment}, closed_window_gap_increment={closed_window_gap_increment}"
-            ),
             Self::InvalidAccumulatedNewsRoutingTotal { field, value } => write!(
                 formatter,
                 "accumulated news routing total {field} must remain finite, found {value}"
+            ),
+            Self::InvalidReturnDecomposition {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} return decomposition is invalid: {source}"
+            ),
+            Self::TradingTimeSamplingFailure {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} trading-time sampling failed: {source}"
+            ),
+            Self::InvalidReturnComponents {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} return components are invalid: {source}"
             ),
             Self::InvalidTransitionStep { source } => {
                 write!(
@@ -221,7 +266,14 @@ impl Display for SeededTickSimulationRunError {
 impl Error for SeededTickSimulationRunError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source),
+            Self::InvalidNewsProcessConfiguration { source } => Some(source),
+            Self::NewsMarkSamplingFailure { source, .. } => Some(source),
+            Self::SharedNewsDispatchFailure { source, .. } => Some(source),
             Self::NewsMarketStateResolutionFailed { source, .. } => Some(source),
+            Self::InvalidReturnDecomposition { source, .. } => Some(source),
+            Self::TradingTimeSamplingFailure { source, .. } => Some(source),
+            Self::InvalidReturnComponents { source, .. } => Some(source),
             Self::InvalidTransitionStep { source } => Some(source),
             _ => None,
         }

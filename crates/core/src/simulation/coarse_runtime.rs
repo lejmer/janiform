@@ -23,8 +23,8 @@ use crate::risk::{
 
 use super::coarse::{CoarseSimulationPath, CoarseSimulationPathError, CoarseSimulationPathRecord};
 use super::runtime::{
-    derive_known_news_interval_slice_bounds, sample_count_from_expectation,
-    sample_interval_timestamp_utc_nanos,
+    build_timestamped_news_event_input, derive_known_news_interval_slice_bounds,
+    sample_count_from_expectation, sample_interval_timestamp_utc_nanos,
 };
 use super::{CoarseSimulationRunRequest, CoarseSimulationRunRequestError};
 
@@ -554,7 +554,11 @@ where
                 .known_component_mark_scales,
             &mut news_mark_stream,
             interval_index,
-        )?);
+        )
+        .map_err(|source| CoarseSimulationRunError::NewsMarkSamplingFailure {
+            interval_index,
+            source,
+        })?);
         next_generation_order = next_generation_order.saturating_add(1);
     }
 
@@ -580,7 +584,11 @@ where
                 .surprise_component_mark_scales,
             &mut news_mark_stream,
             interval_index,
-        )?);
+        )
+        .map_err(|source| CoarseSimulationRunError::NewsMarkSamplingFailure {
+            interval_index,
+            source,
+        })?);
         next_generation_order = next_generation_order.saturating_add(1);
     }
 
@@ -601,37 +609,6 @@ where
         activity_coupling_j_t_increment: dispatch_output.final_state.j_t,
         open_jump_return: dispatch_output.final_state.m_t,
         closed_gap_return: dispatch_output.final_state.g_t,
-    })
-}
-
-fn build_timestamped_news_event_input(
-    mark_pipeline: &crate::news::DefaultNewsMarkPipeline,
-    news_arrival_component: NewsArrivalComponent,
-    event_timestamp_utc_nanos: i64,
-    event_generation_order: u64,
-    mark_scales: crate::news::NewsComponentMarkScaleConfiguration,
-    randomness_stream: &mut dyn crate::randomness::SimulationRandomnessStream,
-    interval_index: usize,
-) -> Result<SharedNewsEventTimestampedInput, CoarseSimulationRunError> {
-    let sampled_mark_payload = mark_pipeline
-        .sample_coupled_marks(randomness_stream)
-        .map_err(|source| CoarseSimulationRunError::NewsMarkSamplingFailure {
-            interval_index,
-            source,
-        })?;
-    let shared_severity_mark =
-        sampled_mark_payload.shared_severity_mark * mark_scales.activity_coupling_scale;
-    let coupled_return_jump_mark = sampled_mark_payload
-        .coupled_gap_mark_construction
-        .gap_jump_mark
-        * mark_scales.return_jump_scale;
-
-    Ok(SharedNewsEventTimestampedInput {
-        event_timestamp_utc_nanos,
-        event_generation_order,
-        news_arrival_component,
-        shared_severity_mark,
-        coupled_return_jump_mark,
     })
 }
 

@@ -14,10 +14,16 @@ use janiform_core::hourly_factors::{
     HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
     HourlyFactorMaterializationMetadata,
 };
+use janiform_core::news::{
+    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
+    GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
+    NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
+    SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
+};
+use janiform_core::nig::NigSharedPlusShiftConfiguration;
 use janiform_core::simulation::{
     SeededTickEventRecord, SeededTickEventSide, SeededTickSimulationModelInputs,
-    SeededTickSimulationNewsMarkScales, SeededTickSimulationRunConfig,
-    run_seeded_tick_event_simulation,
+    SeededTickSimulationRunConfig, run_seeded_tick_event_simulation,
 };
 use serde::Deserialize;
 use support::hawkes_failure_diagnostics::{
@@ -1331,13 +1337,48 @@ fn build_run_config(
                 news_intensity,
             ),
             calendar_registry: build_seeded_simulation_calendar_registry(),
-            known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
-            known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
-            surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
+            nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
+            news_process_configuration: build_news_process_configuration(),
         },
         None,
     )
     .expect("seeded run config should initialize")
+}
+
+fn valid_nig_shared_plus_shift_configuration() -> NigSharedPlusShiftConfiguration {
+    NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+        .expect("nig configuration should construct")
+}
+
+fn build_news_process_configuration() -> NewsProcessConfiguration {
+    NewsProcessConfiguration::try_new(
+        NewsArrivalConfiguration {
+            known: KnownNewsArrivalConfiguration {
+                scheduled_event_timestamps_utc_nanos: Vec::new(),
+            },
+            surprise: SurpriseNewsArrivalConfiguration {
+                baseline_intensity: 0.0,
+            },
+        },
+        SharedNewsMarkLawConfiguration {
+            gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.5, 0.9)
+                .expect("news gamma severity configuration should construct"),
+            double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::try_new(
+                0.4, 1.3, 1.1,
+            )
+            .expect("news base shock configuration should construct"),
+            coupled_gap_marks: CoupledGapMarkConfiguration::new(0.75),
+        },
+        NewsComponentMarkScaleConfiguration {
+            activity_coupling_scale: 0.6,
+            return_jump_scale: 1.2,
+        },
+        NewsComponentMarkScaleConfiguration {
+            activity_coupling_scale: 0.6,
+            return_jump_scale: 1.2,
+        },
+    )
+    .expect("news process configuration should construct")
 }
 
 fn build_uniform_factor_contract(

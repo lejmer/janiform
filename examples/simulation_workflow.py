@@ -12,7 +12,9 @@ from ._shared import (
     build_calendar_registry,
     build_hawkes_kernel_parameters,
     build_initial_excitation_state,
+    build_simulation_news_process_configuration,
     build_simulation_news_source,
+    build_simulation_nig_shared_plus_shift_configuration,
     build_simulation_seasonality_source,
 )
 
@@ -32,13 +34,15 @@ def run_example() -> dict[str, object]:
         start_time_utc=SIMULATION_RANGE_START_UTC,
         horizon_interval_count=hourly_factor_contract.interval_count,
         kernel_parameters=build_hawkes_kernel_parameters(),
+        nig_shared_plus_shift_configuration=build_simulation_nig_shared_plus_shift_configuration(),
+        news_process_configuration=build_simulation_news_process_configuration(),
         initial_excitation_state=build_initial_excitation_state(),
         hourly_factor_contract=hourly_factor_contract,
     )
     response = run_seeded_tick_event_simulation(request)
 
-    first_event = response.event_tape[0].to_payload() if response.event_tape else None
-    last_event = response.event_tape[-1].to_payload() if response.event_tape else None
+    first_transition = response.fine_path[0].to_payload() if response.fine_path else None
+    last_transition = response.fine_path[-1].to_payload() if response.fine_path else None
 
     return {
         "request_summary": {
@@ -48,9 +52,10 @@ def run_example() -> dict[str, object]:
         },
         "response_summary": {
             "schema_version": response.schema_version,
-            "event_count": len(response.event_tape),
-            "first_event": first_event,
-            "last_event": last_event,
+            "transition_count": len(response.fine_path),
+            "event_projection_count": len(response.event_tape),
+            "first_transition": first_transition,
+            "last_transition": last_transition,
         },
     }
 

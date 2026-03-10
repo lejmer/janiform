@@ -11,6 +11,7 @@ from pyarrow import compute as pyarrow_compute
 from pyarrow import parquet as pyarrow_parquet
 
 from ._common import (
+    CalibrationTradeSign,
     CalibrationDuplicateRecordPolicy,
     CalibrationInputFileFormat,
     CalibrationInputFileReference,
@@ -36,6 +37,7 @@ class NormalizedTickDataRecord(ContractModel):
     timestamp: datetime
     price: Optional[float]
     trade_price: Optional[float]
+    trade_sign: Optional[CalibrationTradeSign]
     bid_price: Optional[float]
     ask_price: Optional[float]
     close_price: Optional[float]
@@ -393,6 +395,9 @@ def _normalize_tick_data(
         case None:
             pass
 
+    if column_mapping.trade_sign_column is not None:
+        required_columns.append(column_mapping.trade_sign_column)
+
     _validate_mapped_columns_exist(
         available_columns=source_rows.available_columns,
         required_columns=tuple(required_columns),
@@ -417,6 +422,7 @@ def _normalize_tick_data(
             record.timestamp,
             record.price,
             record.trade_price,
+            record.trade_sign,
             record.bid_price,
             record.ask_price,
             record.close_price,
@@ -625,6 +631,14 @@ def _normalize_tick_row(
         allow_zero=True,
         allow_negative=False,
     )
+    trade_sign = _normalize_optional_trade_sign_value(
+        source_row.get(column_mapping.trade_sign_column) if column_mapping.trade_sign_column is not None else None,
+        field_path=f"{row_field_path}.{column_mapping.trade_sign_column}"
+        if column_mapping.trade_sign_column is not None
+        else row_field_path,
+        source_path=source_path,
+        source_row_number=source_row_number,
+    )
     bid_price = _normalize_optional_numeric_value(
         source_row.get(column_mapping.bid_column) if column_mapping.bid_column is not None else None,
         field_path=f"{row_field_path}.{column_mapping.bid_column}" if column_mapping.bid_column is not None else row_field_path,
@@ -707,6 +721,7 @@ def _normalize_tick_row(
         timestamp=timestamp,
         price=price,
         trade_price=trade_price,
+        trade_sign=trade_sign,
         bid_price=bid_price,
         ask_price=ask_price,
         close_price=close_price,
@@ -1121,6 +1136,47 @@ def _normalize_optional_numeric_value(
         )
 
     return numeric_value
+
+
+def _normalize_optional_trade_sign_value(
+    raw_value: object,
+    *,
+    field_path: str,
+    source_path: str,
+    source_row_number: int,
+) -> Optional[CalibrationTradeSign]:
+    if raw_value is None:
+        return None
+
+    if not isinstance(raw_value, str):
+        raise _market_data_ingestion_error(
+            field_path,
+            "must be a string when provided",
+            context={
+                "source_path": source_path,
+                "source_row_number": source_row_number,
+                "received_type": type(raw_value).__name__,
+            },
+            normalization_step="trade_sign_normalization",
+        )
+
+    normalized_value = raw_value.strip().lower()
+    if not normalized_value:
+        return None
+
+    try:
+        return CalibrationTradeSign(normalized_value)
+    except ValueError as e:
+        raise _market_data_ingestion_error(
+            field_path,
+            "must be either 'buy' or 'sell' when provided",
+            context={
+                "source_path": source_path,
+                "source_row_number": source_row_number,
+                "raw_value": raw_value,
+            },
+            normalization_step="trade_sign_normalization",
+        ) from e
 
 
 def _normalize_option_type(
