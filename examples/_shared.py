@@ -231,6 +231,52 @@ def build_initial_excitation_state() -> HawkesExcitationState:
     )
 
 
+def build_simulation_nig_shared_plus_shift_configuration() -> NigSharedPlusShiftConfiguration:
+    return NigSharedPlusShiftConfiguration(
+        alpha=2.3,
+        beta_0=-0.8,
+        delta=0.7,
+        mu=0.1,
+        delta_beta=-0.2,
+    )
+
+
+def build_simulation_news_process_configuration() -> NewsProcessConfiguration:
+    return NewsProcessConfiguration(
+        schema_version="news.process.configuration.v1",
+        arrivals=NewsArrivalConfiguration(
+            known=KnownNewsArrivalConfiguration(
+                scheduled_event_timestamps_utc_nanos=(),
+            ),
+            surprise=SurpriseNewsArrivalConfiguration(
+                baseline_intensity=0.0,
+            ),
+        ),
+        shared_mark_law=SharedNewsMarkLawConfiguration(
+            gamma_severity_marks=GammaSeverityMarkConfiguration(
+                shape_k=1.5,
+                scale_theta=0.9,
+            ),
+            double_exponential_base_shock=DoubleExponentialBaseShockConfiguration(
+                probability_positive=0.4,
+                eta_plus=1.3,
+                eta_minus=1.1,
+            ),
+            coupled_gap_marks=CoupledGapMarkConfiguration(
+                sigma_g=0.75,
+            ),
+        ),
+        known_component_mark_scales=NewsComponentMarkScaleConfiguration(
+            activity_coupling_scale=0.6,
+            return_jump_scale=1.2,
+        ),
+        surprise_component_mark_scales=NewsComponentMarkScaleConfiguration(
+            activity_coupling_scale=0.6,
+            return_jump_scale=1.2,
+        ),
+    )
+
+
 def build_simulation_seasonality_source() -> HourlySeasonalityProviderExplicitSource:
     return HourlySeasonalityProviderExplicitSource(
         hourly_factors=[1.0, 0.9, 1.1],
@@ -700,13 +746,13 @@ def write_market_data_fixture_files(working_directory: Path) -> dict[str, Path]:
     tick_csv_path.write_text(
         "\n".join(
             [
-                "timestamp_utc,trade_price",
-                "2026-02-02T14:30:00Z,100.0",
-                "2026-02-02T15:00:00Z,101.0",
-                "2026-02-02T15:10:00Z,104.0",
-                "2026-02-02T20:59:00Z,102.0",
-                "2026-02-04T14:30:00Z,90.0",
-                "2026-02-04T14:40:00Z,100.0",
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T15:00:00Z,101.0,buy",
+                "2026-02-02T15:10:00Z,104.0,sell",
+                "2026-02-02T20:59:00Z,102.0,sell",
+                "2026-02-04T14:30:00Z,90.0,buy",
+                "2026-02-04T14:40:00Z,100.0,sell",
             ]
         ),
         encoding="utf-8",
@@ -725,6 +771,7 @@ def write_market_data_fixture_files(working_directory: Path) -> dict[str, Path]:
                     datetime(2026, 2, 4, 14, 40, tzinfo=UTC),
                 ],
                 "trade_price": [100.0, 101.0, 104.0, 102.0, 90.0, 100.0],
+                "trade_sign": ["buy", "buy", "sell", "sell", "buy", "sell"],
             }
         ),
         tick_parquet_path,

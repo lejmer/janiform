@@ -2,10 +2,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from math import log, sqrt
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from ._common import (
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
+    CalibrationTradeSign,
     CalibrationExecutionMode,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataWorkflowScope,
@@ -58,8 +59,10 @@ from ._staged import (
     StagedCalibrationExecutionInput,
 )
 from ..calendar import CalendarRegistry, CalendarRegistryLoadError, MarketState
-from ..pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 from .._timestamps import datetime_to_utc_nanos
+
+if TYPE_CHECKING:
+    from ..pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 
 
 CALIBRATION_MARKET_DATA_TRANSLATION_ERROR_ID = "calibration.validation.market_data_translation"
@@ -320,7 +323,7 @@ def translate_market_data_request_to_staged_execution_input(
             "calendar_registry.resolve_market_state_at_utc.v1",
             "known_news_outside_tick_window_are_filtered.v1",
             "known_news_overlays_are_point_anchors_with_zero_log_adjustment.v1",
-            "hawkes_candidates_are_seeded_from_event_rate_and_interarrival_dispersion.v1",
+            "hawkes_candidates_are_seeded_from_signed_trade_event_rate_and_interarrival_dispersion.v1",
             "surprise_jump_candidates_use_open_session_log_returns_and_known_news_exclusion_windows.v1",
             "close_open_boundaries_are_resolved_from_calendar_state_transitions.v1",
             "nig_candidates_use_tick_return_scale_with_option_surface_adjustment.v1",
@@ -643,11 +646,24 @@ def _build_hawkes_candidate_inputs(
     resolved_ticks: Sequence[_ResolvedTickRecord],
     retained_known_news: Sequence[_ResolvedKnownNewsRecord],
 ) -> tuple[CalibrationHawkesStageCandidateInput, ...]:
+    if any(resolved_tick.record.trade_sign is None for resolved_tick in resolved_ticks):
+        raise _translation_error(
+            "column_mapping.tick_data.trade_sign_column",
+            "full-model Hawkes calibration requires explicit buy or sell sign labels for every retained trade event",
+            context={"translation_step": "hawkes_candidate_generation"},
+        )
+
     tick_count: int = len(resolved_ticks)
     open_tick_count: int = sum(
         1 for resolved_tick in resolved_ticks if resolved_tick.market_state == MarketState.OPEN
     )
     closed_tick_count: int = tick_count - open_tick_count
+    buy_tick_count: int = sum(
+        1
+        for resolved_tick in resolved_ticks
+        if resolved_tick.record.trade_sign == CalibrationTradeSign.BUY
+    )
+    sell_tick_count: int = tick_count - buy_tick_count
     tick_timestamps: list[datetime] = [
         resolved_tick.record.timestamp
         for resolved_tick in resolved_ticks
@@ -691,9 +707,14 @@ def _build_hawkes_candidate_inputs(
             stability_numeric_tolerance=0.0,
             objective_terms=(
                 CalibrationObjectiveTermInput(
-                    term_id="event_rate_per_hour",
+                    term_id="buy_event_rate_per_hour",
                     weight=1.0,
-                    observed_score=round(open_tick_count / duration_hours, 6),
+                    observed_score=round(buy_tick_count / duration_hours, 6),
+                ),
+                CalibrationObjectiveTermInput(
+                    term_id="sell_event_rate_per_hour",
+                    weight=1.0,
+                    observed_score=round(sell_tick_count / duration_hours, 6),
                 ),
                 CalibrationObjectiveTermInput(
                     term_id="interarrival_coefficient_of_variation",
@@ -704,6 +725,11 @@ def _build_hawkes_candidate_inputs(
                     term_id="closed_tick_ratio",
                     weight=1.0,
                     observed_score=round(closed_tick_count / max(tick_count, 1), 6),
+                ),
+                CalibrationObjectiveTermInput(
+                    term_id="sell_share",
+                    weight=1.0,
+                    observed_score=round(sell_tick_count / max(tick_count, 1), 6),
                 ),
             ),
         ),
@@ -990,6 +1016,8 @@ def _derive_nig_candidates(
     intraday_returns: Sequence[tuple[datetime, float]],
     option_surface_records: Sequence[NormalizedOptionSurfaceRecord],
 ) -> tuple[NigSharedPlusShiftConfiguration, ...]:
+    from ..pricing import NigSharedPlusShiftConfiguration
+
     return_values: list[float] = [return_value for _, return_value in intraday_returns]
     mean_return: float = _mean(return_values) or 0.0
     root_mean_square_return: float = sqrt(
@@ -1025,6 +1053,8 @@ def _derive_shared_mark_law_template(
         CalibrationReturnComponentsObservedCloseOpenBoundaryObservation
     ],
 ) -> CalibrationSharedNewsMarkLawConfiguration:
+    from ..pricing import GammaSeverityMarkConfiguration
+
     mean_abs_open_return: float = _mean(
         [abs(return_value) for _, return_value in intraday_returns]
     ) or 0.01

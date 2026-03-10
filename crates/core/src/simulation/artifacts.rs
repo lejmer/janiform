@@ -1,4 +1,4 @@
-//! Seeded simulation event tape and debug trace artifacts.
+//! Seeded simulation fine-path, event-tape projection, and debug trace artifacts.
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -6,6 +6,7 @@ use serde::Serialize;
 use crate::calendar::MarketState;
 use crate::hawkes::HawkesExcitationState;
 use crate::news::{NewsArrivalComponent, NewsReturnJumpRoutingTarget};
+use crate::risk::SufficientStatisticsRiskReturnComponents;
 
 use super::config::SeededTickEventStateSnapshotCapture;
 
@@ -51,6 +52,55 @@ pub struct SeededTickEventRecord {
     pub side: SeededTickEventSide,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub state_snapshot: Option<SeededTickEventStateSnapshot>,
+}
+
+/// Public transition kind emitted by the canonical seeded fine path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SeededFinePathTransitionKind {
+    BuyTrade,
+    SellTrade,
+    ExogenousNews,
+    IntervalBoundaryDrift,
+}
+
+/// Machine-readable metadata for one serialized fine path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct SeededFinePathMetadata {
+    pub schema_version: &'static str,
+    pub path_record_schema_version: &'static str,
+    pub event_projection_record_schema_version: &'static str,
+    pub transition_ordering_policy: &'static str,
+    pub timestamp_representation_policy: &'static str,
+    pub side_encoding_policy: &'static str,
+    pub state_snapshot_capture: SeededTickEventStateSnapshotCapture,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state_snapshot_capture_point_policy: Option<&'static str>,
+}
+
+/// One ordered fine-path transition with realized return decomposition.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SeededFinePathRecord {
+    pub transition_index: u64,
+    pub timestamp_utc_nanos: i64,
+    pub transition_kind: SeededFinePathTransitionKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub side: Option<SeededTickEventSide>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub news_arrival_component: Option<NewsArrivalComponent>,
+    pub market_state: SeededTickSimulationNewsEventMarketState,
+    pub return_components: SufficientStatisticsRiskReturnComponents,
+    pub cumulative_log_return: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state_snapshot: Option<SeededTickEventStateSnapshot>,
+}
+
+/// Canonical serializable fine-path payload for deterministic run outputs.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SeededFinePathOutput<'a> {
+    pub schema_version: &'static str,
+    pub metadata: SeededFinePathMetadata,
+    pub fine_path: &'a [SeededFinePathRecord],
 }
 
 /// Machine-readable event tape metadata for deterministic serialization and diagnostics.
@@ -203,15 +253,32 @@ pub struct SeededTickSimulationRunResult {
     pub start_time_utc: DateTime<Utc>,
     pub end_time_utc: DateTime<Utc>,
     pub simulated_interval_count: usize,
+    pub fine_path_metadata: SeededFinePathMetadata,
+    pub fine_path: Vec<SeededFinePathRecord>,
     pub event_tape_metadata: SeededTickEventTapeMetadata,
     pub event_path: Vec<SeededTickEventRecord>,
     pub final_excitation_state: HawkesExcitationState,
     pub news_routing_totals: SeededTickSimulationNewsRoutingTotals,
+    pub cumulative_log_return: f64,
     pub debug_trace_enabled: bool,
     pub debug_trace_output: Option<SeededTickEventDebugTraceOutput>,
 }
 
 impl SeededTickSimulationRunResult {
+    /// Build the canonical machine-readable fine-path payload.
+    pub fn fine_path_output(&self) -> SeededFinePathOutput<'_> {
+        SeededFinePathOutput {
+            schema_version: self.schema_version,
+            metadata: self.fine_path_metadata,
+            fine_path: &self.fine_path,
+        }
+    }
+
+    /// Serialize the canonical fine-path payload to deterministic JSON.
+    pub fn serialize_fine_path_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(&self.fine_path_output())
+    }
+
     /// Build the canonical machine-readable event tape payload.
     pub fn event_tape_output(&self) -> SeededTickEventTapeOutput<'_> {
         SeededTickEventTapeOutput {

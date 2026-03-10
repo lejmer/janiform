@@ -919,6 +919,7 @@ def _build_market_data_calibration_request_from_arguments(
                 "timestamp_column": cast(str, parsed_arguments.tick_timestamp_column),
                 "price_column": cast(Optional[str], parsed_arguments.tick_price_column),
                 "trade_price_column": cast(Optional[str], parsed_arguments.tick_trade_price_column),
+                "trade_sign_column": cast(Optional[str], parsed_arguments.tick_trade_sign_column),
                 "bid_column": cast(Optional[str], parsed_arguments.tick_bid_column),
                 "ask_column": cast(Optional[str], parsed_arguments.tick_ask_column),
                 "close_price_column": cast(Optional[str], parsed_arguments.tick_close_price_column),
@@ -1144,8 +1145,8 @@ def _render_simulation_seeded_ticks_human_output(response_payload: dict[str, Any
     return (
         "simulation seeded-ticks completed: "
         f"schema_version={response_payload['schema_version']} "
-        f"event_count={len(cast(list[dict[str, Any]], response_payload['event_tape']))} "
-        f"event_record_schema_version={cast(dict[str, Any], response_payload['metadata'])['event_record_schema_version']}\n"
+        f"transition_count={len(cast(list[dict[str, Any]], response_payload['fine_path']))} "
+        f"path_record_schema_version={cast(dict[str, Any], response_payload['metadata'])['path_record_schema_version']}\n"
     )
 
 
@@ -1701,6 +1702,8 @@ def _attach_runtime_hourly_factor_contract(
         start_time_utc=request.start_time_utc,
         horizon_interval_count=request.horizon_interval_count,
         kernel_parameters=request.kernel_parameters,
+        nig_shared_plus_shift_configuration=request.nig_shared_plus_shift_configuration,
+        news_process_configuration=request.news_process_configuration,
         initial_excitation_state=request.initial_excitation_state,
         hourly_factor_contract=hourly_factor_contract,
         debug_trace_enabled=request.debug_trace_enabled,

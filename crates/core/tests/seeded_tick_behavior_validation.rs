@@ -11,6 +11,13 @@ use janiform_core::hourly_factors::{
     HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
     HourlyFactorMaterializationMetadata,
 };
+use janiform_core::news::{
+    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
+    GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
+    NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
+    SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
+};
+use janiform_core::nig::NigSharedPlusShiftConfiguration;
 use janiform_core::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
 };
@@ -18,8 +25,8 @@ use janiform_core::simulation::{
     SEEDED_TICK_EVENT_ORDERING_POLICY, SeededTickEventDebugTraceRecord,
     SeededTickEventDebugTraceTransitionKind, SeededTickEventRecord, SeededTickEventSide,
     SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
-    SeededTickSimulationNewsMarkScales, SeededTickSimulationRunConfig,
-    SeededTickSimulationRunOptions, SeededTickSimulationRunResult,
+    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
+    SeededTickSimulationRunResult,
     run_seeded_tick_event_simulation, run_seeded_tick_event_simulation_with_randomness_factory,
 };
 use support::hawkes_invariant_catalog::{
@@ -312,8 +319,8 @@ fn seeded_behavior_validation_tied_timestamps_follow_documented_event_ordering_p
         vec![0.0],
         vec![0.0],
         vec![0.3],
-        vec![0.5],
-        vec![],
+        vec![0.5, 0.25, 0.5],
+        vec![0.25, 0.5],
     );
 
     let first_run_result = run_seeded_tick_event_simulation_with_randomness_factory(
@@ -1251,9 +1258,8 @@ fn build_run_config_with_options(
                 news_intensity,
             ),
             calendar_registry: build_seeded_simulation_calendar_registry(),
-            known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
-            known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
-            surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
+            nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
+            news_process_configuration: build_news_process_configuration(Vec::new()),
         },
         options,
     )
@@ -1462,9 +1468,8 @@ fn build_multi_hour_zero_event_carryover_model_inputs(
             0.0,
         ),
         calendar_registry: build_seeded_simulation_calendar_registry(),
-        known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
-        known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
-        surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
+        nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
+        news_process_configuration: build_news_process_configuration(Vec::new()),
     }
 }
 
@@ -1502,9 +1507,8 @@ fn build_one_interval_ordering_model_inputs(
             news_intensity,
         ),
         calendar_registry: build_seeded_simulation_calendar_registry(),
-        known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
-        known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
-        surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
+        nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
+        news_process_configuration: build_news_process_configuration(Vec::new()),
     }
 }
 
@@ -1530,15 +1534,52 @@ fn build_two_interval_boundary_adjacent_model_inputs() -> SeededTickSimulationMo
         initial_excitation_state: HawkesExcitationState {
             y_plus_plus: 0.5,
             y_plus_minus: 0.0,
-            y_minus_plus: -10.0,
+            y_minus_plus: 0.0,
             y_minus_minus: 0.0,
         },
         hourly_factor_contract: build_uniform_factor_contract(ONE_HOUR_NANOS, 2, 1.0, 0.0),
         calendar_registry: build_seeded_simulation_calendar_registry(),
-        known_scheduled_news_event_timestamps_utc_nanos: Vec::new(),
-        known_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
-        surprise_news_mark_scales: SeededTickSimulationNewsMarkScales::default(),
+        nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
+        news_process_configuration: build_news_process_configuration(Vec::new()),
     }
+}
+
+fn valid_nig_shared_plus_shift_configuration() -> NigSharedPlusShiftConfiguration {
+    NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+        .expect("nig configuration should construct")
+}
+
+fn build_news_process_configuration(
+    known_news_timestamps_utc_nanos: Vec<i64>,
+) -> NewsProcessConfiguration {
+    NewsProcessConfiguration::try_new(
+        NewsArrivalConfiguration {
+            known: KnownNewsArrivalConfiguration {
+                scheduled_event_timestamps_utc_nanos: known_news_timestamps_utc_nanos,
+            },
+            surprise: SurpriseNewsArrivalConfiguration {
+                baseline_intensity: 0.0,
+            },
+        },
+        SharedNewsMarkLawConfiguration {
+            gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.5, 0.9)
+                .expect("news gamma severity configuration should construct"),
+            double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::try_new(
+                0.4, 1.3, 1.1,
+            )
+            .expect("news base shock configuration should construct"),
+            coupled_gap_marks: CoupledGapMarkConfiguration::new(0.75),
+        },
+        NewsComponentMarkScaleConfiguration {
+            activity_coupling_scale: 0.6,
+            return_jump_scale: 1.2,
+        },
+        NewsComponentMarkScaleConfiguration {
+            activity_coupling_scale: 0.6,
+            return_jump_scale: 1.2,
+        },
+    )
+    .expect("news process configuration should construct")
 }
 
 fn build_seeded_simulation_calendar_registry() -> ExchangeCalendarRegistry {
@@ -1647,6 +1688,53 @@ impl ScriptedRandomnessFactory {
             news_return_jump_draws,
         }
     }
+
+    fn combined_news_mark_draws(&self) -> Vec<f64> {
+        const SEVERITY_DRAWS_PER_EVENT: usize = 3;
+        const BASE_SHOCK_DRAWS_PER_EVENT: usize = 2;
+
+        let severity_chunks = self
+            .news_severity_draws
+            .chunks(SEVERITY_DRAWS_PER_EVENT);
+        let base_shock_chunks = self
+            .news_return_jump_draws
+            .chunks(BASE_SHOCK_DRAWS_PER_EVENT);
+        let combined_capacity = self
+            .news_severity_draws
+            .len()
+            .saturating_add(self.news_return_jump_draws.len());
+        let mut combined_draws = Vec::with_capacity(combined_capacity);
+
+        for (severity_chunk, base_shock_chunk) in severity_chunks.zip(base_shock_chunks) {
+            combined_draws.extend_from_slice(severity_chunk);
+            combined_draws.extend_from_slice(base_shock_chunk);
+        }
+
+        let paired_event_count = self
+            .news_severity_draws
+            .len()
+            .div_ceil(SEVERITY_DRAWS_PER_EVENT)
+            .min(
+                self.news_return_jump_draws
+                    .len()
+                    .div_ceil(BASE_SHOCK_DRAWS_PER_EVENT),
+            );
+        let paired_severity_draw_count = paired_event_count * SEVERITY_DRAWS_PER_EVENT;
+        let paired_base_shock_draw_count = paired_event_count * BASE_SHOCK_DRAWS_PER_EVENT;
+
+        if paired_severity_draw_count < self.news_severity_draws.len() {
+            combined_draws.extend_from_slice(
+                &self.news_severity_draws[paired_severity_draw_count..],
+            );
+        }
+        if paired_base_shock_draw_count < self.news_return_jump_draws.len() {
+            combined_draws.extend_from_slice(
+                &self.news_return_jump_draws[paired_base_shock_draw_count..],
+            );
+        }
+
+        combined_draws
+    }
 }
 
 impl SimulationRandomnessFactory for ScriptedRandomnessFactory {
@@ -1683,8 +1771,10 @@ impl SimulationRandomnessFactory for ScriptedRandomnessFactory {
             SimulationRandomnessSubstreamDomain::ExogenousNewsReturnJump => {
                 self.news_return_jump_draws.clone()
             }
-            SimulationRandomnessSubstreamDomain::ExogenousNewsMarks
-            | SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
+            SimulationRandomnessSubstreamDomain::ExogenousNewsMarks => {
+                self.combined_news_mark_draws()
+            }
+            SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn
             | SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling
             | SimulationRandomnessSubstreamDomain::ScaleConsistencyPairedExperiment => Vec::new(),
         };
@@ -1735,7 +1825,7 @@ impl SimulationRandomnessFactory for BoundaryAdjacentRandomnessFactory {
             SimulationRandomnessSubstreamDomain::EndogenousSellEventCount => vec![0.0],
             SimulationRandomnessSubstreamDomain::EndogenousBuyEventTimestamp => {
                 if substream_index == 0 {
-                    vec![0.367_879_441_172_81]
+                    vec![0.367_981_614_81]
                 } else {
                     vec![0.999_999_999_999]
                 }

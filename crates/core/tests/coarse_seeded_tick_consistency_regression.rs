@@ -31,8 +31,8 @@ use janiform_core::simulation::{
     CoarseSimulationModelInputs, CoarseSimulationPath, CoarseSimulationPathRecord,
     CoarseSimulationRunRequest, SeededTickEventStateSnapshotCapture,
     SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
-    SeededTickSimulationNewsMarkScales, SeededTickSimulationRunConfig,
-    SeededTickSimulationRunOptions, run_coarse_simulation, run_seeded_tick_event_simulation,
+    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions, run_coarse_simulation,
+    run_seeded_tick_event_simulation,
 };
 use janiform_core::verification::{
     COARSE_SEEDED_TICK_CONSISTENCY_REPORT_SCHEMA_VERSION,
@@ -115,8 +115,10 @@ fn coarse_seeded_tick_regression_report_passes_for_hourly_and_non_hourly_referen
         mean_cumulative_a_minus_absolute_tolerance: 4.0,
         mean_cumulative_n_plus_absolute_tolerance: 6.0,
         mean_cumulative_n_minus_absolute_tolerance: 6.0,
+        mean_cumulative_trading_time_return_absolute_tolerance: 3.0,
         open_jump_wasserstein_distance_tolerance: 3.0,
         closed_gap_wasserstein_distance_tolerance: 3.0,
+        total_return_wasserstein_distance_tolerance: 4.0,
         terminal_state_l1_mean_tolerance: 4.0,
     };
     let seed_values = [101_u64, 103, 107, 109, 113, 127, 131, 137];
@@ -481,9 +483,13 @@ fn build_seeded_model_inputs(
             build_calendar_registry_artifact(),
         )
         .expect("seeded calendar registry should load"),
-        known_scheduled_news_event_timestamps_utc_nanos: known_news_timestamps_utc_nanos,
-        known_news_mark_scales: default_seeded_news_mark_scales(),
-        surprise_news_mark_scales: default_seeded_news_mark_scales(),
+        nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration::try_new(
+            2.3, -0.8, 0.7, 0.1, -0.2,
+        )
+        .expect("nig configuration should construct"),
+        news_process_configuration: build_news_process_configuration(
+            known_news_timestamps_utc_nanos,
+        ),
     }
 }
 
@@ -560,13 +566,6 @@ fn default_initial_excitation_state() -> HawkesExcitationState {
 
 fn default_news_component_mark_scales() -> NewsComponentMarkScaleConfiguration {
     NewsComponentMarkScaleConfiguration {
-        activity_coupling_scale: 0.6,
-        return_jump_scale: 1.2,
-    }
-}
-
-fn default_seeded_news_mark_scales() -> SeededTickSimulationNewsMarkScales {
-    SeededTickSimulationNewsMarkScales {
         activity_coupling_scale: 0.6,
         return_jump_scale: 1.2,
     }

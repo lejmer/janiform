@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from ._contracts import (
     ContractModel,
@@ -21,16 +21,50 @@ from ._contracts import (
     validate_required_field_list,
 )
 from .errors import ContractValidationFailure, JaniformValidationError
-from .pricing import (
-    GammaSeverityMarkConfiguration,
-    NigSharedPlusShiftConfiguration,
-    VanillaOptionPricingValidationError,
-)
-from .simulation import (
-    HawkesExcitationState,
-    HawkesKernelParameters,
-    SeededTickSimulationValidationError,
-)
+
+if TYPE_CHECKING:
+    from .pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
+    from .simulation import HawkesExcitationState, HawkesKernelParameters
+
+
+def _parse_gamma_severity_mark_configuration(
+    raw_payload: dict[str, Any] | Any,
+    *,
+    field_path: str,
+) -> Any:
+    from .pricing import GammaSeverityMarkConfiguration
+
+    return GammaSeverityMarkConfiguration.from_mapping(raw_payload, field_path=field_path)
+
+
+def _parse_nig_shared_plus_shift_configuration(
+    raw_payload: dict[str, Any] | Any,
+    *,
+    field_path: str,
+) -> Any:
+    from .pricing import NigSharedPlusShiftConfiguration
+
+    return NigSharedPlusShiftConfiguration.from_mapping(raw_payload, field_path=field_path)
+
+
+def _parse_hawkes_kernel_parameters(
+    raw_payload: dict[str, Any] | Any,
+    *,
+    field_path: str,
+) -> Any:
+    from .simulation import HawkesKernelParameters
+
+    return HawkesKernelParameters.from_mapping(raw_payload, field_path=field_path)
+
+
+def _parse_hawkes_excitation_state(
+    raw_payload: dict[str, Any] | Any,
+    *,
+    field_path: str,
+) -> Any:
+    from .simulation import HawkesExcitationState
+
+    return HawkesExcitationState.from_mapping(raw_payload, field_path=field_path)
 
 SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY = (
     "explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1"
@@ -160,7 +194,7 @@ class SufficientStatisticsRiskEquationSpecification(ContractModel):
             raise _risk_error(field_path, "must be an object")
 
         return SufficientStatisticsRiskEquationSpecification(
-            hawkes_kernel_parameters=HawkesKernelParameters.from_mapping(
+            hawkes_kernel_parameters=_parse_hawkes_kernel_parameters(
                 require_mapping(
                     raw_payload,
                     "hawkes_kernel_parameters",
@@ -169,7 +203,7 @@ class SufficientStatisticsRiskEquationSpecification(ContractModel):
                 ),
                 field_path=f"{field_path}.hawkes_kernel_parameters",
             ),
-            gamma_severity_mark_configuration=GammaSeverityMarkConfiguration.from_mapping(
+            gamma_severity_mark_configuration=_parse_gamma_severity_mark_configuration(
                 require_mapping(
                     raw_payload,
                     "gamma_severity_mark_configuration",
@@ -330,7 +364,7 @@ class SufficientStatisticsRiskModelInputs(ContractModel):
                     ),
                     field_path="model_inputs.equation_specification",
                 ),
-                nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration.from_mapping(
+                nig_shared_plus_shift_configuration=_parse_nig_shared_plus_shift_configuration(
                     require_mapping(
                         raw_payload,
                         "nig_shared_plus_shift_configuration",
@@ -339,7 +373,7 @@ class SufficientStatisticsRiskModelInputs(ContractModel):
                     ),
                     field_path="model_inputs.nig_shared_plus_shift_configuration",
                 ),
-                initial_excitation_state=HawkesExcitationState.from_mapping(
+                initial_excitation_state=_parse_hawkes_excitation_state(
                     require_mapping(
                         raw_payload,
                         "initial_excitation_state",
@@ -349,9 +383,7 @@ class SufficientStatisticsRiskModelInputs(ContractModel):
                     field_path="model_inputs.initial_excitation_state",
                 ),
             )
-        except SeededTickSimulationValidationError as e:
-            raise _risk_error(e.failure.field_path, e.failure.message) from e
-        except VanillaOptionPricingValidationError as e:
+        except JaniformValidationError as e:
             raise _risk_error(e.failure.field_path, e.failure.message) from e
 
 
@@ -708,7 +740,7 @@ class SufficientStatisticsRiskPath(ContractModel):
                 seed=seed,
                 interval_delta=interval_delta,
                 simulated_interval_count=simulated_interval_count,
-                initial_excitation_state=HawkesExcitationState.from_mapping(
+                initial_excitation_state=_parse_hawkes_excitation_state(
                     require_mapping(
                         raw_payload,
                         "initial_excitation_state",
@@ -717,7 +749,7 @@ class SufficientStatisticsRiskPath(ContractModel):
                     ),
                     field_path="initial_excitation_state",
                 ),
-                terminal_excitation_state=HawkesExcitationState.from_mapping(
+                terminal_excitation_state=_parse_hawkes_excitation_state(
                     require_mapping(
                         raw_payload,
                         "terminal_excitation_state",
@@ -728,7 +760,7 @@ class SufficientStatisticsRiskPath(ContractModel):
                 ),
                 records=records,
             )
-        except SeededTickSimulationValidationError as e:
+        except JaniformValidationError as e:
             raise _risk_error(e.failure.field_path, e.failure.message) from e
 
 

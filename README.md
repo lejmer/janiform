@@ -272,7 +272,7 @@ Supported automation environment variables:
 - Stylized fact metric catalog schema: `docs/development/guides/stylized_fact_metric_catalog_schema.md`
 - Stylized fact horizon comparison report schema: `docs/development/guides/stylized_fact_horizon_comparison_report_schema.md`
 - Affine oracle solver diagnostics and telemetry schema: `docs/development/guides/affine_oracle_solver_diagnostics_schema.md`
-- Seeded tick event tape schema: `docs/development/guides/seeded_tick_event_tape_schema.md`
+- Seeded tick fine path schema: `docs/development/guides/seeded_tick_event_tape_schema.md`
 - Scale consistency report and drift diagnostics schema: `docs/development/guides/scale_consistency_report_and_drift_diagnostics_schema.md`
 - Validation fallback policy: `docs/development/guides/validation_fallback_policy.md`
 - CI tiered execution strategy: `docs/development/guides/ci_tiered_execution_strategy.md`

@@ -56,7 +56,7 @@ def test_coarse_simulation_cli_help_documents_required_contract_inputs() -> None
     assert "--output {human,json}" in help_output
     assert "--request-json PATH" in help_output
     assert "without replaying fine-scale seeded ticks" in help_output
-    assert "Use seeded-ticks when you need fine event tapes or tick replay." in help_output
+    assert "Use seeded-ticks when you need a priced fine path or tick replay." in help_output
     assert cli_module.CLI_REPOSITORY_RELATIVE_PATH_POLICY in help_output
 
 
@@ -1299,6 +1299,8 @@ def test_market_data_calibration_cli_maps_flags_to_summary_contract(
             "trade_price_column",
             "--tick-trade-price-column",
             "trade_price",
+            "--tick-trade-sign-column",
+            "trade_sign",
             "--exchange-code",
             "XNYS",
             "--session-definition-path",
@@ -1776,6 +1778,8 @@ def test_market_data_cli_missing_required_column_reports_source_file_and_normali
             "trade_price_column",
             "--tick-trade-price-column",
             "trade_price",
+            "--tick-trade-sign-column",
+            "trade_sign",
             "--exchange-code",
             "XNYS",
             "--session-definition-path",

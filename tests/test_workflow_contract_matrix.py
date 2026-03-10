@@ -38,12 +38,21 @@ from janiform.pricing import (
     validate_vanilla_option_pricing_run_result,
 )
 from janiform.simulation import (
+    CoupledGapMarkConfiguration,
+    DoubleExponentialBaseShockConfiguration,
+    GammaSeverityMarkConfiguration as SimulationGammaSeverityMarkConfiguration,
     HawkesExcitationState,
     HawkesKernelLoadings,
     HawkesKernelParameters,
+    KnownNewsArrivalConfiguration,
+    NewsArrivalConfiguration,
+    NewsComponentMarkScaleConfiguration,
+    NewsProcessConfiguration,
     SeededTickEventSide,
     SeededTickSimulationValidationError,
     SeededTickSimulationRequest,
+    SharedNewsMarkLawConfiguration,
+    SurpriseNewsArrivalConfiguration,
     load_hourly_factor_contract_for_simulation,
     run_seeded_tick_event_simulation,
     validate_seeded_tick_simulation_response,
@@ -167,7 +176,7 @@ def _failure_scenarios() -> tuple[FailureScenario, ...]:
             scenario_id="invalid_response_side",
             runner=_run_simulation_invalid_response_side,
             expected_error_id="simulation.validation.contract",
-            expected_field_path="seeded_tick_simulation_response.event_tape[0].side",
+            expected_field_path="seeded_tick_simulation_response.fine_path[0].side",
             expected_message_substring="must be one of: buy, sell",
         ),
         FailureScenario(
@@ -206,19 +215,31 @@ def _build_simulation_direct_response_payload(calendar_registry, tmp_path: Path)
             "schema_version": "simulation.seeded_tick_event.path.v1",
             "metadata": {
                 "schema_version": "simulation.seeded_tick_event.tape_metadata.v1",
-                "event_record_schema_version": "simulation.seeded_tick_event.record.v1",
-                "state_snapshot_schema_version": "simulation.seeded_tick_event.state_snapshot.v1",
-                "event_ordering_policy": "deterministic_tie_break.v1",
+                "path_record_schema_version": "simulation.seeded_tick_event.record.v1",
+                "event_projection_record_schema_version": "simulation.seeded_tick_event.record.v1",
+                "transition_ordering_policy": "deterministic_tie_break.v1",
                 "timestamp_representation_policy": "utc_nanos.v1",
                 "side_encoding_policy": "buy_sell.v1",
                 "state_snapshot_capture": "disabled",
                 "state_snapshot_capture_point_policy": None,
             },
-            "event_tape": [
+            "fine_path": [
                 {
-                    "event_index": 0,
+                    "transition_index": 0,
                     "timestamp_utc_nanos": 100,
+                    "transition_kind": "buy_trade",
                     "side": SeededTickEventSide.BUY.value,
+                    "news_arrival_component": None,
+                    "market_state": "open",
+                    "return_components": {
+                        "buy_side_return": 0.05,
+                        "sell_side_return": 0.0,
+                        "trading_time_return": 0.05,
+                        "open_jump_return": 0.0,
+                        "closed_gap_return": 0.0,
+                        "total_return": 0.05,
+                    },
+                    "cumulative_log_return": 0.05,
                 }
             ],
         }
@@ -248,6 +269,44 @@ def _build_simulation_boundary_response_payload(calendar_registry, tmp_path: Pat
         start_time_utc=start_time_utc,
         horizon_interval_count=2,
         kernel_parameters=_valid_kernel_parameters(),
+        nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
+            alpha=2.3,
+            beta_0=-0.8,
+            delta=0.7,
+            mu=0.1,
+            delta_beta=-0.2,
+        ),
+        news_process_configuration=NewsProcessConfiguration(
+            schema_version="news.process.configuration.v1",
+            arrivals=NewsArrivalConfiguration(
+                known=KnownNewsArrivalConfiguration(
+                    scheduled_event_timestamps_utc_nanos=(),
+                ),
+                surprise=SurpriseNewsArrivalConfiguration(
+                    baseline_intensity=0.0,
+                ),
+            ),
+            shared_mark_law=SharedNewsMarkLawConfiguration(
+                gamma_severity_marks=SimulationGammaSeverityMarkConfiguration(
+                    shape_k=1.5,
+                    scale_theta=0.9,
+                ),
+                double_exponential_base_shock=DoubleExponentialBaseShockConfiguration(
+                    probability_positive=0.4,
+                    eta_plus=1.3,
+                    eta_minus=1.1,
+                ),
+                coupled_gap_marks=CoupledGapMarkConfiguration(sigma_g=0.75),
+            ),
+            known_component_mark_scales=NewsComponentMarkScaleConfiguration(
+                activity_coupling_scale=0.6,
+                return_jump_scale=1.2,
+            ),
+            surprise_component_mark_scales=NewsComponentMarkScaleConfiguration(
+                activity_coupling_scale=0.6,
+                return_jump_scale=1.2,
+            ),
+        ),
         initial_excitation_state=_valid_excitation_state(),
         hourly_factor_contract=hourly_factor_contract,
     )
@@ -388,19 +447,31 @@ def _run_simulation_invalid_response_side(calendar_registry) -> None:
             "schema_version": "simulation.seeded_tick_event.path.v1",
             "metadata": {
                 "schema_version": "simulation.seeded_tick_event.tape_metadata.v1",
-                "event_record_schema_version": "simulation.seeded_tick_event.record.v1",
-                "state_snapshot_schema_version": "simulation.seeded_tick_event.state_snapshot.v1",
-                "event_ordering_policy": "deterministic_tie_break.v1",
+                "path_record_schema_version": "simulation.seeded_tick_event.record.v1",
+                "event_projection_record_schema_version": "simulation.seeded_tick_event.record.v1",
+                "transition_ordering_policy": "deterministic_tie_break.v1",
                 "timestamp_representation_policy": "utc_nanos.v1",
                 "side_encoding_policy": "buy_sell.v1",
                 "state_snapshot_capture": "disabled",
                 "state_snapshot_capture_point_policy": None,
             },
-            "event_tape": [
+            "fine_path": [
                 {
-                    "event_index": 0,
+                    "transition_index": 0,
                     "timestamp_utc_nanos": 100,
+                    "transition_kind": "buy_trade",
                     "side": "hold",
+                    "news_arrival_component": None,
+                    "market_state": "open",
+                    "return_components": {
+                        "buy_side_return": 0.05,
+                        "sell_side_return": 0.0,
+                        "trading_time_return": 0.05,
+                        "open_jump_return": 0.0,
+                        "closed_gap_return": 0.0,
+                        "total_return": 0.05,
+                    },
+                    "cumulative_log_return": 0.05,
                 }
             ],
         }

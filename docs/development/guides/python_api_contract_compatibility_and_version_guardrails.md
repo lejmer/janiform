@@ -44,6 +44,9 @@ The verification baseline is stored in:
 The snapshot contains the approved public-module exports, signatures, enum values, constant identifiers, and schema
 identifiers.
 
+Signature capture uses stringified annotations rather than evaluated runtime objects so the approved snapshot stays
+stable across supported Python environments, including Linux and Windows developer workflows.
+
 The guardrail manifest records:
 
 - the approved snapshot hash

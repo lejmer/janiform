@@ -1,7 +1,8 @@
-# Seeded Tick Event Tape And Debug Trace Schema
+# Seeded Tick Fine Path And Debug Trace Schema
 
-This guide defines the deterministic event tape payload and optional debug trace payload emitted by
-the seeded tick simulator in `crates/core/src/simulation.rs`.
+This guide defines the deterministic priced fine-path payload, the derived event-tape projection,
+and the optional debug trace payload emitted by the seeded tick simulator in
+`crates/core/src/simulation.rs`.
 
 ## Schema versions
 
@@ -19,8 +20,10 @@ the seeded tick simulator in `crates/core/src/simulation.rs`.
 The canonical serialized payload contains:
 
 - `schema_version`: path schema version
-- `metadata`: machine-readable tape metadata
-- `event_tape`: ordered list of event records
+- `metadata`: machine-readable fine-path metadata
+- `fine_path`: ordered list of priced transition records
+
+The Python surface also exposes a derived `event_tape` projection for event-only consumers.
 
 ## Metadata fields
 

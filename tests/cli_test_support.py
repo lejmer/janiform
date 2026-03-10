@@ -20,13 +20,22 @@ from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
 )
-from janiform.pricing import VanillaOptionPricingExecutionInput
+from janiform.pricing import NigSharedPlusShiftConfiguration, VanillaOptionPricingExecutionInput
 from janiform.simulation import (
     CoarseSimulationRunRequest,
+    CoupledGapMarkConfiguration,
+    DoubleExponentialBaseShockConfiguration,
+    GammaSeverityMarkConfiguration,
     HawkesExcitationState,
     HawkesKernelLoadings,
     HawkesKernelParameters,
+    KnownNewsArrivalConfiguration,
+    NewsArrivalConfiguration,
+    NewsComponentMarkScaleConfiguration,
+    NewsProcessConfiguration,
     SeededTickSimulationRequest,
+    SharedNewsMarkLawConfiguration,
+    SurpriseNewsArrivalConfiguration,
     load_hourly_factor_contract_for_simulation,
 )
 
@@ -77,6 +86,44 @@ def build_simulation_request(calendar_registry_json: str) -> SeededTickSimulatio
             y_plus_minus=0.0,
             y_minus_plus=0.0,
             y_minus_minus=0.0,
+        ),
+        nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
+            alpha=2.3,
+            beta_0=-0.8,
+            delta=0.7,
+            mu=0.1,
+            delta_beta=-0.2,
+        ),
+        news_process_configuration=NewsProcessConfiguration(
+            schema_version="news.process.configuration.v1",
+            arrivals=NewsArrivalConfiguration(
+                known=KnownNewsArrivalConfiguration(
+                    scheduled_event_timestamps_utc_nanos=(),
+                ),
+                surprise=SurpriseNewsArrivalConfiguration(
+                    baseline_intensity=0.0,
+                ),
+            ),
+            shared_mark_law=SharedNewsMarkLawConfiguration(
+                gamma_severity_marks=GammaSeverityMarkConfiguration(
+                    shape_k=1.5,
+                    scale_theta=0.9,
+                ),
+                double_exponential_base_shock=DoubleExponentialBaseShockConfiguration(
+                    probability_positive=0.4,
+                    eta_plus=1.3,
+                    eta_minus=1.1,
+                ),
+                coupled_gap_marks=CoupledGapMarkConfiguration(sigma_g=0.75),
+            ),
+            known_component_mark_scales=NewsComponentMarkScaleConfiguration(
+                activity_coupling_scale=0.6,
+                return_jump_scale=1.2,
+            ),
+            surprise_component_mark_scales=NewsComponentMarkScaleConfiguration(
+                activity_coupling_scale=0.6,
+                return_jump_scale=1.2,
+            ),
         ),
         hourly_factor_contract=hourly_factor_contract,
     )
@@ -138,6 +185,7 @@ def write_market_data_input_files(
     include_option_surface: bool = False,
     ambiguous_tick_timestamp: bool = False,
     tick_trade_price_column_name: str = "trade_price",
+    tick_trade_sign_column_name: str = "trade_sign",
     tick_data_format: str = "csv",
 ) -> dict[str, Path]:
     data_directory = tmp_path / "data"
@@ -162,11 +210,11 @@ def write_market_data_input_files(
             tick_data_path.write_text(
                 "\n".join(
                     [
-                        f"timestamp_utc,{tick_trade_price_column_name}",
-                        "2026-02-02T14:30:00Z,100.0",
-                        "2026-02-02T15:00:00Z,101.0",
-                        "2026-02-02T20:59:00Z,102.0",
-                        "2026-02-04T14:30:00Z,95.0",
+                        f"timestamp_utc,{tick_trade_price_column_name},{tick_trade_sign_column_name}",
+                        "2026-02-02T14:30:00Z,100.0,buy",
+                        "2026-02-02T15:00:00Z,101.0,sell",
+                        "2026-02-02T20:59:00Z,102.0,buy",
+                        "2026-02-04T14:30:00Z,95.0,sell",
                     ]
                 ),
                 encoding="utf-8",
@@ -182,6 +230,7 @@ def write_market_data_input_files(
                         datetime(2026, 2, 4, 14, 30, tzinfo=UTC),
                     ],
                     tick_trade_price_column_name: [100.0, 101.0, 102.0, 95.0],
+                    tick_trade_sign_column_name: ["buy", "sell", "buy", "sell"],
                 }
             ),
             tick_data_path,

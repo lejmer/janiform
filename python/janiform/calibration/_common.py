@@ -490,6 +490,11 @@ class CalibrationTickPriceInputPolicy(StrEnum):
     CLOSE_PRICE_COLUMN = 'close_price_column'
 
 
+class CalibrationTradeSign(StrEnum):
+    BUY = 'buy'
+    SELL = 'sell'
+
+
 class CalibrationOptionQuoteInputPolicy(StrEnum):
     MID_PRICE_COLUMN = 'mid_price_column'
     BID_ASK_MIDPOINT = 'bid_ask_midpoint'
@@ -620,6 +625,7 @@ class CalibrationTickDataColumnMapping(ContractModel):
     timestamp_column: str
     price_column: Optional[str] = None
     trade_price_column: Optional[str] = None
+    trade_sign_column: Optional[str] = None
     bid_column: Optional[str] = None
     ask_column: Optional[str] = None
     close_price_column: Optional[str] = None
@@ -631,6 +637,7 @@ class CalibrationTickDataColumnMapping(ContractModel):
         for field_name, field_value in (
             ("price_column", self.price_column),
             ("trade_price_column", self.trade_price_column),
+            ("trade_sign_column", self.trade_sign_column),
             ("bid_column", self.bid_column),
             ("ask_column", self.ask_column),
             ("close_price_column", self.close_price_column),
@@ -650,6 +657,7 @@ class CalibrationTickDataColumnMapping(ContractModel):
         raw_optional_fields = {
             "price_column": raw_payload.get("price_column"),
             "trade_price_column": raw_payload.get("trade_price_column"),
+            "trade_sign_column": raw_payload.get("trade_sign_column"),
             "bid_column": raw_payload.get("bid_column"),
             "ask_column": raw_payload.get("ask_column"),
             "close_price_column": raw_payload.get("close_price_column"),
@@ -667,6 +675,7 @@ class CalibrationTickDataColumnMapping(ContractModel):
             ),
             price_column=cast(Optional[str], raw_optional_fields["price_column"]),
             trade_price_column=cast(Optional[str], raw_optional_fields["trade_price_column"]),
+            trade_sign_column=cast(Optional[str], raw_optional_fields["trade_sign_column"]),
             bid_column=cast(Optional[str], raw_optional_fields["bid_column"]),
             ask_column=cast(Optional[str], raw_optional_fields["ask_column"]),
             close_price_column=cast(Optional[str], raw_optional_fields["close_price_column"]),

@@ -497,6 +497,8 @@ def _build_market_data_parquet_option_surface_smoke_invocation(
             "trade_price_column",
             "--tick-trade-price-column",
             "trade_price",
+            "--tick-trade-sign-column",
+            "trade_sign",
             "--exchange-code",
             "XNYS",
             "--session-definition-path",
@@ -724,7 +726,8 @@ def _build_staged_memory_incompatible_checkpoint_arguments(
 def _validate_simulation_smoke_stdout(stdout_text: str) -> None:
     payload = _parse_json_command_output(stdout_text)
     assert payload["schema_version"] == "simulation.seeded_tick_event.path.v1"
-    assert payload["metadata"]["event_record_schema_version"] == "simulation.seeded_tick_event.record.v1"
+    assert payload["metadata"]["path_record_schema_version"] == "simulation.seeded_tick_event.record.v1"
+    assert isinstance(payload["fine_path"], list)
     assert isinstance(payload["event_tape"], list)
 
 

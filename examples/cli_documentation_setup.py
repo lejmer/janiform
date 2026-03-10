@@ -30,7 +30,9 @@ from ._shared import (
     build_pricing_interval_factors,
     build_pricing_optional_output_selection,
     build_pricing_request,
+    build_simulation_news_process_configuration,
     build_simulation_news_source,
+    build_simulation_nig_shared_plus_shift_configuration,
     build_simulation_seasonality_source,
     write_market_data_fixture_files,
 )
@@ -201,6 +203,8 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
         start_time_utc=SIMULATION_RANGE_START_UTC,
         horizon_interval_count=hourly_factor_contract.interval_count,
         kernel_parameters=build_hawkes_kernel_parameters(),
+        nig_shared_plus_shift_configuration=build_simulation_nig_shared_plus_shift_configuration(),
+        news_process_configuration=build_simulation_news_process_configuration(),
         initial_excitation_state=build_initial_excitation_state(),
         hourly_factor_contract=hourly_factor_contract,
     )

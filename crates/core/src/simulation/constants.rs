@@ -1,9 +1,5 @@
 //! Simulation schema and policy constants.
 
-use crate::news::{
-    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
-    GammaSeverityMarkConfiguration,
-};
 use crate::randomness::{
     SIMULATION_RANDOMNESS_STREAM_POLICY, SIMULATION_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY,
 };
@@ -64,14 +60,3 @@ pub(crate) const ONE_SECOND_NANOS: i64 = 1_000_000_000;
 pub(crate) const MAX_STOCHASTIC_UPDATES_PER_INTERVAL: u64 = 1_000_000;
 pub(crate) const DEFAULT_DEBUG_TRACE_SAMPLE_EVERY_NTH_TRANSITION: u64 = 1;
 pub(crate) const DEFAULT_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK: usize = 1_024;
-// Seeded simulation now follows the shared contract pipeline:
-// U ~ Gamma(k, theta), epsilon ~ Kou(p, eta_plus, eta_minus),
-// Z = sigma_g * sqrt(U) * epsilon.
-// These defaults keep a neutral baseline while component scales remain explicit.
-pub(crate) const SEEDED_TICK_EXOGENOUS_NEWS_SHARED_GAMMA_CONFIGURATION:
-    GammaSeverityMarkConfiguration = GammaSeverityMarkConfiguration::new(1.0, 1.0);
-pub(crate) const SEEDED_TICK_EXOGENOUS_NEWS_SHARED_BASE_SHOCK_CONFIGURATION:
-    DoubleExponentialBaseShockConfiguration =
-    DoubleExponentialBaseShockConfiguration::new(0.5, 1.0, 1.0);
-pub(crate) const SEEDED_TICK_EXOGENOUS_NEWS_SHARED_COUPLED_RETURN_JUMP_CONFIGURATION:
-    CoupledGapMarkConfiguration = CoupledGapMarkConfiguration::new(1.0);

@@ -6,6 +6,8 @@ use serde::Serialize;
 use crate::calendar::ExchangeCalendarRegistry;
 use crate::hawkes::{HawkesExcitationState, HawkesKernelParameters};
 use crate::hourly_factors::HourlyFactorContractOutput;
+use crate::news::NewsProcessConfiguration;
+use crate::nig::NigSharedPlusShiftConfiguration;
 
 use super::constants::{
     DEFAULT_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK, DEFAULT_DEBUG_TRACE_SAMPLE_EVERY_NTH_TRANSITION,
@@ -106,54 +108,17 @@ impl Default for SeededTickSimulationRunOptions {
     }
 }
 
-/// Per-component mark scaling controls for seeded simulation news arrivals.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct SeededTickSimulationNewsMarkScales {
-    pub activity_coupling_scale: f64,
-    pub return_jump_scale: f64,
-}
-
-impl SeededTickSimulationNewsMarkScales {
-    const fn default_unit() -> Self {
-        Self {
-            activity_coupling_scale: 1.0,
-            return_jump_scale: 1.0,
-        }
-    }
-
-    fn validate(self, component_label: &'static str) -> Result<(), SeededTickSimulationRunError> {
-        if !self.activity_coupling_scale.is_finite() || self.activity_coupling_scale < 0.0 {
-            return Err(
-                SeededTickSimulationRunError::InvalidNewsComponentActivityCouplingScale {
-                    component: component_label,
-                    value: self.activity_coupling_scale,
-                },
-            );
-        }
-        if !self.return_jump_scale.is_finite() || self.return_jump_scale < 0.0 {
-            return Err(
-                SeededTickSimulationRunError::InvalidNewsComponentReturnJumpScale {
-                    component: component_label,
-                    value: self.return_jump_scale,
-                },
-            );
-        }
-
-        Ok(())
-    }
-}
-
-impl Default for SeededTickSimulationNewsMarkScales {
-    fn default() -> Self {
-        Self::default_unit()
-    }
-}
-
-/// Required model inputs for seeded tick-event simulation runs.
+/// Required model inputs for seeded fine-path simulation runs.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeededTickSimulationModelInputs {
     /// Canonical Hawkes kernel parameter payload.
     pub kernel_parameters: HawkesKernelParameters,
+
+    /// Canonical NIG return decomposition payload shared with the coarse engine.
+    pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+
+    /// Shared news process configuration consumed by both seeded and coarse simulation.
+    pub news_process_configuration: NewsProcessConfiguration,
 
     /// Excitation state carried into the first simulated interval.
     pub initial_excitation_state: HawkesExcitationState,
@@ -163,15 +128,6 @@ pub struct SeededTickSimulationModelInputs {
 
     /// Canonical calendar registry used to resolve open and closed market states.
     pub calendar_registry: ExchangeCalendarRegistry,
-
-    /// Known scheduled news arrivals in UTC nanos.
-    pub known_scheduled_news_event_timestamps_utc_nanos: Vec<i64>,
-
-    /// Known-component mark scaling controls for activity coupling and return jumps.
-    pub known_news_mark_scales: SeededTickSimulationNewsMarkScales,
-
-    /// Surprise-component mark scaling controls for activity coupling and return jumps.
-    pub surprise_news_mark_scales: SeededTickSimulationNewsMarkScales,
 }
 
 /// Typed public run contract for deterministic seeded tick-event simulation.
@@ -295,15 +251,26 @@ impl SeededTickSimulationRunConfig {
             self.horizon_interval_count,
         )?;
 
+        self.model_inputs
+            .nig_shared_plus_shift_configuration
+            .derive_driver_parameters()
+            .map_err(|source| {
+                SeededTickSimulationRunError::InvalidNigSharedPlusShiftConfiguration { source }
+            })?;
+        self.model_inputs
+            .news_process_configuration
+            .validate()
+            .map_err(|source| {
+                SeededTickSimulationRunError::InvalidNewsProcessConfiguration { source }
+            })?;
         validate_known_scheduled_news_timestamps(
             &self
                 .model_inputs
-                .known_scheduled_news_event_timestamps_utc_nanos,
+                .news_process_configuration
+                .arrivals
+                .known
+                .scheduled_event_timestamps_utc_nanos,
         )?;
-        self.model_inputs.known_news_mark_scales.validate("known")?;
-        self.model_inputs
-            .surprise_news_mark_scales
-            .validate("surprise")?;
 
         if self.options.debug_trace_enabled {
             self.options.debug_trace_options.validate()?;

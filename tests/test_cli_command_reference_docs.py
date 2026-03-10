@@ -396,6 +396,8 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path
             "trade_price_column",
             "--tick-trade-price-column",
             "trade_price",
+            "--tick-trade-sign-column",
+            "trade_sign",
             "--exchange-code",
             "XNYS",
             "--session-definition-path",
