@@ -1,8 +1,10 @@
 use janiform_core::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
 use janiform_core::simulation::{
-    SeededTickEventStateSnapshotCapture, SeededTickSimulationDebugTraceOptions,
+    CoarseSimulationRunRequest, SeededTickEventStateSnapshotCapture,
+    SeededTickSimulationDebugTraceOptions,
     SeededTickSimulationModelInputs, SeededTickSimulationNewsMarkScales,
     SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
+    run_coarse_simulation as run_coarse_simulation_core,
     run_seeded_tick_event_simulation as run_seeded_tick_event_simulation_core,
 };
 use pyo3::prelude::*;
@@ -10,7 +12,26 @@ use pyo3::types::{PyAny, PyMapping, PyModule};
 
 use super::calendar::parse_timestamp_utc;
 use crate::SeasonalityInputValidationError;
+use crate::SimulationExecutionError;
 use crate::types::PyHourlyFactorContractResult;
+
+#[pyfunction]
+fn run_coarse_simulation(run_request_json: &str) -> PyResult<String> {
+    let run_request: CoarseSimulationRunRequest =
+        serde_json::from_str(run_request_json).map_err(|source| {
+            SimulationExecutionError::new_err(format!(
+                "failed to deserialize coarse simulation run request: {source}"
+            ))
+        })?;
+    let coarse_path = run_coarse_simulation_core(run_request)
+        .map_err(|source| SimulationExecutionError::new_err(source.to_string()))?;
+
+    serde_json::to_string(&coarse_path).map_err(|source| {
+        SimulationExecutionError::new_err(format!(
+            "failed to serialize coarse simulation path payload: {source}"
+        ))
+    })
+}
 
 #[pyfunction]
 #[pyo3(signature = (seed, start_time_utc, horizon_interval_count, kernel_parameters, initial_excitation_state, hourly_factor_contract, *, debug_trace_enabled = false, sample_every_nth_transition = 1, max_records_per_chunk = 1024, state_snapshot_capture = "disabled"))]
@@ -244,6 +265,7 @@ fn map_seeded_tick_simulation_run_error(
 }
 
 pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_function(wrap_pyfunction!(run_coarse_simulation, module)?)?;
     module.add_function(wrap_pyfunction!(run_seeded_tick_event_simulation, module)?)?;
     Ok(())
 }

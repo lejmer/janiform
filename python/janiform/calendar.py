@@ -1,6 +1,9 @@
 from datetime import UTC, datetime
 from enum import StrEnum
 from types import ModuleType
+from typing import Any
+
+import orjson
 
 from ._native_api import native_module
 
@@ -37,6 +40,12 @@ class MarketState(StrEnum):
 class CalendarRegistry:
     def __init__(self, registry_json: str) -> None:
         native: ModuleType = native_module()
+        try:
+            registry_payload: Any = orjson.loads(registry_json)
+        except orjson.JSONDecodeError as e:
+            raise CalendarRegistryLoadError(f"calendar registry payload must be valid JSON: {e.msg}") from e
+        if not isinstance(registry_payload, dict):
+            raise CalendarRegistryLoadError("calendar registry payload must decode to an object")
 
         try:
             native_registry: object = native.CalendarRegistry(registry_json)
@@ -45,6 +54,8 @@ class CalendarRegistry:
 
         self._native_registry: object = native_registry
         self._native: ModuleType = native
+        self._registry_json: str = registry_json
+        self._registry_payload: dict[str, Any] = registry_payload
 
     def resolve_market_state(self, exchange_code: str, timestamp_utc: datetime) -> MarketState:
         normalized_timestamp: datetime = _normalize_utc_timestamp(timestamp_utc)

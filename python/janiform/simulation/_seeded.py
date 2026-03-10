@@ -1,42 +1,28 @@
-import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import StrEnum
-from types import ModuleType
 from typing import Any, Optional, cast
 
-from ._contracts import (
+from .._contracts import (
     ContractModel,
-    ValidationErrorFactory,
-    compute_hawkes_alpha_over_beta_spectral_radius,
     parse_json_object,
     require_datetime_utc,
     require_mapping,
     require_non_negative_finite_number,
     require_non_negative_finite_scalar,
     require_non_negative_integer,
-    require_positive_finite_number,
     require_positive_integer,
     require_sequence,
     require_string,
     serialize_deterministic_json,
 )
-from ._native_api import native_module
-from .calendar import (
+from .._native_api import native_module
+from ..calendar import (
     CalendarInvalidTimestampError,
     CalendarInvalidTimezoneError,
     CalendarMissingExchangeError,
     CalendarRegistry,
 )
-from .errors import (
-    ContractValidationFailure,
-    JaniformErrorDetails,
-    JaniformErrorCategory,
-    JaniformExecutionError,
-    JaniformIntegrationError,
-    JaniformValidationError,
-)
-from .hourly_factors import (
+from ..hourly_factors import (
     HourlyFactorContract,
     HourlyFactorProviderMissingInputError,
     HourlyFactorProviderUnsupportedRangeError,
@@ -44,292 +30,22 @@ from .hourly_factors import (
     HourlySeasonalityProviderSource,
     provide_hourly_factor_contract,
 )
-from .seasonality import SeasonalityInputValidationError
-
-SIMULATION_VALIDATION_ERROR_ID = "simulation.validation.contract"
-SIMULATION_EXECUTION_ERROR_ID = "simulation.execution.run_failed"
-SIMULATION_INTEGRATION_NATIVE_MODULE_ERROR_ID = "simulation.integration.native_module_unavailable"
-SIMULATION_INTEGRATION_RESPONSE_ERROR_ID = "simulation.integration.invalid_native_response"
-SIMULATION_INTEGRATION_HOURLY_FACTOR_ERROR_ID = "simulation.integration.hourly_factor_contract_unavailable"
-
-SeededTickSimulationValidationFailure = ContractValidationFailure
-
-
-class SeededTickSimulationValidationError(JaniformValidationError):
-    pass
-
-
-def _simulation_failure(
-    field_path: str,
-    message: str,
-    *,
-    entrypoint: str = "contract",
-    error_id: str = SIMULATION_VALIDATION_ERROR_ID,
-    context: Optional[dict[str, str | int | float | bool | None]] = None,
-) -> SeededTickSimulationValidationFailure:
-    return SeededTickSimulationValidationFailure.from_context(
-        error_id=error_id,
-        workflow="simulation",
-        entrypoint=entrypoint,
-        field_path=field_path,
-        message=message,
-        context=context,
-    )
-
-
-def _simulation_error(
-    field_path: str,
-    message: str,
-    *,
-    entrypoint: str = "contract",
-    error_id: str = SIMULATION_VALIDATION_ERROR_ID,
-    context: Optional[dict[str, str | int | float | bool | None]] = None,
-) -> SeededTickSimulationValidationError:
-    return SeededTickSimulationValidationError(
-        _simulation_failure(
-            field_path,
-            message,
-            entrypoint=entrypoint,
-            error_id=error_id,
-            context=context,
-        )
-    )
-
-
-def _simulation_execution_error(
-    message: str,
-    *,
-    entrypoint: str,
-    context: Optional[dict[str, str | int | float | bool | None]] = None,
-) -> JaniformExecutionError:
-    return JaniformExecutionError(
-        JaniformErrorDetails.from_context(
-            error_id=SIMULATION_EXECUTION_ERROR_ID,
-            category=JaniformErrorCategory.EXECUTION,
-            workflow="simulation",
-            entrypoint=entrypoint,
-            message=message,
-            context=context,
-        )
-    )
-
-
-def _simulation_integration_error(
-    message: str,
-    *,
-    entrypoint: str,
-    error_id: str,
-    field_path: Optional[str] = None,
-    context: Optional[dict[str, str | int | float | bool | None]] = None,
-) -> JaniformIntegrationError:
-    return JaniformIntegrationError(
-        JaniformErrorDetails.from_context(
-            error_id=error_id,
-            category=JaniformErrorCategory.INTEGRATION,
-            workflow="simulation",
-            entrypoint=entrypoint,
-            message=message,
-            field_path=field_path,
-            context=context,
-        )
-    )
-
-
-SIMULATION_ERROR_FACTORY: ValidationErrorFactory = _simulation_error
-
-
-class SeededTickEventSide(StrEnum):
-    BUY = 'buy'
-    SELL = 'sell'
-
-
-class SeededTickEventStateSnapshotCapture(StrEnum):
-    DISABLED = 'disabled'
-    POST_EVENT_TRANSITION = 'post_event_transition'
-
-
-def _parse_seeded_tick_state_snapshot_capture(
-    raw_value: object,
-    *,
-    field_path: str,
-) -> SeededTickEventStateSnapshotCapture:
-    if not isinstance(raw_value, str):
-        raise _simulation_error(field_path, "must be a string")
-
-    try:
-        return SeededTickEventStateSnapshotCapture(raw_value)
-    except ValueError as e:
-        raise _simulation_error(
-            field_path,
-            f"must be one of: disabled, post_event_transition, received '{raw_value}'",
-        ) from e
-
-
-@dataclass(frozen=True, slots=True)
-class HawkesKernelLoadings(ContractModel):
-    """Directional Hawkes loadings for one 2x2 excitation block."""
-
-    plus_plus: float
-    plus_minus: float
-    minus_plus: float
-    minus_minus: float
-
-    def __post_init__(self) -> None:
-        for field_name in ("plus_plus", "plus_minus", "minus_plus", "minus_minus"):
-            value = cast(float, getattr(self, field_name))
-            require_non_negative_finite_scalar(value, field_name, SIMULATION_ERROR_FACTORY)
-
-    @staticmethod
-    def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str = "kernel_loadings") -> HawkesKernelLoadings:
-        if not isinstance(raw_payload, dict):
-            raise _simulation_error(field_path, "must be an object")
-
-        return HawkesKernelLoadings(
-            plus_plus=require_non_negative_finite_number(
-                raw_payload,
-                "plus_plus",
-                f"{field_path}.plus_plus",
-                SIMULATION_ERROR_FACTORY,
-            ),
-            plus_minus=require_non_negative_finite_number(
-                raw_payload,
-                "plus_minus",
-                f"{field_path}.plus_minus",
-                SIMULATION_ERROR_FACTORY,
-            ),
-            minus_plus=require_non_negative_finite_number(
-                raw_payload,
-                "minus_plus",
-                f"{field_path}.minus_plus",
-                SIMULATION_ERROR_FACTORY,
-            ),
-            minus_minus=require_non_negative_finite_number(
-                raw_payload,
-                "minus_minus",
-                f"{field_path}.minus_minus",
-                SIMULATION_ERROR_FACTORY,
-            ),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class HawkesKernelParameters(ContractModel):
-    """Canonical Hawkes kernel parameters with stability validation."""
-
-    lambda_bar: float
-    beta: float
-    alpha: HawkesKernelLoadings
-    rho: HawkesKernelLoadings
-
-    def __post_init__(self) -> None:
-        require_positive_finite_number(
-            {"lambda_bar": self.lambda_bar},
-            "lambda_bar",
-            "lambda_bar",
-            SIMULATION_ERROR_FACTORY,
-        )
-        require_positive_finite_number(
-            {"beta": self.beta},
-            "beta",
-            "beta",
-            SIMULATION_ERROR_FACTORY,
-        )
-
-        spectral_radius = compute_hawkes_alpha_over_beta_spectral_radius(
-            self.alpha.plus_plus,
-            self.alpha.plus_minus,
-            self.alpha.minus_plus,
-            self.alpha.minus_minus,
-            self.beta,
-        )
-        if spectral_radius >= 1.0:
-            raise _simulation_error(
-                "alpha",
-                f"spectral radius(alpha / beta) must be < 1.0, found {spectral_radius}",
-            )
-
-    @staticmethod
-    def from_mapping(
-        raw_payload: dict[str, Any] | Any,
-        *,
-        field_path: str = "kernel_parameters",
-    ) -> HawkesKernelParameters:
-        if not isinstance(raw_payload, dict):
-            raise _simulation_error(field_path, "must be an object")
-
-        return HawkesKernelParameters(
-            lambda_bar=require_positive_finite_number(
-                raw_payload,
-                "lambda_bar",
-                f"{field_path}.lambda_bar",
-                SIMULATION_ERROR_FACTORY,
-            ),
-            beta=require_positive_finite_number(
-                raw_payload,
-                "beta",
-                f"{field_path}.beta",
-                SIMULATION_ERROR_FACTORY,
-            ),
-            alpha=HawkesKernelLoadings.from_mapping(
-                require_mapping(raw_payload, "alpha", f"{field_path}.alpha", SIMULATION_ERROR_FACTORY),
-                field_path=f"{field_path}.alpha",
-            ),
-            rho=HawkesKernelLoadings.from_mapping(
-                require_mapping(raw_payload, "rho", f"{field_path}.rho", SIMULATION_ERROR_FACTORY),
-                field_path=f"{field_path}.rho",
-            ),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class HawkesExcitationState(ContractModel):
-    """4D Hawkes excitation state at one simulation boundary."""
-
-    y_plus_plus: float
-    y_plus_minus: float
-    y_minus_plus: float
-    y_minus_minus: float
-
-    def __post_init__(self) -> None:
-        for field_name in ("y_plus_plus", "y_plus_minus", "y_minus_plus", "y_minus_minus"):
-            value = cast(float, getattr(self, field_name))
-            require_non_negative_finite_scalar(value, field_name, SIMULATION_ERROR_FACTORY)
-
-    @staticmethod
-    def from_mapping(
-        raw_payload: dict[str, Any] | Any,
-        *,
-        field_path: str = "initial_excitation_state",
-    ) -> HawkesExcitationState:
-        if not isinstance(raw_payload, dict):
-            raise _simulation_error(field_path, "must be an object")
-
-        return HawkesExcitationState(
-            y_plus_plus=require_non_negative_finite_number(
-                raw_payload,
-                "y_plus_plus",
-                f"{field_path}.y_plus_plus",
-                SIMULATION_ERROR_FACTORY,
-            ),
-            y_plus_minus=require_non_negative_finite_number(
-                raw_payload,
-                "y_plus_minus",
-                f"{field_path}.y_plus_minus",
-                SIMULATION_ERROR_FACTORY,
-            ),
-            y_minus_plus=require_non_negative_finite_number(
-                raw_payload,
-                "y_minus_plus",
-                f"{field_path}.y_minus_plus",
-                SIMULATION_ERROR_FACTORY,
-            ),
-            y_minus_minus=require_non_negative_finite_number(
-                raw_payload,
-                "y_minus_minus",
-                f"{field_path}.y_minus_minus",
-                SIMULATION_ERROR_FACTORY,
-            ),
-        )
+from ..seasonality import SeasonalityInputValidationError
+from ._shared import (
+    HawkesExcitationState,
+    HawkesKernelParameters,
+    SIMULATION_ERROR_FACTORY,
+    SIMULATION_INTEGRATION_HOURLY_FACTOR_ERROR_ID,
+    SIMULATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
+    SIMULATION_INTEGRATION_RESPONSE_ERROR_ID,
+    SeededTickEventSide,
+    SeededTickEventStateSnapshotCapture,
+    SeededTickSimulationValidationError,
+    _parse_seeded_tick_state_snapshot_capture,
+    _simulation_error,
+    _simulation_execution_error,
+    _simulation_integration_error,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1056,25 +772,3 @@ def run_seeded_tick_event_simulation(
             error_id=SIMULATION_INTEGRATION_RESPONSE_ERROR_ID,
             context={"source_error_id": e.error_id},
         ) from e
-
-
-__all__ = [
-    "HawkesExcitationState",
-    "HawkesKernelLoadings",
-    "HawkesKernelParameters",
-    "SeededTickEventRecord",
-    "SeededTickEventSide",
-    "SeededTickEventStateSnapshot",
-    "SeededTickEventStateSnapshotCapture",
-    "SeededTickEventTapeMetadata",
-    "SeededTickSimulationHourlyFactorSummary",
-    "SeededTickSimulationRequest",
-    "SeededTickSimulationResponse",
-    "SeededTickSimulationValidationError",
-    "SeededTickSimulationValidationFailure",
-    "deserialize_seeded_tick_simulation_response",
-    "load_hourly_factor_contract_for_simulation",
-    "run_seeded_tick_event_simulation",
-    "serialize_seeded_tick_simulation_response",
-    "validate_seeded_tick_simulation_response",
-]

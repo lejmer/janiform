@@ -29,9 +29,34 @@ def test_package_root_surface_is_intentionally_minimal() -> None:
 
 def test_simulation_public_symbols_live_in_simulation_module() -> None:
     expected_exports = {
+        "COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY",
+        "COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY",
+        "COARSE_SIMULATION_ENVIRONMENT_METADATA_POLICY",
+        "COARSE_SIMULATION_INTERVAL_FACTOR_ALIGNMENT_POLICY",
+        "COARSE_SIMULATION_INTERVAL_IDENTIFIER_POLICY",
+        "COARSE_SIMULATION_INTERVAL_TIMING_POLICY",
+        "COARSE_SIMULATION_PATH_DIAGNOSTICS_SCHEMA_VERSION",
+        "COARSE_SIMULATION_PATH_OUTPUT_SCHEMA_METADATA_VERSION",
+        "COARSE_SIMULATION_PATH_PROVENANCE_SCHEMA_VERSION",
+        "COARSE_SIMULATION_PATH_RECORD_SCHEMA_VERSION",
+        "COARSE_SIMULATION_PATH_SCHEMA_VERSION",
+        "COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION",
+        "CoarseSimulationModelInputs",
+        "CoarseSimulationPath",
+        "CoarseSimulationPathDiagnostics",
+        "CoarseSimulationPathOutputSchemaMetadata",
+        "CoarseSimulationPathProvenance",
+        "CoarseSimulationPathRecord",
+        "CoarseSimulationRunRequest",
+        "CoupledGapMarkConfiguration",
+        "DoubleExponentialBaseShockConfiguration",
         "HawkesExcitationState",
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
+        "KnownNewsArrivalConfiguration",
+        "NewsArrivalConfiguration",
+        "NewsComponentMarkScaleConfiguration",
+        "NewsProcessConfiguration",
         "SeededTickEventRecord",
         "SeededTickEventSide",
         "SeededTickEventStateSnapshot",
@@ -42,15 +67,28 @@ def test_simulation_public_symbols_live_in_simulation_module() -> None:
         "SeededTickSimulationResponse",
         "SeededTickSimulationValidationError",
         "SeededTickSimulationValidationFailure",
+        "SharedNewsMarkLawConfiguration",
+        "SurpriseNewsArrivalConfiguration",
+        "deserialize_coarse_simulation_path",
+        "deserialize_coarse_simulation_run_request",
         "deserialize_seeded_tick_simulation_response",
         "load_hourly_factor_contract_for_simulation",
+        "run_coarse_simulation",
         "run_seeded_tick_event_simulation",
+        "serialize_coarse_simulation_path",
+        "serialize_coarse_simulation_run_request",
         "serialize_seeded_tick_simulation_response",
+        "validate_coarse_simulation_path",
+        "validate_coarse_simulation_run_request",
         "validate_seeded_tick_simulation_response",
     }
 
     assert expected_exports <= set(simulation_module.__all__)
     assert expected_exports <= set(dir(simulation_module))
+
+
+def test_simulation_public_module_is_a_package() -> None:
+    assert hasattr(simulation_module, "__path__")
 
 
 def test_pricing_public_symbols_live_in_pricing_module() -> None:
