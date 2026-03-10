@@ -13,12 +13,13 @@ from examples._shared import (
     build_stylized_fact_metric_catalog,
 )
 from tests.calibration_test_support import build_valid_execution_input_model
-from tests.test_cli_workflow_contracts import (
-    _build_pricing_execution_input,
-    _build_simulation_request,
-    _invoke_cli,
-    _write_json_path,
-    _write_market_data_input_files,
+from tests.cli_test_support import (
+    build_coarse_simulation_request,
+    build_pricing_execution_input,
+    build_simulation_request,
+    invoke_cli,
+    write_json_path,
+    write_market_data_input_files,
 )
 
 
@@ -45,6 +46,10 @@ class CliRegressionScenario:
 
 def _smoke_scenarios() -> tuple[CliSmokeScenario, ...]:
     return (
+        CliSmokeScenario(
+            scenario_id="simulation_coarse_interval_json_nominal",
+            build_invocation=_build_coarse_simulation_smoke_invocation,
+        ),
         CliSmokeScenario(
             scenario_id="simulation_seeded_ticks_json_nominal",
             build_invocation=_build_simulation_smoke_invocation,
@@ -138,9 +143,9 @@ def _regression_scenarios() -> tuple[CliRegressionScenario, ...]:
 
 
 def _build_simulation_smoke_invocation(calendar_registry_json: str, tmp_path: Path) -> CliSmokeInvocation:
-    request = _build_simulation_request(calendar_registry_json)
-    request_path = _write_json_path(tmp_path / "simulation_request.json", request.to_payload())
-    calendar_registry_path = _write_json_path(
+    request = build_simulation_request(calendar_registry_json)
+    request_path = write_json_path(tmp_path / "simulation_request.json", request.to_payload())
+    calendar_registry_path = write_json_path(
         tmp_path / "calendar_registry.json",
         json.loads(calendar_registry_json),
     )
@@ -158,9 +163,27 @@ def _build_simulation_smoke_invocation(calendar_registry_json: str, tmp_path: Pa
     )
 
 
+def _build_coarse_simulation_smoke_invocation(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> CliSmokeInvocation:
+    request = build_coarse_simulation_request(calendar_registry_json)
+    request_path = write_json_path(tmp_path / "coarse_simulation_request.json", request.to_payload())
+
+    return CliSmokeInvocation(
+        command_arguments=[
+            "simulation",
+            "coarse-interval",
+            "--request-json",
+            str(request_path),
+        ],
+        validate_stdout=_validate_coarse_simulation_smoke_stdout,
+    )
+
+
 def _build_pricing_smoke_invocation(_: str, tmp_path: Path) -> CliSmokeInvocation:
-    execution_input = _build_pricing_execution_input()
-    execution_input_path = _write_json_path(
+    execution_input = build_pricing_execution_input()
+    execution_input_path = write_json_path(
         tmp_path / "pricing_execution_input.json",
         execution_input.to_payload(),
     )
@@ -176,22 +199,29 @@ def _build_pricing_smoke_invocation(_: str, tmp_path: Path) -> CliSmokeInvocatio
     )
 
 
+def _validate_coarse_simulation_smoke_stdout(stdout_text: str) -> None:
+    payload = _parse_json_command_output(stdout_text)
+    assert payload["schema_version"] == "simulation.coarse_interval.path.v1"
+    assert payload["simulated_interval_count"] == 3
+    assert len(payload["records"]) == 3
+
+
 def _build_hourly_factors_build_contract_smoke_invocation(
     calendar_registry_json: str,
     tmp_path: Path,
 ) -> CliSmokeInvocation:
-    calendar_registry_path = _write_json_path(
+    calendar_registry_path = write_json_path(
         tmp_path / "calendar_registry.json",
         json.loads(calendar_registry_json),
     )
-    seasonality_source_path = _write_json_path(
+    seasonality_source_path = write_json_path(
         tmp_path / "hourly_factor_seasonality_source.json",
         {
             "hourly_factors": [1.0, 0.9, 1.1],
             "materialization_method": "shared_precomputed_hourly_s_h.v1",
         },
     )
-    news_source_path = _write_json_path(
+    news_source_path = write_json_path(
         tmp_path / "hourly_factor_news_source.json",
         {
             "hourly_factors": [0.2, 0.0, 0.3],
@@ -224,7 +254,7 @@ def _build_seasonality_preprocess_smoke_invocation(
     calendar_registry_json: str,
     tmp_path: Path,
 ) -> CliSmokeInvocation:
-    event_records_path = _write_json_path(
+    event_records_path = write_json_path(
         tmp_path / "timestamp_event_records.json",
         {
             "event_records": [
@@ -234,7 +264,7 @@ def _build_seasonality_preprocess_smoke_invocation(
             ]
         },
     )
-    calendar_registry_path = _write_json_path(
+    calendar_registry_path = write_json_path(
         tmp_path / "calendar_registry.json",
         json.loads(calendar_registry_json),
     )
@@ -270,7 +300,7 @@ def _build_seasonality_diagnostics_smoke_invocation(
     calendar_registry_json: str,
     tmp_path: Path,
 ) -> CliSmokeInvocation:
-    event_records_path = _write_json_path(
+    event_records_path = write_json_path(
         tmp_path / "seasonality_diagnostics_event_records.json",
         {
             "event_records": [
@@ -283,7 +313,7 @@ def _build_seasonality_diagnostics_smoke_invocation(
             ]
         },
     )
-    calendar_registry_path = _write_json_path(
+    calendar_registry_path = write_json_path(
         tmp_path / "seasonality_diagnostics_calendar_registry.json",
         json.loads(calendar_registry_json),
     )
@@ -317,16 +347,16 @@ def _build_seasonality_diagnostics_smoke_invocation(
 
 
 def _build_stylized_facts_smoke_invocation(_: str, tmp_path: Path) -> CliSmokeInvocation:
-    metric_catalog_path = _write_json_path(
+    metric_catalog_path = write_json_path(
         tmp_path / "stylized_fact_metric_catalog.json",
         build_stylized_fact_metric_catalog(),
     )
-    comparison_request_path = _write_json_path(
+    comparison_request_path = write_json_path(
         tmp_path / "stylized_fact_comparison_request.json",
         build_stylized_fact_horizon_comparison_request(),
     )
     export_directory = tmp_path / "stylized-facts-smoke-export"
-    artifact_export_path = _write_json_path(
+    artifact_export_path = write_json_path(
         tmp_path / "stylized_fact_artifact_export.json",
         build_stylized_fact_artifact_export_config(
             export_directory=export_directory,
@@ -359,7 +389,7 @@ def _build_stylized_facts_smoke_invocation(_: str, tmp_path: Path) -> CliSmokeIn
 
 
 def _build_market_data_smoke_invocation(calendar_registry_json: str, tmp_path: Path) -> CliSmokeInvocation:
-    market_data_paths = _write_market_data_input_files(
+    market_data_paths = write_market_data_input_files(
         tmp_path,
         calendar_registry_json=calendar_registry_json,
         include_known_news=True,
@@ -428,7 +458,7 @@ def _build_market_data_parquet_option_surface_smoke_invocation(
     calendar_registry_json: str,
     tmp_path: Path,
 ) -> CliSmokeInvocation:
-    market_data_paths = _write_market_data_input_files(
+    market_data_paths = write_market_data_input_files(
         tmp_path,
         calendar_registry_json=calendar_registry_json,
         include_known_news=True,
@@ -519,11 +549,11 @@ def _build_market_data_parquet_option_surface_smoke_invocation(
 
 
 def _build_staged_disk_smoke_invocation(calendar_registry_json: str, tmp_path: Path) -> CliSmokeInvocation:
-    execution_input_path = _write_json_path(
+    execution_input_path = write_json_path(
         tmp_path / "staged_execution_input.json",
         build_valid_execution_input_model().to_payload(),
     )
-    calendar_registry_path = _write_json_path(
+    calendar_registry_path = write_json_path(
         tmp_path / "calendar_registry.json",
         json.loads(calendar_registry_json),
     )
@@ -551,11 +581,11 @@ def _build_staged_disk_smoke_invocation(calendar_registry_json: str, tmp_path: P
 
 
 def _build_staged_memory_smoke_invocation(calendar_registry_json: str, tmp_path: Path) -> CliSmokeInvocation:
-    execution_input_path = _write_json_path(
+    execution_input_path = write_json_path(
         tmp_path / "staged_memory_execution_input.json",
         build_valid_execution_input_model().to_payload(),
     )
-    calendar_registry_path = _write_json_path(
+    calendar_registry_path = write_json_path(
         tmp_path / "calendar_registry.json",
         json.loads(calendar_registry_json),
     )
@@ -582,7 +612,7 @@ def _build_staged_memory_smoke_invocation(calendar_registry_json: str, tmp_path:
 
 
 def _build_simulation_missing_request_arguments(calendar_registry_json: str, tmp_path: Path) -> list[str]:
-    calendar_registry_path = _write_json_path(
+    calendar_registry_path = write_json_path(
         tmp_path / "calendar_registry.json",
         json.loads(calendar_registry_json),
     )
@@ -598,10 +628,10 @@ def _build_simulation_missing_request_arguments(calendar_registry_json: str, tmp
 
 
 def _build_pricing_missing_strike_arguments(_: str, tmp_path: Path) -> list[str]:
-    execution_input_payload = _build_pricing_execution_input().to_payload()
+    execution_input_payload = build_pricing_execution_input().to_payload()
     del execution_input_payload["request"]["market_inputs"]["strike"]
 
-    execution_input_path = _write_json_path(
+    execution_input_path = write_json_path(
         tmp_path / "pricing_missing_strike.json",
         execution_input_payload,
     )
@@ -618,7 +648,7 @@ def _build_market_data_inconsistent_known_news_arguments(
     calendar_registry_json: str,
     tmp_path: Path,
 ) -> list[str]:
-    market_data_paths = _write_market_data_input_files(
+    market_data_paths = write_market_data_input_files(
         tmp_path,
         calendar_registry_json=calendar_registry_json,
         include_known_news=True,
@@ -668,11 +698,11 @@ def _build_staged_memory_incompatible_checkpoint_arguments(
     calendar_registry_json: str,
     tmp_path: Path,
 ) -> list[str]:
-    execution_input_path = _write_json_path(
+    execution_input_path = write_json_path(
         tmp_path / "staged_invalid_memory_execution_input.json",
         build_valid_execution_input_model().to_payload(),
     )
-    calendar_registry_path = _write_json_path(
+    calendar_registry_path = write_json_path(
         tmp_path / "calendar_registry.json",
         json.loads(calendar_registry_json),
     )
@@ -748,7 +778,7 @@ def test_cli_smoke_matrix_covers_primary_workflow_paths(
     tmp_path: Path,
 ) -> None:
     invocation = scenario.build_invocation(calendar_registry_json, tmp_path)
-    exit_code, stdout_text, stderr_text = _invoke_cli(invocation.command_arguments)
+    exit_code, stdout_text, stderr_text = invoke_cli(invocation.command_arguments)
 
     assert exit_code == int(cli_module.CliExitCode.SUCCESS), _scenario_failure_message(
         scenario_id=scenario.scenario_id,
@@ -771,7 +801,7 @@ def test_cli_regression_matrix_preserves_exit_codes_and_key_argument_paths(
     tmp_path: Path,
 ) -> None:
     command_arguments = scenario.build_arguments(calendar_registry_json, tmp_path)
-    exit_code, stdout_text, stderr_text = _invoke_cli(command_arguments)
+    exit_code, stdout_text, stderr_text = invoke_cli(command_arguments)
 
     assert exit_code == scenario.expected_exit_code, _scenario_failure_message(
         scenario_id=scenario.scenario_id,
@@ -796,5 +826,5 @@ def test_cli_regression_matrix_preserves_exit_codes_and_key_argument_paths(
 
 
 def test_cli_smoke_matrix_remains_bounded_for_merge_time_execution() -> None:
-    assert len(CLI_SMOKE_SCENARIOS) == 10
+    assert len(CLI_SMOKE_SCENARIOS) == 11
     assert len(CLI_REGRESSION_SCENARIOS) == 4

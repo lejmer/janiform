@@ -31,6 +31,7 @@ PYTHONPATH=python python3 -m examples.cli_documentation_setup --output-dir tmp/c
 The generated files include:
 
 - `tmp/cli-docs/calendar_registry.json`
+- `tmp/cli-docs/coarse_simulation_request.json`
 - `tmp/cli-docs/simulation_request.json`
 - `tmp/cli-docs/timestamp_event_records.json`
 - `tmp/cli-docs/hourly_factor_seasonality_materialization_input.json`
@@ -64,13 +65,47 @@ The generated files include:
 
 ## Simulation
 
-### Synopsis
+Use `coarse-interval` when you want a direct Delta-spaced path artifact for analytics, pricing
+validation, or risk-style simulation at the interval boundary. Use `seeded-ticks` when you need
+fine event tapes, event ordering, or tick replay diagnostics.
+
+### Coarse-Interval Synopsis
+
+```text
+janiform simulation coarse-interval --request-json PATH [--output {human,json}]
+```
+
+### Coarse-Interval Options
+
+- `--request-json`: `CoarseSimulationRunRequest` contract file
+- `--output {human,json}`: operator summary or machine-readable result
+
+### Coarse-Interval Example
+
+Machine-readable output to stdout:
+
+```bash
+janiform simulation coarse-interval \
+  --request-json tmp/cli-docs/coarse_simulation_request.json \
+  --output json
+```
+
+Machine-readable output redirected to a file:
+
+```bash
+janiform simulation coarse-interval \
+  --request-json tmp/cli-docs/coarse_simulation_request.json \
+  --output json \
+  > tmp/cli-docs/coarse_simulation_result.json
+```
+
+### Seeded-Ticks Synopsis
 
 ```text
 janiform simulation seeded-ticks --request-json PATH --calendar-registry-json PATH [--output {human,json}]
 ```
 
-### Options
+### Seeded-Ticks Options
 
 - `--request-json`: `SeededTickSimulationRequest` contract file
 - `--calendar-registry-json`: `calendar.registry.v1` contract file used to rehydrate runtime inputs

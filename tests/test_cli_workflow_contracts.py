@@ -1,16 +1,12 @@
 import json
 import sys
-from contextlib import redirect_stderr, redirect_stdout
-from datetime import UTC, datetime, timedelta
-from io import StringIO
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import orjson
-import pyarrow as pa
 import pytest
-from pyarrow import parquet as pyarrow_parquet
 
 import janiform.calibration as calibration_module
 import janiform.cli as cli_module
@@ -26,19 +22,22 @@ from janiform.calibration import (
     StagedCalibrationResponse,
 )
 from janiform.errors import JaniformErrorCategory, JaniformErrorDetails, JaniformExecutionError
-from janiform.hourly_factors import (
-    HourlyNewsIntensityProviderExplicitSource,
-    HourlySeasonalityProviderExplicitSource,
-)
 from janiform.pricing import VanillaOptionPricingExecutionInput
 from janiform.simulation import (
-    HawkesExcitationState,
-    HawkesKernelLoadings,
-    HawkesKernelParameters,
+    CoarseSimulationRunRequest,
     SeededTickSimulationRequest,
-    load_hourly_factor_contract_for_simulation,
 )
 from tests.calibration_test_support import build_valid_execution_input_model
+from tests.cli_test_support import (
+    build_coarse_simulation_request as _build_coarse_simulation_request,
+    build_pricing_execution_input as _build_pricing_execution_input,
+    build_simulation_request as _build_simulation_request,
+    invoke_cli as _invoke_cli,
+    normalize_help_output as _normalize_help_output,
+    render_help as _render_help,
+    write_json_path as _write_json_path,
+    write_market_data_input_files as _write_market_data_input_files,
+)
 
 
 def test_simulation_cli_help_documents_required_contract_inputs() -> None:
@@ -47,6 +46,17 @@ def test_simulation_cli_help_documents_required_contract_inputs() -> None:
     assert "--output {human,json}" in help_output
     assert "--request-json PATH" in help_output
     assert "--calendar-registry-json PATH" in help_output
+    assert cli_module.CLI_REPOSITORY_RELATIVE_PATH_POLICY in help_output
+
+
+def test_coarse_simulation_cli_help_documents_required_contract_inputs() -> None:
+    help_output = _normalize_help_output(_render_help(["simulation", "coarse-interval"]))
+
+    assert "--config-json PATH" in help_output
+    assert "--output {human,json}" in help_output
+    assert "--request-json PATH" in help_output
+    assert "without replaying fine-scale seeded ticks" in help_output
+    assert "Use seeded-ticks when you need fine event tapes or tick replay." in help_output
     assert cli_module.CLI_REPOSITORY_RELATIVE_PATH_POLICY in help_output
 
 
@@ -130,6 +140,7 @@ def test_market_data_calibration_cli_help_documents_user_facing_file_inputs() ->
 
 def test_cli_shared_path_flags_use_standardized_repository_relative_help_text() -> None:
     help_outputs = (
+        _normalize_help_output(_render_help(["simulation", "coarse-interval"])),
         _normalize_help_output(_render_help(["simulation", "seeded-ticks"])),
         _normalize_help_output(_render_help(["seasonality", "diagnostics"])),
         _normalize_help_output(_render_help(["seasonality", "preprocess-timestamps"])),
@@ -172,6 +183,15 @@ def test_deterministic_regression_cli_parser_requires_case_inputs() -> None:
                 "calendar.json",
             ]
         )
+
+    assert captured_exit.value.code == 2
+
+
+def test_coarse_simulation_cli_parser_requires_request_json() -> None:
+    parser = cli_module._build_parser()
+
+    with pytest.raises(SystemExit) as captured_exit:
+        parser.parse_args(["simulation", "coarse-interval"])
 
     assert captured_exit.value.code == 2
 
@@ -380,6 +400,14 @@ def test_seasonality_diagnostics_cli_parser_accepts_estimator_overrides() -> Non
 
 def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
     parser = cli_module._build_parser()
+    coarse_simulation_arguments = parser.parse_args(
+        [
+            "simulation",
+            "coarse-interval",
+            "--request-json",
+            "coarse-simulation.json",
+        ]
+    )
     simulation_arguments = parser.parse_args(
         [
             "simulation",
@@ -479,6 +507,7 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
         ]
     )
 
+    assert coarse_simulation_arguments.output == "json"
     assert simulation_arguments.output == "json"
     assert seasonality_diagnostics_arguments.output == "json"
     assert seasonality_arguments.output == "json"
@@ -491,6 +520,16 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
 
 def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
     parser = cli_module._build_parser()
+    coarse_simulation_arguments = parser.parse_args(
+        [
+            "simulation",
+            "coarse-interval",
+            "--request-json",
+            "coarse-simulation.json",
+            "--output",
+            "human",
+        ]
+    )
     simulation_arguments = parser.parse_args(
         [
             "simulation",
@@ -606,6 +645,7 @@ def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
         ]
     )
 
+    assert coarse_simulation_arguments.output == "human"
     assert simulation_arguments.output == "human"
     assert seasonality_diagnostics_arguments.output == "human"
     assert seasonality_arguments.output == "human"
@@ -1916,6 +1956,40 @@ def test_simulation_cli_maps_request_json_to_runtime_request(
     assert "event_tape" in command_output
 
 
+def test_coarse_simulation_cli_maps_request_json_to_runtime_contract(
+    calendar_registry_json: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    request = _build_coarse_simulation_request(calendar_registry_json)
+    captured_request: dict[str, CoarseSimulationRunRequest] = {}
+
+    def capturing_runner(request_model: CoarseSimulationRunRequest) -> simulation_module.CoarseSimulationPath:
+        captured_request["request"] = request_model
+        return simulation_module.run_coarse_simulation(request_model)
+
+    monkeypatch.setattr(cli_commands_module, "run_coarse_simulation", capturing_runner)
+
+    request_path = _write_json_path(tmp_path / "coarse_simulation_request.json", request.to_payload())
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "simulation",
+            "coarse-interval",
+            "--request-json",
+            str(request_path),
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
+    assert captured_request["request"] == request
+
+    command_output = orjson.loads(stdout_text)
+    assert command_output["schema_version"] == "simulation.coarse_interval.path.v1"
+    assert command_output["simulated_interval_count"] == 3
+    assert len(command_output["records"]) == 3
+
+
 def test_pricing_cli_maps_execution_input_json_to_runtime_contract(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -2138,6 +2212,44 @@ def test_calibration_cli_runtime_failures_return_runtime_exit_code(
     assert 'category="execution"' in stderr_text
 
 
+def test_coarse_simulation_cli_runtime_failures_return_runtime_exit_code(
+    calendar_registry_json: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    request_path = _write_json_path(
+        tmp_path / "coarse_simulation_request.json",
+        _build_coarse_simulation_request(calendar_registry_json).to_payload(),
+    )
+
+    def failing_runner(_: CoarseSimulationRunRequest) -> simulation_module.CoarseSimulationPath:
+        raise JaniformExecutionError(
+            JaniformErrorDetails.from_context(
+                error_id="simulation.execution.coarse_interval.run_failed",
+                category=JaniformErrorCategory.EXECUTION,
+                workflow="simulation",
+                entrypoint="run_coarse_simulation",
+                message="native coarse simulation failed",
+            )
+        )
+
+    monkeypatch.setattr(cli_commands_module, "run_coarse_simulation", failing_runner)
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "simulation",
+            "coarse-interval",
+            "--request-json",
+            str(request_path),
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.RUNTIME_ERROR)
+    assert stdout_text == ""
+    assert '[simulation.execution.coarse_interval.run_failed]' in stderr_text
+    assert 'category="execution"' in stderr_text
+
+
 def test_pricing_cli_unexpected_failures_return_internal_exit_code(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -2165,6 +2277,95 @@ def test_pricing_cli_unexpected_failures_return_internal_exit_code(
     assert stdout_text == ""
     assert '[cli.internal.pricing.vanilla_option.failed]' in stderr_text
     assert 'category="integration"' in stderr_text
+
+
+def test_coarse_simulation_cli_rejects_malformed_request_document(tmp_path: Path) -> None:
+    request_path = _write_json_path(
+        tmp_path / "malformed_coarse_simulation_request.json",
+        {
+            "schema_version": "simulation.coarse_interval.run_request.v1",
+            "seed": 17,
+            "start_time_utc_nanos": _utc_nanos(2026, 2, 2, 14, 0, 0),
+            "horizon_interval_count": 1,
+            "interval_delta": 1.0,
+            "model_inputs": "not-an-object",
+            "interval_factors": {
+                "interval_delta": 1.0,
+                "s_h": [1.0],
+                "nu_h_known": [0.0],
+                "nu_h_surprise": [0.0],
+            },
+        },
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "simulation",
+            "coarse-interval",
+            "--request-json",
+            str(request_path),
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert stdout_text == ""
+    assert '[simulation.validation.contract]' in stderr_text
+    assert 'field_path="model_inputs"' in stderr_text
+    assert 'message="must be an object"' in stderr_text
+
+
+def test_coarse_simulation_cli_rejects_interval_factor_alignment_mismatch(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    request_payload = _build_coarse_simulation_request(calendar_registry_json).to_payload()
+    request_payload["interval_delta"] = 0.5
+    request_path = _write_json_path(
+        tmp_path / "misaligned_coarse_simulation_request.json",
+        request_payload,
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "simulation",
+            "coarse-interval",
+            "--request-json",
+            str(request_path),
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert stdout_text == ""
+    assert '[simulation.validation.contract]' in stderr_text
+    assert 'field_path="interval_factors.interval_delta"' in stderr_text
+    assert "must match interval_delta exactly" in stderr_text
+
+
+def test_coarse_simulation_cli_supports_human_output_mode(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    request_path = _write_json_path(
+        tmp_path / "coarse_simulation_request_human.json",
+        _build_coarse_simulation_request(calendar_registry_json).to_payload(),
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "simulation",
+            "coarse-interval",
+            "--request-json",
+            str(request_path),
+            "--output",
+            "human",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
+    assert stdout_text.startswith("simulation coarse-interval completed:")
+    assert "simulated_interval_count=3" in stdout_text
+    assert "interval_delta=1.0" in stdout_text
+    assert stderr_text == ""
 
 
 def test_calibration_cli_requires_disk_checkpoint_directory_when_defaulting_to_disk(
@@ -2274,103 +2475,6 @@ def test_calibration_cli_rejects_malformed_close_open_boundary_observation(
     assert 'message="is required"' in stderr_text
 
 
-def _build_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
-    from examples._shared import (
-        build_pricing_interval_factors,
-        build_pricing_optional_output_selection,
-        build_pricing_request,
-    )
-
-    return VanillaOptionPricingExecutionInput(
-        request=build_pricing_request(),
-        interval_factors=build_pricing_interval_factors(),
-        optional_output_selection=build_pricing_optional_output_selection(),
-    )
-
-
-def _build_simulation_request(calendar_registry_json: str) -> SeededTickSimulationRequest:
-    calendar_registry = CalendarRegistry(calendar_registry_json)
-    start_time_utc = datetime(2026, 2, 2, 14, tzinfo=UTC)
-
-    hourly_factor_contract = load_hourly_factor_contract_for_simulation(
-        calendar_registry=calendar_registry,
-        exchange_code="XNYS",
-        range_start_utc=start_time_utc,
-        range_end_utc=start_time_utc + timedelta(hours=2),
-        seasonality_source=HourlySeasonalityProviderExplicitSource(hourly_factors=(1.0, 0.9)),
-        news_intensity_source=HourlyNewsIntensityProviderExplicitSource(hourly_factors=(0.2, 0.1)),
-    )
-
-    return SeededTickSimulationRequest.from_runtime_inputs(
-        seed=17,
-        start_time_utc=start_time_utc,
-        horizon_interval_count=2,
-        kernel_parameters=HawkesKernelParameters(
-            lambda_bar=0.8,
-            beta=1.6,
-            alpha=HawkesKernelLoadings(
-                plus_plus=0.2,
-                plus_minus=0.1,
-                minus_plus=0.1,
-                minus_minus=0.25,
-            ),
-            rho=HawkesKernelLoadings(
-                plus_plus=0.08,
-                plus_minus=0.04,
-                minus_plus=0.05,
-                minus_minus=0.1,
-            ),
-        ),
-        initial_excitation_state=HawkesExcitationState(
-            y_plus_plus=0.0,
-            y_plus_minus=0.0,
-            y_minus_plus=0.0,
-            y_minus_minus=0.0,
-        ),
-        hourly_factor_contract=hourly_factor_contract,
-    )
-
-
-def _invoke_cli(
-    arguments: list[str],
-    *,
-    environment: dict[str, str] | None = None,
-) -> tuple[int, str, str]:
-    parsed_arguments = cli_module._parse_cli_arguments(
-        arguments,
-        environment={} if environment is None else environment,
-    )
-
-    stdout_buffer = StringIO()
-    stderr_buffer = StringIO()
-
-    with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
-        exit_code = parsed_arguments.handler(parsed_arguments)
-
-    return exit_code, stdout_buffer.getvalue(), stderr_buffer.getvalue()
-
-
-def _render_help(arguments: list[str]) -> str:
-    parser = cli_module._build_parser()
-    stdout_buffer = StringIO()
-
-    with pytest.raises(SystemExit) as captured_exit:
-        with redirect_stdout(stdout_buffer):
-            parser.parse_args([*arguments, "--help"])
-
-    assert captured_exit.value.code == 0
-    return stdout_buffer.getvalue()
-
-
-def _normalize_help_output(help_output: str) -> str:
-    return " ".join(help_output.split())
-
-
-def _write_json_path(path: Path, payload: dict[str, object]) -> Path:
-    path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
-    return path
-
-
 def _write_event_records_document(path: Path, event_records: list[dict[str, object]]) -> Path:
     return _write_json_path(
         path,
@@ -2405,105 +2509,6 @@ def _write_cli_command_config(
             "arguments": arguments,
         },
     )
-
-
-def _write_market_data_input_files(
-    tmp_path: Path,
-    *,
-    calendar_registry_json: str,
-    include_known_news: bool = False,
-    include_option_surface: bool = False,
-    ambiguous_tick_timestamp: bool = False,
-    tick_trade_price_column_name: str = "trade_price",
-    tick_data_format: str = "csv",
-) -> dict[str, Path]:
-    data_directory = tmp_path / "data"
-    config_directory = tmp_path / "config"
-
-    data_directory.mkdir(parents=True, exist_ok=True)
-    config_directory.mkdir(parents=True, exist_ok=True)
-
-    tick_data_path = data_directory / f"ticks.{tick_data_format}"
-    if tick_data_format == "csv":
-        if ambiguous_tick_timestamp:
-            tick_data_path.write_text(
-                "\n".join(
-                    [
-                        "timestamp_utc",
-                        "2026-11-01T01:30:00",
-                    ]
-                ),
-                encoding="utf-8",
-            )
-        else:
-            tick_data_path.write_text(
-                "\n".join(
-                    [
-                        f"timestamp_utc,{tick_trade_price_column_name}",
-                        "2026-02-02T14:30:00Z,100.0",
-                        "2026-02-02T15:00:00Z,101.0",
-                        "2026-02-02T20:59:00Z,102.0",
-                        "2026-02-04T14:30:00Z,95.0",
-                    ]
-                ),
-                encoding="utf-8",
-            )
-    else:
-        pyarrow_parquet.write_table(
-            pa.table(
-                {
-                    "timestamp_utc": [
-                        datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
-                        datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
-                        datetime(2026, 2, 2, 20, 59, tzinfo=UTC),
-                        datetime(2026, 2, 4, 14, 30, tzinfo=UTC),
-                    ],
-                    tick_trade_price_column_name: [100.0, 101.0, 102.0, 95.0],
-                }
-            ),
-            tick_data_path,
-        )
-
-    session_definition_path = config_directory / "sessions.json"
-    session_definition_path.write_text(calendar_registry_json, encoding="utf-8")
-
-    file_paths: dict[str, Path] = {
-        "tick_data": tick_data_path,
-        "session_definition": session_definition_path,
-    }
-
-    if include_known_news:
-        known_news_path = config_directory / "known-news.csv"
-        known_news_path.write_text(
-            "\n".join(
-                [
-                    "event_timestamp_utc,event_code",
-                    "2026-02-02T15:05:00Z,open_macro",
-                    "2026-02-02T22:00:00Z,closed_macro",
-                ]
-            ),
-            encoding="utf-8",
-        )
-        file_paths["known_news"] = known_news_path
-
-    if include_option_surface:
-        option_surface_path = data_directory / "options.parquet"
-        pyarrow_parquet.write_table(
-            pa.table(
-                {
-                    "quote_timestamp_utc": [datetime(2026, 2, 2, 20, 0, tzinfo=UTC)],
-                    "expiry_utc": [datetime(2026, 3, 20, 20, 0, tzinfo=UTC)],
-                    "strike": [100.0],
-                    "option_type": ["C"],
-                    "bid": [4.0],
-                    "ask": [5.0],
-                }
-            ),
-            option_surface_path,
-        )
-        file_paths["option_surface"] = option_surface_path
-
-    return file_paths
 
 
 def _utc_nanos(

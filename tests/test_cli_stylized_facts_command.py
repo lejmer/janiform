@@ -10,16 +10,11 @@ from examples._shared import (
     build_stylized_fact_horizon_comparison_request,
     build_stylized_fact_metric_catalog,
 )
-from tests.test_cli_workflow_contracts import (
-    _invoke_cli,
-    _normalize_help_output,
-    _render_help,
-    _write_json_path,
-)
+from tests.cli_test_support import invoke_cli, normalize_help_output, render_help, write_json_path
 
 
 def test_stylized_facts_cli_help_documents_report_inputs_and_export_config() -> None:
-    help_output = _normalize_help_output(_render_help(["stylized-facts", "horizon-comparison"]))
+    help_output = normalize_help_output(render_help(["stylized-facts", "horizon-comparison"]))
 
     assert "--config-json PATH" in help_output
     assert "--output {human,json}" in help_output
@@ -91,16 +86,16 @@ def test_stylized_facts_cli_parser_rejects_invalid_execution_mode() -> None:
 
 
 def test_stylized_facts_cli_generates_report_bundle_in_memory_mode(tmp_path: Path) -> None:
-    metric_catalog_path = _write_json_path(
+    metric_catalog_path = write_json_path(
         tmp_path / "stylized_fact_metric_catalog.json",
         build_stylized_fact_metric_catalog(),
     )
-    comparison_request_path = _write_json_path(
+    comparison_request_path = write_json_path(
         tmp_path / "stylized_fact_comparison_request.json",
         build_stylized_fact_horizon_comparison_request(),
     )
 
-    exit_code, stdout_text, stderr_text = _invoke_cli(
+    exit_code, stdout_text, stderr_text = invoke_cli(
         [
             "stylized-facts",
             "horizon-comparison",
@@ -125,16 +120,16 @@ def test_stylized_facts_cli_generates_report_bundle_in_memory_mode(tmp_path: Pat
 
 
 def test_stylized_facts_cli_generates_human_summary_and_disk_artifacts(tmp_path: Path) -> None:
-    metric_catalog_path = _write_json_path(
+    metric_catalog_path = write_json_path(
         tmp_path / "stylized_fact_metric_catalog.json",
         build_stylized_fact_metric_catalog(),
     )
-    comparison_request_path = _write_json_path(
+    comparison_request_path = write_json_path(
         tmp_path / "stylized_fact_comparison_request.json",
         build_stylized_fact_horizon_comparison_request(),
     )
     export_directory = tmp_path / "stylized-facts-export"
-    artifact_export_path = _write_json_path(
+    artifact_export_path = write_json_path(
         tmp_path / "stylized_fact_artifact_export.json",
         build_stylized_fact_artifact_export_config(
             export_directory=export_directory,
@@ -142,7 +137,7 @@ def test_stylized_facts_cli_generates_human_summary_and_disk_artifacts(tmp_path:
         ),
     )
 
-    exit_code, stdout_text, stderr_text = _invoke_cli(
+    exit_code, stdout_text, stderr_text = invoke_cli(
         [
             "stylized-facts",
             "horizon-comparison",
@@ -177,16 +172,16 @@ def test_stylized_facts_cli_generates_human_summary_and_disk_artifacts(tmp_path:
 def test_stylized_facts_cli_rejects_invalid_metric_catalog_payload(tmp_path: Path) -> None:
     invalid_metric_catalog = build_stylized_fact_metric_catalog()
     invalid_metric_catalog["schema_version"] = "validation.stylized_fact.metric_catalog.v2"
-    metric_catalog_path = _write_json_path(
+    metric_catalog_path = write_json_path(
         tmp_path / "invalid_stylized_fact_metric_catalog.json",
         invalid_metric_catalog,
     )
-    comparison_request_path = _write_json_path(
+    comparison_request_path = write_json_path(
         tmp_path / "stylized_fact_comparison_request.json",
         build_stylized_fact_horizon_comparison_request(),
     )
 
-    exit_code, stdout_text, stderr_text = _invoke_cli(
+    exit_code, stdout_text, stderr_text = invoke_cli(
         [
             "stylized-facts",
             "horizon-comparison",
@@ -206,20 +201,20 @@ def test_stylized_facts_cli_rejects_invalid_metric_catalog_payload(tmp_path: Pat
 
 
 def test_stylized_facts_cli_rejects_invalid_artifact_export_configuration(tmp_path: Path) -> None:
-    metric_catalog_path = _write_json_path(
+    metric_catalog_path = write_json_path(
         tmp_path / "stylized_fact_metric_catalog.json",
         build_stylized_fact_metric_catalog(),
     )
-    comparison_request_path = _write_json_path(
+    comparison_request_path = write_json_path(
         tmp_path / "stylized_fact_comparison_request.json",
         build_stylized_fact_horizon_comparison_request(),
     )
-    artifact_export_path = _write_json_path(
+    artifact_export_path = write_json_path(
         tmp_path / "invalid_stylized_fact_artifact_export.json",
         {"export_directory": str(tmp_path / "stylized-facts-export")},
     )
 
-    exit_code, stdout_text, stderr_text = _invoke_cli(
+    exit_code, stdout_text, stderr_text = invoke_cli(
         [
             "stylized-facts",
             "horizon-comparison",
@@ -242,15 +237,15 @@ def test_stylized_facts_cli_rejects_invalid_artifact_export_configuration(tmp_pa
 
 
 def test_stylized_facts_cli_command_supports_command_config_defaults(tmp_path: Path) -> None:
-    metric_catalog_path = _write_json_path(
+    metric_catalog_path = write_json_path(
         tmp_path / "stylized_fact_metric_catalog.json",
         build_stylized_fact_metric_catalog(),
     )
-    comparison_request_path = _write_json_path(
+    comparison_request_path = write_json_path(
         tmp_path / "stylized_fact_comparison_request.json",
         build_stylized_fact_horizon_comparison_request(),
     )
-    config_path = _write_json_path(
+    config_path = write_json_path(
         tmp_path / "stylized_fact_command_config.json",
         {
             "schema_version": cli_module.CLI_COMMAND_CONFIG_SCHEMA_VERSION,
@@ -263,7 +258,7 @@ def test_stylized_facts_cli_command_supports_command_config_defaults(tmp_path: P
         },
     )
 
-    exit_code, stdout_text, stderr_text = _invoke_cli(
+    exit_code, stdout_text, stderr_text = invoke_cli(
         [
             "stylized-facts",
             "horizon-comparison",
