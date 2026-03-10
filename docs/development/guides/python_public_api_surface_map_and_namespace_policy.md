@@ -31,8 +31,35 @@ The package root `janiform` is intentionally minimal.
 ### Primary workflow modules
 
 - `janiform.simulation`
-  - Ownership: seeded tick simulation workflow
+  - Ownership: seeded tick simulation workflow and coarse-interval simulation workflow
   - Public symbols:
+    - `COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY`
+    - `COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY`
+    - `COARSE_SIMULATION_ENVIRONMENT_METADATA_POLICY`
+    - `COARSE_SIMULATION_INTERVAL_FACTOR_ALIGNMENT_POLICY`
+    - `COARSE_SIMULATION_INTERVAL_IDENTIFIER_POLICY`
+    - `COARSE_SIMULATION_INTERVAL_TIMING_POLICY`
+    - `COARSE_SIMULATION_PATH_DIAGNOSTICS_SCHEMA_VERSION`
+    - `COARSE_SIMULATION_PATH_OUTPUT_SCHEMA_METADATA_VERSION`
+    - `COARSE_SIMULATION_PATH_PROVENANCE_SCHEMA_VERSION`
+    - `COARSE_SIMULATION_PATH_RECORD_SCHEMA_VERSION`
+    - `COARSE_SIMULATION_PATH_SCHEMA_VERSION`
+    - `COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION`
+    - `KnownNewsArrivalConfiguration`
+    - `NewsArrivalConfiguration`
+    - `NewsComponentMarkScaleConfiguration`
+    - `DoubleExponentialBaseShockConfiguration`
+    - `CoupledGapMarkConfiguration`
+    - `SharedNewsMarkLawConfiguration`
+    - `SurpriseNewsArrivalConfiguration`
+    - `NewsProcessConfiguration`
+    - `CoarseSimulationModelInputs`
+    - `CoarseSimulationRunRequest`
+    - `CoarseSimulationPathRecord`
+    - `CoarseSimulationPathOutputSchemaMetadata`
+    - `CoarseSimulationPathProvenance`
+    - `CoarseSimulationPathDiagnostics`
+    - `CoarseSimulationPath`
     - `HawkesKernelLoadings`
     - `HawkesKernelParameters`
     - `HawkesExcitationState`
@@ -46,6 +73,13 @@ The package root `janiform` is intentionally minimal.
     - `SeededTickSimulationResponse`
     - `SeededTickSimulationValidationFailure`
     - `SeededTickSimulationValidationError`
+    - `validate_coarse_simulation_run_request`
+    - `validate_coarse_simulation_path`
+    - `serialize_coarse_simulation_run_request`
+    - `serialize_coarse_simulation_path`
+    - `deserialize_coarse_simulation_run_request`
+    - `deserialize_coarse_simulation_path`
+    - `run_coarse_simulation`
     - `load_hourly_factor_contract_for_simulation`
     - `run_seeded_tick_event_simulation`
     - `validate_seeded_tick_simulation_response`

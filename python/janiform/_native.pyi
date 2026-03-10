@@ -21,6 +21,9 @@ class PricingExecutionError(Exception): ...
 class CalibrationExecutionError(Exception): ...
 
 
+class SimulationExecutionError(Exception): ...
+
+
 class SeasonalityInputValidationError(ValueError): ...
 
 
@@ -744,6 +747,11 @@ def run_staged_calibration(
     execution_input_json: str,
     calendar_registry: CalendarRegistry,
     memory_checkpoint_store: Optional[CalibrationMemoryCheckpointStore] = None,
+) -> str: ...
+
+
+def run_coarse_simulation(
+    run_request_json: str,
 ) -> str: ...
 
 

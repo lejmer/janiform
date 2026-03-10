@@ -177,3 +177,28 @@ The sufficient-statistics risk sampler contract remains available in
 The coarse simulation workflow contract is the preferred simulation-facing
 artifact boundary because it carries explicit time anchoring and interval
 boundary timestamps that the sampler-only contract does not.
+
+## Python Surface
+
+The public Python entrypoint for this workflow lives in `janiform.simulation`.
+
+Public request, response, and execution symbols:
+
+- `CoarseSimulationRunRequest`
+- `CoarseSimulationModelInputs`
+- `NewsProcessConfiguration`
+- `CoarseSimulationPath`
+- `CoarseSimulationPathRecord`
+- `run_coarse_simulation`
+- `validate_coarse_simulation_run_request`
+- `validate_coarse_simulation_path`
+- `serialize_coarse_simulation_run_request`
+- `serialize_coarse_simulation_path`
+- `deserialize_coarse_simulation_run_request`
+- `deserialize_coarse_simulation_path`
+
+The Python layer remains a thin wrapper over the Rust core contract:
+
+- request validation mirrors the Rust schema and policy identifiers
+- execution delegates to the native `run_coarse_simulation` binding
+- path validation and serialization operate on the machine-readable path artifact emitted by Rust

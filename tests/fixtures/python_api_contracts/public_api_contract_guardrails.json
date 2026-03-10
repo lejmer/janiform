@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "5b105221fd94cb8677c81a4c821f8085f5b7f619d05d5833bf4d96004fc54f74",
+  "approved_snapshot_sha256": "5f8da080a8f36bf3b38507e46ca8c569ab26f52a9da9d5b05e653f6803396bd6",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -43,6 +43,17 @@
       "rationale": "The split calibration package now exposes its public namespace through package re-exports without rewriting symbol origin metadata, so introspection reflects the defining submodules.",
       "snapshot_sha256": "5b105221fd94cb8677c81a4c821f8085f5b7f619d05d5833bf4d96004fc54f74",
       "summary": "Record calibration package re-exports without module-origin shims."
+    },
+    {
+      "approved_on": "2026-03-10",
+      "docs_updated": [
+        "README.md",
+        "docs/development/guides/coarse_simulation_workflow_contract.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "The coarse-interval runner is now a public simulation workflow, so the Python contract snapshot must include the new simulation request and path artifacts instead of leaving the workflow behind private native bindings.",
+      "snapshot_sha256": "5f8da080a8f36bf3b38507e46ca8c569ab26f52a9da9d5b05e653f6803396bd6",
+      "summary": "Add the public coarse-interval simulation surface under janiform.simulation."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_1",
