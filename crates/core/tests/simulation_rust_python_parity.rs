@@ -12,8 +12,8 @@ use janiform_core::hourly_factors::{
 use janiform_core::news::{
     CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
-    NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
-    SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
+    NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
+    SurpriseNewsArrivalConfiguration,
 };
 use janiform_core::nig::NigSharedPlusShiftConfiguration;
 use janiform_core::simulation::{

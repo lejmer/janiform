@@ -71,6 +71,8 @@ _TRANSITION_SEARCH_STEP = timedelta(minutes=1)
 _ACTIVITY_LIFT_WINDOW = timedelta(minutes=30)
 _KNOWN_NEWS_EXCLUSION_WINDOW = timedelta(minutes=15)
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+_MINIMUM_HOURLY_NIG_SHAPE_MASS = 5.0e-4
+_MINIMUM_OPEN_TICK_COUNT_DURATION_HOURS = 0.25
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,6 +165,7 @@ def translate_market_data_request_to_staged_execution_input(
         loaded_inputs.tick_data.records,
         exchange_code=normalized_request.session_configuration.exchange_code,
         calendar_registry=calendar_registry,
+        require_trade_signs=CalibrationStage.HAWKES in selected_stages,
     )
 
     open_price_ticks = _build_open_price_ticks(resolved_ticks)
@@ -201,6 +204,7 @@ def translate_market_data_request_to_staged_execution_input(
     if CalibrationStage.RETURN_COMPONENTS in selected_stages:
         return_components_candidate_generation_input, material_close_open_gap_count = (
             _build_return_components_candidate_generation_input(
+                resolved_ticks=resolved_ticks,
                 open_price_ticks=open_price_ticks,
                 option_surface=loaded_inputs.option_surface,
                 retained_known_news=retained_known_news,
@@ -323,6 +327,7 @@ def translate_market_data_request_to_staged_execution_input(
             "calendar_registry.resolve_market_state_at_utc.v1",
             "known_news_outside_tick_window_are_filtered.v1",
             "known_news_overlays_are_point_anchors_with_zero_log_adjustment.v1",
+            "missing_trade_signs_are_inferred_from_canonical_price_direction_with_flat_move_carryover.v1",
             "hawkes_candidates_are_seeded_from_signed_trade_event_rate_and_interarrival_dispersion.v1",
             "surprise_jump_candidates_use_open_session_log_returns_and_known_news_exclusion_windows.v1",
             "close_open_boundaries_are_resolved_from_calendar_state_transitions.v1",
@@ -497,7 +502,14 @@ def _resolve_tick_market_states(
     *,
     exchange_code: str,
     calendar_registry: CalendarRegistry,
+    require_trade_signs: bool,
 ) -> tuple[_ResolvedTickRecord, ...]:
+    signed_tick_records = (
+        _resolve_trade_signs_for_tick_records(tick_records)
+        if require_trade_signs
+        else tuple(tick_records)
+    )
+
     return tuple(
         _ResolvedTickRecord(
             record=tick_record,
@@ -506,8 +518,57 @@ def _resolve_tick_market_states(
                 tick_record.timestamp,
             ),
         )
-        for tick_record in tick_records
+        for tick_record in signed_tick_records
     )
+
+
+def _resolve_trade_signs_for_tick_records(
+    tick_records: Sequence[NormalizedTickDataRecord],
+) -> tuple[NormalizedTickDataRecord, ...]:
+    resolved_tick_records: list[NormalizedTickDataRecord] = []
+    previous_price: Optional[float] = None
+    previous_sign = CalibrationTradeSign.BUY
+
+    for tick_record in tick_records:
+        resolved_sign = tick_record.trade_sign
+        if resolved_sign is None:
+            if tick_record.price is None:
+                raise _translation_error(
+                    "column_mapping.tick_data.trade_sign_column",
+                    "trade sign inference requires a canonical tick price for every retained trade event",
+                    context={
+                        "translation_step": "trade_sign_inference",
+                        "source_row_number": tick_record.source_row_number,
+                    },
+                )
+
+            if previous_price is None:
+                resolved_sign = CalibrationTradeSign.BUY
+            elif tick_record.price > previous_price:
+                resolved_sign = CalibrationTradeSign.BUY
+            elif tick_record.price < previous_price:
+                resolved_sign = CalibrationTradeSign.SELL
+            else:
+                resolved_sign = previous_sign
+
+        resolved_tick_records.append(
+            NormalizedTickDataRecord(
+                timestamp=tick_record.timestamp,
+                price=tick_record.price,
+                trade_price=tick_record.trade_price,
+                trade_sign=resolved_sign,
+                bid_price=tick_record.bid_price,
+                ask_price=tick_record.ask_price,
+                close_price=tick_record.close_price,
+                source_row_number=tick_record.source_row_number,
+            )
+        )
+        if tick_record.price is not None:
+            previous_price = tick_record.price
+
+        previous_sign = resolved_sign
+
+    return tuple(resolved_tick_records)
 
 
 def _build_open_price_ticks(
@@ -649,7 +710,7 @@ def _build_hawkes_candidate_inputs(
     if any(resolved_tick.record.trade_sign is None for resolved_tick in resolved_ticks):
         raise _translation_error(
             "column_mapping.tick_data.trade_sign_column",
-            "full-model Hawkes calibration requires explicit buy or sell sign labels for every retained trade event",
+            "full-model Hawkes calibration requires resolved buy or sell sign labels for every retained trade event",
             context={"translation_step": "hawkes_candidate_generation"},
         )
 
@@ -738,6 +799,7 @@ def _build_hawkes_candidate_inputs(
 
 def _build_return_components_candidate_generation_input(
     *,
+    resolved_ticks: Sequence[_ResolvedTickRecord],
     open_price_ticks: Sequence[_OpenPriceTick],
     option_surface: Optional[LoadedOptionSurfaceSource],
     retained_known_news: Sequence[_ResolvedKnownNewsRecord],
@@ -781,6 +843,8 @@ def _build_return_components_candidate_generation_input(
         exchange_code=exchange_code,
         calendar_registry=calendar_registry,
     )
+    mean_open_tick_count_per_hour = _mean_open_tick_count_per_hour(open_price_ticks)
+    open_tick_sell_share = _open_tick_sell_share(resolved_ticks)
     median_abs_intraday_return: float = _median_abs(
         [return_value for _, return_value in intraday_returns]
     )
@@ -808,6 +872,8 @@ def _build_return_components_candidate_generation_input(
         ),
         nig_shared_plus_shift_candidates=_derive_nig_candidates(
             intraday_returns=intraday_returns,
+            mean_open_tick_count_per_hour=mean_open_tick_count_per_hour,
+            open_tick_sell_share=open_tick_sell_share,
             option_surface_records=(
                 option_surface.records
                 if option_surface is not None
@@ -1014,6 +1080,8 @@ def _same_session_open_returns(
 def _derive_nig_candidates(
     *,
     intraday_returns: Sequence[tuple[datetime, float]],
+    mean_open_tick_count_per_hour: float,
+    open_tick_sell_share: float,
     option_surface_records: Sequence[NormalizedOptionSurfaceRecord],
 ) -> tuple[NigSharedPlusShiftConfiguration, ...]:
     from ..pricing import NigSharedPlusShiftConfiguration
@@ -1027,23 +1095,101 @@ def _derive_nig_candidates(
         [option_record.quote_value for option_record in option_surface_records]
     ) or 0.0
 
-    beta_0: float = -min(0.9, max(0.35, abs(mean_return) * 500.0))
-    delta_beta: float = -0.15
+    beta_0: float = max(-0.05, min(0.05, mean_return * 1_000.0))
+    delta_beta: float = -0.05
     alpha: float = max(2.0 + min(option_quote_level / 10.0, 1.5), abs(beta_0 + delta_beta) + 0.25)
-    delta: float = max(
-        0.1,
-        min(1.5, root_mean_square_return * 25.0 + (option_quote_level / 100.0)),
+    tick_scale_delta: float = _nig_delta_from_tick_return_scale(
+        alpha=alpha,
+        beta_0=beta_0,
+        delta_beta=delta_beta,
+        open_tick_sell_share=open_tick_sell_share,
+        root_mean_square_return=root_mean_square_return,
     )
+    activity_floor_delta: float = _minimum_hourly_nig_delta(
+        mean_open_tick_count_per_hour=mean_open_tick_count_per_hour,
+    )
+    delta = max(tick_scale_delta, activity_floor_delta)
 
     return (
         NigSharedPlusShiftConfiguration(
             alpha=round(alpha, 6),
             beta_0=round(beta_0, 6),
-            delta=round(delta, 6),
+            delta=round(delta, 12),
             mu=round(mean_return, 6),
             delta_beta=delta_beta,
         ),
     )
+
+
+def _open_tick_sell_share(resolved_ticks: Sequence[_ResolvedTickRecord]) -> float:
+    open_signed_tick_count = 0
+    open_sell_tick_count = 0
+
+    for resolved_tick in resolved_ticks:
+        if resolved_tick.market_state != MarketState.OPEN:
+            continue
+        if resolved_tick.record.trade_sign is None:
+            continue
+
+        open_signed_tick_count += 1
+        if resolved_tick.record.trade_sign == CalibrationTradeSign.SELL:
+            open_sell_tick_count += 1
+
+    if open_signed_tick_count == 0:
+        return 0.5
+
+    return open_sell_tick_count / open_signed_tick_count
+
+
+def _mean_open_tick_count_per_hour(open_price_ticks: Sequence[_OpenPriceTick]) -> float:
+    if len(open_price_ticks) <= 1:
+        return 1.0
+
+    observed_duration_hours = (
+        open_price_ticks[-1].timestamp - open_price_ticks[0].timestamp
+    ).total_seconds() / 3_600.0
+    effective_duration_hours = max(
+        observed_duration_hours,
+        _MINIMUM_OPEN_TICK_COUNT_DURATION_HOURS,
+    )
+
+    return max(1.0, len(open_price_ticks) / effective_duration_hours)
+
+
+def _nig_delta_from_tick_return_scale(
+    *,
+    alpha: float,
+    beta_0: float,
+    delta_beta: float,
+    open_tick_sell_share: float,
+    root_mean_square_return: float,
+) -> float:
+    buy_variance_per_business_time = _nig_variance_per_unit_business_time(alpha, beta_0)
+    sell_variance_per_business_time = _nig_variance_per_unit_business_time(
+        alpha,
+        beta_0 + delta_beta,
+    )
+    clamped_sell_share = min(max(open_tick_sell_share, 0.0), 1.0)
+    expected_variance_per_observed_interval = (
+        (1.0 - clamped_sell_share) * buy_variance_per_business_time
+        + clamped_sell_share * sell_variance_per_business_time
+    )
+    observed_return_variance = max(root_mean_square_return * root_mean_square_return, 1e-18)
+
+    return max(
+        1e-12,
+        min(1.5, observed_return_variance / max(expected_variance_per_observed_interval, 1e-12)),
+    )
+
+
+def _minimum_hourly_nig_delta(*, mean_open_tick_count_per_hour: float) -> float:
+    effective_open_tick_count_per_hour = max(mean_open_tick_count_per_hour, 1.0)
+    return _MINIMUM_HOURLY_NIG_SHAPE_MASS / effective_open_tick_count_per_hour
+
+
+def _nig_variance_per_unit_business_time(alpha: float, beta: float) -> float:
+    gamma = sqrt((alpha * alpha) - (beta * beta))
+    return (alpha * alpha) / (gamma * gamma * gamma)
 
 
 def _derive_shared_mark_law_template(

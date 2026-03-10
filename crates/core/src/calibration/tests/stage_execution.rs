@@ -198,6 +198,30 @@ fn seasonality_stage_execution_supports_standalone_partial_pipeline_runs() {
 }
 
 #[test]
+fn seasonality_stage_execution_neutralizes_under_supported_calendar_components() {
+    let calendar_registry = calibration_stage_test_registry();
+    let report = run_seasonality_calibration_stage(
+        &build_seasonality_stage_run_spec(CalibrationExecutionMode::Memory),
+        &calendar_registry,
+        SeasonalityStageExecutionInput::from_timestamp_event_records(vec![
+            timestamp_input_record(0, 2026, 2, 2, 14, 30, 0),
+            timestamp_input_record(1, 2026, 2, 2, 15, 30, 0),
+            timestamp_input_record(2, 2026, 2, 2, 20, 30, 0),
+        ]),
+    );
+
+    assert_eq!(report.status, CalibrationStageExecutionStatus::Success);
+
+    let payload = report
+        .normalized_stage_payload
+        .as_ref()
+        .expect("seasonality stage should emit a normalized payload");
+
+    assert!(payload.day_of_week_factor.iter().all(|value| *value == 1.0));
+    assert!(payload.day_of_year_factor.iter().all(|value| *value == 1.0));
+}
+
+#[test]
 fn hawkes_stage_execution_succeeds_for_memory_and_disk_mode_handoffs() {
     let seasonality_payload = build_seasonality_stage_success_payload();
 

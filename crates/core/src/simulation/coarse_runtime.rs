@@ -29,6 +29,8 @@ use super::runtime::{
 use super::{CoarseSimulationRunRequest, CoarseSimulationRunRequestError};
 
 const KNOWN_NEWS_INTENSITY_ALIGNMENT_TOLERANCE: f64 = 1.0e-12;
+const TARGET_TRANSFORM_PROBE_SHIFT: f64 = 0.02;
+const MIN_TRANSFORM_PROBE_DISTANCE: f64 = 1.0e-8;
 
 /// Run deterministic coarse-interval simulation using the default splitmix64 randomness policy.
 pub fn run_coarse_simulation(
@@ -63,7 +65,6 @@ where
         .nig_shared_plus_shift_configuration
         .derive_driver_parameters()
         .map_err(|source| CoarseSimulationRunError::InvalidNigDriverConfiguration { source })?;
-    let interval_settings = SufficientStatisticsTransformSliceSettings::default();
     let interval_delta_nanos = run_request
         .interval_delta_nanos()
         .map_err(|source| CoarseSimulationRunError::InvalidIntervalDelta { source })?;
@@ -80,6 +81,11 @@ where
         let interval_end_utc_nanos = interval_start_utc_nanos
             .checked_add(interval_delta_nanos)
             .ok_or(CoarseSimulationRunError::IntervalBoundaryOverflow { interval_index })?;
+        let interval_settings = adaptive_transform_slice_settings(
+            kernel_parameters.lambda_bar,
+            run_request.interval_factors.s_h[interval_index],
+            run_request.interval_delta,
+        );
         let current_statistics_context = SufficientStatisticsTransformSliceContext::try_new(
             interval_index,
             run_request.interval_factors.s_h[interval_index],
@@ -544,21 +550,24 @@ where
         .default_mark_pipeline();
 
     for &known_news_timestamp_utc_nanos in interval_known_news_timestamp_slice {
-        event_inputs.push(build_timestamped_news_event_input(
-            &mark_pipeline,
-            NewsArrivalComponent::Known,
-            known_news_timestamp_utc_nanos,
-            next_generation_order,
-            model_inputs
-                .news_process_configuration
-                .known_component_mark_scales,
-            &mut news_mark_stream,
-            interval_index,
-        )
-        .map_err(|source| CoarseSimulationRunError::NewsMarkSamplingFailure {
-            interval_index,
-            source,
-        })?);
+        event_inputs.push(
+            build_timestamped_news_event_input(
+                &mark_pipeline,
+                NewsArrivalComponent::Known,
+                known_news_timestamp_utc_nanos,
+                next_generation_order,
+                model_inputs
+                    .news_process_configuration
+                    .known_component_mark_scales,
+                &mut news_mark_stream,
+                interval_index,
+            )
+            .map_err(|source| CoarseSimulationRunError::NewsMarkSamplingFailure {
+                interval_index,
+                source,
+            })?,
+        );
+
         next_generation_order = next_generation_order.saturating_add(1);
     }
 
@@ -574,21 +583,25 @@ where
             interval_duration_nanos,
             &mut news_timestamp_stream,
         );
-        event_inputs.push(build_timestamped_news_event_input(
-            &mark_pipeline,
-            NewsArrivalComponent::Surprise,
-            timestamp_utc_nanos,
-            next_generation_order,
-            model_inputs
-                .news_process_configuration
-                .surprise_component_mark_scales,
-            &mut news_mark_stream,
-            interval_index,
-        )
-        .map_err(|source| CoarseSimulationRunError::NewsMarkSamplingFailure {
-            interval_index,
-            source,
-        })?);
+
+        event_inputs.push(
+            build_timestamped_news_event_input(
+                &mark_pipeline,
+                NewsArrivalComponent::Surprise,
+                timestamp_utc_nanos,
+                next_generation_order,
+                model_inputs
+                    .news_process_configuration
+                    .surprise_component_mark_scales,
+                &mut news_mark_stream,
+                interval_index,
+            )
+            .map_err(|source| CoarseSimulationRunError::NewsMarkSamplingFailure {
+                interval_index,
+                source,
+            })?,
+        );
+
         next_generation_order = next_generation_order.saturating_add(1);
     }
 
@@ -653,4 +666,53 @@ fn validate_known_news_factor_alignment(
     }
 
     Ok(())
+}
+
+fn adaptive_transform_slice_settings(
+    lambda_bar: f64,
+    seasonality_factor: f64,
+    interval_delta: f64,
+) -> SufficientStatisticsTransformSliceSettings {
+    let expected_side_scale = (lambda_bar * seasonality_factor.max(0.0) * interval_delta).max(1.0);
+    let probe_distance = (TARGET_TRANSFORM_PROBE_SHIFT / expected_side_scale).clamp(
+        MIN_TRANSFORM_PROBE_DISTANCE,
+        SufficientStatisticsTransformSliceSettings::default().a_plus_u,
+    );
+
+    SufficientStatisticsTransformSliceSettings {
+        a_plus_u: probe_distance,
+        a_minus_u: probe_distance,
+        n_plus_z: 1.0 - probe_distance,
+        n_minus_z: 1.0 - probe_distance,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::adaptive_transform_slice_settings;
+
+    #[test]
+    fn adaptive_transform_slice_settings_stay_linear_for_high_intensity_regimes() {
+        let expected_side_scale = 2_500.0;
+        let settings = adaptive_transform_slice_settings(2_500.0, 1.0, 1.0);
+
+        let recovered_integrated_intensity =
+            (1.0 - (-settings.a_plus_u * expected_side_scale).exp()) / settings.a_plus_u;
+        let recovered_count = (((settings.n_plus_z - 1.0) * expected_side_scale).exp() - 1.0)
+            / (settings.n_plus_z - 1.0);
+
+        let integrated_intensity_relative_error =
+            (recovered_integrated_intensity - expected_side_scale).abs() / expected_side_scale;
+        let count_relative_error =
+            (recovered_count - expected_side_scale).abs() / expected_side_scale;
+
+        assert!(
+            integrated_intensity_relative_error < 0.02,
+            "adaptive A probe should stay near the linear regime, relative_error={integrated_intensity_relative_error}"
+        );
+        assert!(
+            count_relative_error < 0.02,
+            "adaptive count probe should stay near the linear regime, relative_error={count_relative_error}"
+        );
+    }
 }

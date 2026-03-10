@@ -260,9 +260,9 @@ impl SeededTickSimulationRunConfig {
         self.model_inputs
             .news_process_configuration
             .validate()
-            .map_err(|source| {
-                SeededTickSimulationRunError::InvalidNewsProcessConfiguration { source }
-            })?;
+            .map_err(
+                |source| SeededTickSimulationRunError::InvalidNewsProcessConfiguration { source },
+            )?;
         validate_known_scheduled_news_timestamps(
             &self
                 .model_inputs

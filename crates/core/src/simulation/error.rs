@@ -194,10 +194,9 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "nig_shared_plus_shift_configuration is invalid: {source}"
             ),
-            Self::InvalidNewsProcessConfiguration { source } => write!(
-                formatter,
-                "news_process_configuration is invalid: {source}"
-            ),
+            Self::InvalidNewsProcessConfiguration { source } => {
+                write!(formatter, "news_process_configuration is invalid: {source}")
+            }
             Self::InvalidGeneratedNewsActivityCouplingMark { value } => write!(
                 formatter,
                 "generated exogenous news activity-coupling mark must be finite and non-negative, found {value}"

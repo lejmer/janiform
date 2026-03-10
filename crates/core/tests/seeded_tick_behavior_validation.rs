@@ -14,8 +14,8 @@ use janiform_core::hourly_factors::{
 use janiform_core::news::{
     CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
-    NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
-    SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
+    NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
+    SurpriseNewsArrivalConfiguration,
 };
 use janiform_core::nig::NigSharedPlusShiftConfiguration;
 use janiform_core::randomness::{
@@ -25,8 +25,7 @@ use janiform_core::simulation::{
     SEEDED_TICK_EVENT_ORDERING_POLICY, SeededTickEventDebugTraceRecord,
     SeededTickEventDebugTraceTransitionKind, SeededTickEventRecord, SeededTickEventSide,
     SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
-    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
-    SeededTickSimulationRunResult,
+    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions, SeededTickSimulationRunResult,
     run_seeded_tick_event_simulation, run_seeded_tick_event_simulation_with_randomness_factory,
 };
 use support::hawkes_invariant_catalog::{
@@ -1693,9 +1692,7 @@ impl ScriptedRandomnessFactory {
         const SEVERITY_DRAWS_PER_EVENT: usize = 3;
         const BASE_SHOCK_DRAWS_PER_EVENT: usize = 2;
 
-        let severity_chunks = self
-            .news_severity_draws
-            .chunks(SEVERITY_DRAWS_PER_EVENT);
+        let severity_chunks = self.news_severity_draws.chunks(SEVERITY_DRAWS_PER_EVENT);
         let base_shock_chunks = self
             .news_return_jump_draws
             .chunks(BASE_SHOCK_DRAWS_PER_EVENT);
@@ -1723,14 +1720,12 @@ impl ScriptedRandomnessFactory {
         let paired_base_shock_draw_count = paired_event_count * BASE_SHOCK_DRAWS_PER_EVENT;
 
         if paired_severity_draw_count < self.news_severity_draws.len() {
-            combined_draws.extend_from_slice(
-                &self.news_severity_draws[paired_severity_draw_count..],
-            );
+            combined_draws
+                .extend_from_slice(&self.news_severity_draws[paired_severity_draw_count..]);
         }
         if paired_base_shock_draw_count < self.news_return_jump_draws.len() {
-            combined_draws.extend_from_slice(
-                &self.news_return_jump_draws[paired_base_shock_draw_count..],
-            );
+            combined_draws
+                .extend_from_slice(&self.news_return_jump_draws[paired_base_shock_draw_count..]);
         }
 
         combined_draws
