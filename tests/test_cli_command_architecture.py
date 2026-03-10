@@ -21,6 +21,7 @@ def test_cli_top_level_help_lists_primary_and_developer_namespaces() -> None:
 def test_simulation_help_lists_seeded_tick_workflow() -> None:
     help_output = _render_help(["simulation"])
 
+    assert "coarse-interval" in help_output
     assert "seeded-ticks" in help_output
 
 

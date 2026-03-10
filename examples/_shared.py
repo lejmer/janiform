@@ -61,9 +61,18 @@ from janiform.pricing import (
     VanillaOptionPricingRequest,
 )
 from janiform.simulation import (
+    CoarseSimulationRunRequest,
+    CoupledGapMarkConfiguration,
+    DoubleExponentialBaseShockConfiguration,
     HawkesExcitationState,
     HawkesKernelLoadings,
     HawkesKernelParameters,
+    KnownNewsArrivalConfiguration,
+    NewsArrivalConfiguration,
+    NewsComponentMarkScaleConfiguration,
+    NewsProcessConfiguration,
+    SharedNewsMarkLawConfiguration,
+    SurpriseNewsArrivalConfiguration,
 )
 
 CALENDAR_REGISTRY_JSON: str = json.dumps(
@@ -234,6 +243,77 @@ def build_simulation_news_source() -> HourlyNewsIntensityProviderExplicitSource:
         hourly_factors=[0.2, 0.0, 0.3],
         materialization_method="shared_precomputed_hourly_nu_h.v1",
     )
+
+
+def build_coarse_simulation_request(calendar_registry: CalendarRegistry) -> CoarseSimulationRunRequest:
+    request_payload: dict[str, Any] = {
+        "schema_version": "simulation.coarse_interval.run_request.v1",
+        "seed": 3_010,
+        "start_time_utc_nanos": int(SIMULATION_RANGE_START_UTC.timestamp()) * 1_000_000_000,
+        "horizon_interval_count": 3,
+        "interval_delta": 1.0,
+        "model_inputs": {
+            "risk_model_inputs": {
+                "equation_specification": {
+                    "hawkes_kernel_parameters": build_hawkes_kernel_parameters().to_payload(),
+                    "gamma_severity_mark_configuration": GammaSeverityMarkConfiguration(
+                        shape_k=1.8,
+                        scale_theta=0.7,
+                    ).to_payload(),
+                },
+                "nig_shared_plus_shift_configuration": NigSharedPlusShiftConfiguration(
+                    alpha=2.3,
+                    beta_0=-0.8,
+                    delta=0.7,
+                    mu=0.1,
+                    delta_beta=-0.2,
+                ).to_payload(),
+                "initial_excitation_state": build_initial_excitation_state().to_payload(),
+            },
+            "news_process_configuration": NewsProcessConfiguration(
+                schema_version="news.process.configuration.v1",
+                arrivals=NewsArrivalConfiguration(
+                    known=KnownNewsArrivalConfiguration(
+                        scheduled_event_timestamps_utc_nanos=(
+                            int(datetime(2026, 2, 2, 14, 5, 0, tzinfo=UTC).timestamp()) * 1_000_000_000,
+                            int(datetime(2026, 2, 2, 15, 10, 0, tzinfo=UTC).timestamp()) * 1_000_000_000,
+                        ),
+                    ),
+                    surprise=SurpriseNewsArrivalConfiguration(baseline_intensity=0.1),
+                ),
+                shared_mark_law=SharedNewsMarkLawConfiguration(
+                    gamma_severity_marks=GammaSeverityMarkConfiguration(
+                        shape_k=1.4,
+                        scale_theta=0.6,
+                    ),
+                    double_exponential_base_shock=DoubleExponentialBaseShockConfiguration(
+                        probability_positive=0.35,
+                        eta_plus=2.1,
+                        eta_minus=3.0,
+                    ),
+                    coupled_gap_marks=CoupledGapMarkConfiguration(sigma_g=0.8),
+                ),
+                known_component_mark_scales=NewsComponentMarkScaleConfiguration(
+                    activity_coupling_scale=1.0,
+                    return_jump_scale=1.0,
+                ),
+                surprise_component_mark_scales=NewsComponentMarkScaleConfiguration(
+                    activity_coupling_scale=1.0,
+                    return_jump_scale=1.0,
+                ),
+            ).to_payload(),
+            "calendar_registry_artifact": dict(calendar_registry._registry_payload),
+            "exchange_code": "XNYS",
+        },
+        "interval_factors": {
+            "interval_delta": 1.0,
+            "s_h": [1.0, 0.9, 1.1],
+            "nu_h_known": [1.0, 1.0, 0.0],
+            "nu_h_surprise": [0.1, 0.2, 0.1],
+        },
+    }
+
+    return CoarseSimulationRunRequest.from_mapping(request_payload)
 
 
 def build_pricing_request() -> VanillaOptionPricingRequest:

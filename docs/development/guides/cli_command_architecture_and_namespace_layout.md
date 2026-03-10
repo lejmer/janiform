@@ -15,6 +15,7 @@ developer utilities and aligns command names with the public Python workflow mod
 ```text
 janiform
 ├── simulation
+│   ├── coarse-interval
 │   └── seeded-ticks
 ├── seasonality
 │   ├── diagnostics
@@ -50,6 +51,7 @@ janiform
   `janiform.simulation`, `janiform.seasonality`, `janiform.hourly_factors`,
   `janiform.calibration`, `janiform.pricing`, and `janiform.stylized_facts`.
 - Subcommand names stay short while preserving the specific workflow identity:
+  - `coarse-interval` for direct interval-path simulation on a chosen coarse grid
   - `seeded-ticks` for the seeded tick-event simulator
   - `diagnostics` for the primary end-to-end seasonality estimation and diagnostics workflow
   - `preprocess-timestamps` for standalone timestamp-event preprocessing against the exchange
@@ -182,6 +184,21 @@ Behavior:
 Output:
 - `--output json` writes deterministic JSON for `simulation.seeded_tick_event.path.v1` to stdout.
 - `--output human` writes a concise completion summary with event-count metadata.
+
+### `janiform simulation coarse-interval`
+
+Required arguments:
+- `--request-json`: `CoarseSimulationRunRequest` JSON object
+
+Behavior:
+- The command runs the public coarse-interval workflow directly from the canonical request
+  contract.
+- The request embeds the calendar registry artifact, interval factors, and news-process
+  configuration needed to generate a direct Delta-spaced path without replaying seeded ticks.
+
+Output:
+- `--output json` writes deterministic JSON for `simulation.coarse_interval.path.v1` to stdout.
+- `--output human` writes a concise completion summary with interval-count metadata.
 
 ### `janiform seasonality diagnostics`
 

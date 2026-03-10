@@ -5,7 +5,7 @@ import orjson
 
 import janiform.cli as cli_module
 from examples.cli_documentation_setup import write_cli_documentation_inputs
-from tests.test_cli_workflow_contracts import _invoke_cli, _normalize_help_output, _render_help
+from tests.cli_test_support import invoke_cli, normalize_help_output, render_help
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CLI_COMMAND_REFERENCE_PATH = (
@@ -32,6 +32,7 @@ def test_cli_command_reference_doc_contains_required_sections_and_commands() -> 
         assert required_section in reference_document
 
     required_commands: list[str] = [
+        "janiform simulation coarse-interval",
         "janiform simulation seeded-ticks",
         "janiform seasonality diagnostics",
         "janiform seasonality preprocess-timestamps",
@@ -66,20 +67,21 @@ def test_cli_command_reference_doc_documents_execution_modes_and_market_data_inp
 
 def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     reference_document = _cli_command_reference_text()
-    simulation_help = _normalize_help_output(_render_help(["simulation", "seeded-ticks"]))
-    seasonality_diagnostics_help = _normalize_help_output(_render_help(["seasonality", "diagnostics"]))
-    seasonality_help = _normalize_help_output(_render_help(["seasonality", "preprocess-timestamps"]))
-    hourly_factors_seasonality_help = _normalize_help_output(
-        _render_help(["hourly-factors", "materialize-seasonality"])
+    coarse_simulation_help = normalize_help_output(render_help(["simulation", "coarse-interval"]))
+    simulation_help = normalize_help_output(render_help(["simulation", "seeded-ticks"]))
+    seasonality_diagnostics_help = normalize_help_output(render_help(["seasonality", "diagnostics"]))
+    seasonality_help = normalize_help_output(render_help(["seasonality", "preprocess-timestamps"]))
+    hourly_factors_seasonality_help = normalize_help_output(
+        render_help(["hourly-factors", "materialize-seasonality"])
     )
-    hourly_factors_contract_help = _normalize_help_output(
-        _render_help(["hourly-factors", "build-contract"])
+    hourly_factors_contract_help = normalize_help_output(
+        render_help(["hourly-factors", "build-contract"])
     )
-    pricing_help = _normalize_help_output(_render_help(["pricing", "vanilla-option"]))
-    stylized_facts_help = _normalize_help_output(_render_help(["stylized-facts", "horizon-comparison"]))
-    market_data_help = _normalize_help_output(_render_help(["calibration", "market-data"]))
-    staged_help = _normalize_help_output(_render_help(["calibration", "staged"]))
-    deterministic_help = _normalize_help_output(_render_help(["dev", "regression", "deterministic"]))
+    pricing_help = normalize_help_output(render_help(["pricing", "vanilla-option"]))
+    stylized_facts_help = normalize_help_output(render_help(["stylized-facts", "horizon-comparison"]))
+    market_data_help = normalize_help_output(render_help(["calibration", "market-data"]))
+    staged_help = normalize_help_output(render_help(["calibration", "staged"]))
+    deterministic_help = normalize_help_output(render_help(["dev", "regression", "deterministic"]))
 
     shared_expectations: tuple[str, ...] = (
         "--output {human,json}",
@@ -98,6 +100,7 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     for expected_text in shared_expectations:
         assert expected_text in reference_document
 
+    assert "--request-json PATH" in coarse_simulation_help
     assert "--request-json PATH" in simulation_help
     assert "--dataset-id DATASET_ID" in seasonality_diagnostics_help
     assert "--intraday-smoothing-kernel {gaussian,uniform}" in seasonality_diagnostics_help
@@ -122,7 +125,21 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
 def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path: Path) -> None:
     documented_paths = write_cli_documentation_inputs(tmp_path / "cli-docs")
 
-    simulation_exit_code, simulation_stdout, simulation_stderr = _invoke_cli(
+    coarse_simulation_exit_code, coarse_simulation_stdout, coarse_simulation_stderr = invoke_cli(
+        [
+            "simulation",
+            "coarse-interval",
+            "--request-json",
+            documented_paths["coarse_simulation_request_json"],
+            "--output",
+            "json",
+        ]
+    )
+    assert coarse_simulation_exit_code == int(cli_module.CliExitCode.SUCCESS), coarse_simulation_stderr
+    coarse_simulation_payload = orjson.loads(coarse_simulation_stdout)
+    assert coarse_simulation_payload["schema_version"] == "simulation.coarse_interval.path.v1"
+
+    simulation_exit_code, simulation_stdout, simulation_stderr = invoke_cli(
         [
             "simulation",
             "seeded-ticks",
@@ -138,7 +155,7 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path
     simulation_payload = orjson.loads(simulation_stdout)
     assert simulation_payload["schema_version"] == "simulation.seeded_tick_event.path.v1"
 
-    seasonality_exit_code, seasonality_stdout, seasonality_stderr = _invoke_cli(
+    seasonality_exit_code, seasonality_stdout, seasonality_stderr = invoke_cli(
         [
             "seasonality",
             "diagnostics",
@@ -162,7 +179,7 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path
     assert seasonality_payload["schema_version"] == "seasonality.diagnostics.report.v1"
     assert seasonality_payload["dataset_id"] == "cli-docs-dataset"
 
-    preprocess_exit_code, preprocess_stdout, preprocess_stderr = _invoke_cli(
+    preprocess_exit_code, preprocess_stdout, preprocess_stderr = invoke_cli(
         [
             "seasonality",
             "preprocess-timestamps",
@@ -184,7 +201,7 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path
     assert preprocess_payload["schema_version"] == "seasonality.timestamp_event.preprocessed.v1"
     assert preprocess_payload["accepted_record_count"] == 3
 
-    hourly_factor_seasonality_exit_code, hourly_factor_seasonality_stdout, hourly_factor_seasonality_stderr = _invoke_cli(
+    hourly_factor_seasonality_exit_code, hourly_factor_seasonality_stdout, hourly_factor_seasonality_stderr = invoke_cli(
         [
             "hourly-factors",
             "materialize-seasonality",
@@ -206,7 +223,7 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path
     hourly_factor_seasonality_payload = orjson.loads(hourly_factor_seasonality_stdout)
     assert hourly_factor_seasonality_payload["schema_version"] == "seasonality.hourly_s_h.materialization.v1"
 
-    hourly_factor_news_exit_code, hourly_factor_news_stdout, hourly_factor_news_stderr = _invoke_cli(
+    hourly_factor_news_exit_code, hourly_factor_news_stdout, hourly_factor_news_stderr = invoke_cli(
         [
             "hourly-factors",
             "materialize-news-intensity",
@@ -228,7 +245,7 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path
     hourly_factor_news_payload = orjson.loads(hourly_factor_news_stdout)
     assert hourly_factor_news_payload["schema_version"] == "seasonality.hourly_nu_h.materialization.v1"
 
-    hourly_factor_contract_exit_code, hourly_factor_contract_stdout, hourly_factor_contract_stderr = _invoke_cli(
+    hourly_factor_contract_exit_code, hourly_factor_contract_stdout, hourly_factor_contract_stderr = invoke_cli(
         [
             "hourly-factors",
             "build-contract",
@@ -252,7 +269,7 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path
     hourly_factor_contract_payload = orjson.loads(hourly_factor_contract_stdout)
     assert hourly_factor_contract_payload["schema_version"] == "seasonality.hourly_factor.contract.v1"
 
-    pricing_exit_code, pricing_stdout, pricing_stderr = _invoke_cli(
+    pricing_exit_code, pricing_stdout, pricing_stderr = invoke_cli(
         [
             "pricing",
             "vanilla-option",
@@ -266,7 +283,7 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path
     pricing_payload = orjson.loads(pricing_stdout)
     assert pricing_payload["schema_version"] == "pricing.vanilla_option.run_result.v1"
 
-    stylized_facts_memory_exit_code, stylized_facts_memory_stdout, stylized_facts_memory_stderr = _invoke_cli(
+    stylized_facts_memory_exit_code, stylized_facts_memory_stdout, stylized_facts_memory_stderr = invoke_cli(
         [
             "stylized-facts",
             "horizon-comparison",
@@ -286,7 +303,7 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path
     assert stylized_facts_memory_payload["schema_version"] == "validation.stylized_fact.horizon_comparison.report_bundle.v1"
     assert stylized_facts_memory_payload["artifact_export"] is None
 
-    stylized_facts_disk_exit_code, stylized_facts_disk_stdout, stylized_facts_disk_stderr = _invoke_cli(
+    stylized_facts_disk_exit_code, stylized_facts_disk_stdout, stylized_facts_disk_stderr = invoke_cli(
         [
             "stylized-facts",
             "horizon-comparison",
@@ -308,7 +325,7 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path
     assert stylized_facts_disk_payload["artifact_export"]["file_stem"] == "stylized_fact_horizon_report"
     assert len(stylized_facts_disk_payload["artifact_export"]["exported_files"]) == 3
 
-    market_data_default_exit_code, market_data_default_stdout, market_data_default_stderr = _invoke_cli(
+    market_data_default_exit_code, market_data_default_stdout, market_data_default_stderr = invoke_cli(
         [
             "calibration",
             "market-data",
@@ -359,7 +376,7 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path
     assert market_data_default_payload["command"] == cli_module.CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT
     assert market_data_default_payload["output_emission_policy"]["execution_mode"] == "disk"
 
-    market_data_memory_exit_code, market_data_memory_stdout, market_data_memory_stderr = _invoke_cli(
+    market_data_memory_exit_code, market_data_memory_stdout, market_data_memory_stderr = invoke_cli(
         [
             "calibration",
             "market-data",
@@ -439,7 +456,7 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path
 def test_cli_command_reference_doc_examples_smoke_for_advanced_staged_workflow(tmp_path: Path) -> None:
     documented_paths = write_cli_documentation_inputs(tmp_path / "cli-docs")
 
-    exit_code, stdout_text, stderr_text = _invoke_cli(
+    exit_code, stdout_text, stderr_text = invoke_cli(
         [
             "calibration",
             "staged",
@@ -461,7 +478,7 @@ def test_cli_command_reference_doc_examples_smoke_for_advanced_staged_workflow(t
 
 
 def test_cli_command_reference_doc_examples_smoke_for_developer_regression_workflow() -> None:
-    exit_code, stdout_text, stderr_text = _invoke_cli(
+    exit_code, stdout_text, stderr_text = invoke_cli(
         [
             "dev",
             "regression",

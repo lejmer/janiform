@@ -21,6 +21,7 @@ On Linux:
 ```bash
 ./scripts/bootstrap-linux.sh
 janiform --help
+janiform simulation coarse-interval --help
 janiform stylized-facts horizon-comparison --help
 janiform seasonality diagnostics --help
 janiform seasonality preprocess-timestamps --help
@@ -35,6 +36,7 @@ On Windows:
 ```powershell
 ./scripts/bootstrap-win.ps1
 janiform --help
+janiform simulation coarse-interval --help
 janiform stylized-facts horizon-comparison --help
 janiform seasonality diagnostics --help
 janiform seasonality preprocess-timestamps --help

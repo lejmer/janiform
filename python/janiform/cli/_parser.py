@@ -117,7 +117,10 @@ def _add_required_datetime_argument(
 
 
 def _build_simulation_parser(subparsers) -> None:
-    from ._commands import _run_simulation_seeded_ticks_command
+    from ._commands import (
+        _run_simulation_coarse_interval_command,
+        _run_simulation_seeded_ticks_command,
+    )
 
     simulation_parser = subparsers.add_parser(
         "simulation",
@@ -127,10 +130,42 @@ def _build_simulation_parser(subparsers) -> None:
     simulation_parser.set_defaults(help_target=simulation_parser)
     simulation_subparsers = simulation_parser.add_subparsers(dest="simulation_command")
 
+    simulation_coarse_interval_parser = simulation_subparsers.add_parser(
+        "coarse-interval",
+        help="Direct coarse-interval path simulation workflow.",
+        description=(
+            "Direct coarse-interval path simulation workflow. Use this command when you want the "
+            "canonical coarse simulation path artifact at interval length Delta without replaying "
+            "fine-scale seeded ticks."
+        ),
+    )
+    simulation_coarse_interval_parser.set_defaults(
+        handler=_run_simulation_coarse_interval_command,
+        help_target=simulation_coarse_interval_parser,
+    )
+
+    _add_command_config_argument(simulation_coarse_interval_parser)
+    _add_output_mode_argument(
+        simulation_coarse_interval_parser,
+        default_output_mode=CliOutputMode.JSON,
+    )
+    _add_required_json_path_argument(
+        simulation_coarse_interval_parser,
+        flag_name="--request-json",
+        contract_label="a coarse-interval simulation request JSON object",
+        semantic_note=(
+            "Use coarse-interval simulation for direct Delta-spaced paths. Use seeded-ticks when "
+            "you need fine event tapes or tick replay."
+        ),
+    )
+
     simulation_seeded_ticks_parser = simulation_subparsers.add_parser(
         "seeded-ticks",
         help="Seeded tick event simulation workflow.",
-        description="Seeded tick event simulation workflow.",
+        description=(
+            "Seeded tick event simulation workflow. Use this command when you need fine-scale tick "
+            "events and replay rather than direct coarse-interval paths."
+        ),
     )
     simulation_seeded_ticks_parser.set_defaults(
         handler=_run_simulation_seeded_ticks_command,

@@ -70,6 +70,11 @@ CLI_CALIBRATION_MARKET_DATA_EXECUTION_MODE_HELP = (
     "Calibration execution mode recorded in the market-data request. The CLI default is disk so "
     "automation-friendly runs keep persistence explicit."
 )
+CLI_SIMULATION_COARSE_INTERVAL_ENTRYPOINT = "simulation.coarse_interval"
+CLI_SIMULATION_COARSE_INTERVAL_VALIDATION_ERROR_ID = (
+    "cli.validation.simulation.coarse_interval.invalid_input"
+)
+CLI_SIMULATION_COARSE_INTERVAL_INTERNAL_ERROR_ID = "cli.internal.simulation.coarse_interval.failed"
 CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT = "simulation.seeded_ticks"
 CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID = "cli.validation.simulation.seeded_ticks.invalid_input"
 CLI_SIMULATION_SEEDED_TICKS_INTERNAL_ERROR_ID = "cli.internal.simulation.seeded_ticks.failed"
@@ -149,6 +154,7 @@ CLI_COMMAND_CONFIG_HELP = (
 )
 CLI_PRIMARY_COMMAND_TREE: dict[str, dict[str, dict[str, dict[str, Any]]]] = {
     "simulation": {
+        "coarse-interval": {},
         "seeded-ticks": {},
     },
     "seasonality": {
@@ -172,6 +178,7 @@ CLI_PRIMARY_COMMAND_TREE: dict[str, dict[str, dict[str, dict[str, Any]]]] = {
     },
 }
 CLI_PRIMARY_COMMAND_IDENTIFIERS: dict[tuple[str, ...], str] = {
+    ("simulation", "coarse-interval"): "simulation.coarse-interval",
     ("simulation", "seeded-ticks"): "simulation.seeded-ticks",
     ("seasonality", "diagnostics"): "seasonality.diagnostics",
     ("seasonality", "preprocess-timestamps"): "seasonality.preprocess-timestamps",
@@ -262,6 +269,9 @@ __all__ = [
     "CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_INTERNAL_ERROR_ID",
     "CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID",
     "CLI_SEASONALITY_SESSION_FILTER_CHOICES",
+    "CLI_SIMULATION_COARSE_INTERVAL_ENTRYPOINT",
+    "CLI_SIMULATION_COARSE_INTERVAL_INTERNAL_ERROR_ID",
+    "CLI_SIMULATION_COARSE_INTERVAL_VALIDATION_ERROR_ID",
     "CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT",
     "CLI_SIMULATION_SEEDED_TICKS_INTERNAL_ERROR_ID",
     "CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID",

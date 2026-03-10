@@ -40,6 +40,9 @@ from ._constants import (
     CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_ENTRYPOINT,
     CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_INTERNAL_ERROR_ID,
     CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID,
+    CLI_SIMULATION_COARSE_INTERVAL_ENTRYPOINT,
+    CLI_SIMULATION_COARSE_INTERVAL_INTERNAL_ERROR_ID,
+    CLI_SIMULATION_COARSE_INTERVAL_VALIDATION_ERROR_ID,
     CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT,
     CLI_SIMULATION_SEEDED_TICKS_INTERNAL_ERROR_ID,
     CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID,
@@ -112,9 +115,11 @@ from ..seasonality import (
     preprocess_timestamp_events,
 )
 from ..simulation import (
+    CoarseSimulationRunRequest,
     SeededTickSimulationHourlyFactorSummary,
     SeededTickSimulationRequest,
     load_hourly_factor_contract_for_simulation,
+    run_coarse_simulation,
     run_seeded_tick_event_simulation,
 )
 from ..stylized_facts import run_stylized_fact_horizon_comparison_report_generator
@@ -122,6 +127,37 @@ from ..validation import (
     run_deterministic_regression_harness,
     run_open_closed_gap_leakage_regression_harness,
 )
+
+
+def _run_simulation_coarse_interval_command(parsed_arguments: Namespace) -> int:
+    repository_root = Path(__file__).resolve().parents[3]
+    request_path = _resolve_path_from_repository_root(repository_root, cast(Path, parsed_arguments.request_json))
+
+    try:
+        request_document = _load_json_document(request_path, "coarse simulation request")
+        request = CoarseSimulationRunRequest.from_mapping(request_document)
+        response = run_coarse_simulation(request)
+    except JaniformError as e:
+        return _write_cli_error(e)
+    except Exception as e:
+        return _write_cli_error(
+            _classify_workflow_command_error(
+                e,
+                entrypoint=CLI_SIMULATION_COARSE_INTERVAL_ENTRYPOINT,
+                validation_error_id=CLI_SIMULATION_COARSE_INTERVAL_VALIDATION_ERROR_ID,
+                internal_error_id=CLI_SIMULATION_COARSE_INTERVAL_INTERNAL_ERROR_ID,
+                file_field_path="request_json",
+                document_field_path="request_document",
+            )
+        )
+
+    _write_command_output(
+        parsed_arguments,
+        json_payload=response.to_payload(),
+        human_output_factory=lambda: _render_simulation_coarse_interval_human_output(response.to_payload()),
+    )
+
+    return int(CliExitCode.SUCCESS)
 
 
 def _run_simulation_seeded_ticks_command(parsed_arguments: Namespace) -> int:
@@ -1110,6 +1146,17 @@ def _render_simulation_seeded_ticks_human_output(response_payload: dict[str, Any
         f"schema_version={response_payload['schema_version']} "
         f"event_count={len(cast(list[dict[str, Any]], response_payload['event_tape']))} "
         f"event_record_schema_version={cast(dict[str, Any], response_payload['metadata'])['event_record_schema_version']}\n"
+    )
+
+
+def _render_simulation_coarse_interval_human_output(response_payload: dict[str, Any]) -> str:
+    diagnostics = cast(dict[str, Any], response_payload["diagnostics"])
+    return (
+        "simulation coarse-interval completed: "
+        f"schema_version={response_payload['schema_version']} "
+        f"simulated_interval_count={response_payload['simulated_interval_count']} "
+        f"interval_delta={response_payload['interval_delta']} "
+        f"cumulative_total_return={diagnostics['cumulative_total_return']}\n"
     )
 
 
@@ -2787,6 +2834,7 @@ __all__ = [
     '_render_hourly_factor_materialize_seasonality_human_output',
     '_render_market_data_calibration_human_output',
     '_render_pricing_vanilla_option_human_output',
+    '_render_simulation_coarse_interval_human_output',
     '_render_seasonality_diagnostics_human_output',
     '_render_seasonality_preprocess_timestamps_human_output',
     '_render_simulation_seeded_ticks_human_output',
@@ -2806,6 +2854,7 @@ __all__ = [
     '_run_pricing_vanilla_option_command',
     '_run_seasonality_diagnostics_command',
     '_run_seasonality_preprocess_timestamps_command',
+    '_run_simulation_coarse_interval_command',
     '_run_simulation_seeded_ticks_command',
     '_run_stylized_facts_horizon_comparison_command',
     '_validate_hourly_materialization_source_document',

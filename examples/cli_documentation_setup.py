@@ -19,6 +19,7 @@ from ._shared import (
     CALENDAR_REGISTRY_JSON,
     SIMULATION_RANGE_END_UTC,
     SIMULATION_RANGE_START_UTC,
+    build_coarse_simulation_request,
     build_calibration_execution_input,
     build_stylized_fact_artifact_export_config,
     build_stylized_fact_horizon_comparison_request,
@@ -208,6 +209,16 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
         json.dumps(simulation_request.to_payload(), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    coarse_simulation_request_path = output_directory / "coarse_simulation_request.json"
+    coarse_simulation_request_path.write_text(
+        json.dumps(
+            build_coarse_simulation_request(calendar_registry).to_payload(),
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
     pricing_execution_input = VanillaOptionPricingExecutionInput(
         request=build_pricing_request(),
@@ -257,6 +268,7 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
     output_paths: dict[str, str] = {
         "calendar_registry_json": str(calendar_registry_path),
         "calibration_execution_input_json": str(calibration_execution_input_path),
+        "coarse_simulation_request_json": str(coarse_simulation_request_path),
         "hourly_factor_explicit_news_source_json": str(hourly_factor_explicit_news_source_path),
         "hourly_factor_explicit_seasonality_source_json": str(hourly_factor_explicit_seasonality_source_path),
         "hourly_factor_materialized_news_intensity_json": str(hourly_factor_materialized_news_intensity_path),

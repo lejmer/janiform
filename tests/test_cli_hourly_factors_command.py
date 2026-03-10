@@ -12,17 +12,12 @@ from janiform.hourly_factors import (
     HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
     HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION,
 )
-from tests.test_cli_workflow_contracts import (
-    _invoke_cli,
-    _normalize_help_output,
-    _render_help,
-    _write_json_path,
-)
+from tests.cli_test_support import invoke_cli, normalize_help_output, render_help, write_json_path
 
 
 def test_hourly_factors_cli_help_documents_materialization_and_contract_inputs() -> None:
-    namespace_help = _normalize_help_output(_render_help(["hourly-factors"]))
-    contract_help = _normalize_help_output(_render_help(["hourly-factors", "build-contract"]))
+    namespace_help = normalize_help_output(render_help(["hourly-factors"]))
+    contract_help = normalize_help_output(render_help(["hourly-factors", "build-contract"]))
 
     assert "materialize-seasonality" in namespace_help
     assert "materialize-news-intensity" in namespace_help
@@ -137,11 +132,11 @@ def test_hourly_factor_materialize_seasonality_cli_generates_canonical_report(
     calendar_registry_json: str,
     tmp_path: Path,
 ) -> None:
-    calendar_registry_path = _write_json_path(
+    calendar_registry_path = write_json_path(
         tmp_path / "calendar_registry.json",
         cast(dict[str, object], orjson.loads(calendar_registry_json)),
     )
-    materialization_input_path = _write_json_path(
+    materialization_input_path = write_json_path(
         tmp_path / "seasonality_materialization_input.json",
         {
             "source_timestamps_utc": [
@@ -158,7 +153,7 @@ def test_hourly_factor_materialize_seasonality_cli_generates_canonical_report(
         },
     )
 
-    exit_code, stdout_text, stderr_text = _invoke_cli(
+    exit_code, stdout_text, stderr_text = invoke_cli(
         [
             "hourly-factors",
             "materialize-seasonality",
@@ -191,11 +186,11 @@ def test_hourly_factor_materialize_news_intensity_cli_generates_canonical_report
     calendar_registry_json: str,
     tmp_path: Path,
 ) -> None:
-    calendar_registry_path = _write_json_path(
+    calendar_registry_path = write_json_path(
         tmp_path / "calendar_registry.json",
         cast(dict[str, object], orjson.loads(calendar_registry_json)),
     )
-    materialization_input_path = _write_json_path(
+    materialization_input_path = write_json_path(
         tmp_path / "news_materialization_input.json",
         {
             "known_scheduled_event_timestamps_utc": [
@@ -211,7 +206,7 @@ def test_hourly_factor_materialize_news_intensity_cli_generates_canonical_report
         },
     )
 
-    exit_code, stdout_text, stderr_text = _invoke_cli(
+    exit_code, stdout_text, stderr_text = invoke_cli(
         [
             "hourly-factors",
             "materialize-news-intensity",
@@ -244,11 +239,11 @@ def test_hourly_factor_build_contract_cli_supports_materialized_source_artifacts
     calendar_registry_json: str,
     tmp_path: Path,
 ) -> None:
-    calendar_registry_path = _write_json_path(
+    calendar_registry_path = write_json_path(
         tmp_path / "calendar_registry.json",
         cast(dict[str, object], orjson.loads(calendar_registry_json)),
     )
-    seasonality_materialization_path = _write_json_path(
+    seasonality_materialization_path = write_json_path(
         tmp_path / "seasonality_materialization.json",
         {
             "schema_version": HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION,
@@ -280,7 +275,7 @@ def test_hourly_factor_build_contract_cli_supports_materialized_source_artifacts
             "fall_back_policy": "preserve_repeated_local_hour_labels_with_numeric_utc_offset.v1",
         },
     )
-    news_materialization_path = _write_json_path(
+    news_materialization_path = write_json_path(
         tmp_path / "news_materialization.json",
         {
             "schema_version": HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
@@ -319,7 +314,7 @@ def test_hourly_factor_build_contract_cli_supports_materialized_source_artifacts
         },
     )
 
-    exit_code, stdout_text, stderr_text = _invoke_cli(
+    exit_code, stdout_text, stderr_text = invoke_cli(
         [
             "hourly-factors",
             "build-contract",
@@ -353,11 +348,11 @@ def test_hourly_factor_materialize_seasonality_cli_rejects_invalid_range(
     calendar_registry_json: str,
     tmp_path: Path,
 ) -> None:
-    calendar_registry_path = _write_json_path(
+    calendar_registry_path = write_json_path(
         tmp_path / "calendar_registry.json",
         cast(dict[str, object], orjson.loads(calendar_registry_json)),
     )
-    materialization_input_path = _write_json_path(
+    materialization_input_path = write_json_path(
         tmp_path / "seasonality_materialization_input.json",
         {
             "source_timestamps_utc": ["2026-02-02T14:05:00Z"],
@@ -365,7 +360,7 @@ def test_hourly_factor_materialize_seasonality_cli_rejects_invalid_range(
         },
     )
 
-    exit_code, stdout_text, stderr_text = _invoke_cli(
+    exit_code, stdout_text, stderr_text = invoke_cli(
         [
             "hourly-factors",
             "materialize-seasonality",
@@ -392,11 +387,11 @@ def test_hourly_factor_materialize_seasonality_cli_rejects_malformed_timestamp_i
     calendar_registry_json: str,
     tmp_path: Path,
 ) -> None:
-    calendar_registry_path = _write_json_path(
+    calendar_registry_path = write_json_path(
         tmp_path / "calendar_registry.json",
         cast(dict[str, object], orjson.loads(calendar_registry_json)),
     )
-    materialization_input_path = _write_json_path(
+    materialization_input_path = write_json_path(
         tmp_path / "seasonality_materialization_input.json",
         {
             "source_timestamps_utc": ["not-a-timestamp"],
@@ -404,7 +399,7 @@ def test_hourly_factor_materialize_seasonality_cli_rejects_malformed_timestamp_i
         },
     )
 
-    exit_code, stdout_text, stderr_text = _invoke_cli(
+    exit_code, stdout_text, stderr_text = invoke_cli(
         [
             "hourly-factors",
             "materialize-seasonality",
