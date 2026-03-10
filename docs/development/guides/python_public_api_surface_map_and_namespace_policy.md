@@ -32,6 +32,7 @@ The package root `janiform` is intentionally minimal.
 
 - `janiform.simulation`
   - Ownership: seeded tick simulation workflow and coarse-interval simulation workflow
+  - Implementation note: the module is package-backed, with private submodules partitioning shared contracts, seeded-tick execution, and coarse-interval execution. Public imports still flow through `janiform.simulation`, while introspection reflects the defining private submodule when applicable.
   - Public symbols:
     - `COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY`
     - `COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY`

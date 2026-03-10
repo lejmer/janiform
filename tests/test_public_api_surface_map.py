@@ -87,6 +87,10 @@ def test_simulation_public_symbols_live_in_simulation_module() -> None:
     assert expected_exports <= set(dir(simulation_module))
 
 
+def test_simulation_public_module_is_a_package() -> None:
+    assert hasattr(simulation_module, "__path__")
+
+
 def test_pricing_public_symbols_live_in_pricing_module() -> None:
     expected_exports = {
         "GammaSeverityMarkConfiguration",

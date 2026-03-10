@@ -1764,7 +1764,7 @@
             "nig_shared_plus_shift_configuration"
           ],
           "kind": "contract_model",
-          "signature": "(hawkes_kernel_parameters: janiform.simulation.HawkesKernelParameters, gamma_severity_mark_configuration: janiform.pricing.GammaSeverityMarkConfiguration, nig_shared_plus_shift_configuration: janiform.pricing.NigSharedPlusShiftConfiguration) -> None"
+          "signature": "(hawkes_kernel_parameters: janiform.simulation._shared.HawkesKernelParameters, gamma_severity_mark_configuration: janiform.pricing.GammaSeverityMarkConfiguration, nig_shared_plus_shift_configuration: janiform.pricing.NigSharedPlusShiftConfiguration) -> None"
         },
         "VanillaOptionPricingOptionalOutputSelection": {
           "field_names": [
@@ -1784,7 +1784,7 @@
             "interval_delta"
           ],
           "kind": "contract_model",
-          "signature": "(market_inputs: janiform.pricing.VanillaOptionPricingMarketInputs, payoff: janiform.pricing.VanillaOptionPayoffConfiguration, boundary_state: janiform.simulation.HawkesExcitationState, model_parameters: janiform.pricing.VanillaOptionPricingModelParameters, interval_delta: float = 1.0) -> None"
+          "signature": "(market_inputs: janiform.pricing.VanillaOptionPricingMarketInputs, payoff: janiform.pricing.VanillaOptionPayoffConfiguration, boundary_state: janiform.simulation._shared.HawkesExcitationState, model_parameters: janiform.pricing.VanillaOptionPricingModelParameters, interval_delta: float = 1.0) -> None"
         },
         "VanillaOptionPricingResponse": {
           "field_names": [
@@ -2001,7 +2001,7 @@
             "gamma_severity_mark_configuration"
           ],
           "kind": "contract_model",
-          "signature": "(hawkes_kernel_parameters: janiform.simulation.HawkesKernelParameters, gamma_severity_mark_configuration: janiform.pricing.GammaSeverityMarkConfiguration) -> None"
+          "signature": "(hawkes_kernel_parameters: janiform.simulation._shared.HawkesKernelParameters, gamma_severity_mark_configuration: janiform.pricing.GammaSeverityMarkConfiguration) -> None"
         },
         "SufficientStatisticsRiskIntervalFactors": {
           "field_names": [
@@ -2020,7 +2020,7 @@
             "initial_excitation_state"
           ],
           "kind": "contract_model",
-          "signature": "(equation_specification: janiform.risk.SufficientStatisticsRiskEquationSpecification, nig_shared_plus_shift_configuration: janiform.pricing.NigSharedPlusShiftConfiguration, initial_excitation_state: janiform.simulation.HawkesExcitationState) -> None"
+          "signature": "(equation_specification: janiform.risk.SufficientStatisticsRiskEquationSpecification, nig_shared_plus_shift_configuration: janiform.pricing.NigSharedPlusShiftConfiguration, initial_excitation_state: janiform.simulation._shared.HawkesExcitationState) -> None"
         },
         "SufficientStatisticsRiskPath": {
           "field_names": [
@@ -2037,7 +2037,7 @@
             "records"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, run_request_schema_version: str, output_schema_metadata: janiform.risk.SufficientStatisticsRiskPathOutputSchemaMetadata, provenance: janiform.risk.SufficientStatisticsRiskPathProvenance, diagnostics: janiform.risk.SufficientStatisticsRiskPathDiagnostics, seed: int, interval_delta: float, simulated_interval_count: int, initial_excitation_state: janiform.simulation.HawkesExcitationState, terminal_excitation_state: janiform.simulation.HawkesExcitationState, records: tuple[janiform.risk.SufficientStatisticsRiskPathRecord, ...]) -> None"
+          "signature": "(schema_version: str, run_request_schema_version: str, output_schema_metadata: janiform.risk.SufficientStatisticsRiskPathOutputSchemaMetadata, provenance: janiform.risk.SufficientStatisticsRiskPathProvenance, diagnostics: janiform.risk.SufficientStatisticsRiskPathDiagnostics, seed: int, interval_delta: float, simulated_interval_count: int, initial_excitation_state: janiform.simulation._shared.HawkesExcitationState, terminal_excitation_state: janiform.simulation._shared.HawkesExcitationState, records: tuple[janiform.risk.SufficientStatisticsRiskPathRecord, ...]) -> None"
         },
         "SufficientStatisticsRiskPathDiagnostics": {
           "field_names": [
@@ -2639,7 +2639,7 @@
             "exchange_code"
           ],
           "kind": "contract_model",
-          "signature": "(risk_model_inputs: Any, news_process_configuration: janiform.simulation.NewsProcessConfiguration, calendar_registry_artifact: dict[str, typing.Any], exchange_code: str) -> None"
+          "signature": "(risk_model_inputs: Any, news_process_configuration: janiform.simulation._coarse.NewsProcessConfiguration, calendar_registry_artifact: dict[str, typing.Any], exchange_code: str) -> None"
         },
         "CoarseSimulationPath": {
           "field_names": [
@@ -2658,7 +2658,7 @@
             "records"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, run_request_schema_version: str, output_schema_metadata: janiform.simulation.CoarseSimulationPathOutputSchemaMetadata, provenance: janiform.simulation.CoarseSimulationPathProvenance, diagnostics: janiform.simulation.CoarseSimulationPathDiagnostics, seed: int, start_time_utc_nanos: int, end_time_utc_nanos: int, interval_delta: float, simulated_interval_count: int, initial_excitation_state: janiform.simulation.HawkesExcitationState, terminal_excitation_state: janiform.simulation.HawkesExcitationState, records: tuple[janiform.simulation.CoarseSimulationPathRecord, ...]) -> None"
+          "signature": "(schema_version: str, run_request_schema_version: str, output_schema_metadata: janiform.simulation._coarse.CoarseSimulationPathOutputSchemaMetadata, provenance: janiform.simulation._coarse.CoarseSimulationPathProvenance, diagnostics: janiform.simulation._coarse.CoarseSimulationPathDiagnostics, seed: int, start_time_utc_nanos: int, end_time_utc_nanos: int, interval_delta: float, simulated_interval_count: int, initial_excitation_state: janiform.simulation._shared.HawkesExcitationState, terminal_excitation_state: janiform.simulation._shared.HawkesExcitationState, records: tuple[janiform.simulation._coarse.CoarseSimulationPathRecord, ...]) -> None"
         },
         "CoarseSimulationPathDiagnostics": {
           "field_names": [
@@ -2738,7 +2738,7 @@
             "interval_factors"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, seed: int, start_time_utc_nanos: int, horizon_interval_count: int, interval_delta: float, model_inputs: janiform.simulation.CoarseSimulationModelInputs, interval_factors: Any) -> None"
+          "signature": "(schema_version: str, seed: int, start_time_utc_nanos: int, horizon_interval_count: int, interval_delta: float, model_inputs: janiform.simulation._coarse.CoarseSimulationModelInputs, interval_factors: Any) -> None"
         },
         "CoupledGapMarkConfiguration": {
           "field_names": [
@@ -2784,7 +2784,7 @@
             "rho"
           ],
           "kind": "contract_model",
-          "signature": "(lambda_bar: float, beta: float, alpha: janiform.simulation.HawkesKernelLoadings, rho: janiform.simulation.HawkesKernelLoadings) -> None"
+          "signature": "(lambda_bar: float, beta: float, alpha: janiform.simulation._shared.HawkesKernelLoadings, rho: janiform.simulation._shared.HawkesKernelLoadings) -> None"
         },
         "KnownNewsArrivalConfiguration": {
           "field_names": [
@@ -2799,7 +2799,7 @@
             "surprise"
           ],
           "kind": "contract_model",
-          "signature": "(known: janiform.simulation.KnownNewsArrivalConfiguration, surprise: janiform.simulation.SurpriseNewsArrivalConfiguration) -> None"
+          "signature": "(known: janiform.simulation._coarse.KnownNewsArrivalConfiguration, surprise: janiform.simulation._coarse.SurpriseNewsArrivalConfiguration) -> None"
         },
         "NewsComponentMarkScaleConfiguration": {
           "field_names": [
@@ -2818,7 +2818,7 @@
             "surprise_component_mark_scales"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, arrivals: janiform.simulation.NewsArrivalConfiguration, shared_mark_law: janiform.simulation.SharedNewsMarkLawConfiguration, known_component_mark_scales: janiform.simulation.NewsComponentMarkScaleConfiguration, surprise_component_mark_scales: janiform.simulation.NewsComponentMarkScaleConfiguration) -> None"
+          "signature": "(schema_version: str, arrivals: janiform.simulation._coarse.NewsArrivalConfiguration, shared_mark_law: janiform.simulation._coarse.SharedNewsMarkLawConfiguration, known_component_mark_scales: janiform.simulation._coarse.NewsComponentMarkScaleConfiguration, surprise_component_mark_scales: janiform.simulation._coarse.NewsComponentMarkScaleConfiguration) -> None"
         },
         "SeededTickEventRecord": {
           "field_names": [
@@ -2828,7 +2828,7 @@
             "state_snapshot"
           ],
           "kind": "contract_model",
-          "signature": "(event_index: int, timestamp_utc_nanos: int, side: janiform.simulation.SeededTickEventSide, state_snapshot: janiform.simulation.SeededTickEventStateSnapshot | None = None) -> None"
+          "signature": "(event_index: int, timestamp_utc_nanos: int, side: janiform.simulation._shared.SeededTickEventSide, state_snapshot: janiform.simulation._seeded.SeededTickEventStateSnapshot | None = None) -> None"
         },
         "SeededTickEventSide": {
           "kind": "enum",
@@ -2880,7 +2880,7 @@
             "state_snapshot_capture_point_policy"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, event_record_schema_version: str, state_snapshot_schema_version: str, event_ordering_policy: str, timestamp_representation_policy: str, side_encoding_policy: str, state_snapshot_capture: janiform.simulation.SeededTickEventStateSnapshotCapture, state_snapshot_capture_point_policy: str | None = None) -> None"
+          "signature": "(schema_version: str, event_record_schema_version: str, state_snapshot_schema_version: str, event_ordering_policy: str, timestamp_representation_policy: str, side_encoding_policy: str, state_snapshot_capture: janiform.simulation._shared.SeededTickEventStateSnapshotCapture, state_snapshot_capture_point_policy: str | None = None) -> None"
         },
         "SeededTickSimulationHourlyFactorSummary": {
           "field_names": [
@@ -2909,7 +2909,7 @@
             "state_snapshot_capture"
           ],
           "kind": "contract_model",
-          "signature": "(seed: int, start_time_utc: datetime.datetime, horizon_interval_count: int, kernel_parameters: janiform.simulation.HawkesKernelParameters, initial_excitation_state: janiform.simulation.HawkesExcitationState, hourly_factor_summary: janiform.simulation.SeededTickSimulationHourlyFactorSummary, debug_trace_enabled: bool = False, sample_every_nth_transition: int = 1, max_records_per_chunk: int = 1024, state_snapshot_capture: janiform.simulation.SeededTickEventStateSnapshotCapture = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> None"
+          "signature": "(seed: int, start_time_utc: datetime.datetime, horizon_interval_count: int, kernel_parameters: janiform.simulation._shared.HawkesKernelParameters, initial_excitation_state: janiform.simulation._shared.HawkesExcitationState, hourly_factor_summary: janiform.simulation._seeded.SeededTickSimulationHourlyFactorSummary, debug_trace_enabled: bool = False, sample_every_nth_transition: int = 1, max_records_per_chunk: int = 1024, state_snapshot_capture: janiform.simulation._shared.SeededTickEventStateSnapshotCapture = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> None"
         },
         "SeededTickSimulationResponse": {
           "field_names": [
@@ -2918,7 +2918,7 @@
             "event_tape"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: str, metadata: janiform.simulation.SeededTickEventTapeMetadata, event_tape: tuple[janiform.simulation.SeededTickEventRecord, ...]) -> None"
+          "signature": "(schema_version: str, metadata: janiform.simulation._seeded.SeededTickEventTapeMetadata, event_tape: tuple[janiform.simulation._seeded.SeededTickEventRecord, ...]) -> None"
         },
         "SeededTickSimulationValidationError": {
           "base_classes": [
@@ -2929,7 +2929,7 @@
           ],
           "constructor_signature": "(failure: janiform.errors.ContractValidationFailure) -> None",
           "kind": "exception_class",
-          "origin_module": "janiform.simulation",
+          "origin_module": "janiform.simulation._shared",
           "qualname": "SeededTickSimulationValidationError"
         },
         "SeededTickSimulationValidationFailure": {
@@ -2951,7 +2951,7 @@
             "coupled_gap_marks"
           ],
           "kind": "contract_model",
-          "signature": "(gamma_severity_marks: Any, double_exponential_base_shock: janiform.simulation.DoubleExponentialBaseShockConfiguration, coupled_gap_marks: janiform.simulation.CoupledGapMarkConfiguration) -> None"
+          "signature": "(gamma_severity_marks: Any, double_exponential_base_shock: janiform.simulation._coarse.DoubleExponentialBaseShockConfiguration, coupled_gap_marks: janiform.simulation._coarse.CoupledGapMarkConfiguration) -> None"
         },
         "SurpriseNewsArrivalConfiguration": {
           "field_names": [
@@ -2962,15 +2962,15 @@
         },
         "deserialize_coarse_simulation_path": {
           "kind": "function",
-          "signature": "(payload_json: str) -> janiform.simulation.CoarseSimulationPath"
+          "signature": "(payload_json: str) -> janiform.simulation._coarse.CoarseSimulationPath"
         },
         "deserialize_coarse_simulation_run_request": {
           "kind": "function",
-          "signature": "(payload_json: str) -> janiform.simulation.CoarseSimulationRunRequest"
+          "signature": "(payload_json: str) -> janiform.simulation._coarse.CoarseSimulationRunRequest"
         },
         "deserialize_seeded_tick_simulation_response": {
           "kind": "function",
-          "signature": "(payload_json: str) -> janiform.simulation.SeededTickSimulationResponse"
+          "signature": "(payload_json: str) -> janiform.simulation._seeded.SeededTickSimulationResponse"
         },
         "load_hourly_factor_contract_for_simulation": {
           "kind": "function",
@@ -2978,35 +2978,35 @@
         },
         "run_coarse_simulation": {
           "kind": "function",
-          "signature": "(request: janiform.simulation.CoarseSimulationRunRequest) -> janiform.simulation.CoarseSimulationPath"
+          "signature": "(request: janiform.simulation._coarse.CoarseSimulationRunRequest) -> janiform.simulation._coarse.CoarseSimulationPath"
         },
         "run_seeded_tick_event_simulation": {
           "kind": "function",
-          "signature": "(request: janiform.simulation.SeededTickSimulationRequest) -> janiform.simulation.SeededTickSimulationResponse"
+          "signature": "(request: janiform.simulation._seeded.SeededTickSimulationRequest) -> janiform.simulation._seeded.SeededTickSimulationResponse"
         },
         "serialize_coarse_simulation_path": {
           "kind": "function",
-          "signature": "(path: janiform.simulation.CoarseSimulationPath) -> str"
+          "signature": "(path: janiform.simulation._coarse.CoarseSimulationPath) -> str"
         },
         "serialize_coarse_simulation_run_request": {
           "kind": "function",
-          "signature": "(request: janiform.simulation.CoarseSimulationRunRequest) -> str"
+          "signature": "(request: janiform.simulation._coarse.CoarseSimulationRunRequest) -> str"
         },
         "serialize_seeded_tick_simulation_response": {
           "kind": "function",
-          "signature": "(response: janiform.simulation.SeededTickSimulationResponse) -> str"
+          "signature": "(response: janiform.simulation._seeded.SeededTickSimulationResponse) -> str"
         },
         "validate_coarse_simulation_path": {
           "kind": "function",
-          "signature": "(raw_path: dict[str, Any] | Any) -> janiform.simulation.CoarseSimulationPath"
+          "signature": "(raw_path: dict[str, Any] | Any) -> janiform.simulation._coarse.CoarseSimulationPath"
         },
         "validate_coarse_simulation_run_request": {
           "kind": "function",
-          "signature": "(raw_request: dict[str, Any] | Any) -> janiform.simulation.CoarseSimulationRunRequest"
+          "signature": "(raw_request: dict[str, Any] | Any) -> janiform.simulation._coarse.CoarseSimulationRunRequest"
         },
         "validate_seeded_tick_simulation_response": {
           "kind": "function",
-          "signature": "(raw_response: dict[str, Any] | Any) -> janiform.simulation.SeededTickSimulationResponse"
+          "signature": "(raw_response: dict[str, Any] | Any) -> janiform.simulation._seeded.SeededTickSimulationResponse"
         }
       }
     },

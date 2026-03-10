@@ -10,6 +10,7 @@ import janiform.cli as cli_module
 import janiform.cli._commands as cli_commands_module
 import janiform.pricing as pricing_module
 import janiform.simulation as simulation_module
+import janiform.simulation._seeded as simulation_seeded_module
 from janiform.calendar import CalendarMissingExchangeError, CalendarRegistry
 from janiform.errors import JaniformExecutionError, JaniformIntegrationError
 from janiform.hourly_factors import (
@@ -81,7 +82,7 @@ def test_simulation_hourly_factor_loader_wraps_lower_level_validation_errors(
     def raising_provider(**_: object) -> object:
         raise CalendarMissingExchangeError("exchange_code is unknown")
 
-    monkeypatch.setattr(simulation_module, "provide_hourly_factor_contract", raising_provider)
+    monkeypatch.setattr(simulation_seeded_module, "provide_hourly_factor_contract", raising_provider)
 
     with pytest.raises(SeededTickSimulationValidationError) as captured_error:
         load_hourly_factor_contract_for_simulation(
@@ -106,7 +107,7 @@ def test_simulation_run_maps_missing_native_module_to_integration_error(
     def missing_native_module() -> object:
         raise ModuleNotFoundError("janiform._native")
 
-    monkeypatch.setattr(simulation_module, "native_module", missing_native_module)
+    monkeypatch.setattr(simulation_seeded_module, "native_module", missing_native_module)
 
     with pytest.raises(JaniformIntegrationError) as captured_error:
         run_seeded_tick_event_simulation(_valid_simulation_request(calendar_registry))
@@ -131,7 +132,7 @@ def test_simulation_run_maps_native_validation_failure_to_execution_error(
         def run_seeded_tick_event_simulation(*args: object, **kwargs: object) -> str:
             raise NativeValidationError("rejected by native layer")
 
-    monkeypatch.setattr(simulation_module, "native_module", lambda: FakeNative())
+    monkeypatch.setattr(simulation_seeded_module, "native_module", lambda: FakeNative())
 
     with pytest.raises(JaniformExecutionError) as captured_error:
         run_seeded_tick_event_simulation(_valid_simulation_request(calendar_registry))
@@ -156,7 +157,7 @@ def test_simulation_run_maps_invalid_native_response_to_integration_error(
         def run_seeded_tick_event_simulation(*args: object, **kwargs: object) -> str:
             return "{}"
 
-    monkeypatch.setattr(simulation_module, "native_module", lambda: FakeNative())
+    monkeypatch.setattr(simulation_seeded_module, "native_module", lambda: FakeNative())
 
     with pytest.raises(JaniformIntegrationError) as captured_error:
         run_seeded_tick_event_simulation(_valid_simulation_request(calendar_registry))

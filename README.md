@@ -182,7 +182,7 @@ This tells the script to use the `.venv-linux` venv, and to pass on the `-v` com
 
 - `crates/core/`: Rust core library
 - `crates/pybind/`: PyO3 extension module (`janiform._native`)
-- `python/janiform/`: Python package, CLI entrypoints, and typed workflow contracts
+- `python/janiform/`: Python package, CLI entrypoints, and typed workflow contracts, including package-backed workflow namespaces such as `janiform.simulation`
 - `examples/`: Executable public-API workflow examples for simulation, pricing, and calibration
 - `tests/`: Python tests and shared fixtures
 - `docs/`: Design and development documentation

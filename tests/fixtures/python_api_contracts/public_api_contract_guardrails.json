@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "5f8da080a8f36bf3b38507e46ca8c569ab26f52a9da9d5b05e653f6803396bd6",
+  "approved_snapshot_sha256": "a7dda4981972a2c1184326ae1ec3bb99666f1aeb9e30a8d46a35d5995ef2244b",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -54,6 +54,16 @@
       "rationale": "The coarse-interval runner is now a public simulation workflow, so the Python contract snapshot must include the new simulation request and path artifacts instead of leaving the workflow behind private native bindings.",
       "snapshot_sha256": "5f8da080a8f36bf3b38507e46ca8c569ab26f52a9da9d5b05e653f6803396bd6",
       "summary": "Add the public coarse-interval simulation surface under janiform.simulation."
+    },
+    {
+      "approved_on": "2026-03-10",
+      "docs_updated": [
+        "README.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "The simulation surface now lives in a package with private submodules, so public imports stay stable while API introspection records the defining submodule for shared contracts and workflow types.",
+      "snapshot_sha256": "a7dda4981972a2c1184326ae1ec3bb99666f1aeb9e30a8d46a35d5995ef2244b",
+      "summary": "Record janiform.simulation package-backed re-exports without module-origin shims."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_1",

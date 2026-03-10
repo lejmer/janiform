@@ -1,0 +1,774 @@
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any, Optional, cast
+
+from .._contracts import (
+    ContractModel,
+    parse_json_object,
+    require_datetime_utc,
+    require_mapping,
+    require_non_negative_finite_number,
+    require_non_negative_finite_scalar,
+    require_non_negative_integer,
+    require_positive_integer,
+    require_sequence,
+    require_string,
+    serialize_deterministic_json,
+)
+from .._native_api import native_module
+from ..calendar import (
+    CalendarInvalidTimestampError,
+    CalendarInvalidTimezoneError,
+    CalendarMissingExchangeError,
+    CalendarRegistry,
+)
+from ..hourly_factors import (
+    HourlyFactorContract,
+    HourlyFactorProviderMissingInputError,
+    HourlyFactorProviderUnsupportedRangeError,
+    HourlyNewsIntensityProviderSource,
+    HourlySeasonalityProviderSource,
+    provide_hourly_factor_contract,
+)
+from ..seasonality import SeasonalityInputValidationError
+from ._shared import (
+    HawkesExcitationState,
+    HawkesKernelParameters,
+    SIMULATION_ERROR_FACTORY,
+    SIMULATION_INTEGRATION_HOURLY_FACTOR_ERROR_ID,
+    SIMULATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
+    SIMULATION_INTEGRATION_RESPONSE_ERROR_ID,
+    SeededTickEventSide,
+    SeededTickEventStateSnapshotCapture,
+    SeededTickSimulationValidationError,
+    _parse_seeded_tick_state_snapshot_capture,
+    _simulation_error,
+    _simulation_execution_error,
+    _simulation_integration_error,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class SeededTickSimulationHourlyFactorSummary(ContractModel):
+    """Serializable snapshot of the hourly factor contract used by one run."""
+
+    schema_version: str
+    exchange_code: str
+    interval_count: int
+    interval_start_utc_nanos: tuple[int, ...]
+    interval_end_utc_nanos: tuple[int, ...]
+    s_h: tuple[float, ...]
+    nu_h: tuple[float, ...]
+
+    def __post_init__(self) -> None:
+        if self.schema_version != "seasonality.hourly_factor.contract.v1":
+            raise _simulation_error(
+                "hourly_factor_summary.schema_version",
+                "must be `seasonality.hourly_factor.contract.v1`",
+            )
+
+        if not self.exchange_code.strip():
+            raise _simulation_error("hourly_factor_summary.exchange_code", "must be a non-empty string")
+        if self.interval_count <= 0:
+            raise _simulation_error("hourly_factor_summary.interval_count", "must be strictly positive")
+
+        if len(self.interval_start_utc_nanos) != self.interval_count:
+            raise _simulation_error(
+                "hourly_factor_summary.interval_start_utc_nanos",
+                "must contain one entry per interval",
+            )
+        if len(self.interval_end_utc_nanos) != self.interval_count:
+            raise _simulation_error(
+                "hourly_factor_summary.interval_end_utc_nanos",
+                "must contain one entry per interval",
+            )
+
+        if len(self.s_h) != self.interval_count:
+            raise _simulation_error("hourly_factor_summary.s_h", "must contain one entry per interval")
+        if len(self.nu_h) != self.interval_count:
+            raise _simulation_error("hourly_factor_summary.nu_h", "must contain one entry per interval")
+
+        for interval_index, interval_start_utc_nanos in enumerate(self.interval_start_utc_nanos):
+            if interval_start_utc_nanos < 0:
+                raise _simulation_error(
+                    f"hourly_factor_summary.interval_start_utc_nanos[{interval_index}]",
+                    "must be non-negative",
+                )
+
+        for interval_index, interval_end_utc_nanos in enumerate(self.interval_end_utc_nanos):
+            if interval_end_utc_nanos < 0:
+                raise _simulation_error(
+                    f"hourly_factor_summary.interval_end_utc_nanos[{interval_index}]",
+                    "must be non-negative",
+                )
+            if interval_end_utc_nanos <= self.interval_start_utc_nanos[interval_index]:
+                raise _simulation_error(
+                    f"hourly_factor_summary.interval_end_utc_nanos[{interval_index}]",
+                    "must be greater than the corresponding interval start timestamp",
+                )
+
+        for interval_index, seasonality_factor in enumerate(self.s_h):
+            require_non_negative_finite_scalar(
+                seasonality_factor,
+                f"hourly_factor_summary.s_h[{interval_index}]",
+                SIMULATION_ERROR_FACTORY,
+            )
+
+        for interval_index, news_intensity_factor in enumerate(self.nu_h):
+            require_non_negative_finite_scalar(
+                news_intensity_factor,
+                f"hourly_factor_summary.nu_h[{interval_index}]",
+                SIMULATION_ERROR_FACTORY,
+            )
+
+    @staticmethod
+    def from_contract(hourly_factor_contract: HourlyFactorContract) -> SeededTickSimulationHourlyFactorSummary:
+        return SeededTickSimulationHourlyFactorSummary(
+            schema_version=hourly_factor_contract.schema_version,
+            exchange_code=hourly_factor_contract.exchange_code,
+            interval_count=hourly_factor_contract.interval_count,
+            interval_start_utc_nanos=tuple(hourly_factor_contract.interval_start_utc_nanos),
+            interval_end_utc_nanos=tuple(hourly_factor_contract.interval_end_utc_nanos),
+            s_h=tuple(hourly_factor_contract.s_h),
+            nu_h=tuple(hourly_factor_contract.nu_h),
+        )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str = "hourly_factor_summary",
+    ) -> SeededTickSimulationHourlyFactorSummary:
+        if not isinstance(raw_payload, dict):
+            raise _simulation_error(field_path, "must be an object")
+
+        raw_interval_start_utc_nanos = require_sequence(
+            raw_payload,
+            "interval_start_utc_nanos",
+            f"{field_path}.interval_start_utc_nanos",
+            SIMULATION_ERROR_FACTORY,
+        )
+        raw_interval_end_utc_nanos = require_sequence(
+            raw_payload,
+            "interval_end_utc_nanos",
+            f"{field_path}.interval_end_utc_nanos",
+            SIMULATION_ERROR_FACTORY,
+        )
+        raw_seasonality_factors = require_sequence(
+            raw_payload,
+            "s_h",
+            f"{field_path}.s_h",
+            SIMULATION_ERROR_FACTORY,
+        )
+        raw_news_intensity_factors = require_sequence(
+            raw_payload,
+            "nu_h",
+            f"{field_path}.nu_h",
+            SIMULATION_ERROR_FACTORY,
+        )
+
+        return SeededTickSimulationHourlyFactorSummary(
+            schema_version=require_string(
+                raw_payload,
+                "schema_version",
+                f"{field_path}.schema_version",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            exchange_code=require_string(
+                raw_payload,
+                "exchange_code",
+                f"{field_path}.exchange_code",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            interval_count=require_positive_integer(
+                raw_payload,
+                "interval_count",
+                f"{field_path}.interval_count",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            interval_start_utc_nanos=tuple(
+                require_non_negative_integer(
+                    {"value": raw_value},
+                    "value",
+                    f"{field_path}.interval_start_utc_nanos[{interval_index}]",
+                    SIMULATION_ERROR_FACTORY,
+                )
+                for interval_index, raw_value in enumerate(raw_interval_start_utc_nanos)
+            ),
+            interval_end_utc_nanos=tuple(
+                require_non_negative_integer(
+                    {"value": raw_value},
+                    "value",
+                    f"{field_path}.interval_end_utc_nanos[{interval_index}]",
+                    SIMULATION_ERROR_FACTORY,
+                )
+                for interval_index, raw_value in enumerate(raw_interval_end_utc_nanos)
+            ),
+            s_h=tuple(
+                require_non_negative_finite_number(
+                    {"value": raw_value},
+                    "value",
+                    f"{field_path}.s_h[{interval_index}]",
+                    SIMULATION_ERROR_FACTORY,
+                )
+                for interval_index, raw_value in enumerate(raw_seasonality_factors)
+            ),
+            nu_h=tuple(
+                require_non_negative_finite_number(
+                    {"value": raw_value},
+                    "value",
+                    f"{field_path}.nu_h[{interval_index}]",
+                    SIMULATION_ERROR_FACTORY,
+                )
+                for interval_index, raw_value in enumerate(raw_news_intensity_factors)
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SeededTickSimulationRequest(ContractModel):
+    """Typed seeded-tick simulation request for the importable Python surface."""
+
+    seed: int
+    start_time_utc: datetime
+    horizon_interval_count: int
+    kernel_parameters: HawkesKernelParameters
+    initial_excitation_state: HawkesExcitationState
+    hourly_factor_summary: SeededTickSimulationHourlyFactorSummary
+    debug_trace_enabled: bool = False
+    sample_every_nth_transition: int = 1
+    max_records_per_chunk: int = 1024
+    state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED
+    _hourly_factor_contract: Optional[HourlyFactorContract] = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+
+    def to_payload(self) -> dict[str, Any]:
+        payload = super().to_payload()
+        payload.pop("_hourly_factor_contract", None)
+        return payload
+
+    def __post_init__(self) -> None:
+        if self.seed < 0:
+            raise _simulation_error("seed", "must be non-negative")
+        if self.start_time_utc.tzinfo is None:
+            raise _simulation_error("start_time_utc", "must be timezone-aware")
+        if self.horizon_interval_count <= 0:
+            raise _simulation_error("horizon_interval_count", "must be strictly positive")
+        if self.hourly_factor_summary.interval_count != self.horizon_interval_count:
+            raise _simulation_error(
+                "hourly_factor_summary.interval_count",
+                "must match horizon_interval_count",
+            )
+        if self.sample_every_nth_transition <= 0:
+            raise _simulation_error("sample_every_nth_transition", "must be strictly positive")
+        if self.max_records_per_chunk <= 0:
+            raise _simulation_error("max_records_per_chunk", "must be strictly positive")
+
+    @property
+    def hourly_factor_contract(self) -> HourlyFactorContract:
+        if self._hourly_factor_contract is None:
+            raise _simulation_error(
+                "hourly_factor_summary",
+                "runtime hourly factor contract handle is unavailable on deserialized requests",
+            )
+
+        return self._hourly_factor_contract
+
+    @staticmethod
+    def from_runtime_inputs(
+        *,
+        seed: int,
+        start_time_utc: datetime,
+        horizon_interval_count: int,
+        kernel_parameters: HawkesKernelParameters,
+        initial_excitation_state: HawkesExcitationState,
+        hourly_factor_contract: HourlyFactorContract,
+        debug_trace_enabled: bool = False,
+        sample_every_nth_transition: int = 1,
+        max_records_per_chunk: int = 1024,
+        state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED,
+    ) -> SeededTickSimulationRequest:
+        normalized_start_time_utc = require_datetime_utc(
+            start_time_utc,
+            "start_time_utc",
+            SIMULATION_ERROR_FACTORY,
+        )
+        return SeededTickSimulationRequest(
+            seed=seed,
+            start_time_utc=normalized_start_time_utc,
+            horizon_interval_count=horizon_interval_count,
+            kernel_parameters=kernel_parameters,
+            initial_excitation_state=initial_excitation_state,
+            hourly_factor_summary=SeededTickSimulationHourlyFactorSummary.from_contract(hourly_factor_contract),
+            debug_trace_enabled=debug_trace_enabled,
+            sample_every_nth_transition=sample_every_nth_transition,
+            max_records_per_chunk=max_records_per_chunk,
+            state_snapshot_capture=state_snapshot_capture,
+            _hourly_factor_contract=hourly_factor_contract,
+        )
+
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any) -> SeededTickSimulationRequest:
+        if not isinstance(raw_payload, dict):
+            raise _simulation_error("seeded_tick_simulation_request", "must be an object")
+        if "start_time_utc" not in raw_payload:
+            raise _simulation_error("start_time_utc", "is required")
+
+        raw_state_snapshot_capture = raw_payload.get("state_snapshot_capture")
+        state_snapshot_capture = (
+            _parse_seeded_tick_state_snapshot_capture(
+                raw_state_snapshot_capture,
+                field_path="state_snapshot_capture",
+            )
+            if raw_state_snapshot_capture is not None
+            else SeededTickEventStateSnapshotCapture.DISABLED
+        )
+
+        raw_debug_trace_enabled = raw_payload.get("debug_trace_enabled", False)
+        if not isinstance(raw_debug_trace_enabled, bool):
+            raise _simulation_error("debug_trace_enabled", "must be a boolean")
+
+        sample_every_nth_transition = (
+            require_positive_integer(
+                raw_payload,
+                "sample_every_nth_transition",
+                "sample_every_nth_transition",
+                SIMULATION_ERROR_FACTORY,
+            )
+            if "sample_every_nth_transition" in raw_payload
+            else 1
+        )
+        max_records_per_chunk = (
+            require_positive_integer(
+                raw_payload,
+                "max_records_per_chunk",
+                "max_records_per_chunk",
+                SIMULATION_ERROR_FACTORY,
+            )
+            if "max_records_per_chunk" in raw_payload
+            else 1024
+        )
+
+        return SeededTickSimulationRequest(
+            seed=require_non_negative_integer(
+                raw_payload,
+                "seed",
+                "seed",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            start_time_utc=require_datetime_utc(
+                raw_payload["start_time_utc"],
+                "start_time_utc",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            horizon_interval_count=require_positive_integer(
+                raw_payload,
+                "horizon_interval_count",
+                "horizon_interval_count",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            kernel_parameters=HawkesKernelParameters.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "kernel_parameters",
+                    "kernel_parameters",
+                    SIMULATION_ERROR_FACTORY,
+                ),
+                field_path="kernel_parameters",
+            ),
+            initial_excitation_state=HawkesExcitationState.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "initial_excitation_state",
+                    "initial_excitation_state",
+                    SIMULATION_ERROR_FACTORY,
+                ),
+                field_path="initial_excitation_state",
+            ),
+            hourly_factor_summary=SeededTickSimulationHourlyFactorSummary.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "hourly_factor_summary",
+                    "hourly_factor_summary",
+                    SIMULATION_ERROR_FACTORY,
+                ),
+                field_path="hourly_factor_summary",
+            ),
+            debug_trace_enabled=raw_debug_trace_enabled,
+            sample_every_nth_transition=sample_every_nth_transition,
+            max_records_per_chunk=max_records_per_chunk,
+            state_snapshot_capture=state_snapshot_capture,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SeededTickEventStateSnapshot(ContractModel):
+    """Optional post-transition state snapshot attached to one event record."""
+
+    y_plus_plus: float
+    y_plus_minus: float
+    y_minus_plus: float
+    y_minus_minus: float
+    deseasonalized_lambda_plus: float
+    deseasonalized_lambda_minus: float
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> SeededTickEventStateSnapshot:
+        if not isinstance(raw_payload, dict):
+            raise _simulation_error(field_path, "must be an object")
+
+        return SeededTickEventStateSnapshot(
+            y_plus_plus=require_non_negative_finite_number(
+                raw_payload,
+                "y_plus_plus",
+                f"{field_path}.y_plus_plus",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            y_plus_minus=require_non_negative_finite_number(
+                raw_payload,
+                "y_plus_minus",
+                f"{field_path}.y_plus_minus",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            y_minus_plus=require_non_negative_finite_number(
+                raw_payload,
+                "y_minus_plus",
+                f"{field_path}.y_minus_plus",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            y_minus_minus=require_non_negative_finite_number(
+                raw_payload,
+                "y_minus_minus",
+                f"{field_path}.y_minus_minus",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            deseasonalized_lambda_plus=require_non_negative_finite_number(
+                raw_payload,
+                "deseasonalized_lambda_plus",
+                f"{field_path}.deseasonalized_lambda_plus",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            deseasonalized_lambda_minus=require_non_negative_finite_number(
+                raw_payload,
+                "deseasonalized_lambda_minus",
+                f"{field_path}.deseasonalized_lambda_minus",
+                SIMULATION_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SeededTickEventRecord(ContractModel):
+    """One ordered simulated event."""
+
+    event_index: int
+    timestamp_utc_nanos: int
+    side: SeededTickEventSide
+    state_snapshot: Optional[SeededTickEventStateSnapshot] = None
+
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> SeededTickEventRecord:
+        if not isinstance(raw_payload, dict):
+            raise _simulation_error(field_path, "must be an object")
+
+        raw_side = require_string(raw_payload, "side", f"{field_path}.side", SIMULATION_ERROR_FACTORY)
+        try:
+            side = SeededTickEventSide(raw_side)
+        except ValueError as e:
+            raise _simulation_error(
+                f"{field_path}.side",
+                f"must be one of: buy, sell, received '{raw_side}'",
+            ) from e
+
+        raw_state_snapshot = raw_payload.get("state_snapshot")
+        state_snapshot = (
+            SeededTickEventStateSnapshot.from_mapping(
+                raw_state_snapshot,
+                field_path=f"{field_path}.state_snapshot",
+            )
+            if raw_state_snapshot is not None
+            else None
+        )
+
+        return SeededTickEventRecord(
+            event_index=require_non_negative_integer(
+                raw_payload,
+                "event_index",
+                f"{field_path}.event_index",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            timestamp_utc_nanos=require_non_negative_integer(
+                raw_payload,
+                "timestamp_utc_nanos",
+                f"{field_path}.timestamp_utc_nanos",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            side=side,
+            state_snapshot=state_snapshot,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SeededTickEventTapeMetadata(ContractModel):
+    """Deterministic metadata attached to one serialized event tape."""
+
+    schema_version: str
+    event_record_schema_version: str
+    state_snapshot_schema_version: str
+    event_ordering_policy: str
+    timestamp_representation_policy: str
+    side_encoding_policy: str
+    state_snapshot_capture: SeededTickEventStateSnapshotCapture
+    state_snapshot_capture_point_policy: Optional[str] = None
+
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> SeededTickEventTapeMetadata:
+        if not isinstance(raw_payload, dict):
+            raise _simulation_error(field_path, "must be an object")
+
+        raw_capture = require_string(
+            raw_payload,
+            "state_snapshot_capture",
+            f"{field_path}.state_snapshot_capture",
+            SIMULATION_ERROR_FACTORY,
+        )
+        try:
+            capture = SeededTickEventStateSnapshotCapture(raw_capture)
+        except ValueError as e:
+            raise _simulation_error(
+                f"{field_path}.state_snapshot_capture",
+                "must be either 'disabled' or 'post_event_transition'",
+            ) from e
+
+        raw_capture_policy = raw_payload.get("state_snapshot_capture_point_policy")
+        if raw_capture_policy is not None and not isinstance(raw_capture_policy, str):
+            raise _simulation_error(
+                f"{field_path}.state_snapshot_capture_point_policy",
+                "must be a string when provided",
+            )
+
+        return SeededTickEventTapeMetadata(
+            schema_version=require_string(raw_payload, "schema_version", f"{field_path}.schema_version", SIMULATION_ERROR_FACTORY),
+            event_record_schema_version=require_string(
+                raw_payload,
+                "event_record_schema_version",
+                f"{field_path}.event_record_schema_version",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            state_snapshot_schema_version=require_string(
+                raw_payload,
+                "state_snapshot_schema_version",
+                f"{field_path}.state_snapshot_schema_version",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            event_ordering_policy=require_string(
+                raw_payload,
+                "event_ordering_policy",
+                f"{field_path}.event_ordering_policy",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            timestamp_representation_policy=require_string(
+                raw_payload,
+                "timestamp_representation_policy",
+                f"{field_path}.timestamp_representation_policy",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            side_encoding_policy=require_string(
+                raw_payload,
+                "side_encoding_policy",
+                f"{field_path}.side_encoding_policy",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            state_snapshot_capture=capture,
+            state_snapshot_capture_point_policy=cast(Optional[str], raw_capture_policy),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SeededTickSimulationResponse(ContractModel):
+    """Typed seeded-tick simulation response containing the canonical event tape."""
+
+    schema_version: str
+    metadata: SeededTickEventTapeMetadata
+    event_tape: tuple[SeededTickEventRecord, ...]
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str = "seeded_tick_simulation_response",
+    ) -> SeededTickSimulationResponse:
+        if not isinstance(raw_payload, dict):
+            raise _simulation_error(field_path, "must be an object")
+
+        event_tape_items = require_sequence(raw_payload, "event_tape", f"{field_path}.event_tape", SIMULATION_ERROR_FACTORY)
+        event_tape = tuple(
+            SeededTickEventRecord.from_mapping(
+                raw_item,
+                field_path=f"{field_path}.event_tape[{event_index}]",
+            )
+            for event_index, raw_item in enumerate(event_tape_items)
+        )
+
+        return SeededTickSimulationResponse(
+            schema_version=require_string(
+                raw_payload,
+                "schema_version",
+                f"{field_path}.schema_version",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            metadata=SeededTickEventTapeMetadata.from_mapping(
+                require_mapping(raw_payload, "metadata", f"{field_path}.metadata", SIMULATION_ERROR_FACTORY),
+                field_path=f"{field_path}.metadata",
+            ),
+            event_tape=event_tape,
+        )
+
+
+def load_hourly_factor_contract_for_simulation(
+    *,
+    calendar_registry: CalendarRegistry,
+    exchange_code: str,
+    range_start_utc: datetime,
+    range_end_utc: datetime,
+    seasonality_source: HourlySeasonalityProviderSource,
+    news_intensity_source: HourlyNewsIntensityProviderSource,
+) -> HourlyFactorContract:
+    """Load interval-aligned hourly factors for the simulation path."""
+    try:
+        return provide_hourly_factor_contract(
+            calendar_registry=calendar_registry,
+            exchange_code=exchange_code,
+            range_start_utc=range_start_utc,
+            range_end_utc=range_end_utc,
+            seasonality_source=seasonality_source,
+            news_intensity_source=news_intensity_source,
+        )
+    except (
+        CalendarInvalidTimestampError,
+        CalendarInvalidTimezoneError,
+        CalendarMissingExchangeError,
+        HourlyFactorProviderMissingInputError,
+        HourlyFactorProviderUnsupportedRangeError,
+        SeasonalityInputValidationError,
+    ) as e:
+        raise _simulation_error(
+            "hourly_factor_contract",
+            str(e),
+            entrypoint="load_hourly_factor_contract_for_simulation",
+            context={"exchange_code": exchange_code},
+        ) from e
+    except ModuleNotFoundError as e:
+        raise _simulation_integration_error(
+            "native hourly-factor support is unavailable",
+            entrypoint="load_hourly_factor_contract_for_simulation",
+            error_id=SIMULATION_INTEGRATION_HOURLY_FACTOR_ERROR_ID,
+            field_path="hourly_factor_contract",
+            context={"exchange_code": exchange_code},
+        ) from e
+
+
+def validate_seeded_tick_simulation_response(
+    raw_response: dict[str, Any] | Any,
+) -> SeededTickSimulationResponse:
+    return SeededTickSimulationResponse.from_mapping(raw_response)
+
+
+def serialize_seeded_tick_simulation_response(response: SeededTickSimulationResponse) -> str:
+    return serialize_deterministic_json(response)
+
+
+def deserialize_seeded_tick_simulation_response(payload_json: str) -> SeededTickSimulationResponse:
+    raw_payload = parse_json_object(payload_json, "seeded tick simulation response", SIMULATION_ERROR_FACTORY)
+    return validate_seeded_tick_simulation_response(dict(raw_payload))
+
+
+def run_seeded_tick_event_simulation(
+    request: SeededTickSimulationRequest,
+) -> SeededTickSimulationResponse:
+    """Run the seeded tick simulator from a typed request.
+
+    Example:
+        request = SeededTickSimulationRequest.from_runtime_inputs(
+            seed=17,
+            start_time_utc=start_time_utc,
+            horizon_interval_count=2,
+            kernel_parameters=kernel_parameters,
+            initial_excitation_state=initial_excitation_state,
+            hourly_factor_contract=hourly_factor_contract,
+        )
+        response = run_seeded_tick_event_simulation(request)
+    """
+
+    if not isinstance(request, SeededTickSimulationRequest):
+        raise _simulation_error("request", "must be a SeededTickSimulationRequest")
+
+    normalized_request = SeededTickSimulationRequest(
+        seed=request.seed,
+        start_time_utc=require_datetime_utc(
+            request.start_time_utc,
+            "start_time_utc",
+            SIMULATION_ERROR_FACTORY,
+        ),
+        horizon_interval_count=request.horizon_interval_count,
+        kernel_parameters=request.kernel_parameters,
+        initial_excitation_state=request.initial_excitation_state,
+        hourly_factor_summary=request.hourly_factor_summary,
+        debug_trace_enabled=request.debug_trace_enabled,
+        sample_every_nth_transition=request.sample_every_nth_transition,
+        max_records_per_chunk=request.max_records_per_chunk,
+        state_snapshot_capture=request.state_snapshot_capture,
+        _hourly_factor_contract=request.hourly_factor_contract,
+    )
+    try:
+        native = native_module()
+    except ModuleNotFoundError as e:
+        raise _simulation_integration_error(
+            "native simulation module is unavailable",
+            entrypoint="run_seeded_tick_event_simulation",
+            error_id=SIMULATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
+            context={"module_name": "janiform._native"},
+        ) from e
+
+    try:
+        event_tape_json: str = native.run_seeded_tick_event_simulation(
+            normalized_request.seed,
+            normalized_request.start_time_utc.astimezone(UTC).isoformat(),
+            normalized_request.horizon_interval_count,
+            normalized_request.kernel_parameters.to_payload(),
+            normalized_request.initial_excitation_state.to_payload(),
+            normalized_request.hourly_factor_contract._native_result,
+            debug_trace_enabled=normalized_request.debug_trace_enabled,
+            sample_every_nth_transition=normalized_request.sample_every_nth_transition,
+            max_records_per_chunk=normalized_request.max_records_per_chunk,
+            state_snapshot_capture=normalized_request.state_snapshot_capture.value,
+        )
+    except native.SeasonalityInputValidationError as e:
+        raise _simulation_execution_error(
+            "native simulation rejected the normalized run request",
+            entrypoint="run_seeded_tick_event_simulation",
+            context={"source_category": "native_validation"},
+        ) from e
+    except Exception as e:
+        raise _simulation_execution_error(
+            "seeded tick simulation failed during native execution",
+            entrypoint="run_seeded_tick_event_simulation",
+            context={"source_exception_type": type(e).__name__},
+        ) from e
+
+    try:
+        return deserialize_seeded_tick_simulation_response(event_tape_json)
+    except SeededTickSimulationValidationError as e:
+        raise _simulation_integration_error(
+            "native simulation returned an invalid response payload",
+            entrypoint="run_seeded_tick_event_simulation",
+            error_id=SIMULATION_INTEGRATION_RESPONSE_ERROR_ID,
+            context={"source_error_id": e.error_id},
+        ) from e
