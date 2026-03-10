@@ -228,3 +228,6 @@ pull_requests/
 
 # Codex
 .codex/
+
+# Data
+data/

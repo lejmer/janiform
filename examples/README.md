@@ -131,6 +131,37 @@ Expected summary shape:
 }
 ```
 
+## EUR/USD End-To-End Manual Test
+
+Run:
+
+```bash
+PYTHONPATH=python python3 -m examples.eurusd_end_to_end_manual_test /path/to/eurusd_ticks.csv
+```
+
+Expected input columns:
+
+- `time`: tick timestamp
+- `close`: midprice at that tick
+- `sign`: `buy` or `sell`
+
+This example:
+- prepares market-data calibration directly from the user-facing CSV contract
+- runs staged calibration in `disk` mode so the fitted stage artifacts can be reused
+- builds a calibrated coarse simulation request from the persisted Hawkes and return-components artifacts
+- builds a seeded tick simulation request from the same calibrated hourly controls
+- times market-data preparation, staged calibration, coarse generation, and seeded-tick generation
+- compares:
+  - observed hourly returns against coarse-path returns
+  - observed hourly returns against seeded-path hourly returns aggregated from the priced fine path
+  - coarse-path returns against seeded-path hourly returns aggregated from the priced fine path
+
+Note:
+- the seeded tick simulator now emits a priced fine path with a derived event-tape projection
+- this example uses return stylized facts on a shared hourly grid rather than activity-only diagnostics
+- pass `--plot-path /tmp/eurusd-smoke.png` to save a quick visual of the observed tick path plus observed, coarse, and seeded return path and distribution
+- if you do not pass `--session-definition-json`, the example generates a pragmatic default 24/5 FX session definition in UTC
+
 ## Advanced Staged Calibration
 
 Run:
