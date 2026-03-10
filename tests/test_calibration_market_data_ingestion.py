@@ -237,12 +237,100 @@ def test_load_market_data_calibration_inputs_rejects_malformed_tick_timestamp(
 
     assert captured_error.value.failure.error_id == "calibration.validation.market_data_ingestion"
     assert captured_error.value.failure.field_path == "tick_data_source.rows[1].timestamp_utc"
-    assert "ISO 8601" in captured_error.value.failure.message
+    assert "supported timestamp string" in captured_error.value.failure.message
     assert captured_error.value.failure.context == {
         "normalization_step": "timestamp_normalization",
         "raw_value": "not-a-timestamp",
         "source_path": str(tick_data_path),
     }
+
+
+def test_load_market_data_calibration_inputs_accepts_common_day_first_timestamp_strings(
+    tmp_path: Path,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_local,trade_price",
+                "21.03.2023 19:00:00.154,1.07649",
+                "21.03.2023 19:00:00.257,1.076485",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    request = _build_market_data_request(
+        tick_data_source=CalibrationInputFileReference(
+            path=str(tick_data_path),
+            file_format=CalibrationInputFileFormat.CSV,
+            provenance_label="ticks-primary",
+        ),
+        column_mapping=CalibrationMarketDataColumnMapping(
+            tick_data=CalibrationTickDataColumnMapping(
+                timestamp_column="timestamp_local",
+                trade_price_column="trade_price",
+            ),
+            known_news=None,
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+        ),
+    )
+
+    loaded_inputs = load_market_data_calibration_inputs(request)
+
+    assert [record.timestamp for record in loaded_inputs.tick_data.records] == [
+        datetime(2023, 3, 21, 19, 0, 0, 154000, tzinfo=UTC),
+        datetime(2023, 3, 21, 19, 0, 0, 257000, tzinfo=UTC),
+    ]
+
+
+def test_load_market_data_calibration_inputs_accepts_unix_epoch_millisecond_strings(
+    tmp_path: Path,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_epoch_millis,trade_price",
+                "1704205800000,100.5",
+                "1704205860000,100.75",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    request = _build_market_data_request(
+        tick_data_source=CalibrationInputFileReference(
+            path=str(tick_data_path),
+            file_format=CalibrationInputFileFormat.CSV,
+            provenance_label="ticks-primary",
+        ),
+        column_mapping=CalibrationMarketDataColumnMapping(
+            tick_data=CalibrationTickDataColumnMapping(
+                timestamp_column="timestamp_epoch_millis",
+                trade_price_column="trade_price",
+            ),
+            known_news=None,
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+        ),
+    )
+
+    loaded_inputs = load_market_data_calibration_inputs(request)
+
+    assert [record.timestamp for record in loaded_inputs.tick_data.records] == [
+        datetime(2024, 1, 2, 14, 30, tzinfo=UTC),
+        datetime(2024, 1, 2, 14, 31, tzinfo=UTC),
+    ]
 
 
 def test_load_market_data_calibration_inputs_keep_last_duplicate_policy_uses_last_source_row(

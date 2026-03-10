@@ -36,6 +36,7 @@ def run_example(*, working_directory: Path) -> dict[str, object]:
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
             trade_price_column="trade_price",
+            trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
@@ -54,6 +55,7 @@ def run_example(*, working_directory: Path) -> dict[str, object]:
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
             trade_price_column="trade_price",
+            trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
@@ -72,6 +74,7 @@ def run_example(*, working_directory: Path) -> dict[str, object]:
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
             trade_price_column="trade_price",
+            trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",

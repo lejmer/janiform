@@ -3,8 +3,8 @@ use janiform_core::news::NewsProcessConfiguration;
 use janiform_core::nig::NigSharedPlusShiftConfiguration;
 use janiform_core::simulation::{
     CoarseSimulationRunRequest, SeededTickEventStateSnapshotCapture,
-    SeededTickSimulationDebugTraceOptions,
-    SeededTickSimulationModelInputs, SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
+    SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
+    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
     run_coarse_simulation as run_coarse_simulation_core,
     run_seeded_tick_event_simulation as run_seeded_tick_event_simulation_core,
 };
@@ -59,13 +59,14 @@ fn run_seeded_tick_event_simulation(
         )?;
     let parsed_initial_excitation_state =
         parse_seeded_simulation_initial_excitation_state(initial_excitation_state)?;
-    let parsed_news_process_configuration =
-        serde_json::from_str::<NewsProcessConfiguration>(news_process_configuration_json)
-            .map_err(|source| {
-                SeasonalityInputValidationError::new_err(format!(
-                    "news_process_configuration_json failed to deserialize: {source}"
-                ))
-            })?;
+    let parsed_news_process_configuration = serde_json::from_str::<NewsProcessConfiguration>(
+        news_process_configuration_json,
+    )
+    .map_err(|source| {
+        SeasonalityInputValidationError::new_err(format!(
+            "news_process_configuration_json failed to deserialize: {source}"
+        ))
+    })?;
     let parsed_state_snapshot_capture =
         parse_seeded_simulation_state_snapshot_capture(state_snapshot_capture)?;
 

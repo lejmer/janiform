@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pyarrow as pa
@@ -232,6 +232,158 @@ def test_translate_market_data_request_without_known_news_runs_staged_calibratio
     )
     assert response.execution_mode == CalibrationExecutionMode.MEMORY
     assert response.status.value == "success"
+
+
+def test_translate_market_data_request_scales_nig_candidates_to_tick_return_magnitude(
+    tmp_path: Path,
+    calendar_registry_json: str,
+) -> None:
+    session_definition_path = _write_session_definition(tmp_path, calendar_registry_json)
+
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,1.085000,buy",
+                "2026-02-02T14:30:01Z,1.085010,sell",
+                "2026-02-02T14:30:02Z,1.085004,buy",
+                "2026-02-02T14:30:03Z,1.085012,sell",
+                "2026-02-02T14:30:04Z,1.085009,buy",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    request = _build_market_data_request(
+        session_definition_path=session_definition_path,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            trade_price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+        ),
+    )
+
+    translation = translate_market_data_request_to_staged_execution_input(request)
+    return_components_input = (
+        translation.execution_input.return_components_candidate_generation_input
+    )
+    assert return_components_input is not None
+
+    nig_candidate = return_components_input.nig_shared_plus_shift_candidates[0]
+    assert nig_candidate.delta < 1e-4
+
+
+def test_translate_market_data_request_applies_hourly_nig_shape_mass_floor_for_dense_ticks(
+    tmp_path: Path,
+    calendar_registry_json: str,
+) -> None:
+    session_definition_path = _write_session_definition(tmp_path, calendar_registry_json)
+
+    tick_data_path = tmp_path / "dense_ticks.csv"
+    start_time = datetime(2026, 2, 2, 14, 30, tzinfo=UTC)
+    csv_lines = ["timestamp_utc,trade_price,trade_sign"]
+
+    current_price = 1.085
+    for row_index in range(1_200):
+        timestamp = start_time + timedelta(seconds=0.75 * row_index)
+        current_price += 0.000002 if row_index % 2 == 0 else -0.0000015
+        trade_sign = "buy" if row_index % 2 == 0 else "sell"
+        csv_lines.append(
+            f"{timestamp.isoformat().replace('+00:00', 'Z')},{current_price:.6f},{trade_sign}"
+        )
+
+    tick_data_path.write_text("\n".join(csv_lines), encoding="utf-8")
+
+    request = _build_market_data_request(
+        session_definition_path=session_definition_path,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            trade_price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+        ),
+    )
+
+    translation = translate_market_data_request_to_staged_execution_input(request)
+    return_components_input = (
+        translation.execution_input.return_components_candidate_generation_input
+    )
+    assert return_components_input is not None
+
+    nig_candidate = return_components_input.nig_shared_plus_shift_candidates[0]
+    assert nig_candidate.delta >= 1e-7
+
+
+def test_translate_market_data_request_infers_missing_trade_signs_from_price_direction(
+    tmp_path: Path,
+    calendar_registry_json: str,
+) -> None:
+    session_definition_path = _write_session_definition(tmp_path, calendar_registry_json)
+
+    tick_data_path = tmp_path / "ticks_without_sign.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price",
+                "2026-02-02T14:30:00Z,100.0",
+                "2026-02-02T14:31:00Z,101.0",
+                "2026-02-02T14:32:00Z,99.0",
+                "2026-02-02T14:33:00Z,99.0",
+                "2026-02-02T14:34:00Z,102.0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    request = _build_market_data_request(
+        session_definition_path=session_definition_path,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            trade_price_column="trade_price",
+            trade_sign_column=None,
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+        ),
+    )
+
+    translation = translate_market_data_request_to_staged_execution_input(request)
+
+    assert (
+        "missing_trade_signs_are_inferred_from_canonical_price_direction_with_flat_move_carryover.v1"
+        in translation.provenance.derivation_policies
+    )
+
+    hawkes_candidates = translation.execution_input.hawkes_candidate_inputs
+    assert hawkes_candidates is not None
+
+    objective_terms = {
+        objective_term.term_id: objective_term.observed_score
+        for objective_term in hawkes_candidates[0].objective_terms
+    }
+    assert objective_terms["buy_event_rate_per_hour"] == pytest.approx(45.0)
+    assert objective_terms["sell_event_rate_per_hour"] == pytest.approx(30.0)
 
 
 def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenance(

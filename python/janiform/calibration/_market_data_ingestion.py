@@ -10,6 +10,7 @@ import pyarrow
 from pyarrow import compute as pyarrow_compute
 from pyarrow import parquet as pyarrow_parquet
 
+from .._timestamps import parse_timestamp_value
 from ._common import (
     CalibrationTradeSign,
     CalibrationDuplicateRecordPolicy,
@@ -952,9 +953,7 @@ def _normalize_timestamp_value(
             normalization_step="timestamp_normalization",
         )
 
-    if isinstance(raw_value, datetime):
-        parsed_value = raw_value
-    elif isinstance(raw_value, str):
+    if isinstance(raw_value, str):
         stripped_value = raw_value.strip()
         if not stripped_value:
             raise _market_data_ingestion_error(
@@ -965,18 +964,28 @@ def _normalize_timestamp_value(
             )
 
         try:
-            parsed_value = datetime.fromisoformat(stripped_value.replace("Z", "+00:00"))
-        except ValueError as e:
+            parsed_value = parse_timestamp_value(stripped_value)
+        except (TypeError, ValueError) as e:
             raise _market_data_ingestion_error(
                 field_path,
-                "must be an ISO 8601 timestamp string or a parquet timestamp column",
+                "must be a supported timestamp string, Unix epoch value, or a parquet timestamp column",
                 context={"source_path": source_path, "raw_value": stripped_value},
+                normalization_step="timestamp_normalization",
+            ) from e
+    elif isinstance(raw_value, datetime | int | float):
+        try:
+            parsed_value = parse_timestamp_value(raw_value)
+        except (TypeError, ValueError) as e:
+            raise _market_data_ingestion_error(
+                field_path,
+                "must be a supported timestamp string, Unix epoch value, or a parquet timestamp column",
+                context={"source_path": source_path, "raw_value": raw_value},
                 normalization_step="timestamp_normalization",
             ) from e
     else:
         raise _market_data_ingestion_error(
             field_path,
-            "must be an ISO 8601 timestamp string or a parquet timestamp column",
+            "must be a supported timestamp string, Unix epoch value, or a parquet timestamp column",
             context={"source_path": source_path, "received_type": type(raw_value).__name__},
             normalization_step="timestamp_normalization",
         )

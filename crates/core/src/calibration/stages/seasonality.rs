@@ -4,7 +4,8 @@ use crate::calendar::{
     ExchangeCalendarRegistry, TimestampEventInputRecord, TimestampEventSessionFilter,
 };
 use crate::seasonality::{
-    DayOfWeekSeasonalityEstimatorSettings, DayOfYearSeasonalityEstimatorSettings,
+    DayOfWeekSeasonalityEstimateOutput, DayOfWeekSeasonalityEstimatorSettings,
+    DayOfYearSeasonalityEstimateOutput, DayOfYearSeasonalityEstimatorSettings,
     IntradaySeasonalityEstimatorSettings, ScheduledEventOverlayDefinition,
     SeasonalityDiagnosticsReportOutput, compose_deterministic_seasonality_signal,
     estimate_day_of_week_seasonality, estimate_day_of_year_seasonality,
@@ -41,6 +42,9 @@ impl Default for SeasonalityStageExecutionSettings {
         }
     }
 }
+
+const MINIMUM_DISTINCT_WEEKDAYS_FOR_DAY_OF_WEEK_COMPONENT: usize = 4;
+const MINIMUM_DISTINCT_DAYS_OF_YEAR_FOR_DAY_OF_YEAR_COMPONENT: usize = 90;
 
 /// Input payload for standalone or pipeline-integrated seasonality-stage execution.
 #[derive(Debug, Clone, PartialEq)]
@@ -321,6 +325,10 @@ pub fn run_seasonality_calibration_stage(
             );
         }
     };
+    let day_of_week_estimate = neutralize_day_of_week_component_when_under_supported(
+        day_of_week_estimate,
+        &preprocessed.exchange_local_day_of_week,
+    );
 
     let day_of_year_estimate = match estimate_day_of_year_seasonality(
         &preprocessed.exchange_local_day_of_year,
@@ -336,6 +344,10 @@ pub fn run_seasonality_calibration_stage(
             );
         }
     };
+    let day_of_year_estimate = neutralize_day_of_year_component_when_under_supported(
+        day_of_year_estimate,
+        &preprocessed.exchange_local_day_of_year,
+    );
 
     let composition = match compose_deterministic_seasonality_signal(
         &preprocessed.timestamp_utc_nanos,
@@ -590,4 +602,80 @@ fn build_seasonality_stage_failure_report(
         metadata: None,
         failure: Some(failure),
     }
+}
+
+fn neutralize_day_of_week_component_when_under_supported(
+    estimate: DayOfWeekSeasonalityEstimateOutput,
+    observed_day_of_week: &[u8],
+) -> DayOfWeekSeasonalityEstimateOutput {
+    if distinct_u8_bucket_count(observed_day_of_week)
+        >= MINIMUM_DISTINCT_WEEKDAYS_FOR_DAY_OF_WEEK_COMPONENT
+    {
+        return estimate;
+    }
+
+    let bucket_count = estimate.day_of_week_factor.len();
+    DayOfWeekSeasonalityEstimateOutput {
+        day_of_week_log_component: vec![0.0; bucket_count],
+        day_of_week_factor: vec![1.0; bucket_count],
+        fallback_bucket_flags: vec![1; bucket_count],
+        diagnostics: crate::seasonality::DayOfWeekSeasonalityDiagnostics {
+            fallback_bucket_count: bucket_count,
+            ..estimate.diagnostics
+        },
+        ..estimate
+    }
+}
+
+fn neutralize_day_of_year_component_when_under_supported(
+    estimate: DayOfYearSeasonalityEstimateOutput,
+    observed_day_of_year: &[u16],
+) -> DayOfYearSeasonalityEstimateOutput {
+    if distinct_u16_bucket_count(observed_day_of_year)
+        >= MINIMUM_DISTINCT_DAYS_OF_YEAR_FOR_DAY_OF_YEAR_COMPONENT
+    {
+        return estimate;
+    }
+
+    let bucket_count = estimate.day_of_year_factor.len();
+    DayOfYearSeasonalityEstimateOutput {
+        day_of_year_log_component: vec![0.0; bucket_count],
+        day_of_year_factor: vec![1.0; bucket_count],
+        fallback_bucket_flags: vec![1; bucket_count],
+        diagnostics: crate::seasonality::DayOfYearSeasonalityDiagnostics {
+            fallback_bucket_count: bucket_count,
+            ..estimate.diagnostics
+        },
+        ..estimate
+    }
+}
+
+fn distinct_u8_bucket_count(values: &[u8]) -> usize {
+    let mut bucket_seen = [false; 256];
+    let mut distinct_bucket_count = 0_usize;
+
+    for &value in values {
+        let bucket_index = value as usize;
+        if !bucket_seen[bucket_index] {
+            bucket_seen[bucket_index] = true;
+            distinct_bucket_count += 1;
+        }
+    }
+
+    distinct_bucket_count
+}
+
+fn distinct_u16_bucket_count(values: &[u16]) -> usize {
+    let mut bucket_seen = [false; 367];
+    let mut distinct_bucket_count = 0_usize;
+
+    for &value in values {
+        let bucket_index = value as usize;
+        if !bucket_seen[bucket_index] {
+            bucket_seen[bucket_index] = true;
+            distinct_bucket_count += 1;
+        }
+    }
+
+    distinct_bucket_count
 }

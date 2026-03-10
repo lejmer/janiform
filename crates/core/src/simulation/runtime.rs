@@ -12,12 +12,12 @@ use crate::news::{
     SharedNewsAccumulatorState, SharedNewsEventTimestampedInput,
     dispatch_shared_news_events_with_resolved_market_states,
 };
-use crate::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
-use crate::risk::SufficientStatisticsRiskReturnComponents;
 use crate::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
     SplitMix64SimulationRandomnessFactory,
 };
+use crate::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
+use crate::risk::SufficientStatisticsRiskReturnComponents;
 
 use super::artifacts::{
     SeededFinePathMetadata, SeededFinePathRecord, SeededFinePathTransitionKind,
@@ -72,29 +72,38 @@ where
     run_config.validate()?;
 
     let state_snapshot_capture = run_config.options.state_snapshot_capture;
+
     let lambda_bar = run_config.model_inputs.kernel_parameters.lambda_bar;
-    let driver_parameters = run_config
-        .model_inputs
-        .nig_shared_plus_shift_configuration
-        .derive_driver_parameters()
-        .map_err(|source| SeededTickSimulationRunError::InvalidNigSharedPlusShiftConfiguration {
-            source,
-        })?;
+
+    let driver_parameters =
+        run_config
+            .model_inputs
+            .nig_shared_plus_shift_configuration
+            .derive_driver_parameters()
+            .map_err(|source| {
+                SeededTickSimulationRunError::InvalidNigSharedPlusShiftConfiguration { source }
+            })?;
+
     let fine_path_metadata = build_seeded_fine_path_metadata(state_snapshot_capture);
     let event_tape_metadata = build_seeded_tick_event_tape_metadata(state_snapshot_capture);
+
     let mut fine_path: Vec<SeededFinePathRecord> = Vec::new();
     let mut event_path: Vec<SeededTickEventRecord> = Vec::new();
+
     let mut next_event_index: u64 = 0;
     let mut next_transition_index: u64 = 0;
     let mut next_state = run_config.model_inputs.initial_excitation_state;
     let mut news_routing_totals = SeededTickSimulationNewsRoutingTotals::default();
+
     let known_scheduled_news_event_timestamps_utc_nanos = &run_config
         .model_inputs
         .news_process_configuration
         .arrivals
         .known
         .scheduled_event_timestamps_utc_nanos;
+
     let mut next_known_scheduled_news_timestamp_position = 0usize;
+
     let mut pending_open_jump_return = 0.0_f64;
     let mut pending_closed_gap_return = 0.0_f64;
     let mut cumulative_log_return = 0.0_f64;
@@ -163,7 +172,11 @@ where
             );
             let current_market_state = resolve_news_event_market_state(
                 &run_config.model_inputs.calendar_registry,
-                run_config.model_inputs.hourly_factor_contract.exchange_code.as_str(),
+                run_config
+                    .model_inputs
+                    .hourly_factor_contract
+                    .exchange_code
+                    .as_str(),
                 interval_update.timestamp_utc_nanos(),
             )?;
             let open_jump_return = if current_market_state == MarketState::Open {
@@ -204,10 +217,13 @@ where
                 closed_gap_return,
                 total_return,
             )
-            .map_err(|source| SeededTickSimulationRunError::InvalidReturnComponents {
-                interval_index,
-                source,
+            .map_err(|source| {
+                SeededTickSimulationRunError::InvalidReturnComponents {
+                    interval_index,
+                    source,
+                }
             })?;
+
             cumulative_log_return += total_return;
 
             let transition_step =
@@ -268,11 +284,7 @@ where
                     });
                     next_event_index = next_event_index.saturating_add(1);
                     previous_timestamp_utc_nanos = timestamp_utc_nanos;
-                    (
-                        map_side_to_transition_kind(side),
-                        Some(side),
-                        None,
-                    )
+                    (map_side_to_transition_kind(side), Some(side), None)
                 }
                 IntervalStochasticUpdate::ExogenousNews {
                     timestamp_utc_nanos,
@@ -312,7 +324,11 @@ where
         let previous_state = next_state;
         let boundary_market_state = resolve_news_event_market_state(
             &run_config.model_inputs.calendar_registry,
-            run_config.model_inputs.hourly_factor_contract.exchange_code.as_str(),
+            run_config
+                .model_inputs
+                .hourly_factor_contract
+                .exchange_code
+                .as_str(),
             interval_end_utc_nanos,
         )?;
         let open_jump_return = if boundary_market_state == MarketState::Open {
@@ -353,10 +369,12 @@ where
             closed_gap_return,
             total_return,
         )
-        .map_err(|source| SeededTickSimulationRunError::InvalidReturnComponents {
-            interval_index,
-            source,
-        })?;
+        .map_err(
+            |source| SeededTickSimulationRunError::InvalidReturnComponents {
+                interval_index,
+                source,
+            },
+        )?;
         cumulative_log_return += total_return;
 
         next_state = evolve_hawkes_state(
@@ -474,16 +492,21 @@ where
         open_jump: 0.0,
         closed_gap: 0.0,
     })
-    .map_err(|source| SeededTickSimulationRunError::InvalidReturnDecomposition {
-        interval_index,
-        source,
-    })?;
-    let trading_time_contributions = return_decomposition
-        .sample_nig_trading_time_increment(driver_parameters, &mut randomness_stream)
-        .map_err(|source| SeededTickSimulationRunError::TradingTimeSamplingFailure {
+    .map_err(
+        |source| SeededTickSimulationRunError::InvalidReturnDecomposition {
             interval_index,
             source,
-        })?;
+        },
+    )?;
+
+    let trading_time_contributions = return_decomposition
+        .sample_nig_trading_time_increment(driver_parameters, &mut randomness_stream)
+        .map_err(
+            |source| SeededTickSimulationRunError::TradingTimeSamplingFailure {
+                interval_index,
+                source,
+            },
+        )?;
 
     Ok(TradingTimeReturnComponents {
         buy_side_return: trading_time_contributions.buy_side_increment,
@@ -938,23 +961,29 @@ where
         .news_process_configuration
         .default_mark_pipeline();
     let mut next_generation_order = 0_u64;
+
     for &known_news_timestamp_utc_nanos in interval_known_news_event_timestamps_utc_nanos {
-        event_inputs.push(build_timestamped_news_event_input(
-            &mark_pipeline,
-            NewsArrivalComponent::Known,
-            known_news_timestamp_utc_nanos,
-            next_generation_order,
-            run_config
-                .model_inputs
-                .news_process_configuration
-                .known_component_mark_scales,
-            &mut news_mark_stream,
-            interval_index,
-        )
-        .map_err(|source| SeededTickSimulationRunError::NewsMarkSamplingFailure {
-            interval_index,
-            source,
-        })?);
+        event_inputs.push(
+            build_timestamped_news_event_input(
+                &mark_pipeline,
+                NewsArrivalComponent::Known,
+                known_news_timestamp_utc_nanos,
+                next_generation_order,
+                run_config
+                    .model_inputs
+                    .news_process_configuration
+                    .known_component_mark_scales,
+                &mut news_mark_stream,
+                interval_index,
+            )
+            .map_err(|source| {
+                SeededTickSimulationRunError::NewsMarkSamplingFailure {
+                    interval_index,
+                    source,
+                }
+            })?,
+        );
+
         next_generation_order = next_generation_order.saturating_add(1);
     }
 
@@ -964,35 +993,47 @@ where
             interval_duration_nanos,
             &mut news_timestamp_stream,
         );
-        event_inputs.push(build_timestamped_news_event_input(
-            &mark_pipeline,
-            NewsArrivalComponent::Surprise,
-            timestamp_utc_nanos,
-            next_generation_order,
-            run_config
-                .model_inputs
-                .news_process_configuration
-                .surprise_component_mark_scales,
-            &mut news_mark_stream,
-            interval_index,
-        )
-        .map_err(|source| SeededTickSimulationRunError::NewsMarkSamplingFailure {
-            interval_index,
-            source,
-        })?);
+
+        event_inputs.push(
+            build_timestamped_news_event_input(
+                &mark_pipeline,
+                NewsArrivalComponent::Surprise,
+                timestamp_utc_nanos,
+                next_generation_order,
+                run_config
+                    .model_inputs
+                    .news_process_configuration
+                    .surprise_component_mark_scales,
+                &mut news_mark_stream,
+                interval_index,
+            )
+            .map_err(|source| {
+                SeededTickSimulationRunError::NewsMarkSamplingFailure {
+                    interval_index,
+                    source,
+                }
+            })?,
+        );
+
         next_generation_order = next_generation_order.saturating_add(1);
     }
 
     let dispatch_output = dispatch_shared_news_events_with_resolved_market_states(
         &run_config.model_inputs.calendar_registry,
-        run_config.model_inputs.hourly_factor_contract.exchange_code.as_str(),
+        run_config
+            .model_inputs
+            .hourly_factor_contract
+            .exchange_code
+            .as_str(),
         SharedNewsAccumulatorState::new(0.0, 0.0, 0.0),
         event_inputs.as_slice(),
     )
-    .map_err(|source| SeededTickSimulationRunError::SharedNewsDispatchFailure {
-        interval_index,
-        source,
-    })?;
+    .map_err(
+        |source| SeededTickSimulationRunError::SharedNewsDispatchFailure {
+            interval_index,
+            source,
+        },
+    )?;
 
     let mut exogenous_interval_updates: Vec<IntervalStochasticUpdate> =
         Vec::with_capacity(dispatch_output.records.len());
@@ -1545,9 +1586,7 @@ pub(crate) fn build_timestamped_news_event_input(
     randomness_stream: &mut dyn crate::randomness::SimulationRandomnessStream,
     _interval_index: usize,
 ) -> Result<SharedNewsEventTimestampedInput, crate::news::NewsMarkInterfaceError> {
-    let sampled_mark_payload = mark_pipeline
-        .sample_coupled_marks(randomness_stream)
-        ?;
+    let sampled_mark_payload = mark_pipeline.sample_coupled_marks(randomness_stream)?;
 
     Ok(SharedNewsEventTimestampedInput {
         event_timestamp_utc_nanos,
@@ -1577,6 +1616,7 @@ fn accumulate_news_routing_totals(
             .cumulative_closed_window_gap_g_t_increment
             + routing_update.closed_window_gap_g_t_increment,
     };
+
     if !next_totals
         .cumulative_activity_coupling_j_t_increment
         .is_finite()

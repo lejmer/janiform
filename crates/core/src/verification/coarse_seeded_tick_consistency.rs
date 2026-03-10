@@ -1366,8 +1366,14 @@ fn aggregate_fine_records_to_coarse_records(
                 .iter()
                 .map(|record| record.n_minus)
                 .fold(0_u64, u64::saturating_add),
-            buy_side_return: fine_window.iter().map(|record| record.buy_side_return).sum(),
-            sell_side_return: fine_window.iter().map(|record| record.sell_side_return).sum(),
+            buy_side_return: fine_window
+                .iter()
+                .map(|record| record.buy_side_return)
+                .sum(),
+            sell_side_return: fine_window
+                .iter()
+                .map(|record| record.sell_side_return)
+                .sum(),
             trading_time_return: fine_window
                 .iter()
                 .map(|record| record.trading_time_return)
