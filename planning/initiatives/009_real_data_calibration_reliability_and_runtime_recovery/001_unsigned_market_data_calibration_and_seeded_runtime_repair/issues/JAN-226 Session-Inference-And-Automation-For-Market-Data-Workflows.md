@@ -24,7 +24,7 @@ The real-data smoke test confirmed that the calendar path is still manual and fr
 - Ensure common workflows can omit `--session-definition-json` when the system has enough information to infer the session calendar with acceptable confidence.
 - Preserve explicit override support for ambiguous or unusual datasets, but make it a documented override path rather than the default expectation.
 - Remove hard-coded session construction from user-facing examples once the automated path exists. Examples should demonstrate automation first and explicit override second.
-- Integrate session inference with both calibration and simulation preparation so observed data windows, close-open boundary detection, hourly-factor materialization, and seeded routing all consume the same inferred session definition.
+- Integrate session inference with both calibration and simulation preparation so observed data windows, close-open boundary detection, interval-factor materialization, and seeded routing all consume the same inferred session definition.
 - Add diagnostics that distinguish:
   - inferred open-session duration
   - inferred recurring closed windows
@@ -36,7 +36,7 @@ The real-data smoke test confirmed that the calendar path is still manual and fr
 - A common market-data calibration workflow can run without a manually authored session-definition file when the dataset provides enough evidence for automatic session inference.
 - The inferred session behavior is captured in a diagnostic or artifact that explains what was inferred and why.
 - Public examples no longer manually build a default FX session definition as the primary workflow.
-- Calibration, close-open boundary detection, hourly-factor materialization, and seeded simulation all consume the same session-resolution result.
+- Calibration, close-open boundary detection, interval-factor materialization, and seeded simulation all consume the same session-resolution result.
 - Ambiguous datasets are surfaced explicitly with diagnostics and override instructions instead of silently receiving an undocumented default.
 - Automated session handling reduces user administration while still supporting explicit manual overrides for special cases.
 

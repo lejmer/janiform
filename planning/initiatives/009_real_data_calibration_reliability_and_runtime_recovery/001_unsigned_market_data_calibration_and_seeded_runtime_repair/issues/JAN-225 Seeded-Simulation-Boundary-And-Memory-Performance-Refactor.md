@@ -3,7 +3,7 @@
 ### Description
 Refactor seeded-simulation execution and data movement so realistic runs do not pay for full fine-path duplication across Rust, JSON, and Python. The current implementation is too slow and too memory-hungry to be acceptable for real-data smoke tests.
 
-The investigated run took approximately `298` seconds to generate a `96` hour seeded path and used roughly `48 GB` of RAM, while average CPU utilization stayed near `6` to `7` percent. The low CPU utilization is consistent with a mostly single-threaded path saturating roughly one core on a many-core machine, combined with heavy serialization and object-materialization overhead.
+The investigated run took approximately `298` seconds to generate a `96` interval seeded path (this run used hourly data) and used roughly `48 GB` of RAM, while average CPU utilization stayed near `6` to `7` percent. The low CPU utilization is consistent with a mostly single-threaded path saturating roughly one core on a many-core machine, combined with heavy serialization and object-materialization overhead.
 
 The current boundary costs are concrete:
 - In `crates/core/src/simulation/runtime.rs`, seeded simulation allocates full `fine_path` and `event_path` vectors.
@@ -12,7 +12,7 @@ The current boundary costs are concrete:
 - In `python/janiform/simulation/_seeded.py`, Python deserializes the full payload into a `fine_path` tuple of objects and then reconstructs an `event_tape` from `fine_path`, creating another near-full copy when most fine-path records carry an event side.
 - Before seeded simulation starts, the example and ingestion path already hold multiple full copies of the source ticks in memory by loading, normalizing, writing CSV, reloading CSV, and rebuilding normalized tuples.
 
-The pathological Hawkes fit is the first source of pain because it generates too many events, but the boundary design is independently unacceptable. Even after Hawkes calibration is repaired, full fine-path JSON round-tripping should not remain the canonical implementation for long-horizon seeded simulation.
+The pathological Hawkes fit was the first source of pain because it generated too many events. This has now been solved, but the boundary design is independently unacceptable. Even after Hawkes calibration has been repaired, full fine-path JSON round-tripping should not remain the canonical implementation for long-horizon seeded simulation on any supported fixed-width runtime interval grid.
 
 ### Implementation details
 - Replace the current full-fine-path JSON return path with a more appropriate boundary contract for large seeded runs. Options can include chunked native iteration, streaming artifact writing, typed binary transport, or a Rust-owned artifact materialization path with Python loading summaries on demand. The chosen design must avoid building one giant JSON string for the full fine path.
