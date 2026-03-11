@@ -162,6 +162,7 @@ def _valid_hourly_factor_summary():
         schema_version="seasonality.hourly_factor.contract.v1",
         exchange_code="XNYS",
         interval_count=2,
+        interval_duration_nanos=1,
         interval_start_utc_nanos=(1, 2),
         interval_end_utc_nanos=(2, 3),
         s_h=(1.0, 1.1),

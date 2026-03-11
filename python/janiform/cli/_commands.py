@@ -441,6 +441,7 @@ def _run_hourly_factor_materialize_seasonality_command(parsed_arguments: Namespa
             exchange_code=cast(str, parsed_arguments.exchange_code),
             range_start_utc=range_start_utc,
             range_end_utc=range_end_utc,
+            interval=cast(str, parsed_arguments.interval),
             source_timestamps_utc=source_timestamps_utc,
             source_seasonality_factors=source_seasonality_factors,
             settings=settings,
@@ -516,6 +517,7 @@ def _run_hourly_factor_materialize_news_intensity_command(parsed_arguments: Name
             exchange_code=cast(str, parsed_arguments.exchange_code),
             range_start_utc=range_start_utc,
             range_end_utc=range_end_utc,
+            interval=cast(str, parsed_arguments.interval),
             settings=settings,
         )
     except JaniformError as e:
@@ -655,6 +657,7 @@ def _run_hourly_factor_build_contract_command(parsed_arguments: Namespace) -> in
             exchange_code=cast(str, parsed_arguments.exchange_code),
             range_start_utc=range_start_utc,
             range_end_utc=range_end_utc,
+            interval=cast(str, parsed_arguments.interval),
             seasonality_hourly_factors=seasonality_hourly_factors,
             news_intensity_hourly_factors=news_intensity_hourly_factors,
             seasonality_materialization_method=seasonality_materialization_method,
@@ -1664,13 +1667,21 @@ def _attach_runtime_hourly_factor_contract(
     request: SeededTickSimulationRequest,
     calendar_registry: CalendarRegistry,
 ) -> SeededTickSimulationRequest:
-    range_end_utc = request.start_time_utc + timedelta(hours=request.horizon_interval_count)
+    interval_duration_nanos = request.hourly_factor_summary.interval_duration_nanos
+    range_end_utc_nanos = datetime_to_utc_nanos(request.start_time_utc) + (
+        request.horizon_interval_count * interval_duration_nanos
+    )
+    whole_seconds, remainder_nanos = divmod(range_end_utc_nanos, 1_000_000_000)
+    range_end_utc = datetime.fromtimestamp(whole_seconds, tz=UTC) + timedelta(
+        microseconds=remainder_nanos // 1_000,
+    )
 
     hourly_factor_contract = load_hourly_factor_contract_for_simulation(
         calendar_registry=calendar_registry,
         exchange_code=request.hourly_factor_summary.exchange_code,
         range_start_utc=request.start_time_utc,
         range_end_utc=range_end_utc,
+        interval=f"{interval_duration_nanos}ns",
         seasonality_source=HourlySeasonalityProviderExplicitSource(
             hourly_factors=request.hourly_factor_summary.s_h,
             materialization_method="cli.request_hourly_factor_summary.v1",
@@ -2529,6 +2540,7 @@ def _build_hourly_factor_contract_payload(contract: HourlyFactorContract) -> dic
         "exchange_timezone_name": contract.exchange_timezone_name,
         "request_start_utc_nanos": contract.request_start_utc_nanos,
         "request_end_utc_nanos": contract.request_end_utc_nanos,
+        "interval_duration_nanos": contract.interval_duration_nanos,
         "interval_indices": list(contract.interval_indices),
         "interval_start_utc_nanos": list(contract.interval_start_utc_nanos),
         "interval_end_utc_nanos": list(contract.interval_end_utc_nanos),
@@ -2560,6 +2572,7 @@ def _build_hourly_seasonality_materialization_payload(
         "exchange_timezone_name": materialization.exchange_timezone_name,
         "request_start_utc_nanos": materialization.request_start_utc_nanos,
         "request_end_utc_nanos": materialization.request_end_utc_nanos,
+        "interval_duration_nanos": materialization.interval_duration_nanos,
         "interval_indices": list(materialization.interval_indices),
         "interval_start_utc_nanos": list(materialization.interval_start_utc_nanos),
         "interval_end_utc_nanos": list(materialization.interval_end_utc_nanos),
@@ -2594,6 +2607,7 @@ def _build_hourly_news_intensity_materialization_payload(
         "exchange_timezone_name": materialization.exchange_timezone_name,
         "request_start_utc_nanos": materialization.request_start_utc_nanos,
         "request_end_utc_nanos": materialization.request_end_utc_nanos,
+        "interval_duration_nanos": materialization.interval_duration_nanos,
         "interval_indices": list(materialization.interval_indices),
         "interval_start_utc_nanos": list(materialization.interval_start_utc_nanos),
         "interval_end_utc_nanos": list(materialization.interval_end_utc_nanos),

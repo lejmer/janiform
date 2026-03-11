@@ -60,6 +60,7 @@ fn build_hourly_factor_contract_with_seasonality(
         request_end_utc_nanos: i64::try_from(interval_count)
             .expect("test interval count must fit in i64")
             * 3_600_000_000_000,
+        interval_duration_nanos: 3_600_000_000_000,
         interval_indices,
         interval_start_utc_nanos,
         interval_end_utc_nanos,
@@ -78,6 +79,7 @@ fn build_hourly_factor_contract_with_seasonality(
         },
         diagnostics: HourlyFactorContractDiagnostics {
             interval_count,
+            interval_duration_nanos: 3_600_000_000_000,
             first_interval_start_utc_nanos: 0,
             last_interval_end_utc_nanos: i64::try_from(interval_count)
                 .expect("test interval count must fit in i64")

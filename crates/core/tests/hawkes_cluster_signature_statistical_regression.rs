@@ -1420,6 +1420,7 @@ fn build_uniform_factor_contract(
         exchange_timezone_name: "America/New_York".to_owned(),
         request_start_utc_nanos: START_TIME_UTC_NANOS,
         request_end_utc_nanos,
+        interval_duration_nanos,
         interval_indices,
         interval_start_utc_nanos: interval_start_utc_nanos.clone(),
         interval_end_utc_nanos: interval_end_utc_nanos.clone(),
@@ -1440,6 +1441,7 @@ fn build_uniform_factor_contract(
         },
         diagnostics: HourlyFactorContractDiagnostics {
             interval_count,
+            interval_duration_nanos,
             first_interval_start_utc_nanos: interval_start_utc_nanos[0],
             last_interval_end_utc_nanos: request_end_utc_nanos,
             skipped_local_hour_interval_count: 0,

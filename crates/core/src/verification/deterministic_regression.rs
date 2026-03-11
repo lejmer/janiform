@@ -428,6 +428,7 @@ fn resolve_hourly_factor_contract(
             exchange_code: &hourly_factor_case.exchange_code,
             range_start_utc: hourly_factor_case.range_start_utc,
             range_end_utc: hourly_factor_case.range_end_utc,
+            interval_duration_nanos: 3_600_000_000_000,
             seasonality_source: Some(seasonality_source),
             news_intensity_source: Some(news_intensity_source),
         },

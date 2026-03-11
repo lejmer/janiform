@@ -1,8 +1,9 @@
 pub const HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION: &str = "seasonality.hourly_factor.contract.v1";
 pub const HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY: &str = "start_inclusive_end_exclusive.v1";
-pub const HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY: &str = "utc_hour_aligned.v1";
+pub const HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY: &str =
+    "request_start_anchored_fixed_width_utc_interval_grid.v1";
 pub const HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY: &str =
-    "utc_hour_bucket_projected_to_exchange_local.v1";
+    "fixed_width_utc_interval_projected_to_exchange_local.v1";
 pub const HOURLY_FACTOR_SPRING_FORWARD_POLICY: &str = "skip_nonexistent_local_hour_labels.v1";
 pub const HOURLY_FACTOR_FALL_BACK_POLICY: &str =
     "preserve_repeated_local_hour_labels_with_numeric_utc_offset.v1";
@@ -24,5 +25,4 @@ pub const DEFAULT_KNOWN_NEWS_CALENDAR_ANCHOR_POLICY: &str =
 pub const DEFAULT_SURPRISE_NEWS_INTENSITY_CONTROL_POLICY: &str =
     "interval_indexed_surprise_multiplier_with_default_one.v1";
 
-pub(super) const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
 pub(super) const ONE_SECOND_NANOS: i64 = 1_000_000_000;

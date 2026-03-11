@@ -10,7 +10,7 @@ use super::constants::{
     HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY, HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION,
 };
 use super::error::HourlyFactorContractError;
-use super::interval_indexing::build_hourly_interval_indexing;
+use super::interval_indexing::build_fixed_interval_indexing;
 use super::types::{
     HourlySeasonalityMaterializationDiagnostics, HourlySeasonalityMaterializationMetadata,
     HourlySeasonalityMaterializationOutput,
@@ -165,6 +165,7 @@ pub fn materialize_hourly_seasonality_factors(
     exchange_code: &str,
     range_start_utc: DateTime<Utc>,
     range_end_utc: DateTime<Utc>,
+    interval_duration_nanos: i64,
     source_timestamp_utc_nanos: &[i64],
     source_seasonality_factors: &[f64],
     interpolation_method: &str,
@@ -225,11 +226,12 @@ pub fn materialize_hourly_seasonality_factors(
         .sum();
     let global_mean_factor = source_factor_sum / source_points.len() as f64;
 
-    let interval_indexing = build_hourly_interval_indexing(
+    let interval_indexing = build_fixed_interval_indexing(
         calendar_registry,
         exchange_code,
         range_start_utc,
         range_end_utc,
+        interval_duration_nanos,
     )?;
     let mut materialized_s_h: Vec<f64> = Vec::with_capacity(interval_indexing.interval_count);
     let mut sparse_interval_count: usize = 0;
@@ -303,6 +305,7 @@ pub fn materialize_hourly_seasonality_factors(
         exchange_timezone_name: interval_indexing.exchange_timezone_name.clone(),
         request_start_utc_nanos: interval_indexing.request_start_utc_nanos,
         request_end_utc_nanos: interval_indexing.request_end_utc_nanos,
+        interval_duration_nanos: interval_indexing.interval_duration_nanos,
         interval_indices: interval_indexing.interval_indices,
         interval_start_utc_nanos: interval_indexing.interval_start_utc_nanos,
         interval_end_utc_nanos: interval_indexing.interval_end_utc_nanos,
@@ -323,6 +326,7 @@ pub fn materialize_hourly_seasonality_factors(
         diagnostics: HourlySeasonalityMaterializationDiagnostics {
             source_point_count: source_points.len(),
             interval_count: interval_indexing.interval_count,
+            interval_duration_nanos: interval_indexing.interval_duration_nanos,
             sparse_interval_count,
             interpolated_interval_count,
             fallback_interval_count,

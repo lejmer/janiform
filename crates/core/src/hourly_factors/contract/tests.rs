@@ -14,6 +14,8 @@ use crate::hourly_factors::{
     materialize_hourly_seasonality_factors,
 };
 
+const ONE_HOUR_INTERVAL_NANOS: i64 = 3_600_000_000_000;
+
 #[test]
 fn hourly_factor_contract_builds_expected_schema_and_metadata() {
     let registry = build_calendar_registry();
@@ -23,6 +25,7 @@ fn hourly_factor_contract_builds_expected_schema_and_metadata() {
         "XNYS",
         parse_timestamp("2026-02-02T14:00:00Z"),
         parse_timestamp("2026-02-02T17:00:00Z"),
+        ONE_HOUR_INTERVAL_NANOS,
         &[1.0, 1.1, 0.9],
         &[0.4, 0.0, 0.2],
         DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
@@ -75,6 +78,7 @@ fn hourly_factor_contract_intervals_are_consecutive_and_non_overlapping() {
         "XNYS",
         parse_timestamp("2026-02-02T14:00:00Z"),
         parse_timestamp("2026-02-02T18:00:00Z"),
+        ONE_HOUR_INTERVAL_NANOS,
         &[1.0, 1.0, 1.0, 1.0],
         &[0.0, 0.0, 0.0, 0.0],
         DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
@@ -108,6 +112,7 @@ fn hourly_factor_contract_spring_forward_policy_skips_nonexistent_local_hour_lab
         "XNYS",
         parse_timestamp("2026-03-08T06:00:00Z"),
         parse_timestamp("2026-03-08T09:00:00Z"),
+        ONE_HOUR_INTERVAL_NANOS,
         &[1.0, 1.0, 1.0],
         &[0.0, 0.0, 0.0],
         DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
@@ -148,6 +153,7 @@ fn hourly_factor_contract_fall_back_policy_preserves_repeated_local_hour_labels(
         "XNYS",
         parse_timestamp("2026-11-01T05:00:00Z"),
         parse_timestamp("2026-11-01T08:00:00Z"),
+        ONE_HOUR_INTERVAL_NANOS,
         &[1.0, 1.0, 1.0],
         &[0.0, 0.0, 0.0],
         DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
@@ -188,6 +194,7 @@ fn hourly_factor_contract_rejects_invalid_ranges_and_unknown_exchange_ids() {
         "XNYS",
         parse_timestamp("2026-02-02T14:00:00Z"),
         parse_timestamp("2026-02-02T14:00:00Z"),
+        ONE_HOUR_INTERVAL_NANOS,
         &[],
         &[],
         DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
@@ -200,21 +207,22 @@ fn hourly_factor_contract_rejects_invalid_ranges_and_unknown_exchange_ids() {
         HourlyFactorContractError::NonIncreasingRange { .. }
     ));
 
-    let unaligned_range_error = build_hourly_factor_contract(
+    let invalid_interval_grid_error = build_hourly_factor_contract(
         &registry,
         "XNYS",
         parse_timestamp("2026-02-02T14:30:00Z"),
         parse_timestamp("2026-02-02T16:00:00Z"),
+        ONE_HOUR_INTERVAL_NANOS,
         &[1.0],
         &[0.0],
         DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
         DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
     )
-    .expect_err("hour-unaligned range must fail");
+    .expect_err("range must be divisible by interval width");
 
     assert!(matches!(
-        unaligned_range_error,
-        HourlyFactorContractError::RangeBoundaryNotHourAligned { .. }
+        invalid_interval_grid_error,
+        HourlyFactorContractError::RangeDurationNotDivisibleByInterval { .. }
     ));
 
     let missing_exchange_error = build_hourly_factor_contract(
@@ -222,6 +230,7 @@ fn hourly_factor_contract_rejects_invalid_ranges_and_unknown_exchange_ids() {
         "MISSING",
         parse_timestamp("2026-02-02T14:00:00Z"),
         parse_timestamp("2026-02-02T16:00:00Z"),
+        ONE_HOUR_INTERVAL_NANOS,
         &[1.0, 1.0],
         &[0.0, 0.0],
         DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
@@ -244,6 +253,7 @@ fn seasonality_materializer_handles_sparse_and_missing_intervals_with_fallback_p
         "XNYS",
         parse_timestamp("2026-02-02T13:00:00Z"),
         parse_timestamp("2026-02-02T18:00:00Z"),
+        ONE_HOUR_INTERVAL_NANOS,
         &[
             parse_timestamp("2026-02-02T14:05:00Z")
                 .timestamp_nanos_opt()
@@ -319,6 +329,7 @@ fn seasonality_materializer_is_deterministic_for_identical_inputs() {
         "XNYS",
         parse_timestamp("2026-02-02T14:00:00Z"),
         parse_timestamp("2026-02-02T17:00:00Z"),
+        ONE_HOUR_INTERVAL_NANOS,
         &source_timestamp_utc_nanos,
         &source_seasonality_factors,
         "linear_between_observations.v1",
@@ -333,6 +344,7 @@ fn seasonality_materializer_is_deterministic_for_identical_inputs() {
         "XNYS",
         parse_timestamp("2026-02-02T14:00:00Z"),
         parse_timestamp("2026-02-02T17:00:00Z"),
+        ONE_HOUR_INTERVAL_NANOS,
         &source_timestamp_utc_nanos,
         &source_seasonality_factors,
         "linear_between_observations.v1",
@@ -355,6 +367,7 @@ fn seasonality_materializer_assigns_transition_boundary_observations_determinist
         "XNYS",
         parse_timestamp("2026-03-08T06:00:00Z"),
         parse_timestamp("2026-03-08T09:00:00Z"),
+        ONE_HOUR_INTERVAL_NANOS,
         &[
             parse_timestamp("2026-03-08T06:30:00Z")
                 .timestamp_nanos_opt()
@@ -393,6 +406,7 @@ fn seasonality_materializer_assigns_transition_boundary_observations_determinist
         "XNYS",
         parse_timestamp("2026-11-01T05:00:00Z"),
         parse_timestamp("2026-11-01T08:00:00Z"),
+        ONE_HOUR_INTERVAL_NANOS,
         &[
             parse_timestamp("2026-11-01T05:00:00Z")
                 .timestamp_nanos_opt()
@@ -436,6 +450,7 @@ fn news_intensity_materializer_supports_known_only_component() {
         "XNYS",
         parse_timestamp("2026-02-02T14:00:00Z"),
         parse_timestamp("2026-02-02T17:00:00Z"),
+        ONE_HOUR_INTERVAL_NANOS,
         &[
             parse_timestamp("2026-02-02T14:05:00Z")
                 .timestamp_nanos_opt()
@@ -515,6 +530,7 @@ fn news_intensity_materializer_supports_surprise_only_component() {
         "XNYS",
         parse_timestamp("2026-02-07T00:00:00Z"),
         parse_timestamp("2026-02-07T03:00:00Z"),
+        ONE_HOUR_INTERVAL_NANOS,
         &[],
         0.4,
         &[(0, 1.0), (1, 0.5), (2, 2.0)],
@@ -557,6 +573,7 @@ fn news_intensity_materializer_supports_combined_known_and_surprise_components()
         "XNYS",
         parse_timestamp("2026-02-02T14:00:00Z"),
         parse_timestamp("2026-02-02T17:00:00Z"),
+        ONE_HOUR_INTERVAL_NANOS,
         &[
             parse_timestamp("2026-02-02T14:05:00Z")
                 .timestamp_nanos_opt()
@@ -600,6 +617,7 @@ fn news_intensity_materializer_rejects_non_increasing_known_calendar_anchor_inpu
         "XNYS",
         parse_timestamp("2026-02-02T14:00:00Z"),
         parse_timestamp("2026-02-02T16:00:00Z"),
+        ONE_HOUR_INTERVAL_NANOS,
         &[
             parse_timestamp("2026-02-02T15:10:00Z")
                 .timestamp_nanos_opt()
@@ -628,6 +646,7 @@ fn news_intensity_materializer_rejects_invalid_surprise_intensity_controls() {
         "XNYS",
         parse_timestamp("2026-02-02T14:00:00Z"),
         parse_timestamp("2026-02-02T16:00:00Z"),
+        ONE_HOUR_INTERVAL_NANOS,
         &[],
         -0.1,
         &[],
@@ -644,6 +663,7 @@ fn news_intensity_materializer_rejects_invalid_surprise_intensity_controls() {
         "XNYS",
         parse_timestamp("2026-02-02T14:00:00Z"),
         parse_timestamp("2026-02-02T16:00:00Z"),
+        ONE_HOUR_INTERVAL_NANOS,
         &[],
         0.5,
         &[(0, -0.2)],
@@ -663,6 +683,7 @@ fn news_intensity_materializer_rejects_invalid_surprise_intensity_controls() {
             "XNYS",
             parse_timestamp("2026-02-02T14:00:00Z"),
             parse_timestamp("2026-02-02T16:00:00Z"),
+            ONE_HOUR_INTERVAL_NANOS,
             &[],
             0.5,
             &[(2, 1.0)],

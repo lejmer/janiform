@@ -104,6 +104,7 @@ def test_validation_error_string_format_is_stable() -> None:
                 schema_version="seasonality.hourly_factor.contract.v1",
                 exchange_code="XNYS",
                 interval_count=2,
+                interval_duration_nanos=3_600_000_000_000,
                 interval_start_utc_nanos=(1, 2),
                 interval_end_utc_nanos=(2, 3),
                 s_h=(1.0, 1.1),
@@ -144,7 +145,10 @@ def test_simulation_hourly_factor_loader_wraps_lower_level_validation_errors(
     assert captured_error.value.failure.error_id == "simulation.validation.contract"
     assert captured_error.value.failure.entrypoint == "load_hourly_factor_contract_for_simulation"
     assert captured_error.value.failure.field_path == "hourly_factor_contract"
-    assert captured_error.value.failure.context == {"exchange_code": "XBAD"}
+    assert captured_error.value.failure.context == {
+        "exchange_code": "XBAD",
+        "interval_duration_nanos": 3_600_000_000_000,
+    }
 
 
 def test_simulation_run_maps_missing_native_module_to_integration_error(

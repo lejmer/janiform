@@ -43,6 +43,7 @@ pub struct HourlyFactorProviderRequest<'a> {
     pub exchange_code: &'a str,
     pub range_start_utc: DateTime<Utc>,
     pub range_end_utc: DateTime<Utc>,
+    pub interval_duration_nanos: i64,
     pub seasonality_source: Option<HourlySeasonalityFactorSource<'a>>,
     pub news_intensity_source: Option<HourlyNewsIntensityFactorSource<'a>>,
 }

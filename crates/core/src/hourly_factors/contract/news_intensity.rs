@@ -15,7 +15,7 @@ use super::constants::{
     HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY, HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
 };
 use super::error::HourlyFactorContractError;
-use super::interval_indexing::build_hourly_interval_indexing;
+use super::interval_indexing::build_fixed_interval_indexing;
 use super::types::{
     HourlyNewsIntensityMaterializationDiagnostics, HourlyNewsIntensityMaterializationMetadata,
     HourlyNewsIntensityMaterializationOutput,
@@ -34,6 +34,7 @@ pub fn materialize_hourly_news_intensity_factors(
     exchange_code: &str,
     range_start_utc: DateTime<Utc>,
     range_end_utc: DateTime<Utc>,
+    interval_duration_nanos: i64,
     known_scheduled_event_timestamps_utc_nanos: &[i64],
     surprise_baseline_intensity: f64,
     surprise_deterministic_time_multiplier_by_interval_index: &[(u64, f64)],
@@ -51,11 +52,12 @@ pub fn materialize_hourly_news_intensity_factors(
         .validate()
         .map_err(map_news_arrival_configuration_error)?;
 
-    let interval_indexing = build_hourly_interval_indexing(
+    let interval_indexing = build_fixed_interval_indexing(
         calendar_registry,
         exchange_code,
         range_start_utc,
         range_end_utc,
+        interval_duration_nanos,
     )?;
 
     let mut surprise_deterministic_time_multipliers: Vec<f64> =
@@ -173,6 +175,7 @@ pub fn materialize_hourly_news_intensity_factors(
         exchange_timezone_name: interval_indexing.exchange_timezone_name.clone(),
         request_start_utc_nanos: interval_indexing.request_start_utc_nanos,
         request_end_utc_nanos: interval_indexing.request_end_utc_nanos,
+        interval_duration_nanos: interval_indexing.interval_duration_nanos,
         interval_indices: interval_indexing.interval_indices,
         interval_start_utc_nanos: interval_indexing.interval_start_utc_nanos,
         interval_end_utc_nanos: interval_indexing.interval_end_utc_nanos,
@@ -197,6 +200,7 @@ pub fn materialize_hourly_news_intensity_factors(
         },
         diagnostics: HourlyNewsIntensityMaterializationDiagnostics {
             interval_count: interval_indexing.interval_count,
+            interval_duration_nanos: interval_indexing.interval_duration_nanos,
             known_component_non_zero_interval_count,
             surprise_component_non_zero_interval_count,
             combined_component_non_zero_interval_count,

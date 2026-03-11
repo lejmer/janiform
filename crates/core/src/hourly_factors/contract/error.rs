@@ -7,6 +7,9 @@ pub enum HourlyFactorContractError {
     EmptyExchangeCode,
     EmptySeasonalityMaterializationMethod,
     EmptyNewsIntensityMaterializationMethod,
+    InvalidIntervalDurationNanos {
+        value: i64,
+    },
     TimestampOutOfRange {
         field: &'static str,
     },
@@ -14,9 +17,11 @@ pub enum HourlyFactorContractError {
         range_start_utc_nanos: i64,
         range_end_utc_nanos: i64,
     },
-    RangeBoundaryNotHourAligned {
-        field: &'static str,
-        timestamp_utc_nanos: i64,
+    RangeDurationNotDivisibleByInterval {
+        range_start_utc_nanos: i64,
+        range_end_utc_nanos: i64,
+        interval_duration_nanos: i64,
+        remainder_nanos: i64,
     },
     MissingExchangeId {
         exchange_code: String,
@@ -105,6 +110,10 @@ impl Display for HourlyFactorContractError {
                 formatter,
                 "news_intensity_materialization_method must be a non-empty string"
             ),
+            Self::InvalidIntervalDurationNanos { value } => write!(
+                formatter,
+                "interval_duration_nanos must be strictly positive, received {value}"
+            ),
             Self::TimestampOutOfRange { field } => {
                 write!(
                     formatter,
@@ -118,12 +127,14 @@ impl Display for HourlyFactorContractError {
                 formatter,
                 "range_start_utc must be earlier than range_end_utc, received start={range_start_utc_nanos}, end={range_end_utc_nanos}"
             ),
-            Self::RangeBoundaryNotHourAligned {
-                field,
-                timestamp_utc_nanos,
+            Self::RangeDurationNotDivisibleByInterval {
+                range_start_utc_nanos,
+                range_end_utc_nanos,
+                interval_duration_nanos,
+                remainder_nanos,
             } => write!(
                 formatter,
-                "{field} must be aligned to an exact UTC hour boundary, received {timestamp_utc_nanos}"
+                "range [{range_start_utc_nanos}, {range_end_utc_nanos}) must partition exactly into interval_duration_nanos={interval_duration_nanos}, remainder={remainder_nanos}"
             ),
             Self::MissingExchangeId { exchange_code } => {
                 write!(

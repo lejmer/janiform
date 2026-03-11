@@ -56,6 +56,7 @@ def test_build_hourly_factor_contract_exposes_required_schema_fields_and_types(
     assert isinstance(contract.exchange_code, str)
     assert isinstance(contract.exchange_timezone_name, str)
     assert isinstance(contract.interval_indices, list)
+    assert isinstance(contract.interval_duration_nanos, int)
     assert isinstance(contract.interval_start_utc_nanos[0], int)
     assert isinstance(contract.interval_end_utc_nanos[0], int)
     assert isinstance(contract.interval_start_exchange_local[0], str)
@@ -65,6 +66,7 @@ def test_build_hourly_factor_contract_exposes_required_schema_fields_and_types(
     assert isinstance(contract.repeated_local_hour_interval_count, int)
     assert contract.interval_boundary_policy == HOURLY_FACTOR_OUTPUT_SCHEMA.interval_boundary_policy
     assert contract.interval_alignment_policy == HOURLY_FACTOR_OUTPUT_SCHEMA.interval_alignment_policy
+    assert contract.interval_duration_nanos == ONE_HOUR_NANOS
     assert contract.timezone_transition_policy == HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY
     assert contract.spring_forward_policy == HOURLY_FACTOR_SPRING_FORWARD_POLICY
     assert contract.fall_back_policy == HOURLY_FACTOR_FALL_BACK_POLICY
@@ -96,6 +98,26 @@ def test_build_hourly_factor_contract_indexes_consecutive_non_overlapping_hours(
         interval_end = contract.interval_end_utc_nanos[interval_position]
         assert interval_start < interval_end
         assert interval_end - interval_start == ONE_HOUR_NANOS
+
+
+def test_build_hourly_factor_contract_supports_sub_hour_interval_grids(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    contract = build_hourly_factor_contract(
+        calendar_registry=calendar_registry,
+        exchange_code="XNYS",
+        range_start_utc=datetime(2026, 2, 2, 14, 0, 0, tzinfo=UTC),
+        range_end_utc=datetime(2026, 2, 2, 16, 0, 0, tzinfo=UTC),
+        interval="30min",
+        seasonality_hourly_factors=[1.2, 1.2, 0.8, 0.8],
+        news_intensity_hourly_factors=[0.3, 0.3, 0.1, 0.1],
+    )
+
+    assert contract.interval_duration_nanos == 1_800_000_000_000
+    assert contract.interval_count == 4
+    assert contract.interval_indices == [0, 1, 2, 3]
+    assert contract.s_h == [1.2, 1.2, 0.8, 0.8]
+    assert contract.nu_h == [0.3, 0.3, 0.1, 0.1]
 
 
 def test_build_hourly_factor_contract_spring_forward_skips_nonexistent_local_hour(
@@ -516,6 +538,7 @@ def _contract_snapshot(contract: HourlyFactorContract) -> dict[str, Any]:
         "exchange_timezone_name": contract.exchange_timezone_name,
         "request_start_utc_nanos": contract.request_start_utc_nanos,
         "request_end_utc_nanos": contract.request_end_utc_nanos,
+        "interval_duration_nanos": contract.interval_duration_nanos,
         "interval_indices": list(contract.interval_indices),
         "interval_start_utc_nanos": list(contract.interval_start_utc_nanos),
         "interval_end_utc_nanos": list(contract.interval_end_utc_nanos),
@@ -547,6 +570,7 @@ def _seasonality_materialization_snapshot(
         "exchange_timezone_name": materialization.exchange_timezone_name,
         "request_start_utc_nanos": materialization.request_start_utc_nanos,
         "request_end_utc_nanos": materialization.request_end_utc_nanos,
+        "interval_duration_nanos": materialization.interval_duration_nanos,
         "interval_indices": list(materialization.interval_indices),
         "interval_start_utc_nanos": list(materialization.interval_start_utc_nanos),
         "interval_end_utc_nanos": list(materialization.interval_end_utc_nanos),

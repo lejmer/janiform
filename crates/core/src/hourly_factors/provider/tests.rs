@@ -30,6 +30,7 @@ use crate::simulation::{
 const SIMULATION_SHARED_SEASONALITY_HOURLY_FACTORS: [f64; 3] = [1.0, 0.9, 1.1];
 const SIMULATION_SHARED_NEWS_HOURLY_FACTORS: [f64; 3] = [0.2, 0.0, 0.3];
 const SURPRISE_NEWS_TIME_MULTIPLIERS: [(u64, f64); 3] = [(0, 1.0), (1, 0.5), (2, 2.0)];
+const ONE_HOUR_INTERVAL_NANOS: i64 = 3_600_000_000_000;
 
 #[test]
 fn provider_returns_structured_error_for_missing_seasonality_source() {
@@ -39,6 +40,7 @@ fn provider_returns_structured_error_for_missing_seasonality_source() {
         exchange_code: "XNYS",
         range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
         range_end_utc: parse_timestamp("2026-02-02T16:00:00Z"),
+        interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
         seasonality_source: None,
         news_intensity_source: Some(HourlyNewsIntensityFactorSource::Explicit {
             hourly_factors: &[0.1, 0.0],
@@ -63,6 +65,7 @@ fn provider_returns_structured_error_for_missing_news_intensity_source() {
         exchange_code: "XNYS",
         range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
         range_end_utc: parse_timestamp("2026-02-02T16:00:00Z"),
+        interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
         seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
             hourly_factors: &[1.0, 1.0],
             materialization_method: "explicit_hourly_input.v1",
@@ -87,6 +90,7 @@ fn provider_returns_structured_error_for_unsupported_range_requests() {
         exchange_code: "XNYS",
         range_start_utc: parse_timestamp("2026-02-02T14:30:00Z"),
         range_end_utc: parse_timestamp("2026-02-02T16:00:00Z"),
+        interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
         seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
             hourly_factors: &[1.0],
             materialization_method: "explicit_hourly_input.v1",
@@ -98,12 +102,12 @@ fn provider_returns_structured_error_for_unsupported_range_requests() {
     };
 
     let error = provide_hourly_factor_contract(&registry, request)
-        .expect_err("hour-unaligned range must fail");
+        .expect_err("range duration must divide evenly by interval width");
 
     assert!(matches!(
         error,
         HourlyFactorProviderError::UnsupportedRange {
-            source: HourlyFactorContractError::RangeBoundaryNotHourAligned { .. }
+            source: HourlyFactorContractError::RangeDurationNotDivisibleByInterval { .. }
         }
     ));
 }
@@ -116,6 +120,7 @@ fn pricing_path_consumes_shared_hourly_factor_provider() {
         exchange_code: "XNYS",
         range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
         range_end_utc: parse_timestamp("2026-02-02T17:00:00Z"),
+        interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
         seasonality_source: Some(HourlySeasonalityFactorSource::Materialized {
             source_timestamp_utc_nanos: &[
                 parse_timestamp("2026-02-02T14:05:00Z")
@@ -226,6 +231,33 @@ fn simulation_path_consumes_shared_hourly_factor_provider() {
 }
 
 #[test]
+fn simulation_path_resamples_explicit_hourly_sources_to_sub_hour_intervals() {
+    let registry = build_calendar_registry();
+
+    let request = HourlyFactorProviderRequest {
+        exchange_code: "XNYS",
+        range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
+        range_end_utc: parse_timestamp("2026-02-02T16:00:00Z"),
+        interval_duration_nanos: 1_800_000_000_000,
+        seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
+            hourly_factors: &[1.2, 0.8],
+            materialization_method: "shared_precomputed_hourly_s_h.v1",
+        }),
+        news_intensity_source: Some(HourlyNewsIntensityFactorSource::Explicit {
+            hourly_factors: &[0.3, 0.1],
+            materialization_method: "shared_precomputed_hourly_nu_h.v1",
+        }),
+    };
+
+    let output = load_hourly_factor_contract_for_simulation_path(&registry, request)
+        .expect("simulation path should resample explicit hourly inputs");
+
+    assert_eq!(output.interval_duration_nanos, 1_800_000_000_000);
+    assert_eq!(output.s_h, vec![1.2, 1.2, 0.8, 0.8]);
+    assert_eq!(output.nu_h, vec![0.3, 0.3, 0.1, 0.1]);
+}
+
+#[test]
 fn calibration_path_consumes_shared_hourly_factor_provider() {
     let registry = build_calendar_registry();
 
@@ -233,6 +265,7 @@ fn calibration_path_consumes_shared_hourly_factor_provider() {
         exchange_code: "XNYS",
         range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
         range_end_utc: parse_timestamp("2026-02-02T17:00:00Z"),
+        interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
         seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
             hourly_factors: &[1.3, 0.95, 1.05],
             materialization_method: "shared_precomputed_hourly_s_h.v1",
@@ -364,6 +397,7 @@ fn deterministic_news_intensity_provider_request() -> HourlyFactorProviderReques
         exchange_code: "XNYS",
         range_start_utc: parse_timestamp("2026-02-07T00:00:00Z"),
         range_end_utc: parse_timestamp("2026-02-07T03:00:00Z"),
+        interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
         seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
             hourly_factors: &[1.0, 1.0, 1.0],
             materialization_method: "shared_precomputed_hourly_s_h.v1",
@@ -382,6 +416,7 @@ fn shared_simulation_hourly_factor_provider_request() -> HourlyFactorProviderReq
         exchange_code: "XNYS",
         range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
         range_end_utc: parse_timestamp("2026-02-02T17:00:00Z"),
+        interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
         seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
             hourly_factors: &SIMULATION_SHARED_SEASONALITY_HOURLY_FACTORS,
             materialization_method: "shared_precomputed_hourly_s_h.v1",

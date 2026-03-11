@@ -2733,6 +2733,7 @@ fn one_interval_model_inputs(
             exchange_timezone_name: "America/New_York".to_string(),
             request_start_utc_nanos: start_utc_nanos,
             request_end_utc_nanos: start_utc_nanos + ONE_HOUR_NANOS,
+            interval_duration_nanos: ONE_HOUR_NANOS,
             interval_indices: vec![0],
             interval_start_utc_nanos: interval_start_utc_nanos.clone(),
             interval_end_utc_nanos: interval_end_utc_nanos.clone(),
@@ -2753,6 +2754,7 @@ fn one_interval_model_inputs(
             },
             diagnostics: HourlyFactorContractDiagnostics {
                 interval_count: 1,
+                interval_duration_nanos: ONE_HOUR_NANOS,
                 first_interval_start_utc_nanos: interval_start_utc_nanos[0],
                 last_interval_end_utc_nanos: interval_end_utc_nanos[0],
                 skipped_local_hour_interval_count: 0,
@@ -2982,6 +2984,7 @@ fn valid_model_inputs() -> SeededTickSimulationModelInputs {
             exchange_timezone_name: "America/New_York".to_string(),
             request_start_utc_nanos: start_utc_nanos,
             request_end_utc_nanos: start_utc_nanos + 2 * ONE_HOUR_NANOS,
+            interval_duration_nanos: ONE_HOUR_NANOS,
             interval_indices: vec![0, 1],
             interval_start_utc_nanos: interval_start_utc_nanos.clone(),
             interval_end_utc_nanos: interval_end_utc_nanos.clone(),
@@ -3008,6 +3011,7 @@ fn valid_model_inputs() -> SeededTickSimulationModelInputs {
             },
             diagnostics: HourlyFactorContractDiagnostics {
                 interval_count: 2,
+                interval_duration_nanos: ONE_HOUR_NANOS,
                 first_interval_start_utc_nanos: interval_start_utc_nanos[0],
                 last_interval_end_utc_nanos: interval_end_utc_nanos[1],
                 skipped_local_hour_interval_count: 0,

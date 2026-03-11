@@ -1329,7 +1329,7 @@
         "HOURLY_FACTOR_OUTPUT_SCHEMA": {
           "kind": "constant",
           "value": {
-            "interval_alignment_policy": "utc_hour_aligned.v1",
+            "interval_alignment_policy": "request_start_anchored_fixed_width_utc_interval_grid.v1",
             "interval_boundary_policy": "start_inclusive_end_exclusive.v1",
             "required_fields": [
               "schema_version",
@@ -1337,6 +1337,7 @@
               "exchange_timezone_name",
               "request_start_utc_nanos",
               "request_end_utc_nanos",
+              "interval_duration_nanos",
               "interval_indices",
               "interval_start_utc_nanos",
               "interval_end_utc_nanos",
@@ -1375,12 +1376,12 @@
         },
         "HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY": {
           "kind": "constant",
-          "value": "utc_hour_bucket_projected_to_exchange_local.v1"
+          "value": "fixed_width_utc_interval_projected_to_exchange_local.v1"
         },
         "HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA": {
           "kind": "constant",
           "value": {
-            "interval_alignment_policy": "utc_hour_aligned.v1",
+            "interval_alignment_policy": "request_start_anchored_fixed_width_utc_interval_grid.v1",
             "interval_boundary_policy": "start_inclusive_end_exclusive.v1",
             "required_fields": [
               "schema_version",
@@ -1388,6 +1389,7 @@
               "exchange_timezone_name",
               "request_start_utc_nanos",
               "request_end_utc_nanos",
+              "interval_duration_nanos",
               "interval_indices",
               "interval_start_utc_nanos",
               "interval_end_utc_nanos",
@@ -1441,7 +1443,7 @@
         "HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA": {
           "kind": "constant",
           "value": {
-            "interval_alignment_policy": "utc_hour_aligned.v1",
+            "interval_alignment_policy": "request_start_anchored_fixed_width_utc_interval_grid.v1",
             "interval_boundary_policy": "start_inclusive_end_exclusive.v1",
             "required_fields": [
               "schema_version",
@@ -1449,6 +1451,7 @@
               "exchange_timezone_name",
               "request_start_utc_nanos",
               "request_end_utc_nanos",
+              "interval_duration_nanos",
               "interval_indices",
               "interval_start_utc_nanos",
               "interval_end_utc_nanos",
@@ -1639,23 +1642,23 @@
         },
         "build_hourly_factor_contract": {
           "kind": "function",
-          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', seasonality_hourly_factors: 'Sequence[float]', news_intensity_hourly_factors: 'Sequence[float]', seasonality_materialization_method: 'str' = 'explicit_hourly_input.v1', news_intensity_materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'HourlyFactorContract'"
+          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_hourly_factors: 'Sequence[float]', news_intensity_hourly_factors: 'Sequence[float]', seasonality_materialization_method: 'str' = 'explicit_hourly_input.v1', news_intensity_materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'HourlyFactorContract'"
         },
         "build_runtime_hourly_seasonality_source_from_calibration_payload": {
           "kind": "function",
-          "signature": "(*, calendar_registry: 'CalendarRegistry', range_start_utc: 'datetime', range_end_utc: 'datetime', seasonality_stage_payload: 'Mapping[str, Any]', mean_renormalize: 'bool' = True, settings: 'HourlySeasonalityMaterializationSettings' = HourlySeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_hour_minimum_observation_count=1)) -> 'HourlySeasonalityProviderExplicitSource'"
+          "signature": "(*, calendar_registry: 'CalendarRegistry', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_stage_payload: 'Mapping[str, Any]', mean_renormalize: 'bool' = True, settings: 'HourlySeasonalityMaterializationSettings' = HourlySeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_hour_minimum_observation_count=1)) -> 'HourlySeasonalityProviderExplicitSource'"
         },
         "materialize_hourly_news_intensity_factors": {
           "kind": "function",
-          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', settings: 'HourlyNewsIntensityMaterializationSettings') -> 'HourlyNewsIntensityMaterialization'"
+          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', settings: 'HourlyNewsIntensityMaterializationSettings') -> 'HourlyNewsIntensityMaterialization'"
         },
         "materialize_hourly_seasonality_factors": {
           "kind": "function",
-          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', settings: 'HourlySeasonalityMaterializationSettings' = HourlySeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_hour_minimum_observation_count=1)) -> 'HourlySeasonalityMaterialization'"
+          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', settings: 'HourlySeasonalityMaterializationSettings' = HourlySeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_hour_minimum_observation_count=1)) -> 'HourlySeasonalityMaterialization'"
         },
         "provide_hourly_factor_contract": {
           "kind": "function",
-          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', seasonality_source: 'Optional[HourlySeasonalityProviderSource]' = None, news_intensity_source: 'Optional[HourlyNewsIntensityProviderSource]' = None) -> 'HourlyFactorContract'"
+          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_source: 'Optional[HourlySeasonalityProviderSource]' = None, news_intensity_source: 'Optional[HourlyNewsIntensityProviderSource]' = None) -> 'HourlyFactorContract'"
         }
       }
     },
@@ -3018,13 +3021,14 @@
             "schema_version",
             "exchange_code",
             "interval_count",
+            "interval_duration_nanos",
             "interval_start_utc_nanos",
             "interval_end_utc_nanos",
             "s_h",
             "nu_h"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', exchange_code: 'str', interval_count: 'int', interval_start_utc_nanos: 'tuple[int, ...]', interval_end_utc_nanos: 'tuple[int, ...]', s_h: 'tuple[float, ...]', nu_h: 'tuple[float, ...]') -> 'None'"
+          "signature": "(schema_version: 'str', exchange_code: 'str', interval_count: 'int', interval_duration_nanos: 'int', interval_start_utc_nanos: 'tuple[int, ...]', interval_end_utc_nanos: 'tuple[int, ...]', s_h: 'tuple[float, ...]', nu_h: 'tuple[float, ...]') -> 'None'"
         },
         "SeededTickSimulationRequest": {
           "field_names": [
@@ -3108,7 +3112,7 @@
         },
         "load_hourly_factor_contract_for_simulation": {
           "kind": "function",
-          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', seasonality_source: 'HourlySeasonalityProviderSource', news_intensity_source: 'HourlyNewsIntensityProviderSource') -> 'HourlyFactorContract'"
+          "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_source: 'HourlySeasonalityProviderSource', news_intensity_source: 'HourlyNewsIntensityProviderSource') -> 'HourlyFactorContract'"
         },
         "run_coarse_simulation": {
           "kind": "function",
