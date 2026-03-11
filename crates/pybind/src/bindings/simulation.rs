@@ -14,7 +14,7 @@ use pyo3::types::{PyAny, PyMapping, PyModule};
 use super::calendar::parse_timestamp_utc;
 use crate::SeasonalityInputValidationError;
 use crate::SimulationExecutionError;
-use crate::types::PyHourlyFactorContractResult;
+use crate::types::{PyHourlyFactorContractResult, PySeededTickSimulationNativeResult};
 
 #[pyfunction]
 fn run_coarse_simulation(run_request_json: &str) -> PyResult<String> {
@@ -50,7 +50,7 @@ fn run_seeded_tick_event_simulation(
     sample_every_nth_transition: u64,
     max_records_per_chunk: usize,
     state_snapshot_capture: &str,
-) -> PyResult<String> {
+) -> PyResult<PySeededTickSimulationNativeResult> {
     let parsed_start_time_utc = parse_timestamp_utc(start_time_utc)?;
     let parsed_kernel_parameters = parse_seeded_simulation_kernel_parameters(kernel_parameters)?;
     let parsed_nig_shared_plus_shift_configuration =
@@ -99,11 +99,7 @@ fn run_seeded_tick_event_simulation(
         .allow_threads(|| run_seeded_tick_event_simulation_core(run_config))
         .map_err(map_seeded_tick_simulation_run_error)?;
 
-    run_result.serialize_fine_path_json().map_err(|_| {
-        SeasonalityInputValidationError::new_err(
-            "failed to serialize seeded fine path payload to json",
-        )
-    })
+    Ok(PySeededTickSimulationNativeResult { output: run_result })
 }
 
 fn parse_seeded_simulation_kernel_parameters(
@@ -268,14 +264,7 @@ fn parse_required_mapping_field<'py>(
     parent_context: &str,
     field_name: &str,
 ) -> PyResult<Bound<'py, PyMapping>> {
-    let field_value = parent_mapping
-        .contains(field_name)?
-        .then(|| parent_mapping.get_item(field_name))
-        .ok_or_else(|| {
-            SeasonalityInputValidationError::new_err(format!(
-                "{parent_context} is missing required field '{field_name}'"
-            ))
-        })??;
+    let field_value = parse_required_field(parent_mapping, parent_context, field_name)?;
 
     let field_mapping = field_value.downcast::<PyMapping>().map_err(|_| {
         SeasonalityInputValidationError::new_err(format!(
@@ -291,14 +280,7 @@ fn parse_required_float_field_from_mapping(
     parent_context: &str,
     field_name: &str,
 ) -> PyResult<f64> {
-    let field_value = parent_mapping
-        .contains(field_name)?
-        .then(|| parent_mapping.get_item(field_name))
-        .ok_or_else(|| {
-            SeasonalityInputValidationError::new_err(format!(
-                "{parent_context} is missing required field '{field_name}'"
-            ))
-        })??;
+    let field_value = parse_required_field(parent_mapping, parent_context, field_name)?;
 
     let parsed_value = field_value.extract::<f64>().map_err(|_| {
         SeasonalityInputValidationError::new_err(format!(
@@ -313,6 +295,21 @@ fn parse_required_float_field_from_mapping(
     }
 
     Ok(parsed_value)
+}
+
+fn parse_required_field<'py>(
+    parent_mapping: &Bound<'py, PyMapping>,
+    parent_context: &str,
+    field_name: &str,
+) -> PyResult<Bound<'py, PyAny>> {
+    parent_mapping
+        .contains(field_name)?
+        .then(|| parent_mapping.get_item(field_name))
+        .ok_or_else(|| {
+            SeasonalityInputValidationError::new_err(format!(
+                "{parent_context} is missing required field '{field_name}'"
+            ))
+        })?
 }
 
 fn map_seeded_tick_simulation_run_error(

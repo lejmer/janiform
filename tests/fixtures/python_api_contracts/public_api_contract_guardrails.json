@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "b7c6035b6924c5ace138467a8fce9228702107fd66ef1d96a0ff70da2c7067d3",
+  "approved_snapshot_sha256": "7b84737ad782c120a5de559f6ff762b6b94b205aae98f5188e14f0bab8aa5256",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -125,6 +125,16 @@
       "rationale": "The staged return-components calibration contract now exposes raw observed open-session returns, activity-lift evidence, and explicit objective weights so callers provide empirical evidence instead of pre-baked NIG candidates and forced jump structure.",
       "snapshot_sha256": "b7c6035b6924c5ace138467a8fce9228702107fd66ef1d96a0ff70da2c7067d3",
       "summary": "Replace public return-components NIG candidate inputs with observed return evidence and diagnostics weights."
+    },
+    {
+      "approved_on": "2026-03-12",
+      "docs_updated": [
+        "README.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "Seeded simulation now returns lazy fine-path and event-tape views with explicit boundary diagnostics, replacing the eager full-path JSON round-trip and surfacing the new response metadata in the approved Python API snapshot.",
+      "snapshot_sha256": "7b84737ad782c120a5de559f6ff762b6b94b205aae98f5188e14f0bab8aa5256",
+      "summary": "Record lazy seeded simulation views and boundary diagnostics in the public Python API snapshot."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_1",

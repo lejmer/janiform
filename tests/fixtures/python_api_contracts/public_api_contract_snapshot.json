@@ -2601,6 +2601,7 @@
         "SeededTickEventStateSnapshot",
         "SeededTickEventStateSnapshotCapture",
         "SeededTickEventTapeMetadata",
+        "SeededTickSimulationDiagnostics",
         "SeededTickSimulationHourlyFactorSummary",
         "SeededTickSimulationRequest",
         "SeededTickSimulationResponse",
@@ -3030,6 +3031,24 @@
           "kind": "contract_model",
           "signature": "(schema_version: 'str', event_record_schema_version: 'str', state_snapshot_schema_version: 'str', event_ordering_policy: 'str', timestamp_representation_policy: 'str', side_encoding_policy: 'str', state_snapshot_capture: 'SeededTickEventStateSnapshotCapture', state_snapshot_capture_point_policy: 'Optional[str]' = None) -> 'None'"
         },
+        "SeededTickSimulationDiagnostics": {
+          "field_names": [
+            "schema_version",
+            "transition_count",
+            "event_count",
+            "native_runtime_seconds",
+            "python_response_construction_seconds",
+            "python_materialization_seconds",
+            "boundary_transport_bytes",
+            "native_estimated_retained_bytes",
+            "materialized_transition_count",
+            "materialized_event_count",
+            "boundary_transport_policy",
+            "boundary_chunk_record_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', transition_count: 'int', event_count: 'int', native_runtime_seconds: 'float', python_response_construction_seconds: 'float', python_materialization_seconds: 'float', boundary_transport_bytes: 'int', native_estimated_retained_bytes: 'int', materialized_transition_count: 'int', materialized_event_count: 'int', boundary_transport_policy: 'str', boundary_chunk_record_count: 'int') -> 'None'"
+        },
         "SeededTickSimulationHourlyFactorSummary": {
           "field_names": [
             "schema_version",
@@ -3066,11 +3085,13 @@
           "field_names": [
             "schema_version",
             "metadata",
+            "event_tape_metadata",
+            "diagnostics",
             "fine_path",
             "event_tape"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', metadata: 'SeededFinePathMetadata', fine_path: 'tuple[SeededFinePathRecord, ...]', event_tape: 'tuple[SeededTickEventRecord, ...]' = ()) -> 'None'"
+          "signature": "(schema_version: 'str', metadata: 'SeededFinePathMetadata', event_tape_metadata: 'SeededTickEventTapeMetadata', diagnostics: 'SeededTickSimulationDiagnostics', fine_path: 'SeededFinePathView', event_tape: 'SeededTickEventTapeView') -> 'None'"
         },
         "SeededTickSimulationValidationError": {
           "base_classes": [

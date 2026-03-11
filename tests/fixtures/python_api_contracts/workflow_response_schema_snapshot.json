@@ -1169,6 +1169,48 @@
     },
     "simulation.seeded_tick_event.path.v1::boundary_runtime_nominal": {
       "fields": {
+        "diagnostics": {
+          "fields": {
+            "boundary_chunk_record_count": {
+              "type": "int"
+            },
+            "boundary_transport_bytes": {
+              "type": "int"
+            },
+            "boundary_transport_policy": {
+              "type": "string"
+            },
+            "event_count": {
+              "type": "int"
+            },
+            "materialized_event_count": {
+              "type": "int"
+            },
+            "materialized_transition_count": {
+              "type": "int"
+            },
+            "native_estimated_retained_bytes": {
+              "type": "int"
+            },
+            "native_runtime_seconds": {
+              "type": "float"
+            },
+            "python_materialization_seconds": {
+              "type": "float"
+            },
+            "python_response_construction_seconds": {
+              "type": "float"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick.path_diagnostics.v1"
+            },
+            "transition_count": {
+              "type": "int"
+            }
+          },
+          "type": "object"
+        },
         "event_tape": {
           "item_profiles": [
             {
@@ -1191,6 +1233,42 @@
           ],
           "length": 3,
           "type": "array"
+        },
+        "event_tape_metadata": {
+          "fields": {
+            "event_ordering_policy": {
+              "type": "string",
+              "value": "timestamp_then_endogenous_before_exogenous_then_buy_before_sell_then_known_before_surprise_then_generation_order.v1"
+            },
+            "event_record_schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick_event.record.v1"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick_event.tape_metadata.v1"
+            },
+            "side_encoding_policy": {
+              "type": "string",
+              "value": "lowercase_buy_or_sell.v1"
+            },
+            "state_snapshot_capture": {
+              "type": "string",
+              "value": "disabled"
+            },
+            "state_snapshot_capture_point_policy": {
+              "type": "null"
+            },
+            "state_snapshot_schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick_event.state_snapshot.v1"
+            },
+            "timestamp_representation_policy": {
+              "type": "string",
+              "value": "event_time_timestamp_utc_nanos_without_bucket_identifier.v1"
+            }
+          },
+          "type": "object"
         },
         "fine_path": {
           "item_profiles": [
@@ -1344,6 +1422,48 @@
     },
     "simulation.seeded_tick_event.path.v1::direct_response_validation_nominal": {
       "fields": {
+        "diagnostics": {
+          "fields": {
+            "boundary_chunk_record_count": {
+              "type": "int"
+            },
+            "boundary_transport_bytes": {
+              "type": "int"
+            },
+            "boundary_transport_policy": {
+              "type": "string"
+            },
+            "event_count": {
+              "type": "int"
+            },
+            "materialized_event_count": {
+              "type": "int"
+            },
+            "materialized_transition_count": {
+              "type": "int"
+            },
+            "native_estimated_retained_bytes": {
+              "type": "int"
+            },
+            "native_runtime_seconds": {
+              "type": "float"
+            },
+            "python_materialization_seconds": {
+              "type": "float"
+            },
+            "python_response_construction_seconds": {
+              "type": "float"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick.path_diagnostics.v1"
+            },
+            "transition_count": {
+              "type": "int"
+            }
+          },
+          "type": "object"
+        },
         "event_tape": {
           "item_profiles": [
             {
@@ -1366,6 +1486,42 @@
           ],
           "length": 1,
           "type": "array"
+        },
+        "event_tape_metadata": {
+          "fields": {
+            "event_ordering_policy": {
+              "type": "string",
+              "value": "deterministic_tie_break.v1"
+            },
+            "event_record_schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick_event.record.v1"
+            },
+            "schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick_event.tape_metadata.v1"
+            },
+            "side_encoding_policy": {
+              "type": "string",
+              "value": "buy_sell.v1"
+            },
+            "state_snapshot_capture": {
+              "type": "string",
+              "value": "disabled"
+            },
+            "state_snapshot_capture_point_policy": {
+              "type": "null"
+            },
+            "state_snapshot_schema_version": {
+              "type": "string",
+              "value": "simulation.seeded_tick_event.state_snapshot.v1"
+            },
+            "timestamp_representation_policy": {
+              "type": "string",
+              "value": "utc_nanos.v1"
+            }
+          },
+          "type": "object"
         },
         "fine_path": {
           "item_profiles": [

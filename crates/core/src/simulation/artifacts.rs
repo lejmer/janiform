@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+use std::mem::size_of;
 
 use crate::calendar::MarketState;
 use crate::hawkes::HawkesExcitationState;
@@ -119,10 +120,10 @@ pub struct SeededTickEventTapeMetadata {
 
 /// Canonical serializable event tape payload for deterministic run outputs.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct SeededTickEventTapeOutput<'a> {
+pub struct SeededTickEventTapeOutput {
     pub schema_version: &'static str,
     pub metadata: SeededTickEventTapeMetadata,
-    pub event_tape: &'a [SeededTickEventRecord],
+    pub event_tape: Vec<SeededTickEventRecord>,
 }
 
 /// Transition kind emitted by debug trace records.
@@ -241,6 +242,17 @@ impl Default for SeededTickSimulationNewsRoutingTotals {
     }
 }
 
+/// Approximate retained-memory diagnostics for the canonical native seeded result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct SeededTickSimulationNativeDiagnostics {
+    pub transition_count: usize,
+    pub event_count: usize,
+    pub estimated_fine_path_bytes: usize,
+    pub estimated_event_projection_index_bytes: usize,
+    pub estimated_debug_trace_bytes: usize,
+    pub estimated_total_retained_bytes: usize,
+}
+
 /// Deterministic seeded event-path output object.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeededTickSimulationRunResult {
@@ -256,7 +268,7 @@ pub struct SeededTickSimulationRunResult {
     pub fine_path_metadata: SeededFinePathMetadata,
     pub fine_path: Vec<SeededFinePathRecord>,
     pub event_tape_metadata: SeededTickEventTapeMetadata,
-    pub event_path: Vec<SeededTickEventRecord>,
+    pub event_transition_positions: Vec<usize>,
     pub final_excitation_state: HawkesExcitationState,
     pub news_routing_totals: SeededTickSimulationNewsRoutingTotals,
     pub cumulative_log_return: f64,
@@ -265,6 +277,115 @@ pub struct SeededTickSimulationRunResult {
 }
 
 impl SeededTickSimulationRunResult {
+    /// Number of canonical fine-path transitions retained by the run result.
+    pub fn transition_count(&self) -> usize {
+        self.fine_path.len()
+    }
+
+    /// Number of endogenous event projections derivable from the canonical fine path.
+    pub fn event_count(&self) -> usize {
+        self.event_transition_positions.len()
+    }
+
+    /// Borrow one contiguous canonical fine-path chunk without duplicating records.
+    pub fn fine_path_chunk(
+        &self,
+        start_index: usize,
+        max_records: usize,
+    ) -> &[SeededFinePathRecord] {
+        if max_records == 0 || start_index >= self.fine_path.len() {
+            return &[];
+        }
+
+        let end_index = start_index
+            .saturating_add(max_records)
+            .min(self.fine_path.len());
+
+        &self.fine_path[start_index..end_index]
+    }
+
+    /// Project one endogenous event record from the canonical fine path.
+    pub fn event_record(&self, event_index: usize) -> Option<SeededTickEventRecord> {
+        let transition_position = *self.event_transition_positions.get(event_index)?;
+        let fine_path_record = self.fine_path.get(transition_position)?;
+        let side = fine_path_record.side?;
+
+        Some(SeededTickEventRecord {
+            event_index: event_index as u64,
+            timestamp_utc_nanos: fine_path_record.timestamp_utc_nanos,
+            side,
+            state_snapshot: fine_path_record.state_snapshot,
+        })
+    }
+
+    /// Project one contiguous event chunk from the canonical fine path.
+    pub fn event_chunk(
+        &self,
+        start_index: usize,
+        max_records: usize,
+    ) -> Vec<SeededTickEventRecord> {
+        if max_records == 0 || start_index >= self.event_transition_positions.len() {
+            return Vec::new();
+        }
+
+        let end_index = start_index
+            .saturating_add(max_records)
+            .min(self.event_transition_positions.len());
+        let mut event_records: Vec<SeededTickEventRecord> =
+            Vec::with_capacity(end_index - start_index);
+        for event_index in start_index..end_index {
+            if let Some(event_record) = self.event_record(event_index) {
+                event_records.push(event_record);
+            }
+        }
+
+        event_records
+    }
+
+    /// Project the full endogenous event path from the canonical fine path on demand.
+    pub fn projected_event_path(&self) -> Vec<SeededTickEventRecord> {
+        self.event_chunk(0, self.event_count())
+    }
+
+    /// Approximate native retained-memory diagnostics for one run result.
+    pub fn native_diagnostics(&self) -> SeededTickSimulationNativeDiagnostics {
+        let estimated_fine_path_bytes = self
+            .fine_path
+            .capacity()
+            .saturating_mul(size_of::<SeededFinePathRecord>());
+        let estimated_event_projection_index_bytes = self
+            .event_transition_positions
+            .capacity()
+            .saturating_mul(size_of::<usize>());
+        let estimated_debug_trace_bytes = self
+            .debug_trace_output
+            .as_ref()
+            .map(|debug_trace_output| {
+                debug_trace_output
+                    .trace_chunks
+                    .iter()
+                    .map(|trace_chunk| {
+                        trace_chunk
+                            .records
+                            .capacity()
+                            .saturating_mul(size_of::<SeededTickEventDebugTraceRecord>())
+                    })
+                    .sum::<usize>()
+            })
+            .unwrap_or(0);
+
+        SeededTickSimulationNativeDiagnostics {
+            transition_count: self.transition_count(),
+            event_count: self.event_count(),
+            estimated_fine_path_bytes,
+            estimated_event_projection_index_bytes,
+            estimated_debug_trace_bytes,
+            estimated_total_retained_bytes: estimated_fine_path_bytes
+                .saturating_add(estimated_event_projection_index_bytes)
+                .saturating_add(estimated_debug_trace_bytes),
+        }
+    }
+
     /// Build the canonical machine-readable fine-path payload.
     pub fn fine_path_output(&self) -> SeededFinePathOutput<'_> {
         SeededFinePathOutput {
@@ -280,11 +401,11 @@ impl SeededTickSimulationRunResult {
     }
 
     /// Build the canonical machine-readable event tape payload.
-    pub fn event_tape_output(&self) -> SeededTickEventTapeOutput<'_> {
+    pub fn event_tape_output(&self) -> SeededTickEventTapeOutput {
         SeededTickEventTapeOutput {
             schema_version: self.schema_version,
             metadata: self.event_tape_metadata,
-            event_tape: &self.event_path,
+            event_tape: self.projected_event_path(),
         }
     }
 

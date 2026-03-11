@@ -168,9 +168,9 @@ fn seeded_tick_simulation_parity_mismatch_diagnostics_are_actionable() {
         .clone();
     let run_result = run_fixture_case(&calendar_registry, &fixture_case)
         .expect("fixture case run should complete");
+    let projected_event_path = run_result.projected_event_path();
     let mut mutated_case = fixture_case.clone();
-    let observed_first_side = run_result
-        .event_path
+    let observed_first_side = projected_event_path
         .first()
         .map(|event_record| match event_record.side {
             SeededTickEventSide::Buy => "buy",
@@ -463,13 +463,12 @@ fn first_mismatch_diagnostic(
     run_result: &janiform_core::simulation::SeededTickSimulationRunResult,
     fixture_case: &SeededTickSimulationParityFixtureCase,
 ) -> Option<String> {
-    let observed_timestamps: Vec<i64> = run_result
-        .event_path
+    let projected_event_path = run_result.projected_event_path();
+    let observed_timestamps: Vec<i64> = projected_event_path
         .iter()
         .map(|event_record| event_record.timestamp_utc_nanos)
         .collect();
-    let observed_sides: Vec<String> = run_result
-        .event_path
+    let observed_sides: Vec<String> = projected_event_path
         .iter()
         .map(|event_record| map_side_to_label(event_record.side).to_string())
         .collect();

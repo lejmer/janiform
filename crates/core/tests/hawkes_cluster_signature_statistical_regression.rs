@@ -932,9 +932,10 @@ fn compute_batch_clustering_metrics(
             news_intensity,
         ))
         .expect("batch clustering run should complete");
+        let projected_event_path = run_result.projected_event_path();
 
         let interval_event_counts = collect_interval_event_counts(
-            &run_result.event_path,
+            &projected_event_path,
             START_TIME_UTC_NANOS,
             interval_duration_nanos,
             interval_count,
@@ -944,7 +945,7 @@ fn compute_batch_clustering_metrics(
         lag_one_autocorrelations.push(calculate_lag_one_autocorrelation(&interval_event_counts));
 
         if has_non_grid_event_time(
-            &run_result.event_path,
+            &projected_event_path,
             START_TIME_UTC_NANOS,
             interval_duration_nanos,
         ) {
@@ -1009,15 +1010,17 @@ fn collect_scale_consistency_summaries(
             news_intensity,
         ))
         .expect("direct coarse run should complete");
+        let fine_event_path = fine_run_result.projected_event_path();
+        let direct_coarse_event_path = direct_coarse_run_result.projected_event_path();
 
         aggregated_summaries.push(summarize_event_path(
-            &fine_run_result.event_path,
+            &fine_event_path,
             START_TIME_UTC_NANOS,
             coarse_interval_duration_nanos,
             coarse_interval_count,
         ));
         direct_summaries.push(summarize_event_path(
-            &direct_coarse_run_result.event_path,
+            &direct_coarse_event_path,
             START_TIME_UTC_NANOS,
             coarse_interval_duration_nanos,
             coarse_interval_count,

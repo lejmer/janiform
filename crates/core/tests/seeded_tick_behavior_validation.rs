@@ -145,9 +145,11 @@ fn seeded_behavior_validation_is_strictly_deterministic_for_repeated_seeded_runs
         .expect("first seeded run should complete");
     let second_run_result =
         run_seeded_tick_event_simulation(run_config).expect("second seeded run should complete");
+    let first_event_path = first_run_result.projected_event_path();
+    let second_event_path = second_run_result.projected_event_path();
 
     assert_eq!(
-        first_run_result.event_path, second_run_result.event_path,
+        first_event_path, second_event_path,
         "determinism failure for repeated seeded runs"
     );
     assert_eq!(
@@ -181,7 +183,7 @@ fn seeded_behavior_validation_preserves_full_4d_state_carryover_across_multi_hou
 
     let run_result = run_seeded_tick_event_simulation(run_config)
         .expect("multi-hour carryover run should complete");
-    assert!(run_result.event_path.is_empty());
+    assert_eq!(run_result.event_count(), 0);
 
     let trace_records = collect_debug_trace_records(&run_result);
     let boundary_records: Vec<&SeededTickEventDebugTraceRecord> = trace_records
@@ -261,17 +263,19 @@ fn seeded_behavior_validation_boundary_adjacent_scenarios_are_repeatable_with_fi
         &BoundaryAdjacentRandomnessFactory,
     )
     .expect("second boundary-adjacent run should complete");
+    let first_event_path = first_run_result.projected_event_path();
+    let second_event_path = second_run_result.projected_event_path();
 
-    assert_eq!(first_run_result.event_path, second_run_result.event_path);
+    assert_eq!(first_event_path, second_event_path);
     assert_eq!(
         first_run_result.final_excitation_state,
         second_run_result.final_excitation_state
     );
 
-    assert_eq!(first_run_result.event_path.len(), 2);
+    assert_eq!(first_event_path.len(), 2);
 
-    let first_timestamp_utc_nanos = first_run_result.event_path[0].timestamp_utc_nanos;
-    let second_timestamp_utc_nanos = first_run_result.event_path[1].timestamp_utc_nanos;
+    let first_timestamp_utc_nanos = first_event_path[0].timestamp_utc_nanos;
+    let second_timestamp_utc_nanos = first_event_path[1].timestamp_utc_nanos;
 
     let boundary_utc_nanos = OPEN_MARKET_START_TIME_UTC_NANOS + ONE_HOUR_NANOS;
     assert!(first_timestamp_utc_nanos < boundary_utc_nanos);
@@ -279,7 +283,7 @@ fn seeded_behavior_validation_boundary_adjacent_scenarios_are_repeatable_with_fi
     assert_ne!(first_timestamp_utc_nanos, boundary_utc_nanos);
     assert_ne!(second_timestamp_utc_nanos, boundary_utc_nanos);
     assert!(has_non_grid_event_time(
-        &first_run_result.event_path,
+        &first_event_path,
         OPEN_MARKET_START_TIME_UTC_NANOS,
         ONE_HOUR_NANOS,
     ));
@@ -331,13 +335,15 @@ fn seeded_behavior_validation_tied_timestamps_follow_documented_event_ordering_p
     let second_run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("second tied-ordering run should complete");
+    let first_event_path = first_run_result.projected_event_path();
+    let second_event_path = second_run_result.projected_event_path();
 
-    assert_eq!(first_run_result.event_path, second_run_result.event_path);
+    assert_eq!(first_event_path, second_event_path);
     assert_eq!(
         first_run_result.event_ordering_policy,
         SEEDED_TICK_EVENT_ORDERING_POLICY
     );
-    assert!(first_run_result.event_path.is_empty());
+    assert!(first_event_path.is_empty());
 
     let trace_records = collect_debug_trace_records(&first_run_result);
     assert_eq!(trace_records.len(), 2);
@@ -388,14 +394,15 @@ fn seeded_behavior_validation_near_tied_timestamps_follow_timestamp_priority_ord
     let run_result =
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("near-tie ordering run should complete");
-    assert_eq!(run_result.event_path.len(), 2);
+    let projected_event_path = run_result.projected_event_path();
+    assert_eq!(projected_event_path.len(), 2);
 
-    let first_timestamp_utc_nanos = run_result.event_path[0].timestamp_utc_nanos;
-    let second_timestamp_utc_nanos = run_result.event_path[1].timestamp_utc_nanos;
+    let first_timestamp_utc_nanos = projected_event_path[0].timestamp_utc_nanos;
+    let second_timestamp_utc_nanos = projected_event_path[1].timestamp_utc_nanos;
 
     assert!(first_timestamp_utc_nanos < second_timestamp_utc_nanos);
-    assert_eq!(run_result.event_path[0].side, SeededTickEventSide::Sell);
-    assert_eq!(run_result.event_path[1].side, SeededTickEventSide::Buy);
+    assert_eq!(projected_event_path[0].side, SeededTickEventSide::Sell);
+    assert_eq!(projected_event_path[1].side, SeededTickEventSide::Buy);
     assert_eq!(
         run_result.event_ordering_policy,
         SEEDED_TICK_EVENT_ORDERING_POLICY
@@ -749,9 +756,10 @@ fn compute_batch_clustering_metrics(
             news_intensity,
         ))
         .expect("batch clustering run should complete");
+        let projected_event_path = run_result.projected_event_path();
 
         let interval_event_counts = collect_interval_event_counts(
-            &run_result.event_path,
+            &projected_event_path,
             START_TIME_UTC_NANOS,
             interval_duration_nanos,
             interval_count,
@@ -761,7 +769,7 @@ fn compute_batch_clustering_metrics(
         lag_one_autocorrelations.push(calculate_lag_one_autocorrelation(&interval_event_counts));
 
         if has_non_grid_event_time(
-            &run_result.event_path,
+            &projected_event_path,
             START_TIME_UTC_NANOS,
             interval_duration_nanos,
         ) {
@@ -808,12 +816,12 @@ fn compute_batch_asymmetry_metrics(
         .expect("batch asymmetry run should complete");
 
         let buy_event_count = run_result
-            .event_path
+            .projected_event_path()
             .iter()
             .filter(|event_record| event_record.side == SeededTickEventSide::Buy)
             .count();
         let sell_event_count = run_result
-            .event_path
+            .projected_event_path()
             .iter()
             .filter(|event_record| event_record.side == SeededTickEventSide::Sell)
             .count();
@@ -830,8 +838,9 @@ fn compute_batch_asymmetry_metrics(
         signed_sell_minus_buy_drifts
             .push((sell_event_count as f64 - buy_event_count as f64) / interval_count as f64);
 
+        let projected_event_path = run_result.projected_event_path();
         let interval_side_event_counts = collect_interval_buy_event_counts(
-            &run_result.event_path,
+            &projected_event_path,
             START_TIME_UTC_NANOS,
             interval_duration_nanos,
             interval_count,
@@ -908,15 +917,17 @@ fn collect_scale_consistency_summaries(
             news_intensity,
         ))
         .expect("direct coarse run should complete");
+        let fine_event_path = fine_run_result.projected_event_path();
+        let direct_coarse_event_path = direct_coarse_run_result.projected_event_path();
 
         aggregated_summaries.push(summarize_event_path(
-            &fine_run_result.event_path,
+            &fine_event_path,
             START_TIME_UTC_NANOS,
             coarse_interval_duration_nanos,
             coarse_interval_count,
         ));
         direct_summaries.push(summarize_event_path(
-            &direct_coarse_run_result.event_path,
+            &direct_coarse_event_path,
             START_TIME_UTC_NANOS,
             coarse_interval_duration_nanos,
             coarse_interval_count,

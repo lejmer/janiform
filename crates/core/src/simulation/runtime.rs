@@ -23,10 +23,9 @@ use super::artifacts::{
     SeededFinePathMetadata, SeededFinePathRecord, SeededFinePathTransitionKind,
     SeededTickEventDebugTraceChunk, SeededTickEventDebugTraceMetadata,
     SeededTickEventDebugTraceOutput, SeededTickEventDebugTraceRecord,
-    SeededTickEventDebugTraceTransitionKind, SeededTickEventRecord, SeededTickEventSide,
-    SeededTickEventStateSnapshot, SeededTickEventTapeMetadata,
-    SeededTickSimulationNewsEventMarketState, SeededTickSimulationNewsRoutingTotals,
-    SeededTickSimulationRunResult,
+    SeededTickEventDebugTraceTransitionKind, SeededTickEventSide, SeededTickEventStateSnapshot,
+    SeededTickEventTapeMetadata, SeededTickSimulationNewsEventMarketState,
+    SeededTickSimulationNewsRoutingTotals, SeededTickSimulationRunResult,
 };
 use super::config::{
     SeededTickEventStateSnapshotCapture, SeededTickSimulationDebugTraceOptions,
@@ -88,7 +87,7 @@ where
     let event_tape_metadata = build_seeded_tick_event_tape_metadata(state_snapshot_capture);
 
     let mut fine_path: Vec<SeededFinePathRecord> = Vec::new();
-    let mut event_path: Vec<SeededTickEventRecord> = Vec::new();
+    let mut event_transition_positions: Vec<usize> = Vec::new();
 
     let mut next_event_index: u64 = 0;
     let mut next_transition_index: u64 = 0;
@@ -276,12 +275,7 @@ where
                     side,
                     ..
                 } => {
-                    event_path.push(SeededTickEventRecord {
-                        event_index: next_event_index,
-                        timestamp_utc_nanos,
-                        side,
-                        state_snapshot,
-                    });
+                    event_transition_positions.push(fine_path.len());
                     next_event_index = next_event_index.saturating_add(1);
                     previous_timestamp_utc_nanos = timestamp_utc_nanos;
                     (map_side_to_transition_kind(side), Some(side), None)
@@ -443,7 +437,7 @@ where
         fine_path_metadata,
         fine_path,
         event_tape_metadata,
-        event_path,
+        event_transition_positions,
         final_excitation_state: next_state,
         news_routing_totals,
         cumulative_log_return,
