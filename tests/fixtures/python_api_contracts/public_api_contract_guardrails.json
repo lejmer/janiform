@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "72d964914f2b12abf2c7b20185ae710d9538c8d00f65aac552e49ed5dde599b7",
+  "approved_snapshot_sha256": "b7c6035b6924c5ace138467a8fce9228702107fd66ef1d96a0ff70da2c7067d3",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -115,6 +115,16 @@
       "rationale": "Simulation and factor-loading workflows now derive fixed UTC interval grids from interval specifications instead of forcing exact UTC-hour boundaries while retaining hourly-calibrated control inputs.",
       "snapshot_sha256": "72d964914f2b12abf2c7b20185ae710d9538c8d00f65aac552e49ed5dde599b7",
       "summary": "Generalized hourly-factor public APIs to accept fixed-width interval specifications and expose interval duration metadata."
+    },
+    {
+      "approved_on": "2026-03-11",
+      "docs_updated": [
+        "README.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "The staged return-components calibration contract now exposes raw observed open-session returns, activity-lift evidence, and explicit objective weights so callers provide empirical evidence instead of pre-baked NIG candidates and forced jump structure.",
+      "snapshot_sha256": "b7c6035b6924c5ace138467a8fce9228702107fd66ef1d96a0ff70da2c7067d3",
+      "summary": "Replace public return-components NIG candidate inputs with observed return evidence and diagnostics weights."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_1",

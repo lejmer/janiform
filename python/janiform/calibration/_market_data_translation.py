@@ -276,9 +276,9 @@ def translate_market_data_request_to_staged_execution_input(
                 "known_news_overlays_are_point_anchors_with_zero_log_adjustment.v1",
                 "unsigned_trade_direction_labels_follow_tick_price_change_with_flat_move_carryover.v1",
                 "hawkes_search_family_uses_unsigned_open_session_activity_targets_and_model_implied_fit_terms.v1",
-                "surprise_jump_candidates_use_open_session_log_returns_and_known_news_exclusion_windows.v1",
+                "surprise_jump_candidates_require_repeated_material_open_session_returns_outside_known_news_windows.v1",
                 "close_open_boundaries_are_resolved_from_calendar_state_transitions.v1",
-                "nig_candidates_use_tick_return_scale_with_option_surface_adjustment.v1",
+                "continuous_nig_fit_uses_filtered_observed_open_session_returns_and_stage_search.v1",
             ),
             deterministic_defaults_applied=(
                 "seasonality.session_filter=open_only",
@@ -290,7 +290,7 @@ def translate_market_data_request_to_staged_execution_input(
                 "seasonality.day_of_year.minimum_bucket_events=1",
                 "known_news_overlay.log_adjustment=0.0",
                 "close_open_gap_detection_policy.material_gap_absolute_return_tolerance=max(0.0025,3x_median_abs_intraday_return)",
-                "intraday_jump_detection.material_threshold=max(0.0050,3x_median_abs_open_return)",
+                "intraday_jump_detection.material_threshold=max(0.0050,4x_median_abs_open_return)",
             ),
         ),
     )

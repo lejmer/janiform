@@ -456,18 +456,29 @@ fn hawkes_stage_objective_terms_change_with_candidate_implied_metrics() {
     );
     assert!(high_loss.implied_metrics.lambda_bar_scaling_ratio_applied > 0.0);
     assert!(
-        high_loss.implied_metrics.max_runtime_hourly_seasonality_factor >= 1.0
+        high_loss
+            .implied_metrics
+            .max_runtime_hourly_seasonality_factor
+            >= 1.0
     );
     assert!(
-        (high_loss.implied_metrics.max_runtime_effective_branching_ratio
-            - high_loss.implied_metrics.max_runtime_hourly_seasonality_factor
+        (high_loss
+            .implied_metrics
+            .max_runtime_effective_branching_ratio
+            - high_loss
+                .implied_metrics
+                .max_runtime_hourly_seasonality_factor
                 * high_loss.implied_metrics.endogenous_branching_ratio)
             .abs()
             < 1.0e-12
     );
     assert!(
         (high_loss.implied_metrics.runtime_effective_branching_margin
-            - (1.0 - high_loss.implied_metrics.max_runtime_effective_branching_ratio).max(0.0))
+            - (1.0
+                - high_loss
+                    .implied_metrics
+                    .max_runtime_effective_branching_ratio)
+                .max(0.0))
         .abs()
             < 1.0e-12
     );
@@ -685,11 +696,11 @@ fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_hando
     );
     assert_eq!(
         memory_payload.objective_metric_bucket_policy,
-        "open_jump_closed_gap_activity_coupling_bucketed_weighted_terms.v1"
+        "continuous_distribution_jump_gap_activity_and_price_sanity_bucketed_weighted_terms.v1"
     );
     assert_eq!(
         memory_payload.candidate_generation_policy,
-        "known_calendar_observed_jump_and_session_boundary_signals_to_candidate_families.v1"
+        "observed_open_session_returns_and_shock_evidence_to_nig_search_and_news_candidate_families.v1"
     );
 
     for candidate_diagnostic in &memory_payload.candidate_diagnostics {
@@ -698,9 +709,11 @@ fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_hando
             .iter()
             .map(|objective_term| objective_term.term_id.as_str())
             .collect::<Vec<_>>();
+        assert!(term_ids.contains(&"continuous_distribution_fit"));
         assert!(term_ids.contains(&"open_jump_fit"));
         assert!(term_ids.contains(&"closed_gap_fit"));
         assert!(term_ids.contains(&"activity_coupling_fit"));
+        assert!(term_ids.contains(&"price_range_sanity_fit"));
         assert!(
             !candidate_diagnostic
                 .candidate_provenance
@@ -712,6 +725,12 @@ fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_hando
                 .candidate_provenance
                 .preprocessing_filters
                 .is_empty()
+        );
+        assert!(
+            candidate_diagnostic
+                .objective_metric_buckets
+                .continuous_distribution_fit
+                .is_finite()
         );
         assert!(
             candidate_diagnostic
@@ -731,7 +750,21 @@ fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_hando
                 .activity_coupling_fit
                 .is_finite()
         );
+        assert!(
+            candidate_diagnostic
+                .objective_metric_buckets
+                .price_range_sanity_fit
+                .is_finite()
+        );
     }
+
+    let memory_metadata = memory_report
+        .metadata
+        .as_ref()
+        .expect("memory report should include metadata");
+    assert!(memory_metadata.input_candidate_count > 0);
+    assert!(memory_metadata.input_candidate_count <= 10_000);
+    assert!(memory_metadata.valid_candidate_count <= memory_metadata.input_candidate_count);
 }
 
 #[test]
@@ -780,7 +813,7 @@ fn return_components_stage_execution_rejects_incomplete_candidate_generation_inp
 
     let mut candidate_generation_input = return_components_stage_candidate_generation_fixture();
     candidate_generation_input
-        .detected_intraday_jump_candidates
+        .observed_open_session_returns
         .clear();
 
     let report = run_return_components_calibration_stage(

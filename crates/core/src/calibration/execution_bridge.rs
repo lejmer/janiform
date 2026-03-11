@@ -16,7 +16,6 @@ use crate::news::{
     CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, SharedNewsMarkLawConfiguration,
 };
-use crate::nig::NigSharedPlusShiftConfiguration;
 use crate::seasonality::{
     DayOfWeekSeasonalityEstimatorSettings, DayOfYearSeasonalityEstimatorSettings,
     IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel, ScheduledEventOverlayDefinition,
@@ -35,8 +34,9 @@ use super::stages::hawkes::HawkesStageCandidateInput;
 use super::stages::return_components::{
     ReturnComponentsCloseOpenGapDetectionPolicy, ReturnComponentsDetectedIntradayJumpCandidate,
     ReturnComponentsKnownNewsCalendarInput, ReturnComponentsObservedCloseOpenBoundaryObservation,
-    ReturnComponentsRealizedKnownNewsReturnSample, ReturnComponentsStageCandidateGenerationInput,
-    ReturnComponentsStageObjectiveMetricWeights, ReturnComponentsStageSignalSourceWindow,
+    ReturnComponentsObservedOpenSessionReturn, ReturnComponentsRealizedKnownNewsReturnSample,
+    ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageObjectiveMetricWeights,
+    ReturnComponentsStageSignalSourceWindow,
 };
 use super::stages::seasonality::{
     SeasonalityStageExecutionInput, SeasonalityStageExecutionSettings,
@@ -289,6 +289,7 @@ pub struct CalibrationReturnComponentsKnownNewsReturnSample {
     pub event_timestamp_utc_nanos: i64,
     pub open_window_jump_return: f64,
     pub closed_window_gap_return: f64,
+    pub post_shock_activity_lift: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -296,6 +297,14 @@ pub struct CalibrationReturnComponentsKnownNewsReturnSample {
 pub struct CalibrationReturnComponentsDetectedIntradayJumpCandidate {
     pub jump_timestamp_utc_nanos: i64,
     pub jump_return: f64,
+    pub post_shock_activity_lift: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CalibrationReturnComponentsObservedOpenSessionReturn {
+    pub return_timestamp_utc_nanos: i64,
+    pub log_return: f64,
     pub post_shock_activity_lift: f64,
 }
 
@@ -318,9 +327,11 @@ pub struct CalibrationReturnComponentsCloseOpenGapDetectionPolicy {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CalibrationReturnComponentsObjectiveMetricWeights {
-    pub open_jump_fit_weight: f64,
-    pub closed_gap_fit_weight: f64,
+    pub continuous_distribution_fit_weight: f64,
+    pub jump_fit_weight: f64,
+    pub gap_fit_weight: f64,
     pub activity_coupling_fit_weight: f64,
+    pub price_range_sanity_fit_weight: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -336,12 +347,13 @@ pub struct CalibrationSharedNewsMarkLawConfiguration {
 pub struct CalibrationReturnComponentsStageCandidateGenerationInput {
     pub known_news_calendar: CalibrationReturnComponentsKnownNewsCalendarInput,
     pub realized_known_news_return_samples: Vec<CalibrationReturnComponentsKnownNewsReturnSample>,
+    pub observed_open_session_returns: Vec<CalibrationReturnComponentsObservedOpenSessionReturn>,
     pub detected_intraday_jump_candidates:
         Vec<CalibrationReturnComponentsDetectedIntradayJumpCandidate>,
     pub observed_close_open_boundary_observations:
         Vec<CalibrationReturnComponentsObservedCloseOpenBoundaryObservation>,
     pub close_open_gap_detection_policy: CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
-    pub nig_shared_plus_shift_candidates: Vec<NigSharedPlusShiftConfiguration>,
+    pub open_session_sell_share_proxy: f64,
     pub shared_mark_law_template: CalibrationSharedNewsMarkLawConfiguration,
     pub objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights,
 }
@@ -685,6 +697,11 @@ impl CalibrationReturnComponentsStageCandidateGenerationInput {
                 .into_iter()
                 .map(CalibrationReturnComponentsKnownNewsReturnSample::into_core)
                 .collect(),
+            observed_open_session_returns: self
+                .observed_open_session_returns
+                .into_iter()
+                .map(CalibrationReturnComponentsObservedOpenSessionReturn::into_core)
+                .collect(),
             detected_intraday_jump_candidates: self
                 .detected_intraday_jump_candidates
                 .into_iter()
@@ -696,7 +713,7 @@ impl CalibrationReturnComponentsStageCandidateGenerationInput {
                 .map(CalibrationReturnComponentsObservedCloseOpenBoundaryObservation::into_core)
                 .collect(),
             close_open_gap_detection_policy: self.close_open_gap_detection_policy.into_core(),
-            nig_shared_plus_shift_candidates: self.nig_shared_plus_shift_candidates,
+            open_session_sell_share_proxy: self.open_session_sell_share_proxy,
             shared_mark_law_template: self.shared_mark_law_template.into_core(),
             objective_metric_weights: self.objective_metric_weights.into_core(),
         }
@@ -727,6 +744,7 @@ impl CalibrationReturnComponentsKnownNewsReturnSample {
             event_timestamp_utc_nanos: self.event_timestamp_utc_nanos,
             open_window_jump_return: self.open_window_jump_return,
             closed_window_gap_return: self.closed_window_gap_return,
+            post_shock_activity_lift: self.post_shock_activity_lift,
         }
     }
 }
@@ -736,6 +754,16 @@ impl CalibrationReturnComponentsDetectedIntradayJumpCandidate {
         ReturnComponentsDetectedIntradayJumpCandidate {
             jump_timestamp_utc_nanos: self.jump_timestamp_utc_nanos,
             jump_return: self.jump_return,
+            post_shock_activity_lift: self.post_shock_activity_lift,
+        }
+    }
+}
+
+impl CalibrationReturnComponentsObservedOpenSessionReturn {
+    fn into_core(self) -> ReturnComponentsObservedOpenSessionReturn {
+        ReturnComponentsObservedOpenSessionReturn {
+            return_timestamp_utc_nanos: self.return_timestamp_utc_nanos,
+            log_return: self.log_return,
             post_shock_activity_lift: self.post_shock_activity_lift,
         }
     }
@@ -774,9 +802,11 @@ impl CalibrationSharedNewsMarkLawConfiguration {
 impl CalibrationReturnComponentsObjectiveMetricWeights {
     fn into_core(self) -> ReturnComponentsStageObjectiveMetricWeights {
         ReturnComponentsStageObjectiveMetricWeights::new(
-            self.open_jump_fit_weight,
-            self.closed_gap_fit_weight,
+            self.continuous_distribution_fit_weight,
+            self.jump_fit_weight,
+            self.gap_fit_weight,
             self.activity_coupling_fit_weight,
+            self.price_range_sanity_fit_weight,
         )
     }
 }
@@ -906,6 +936,19 @@ mod tests {
                             event_timestamp_utc_nanos: 1_770_042_600_000_000_000,
                             open_window_jump_return: 0.016,
                             closed_window_gap_return: -0.009,
+                            post_shock_activity_lift: 1.20,
+                        },
+                    ],
+                    observed_open_session_returns: vec![
+                        CalibrationReturnComponentsObservedOpenSessionReturn {
+                            return_timestamp_utc_nanos: 1_770_046_200_000_000_000,
+                            log_return: 0.004,
+                            post_shock_activity_lift: 1.00,
+                        },
+                        CalibrationReturnComponentsObservedOpenSessionReturn {
+                            return_timestamp_utc_nanos: 1_770_048_300_000_000_000,
+                            log_return: 0.018,
+                            post_shock_activity_lift: 1.35,
                         },
                     ],
                     detected_intraday_jump_candidates: vec![
@@ -928,10 +971,7 @@ mod tests {
                         CalibrationReturnComponentsCloseOpenGapDetectionPolicy {
                             material_gap_absolute_return_tolerance: 0.005,
                         },
-                    nig_shared_plus_shift_candidates: vec![
-                        NigSharedPlusShiftConfiguration::try_new(2.45, -0.70, 0.62, 0.08, -0.15)
-                            .expect("nig candidate should validate"),
-                    ],
+                    open_session_sell_share_proxy: 0.52,
                     shared_mark_law_template: CalibrationSharedNewsMarkLawConfiguration {
                         gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
                             .expect("gamma configuration should validate"),
@@ -941,9 +981,11 @@ mod tests {
                         coupled_gap_marks: CoupledGapMarkConfiguration::new(0.22),
                     },
                     objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights {
-                        open_jump_fit_weight: 1.0,
-                        closed_gap_fit_weight: 1.0,
+                        continuous_distribution_fit_weight: 1.0,
+                        jump_fit_weight: 1.0,
+                        gap_fit_weight: 1.0,
                         activity_coupling_fit_weight: 1.0,
+                        price_range_sanity_fit_weight: 1.0,
                     },
                 },
             ),

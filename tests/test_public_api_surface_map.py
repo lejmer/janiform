@@ -239,6 +239,7 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
         "CalibrationReturnComponentsKnownNewsCalendarInput",
         "CalibrationReturnComponentsKnownNewsReturnSample",
         "CalibrationReturnComponentsObservedCloseOpenBoundaryObservation",
+        "CalibrationReturnComponentsObservedOpenSessionReturn",
         "CalibrationReturnComponentsObjectiveMetricWeights",
         "CalibrationReturnComponentsSignalSourceWindow",
         "CalibrationReturnComponentsStageCandidateGenerationInput",

@@ -201,6 +201,7 @@ The package root `janiform` is intentionally minimal.
     - `CalibrationReturnComponentsKnownNewsReturnSample`
     - `CalibrationReturnComponentsDetectedIntradayJumpCandidate`
     - `CalibrationReturnComponentsObservedCloseOpenBoundaryObservation`
+    - `CalibrationReturnComponentsObservedOpenSessionReturn`
     - `CalibrationReturnComponentsCloseOpenGapDetectionPolicy`
     - `CalibrationReturnComponentsObjectiveMetricWeights`
     - `CalibrationDoubleExponentialBaseShockConfiguration`
@@ -267,6 +268,11 @@ The recommended public request boundary is:
 The advanced staged-calibration entrypoint is:
 
 - `run_staged_calibration`
+
+The staged return-components execution contract expects observed evidence, not caller-baked model
+seeds. Public staged inputs now carry raw observed open-session returns, known-news and boundary
+activity-lift diagnostics, and explicit fit-bucket weights instead of a pre-generated
+`nig_shared_plus_shift_candidates` list.
 
 ## Experimental namespace policy
 

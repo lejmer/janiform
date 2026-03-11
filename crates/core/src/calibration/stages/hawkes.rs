@@ -844,10 +844,11 @@ pub fn run_hawkes_calibration_stage(
             candidate_input.source_regime.clone(),
             seasonality_payload,
         );
-        let (adjusted_candidate_input, lambda_bar_scaling_ratio_applied) = adjust_candidate_for_deseasonalized_activity(
-            candidate_input,
-            observed_activity_targets,
-        );
+        let (adjusted_candidate_input, lambda_bar_scaling_ratio_applied) =
+            adjust_candidate_for_deseasonalized_activity(
+                candidate_input,
+                observed_activity_targets,
+            );
         let validation_report = precheck_structured_hawkes_kernel_parameter_domain(
             adjusted_candidate_input.lambda_bar,
             adjusted_candidate_input.beta,
@@ -1645,13 +1646,12 @@ fn derive_candidate_implied_metrics(
         baseline_buy_intensity_per_hour: candidate_input.lambda_bar,
         baseline_sell_intensity_per_hour: candidate_input.lambda_bar,
         observed_open_event_rate_per_hour,
-        deseasonalized_open_event_rate_per_hour_target:
-            observed_activity_targets.deseasonalized_open_event_rate_per_hour,
+        deseasonalized_open_event_rate_per_hour_target: observed_activity_targets
+            .deseasonalized_open_event_rate_per_hour,
         lambda_bar_scaling_ratio_applied,
         max_runtime_hourly_seasonality_factor,
         max_runtime_effective_branching_ratio,
-        runtime_effective_branching_margin: (1.0 - max_runtime_effective_branching_ratio)
-            .max(0.0),
+        runtime_effective_branching_margin: (1.0 - max_runtime_effective_branching_ratio).max(0.0),
         model_implied_open_event_rate_per_hour: stationary_total_intensity,
         model_implied_open_buy_share: 1.0 - model_implied_open_sell_share,
         model_implied_open_sell_share,

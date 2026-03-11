@@ -158,6 +158,7 @@
         "CalibrationReturnComponentsKnownNewsReturnSample",
         "CalibrationReturnComponentsObjectiveMetricWeights",
         "CalibrationReturnComponentsObservedCloseOpenBoundaryObservation",
+        "CalibrationReturnComponentsObservedOpenSessionReturn",
         "CalibrationReturnComponentsSignalSourceWindow",
         "CalibrationReturnComponentsStageCandidateGenerationInput",
         "CalibrationRunDataInputs",
@@ -644,19 +645,22 @@
           "field_names": [
             "event_timestamp_utc_nanos",
             "open_window_jump_return",
-            "closed_window_gap_return"
+            "closed_window_gap_return",
+            "post_shock_activity_lift"
           ],
           "kind": "contract_model",
-          "signature": "(event_timestamp_utc_nanos: 'int', open_window_jump_return: 'float', closed_window_gap_return: 'float') -> 'None'"
+          "signature": "(event_timestamp_utc_nanos: 'int', open_window_jump_return: 'float', closed_window_gap_return: 'float', post_shock_activity_lift: 'float') -> 'None'"
         },
         "CalibrationReturnComponentsObjectiveMetricWeights": {
           "field_names": [
-            "open_jump_fit_weight",
-            "closed_gap_fit_weight",
-            "activity_coupling_fit_weight"
+            "continuous_distribution_fit_weight",
+            "jump_fit_weight",
+            "gap_fit_weight",
+            "activity_coupling_fit_weight",
+            "price_range_sanity_fit_weight"
           ],
           "kind": "contract_model",
-          "signature": "(open_jump_fit_weight: 'float', closed_gap_fit_weight: 'float', activity_coupling_fit_weight: 'float') -> 'None'"
+          "signature": "(continuous_distribution_fit_weight: 'float', jump_fit_weight: 'float', gap_fit_weight: 'float', activity_coupling_fit_weight: 'float', price_range_sanity_fit_weight: 'float') -> 'None'"
         },
         "CalibrationReturnComponentsObservedCloseOpenBoundaryObservation": {
           "field_names": [
@@ -668,6 +672,15 @@
           ],
           "kind": "contract_model",
           "signature": "(close_timestamp_utc_nanos: 'int', close_price: 'float', open_timestamp_utc_nanos: 'int', open_price: 'float', post_shock_activity_lift: 'float') -> 'None'"
+        },
+        "CalibrationReturnComponentsObservedOpenSessionReturn": {
+          "field_names": [
+            "return_timestamp_utc_nanos",
+            "log_return",
+            "post_shock_activity_lift"
+          ],
+          "kind": "contract_model",
+          "signature": "(return_timestamp_utc_nanos: 'int', log_return: 'float', post_shock_activity_lift: 'float') -> 'None'"
         },
         "CalibrationReturnComponentsSignalSourceWindow": {
           "field_names": [
@@ -681,15 +694,16 @@
           "field_names": [
             "known_news_calendar",
             "realized_known_news_return_samples",
+            "observed_open_session_returns",
             "detected_intraday_jump_candidates",
             "observed_close_open_boundary_observations",
             "close_open_gap_detection_policy",
-            "nig_shared_plus_shift_candidates",
+            "open_session_sell_share_proxy",
             "shared_mark_law_template",
             "objective_metric_weights"
           ],
           "kind": "contract_model",
-          "signature": "(known_news_calendar: 'CalibrationReturnComponentsKnownNewsCalendarInput', realized_known_news_return_samples: 'tuple[CalibrationReturnComponentsKnownNewsReturnSample, ...]', detected_intraday_jump_candidates: 'tuple[CalibrationReturnComponentsDetectedIntradayJumpCandidate, ...]', observed_close_open_boundary_observations: 'tuple[CalibrationReturnComponentsObservedCloseOpenBoundaryObservation, ...]', close_open_gap_detection_policy: 'CalibrationReturnComponentsCloseOpenGapDetectionPolicy', nig_shared_plus_shift_candidates: 'tuple[NigSharedPlusShiftConfiguration, ...]', shared_mark_law_template: 'CalibrationSharedNewsMarkLawConfiguration', objective_metric_weights: 'CalibrationReturnComponentsObjectiveMetricWeights') -> 'None'"
+          "signature": "(known_news_calendar: 'CalibrationReturnComponentsKnownNewsCalendarInput', realized_known_news_return_samples: 'tuple[CalibrationReturnComponentsKnownNewsReturnSample, ...]', observed_open_session_returns: 'tuple[CalibrationReturnComponentsObservedOpenSessionReturn, ...]', detected_intraday_jump_candidates: 'tuple[CalibrationReturnComponentsDetectedIntradayJumpCandidate, ...]', observed_close_open_boundary_observations: 'tuple[CalibrationReturnComponentsObservedCloseOpenBoundaryObservation, ...]', close_open_gap_detection_policy: 'CalibrationReturnComponentsCloseOpenGapDetectionPolicy', open_session_sell_share_proxy: 'float', shared_mark_law_template: 'CalibrationSharedNewsMarkLawConfiguration', objective_metric_weights: 'CalibrationReturnComponentsObjectiveMetricWeights') -> 'None'"
         },
         "CalibrationRunDataInputs": {
           "field_names": [

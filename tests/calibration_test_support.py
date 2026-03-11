@@ -19,6 +19,7 @@ from janiform.calibration import (
     CalibrationReturnComponentsKnownNewsCalendarInput,
     CalibrationReturnComponentsKnownNewsReturnSample,
     CalibrationReturnComponentsObservedCloseOpenBoundaryObservation,
+    CalibrationReturnComponentsObservedOpenSessionReturn,
     CalibrationReturnComponentsObjectiveMetricWeights,
     CalibrationReturnComponentsSignalSourceWindow,
     CalibrationReturnComponentsStageCandidateGenerationInput,
@@ -37,7 +38,7 @@ from janiform.calibration import (
     StagedCalibrationExecutionInput,
     StagedCalibrationRequest,
 )
-from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
+from janiform.pricing import GammaSeverityMarkConfiguration
 
 
 def build_valid_execution_input_model(
@@ -180,11 +181,30 @@ def build_valid_execution_input_model(
                     event_timestamp_utc_nanos=1770042600000000000,
                     open_window_jump_return=0.016,
                     closed_window_gap_return=-0.009,
+                    post_shock_activity_lift=1.20,
                 ),
                 CalibrationReturnComponentsKnownNewsReturnSample(
                     event_timestamp_utc_nanos=1770120000000000000,
                     open_window_jump_return=-0.012,
                     closed_window_gap_return=0.004,
+                    post_shock_activity_lift=1.05,
+                ),
+            ),
+            observed_open_session_returns=(
+                CalibrationReturnComponentsObservedOpenSessionReturn(
+                    return_timestamp_utc_nanos=1770046200000000000,
+                    log_return=0.004,
+                    post_shock_activity_lift=1.00,
+                ),
+                CalibrationReturnComponentsObservedOpenSessionReturn(
+                    return_timestamp_utc_nanos=1770048300000000000,
+                    log_return=0.018,
+                    post_shock_activity_lift=1.35,
+                ),
+                CalibrationReturnComponentsObservedOpenSessionReturn(
+                    return_timestamp_utc_nanos=1770123600000000000,
+                    log_return=-0.006,
+                    post_shock_activity_lift=0.95,
                 ),
             ),
             detected_intraday_jump_candidates=(
@@ -206,15 +226,7 @@ def build_valid_execution_input_model(
             close_open_gap_detection_policy=CalibrationReturnComponentsCloseOpenGapDetectionPolicy(
                 material_gap_absolute_return_tolerance=0.005,
             ),
-            nig_shared_plus_shift_candidates=(
-                NigSharedPlusShiftConfiguration(
-                    alpha=2.45,
-                    beta_0=-0.70,
-                    delta=0.62,
-                    mu=0.08,
-                    delta_beta=-0.15,
-                ),
-            ),
+            open_session_sell_share_proxy=0.52,
             shared_mark_law_template=CalibrationSharedNewsMarkLawConfiguration(
                 gamma_severity_marks=GammaSeverityMarkConfiguration(
                     shape_k=1.8,
@@ -228,9 +240,11 @@ def build_valid_execution_input_model(
                 coupled_gap_marks=CalibrationCoupledGapMarkConfiguration(sigma_g=0.22),
             ),
             objective_metric_weights=CalibrationReturnComponentsObjectiveMetricWeights(
-                open_jump_fit_weight=1.0,
-                closed_gap_fit_weight=1.0,
+                continuous_distribution_fit_weight=1.0,
+                jump_fit_weight=1.0,
+                gap_fit_weight=1.0,
                 activity_coupling_fit_weight=1.0,
+                price_range_sanity_fit_weight=1.0,
             ),
         ),
         runtime_resources=(

@@ -87,12 +87,12 @@ pub(super) use crate::calibration::{
     HawkesStageObservedSourceRegime, OptionSurfaceCalibrationObservationError,
     ReturnComponentsCloseOpenGapDetectionPolicy, ReturnComponentsDetectedIntradayJumpCandidate,
     ReturnComponentsKnownNewsCalendarInput, ReturnComponentsObservedCloseOpenBoundaryObservation,
-    ReturnComponentsRealizedKnownNewsReturnSample, ReturnComponentsStageCandidateGenerationInput,
-    ReturnComponentsStageExecutionFailure, ReturnComponentsStageExecutionInput,
-    ReturnComponentsStageObjectiveMetricWeights, ReturnComponentsStageSignalSourceWindow,
-    SeasonalityStageExecutionFailure, SeasonalityStageExecutionInput,
-    build_calibration_artifact_manifest, build_calibration_dataset_snapshot_artifact,
-    build_calibration_stage_parameter_artifact,
+    ReturnComponentsObservedOpenSessionReturn, ReturnComponentsRealizedKnownNewsReturnSample,
+    ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageExecutionFailure,
+    ReturnComponentsStageExecutionInput, ReturnComponentsStageObjectiveMetricWeights,
+    ReturnComponentsStageSignalSourceWindow, SeasonalityStageExecutionFailure,
+    SeasonalityStageExecutionInput, build_calibration_artifact_manifest,
+    build_calibration_dataset_snapshot_artifact, build_calibration_stage_parameter_artifact,
     build_option_surface_calibration_observation_from_pricing_hooks,
     calibration_artifact_manifest_path, calibration_artifact_manifest_reference,
     calibration_checkpoint_reference_for_stage, calibration_checkpoint_run_directory,
@@ -824,16 +824,46 @@ pub(super) fn return_components_stage_candidate_generation_fixture()
                 event_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 30, 0),
                 open_window_jump_return: 0.016,
                 closed_window_gap_return: -0.009,
+                post_shock_activity_lift: 1.20,
             },
             ReturnComponentsRealizedKnownNewsReturnSample {
                 event_timestamp_utc_nanos: utc_nanos(2026, 2, 3, 15, 0, 0),
                 open_window_jump_return: -0.012,
                 closed_window_gap_return: 0.004,
+                post_shock_activity_lift: 1.05,
             },
             ReturnComponentsRealizedKnownNewsReturnSample {
                 event_timestamp_utc_nanos: utc_nanos(2026, 2, 4, 16, 0, 0),
                 open_window_jump_return: 0.011,
                 closed_window_gap_return: -0.006,
+                post_shock_activity_lift: 0.98,
+            },
+        ],
+        observed_open_session_returns: vec![
+            ReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 15, 0, 0),
+                log_return: 0.004,
+                post_shock_activity_lift: 1.00,
+            },
+            ReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 16, 5, 0),
+                log_return: 0.018,
+                post_shock_activity_lift: 1.35,
+            },
+            ReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: utc_nanos(2026, 2, 3, 18, 20, 0),
+                log_return: -0.014,
+                post_shock_activity_lift: 1.10,
+            },
+            ReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: utc_nanos(2026, 2, 4, 19, 15, 0),
+                log_return: 0.010,
+                post_shock_activity_lift: 0.95,
+            },
+            ReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: utc_nanos(2026, 2, 4, 20, 0, 0),
+                log_return: -0.003,
+                post_shock_activity_lift: 0.92,
             },
         ],
         detected_intraday_jump_candidates: vec![
@@ -870,12 +900,7 @@ pub(super) fn return_components_stage_candidate_generation_fixture()
             },
         ],
         close_open_gap_detection_policy: ReturnComponentsCloseOpenGapDetectionPolicy::new(0.005),
-        nig_shared_plus_shift_candidates: vec![
-            NigSharedPlusShiftConfiguration::try_new(2.30, -0.80, 0.70, 0.10, -0.20)
-                .expect("high-loss NIG configuration should validate"),
-            NigSharedPlusShiftConfiguration::try_new(2.45, -0.70, 0.62, 0.08, -0.15)
-                .expect("low-loss NIG configuration should validate"),
-        ],
+        open_session_sell_share_proxy: 0.52,
         shared_mark_law_template: SharedNewsMarkLawConfiguration {
             gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
                 .expect("gamma severity mark configuration should validate"),
@@ -885,7 +910,9 @@ pub(super) fn return_components_stage_candidate_generation_fixture()
             .expect("double-exponential base-shock configuration should validate"),
             coupled_gap_marks: CoupledGapMarkConfiguration::new(0.22),
         },
-        objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights::new(1.0, 1.0, 1.0),
+        objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights::new(
+            1.0, 1.0, 1.0, 1.0, 1.0,
+        ),
     }
 }
 
