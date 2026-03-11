@@ -27,6 +27,7 @@ from janiform.calibration import (
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
     CalibrationTradeSign,
+    CalibrationValidationError,
     MarketDataCalibrationRequest,
     prepare_market_data_calibration,
     run_staged_calibration,
@@ -188,6 +189,96 @@ def test_translate_market_data_request_derives_boundaries_known_news_and_diagnos
     assert boundary_observation.open_timestamp_utc_nanos == _utc_nanos("2026-02-04T14:30:00Z")
     assert boundary_observation.close_price == pytest.approx(102.0)
     assert boundary_observation.open_price == pytest.approx(90.0)
+
+
+def test_translate_market_data_request_infers_session_without_manual_definition(
+    tmp_path: Path,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T15:00:00Z,101.0,buy",
+                "2026-02-02T20:59:00Z,102.0,sell",
+                "2026-02-03T14:30:00Z,103.0,buy",
+                "2026-02-03T20:59:00Z,104.0,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    request = _build_market_data_request(
+        session_definition_path=None,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            trade_price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+        ),
+    )
+
+    translation = translate_market_data_request_to_staged_execution_input(request)
+
+    assert translation.session_resolution.resolution_kind == "automatic_inference"
+    assert translation.session_resolution.manual_override_applied is False
+    assert translation.session_resolution.selected_policy_id == (
+        "exchange_code_builtin_default.xnys_regular_session.v1"
+    )
+    assert translation.session_resolution.resolved_timezone_name == "America/New_York"
+    assert translation.provenance.session_definition_path is None
+    assert len(translation.session_resolution.regular_session_windows) == 5
+    assert translation.session_resolution.recurring_closed_windows != ()
+
+
+def test_translate_market_data_request_rejects_ambiguous_session_inference_without_override(
+    tmp_path: Path,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T08:00:00Z,1.0850,buy",
+                "2026-02-02T12:00:00Z,1.0852,sell",
+                "2026-02-03T08:00:00Z,1.0854,buy",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    request = _build_market_data_request(
+        session_definition_path=None,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            trade_price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+        ),
+        exchange_code="BROKER_SPOT",
+        session_timezone="UTC",
+    )
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        translate_market_data_request_to_staged_execution_input(request)
+
+    assert captured_error.value.field_path == "session_configuration"
+    assert "automatic 24/5 session inference is ambiguous" in str(captured_error.value)
 
 
 def test_translate_market_data_request_without_known_news_runs_staged_calibration(
@@ -570,6 +661,7 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
     assert prepared.diagnostics.known_news_events_outside_source_window_count == 1
     assert prepared.provenance.tick_data_summary.file_format == CalibrationInputFileFormat.CSV
     assert prepared.provenance.known_news_summary is not None
+    assert prepared.session_resolution.manual_override_applied is True
     assert prepared.provenance.derived_trade_events_data_reference == (
         "market_data://market_data_translation_run/ticks/ticks_primary"
     )
@@ -709,7 +801,7 @@ def test_translate_market_data_request_full_with_option_surface_sets_option_refe
 
 def _build_market_data_request(
     *,
-    session_definition_path: Path,
+    session_definition_path: Path | None,
     tick_data_path: Path,
     workflow_scope: CalibrationMarketDataWorkflowScope,
     tick_column_mapping: CalibrationTickDataColumnMapping,
@@ -718,7 +810,21 @@ def _build_market_data_request(
     known_news_column_mapping: CalibrationKnownNewsColumnMapping | None = None,
     option_surface_source: CalibrationInputFileReference | None = None,
     option_surface_column_mapping: CalibrationOptionSurfaceColumnMapping | None = None,
+    exchange_code: str = "XNYS",
+    session_timezone: str | None = "America/New_York",
 ) -> MarketDataCalibrationRequest:
+    session_configuration_fields: dict[str, object] = {
+        "exchange_code": exchange_code,
+    }
+    if session_definition_path is not None:
+        session_configuration_fields["session_definition_source"] = CalibrationInputFileReference(
+            path=str(session_definition_path),
+            file_format=CalibrationInputFileFormat.JSON,
+            provenance_label="session-registry",
+        )
+    if session_timezone is not None:
+        session_configuration_fields["session_timezone"] = session_timezone
+
     return MarketDataCalibrationRequest(
         schema_version="calibration.market_data.request.v1",
         run_id="market-data-translation-run",
@@ -727,15 +833,7 @@ def _build_market_data_request(
             file_format=CalibrationInputFileFormat.CSV,
             provenance_label="ticks-primary",
         ),
-        session_configuration=CalibrationSessionConfigurationInput(
-            exchange_code="XNYS",
-            session_definition_source=CalibrationInputFileReference(
-                path=str(session_definition_path),
-                file_format=CalibrationInputFileFormat.JSON,
-                provenance_label="session-registry",
-            ),
-            session_timezone="America/New_York",
-        ),
+        session_configuration=CalibrationSessionConfigurationInput(**session_configuration_fields),
         column_mapping=CalibrationMarketDataColumnMapping(
             tick_data=tick_column_mapping,
             option_surface=option_surface_column_mapping,

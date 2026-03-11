@@ -846,10 +846,15 @@ def _build_market_data_calibration_request_from_arguments(
         cast(Path | None, parsed_arguments.tick_data_path),
         argument_name="tick_data_path",
     )
-    session_definition_path = _require_path_argument(
-        repository_root,
-        cast(Path | None, parsed_arguments.session_definition_path),
-        argument_name="session_definition_path",
+    session_definition_path_argument = cast(Path | None, parsed_arguments.session_definition_path)
+    session_definition_path = (
+        _require_path_argument(
+            repository_root,
+            session_definition_path_argument,
+            argument_name="session_definition_path",
+        )
+        if session_definition_path_argument is not None
+        else None
     )
     disk_checkpoint_directory_argument = cast(Path | None, parsed_arguments.disk_checkpoint_directory)
     disk_checkpoint_directory = (
@@ -899,6 +904,14 @@ def _build_market_data_calibration_request_from_arguments(
         ),
         message="known-news flags require --known-news-path",
     )
+    _reject_orphan_market_data_arguments(
+        session_definition_path is not None,
+        (
+            ("session_definition_format", parsed_arguments.session_definition_format),
+            ("session_definition_provenance_label", parsed_arguments.session_definition_provenance_label),
+        ),
+        message="session-definition override metadata flags require --session-definition-path",
+    )
 
     payload: dict[str, Any] = {
         "schema_version": CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,
@@ -910,12 +923,6 @@ def _build_market_data_calibration_request_from_arguments(
         },
         "session_configuration": {
             "exchange_code": cast(str, parsed_arguments.exchange_code),
-            "session_definition_source": {
-                "path": str(session_definition_path),
-                "file_format": cast(str, parsed_arguments.session_definition_format),
-                "provenance_label": cast(str, parsed_arguments.session_definition_provenance_label),
-            },
-            "session_timezone": cast(str, parsed_arguments.session_timezone),
         },
         "column_mapping": {
             "tick_data": {
@@ -947,6 +954,19 @@ def _build_market_data_calibration_request_from_arguments(
             "emit_input_provenance_report": not bool(parsed_arguments.omit_input_provenance_report),
         },
     }
+
+    if parsed_arguments.session_timezone is not None:
+        payload["session_configuration"]["session_timezone"] = cast(
+            str,
+            parsed_arguments.session_timezone,
+        )
+
+    if session_definition_path is not None:
+        payload["session_configuration"]["session_definition_source"] = {
+            "path": str(session_definition_path),
+            "file_format": cast(str, parsed_arguments.session_definition_format),
+            "provenance_label": cast(str, parsed_arguments.session_definition_provenance_label),
+        }
 
     if option_surface_path is not None:
         payload["option_surface_source"] = {
@@ -998,11 +1018,16 @@ def _build_market_data_calibration_summary_payload(
         "workflow_scope": request.workflow_scope.value,
         "session_context": {
             "exchange_code": request.session_configuration.exchange_code,
-            "session_timezone": request.session_configuration.session_timezone,
+            "session_timezone": prepared_calibration.session_resolution.resolved_timezone_name,
+            "resolution_kind": prepared_calibration.session_resolution.resolution_kind,
         },
         "input_files": {
             "tick_data": request.tick_data_source.to_payload(),
-            "session_definition": request.session_configuration.session_definition_source.to_payload(),
+            "session_definition": (
+                request.session_configuration.session_definition_source.to_payload()
+                if request.session_configuration.session_definition_source is not None
+                else None
+            ),
             "known_news": (
                 request.known_news_inputs.calendar_source.to_payload()
                 if request.known_news_inputs is not None
@@ -1025,6 +1050,7 @@ def _build_market_data_calibration_summary_payload(
             "emit_derived_staged_execution_input": request.output_preferences.emit_derived_staged_execution_input,
         },
         "diagnostics_summary": prepared_calibration.diagnostics.to_payload(),
+        "session_resolution": prepared_calibration.session_resolution.to_payload(),
         "provenance_summary": prepared_calibration.provenance.to_payload(),
         "output_schema_metadata": {
             "schema_family": "cli.workflow.command_summary",
@@ -1039,6 +1065,7 @@ def _build_market_data_calibration_summary_payload(
                 "output_artifact_locations",
                 "output_emission_policy",
                 "diagnostics_summary",
+                "session_resolution",
                 "provenance_summary",
             ],
             "optional_input_sections": [
@@ -1075,11 +1102,11 @@ def _render_market_data_calibration_human_output(
             f"provenance_label={request.tick_data_source.provenance_label}"
         ),
         (
-            "session_definition: "
-            f"path={request.session_configuration.session_definition_source.path} "
-            f"format={request.session_configuration.session_definition_source.file_format.value} "
+            "session_resolution: "
             f"exchange_code={request.session_configuration.exchange_code} "
-            f"session_timezone={request.session_configuration.session_timezone}"
+            f"mode={prepared_calibration.session_resolution.resolution_kind} "
+            f"timezone={prepared_calibration.session_resolution.resolved_timezone_name} "
+            f"confidence={prepared_calibration.session_resolution.confidence_label}"
         ),
         (
             "workflow_diagnostics: "
@@ -1094,6 +1121,16 @@ def _render_market_data_calibration_human_output(
             f"option_surface_records={prepared_calibration.diagnostics.option_surface_record_count}"
         ),
     ]
+
+    if request.session_configuration.session_definition_source is not None:
+        lines.append(
+            (
+                "session_definition_override: "
+                f"path={request.session_configuration.session_definition_source.path} "
+                f"format={request.session_configuration.session_definition_source.file_format.value} "
+                f"provenance_label={request.session_configuration.session_definition_source.provenance_label}"
+            )
+        )
 
     if request.known_news_inputs is not None:
         lines.append(

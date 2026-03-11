@@ -204,6 +204,7 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
     expected_exports = {
         "CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY",
         "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
+        "CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_SCHEMA_VERSION",
         "CALIBRATION_RUN_SPEC_SCHEMA_VERSION",
         "CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION",
         "CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION",
@@ -230,6 +231,9 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
         "CalibrationMarketDataNormalizationPolicy",
         "CalibrationMarketDataOutputPreferences",
         "CalibrationMarketDataWorkflowScope",
+        "MarketDataSessionRecurringClosedWindow",
+        "MarketDataSessionRegularWindow",
+        "MarketDataSessionResolution",
         "CalibrationOptimizerSettings",
         "CalibrationOptionQuoteInputPolicy",
         "CalibrationOptionSurfaceColumnMapping",

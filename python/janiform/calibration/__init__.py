@@ -46,6 +46,12 @@ from ._market_data import (
     prepare_market_data_calibration,
     run_market_data_calibration,
 )
+from ._session_resolution import (
+    CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_SCHEMA_VERSION,
+    MarketDataSessionRecurringClosedWindow,
+    MarketDataSessionRegularWindow,
+    MarketDataSessionResolution,
+)
 from ._requests import (
     MarketDataCalibrationRequest,
     StagedCalibrationRequest,
@@ -104,6 +110,7 @@ __all__ = [
     "CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY",
     "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
     "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
+    "CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_SCHEMA_VERSION",
     "CALIBRATION_RUN_SPEC_SCHEMA_VERSION",
     "CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION",
     "CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION",
@@ -135,6 +142,9 @@ __all__ = [
     "MarketDataCalibrationPreparationDiagnostics",
     "MarketDataCalibrationPreparationProvenance",
     "MarketDataCalibrationSourceSummary",
+    "MarketDataSessionRecurringClosedWindow",
+    "MarketDataSessionRegularWindow",
+    "MarketDataSessionResolution",
     "CalibrationOptimizerSettings",
     "CalibrationOptionQuoteInputPolicy",
     "CalibrationOptionSurfaceColumnMapping",

@@ -144,33 +144,6 @@ def run_example(
     run_id = _build_run_id(csv_path)
 
     artifact_directory.mkdir(parents=True, exist_ok=True)
-    resolved_session_definition_path = (
-        session_definition_path
-        if session_definition_path is not None
-        else artifact_directory / "fx_24_5_session_definition.json"
-    )
-
-    if session_definition_path is None:
-        resolved_session_definition_path.write_text(
-            json.dumps(
-                _build_default_fx_session_definition(
-                    exchange_code=exchange_code,
-                    session_timezone=session_timezone,
-                ),
-                indent=2,
-                sort_keys=True,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-
-    calendar_registry = CalendarRegistry(
-        resolved_session_definition_path.read_text(encoding="utf-8"),
-    )
-    resolved_session_timezone = _load_exchange_timezone_from_session_definition(
-        session_definition_path=resolved_session_definition_path,
-        exchange_code=exchange_code,
-    )
     simulation_interval_duration_nanos = _parse_interval_duration_nanos(simulation_interval)
     simulation_interval_delta = (
         simulation_interval_duration_nanos / ONE_HOUR_NANOS
@@ -205,14 +178,18 @@ def run_example(
         disk_checkpoint_directory=artifact_directory,
         exchange_code=exchange_code,
         run_id=run_id,
-        session_definition_path=resolved_session_definition_path,
-        session_timezone=resolved_session_timezone,
+        session_definition_path=session_definition_path,
+        session_timezone=session_timezone,
         timestamp_timezone=timestamp_timezone,
     )
 
     preparation_start = perf_counter()
     prepared = prepare_market_data_calibration(market_data_request)
     preparation_seconds = perf_counter() - preparation_start
+    calendar_registry = CalendarRegistry(
+        prepared.session_resolution.resolved_session_definition_json,
+    )
+    resolved_session_timezone = prepared.session_resolution.resolved_timezone_name
 
     calibration_start = perf_counter()
     calibration_response = run_staged_calibration(
@@ -398,7 +375,10 @@ def run_example(
             "horizon_interval_count": horizon_interval_count,
             "artifact_directory": str(artifact_directory),
             "exchange_code": exchange_code,
-            "session_definition_path": str(resolved_session_definition_path),
+            "session_definition_path": (
+                str(session_definition_path) if session_definition_path is not None else None
+            ),
+            "session_resolution_kind": prepared.session_resolution.resolution_kind,
             "session_timezone": resolved_session_timezone,
             "timestamp_timezone": timestamp_timezone,
         },
@@ -558,8 +538,8 @@ def run_example(
                 "and flat moves reuse the previous sign with `buy` as the initial fallback."
             ),
             (
-                "The default generated session definition is a pragmatic 24/5 FX calendar with a daily "
-                "23:59 close and 00:00 reopen on weekdays. Pass --session-definition-json to override it."
+                "By default this workflow infers a reusable session definition from the FX workflow context "
+                "and the observed tick window. Pass --session-definition-json to override it explicitly."
             ),
             (
                 "The summary now compares return stylized facts only. Activity diagnostics are no longer the "
@@ -597,7 +577,7 @@ def _parse_args() -> argparse.Namespace:
         "--session-definition-json",
         type=Path,
         default=None,
-        help="Optional custom calendar registry JSON to use instead of the built-in FX 24/5 session definition.",
+        help="Optional custom calendar registry JSON to use instead of automatic session inference.",
     )
     parser.add_argument(
         "--exchange-code",
@@ -612,7 +592,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--session-timezone",
         default=DEFAULT_SESSION_TIMEZONE,
-        help="Timezone for the generated default session definition when no custom JSON is supplied.",
+        help="Timezone hint used during automatic session inference when no custom JSON is supplied.",
     )
     parser.add_argument(
         "--max-interval-count",
@@ -936,10 +916,21 @@ def _build_market_data_request(
     disk_checkpoint_directory: Path,
     exchange_code: str,
     run_id: str,
-    session_definition_path: Path,
+    session_definition_path: Optional[Path],
     session_timezone: str,
     timestamp_timezone: str,
 ) -> MarketDataCalibrationRequest:
+    session_configuration_fields: dict[str, object] = {
+        "exchange_code": exchange_code,
+        "session_timezone": session_timezone,
+    }
+    if session_definition_path is not None:
+        session_configuration_fields["session_definition_source"] = CalibrationInputFileReference(
+            path=str(session_definition_path),
+            file_format=CalibrationInputFileFormat.JSON,
+            provenance_label="session_definition",
+        )
+
     return MarketDataCalibrationRequest(
         schema_version="calibration.market_data.request.v1",
         run_id=run_id,
@@ -948,15 +939,7 @@ def _build_market_data_request(
             file_format=CalibrationInputFileFormat.CSV,
             provenance_label="eurusd_tick_csv",
         ),
-        session_configuration=CalibrationSessionConfigurationInput(
-            exchange_code=exchange_code,
-            session_definition_source=CalibrationInputFileReference(
-                path=str(session_definition_path),
-                file_format=CalibrationInputFileFormat.JSON,
-                provenance_label="session_definition",
-            ),
-            session_timezone=session_timezone,
-        ),
+        session_configuration=CalibrationSessionConfigurationInput(**session_configuration_fields),
         column_mapping=CalibrationMarketDataColumnMapping(
             tick_data=CalibrationTickDataColumnMapping(
                 timestamp_column="time",

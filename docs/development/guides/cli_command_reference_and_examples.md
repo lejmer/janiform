@@ -430,7 +430,7 @@ calibration scope for you.
 ### Synopsis
 
 ```text
-janiform calibration market-data --run-id TEXT --workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface} --tick-data-path PATH --tick-data-format {csv,parquet} --tick-data-provenance-label TEXT --tick-timestamp-column TEXT --exchange-code TEXT --session-definition-path PATH --session-definition-format {csv,parquet,json} --session-definition-provenance-label TEXT --session-timezone TEXT --timestamp-timezone TEXT [OPTIONS]
+janiform calibration market-data --run-id TEXT --workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface} --tick-data-path PATH --tick-data-format {csv,parquet} --tick-data-provenance-label TEXT --tick-timestamp-column TEXT --exchange-code TEXT --timestamp-timezone TEXT [OPTIONS]
 ```
 
 ### Options
@@ -444,11 +444,14 @@ Required workflow inputs:
 - `--tick-data-provenance-label`
 - `--tick-timestamp-column`
 - `--exchange-code`
+- `--timestamp-timezone`
+
+Optional session-resolution overrides:
+
 - `--session-definition-path`
 - `--session-definition-format {csv,parquet,json}`
 - `--session-definition-provenance-label`
 - `--session-timezone`
-- `--timestamp-timezone`
 
 Common normalization and output options:
 
@@ -498,7 +501,7 @@ Optional option-surface inputs:
 - Use `--execution-mode memory` when you want an in-memory prepared staged contract without disk
   artifact targets.
 
-### Example: CSV Tick Data With Known-News Calendar And Default Disk Mode
+### Example: CSV Tick Data With Known-News Calendar And Automatic Session Inference
 
 This example shows the default calibration behavior on the CLI. It omits `--execution-mode`, so
 the command uses `disk` and therefore includes `--disk-checkpoint-directory`.
@@ -512,10 +515,6 @@ janiform calibration market-data \
   --tick-data-provenance-label primary-tick-feed \
   --tick-timestamp-column timestamp_utc \
   --exchange-code XNYS \
-  --session-definition-path tmp/cli-docs/config/sessions.json \
-  --session-definition-format json \
-  --session-definition-provenance-label session-calendar \
-  --session-timezone America/New_York \
   --known-news-path tmp/cli-docs/config/known-news.csv \
   --known-news-format csv \
   --known-news-provenance-label known-news-calendar \
@@ -548,10 +547,6 @@ janiform calibration market-data \
   --tick-trade-price-column trade_price \
   --tick-trade-sign-column trade_sign \
   --exchange-code XNYS \
-  --session-definition-path tmp/cli-docs/config/sessions.json \
-  --session-definition-format json \
-  --session-definition-provenance-label session-calendar \
-  --session-timezone America/New_York \
   --known-news-path tmp/cli-docs/config/known-news.csv \
   --known-news-format csv \
   --known-news-provenance-label known-news-calendar \
@@ -584,10 +579,6 @@ janiform calibration market-data \
   --tick-data-provenance-label primary-tick-feed \
   --tick-timestamp-column timestamp_utc \
   --exchange-code XNYS \
-  --session-definition-path tmp/cli-docs/config/sessions.json \
-  --session-definition-format json \
-  --session-definition-provenance-label session-calendar \
-  --session-timezone America/New_York \
   --timestamp-timezone UTC \
   --disk-checkpoint-directory tmp/cli-docs/checkpoints/market-data-json \
   --output json \
