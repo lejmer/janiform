@@ -33,6 +33,8 @@ from janiform.hourly_factors import (
     HourlyNewsIntensityMaterializationSettings,
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
+    _parse_interval_duration_nanos,
+    build_hourly_factor_contract,
     build_runtime_hourly_seasonality_source_from_calibration_payload,
     materialize_hourly_news_intensity_factors,
 )
@@ -47,7 +49,6 @@ from janiform.simulation import (
     HawkesKernelParameters,
     NewsProcessConfiguration,
     SeededTickSimulationRequest,
-    load_hourly_factor_contract_for_simulation,
     run_coarse_simulation,
     run_seeded_tick_event_simulation,
 )
@@ -55,6 +56,7 @@ from janiform.simulation import (
 DEFAULT_EXCHANGE_CODE: str = "FX_EURUSD"
 DEFAULT_SESSION_TIMEZONE: str = "UTC"
 DEFAULT_MAX_INTERVAL_COUNT: int = 168
+ONE_HOUR_NANOS: int = 3_600_000_000_000
 _COMMON_TIMESTAMP_FORMATS: tuple[str, ...] = (
     "%d.%m.%Y %H:%M:%S.%f%z",
     "%d.%m.%Y %H:%M:%S.%f %z",
@@ -126,6 +128,7 @@ def run_example(
     session_timezone: str = DEFAULT_SESSION_TIMEZONE,
     max_interval_count: int = DEFAULT_MAX_INTERVAL_COUNT,
     simulation_interval_count: Optional[int] = None,
+    simulation_interval: str = "1h",
     coarse_seed: int = 17,
     seeded_tick_seed: int = 23,
     session_definition_path: Optional[Path] = None,
@@ -168,13 +171,20 @@ def run_example(
         session_definition_path=resolved_session_definition_path,
         exchange_code=exchange_code,
     )
+    simulation_interval_duration_nanos = _parse_interval_duration_nanos(simulation_interval)
+    simulation_interval_delta = (
+        simulation_interval_duration_nanos / ONE_HOUR_NANOS
+    )
 
     simulation_start_utc, horizon_interval_count = _resolve_simulation_window(
         timestamps=[record.timestamp for record in tick_records],
+        interval_duration_nanos=simulation_interval_duration_nanos,
         requested_interval_count=simulation_interval_count,
         max_interval_count=max_interval_count,
     )
-    simulation_end_utc = simulation_start_utc + timedelta(hours=horizon_interval_count)
+    simulation_end_utc = simulation_start_utc + (
+        horizon_interval_count * _timedelta_from_nanos(simulation_interval_duration_nanos)
+    )
     normalized_tick_csv_path = (
         artifact_directory / "artifacts" / "runs" / run_id / "normalized_tick_input.csv"
     )
@@ -187,6 +197,7 @@ def run_example(
         tick_records=tick_records,
         simulation_start_utc=simulation_start_utc,
         horizon_interval_count=horizon_interval_count,
+        interval_duration_nanos=simulation_interval_duration_nanos,
     )
 
     market_data_request = _build_market_data_request(
@@ -228,12 +239,15 @@ def run_example(
         exchange_code=exchange_code,
         exchange_timezone=resolved_session_timezone,
         interval_starts=observed_hourly_series["interval_starts"],
+        interval_duration_nanos=simulation_interval_duration_nanos,
+        simulation_interval_delta=simulation_interval_delta,
     )
     runtime_hourly_factor_contract = _build_runtime_hourly_factor_contract(
         calendar_registry=calendar_registry,
         exchange_code=exchange_code,
         simulation_start_utc=simulation_start_utc,
         simulation_end_utc=simulation_end_utc,
+        simulation_interval=simulation_interval,
         calibrated_model=calibrated_model,
     )
     runtime_interval_factors = _build_runtime_interval_factors(
@@ -245,7 +259,7 @@ def run_example(
         seed=coarse_seed,
         start_time_utc=simulation_start_utc,
         horizon_interval_count=horizon_interval_count,
-        interval_delta=1.0,
+        interval_delta=simulation_interval_delta,
         risk_model_inputs=calibrated_model["risk_model_inputs"],
         interval_factors=runtime_interval_factors,
         news_process_configuration=calibrated_model["news_process_configuration"],
@@ -279,6 +293,7 @@ def run_example(
             exchange_code=exchange_code,
             simulation_start_utc=simulation_start_utc,
             simulation_end_utc=simulation_end_utc,
+            simulation_interval=simulation_interval,
             horizon_interval_count=horizon_interval_count,
             seeded_tick_seed=seeded_tick_seed,
             calibrated_model=calibrated_model,
@@ -347,6 +362,7 @@ def run_example(
             coarse_hourly_returns=coarse_returns,
             seeded_hourly_returns=seeded_hourly_returns,
             simulation_start_utc=simulation_start_utc,
+            interval_duration_nanos=simulation_interval_duration_nanos,
             starting_price=tick_records[-1].close,
         )
 
@@ -357,10 +373,11 @@ def run_example(
     )
     _write_manual_test_series_csv(
         csv_path=resolved_plot_data_csv_path,
-        hourly_boundaries=[
-            simulation_start_utc + timedelta(hours=interval_index)
-            for interval_index in range(horizon_interval_count + 1)
-        ],
+        hourly_boundaries=_interval_boundaries(
+            simulation_start_utc=simulation_start_utc,
+            horizon_interval_count=horizon_interval_count,
+            interval_duration_nanos=simulation_interval_duration_nanos,
+        ),
         observed_hourly_returns=observed_hourly_series["hourly_returns"],
         coarse_hourly_returns=coarse_returns,
         seeded_hourly_returns=seeded_hourly_returns,
@@ -376,6 +393,8 @@ def run_example(
             "inferred_sign_count": tick_record_load_result.inferred_sign_count,
             "simulation_start_utc": simulation_start_utc.isoformat(),
             "simulation_end_utc": simulation_end_utc.isoformat(),
+            "simulation_interval": simulation_interval,
+            "simulation_interval_duration_nanos": simulation_interval_duration_nanos,
             "horizon_interval_count": horizon_interval_count,
             "artifact_directory": str(artifact_directory),
             "exchange_code": exchange_code,
@@ -563,7 +582,7 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Calibrate Janiform on a EUR/USD tick CSV with `time` and `close` columns and an optional "
-            "`sign` column, then simulate a coarse path and a seeded priced fine path and compare hourly "
+            "`sign` column, then simulate a coarse path and a seeded priced fine path and compare "
             "return stylized facts."
         )
     )
@@ -599,13 +618,18 @@ def _parse_args() -> argparse.Namespace:
         "--max-interval-count",
         type=int,
         default=DEFAULT_MAX_INTERVAL_COUNT,
-        help="Maximum hourly intervals to simulate when --simulation-interval-count is not supplied.",
+        help="Maximum simulation intervals to simulate when --simulation-interval-count is not supplied.",
     )
     parser.add_argument(
         "--simulation-interval-count",
         type=int,
         default=None,
-        help="Exact hourly interval count to simulate. Defaults to the largest available window capped by --max-interval-count.",
+        help="Exact simulation interval count to simulate. Defaults to the largest available window capped by --max-interval-count.",
+    )
+    parser.add_argument(
+        "--simulation-interval",
+        default="1h",
+        help="Fixed-width UTC simulation interval, for example 1h or 15min. Default: 1h.",
     )
     parser.add_argument(
         "--coarse-seed",
@@ -630,7 +654,7 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help=(
-            "Optional output path for a CSV containing hourly boundary timestamps plus observed, "
+            "Optional output path for a CSV containing simulation interval boundary timestamps plus observed, "
             "coarse, and seeded returns and path values. Defaults to the run artifact directory."
         ),
     )
@@ -873,18 +897,20 @@ def _resolve_time_zone(timezone_name: str) -> datetime.tzinfo:
 def _resolve_simulation_window(
     *,
     timestamps: Sequence[datetime],
+    interval_duration_nanos: int,
     requested_interval_count: Optional[int],
     max_interval_count: int,
 ) -> tuple[datetime, int]:
     first_timestamp = timestamps[0]
     last_timestamp = timestamps[-1]
-    aligned_start = _ceil_to_hour(first_timestamp)
-    aligned_end = _floor_to_hour(last_timestamp)
-    available_interval_count = int((aligned_end - aligned_start) / timedelta(hours=1))
+    aligned_start = _ceil_to_interval(first_timestamp, interval_duration_nanos)
+    aligned_end = _floor_to_interval(last_timestamp, interval_duration_nanos)
+    interval_timedelta = _timedelta_from_nanos(interval_duration_nanos)
+    available_interval_count = int((aligned_end - aligned_start) / interval_timedelta)
     if available_interval_count <= 0:
         raise ValueError(
-            "The input data does not span a full aligned UTC hour. "
-            "At least one complete hourly interval is required for this manual test."
+            "The input data does not span one complete aligned simulation interval. "
+            "At least one full interval is required for this manual test."
         )
 
     if requested_interval_count is not None:
@@ -892,7 +918,7 @@ def _resolve_simulation_window(
             raise ValueError("--simulation-interval-count must be strictly positive")
         if requested_interval_count > available_interval_count:
             raise ValueError(
-                "--simulation-interval-count exceeds the number of whole aligned hours "
+                "--simulation-interval-count exceeds the number of whole aligned intervals "
                 f"available in the sample ({available_interval_count})"
             )
         return aligned_start, requested_interval_count
@@ -1096,6 +1122,8 @@ def _extract_calibrated_model(
     exchange_code: str,
     exchange_timezone: str,
     interval_starts: Sequence[datetime],
+    interval_duration_nanos: int,
+    simulation_interval_delta: float,
 ) -> dict[str, Any]:
     seasonality_payload = _require_nested_mapping(
         stage_artifacts["seasonality"],
@@ -1169,7 +1197,8 @@ def _extract_calibrated_model(
         calendar_registry=calendar_registry,
         exchange_code=exchange_code,
         range_start_utc=interval_starts[0],
-        range_end_utc=interval_starts[-1] + timedelta(hours=1),
+        range_end_utc=interval_starts[-1] + _timedelta_from_nanos(interval_duration_nanos),
+        interval=f"{interval_duration_nanos}ns",
         settings=HourlyNewsIntensityMaterializationSettings(
             known_scheduled_event_timestamps_utc=[
                 _utc_datetime_from_nanos(timestamp_utc_nanos)
@@ -1180,7 +1209,7 @@ def _extract_calibrated_model(
     )
 
     interval_factors = SufficientStatisticsRiskIntervalFactors(
-        interval_delta=1.0,
+        interval_delta=simulation_interval_delta,
         s_h=tuple(hourly_seasonality_factors),
         nu_h_known=tuple(hourly_news_materialization.known_component_nu_h),
         nu_h_surprise=tuple(hourly_news_materialization.surprise_component_nu_h),
@@ -1305,6 +1334,7 @@ def _run_event_count_isolation_experiments(
     exchange_code: str,
     simulation_start_utc: datetime,
     simulation_end_utc: datetime,
+    simulation_interval: str,
     horizon_interval_count: int,
     seeded_tick_seed: int,
     calibrated_model: Mapping[str, Any],
@@ -1317,6 +1347,7 @@ def _run_event_count_isolation_experiments(
         exchange_code=exchange_code,
         simulation_start_utc=simulation_start_utc,
         simulation_end_utc=simulation_end_utc,
+        simulation_interval=simulation_interval,
         calibrated_model=calibrated_model,
     )
 
@@ -1332,6 +1363,7 @@ def _run_event_count_isolation_experiments(
         exchange_code=exchange_code,
         simulation_start_utc=simulation_start_utc,
         simulation_end_utc=simulation_end_utc,
+        simulation_interval=simulation_interval,
         calibrated_model=calibrated_model,
         seasonality_source=HourlySeasonalityProviderExplicitSource(
             hourly_factors=baseline_seasonality_factors,
@@ -1475,6 +1507,7 @@ def _build_runtime_hourly_factor_contract(
     exchange_code: str,
     simulation_start_utc: datetime,
     simulation_end_utc: datetime,
+    simulation_interval: str,
     calibrated_model: Mapping[str, Any],
 ) -> Any:
     runtime_hourly_factor_contracts = _build_runtime_hourly_factor_contract_variants(
@@ -1482,6 +1515,7 @@ def _build_runtime_hourly_factor_contract(
         exchange_code=exchange_code,
         simulation_start_utc=simulation_start_utc,
         simulation_end_utc=simulation_end_utc,
+        simulation_interval=simulation_interval,
         calibrated_model=calibrated_model,
     )
 
@@ -1494,6 +1528,7 @@ def _build_runtime_hourly_factor_contract_variants(
     exchange_code: str,
     simulation_start_utc: datetime,
     simulation_end_utc: datetime,
+    simulation_interval: str,
     calibrated_model: Mapping[str, Any],
 ) -> dict[str, Any]:
     materialized_seasonality_source = (
@@ -1501,6 +1536,7 @@ def _build_runtime_hourly_factor_contract_variants(
             calendar_registry=calendar_registry,
             range_start_utc=simulation_start_utc,
             range_end_utc=simulation_end_utc,
+            interval=simulation_interval,
             seasonality_stage_payload=calibrated_model["seasonality_stage_payload"],
             mean_renormalize=False,
         )
@@ -1510,6 +1546,7 @@ def _build_runtime_hourly_factor_contract_variants(
             calendar_registry=calendar_registry,
             range_start_utc=simulation_start_utc,
             range_end_utc=simulation_end_utc,
+            interval=simulation_interval,
             seasonality_stage_payload=calibrated_model["seasonality_stage_payload"],
             mean_renormalize=True,
         )
@@ -1520,6 +1557,7 @@ def _build_runtime_hourly_factor_contract_variants(
         exchange_code=exchange_code,
         simulation_start_utc=simulation_start_utc,
         simulation_end_utc=simulation_end_utc,
+        simulation_interval=simulation_interval,
         calibrated_model=calibrated_model,
         seasonality_source=materialized_seasonality_source,
     )
@@ -1528,6 +1566,7 @@ def _build_runtime_hourly_factor_contract_variants(
         exchange_code=exchange_code,
         simulation_start_utc=simulation_start_utc,
         simulation_end_utc=simulation_end_utc,
+        simulation_interval=simulation_interval,
         calibrated_model=calibrated_model,
         seasonality_source=renormalized_seasonality_source,
     )
@@ -1544,22 +1583,20 @@ def _load_simulation_hourly_factor_contract(
     exchange_code: str,
     simulation_start_utc: datetime,
     simulation_end_utc: datetime,
+    simulation_interval: str,
     calibrated_model: Mapping[str, Any],
-    seasonality_source: (
-        HourlySeasonalityProviderExplicitSource
-        | HourlySeasonalityProviderMaterializedSource
-    ),
+    seasonality_source: HourlySeasonalityProviderExplicitSource,
 ) -> Any:
-    return load_hourly_factor_contract_for_simulation(
+    return build_hourly_factor_contract(
         calendar_registry=calendar_registry,
         exchange_code=exchange_code,
         range_start_utc=simulation_start_utc,
         range_end_utc=simulation_end_utc,
-        seasonality_source=seasonality_source,
-        news_intensity_source=HourlyNewsIntensityProviderExplicitSource(
-            hourly_factors=calibrated_model["hourly_total_news_intensity"],
-            materialization_method="manual_test.calibrated_hourly_news_intensity.v1",
-        ),
+        interval=simulation_interval,
+        seasonality_hourly_factors=seasonality_source.hourly_factors,
+        news_intensity_hourly_factors=calibrated_model["hourly_total_news_intensity"],
+        seasonality_materialization_method=seasonality_source.materialization_method,
+        news_intensity_materialization_method="manual_test.calibrated_hourly_news_intensity.v1",
     )
 
 
@@ -1936,16 +1973,19 @@ def _build_observed_hourly_series(
     tick_records: Sequence[TickRecord],
     simulation_start_utc: datetime,
     horizon_interval_count: int,
+    interval_duration_nanos: int,
 ) -> dict[str, Any]:
-    interval_starts = [
-        simulation_start_utc + timedelta(hours=interval_index)
-        for interval_index in range(horizon_interval_count)
-    ]
+    interval_starts = _interval_boundaries(
+        simulation_start_utc=simulation_start_utc,
+        horizon_interval_count=horizon_interval_count,
+        interval_duration_nanos=interval_duration_nanos,
+    )[:-1]
 
     boundary_prices = _build_boundary_prices(
         tick_records=tick_records,
         simulation_start_utc=simulation_start_utc,
         horizon_interval_count=horizon_interval_count,
+        interval_duration_nanos=interval_duration_nanos,
     )
     hourly_returns = [
         math.log(boundary_prices[boundary_index + 1] / boundary_prices[boundary_index])
@@ -1963,13 +2003,17 @@ def _build_boundary_prices(
     tick_records: Sequence[TickRecord],
     simulation_start_utc: datetime,
     horizon_interval_count: int,
+    interval_duration_nanos: int,
 ) -> list[float]:
     boundary_prices: list[float] = []
     tick_index = 0
     latest_close: Optional[float] = None
 
-    for boundary_index in range(horizon_interval_count + 1):
-        boundary_timestamp = simulation_start_utc + timedelta(hours=boundary_index)
+    for boundary_timestamp in _interval_boundaries(
+        simulation_start_utc=simulation_start_utc,
+        horizon_interval_count=horizon_interval_count,
+        interval_duration_nanos=interval_duration_nanos,
+    ):
         while tick_index < len(tick_records) and tick_records[tick_index].timestamp <= boundary_timestamp:
             latest_close = tick_records[tick_index].close
             tick_index += 1
@@ -1993,6 +2037,7 @@ def _write_manual_test_plot(
     coarse_hourly_returns: Sequence[float],
     seeded_hourly_returns: Sequence[float],
     simulation_start_utc: datetime,
+    interval_duration_nanos: int,
     starting_price: float,
 ) -> None:
     import matplotlib.dates as mdates
@@ -2002,10 +2047,11 @@ def _write_manual_test_plot(
 
     tick_timestamps = [record.timestamp for record in tick_records]
     tick_prices = [record.close for record in tick_records]
-    hourly_boundaries = [
-        simulation_start_utc + timedelta(hours=interval_index)
-        for interval_index in range(len(observed_hourly_returns) + 1)
-    ]
+    hourly_boundaries = _interval_boundaries(
+        simulation_start_utc=simulation_start_utc,
+        horizon_interval_count=len(observed_hourly_returns),
+        interval_duration_nanos=interval_duration_nanos,
+    )
     panel_values, panel_title, panel_ylabel = _price_panel_series_from_returns(
         observed_hourly_returns=observed_hourly_returns,
         coarse_hourly_returns=coarse_hourly_returns,
@@ -2652,16 +2698,51 @@ def _utc_datetime_from_nanos(timestamp_utc_nanos: int) -> datetime:
     return datetime.fromtimestamp(seconds, tz=UTC).replace(microsecond=microseconds)
 
 
-def _ceil_to_hour(timestamp_utc: datetime) -> datetime:
-    floored_timestamp = _floor_to_hour(timestamp_utc)
+def _timedelta_from_nanos(duration_nanos: int) -> timedelta:
+    seconds, nanos_remainder = divmod(duration_nanos, 1_000_000_000)
+    microseconds, residual_nanos = divmod(nanos_remainder, 1_000)
+    if residual_nanos != 0:
+        raise ValueError(
+            "This manual test requires simulation intervals that are representable with Python datetimes "
+            "(whole-microsecond resolution)."
+        )
+
+    return timedelta(seconds=seconds, microseconds=microseconds)
+
+
+def _interval_boundaries(
+    *,
+    simulation_start_utc: datetime,
+    horizon_interval_count: int,
+    interval_duration_nanos: int,
+) -> list[datetime]:
+    interval_timedelta = _timedelta_from_nanos(interval_duration_nanos)
+    return [
+        simulation_start_utc + interval_index * interval_timedelta
+        for interval_index in range(horizon_interval_count + 1)
+    ]
+
+
+def _ceil_to_interval(timestamp_utc: datetime, interval_duration_nanos: int) -> datetime:
+    floored_timestamp = _floor_to_interval(timestamp_utc, interval_duration_nanos)
     if timestamp_utc == floored_timestamp:
         return floored_timestamp
 
-    return floored_timestamp + timedelta(hours=1)
+    return floored_timestamp + _timedelta_from_nanos(interval_duration_nanos)
 
 
-def _floor_to_hour(timestamp_utc: datetime) -> datetime:
-    return timestamp_utc.replace(minute=0, second=0, microsecond=0)
+def _floor_to_interval(timestamp_utc: datetime, interval_duration_nanos: int) -> datetime:
+    normalized_timestamp = timestamp_utc.astimezone(UTC)
+    delta = normalized_timestamp - _UNIX_EPOCH_UTC
+    timestamp_nanos = (
+        delta.days * 86_400_000_000_000
+        + delta.seconds * 1_000_000_000
+        + delta.microseconds * 1_000
+    )
+    floored_timestamp_nanos = (
+        timestamp_nanos // interval_duration_nanos
+    ) * interval_duration_nanos
+    return _utc_datetime_from_nanos(floored_timestamp_nanos)
 
 
 def _require_nested_mapping(
@@ -2709,6 +2790,7 @@ def main() -> None:
                 session_timezone=parsed_arguments.session_timezone,
                 max_interval_count=parsed_arguments.max_interval_count,
                 simulation_interval_count=parsed_arguments.simulation_interval_count,
+                simulation_interval=parsed_arguments.simulation_interval,
                 coarse_seed=parsed_arguments.coarse_seed,
                 seeded_tick_seed=parsed_arguments.seeded_tick_seed,
                 session_definition_path=parsed_arguments.session_definition_json,
@@ -2728,6 +2810,7 @@ def main() -> None:
         session_timezone=parsed_arguments.session_timezone,
         max_interval_count=parsed_arguments.max_interval_count,
         simulation_interval_count=parsed_arguments.simulation_interval_count,
+        simulation_interval=parsed_arguments.simulation_interval,
         coarse_seed=parsed_arguments.coarse_seed,
         seeded_tick_seed=parsed_arguments.seeded_tick_seed,
         session_definition_path=parsed_arguments.session_definition_json,
