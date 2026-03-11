@@ -244,6 +244,7 @@ The package root `janiform` is intentionally minimal.
   - Ownership: exchange calendar queries used by simulation, pricing, and later calibration
 - `janiform.hourly_factors`
   - Ownership: interval-aligned `s_h` and `nu_h` contract materialization shared by simulation and pricing
+  - Public note: runtime seasonality should be derived from calibration output through `build_runtime_hourly_seasonality_source_from_calibration_payload(...)` instead of recomposing intraday, day-of-week, and day-of-year factors in consumers
 - `janiform.seasonality`
   - Ownership: deterministic seasonality estimation and composition
 - `janiform.validation`

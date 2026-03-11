@@ -131,6 +131,8 @@ pub struct SeasonalityStageParameterPayload {
     pub intraday_factor_by_bin: Vec<f64>,
     pub day_of_week_factor: Vec<f64>,
     pub day_of_year_factor: Vec<f64>,
+    pub timestamp_utc_nanos: Vec<i64>,
+    pub normalized_combined_factor_by_event: Vec<f64>,
     pub normalization_metadata: SeasonalityStageNormalizationMetadata,
 }
 
@@ -335,9 +337,18 @@ impl CalibrationStageParameterArtifact {
                 if payload.intraday_factor_by_bin.is_empty()
                     || payload.day_of_week_factor.is_empty()
                     || payload.day_of_year_factor.is_empty()
+                    || payload.timestamp_utc_nanos.is_empty()
+                    || payload.normalized_combined_factor_by_event.is_empty()
                 {
                     return Err(
                         CalibrationStageParameterArtifactValidationError::MissingSeasonalityFactors,
+                    );
+                }
+                if payload.timestamp_utc_nanos.len()
+                    != payload.normalized_combined_factor_by_event.len()
+                {
+                    return Err(
+                        CalibrationStageParameterArtifactValidationError::SeasonalityEventSignalLengthMismatch,
                     );
                 }
                 if self.optimizer_state.is_some() {
@@ -706,6 +717,7 @@ pub enum CalibrationStageParameterArtifactValidationError {
         field: &'static str,
     },
     MissingSeasonalityFactors,
+    SeasonalityEventSignalLengthMismatch,
     MissingOptimizerState {
         stage: CalibrationStage,
     },
@@ -777,7 +789,11 @@ impl Display for CalibrationStageParameterArtifactValidationError {
             ),
             Self::MissingSeasonalityFactors => write!(
                 formatter,
-                "seasonality stage parameter artifact requires non-empty fitted factor vectors"
+                "seasonality stage parameter artifact requires non-empty fitted factor and event-signal vectors"
+            ),
+            Self::SeasonalityEventSignalLengthMismatch => write!(
+                formatter,
+                "seasonality stage parameter artifact requires timestamp_utc_nanos and normalized_combined_factor_by_event to have matching lengths"
             ),
             Self::MissingOptimizerState { stage } => write!(
                 formatter,
@@ -988,6 +1004,10 @@ fn build_seasonality_stage_parameter_artifact(
                 intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
                 day_of_week_factor: payload.day_of_week_factor.clone(),
                 day_of_year_factor: payload.day_of_year_factor.clone(),
+                timestamp_utc_nanos: payload.timestamp_utc_nanos.clone(),
+                normalized_combined_factor_by_event: payload
+                    .normalized_combined_factor_by_event
+                    .clone(),
                 normalization_metadata: payload.normalization_metadata.clone(),
             },
         ),

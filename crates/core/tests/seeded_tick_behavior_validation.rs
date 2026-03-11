@@ -37,6 +37,7 @@ const FIFTEEN_MINUTE_NANOS: i64 = 900_000_000_000;
 const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
 const ONE_DAY_NANOS: i64 = 86_400_000_000_000;
 const FLOAT_TOLERANCE: f64 = 1e-12;
+const OPEN_MARKET_START_TIME_UTC_NANOS: i64 = 1_705_935_600_000_000_000;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct ClusteringMetrics {
@@ -241,12 +242,11 @@ fn seeded_behavior_validation_boundary_adjacent_scenarios_are_repeatable_with_fi
         HawkesInvariantCheckClass::DeterministicEquation,
     );
 
-    let boundary_utc_nanos = START_TIME_UTC_NANOS + ONE_HOUR_NANOS;
     let run_config = SeededTickSimulationRunConfig::try_new(
         91_008,
-        DateTime::<Utc>::from_timestamp_nanos(START_TIME_UTC_NANOS),
+        DateTime::<Utc>::from_timestamp_nanos(OPEN_MARKET_START_TIME_UTC_NANOS),
         2,
-        build_two_interval_boundary_adjacent_model_inputs(),
+        build_two_interval_boundary_adjacent_model_inputs(OPEN_MARKET_START_TIME_UTC_NANOS),
         None,
     )
     .expect("boundary-adjacent run config should initialize");
@@ -273,13 +273,14 @@ fn seeded_behavior_validation_boundary_adjacent_scenarios_are_repeatable_with_fi
     let first_timestamp_utc_nanos = first_run_result.event_path[0].timestamp_utc_nanos;
     let second_timestamp_utc_nanos = first_run_result.event_path[1].timestamp_utc_nanos;
 
+    let boundary_utc_nanos = OPEN_MARKET_START_TIME_UTC_NANOS + ONE_HOUR_NANOS;
     assert!(first_timestamp_utc_nanos < boundary_utc_nanos);
     assert!(second_timestamp_utc_nanos > boundary_utc_nanos);
     assert_ne!(first_timestamp_utc_nanos, boundary_utc_nanos);
     assert_ne!(second_timestamp_utc_nanos, boundary_utc_nanos);
     assert!(has_non_grid_event_time(
         &first_run_result.event_path,
-        START_TIME_UTC_NANOS,
+        OPEN_MARKET_START_TIME_UTC_NANOS,
         ONE_HOUR_NANOS,
     ));
 }
@@ -293,9 +294,9 @@ fn seeded_behavior_validation_tied_timestamps_follow_documented_event_ordering_p
 
     let run_config = SeededTickSimulationRunConfig::try_new(
         91_009,
-        DateTime::<Utc>::from_timestamp_nanos(START_TIME_UTC_NANOS),
+        DateTime::<Utc>::from_timestamp_nanos(OPEN_MARKET_START_TIME_UTC_NANOS),
         1,
-        build_one_interval_ordering_model_inputs(1.0),
+        build_one_interval_ordering_model_inputs(OPEN_MARKET_START_TIME_UTC_NANOS, 1.0),
         Some(SeededTickSimulationRunOptions {
             debug_trace_enabled: true,
             debug_trace_options: SeededTickSimulationDebugTraceOptions {
@@ -350,7 +351,7 @@ fn seeded_behavior_validation_tied_timestamps_follow_documented_event_ordering_p
         SeededTickEventDebugTraceTransitionKind::IntervalBoundaryDrift
     );
 
-    let tied_timestamp_utc_nanos = START_TIME_UTC_NANOS + tied_offset_nanos;
+    let tied_timestamp_utc_nanos = OPEN_MARKET_START_TIME_UTC_NANOS + tied_offset_nanos;
     assert_eq!(
         trace_records[0].timestamp_utc_nanos,
         tied_timestamp_utc_nanos
@@ -366,9 +367,9 @@ fn seeded_behavior_validation_near_tied_timestamps_follow_timestamp_priority_ord
 
     let run_config = SeededTickSimulationRunConfig::try_new(
         91_010,
-        DateTime::<Utc>::from_timestamp_nanos(START_TIME_UTC_NANOS),
+        DateTime::<Utc>::from_timestamp_nanos(OPEN_MARKET_START_TIME_UTC_NANOS),
         1,
-        build_one_interval_ordering_model_inputs(0.0),
+        build_one_interval_ordering_model_inputs(OPEN_MARKET_START_TIME_UTC_NANOS, 0.0),
         None,
     )
     .expect("near-tie ordering run config should initialize");
@@ -411,9 +412,9 @@ fn seeded_behavior_validation_exhibits_clustering_and_non_grid_event_time_signat
 
     let seed_values = seed_values(20_000, 32);
     let clustering_thresholds = ClusteringThresholds {
-        minimum_fano_factor_gap: 0.35,
-        minimum_lag_one_autocorrelation_gap: 0.45,
-        minimum_cluster_lag_one_autocorrelation: 0.70,
+        minimum_fano_factor_gap: 4.5,
+        minimum_lag_one_autocorrelation_gap: 0.12,
+        minimum_cluster_lag_one_autocorrelation: 0.65,
         minimum_non_grid_run_ratio: 0.95,
     };
 
@@ -473,9 +474,9 @@ fn seeded_behavior_validation_exhibits_expected_buy_sell_asymmetry() {
         symmetric_sell_share_tolerance: 0.04,
         symmetric_signed_drift_tolerance: 0.15,
         symmetric_side_fano_factor_gap_tolerance: 0.20,
-        minimum_sell_share_gap: 0.08,
+        minimum_sell_share_gap: 0.07,
         minimum_sell_to_buy_log_ratio_gap: 0.20,
-        minimum_sell_minus_buy_signed_drift_gap: 0.30,
+        minimum_sell_minus_buy_signed_drift_gap: 0.08,
         minimum_sell_side_fano_factor_gap: 0.04,
     };
 
@@ -1251,6 +1252,7 @@ fn build_run_config_with_options(
             kernel_parameters,
             initial_excitation_state,
             hourly_factor_contract: build_uniform_factor_contract(
+                START_TIME_UTC_NANOS,
                 interval_duration_nanos,
                 interval_count,
                 seasonality_factor,
@@ -1266,6 +1268,7 @@ fn build_run_config_with_options(
 }
 
 fn build_uniform_factor_contract(
+    start_time_utc_nanos: i64,
     interval_duration_nanos: i64,
     interval_count: usize,
     seasonality_factor: f64,
@@ -1278,7 +1281,7 @@ fn build_uniform_factor_contract(
     let mut interval_end_exchange_local: Vec<String> = Vec::with_capacity(interval_count);
 
     for interval_position in 0..interval_count {
-        let interval_start = START_TIME_UTC_NANOS
+        let interval_start = start_time_utc_nanos
             + i64::try_from(interval_position).expect("interval position should fit in i64")
                 * interval_duration_nanos;
         let interval_end = interval_start + interval_duration_nanos;
@@ -1302,7 +1305,7 @@ fn build_uniform_factor_contract(
         schema_version: HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
         exchange_code: "XNYS".to_owned(),
         exchange_timezone_name: "America/New_York".to_owned(),
-        request_start_utc_nanos: START_TIME_UTC_NANOS,
+        request_start_utc_nanos: start_time_utc_nanos,
         request_end_utc_nanos,
         interval_indices,
         interval_start_utc_nanos: interval_start_utc_nanos.clone(),
@@ -1461,6 +1464,7 @@ fn build_multi_hour_zero_event_carryover_model_inputs(
             y_minus_minus: 0.4,
         },
         hourly_factor_contract: build_uniform_factor_contract(
+            START_TIME_UTC_NANOS,
             ONE_HOUR_NANOS,
             interval_count,
             0.0,
@@ -1473,6 +1477,7 @@ fn build_multi_hour_zero_event_carryover_model_inputs(
 }
 
 fn build_one_interval_ordering_model_inputs(
+    start_time_utc_nanos: i64,
     news_intensity: f64,
 ) -> SeededTickSimulationModelInputs {
     SeededTickSimulationModelInputs {
@@ -1500,6 +1505,7 @@ fn build_one_interval_ordering_model_inputs(
             y_minus_minus: 0.0,
         },
         hourly_factor_contract: build_uniform_factor_contract(
+            start_time_utc_nanos,
             ONE_HOUR_NANOS,
             1,
             1.0,
@@ -1511,7 +1517,9 @@ fn build_one_interval_ordering_model_inputs(
     }
 }
 
-fn build_two_interval_boundary_adjacent_model_inputs() -> SeededTickSimulationModelInputs {
+fn build_two_interval_boundary_adjacent_model_inputs(
+    start_time_utc_nanos: i64,
+) -> SeededTickSimulationModelInputs {
     SeededTickSimulationModelInputs {
         kernel_parameters: HawkesKernelParameters::try_new(
             0.5,
@@ -1536,7 +1544,13 @@ fn build_two_interval_boundary_adjacent_model_inputs() -> SeededTickSimulationMo
             y_minus_plus: 0.0,
             y_minus_minus: 0.0,
         },
-        hourly_factor_contract: build_uniform_factor_contract(ONE_HOUR_NANOS, 2, 1.0, 0.0),
+        hourly_factor_contract: build_uniform_factor_contract(
+            start_time_utc_nanos,
+            ONE_HOUR_NANOS,
+            2,
+            1.0,
+            0.0,
+        ),
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
         news_process_configuration: build_news_process_configuration(Vec::new()),

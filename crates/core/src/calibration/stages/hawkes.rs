@@ -532,6 +532,12 @@ pub struct HawkesStageObjectiveTermDiagnostic {
 pub struct HawkesStageImpliedMetricsDiagnostic {
     pub baseline_buy_intensity_per_hour: f64,
     pub baseline_sell_intensity_per_hour: f64,
+    pub observed_open_event_rate_per_hour: f64,
+    pub deseasonalized_open_event_rate_per_hour_target: f64,
+    pub lambda_bar_scaling_ratio_applied: f64,
+    pub max_runtime_hourly_seasonality_factor: f64,
+    pub max_runtime_effective_branching_ratio: f64,
+    pub runtime_effective_branching_margin: f64,
     pub model_implied_open_event_rate_per_hour: f64,
     pub model_implied_open_buy_share: f64,
     pub model_implied_open_sell_share: f64,
@@ -838,7 +844,7 @@ pub fn run_hawkes_calibration_stage(
             candidate_input.source_regime.clone(),
             seasonality_payload,
         );
-        let adjusted_candidate_input = adjust_candidate_for_deseasonalized_activity(
+        let (adjusted_candidate_input, lambda_bar_scaling_ratio_applied) = adjust_candidate_for_deseasonalized_activity(
             candidate_input,
             observed_activity_targets,
         );
@@ -856,6 +862,8 @@ pub fn run_hawkes_calibration_stage(
             build_candidate_objective_terms(
                 &adjusted_candidate_input,
                 observed_activity_targets,
+                lambda_bar_scaling_ratio_applied,
+                max_runtime_hourly_seasonality_factor,
                 validation_report.derived_alpha,
                 validation_report.derived_rho,
             );
@@ -1122,6 +1130,8 @@ pub fn run_hawkes_calibration_stage(
 fn build_candidate_objective_terms(
     candidate_input: &HawkesStageCandidateInput,
     observed_activity_targets: HawkesObservedActivityTargets,
+    lambda_bar_scaling_ratio_applied: f64,
+    max_runtime_hourly_seasonality_factor: f64,
     derived_alpha: Option<crate::hawkes::HawkesKernelLoadings>,
     derived_rho: Option<crate::hawkes::HawkesKernelLoadings>,
 ) -> (
@@ -1143,6 +1153,8 @@ fn build_candidate_objective_terms(
     let implied_metrics = derive_candidate_implied_metrics(
         candidate_input,
         observed_activity_targets,
+        lambda_bar_scaling_ratio_applied,
+        max_runtime_hourly_seasonality_factor,
         derived_alpha,
         derived_rho,
     );
@@ -1155,12 +1167,12 @@ fn build_candidate_objective_terms(
         ));
     }
     if implied_metrics.model_implied_open_event_rate_per_hour
-        > observed_activity_targets.deseasonalized_open_event_rate_per_hour * 1.5
+        > implied_metrics.observed_open_event_rate_per_hour * 1.5
     {
         warnings.push(format!(
-            "model implied deseasonalized open-session rate {:.3} exceeds the observed deseasonalized open-session rate {:.3} by more than 50%",
+            "model implied open-session rate {:.3} exceeds the observed open-session rate {:.3} by more than 50%",
             implied_metrics.model_implied_open_event_rate_per_hour,
-            observed_activity_targets.deseasonalized_open_event_rate_per_hour
+            implied_metrics.observed_open_event_rate_per_hour
         ));
     }
 
@@ -1170,11 +1182,9 @@ fn build_candidate_objective_terms(
     push_objective_term(
         "open_session_event_rate",
         3.0,
-        observed_activity_targets.deseasonalized_open_event_rate_per_hour,
+        implied_metrics.observed_open_event_rate_per_hour,
         implied_metrics.model_implied_open_event_rate_per_hour,
-        observed_activity_targets
-            .deseasonalized_open_event_rate_per_hour
-            .max(1.0),
+        implied_metrics.observed_open_event_rate_per_hour.max(1.0),
         &mut objective_terms,
         &mut term_diagnostics,
     );
@@ -1212,9 +1222,9 @@ fn build_candidate_objective_terms(
     push_objective_term(
         "observation_window_event_count",
         2.0,
-        candidate_input.source_regime.total_tick_count as f64,
+        candidate_input.source_regime.open_session_tick_count as f64,
         implied_metrics.model_implied_expected_event_count_over_observation_window,
-        (candidate_input.source_regime.total_tick_count as f64).max(1.0),
+        (candidate_input.source_regime.open_session_tick_count as f64).max(1.0),
         &mut objective_terms,
         &mut term_diagnostics,
     );
@@ -1267,6 +1277,14 @@ fn invalid_candidate_objective_bundle(
         HawkesStageImpliedMetricsDiagnostic {
             baseline_buy_intensity_per_hour: candidate_input.lambda_bar,
             baseline_sell_intensity_per_hour: candidate_input.lambda_bar,
+            observed_open_event_rate_per_hour: observed_open_session_event_rate_per_hour(
+                &candidate_input.source_regime,
+            ),
+            deseasonalized_open_event_rate_per_hour_target: 0.0,
+            lambda_bar_scaling_ratio_applied: 1.0,
+            max_runtime_hourly_seasonality_factor: 1.0,
+            max_runtime_effective_branching_ratio: 0.0,
+            runtime_effective_branching_margin: 1.0,
             model_implied_open_event_rate_per_hour: 0.0,
             model_implied_open_buy_share: 0.5,
             model_implied_open_sell_share: 0.5,
@@ -1511,23 +1529,9 @@ fn ceil_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> i64 {
 
 fn adjust_candidate_for_deseasonalized_activity(
     candidate_input: &HawkesStageCandidateInput,
-    observed_activity_targets: HawkesObservedActivityTargets,
-) -> HawkesStageCandidateInput {
-    let raw_open_event_rate_per_hour =
-        observed_open_session_event_rate_per_hour(&candidate_input.source_regime);
-    let lambda_scaling_ratio = if raw_open_event_rate_per_hour > 0.0 {
-        (observed_activity_targets.deseasonalized_open_event_rate_per_hour
-            / raw_open_event_rate_per_hour)
-            .max(1.0e-9)
-    } else {
-        1.0
-    };
-
-    let mut adjusted_candidate_input = candidate_input.clone();
-    adjusted_candidate_input.lambda_bar =
-        (adjusted_candidate_input.lambda_bar * lambda_scaling_ratio).max(1.0e-4);
-
-    adjusted_candidate_input
+    _observed_activity_targets: HawkesObservedActivityTargets,
+) -> (HawkesStageCandidateInput, f64) {
+    (candidate_input.clone(), 1.0)
 }
 
 fn check_seasonality_scaled_stationarity(
@@ -1551,6 +1555,8 @@ fn check_seasonality_scaled_stationarity(
 fn derive_candidate_implied_metrics(
     candidate_input: &HawkesStageCandidateInput,
     observed_activity_targets: HawkesObservedActivityTargets,
+    lambda_bar_scaling_ratio_applied: f64,
+    max_runtime_hourly_seasonality_factor: f64,
     derived_alpha: crate::hawkes::HawkesKernelLoadings,
     derived_rho: crate::hawkes::HawkesKernelLoadings,
 ) -> HawkesStageImpliedMetricsDiagnostic {
@@ -1576,8 +1582,12 @@ fn derive_candidate_implied_metrics(
         0.5
     };
 
+    let observed_open_event_rate_per_hour =
+        observed_open_session_event_rate_per_hour(&candidate_input.source_regime);
     let endogenous_branching_ratio =
         spectral_radius_alpha_over_beta(derived_alpha, candidate_input.beta);
+    let max_runtime_effective_branching_ratio =
+        max_runtime_hourly_seasonality_factor * endogenous_branching_ratio;
     let self_excitation_ratio =
         (derived_alpha.plus_plus + derived_alpha.minus_minus) / (2.0 * candidate_input.beta);
     let cross_excitation_ratio =
@@ -1625,12 +1635,23 @@ fn derive_candidate_implied_metrics(
         0.0
     };
 
-    let expected_event_count_over_observation_window =
-        stationary_total_intensity * observed_activity_targets.open_factor_exposure_hours;
+    let expected_event_count_over_observation_window = stationary_total_intensity
+        * candidate_input
+            .source_regime
+            .open_session_duration_hours
+            .max(1.0e-9);
 
     HawkesStageImpliedMetricsDiagnostic {
         baseline_buy_intensity_per_hour: candidate_input.lambda_bar,
         baseline_sell_intensity_per_hour: candidate_input.lambda_bar,
+        observed_open_event_rate_per_hour,
+        deseasonalized_open_event_rate_per_hour_target:
+            observed_activity_targets.deseasonalized_open_event_rate_per_hour,
+        lambda_bar_scaling_ratio_applied,
+        max_runtime_hourly_seasonality_factor,
+        max_runtime_effective_branching_ratio,
+        runtime_effective_branching_margin: (1.0 - max_runtime_effective_branching_ratio)
+            .max(0.0),
         model_implied_open_event_rate_per_hour: stationary_total_intensity,
         model_implied_open_buy_share: 1.0 - model_implied_open_sell_share,
         model_implied_open_sell_share,
@@ -1646,7 +1667,7 @@ fn derive_candidate_implied_metrics(
         exogenous_cross_loading_ratio,
         stability_margin: (1.0 - endogenous_branching_ratio).max(0.0),
         event_volume_ratio_vs_total_observed: expected_event_count_over_observation_window
-            / (candidate_input.source_regime.total_tick_count as f64).max(1.0),
+            / (candidate_input.source_regime.open_session_tick_count as f64).max(1.0),
     }
 }
 

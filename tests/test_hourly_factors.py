@@ -24,6 +24,7 @@ from janiform.hourly_factors import (
     HourlySeasonalityMaterialization,
     HourlySeasonalityMaterializationSettings,
     build_hourly_factor_contract,
+    build_runtime_hourly_seasonality_source_from_calibration_payload,
     materialize_hourly_news_intensity_factors,
     materialize_hourly_seasonality_factors,
 )
@@ -270,6 +271,58 @@ def test_materialize_hourly_seasonality_is_deterministic_for_controlled_inputs(
 
     assert first_materialization.s_h == [1.2, 1.1, 1.6]
     assert first_snapshot == second_snapshot
+
+
+def test_build_runtime_hourly_seasonality_source_from_calibration_payload_renormalizes_window_mean(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    seasonality_source = build_runtime_hourly_seasonality_source_from_calibration_payload(
+        calendar_registry=calendar_registry,
+        range_start_utc=datetime(2026, 2, 2, 14, 0, 0, tzinfo=UTC),
+        range_end_utc=datetime(2026, 2, 2, 17, 0, 0, tzinfo=UTC),
+        seasonality_stage_payload={
+            "exchange_code": "XNYS",
+            "timestamp_utc_nanos": [
+                int(datetime(2026, 2, 2, 14, 5, 0, tzinfo=UTC).timestamp() * 1_000_000_000),
+                int(datetime(2026, 2, 2, 14, 20, 0, tzinfo=UTC).timestamp() * 1_000_000_000),
+                int(datetime(2026, 2, 2, 15, 10, 0, tzinfo=UTC).timestamp() * 1_000_000_000),
+                int(datetime(2026, 2, 2, 16, 15, 0, tzinfo=UTC).timestamp() * 1_000_000_000),
+            ],
+            "normalized_combined_factor_by_event": [1.0, 1.4, 0.8, 1.8],
+        },
+    )
+
+    assert seasonality_source.materialization_method == (
+        "calibration.normalized_event_signal_hourly_mean_renormalized.v1"
+    )
+    assert seasonality_source.hourly_factors == pytest.approx(
+        [0.9473684210526315, 0.631578947368421, 1.4210526315789473]
+    )
+    assert sum(seasonality_source.hourly_factors) / len(seasonality_source.hourly_factors) == pytest.approx(1.0)
+
+
+def test_build_runtime_hourly_seasonality_source_from_calibration_payload_can_preserve_raw_hourly_level(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    seasonality_source = build_runtime_hourly_seasonality_source_from_calibration_payload(
+        calendar_registry=calendar_registry,
+        range_start_utc=datetime(2026, 2, 2, 14, 0, 0, tzinfo=UTC),
+        range_end_utc=datetime(2026, 2, 2, 17, 0, 0, tzinfo=UTC),
+        seasonality_stage_payload={
+            "exchange_code": "XNYS",
+            "timestamp_utc_nanos": [
+                int(datetime(2026, 2, 2, 14, 5, 0, tzinfo=UTC).timestamp() * 1_000_000_000),
+                int(datetime(2026, 2, 2, 14, 20, 0, tzinfo=UTC).timestamp() * 1_000_000_000),
+                int(datetime(2026, 2, 2, 15, 10, 0, tzinfo=UTC).timestamp() * 1_000_000_000),
+                int(datetime(2026, 2, 2, 16, 15, 0, tzinfo=UTC).timestamp() * 1_000_000_000),
+            ],
+            "normalized_combined_factor_by_event": [1.0, 1.4, 0.8, 1.8],
+        },
+        mean_renormalize=False,
+    )
+
+    assert seasonality_source.materialization_method == "calibration.normalized_event_signal_hourly.v1"
+    assert seasonality_source.hourly_factors == pytest.approx([1.2, 0.8, 1.8])
 
 
 def test_materialize_hourly_seasonality_transition_boundaries_assign_to_start_inclusive_bucket(

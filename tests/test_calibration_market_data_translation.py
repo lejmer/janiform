@@ -236,7 +236,21 @@ def test_translate_market_data_request_without_known_news_runs_staged_calibratio
         calendar_registry=translation.calendar_registry,
     )
     assert response.execution_mode == CalibrationExecutionMode.MEMORY
-    assert response.status.value == "success"
+    assert response.status.value == "failure"
+    assert [report.stage.value for report in response.stage_reports] == [
+        "seasonality",
+        "hawkes",
+    ]
+    assert response.stage_reports[0].status.value == "success"
+    assert response.stage_reports[1].status.value == "failure"
+    assert response.stage_reports[1].failure is not None
+    assert (
+        response.stage_reports[1].failure.failure_kind
+        == "constraint_violations_for_all_candidates"
+    )
+    assert response.failure is not None
+    assert response.failure.failure_kind == "stage_execution_failed"
+    assert response.failure.stage == CalibrationStage.HAWKES
 
 
 def test_translate_market_data_request_scales_nig_candidates_to_tick_return_magnitude(
@@ -597,8 +611,20 @@ def test_run_market_data_calibration_executes_market_data_first_workflow(
     response = run_market_data_calibration(request)
 
     assert response.execution_mode == CalibrationExecutionMode.MEMORY
-    assert response.status.value == "success"
-    assert len(response.stage_reports) == 3
+    assert response.status.value == "failure"
+    assert len(response.stage_reports) == 2
+    assert response.stage_reports[0].stage == CalibrationStage.SEASONALITY
+    assert response.stage_reports[0].status.value == "success"
+    assert response.stage_reports[1].stage == CalibrationStage.HAWKES
+    assert response.stage_reports[1].status.value == "failure"
+    assert response.stage_reports[1].failure is not None
+    assert (
+        response.stage_reports[1].failure.failure_kind
+        == "constraint_violations_for_all_candidates"
+    )
+    assert response.failure is not None
+    assert response.failure.failure_kind == "stage_execution_failed"
+    assert response.failure.stage == CalibrationStage.HAWKES
 
 
 def test_translate_market_data_request_full_with_option_surface_sets_option_reference(

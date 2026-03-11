@@ -447,6 +447,30 @@ fn hawkes_stage_objective_terms_change_with_candidate_implied_metrics() {
             .iter()
             .any(|term| term.term_id == "directional_imbalance_magnitude")
     );
+    assert!(high_loss.implied_metrics.observed_open_event_rate_per_hour > 0.0);
+    assert!(
+        high_loss
+            .implied_metrics
+            .deseasonalized_open_event_rate_per_hour_target
+            > 0.0
+    );
+    assert!(high_loss.implied_metrics.lambda_bar_scaling_ratio_applied > 0.0);
+    assert!(
+        high_loss.implied_metrics.max_runtime_hourly_seasonality_factor >= 1.0
+    );
+    assert!(
+        (high_loss.implied_metrics.max_runtime_effective_branching_ratio
+            - high_loss.implied_metrics.max_runtime_hourly_seasonality_factor
+                * high_loss.implied_metrics.endogenous_branching_ratio)
+            .abs()
+            < 1.0e-12
+    );
+    assert!(
+        (high_loss.implied_metrics.runtime_effective_branching_margin
+            - (1.0 - high_loss.implied_metrics.max_runtime_effective_branching_ratio).max(0.0))
+        .abs()
+            < 1.0e-12
+    );
 }
 
 #[test]

@@ -249,12 +249,12 @@ def _build_simulation_direct_response_payload(calendar_registry, tmp_path: Path)
 def _build_simulation_boundary_response_payload(calendar_registry, tmp_path: Path) -> dict[str, Any]:
     del tmp_path
 
-    start_time_utc = datetime(2026, 2, 2, tzinfo=UTC)
+    start_time_utc = datetime(2026, 2, 2, 15, tzinfo=UTC)
     hourly_factor_contract = load_hourly_factor_contract_for_simulation(
         calendar_registry=calendar_registry,
         exchange_code="XNYS",
         range_start_utc=start_time_utc,
-        range_end_utc=datetime(2026, 2, 2, 2, tzinfo=UTC),
+        range_end_utc=datetime(2026, 2, 2, 17, tzinfo=UTC),
         seasonality_source=HourlySeasonalityProviderExplicitSource(
             hourly_factors=(1.0, 1.15),
             materialization_method="explicit_hourly_input.v1",

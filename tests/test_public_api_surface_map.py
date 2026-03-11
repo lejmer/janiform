@@ -164,6 +164,7 @@ def test_hourly_factor_support_symbols_live_in_hourly_factor_module() -> None:
         "HourlySeasonalityProviderExplicitSource",
         "HourlySeasonalityProviderMaterializedSource",
         "build_hourly_factor_contract",
+        "build_runtime_hourly_seasonality_source_from_calibration_payload",
         "materialize_hourly_news_intensity_factors",
         "materialize_hourly_seasonality_factors",
         "provide_hourly_factor_contract",

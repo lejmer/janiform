@@ -1,6 +1,6 @@
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import ModuleType
 from typing import Any, Optional, cast
 
@@ -29,6 +29,13 @@ HOURLY_FACTOR_SPRING_FORWARD_POLICY: str = "skip_nonexistent_local_hour_labels.v
 HOURLY_FACTOR_FALL_BACK_POLICY: str = (
     "preserve_repeated_local_hour_labels_with_numeric_utc_offset.v1"
 )
+_RUNTIME_CALIBRATION_SEASONALITY_MATERIALIZATION_METHOD: str = (
+    "calibration.normalized_event_signal_hourly.v1"
+)
+_RUNTIME_CALIBRATION_SEASONALITY_MEAN_RENORMALIZED_MATERIALIZATION_METHOD: str = (
+    "calibration.normalized_event_signal_hourly_mean_renormalized.v1"
+)
+_UNIX_EPOCH_UTC = datetime(1970, 1, 1, tzinfo=UTC)
 
 
 class HourlyFactorProviderError(Exception):
@@ -867,6 +874,69 @@ def materialize_hourly_seasonality_factors(
     return HourlySeasonalityMaterialization(native_result)
 
 
+def build_runtime_hourly_seasonality_source_from_calibration_payload(
+    *,
+    calendar_registry: CalendarRegistry,
+    range_start_utc: datetime,
+    range_end_utc: datetime,
+    seasonality_stage_payload: Mapping[str, Any],
+    mean_renormalize: bool = True,
+    settings: HourlySeasonalityMaterializationSettings = HourlySeasonalityMaterializationSettings(),
+) -> HourlySeasonalityProviderExplicitSource:
+    """
+    Build runtime-ready hourly seasonality from the normalized seasonality stage payload.
+
+    The helper materializes the calibrated event-level normalized seasonality signal onto the
+    requested UTC-hour grid. Mean renormalization is enabled by default so `lambda_bar` stays
+    responsible for average event-rate level while `s_h` redistributes that level across time.
+    """
+
+    exchange_code = _require_calibration_stage_payload_string(
+        seasonality_stage_payload,
+        "exchange_code",
+    )
+    timestamp_utc_nanos = _require_calibration_stage_payload_integer_sequence(
+        seasonality_stage_payload,
+        "timestamp_utc_nanos",
+    )
+    normalized_combined_factor_by_event = _require_calibration_stage_payload_numeric_sequence(
+        seasonality_stage_payload,
+        "normalized_combined_factor_by_event",
+    )
+
+    if len(timestamp_utc_nanos) != len(normalized_combined_factor_by_event):
+        raise SeasonalityInputValidationError(
+            "seasonality_stage_payload.timestamp_utc_nanos and "
+            "seasonality_stage_payload.normalized_combined_factor_by_event must have the same length",
+        )
+
+    materialization = materialize_hourly_seasonality_factors(
+        calendar_registry=calendar_registry,
+        exchange_code=exchange_code,
+        range_start_utc=range_start_utc,
+        range_end_utc=range_end_utc,
+        source_timestamps_utc=[
+            _utc_datetime_from_nanos(timestamp_utc_nanos_value)
+            for timestamp_utc_nanos_value in timestamp_utc_nanos
+        ],
+        source_seasonality_factors=normalized_combined_factor_by_event,
+        settings=settings,
+    )
+
+    hourly_factors = tuple(float(value) for value in materialization.s_h)
+    materialization_method = _RUNTIME_CALIBRATION_SEASONALITY_MATERIALIZATION_METHOD
+    if mean_renormalize:
+        hourly_factors = _mean_renormalize_hourly_factors(hourly_factors)
+        materialization_method = (
+            _RUNTIME_CALIBRATION_SEASONALITY_MEAN_RENORMALIZED_MATERIALIZATION_METHOD
+        )
+
+    return HourlySeasonalityProviderExplicitSource(
+        hourly_factors=hourly_factors,
+        materialization_method=materialization_method,
+    )
+
+
 def materialize_hourly_news_intensity_factors(
     *,
     calendar_registry: CalendarRegistry,
@@ -942,6 +1012,86 @@ def _normalize_utc_timestamp(timestamp_utc: datetime, *, field_name: str) -> dat
     return timestamp_utc.astimezone(UTC)
 
 
+def _mean_renormalize_hourly_factors(hourly_factors: Sequence[float]) -> tuple[float, ...]:
+    if len(hourly_factors) == 0:
+        return ()
+
+    mean_hourly_factor = sum(float(value) for value in hourly_factors) / len(hourly_factors)
+    if mean_hourly_factor == 0.0:
+        return tuple(float(value) for value in hourly_factors)
+
+    return tuple(float(value) / mean_hourly_factor for value in hourly_factors)
+
+
+def _require_calibration_stage_payload_string(
+    seasonality_stage_payload: Mapping[str, Any],
+    field_name: str,
+) -> str:
+    if not isinstance(seasonality_stage_payload, Mapping):
+        raise SeasonalityInputValidationError("seasonality_stage_payload must be a mapping")
+
+    raw_value = seasonality_stage_payload.get(field_name)
+    if not isinstance(raw_value, str) or not raw_value.strip():
+        raise SeasonalityInputValidationError(
+            f"seasonality_stage_payload.{field_name} must be a non-empty string",
+        )
+
+    return raw_value
+
+
+def _require_calibration_stage_payload_integer_sequence(
+    seasonality_stage_payload: Mapping[str, Any],
+    field_name: str,
+) -> list[int]:
+    if not isinstance(seasonality_stage_payload, Mapping):
+        raise SeasonalityInputValidationError("seasonality_stage_payload must be a mapping")
+
+    raw_value = seasonality_stage_payload.get(field_name)
+    if not isinstance(raw_value, Sequence) or isinstance(raw_value, str | bytes):
+        raise SeasonalityInputValidationError(
+            f"seasonality_stage_payload.{field_name} must be a sequence",
+        )
+
+    values: list[int] = []
+    for entry_index, entry in enumerate(raw_value):
+        if not isinstance(entry, int):
+            raise SeasonalityInputValidationError(
+                f"seasonality_stage_payload.{field_name}[{entry_index}] must be an integer",
+            )
+        values.append(entry)
+
+    return values
+
+
+def _require_calibration_stage_payload_numeric_sequence(
+    seasonality_stage_payload: Mapping[str, Any],
+    field_name: str,
+) -> list[float]:
+    if not isinstance(seasonality_stage_payload, Mapping):
+        raise SeasonalityInputValidationError("seasonality_stage_payload must be a mapping")
+
+    raw_value = seasonality_stage_payload.get(field_name)
+    if not isinstance(raw_value, Sequence) or isinstance(raw_value, str | bytes):
+        raise SeasonalityInputValidationError(
+            f"seasonality_stage_payload.{field_name} must be a sequence",
+        )
+
+    values: list[float] = []
+    for entry_index, entry in enumerate(raw_value):
+        if not isinstance(entry, int | float):
+            raise SeasonalityInputValidationError(
+                f"seasonality_stage_payload.{field_name}[{entry_index}] must be numeric",
+            )
+        values.append(float(entry))
+
+    return values
+
+
+def _utc_datetime_from_nanos(timestamp_utc_nanos: int) -> datetime:
+    microseconds_since_epoch, _ = divmod(timestamp_utc_nanos, 1_000)
+    return _UNIX_EPOCH_UTC + timedelta(microseconds=microseconds_since_epoch)
+
+
 __all__ = [
     "DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD",
     "DEFAULT_SEASONALITY_AGGREGATION_METHOD",
@@ -976,6 +1126,7 @@ __all__ = [
     "HourlySeasonalityMaterializationOutputSchema",
     "HourlySeasonalityMaterializationSettings",
     "build_hourly_factor_contract",
+    "build_runtime_hourly_seasonality_source_from_calibration_payload",
     "materialize_hourly_news_intensity_factors",
     "materialize_hourly_seasonality_factors",
     "provide_hourly_factor_contract",

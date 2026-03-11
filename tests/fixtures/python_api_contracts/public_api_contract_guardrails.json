@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "f5e463e1011fb377589cd4ba62d081d5266e76f90b60b461c22711570515ba07",
+  "approved_snapshot_sha256": "ed6fb02efc07873f443ce2915cc2ea3f10f9736f2b6d95c03a9c6e315ad2cb8c",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -95,6 +95,16 @@
       "rationale": "Hawkes calibration now accepts unsigned directional-label diagnostics and an observed source regime instead of caller-supplied raw objective terms, so the public calibration contracts must expose the new regime and diagnostics models and the updated candidate constructor.",
       "snapshot_sha256": "f5e463e1011fb377589cd4ba62d081d5266e76f90b60b461c22711570515ba07",
       "summary": "Replace public Hawkes candidate objective terms with unsigned-regime diagnostics."
+    },
+    {
+      "approved_on": "2026-03-11",
+      "docs_updated": [
+        "README.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "Consumers now need one canonical path from calibration seasonality output to runtime hourly factors, so the public hourly-factor surface exposes a helper that materializes the normalized event-level signal and mean-renormalizes it instead of encouraging manual component recomposition.",
+      "snapshot_sha256": "ed6fb02efc07873f443ce2915cc2ea3f10f9736f2b6d95c03a9c6e315ad2cb8c",
+      "summary": "Add a public helper for runtime-ready hourly seasonality from calibration payloads."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_1",

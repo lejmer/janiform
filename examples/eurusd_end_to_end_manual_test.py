@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from time import perf_counter, time
+from time import perf_counter
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
@@ -33,6 +33,7 @@ from janiform.hourly_factors import (
     HourlyNewsIntensityMaterializationSettings,
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
+    build_runtime_hourly_seasonality_source_from_calibration_payload,
     materialize_hourly_news_intensity_factors,
 )
 from janiform.pricing import NigSharedPlusShiftConfiguration
@@ -130,6 +131,7 @@ def run_example(
     session_definition_path: Optional[Path] = None,
     plot_path: Optional[Path] = None,
     plot_data_csv_path: Optional[Path] = None,
+    event_count_isolation_runs: bool = False,
 ) -> dict[str, Any]:
     tick_record_load_result = _load_tick_records(
         csv_path=csv_path,
@@ -227,6 +229,17 @@ def run_example(
         exchange_timezone=resolved_session_timezone,
         interval_starts=observed_hourly_series["interval_starts"],
     )
+    runtime_hourly_factor_contract = _build_runtime_hourly_factor_contract(
+        calendar_registry=calendar_registry,
+        exchange_code=exchange_code,
+        simulation_start_utc=simulation_start_utc,
+        simulation_end_utc=simulation_end_utc,
+        calibrated_model=calibrated_model,
+    )
+    runtime_interval_factors = _build_runtime_interval_factors(
+        calibrated_interval_factors=calibrated_model["interval_factors"],
+        runtime_hourly_seasonality_factors=runtime_hourly_factor_contract.s_h,
+    )
 
     coarse_request = CoarseSimulationRunRequest.from_runtime_inputs(
         seed=coarse_seed,
@@ -234,7 +247,7 @@ def run_example(
         horizon_interval_count=horizon_interval_count,
         interval_delta=1.0,
         risk_model_inputs=calibrated_model["risk_model_inputs"],
-        interval_factors=calibrated_model["interval_factors"],
+        interval_factors=runtime_interval_factors,
         news_process_configuration=calibrated_model["news_process_configuration"],
         calendar_registry=calendar_registry,
         exchange_code=exchange_code,
@@ -244,20 +257,7 @@ def run_example(
     coarse_path = run_coarse_simulation(coarse_request)
     coarse_generation_seconds = perf_counter() - coarse_start
 
-    hourly_factor_contract = load_hourly_factor_contract_for_simulation(
-        calendar_registry=calendar_registry,
-        exchange_code=exchange_code,
-        range_start_utc=simulation_start_utc,
-        range_end_utc=simulation_end_utc,
-        seasonality_source=HourlySeasonalityProviderExplicitSource(
-            hourly_factors=calibrated_model["interval_factors"].s_h,
-            materialization_method="manual_test.calibrated_hourly_seasonality.v1",
-        ),
-        news_intensity_source=HourlyNewsIntensityProviderExplicitSource(
-            hourly_factors=calibrated_model["hourly_total_news_intensity"],
-            materialization_method="manual_test.calibrated_hourly_news_intensity.v1",
-        ),
-    )
+    hourly_factor_contract = runtime_hourly_factor_contract
 
     seeded_request = SeededTickSimulationRequest.from_runtime_inputs(
         seed=seeded_tick_seed,
@@ -273,6 +273,20 @@ def run_example(
     seeded_start = perf_counter()
     seeded_path = run_seeded_tick_event_simulation(seeded_request)
     seeded_generation_seconds = perf_counter() - seeded_start
+    event_count_isolation_summary = (
+        _run_event_count_isolation_experiments(
+            calendar_registry=calendar_registry,
+            exchange_code=exchange_code,
+            simulation_start_utc=simulation_start_utc,
+            simulation_end_utc=simulation_end_utc,
+            horizon_interval_count=horizon_interval_count,
+            seeded_tick_seed=seeded_tick_seed,
+            calibrated_model=calibrated_model,
+            default_seeded_path=seeded_path,
+        )
+        if event_count_isolation_runs
+        else None
+    )
 
     coarse_returns = [
         float(record.return_components.total_return)
@@ -427,6 +441,68 @@ def run_example(
                 8,
             ),
         },
+        "event_count_diagnostics": {
+            "observed_total_tick_count": prepared.diagnostics.tick_record_count,
+            "observed_open_session_tick_count": prepared.diagnostics.session_open_tick_count,
+            "simulated_seeded_event_count": len(seeded_path.event_tape),
+            "simulated_to_observed_total_ratio": round(
+                len(seeded_path.event_tape)
+                / max(prepared.diagnostics.tick_record_count, 1),
+                6,
+            ),
+            "simulated_to_observed_open_session_ratio": round(
+                len(seeded_path.event_tape)
+                / max(prepared.diagnostics.session_open_tick_count, 1),
+                6,
+            ),
+            "hourly_factor_summary": {
+                "seasonality_materialization_method": (
+                    runtime_hourly_factor_contract.seasonality_materialization_method
+                ),
+                "seasonality_factor_mean": _round_optional_float(
+                    _mean(runtime_hourly_factor_contract.s_h)
+                ),
+                "seasonality_factor_min": _round_optional_float(
+                    min(runtime_hourly_factor_contract.s_h)
+                    if runtime_hourly_factor_contract.s_h
+                    else None
+                ),
+                "seasonality_factor_max": _round_optional_float(
+                    max(runtime_hourly_factor_contract.s_h)
+                    if runtime_hourly_factor_contract.s_h
+                    else None
+                ),
+                "calibration_recomposed_factor_mean": _round_optional_float(
+                    _mean(calibrated_model["interval_factors"].s_h)
+                ),
+                "calibration_recomposed_factor_min": _round_optional_float(
+                    min(calibrated_model["interval_factors"].s_h)
+                    if calibrated_model["interval_factors"].s_h
+                    else None
+                ),
+                "calibration_recomposed_factor_max": _round_optional_float(
+                    max(calibrated_model["interval_factors"].s_h)
+                    if calibrated_model["interval_factors"].s_h
+                    else None
+                ),
+                "news_intensity_mean": _round_optional_float(
+                    _mean(calibrated_model["hourly_total_news_intensity"])
+                ),
+                "news_intensity_max": _round_optional_float(
+                    max(calibrated_model["hourly_total_news_intensity"])
+                    if calibrated_model["hourly_total_news_intensity"]
+                    else None
+                ),
+            },
+            "seasonality_normalization": calibrated_model["seasonality_normalization"],
+            "hawkes_selected_candidate": calibrated_model[
+                "hawkes_selected_candidate_summary"
+            ],
+            "return_components_selected_candidate": calibrated_model[
+                "return_components_selected_candidate_summary"
+            ],
+            "isolation_experiments": event_count_isolation_summary,
+        },
         "stylized_facts": {
             "manual_test_tolerance_policy": {
                 "return_metrics": RETURN_METRIC_TOLERANCES,
@@ -469,6 +545,15 @@ def run_example(
             (
                 "The summary now compares return stylized facts only. Activity diagnostics are no longer the "
                 "primary seeded-vs-coarse alignment check for this workflow."
+            ),
+            (
+                "The default runtime seasonality path materializes hourly factors from the calibrated "
+                "normalized event-level seasonality signal and renormalizes the simulation-window mean to 1.0 "
+                "before running the coarse and seeded simulators."
+            ),
+            (
+                "Pass --event-count-isolation-runs to compare that default runtime path against the legacy "
+                "recomposed hourly seasonality construction and the unrenormalized materialized hourly factors."
             ),
         ],
     }
@@ -547,6 +632,14 @@ def _parse_args() -> argparse.Namespace:
         help=(
             "Optional output path for a CSV containing hourly boundary timestamps plus observed, "
             "coarse, and seeded returns and path values. Defaults to the run artifact directory."
+        ),
+    )
+    parser.add_argument(
+        "--event-count-isolation-runs",
+        action="store_true",
+        help=(
+            "Run extra seeded simulations that vary only the runtime seasonality construction "
+            "to isolate event-count inflation sources."
         ),
     )
     return parser.parse_args()
@@ -932,7 +1025,7 @@ def _build_run_id(csv_path: Path) -> str:
     if not sanitized_stem:
         sanitized_stem = "ticks"
 
-    return f"eurusd-manual-{sanitized_stem}-{int(time())}"
+    return f"eurusd-manual-{sanitized_stem}"
 
 
 def _stage_parameter_artifact_paths(
@@ -1113,6 +1206,20 @@ def _extract_calibrated_model(
         "risk_model_inputs": risk_model_inputs,
         "interval_factors": interval_factors,
         "hourly_total_news_intensity": tuple(hourly_news_materialization.nu_h),
+        "seasonality_stage_payload": seasonality_payload,
+        "seasonality_normalization": _extract_seasonality_normalization_summary(
+            seasonality_payload
+        ),
+        "hawkes_selected_candidate_summary": _extract_hawkes_candidate_summary(
+            hawkes_artifact=stage_artifacts["hawkes"],
+            hawkes_payload=hawkes_payload,
+        ),
+        "return_components_selected_candidate_summary": (
+            _extract_return_components_candidate_summary(
+                return_components_artifact=stage_artifacts["return_components"],
+                return_components_payload=return_components_payload,
+            )
+        ),
     }
 
 
@@ -1167,6 +1274,663 @@ def _compose_hourly_seasonality_factors(
     return hourly_factors
 
 
+def _extract_seasonality_normalization_summary(
+    seasonality_payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    normalization_metadata = _require_nested_mapping(
+        seasonality_payload,
+        ("normalization_metadata",),
+        "seasonality.stage_parameters.payload.normalization_metadata",
+    )
+
+    return {
+        "normalization_policy": normalization_metadata["normalization_policy"],
+        "fit_window_event_count": int(normalization_metadata["fit_window_event_count"]),
+        "target_mean_factor": float(normalization_metadata["target_mean_factor"]),
+        "pre_normalization_mean_factor": float(
+            normalization_metadata["pre_normalization_mean_factor"]
+        ),
+        "post_normalization_mean_factor": float(
+            normalization_metadata["post_normalization_mean_factor"]
+        ),
+        "normalization_constant": float(
+            normalization_metadata["normalization_constant"]
+        ),
+    }
+
+
+def _run_event_count_isolation_experiments(
+    *,
+    calendar_registry: CalendarRegistry,
+    exchange_code: str,
+    simulation_start_utc: datetime,
+    simulation_end_utc: datetime,
+    horizon_interval_count: int,
+    seeded_tick_seed: int,
+    calibrated_model: Mapping[str, Any],
+    default_seeded_path: Any,
+) -> dict[str, Any]:
+    baseline_seasonality_factors = tuple(calibrated_model["interval_factors"].s_h)
+
+    runtime_hourly_factor_contracts = _build_runtime_hourly_factor_contract_variants(
+        calendar_registry=calendar_registry,
+        exchange_code=exchange_code,
+        simulation_start_utc=simulation_start_utc,
+        simulation_end_utc=simulation_end_utc,
+        calibrated_model=calibrated_model,
+    )
+
+    materialized_hourly_factor_contract = runtime_hourly_factor_contracts[
+        "materialized_hourly_factor_contract"
+    ]
+    renormalized_hourly_factor_contract = runtime_hourly_factor_contracts[
+        "renormalized_hourly_factor_contract"
+    ]
+
+    baseline_hourly_factor_contract = _load_simulation_hourly_factor_contract(
+        calendar_registry=calendar_registry,
+        exchange_code=exchange_code,
+        simulation_start_utc=simulation_start_utc,
+        simulation_end_utc=simulation_end_utc,
+        calibrated_model=calibrated_model,
+        seasonality_source=HourlySeasonalityProviderExplicitSource(
+            hourly_factors=baseline_seasonality_factors,
+            materialization_method="manual_test.calibrated_hourly_seasonality.v1",
+        ),
+    )
+
+    renormalized_factors = _mean_renormalize_hourly_factors(
+        baseline_seasonality_factors
+    )
+
+    return {
+        "baseline_recomposed_explicit": _run_event_count_isolation_variant(
+            seeded_tick_seed=seeded_tick_seed,
+            simulation_start_utc=simulation_start_utc,
+            horizon_interval_count=horizon_interval_count,
+            calibrated_model=calibrated_model,
+            seasonality_factors=baseline_seasonality_factors,
+            hourly_factor_contract=baseline_hourly_factor_contract,
+        ),
+        "materialized_from_normalized_event_signal": _run_event_count_isolation_variant(
+            seeded_tick_seed=seeded_tick_seed,
+            simulation_start_utc=simulation_start_utc,
+            horizon_interval_count=horizon_interval_count,
+            calibrated_model=calibrated_model,
+            seasonality_factors=materialized_hourly_factor_contract.s_h,
+            hourly_factor_contract=materialized_hourly_factor_contract,
+        ),
+        "materialized_from_normalized_event_signal_mean_renormalized": (
+            _event_count_isolation_variant_summary(
+                seasonality_factors=renormalized_hourly_factor_contract.s_h,
+                seeded_path=default_seeded_path,
+            )
+        ),
+        "recomposed_explicit_mean_renormalized": _run_event_count_isolation_variant(
+            seeded_tick_seed=seeded_tick_seed,
+            simulation_start_utc=simulation_start_utc,
+            horizon_interval_count=horizon_interval_count,
+            calibrated_model=calibrated_model,
+            seasonality_factors=renormalized_factors,
+            hourly_factor_contract=renormalized_hourly_factor_contract,
+        ),
+    }
+
+
+def _run_event_count_isolation_variant(
+    *,
+    seeded_tick_seed: int,
+    simulation_start_utc: datetime,
+    horizon_interval_count: int,
+    calibrated_model: Mapping[str, Any],
+    seasonality_factors: Sequence[float],
+    hourly_factor_contract: Any,
+) -> dict[str, Any]:
+    try:
+        seeded_path = _run_seeded_simulation_for_hourly_factor_contract(
+            seeded_tick_seed=seeded_tick_seed,
+            simulation_start_utc=simulation_start_utc,
+            horizon_interval_count=horizon_interval_count,
+            calibrated_model=calibrated_model,
+            hourly_factor_contract=hourly_factor_contract,
+        )
+    except Exception as error:
+        return _event_count_isolation_variant_failure_summary(
+            seasonality_factors=seasonality_factors,
+            error=error,
+        )
+
+    return _event_count_isolation_variant_summary(
+        seasonality_factors=seasonality_factors,
+        seeded_path=seeded_path,
+    )
+
+
+def _run_seeded_simulation_for_hourly_factor_contract(
+    *,
+    seeded_tick_seed: int,
+    simulation_start_utc: datetime,
+    horizon_interval_count: int,
+    calibrated_model: Mapping[str, Any],
+    hourly_factor_contract: Any,
+) -> Any:
+    seeded_request = SeededTickSimulationRequest.from_runtime_inputs(
+        seed=seeded_tick_seed,
+        start_time_utc=simulation_start_utc,
+        horizon_interval_count=horizon_interval_count,
+        kernel_parameters=calibrated_model["hawkes_kernel_parameters"],
+        nig_shared_plus_shift_configuration=calibrated_model[
+            "nig_shared_plus_shift_configuration"
+        ],
+        news_process_configuration=calibrated_model["news_process_configuration"],
+        initial_excitation_state=calibrated_model["initial_excitation_state"],
+        hourly_factor_contract=hourly_factor_contract,
+    )
+
+    return run_seeded_tick_event_simulation(seeded_request)
+
+
+def _event_count_isolation_variant_summary(
+    *,
+    seasonality_factors: Sequence[float],
+    seeded_path: Any,
+) -> dict[str, Any]:
+    return {
+        "event_count": len(seeded_path.event_tape),
+        "fine_path_transition_count": len(seeded_path.fine_path),
+        "seasonality_factor_mean": _round_optional_float(_mean(seasonality_factors)),
+        "seasonality_factor_min": _round_optional_float(
+            min(seasonality_factors) if seasonality_factors else None
+        ),
+        "seasonality_factor_max": _round_optional_float(
+            max(seasonality_factors) if seasonality_factors else None
+        ),
+    }
+
+
+def _event_count_isolation_variant_failure_summary(
+    *,
+    seasonality_factors: Sequence[float],
+    error: Exception,
+) -> dict[str, Any]:
+    return {
+        "event_count": None,
+        "fine_path_transition_count": None,
+        "seasonality_factor_mean": _round_optional_float(_mean(seasonality_factors)),
+        "seasonality_factor_min": _round_optional_float(
+            min(seasonality_factors) if seasonality_factors else None
+        ),
+        "seasonality_factor_max": _round_optional_float(
+            max(seasonality_factors) if seasonality_factors else None
+        ),
+        "status": "rejected",
+        "error_id": type(error).__name__,
+        "error_message": str(error),
+    }
+
+
+def _build_runtime_hourly_factor_contract(
+    *,
+    calendar_registry: CalendarRegistry,
+    exchange_code: str,
+    simulation_start_utc: datetime,
+    simulation_end_utc: datetime,
+    calibrated_model: Mapping[str, Any],
+) -> Any:
+    runtime_hourly_factor_contracts = _build_runtime_hourly_factor_contract_variants(
+        calendar_registry=calendar_registry,
+        exchange_code=exchange_code,
+        simulation_start_utc=simulation_start_utc,
+        simulation_end_utc=simulation_end_utc,
+        calibrated_model=calibrated_model,
+    )
+
+    return runtime_hourly_factor_contracts["renormalized_hourly_factor_contract"]
+
+
+def _build_runtime_hourly_factor_contract_variants(
+    *,
+    calendar_registry: CalendarRegistry,
+    exchange_code: str,
+    simulation_start_utc: datetime,
+    simulation_end_utc: datetime,
+    calibrated_model: Mapping[str, Any],
+) -> dict[str, Any]:
+    materialized_seasonality_source = (
+        build_runtime_hourly_seasonality_source_from_calibration_payload(
+            calendar_registry=calendar_registry,
+            range_start_utc=simulation_start_utc,
+            range_end_utc=simulation_end_utc,
+            seasonality_stage_payload=calibrated_model["seasonality_stage_payload"],
+            mean_renormalize=False,
+        )
+    )
+    renormalized_seasonality_source = (
+        build_runtime_hourly_seasonality_source_from_calibration_payload(
+            calendar_registry=calendar_registry,
+            range_start_utc=simulation_start_utc,
+            range_end_utc=simulation_end_utc,
+            seasonality_stage_payload=calibrated_model["seasonality_stage_payload"],
+            mean_renormalize=True,
+        )
+    )
+
+    materialized_hourly_factor_contract = _load_simulation_hourly_factor_contract(
+        calendar_registry=calendar_registry,
+        exchange_code=exchange_code,
+        simulation_start_utc=simulation_start_utc,
+        simulation_end_utc=simulation_end_utc,
+        calibrated_model=calibrated_model,
+        seasonality_source=materialized_seasonality_source,
+    )
+    renormalized_hourly_factor_contract = _load_simulation_hourly_factor_contract(
+        calendar_registry=calendar_registry,
+        exchange_code=exchange_code,
+        simulation_start_utc=simulation_start_utc,
+        simulation_end_utc=simulation_end_utc,
+        calibrated_model=calibrated_model,
+        seasonality_source=renormalized_seasonality_source,
+    )
+
+    return {
+        "materialized_hourly_factor_contract": materialized_hourly_factor_contract,
+        "renormalized_hourly_factor_contract": renormalized_hourly_factor_contract,
+    }
+
+
+def _load_simulation_hourly_factor_contract(
+    *,
+    calendar_registry: CalendarRegistry,
+    exchange_code: str,
+    simulation_start_utc: datetime,
+    simulation_end_utc: datetime,
+    calibrated_model: Mapping[str, Any],
+    seasonality_source: (
+        HourlySeasonalityProviderExplicitSource
+        | HourlySeasonalityProviderMaterializedSource
+    ),
+) -> Any:
+    return load_hourly_factor_contract_for_simulation(
+        calendar_registry=calendar_registry,
+        exchange_code=exchange_code,
+        range_start_utc=simulation_start_utc,
+        range_end_utc=simulation_end_utc,
+        seasonality_source=seasonality_source,
+        news_intensity_source=HourlyNewsIntensityProviderExplicitSource(
+            hourly_factors=calibrated_model["hourly_total_news_intensity"],
+            materialization_method="manual_test.calibrated_hourly_news_intensity.v1",
+        ),
+    )
+
+
+def _build_runtime_interval_factors(
+    *,
+    calibrated_interval_factors: SufficientStatisticsRiskIntervalFactors,
+    runtime_hourly_seasonality_factors: Sequence[float],
+) -> SufficientStatisticsRiskIntervalFactors:
+    return SufficientStatisticsRiskIntervalFactors(
+        interval_delta=calibrated_interval_factors.interval_delta,
+        s_h=tuple(float(value) for value in runtime_hourly_seasonality_factors),
+        nu_h_known=calibrated_interval_factors.nu_h_known,
+        nu_h_surprise=calibrated_interval_factors.nu_h_surprise,
+    )
+
+def _mean_renormalize_hourly_factors(
+    hourly_factors: Sequence[float],
+) -> tuple[float, ...]:
+    mean_hourly_factor = _mean(hourly_factors)
+    if mean_hourly_factor in {None, 0.0}:
+        return tuple(float(factor) for factor in hourly_factors)
+
+    return tuple(
+        float(factor) / mean_hourly_factor
+        for factor in hourly_factors
+    )
+
+
+def _extract_hawkes_candidate_summary(
+    *,
+    hawkes_artifact: Mapping[str, Any],
+    hawkes_payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    selected_candidate = _find_selected_candidate_diagnostic(
+        stage_payload=hawkes_payload,
+        diagnostics_field_name="candidate_diagnostics",
+        context="hawkes.stage_parameters.payload",
+    )
+    fitted_parameters = _require_nested_mapping(
+        hawkes_payload,
+        ("fitted_parameters",),
+        "hawkes.stage_parameters.payload.fitted_parameters",
+    )
+    kernel_parameters = _require_nested_mapping(
+        fitted_parameters,
+        ("kernel_parameters",),
+        "hawkes.stage_parameters.payload.fitted_parameters.kernel_parameters",
+    )
+    optimizer_state = _extract_optimizer_state_summary(
+        artifact=hawkes_artifact,
+        context="hawkes.optimizer_state",
+    )
+    endogenous_branching_ratio = _compute_hawkes_endogenous_branching_ratio(
+        kernel_parameters
+    )
+
+    if selected_candidate is None:
+        return {
+            "candidate_id": hawkes_payload["selected_candidate_id"],
+            "raw_objective_value": optimizer_state["selected_candidate_raw_objective"],
+            "penalized_objective_value": optimizer_state[
+                "selected_candidate_penalized_objective"
+            ],
+            "valid_candidate_count": optimizer_state["valid_candidate_count"],
+            "input_candidate_count": optimizer_state["input_candidate_count"],
+            "warnings": [],
+            "implied_metrics": None,
+            "source_regime": None,
+            "kernel_parameters": {
+                "lambda_bar": float(kernel_parameters["lambda_bar"]),
+                "beta": float(kernel_parameters["beta"]),
+                "endogenous_branching_ratio": _round_optional_float(
+                    endogenous_branching_ratio
+                ),
+            },
+        }
+
+    implied_metrics = _require_nested_mapping(
+        selected_candidate,
+        ("implied_metrics",),
+        "hawkes.stage_parameters.payload.candidate_diagnostics[].implied_metrics",
+    )
+    source_regime = _require_nested_mapping(
+        selected_candidate,
+        ("source_regime",),
+        "hawkes.stage_parameters.payload.candidate_diagnostics[].source_regime",
+    )
+    return {
+        "candidate_id": selected_candidate["candidate_id"],
+        "raw_objective_value": float(selected_candidate["raw_objective_value"]),
+        "penalized_objective_value": float(
+            selected_candidate["penalized_objective_value"]
+        ),
+        "constraint_violation_count": int(
+            selected_candidate["constraint_violation_count"]
+        ),
+        "valid_candidate_count": optimizer_state["valid_candidate_count"],
+        "input_candidate_count": optimizer_state["input_candidate_count"],
+        "warnings": [
+            str(value)
+            for value in _require_sequence(
+                selected_candidate,
+                "warnings",
+                "hawkes.stage_parameters.payload.candidate_diagnostics[].warnings",
+            )
+        ],
+        "implied_metrics": {
+            "model_implied_open_event_rate_per_hour": float(
+                implied_metrics["model_implied_open_event_rate_per_hour"]
+            ),
+            "model_implied_expected_event_count_over_observation_window": float(
+                implied_metrics[
+                    "model_implied_expected_event_count_over_observation_window"
+                ]
+            ),
+            "event_volume_ratio_vs_total_observed": float(
+                implied_metrics["event_volume_ratio_vs_total_observed"]
+            ),
+            "endogenous_branching_ratio": float(
+                implied_metrics["endogenous_branching_ratio"]
+            ),
+            "model_implied_known_news_activity_share": float(
+                implied_metrics["model_implied_known_news_activity_share"]
+            ),
+        },
+        "source_regime": {
+            "total_tick_count": int(source_regime["total_tick_count"]),
+            "open_session_tick_count": int(source_regime["open_session_tick_count"]),
+            "open_session_duration_hours": float(
+                source_regime["open_session_duration_hours"]
+            ),
+            "known_news_open_event_count": int(
+                source_regime["known_news_open_event_count"]
+            ),
+            "open_session_known_news_activity_share": float(
+                source_regime["open_session_known_news_activity_share"]
+            ),
+        },
+    }
+
+
+def _extract_return_components_candidate_summary(
+    *,
+    return_components_artifact: Mapping[str, Any],
+    return_components_payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    fitted_parameters = _require_nested_mapping(
+        return_components_payload,
+        ("fitted_parameters",),
+        "return_components.stage_parameters.payload.fitted_parameters",
+    )
+    news_process_configuration = _require_nested_mapping(
+        fitted_parameters,
+        ("news_process_configuration",),
+        "return_components.stage_parameters.payload.fitted_parameters.news_process_configuration",
+    )
+    arrivals = _require_nested_mapping(
+        news_process_configuration,
+        ("arrivals",),
+        "return_components.stage_parameters.payload.fitted_parameters.news_process_configuration.arrivals",
+    )
+    known_arrivals = _require_nested_mapping(
+        arrivals,
+        ("known",),
+        "return_components.stage_parameters.payload.fitted_parameters.news_process_configuration.arrivals.known",
+    )
+    surprise_arrivals = _require_nested_mapping(
+        arrivals,
+        ("surprise",),
+        "return_components.stage_parameters.payload.fitted_parameters.news_process_configuration.arrivals.surprise",
+    )
+    known_component_mark_scales = _require_nested_mapping(
+        news_process_configuration,
+        ("known_component_mark_scales",),
+        "return_components.stage_parameters.payload.fitted_parameters.news_process_configuration.known_component_mark_scales",
+    )
+    surprise_component_mark_scales = _require_nested_mapping(
+        news_process_configuration,
+        ("surprise_component_mark_scales",),
+        "return_components.stage_parameters.payload.fitted_parameters.news_process_configuration.surprise_component_mark_scales",
+    )
+    optimizer_state = _extract_optimizer_state_summary(
+        artifact=return_components_artifact,
+        context="return_components.optimizer_state",
+    )
+    selected_candidate = _find_selected_candidate_diagnostic(
+        stage_payload=return_components_payload,
+        diagnostics_field_name="candidate_diagnostics",
+        context="return_components.stage_parameters.payload",
+    )
+
+    if selected_candidate is None:
+        retained_known_events = _require_sequence(
+            known_arrivals,
+            "scheduled_event_timestamps_utc_nanos",
+            "return_components.stage_parameters.payload.fitted_parameters.news_process_configuration.arrivals.known.scheduled_event_timestamps_utc_nanos",
+        )
+
+        return {
+            "candidate_id": return_components_payload["selected_candidate_id"],
+            "raw_objective_value": optimizer_state["selected_candidate_raw_objective"],
+            "penalized_objective_value": optimizer_state[
+                "selected_candidate_penalized_objective"
+            ],
+            "valid_candidate_count": optimizer_state["valid_candidate_count"],
+            "input_candidate_count": optimizer_state["input_candidate_count"],
+            "constraint_violation_count": None,
+            "retained_known_news_event_count": len(retained_known_events),
+            "surprise_baseline_intensity_per_hour": float(
+                surprise_arrivals["baseline_intensity"]
+            ),
+            "known_return_jump_scale": float(
+                known_component_mark_scales["return_jump_scale"]
+            ),
+            "surprise_return_jump_scale": float(
+                surprise_component_mark_scales["return_jump_scale"]
+            ),
+            "known_activity_coupling_scale": float(
+                known_component_mark_scales["activity_coupling_scale"]
+            ),
+            "surprise_activity_coupling_scale": float(
+                surprise_component_mark_scales["activity_coupling_scale"]
+            ),
+            "objective_metric_buckets": None,
+        }
+
+    candidate_families = _require_nested_mapping(
+        selected_candidate,
+        ("candidate_families",),
+        "return_components.stage_parameters.payload.candidate_diagnostics[].candidate_families",
+    )
+    surprise_arrival_controls = _require_nested_mapping(
+        candidate_families,
+        ("surprise_news_arrival_controls",),
+        "return_components.stage_parameters.payload.candidate_diagnostics[].candidate_families.surprise_news_arrival_controls",
+    )
+    known_arrival_controls = _require_nested_mapping(
+        candidate_families,
+        ("known_news_arrival_controls",),
+        "return_components.stage_parameters.payload.candidate_diagnostics[].candidate_families.known_news_arrival_controls",
+    )
+    return_jump_controls = _require_nested_mapping(
+        candidate_families,
+        ("return_jump_mark_scale_controls",),
+        "return_components.stage_parameters.payload.candidate_diagnostics[].candidate_families.return_jump_mark_scale_controls",
+    )
+    activity_coupling_controls = _require_nested_mapping(
+        candidate_families,
+        ("news_to_hawkes_activity_coupling_controls",),
+        "return_components.stage_parameters.payload.candidate_diagnostics[].candidate_families.news_to_hawkes_activity_coupling_controls",
+    )
+    objective_metric_buckets = _require_nested_mapping(
+        selected_candidate,
+        ("objective_metric_buckets",),
+        "return_components.stage_parameters.payload.candidate_diagnostics[].objective_metric_buckets",
+    )
+    retained_known_events = _require_sequence(
+        known_arrival_controls,
+        "retained_known_event_timestamps_utc_nanos",
+        "return_components.stage_parameters.payload.candidate_diagnostics[].candidate_families.known_news_arrival_controls.retained_known_event_timestamps_utc_nanos",
+    )
+
+    return {
+        "candidate_id": selected_candidate["candidate_id"],
+        "raw_objective_value": float(selected_candidate["raw_objective_value"]),
+        "penalized_objective_value": float(
+            selected_candidate["penalized_objective_value"]
+        ),
+        "valid_candidate_count": optimizer_state["valid_candidate_count"],
+        "input_candidate_count": optimizer_state["input_candidate_count"],
+        "constraint_violation_count": int(
+            selected_candidate["constraint_violation_count"]
+        ),
+        "retained_known_news_event_count": len(retained_known_events),
+        "surprise_baseline_intensity_per_hour": float(
+            surprise_arrival_controls["baseline_intensity"]
+        ),
+        "known_return_jump_scale": float(
+            return_jump_controls["known_return_jump_scale"]
+        ),
+        "surprise_return_jump_scale": float(
+            return_jump_controls["surprise_return_jump_scale"]
+        ),
+        "known_activity_coupling_scale": float(
+            activity_coupling_controls["known_activity_coupling_scale"]
+        ),
+        "surprise_activity_coupling_scale": float(
+            activity_coupling_controls["surprise_activity_coupling_scale"]
+        ),
+        "objective_metric_buckets": {
+            "open_jump_fit": float(objective_metric_buckets["open_jump_fit"]),
+            "closed_gap_fit": float(objective_metric_buckets["closed_gap_fit"]),
+            "activity_coupling_fit": float(
+                objective_metric_buckets["activity_coupling_fit"]
+            ),
+        },
+    }
+
+
+def _find_selected_candidate_diagnostic(
+    *,
+    stage_payload: Mapping[str, Any],
+    diagnostics_field_name: str,
+    context: str,
+) -> Optional[dict[str, Any]]:
+    selected_candidate_id = str(stage_payload["selected_candidate_id"])
+    candidate_diagnostics = stage_payload.get(diagnostics_field_name)
+    if not isinstance(candidate_diagnostics, Sequence) or isinstance(
+        candidate_diagnostics, str
+    ):
+        return None
+
+    for candidate_diagnostic in candidate_diagnostics:
+        if isinstance(candidate_diagnostic, Mapping) and (
+            candidate_diagnostic.get("candidate_id") == selected_candidate_id
+        ):
+            return dict(candidate_diagnostic)
+
+    return None
+
+
+def _extract_optimizer_state_summary(
+    *,
+    artifact: Mapping[str, Any],
+    context: str,
+) -> dict[str, Any]:
+    optimizer_state = _require_nested_mapping(
+        artifact,
+        ("optimizer_state",),
+        context,
+    )
+
+    return {
+        "input_candidate_count": int(optimizer_state["input_candidate_count"]),
+        "valid_candidate_count": int(optimizer_state["valid_candidate_count"]),
+        "selected_candidate_raw_objective": float(
+            optimizer_state["selected_candidate_raw_objective"]
+        ),
+        "selected_candidate_penalized_objective": float(
+            optimizer_state["selected_candidate_penalized_objective"]
+        ),
+    }
+
+
+def _compute_hawkes_endogenous_branching_ratio(
+    kernel_parameters: Mapping[str, Any],
+) -> Optional[float]:
+    beta = float(kernel_parameters["beta"])
+    if beta <= 0.0:
+        return None
+
+    alpha = _require_nested_mapping(
+        kernel_parameters,
+        ("alpha",),
+        "hawkes.stage_parameters.payload.fitted_parameters.kernel_parameters.alpha",
+    )
+
+    scaled_plus_plus = float(alpha["plus_plus"]) / beta
+    scaled_plus_minus = float(alpha["plus_minus"]) / beta
+    scaled_minus_plus = float(alpha["minus_plus"]) / beta
+    scaled_minus_minus = float(alpha["minus_minus"]) / beta
+    trace = scaled_plus_plus + scaled_minus_minus
+
+    discriminant = math.sqrt(
+        (scaled_plus_plus - scaled_minus_minus) ** 2
+        + 4.0 * scaled_plus_minus * scaled_minus_plus
+    )
+
+    return 0.5 * (trace + discriminant)
+
+
 def _build_observed_hourly_series(
     *,
     tick_records: Sequence[TickRecord],
@@ -1177,7 +1941,6 @@ def _build_observed_hourly_series(
         simulation_start_utc + timedelta(hours=interval_index)
         for interval_index in range(horizon_interval_count)
     ]
-    simulation_end_utc = simulation_start_utc + timedelta(hours=horizon_interval_count)
 
     boundary_prices = _build_boundary_prices(
         tick_records=tick_records,
@@ -1281,6 +2044,7 @@ def _write_manual_test_plot(
         linewidth=1.6,
         color="#7570b3",
     )
+
     axes[1].set_title(panel_title)
     axes[1].set_ylabel(panel_ylabel)
     axes[1].xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
@@ -1546,6 +2310,7 @@ def _price_path_from_returns(
     for hourly_return in hourly_returns:
         current_price *= math.exp(hourly_return)
         price_values.append(current_price)
+
     return price_values
 
 
@@ -1559,6 +2324,7 @@ def _log_price_path_from_returns(
     for hourly_return in hourly_returns:
         current_log_price += hourly_return
         log_price_values.append(current_log_price)
+
     return log_price_values
 
 
@@ -1629,6 +2395,7 @@ def _cumulative_path(hourly_returns: Sequence[float]) -> list[float]:
     for hourly_return in hourly_returns:
         cumulative_total += hourly_return
         cumulative_values.append(cumulative_total)
+
     return cumulative_values
 
 
@@ -1881,6 +2648,7 @@ def _round_optional_float(value: Optional[float]) -> Optional[float]:
 def _utc_datetime_from_nanos(timestamp_utc_nanos: int) -> datetime:
     seconds, nanos_remainder = divmod(timestamp_utc_nanos, 1_000_000_000)
     microseconds = nanos_remainder // 1_000
+
     return datetime.fromtimestamp(seconds, tz=UTC).replace(microsecond=microseconds)
 
 
@@ -1908,6 +2676,7 @@ def _require_nested_mapping(
         if not isinstance(current_value, Mapping) or path_part not in current_value:
             joined_path = ".".join(traversed_parts)
             raise KeyError(f"missing required mapping field `{joined_path}` while loading {context}")
+
         current_value = current_value[path_part]
 
     if not isinstance(current_value, Mapping):
@@ -1945,7 +2714,9 @@ def main() -> None:
                 session_definition_path=parsed_arguments.session_definition_json,
                 plot_path=parsed_arguments.plot_path,
                 plot_data_csv_path=parsed_arguments.plot_data_csv_path,
+                event_count_isolation_runs=parsed_arguments.event_count_isolation_runs,
             )
+
             print(json.dumps(summary, indent=2, sort_keys=True))
             return
 
@@ -1962,7 +2733,9 @@ def main() -> None:
         session_definition_path=parsed_arguments.session_definition_json,
         plot_path=parsed_arguments.plot_path,
         plot_data_csv_path=parsed_arguments.plot_data_csv_path,
+        event_count_isolation_runs=parsed_arguments.event_count_isolation_runs,
     )
+
     print(json.dumps(summary, indent=2, sort_keys=True))
 
 

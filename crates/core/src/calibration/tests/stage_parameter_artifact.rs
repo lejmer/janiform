@@ -180,6 +180,14 @@ fn calibration_stage_parameter_artifacts_round_trip_per_stage_preserve_stage_pay
                 loaded_payload.day_of_year_factor.len(),
                 expected_payload.day_of_year_factor.len()
             );
+            assert_eq!(
+                loaded_payload.timestamp_utc_nanos,
+                expected_payload.timestamp_utc_nanos
+            );
+            assert_eq!(
+                loaded_payload.normalized_combined_factor_by_event,
+                expected_payload.normalized_combined_factor_by_event
+            );
         }
         _ => panic!("expected seasonality payload"),
     }
