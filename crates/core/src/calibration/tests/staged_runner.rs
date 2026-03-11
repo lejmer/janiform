@@ -969,13 +969,21 @@ fn staged_runner_resume_from_last_and_selected_stage_work_in_disk_mode() {
     );
     assert_eq!(
         resume_from_stage_report.status,
-        CalibrationStageExecutionStatus::Success
+        CalibrationStageExecutionStatus::Failure
     );
     assert_eq!(
         resume_from_stage_report.started_from_stage,
         Some(CalibrationStage::Hawkes)
     );
-    assert_eq!(resume_from_stage_report.stage_reports.len(), 2);
+    assert!(matches!(
+        resume_from_stage_report.failure,
+        Some(
+            CalibrationStagedRunFailure::MissingInMemoryUpstreamPayload {
+                required_stage: CalibrationStage::Seasonality,
+                consuming_stage: CalibrationStage::Hawkes,
+            }
+        )
+    ));
 
     let _ = fs::remove_dir_all(checkpoint_directory);
     let _ = fs::remove_dir_all(second_checkpoint_directory);

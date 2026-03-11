@@ -15,6 +15,7 @@ fn calibration_stage_parameter_artifacts_round_trip_per_stage_preserve_stage_pay
     );
     let hawkes_report = run_hawkes_calibration_stage(
         &run_contract.run_spec,
+        &calendar_registry,
         HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
             "artifact://seasonality/run-001",
             seasonality_report
@@ -253,6 +254,7 @@ fn calibration_stage_parameter_artifact_validation_rejects_missing_outputs_and_m
 
     let mut hawkes_report = run_hawkes_calibration_stage(
         &run_contract.run_spec,
+        &calendar_registry,
         HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
             "artifact://seasonality/run-001",
             build_seasonality_stage_success_payload(),
@@ -276,6 +278,7 @@ fn calibration_stage_parameter_artifact_validation_rejects_missing_outputs_and_m
         &run_contract,
         &CalibrationStagedRunStageReport::Hawkes(run_hawkes_calibration_stage(
             &run_contract.run_spec,
+            &calendar_registry,
             HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
                 "artifact://seasonality/run-001",
                 build_seasonality_stage_success_payload(),

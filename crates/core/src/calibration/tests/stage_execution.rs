@@ -223,6 +223,7 @@ fn seasonality_stage_execution_neutralizes_under_supported_calendar_components()
 
 #[test]
 fn hawkes_stage_execution_succeeds_for_memory_and_disk_mode_handoffs() {
+    let calendar_registry = calibration_stage_test_registry();
     let seasonality_payload = build_seasonality_stage_success_payload();
 
     let memory_run_spec = build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory);
@@ -230,6 +231,7 @@ fn hawkes_stage_execution_succeeds_for_memory_and_disk_mode_handoffs() {
 
     let memory_report = run_hawkes_calibration_stage(
         &memory_run_spec,
+        &calendar_registry,
         HawkesStageExecutionInput::from_in_memory_seasonality_output(
             seasonality_payload.clone(),
             hawkes_stage_candidate_fixture(),
@@ -237,6 +239,7 @@ fn hawkes_stage_execution_succeeds_for_memory_and_disk_mode_handoffs() {
     );
     let disk_report = run_hawkes_calibration_stage(
         &disk_run_spec,
+        &calendar_registry,
         HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
             "artifact://seasonality/run-001",
             seasonality_payload.clone(),
@@ -310,10 +313,12 @@ fn hawkes_stage_execution_succeeds_for_memory_and_disk_mode_handoffs() {
 
 #[test]
 fn hawkes_stage_execution_reports_constraint_violations_for_invalid_candidates() {
+    let calendar_registry = calibration_stage_test_registry();
     let run_spec = build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory);
 
     let report = run_hawkes_calibration_stage(
         &run_spec,
+        &calendar_registry,
         HawkesStageExecutionInput::from_in_memory_seasonality_output(
             build_seasonality_stage_success_payload(),
             vec![hawkes_stage_constraint_violating_candidate_fixture()],
@@ -345,8 +350,10 @@ fn hawkes_stage_execution_reports_constraint_violations_for_invalid_candidates()
 
 #[test]
 fn hawkes_stage_rejects_seasonality_scaled_supercritical_candidates() {
+    let calendar_registry = calibration_stage_test_registry();
     let mut seasonality_payload = build_seasonality_stage_success_payload();
-    seasonality_payload.normalized_combined_factor_by_event = vec![1.0, 2.0, 1.5, 1.0, 1.0, 1.0];
+    seasonality_payload.intraday_factor_by_bin.fill(2.0);
+    seasonality_payload.day_of_week_factor[0] = 1.6;
 
     let mut candidate = hawkes_stage_candidate_fixture()
         .into_iter()
@@ -358,6 +365,7 @@ fn hawkes_stage_rejects_seasonality_scaled_supercritical_candidates() {
 
     let report = run_hawkes_calibration_stage(
         &build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory),
+        &calendar_registry,
         HawkesStageExecutionInput::from_in_memory_seasonality_output(
             seasonality_payload,
             vec![candidate],
@@ -392,8 +400,10 @@ fn hawkes_stage_rejects_seasonality_scaled_supercritical_candidates() {
 
 #[test]
 fn hawkes_stage_objective_terms_change_with_candidate_implied_metrics() {
+    let calendar_registry = calibration_stage_test_registry();
     let report = run_hawkes_calibration_stage(
         &build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory),
+        &calendar_registry,
         HawkesStageExecutionInput::from_in_memory_seasonality_output(
             build_seasonality_stage_success_payload(),
             hawkes_stage_candidate_fixture(),
@@ -441,6 +451,7 @@ fn hawkes_stage_objective_terms_change_with_candidate_implied_metrics() {
 
 #[test]
 fn hawkes_stage_surfaces_unrealistic_implied_event_volume_warnings() {
+    let calendar_registry = calibration_stage_test_registry();
     let mut explosive_candidate = hawkes_stage_candidate_fixture()
         .into_iter()
         .next()
@@ -450,6 +461,7 @@ fn hawkes_stage_surfaces_unrealistic_implied_event_volume_warnings() {
 
     let report = run_hawkes_calibration_stage(
         &build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory),
+        &calendar_registry,
         HawkesStageExecutionInput::from_in_memory_seasonality_output(
             build_seasonality_stage_success_payload(),
             vec![explosive_candidate],
@@ -477,12 +489,14 @@ fn hawkes_stage_surfaces_unrealistic_implied_event_volume_warnings() {
 
 #[test]
 fn hawkes_stage_execution_is_deterministic_under_fixed_seed_and_solver_settings() {
+    let calendar_registry = calibration_stage_test_registry();
     let seasonality_payload = build_seasonality_stage_success_payload();
     let memory_run_spec = build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory);
     let disk_run_spec = build_hawkes_stage_run_spec(CalibrationExecutionMode::Disk);
 
     let first_memory_report = run_hawkes_calibration_stage(
         &memory_run_spec,
+        &calendar_registry,
         HawkesStageExecutionInput::from_in_memory_seasonality_output(
             seasonality_payload.clone(),
             hawkes_stage_candidate_fixture(),
@@ -490,6 +504,7 @@ fn hawkes_stage_execution_is_deterministic_under_fixed_seed_and_solver_settings(
     );
     let second_memory_report = run_hawkes_calibration_stage(
         &memory_run_spec,
+        &calendar_registry,
         HawkesStageExecutionInput::from_in_memory_seasonality_output(
             seasonality_payload,
             hawkes_stage_candidate_fixture(),
@@ -497,6 +512,7 @@ fn hawkes_stage_execution_is_deterministic_under_fixed_seed_and_solver_settings(
     );
     let first_disk_report = run_hawkes_calibration_stage(
         &disk_run_spec,
+        &calendar_registry,
         HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
             "artifact://seasonality/run-001",
             build_seasonality_stage_success_payload(),
@@ -505,6 +521,7 @@ fn hawkes_stage_execution_is_deterministic_under_fixed_seed_and_solver_settings(
     );
     let second_disk_report = run_hawkes_calibration_stage(
         &disk_run_spec,
+        &calendar_registry,
         HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
             "artifact://seasonality/run-001",
             build_seasonality_stage_success_payload(),

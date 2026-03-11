@@ -22,6 +22,7 @@ from janiform.calibration import (
     CalibrationMarketDataOutputPreferences,
     CalibrationMarketDataWorkflowScope,
     CalibrationSessionConfigurationInput,
+    CalibrationStageExecutionStatus,
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
     MarketDataCalibrationRequest,
@@ -206,6 +207,11 @@ def run_example(
         calendar_registry=calendar_registry,
     )
     calibration_seconds = perf_counter() - calibration_start
+
+    if calibration_response.status != CalibrationStageExecutionStatus.SUCCESS:
+        raise RuntimeError(
+            _format_staged_calibration_failure(calibration_response)
+        )
 
     stage_artifact_paths = _stage_parameter_artifact_paths(
         artifact_directory=artifact_directory,
@@ -955,6 +961,39 @@ def _load_stage_parameter_artifacts(
         loaded_artifacts[artifact_name] = json.loads(artifact_path.read_text(encoding="utf-8"))
 
     return loaded_artifacts
+
+
+def _format_staged_calibration_failure(calibration_response: Any) -> str:
+    failure_lines: list[str] = [
+        "staged calibration failed before all stage artifacts were emitted",
+        f"run_id: {calibration_response.run_id}",
+        f"status: {calibration_response.status.value}",
+    ]
+
+    if calibration_response.failure is not None:
+        failure_lines.append(
+            f"failure_kind: {calibration_response.failure.failure_kind}"
+        )
+        if calibration_response.failure.stage is not None:
+            failure_lines.append(
+                f"failure_stage: {calibration_response.failure.stage.value}"
+            )
+        if calibration_response.failure.error_message:
+            failure_lines.append(
+                f"failure_message: {calibration_response.failure.error_message}"
+            )
+
+    for stage_report in calibration_response.stage_reports:
+        stage_summary = (
+            f"stage {stage_report.stage.value}: {stage_report.status.value}"
+        )
+        if stage_report.failure is not None:
+            stage_summary += f" ({stage_report.failure.failure_kind})"
+            if stage_report.failure.error_message:
+                stage_summary += f": {stage_report.failure.error_message}"
+        failure_lines.append(stage_summary)
+
+    return "\n".join(failure_lines)
 
 
 def _extract_calibrated_model(

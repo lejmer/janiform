@@ -985,6 +985,7 @@ fn run_stage_for_staged_execution(
             Ok(CalibrationStagedRunStageReport::Hawkes(
                 run_hawkes_calibration_stage(
                     run_spec,
+                    calendar_registry,
                     HawkesStageExecutionInput {
                         seasonality_input,
                         candidate_inputs,

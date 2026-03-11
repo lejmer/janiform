@@ -2,8 +2,11 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use chrono::{DateTime, Datelike, Timelike, Utc};
+use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 
+use crate::calendar::ExchangeCalendarRegistry;
 use crate::calibration::precheck_structured_hawkes_kernel_parameter_domain;
 use crate::hawkes::{
     HawkesKernelParameterValidationReport, HawkesKernelParameters,
@@ -504,7 +507,6 @@ struct HawkesObservedActivityTargets {
     deseasonalized_short_gap_threshold_seconds: f64,
     deseasonalized_short_gap_ratio: f64,
     deseasonalized_known_news_rate_per_hour: f64,
-    max_observed_seasonality_factor: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -671,6 +673,7 @@ pub struct HawkesStageExecutionReport {
 /// Execute the Hawkes stage with structured constraint checks for each candidate.
 pub fn run_hawkes_calibration_stage(
     run_spec: &CalibrationRunSpec,
+    calendar_registry: &ExchangeCalendarRegistry,
     stage_input: HawkesStageExecutionInput,
 ) -> HawkesStageExecutionReport {
     if let Err(source) = run_spec.validate() {
@@ -797,6 +800,19 @@ pub fn run_hawkes_calibration_stage(
     let mut adapter_candidate_inputs = Vec::with_capacity(stage_input.candidate_inputs.len());
     let mut adjusted_candidate_inputs = Vec::with_capacity(stage_input.candidate_inputs.len());
     let seasonality_payload = stage_input.seasonality_input.payload();
+    let max_runtime_hourly_seasonality_factor =
+        match compute_runtime_hourly_seasonality_factor(calendar_registry, seasonality_payload) {
+            Ok(value) => value,
+            Err(error_message) => {
+                return build_hawkes_stage_failure_report(
+                    run_spec,
+                    HawkesStageExecutionFailure::CandidateConstructionFailed {
+                        candidate_id: "runtime_hourly_seasonality_envelope".to_string(),
+                        error_message,
+                    },
+                );
+            }
+        };
 
     for candidate_input in &stage_input.candidate_inputs {
         if !seen_candidate_ids.insert(candidate_input.candidate_id.clone()) {
@@ -847,7 +863,7 @@ pub fn run_hawkes_calibration_stage(
         if let Some(stationarity_check) =
             validation_report.derived_alpha.and_then(|derived_alpha| {
                 check_seasonality_scaled_stationarity(
-                    observed_activity_targets.max_observed_seasonality_factor,
+                    max_runtime_hourly_seasonality_factor,
                     derived_alpha,
                     adjusted_candidate_input.beta,
                 )
@@ -1364,12 +1380,6 @@ fn derive_observed_activity_targets(
     };
     let deseasonalized_known_news_rate_per_hour =
         source_regime.known_news_open_event_count as f64 / open_factor_exposure_hours.max(1.0e-9);
-    let max_observed_seasonality_factor = open_event_points
-        .iter()
-        .map(|(_, factor)| *factor)
-        .reduce(f64::max)
-        .unwrap_or(1.0)
-        .max(1.0);
 
     HawkesObservedActivityTargets {
         deseasonalized_open_event_rate_per_hour,
@@ -1379,7 +1389,123 @@ fn derive_observed_activity_targets(
         deseasonalized_short_gap_threshold_seconds,
         deseasonalized_short_gap_ratio,
         deseasonalized_known_news_rate_per_hour,
-        max_observed_seasonality_factor,
+    }
+}
+
+fn compute_runtime_hourly_seasonality_factor(
+    calendar_registry: &ExchangeCalendarRegistry,
+    seasonality_payload: &SeasonalityStageNormalizedPayload,
+) -> Result<f64, String> {
+    const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
+
+    let Some(first_timestamp_utc_nanos) = seasonality_payload.timestamp_utc_nanos.first().copied()
+    else {
+        return Ok(1.0);
+    };
+    let Some(last_timestamp_utc_nanos) = seasonality_payload.timestamp_utc_nanos.last().copied()
+    else {
+        return Ok(1.0);
+    };
+
+    let timezone_name = calendar_registry
+        .get_required(seasonality_payload.exchange_code.as_str())
+        .map_err(|error| error.to_string())?
+        .timezone_name()
+        .to_string();
+    let timezone: Tz = timezone_name.parse().map_err(|_| {
+        format!(
+            "exchange `{}` has invalid timezone name `{timezone_name}`",
+            seasonality_payload.exchange_code
+        )
+    })?;
+
+    let aligned_range_start_utc_nanos = ceil_to_hour_utc_nanos(first_timestamp_utc_nanos);
+    let aligned_range_end_utc_nanos = floor_to_hour_utc_nanos(last_timestamp_utc_nanos);
+
+    if aligned_range_end_utc_nanos <= aligned_range_start_utc_nanos {
+        return Ok(seasonality_payload
+            .normalized_combined_factor_by_event
+            .iter()
+            .copied()
+            .reduce(f64::max)
+            .unwrap_or(1.0)
+            .max(1.0));
+    }
+
+    let mut maximum_hourly_factor: f64 = 1.0;
+    let mut interval_start_utc_nanos = aligned_range_start_utc_nanos;
+    while interval_start_utc_nanos < aligned_range_end_utc_nanos {
+        maximum_hourly_factor = maximum_hourly_factor.max(structural_seasonality_factor_at_hour(
+            seasonality_payload,
+            timezone,
+            interval_start_utc_nanos,
+        )?);
+        interval_start_utc_nanos += ONE_HOUR_NANOS;
+    }
+
+    Ok(maximum_hourly_factor)
+}
+
+fn structural_seasonality_factor_at_hour(
+    seasonality_payload: &SeasonalityStageNormalizedPayload,
+    timezone: Tz,
+    timestamp_utc_nanos: i64,
+) -> Result<f64, String> {
+    let timestamp_utc = DateTime::<Utc>::from_timestamp_nanos(timestamp_utc_nanos);
+    let exchange_local_timestamp = timestamp_utc.with_timezone(&timezone);
+    let minute_of_day =
+        exchange_local_timestamp.hour() as usize * 60 + exchange_local_timestamp.minute() as usize;
+    let intraday_bin_index =
+        minute_of_day / seasonality_payload.intraday_minutes_per_bin.max(1) as usize;
+    let weekday_index = exchange_local_timestamp.weekday().number_from_monday() as usize - 1;
+    let day_of_year_index = exchange_local_timestamp.ordinal0() as usize;
+
+    let intraday_factor = seasonality_payload
+        .intraday_factor_by_bin
+        .get(intraday_bin_index)
+        .copied()
+        .ok_or_else(|| {
+            format!(
+                "intraday factor bin index {intraday_bin_index} is out of range for payload with {} bins",
+                seasonality_payload.intraday_factor_by_bin.len()
+            )
+        })?;
+    let day_of_week_factor = seasonality_payload
+        .day_of_week_factor
+        .get(weekday_index)
+        .copied()
+        .ok_or_else(|| {
+            format!(
+                "day_of_week factor index {weekday_index} is out of range for payload with {} buckets",
+                seasonality_payload.day_of_week_factor.len()
+            )
+        })?;
+    let day_of_year_factor = seasonality_payload
+        .day_of_year_factor
+        .get(day_of_year_index)
+        .copied()
+        .ok_or_else(|| {
+            format!(
+                "day_of_year factor index {day_of_year_index} is out of range for payload with {} buckets",
+                seasonality_payload.day_of_year_factor.len()
+            )
+        })?;
+
+    Ok((intraday_factor * day_of_week_factor * day_of_year_factor).max(1.0e-9))
+}
+
+const fn floor_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> i64 {
+    const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
+    timestamp_utc_nanos.div_euclid(ONE_HOUR_NANOS) * ONE_HOUR_NANOS
+}
+
+fn ceil_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> i64 {
+    const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
+    let floored_timestamp_utc_nanos = floor_to_hour_utc_nanos(timestamp_utc_nanos);
+    if floored_timestamp_utc_nanos == timestamp_utc_nanos {
+        timestamp_utc_nanos
+    } else {
+        floored_timestamp_utc_nanos + ONE_HOUR_NANOS
     }
 }
 

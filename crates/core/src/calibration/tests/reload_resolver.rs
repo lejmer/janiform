@@ -160,6 +160,7 @@ fn persist_reload_fixture(run_id: &str) -> PersistedReloadFixture {
     );
     let hawkes_report = run_hawkes_calibration_stage(
         &run_contract.run_spec,
+        &calendar_registry,
         HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
             format!("artifact://seasonality/{run_id}"),
             seasonality_report

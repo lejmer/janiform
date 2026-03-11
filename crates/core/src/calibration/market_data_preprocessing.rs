@@ -640,6 +640,11 @@ fn build_hawkes_candidate_inputs(
         open_known_news_timestamps.len() as f64 / open_session_duration_hours.max(1.0e-9);
 
     let branching_values = unique_sorted_rounded(&[
+        0.08,
+        0.14,
+        0.20,
+        0.28,
+        clamp(clustering_center - 0.20, 0.05, 0.82),
         clamp(clustering_center - 0.12, 0.05, 0.82),
         clustering_center,
         clamp(clustering_center + 0.12, 0.05, 0.82),

@@ -713,8 +713,10 @@ pub(super) fn build_seasonality_stage_success_payload()
 
 pub(super) fn build_hawkes_stage_success_payload() -> crate::calibration::HawkesStageFittedPayload {
     let seasonality_payload = build_seasonality_stage_success_payload();
+    let calendar_registry = calibration_stage_test_registry();
     let report = run_hawkes_calibration_stage(
         &build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory),
+        &calendar_registry,
         HawkesStageExecutionInput::from_in_memory_seasonality_output(
             seasonality_payload,
             hawkes_stage_candidate_fixture(),
