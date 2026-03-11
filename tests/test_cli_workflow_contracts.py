@@ -251,20 +251,61 @@ def test_market_data_calibration_cli_parser_defaults_execution_mode_to_disk() ->
             "timestamp_utc",
             "--exchange-code",
             "XNYS",
-            "--session-definition-path",
-            "sessions.json",
-            "--session-definition-format",
-            "json",
-            "--session-definition-provenance-label",
-            "session-registry",
-            "--session-timezone",
-            "America/New_York",
             "--timestamp-timezone",
             "UTC",
         ]
     )
 
     assert parsed_arguments.execution_mode == CalibrationExecutionMode.DISK.value
+
+
+def test_market_data_calibration_cli_accepts_automatic_session_inference_without_override(
+    tmp_path: Path,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc",
+                "2026-02-02T14:30:00Z",
+                "2026-02-02T15:00:00Z",
+                "2026-02-03T14:30:00Z",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "calibration",
+            "market-data",
+            "--run-id",
+            "market-data-auto-session-run",
+            "--workflow-scope",
+            "seasonality_only",
+            "--tick-data-path",
+            str(tick_data_path),
+            "--tick-data-format",
+            "csv",
+            "--tick-data-provenance-label",
+            "ticks-primary",
+            "--tick-timestamp-column",
+            "timestamp_utc",
+            "--exchange-code",
+            "XNYS",
+            "--timestamp-timezone",
+            "UTC",
+            "--execution-mode",
+            "memory",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
+
+    summary_payload = orjson.loads(stdout_text)
+    assert summary_payload["input_files"]["session_definition"] is None
+    assert summary_payload["session_resolution"]["resolution_kind"] == "automatic_inference"
+    assert summary_payload["session_context"]["session_timezone"] == "America/New_York"
 
 
 def test_seasonality_preprocess_cli_parser_uses_expected_defaults() -> None:
@@ -1361,6 +1402,7 @@ def test_market_data_calibration_cli_maps_flags_to_summary_contract(
     assert summary_payload["preparation_schema_version"] == calibration_module.CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION
     assert summary_payload["workflow_scope"] == CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE.value
     assert summary_payload["session_context"]["exchange_code"] == "XNYS"
+    assert summary_payload["session_resolution"]["resolution_kind"] == "explicit_override"
     assert Path(summary_payload["input_files"]["tick_data"]["path"]).parts[-2:] == ("data", "ticks.csv")
     assert summary_payload["input_files"]["option_surface"]["file_format"] == "parquet"
     assert summary_payload["column_mapping"]["known_news"]["event_timestamp_column"] == "event_timestamp_utc"
@@ -1435,6 +1477,7 @@ def test_market_data_calibration_cli_supports_human_output_mode(
     assert stdout_text.startswith("calibration market-data request prepared:")
     assert "workflow_scope=seasonality_only" in stdout_text
     assert "execution_mode=memory" in stdout_text
+    assert "session_resolution:" in stdout_text
     assert "workflow_diagnostics:" in stdout_text
     assert "loaded_data_summary:" in stdout_text
     assert "derived_references:" in stdout_text

@@ -44,7 +44,6 @@ def run_example(*, working_directory: Path) -> dict[str, object]:
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
             tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
         ),
-        session_definition_path=file_paths["session_definition"],
         known_news_path=file_paths["known_news"],
     )
     parquet_request = _build_market_data_request(
@@ -63,7 +62,6 @@ def run_example(*, working_directory: Path) -> dict[str, object]:
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
             tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
         ),
-        session_definition_path=file_paths["session_definition"],
         known_news_path=file_paths["known_news"],
     )
     option_surface_request = _build_market_data_request(
@@ -83,7 +81,6 @@ def run_example(*, working_directory: Path) -> dict[str, object]:
             tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
             option_quote_input_policy=CalibrationOptionQuoteInputPolicy.BID_ASK_MIDPOINT,
         ),
-        session_definition_path=file_paths["session_definition"],
         known_news_path=file_paths["known_news"],
         option_surface_path=file_paths["option_surface"],
     )
@@ -112,6 +109,7 @@ def _summarize_market_data_workflow(request: MarketDataCalibrationRequest) -> di
         "derived_option_surface_data_reference": prepared.provenance.derived_option_surface_data_reference,
         "prepared_execution_mode": prepared.execution_input.request.execution_mode.value,
         "prepared_stage_count": len(prepared.execution_input.request.selected_stages),
+        "session_resolution_kind": prepared.session_resolution.resolution_kind,
     }
 
 
@@ -123,7 +121,6 @@ def _build_market_data_request(
     workflow_scope: CalibrationMarketDataWorkflowScope,
     tick_column_mapping: CalibrationTickDataColumnMapping,
     normalization_policy: CalibrationMarketDataNormalizationPolicy,
-    session_definition_path: Path,
     known_news_path: Path,
     option_surface_path: Path | None = None,
 ) -> MarketDataCalibrationRequest:
@@ -137,12 +134,6 @@ def _build_market_data_request(
         ),
         session_configuration=CalibrationSessionConfigurationInput(
             exchange_code="XNYS",
-            session_definition_source=CalibrationInputFileReference(
-                path=str(session_definition_path),
-                file_format=CalibrationInputFileFormat.JSON,
-                provenance_label="session-calendar",
-            ),
-            session_timezone="America/New_York",
         ),
         column_mapping=CalibrationMarketDataColumnMapping(
             tick_data=tick_column_mapping,

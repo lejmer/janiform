@@ -10,6 +10,7 @@ from ._common import (
     _calibration_error,
 )
 from ._requests import MarketDataCalibrationRequest, validate_market_data_calibration_request
+from ._session_resolution import MarketDataSessionResolution
 from ._staged import StagedCalibrationExecutionInput, StagedCalibrationResponse, run_staged_calibration
 from .._contracts import ContractModel
 
@@ -56,7 +57,7 @@ class MarketDataCalibrationPreparationProvenance(ContractModel):
     normalization_policy: CalibrationMarketDataNormalizationPolicy
     workflow_scope: CalibrationMarketDataWorkflowScope
     selected_stages: tuple[CalibrationStage, ...]
-    session_definition_path: str
+    session_definition_path: Optional[str]
     derived_trade_events_data_reference: str
     derived_option_surface_data_reference: Optional[str]
     derivation_policies: tuple[str, ...]
@@ -70,6 +71,7 @@ class PreparedMarketDataCalibration(ContractModel):
     execution_input: StagedCalibrationExecutionInput
     diagnostics: MarketDataCalibrationPreparationDiagnostics
     provenance: MarketDataCalibrationPreparationProvenance
+    session_resolution: MarketDataSessionResolution
 
     def __post_init__(self) -> None:
         if self.schema_version != CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION:
@@ -148,6 +150,16 @@ def _build_market_data_preparation_provenance(provenance: Any) -> MarketDataCali
     )
 
 
+def _build_market_data_session_resolution(session_resolution: Any) -> MarketDataSessionResolution:
+    if not isinstance(session_resolution, MarketDataSessionResolution):
+        raise _calibration_error(
+            "session_resolution",
+            "must be a MarketDataSessionResolution",
+        )
+
+    return session_resolution
+
+
 def prepare_market_data_calibration(
     request: MarketDataCalibrationRequest,
 ) -> PreparedMarketDataCalibration:
@@ -158,7 +170,7 @@ def prepare_market_data_calibration(
         response = run_staged_calibration(
             prepared.execution_input,
             calendar_registry=CalendarRegistry(
-                Path(request.session_configuration.session_definition_source.path).read_text(encoding="utf-8")
+                prepared.session_resolution.resolved_session_definition_json
             ),
         )
     """
@@ -175,6 +187,9 @@ def prepare_market_data_calibration(
         execution_input=translation_result.execution_input,
         diagnostics=_build_market_data_preparation_diagnostics(translation_result.diagnostics),
         provenance=_build_market_data_preparation_provenance(translation_result.provenance),
+        session_resolution=_build_market_data_session_resolution(
+            translation_result.session_resolution
+        ),
     )
 
 

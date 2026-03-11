@@ -177,6 +177,9 @@ The package root `janiform` is intentionally minimal.
     - `MarketDataCalibrationSourceSummary`
     - `MarketDataCalibrationPreparationDiagnostics`
     - `MarketDataCalibrationPreparationProvenance`
+    - `MarketDataSessionRegularWindow`
+    - `MarketDataSessionRecurringClosedWindow`
+    - `MarketDataSessionResolution`
     - `PreparedMarketDataCalibration`
     - `CalibrationTimestampEventSessionFilter`
     - `CalibrationIntradaySmoothingKernel`
@@ -266,6 +269,11 @@ The recommended public request boundary is:
 - `validate_market_data_calibration_request`
 - `prepare_market_data_calibration`
 - `run_market_data_calibration`
+
+`CalibrationSessionConfigurationInput` now treats `session_definition_source` as an explicit
+override rather than a required input. `PreparedMarketDataCalibration.session_resolution`
+surfaces the resolved calendar artifact and the inference diagnostics that downstream calibration
+and simulation preparation should reuse.
 
 The advanced staged-calibration entrypoint is:
 

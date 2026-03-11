@@ -28,6 +28,10 @@ from ._market_data_ingestion import (
     _load_market_data_calibration_inputs,
 )
 from ._requests import MarketDataCalibrationRequest, StagedCalibrationRequest
+from ._session_resolution import (
+    MarketDataSessionResolution,
+    resolve_market_data_session_configuration,
+)
 from ._staged import (
     CalibrationHawkesStageCandidateInput,
     CalibrationReturnComponentsStageCandidateGenerationInput,
@@ -38,7 +42,7 @@ from ._staged import (
 from .._contracts import parse_json_object, serialize_deterministic_json
 from .._native_api import native_module
 from .._timestamps import datetime_to_utc_nanos
-from ..calendar import CalendarRegistry, CalendarRegistryLoadError
+from ..calendar import CalendarRegistry
 
 
 CALIBRATION_MARKET_DATA_TRANSLATION_ERROR_ID = "calibration.validation.market_data_translation"
@@ -74,7 +78,7 @@ class MarketDataTranslationProvenance:
     normalization_policy: CalibrationMarketDataNormalizationPolicy
     workflow_scope: CalibrationMarketDataWorkflowScope
     selected_stages: tuple[CalibrationStage, ...]
-    session_definition_path: str
+    session_definition_path: Optional[str]
     derived_trade_events_data_reference: str
     derived_option_surface_data_reference: Optional[str]
     derivation_policies: tuple[str, ...]
@@ -84,6 +88,7 @@ class MarketDataTranslationProvenance:
 @dataclass(frozen=True, slots=True)
 class MarketDataTranslationResult:
     calendar_registry: CalendarRegistry
+    session_resolution: MarketDataSessionResolution
     loaded_inputs: LoadedMarketDataCalibrationInputs
     execution_input: StagedCalibrationExecutionInput
     diagnostics: MarketDataTranslationDiagnostics
@@ -117,7 +122,6 @@ def translate_market_data_request_to_staged_execution_input(
 
     normalized_request = MarketDataCalibrationRequest.from_mapping(request.to_payload())
 
-    calendar_registry = _load_calendar_registry(normalized_request)
     selected_stages = _selected_stages_for_scope(normalized_request.workflow_scope)
     loaded_inputs_result = _load_market_data_calibration_inputs(
         normalized_request,
@@ -130,6 +134,11 @@ def translate_market_data_request_to_staged_execution_input(
         loaded_inputs.tick_data,
         normalization_policy=normalized_request.normalization_policy,
     )
+    resolved_session = resolve_market_data_session_configuration(
+        normalized_request,
+        loaded_inputs.tick_data,
+    )
+    calendar_registry = resolved_session.calendar_registry
 
     trade_events_data_reference = _build_dataset_reference(
         normalized_request.run_id,
@@ -188,6 +197,7 @@ def translate_market_data_request_to_staged_execution_input(
 
     return MarketDataTranslationResult(
         calendar_registry=calendar_registry,
+        session_resolution=resolved_session.session_resolution,
         loaded_inputs=loaded_inputs,
         execution_input=execution_input,
         diagnostics=MarketDataTranslationDiagnostics(
@@ -265,12 +275,11 @@ def translate_market_data_request_to_staged_execution_input(
             normalization_policy=normalized_request.normalization_policy,
             workflow_scope=normalized_request.workflow_scope,
             selected_stages=selected_stages,
-            session_definition_path=(
-                normalized_request.session_configuration.session_definition_source.path
-            ),
+            session_definition_path=resolved_session.session_definition_path,
             derived_trade_events_data_reference=trade_events_data_reference,
             derived_option_surface_data_reference=option_surface_data_reference,
             derivation_policies=(
+                resolved_session.session_resolution.selected_policy_id,
                 "native_market_data_translation_preprocessing.rust.v1",
                 "known_news_outside_tick_window_are_filtered.v1",
                 "known_news_overlays_are_point_anchors_with_zero_log_adjustment.v1",
@@ -343,50 +352,6 @@ def _translation_error(
         error_id=CALIBRATION_MARKET_DATA_TRANSLATION_ERROR_ID,
         context=context,
     )
-
-
-def _load_calendar_registry(request: MarketDataCalibrationRequest) -> CalendarRegistry:
-    session_source = request.session_configuration.session_definition_source
-    if session_source.file_format.value != "json":
-        raise _translation_error(
-            "session_configuration.session_definition_source.file_format",
-            "must be json for market-data translation",
-            context={"translation_step": "session_definition_loading"},
-        )
-
-    try:
-        with open(session_source.path, encoding="utf-8") as input_file:
-            calendar_registry_json = input_file.read()
-    except FileNotFoundError as e:
-        raise _translation_error(
-            "session_configuration.session_definition_source.path",
-            "does not exist",
-            context={
-                "path": session_source.path,
-                "translation_step": "session_definition_loading",
-            },
-        ) from e
-    except OSError as e:
-        raise _translation_error(
-            "session_configuration.session_definition_source.path",
-            f"could not be read: {e}",
-            context={
-                "path": session_source.path,
-                "translation_step": "session_definition_loading",
-            },
-        ) from e
-
-    try:
-        return CalendarRegistry(calendar_registry_json)
-    except CalendarRegistryLoadError as e:
-        raise _translation_error(
-            "session_configuration.session_definition_source.path",
-            f"does not contain a valid calendar registry: {e}",
-            context={
-                "path": session_source.path,
-                "translation_step": "session_definition_loading",
-            },
-        ) from e
 
 
 def _preprocess_market_data_translation_inputs(

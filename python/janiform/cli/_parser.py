@@ -625,25 +625,24 @@ def _add_market_data_calibration_arguments(calibration_market_data_parser: Argum
     calibration_market_data_parser.add_argument(
         "--session-definition-path",
         type=Path,
-        required=True,
         metavar=CLI_PATH_METAVAR,
-        help=f"Path to the session-definition file. {CLI_REPOSITORY_RELATIVE_PATH_POLICY}",
+        help=(
+            "Optional path to an explicit session-definition file override. "
+            f"{CLI_REPOSITORY_RELATIVE_PATH_POLICY}"
+        ),
     )
     calibration_market_data_parser.add_argument(
         "--session-definition-format",
-        required=True,
         choices=CLI_CALIBRATION_STRUCTURED_FILE_FORMAT_CHOICES,
-        help="Session-definition file format.",
+        help="Explicit session-definition file format when --session-definition-path is provided.",
     )
     calibration_market_data_parser.add_argument(
         "--session-definition-provenance-label",
-        required=True,
-        help="Stable provenance label recorded for the session-definition source.",
+        help="Stable provenance label recorded for the explicit session-definition source.",
     )
     calibration_market_data_parser.add_argument(
         "--session-timezone",
-        required=True,
-        help="Timezone used to interpret session-definition timestamps.",
+        help="Optional timezone hint for automatic session inference or explicit session overrides.",
     )
 
     _add_optional_path_argument(

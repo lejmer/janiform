@@ -160,7 +160,7 @@ Note:
 - the seeded tick simulator now emits a priced fine path with a derived event-tape projection
 - this example uses return stylized facts on a shared hourly grid rather than activity-only diagnostics
 - pass `--plot-path /tmp/eurusd-smoke.png` to save a quick visual of the observed tick path plus observed, coarse, and seeded return path and distribution
-- if you do not pass `--session-definition-json`, the example generates a pragmatic default 24/5 FX session definition in UTC
+- if you do not pass `--session-definition-json`, the example infers a reusable FX session definition from the workflow context and observed tick gaps
 
 ## Advanced Staged Calibration
 

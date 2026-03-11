@@ -545,14 +545,14 @@ class CalibrationInputFileReference(ContractModel):
 @dataclass(frozen=True, slots=True)
 class CalibrationSessionConfigurationInput(ContractModel):
     exchange_code: str
-    session_definition_source: CalibrationInputFileReference
-    session_timezone: str
+    session_definition_source: Optional[CalibrationInputFileReference] = None
+    session_timezone: Optional[str] = None
 
     def __post_init__(self) -> None:
         if not self.exchange_code.strip():
             raise _calibration_error("exchange_code", "must be a non-empty string")
-        if not self.session_timezone.strip():
-            raise _calibration_error("session_timezone", "must be a non-empty string")
+        if self.session_timezone is not None and not self.session_timezone.strip():
+            raise _calibration_error("session_timezone", "must be non-empty when provided")
 
     @staticmethod
     def from_mapping(
@@ -563,6 +563,20 @@ class CalibrationSessionConfigurationInput(ContractModel):
         if not isinstance(raw_payload, dict):
             raise _calibration_error(field_path, "must be an object")
 
+        raw_session_definition_source = raw_payload.get("session_definition_source")
+        if raw_session_definition_source is not None and not isinstance(raw_session_definition_source, dict):
+            raise _calibration_error(
+                f"{field_path}.session_definition_source",
+                "must be an object when provided",
+            )
+
+        raw_session_timezone = raw_payload.get("session_timezone")
+        if raw_session_timezone is not None and not isinstance(raw_session_timezone, str):
+            raise _calibration_error(
+                f"{field_path}.session_timezone",
+                "must be a string when provided",
+            )
+
         return CalibrationSessionConfigurationInput(
             exchange_code=require_non_empty_string(
                 raw_payload,
@@ -570,21 +584,15 @@ class CalibrationSessionConfigurationInput(ContractModel):
                 f"{field_path}.exchange_code",
                 CALIBRATION_ERROR_FACTORY,
             ),
-            session_definition_source=CalibrationInputFileReference.from_mapping(
-                require_mapping(
-                    raw_payload,
-                    "session_definition_source",
-                    f"{field_path}.session_definition_source",
-                    CALIBRATION_ERROR_FACTORY,
-                ),
-                field_path=f"{field_path}.session_definition_source",
+            session_definition_source=(
+                CalibrationInputFileReference.from_mapping(
+                    cast(dict[str, Any], raw_session_definition_source),
+                    field_path=f"{field_path}.session_definition_source",
+                )
+                if raw_session_definition_source is not None
+                else None
             ),
-            session_timezone=require_non_empty_string(
-                raw_payload,
-                "session_timezone",
-                f"{field_path}.session_timezone",
-                CALIBRATION_ERROR_FACTORY,
-            ),
+            session_timezone=cast(Optional[str], raw_session_timezone),
         )
 
 

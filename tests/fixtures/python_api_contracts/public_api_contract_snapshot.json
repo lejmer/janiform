@@ -118,6 +118,7 @@
         "CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY",
         "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
         "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
+        "CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_SCHEMA_VERSION",
         "CALIBRATION_RUN_SPEC_SCHEMA_VERSION",
         "CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION",
         "CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION",
@@ -187,6 +188,9 @@
         "MarketDataCalibrationPreparationProvenance",
         "MarketDataCalibrationRequest",
         "MarketDataCalibrationSourceSummary",
+        "MarketDataSessionRecurringClosedWindow",
+        "MarketDataSessionRegularWindow",
+        "MarketDataSessionResolution",
         "PreparedMarketDataCalibration",
         "StagedCalibrationExecutionInput",
         "StagedCalibrationRequest",
@@ -220,6 +224,11 @@
           "value": "calibration.market_data.request.v1"
         },
         {
+          "name": "CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "calibration.market_data.session_resolution.v1"
+        },
+        {
           "name": "CALIBRATION_RUN_SPEC_SCHEMA_VERSION",
           "public_exported": true,
           "value": "calibration.orchestration.run_spec.v1"
@@ -247,6 +256,10 @@
         "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION": {
           "kind": "constant",
           "value": "calibration.market_data.request.v1"
+        },
+        "CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "calibration.market_data.session_resolution.v1"
         },
         "CALIBRATION_RUN_SPEC_SCHEMA_VERSION": {
           "kind": "constant",
@@ -764,7 +777,7 @@
             "session_timezone"
           ],
           "kind": "contract_model",
-          "signature": "(exchange_code: 'str', session_definition_source: 'CalibrationInputFileReference', session_timezone: 'str') -> 'None'"
+          "signature": "(exchange_code: 'str', session_definition_source: 'Optional[CalibrationInputFileReference]' = None, session_timezone: 'Optional[str]' = None) -> 'None'"
         },
         "CalibrationSharedNewsMarkLawConfiguration": {
           "field_names": [
@@ -989,7 +1002,7 @@
             "deterministic_defaults_applied"
           ],
           "kind": "contract_model",
-          "signature": "(tick_data_summary: 'MarketDataCalibrationSourceSummary', option_surface_summary: 'Optional[MarketDataCalibrationSourceSummary]', known_news_summary: 'Optional[MarketDataCalibrationSourceSummary]', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', session_definition_path: 'str', derived_trade_events_data_reference: 'str', derived_option_surface_data_reference: 'Optional[str]', derivation_policies: 'tuple[str, ...]', deterministic_defaults_applied: 'tuple[str, ...]') -> 'None'"
+          "signature": "(tick_data_summary: 'MarketDataCalibrationSourceSummary', option_surface_summary: 'Optional[MarketDataCalibrationSourceSummary]', known_news_summary: 'Optional[MarketDataCalibrationSourceSummary]', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', session_definition_path: 'Optional[str]', derived_trade_events_data_reference: 'str', derived_option_surface_data_reference: 'Optional[str]', derivation_policies: 'tuple[str, ...]', deterministic_defaults_applied: 'tuple[str, ...]') -> 'None'"
         },
         "MarketDataCalibrationRequest": {
           "field_names": [
@@ -1023,16 +1036,61 @@
           "kind": "contract_model",
           "signature": "(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', source_row_count: 'int', retained_row_count: 'int', dropped_duplicate_row_count: 'int', sort_records_by_timestamp: 'bool', applied_timestamp_timezone: 'Optional[str]', canonical_value_field: 'Optional[str]' = None, value_mapping_policy: 'Optional[str]' = None) -> 'None'"
         },
+        "MarketDataSessionRecurringClosedWindow": {
+          "field_names": [
+            "start_weekday",
+            "start_time",
+            "end_weekday",
+            "end_time",
+            "reason"
+          ],
+          "kind": "contract_model",
+          "signature": "(start_weekday: 'str', start_time: 'str', end_weekday: 'str', end_time: 'str', reason: 'str') -> 'None'"
+        },
+        "MarketDataSessionRegularWindow": {
+          "field_names": [
+            "weekday",
+            "label",
+            "open_time",
+            "close_time"
+          ],
+          "kind": "contract_model",
+          "signature": "(weekday: 'str', label: 'str', open_time: 'str', close_time: 'str') -> 'None'"
+        },
+        "MarketDataSessionResolution": {
+          "field_names": [
+            "schema_version",
+            "resolution_kind",
+            "selected_policy_id",
+            "manual_override_applied",
+            "exchange_code",
+            "exchange_name",
+            "resolved_timezone_name",
+            "timezone_source",
+            "open_session_duration_hours_per_week",
+            "confidence_score",
+            "confidence_label",
+            "regular_session_windows",
+            "recurring_closed_windows",
+            "reasons",
+            "ambiguity_warnings",
+            "metadata_discrepancies",
+            "resolved_session_definition_json"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', resolution_kind: 'str', selected_policy_id: 'str', manual_override_applied: 'bool', exchange_code: 'str', exchange_name: 'str', resolved_timezone_name: 'str', timezone_source: 'str', open_session_duration_hours_per_week: 'float', confidence_score: 'float', confidence_label: 'str', regular_session_windows: 'tuple[MarketDataSessionRegularWindow, ...]', recurring_closed_windows: 'tuple[MarketDataSessionRecurringClosedWindow, ...]', reasons: 'tuple[str, ...]', ambiguity_warnings: 'tuple[str, ...]', metadata_discrepancies: 'tuple[str, ...]', resolved_session_definition_json: 'str') -> 'None'"
+        },
         "PreparedMarketDataCalibration": {
           "field_names": [
             "schema_version",
             "request",
             "execution_input",
             "diagnostics",
-            "provenance"
+            "provenance",
+            "session_resolution"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', request: 'MarketDataCalibrationRequest', execution_input: 'StagedCalibrationExecutionInput', diagnostics: 'MarketDataCalibrationPreparationDiagnostics', provenance: 'MarketDataCalibrationPreparationProvenance') -> 'None'"
+          "signature": "(schema_version: 'str', request: 'MarketDataCalibrationRequest', execution_input: 'StagedCalibrationExecutionInput', diagnostics: 'MarketDataCalibrationPreparationDiagnostics', provenance: 'MarketDataCalibrationPreparationProvenance', session_resolution: 'MarketDataSessionResolution') -> 'None'"
         },
         "StagedCalibrationExecutionInput": {
           "field_names": [
