@@ -8,17 +8,18 @@ use super::constants::{
     HOURLY_FACTOR_SPRING_FORWARD_POLICY, HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
 };
 use super::error::HourlyFactorContractError;
-use super::interval_indexing::build_hourly_interval_indexing;
+use super::interval_indexing::build_fixed_interval_indexing;
 use super::types::{
     HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
     HourlyFactorMaterializationMetadata,
 };
 
-/// Build canonical hourly factor output for an exchange and UTC date range.
+/// Build canonical factor output for an exchange and fixed-width UTC interval grid.
 ///
 /// Interval policy:
 /// - The request range is interpreted as `[range_start_utc, range_end_utc)`.
-/// - Both boundaries must be exact UTC hour boundaries.
+/// - `interval_duration_nanos` defines a consecutive fixed-width UTC grid anchored at
+///   `range_start_utc`.
 /// - Buckets are emitted as consecutive non-overlapping intervals `[start, end)`.
 /// - `interval_indices` are zero-based and strictly increasing by one.
 /// - Exchange-local interval labels are projections of UTC boundaries and include numeric offsets.
@@ -29,6 +30,7 @@ pub fn build_hourly_factor_contract(
     exchange_code: &str,
     range_start_utc: DateTime<Utc>,
     range_end_utc: DateTime<Utc>,
+    interval_duration_nanos: i64,
     seasonality_factors: &[f64],
     news_intensity_factors: &[f64],
     seasonality_materialization_method: &str,
@@ -41,11 +43,12 @@ pub fn build_hourly_factor_contract(
         return Err(HourlyFactorContractError::EmptyNewsIntensityMaterializationMethod);
     }
 
-    let interval_indexing = build_hourly_interval_indexing(
+    let interval_indexing = build_fixed_interval_indexing(
         calendar_registry,
         exchange_code,
         range_start_utc,
         range_end_utc,
+        interval_duration_nanos,
     )?;
 
     let interval_count = interval_indexing.interval_count;
@@ -84,6 +87,7 @@ pub fn build_hourly_factor_contract(
         exchange_timezone_name: interval_indexing.exchange_timezone_name.clone(),
         request_start_utc_nanos: interval_indexing.request_start_utc_nanos,
         request_end_utc_nanos: interval_indexing.request_end_utc_nanos,
+        interval_duration_nanos: interval_indexing.interval_duration_nanos,
         interval_indices: interval_indexing.interval_indices.clone(),
         interval_start_utc_nanos: interval_indexing.interval_start_utc_nanos.clone(),
         interval_end_utc_nanos: interval_indexing.interval_end_utc_nanos.clone(),
@@ -103,6 +107,7 @@ pub fn build_hourly_factor_contract(
         },
         diagnostics: HourlyFactorContractDiagnostics {
             interval_count,
+            interval_duration_nanos: interval_indexing.interval_duration_nanos,
             first_interval_start_utc_nanos: interval_indexing.request_start_utc_nanos,
             last_interval_end_utc_nanos: interval_indexing.request_end_utc_nanos,
             skipped_local_hour_interval_count: interval_indexing.skipped_local_hour_interval_count,

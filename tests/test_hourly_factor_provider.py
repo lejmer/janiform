@@ -136,3 +136,27 @@ def test_simulation_path_consumes_provider_outputs(calendar_registry: CalendarRe
     assert contract.nu_h == [0.2, 0.0, 0.3]
     assert contract.seasonality_materialization_method == "shared_precomputed_hourly_s_h.v1"
     assert contract.news_intensity_materialization_method == "shared_precomputed_hourly_nu_h.v1"
+
+
+def test_simulation_path_resamples_hourly_sources_to_sub_hour_intervals(
+    calendar_registry: CalendarRegistry,
+) -> None:
+    contract = load_hourly_factor_contract_for_simulation(
+        calendar_registry=calendar_registry,
+        exchange_code="XNYS",
+        range_start_utc=datetime(2026, 2, 2, 14, 0, 0, tzinfo=UTC),
+        range_end_utc=datetime(2026, 2, 2, 16, 0, 0, tzinfo=UTC),
+        interval="30min",
+        seasonality_source=HourlySeasonalityProviderExplicitSource(
+            hourly_factors=[1.2, 0.8],
+            materialization_method="shared_precomputed_hourly_s_h.v1",
+        ),
+        news_intensity_source=HourlyNewsIntensityProviderExplicitSource(
+            hourly_factors=[0.3, 0.1],
+            materialization_method="shared_precomputed_hourly_nu_h.v1",
+        ),
+    )
+
+    assert contract.interval_duration_nanos == 1_800_000_000_000
+    assert contract.s_h == [1.2, 1.2, 0.8, 0.8]
+    assert contract.nu_h == [0.3, 0.3, 0.1, 0.1]

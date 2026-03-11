@@ -1,6 +1,8 @@
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal, InvalidOperation
+import re
 from types import ModuleType
 from typing import Any, Optional, cast
 
@@ -24,7 +26,9 @@ DEFAULT_SEASONALITY_INTERPOLATION_METHOD: str = "previous_observation_carry_forw
 DEFAULT_SEASONALITY_AGGREGATION_METHOD: str = "mean_of_observations.v1"
 DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY: str = "global_mean.v1"
 DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT: int = 1
-HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY: str = "utc_hour_bucket_projected_to_exchange_local.v1"
+HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY: str = (
+    "fixed_width_utc_interval_projected_to_exchange_local.v1"
+)
 HOURLY_FACTOR_SPRING_FORWARD_POLICY: str = "skip_nonexistent_local_hour_labels.v1"
 HOURLY_FACTOR_FALL_BACK_POLICY: str = (
     "preserve_repeated_local_hour_labels_with_numeric_utc_offset.v1"
@@ -36,6 +40,88 @@ _RUNTIME_CALIBRATION_SEASONALITY_MEAN_RENORMALIZED_MATERIALIZATION_METHOD: str =
     "calibration.normalized_event_signal_hourly_mean_renormalized.v1"
 )
 _UNIX_EPOCH_UTC = datetime(1970, 1, 1, tzinfo=UTC)
+_INTERVAL_SPEC_PATTERN = re.compile(
+    r"^\s*(?P<value>[0-9]+(?:\.[0-9]+)?)\s*(?P<unit>[A-Za-z]+)\s*$"
+)
+_INTERVAL_SPEC_NANOS_BY_UNIT: dict[str, int] = {
+    "ns": 1,
+    "nanosecond": 1,
+    "nanoseconds": 1,
+    "us": 1_000,
+    "microsecond": 1_000,
+    "microseconds": 1_000,
+    "ms": 1_000_000,
+    "millisecond": 1_000_000,
+    "milliseconds": 1_000_000,
+    "s": 1_000_000_000,
+    "sec": 1_000_000_000,
+    "secs": 1_000_000_000,
+    "second": 1_000_000_000,
+    "seconds": 1_000_000_000,
+    "m": 60 * 1_000_000_000,
+    "min": 60 * 1_000_000_000,
+    "mins": 60 * 1_000_000_000,
+    "minute": 60 * 1_000_000_000,
+    "minutes": 60 * 1_000_000_000,
+    "h": 3_600 * 1_000_000_000,
+    "hr": 3_600 * 1_000_000_000,
+    "hrs": 3_600 * 1_000_000_000,
+    "hour": 3_600 * 1_000_000_000,
+    "hours": 3_600 * 1_000_000_000,
+    "d": 86_400 * 1_000_000_000,
+    "day": 86_400 * 1_000_000_000,
+    "days": 86_400 * 1_000_000_000,
+}
+
+
+def _parse_interval_duration_nanos(
+    interval: str | timedelta,
+    *,
+    field_name: str = "interval",
+) -> int:
+    if isinstance(interval, timedelta):
+        interval_duration_nanos = round(interval.total_seconds() * 1_000_000_000)
+        if interval_duration_nanos <= 0:
+            raise SeasonalityInputValidationError(f"{field_name} must be strictly positive")
+        return interval_duration_nanos
+
+    if not isinstance(interval, str):
+        raise SeasonalityInputValidationError(
+            f"{field_name} must be a pandas-style interval string or timedelta"
+        )
+
+    parsed_match = _INTERVAL_SPEC_PATTERN.match(interval)
+    if parsed_match is None:
+        raise SeasonalityInputValidationError(
+            f"{field_name} must be a pandas-style interval string like `1h` or `15min`"
+        )
+
+    raw_value = parsed_match.group("value")
+    unit = parsed_match.group("unit").lower()
+    unit_nanos = _INTERVAL_SPEC_NANOS_BY_UNIT.get(unit)
+    if unit_nanos is None:
+        raise SeasonalityInputValidationError(
+            f"{field_name} uses unsupported interval unit `{unit}`"
+        )
+
+    try:
+        interval_multiplier = Decimal(raw_value)
+    except InvalidOperation as e:
+        raise SeasonalityInputValidationError(
+            f"{field_name} contains an invalid numeric interval value `{raw_value}`"
+        ) from e
+
+    interval_duration_nanos_decimal = interval_multiplier * Decimal(unit_nanos)
+    if interval_duration_nanos_decimal != interval_duration_nanos_decimal.to_integral_value():
+        raise SeasonalityInputValidationError(
+            f"{field_name} must map exactly to an integer UTC nanosecond duration"
+        )
+
+    interval_duration_nanos = int(interval_duration_nanos_decimal)
+    if interval_duration_nanos <= 0:
+        raise SeasonalityInputValidationError(f"{field_name} must be strictly positive")
+
+    return interval_duration_nanos
 
 
 class HourlyFactorProviderError(Exception):
@@ -106,6 +192,7 @@ HOURLY_FACTOR_OUTPUT_SCHEMA: HourlyFactorOutputSchema = HourlyFactorOutputSchema
         "exchange_timezone_name",
         "request_start_utc_nanos",
         "request_end_utc_nanos",
+        "interval_duration_nanos",
         "interval_indices",
         "interval_start_utc_nanos",
         "interval_end_utc_nanos",
@@ -127,7 +214,7 @@ HOURLY_FACTOR_OUTPUT_SCHEMA: HourlyFactorOutputSchema = HourlyFactorOutputSchema
         "news_intensity_materialization_method",
     ),
     interval_boundary_policy="start_inclusive_end_exclusive.v1",
-    interval_alignment_policy="utc_hour_aligned.v1",
+    interval_alignment_policy="request_start_anchored_fixed_width_utc_interval_grid.v1",
     required_metadata_fields=(
         "seasonality_materialization_method",
         "news_intensity_materialization_method",
@@ -165,6 +252,10 @@ class HourlyFactorContract:
     @property
     def request_end_utc_nanos(self) -> int:
         return cast(int, self._native_result.request_end_utc_nanos)
+
+    @property
+    def interval_duration_nanos(self) -> int:
+        return cast(int, self._native_result.interval_duration_nanos)
 
     @property
     def interval_indices(self) -> list[int]:
@@ -263,6 +354,7 @@ HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA: HourlySeasonalityMaterializati
             "exchange_timezone_name",
             "request_start_utc_nanos",
             "request_end_utc_nanos",
+            "interval_duration_nanos",
             "interval_indices",
             "interval_start_utc_nanos",
             "interval_end_utc_nanos",
@@ -287,7 +379,7 @@ HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA: HourlySeasonalityMaterializati
             "fall_back_policy",
         ),
         interval_boundary_policy="start_inclusive_end_exclusive.v1",
-        interval_alignment_policy="utc_hour_aligned.v1",
+        interval_alignment_policy="request_start_anchored_fixed_width_utc_interval_grid.v1",
         required_metadata_fields=(
             "interpolation_method",
             "aggregation_method",
@@ -323,6 +415,7 @@ HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA: HourlyNewsIntensityMaterial
             "exchange_timezone_name",
             "request_start_utc_nanos",
             "request_end_utc_nanos",
+            "interval_duration_nanos",
             "interval_indices",
             "interval_start_utc_nanos",
             "interval_end_utc_nanos",
@@ -353,7 +446,7 @@ HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA: HourlyNewsIntensityMaterial
             "fall_back_policy",
         ),
         interval_boundary_policy="start_inclusive_end_exclusive.v1",
-        interval_alignment_policy="utc_hour_aligned.v1",
+        interval_alignment_policy="request_start_anchored_fixed_width_utc_interval_grid.v1",
         required_metadata_fields=(
             "materialization_method",
             "component_aggregation_policy",
@@ -407,6 +500,10 @@ class HourlySeasonalityMaterialization:
     @property
     def request_end_utc_nanos(self) -> int:
         return cast(int, self._native_result.request_end_utc_nanos)
+
+    @property
+    def interval_duration_nanos(self) -> int:
+        return cast(int, self._native_result.interval_duration_nanos)
 
     @property
     def interval_indices(self) -> list[int]:
@@ -533,6 +630,10 @@ class HourlyNewsIntensityMaterialization:
         return cast(int, self._native_result.request_end_utc_nanos)
 
     @property
+    def interval_duration_nanos(self) -> int:
+        return cast(int, self._native_result.interval_duration_nanos)
+
+    @property
     def interval_indices(self) -> list[int]:
         return cast(list[int], self._native_result.interval_indices)
 
@@ -651,6 +752,7 @@ def provide_hourly_factor_contract(
     exchange_code: str,
     range_start_utc: datetime,
     range_end_utc: datetime,
+    interval: str | timedelta = "1h",
     seasonality_source: Optional[HourlySeasonalityProviderSource] = None,
     news_intensity_source: Optional[HourlyNewsIntensityProviderSource] = None,
 ) -> HourlyFactorContract:
@@ -663,6 +765,7 @@ def provide_hourly_factor_contract(
     native: ModuleType = native_module()
     normalized_range_start_utc = _normalize_utc_timestamp(range_start_utc, field_name="range_start_utc")
     normalized_range_end_utc = _normalize_utc_timestamp(range_end_utc, field_name="range_end_utc")
+    interval_duration_nanos = _parse_interval_duration_nanos(interval)
     serialized_seasonality_source = (
         _serialize_seasonality_provider_source(seasonality_source)
         if seasonality_source is not None
@@ -680,6 +783,7 @@ def provide_hourly_factor_contract(
             exchange_code,
             normalized_range_start_utc.isoformat(),
             normalized_range_end_utc.isoformat(),
+            interval_duration_nanos,
             seasonality_source=serialized_seasonality_source,
             news_intensity_source=serialized_news_intensity_source,
         )
@@ -705,6 +809,7 @@ def build_hourly_factor_contract(
     exchange_code: str,
     range_start_utc: datetime,
     range_end_utc: datetime,
+    interval: str | timedelta = "1h",
     seasonality_hourly_factors: Sequence[float],
     news_intensity_hourly_factors: Sequence[float],
     seasonality_materialization_method: str = DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
@@ -714,7 +819,7 @@ def build_hourly_factor_contract(
     Build the canonical hourly factor contract for one exchange and UTC date range.
 
     The request range is interpreted as `[range_start_utc, range_end_utc)`.
-    Both boundaries must be exact UTC hour boundaries.
+    The `interval` argument defines a fixed-width UTC grid anchored at `range_start_utc`.
     Exchange-local labels are projected from UTC boundaries and include offsets so spring-forward
     missing hours are skipped and fall-back repeated hours stay unambiguous.
     """
@@ -722,6 +827,7 @@ def build_hourly_factor_contract(
     native: ModuleType = native_module()
     normalized_range_start_utc = _normalize_utc_timestamp(range_start_utc, field_name="range_start_utc")
     normalized_range_end_utc = _normalize_utc_timestamp(range_end_utc, field_name="range_end_utc")
+    interval_duration_nanos = _parse_interval_duration_nanos(interval)
 
     try:
         native_result: object = native.build_hourly_factor_contract(
@@ -729,6 +835,7 @@ def build_hourly_factor_contract(
             exchange_code,
             normalized_range_start_utc.isoformat(),
             normalized_range_end_utc.isoformat(),
+            interval_duration_nanos,
             list(seasonality_hourly_factors),
             list(news_intensity_hourly_factors),
             seasonality_materialization_method=seasonality_materialization_method,
@@ -830,6 +937,7 @@ def materialize_hourly_seasonality_factors(
     exchange_code: str,
     range_start_utc: datetime,
     range_end_utc: datetime,
+    interval: str | timedelta = "1h",
     source_timestamps_utc: Sequence[datetime],
     source_seasonality_factors: Sequence[float],
     settings: HourlySeasonalityMaterializationSettings = HourlySeasonalityMaterializationSettings(),
@@ -838,12 +946,13 @@ def materialize_hourly_seasonality_factors(
     Materialize source seasonality samples into hourly piecewise-constant `s_h`.
 
     Source timestamps are interpreted in UTC and target buckets follow `[start, end)` semantics.
-    UTC bucket boundaries remain authoritative through timezone offset transitions.
+    UTC interval boundaries remain authoritative through timezone offset transitions.
     """
 
     native: ModuleType = native_module()
     normalized_range_start_utc = _normalize_utc_timestamp(range_start_utc, field_name="range_start_utc")
     normalized_range_end_utc = _normalize_utc_timestamp(range_end_utc, field_name="range_end_utc")
+    interval_duration_nanos = _parse_interval_duration_nanos(interval)
     normalized_source_timestamps_utc = [
         _normalize_utc_timestamp(source_timestamp_utc, field_name="source_timestamps_utc")
         for source_timestamp_utc in source_timestamps_utc
@@ -855,6 +964,7 @@ def materialize_hourly_seasonality_factors(
             exchange_code,
             normalized_range_start_utc.isoformat(),
             normalized_range_end_utc.isoformat(),
+            interval_duration_nanos,
             [source_timestamp_utc.isoformat() for source_timestamp_utc in normalized_source_timestamps_utc],
             list(source_seasonality_factors),
             interpolation_method=settings.interpolation_method,
@@ -879,6 +989,7 @@ def build_runtime_hourly_seasonality_source_from_calibration_payload(
     calendar_registry: CalendarRegistry,
     range_start_utc: datetime,
     range_end_utc: datetime,
+    interval: str | timedelta = "1h",
     seasonality_stage_payload: Mapping[str, Any],
     mean_renormalize: bool = True,
     settings: HourlySeasonalityMaterializationSettings = HourlySeasonalityMaterializationSettings(),
@@ -887,7 +998,7 @@ def build_runtime_hourly_seasonality_source_from_calibration_payload(
     Build runtime-ready hourly seasonality from the normalized seasonality stage payload.
 
     The helper materializes the calibrated event-level normalized seasonality signal onto the
-    requested UTC-hour grid. Mean renormalization is enabled by default so `lambda_bar` stays
+    requested fixed-width UTC interval grid. Mean renormalization is enabled by default so `lambda_bar` stays
     responsible for average event-rate level while `s_h` redistributes that level across time.
     """
 
@@ -915,6 +1026,7 @@ def build_runtime_hourly_seasonality_source_from_calibration_payload(
         exchange_code=exchange_code,
         range_start_utc=range_start_utc,
         range_end_utc=range_end_utc,
+        interval=interval,
         source_timestamps_utc=[
             _utc_datetime_from_nanos(timestamp_utc_nanos_value)
             for timestamp_utc_nanos_value in timestamp_utc_nanos
@@ -943,20 +1055,22 @@ def materialize_hourly_news_intensity_factors(
     exchange_code: str,
     range_start_utc: datetime,
     range_end_utc: datetime,
+    interval: str | timedelta = "1h",
     settings: HourlyNewsIntensityMaterializationSettings,
 ) -> HourlyNewsIntensityMaterialization:
     """
-    Materialize known/surprise `nu_news(t)` into hourly `nu_h` aligned to canonical UTC hour buckets.
+    Materialize known/surprise `nu_news(t)` into interval-aligned `nu_h`.
 
     Known scheduled-news timestamps are counted per interval and added to the surprise background
     component controlled by baseline and optional interval multipliers.
-    UTC bucket boundaries remain authoritative through timezone offset transitions.
+    UTC interval boundaries remain authoritative through timezone offset transitions.
     """
 
     native: ModuleType = native_module()
 
     normalized_range_start_utc = _normalize_utc_timestamp(range_start_utc, field_name="range_start_utc")
     normalized_range_end_utc = _normalize_utc_timestamp(range_end_utc, field_name="range_end_utc")
+    interval_duration_nanos = _parse_interval_duration_nanos(interval)
     normalized_known_scheduled_event_timestamps_utc = [
         _normalize_utc_timestamp(
             known_scheduled_event_timestamp_utc,
@@ -977,6 +1091,7 @@ def materialize_hourly_news_intensity_factors(
             exchange_code,
             normalized_range_start_utc.isoformat(),
             normalized_range_end_utc.isoformat(),
+            interval_duration_nanos,
             settings.surprise_baseline_intensity,
             known_scheduled_event_timestamps_utc=[
                 known_scheduled_event_timestamp_utc.isoformat()

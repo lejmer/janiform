@@ -403,22 +403,32 @@ def _add_hourly_factor_common_arguments(parser: ArgumentParser) -> None:
     _add_required_json_path_argument(
         parser,
         flag_name="--calendar-registry-json",
-        contract_label="a calendar registry JSON object used to resolve exchange-local hour labels",
+        contract_label="a calendar registry JSON object used to resolve exchange-local interval labels",
     )
+
     parser.add_argument(
         "--exchange-code",
         required=True,
-        help="Exchange code used to resolve session state and hourly-factor alignment.",
+        help="Exchange code used to resolve session state and interval-factor alignment.",
     )
+    parser.add_argument(
+        "--interval",
+        default="1h",
+        help=(
+            "Fixed-width UTC interval specification used to derive the target grid, "
+            "for example 1h or 15min. Default: 1h."
+        ),
+    )
+
     _add_required_datetime_argument(
         parser,
         flag_name="--range-start-utc",
-        help_text="Inclusive UTC range start aligned to the first target hour bucket.",
+        help_text="Inclusive UTC range start aligned to the first target interval boundary.",
     )
     _add_required_datetime_argument(
         parser,
         flag_name="--range-end-utc",
-        help_text="Exclusive UTC range end aligned to the final target hour bucket boundary.",
+        help_text="Exclusive UTC range end aligned to the final target interval boundary.",
     )
 
 
@@ -439,16 +449,17 @@ def _build_hourly_factors_parser(subparsers) -> None:
 
     materialize_seasonality_parser = hourly_factors_subparsers.add_parser(
         "materialize-seasonality",
-        help="Materialize hourly seasonality factors from timestamped source samples.",
+        help="Materialize interval-aligned seasonality factors from timestamped source samples.",
         description=(
-            "Materialize hourly seasonality factors from timestamped source samples. "
-            "The command preserves the canonical hourly seasonality materialization report shape."
+            "Materialize interval-aligned seasonality factors from timestamped source samples. "
+            "The command preserves the canonical seasonality materialization report shape."
         ),
     )
     materialize_seasonality_parser.set_defaults(
         handler=_run_hourly_factor_materialize_seasonality_command,
         help_target=materialize_seasonality_parser,
     )
+
     _add_hourly_factor_common_arguments(materialize_seasonality_parser)
     _add_required_json_path_argument(
         materialize_seasonality_parser,
@@ -461,16 +472,17 @@ def _build_hourly_factors_parser(subparsers) -> None:
 
     materialize_news_intensity_parser = hourly_factors_subparsers.add_parser(
         "materialize-news-intensity",
-        help="Materialize hourly news-intensity factors from known-news and surprise controls.",
+        help="Materialize interval-aligned news-intensity factors from known-news and surprise controls.",
         description=(
-            "Materialize hourly news-intensity factors from known-news and surprise controls. "
-            "The command preserves the canonical hourly news-intensity materialization report shape."
+            "Materialize interval-aligned news-intensity factors from known-news and surprise controls. "
+            "The command preserves the canonical news-intensity materialization report shape."
         ),
     )
     materialize_news_intensity_parser.set_defaults(
         handler=_run_hourly_factor_materialize_news_intensity_command,
         help_target=materialize_news_intensity_parser,
     )
+
     _add_hourly_factor_common_arguments(materialize_news_intensity_parser)
     _add_required_json_path_argument(
         materialize_news_intensity_parser,
@@ -483,10 +495,10 @@ def _build_hourly_factors_parser(subparsers) -> None:
 
     build_contract_parser = hourly_factors_subparsers.add_parser(
         "build-contract",
-        help="Build the combined hourly-factor contract for downstream simulation or pricing workflows.",
+        help="Build the combined interval-factor contract for downstream simulation or pricing workflows.",
         description=(
-            "Build the combined hourly-factor contract for downstream simulation or pricing workflows. "
-            "Seasonality and news-intensity inputs can come from explicit hourly-factor source documents "
+            "Build the combined interval-factor contract for downstream simulation or pricing workflows. "
+            "Seasonality and news-intensity inputs can come from explicit factor source documents "
             "or from canonical materialization report files produced by Janiform."
         ),
     )
@@ -494,6 +506,7 @@ def _build_hourly_factors_parser(subparsers) -> None:
         handler=_run_hourly_factor_build_contract_command,
         help_target=build_contract_parser,
     )
+
     _add_hourly_factor_common_arguments(build_contract_parser)
 
     seasonality_source_group = build_contract_parser.add_mutually_exclusive_group(required=True)

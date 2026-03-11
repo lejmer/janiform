@@ -58,6 +58,11 @@ impl PyHourlyFactorContractResult {
     }
 
     #[getter]
+    fn interval_duration_nanos(&self) -> i64 {
+        self.output.interval_duration_nanos
+    }
+
+    #[getter]
     fn interval_indices(&self) -> Vec<u64> {
         self.output.interval_indices.clone()
     }
@@ -178,6 +183,11 @@ impl PyHourlySeasonalityMaterializationResult {
     #[getter]
     fn request_end_utc_nanos(&self) -> i64 {
         self.output.request_end_utc_nanos
+    }
+
+    #[getter]
+    fn interval_duration_nanos(&self) -> i64 {
+        self.output.interval_duration_nanos
     }
 
     #[getter]
@@ -316,6 +326,11 @@ impl PyHourlyNewsIntensityMaterializationResult {
     #[getter]
     fn request_end_utc_nanos(&self) -> i64 {
         self.output.request_end_utc_nanos
+    }
+
+    #[getter]
+    fn interval_duration_nanos(&self) -> i64 {
+        self.output.interval_duration_nanos
     }
 
     #[getter]

@@ -11,6 +11,8 @@ use janiform_core::hourly_factors::{
     materialize_hourly_seasonality_factors,
 };
 
+const ONE_HOUR_INTERVAL_NANOS: i64 = 3_600_000_000_000;
+
 use support::validation_fixture::{
     HourlyFactorCanonicalOutputCaseFixture, HourlyFactorMissingDataGuardCaseFixture,
     HourlyFactorRegressionFactorRangePolicy, HourlyFactorRegressionFixtureDocument,
@@ -324,6 +326,7 @@ fn build_contract_for_canonical_case(
                     &fixture_case.exchange_code,
                     range_start_utc,
                     range_end_utc,
+                    ONE_HOUR_INTERVAL_NANOS,
                     &source_timestamp_utc_nanos,
                     source_seasonality_factors,
                     interpolation_method,
@@ -362,6 +365,7 @@ fn build_contract_for_canonical_case(
                     &fixture_case.exchange_code,
                     range_start_utc,
                     range_end_utc,
+                    ONE_HOUR_INTERVAL_NANOS,
                     &known_scheduled_event_timestamps_utc_nanos,
                     *surprise_baseline_intensity,
                     &parsed_surprise_time_multipliers,
@@ -379,6 +383,7 @@ fn build_contract_for_canonical_case(
         &fixture_case.exchange_code,
         range_start_utc,
         range_end_utc,
+        ONE_HOUR_INTERVAL_NANOS,
         &seasonality_hourly_factors,
         &news_hourly_factors,
         &seasonality_materialization_method,
@@ -406,6 +411,7 @@ fn materialize_seasonality_for_missing_data_case(
         &fixture_case.exchange_code,
         range_start_utc,
         range_end_utc,
+        ONE_HOUR_INTERVAL_NANOS,
         &source_timestamp_utc_nanos,
         &fixture_case.source_seasonality_factors,
         &fixture_case.settings.interpolation_method,

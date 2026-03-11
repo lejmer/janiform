@@ -411,6 +411,7 @@ fn build_interval_fixture(
             exchange_timezone_name: "America/New_York".to_string(),
             request_start_utc_nanos: start_time_utc_nanos,
             request_end_utc_nanos: fine_interval_end_utc_nanos[fine_interval_count - 1],
+            interval_duration_nanos: fine_interval_delta_nanos,
             interval_indices: (0..fine_interval_count)
                 .map(|interval_index| interval_index as u64)
                 .collect(),
@@ -443,6 +444,7 @@ fn build_interval_fixture(
             },
             diagnostics: HourlyFactorContractDiagnostics {
                 interval_count: fine_interval_count,
+                interval_duration_nanos: fine_interval_delta_nanos,
                 first_interval_start_utc_nanos: fine_interval_start_utc_nanos[0],
                 last_interval_end_utc_nanos: fine_interval_end_utc_nanos[fine_interval_count - 1],
                 skipped_local_hour_interval_count: 0,

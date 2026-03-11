@@ -16,6 +16,7 @@ pub struct HourlyFactorMaterializationMetadata {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HourlyFactorContractDiagnostics {
     pub interval_count: usize,
+    pub interval_duration_nanos: i64,
     pub first_interval_start_utc_nanos: i64,
     pub last_interval_end_utc_nanos: i64,
     pub skipped_local_hour_interval_count: usize,
@@ -30,6 +31,7 @@ pub struct HourlyFactorContractOutput {
     pub exchange_timezone_name: String,
     pub request_start_utc_nanos: i64,
     pub request_end_utc_nanos: i64,
+    pub interval_duration_nanos: i64,
     pub interval_indices: Vec<u64>,
     pub interval_start_utc_nanos: Vec<i64>,
     pub interval_end_utc_nanos: Vec<i64>,
@@ -60,6 +62,7 @@ pub struct HourlySeasonalityMaterializationMetadata {
 pub struct HourlySeasonalityMaterializationDiagnostics {
     pub source_point_count: usize,
     pub interval_count: usize,
+    pub interval_duration_nanos: i64,
     pub sparse_interval_count: usize,
     pub interpolated_interval_count: usize,
     pub fallback_interval_count: usize,
@@ -75,6 +78,7 @@ pub struct HourlySeasonalityMaterializationOutput {
     pub exchange_timezone_name: String,
     pub request_start_utc_nanos: i64,
     pub request_end_utc_nanos: i64,
+    pub interval_duration_nanos: i64,
     pub interval_indices: Vec<u64>,
     pub interval_start_utc_nanos: Vec<i64>,
     pub interval_end_utc_nanos: Vec<i64>,
@@ -106,6 +110,7 @@ pub struct HourlyNewsIntensityMaterializationMetadata {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HourlyNewsIntensityMaterializationDiagnostics {
     pub interval_count: usize,
+    pub interval_duration_nanos: i64,
     pub known_component_non_zero_interval_count: usize,
     pub surprise_component_non_zero_interval_count: usize,
     pub combined_component_non_zero_interval_count: usize,
@@ -123,6 +128,7 @@ pub struct HourlyNewsIntensityMaterializationOutput {
     pub exchange_timezone_name: String,
     pub request_start_utc_nanos: i64,
     pub request_end_utc_nanos: i64,
+    pub interval_duration_nanos: i64,
     pub interval_indices: Vec<u64>,
     pub interval_start_utc_nanos: Vec<i64>,
     pub interval_end_utc_nanos: Vec<i64>,

@@ -418,6 +418,7 @@ fn run_fixture_case(
         &fixture_case.exchange_code,
         range_start_utc,
         range_end_utc,
+        ONE_HOUR_NANOS,
         &fixture_case.seasonality_hourly_factors,
         &fixture_case.news_intensity_hourly_factors,
         DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,

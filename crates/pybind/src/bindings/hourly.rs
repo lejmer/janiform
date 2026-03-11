@@ -54,13 +54,14 @@ pub(super) enum ParsedHourlyProviderNewsIntensitySource {
 }
 
 #[pyfunction]
-#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, seasonality_hourly_factors, news_intensity_hourly_factors, *, seasonality_materialization_method = DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, news_intensity_materialization_method = DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD))]
+#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, interval_duration_nanos, seasonality_hourly_factors, news_intensity_hourly_factors, *, seasonality_materialization_method = DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, news_intensity_materialization_method = DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD))]
 fn build_hourly_factor_contract(
     py: Python<'_>,
     calendar_registry: &PyCalendarRegistry,
     exchange_code: &str,
     range_start_utc: &str,
     range_end_utc: &str,
+    interval_duration_nanos: i64,
     seasonality_hourly_factors: &Bound<'_, PyAny>,
     news_intensity_hourly_factors: &Bound<'_, PyAny>,
     seasonality_materialization_method: &str,
@@ -88,6 +89,7 @@ fn build_hourly_factor_contract(
                 exchange_code,
                 parsed_range_start_utc,
                 parsed_range_end_utc,
+                interval_duration_nanos,
                 &parsed_seasonality_hourly_factors,
                 &parsed_news_intensity_hourly_factors,
                 seasonality_materialization_method,
@@ -103,13 +105,14 @@ fn build_hourly_factor_contract(
 }
 
 #[pyfunction]
-#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, source_timestamps_utc, source_seasonality_factors, *, interpolation_method = DEFAULT_SEASONALITY_INTERPOLATION_METHOD, aggregation_method = DEFAULT_SEASONALITY_AGGREGATION_METHOD, sparse_fallback_policy = DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY, sparse_hour_minimum_observation_count = DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT))]
+#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, interval_duration_nanos, source_timestamps_utc, source_seasonality_factors, *, interpolation_method = DEFAULT_SEASONALITY_INTERPOLATION_METHOD, aggregation_method = DEFAULT_SEASONALITY_AGGREGATION_METHOD, sparse_fallback_policy = DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY, sparse_hour_minimum_observation_count = DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT))]
 fn materialize_hourly_seasonality_factors(
     py: Python<'_>,
     calendar_registry: &PyCalendarRegistry,
     exchange_code: &str,
     range_start_utc: &str,
     range_end_utc: &str,
+    interval_duration_nanos: i64,
     source_timestamps_utc: &Bound<'_, PyAny>,
     source_seasonality_factors: &Bound<'_, PyAny>,
     interpolation_method: &str,
@@ -163,6 +166,7 @@ fn materialize_hourly_seasonality_factors(
                 exchange_code,
                 parsed_range_start_utc,
                 parsed_range_end_utc,
+                interval_duration_nanos,
                 &parsed_source_timestamp_utc_nanos,
                 &parsed_source_seasonality_factors,
                 interpolation_method,
@@ -177,13 +181,14 @@ fn materialize_hourly_seasonality_factors(
 }
 
 #[pyfunction]
-#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, surprise_baseline_intensity, *, known_scheduled_event_timestamps_utc = None, surprise_deterministic_time_multiplier_by_interval_index = None))]
+#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, interval_duration_nanos, surprise_baseline_intensity, *, known_scheduled_event_timestamps_utc = None, surprise_deterministic_time_multiplier_by_interval_index = None))]
 fn materialize_hourly_news_intensity_factors(
     py: Python<'_>,
     calendar_registry: &PyCalendarRegistry,
     exchange_code: &str,
     range_start_utc: &str,
     range_end_utc: &str,
+    interval_duration_nanos: i64,
     surprise_baseline_intensity: f64,
     known_scheduled_event_timestamps_utc: Option<&Bound<'_, PyAny>>,
     surprise_deterministic_time_multiplier_by_interval_index: Option<&Bound<'_, PyAny>>,
@@ -254,6 +259,7 @@ fn materialize_hourly_news_intensity_factors(
                 exchange_code,
                 parsed_range_start_utc,
                 parsed_range_end_utc,
+                interval_duration_nanos,
                 &parsed_known_scheduled_event_timestamps_utc_nanos,
                 surprise_baseline_intensity,
                 &parsed_surprise_deterministic_time_multiplier_by_interval_index,
@@ -265,13 +271,14 @@ fn materialize_hourly_news_intensity_factors(
 }
 
 #[pyfunction]
-#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, *, seasonality_source = None, news_intensity_source = None))]
+#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, interval_duration_nanos, *, seasonality_source = None, news_intensity_source = None))]
 fn provide_hourly_factor_contract(
     py: Python<'_>,
     calendar_registry: &PyCalendarRegistry,
     exchange_code: &str,
     range_start_utc: &str,
     range_end_utc: &str,
+    interval_duration_nanos: i64,
     seasonality_source: Option<&Bound<'_, PyAny>>,
     news_intensity_source: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<PyHourlyFactorContractResult> {
@@ -356,6 +363,7 @@ fn provide_hourly_factor_contract(
                     exchange_code,
                     range_start_utc: parsed_range_start_utc,
                     range_end_utc: parsed_range_end_utc,
+                    interval_duration_nanos,
                     seasonality_source: provider_seasonality_source,
                     news_intensity_source: provider_news_intensity_source,
                 },
@@ -747,11 +755,18 @@ fn map_hourly_factor_contract_error(error: HourlyFactorContractError) -> PyErr {
         } => SeasonalityInputValidationError::new_err(format!(
             "range_start_utc must be earlier than range_end_utc, received start={range_start_utc_nanos}, end={range_end_utc_nanos}"
         )),
-        HourlyFactorContractError::RangeBoundaryNotHourAligned {
-            field,
-            timestamp_utc_nanos,
+        HourlyFactorContractError::InvalidIntervalDurationNanos { value } => {
+            SeasonalityInputValidationError::new_err(format!(
+                "interval_duration_nanos must be strictly positive, received {value}"
+            ))
+        }
+        HourlyFactorContractError::RangeDurationNotDivisibleByInterval {
+            range_start_utc_nanos,
+            range_end_utc_nanos,
+            interval_duration_nanos,
+            remainder_nanos,
         } => SeasonalityInputValidationError::new_err(format!(
-            "{field} must be aligned to an exact UTC hour boundary, received {timestamp_utc_nanos}"
+            "range [{range_start_utc_nanos}, {range_end_utc_nanos}) must be divisible by interval_duration_nanos={interval_duration_nanos}, remainder={remainder_nanos}"
         )),
         HourlyFactorContractError::FactorLengthMismatch {
             expected_interval_count,

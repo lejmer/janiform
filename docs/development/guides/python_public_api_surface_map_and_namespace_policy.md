@@ -92,7 +92,7 @@ The package root `janiform` is intentionally minimal.
     - `serialize_seeded_tick_simulation_response`
     - `deserialize_seeded_tick_simulation_response`
 - `janiform.pricing`
-  - Ownership: vanilla option pricing contract, execution input, native runner, and pricing-side hourly factor loading
+  - Ownership: vanilla option pricing contract, execution input, native runner, and pricing-side interval factor loading
   - Public symbols:
     - `GammaSeverityMarkConfiguration`
     - `NigSharedPlusShiftConfiguration`

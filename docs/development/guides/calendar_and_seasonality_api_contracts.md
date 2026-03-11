@@ -140,7 +140,8 @@ for one dataset, and `generate_seasonality_diagnostics_reports_batch(...)` to em
 ## Hourly Factor Contract And Interval Indexing
 
 Use `materialize_hourly_seasonality_factors(...)` to convert source seasonality samples into
-hourly `s_h` values on the canonical interval grid.
+interval-aligned `s_h` values on the canonical fixed-width UTC interval grid. Hourly calibration
+inputs may still be materialized onto sub-hour or multi-hour runtime grids.
 
 - Materialization schema:
   - schema version: `seasonality.hourly_s_h.materialization.v1`
@@ -156,7 +157,7 @@ hourly `s_h` values on the canonical interval grid.
   - sparse, interpolated, and fallback interval counts are emitted in diagnostics
 
 Use `materialize_hourly_news_intensity_factors(...)` to convert closed-window news baseline policy
-into hourly `nu_h` values on the same canonical interval grid.
+into interval-aligned `nu_h` values on the same canonical fixed-width UTC interval grid.
 
 - Materialization schema:
   - schema version: `seasonality.hourly_nu_h.materialization.v1`
@@ -171,22 +172,23 @@ into hourly `nu_h` values on the same canonical interval grid.
   - `open_window_override_policy`
   - `closed_window_baseline_intensity`
 
-Use `build_hourly_factor_contract(...)` to emit the canonical hourly contract consumed by
+Use `build_hourly_factor_contract(...)` to emit the canonical factor contract consumed by
 downstream engines.
 
 - Contract schema:
   - schema version: `seasonality.hourly_factor.contract.v1`
   - exchange context: `exchange_code`, `exchange_timezone_name`
-  - bucket-aligned values: `s_h` and `nu_h`
+  - interval-aligned values: `s_h` and `nu_h`
+  - explicit interval width: `interval_duration_nanos`
   - UTC interval fields: `interval_indices`, `interval_start_utc_nanos`, `interval_end_utc_nanos`
 - Interval semantics:
   - request range and buckets are half-open intervals `[start, end)`
   - interval boundary policy identifier: `start_inclusive_end_exclusive.v1`
-  - interval alignment policy identifier: `utc_hour_aligned.v1`
-  - timezone transition policy identifier: `utc_hour_bucket_projected_to_exchange_local.v1`
+  - interval alignment policy identifier: `request_start_anchored_fixed_width_utc_interval_grid.v1`
+  - timezone transition policy identifier: `fixed_width_utc_interval_projected_to_exchange_local.v1`
   - spring-forward policy identifier: `skip_nonexistent_local_hour_labels.v1`
   - fall-back policy identifier: `preserve_repeated_local_hour_labels_with_numeric_utc_offset.v1`
-  - request boundaries must be exact UTC hour boundaries
+  - request duration must divide exactly by `interval_duration_nanos`
   - local timestamp labels are projected from UTC bucket boundaries and include numeric UTC offsets
   - missing local hours during spring-forward emit no local-hour bucket
   - repeated local hours during fall-back are disambiguated by offset in labels
@@ -203,6 +205,7 @@ single integration point for hourly factor delivery.
 - Provider API behavior:
   - accepts one request with optional seasonality and news-intensity sources
   - supports explicit hourly values or deterministic materialization in the same API
+  - derives the target runtime grid from `range_start_utc`, `range_end_utc`, and interval width
   - returns canonical interval-aligned `s_h` and `nu_h` contract output
   - returns structured provider errors for missing inputs and unsupported ranges
 - Downstream engine usage:

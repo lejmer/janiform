@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Optional, cast
+from typing import Any, Optional, cast
 
 from .._contracts import (
     ContractModel,
@@ -31,6 +31,7 @@ from ..hourly_factors import (
     HourlyFactorProviderUnsupportedRangeError,
     HourlyNewsIntensityProviderSource,
     HourlySeasonalityProviderSource,
+    _parse_interval_duration_nanos,
     provide_hourly_factor_contract,
 )
 from ..pricing import NigSharedPlusShiftConfiguration
@@ -72,6 +73,7 @@ class SeededTickSimulationHourlyFactorSummary(ContractModel):
     schema_version: str
     exchange_code: str
     interval_count: int
+    interval_duration_nanos: int
     interval_start_utc_nanos: tuple[int, ...]
     interval_end_utc_nanos: tuple[int, ...]
     s_h: tuple[float, ...]
@@ -88,6 +90,11 @@ class SeededTickSimulationHourlyFactorSummary(ContractModel):
             raise _simulation_error("hourly_factor_summary.exchange_code", "must be a non-empty string")
         if self.interval_count <= 0:
             raise _simulation_error("hourly_factor_summary.interval_count", "must be strictly positive")
+        if self.interval_duration_nanos <= 0:
+            raise _simulation_error(
+                "hourly_factor_summary.interval_duration_nanos",
+                "must be strictly positive",
+            )
 
         if len(self.interval_start_utc_nanos) != self.interval_count:
             raise _simulation_error(
@@ -144,6 +151,7 @@ class SeededTickSimulationHourlyFactorSummary(ContractModel):
             schema_version=hourly_factor_contract.schema_version,
             exchange_code=hourly_factor_contract.exchange_code,
             interval_count=hourly_factor_contract.interval_count,
+            interval_duration_nanos=hourly_factor_contract.interval_duration_nanos,
             interval_start_utc_nanos=tuple(hourly_factor_contract.interval_start_utc_nanos),
             interval_end_utc_nanos=tuple(hourly_factor_contract.interval_end_utc_nanos),
             s_h=tuple(hourly_factor_contract.s_h),
@@ -201,6 +209,12 @@ class SeededTickSimulationHourlyFactorSummary(ContractModel):
                 raw_payload,
                 "interval_count",
                 f"{field_path}.interval_count",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            interval_duration_nanos=require_positive_integer(
+                raw_payload,
+                "interval_duration_nanos",
+                f"{field_path}.interval_duration_nanos",
                 SIMULATION_ERROR_FACTORY,
             ),
             interval_start_utc_nanos=tuple(
@@ -913,16 +927,19 @@ def load_hourly_factor_contract_for_simulation(
     exchange_code: str,
     range_start_utc: datetime,
     range_end_utc: datetime,
+    interval: str | timedelta = "1h",
     seasonality_source: HourlySeasonalityProviderSource,
     news_intensity_source: HourlyNewsIntensityProviderSource,
 ) -> HourlyFactorContract:
-    """Load interval-aligned hourly factors for the simulation path."""
+    """Load interval-aligned factors for the simulation path."""
+    interval_duration_nanos = _parse_interval_duration_nanos(interval)
     try:
         return provide_hourly_factor_contract(
             calendar_registry=calendar_registry,
             exchange_code=exchange_code,
             range_start_utc=range_start_utc,
             range_end_utc=range_end_utc,
+            interval=interval,
             seasonality_source=seasonality_source,
             news_intensity_source=news_intensity_source,
         )
@@ -938,7 +955,10 @@ def load_hourly_factor_contract_for_simulation(
             "hourly_factor_contract",
             str(e),
             entrypoint="load_hourly_factor_contract_for_simulation",
-            context={"exchange_code": exchange_code},
+            context={
+                "exchange_code": exchange_code,
+                "interval_duration_nanos": interval_duration_nanos,
+            },
         ) from e
     except ModuleNotFoundError as e:
         raise _simulation_integration_error(
@@ -946,7 +966,10 @@ def load_hourly_factor_contract_for_simulation(
             entrypoint="load_hourly_factor_contract_for_simulation",
             error_id=SIMULATION_INTEGRATION_HOURLY_FACTOR_ERROR_ID,
             field_path="hourly_factor_contract",
-            context={"exchange_code": exchange_code},
+            context={
+                "exchange_code": exchange_code,
+                "interval_duration_nanos": interval_duration_nanos,
+            },
         ) from e
 
 
