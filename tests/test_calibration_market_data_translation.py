@@ -26,6 +26,7 @@ from janiform.calibration import (
     CalibrationStage,
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
+    CalibrationTradeSign,
     MarketDataCalibrationRequest,
     prepare_market_data_calibration,
     run_staged_calibration,
@@ -157,6 +158,10 @@ def test_translate_market_data_request_derives_boundaries_known_news_and_diagnos
     assert first_translation.diagnostics.seasonality_overlay_count == 2
     assert first_translation.diagnostics.close_open_boundary_observation_count == 1
     assert first_translation.diagnostics.material_close_open_gap_count == 1
+    assert (
+        "native_market_data_translation_preprocessing.rust.v1"
+        in first_translation.provenance.derivation_policies
+    )
 
     return_components_input = (
         first_translation.execution_input.return_components_candidate_generation_input
@@ -371,19 +376,88 @@ def test_translate_market_data_request_infers_missing_trade_signs_from_price_dir
     translation = translate_market_data_request_to_staged_execution_input(request)
 
     assert (
-        "missing_trade_signs_are_inferred_from_canonical_price_direction_with_flat_move_carryover.v1"
+        "unsigned_trade_direction_labels_follow_tick_price_change_with_flat_move_carryover.v1"
         in translation.provenance.derivation_policies
     )
 
     hawkes_candidates = translation.execution_input.hawkes_candidate_inputs
     assert hawkes_candidates is not None
+    assert len(hawkes_candidates) > 1
 
-    objective_terms = {
-        objective_term.term_id: objective_term.observed_score
-        for objective_term in hawkes_candidates[0].objective_terms
-    }
-    assert objective_terms["buy_event_rate_per_hour"] == pytest.approx(45.0)
-    assert objective_terms["sell_event_rate_per_hour"] == pytest.approx(30.0)
+    source_regime = hawkes_candidates[0].source_regime
+    assert source_regime.open_session_tick_count == 5
+    assert source_regime.open_session_buy_tick_count == 3
+    assert source_regime.open_session_sell_tick_count == 2
+    assert source_regime.open_session_known_news_activity_share == pytest.approx(0.0)
+
+    label_diagnostics = hawkes_candidates[0].directional_label_diagnostics
+    assert label_diagnostics.policy_id == "tick_price_change_with_flat_move_carryover.v1"
+    assert label_diagnostics.inferred_label_count == 5
+    assert label_diagnostics.price_up_inference_count == 2
+    assert label_diagnostics.price_down_inference_count == 1
+    assert label_diagnostics.flat_move_carry_count == 1
+
+
+def test_translate_market_data_request_preserves_provided_trade_sign_diagnostics_when_sign_column_has_blanks(
+    tmp_path: Path,
+    calendar_registry_json: str,
+) -> None:
+    session_definition_path = _write_session_definition(tmp_path, calendar_registry_json)
+
+    tick_data_path = tmp_path / "ticks_with_partial_signs.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T14:31:00Z,101.0,",
+                "2026-02-02T14:32:00Z,99.0,",
+                "2026-02-02T14:33:00Z,99.0,sell",
+                "2026-02-02T14:34:00Z,102.0,",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    request = _build_market_data_request(
+        session_definition_path=session_definition_path,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            trade_price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+        ),
+    )
+
+    translation = translate_market_data_request_to_staged_execution_input(request)
+
+    assert [
+        record.trade_sign
+        for record in translation.loaded_inputs.tick_data.records
+    ] == [
+        CalibrationTradeSign.BUY,
+        CalibrationTradeSign.BUY,
+        CalibrationTradeSign.SELL,
+        CalibrationTradeSign.SELL,
+        CalibrationTradeSign.BUY,
+    ]
+
+    hawkes_candidates = translation.execution_input.hawkes_candidate_inputs
+    assert hawkes_candidates is not None
+
+    label_diagnostics = hawkes_candidates[0].directional_label_diagnostics
+    assert label_diagnostics.provided_label_count == 2
+    assert label_diagnostics.inferred_label_count == 3
+    assert label_diagnostics.price_up_inference_count == 2
+    assert label_diagnostics.price_down_inference_count == 1
+    assert label_diagnostics.flat_move_carry_count == 0
 
 
 def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenance(

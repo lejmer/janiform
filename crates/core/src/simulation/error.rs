@@ -51,6 +51,11 @@ pub enum SeededTickSimulationRunError {
         current_interval_index: usize,
         current_interval_start_utc_nanos: i64,
     },
+    SeasonalityScaledEndogenousInstability {
+        max_seasonality_factor: f64,
+        spectral_radius_alpha_over_beta: f64,
+        effective_branching_ratio: f64,
+    },
     InvalidDebugTraceSamplingStride {
         value: u64,
     },
@@ -170,6 +175,14 @@ impl Display for SeededTickSimulationRunError {
             } => write!(
                 formatter,
                 "hourly_factor_contract interval coverage must be consecutive, interval {previous_interval_index} end ({previous_interval_end_utc_nanos}) must equal interval {current_interval_index} start ({current_interval_start_utc_nanos})"
+            ),
+            Self::SeasonalityScaledEndogenousInstability {
+                max_seasonality_factor,
+                spectral_radius_alpha_over_beta,
+                effective_branching_ratio,
+            } => write!(
+                formatter,
+                "seasonality-scaled endogenous branching must remain below 1.0, found max_s_h={max_seasonality_factor}, spectral_radius_alpha_over_beta={spectral_radius_alpha_over_beta}, effective_branching_ratio={effective_branching_ratio}"
             ),
             Self::InvalidDebugTraceSamplingStride { value } => write!(
                 formatter,

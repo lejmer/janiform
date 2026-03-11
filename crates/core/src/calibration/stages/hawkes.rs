@@ -19,10 +19,8 @@ use super::super::contracts::{
     CalibrationStageHandoffTransport, CalibrationStageSeedSource,
     resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
 };
-use super::super::objective::{
-    CalibrationObjectiveTermDiagnostic, HawkesStageObjectiveTermInput,
-    HawkesStageObjectiveTermInputError,
-};
+use super::super::market_data_preprocessing::{arithmetic_mean, coefficient_of_variation};
+use super::super::objective::CalibrationObjectiveTermInput;
 use super::super::optimizer_adapter::{
     CalibrationOptimizerAdapterCandidateInput, CalibrationOptimizerAdapterConfiguration,
     CalibrationOptimizerAdapterError, CalibrationOptimizerAdapterRunMetadata,
@@ -31,6 +29,288 @@ use super::super::optimizer_adapter::{
 };
 use super::seasonality::{CalibrationStageExecutionStatus, SeasonalityStageNormalizedPayload};
 /// Candidate parameterization and objective inputs for Hawkes stage fitting.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HawkesStageObservedSourceRegime {
+    pub observation_duration_hours: f64,
+    pub open_session_duration_hours: f64,
+    pub total_tick_count: usize,
+    pub open_session_tick_count: usize,
+    pub closed_session_tick_count: usize,
+    pub open_session_buy_tick_count: usize,
+    pub open_session_sell_tick_count: usize,
+    pub open_session_mean_interarrival_seconds: f64,
+    pub open_session_interarrival_coefficient_of_variation: f64,
+    pub open_session_short_gap_threshold_seconds: f64,
+    pub open_session_short_gap_ratio: f64,
+    pub known_news_open_event_count: usize,
+    pub open_session_known_news_activity_share: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum HawkesStageObservedSourceRegimeError {
+    InvalidObservationDurationHours {
+        value: f64,
+    },
+    InvalidOpenSessionDurationHours {
+        value: f64,
+    },
+    MissingTotalTickCount,
+    MissingOpenSessionTickCount,
+    InconsistentOpenSessionTickCount {
+        buy_tick_count: usize,
+        sell_tick_count: usize,
+        open_session_tick_count: usize,
+    },
+    InconsistentTotalTickCount {
+        open_session_tick_count: usize,
+        closed_session_tick_count: usize,
+        total_tick_count: usize,
+    },
+    InvalidMeanInterarrivalSeconds {
+        value: f64,
+    },
+    InvalidInterarrivalCoefficientOfVariation {
+        value: f64,
+    },
+    InvalidShortGapThresholdSeconds {
+        value: f64,
+    },
+    InvalidShortGapRatio {
+        value: f64,
+    },
+    InvalidKnownNewsActivityShare {
+        value: f64,
+    },
+}
+
+impl Display for HawkesStageObservedSourceRegimeError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidObservationDurationHours { value } => write!(
+                formatter,
+                "source_regime observation_duration_hours must be finite and positive, found {value}"
+            ),
+            Self::InvalidOpenSessionDurationHours { value } => write!(
+                formatter,
+                "source_regime open_session_duration_hours must be finite and positive, found {value}"
+            ),
+            Self::MissingTotalTickCount => {
+                write!(
+                    formatter,
+                    "source_regime total_tick_count must be strictly positive"
+                )
+            }
+            Self::MissingOpenSessionTickCount => write!(
+                formatter,
+                "source_regime open_session_tick_count must be strictly positive"
+            ),
+            Self::InconsistentOpenSessionTickCount {
+                buy_tick_count,
+                sell_tick_count,
+                open_session_tick_count,
+            } => write!(
+                formatter,
+                "source_regime open buy and sell counts must sum to open_session_tick_count, found buy={buy_tick_count}, sell={sell_tick_count}, open_session_tick_count={open_session_tick_count}"
+            ),
+            Self::InconsistentTotalTickCount {
+                open_session_tick_count,
+                closed_session_tick_count,
+                total_tick_count,
+            } => write!(
+                formatter,
+                "source_regime open and closed tick counts must sum to total_tick_count, found open={open_session_tick_count}, closed={closed_session_tick_count}, total_tick_count={total_tick_count}"
+            ),
+            Self::InvalidMeanInterarrivalSeconds { value } => write!(
+                formatter,
+                "source_regime open_session_mean_interarrival_seconds must be finite and positive, found {value}"
+            ),
+            Self::InvalidInterarrivalCoefficientOfVariation { value } => write!(
+                formatter,
+                "source_regime open_session_interarrival_coefficient_of_variation must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidShortGapThresholdSeconds { value } => write!(
+                formatter,
+                "source_regime open_session_short_gap_threshold_seconds must be finite and positive, found {value}"
+            ),
+            Self::InvalidShortGapRatio { value } => write!(
+                formatter,
+                "source_regime open_session_short_gap_ratio must be finite and between 0 and 1, found {value}"
+            ),
+            Self::InvalidKnownNewsActivityShare { value } => write!(
+                formatter,
+                "source_regime open_session_known_news_activity_share must be finite and between 0 and 1, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for HawkesStageObservedSourceRegimeError {}
+
+impl HawkesStageObservedSourceRegime {
+    fn validate(&self) -> Result<(), HawkesStageObservedSourceRegimeError> {
+        if !self.observation_duration_hours.is_finite() || self.observation_duration_hours <= 0.0 {
+            return Err(
+                HawkesStageObservedSourceRegimeError::InvalidObservationDurationHours {
+                    value: self.observation_duration_hours,
+                },
+            );
+        }
+        if !self.open_session_duration_hours.is_finite() || self.open_session_duration_hours <= 0.0
+        {
+            return Err(
+                HawkesStageObservedSourceRegimeError::InvalidOpenSessionDurationHours {
+                    value: self.open_session_duration_hours,
+                },
+            );
+        }
+        if self.total_tick_count == 0 {
+            return Err(HawkesStageObservedSourceRegimeError::MissingTotalTickCount);
+        }
+        if self.open_session_tick_count == 0 {
+            return Err(HawkesStageObservedSourceRegimeError::MissingOpenSessionTickCount);
+        }
+        if self.open_session_buy_tick_count + self.open_session_sell_tick_count
+            != self.open_session_tick_count
+        {
+            return Err(
+                HawkesStageObservedSourceRegimeError::InconsistentOpenSessionTickCount {
+                    buy_tick_count: self.open_session_buy_tick_count,
+                    sell_tick_count: self.open_session_sell_tick_count,
+                    open_session_tick_count: self.open_session_tick_count,
+                },
+            );
+        }
+        if self.open_session_tick_count + self.closed_session_tick_count != self.total_tick_count {
+            return Err(
+                HawkesStageObservedSourceRegimeError::InconsistentTotalTickCount {
+                    open_session_tick_count: self.open_session_tick_count,
+                    closed_session_tick_count: self.closed_session_tick_count,
+                    total_tick_count: self.total_tick_count,
+                },
+            );
+        }
+        if !self.open_session_mean_interarrival_seconds.is_finite()
+            || self.open_session_mean_interarrival_seconds <= 0.0
+        {
+            return Err(
+                HawkesStageObservedSourceRegimeError::InvalidMeanInterarrivalSeconds {
+                    value: self.open_session_mean_interarrival_seconds,
+                },
+            );
+        }
+        if !self
+            .open_session_interarrival_coefficient_of_variation
+            .is_finite()
+            || self.open_session_interarrival_coefficient_of_variation < 0.0
+        {
+            return Err(
+                HawkesStageObservedSourceRegimeError::InvalidInterarrivalCoefficientOfVariation {
+                    value: self.open_session_interarrival_coefficient_of_variation,
+                },
+            );
+        }
+        if !self.open_session_short_gap_threshold_seconds.is_finite()
+            || self.open_session_short_gap_threshold_seconds <= 0.0
+        {
+            return Err(
+                HawkesStageObservedSourceRegimeError::InvalidShortGapThresholdSeconds {
+                    value: self.open_session_short_gap_threshold_seconds,
+                },
+            );
+        }
+        if !self.open_session_short_gap_ratio.is_finite()
+            || !(0.0..=1.0).contains(&self.open_session_short_gap_ratio)
+        {
+            return Err(HawkesStageObservedSourceRegimeError::InvalidShortGapRatio {
+                value: self.open_session_short_gap_ratio,
+            });
+        }
+        if !self.open_session_known_news_activity_share.is_finite()
+            || !(0.0..=1.0).contains(&self.open_session_known_news_activity_share)
+        {
+            return Err(
+                HawkesStageObservedSourceRegimeError::InvalidKnownNewsActivityShare {
+                    value: self.open_session_known_news_activity_share,
+                },
+            );
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HawkesStageDirectionalLabelDiagnostics {
+    pub policy_id: String,
+    pub first_inferred_trade_sign: String,
+    pub provided_label_count: usize,
+    pub inferred_label_count: usize,
+    pub flat_move_carry_count: usize,
+    pub price_up_inference_count: usize,
+    pub price_down_inference_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum HawkesStageDirectionalLabelDiagnosticsError {
+    MissingPolicyId,
+    MissingFirstInferredTradeSign,
+    InconsistentInferenceBreakdown {
+        inferred_label_count: usize,
+        component_count: usize,
+    },
+}
+
+impl Display for HawkesStageDirectionalLabelDiagnosticsError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingPolicyId => {
+                write!(
+                    formatter,
+                    "directional_label_diagnostics policy_id must be non-empty"
+                )
+            }
+            Self::MissingFirstInferredTradeSign => write!(
+                formatter,
+                "directional_label_diagnostics first_inferred_trade_sign must be non-empty"
+            ),
+            Self::InconsistentInferenceBreakdown {
+                inferred_label_count,
+                component_count,
+            } => write!(
+                formatter,
+                "directional_label_diagnostics inference components must not exceed inferred_label_count, found inferred_label_count={inferred_label_count} and component_count={component_count}"
+            ),
+        }
+    }
+}
+
+impl Error for HawkesStageDirectionalLabelDiagnosticsError {}
+
+impl HawkesStageDirectionalLabelDiagnostics {
+    fn validate(&self) -> Result<(), HawkesStageDirectionalLabelDiagnosticsError> {
+        if self.policy_id.trim().is_empty() {
+            return Err(HawkesStageDirectionalLabelDiagnosticsError::MissingPolicyId);
+        }
+        if self.first_inferred_trade_sign.trim().is_empty() {
+            return Err(HawkesStageDirectionalLabelDiagnosticsError::MissingFirstInferredTradeSign);
+        }
+
+        let component_count = self.flat_move_carry_count
+            + self.price_up_inference_count
+            + self.price_down_inference_count;
+        if component_count > self.inferred_label_count {
+            return Err(
+                HawkesStageDirectionalLabelDiagnosticsError::InconsistentInferenceBreakdown {
+                    inferred_label_count: self.inferred_label_count,
+                    component_count,
+                },
+            );
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct HawkesStageCandidateInput {
     pub candidate_id: String,
@@ -40,7 +320,8 @@ pub struct HawkesStageCandidateInput {
     pub structured_rho: HawkesStructuredRhoParameterization,
     pub self_dominance_policy: Option<HawkesStructuredRhoSelfDominancePolicy>,
     pub stability_numeric_tolerance: f64,
-    pub objective_terms: Vec<HawkesStageObjectiveTermInput>,
+    pub source_regime: HawkesStageObservedSourceRegime,
+    pub directional_label_diagnostics: HawkesStageDirectionalLabelDiagnostics,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -55,13 +336,11 @@ pub enum HawkesStageCandidateInputError {
     InvalidStabilityNumericTolerance {
         value: f64,
     },
-    MissingObjectiveTerms,
-    InvalidObjectiveTerm {
-        term_id: String,
-        source: HawkesStageObjectiveTermInputError,
+    InvalidSourceRegime {
+        source: HawkesStageObservedSourceRegimeError,
     },
-    InvalidWeightedObjectiveValue {
-        value: f64,
+    InvalidDirectionalLabelDiagnostics {
+        source: HawkesStageDirectionalLabelDiagnosticsError,
     },
 }
 
@@ -81,18 +360,12 @@ impl Display for HawkesStageCandidateInputError {
                 formatter,
                 "candidate stability_numeric_tolerance must be finite, found {value}"
             ),
-            Self::MissingObjectiveTerms => {
-                write!(
-                    formatter,
-                    "candidate objective_terms must include at least one weighted term"
-                )
+            Self::InvalidSourceRegime { source } => {
+                write!(formatter, "candidate source_regime is invalid: {source}")
             }
-            Self::InvalidObjectiveTerm { term_id, source } => {
-                write!(formatter, "objective term `{term_id}` is invalid: {source}")
-            }
-            Self::InvalidWeightedObjectiveValue { value } => write!(
+            Self::InvalidDirectionalLabelDiagnostics { source } => write!(
                 formatter,
-                "weighted objective sum must be finite, found {value}"
+                "candidate directional_label_diagnostics are invalid: {source}"
             ),
         }
     }
@@ -101,7 +374,8 @@ impl Display for HawkesStageCandidateInputError {
 impl Error for HawkesStageCandidateInputError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::InvalidObjectiveTerm { source, .. } => Some(source),
+            Self::InvalidSourceRegime { source } => Some(source),
+            Self::InvalidDirectionalLabelDiagnostics { source } => Some(source),
             _ => None,
         }
     }
@@ -127,18 +401,14 @@ impl HawkesStageCandidateInput {
                 },
             );
         }
-        if self.objective_terms.is_empty() {
-            return Err(HawkesStageCandidateInputError::MissingObjectiveTerms);
-        }
-
-        for objective_term in &self.objective_terms {
-            objective_term.validate().map_err(|source| {
-                HawkesStageCandidateInputError::InvalidObjectiveTerm {
-                    term_id: objective_term.term_id.clone(),
-                    source,
-                }
+        self.source_regime
+            .validate()
+            .map_err(|source| HawkesStageCandidateInputError::InvalidSourceRegime { source })?;
+        self.directional_label_diagnostics
+            .validate()
+            .map_err(|source| {
+                HawkesStageCandidateInputError::InvalidDirectionalLabelDiagnostics { source }
             })?;
-        }
 
         Ok(())
     }
@@ -152,6 +422,7 @@ pub enum HawkesStageSeasonalityInput {
     },
     PersistedArtifactReference {
         artifact_reference: String,
+        payload: SeasonalityStageNormalizedPayload,
     },
 }
 
@@ -168,7 +439,9 @@ impl HawkesStageSeasonalityInput {
     fn artifact_reference(&self) -> Option<&str> {
         match self {
             Self::InMemoryOutput { .. } => None,
-            Self::PersistedArtifactReference { artifact_reference } => Some(artifact_reference),
+            Self::PersistedArtifactReference {
+                artifact_reference, ..
+            } => Some(artifact_reference),
         }
     }
 
@@ -176,6 +449,13 @@ impl HawkesStageSeasonalityInput {
         match self {
             Self::InMemoryOutput { payload } => Some(payload.dataset_id.as_str()),
             Self::PersistedArtifactReference { .. } => None,
+        }
+    }
+
+    fn payload(&self) -> &SeasonalityStageNormalizedPayload {
+        match self {
+            Self::InMemoryOutput { payload } => payload,
+            Self::PersistedArtifactReference { payload, .. } => payload,
         }
     }
 }
@@ -202,18 +482,69 @@ impl HawkesStageExecutionInput {
 
     pub fn from_persisted_seasonality_artifact_reference(
         artifact_reference: impl Into<String>,
+        seasonality_payload: SeasonalityStageNormalizedPayload,
         candidate_inputs: Vec<HawkesStageCandidateInput>,
     ) -> Self {
         Self {
             seasonality_input: HawkesStageSeasonalityInput::PersistedArtifactReference {
                 artifact_reference: artifact_reference.into(),
+                payload: seasonality_payload,
             },
             candidate_inputs,
         }
     }
 }
 
-pub type HawkesStageObjectiveTermDiagnostic = CalibrationObjectiveTermDiagnostic;
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct HawkesObservedActivityTargets {
+    deseasonalized_open_event_rate_per_hour: f64,
+    open_factor_exposure_hours: f64,
+    deseasonalized_mean_interarrival_seconds: f64,
+    deseasonalized_interarrival_coefficient_of_variation: f64,
+    deseasonalized_short_gap_threshold_seconds: f64,
+    deseasonalized_short_gap_ratio: f64,
+    deseasonalized_known_news_rate_per_hour: f64,
+    max_observed_seasonality_factor: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SeasonalityScaledStationarityCheck {
+    max_seasonality_factor: f64,
+    spectral_radius_alpha_over_beta: f64,
+    effective_branching_ratio: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HawkesStageObjectiveTermDiagnostic {
+    pub term_id: String,
+    pub weight: f64,
+    pub observed_value: f64,
+    pub model_implied_value: f64,
+    pub scale: f64,
+    pub absolute_error: f64,
+    pub normalized_error: f64,
+    pub weighted_contribution: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HawkesStageImpliedMetricsDiagnostic {
+    pub baseline_buy_intensity_per_hour: f64,
+    pub baseline_sell_intensity_per_hour: f64,
+    pub model_implied_open_event_rate_per_hour: f64,
+    pub model_implied_open_buy_share: f64,
+    pub model_implied_open_sell_share: f64,
+    pub model_implied_interarrival_coefficient_of_variation: f64,
+    pub model_implied_short_gap_ratio: f64,
+    pub model_implied_known_news_activity_share: f64,
+    pub model_implied_expected_event_count_over_observation_window: f64,
+    pub endogenous_branching_ratio: f64,
+    pub self_excitation_ratio: f64,
+    pub cross_excitation_ratio: f64,
+    pub exogenous_self_loading_ratio: f64,
+    pub exogenous_cross_loading_ratio: f64,
+    pub stability_margin: f64,
+    pub event_volume_ratio_vs_total_observed: f64,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct HawkesStageCandidateDiagnostic {
@@ -223,6 +554,10 @@ pub struct HawkesStageCandidateDiagnostic {
     pub penalized_objective_value: f64,
     pub constraint_violation_count: usize,
     pub objective_terms: Vec<HawkesStageObjectiveTermDiagnostic>,
+    pub source_regime: HawkesStageObservedSourceRegime,
+    pub directional_label_diagnostics: HawkesStageDirectionalLabelDiagnostics,
+    pub implied_metrics: HawkesStageImpliedMetricsDiagnostic,
+    pub warnings: Vec<String>,
     pub validation_report: HawkesKernelParameterValidationReport,
 }
 
@@ -456,7 +791,12 @@ pub fn run_hawkes_calibration_stage(
 
     let mut seen_candidate_ids = BTreeSet::new();
     let mut validation_reports = Vec::with_capacity(stage_input.candidate_inputs.len());
+    let mut objective_term_diagnostics = Vec::with_capacity(stage_input.candidate_inputs.len());
+    let mut implied_metrics_diagnostics = Vec::with_capacity(stage_input.candidate_inputs.len());
+    let mut warning_diagnostics = Vec::with_capacity(stage_input.candidate_inputs.len());
     let mut adapter_candidate_inputs = Vec::with_capacity(stage_input.candidate_inputs.len());
+    let mut adjusted_candidate_inputs = Vec::with_capacity(stage_input.candidate_inputs.len());
+    let seasonality_payload = stage_input.seasonality_input.payload();
 
     for candidate_input in &stage_input.candidate_inputs {
         if !seen_candidate_ids.insert(candidate_input.candidate_id.clone()) {
@@ -478,32 +818,70 @@ pub fn run_hawkes_calibration_stage(
             );
         }
 
+        let observed_activity_targets = derive_observed_activity_targets(
+            candidate_input.source_regime.clone(),
+            seasonality_payload,
+        );
+        let adjusted_candidate_input = adjust_candidate_for_deseasonalized_activity(
+            candidate_input,
+            observed_activity_targets,
+        );
         let validation_report = precheck_structured_hawkes_kernel_parameter_domain(
-            candidate_input.lambda_bar,
-            candidate_input.beta,
-            candidate_input.structured_alpha,
-            candidate_input.structured_rho,
-            candidate_input.self_dominance_policy,
-            candidate_input.stability_numeric_tolerance,
+            adjusted_candidate_input.lambda_bar,
+            adjusted_candidate_input.beta,
+            adjusted_candidate_input.structured_alpha,
+            adjusted_candidate_input.structured_rho,
+            adjusted_candidate_input.self_dominance_policy,
+            adjusted_candidate_input.stability_numeric_tolerance,
         );
 
-        let external_constraint_violation_count = validation_report.summary.failed_check_count;
+        let mut external_constraint_violation_count = validation_report.summary.failed_check_count;
+        let (objective_terms, term_diagnostics, implied_metrics, mut warnings) =
+            build_candidate_objective_terms(
+                &adjusted_candidate_input,
+                observed_activity_targets,
+                validation_report.derived_alpha,
+                validation_report.derived_rho,
+            );
+
+        if let Some(stationarity_check) =
+            validation_report.derived_alpha.and_then(|derived_alpha| {
+                check_seasonality_scaled_stationarity(
+                    observed_activity_targets.max_observed_seasonality_factor,
+                    derived_alpha,
+                    adjusted_candidate_input.beta,
+                )
+            })
+        {
+            external_constraint_violation_count =
+                external_constraint_violation_count.saturating_add(1);
+            warnings.push(format!(
+                "seasonality-scaled effective branching ratio {:.6} reaches or exceeds 1.0 with max seasonality factor {:.6}",
+                stationarity_check.effective_branching_ratio,
+                stationarity_check.max_seasonality_factor,
+            ));
+        }
+
+        adjusted_candidate_inputs.push(adjusted_candidate_input.clone());
         validation_reports.push(validation_report);
+        objective_term_diagnostics.push(term_diagnostics);
+        implied_metrics_diagnostics.push(implied_metrics);
+        warning_diagnostics.push(warnings);
         adapter_candidate_inputs.push(CalibrationOptimizerAdapterCandidateInput {
-            candidate_id: candidate_input.candidate_id.clone(),
-            objective_terms: candidate_input.objective_terms.clone(),
+            candidate_id: adjusted_candidate_input.candidate_id.clone(),
+            objective_terms,
             parameter_values: vec![
                 CalibrationOptimizerCandidateParameterValue {
                     parameter_name: "lambda_bar".to_string(),
-                    value: candidate_input.lambda_bar,
+                    value: adjusted_candidate_input.lambda_bar,
                 },
                 CalibrationOptimizerCandidateParameterValue {
                     parameter_name: "beta".to_string(),
-                    value: candidate_input.beta,
+                    value: adjusted_candidate_input.beta,
                 },
                 CalibrationOptimizerCandidateParameterValue {
                     parameter_name: "stability_numeric_tolerance".to_string(),
-                    value: candidate_input.stability_numeric_tolerance,
+                    value: adjusted_candidate_input.stability_numeric_tolerance,
                 },
             ],
             external_constraint_violation_count,
@@ -562,11 +940,19 @@ pub fn run_hawkes_calibration_stage(
 
     let mut candidate_diagnostics: Vec<HawkesStageCandidateDiagnostic> =
         Vec::with_capacity(stage_input.candidate_inputs.len());
-    for ((candidate_input, validation_report), optimizer_diagnostic) in stage_input
-        .candidate_inputs
+    for (
+        (
+            (((candidate_input, validation_report), optimizer_diagnostic), objective_terms),
+            implied_metrics,
+        ),
+        warnings,
+    ) in adjusted_candidate_inputs
         .iter()
         .zip(validation_reports.into_iter())
         .zip(optimizer_adapter_output.candidate_diagnostics.iter())
+        .zip(objective_term_diagnostics.into_iter())
+        .zip(implied_metrics_diagnostics.into_iter())
+        .zip(warning_diagnostics.into_iter())
     {
         candidate_diagnostics.push(HawkesStageCandidateDiagnostic {
             candidate_id: candidate_input.candidate_id.clone(),
@@ -574,10 +960,11 @@ pub fn run_hawkes_calibration_stage(
             constraint_penalty: optimizer_diagnostic.constraint_penalty,
             penalized_objective_value: optimizer_diagnostic.penalized_objective_value,
             constraint_violation_count: optimizer_diagnostic.total_constraint_violation_count,
-            objective_terms: optimizer_diagnostic
-                .objective_composition
-                .objective_terms
-                .clone(),
+            objective_terms,
+            source_regime: candidate_input.source_regime.clone(),
+            directional_label_diagnostics: candidate_input.directional_label_diagnostics.clone(),
+            implied_metrics,
+            warnings,
             validation_report,
         });
     }
@@ -608,7 +995,7 @@ pub fn run_hawkes_calibration_stage(
         );
     };
 
-    let selected_candidate_input = &stage_input.candidate_inputs[selected_candidate_position];
+    let selected_candidate_input = &adjusted_candidate_inputs[selected_candidate_position];
     let selected_candidate_diagnostic = &candidate_diagnostics[selected_candidate_position];
 
     let Some(derived_alpha) = selected_candidate_diagnostic
@@ -714,6 +1101,487 @@ pub fn run_hawkes_calibration_stage(
         }),
         failure: None,
     }
+}
+
+fn build_candidate_objective_terms(
+    candidate_input: &HawkesStageCandidateInput,
+    observed_activity_targets: HawkesObservedActivityTargets,
+    derived_alpha: Option<crate::hawkes::HawkesKernelLoadings>,
+    derived_rho: Option<crate::hawkes::HawkesKernelLoadings>,
+) -> (
+    Vec<CalibrationObjectiveTermInput>,
+    Vec<HawkesStageObjectiveTermDiagnostic>,
+    HawkesStageImpliedMetricsDiagnostic,
+    Vec<String>,
+) {
+    let Some(derived_alpha) = derived_alpha else {
+        return invalid_candidate_objective_bundle(
+            candidate_input,
+            "candidate did not derive alpha",
+        );
+    };
+    let Some(derived_rho) = derived_rho else {
+        return invalid_candidate_objective_bundle(candidate_input, "candidate did not derive rho");
+    };
+
+    let implied_metrics = derive_candidate_implied_metrics(
+        candidate_input,
+        observed_activity_targets,
+        derived_alpha,
+        derived_rho,
+    );
+    let mut warnings = Vec::new();
+
+    if implied_metrics.event_volume_ratio_vs_total_observed > 1.5 {
+        warnings.push(format!(
+            "model implied event count over the observation window is {:.3}x the observed total tick count",
+            implied_metrics.event_volume_ratio_vs_total_observed
+        ));
+    }
+    if implied_metrics.model_implied_open_event_rate_per_hour
+        > observed_activity_targets.deseasonalized_open_event_rate_per_hour * 1.5
+    {
+        warnings.push(format!(
+            "model implied deseasonalized open-session rate {:.3} exceeds the observed deseasonalized open-session rate {:.3} by more than 50%",
+            implied_metrics.model_implied_open_event_rate_per_hour,
+            observed_activity_targets.deseasonalized_open_event_rate_per_hour
+        ));
+    }
+
+    let mut objective_terms = Vec::new();
+    let mut term_diagnostics = Vec::new();
+
+    push_objective_term(
+        "open_session_event_rate",
+        3.0,
+        observed_activity_targets.deseasonalized_open_event_rate_per_hour,
+        implied_metrics.model_implied_open_event_rate_per_hour,
+        observed_activity_targets
+            .deseasonalized_open_event_rate_per_hour
+            .max(1.0),
+        &mut objective_terms,
+        &mut term_diagnostics,
+    );
+    push_objective_term(
+        "directional_imbalance_magnitude",
+        1.5,
+        observed_directional_imbalance_magnitude(&candidate_input.source_regime),
+        (implied_metrics.model_implied_open_sell_share - 0.5).abs() * 2.0,
+        observed_directional_imbalance_magnitude(&candidate_input.source_regime).max(0.05),
+        &mut objective_terms,
+        &mut term_diagnostics,
+    );
+    push_objective_term(
+        "interarrival_coefficient_of_variation",
+        1.25,
+        observed_activity_targets.deseasonalized_interarrival_coefficient_of_variation,
+        implied_metrics.model_implied_interarrival_coefficient_of_variation,
+        observed_activity_targets
+            .deseasonalized_interarrival_coefficient_of_variation
+            .max(0.25),
+        &mut objective_terms,
+        &mut term_diagnostics,
+    );
+    push_objective_term(
+        "short_gap_ratio",
+        1.0,
+        observed_activity_targets.deseasonalized_short_gap_ratio,
+        implied_metrics.model_implied_short_gap_ratio,
+        observed_activity_targets
+            .deseasonalized_short_gap_ratio
+            .max(0.05),
+        &mut objective_terms,
+        &mut term_diagnostics,
+    );
+    push_objective_term(
+        "observation_window_event_count",
+        2.0,
+        candidate_input.source_regime.total_tick_count as f64,
+        implied_metrics.model_implied_expected_event_count_over_observation_window,
+        (candidate_input.source_regime.total_tick_count as f64).max(1.0),
+        &mut objective_terms,
+        &mut term_diagnostics,
+    );
+
+    if candidate_input.source_regime.known_news_open_event_count > 0 {
+        push_objective_term(
+            "known_news_activity_share",
+            0.75,
+            candidate_input
+                .source_regime
+                .open_session_known_news_activity_share,
+            implied_metrics.model_implied_known_news_activity_share,
+            candidate_input
+                .source_regime
+                .open_session_known_news_activity_share
+                .max(0.02),
+            &mut objective_terms,
+            &mut term_diagnostics,
+        );
+    }
+
+    (objective_terms, term_diagnostics, implied_metrics, warnings)
+}
+
+fn invalid_candidate_objective_bundle(
+    candidate_input: &HawkesStageCandidateInput,
+    warning_message: &str,
+) -> (
+    Vec<CalibrationObjectiveTermInput>,
+    Vec<HawkesStageObjectiveTermDiagnostic>,
+    HawkesStageImpliedMetricsDiagnostic,
+    Vec<String>,
+) {
+    (
+        vec![CalibrationObjectiveTermInput {
+            term_id: "invalid_parameterization_penalty".to_string(),
+            weight: 1.0,
+            observed_score: 1_000_000.0,
+        }],
+        vec![HawkesStageObjectiveTermDiagnostic {
+            term_id: "invalid_parameterization_penalty".to_string(),
+            weight: 1.0,
+            observed_value: 0.0,
+            model_implied_value: 1_000_000.0,
+            scale: 1.0,
+            absolute_error: 1_000_000.0,
+            normalized_error: 1_000_000.0,
+            weighted_contribution: 1_000_000.0,
+        }],
+        HawkesStageImpliedMetricsDiagnostic {
+            baseline_buy_intensity_per_hour: candidate_input.lambda_bar,
+            baseline_sell_intensity_per_hour: candidate_input.lambda_bar,
+            model_implied_open_event_rate_per_hour: 0.0,
+            model_implied_open_buy_share: 0.5,
+            model_implied_open_sell_share: 0.5,
+            model_implied_interarrival_coefficient_of_variation: 0.0,
+            model_implied_short_gap_ratio: 0.0,
+            model_implied_known_news_activity_share: 0.0,
+            model_implied_expected_event_count_over_observation_window: 0.0,
+            endogenous_branching_ratio: 0.0,
+            self_excitation_ratio: 0.0,
+            cross_excitation_ratio: 0.0,
+            exogenous_self_loading_ratio: 0.0,
+            exogenous_cross_loading_ratio: 0.0,
+            stability_margin: 0.0,
+            event_volume_ratio_vs_total_observed: 0.0,
+        },
+        vec![warning_message.to_string()],
+    )
+}
+
+fn derive_observed_activity_targets(
+    source_regime: HawkesStageObservedSourceRegime,
+    seasonality_payload: &SeasonalityStageNormalizedPayload,
+) -> HawkesObservedActivityTargets {
+    const MAX_DESEASONALIZED_GAP_SECONDS: f64 = 3_600.0;
+    const OPEN_MARKET_STATE_CODE: u8 = 1;
+
+    let open_event_points: Vec<(i64, f64)> = seasonality_payload
+        .timestamp_utc_nanos
+        .iter()
+        .copied()
+        .zip(
+            seasonality_payload
+                .normalized_combined_factor_by_event
+                .iter()
+                .copied(),
+        )
+        .zip(seasonality_payload.market_state_codes.iter().copied())
+        .filter_map(|((timestamp_utc_nanos, factor), market_state_code)| {
+            if market_state_code == OPEN_MARKET_STATE_CODE {
+                Some((timestamp_utc_nanos, factor.max(1.0e-9)))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let mut transformed_open_gaps_seconds: Vec<f64> =
+        Vec::with_capacity(open_event_points.len().saturating_sub(1));
+    let mut same_window_gap_seconds_sum = 0.0;
+    let mut seasonality_weighted_gap_seconds_sum = 0.0;
+
+    for (
+        (previous_timestamp_utc_nanos, previous_factor),
+        (current_timestamp_utc_nanos, current_factor),
+    ) in open_event_points
+        .iter()
+        .copied()
+        .zip(open_event_points.iter().copied().skip(1))
+    {
+        let raw_gap_seconds = ((current_timestamp_utc_nanos - previous_timestamp_utc_nanos) as f64
+            / 1_000_000_000.0)
+            .max(0.0);
+        if raw_gap_seconds > MAX_DESEASONALIZED_GAP_SECONDS {
+            continue;
+        }
+
+        let average_factor = ((previous_factor + current_factor) / 2.0).max(1.0e-9);
+
+        same_window_gap_seconds_sum += raw_gap_seconds;
+        seasonality_weighted_gap_seconds_sum += raw_gap_seconds * average_factor;
+
+        transformed_open_gaps_seconds.push(raw_gap_seconds * average_factor);
+    }
+
+    let fallback_mean_factor = arithmetic_mean(
+        open_event_points
+            .iter()
+            .map(|(_, factor)| *factor)
+            .collect::<Vec<f64>>()
+            .as_slice(),
+    )
+    .unwrap_or(1.0)
+    .max(1.0e-9);
+
+    let mean_open_factor = if same_window_gap_seconds_sum > 0.0 {
+        (seasonality_weighted_gap_seconds_sum / same_window_gap_seconds_sum).max(1.0e-9)
+    } else {
+        fallback_mean_factor
+    };
+
+    let open_factor_exposure_hours =
+        (source_regime.open_session_duration_hours * mean_open_factor).max(1.0e-9);
+    let deseasonalized_open_event_rate_per_hour =
+        source_regime.open_session_tick_count as f64 / open_factor_exposure_hours;
+    let deseasonalized_mean_interarrival_seconds =
+        arithmetic_mean(transformed_open_gaps_seconds.as_slice())
+            .unwrap_or(source_regime.open_session_mean_interarrival_seconds * mean_open_factor)
+            .max(1.0e-6);
+    let deseasonalized_interarrival_coefficient_of_variation =
+        coefficient_of_variation(transformed_open_gaps_seconds.as_slice());
+    let deseasonalized_short_gap_threshold_seconds =
+        (deseasonalized_mean_interarrival_seconds * 0.5).clamp(1.0, 300.0);
+    let deseasonalized_short_gap_ratio = if transformed_open_gaps_seconds.is_empty() {
+        0.0
+    } else {
+        transformed_open_gaps_seconds
+            .iter()
+            .filter(|gap_seconds| **gap_seconds <= deseasonalized_short_gap_threshold_seconds)
+            .count() as f64
+            / transformed_open_gaps_seconds.len() as f64
+    };
+    let deseasonalized_known_news_rate_per_hour =
+        source_regime.known_news_open_event_count as f64 / open_factor_exposure_hours.max(1.0e-9);
+    let max_observed_seasonality_factor = open_event_points
+        .iter()
+        .map(|(_, factor)| *factor)
+        .reduce(f64::max)
+        .unwrap_or(1.0)
+        .max(1.0);
+
+    HawkesObservedActivityTargets {
+        deseasonalized_open_event_rate_per_hour,
+        open_factor_exposure_hours,
+        deseasonalized_mean_interarrival_seconds,
+        deseasonalized_interarrival_coefficient_of_variation,
+        deseasonalized_short_gap_threshold_seconds,
+        deseasonalized_short_gap_ratio,
+        deseasonalized_known_news_rate_per_hour,
+        max_observed_seasonality_factor,
+    }
+}
+
+fn adjust_candidate_for_deseasonalized_activity(
+    candidate_input: &HawkesStageCandidateInput,
+    observed_activity_targets: HawkesObservedActivityTargets,
+) -> HawkesStageCandidateInput {
+    let raw_open_event_rate_per_hour =
+        observed_open_session_event_rate_per_hour(&candidate_input.source_regime);
+    let lambda_scaling_ratio = if raw_open_event_rate_per_hour > 0.0 {
+        (observed_activity_targets.deseasonalized_open_event_rate_per_hour
+            / raw_open_event_rate_per_hour)
+            .max(1.0e-9)
+    } else {
+        1.0
+    };
+
+    let mut adjusted_candidate_input = candidate_input.clone();
+    adjusted_candidate_input.lambda_bar =
+        (adjusted_candidate_input.lambda_bar * lambda_scaling_ratio).max(1.0e-4);
+
+    adjusted_candidate_input
+}
+
+fn check_seasonality_scaled_stationarity(
+    max_seasonality_factor: f64,
+    derived_alpha: crate::hawkes::HawkesKernelLoadings,
+    beta: f64,
+) -> Option<SeasonalityScaledStationarityCheck> {
+    let spectral_radius_alpha_over_beta = spectral_radius_alpha_over_beta(derived_alpha, beta);
+    let effective_branching_ratio = max_seasonality_factor * spectral_radius_alpha_over_beta;
+    if effective_branching_ratio >= 1.0 {
+        return Some(SeasonalityScaledStationarityCheck {
+            max_seasonality_factor,
+            spectral_radius_alpha_over_beta,
+            effective_branching_ratio,
+        });
+    }
+
+    None
+}
+
+fn derive_candidate_implied_metrics(
+    candidate_input: &HawkesStageCandidateInput,
+    observed_activity_targets: HawkesObservedActivityTargets,
+    derived_alpha: crate::hawkes::HawkesKernelLoadings,
+    derived_rho: crate::hawkes::HawkesKernelLoadings,
+) -> HawkesStageImpliedMetricsDiagnostic {
+    let scaled_plus_plus = derived_alpha.plus_plus / candidate_input.beta;
+    let scaled_plus_minus = derived_alpha.plus_minus / candidate_input.beta;
+    let scaled_minus_plus = derived_alpha.minus_plus / candidate_input.beta;
+    let scaled_minus_minus = derived_alpha.minus_minus / candidate_input.beta;
+
+    let determinant = (1.0 - scaled_plus_plus) * (1.0 - scaled_minus_minus)
+        - scaled_plus_minus * scaled_minus_plus;
+
+    let stationary_buy_multiplier = ((1.0 - scaled_minus_minus) + scaled_plus_minus) / determinant;
+    let stationary_sell_multiplier = (scaled_minus_plus + (1.0 - scaled_plus_plus)) / determinant;
+
+    let stationary_buy_intensity = candidate_input.lambda_bar * stationary_buy_multiplier.max(0.0);
+    let stationary_sell_intensity =
+        candidate_input.lambda_bar * stationary_sell_multiplier.max(0.0);
+    let stationary_total_intensity = stationary_buy_intensity + stationary_sell_intensity;
+
+    let model_implied_open_sell_share = if stationary_total_intensity > 0.0 {
+        stationary_sell_intensity / stationary_total_intensity
+    } else {
+        0.5
+    };
+
+    let endogenous_branching_ratio =
+        spectral_radius_alpha_over_beta(derived_alpha, candidate_input.beta);
+    let self_excitation_ratio =
+        (derived_alpha.plus_plus + derived_alpha.minus_minus) / (2.0 * candidate_input.beta);
+    let cross_excitation_ratio =
+        (derived_alpha.plus_minus + derived_alpha.minus_plus) / (2.0 * candidate_input.beta);
+    let exogenous_self_loading_ratio =
+        (derived_rho.plus_plus + derived_rho.minus_minus) / (2.0 * candidate_input.beta);
+    let exogenous_cross_loading_ratio =
+        (derived_rho.plus_minus + derived_rho.minus_plus) / (2.0 * candidate_input.beta);
+
+    let model_implied_interarrival_coefficient_of_variation = (1.0
+        + 2.0 * endogenous_branching_ratio / (1.0 - endogenous_branching_ratio).max(1e-9))
+    .sqrt();
+
+    let poisson_short_gap_ratio = 1.0
+        - (-(stationary_total_intensity / 3600.0)
+            * observed_activity_targets.deseasonalized_short_gap_threshold_seconds)
+            .exp();
+
+    let clustering_decay = (-(candidate_input.beta / 60.0)
+        * observed_activity_targets.deseasonalized_short_gap_threshold_seconds)
+        .exp();
+
+    let model_implied_short_gap_ratio = (poisson_short_gap_ratio
+        + (1.0 - poisson_short_gap_ratio) * endogenous_branching_ratio * clustering_decay)
+        .clamp(0.0, 0.999_999);
+
+    let news_rate_per_hour = observed_activity_targets.deseasonalized_known_news_rate_per_hour;
+
+    let rho_average_row_sum = (derived_rho.plus_plus
+        + derived_rho.plus_minus
+        + derived_rho.minus_plus
+        + derived_rho.minus_minus)
+        / 2.0;
+
+    let exogenous_extra_rate = if news_rate_per_hour > 0.0 {
+        news_rate_per_hour * rho_average_row_sum
+            / (candidate_input.beta * (1.0 - endogenous_branching_ratio).max(1e-9))
+    } else {
+        0.0
+    };
+
+    let model_implied_known_news_activity_share = if stationary_total_intensity > 0.0 {
+        (exogenous_extra_rate / stationary_total_intensity).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+
+    let expected_event_count_over_observation_window =
+        stationary_total_intensity * observed_activity_targets.open_factor_exposure_hours;
+
+    HawkesStageImpliedMetricsDiagnostic {
+        baseline_buy_intensity_per_hour: candidate_input.lambda_bar,
+        baseline_sell_intensity_per_hour: candidate_input.lambda_bar,
+        model_implied_open_event_rate_per_hour: stationary_total_intensity,
+        model_implied_open_buy_share: 1.0 - model_implied_open_sell_share,
+        model_implied_open_sell_share,
+        model_implied_interarrival_coefficient_of_variation,
+        model_implied_short_gap_ratio,
+        model_implied_known_news_activity_share,
+        model_implied_expected_event_count_over_observation_window:
+            expected_event_count_over_observation_window,
+        endogenous_branching_ratio,
+        self_excitation_ratio,
+        cross_excitation_ratio,
+        exogenous_self_loading_ratio,
+        exogenous_cross_loading_ratio,
+        stability_margin: (1.0 - endogenous_branching_ratio).max(0.0),
+        event_volume_ratio_vs_total_observed: expected_event_count_over_observation_window
+            / (candidate_input.source_regime.total_tick_count as f64).max(1.0),
+    }
+}
+
+fn push_objective_term(
+    term_id: &str,
+    weight: f64,
+    observed_value: f64,
+    model_implied_value: f64,
+    scale: f64,
+    objective_terms: &mut Vec<CalibrationObjectiveTermInput>,
+    term_diagnostics: &mut Vec<HawkesStageObjectiveTermDiagnostic>,
+) {
+    let absolute_error = (model_implied_value - observed_value).abs();
+    let normalized_error = absolute_error / scale.max(1e-9);
+    let weighted_contribution = weight * normalized_error;
+
+    objective_terms.push(CalibrationObjectiveTermInput {
+        term_id: term_id.to_string(),
+        weight,
+        observed_score: normalized_error,
+    });
+    term_diagnostics.push(HawkesStageObjectiveTermDiagnostic {
+        term_id: term_id.to_string(),
+        weight,
+        observed_value,
+        model_implied_value,
+        scale,
+        absolute_error,
+        normalized_error,
+        weighted_contribution,
+    });
+}
+
+fn observed_open_session_event_rate_per_hour(
+    source_regime: &HawkesStageObservedSourceRegime,
+) -> f64 {
+    source_regime.open_session_tick_count as f64
+        / source_regime.open_session_duration_hours.max(1e-9)
+}
+
+fn observed_directional_imbalance_magnitude(
+    source_regime: &HawkesStageObservedSourceRegime,
+) -> f64 {
+    ((source_regime.open_session_sell_tick_count as f64
+        / source_regime.open_session_tick_count as f64)
+        - 0.5)
+        .abs()
+        * 2.0
+}
+
+fn spectral_radius_alpha_over_beta(alpha: crate::hawkes::HawkesKernelLoadings, beta: f64) -> f64 {
+    let scaled_plus_plus = alpha.plus_plus / beta;
+    let scaled_plus_minus = alpha.plus_minus / beta;
+    let scaled_minus_plus = alpha.minus_plus / beta;
+    let scaled_minus_minus = alpha.minus_minus / beta;
+    let trace = scaled_plus_plus + scaled_minus_minus;
+    let discriminant = ((scaled_plus_plus - scaled_minus_minus).powi(2)
+        + 4.0 * scaled_plus_minus * scaled_minus_plus)
+        .sqrt();
+
+    0.5 * (trace + discriminant)
 }
 
 fn hawkes_stage_optimizer_bounds() -> Vec<CalibrationOptimizerParameterBound> {

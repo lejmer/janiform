@@ -1,7 +1,7 @@
 import csv
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from math import isfinite
 from typing import Optional, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -115,18 +115,65 @@ class _LoadedSourceRows:
     available_columns: tuple[str, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class _TradeSignResolutionDiagnostics:
+    policy_id: str
+    first_inferred_trade_sign: CalibrationTradeSign
+    provided_label_count: int
+    inferred_label_count: int
+    flat_move_carry_count: int
+    price_up_inference_count: int
+    price_down_inference_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class _NormalizedTickRow:
+    timestamp: datetime
+    price: Optional[float]
+    trade_price: Optional[float]
+    trade_sign: Optional[CalibrationTradeSign]
+    bid_price: Optional[float]
+    ask_price: Optional[float]
+    close_price: Optional[float]
+    source_row_number: int
+
+
+@dataclass(frozen=True, slots=True)
+class _LoadedTickDataNormalizationResult:
+    tick_data: LoadedTickDataSource
+    trade_sign_resolution_diagnostics: Optional[_TradeSignResolutionDiagnostics]
+
+
+@dataclass(frozen=True, slots=True)
+class _LoadedMarketDataCalibrationInputsResult:
+    inputs: LoadedMarketDataCalibrationInputs
+    trade_sign_resolution_diagnostics: Optional[_TradeSignResolutionDiagnostics]
+
+
 def load_market_data_calibration_inputs(
     request: MarketDataCalibrationRequest,
 ) -> LoadedMarketDataCalibrationInputs:
+    return _load_market_data_calibration_inputs(
+        request,
+        resolve_unsigned_trade_signs=False,
+    ).inputs
+
+
+def _load_market_data_calibration_inputs(
+    request: MarketDataCalibrationRequest,
+    *,
+    resolve_unsigned_trade_signs: bool,
+) -> _LoadedMarketDataCalibrationInputsResult:
     tick_source_rows = _load_source_rows(
         request.tick_data_source,
         field_path="tick_data_source",
     )
-    tick_data = _normalize_tick_data(
+    tick_data_result = _normalize_tick_data(
         source_rows=tick_source_rows,
         file_reference=request.tick_data_source,
         column_mapping=request.column_mapping.tick_data,
         normalization_policy=request.normalization_policy,
+        resolve_unsigned_trade_signs=resolve_unsigned_trade_signs,
     )
 
     option_surface: Optional[LoadedOptionSurfaceSource] = None
@@ -164,10 +211,13 @@ def load_market_data_calibration_inputs(
                 column_mapping=request.column_mapping.known_news,
             )
 
-    return LoadedMarketDataCalibrationInputs(
-        tick_data=tick_data,
-        option_surface=option_surface,
-        known_news=known_news,
+    return _LoadedMarketDataCalibrationInputsResult(
+        inputs=LoadedMarketDataCalibrationInputs(
+            tick_data=tick_data_result.tick_data,
+            option_surface=option_surface,
+            known_news=known_news,
+        ),
+        trade_sign_resolution_diagnostics=tick_data_result.trade_sign_resolution_diagnostics,
     )
 
 
@@ -374,7 +424,8 @@ def _normalize_tick_data(
     file_reference: CalibrationInputFileReference,
     column_mapping: CalibrationTickDataColumnMapping,
     normalization_policy: CalibrationMarketDataNormalizationPolicy,
-) -> LoadedTickDataSource:
+    resolve_unsigned_trade_signs: bool,
+) -> _LoadedTickDataNormalizationResult:
     tick_price_input_policy = normalization_policy.tick_price_input_policy
     required_columns: list[str] = [column_mapping.timestamp_column]
 
@@ -406,7 +457,7 @@ def _normalize_tick_data(
         source_path=file_reference.path,
     )
 
-    normalized_records: tuple[NormalizedTickDataRecord, ...] = tuple(
+    normalized_rows: tuple[_NormalizedTickRow, ...] = tuple(
         _normalize_tick_row(
             source_row,
             source_row_number=source_row_number,
@@ -417,8 +468,8 @@ def _normalize_tick_data(
         for source_row_number, source_row in enumerate(source_rows.rows, start=1)
     )
 
-    deduplicated_records, dropped_duplicate_row_count = _deduplicate_records(
-        normalized_records,
+    deduplicated_rows, dropped_duplicate_row_count = _deduplicate_records(
+        normalized_rows,
         key_builder=lambda record: (
             record.timestamp,
             record.price,
@@ -434,31 +485,40 @@ def _normalize_tick_data(
     )
 
     if normalization_policy.sort_records_by_timestamp:
-        deduplicated_records = tuple(
+        deduplicated_rows = tuple(
             sorted(
-                deduplicated_records,
+                deduplicated_rows,
                 key=lambda record: (record.timestamp, record.source_row_number),
             )
         )
 
-    return LoadedTickDataSource(
-        records=deduplicated_records,
-        summary=LoadedMarketDataSourceSummary(
-            path=file_reference.path,
-            file_format=file_reference.file_format,
-            provenance_label=file_reference.provenance_label,
-            source_row_count=len(source_rows.rows),
-            retained_row_count=len(deduplicated_records),
-            dropped_duplicate_row_count=dropped_duplicate_row_count,
-            sort_records_by_timestamp=normalization_policy.sort_records_by_timestamp,
-            applied_timestamp_timezone=normalization_policy.timestamp_timezone,
-            canonical_value_field="price" if tick_price_input_policy is not None else None,
-            value_mapping_policy=(
-                tick_price_input_policy.value
-                if tick_price_input_policy is not None
-                else None
+    resolved_records, trade_sign_resolution_diagnostics = _finalize_tick_data_records(
+        deduplicated_rows,
+        resolve_unsigned_trade_signs=resolve_unsigned_trade_signs,
+        source_path=file_reference.path,
+    )
+
+    return _LoadedTickDataNormalizationResult(
+        tick_data=LoadedTickDataSource(
+            records=resolved_records,
+            summary=LoadedMarketDataSourceSummary(
+                path=file_reference.path,
+                file_format=file_reference.file_format,
+                provenance_label=file_reference.provenance_label,
+                source_row_count=len(source_rows.rows),
+                retained_row_count=len(resolved_records),
+                dropped_duplicate_row_count=dropped_duplicate_row_count,
+                sort_records_by_timestamp=normalization_policy.sort_records_by_timestamp,
+                applied_timestamp_timezone=normalization_policy.timestamp_timezone,
+                canonical_value_field="price" if tick_price_input_policy is not None else None,
+                value_mapping_policy=(
+                    tick_price_input_policy.value
+                    if tick_price_input_policy is not None
+                    else None
+                ),
             ),
         ),
+        trade_sign_resolution_diagnostics=trade_sign_resolution_diagnostics,
     )
 
 
@@ -615,7 +675,7 @@ def _normalize_tick_row(
     column_mapping: CalibrationTickDataColumnMapping,
     normalization_policy: CalibrationMarketDataNormalizationPolicy,
     source_path: str,
-) -> NormalizedTickDataRecord:
+) -> _NormalizedTickRow:
     row_field_path = f"tick_data_source.rows[{source_row_number}]"
     timestamp = _normalize_timestamp_value(
         source_row.get(column_mapping.timestamp_column),
@@ -718,7 +778,7 @@ def _normalize_tick_row(
         case None:
             price = None
 
-    return NormalizedTickDataRecord(
+    return _NormalizedTickRow(
         timestamp=timestamp,
         price=price,
         trade_price=trade_price,
@@ -728,6 +788,217 @@ def _normalize_tick_row(
         close_price=close_price,
         source_row_number=source_row_number,
     )
+
+
+def _finalize_tick_data_records(
+    normalized_rows: Sequence[_NormalizedTickRow],
+    *,
+    resolve_unsigned_trade_signs: bool,
+    source_path: str,
+) -> tuple[tuple[NormalizedTickDataRecord, ...], Optional[_TradeSignResolutionDiagnostics]]:
+    resolved_signs: tuple[Optional[CalibrationTradeSign], ...]
+    trade_sign_resolution_diagnostics: Optional[_TradeSignResolutionDiagnostics]
+
+    if resolve_unsigned_trade_signs:
+        resolved_signs, trade_sign_resolution_diagnostics = _resolve_trade_signs_for_tick_rows(
+            normalized_rows,
+            source_path=source_path,
+        )
+    else:
+        resolved_signs = tuple(row.trade_sign for row in normalized_rows)
+        trade_sign_resolution_diagnostics = None
+
+    finalized_records = tuple(
+        _build_normalized_tick_record(normalized_row, trade_sign=trade_sign)
+        for normalized_row, trade_sign in zip(normalized_rows, resolved_signs, strict=True)
+    )
+
+    return finalized_records, trade_sign_resolution_diagnostics
+
+
+def _build_normalized_tick_record(
+    normalized_row: _NormalizedTickRow,
+    *,
+    trade_sign: Optional[CalibrationTradeSign],
+) -> NormalizedTickDataRecord:
+    return NormalizedTickDataRecord(
+        timestamp=normalized_row.timestamp,
+        price=normalized_row.price,
+        trade_price=normalized_row.trade_price,
+        trade_sign=trade_sign,
+        bid_price=normalized_row.bid_price,
+        ask_price=normalized_row.ask_price,
+        close_price=normalized_row.close_price,
+        source_row_number=normalized_row.source_row_number,
+    )
+
+
+def _resolve_trade_signs_for_tick_rows(
+    normalized_rows: Sequence[_NormalizedTickRow],
+    *,
+    source_path: str,
+) -> tuple[tuple[Optional[CalibrationTradeSign], ...], _TradeSignResolutionDiagnostics]:
+    if len(normalized_rows) == 0:
+        return (
+            (),
+            _TradeSignResolutionDiagnostics(
+                policy_id="tick_price_change_with_flat_move_carryover.v1",
+                first_inferred_trade_sign=CalibrationTradeSign.BUY,
+                provided_label_count=0,
+                inferred_label_count=0,
+                flat_move_carry_count=0,
+                price_up_inference_count=0,
+                price_down_inference_count=0,
+            ),
+        )
+
+    price_array = pyarrow.array(
+        [normalized_row.price for normalized_row in normalized_rows],
+        type=pyarrow.float64(),
+    )
+    provided_sign_codes = pyarrow.array(
+        [_trade_sign_code(normalized_row.trade_sign) for normalized_row in normalized_rows],
+        type=pyarrow.int8(),
+    )
+    missing_sign_mask = pyarrow_compute.is_null(provided_sign_codes)
+    inferred_label_count = _count_true_values(missing_sign_mask)
+
+    if inferred_label_count == 0:
+        return (
+            tuple(normalized_row.trade_sign for normalized_row in normalized_rows),
+            _TradeSignResolutionDiagnostics(
+                policy_id="tick_price_change_with_flat_move_carryover.v1",
+                first_inferred_trade_sign=CalibrationTradeSign.BUY,
+                provided_label_count=len(normalized_rows),
+                inferred_label_count=0,
+                flat_move_carry_count=0,
+                price_up_inference_count=0,
+                price_down_inference_count=0,
+            ),
+        )
+
+    missing_price_mask = pyarrow_compute.and_(
+        missing_sign_mask,
+        pyarrow_compute.is_null(price_array),
+    )
+    missing_price_index = _first_true_index(missing_price_mask)
+    if missing_price_index is not None:
+        raise _market_data_ingestion_error(
+            "column_mapping.tick_data.trade_sign_column",
+            "trade sign inference requires a canonical tick price for every retained trade event",
+            context={
+                "source_path": source_path,
+                "source_row_number": normalized_rows[missing_price_index].source_row_number,
+            },
+            normalization_step="trade_sign_inference",
+        )
+
+    carried_forward_prices = pyarrow_compute.fill_null_forward(price_array)
+    previous_prices = pyarrow.concat_arrays(
+        (
+            pyarrow.array([None], type=pyarrow.float64()),
+            carried_forward_prices.slice(0, len(normalized_rows) - 1),
+        )
+    )
+    price_up_mask = pyarrow_compute.and_(
+        missing_sign_mask,
+        pyarrow_compute.fill_null(
+            pyarrow_compute.greater(price_array, previous_prices),
+            False,
+        ),
+    )
+    price_down_mask = pyarrow_compute.and_(
+        missing_sign_mask,
+        pyarrow_compute.fill_null(
+            pyarrow_compute.less(price_array, previous_prices),
+            False,
+        ),
+    )
+    first_inference_mask = pyarrow_compute.and_(
+        missing_sign_mask,
+        pyarrow_compute.is_null(previous_prices),
+    )
+    buy_sign_code = pyarrow.scalar(1, type=pyarrow.int8())
+    sell_sign_code = pyarrow.scalar(-1, type=pyarrow.int8())
+    null_sign_code = pyarrow.scalar(None, type=pyarrow.int8())
+    inferred_seed_codes = pyarrow_compute.if_else(
+        price_up_mask,
+        buy_sign_code,
+        pyarrow_compute.if_else(
+            price_down_mask,
+            sell_sign_code,
+            pyarrow_compute.if_else(
+                first_inference_mask,
+                buy_sign_code,
+                null_sign_code,
+            ),
+        ),
+    )
+    resolved_sign_codes = pyarrow_compute.fill_null_forward(
+        pyarrow_compute.coalesce(provided_sign_codes, inferred_seed_codes)
+    )
+    resolved_signs = tuple(
+        _trade_sign_from_code(resolved_sign_code)
+        for resolved_sign_code in resolved_sign_codes.to_pylist()
+    )
+    price_up_inference_count = _count_true_values(price_up_mask)
+    price_down_inference_count = _count_true_values(price_down_mask)
+    flat_move_carry_count = (
+        inferred_label_count
+        - _count_true_values(first_inference_mask)
+        - price_up_inference_count
+        - price_down_inference_count
+    )
+
+    return (
+        resolved_signs,
+        _TradeSignResolutionDiagnostics(
+            policy_id="tick_price_change_with_flat_move_carryover.v1",
+            first_inferred_trade_sign=CalibrationTradeSign.BUY,
+            provided_label_count=len(normalized_rows) - inferred_label_count,
+            inferred_label_count=inferred_label_count,
+            flat_move_carry_count=flat_move_carry_count,
+            price_up_inference_count=price_up_inference_count,
+            price_down_inference_count=price_down_inference_count,
+        ),
+    )
+
+
+def _trade_sign_code(trade_sign: Optional[CalibrationTradeSign]) -> Optional[int]:
+    match trade_sign:
+        case CalibrationTradeSign.BUY:
+            return 1
+        case CalibrationTradeSign.SELL:
+            return -1
+        case None:
+            return None
+
+
+def _trade_sign_from_code(trade_sign_code: object) -> Optional[CalibrationTradeSign]:
+    match trade_sign_code:
+        case 1:
+            return CalibrationTradeSign.BUY
+        case -1:
+            return CalibrationTradeSign.SELL
+        case None:
+            return None
+        case _:
+            raise ValueError(f"Unsupported trade sign code: {trade_sign_code!r}")
+
+
+def _count_true_values(mask: pyarrow.Array) -> int:
+    count = pyarrow_compute.sum(
+        pyarrow_compute.cast(mask, pyarrow.int64())
+    ).as_py()
+    return int(count or 0)
+
+
+def _first_true_index(mask: pyarrow.Array) -> Optional[int]:
+    for index, value in enumerate(mask.to_pylist()):
+        if value:
+            return index
+
+    return None
 
 
 def _normalize_option_surface_row(
@@ -1017,7 +1288,7 @@ def _localize_naive_datetime(
     source_path: str,
 ) -> datetime:
     try:
-        time_zone = ZoneInfo(source_timezone)
+        time_zone = _resolve_source_timezone(source_timezone)
     except ZoneInfoNotFoundError as e:
         raise _market_data_ingestion_error(
             field_path,
@@ -1056,6 +1327,14 @@ def _localize_naive_datetime(
         return aware_fold_zero
 
     return aware_fold_one
+
+
+def _resolve_source_timezone(source_timezone: str) -> tzinfo:
+    normalized_timezone = source_timezone.strip()
+    if normalized_timezone.upper() in {"UTC", "Z", "GMT", "UT"}:
+        return UTC
+
+    return ZoneInfo(normalized_timezone)
 
 
 def _normalize_required_numeric_value(

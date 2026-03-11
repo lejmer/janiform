@@ -25,6 +25,8 @@ use crate::risk::{
     SufficientStatisticsRiskReturnComponentsError,
 };
 
+use super::runtime::compute_max_effective_endogenous_branching_ratio;
+
 const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
 const ONE_SECOND_NANOS: i64 = 1_000_000_000;
 const INTERVAL_DELTA_NANOS_TOLERANCE: f64 = 0.5;
@@ -355,6 +357,27 @@ impl CoarseSimulationRunRequest {
             );
         }
 
+        if let Some((
+            max_seasonality_factor,
+            spectral_radius_alpha_over_beta,
+            effective_branching_ratio,
+        )) = compute_max_effective_endogenous_branching_ratio(
+            self.model_inputs
+                .risk_model_inputs
+                .equation_specification
+                .hawkes_kernel_parameters,
+            &self.interval_factors.s_h[..self.horizon_interval_count],
+        ) && effective_branching_ratio >= 1.0
+        {
+            return Err(
+                CoarseSimulationRunRequestError::SeasonalityScaledEndogenousInstability {
+                    max_seasonality_factor,
+                    spectral_radius_alpha_over_beta,
+                    effective_branching_ratio,
+                },
+            );
+        }
+
         Ok(())
     }
 
@@ -406,6 +429,11 @@ pub enum CoarseSimulationRunRequestError {
         requested_interval_count: usize,
         available_interval_count: usize,
     },
+    SeasonalityScaledEndogenousInstability {
+        max_seasonality_factor: f64,
+        spectral_radius_alpha_over_beta: f64,
+        effective_branching_ratio: f64,
+    },
 }
 
 impl Display for CoarseSimulationRunRequestError {
@@ -455,6 +483,14 @@ impl Display for CoarseSimulationRunRequestError {
             } => write!(
                 formatter,
                 "horizon_interval_count ({requested_interval_count}) exceeds available interval_factors entries ({available_interval_count})"
+            ),
+            Self::SeasonalityScaledEndogenousInstability {
+                max_seasonality_factor,
+                spectral_radius_alpha_over_beta,
+                effective_branching_ratio,
+            } => write!(
+                formatter,
+                "seasonality-scaled endogenous branching must remain below 1.0, found max_s_h={max_seasonality_factor}, spectral_radius_alpha_over_beta={spectral_radius_alpha_over_beta}, effective_branching_ratio={effective_branching_ratio}"
             ),
         }
     }
@@ -1857,6 +1893,54 @@ mod tests {
             CoarseSimulationRunRequestError::InvalidIntervalDelta {
                 source: IntervalDeltaGridError::NonPositiveOrNonFinite { value: 0.0 },
             }
+        ));
+    }
+
+    #[test]
+    fn coarse_run_request_rejects_seasonality_scaled_supercritical_hawkes_inputs() {
+        let mut model_inputs = build_model_inputs();
+        model_inputs
+            .risk_model_inputs
+            .equation_specification
+            .hawkes_kernel_parameters = HawkesKernelParameters::try_new(
+            0.8,
+            1.0,
+            HawkesKernelLoadings {
+                plus_plus: 0.9,
+                plus_minus: 0.0,
+                minus_plus: 0.0,
+                minus_minus: 0.9,
+            },
+            HawkesKernelLoadings {
+                plus_plus: 0.0,
+                plus_minus: 0.0,
+                minus_plus: 0.0,
+                minus_minus: 0.0,
+            },
+        )
+        .expect("supercritical guard fixture should be valid in kernel domain");
+
+        let interval_factors = SufficientStatisticsRiskIntervalFactors::try_new(
+            vec![1.2, 1.2],
+            vec![0.12, 0.03],
+            vec![0.08, 0.07],
+            Some(1.0),
+        )
+        .expect("interval factors should construct");
+
+        let error = CoarseSimulationRunRequest::try_new(
+            17,
+            1_704_067_200_000_000_000,
+            2,
+            1.0,
+            model_inputs,
+            interval_factors,
+        )
+        .expect_err("seasonality-scaled supercritical Hawkes inputs must fail");
+
+        assert!(matches!(
+            error,
+            CoarseSimulationRunRequestError::SeasonalityScaledEndogenousInstability { .. }
         ));
     }
 

@@ -304,6 +304,14 @@ impl SessionTime {
         Self { hour, minute }
     }
 
+    pub fn hour(self) -> u8 {
+        self.hour
+    }
+
+    pub fn minute(self) -> u8 {
+        self.minute
+    }
+
     pub(crate) fn parse(raw: &str) -> Result<Self, &'static str> {
         let mut parts = raw.split(':');
         let hour_segment = parts

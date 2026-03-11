@@ -750,6 +750,12 @@ def run_staged_calibration(
 ) -> str: ...
 
 
+def preprocess_market_data_translation_request(
+    preprocessing_request_json: str,
+    calendar_registry: CalendarRegistry,
+) -> str: ...
+
+
 def run_coarse_simulation(
     run_request_json: str,
 ) -> str: ...

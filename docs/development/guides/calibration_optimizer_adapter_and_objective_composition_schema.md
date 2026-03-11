@@ -44,6 +44,13 @@ Composition API:
 
 - `compose_calibration_weighted_objective(&[CalibrationObjectiveTermInput])`
 
+Hawkes-stage note:
+
+- Hawkes stage no longer treats raw observed market-data summaries as direct objective scores.
+- Python market-data preparation now supplies a candidate family plus unsigned directional-label diagnostics and an observed source regime.
+- Rust Hawkes execution derives candidate-specific model-implied diagnostics from each parameterization, converts the resulting fit errors into `CalibrationObjectiveTermInput` values, and only then passes those terms through `compose_calibration_weighted_objective`.
+- Return-components stage still supplies candidate-specific objective terms directly.
+
 Failure modes:
 
 - `CalibrationObjectiveCompositionError::MissingObjectiveTerms`

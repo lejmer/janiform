@@ -51,6 +51,7 @@ use crate::simulation::{
 };
 
 const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
+const SEEDED_TEST_START_UTC_NANOS: i64 = 1_705_932_000_000_000_000;
 
 #[test]
 fn trading_time_assembler_buy_only_edge_mode_keeps_sell_and_gap_components_zero() {
@@ -242,7 +243,7 @@ fn set_known_news_timestamps(
 fn seeded_simulation_run_executes_with_valid_config() {
     let run_config = SeededTickSimulationRunConfig::try_new(
         9_101,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         2,
         valid_model_inputs(),
         Some(SeededTickSimulationRunOptions {
@@ -290,7 +291,7 @@ fn seeded_simulation_run_executes_with_valid_config() {
 fn seeded_simulation_run_diverges_with_different_seeds() {
     let first_run_config = SeededTickSimulationRunConfig::try_new(
         9_101,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         2,
         valid_model_inputs(),
         None,
@@ -298,7 +299,7 @@ fn seeded_simulation_run_diverges_with_different_seeds() {
     .expect("first run config should initialize");
     let second_run_config = SeededTickSimulationRunConfig::try_new(
         9_102,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         2,
         valid_model_inputs(),
         None,
@@ -317,7 +318,7 @@ fn seeded_simulation_run_diverges_with_different_seeds() {
 fn seeded_simulation_run_is_independent_from_debug_trace_flag() {
     let run_config_without_debug = SeededTickSimulationRunConfig::try_new(
         8_001,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         2,
         valid_model_inputs(),
         Some(SeededTickSimulationRunOptions {
@@ -329,7 +330,7 @@ fn seeded_simulation_run_is_independent_from_debug_trace_flag() {
     .expect("run config without debug trace should initialize");
     let run_config_with_debug = SeededTickSimulationRunConfig::try_new(
         8_001,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         2,
         valid_model_inputs(),
         Some(SeededTickSimulationRunOptions {
@@ -368,7 +369,7 @@ fn seeded_simulation_run_is_independent_from_debug_trace_flag() {
 fn seeded_simulation_run_rejects_invalid_debug_trace_sampling_stride() {
     let error = SeededTickSimulationRunConfig::try_new(
         8_011,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         1,
         valid_model_inputs(),
         Some(SeededTickSimulationRunOptions {
@@ -392,7 +393,7 @@ fn seeded_simulation_run_rejects_invalid_debug_trace_sampling_stride() {
 fn seeded_simulation_run_rejects_invalid_debug_trace_chunk_size() {
     let error = SeededTickSimulationRunConfig::try_new(
         8_012,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         1,
         valid_model_inputs(),
         Some(SeededTickSimulationRunOptions {
@@ -416,7 +417,7 @@ fn seeded_simulation_run_rejects_invalid_debug_trace_chunk_size() {
 fn seeded_simulation_debug_trace_schema_exposes_required_fields() {
     let run_config = SeededTickSimulationRunConfig::try_new(
         8_013,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         1,
         one_interval_model_inputs(1.0, 1.0, 0.0),
         Some(SeededTickSimulationRunOptions {
@@ -536,7 +537,7 @@ fn seeded_simulation_debug_trace_schema_exposes_required_fields() {
 
 #[test]
 fn seeded_simulation_debug_trace_captures_transition_ordering_and_carryover_context() {
-    let start_utc_nanos = 1_704_067_200_000_000_000;
+    let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
 
     let run_config = SeededTickSimulationRunConfig::try_new(
         8_014,
@@ -636,11 +637,11 @@ fn seeded_simulation_debug_trace_captures_transition_ordering_and_carryover_cont
     );
     assert_eq!(
         exogenous_news_record.exogenous_news_market_state,
-        Some(SeededTickSimulationNewsEventMarketState::Closed)
+        Some(SeededTickSimulationNewsEventMarketState::Open)
     );
     assert_eq!(
         exogenous_news_record.exogenous_news_return_jump_routing_target,
-        Some(NewsReturnJumpRoutingTarget::ClosedWindowGapG)
+        Some(NewsReturnJumpRoutingTarget::OpenWindowDirectJumpM)
     );
     assert!(
         trace_records[0]
@@ -661,10 +662,39 @@ fn seeded_simulation_debug_trace_captures_transition_ordering_and_carryover_cont
 }
 
 #[test]
+fn seeded_simulation_suppresses_endogenous_events_while_market_is_closed() {
+    let run_config = SeededTickSimulationRunConfig::try_new(
+        8_014,
+        DateTime::<Utc>::from_timestamp_nanos(1_705_928_400_000_000_000),
+        1,
+        one_interval_closed_market_model_inputs(),
+        None,
+    )
+    .expect("closed-market run config should initialize");
+
+    let scripted_factory = ScriptedRandomnessFactory::new(
+        vec![0.0],
+        vec![0.0],
+        vec![0.1, 0.2, 0.3],
+        vec![0.0, 0.0, 0.0],
+        vec![0.0],
+        vec![],
+        vec![],
+        vec![],
+    );
+
+    let run_result =
+        run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
+            .expect("closed-market run should complete");
+
+    assert!(run_result.event_path.is_empty());
+}
+
+#[test]
 fn seeded_simulation_debug_trace_sampling_and_chunking_controls_limit_payload_size() {
     let run_config = SeededTickSimulationRunConfig::try_new(
         8_015,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         1,
         one_interval_model_inputs(3.0, 3.0, 0.0),
         Some(SeededTickSimulationRunOptions {
@@ -735,7 +765,7 @@ fn seeded_simulation_debug_trace_sampling_and_chunking_controls_limit_payload_si
 fn seeded_simulation_run_accepts_injected_randomness_factory() {
     let run_config = SeededTickSimulationRunConfig::try_new(
         5_003,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         2,
         valid_model_inputs(),
         None,
@@ -762,7 +792,7 @@ fn seeded_simulation_run_accepts_injected_randomness_factory() {
 fn seeded_simulation_run_rejects_zero_horizon() {
     let error = SeededTickSimulationRunConfig::try_new(
         42,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         0,
         valid_model_inputs(),
         None,
@@ -782,7 +812,7 @@ fn seeded_simulation_run_rejects_incomplete_hourly_factor_payload() {
 
     let error = SeededTickSimulationRunConfig::try_new(
         77,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         1,
         model_inputs,
         None,
@@ -802,7 +832,7 @@ fn seeded_simulation_run_rejects_incomplete_hourly_factor_payload() {
 #[test]
 fn seeded_simulation_run_rejects_non_consecutive_hourly_factor_coverage() {
     let mut model_inputs = valid_model_inputs();
-    let start_utc_nanos = 1_704_067_200_000_000_000;
+    let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
 
     model_inputs.hourly_factor_contract.interval_start_utc_nanos[1] += ONE_HOUR_NANOS;
     model_inputs.hourly_factor_contract.interval_end_utc_nanos[1] += ONE_HOUR_NANOS;
@@ -834,8 +864,45 @@ fn seeded_simulation_run_rejects_non_consecutive_hourly_factor_coverage() {
 }
 
 #[test]
+fn seeded_simulation_run_rejects_seasonality_scaled_supercritical_hawkes_inputs() {
+    let mut model_inputs = valid_model_inputs();
+    model_inputs.kernel_parameters = HawkesKernelParameters::try_new(
+        0.8,
+        1.0,
+        HawkesKernelLoadings {
+            plus_plus: 0.9,
+            plus_minus: 0.0,
+            minus_plus: 0.0,
+            minus_minus: 0.9,
+        },
+        HawkesKernelLoadings {
+            plus_plus: 0.0,
+            plus_minus: 0.0,
+            minus_plus: 0.0,
+            minus_minus: 0.0,
+        },
+    )
+    .expect("supercritical guard fixture should be valid in kernel domain");
+    model_inputs.hourly_factor_contract.s_h = vec![1.2, 1.2];
+
+    let error = SeededTickSimulationRunConfig::try_new(
+        99,
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
+        2,
+        model_inputs,
+        None,
+    )
+    .expect_err("seasonality-scaled supercritical Hawkes inputs must fail");
+
+    assert!(matches!(
+        error,
+        SeededTickSimulationRunError::SeasonalityScaledEndogenousInstability { .. }
+    ));
+}
+
+#[test]
 fn seeded_simulation_preserves_full_state_carryover_across_hour_boundaries() {
-    let start_utc_nanos = 1_704_067_200_000_000_000;
+    let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
     let model_inputs = two_interval_zero_event_carryover_model_inputs();
     let kernel_parameters = model_inputs.kernel_parameters;
 
@@ -891,7 +958,7 @@ fn seeded_simulation_preserves_full_state_carryover_across_hour_boundaries() {
 
 #[test]
 fn seeded_simulation_factor_changes_apply_on_hour_boundaries_only() {
-    let start_utc_nanos = 1_704_067_200_000_000_000;
+    let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
     let boundary_utc_nanos = start_utc_nanos + ONE_HOUR_NANOS;
 
     let baseline_run_config = SeededTickSimulationRunConfig::try_new(
@@ -973,7 +1040,7 @@ fn seeded_simulation_event_time_feedback_changes_same_interval_arrival_dynamics_
 
     let no_feedback_run_config = SeededTickSimulationRunConfig::try_new(
         1_007,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         1,
         no_feedback_model_inputs,
         None,
@@ -981,7 +1048,7 @@ fn seeded_simulation_event_time_feedback_changes_same_interval_arrival_dynamics_
     .expect("no-feedback run config should initialize");
     let feedback_run_config = SeededTickSimulationRunConfig::try_new(
         1_007,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         1,
         feedback_model_inputs,
         None,
@@ -1023,7 +1090,7 @@ fn seeded_simulation_regresses_if_endogenous_scheduling_reverts_to_static_count_
 {
     let run_config = SeededTickSimulationRunConfig::try_new(
         2_008,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         1,
         one_interval_model_inputs(2.0, 2.0, 0.0),
         None,
@@ -1044,7 +1111,7 @@ fn seeded_simulation_regresses_if_endogenous_scheduling_reverts_to_static_count_
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("regression-guard run should complete");
 
-    let interval_start_utc_nanos = 1_704_067_200_000_000_000;
+    let interval_start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
     let legacy_uniform_timestamps = vec![
         interval_start_utc_nanos + ONE_HOUR_NANOS / 4,
         interval_start_utc_nanos + 3 * ONE_HOUR_NANOS / 4,
@@ -1064,7 +1131,7 @@ fn seeded_simulation_regresses_if_endogenous_scheduling_reverts_to_static_count_
 
 #[test]
 fn seeded_simulation_fine_path_interval_aggregation_matches_coarse_endogenous_trace_diagnostics() {
-    let start_utc_nanos = 1_704_067_200_000_000_000;
+    let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
     let run_config = SeededTickSimulationRunConfig::try_new(
         2_009,
         DateTime::<Utc>::from_timestamp_nanos(start_utc_nanos),
@@ -1143,7 +1210,7 @@ fn seeded_simulation_fine_path_interval_aggregation_matches_coarse_endogenous_tr
 
 #[test]
 fn seeded_simulation_scheduler_applies_known_before_surprise_tie_ordering_policy() {
-    let start_utc_nanos = 1_704_067_200_000_000_000;
+    let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
     let tied_timestamp_utc_nanos = start_utc_nanos + ((ONE_HOUR_NANOS as f64 * 0.3).floor() as i64);
 
     let mut model_inputs = one_interval_model_inputs(1.0, 1.0, 2.0);
@@ -1224,7 +1291,7 @@ fn interval_news_arrival_decomposition_scales_known_component_by_interval_durati
 #[test]
 fn seeded_simulation_surprise_sampling_is_invariant_to_known_timestamp_profile_when_known_count_is_fixed()
  {
-    let start_utc_nanos = 1_704_067_200_000_000_000;
+    let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
     let interval_end_utc_nanos = start_utc_nanos + 2 * ONE_HOUR_NANOS;
 
     let known_timestamp_profiles: Vec<Vec<i64>> = vec![
@@ -1318,7 +1385,7 @@ fn seeded_simulation_surprise_sampling_is_invariant_to_known_timestamp_profile_w
 #[test]
 fn seeded_simulation_news_component_counts_follow_known_plus_surprise_decomposition_for_controlled_fixture()
  {
-    let start_utc_nanos = 1_704_067_200_000_000_000;
+    let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
     let second_interval_start_utc_nanos = start_utc_nanos + ONE_HOUR_NANOS;
     let second_interval_end_utc_nanos = start_utc_nanos + 2 * ONE_HOUR_NANOS;
 
@@ -1731,7 +1798,7 @@ fn seeded_simulation_calendar_resolution_is_source_of_truth_for_early_close_boun
 fn seeded_simulation_rejects_invalid_generated_news_return_jump_mark() {
     let run_config = SeededTickSimulationRunConfig::try_new(
         2_011,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         1,
         one_interval_model_inputs(0.5, 0.5, 1.0),
         None,
@@ -1780,7 +1847,7 @@ fn seeded_exogenous_mark_sampling_matches_shared_gamma_kou_reference_contract_fo
     let observed_event_input = super::runtime::build_timestamped_news_event_input(
         &build_news_process_configuration(Vec::new()).default_mark_pipeline(),
         NewsArrivalComponent::Surprise,
-        1_704_067_200_000_000_000,
+        SEEDED_TEST_START_UTC_NANOS,
         0,
         mark_scales,
         &mut observed_mark_stream,
@@ -1836,7 +1903,7 @@ fn seeded_exogenous_mark_sampling_preserves_shared_gamma_kou_sign_and_scale_stat
         let observed_event_input = super::runtime::build_timestamped_news_event_input(
             &mark_pipeline,
             NewsArrivalComponent::Surprise,
-            1_704_067_200_000_000_000,
+            SEEDED_TEST_START_UTC_NANOS,
             0,
             mark_scales,
             &mut observed_mark_stream,
@@ -1897,7 +1964,7 @@ fn seeded_exogenous_mark_sampling_preserves_shared_gamma_kou_sign_and_scale_stat
 
 #[test]
 fn seeded_simulation_boundary_adjacent_event_times_are_not_snapped_to_hour_edges() {
-    let start_utc_nanos = 1_704_067_200_000_000_000;
+    let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
     let boundary_utc_nanos = start_utc_nanos + ONE_HOUR_NANOS;
 
     let run_config = SeededTickSimulationRunConfig::try_new(
@@ -1955,7 +2022,7 @@ fn seeded_simulation_state_snapshot_captures_post_event_transition_boundary() {
 
     let run_config = SeededTickSimulationRunConfig::try_new(
         7_047,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         1,
         model_inputs,
         Some(SeededTickSimulationRunOptions {
@@ -2007,7 +2074,7 @@ fn seeded_simulation_state_snapshot_captures_post_event_transition_boundary() {
 fn seeded_simulation_fine_path_schema_exposes_required_priced_fields() {
     let run_config = SeededTickSimulationRunConfig::try_new(
         8_047,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         1,
         one_interval_model_inputs(1.0, 0.5, 0.0),
         None,
@@ -2073,7 +2140,7 @@ fn seeded_simulation_fine_path_schema_exposes_required_priced_fields() {
 fn seeded_simulation_event_tape_schema_exposes_required_and_optional_fields() {
     let run_config_without_snapshot = SeededTickSimulationRunConfig::try_new(
         8_048,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         1,
         one_interval_model_inputs(1.0, 0.5, 0.0),
         None,
@@ -2155,7 +2222,7 @@ fn seeded_simulation_event_tape_schema_exposes_required_and_optional_fields() {
 
     let run_config_with_snapshot = SeededTickSimulationRunConfig::try_new(
         8_048,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         1,
         one_interval_model_inputs(1.0, 0.5, 0.0),
         Some(SeededTickSimulationRunOptions {
@@ -2212,7 +2279,7 @@ fn seeded_simulation_event_tape_schema_exposes_required_and_optional_fields() {
 fn seeded_simulation_event_tape_serialization_is_deterministic() {
     let run_config = SeededTickSimulationRunConfig::try_new(
         9_049,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         2,
         valid_model_inputs(),
         Some(SeededTickSimulationRunOptions {
@@ -2242,7 +2309,7 @@ fn seeded_simulation_event_tape_serialization_is_deterministic() {
 fn seeded_simulation_tied_and_near_tied_timestamps_serialize_deterministically() {
     let first_run_config = SeededTickSimulationRunConfig::try_new(
         10_050,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         1,
         one_interval_model_inputs(1.0, 1.0, 0.0),
         None,
@@ -2287,7 +2354,7 @@ fn seeded_simulation_tied_and_near_tied_timestamps_serialize_deterministically()
 
     let second_run_config = SeededTickSimulationRunConfig::try_new(
         10_051,
-        DateTime::<Utc>::from_timestamp_nanos(1_704_067_200_000_000_000),
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
         1,
         one_interval_model_inputs(1.0, 1.0, 0.0),
         None,
@@ -2632,7 +2699,7 @@ fn one_interval_model_inputs(
     lambda_minus: f64,
     news_intensity: f64,
 ) -> SeededTickSimulationModelInputs {
-    let start_utc_nanos = 1_704_067_200_000_000_000;
+    let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
     let interval_start_utc_nanos = vec![start_utc_nanos];
     let interval_end_utc_nanos = vec![start_utc_nanos + ONE_HOUR_NANOS];
 
@@ -2696,6 +2763,35 @@ fn one_interval_model_inputs(
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
         news_process_configuration: build_news_process_configuration(Vec::new()),
     }
+}
+
+fn one_interval_closed_market_model_inputs() -> SeededTickSimulationModelInputs {
+    let mut model_inputs = one_interval_model_inputs(20.0, 20.0, 0.0);
+    let closed_interval_start_utc_nanos = 1_705_928_400_000_000_000;
+    let closed_interval_end_utc_nanos = closed_interval_start_utc_nanos + ONE_HOUR_NANOS;
+
+    model_inputs.hourly_factor_contract.request_start_utc_nanos = closed_interval_start_utc_nanos;
+    model_inputs.hourly_factor_contract.request_end_utc_nanos = closed_interval_end_utc_nanos;
+    model_inputs.hourly_factor_contract.interval_start_utc_nanos =
+        vec![closed_interval_start_utc_nanos];
+    model_inputs.hourly_factor_contract.interval_end_utc_nanos =
+        vec![closed_interval_end_utc_nanos];
+    model_inputs
+        .hourly_factor_contract
+        .interval_start_exchange_local = vec!["2024-01-22T08:00:00-05:00".to_string()];
+    model_inputs
+        .hourly_factor_contract
+        .interval_end_exchange_local = vec!["2024-01-22T09:00:00-05:00".to_string()];
+    model_inputs
+        .hourly_factor_contract
+        .diagnostics
+        .first_interval_start_utc_nanos = closed_interval_start_utc_nanos;
+    model_inputs
+        .hourly_factor_contract
+        .diagnostics
+        .last_interval_end_utc_nanos = closed_interval_end_utc_nanos;
+
+    model_inputs
 }
 
 fn two_interval_zero_event_carryover_model_inputs() -> SeededTickSimulationModelInputs {
@@ -2849,7 +2945,7 @@ fn timestamp_utc_nanos(raw_timestamp_utc: &str) -> i64 {
 }
 
 fn valid_model_inputs() -> SeededTickSimulationModelInputs {
-    let start_utc_nanos = 1_704_067_200_000_000_000;
+    let start_utc_nanos = SEEDED_TEST_START_UTC_NANOS;
     let interval_start_utc_nanos = vec![start_utc_nanos, start_utc_nanos + ONE_HOUR_NANOS];
     let interval_end_utc_nanos = vec![
         start_utc_nanos + ONE_HOUR_NANOS,
@@ -2944,31 +3040,31 @@ fn build_seeded_simulation_calendar_registry() -> ExchangeCalendarRegistry {
                     {
                       "weekday": "Monday",
                       "windows": [
-                        {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                        {"label": "regular", "open_time": "09:00", "close_time": "16:00"}
                       ]
                     },
                     {
                       "weekday": "Tuesday",
                       "windows": [
-                        {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                        {"label": "regular", "open_time": "09:00", "close_time": "16:00"}
                       ]
                     },
                     {
                       "weekday": "Wednesday",
                       "windows": [
-                        {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                        {"label": "regular", "open_time": "09:00", "close_time": "16:00"}
                       ]
                     },
                     {
                       "weekday": "Thursday",
                       "windows": [
-                        {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                        {"label": "regular", "open_time": "09:00", "close_time": "16:00"}
                       ]
                     },
                     {
                       "weekday": "Friday",
                       "windows": [
-                        {"label": "regular", "open_time": "09:30", "close_time": "16:00"}
+                        {"label": "regular", "open_time": "09:00", "close_time": "16:00"}
                       ]
                     }
                   ],
@@ -2977,7 +3073,7 @@ fn build_seeded_simulation_calendar_registry() -> ExchangeCalendarRegistry {
                     {
                       "date": "2024-11-29",
                       "windows": [
-                        {"label": "post_thanksgiving", "open_time": "09:30", "close_time": "13:00"}
+                        {"label": "post_thanksgiving", "open_time": "09:00", "close_time": "13:00"}
                       ]
                     }
                   ]

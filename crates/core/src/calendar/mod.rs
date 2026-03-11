@@ -120,6 +120,7 @@ pub use errors::{
     TimestampEventPreprocessingError,
 };
 pub use registry::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
+pub(crate) use types::CalendarDate;
 pub use types::{
     CalendarRuleMetadata, CalendarRuleMetadataArtifact, EarlyCloseSessionArtifact,
     ExchangeCalendarArtifact, ExchangeCalendarDefinition, ExchangeCalendarRegistryArtifact,

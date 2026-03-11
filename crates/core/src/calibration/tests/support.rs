@@ -82,11 +82,11 @@ pub(super) use crate::calibration::{
     CalibrationValidationMetricManifestLink, CalibrationValidationMetricRecord,
     CalibrationValidationMetricSourceKind, CalibrationValidationMetricStageOutputLink,
     CalibrationValidationMetricStatus, CalibrationValidationMetricThresholdMetadata,
-    CalibrationValidationObservedValue, HawkesStageCandidateInput, HawkesStageExecutionFailure,
-    HawkesStageExecutionInput, HawkesStageObjectiveTermInput,
-    OptionSurfaceCalibrationObservationError, ReturnComponentsCloseOpenGapDetectionPolicy,
-    ReturnComponentsDetectedIntradayJumpCandidate, ReturnComponentsKnownNewsCalendarInput,
-    ReturnComponentsObservedCloseOpenBoundaryObservation,
+    CalibrationValidationObservedValue, HawkesStageCandidateInput,
+    HawkesStageDirectionalLabelDiagnostics, HawkesStageExecutionFailure, HawkesStageExecutionInput,
+    HawkesStageObservedSourceRegime, OptionSurfaceCalibrationObservationError,
+    ReturnComponentsCloseOpenGapDetectionPolicy, ReturnComponentsDetectedIntradayJumpCandidate,
+    ReturnComponentsKnownNewsCalendarInput, ReturnComponentsObservedCloseOpenBoundaryObservation,
     ReturnComponentsRealizedKnownNewsReturnSample, ReturnComponentsStageCandidateGenerationInput,
     ReturnComponentsStageExecutionFailure, ReturnComponentsStageExecutionInput,
     ReturnComponentsStageObjectiveMetricWeights, ReturnComponentsStageSignalSourceWindow,
@@ -727,48 +727,31 @@ pub(super) fn build_hawkes_stage_success_payload() -> crate::calibration::Hawkes
 }
 
 pub(super) fn hawkes_stage_candidate_fixture() -> Vec<HawkesStageCandidateInput> {
+    let source_regime = hawkes_source_regime_fixture();
+    let directional_label_diagnostics = hawkes_directional_label_diagnostics_fixture();
+
     vec![
         HawkesStageCandidateInput {
             candidate_id: "candidate_high_loss".to_string(),
-            lambda_bar: 0.85,
-            beta: 1.50,
-            structured_alpha: HawkesStructuredAlphaParameterization::new(0.40, 0.10, 0.08, 0.10),
-            structured_rho: HawkesStructuredRhoParameterization::new(0.35, 0.10, 0.05, 0.10),
+            lambda_bar: 7.20,
+            beta: 0.95,
+            structured_alpha: HawkesStructuredAlphaParameterization::new(0.28, 0.10, 0.08, 0.06),
+            structured_rho: HawkesStructuredRhoParameterization::new(0.14, 0.04, 0.03, 0.02),
             self_dominance_policy: Some(HawkesStructuredRhoSelfDominancePolicy::new(1.0)),
             stability_numeric_tolerance: 0.0,
-            objective_terms: vec![
-                HawkesStageObjectiveTermInput {
-                    term_id: "event_rate_residual".to_string(),
-                    weight: 1.0,
-                    observed_score: 2.8,
-                },
-                HawkesStageObjectiveTermInput {
-                    term_id: "clustering_autocorrelation".to_string(),
-                    weight: 1.0,
-                    observed_score: 1.4,
-                },
-            ],
+            source_regime: source_regime.clone(),
+            directional_label_diagnostics: directional_label_diagnostics.clone(),
         },
         HawkesStageCandidateInput {
             candidate_id: "candidate_stable_low_loss".to_string(),
-            lambda_bar: 0.80,
-            beta: 1.60,
-            structured_alpha: HawkesStructuredAlphaParameterization::new(0.35, 0.06, 0.07, 0.04),
-            structured_rho: HawkesStructuredRhoParameterization::new(0.30, 0.08, 0.04, 0.05),
+            lambda_bar: 9.40,
+            beta: 1.35,
+            structured_alpha: HawkesStructuredAlphaParameterization::new(0.18, 0.05, 0.03, 0.02),
+            structured_rho: HawkesStructuredRhoParameterization::new(0.08, 0.02, 0.01, 0.01),
             self_dominance_policy: Some(HawkesStructuredRhoSelfDominancePolicy::new(1.0)),
             stability_numeric_tolerance: 0.0,
-            objective_terms: vec![
-                HawkesStageObjectiveTermInput {
-                    term_id: "event_rate_residual".to_string(),
-                    weight: 1.0,
-                    observed_score: 1.6,
-                },
-                HawkesStageObjectiveTermInput {
-                    term_id: "clustering_autocorrelation".to_string(),
-                    weight: 1.0,
-                    observed_score: 0.7,
-                },
-            ],
+            source_regime,
+            directional_label_diagnostics,
         },
     ]
 }
@@ -782,11 +765,39 @@ pub(super) fn hawkes_stage_constraint_violating_candidate_fixture() -> HawkesSta
         structured_rho: HawkesStructuredRhoParameterization::new(-0.2, -0.1, -0.1, -0.1),
         self_dominance_policy: Some(HawkesStructuredRhoSelfDominancePolicy::new(0.9)),
         stability_numeric_tolerance: -0.5,
-        objective_terms: vec![HawkesStageObjectiveTermInput {
-            term_id: "event_rate_residual".to_string(),
-            weight: 1.0,
-            observed_score: 1.0,
-        }],
+        source_regime: hawkes_source_regime_fixture(),
+        directional_label_diagnostics: hawkes_directional_label_diagnostics_fixture(),
+    }
+}
+
+pub(super) fn hawkes_source_regime_fixture() -> HawkesStageObservedSourceRegime {
+    HawkesStageObservedSourceRegime {
+        observation_duration_hours: 12.0,
+        open_session_duration_hours: 8.0,
+        total_tick_count: 95,
+        open_session_tick_count: 84,
+        closed_session_tick_count: 11,
+        open_session_buy_tick_count: 39,
+        open_session_sell_tick_count: 45,
+        open_session_mean_interarrival_seconds: 34.0,
+        open_session_interarrival_coefficient_of_variation: 1.18,
+        open_session_short_gap_threshold_seconds: 17.0,
+        open_session_short_gap_ratio: 0.43,
+        known_news_open_event_count: 2,
+        open_session_known_news_activity_share: 0.06,
+    }
+}
+
+pub(super) fn hawkes_directional_label_diagnostics_fixture()
+-> HawkesStageDirectionalLabelDiagnostics {
+    HawkesStageDirectionalLabelDiagnostics {
+        policy_id: "tick_price_change_with_flat_move_carryover.v1".to_string(),
+        first_inferred_trade_sign: "buy".to_string(),
+        provided_label_count: 10,
+        inferred_label_count: 74,
+        flat_move_carry_count: 9,
+        price_up_inference_count: 35,
+        price_down_inference_count: 30,
     }
 }
 

@@ -15,8 +15,8 @@ use super::constants::{
 };
 use super::error::SeededTickSimulationRunError;
 use super::runtime::{
-    validate_hourly_factor_field_length, validate_hourly_factor_interval_coverage,
-    validate_known_scheduled_news_timestamps,
+    compute_max_effective_endogenous_branching_ratio, validate_hourly_factor_field_length,
+    validate_hourly_factor_interval_coverage, validate_known_scheduled_news_timestamps,
 };
 
 /// State snapshot capture mode for per-event diagnostics.
@@ -250,6 +250,24 @@ impl SeededTickSimulationRunConfig {
             &hourly_factor_contract.interval_end_utc_nanos,
             self.horizon_interval_count,
         )?;
+
+        if let Some((
+            max_seasonality_factor,
+            spectral_radius_alpha_over_beta,
+            effective_branching_ratio,
+        )) = compute_max_effective_endogenous_branching_ratio(
+            self.model_inputs.kernel_parameters,
+            &hourly_factor_contract.s_h[..self.horizon_interval_count],
+        ) && effective_branching_ratio >= 1.0
+        {
+            return Err(
+                SeededTickSimulationRunError::SeasonalityScaledEndogenousInstability {
+                    max_seasonality_factor,
+                    spectral_radius_alpha_over_beta,
+                    effective_branching_ratio,
+                },
+            );
+        }
 
         self.model_inputs
             .nig_shared_plus_shift_configuration
