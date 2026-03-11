@@ -610,6 +610,10 @@ fn commit_persisted_artifact_regression_fixture(
         &run_contract.run_spec,
         HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
             format!("artifact://seasonality/{run_id}"),
+            seasonality_report
+                .normalized_stage_payload
+                .clone()
+                .expect("seasonality report should expose payload"),
             hawkes_stage_candidate_fixture(),
         ),
     );

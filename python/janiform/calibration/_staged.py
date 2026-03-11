@@ -11,6 +11,7 @@ from ._common import (
     CalibrationExecutionMode,
     CalibrationStage,
     CalibrationStageExecutionStatus,
+    CalibrationTradeSign,
     CalibrationValidationError,
     _calibration_error,
     _calibration_execution_error,
@@ -640,9 +641,10 @@ class CalibrationHawkesStageCandidateInput(ContractModel):
     beta: float
     structured_alpha: CalibrationHawkesStructuredAlphaParameterization
     structured_rho: CalibrationHawkesStructuredRhoParameterization
+    source_regime: CalibrationHawkesObservedSourceRegime
+    directional_label_diagnostics: CalibrationHawkesDirectionalLabelDiagnostics
     self_dominance_policy: Optional[CalibrationHawkesStructuredRhoSelfDominancePolicy] = None
     stability_numeric_tolerance: float = 0.0
-    objective_terms: tuple[CalibrationObjectiveTermInput, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.candidate_id.strip():
@@ -657,9 +659,6 @@ class CalibrationHawkesStageCandidateInput(ContractModel):
             CALIBRATION_ERROR_FACTORY,
         )
 
-        if len(self.objective_terms) == 0:
-            raise _calibration_error("objective_terms", "must include at least one objective term")
-
     @staticmethod
     def from_mapping(
         raw_payload: dict[str, Any] | Any,
@@ -668,13 +667,6 @@ class CalibrationHawkesStageCandidateInput(ContractModel):
     ) -> CalibrationHawkesStageCandidateInput:
         if not isinstance(raw_payload, dict):
             raise _calibration_error(field_path, "must be an object")
-
-        raw_objective_terms = require_sequence(
-            raw_payload,
-            "objective_terms",
-            f"{field_path}.objective_terms",
-            CALIBRATION_ERROR_FACTORY,
-        )
 
         return CalibrationHawkesStageCandidateInput(
             candidate_id=require_non_empty_string(
@@ -732,15 +724,307 @@ class CalibrationHawkesStageCandidateInput(ContractModel):
                 f"{field_path}.stability_numeric_tolerance",
                 CALIBRATION_ERROR_FACTORY,
             ),
-            objective_terms=tuple(
-                CalibrationObjectiveTermInput.from_mapping(
-                    raw_term,
-                    field_path=f"{field_path}.objective_terms[{term_index}]",
-                )
-                for term_index, raw_term in enumerate(raw_objective_terms)
+            source_regime=CalibrationHawkesObservedSourceRegime.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "source_regime",
+                    f"{field_path}.source_regime",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.source_regime",
+            ),
+            directional_label_diagnostics=CalibrationHawkesDirectionalLabelDiagnostics.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "directional_label_diagnostics",
+                    f"{field_path}.directional_label_diagnostics",
+                    CALIBRATION_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.directional_label_diagnostics",
             ),
         )
 
+
+@dataclass(frozen=True, slots=True)
+class CalibrationHawkesObservedSourceRegime(ContractModel):
+    observation_duration_hours: float
+    open_session_duration_hours: float
+    total_tick_count: int
+    open_session_tick_count: int
+    closed_session_tick_count: int
+    open_session_buy_tick_count: int
+    open_session_sell_tick_count: int
+    open_session_mean_interarrival_seconds: float
+    open_session_interarrival_coefficient_of_variation: float
+    open_session_short_gap_threshold_seconds: float
+    open_session_short_gap_ratio: float
+    known_news_open_event_count: int
+    open_session_known_news_activity_share: float
+
+    def __post_init__(self) -> None:
+        require_positive_finite_number(
+            {"observation_duration_hours": self.observation_duration_hours},
+            "observation_duration_hours",
+            "observation_duration_hours",
+            CALIBRATION_ERROR_FACTORY,
+        )
+        require_positive_finite_number(
+            {"open_session_duration_hours": self.open_session_duration_hours},
+            "open_session_duration_hours",
+            "open_session_duration_hours",
+            CALIBRATION_ERROR_FACTORY,
+        )
+
+        if self.total_tick_count <= 0:
+            raise _calibration_error("total_tick_count", "must be strictly positive")
+        if self.open_session_tick_count <= 0:
+            raise _calibration_error("open_session_tick_count", "must be strictly positive")
+        if self.closed_session_tick_count < 0:
+            raise _calibration_error("closed_session_tick_count", "must be non-negative")
+        if self.open_session_buy_tick_count < 0:
+            raise _calibration_error("open_session_buy_tick_count", "must be non-negative")
+        if self.open_session_sell_tick_count < 0:
+            raise _calibration_error("open_session_sell_tick_count", "must be non-negative")
+        if self.open_session_buy_tick_count + self.open_session_sell_tick_count != self.open_session_tick_count:
+            raise _calibration_error(
+                "open_session_sell_tick_count",
+                "open-session buy and sell counts must sum to open_session_tick_count",
+            )
+        if self.closed_session_tick_count + self.open_session_tick_count != self.total_tick_count:
+            raise _calibration_error(
+                "closed_session_tick_count",
+                "open and closed tick counts must sum to total_tick_count",
+            )
+        if self.known_news_open_event_count < 0:
+            raise _calibration_error("known_news_open_event_count", "must be non-negative")
+
+        require_positive_finite_number(
+            {"open_session_mean_interarrival_seconds": self.open_session_mean_interarrival_seconds},
+            "open_session_mean_interarrival_seconds",
+            "open_session_mean_interarrival_seconds",
+            CALIBRATION_ERROR_FACTORY,
+        )
+        require_non_negative_finite_number(
+            {
+                "open_session_interarrival_coefficient_of_variation": (
+                    self.open_session_interarrival_coefficient_of_variation
+                )
+            },
+            "open_session_interarrival_coefficient_of_variation",
+            "open_session_interarrival_coefficient_of_variation",
+            CALIBRATION_ERROR_FACTORY,
+        )
+        require_positive_finite_number(
+            {"open_session_short_gap_threshold_seconds": self.open_session_short_gap_threshold_seconds},
+            "open_session_short_gap_threshold_seconds",
+            "open_session_short_gap_threshold_seconds",
+            CALIBRATION_ERROR_FACTORY,
+        )
+        require_non_negative_finite_number(
+            {"open_session_short_gap_ratio": self.open_session_short_gap_ratio},
+            "open_session_short_gap_ratio",
+            "open_session_short_gap_ratio",
+            CALIBRATION_ERROR_FACTORY,
+        )
+
+        if self.open_session_short_gap_ratio > 1.0:
+            raise _calibration_error("open_session_short_gap_ratio", "must be less than or equal to 1")
+
+        require_non_negative_finite_number(
+            {
+                "open_session_known_news_activity_share": self.open_session_known_news_activity_share
+            },
+            "open_session_known_news_activity_share",
+            "open_session_known_news_activity_share",
+            CALIBRATION_ERROR_FACTORY,
+        )
+
+        if self.open_session_known_news_activity_share > 1.0:
+            raise _calibration_error(
+                "open_session_known_news_activity_share",
+                "must be less than or equal to 1",
+            )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationHawkesObservedSourceRegime:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationHawkesObservedSourceRegime(
+            observation_duration_hours=require_positive_finite_number(
+                raw_payload,
+                "observation_duration_hours",
+                f"{field_path}.observation_duration_hours",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            open_session_duration_hours=require_positive_finite_number(
+                raw_payload,
+                "open_session_duration_hours",
+                f"{field_path}.open_session_duration_hours",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            total_tick_count=require_positive_integer(
+                raw_payload,
+                "total_tick_count",
+                f"{field_path}.total_tick_count",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            open_session_tick_count=require_positive_integer(
+                raw_payload,
+                "open_session_tick_count",
+                f"{field_path}.open_session_tick_count",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            closed_session_tick_count=require_non_negative_integer(
+                raw_payload,
+                "closed_session_tick_count",
+                f"{field_path}.closed_session_tick_count",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            open_session_buy_tick_count=require_non_negative_integer(
+                raw_payload,
+                "open_session_buy_tick_count",
+                f"{field_path}.open_session_buy_tick_count",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            open_session_sell_tick_count=require_non_negative_integer(
+                raw_payload,
+                "open_session_sell_tick_count",
+                f"{field_path}.open_session_sell_tick_count",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            open_session_mean_interarrival_seconds=require_positive_finite_number(
+                raw_payload,
+                "open_session_mean_interarrival_seconds",
+                f"{field_path}.open_session_mean_interarrival_seconds",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            open_session_interarrival_coefficient_of_variation=require_non_negative_finite_number(
+                raw_payload,
+                "open_session_interarrival_coefficient_of_variation",
+                f"{field_path}.open_session_interarrival_coefficient_of_variation",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            open_session_short_gap_threshold_seconds=require_positive_finite_number(
+                raw_payload,
+                "open_session_short_gap_threshold_seconds",
+                f"{field_path}.open_session_short_gap_threshold_seconds",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            open_session_short_gap_ratio=require_non_negative_finite_number(
+                raw_payload,
+                "open_session_short_gap_ratio",
+                f"{field_path}.open_session_short_gap_ratio",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            known_news_open_event_count=require_non_negative_integer(
+                raw_payload,
+                "known_news_open_event_count",
+                f"{field_path}.known_news_open_event_count",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            open_session_known_news_activity_share=require_non_negative_finite_number(
+                raw_payload,
+                "open_session_known_news_activity_share",
+                f"{field_path}.open_session_known_news_activity_share",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationHawkesDirectionalLabelDiagnostics(ContractModel):
+    policy_id: str
+    first_inferred_trade_sign: CalibrationTradeSign
+    provided_label_count: int
+    inferred_label_count: int
+    flat_move_carry_count: int
+    price_up_inference_count: int
+    price_down_inference_count: int
+
+    def __post_init__(self) -> None:
+        if not self.policy_id.strip():
+            raise _calibration_error("policy_id", "must be a non-empty string")
+        if self.provided_label_count < 0:
+            raise _calibration_error("provided_label_count", "must be non-negative")
+        if self.inferred_label_count < 0:
+            raise _calibration_error("inferred_label_count", "must be non-negative")
+        if self.flat_move_carry_count < 0:
+            raise _calibration_error("flat_move_carry_count", "must be non-negative")
+        if self.price_up_inference_count < 0:
+            raise _calibration_error("price_up_inference_count", "must be non-negative")
+        if self.price_down_inference_count < 0:
+            raise _calibration_error("price_down_inference_count", "must be non-negative")
+        if (
+            self.price_up_inference_count
+            + self.price_down_inference_count
+            + self.flat_move_carry_count
+            > self.inferred_label_count
+        ):
+            raise _calibration_error(
+                "inferred_label_count",
+                "directional inference counters must not exceed inferred_label_count",
+            )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationHawkesDirectionalLabelDiagnostics:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationHawkesDirectionalLabelDiagnostics(
+            policy_id=require_non_empty_string(
+                raw_payload,
+                "policy_id",
+                f"{field_path}.policy_id",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            first_inferred_trade_sign=CalibrationTradeSign(
+                require_string(
+                    raw_payload,
+                    "first_inferred_trade_sign",
+                    f"{field_path}.first_inferred_trade_sign",
+                    CALIBRATION_ERROR_FACTORY,
+                )
+            ),
+            provided_label_count=require_non_negative_integer(
+                raw_payload,
+                "provided_label_count",
+                f"{field_path}.provided_label_count",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            inferred_label_count=require_non_negative_integer(
+                raw_payload,
+                "inferred_label_count",
+                f"{field_path}.inferred_label_count",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            flat_move_carry_count=require_non_negative_integer(
+                raw_payload,
+                "flat_move_carry_count",
+                f"{field_path}.flat_move_carry_count",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            price_up_inference_count=require_non_negative_integer(
+                raw_payload,
+                "price_up_inference_count",
+                f"{field_path}.price_up_inference_count",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            price_down_inference_count=require_non_negative_integer(
+                raw_payload,
+                "price_down_inference_count",
+                f"{field_path}.price_down_inference_count",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+        )
 
 @dataclass(frozen=True, slots=True)
 class CalibrationReturnComponentsSignalSourceWindow(ContractModel):

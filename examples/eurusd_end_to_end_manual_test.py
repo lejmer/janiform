@@ -11,7 +11,6 @@ from time import perf_counter, time
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
-from janiform._timestamps import parse_timestamp_value
 from janiform.calendar import CalendarRegistry
 from janiform.calibration import (
     CalibrationDuplicateRecordPolicy,
@@ -54,6 +53,37 @@ from janiform.simulation import (
 DEFAULT_EXCHANGE_CODE: str = "FX_EURUSD"
 DEFAULT_SESSION_TIMEZONE: str = "UTC"
 DEFAULT_MAX_INTERVAL_COUNT: int = 168
+_COMMON_TIMESTAMP_FORMATS: tuple[str, ...] = (
+    "%d.%m.%Y %H:%M:%S.%f%z",
+    "%d.%m.%Y %H:%M:%S.%f %z",
+    "%d.%m.%Y %H:%M:%S%z",
+    "%d.%m.%Y %H:%M:%S %z",
+    "%d.%m.%Y %H:%M%z",
+    "%d.%m.%Y %H:%M %z",
+    "%d.%m.%Y %H:%M:%S.%f",
+    "%d.%m.%Y %H:%M:%S",
+    "%d.%m.%Y %H:%M",
+    "%Y/%m/%d %H:%M:%S.%f%z",
+    "%Y/%m/%d %H:%M:%S.%f %z",
+    "%Y/%m/%d %H:%M:%S%z",
+    "%Y/%m/%d %H:%M:%S %z",
+    "%Y/%m/%d %H:%M%z",
+    "%Y/%m/%d %H:%M %z",
+    "%Y/%m/%d %H:%M:%S.%f",
+    "%Y/%m/%d %H:%M:%S",
+    "%Y/%m/%d %H:%M",
+    "%Y%m%d %H:%M:%S.%f",
+    "%Y%m%d %H:%M:%S",
+    "%Y%m%d %H%M%S.%f",
+    "%Y%m%d %H%M%S",
+    "%Y%m%dT%H:%M:%S.%f",
+    "%Y%m%dT%H:%M:%S",
+    "%Y%m%dT%H%M%S.%f",
+    "%Y%m%dT%H%M%S",
+    "%Y%m%d%H%M%S.%f",
+    "%Y%m%d%H%M%S",
+)
+_UNIX_EPOCH_UTC = datetime(1970, 1, 1, tzinfo=UTC)
 
 RETURN_METRIC_TOLERANCES: dict[str, float] = {
     "mean_return": 0.005,
@@ -654,11 +684,91 @@ def _parse_timestamp(
     raw_timestamp: str,
     timestamp_timezone: str,
 ) -> datetime:
-    parsed_timestamp = parse_timestamp_value(raw_timestamp.strip())
+    parsed_timestamp = _parse_timestamp_value(raw_timestamp.strip())
     if parsed_timestamp.tzinfo is None:
-        parsed_timestamp = parsed_timestamp.replace(tzinfo=ZoneInfo(timestamp_timezone))
+        parsed_timestamp = parsed_timestamp.replace(
+            tzinfo=_resolve_time_zone(timestamp_timezone)
+        )
 
     return parsed_timestamp.astimezone(UTC)
+
+
+def _parse_timestamp_value(raw_value: str) -> datetime:
+    if not raw_value:
+        raise ValueError("timestamp value cannot be blank")
+
+    parsed_numeric_value = _try_parse_numeric_timestamp_text(raw_value)
+    if parsed_numeric_value is not None:
+        return parsed_numeric_value
+
+    normalized_value = raw_value.replace(" UTC", "+00:00").replace(" GMT", "+00:00")
+    if normalized_value.endswith("Z"):
+        normalized_value = normalized_value[:-1] + "+00:00"
+
+    try:
+        return datetime.fromisoformat(normalized_value)
+    except ValueError:
+        pass
+
+    for format_string in _COMMON_TIMESTAMP_FORMATS:
+        try:
+            return datetime.strptime(normalized_value, format_string)
+        except ValueError:
+            continue
+
+    raise ValueError(f"unsupported timestamp format: {raw_value}")
+
+
+def _try_parse_numeric_timestamp_text(raw_value: str) -> Optional[datetime]:
+    unsigned_value = raw_value.lstrip("+-")
+    if unsigned_value.isdigit():
+        digit_count = len(unsigned_value)
+        if digit_count not in {9, 10, 12, 13, 15, 16, 18, 19}:
+            return None
+
+    try:
+        if any(character in raw_value for character in (".", "e", "E")):
+            parsed_numeric_value = float(raw_value)
+        else:
+            parsed_numeric_value = int(raw_value)
+    except ValueError:
+        return None
+
+    return _parse_unix_epoch_value(parsed_numeric_value)
+
+
+def _parse_unix_epoch_value(raw_value: int | float) -> datetime:
+    if not math.isfinite(raw_value):
+        raise ValueError("timestamp value must be finite")
+
+    absolute_value = abs(raw_value)
+    if absolute_value >= 100_000_000_000_000_000:
+        return _from_epoch_fraction(raw_value, 1_000_000_000)
+    if absolute_value >= 100_000_000_000_000:
+        return _from_epoch_fraction(raw_value, 1_000_000)
+    if absolute_value >= 100_000_000_000:
+        return _from_epoch_fraction(raw_value, 1_000)
+
+    return _from_epoch_fraction(raw_value, 1)
+
+
+def _from_epoch_fraction(raw_value: int | float, divisor: int) -> datetime:
+    if isinstance(raw_value, int):
+        whole_seconds, fractional_units = divmod(raw_value, divisor)
+        microseconds = (fractional_units * 1_000_000) // divisor
+        return datetime.fromtimestamp(whole_seconds, tz=UTC) + timedelta(
+            microseconds=microseconds
+        )
+
+    return datetime.fromtimestamp(raw_value / divisor, tz=UTC)
+
+
+def _resolve_time_zone(timezone_name: str) -> datetime.tzinfo:
+    normalized_timezone = timezone_name.strip()
+    if normalized_timezone.upper() in {"UTC", "Z", "GMT", "UT"}:
+        return UTC
+
+    return ZoneInfo(normalized_timezone)
 
 
 def _resolve_simulation_window(
@@ -973,7 +1083,7 @@ def _compose_hourly_seasonality_factors(
     exchange_timezone: str,
     interval_starts: Sequence[datetime],
 ) -> list[float]:
-    timezone = ZoneInfo(exchange_timezone)
+    timezone = _resolve_time_zone(exchange_timezone)
     intraday_minutes_per_bin = int(seasonality_payload["intraday_minutes_per_bin"])
     intraday_factor_by_bin = [
         float(value)

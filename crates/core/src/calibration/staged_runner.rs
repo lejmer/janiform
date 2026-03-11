@@ -960,12 +960,24 @@ fn run_stage_for_staged_execution(
                     }
                 }
                 CalibrationStageHandoffTransport::PersistedArtifactReference => {
+                    let Some(seasonality_stage_payload) =
+                        payload_state.seasonality_stage_payload.clone()
+                    else {
+                        return Err(
+                            CalibrationStagedRunFailure::MissingInMemoryUpstreamPayload {
+                                required_stage: CalibrationStage::Seasonality,
+                                consuming_stage: CalibrationStage::Hawkes,
+                            },
+                        );
+                    };
+
                     HawkesStageSeasonalityInput::PersistedArtifactReference {
                         artifact_reference: expected_stage_handoff_artifact_reference(
                             run_spec,
                             CalibrationStage::Seasonality,
                             CalibrationStage::Hawkes,
                         ),
+                        payload: seasonality_stage_payload,
                     }
                 }
             };

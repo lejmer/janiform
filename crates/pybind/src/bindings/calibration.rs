@@ -1,5 +1,7 @@
 use janiform_core::calibration::{
     CalibrationStagedExecutionInput, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
+    MarketDataTranslationPreprocessingOutput, MarketDataTranslationPreprocessingRequest,
+    preprocess_market_data_translation_request as preprocess_market_data_translation_request_native,
     run_staged_calibration_from_execution_input,
 };
 use pyo3::prelude::*;
@@ -8,6 +10,44 @@ use serde_json::Value;
 
 use crate::CalibrationExecutionError;
 use crate::types::{PyCalendarRegistry, PyCalibrationMemoryCheckpointStore};
+
+#[pyfunction]
+#[pyo3(signature = (preprocessing_request_json, calendar_registry))]
+fn preprocess_market_data_translation_request(
+    py: Python<'_>,
+    preprocessing_request_json: &str,
+    calendar_registry: &PyCalendarRegistry,
+) -> PyResult<String> {
+    let preprocessing_request: MarketDataTranslationPreprocessingRequest =
+        serde_json::from_str(preprocessing_request_json).map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize market-data preprocessing request: {source}"
+            ))
+        })?;
+
+    let preprocessing_output = py
+        .allow_threads(|| {
+            preprocess_market_data_translation_request_native(
+                preprocessing_request,
+                &calendar_registry.registry,
+            )
+        })
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    serialize_market_data_translation_preprocessing_output(&preprocessing_output).map_err(
+        |source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to serialize market-data preprocessing output: {source}"
+            ))
+        },
+    )
+}
+
+fn serialize_market_data_translation_preprocessing_output(
+    preprocessing_output: &MarketDataTranslationPreprocessingOutput,
+) -> Result<String, serde_json::Error> {
+    serde_json::to_string(preprocessing_output)
+}
 
 #[pyfunction]
 #[pyo3(signature = (execution_input_json, calendar_registry, memory_checkpoint_store = None))]
@@ -86,6 +126,10 @@ fn flatten_stage_report_for_python(
 }
 
 pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_function(wrap_pyfunction!(
+        preprocess_market_data_translation_request,
+        module
+    )?)?;
     module.add_function(wrap_pyfunction!(run_staged_calibration, module)?)?;
     Ok(())
 }

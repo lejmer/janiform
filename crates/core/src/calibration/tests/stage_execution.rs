@@ -239,6 +239,7 @@ fn hawkes_stage_execution_succeeds_for_memory_and_disk_mode_handoffs() {
         &disk_run_spec,
         HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
             "artifact://seasonality/run-001",
+            seasonality_payload.clone(),
             hawkes_stage_candidate_fixture(),
         ),
     );
@@ -343,6 +344,138 @@ fn hawkes_stage_execution_reports_constraint_violations_for_invalid_candidates()
 }
 
 #[test]
+fn hawkes_stage_rejects_seasonality_scaled_supercritical_candidates() {
+    let mut seasonality_payload = build_seasonality_stage_success_payload();
+    seasonality_payload.normalized_combined_factor_by_event = vec![1.0, 2.0, 1.5, 1.0, 1.0, 1.0];
+
+    let mut candidate = hawkes_stage_candidate_fixture()
+        .into_iter()
+        .next()
+        .expect("fixture should provide a candidate");
+    candidate.candidate_id = "candidate_supercritical_under_seasonality".to_string();
+    candidate.beta = 1.0;
+    candidate.structured_alpha = HawkesStructuredAlphaParameterization::new(0.75, 0.0, 0.0, 0.0);
+
+    let report = run_hawkes_calibration_stage(
+        &build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory),
+        HawkesStageExecutionInput::from_in_memory_seasonality_output(
+            seasonality_payload,
+            vec![candidate],
+        ),
+    );
+
+    assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);
+    match report
+        .failure
+        .as_ref()
+        .expect("failure report should be populated")
+    {
+        HawkesStageExecutionFailure::ConstraintViolationsForAllCandidates {
+            candidate_diagnostics,
+        } => {
+            assert_eq!(candidate_diagnostics.len(), 1);
+            assert_eq!(
+                candidate_diagnostics[0].candidate_id,
+                "candidate_supercritical_under_seasonality"
+            );
+            assert!(candidate_diagnostics[0].constraint_violation_count > 0);
+            assert!(
+                candidate_diagnostics[0]
+                    .warnings
+                    .iter()
+                    .any(|warning| { warning.contains("effective branching ratio") })
+            );
+        }
+        _ => panic!("expected seasonality-scaled stationarity failure"),
+    }
+}
+
+#[test]
+fn hawkes_stage_objective_terms_change_with_candidate_implied_metrics() {
+    let report = run_hawkes_calibration_stage(
+        &build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory),
+        HawkesStageExecutionInput::from_in_memory_seasonality_output(
+            build_seasonality_stage_success_payload(),
+            hawkes_stage_candidate_fixture(),
+        ),
+    );
+
+    let candidate_diagnostics = &report
+        .fitted_stage_payload
+        .as_ref()
+        .expect("hawkes report should include payload")
+        .candidate_diagnostics;
+    assert_eq!(candidate_diagnostics.len(), 2);
+
+    let high_loss = candidate_diagnostics
+        .iter()
+        .find(|candidate| candidate.candidate_id == "candidate_high_loss")
+        .expect("fixture should contain candidate_high_loss");
+    let low_loss = candidate_diagnostics
+        .iter()
+        .find(|candidate| candidate.candidate_id == "candidate_stable_low_loss")
+        .expect("fixture should contain candidate_stable_low_loss");
+
+    assert_ne!(high_loss.raw_objective_value, low_loss.raw_objective_value);
+    assert_ne!(
+        high_loss
+            .implied_metrics
+            .model_implied_open_event_rate_per_hour,
+        low_loss
+            .implied_metrics
+            .model_implied_open_event_rate_per_hour
+    );
+    assert!(
+        high_loss
+            .objective_terms
+            .iter()
+            .any(|term| term.term_id == "open_session_event_rate")
+    );
+    assert!(
+        low_loss
+            .objective_terms
+            .iter()
+            .any(|term| term.term_id == "directional_imbalance_magnitude")
+    );
+}
+
+#[test]
+fn hawkes_stage_surfaces_unrealistic_implied_event_volume_warnings() {
+    let mut explosive_candidate = hawkes_stage_candidate_fixture()
+        .into_iter()
+        .next()
+        .expect("fixture should provide a candidate");
+    explosive_candidate.candidate_id = "candidate_explosive_volume".to_string();
+    explosive_candidate.lambda_bar = 42.0;
+
+    let report = run_hawkes_calibration_stage(
+        &build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory),
+        HawkesStageExecutionInput::from_in_memory_seasonality_output(
+            build_seasonality_stage_success_payload(),
+            vec![explosive_candidate],
+        ),
+    );
+
+    let candidate = &report
+        .fitted_stage_payload
+        .as_ref()
+        .expect("single explosive candidate should still emit diagnostics")
+        .candidate_diagnostics[0];
+    assert!(
+        candidate
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("observation window"))
+    );
+    assert!(
+        candidate
+            .implied_metrics
+            .event_volume_ratio_vs_total_observed
+            > 1.5
+    );
+}
+
+#[test]
 fn hawkes_stage_execution_is_deterministic_under_fixed_seed_and_solver_settings() {
     let seasonality_payload = build_seasonality_stage_success_payload();
     let memory_run_spec = build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory);
@@ -366,6 +499,7 @@ fn hawkes_stage_execution_is_deterministic_under_fixed_seed_and_solver_settings(
         &disk_run_spec,
         HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
             "artifact://seasonality/run-001",
+            build_seasonality_stage_success_payload(),
             hawkes_stage_candidate_fixture(),
         ),
     );
@@ -373,6 +507,7 @@ fn hawkes_stage_execution_is_deterministic_under_fixed_seed_and_solver_settings(
         &disk_run_spec,
         HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
             "artifact://seasonality/run-001",
+            build_seasonality_stage_success_payload(),
             hawkes_stage_candidate_fixture(),
         ),
     );

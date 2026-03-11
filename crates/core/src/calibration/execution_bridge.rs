@@ -27,7 +27,6 @@ use super::contracts::{
     CalibrationRunContract, CalibrationRunContractError, CalibrationRunSpec, CalibrationStage,
     CalibrationStageDependency, CalibrationStageGraph,
 };
-use super::objective::CalibrationObjectiveTermInput;
 use super::staged_runner::{
     CalibrationStagedRunInputs, CalibrationStagedRunReport,
     run_staged_calibration_with_checkpointing,
@@ -227,10 +226,32 @@ pub struct CalibrationSeasonalityStageExecutionInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CalibrationHawkesObjectiveTermInput {
-    pub term_id: String,
-    pub weight: f64,
-    pub observed_score: f64,
+pub struct CalibrationHawkesObservedSourceRegime {
+    pub observation_duration_hours: f64,
+    pub open_session_duration_hours: f64,
+    pub total_tick_count: usize,
+    pub open_session_tick_count: usize,
+    pub closed_session_tick_count: usize,
+    pub open_session_buy_tick_count: usize,
+    pub open_session_sell_tick_count: usize,
+    pub open_session_mean_interarrival_seconds: f64,
+    pub open_session_interarrival_coefficient_of_variation: f64,
+    pub open_session_short_gap_threshold_seconds: f64,
+    pub open_session_short_gap_ratio: f64,
+    pub known_news_open_event_count: usize,
+    pub open_session_known_news_activity_share: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CalibrationHawkesDirectionalLabelDiagnostics {
+    pub policy_id: String,
+    pub first_inferred_trade_sign: String,
+    pub provided_label_count: usize,
+    pub inferred_label_count: usize,
+    pub flat_move_carry_count: usize,
+    pub price_up_inference_count: usize,
+    pub price_down_inference_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -244,7 +265,8 @@ pub struct CalibrationHawkesStageCandidateInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub self_dominance_policy: Option<HawkesStructuredRhoSelfDominancePolicy>,
     pub stability_numeric_tolerance: f64,
-    pub objective_terms: Vec<CalibrationHawkesObjectiveTermInput>,
+    pub source_regime: CalibrationHawkesObservedSourceRegime,
+    pub directional_label_diagnostics: CalibrationHawkesDirectionalLabelDiagnostics,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -613,21 +635,43 @@ impl CalibrationHawkesStageCandidateInput {
             structured_rho: self.structured_rho,
             self_dominance_policy: self.self_dominance_policy,
             stability_numeric_tolerance: self.stability_numeric_tolerance,
-            objective_terms: self
-                .objective_terms
-                .into_iter()
-                .map(CalibrationHawkesObjectiveTermInput::into_core)
-                .collect(),
+            source_regime: self.source_regime.into_core(),
+            directional_label_diagnostics: self.directional_label_diagnostics.into_core(),
         }
     }
 }
 
-impl CalibrationHawkesObjectiveTermInput {
-    fn into_core(self) -> CalibrationObjectiveTermInput {
-        CalibrationObjectiveTermInput {
-            term_id: self.term_id,
-            weight: self.weight,
-            observed_score: self.observed_score,
+impl CalibrationHawkesObservedSourceRegime {
+    fn into_core(self) -> super::stages::hawkes::HawkesStageObservedSourceRegime {
+        super::stages::hawkes::HawkesStageObservedSourceRegime {
+            observation_duration_hours: self.observation_duration_hours,
+            open_session_duration_hours: self.open_session_duration_hours,
+            total_tick_count: self.total_tick_count,
+            open_session_tick_count: self.open_session_tick_count,
+            closed_session_tick_count: self.closed_session_tick_count,
+            open_session_buy_tick_count: self.open_session_buy_tick_count,
+            open_session_sell_tick_count: self.open_session_sell_tick_count,
+            open_session_mean_interarrival_seconds: self.open_session_mean_interarrival_seconds,
+            open_session_interarrival_coefficient_of_variation: self
+                .open_session_interarrival_coefficient_of_variation,
+            open_session_short_gap_threshold_seconds: self.open_session_short_gap_threshold_seconds,
+            open_session_short_gap_ratio: self.open_session_short_gap_ratio,
+            known_news_open_event_count: self.known_news_open_event_count,
+            open_session_known_news_activity_share: self.open_session_known_news_activity_share,
+        }
+    }
+}
+
+impl CalibrationHawkesDirectionalLabelDiagnostics {
+    fn into_core(self) -> super::stages::hawkes::HawkesStageDirectionalLabelDiagnostics {
+        super::stages::hawkes::HawkesStageDirectionalLabelDiagnostics {
+            policy_id: self.policy_id,
+            first_inferred_trade_sign: self.first_inferred_trade_sign,
+            provided_label_count: self.provided_label_count,
+            inferred_label_count: self.inferred_label_count,
+            flat_move_carry_count: self.flat_move_carry_count,
+            price_up_inference_count: self.price_up_inference_count,
+            price_down_inference_count: self.price_down_inference_count,
         }
     }
 }
@@ -820,11 +864,30 @@ mod tests {
                 structured_rho: HawkesStructuredRhoParameterization::new(0.30, 0.08, 0.04, 0.05),
                 self_dominance_policy: Some(HawkesStructuredRhoSelfDominancePolicy::new(1.0)),
                 stability_numeric_tolerance: 0.0,
-                objective_terms: vec![CalibrationHawkesObjectiveTermInput {
-                    term_id: "event_rate_residual".to_string(),
-                    weight: 1.0,
-                    observed_score: 1.6,
-                }],
+                source_regime: CalibrationHawkesObservedSourceRegime {
+                    observation_duration_hours: 12.0,
+                    open_session_duration_hours: 8.0,
+                    total_tick_count: 95,
+                    open_session_tick_count: 84,
+                    closed_session_tick_count: 11,
+                    open_session_buy_tick_count: 39,
+                    open_session_sell_tick_count: 45,
+                    open_session_mean_interarrival_seconds: 34.0,
+                    open_session_interarrival_coefficient_of_variation: 1.18,
+                    open_session_short_gap_threshold_seconds: 17.0,
+                    open_session_short_gap_ratio: 0.43,
+                    known_news_open_event_count: 2,
+                    open_session_known_news_activity_share: 0.06,
+                },
+                directional_label_diagnostics: CalibrationHawkesDirectionalLabelDiagnostics {
+                    policy_id: "tick_price_change_with_flat_move_carryover.v1".to_string(),
+                    first_inferred_trade_sign: "buy".to_string(),
+                    provided_label_count: 10,
+                    inferred_label_count: 74,
+                    flat_move_carry_count: 9,
+                    price_up_inference_count: 35,
+                    price_down_inference_count: 30,
+                },
             }]),
             return_components_candidate_generation_input: Some(
                 CalibrationReturnComponentsStageCandidateGenerationInput {

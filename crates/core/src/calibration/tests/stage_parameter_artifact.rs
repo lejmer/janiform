@@ -17,6 +17,10 @@ fn calibration_stage_parameter_artifacts_round_trip_per_stage_preserve_stage_pay
         &run_contract.run_spec,
         HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
             "artifact://seasonality/run-001",
+            seasonality_report
+                .normalized_stage_payload
+                .clone()
+                .expect("seasonality report should expose payload"),
             hawkes_stage_candidate_fixture(),
         ),
     );
@@ -251,6 +255,7 @@ fn calibration_stage_parameter_artifact_validation_rejects_missing_outputs_and_m
         &run_contract.run_spec,
         HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
             "artifact://seasonality/run-001",
+            build_seasonality_stage_success_payload(),
             hawkes_stage_candidate_fixture(),
         ),
     );
@@ -273,6 +278,7 @@ fn calibration_stage_parameter_artifact_validation_rejects_missing_outputs_and_m
             &run_contract.run_spec,
             HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
                 "artifact://seasonality/run-001",
+                build_seasonality_stage_success_payload(),
                 hawkes_stage_candidate_fixture(),
             ),
         )),

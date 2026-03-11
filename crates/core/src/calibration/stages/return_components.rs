@@ -23,14 +23,17 @@ use super::super::contracts::{
     CalibrationStageHandoffTransport, CalibrationStageSeedSource,
     resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
 };
-use super::super::objective::{HawkesStageObjectiveTermInput, HawkesStageObjectiveTermInputError};
+use super::super::objective::{
+    CalibrationObjectiveTermDiagnostic, HawkesStageObjectiveTermInput,
+    HawkesStageObjectiveTermInputError,
+};
 use super::super::optimizer_adapter::{
     CalibrationOptimizerAdapterCandidateInput, CalibrationOptimizerAdapterConfiguration,
     CalibrationOptimizerAdapterError, CalibrationOptimizerAdapterRunMetadata,
     CalibrationOptimizerCandidateParameterValue, CalibrationOptimizerParameterBound,
     run_constrained_optimizer_adapter,
 };
-use super::hawkes::{HawkesStageFittedPayload, HawkesStageObjectiveTermDiagnostic};
+use super::hawkes::HawkesStageFittedPayload;
 use super::seasonality::CalibrationStageExecutionStatus;
 
 const RETURN_COMPONENTS_STAGE_CANDIDATE_GENERATION_POLICY: &str =
@@ -52,7 +55,7 @@ const RETURN_COMPONENTS_STAGE_KNOWN_RETENTION_QUANTILES: [f64; 2] = [0.0, 0.5];
 pub type ReturnComponentsStageObjectiveTermInput = HawkesStageObjectiveTermInput;
 
 /// One weighted objective-term diagnostic emitted by return-components-stage evaluation.
-pub type ReturnComponentsStageObjectiveTermDiagnostic = HawkesStageObjectiveTermDiagnostic;
+pub type ReturnComponentsStageObjectiveTermDiagnostic = CalibrationObjectiveTermDiagnostic;
 
 /// Canonical source window for candidate-generation signal extraction.
 #[derive(Debug, Clone, Copy, PartialEq)]

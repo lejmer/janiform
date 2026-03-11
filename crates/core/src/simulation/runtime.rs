@@ -1064,11 +1064,16 @@ where
             interval_start_utc_nanos,
             interval_end_utc_nanos,
             &exogenous_interval_updates,
+            &run_config.model_inputs.calendar_registry,
+            run_config
+                .model_inputs
+                .hourly_factor_contract
+                .exchange_code
+                .as_str(),
             &mut endogenous_wait_stream,
             &mut endogenous_acceptance_stream,
             &mut endogenous_side_stream,
-        )
-        .map_err(map_transition_error_to_seeded_simulation_run_error)?;
+        )?;
 
     let mut interval_updates: Vec<IntervalStochasticUpdate> = Vec::with_capacity(
         endogenous_interval_updates
@@ -1093,10 +1098,12 @@ fn schedule_endogenous_interval_events_with_event_time_feedback<
     interval_start_utc_nanos: i64,
     interval_end_utc_nanos: i64,
     exogenous_interval_updates: &[IntervalStochasticUpdate],
+    calendar_registry: &ExchangeCalendarRegistry,
+    exchange_code: &str,
     endogenous_wait_stream: &mut WaitStream,
     endogenous_acceptance_stream: &mut AcceptanceStream,
     endogenous_side_stream: &mut SideStream,
-) -> Result<Vec<IntervalStochasticUpdate>, HawkesTransitionError>
+) -> Result<Vec<IntervalStochasticUpdate>, SeededTickSimulationRunError>
 where
     WaitStream: SimulationRandomnessStream,
     AcceptanceStream: SimulationRandomnessStream,
@@ -1131,7 +1138,8 @@ where
                     kernel_parameters,
                     simulated_timestamp_utc_nanos,
                     segment_end_utc_nanos,
-                )?;
+                )
+                .map_err(map_transition_error_to_seeded_simulation_run_error)?;
                 simulated_timestamp_utc_nanos = segment_end_utc_nanos;
                 break;
             }
@@ -1149,7 +1157,8 @@ where
                     kernel_parameters,
                     simulated_timestamp_utc_nanos,
                     segment_end_utc_nanos,
-                )?;
+                )
+                .map_err(map_transition_error_to_seeded_simulation_run_error)?;
                 simulated_timestamp_utc_nanos = segment_end_utc_nanos;
                 break;
             }
@@ -1162,7 +1171,8 @@ where
                     kernel_parameters,
                     simulated_timestamp_utc_nanos,
                     segment_end_utc_nanos,
-                )?;
+                )
+                .map_err(map_transition_error_to_seeded_simulation_run_error)?;
                 simulated_timestamp_utc_nanos = segment_end_utc_nanos;
                 break;
             }
@@ -1172,7 +1182,18 @@ where
                 kernel_parameters,
                 simulated_timestamp_utc_nanos,
                 candidate_timestamp_utc_nanos,
+            )
+            .map_err(map_transition_error_to_seeded_simulation_run_error)?;
+            let candidate_market_state = resolve_news_event_market_state(
+                calendar_registry,
+                exchange_code,
+                candidate_timestamp_utc_nanos,
             )?;
+            if candidate_market_state != MarketState::Open {
+                simulated_state = candidate_state;
+                simulated_timestamp_utc_nanos = candidate_timestamp_utc_nanos;
+                continue;
+            }
             let (candidate_lambda_plus, candidate_lambda_minus, candidate_total_intensity) =
                 project_non_negative_intensities(
                     candidate_state,
@@ -1201,7 +1222,8 @@ where
                         Some(map_seeded_tick_side_to_hawkes_side(side)),
                         None,
                     ),
-                )?;
+                )
+                .map_err(map_transition_error_to_seeded_simulation_run_error)?;
 
                 endogenous_interval_updates.push(IntervalStochasticUpdate::EndogenousEvent {
                     timestamp_utc_nanos: candidate_timestamp_utc_nanos,
@@ -1223,7 +1245,8 @@ where
                 kernel_parameters,
                 simulated_timestamp_utc_nanos,
                 segment_end_utc_nanos,
-            )?;
+            )
+            .map_err(map_transition_error_to_seeded_simulation_run_error)?;
             simulated_timestamp_utc_nanos = segment_end_utc_nanos;
         }
 
@@ -1244,7 +1267,8 @@ where
                     simulated_state,
                     kernel_parameters,
                     HawkesTransitionStep::new(0.0, None, Some(activity_coupling_mark)),
-                )?;
+                )
+                .map_err(map_transition_error_to_seeded_simulation_run_error)?;
             }
             next_exogenous_update_position = next_exogenous_update_position.saturating_add(1);
         }
@@ -1367,6 +1391,36 @@ pub(crate) fn derive_interval_news_arrival_decomposition(
         known_component_intensity: interval_known_component_intensity,
         surprise_component_intensity: interval_surprise_component_intensity,
     }
+}
+
+pub(crate) fn compute_max_effective_endogenous_branching_ratio(
+    kernel_parameters: HawkesKernelParameters,
+    seasonality_factors: &[f64],
+) -> Option<(f64, f64, f64)> {
+    let max_seasonality_factor = seasonality_factors
+        .iter()
+        .copied()
+        .reduce(f64::max)?
+        .max(0.0);
+
+    let scaled_plus_plus = kernel_parameters.alpha.plus_plus / kernel_parameters.beta;
+    let scaled_plus_minus = kernel_parameters.alpha.plus_minus / kernel_parameters.beta;
+    let scaled_minus_plus = kernel_parameters.alpha.minus_plus / kernel_parameters.beta;
+    let scaled_minus_minus = kernel_parameters.alpha.minus_minus / kernel_parameters.beta;
+    let trace = scaled_plus_plus + scaled_minus_minus;
+
+    let discriminant = ((scaled_plus_plus - scaled_minus_minus).powi(2)
+        + 4.0 * scaled_plus_minus * scaled_minus_plus)
+        .sqrt();
+
+    let spectral_radius_alpha_over_beta = 0.5 * (trace + discriminant);
+    let effective_branching_ratio = max_seasonality_factor * spectral_radius_alpha_over_beta;
+
+    Some((
+        max_seasonality_factor,
+        spectral_radius_alpha_over_beta,
+        effective_branching_ratio,
+    ))
 }
 
 fn map_transition_error_to_seeded_simulation_run_error(

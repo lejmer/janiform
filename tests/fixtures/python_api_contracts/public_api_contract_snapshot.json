@@ -130,6 +130,8 @@
         "CalibrationExecutionMode",
         "CalibrationFailureDetails",
         "CalibrationHandoffTransport",
+        "CalibrationHawkesDirectionalLabelDiagnostics",
+        "CalibrationHawkesObservedSourceRegime",
         "CalibrationHawkesStageCandidateInput",
         "CalibrationHawkesStructuredAlphaParameterization",
         "CalibrationHawkesStructuredRhoParameterization",
@@ -354,6 +356,38 @@
             }
           ]
         },
+        "CalibrationHawkesDirectionalLabelDiagnostics": {
+          "field_names": [
+            "policy_id",
+            "first_inferred_trade_sign",
+            "provided_label_count",
+            "inferred_label_count",
+            "flat_move_carry_count",
+            "price_up_inference_count",
+            "price_down_inference_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(policy_id: 'str', first_inferred_trade_sign: 'CalibrationTradeSign', provided_label_count: 'int', inferred_label_count: 'int', flat_move_carry_count: 'int', price_up_inference_count: 'int', price_down_inference_count: 'int') -> 'None'"
+        },
+        "CalibrationHawkesObservedSourceRegime": {
+          "field_names": [
+            "observation_duration_hours",
+            "open_session_duration_hours",
+            "total_tick_count",
+            "open_session_tick_count",
+            "closed_session_tick_count",
+            "open_session_buy_tick_count",
+            "open_session_sell_tick_count",
+            "open_session_mean_interarrival_seconds",
+            "open_session_interarrival_coefficient_of_variation",
+            "open_session_short_gap_threshold_seconds",
+            "open_session_short_gap_ratio",
+            "known_news_open_event_count",
+            "open_session_known_news_activity_share"
+          ],
+          "kind": "contract_model",
+          "signature": "(observation_duration_hours: 'float', open_session_duration_hours: 'float', total_tick_count: 'int', open_session_tick_count: 'int', closed_session_tick_count: 'int', open_session_buy_tick_count: 'int', open_session_sell_tick_count: 'int', open_session_mean_interarrival_seconds: 'float', open_session_interarrival_coefficient_of_variation: 'float', open_session_short_gap_threshold_seconds: 'float', open_session_short_gap_ratio: 'float', known_news_open_event_count: 'int', open_session_known_news_activity_share: 'float') -> 'None'"
+        },
         "CalibrationHawkesStageCandidateInput": {
           "field_names": [
             "candidate_id",
@@ -361,12 +395,13 @@
             "beta",
             "structured_alpha",
             "structured_rho",
+            "source_regime",
+            "directional_label_diagnostics",
             "self_dominance_policy",
-            "stability_numeric_tolerance",
-            "objective_terms"
+            "stability_numeric_tolerance"
           ],
           "kind": "contract_model",
-          "signature": "(candidate_id: 'str', lambda_bar: 'float', beta: 'float', structured_alpha: 'CalibrationHawkesStructuredAlphaParameterization', structured_rho: 'CalibrationHawkesStructuredRhoParameterization', self_dominance_policy: 'Optional[CalibrationHawkesStructuredRhoSelfDominancePolicy]' = None, stability_numeric_tolerance: 'float' = 0.0, objective_terms: 'tuple[CalibrationObjectiveTermInput, ...]' = ()) -> 'None'"
+          "signature": "(candidate_id: 'str', lambda_bar: 'float', beta: 'float', structured_alpha: 'CalibrationHawkesStructuredAlphaParameterization', structured_rho: 'CalibrationHawkesStructuredRhoParameterization', source_regime: 'CalibrationHawkesObservedSourceRegime', directional_label_diagnostics: 'CalibrationHawkesDirectionalLabelDiagnostics', self_dominance_policy: 'Optional[CalibrationHawkesStructuredRhoSelfDominancePolicy]' = None, stability_numeric_tolerance: 'float' = 0.0) -> 'None'"
         },
         "CalibrationHawkesStructuredAlphaParameterization": {
           "field_names": [
