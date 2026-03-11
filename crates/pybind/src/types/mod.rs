@@ -2,6 +2,7 @@ mod calendar;
 mod calibration;
 mod hourly;
 mod seasonality;
+mod simulation;
 
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
@@ -17,6 +18,7 @@ pub(crate) use seasonality::{
     PyDeterministicSeasonalityCompositionResult, PyIntradaySeasonalityEstimateResult,
     PyTimestampEventPreprocessingResult,
 };
+pub(crate) use simulation::PySeededTickSimulationNativeResult;
 
 pub(crate) fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyCalibrationMemoryCheckpointStore>()?;
@@ -29,5 +31,6 @@ pub(crate) fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyHourlyFactorContractResult>()?;
     module.add_class::<PyHourlySeasonalityMaterializationResult>()?;
     module.add_class::<PyHourlyNewsIntensityMaterializationResult>()?;
+    module.add_class::<PySeededTickSimulationNativeResult>()?;
     Ok(())
 }

@@ -283,7 +283,7 @@ fn seeded_simulation_run_executes_with_valid_config() {
     assert_eq!(first_result.seed, 9_101);
     assert_eq!(first_result.simulated_interval_count, 2);
     assert!(first_result.debug_trace_enabled);
-    assert!(!first_result.event_path.is_empty());
+    assert!(first_result.event_count() > 0);
     assert!(is_non_decreasing_timestamp_path(&first_result));
 }
 
@@ -311,7 +311,10 @@ fn seeded_simulation_run_diverges_with_different_seeds() {
     let second_result = run_seeded_tick_event_simulation(second_run_config)
         .expect("second deterministic run should complete");
 
-    assert_ne!(first_result.event_path, second_result.event_path);
+    assert_ne!(
+        first_result.projected_event_path(),
+        second_result.projected_event_path()
+    );
 }
 
 #[test]
@@ -347,8 +350,8 @@ fn seeded_simulation_run_is_independent_from_debug_trace_flag() {
         .expect("run with debug trace should complete");
 
     assert_eq!(
-        result_without_debug.event_path,
-        result_with_debug.event_path
+        result_without_debug.projected_event_path(),
+        result_with_debug.projected_event_path()
     );
     assert_eq!(
         result_without_debug.final_excitation_state,
@@ -656,9 +659,10 @@ fn seeded_simulation_debug_trace_captures_transition_ordering_and_carryover_cont
         );
     }
 
-    assert_eq!(run_result.event_path.len(), 1);
-    assert_eq!(run_result.event_path[0].event_index, 0);
-    assert_eq!(run_result.event_path[0].side, SeededTickEventSide::Buy);
+    let projected_event_path = run_result.projected_event_path();
+    assert_eq!(projected_event_path.len(), 1);
+    assert_eq!(projected_event_path[0].event_index, 0);
+    assert_eq!(projected_event_path[0].side, SeededTickEventSide::Buy);
 }
 
 #[test]
@@ -687,7 +691,7 @@ fn seeded_simulation_suppresses_endogenous_events_while_market_is_closed() {
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("closed-market run should complete");
 
-    assert!(run_result.event_path.is_empty());
+    assert_eq!(run_result.event_count(), 0);
 }
 
 #[test]
@@ -784,7 +788,10 @@ fn seeded_simulation_run_accepts_injected_randomness_factory() {
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &fixture_factory)
             .expect("second injected fixture randomness run should complete");
 
-    assert_eq!(first_result.event_path, second_result.event_path);
+    assert_eq!(
+        first_result.projected_event_path(),
+        second_result.projected_event_path()
+    );
     assert!(is_non_decreasing_timestamp_path(&first_result));
 }
 
@@ -936,8 +943,8 @@ fn seeded_simulation_preserves_full_state_carryover_across_hour_boundaries() {
     )
     .expect("deterministic carryover drift step should succeed");
 
-    assert!(one_hour_result.event_path.is_empty());
-    assert!(two_hour_result.event_path.is_empty());
+    assert_eq!(one_hour_result.event_count(), 0);
+    assert_eq!(two_hour_result.event_count(), 0);
     assert_float_close(
         two_hour_result.final_excitation_state.y_plus_plus,
         expected_two_hour_final_state.y_plus_plus,
@@ -984,16 +991,18 @@ fn seeded_simulation_factor_changes_apply_on_hour_boundaries_only() {
     let muted_second_hour_result = run_seeded_tick_event_simulation(muted_second_hour_run_config)
         .expect("muted boundary-factor run should complete");
 
-    assert!(baseline_result.event_path.len() >= muted_second_hour_result.event_path.len());
+    let baseline_event_path = baseline_result.projected_event_path();
+    let muted_second_hour_event_path = muted_second_hour_result.projected_event_path();
+
+    assert!(baseline_event_path.len() >= muted_second_hour_event_path.len());
     assert!(
-        muted_second_hour_result
-            .event_path
+        muted_second_hour_event_path
             .iter()
             .all(|event_record| event_record.timestamp_utc_nanos < boundary_utc_nanos)
     );
     assert_eq!(
-        &baseline_result.event_path[..muted_second_hour_result.event_path.len()],
-        muted_second_hour_result.event_path.as_slice()
+        &baseline_event_path[..muted_second_hour_event_path.len()],
+        muted_second_hour_event_path.as_slice()
     );
 }
 
@@ -1077,11 +1086,13 @@ fn seeded_simulation_event_time_feedback_changes_same_interval_arrival_dynamics_
     )
     .expect("feedback run should complete");
 
-    assert_eq!(no_feedback_result.event_path.len(), 1);
-    assert!(feedback_result.event_path.len() >= 2);
+    let no_feedback_event_path = no_feedback_result.projected_event_path();
+    let feedback_event_path = feedback_result.projected_event_path();
+
+    assert_eq!(no_feedback_event_path.len(), 1);
+    assert!(feedback_event_path.len() >= 2);
     assert!(
-        feedback_result.event_path[1].timestamp_utc_nanos
-            > feedback_result.event_path[0].timestamp_utc_nanos
+        feedback_event_path[1].timestamp_utc_nanos > feedback_event_path[0].timestamp_utc_nanos
     );
 }
 
@@ -1117,7 +1128,7 @@ fn seeded_simulation_regresses_if_endogenous_scheduling_reverts_to_static_count_
         interval_start_utc_nanos + 3 * ONE_HOUR_NANOS / 4,
     ];
     let observed_timestamps: Vec<i64> = run_result
-        .event_path
+        .projected_event_path()
         .iter()
         .map(|event_record| event_record.timestamp_utc_nanos)
         .collect();
@@ -1164,7 +1175,7 @@ fn seeded_simulation_fine_path_interval_aggregation_matches_coarse_endogenous_tr
 
     let mut aggregated_fine_buy_counts = [0_usize; 2];
     let mut aggregated_fine_sell_counts = [0_usize; 2];
-    for event_record in &run_result.event_path {
+    for event_record in run_result.projected_event_path() {
         let interval_index = ((event_record.timestamp_utc_nanos - start_utc_nanos)
             .div_euclid(ONE_HOUR_NANOS)) as usize;
         match event_record.side {
@@ -1982,10 +1993,11 @@ fn seeded_simulation_boundary_adjacent_event_times_are_not_snapped_to_hour_edges
     )
     .expect("boundary-adjacent run should complete");
 
-    assert_eq!(run_result.event_path.len(), 2);
+    let projected_event_path = run_result.projected_event_path();
+    assert_eq!(projected_event_path.len(), 2);
 
-    let first_timestamp_utc_nanos = run_result.event_path[0].timestamp_utc_nanos;
-    let second_timestamp_utc_nanos = run_result.event_path[1].timestamp_utc_nanos;
+    let first_timestamp_utc_nanos = projected_event_path[0].timestamp_utc_nanos;
+    let second_timestamp_utc_nanos = projected_event_path[1].timestamp_utc_nanos;
 
     assert!(first_timestamp_utc_nanos < boundary_utc_nanos);
     assert!(second_timestamp_utc_nanos > boundary_utc_nanos);
@@ -2046,7 +2058,8 @@ fn seeded_simulation_state_snapshot_captures_post_event_transition_boundary() {
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("snapshot boundary run should complete");
 
-    assert_eq!(run_result.event_path.len(), 1);
+    let projected_event_path = run_result.projected_event_path();
+    assert_eq!(projected_event_path.len(), 1);
     assert_eq!(
         run_result.event_tape_metadata.state_snapshot_capture,
         SeededTickEventStateSnapshotCapture::PostEventTransition
@@ -2058,7 +2071,7 @@ fn seeded_simulation_state_snapshot_captures_post_event_transition_boundary() {
         Some(SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY)
     );
 
-    let snapshot = run_result.event_path[0]
+    let snapshot = projected_event_path[0]
         .state_snapshot
         .expect("snapshot capture must populate state_snapshot");
 
@@ -2413,9 +2426,12 @@ fn seeded_simulation_tied_and_near_tied_timestamps_serialize_deterministically()
 }
 
 fn is_non_decreasing_timestamp_path(run_result: &super::SeededTickSimulationRunResult) -> bool {
-    run_result.event_path.windows(2).all(|event_window| {
-        event_window[0].timestamp_utc_nanos <= event_window[1].timestamp_utc_nanos
-    })
+    run_result
+        .projected_event_path()
+        .windows(2)
+        .all(|event_window| {
+            event_window[0].timestamp_utc_nanos <= event_window[1].timestamp_utc_nanos
+        })
 }
 
 fn assert_state_snapshot_close(

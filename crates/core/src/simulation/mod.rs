@@ -20,7 +20,7 @@ pub use artifacts::{
     SeededTickEventDebugTraceMetadata, SeededTickEventDebugTraceOutput,
     SeededTickEventDebugTraceRecord, SeededTickEventDebugTraceTransitionKind,
     SeededTickEventRecord, SeededTickEventSide, SeededTickEventStateSnapshot,
-    SeededTickEventTapeMetadata, SeededTickEventTapeOutput,
+    SeededTickEventTapeMetadata, SeededTickEventTapeOutput, SeededTickSimulationNativeDiagnostics,
     SeededTickSimulationNewsEventMarketState, SeededTickSimulationNewsRoutingTotals,
     SeededTickSimulationRunResult,
 };

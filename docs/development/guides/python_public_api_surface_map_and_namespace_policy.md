@@ -74,6 +74,7 @@ The package root `janiform` is intentionally minimal.
     - `SeededTickEventStateSnapshot`
     - `SeededTickEventRecord`
     - `SeededTickEventTapeMetadata`
+    - `SeededTickSimulationDiagnostics`
     - `SeededTickSimulationHourlyFactorSummary`
     - `SeededTickSimulationRequest`
     - `SeededTickSimulationResponse`
@@ -91,6 +92,7 @@ The package root `janiform` is intentionally minimal.
     - `validate_seeded_tick_simulation_response`
     - `serialize_seeded_tick_simulation_response`
     - `deserialize_seeded_tick_simulation_response`
+  - Seeded response policy: normal execution returns lazy fine-path and event-tape views with surfaced boundary diagnostics instead of eagerly round-tripping one giant fine-path JSON payload through Python.
 - `janiform.pricing`
   - Ownership: vanilla option pricing contract, execution input, native runner, and pricing-side interval factor loading
   - Public symbols:

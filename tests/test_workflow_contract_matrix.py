@@ -223,6 +223,30 @@ def _build_simulation_direct_response_payload(calendar_registry, tmp_path: Path)
                 "state_snapshot_capture": "disabled",
                 "state_snapshot_capture_point_policy": None,
             },
+            "event_tape_metadata": {
+                "schema_version": "simulation.seeded_tick_event.tape_metadata.v1",
+                "event_record_schema_version": "simulation.seeded_tick_event.record.v1",
+                "state_snapshot_schema_version": "simulation.seeded_tick_event.state_snapshot.v1",
+                "event_ordering_policy": "deterministic_tie_break.v1",
+                "timestamp_representation_policy": "utc_nanos.v1",
+                "side_encoding_policy": "buy_sell.v1",
+                "state_snapshot_capture": "disabled",
+                "state_snapshot_capture_point_policy": None,
+            },
+            "diagnostics": {
+                "schema_version": "simulation.seeded_tick.path_diagnostics.v1",
+                "transition_count": 1,
+                "event_count": 1,
+                "native_runtime_seconds": 0.0,
+                "python_response_construction_seconds": 0.0,
+                "python_materialization_seconds": 0.0,
+                "boundary_transport_bytes": 0,
+                "native_estimated_retained_bytes": 0,
+                "materialized_transition_count": 1,
+                "materialized_event_count": 1,
+                "boundary_transport_policy": "materialized_payload_projection.v1",
+                "boundary_chunk_record_count": 1,
+            },
             "fine_path": [
                 {
                     "transition_index": 0,
@@ -240,6 +264,13 @@ def _build_simulation_direct_response_payload(calendar_registry, tmp_path: Path)
                         "total_return": 0.05,
                     },
                     "cumulative_log_return": 0.05,
+                }
+            ],
+            "event_tape": [
+                {
+                    "event_index": 0,
+                    "timestamp_utc_nanos": 100,
+                    "side": SeededTickEventSide.BUY.value,
                 }
             ],
         }

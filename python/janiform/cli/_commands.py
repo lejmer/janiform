@@ -1145,10 +1145,11 @@ def _render_market_data_calibration_human_output(
 
 
 def _render_simulation_seeded_ticks_human_output(response_payload: dict[str, Any]) -> str:
+    diagnostics = cast(dict[str, Any], response_payload["diagnostics"])
     return (
         "simulation seeded-ticks completed: "
         f"schema_version={response_payload['schema_version']} "
-        f"transition_count={len(cast(list[dict[str, Any]], response_payload['fine_path']))} "
+        f"transition_count={diagnostics['transition_count']} "
         f"path_record_schema_version={cast(dict[str, Any], response_payload['metadata'])['path_record_schema_version']}\n"
     )
 
