@@ -3,7 +3,7 @@
 ### Description
 Refactor seeded-simulation execution and data movement so realistic runs do not pay for full fine-path duplication across Rust, JSON, and Python. The current implementation is too slow and too memory-hungry to be acceptable for real-data smoke tests.
 
-The investigated run took approximately `298` seconds to generate a `96` interval seeded path (this run used hourly data) and used roughly `48 GB` of RAM, while average CPU utilization stayed near `6` to `7` percent. The low CPU utilization is consistent with a mostly single-threaded path saturating roughly one core on a many-core machine, combined with heavy serialization and object-materialization overhead.
+The investigated run took many GB of RAM, while average CPU utilization stayed near `6` to `7` percent. The low CPU utilization is consistent with a mostly single-threaded path saturating roughly one core on a many-core machine, combined with heavy serialization and object-materialization overhead.
 
 The current boundary costs are concrete:
 - In `crates/core/src/simulation/runtime.rs`, seeded simulation allocates full `fine_path` and `event_path` vectors.
