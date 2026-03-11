@@ -20,7 +20,6 @@ use crate::news::{
     CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration,
 };
-use crate::nig::NigSharedPlusShiftConfiguration;
 
 use super::{
     CalibrationDayOfWeekSeasonalityEstimatorSettings,
@@ -33,6 +32,7 @@ use super::{
     CalibrationReturnComponentsKnownNewsReturnSample,
     CalibrationReturnComponentsObjectiveMetricWeights,
     CalibrationReturnComponentsObservedCloseOpenBoundaryObservation,
+    CalibrationReturnComponentsObservedOpenSessionReturn,
     CalibrationReturnComponentsSignalSourceWindow,
     CalibrationReturnComponentsStageCandidateGenerationInput, CalibrationScheduledEventOverlay,
     CalibrationSeasonalityStageExecutionInput, CalibrationSeasonalityStageExecutionSettings,
@@ -42,7 +42,6 @@ use super::{
 
 const ACTIVITY_LIFT_WINDOW_MINUTES: i64 = 30;
 const KNOWN_NEWS_EXCLUSION_WINDOW_MINUTES: i64 = 15;
-const MINIMUM_HOURLY_NIG_SHAPE_MASS: f64 = 5.0e-4;
 const MINIMUM_OPEN_TICK_COUNT_DURATION_HOURS: f64 = 0.25;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -125,7 +124,6 @@ pub enum MarketDataTranslationPreprocessingError {
     },
     HawkesRequiresDirectionalLabelDiagnostics,
     MissingOpenSessionPriceObservations,
-    MissingIntradayJumpCandidates,
     InvalidSessionBoundary {
         exchange_code: String,
         timestamp_utc_nanos: i64,
@@ -186,10 +184,6 @@ impl Display for MarketDataTranslationPreprocessingError {
             Self::MissingOpenSessionPriceObservations => write!(
                 formatter,
                 "full calibration requires at least two open-session price observations"
-            ),
-            Self::MissingIntradayJumpCandidates => write!(
-                formatter,
-                "full calibration requires at least one non-known-news open-session return candidate"
             ),
             Self::InvalidSessionBoundary {
                 exchange_code,
@@ -719,7 +713,7 @@ fn build_return_components_candidate_generation_input(
     open_session_sell_tick_count: usize,
     retained_known_news: &[ResolvedKnownNewsRecord],
     source_window: CalibrationReturnComponentsSignalSourceWindow,
-    option_surface_quote_values: &[f64],
+    _option_surface_quote_values: &[f64],
 ) -> Result<
     (
         CalibrationReturnComponentsStageCandidateGenerationInput,
@@ -736,6 +730,10 @@ fn build_return_components_candidate_generation_input(
         .map(|tick| tick.timestamp_utc_nanos)
         .collect();
     let same_session_returns = same_session_open_returns(open_price_ticks);
+    let observed_open_session_returns = derive_observed_open_session_returns(
+        same_session_returns.as_slice(),
+        open_price_tick_timestamps.as_slice(),
+    );
     let close_open_boundary_observations = derive_close_open_boundary_observations(
         open_price_ticks,
         open_price_tick_timestamps.as_slice(),
@@ -756,8 +754,7 @@ fn build_return_components_candidate_generation_input(
         same_session_returns.as_slice(),
         open_price_tick_timestamps.as_slice(),
         known_news_timestamps.as_slice(),
-    )?;
-    let mean_open_tick_count_per_hour = mean_open_tick_count_per_hour(open_price_ticks);
+    );
 
     let open_tick_sell_share = if open_signed_tick_count == 0 {
         0.5
@@ -786,25 +783,23 @@ fn build_return_components_candidate_generation_input(
             scheduled_event_timestamps_utc_nanos: known_news_timestamps,
         },
         realized_known_news_return_samples: known_news_return_samples,
+        observed_open_session_returns,
         detected_intraday_jump_candidates: intraday_jump_candidates,
         observed_close_open_boundary_observations: close_open_boundary_observations.clone(),
         close_open_gap_detection_policy: CalibrationReturnComponentsCloseOpenGapDetectionPolicy {
             material_gap_absolute_return_tolerance: round_to(gap_tolerance, 6),
         },
-        nig_shared_plus_shift_candidates: derive_nig_candidates(
-            intraday_return_values.as_slice(),
-            mean_open_tick_count_per_hour,
-            open_tick_sell_share,
-            option_surface_quote_values,
-        ),
+        open_session_sell_share_proxy: round_to(open_tick_sell_share, 6),
         shared_mark_law_template: derive_shared_mark_law_template(
             intraday_return_values.as_slice(),
             close_open_boundary_observations.as_slice(),
         ),
         objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights {
-            open_jump_fit_weight: 1.0,
-            closed_gap_fit_weight: 1.0,
+            continuous_distribution_fit_weight: 1.0,
+            jump_fit_weight: 1.0,
+            gap_fit_weight: 1.0,
             activity_coupling_fit_weight: 1.0,
+            price_range_sanity_fit_weight: 1.0,
         },
     };
 
@@ -881,6 +876,10 @@ fn derive_known_news_return_samples(
                     event_timestamp_utc_nanos: known_news_record.event_timestamp_utc_nanos,
                     open_window_jump_return: f64::ln(after_tick.price / before_tick.price),
                     closed_window_gap_return: 0.0,
+                    post_shock_activity_lift: activity_lift(
+                        known_news_record.event_timestamp_utc_nanos,
+                        open_price_tick_timestamps,
+                    ),
                 });
             }
             MarketState::Closed => {
@@ -894,6 +893,7 @@ fn derive_known_news_return_samples(
                         closed_window_gap_return: f64::ln(
                             boundary_observation.open_price / boundary_observation.close_price,
                         ),
+                        post_shock_activity_lift: boundary_observation.post_shock_activity_lift,
                     });
                 }
             }
@@ -903,14 +903,30 @@ fn derive_known_news_return_samples(
     return_samples
 }
 
+fn derive_observed_open_session_returns(
+    same_session_returns: &[(i64, f64)],
+    open_price_tick_timestamps: &[i64],
+) -> Vec<CalibrationReturnComponentsObservedOpenSessionReturn> {
+    same_session_returns
+        .iter()
+        .map(|(return_timestamp_utc_nanos, log_return)| {
+            CalibrationReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: *return_timestamp_utc_nanos,
+                log_return: *log_return,
+                post_shock_activity_lift: activity_lift(
+                    *return_timestamp_utc_nanos,
+                    open_price_tick_timestamps,
+                ),
+            }
+        })
+        .collect()
+}
+
 fn derive_intraday_jump_candidates(
     same_session_returns: &[(i64, f64)],
     open_price_tick_timestamps: &[i64],
     known_news_timestamps: &[i64],
-) -> Result<
-    Vec<CalibrationReturnComponentsDetectedIntradayJumpCandidate>,
-    MarketDataTranslationPreprocessingError,
-> {
+) -> Vec<CalibrationReturnComponentsDetectedIntradayJumpCandidate> {
     let candidate_returns: Vec<(i64, f64)> = same_session_returns
         .iter()
         .copied()
@@ -922,7 +938,7 @@ fn derive_intraday_jump_candidates(
         })
         .collect();
     if candidate_returns.is_empty() {
-        return Err(MarketDataTranslationPreprocessingError::MissingIntradayJumpCandidates);
+        return Vec::new();
     }
 
     let threshold = 0.005f64.max(
@@ -932,26 +948,18 @@ fn derive_intraday_jump_candidates(
                 .map(|(_, jump_return)| *jump_return)
                 .collect::<Vec<_>>()
                 .as_slice(),
-        ) * 3.0,
+        ) * 4.0,
     );
-    let mut material_candidates: Vec<(i64, f64)> = candidate_returns
+    let material_candidates: Vec<(i64, f64)> = candidate_returns
         .iter()
         .copied()
         .filter(|(_, jump_return)| f64::abs(*jump_return) > threshold)
         .collect();
-    if material_candidates.is_empty() {
-        let largest_candidate = candidate_returns
-            .iter()
-            .copied()
-            .max_by(|left_candidate, right_candidate| {
-                f64::abs(left_candidate.1).total_cmp(&f64::abs(right_candidate.1))
-            })
-            .expect("candidate_returns must be non-empty");
-
-        material_candidates.push(largest_candidate);
+    if material_candidates.len() < 2 {
+        return Vec::new();
     }
 
-    Ok(material_candidates
+    material_candidates
         .into_iter()
         .map(|(candidate_timestamp_utc_nanos, jump_return)| {
             CalibrationReturnComponentsDetectedIntradayJumpCandidate {
@@ -963,7 +971,7 @@ fn derive_intraday_jump_candidates(
                 ),
             }
         })
-        .collect())
+        .collect()
 }
 
 fn same_session_open_returns(open_price_ticks: &[OpenTickRecord]) -> Vec<(i64, f64)> {
@@ -984,50 +992,6 @@ fn same_session_open_returns(open_price_ticks: &[OpenTickRecord]) -> Vec<(i64, f
     }
 
     same_session_returns
-}
-
-fn derive_nig_candidates(
-    intraday_return_values: &[f64],
-    mean_open_tick_count_per_hour: f64,
-    open_tick_sell_share: f64,
-    option_surface_quote_values: &[f64],
-) -> Vec<NigSharedPlusShiftConfiguration> {
-    let mean_return = arithmetic_mean(intraday_return_values).unwrap_or(0.0);
-    let root_mean_square_return = arithmetic_mean(
-        intraday_return_values
-            .iter()
-            .map(|return_value| return_value * return_value)
-            .collect::<Vec<_>>()
-            .as_slice(),
-    )
-    .unwrap_or(1.0e-4)
-    .sqrt();
-
-    let option_quote_level = arithmetic_mean(option_surface_quote_values).unwrap_or(0.0);
-
-    let beta_0 = clamp(mean_return * 1_000.0, -0.05, 0.05);
-    let delta_beta = -0.05;
-    let alpha =
-        (2.0 + (option_quote_level / 10.0).min(1.5)).max(f64::abs(beta_0 + delta_beta) + 0.25);
-
-    let tick_scale_delta = nig_delta_from_tick_return_scale(
-        alpha,
-        beta_0,
-        delta_beta,
-        open_tick_sell_share,
-        root_mean_square_return,
-    );
-    let activity_floor_delta =
-        MINIMUM_HOURLY_NIG_SHAPE_MASS / mean_open_tick_count_per_hour.max(1.0);
-    let delta = tick_scale_delta.max(activity_floor_delta);
-
-    vec![NigSharedPlusShiftConfiguration {
-        alpha: round_to(alpha, 6),
-        beta_0: round_to(beta_0, 6),
-        delta: round_to(delta, 12),
-        mu: round_to(mean_return, 6),
-        delta_beta,
-    }]
 }
 
 fn derive_shared_mark_law_template(
@@ -1518,56 +1482,6 @@ fn count_in_half_open_interval(
     let end_index = sorted_timestamps.partition_point(|timestamp| *timestamp < end_exclusive);
 
     end_index.saturating_sub(start_index)
-}
-
-fn mean_open_tick_count_per_hour(open_price_ticks: &[OpenTickRecord]) -> f64 {
-    if open_price_ticks.len() <= 1 {
-        return 1.0;
-    }
-
-    let observed_duration_hours = (open_price_ticks
-        .last()
-        .expect("len checked")
-        .timestamp_utc_nanos
-        - open_price_ticks
-            .first()
-            .expect("len checked")
-            .timestamp_utc_nanos) as f64
-        / 1_000_000_000.0
-        / 3600.0;
-    let effective_duration_hours =
-        observed_duration_hours.max(MINIMUM_OPEN_TICK_COUNT_DURATION_HOURS);
-
-    (open_price_ticks.len() as f64 / effective_duration_hours).max(1.0)
-}
-
-fn nig_delta_from_tick_return_scale(
-    alpha: f64,
-    beta_0: f64,
-    delta_beta: f64,
-    open_tick_sell_share: f64,
-    root_mean_square_return: f64,
-) -> f64 {
-    let buy_variance_per_business_time = nig_variance_per_unit_business_time(alpha, beta_0);
-    let sell_variance_per_business_time =
-        nig_variance_per_unit_business_time(alpha, beta_0 + delta_beta);
-
-    let clamped_sell_share = clamp(open_tick_sell_share, 0.0, 1.0);
-    let expected_variance_per_observed_interval = (1.0 - clamped_sell_share)
-        * buy_variance_per_business_time
-        + clamped_sell_share * sell_variance_per_business_time;
-    let observed_return_variance = (root_mean_square_return * root_mean_square_return).max(1.0e-18);
-
-    clamp(
-        observed_return_variance / expected_variance_per_observed_interval.max(1.0e-12),
-        1.0e-12,
-        1.5,
-    )
-}
-
-fn nig_variance_per_unit_business_time(alpha: f64, beta: f64) -> f64 {
-    let gamma = ((alpha * alpha) - (beta * beta)).sqrt();
-    (alpha * alpha) / (gamma * gamma * gamma)
 }
 
 fn unique_sorted_rounded(values: &[f64]) -> Vec<f64> {

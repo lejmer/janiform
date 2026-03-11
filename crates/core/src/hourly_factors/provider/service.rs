@@ -175,17 +175,16 @@ fn resample_explicit_hourly_factors_to_requested_intervals(
         });
     }
 
-    let range_start_utc_nanos = range_start_utc
-        .timestamp_nanos_opt()
-        .ok_or(HourlyFactorContractError::TimestampOutOfRange {
+    let range_start_utc_nanos = range_start_utc.timestamp_nanos_opt().ok_or(
+        HourlyFactorContractError::TimestampOutOfRange {
             field: "range_start_utc",
-        })?;
-    let range_end_utc_nanos =
-        range_end_utc
-            .timestamp_nanos_opt()
-            .ok_or(HourlyFactorContractError::TimestampOutOfRange {
-                field: "range_end_utc",
-            })?;
+        },
+    )?;
+    let range_end_utc_nanos = range_end_utc.timestamp_nanos_opt().ok_or(
+        HourlyFactorContractError::TimestampOutOfRange {
+            field: "range_end_utc",
+        },
+    )?;
     if range_start_utc_nanos >= range_end_utc_nanos {
         return Err(HourlyFactorContractError::NonIncreasingRange {
             range_start_utc_nanos,
@@ -196,12 +195,14 @@ fn resample_explicit_hourly_factors_to_requested_intervals(
     let request_duration_nanos = range_end_utc_nanos - range_start_utc_nanos;
     let request_remainder_nanos = request_duration_nanos.rem_euclid(interval_duration_nanos);
     if request_remainder_nanos != 0 {
-        return Err(HourlyFactorContractError::RangeDurationNotDivisibleByInterval {
-            range_start_utc_nanos,
-            range_end_utc_nanos,
-            interval_duration_nanos,
-            remainder_nanos: request_remainder_nanos,
-        });
+        return Err(
+            HourlyFactorContractError::RangeDurationNotDivisibleByInterval {
+                range_start_utc_nanos,
+                range_end_utc_nanos,
+                interval_duration_nanos,
+                remainder_nanos: request_remainder_nanos,
+            },
+        );
     }
 
     const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
@@ -217,8 +218,7 @@ fn resample_explicit_hourly_factors_to_requested_intervals(
             .saturating_mul(ONE_HOUR_NANOS)
     };
     let canonical_hour_count =
-        ((canonical_hour_end_utc_nanos - canonical_hour_start_utc_nanos) / ONE_HOUR_NANOS)
-            as usize;
+        ((canonical_hour_end_utc_nanos - canonical_hour_start_utc_nanos) / ONE_HOUR_NANOS) as usize;
     if hourly_factors.len() != canonical_hour_count {
         return Err(HourlyFactorContractError::FactorLengthMismatch {
             expected_interval_count: canonical_hour_count,

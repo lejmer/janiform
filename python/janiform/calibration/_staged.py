@@ -39,7 +39,7 @@ from .._native_api import native_module
 from ..calendar import CalendarRegistry
 
 if TYPE_CHECKING:
-    from ..pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
+    from ..pricing import GammaSeverityMarkConfiguration
 
 
 def _parse_gamma_severity_mark_configuration(
@@ -51,15 +51,6 @@ def _parse_gamma_severity_mark_configuration(
 
     return GammaSeverityMarkConfiguration.from_mapping(raw_payload, field_path=field_path)
 
-
-def _parse_nig_shared_plus_shift_configuration(
-    raw_payload: dict[str, Any] | Any,
-    *,
-    field_path: str,
-) -> Any:
-    from ..pricing import NigSharedPlusShiftConfiguration
-
-    return NigSharedPlusShiftConfiguration.from_mapping(raw_payload, field_path=field_path)
 
 class CalibrationTimestampEventSessionFilter(StrEnum):
     ALL = 'all'
@@ -1116,6 +1107,7 @@ class CalibrationReturnComponentsKnownNewsReturnSample(ContractModel):
     event_timestamp_utc_nanos: int
     open_window_jump_return: float
     closed_window_gap_return: float
+    post_shock_activity_lift: float
 
     def __post_init__(self) -> None:
         require_finite_number(
@@ -1130,6 +1122,8 @@ class CalibrationReturnComponentsKnownNewsReturnSample(ContractModel):
             "closed_window_gap_return",
             CALIBRATION_ERROR_FACTORY,
         )
+        if self.post_shock_activity_lift < 0.0:
+            raise _calibration_error("post_shock_activity_lift", "must be non-negative")
 
     @staticmethod
     def from_mapping(
@@ -1156,6 +1150,12 @@ class CalibrationReturnComponentsKnownNewsReturnSample(ContractModel):
                 raw_payload,
                 "closed_window_gap_return",
                 f"{field_path}.closed_window_gap_return",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            post_shock_activity_lift=require_non_negative_finite_number(
+                raw_payload,
+                "post_shock_activity_lift",
+                f"{field_path}.post_shock_activity_lift",
                 CALIBRATION_ERROR_FACTORY,
             ),
         )
@@ -1191,6 +1191,47 @@ class CalibrationReturnComponentsDetectedIntradayJumpCandidate(ContractModel):
                 raw_payload,
                 "jump_return",
                 f"{field_path}.jump_return",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            post_shock_activity_lift=require_non_negative_finite_number(
+                raw_payload,
+                "post_shock_activity_lift",
+                f"{field_path}.post_shock_activity_lift",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationReturnComponentsObservedOpenSessionReturn(ContractModel):
+    return_timestamp_utc_nanos: int
+    log_return: float
+    post_shock_activity_lift: float
+
+    def __post_init__(self) -> None:
+        require_finite_number({"log_return": self.log_return}, "log_return", "log_return", CALIBRATION_ERROR_FACTORY)
+        if self.post_shock_activity_lift < 0.0:
+            raise _calibration_error("post_shock_activity_lift", "must be non-negative")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationReturnComponentsObservedOpenSessionReturn:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationReturnComponentsObservedOpenSessionReturn(
+            return_timestamp_utc_nanos=_require_timestamp_utc_nanos(
+                raw_payload,
+                "return_timestamp_utc_nanos",
+                f"{field_path}.return_timestamp_utc_nanos",
+            ),
+            log_return=require_finite_number(
+                raw_payload,
+                "log_return",
+                f"{field_path}.log_return",
                 CALIBRATION_ERROR_FACTORY,
             ),
             post_shock_activity_lift=require_non_negative_finite_number(
@@ -1289,17 +1330,23 @@ class CalibrationReturnComponentsCloseOpenGapDetectionPolicy(ContractModel):
 
 @dataclass(frozen=True, slots=True)
 class CalibrationReturnComponentsObjectiveMetricWeights(ContractModel):
-    open_jump_fit_weight: float
-    closed_gap_fit_weight: float
+    continuous_distribution_fit_weight: float
+    jump_fit_weight: float
+    gap_fit_weight: float
     activity_coupling_fit_weight: float
+    price_range_sanity_fit_weight: float
 
     def __post_init__(self) -> None:
-        if self.open_jump_fit_weight < 0.0:
-            raise _calibration_error("open_jump_fit_weight", "must be non-negative")
-        if self.closed_gap_fit_weight < 0.0:
-            raise _calibration_error("closed_gap_fit_weight", "must be non-negative")
+        if self.continuous_distribution_fit_weight < 0.0:
+            raise _calibration_error("continuous_distribution_fit_weight", "must be non-negative")
+        if self.jump_fit_weight < 0.0:
+            raise _calibration_error("jump_fit_weight", "must be non-negative")
+        if self.gap_fit_weight < 0.0:
+            raise _calibration_error("gap_fit_weight", "must be non-negative")
         if self.activity_coupling_fit_weight < 0.0:
             raise _calibration_error("activity_coupling_fit_weight", "must be non-negative")
+        if self.price_range_sanity_fit_weight < 0.0:
+            raise _calibration_error("price_range_sanity_fit_weight", "must be non-negative")
 
     @staticmethod
     def from_mapping(
@@ -1311,22 +1358,34 @@ class CalibrationReturnComponentsObjectiveMetricWeights(ContractModel):
             raise _calibration_error(field_path, "must be an object")
 
         return CalibrationReturnComponentsObjectiveMetricWeights(
-            open_jump_fit_weight=require_non_negative_finite_number(
+            continuous_distribution_fit_weight=require_non_negative_finite_number(
                 raw_payload,
-                "open_jump_fit_weight",
-                f"{field_path}.open_jump_fit_weight",
+                "continuous_distribution_fit_weight",
+                f"{field_path}.continuous_distribution_fit_weight",
                 CALIBRATION_ERROR_FACTORY,
             ),
-            closed_gap_fit_weight=require_non_negative_finite_number(
+            jump_fit_weight=require_non_negative_finite_number(
                 raw_payload,
-                "closed_gap_fit_weight",
-                f"{field_path}.closed_gap_fit_weight",
+                "jump_fit_weight",
+                f"{field_path}.jump_fit_weight",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            gap_fit_weight=require_non_negative_finite_number(
+                raw_payload,
+                "gap_fit_weight",
+                f"{field_path}.gap_fit_weight",
                 CALIBRATION_ERROR_FACTORY,
             ),
             activity_coupling_fit_weight=require_non_negative_finite_number(
                 raw_payload,
                 "activity_coupling_fit_weight",
                 f"{field_path}.activity_coupling_fit_weight",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            price_range_sanity_fit_weight=require_non_negative_finite_number(
+                raw_payload,
+                "price_range_sanity_fit_weight",
+                f"{field_path}.price_range_sanity_fit_weight",
                 CALIBRATION_ERROR_FACTORY,
             ),
         )
@@ -1454,24 +1513,22 @@ class CalibrationSharedNewsMarkLawConfiguration(ContractModel):
 class CalibrationReturnComponentsStageCandidateGenerationInput(ContractModel):
     known_news_calendar: CalibrationReturnComponentsKnownNewsCalendarInput
     realized_known_news_return_samples: tuple[CalibrationReturnComponentsKnownNewsReturnSample, ...]
+    observed_open_session_returns: tuple[CalibrationReturnComponentsObservedOpenSessionReturn, ...]
     detected_intraday_jump_candidates: tuple[CalibrationReturnComponentsDetectedIntradayJumpCandidate, ...]
     observed_close_open_boundary_observations: tuple[CalibrationReturnComponentsObservedCloseOpenBoundaryObservation, ...]
     close_open_gap_detection_policy: CalibrationReturnComponentsCloseOpenGapDetectionPolicy
-    nig_shared_plus_shift_candidates: tuple[NigSharedPlusShiftConfiguration, ...]
+    open_session_sell_share_proxy: float
     shared_mark_law_template: CalibrationSharedNewsMarkLawConfiguration
     objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights
 
     def __post_init__(self) -> None:
-        if len(self.detected_intraday_jump_candidates) == 0:
+        if len(self.observed_open_session_returns) == 0:
             raise _calibration_error(
-                "detected_intraday_jump_candidates",
-                "must include at least one intraday jump candidate",
+                "observed_open_session_returns",
+                "must include at least one observed open-session return",
             )
-        if len(self.nig_shared_plus_shift_candidates) == 0:
-            raise _calibration_error(
-                "nig_shared_plus_shift_candidates",
-                "must include at least one NIG candidate",
-            )
+        if self.open_session_sell_share_proxy < 0.0 or self.open_session_sell_share_proxy > 1.0:
+            raise _calibration_error("open_session_sell_share_proxy", "must be between 0 and 1")
 
     @staticmethod
     def from_mapping(
@@ -1488,6 +1545,12 @@ class CalibrationReturnComponentsStageCandidateGenerationInput(ContractModel):
             f"{field_path}.realized_known_news_return_samples",
             CALIBRATION_ERROR_FACTORY,
         )
+        observed_open_session_returns = require_sequence(
+            raw_payload,
+            "observed_open_session_returns",
+            f"{field_path}.observed_open_session_returns",
+            CALIBRATION_ERROR_FACTORY,
+        )
         intraday_jump_candidates = require_sequence(
             raw_payload,
             "detected_intraday_jump_candidates",
@@ -1498,12 +1561,6 @@ class CalibrationReturnComponentsStageCandidateGenerationInput(ContractModel):
             raw_payload,
             "observed_close_open_boundary_observations",
             f"{field_path}.observed_close_open_boundary_observations",
-            CALIBRATION_ERROR_FACTORY,
-        )
-        nig_candidates = require_sequence(
-            raw_payload,
-            "nig_shared_plus_shift_candidates",
-            f"{field_path}.nig_shared_plus_shift_candidates",
             CALIBRATION_ERROR_FACTORY,
         )
 
@@ -1523,6 +1580,13 @@ class CalibrationReturnComponentsStageCandidateGenerationInput(ContractModel):
                     field_path=f"{field_path}.realized_known_news_return_samples[{sample_index}]",
                 )
                 for sample_index, raw_sample in enumerate(known_news_return_samples)
+            ),
+            observed_open_session_returns=tuple(
+                CalibrationReturnComponentsObservedOpenSessionReturn.from_mapping(
+                    raw_return,
+                    field_path=f"{field_path}.observed_open_session_returns[{return_index}]",
+                )
+                for return_index, raw_return in enumerate(observed_open_session_returns)
             ),
             detected_intraday_jump_candidates=tuple(
                 CalibrationReturnComponentsDetectedIntradayJumpCandidate.from_mapping(
@@ -1547,12 +1611,11 @@ class CalibrationReturnComponentsStageCandidateGenerationInput(ContractModel):
                 ),
                 field_path=f"{field_path}.close_open_gap_detection_policy",
             ),
-            nig_shared_plus_shift_candidates=tuple(
-                _parse_nig_shared_plus_shift_configuration(
-                    raw_candidate,
-                    field_path=f"{field_path}.nig_shared_plus_shift_candidates[{candidate_index}]",
-                )
-                for candidate_index, raw_candidate in enumerate(nig_candidates)
+            open_session_sell_share_proxy=require_non_negative_finite_number(
+                raw_payload,
+                "open_session_sell_share_proxy",
+                f"{field_path}.open_session_sell_share_proxy",
+                CALIBRATION_ERROR_FACTORY,
             ),
             shared_mark_law_template=CalibrationSharedNewsMarkLawConfiguration.from_mapping(
                 require_mapping(

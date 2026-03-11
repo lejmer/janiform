@@ -68,12 +68,14 @@ pub(super) fn build_fixed_interval_indexing(
     let range_duration_nanos = range_end_utc_nanos - range_start_utc_nanos;
     let remainder_nanos = range_duration_nanos.rem_euclid(interval_duration_nanos);
     if remainder_nanos != 0 {
-        return Err(HourlyFactorContractError::RangeDurationNotDivisibleByInterval {
-            range_start_utc_nanos,
-            range_end_utc_nanos,
-            interval_duration_nanos,
-            remainder_nanos,
-        });
+        return Err(
+            HourlyFactorContractError::RangeDurationNotDivisibleByInterval {
+                range_start_utc_nanos,
+                range_end_utc_nanos,
+                interval_duration_nanos,
+                remainder_nanos,
+            },
+        );
     }
 
     let definition = calendar_registry
@@ -150,7 +152,7 @@ fn project_interval_boundaries_to_exchange_local(
 ) -> Result<ExchangeLocalIntervalBoundaryProjection, HourlyFactorContractError> {
     let interval_start_exchange_local = interval_start_utc.with_timezone(timezone);
     let interval_end_exchange_local = interval_end_utc.with_timezone(timezone);
-    
+
     let wall_clock_nanos_between_boundaries = interval_end_exchange_local
         .naive_local()
         .signed_duration_since(interval_start_exchange_local.naive_local())
@@ -158,7 +160,7 @@ fn project_interval_boundaries_to_exchange_local(
         .ok_or(HourlyFactorContractError::TimestampOutOfRange {
             field: "interval_end_exchange_local",
         })?;
-    
+
     let transition_kind = if wall_clock_nanos_between_boundaries > interval_duration_nanos {
         ExchangeLocalIntervalTransitionKind::Skipped
     } else if wall_clock_nanos_between_boundaries < interval_duration_nanos {

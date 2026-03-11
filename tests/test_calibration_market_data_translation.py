@@ -174,9 +174,14 @@ def test_translate_market_data_request_derives_boundaries_known_news_and_diagnos
     assert open_sample.event_timestamp_utc_nanos == _utc_nanos("2026-02-02T15:05:00Z")
     assert open_sample.open_window_jump_return == pytest.approx(0.0292703823)
     assert open_sample.closed_window_gap_return == pytest.approx(0.0)
+    assert open_sample.post_shock_activity_lift == pytest.approx(1.0)
     assert closed_sample.event_timestamp_utc_nanos == _utc_nanos("2026-02-02T22:00:00Z")
     assert closed_sample.open_window_jump_return == pytest.approx(0.0)
     assert closed_sample.closed_window_gap_return == pytest.approx(-0.12516314295)
+    assert closed_sample.post_shock_activity_lift == pytest.approx(1.0)
+
+    assert len(return_components_input.observed_open_session_returns) == 4
+    assert return_components_input.open_session_sell_share_proxy == pytest.approx(0.5)
 
     boundary_observation = return_components_input.observed_close_open_boundary_observations[0]
     assert boundary_observation.close_timestamp_utc_nanos == _utc_nanos("2026-02-02T21:00:00Z")
@@ -297,8 +302,9 @@ def test_translate_market_data_request_scales_nig_candidates_to_tick_return_magn
     )
     assert return_components_input is not None
 
-    nig_candidate = return_components_input.nig_shared_plus_shift_candidates[0]
-    assert nig_candidate.delta < 1e-4
+    assert len(return_components_input.observed_open_session_returns) == 4
+    assert return_components_input.detected_intraday_jump_candidates == ()
+    assert return_components_input.open_session_sell_share_proxy == pytest.approx(0.4)
 
 
 def test_translate_market_data_request_applies_hourly_nig_shape_mass_floor_for_dense_ticks(
@@ -345,8 +351,8 @@ def test_translate_market_data_request_applies_hourly_nig_shape_mass_floor_for_d
     )
     assert return_components_input is not None
 
-    nig_candidate = return_components_input.nig_shared_plus_shift_candidates[0]
-    assert nig_candidate.delta >= 1e-7
+    assert len(return_components_input.observed_open_session_returns) == 1199
+    assert return_components_input.open_session_sell_share_proxy == pytest.approx(0.5)
 
 
 def test_translate_market_data_request_infers_missing_trade_signs_from_price_direction(
