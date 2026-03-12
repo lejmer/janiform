@@ -188,6 +188,9 @@
         "CalibrationValidationFailure",
         "DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME",
         "DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE",
+        "JaniformEstimator",
+        "JaniformFitReport",
+        "JaniformModel",
         "KNOWN_NEWS_PRESET_ARTIFACT_SCHEMA_VERSION",
         "KnownNewsConfigurationOverridePatch",
         "KnownNewsEvent",
@@ -1077,6 +1080,41 @@
         "DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE": {
           "kind": "constant",
           "value": "memory"
+        },
+        "JaniformEstimator": {
+          "base_classes": [],
+          "constructor_signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope', tick_data_column_mapping: 'CalibrationTickDataColumnMapping', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None) -> 'None'",
+          "kind": "class",
+          "origin_module": "janiform.calibration._fit_api",
+          "qualname": "JaniformEstimator"
+        },
+        "JaniformFitReport": {
+          "field_names": [
+            "run_id",
+            "workflow_scope",
+            "success",
+            "resolved_configuration",
+            "session_resolution",
+            "preparation_diagnostics",
+            "preparation_provenance",
+            "execution_input",
+            "staged_response",
+            "stage_report_payloads"
+          ],
+          "kind": "contract_model",
+          "signature": "(run_id: 'str', workflow_scope: 'CalibrationMarketDataWorkflowScope', success: 'bool', resolved_configuration: 'ResolvedPresetWorkflowConfiguration', session_resolution: 'MarketDataSessionResolution', preparation_diagnostics: 'MarketDataCalibrationPreparationDiagnostics', preparation_provenance: 'MarketDataCalibrationPreparationProvenance', execution_input: 'StagedCalibrationExecutionInput', staged_response: 'StagedCalibrationResponse', stage_report_payloads: 'tuple[dict[str, Any], ...]') -> 'None'"
+        },
+        "JaniformModel": {
+          "field_names": [
+            "run_id",
+            "workflow_scope",
+            "parameters",
+            "metadata",
+            "resolved_configuration",
+            "session_resolution"
+          ],
+          "kind": "contract_model",
+          "signature": "(run_id: 'str', workflow_scope: 'CalibrationMarketDataWorkflowScope', parameters: 'dict[str, Any]', metadata: 'dict[str, Any]', resolved_configuration: 'ResolvedPresetWorkflowConfiguration', session_resolution: 'MarketDataSessionResolution') -> 'None'"
         },
         "KNOWN_NEWS_PRESET_ARTIFACT_SCHEMA_VERSION": {
           "kind": "constant",

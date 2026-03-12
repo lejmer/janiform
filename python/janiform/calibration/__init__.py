@@ -38,6 +38,7 @@ from ._common import (
     DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE,
     _calibration_error,
 )
+from ._fit_api import JaniformEstimator, JaniformFitReport, JaniformModel
 from ._market_data import (
     MarketDataCalibrationPreparationDiagnostics,
     MarketDataCalibrationPreparationProvenance,
@@ -250,6 +251,9 @@ __all__ = [
     "BuiltInPresetRegistry",
     "DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME",
     "DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE",
+    "JaniformEstimator",
+    "JaniformFitReport",
+    "JaniformModel",
     "KNOWN_NEWS_PRESET_ARTIFACT_SCHEMA_VERSION",
     "KnownNewsConfigurationOverridePatch",
     "KnownNewsEvent",

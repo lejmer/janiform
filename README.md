@@ -199,6 +199,7 @@ This tells the script to use the `.venv-linux` venv, and to pass on the `-v` com
 - Vanilla option pricing example: `examples/pricing_workflow.py`
 - Primary market-data calibration example with tick-data `csv`, tick-data `parquet`, explicit known-news inputs, and optional option-surface files: `examples/market_data_calibration_workflow.py`
 - Advanced staged calibration example with default `memory` mode, explicit `disk` override, raw observed open-session return evidence for return-components fitting, and internal close-open gap detection from raw boundary observations: `examples/calibration_workflow.py`
+- Default high-level fitting now lives under `janiform.calibration` through `JaniformEstimator.fit(...)`, which returns a lean `JaniformModel` and can optionally surface a separate `JaniformFitReport`
 - Runtime hourly seasonality reconstructed from calibration output should use `janiform.hourly_factors.build_runtime_hourly_seasonality_source_from_calibration_payload(...)` rather than manual component recomposition in consumers
 
 ## CLI Automation
