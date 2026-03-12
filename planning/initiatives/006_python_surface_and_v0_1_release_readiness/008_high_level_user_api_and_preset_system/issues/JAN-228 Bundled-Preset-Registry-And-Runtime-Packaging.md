@@ -22,6 +22,7 @@ Implement the runtime registry layer for bundled and user-defined presets so Jan
 - Planning defines one runtime registry abstraction for bundled and user-defined presets across the high-level API and CLI.
 - Bundled presets are treated as maintained runtime artifacts with provenance and inspection support, not as example-only configuration.
 - The minimal v1 preset set is explicitly listed and assigned to runtime packaging and validation work.
+- The presets are not "close enough", but accurate to real life. For example, `fx_spot_24_5` actually opens at 21:00 UTC+0 on Sundays, and closes week at 22:00 UTC+3 on Fridays. The same level or detail should be applied to all presets added for v1.
 - User-defined JSON loading and export behavior is defined with deterministic output rules.
 
 ### Unit tests
