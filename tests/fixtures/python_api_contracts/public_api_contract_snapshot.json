@@ -184,6 +184,10 @@
         "CalibrationValidationError",
         "CalibrationValidationFailure",
         "DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE",
+        "KnownNewsConfigurationOverridePatch",
+        "KnownNewsEvent",
+        "KnownNewsExplicitConfiguration",
+        "KnownNewsPresetReference",
         "MarketDataCalibrationPreparationDiagnostics",
         "MarketDataCalibrationPreparationProvenance",
         "MarketDataCalibrationRequest",
@@ -191,22 +195,41 @@
         "MarketDataSessionRecurringClosedWindow",
         "MarketDataSessionRegularWindow",
         "MarketDataSessionResolution",
+        "MarketProfileColumnAliasHint",
+        "MarketProfileExplicitConfiguration",
+        "MarketProfileKnownNewsPolicy",
+        "MarketProfileOverridePatch",
+        "MarketProfileReference",
         "PreparedMarketDataCalibration",
+        "PresetReferenceUsageMode",
+        "PresetRegistryScope",
+        "SessionConfigurationOverridePatch",
+        "SessionExplicitConfiguration",
+        "SessionPresetReference",
         "StagedCalibrationExecutionInput",
         "StagedCalibrationRequest",
         "StagedCalibrationResponse",
+        "deserialize_known_news_preset_reference",
         "deserialize_market_data_calibration_request",
+        "deserialize_market_profile_reference",
+        "deserialize_session_preset_reference",
         "deserialize_staged_calibration_execution_input",
         "deserialize_staged_calibration_request",
         "deserialize_staged_calibration_response",
         "prepare_market_data_calibration",
         "run_market_data_calibration",
         "run_staged_calibration",
+        "serialize_known_news_preset_reference",
         "serialize_market_data_calibration_request",
+        "serialize_market_profile_reference",
+        "serialize_session_preset_reference",
         "serialize_staged_calibration_execution_input",
         "serialize_staged_calibration_request",
         "serialize_staged_calibration_response",
+        "validate_known_news_preset_reference",
         "validate_market_data_calibration_request",
+        "validate_market_profile_reference",
+        "validate_session_preset_reference",
         "validate_staged_calibration_execution_input",
         "validate_staged_calibration_request",
         "validate_staged_calibration_response"
@@ -964,6 +987,44 @@
           "kind": "constant",
           "value": "memory"
         },
+        "KnownNewsConfigurationOverridePatch": {
+          "field_names": [
+            "calendar_timezone_name",
+            "additional_events",
+            "removed_event_ids"
+          ],
+          "kind": "contract_model",
+          "signature": "(calendar_timezone_name: 'Optional[str]' = None, additional_events: 'tuple[KnownNewsEvent, ...]' = (), removed_event_ids: 'tuple[str, ...]' = ()) -> 'None'"
+        },
+        "KnownNewsEvent": {
+          "field_names": [
+            "event_id",
+            "scheduled_at",
+            "event_name",
+            "tags"
+          ],
+          "kind": "contract_model",
+          "signature": "(event_id: 'str', scheduled_at: 'datetime', event_name: 'Optional[str]' = None, tags: 'tuple[str, ...]' = ()) -> 'None'"
+        },
+        "KnownNewsExplicitConfiguration": {
+          "field_names": [
+            "events",
+            "calendar_timezone_name"
+          ],
+          "kind": "contract_model",
+          "signature": "(events: 'tuple[KnownNewsEvent, ...]', calendar_timezone_name: 'Optional[str]' = None) -> 'None'"
+        },
+        "KnownNewsPresetReference": {
+          "field_names": [
+            "usage_mode",
+            "registry_scope",
+            "preset_name",
+            "configuration",
+            "override_patch"
+          ],
+          "kind": "contract_model",
+          "signature": "(usage_mode: 'PresetReferenceUsageMode', registry_scope: 'Optional[PresetRegistryScope]' = None, preset_name: 'Optional[str]' = None, configuration: 'Optional[KnownNewsExplicitConfiguration]' = None, override_patch: 'Optional[KnownNewsConfigurationOverridePatch]' = None) -> 'None'"
+        },
         "MarketDataCalibrationPreparationDiagnostics": {
           "field_names": [
             "workflow_scope",
@@ -1080,6 +1141,63 @@
           "kind": "contract_model",
           "signature": "(schema_version: 'str', resolution_kind: 'str', selected_policy_id: 'str', manual_override_applied: 'bool', exchange_code: 'str', exchange_name: 'str', resolved_timezone_name: 'str', timezone_source: 'str', open_session_duration_hours_per_week: 'float', confidence_score: 'float', confidence_label: 'str', regular_session_windows: 'tuple[MarketDataSessionRegularWindow, ...]', recurring_closed_windows: 'tuple[MarketDataSessionRecurringClosedWindow, ...]', reasons: 'tuple[str, ...]', ambiguity_warnings: 'tuple[str, ...]', metadata_discrepancies: 'tuple[str, ...]', resolved_session_definition_json: 'str') -> 'None'"
         },
+        "MarketProfileColumnAliasHint": {
+          "field_names": [
+            "canonical_name",
+            "aliases"
+          ],
+          "kind": "contract_model",
+          "signature": "(canonical_name: 'str', aliases: 'tuple[str, ...]') -> 'None'"
+        },
+        "MarketProfileExplicitConfiguration": {
+          "field_names": [
+            "profile_name",
+            "session_reference",
+            "known_news_reference",
+            "known_news_policy",
+            "timestamp_timezone_name",
+            "column_alias_hints",
+            "default_calibration_hint_ids"
+          ],
+          "kind": "contract_model",
+          "signature": "(profile_name: 'str', session_reference: 'SessionPresetReference', known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'MarketProfileKnownNewsPolicy' = <MarketProfileKnownNewsPolicy.SUGGEST_ONLY: 'suggest_only'>, timestamp_timezone_name: 'Optional[str]' = None, column_alias_hints: 'tuple[MarketProfileColumnAliasHint, ...]' = (), default_calibration_hint_ids: 'tuple[str, ...]' = ()) -> 'None'"
+        },
+        "MarketProfileKnownNewsPolicy": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "SUGGEST_ONLY",
+              "value": "suggest_only"
+            },
+            {
+              "name": "APPLY_BY_DEFAULT",
+              "value": "apply_by_default"
+            }
+          ]
+        },
+        "MarketProfileOverridePatch": {
+          "field_names": [
+            "session_reference",
+            "known_news_reference",
+            "known_news_policy",
+            "timestamp_timezone_name",
+            "column_alias_hints",
+            "default_calibration_hint_ids"
+          ],
+          "kind": "contract_model",
+          "signature": "(session_reference: 'Optional[SessionPresetReference]' = None, known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'Optional[MarketProfileKnownNewsPolicy]' = None, timestamp_timezone_name: 'Optional[str]' = None, column_alias_hints: 'Optional[tuple[MarketProfileColumnAliasHint, ...]]' = None, default_calibration_hint_ids: 'Optional[tuple[str, ...]]' = None) -> 'None'"
+        },
+        "MarketProfileReference": {
+          "field_names": [
+            "usage_mode",
+            "registry_scope",
+            "preset_name",
+            "configuration",
+            "override_patch"
+          ],
+          "kind": "contract_model",
+          "signature": "(usage_mode: 'PresetReferenceUsageMode', registry_scope: 'Optional[PresetRegistryScope]' = None, preset_name: 'Optional[str]' = None, configuration: 'Optional[MarketProfileExplicitConfiguration]' = None, override_patch: 'Optional[MarketProfileOverridePatch]' = None) -> 'None'"
+        },
         "PreparedMarketDataCalibration": {
           "field_names": [
             "schema_version",
@@ -1091,6 +1209,69 @@
           ],
           "kind": "contract_model",
           "signature": "(schema_version: 'str', request: 'MarketDataCalibrationRequest', execution_input: 'StagedCalibrationExecutionInput', diagnostics: 'MarketDataCalibrationPreparationDiagnostics', provenance: 'MarketDataCalibrationPreparationProvenance', session_resolution: 'MarketDataSessionResolution') -> 'None'"
+        },
+        "PresetReferenceUsageMode": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "AUTOMATIC",
+              "value": "automatic"
+            },
+            {
+              "name": "NAMED",
+              "value": "named"
+            },
+            {
+              "name": "EXPLICIT",
+              "value": "explicit"
+            }
+          ]
+        },
+        "PresetRegistryScope": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "BUILT_IN",
+              "value": "built_in"
+            },
+            {
+              "name": "USER_REGISTERED",
+              "value": "user_registered"
+            }
+          ]
+        },
+        "SessionConfigurationOverridePatch": {
+          "field_names": [
+            "timezone_name",
+            "regular_session_windows",
+            "recurring_closed_windows"
+          ],
+          "kind": "contract_model",
+          "signature": "(timezone_name: 'Optional[str]' = None, regular_session_windows: 'Optional[tuple[MarketDataSessionRegularWindow, ...]]' = None, recurring_closed_windows: 'Optional[tuple[MarketDataSessionRecurringClosedWindow, ...]]' = None) -> 'None'"
+        },
+        "SessionExplicitConfiguration": {
+          "field_names": [
+            "exchange_code",
+            "timezone_name",
+            "regular_session_windows",
+            "recurring_closed_windows",
+            "exchange_name"
+          ],
+          "kind": "contract_model",
+          "signature": "(exchange_code: 'str', timezone_name: 'str', regular_session_windows: 'tuple[MarketDataSessionRegularWindow, ...]', recurring_closed_windows: 'tuple[MarketDataSessionRecurringClosedWindow, ...]' = (), exchange_name: 'Optional[str]' = None) -> 'None'"
+        },
+        "SessionPresetReference": {
+          "field_names": [
+            "usage_mode",
+            "registry_scope",
+            "preset_name",
+            "configuration",
+            "override_patch",
+            "exchange_code_hint",
+            "timezone_name_hint"
+          ],
+          "kind": "contract_model",
+          "signature": "(usage_mode: 'PresetReferenceUsageMode', registry_scope: 'Optional[PresetRegistryScope]' = None, preset_name: 'Optional[str]' = None, configuration: 'Optional[SessionExplicitConfiguration]' = None, override_patch: 'Optional[SessionConfigurationOverridePatch]' = None, exchange_code_hint: 'Optional[str]' = None, timezone_name_hint: 'Optional[str]' = None) -> 'None'"
         },
         "StagedCalibrationExecutionInput": {
           "field_names": [
@@ -1135,9 +1316,21 @@
           "kind": "contract_model",
           "signature": "(schema_version: 'str', failure_triage_policy: 'str', run_id: 'str', execution_mode: 'CalibrationExecutionMode', status: 'CalibrationStageExecutionStatus', stage_reports: 'tuple[CalibrationStageReport, ...]', emitted_checkpoints: 'tuple[CalibrationCheckpointMetadata, ...]', resumed_from_checkpoint_reference: 'Optional[str]' = None, resumed_from_last_successful_stage: 'Optional[CalibrationStage]' = None, started_from_stage: 'Optional[CalibrationStage]' = None, failure: 'Optional[CalibrationFailureDetails]' = None) -> 'None'"
         },
+        "deserialize_known_news_preset_reference": {
+          "kind": "function",
+          "signature": "(payload_json: 'str') -> 'KnownNewsPresetReference'"
+        },
         "deserialize_market_data_calibration_request": {
           "kind": "function",
           "signature": "(payload_json: 'str') -> 'MarketDataCalibrationRequest'"
+        },
+        "deserialize_market_profile_reference": {
+          "kind": "function",
+          "signature": "(payload_json: 'str') -> 'MarketProfileReference'"
+        },
+        "deserialize_session_preset_reference": {
+          "kind": "function",
+          "signature": "(payload_json: 'str') -> 'SessionPresetReference'"
         },
         "deserialize_staged_calibration_execution_input": {
           "kind": "function",
@@ -1163,9 +1356,21 @@
           "kind": "function",
           "signature": "(execution_input: 'StagedCalibrationExecutionInput', *, calendar_registry: 'CalendarRegistry') -> 'StagedCalibrationResponse'"
         },
+        "serialize_known_news_preset_reference": {
+          "kind": "function",
+          "signature": "(reference: 'KnownNewsPresetReference') -> 'str'"
+        },
         "serialize_market_data_calibration_request": {
           "kind": "function",
           "signature": "(request: 'MarketDataCalibrationRequest') -> 'str'"
+        },
+        "serialize_market_profile_reference": {
+          "kind": "function",
+          "signature": "(reference: 'MarketProfileReference') -> 'str'"
+        },
+        "serialize_session_preset_reference": {
+          "kind": "function",
+          "signature": "(reference: 'SessionPresetReference') -> 'str'"
         },
         "serialize_staged_calibration_execution_input": {
           "kind": "function",
@@ -1179,9 +1384,21 @@
           "kind": "function",
           "signature": "(response: 'StagedCalibrationResponse') -> 'str'"
         },
+        "validate_known_news_preset_reference": {
+          "kind": "function",
+          "signature": "(raw_reference: 'dict[str, Any] | Any') -> 'KnownNewsPresetReference'"
+        },
         "validate_market_data_calibration_request": {
           "kind": "function",
           "signature": "(raw_request: 'dict[str, Any] | Any') -> 'MarketDataCalibrationRequest'"
+        },
+        "validate_market_profile_reference": {
+          "kind": "function",
+          "signature": "(raw_reference: 'dict[str, Any] | Any') -> 'MarketProfileReference'"
+        },
+        "validate_session_preset_reference": {
+          "kind": "function",
+          "signature": "(raw_reference: 'dict[str, Any] | Any') -> 'SessionPresetReference'"
         },
         "validate_staged_calibration_execution_input": {
           "kind": "function",

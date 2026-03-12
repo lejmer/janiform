@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Optional, cast
 
-from .._contracts import ContractModel
+from .._contracts import ContractModel, require_non_empty_string
 from ..calendar import CalendarRegistry, CalendarRegistryLoadError, MarketState
 from ._common import CalibrationInputFileReference, _calibration_error
 from ._market_data_ingestion import LoadedTickDataSource
@@ -54,6 +54,42 @@ class MarketDataSessionRegularWindow(ContractModel):
         if not self.close_time.strip():
             raise _session_resolution_error("close_time", "must be a non-empty string")
 
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> MarketDataSessionRegularWindow:
+        if not isinstance(raw_payload, dict):
+            raise _session_resolution_error(field_path, "must be an object")
+
+        return MarketDataSessionRegularWindow(
+            weekday=require_non_empty_string(
+                raw_payload,
+                "weekday",
+                f"{field_path}.weekday",
+                _session_resolution_error,
+            ),
+            label=require_non_empty_string(
+                raw_payload,
+                "label",
+                f"{field_path}.label",
+                _session_resolution_error,
+            ),
+            open_time=require_non_empty_string(
+                raw_payload,
+                "open_time",
+                f"{field_path}.open_time",
+                _session_resolution_error,
+            ),
+            close_time=require_non_empty_string(
+                raw_payload,
+                "close_time",
+                f"{field_path}.close_time",
+                _session_resolution_error,
+            ),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class MarketDataSessionRecurringClosedWindow(ContractModel):
@@ -73,6 +109,48 @@ class MarketDataSessionRecurringClosedWindow(ContractModel):
         ):
             if not field_value.strip():
                 raise _session_resolution_error(field_name, "must be a non-empty string")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> MarketDataSessionRecurringClosedWindow:
+        if not isinstance(raw_payload, dict):
+            raise _session_resolution_error(field_path, "must be an object")
+
+        return MarketDataSessionRecurringClosedWindow(
+            start_weekday=require_non_empty_string(
+                raw_payload,
+                "start_weekday",
+                f"{field_path}.start_weekday",
+                _session_resolution_error,
+            ),
+            start_time=require_non_empty_string(
+                raw_payload,
+                "start_time",
+                f"{field_path}.start_time",
+                _session_resolution_error,
+            ),
+            end_weekday=require_non_empty_string(
+                raw_payload,
+                "end_weekday",
+                f"{field_path}.end_weekday",
+                _session_resolution_error,
+            ),
+            end_time=require_non_empty_string(
+                raw_payload,
+                "end_time",
+                f"{field_path}.end_time",
+                _session_resolution_error,
+            ),
+            reason=require_non_empty_string(
+                raw_payload,
+                "reason",
+                f"{field_path}.reason",
+                _session_resolution_error,
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
