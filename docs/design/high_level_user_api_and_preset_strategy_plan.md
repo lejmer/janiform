@@ -302,6 +302,19 @@ These can resolve from:
 - a dict
 - a JSON document
 
+For the public boundary, each category should follow one typed reference pattern instead of loose kwargs:
+
+- `usage_mode="automatic" | "named" | "explicit"` with `automatic` allowed only for sessions
+- named references require `registry_scope="built_in" | "user_registered"` plus `preset_name`
+- named references may include a category-specific `override_patch`
+- explicit references require a category-specific `configuration` object and must not also carry an override patch
+
+Category-specific payloads should stay user-oriented:
+
+- sessions: exchange code, timezone, regular windows, recurring closed windows
+- known-news: event list plus optional calendar timezone metadata
+- market profiles: nested session and known-news references, known-news application policy, timezone assumptions, and optional alias or calibration hints
+
 ## CLI Model
 
 The CLI should mirror the same layering.
