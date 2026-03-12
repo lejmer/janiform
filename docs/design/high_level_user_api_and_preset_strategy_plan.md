@@ -348,10 +348,33 @@ Capabilities:
 - register user-defined presets in memory
 - load user-defined presets from JSON
 - export resolved presets for inspection
+- resolve one canonical workflow configuration that records component provenance, override fields, session-inference diagnostics, and known-news recommendation outcomes
 
 We should keep built-in and user registries separate conceptually, even if the runtime resolver composes them.
 
 Session inference should feed into this system as a resolved session configuration with provenance, not as a parallel hidden calendar stack.
+
+## Resolution Precedence
+
+High-level workflows should resolve one canonical configuration object after preset lookup and session inference.
+
+For each component category, precedence should be explicit and deterministic:
+
+1. inferred session behavior or bundled preset baseline
+2. user override patch
+3. full explicit replacement when supplied
+
+Apply that stack separately for:
+
+- session settings
+- known-news settings
+- market-profile settings
+
+Resolution diagnostics should explain when:
+
+- session inference was low confidence or ambiguous
+- an explicit user selection replaced an inferred or profile-derived baseline
+- a market profile recommended a component but the resolved configuration kept a different explicit choice
 
 ## Provenance Requirements
 
@@ -361,7 +384,8 @@ Every fitted model should record:
 - which session preset was used, if any
 - whether the session was inferred from data
 - which known-news preset was used, if any
-- whether each component was built-in, overridden, or fully custom
+- whether each component was built-in, overridden, inferred, or fully custom
+- when profile recommendations were inspected but not applied, such as the default `known_news="none"` path for suggest-only market profiles
 
 This is critical for reproducibility and debugging.
 
