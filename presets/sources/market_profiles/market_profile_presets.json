@@ -1,0 +1,109 @@
+{
+  "schema_version": "preset.source.market_profiles.v1",
+  "bundle_id": "janiform_bundled_presets",
+  "bundle_version": "v1",
+  "generator_id": "janiform.curated_preset_generator",
+  "generator_version": "1.0.0",
+  "generated_on": "2026-03-12",
+  "presets": [
+    {
+      "preset_name": "eurusd_spot",
+      "display_name": "EUR/USD Spot",
+      "description": "Default EUR/USD spot profile with the bundled 24/5 FX session and suggested EU and US macro events.",
+      "version_label": "2026.03",
+      "source_manifest_ids": [
+        "sources.market_profiles.eurusd_spot.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "bundled_session_reference",
+          "version_label": "fx_spot_24_5@2026.03"
+        },
+        {
+          "source_name": "bundled_known_news_reference",
+          "version_label": "eu_us_macro_fx_core@2026.03"
+        }
+      ],
+      "configuration": {
+        "profile_name": "eurusd_spot",
+        "session_preset_name": "fx_spot_24_5",
+        "known_news_preset_name": "eu_us_macro_fx_core",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "column_alias_hints": [
+          {
+            "canonical_name": "timestamp",
+            "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_utc"]
+          }
+        ],
+        "default_calibration_hint_ids": ["fx_spot_defaults"]
+      }
+    },
+    {
+      "preset_name": "us_equity_cash",
+      "display_name": "US Equity Cash",
+      "description": "Default US equity cash profile with NYSE weekday hours and suggested US macro releases.",
+      "version_label": "2026.03",
+      "source_manifest_ids": [
+        "sources.market_profiles.us_equity_cash.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "bundled_session_reference",
+          "version_label": "XNYS@2026.03"
+        },
+        {
+          "source_name": "bundled_known_news_reference",
+          "version_label": "us_macro_core@2026.03"
+        }
+      ],
+      "configuration": {
+        "profile_name": "us_equity_cash",
+        "session_preset_name": "XNYS",
+        "known_news_preset_name": "us_macro_core",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "America/New_York",
+        "column_alias_hints": [
+          {
+            "canonical_name": "timestamp",
+            "aliases": ["event_timestamp", "timestamp_est", "trade_time"]
+          }
+        ],
+        "default_calibration_hint_ids": ["us_equity_cash_defaults"]
+      }
+    },
+    {
+      "preset_name": "btcusd_spot",
+      "display_name": "BTC/USD Spot",
+      "description": "Default BTC/USD spot profile with continuous 24/7 trading and no known-news events enabled.",
+      "version_label": "2026.03",
+      "source_manifest_ids": [
+        "sources.market_profiles.btcusd_spot.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "bundled_session_reference",
+          "version_label": "crypto_24_7@2026.03"
+        },
+        {
+          "source_name": "bundled_known_news_reference",
+          "version_label": "none@2026.03"
+        }
+      ],
+      "configuration": {
+        "profile_name": "btcusd_spot",
+        "session_preset_name": "crypto_24_7",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "column_alias_hints": [
+          {
+            "canonical_name": "timestamp",
+            "aliases": ["exchange_timestamp", "timestamp_utc", "trade_time_utc"]
+          }
+        ],
+        "default_calibration_hint_ids": ["crypto_spot_defaults"]
+      }
+    }
+  ]
+}

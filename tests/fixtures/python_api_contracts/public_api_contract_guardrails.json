@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "5ff5192b6936874174e5c35d45f8cde9f8268559b4379ca24fbde69ede81381b",
+  "approved_snapshot_sha256": "0ba0f156c175f317d95d6d2e1e4f865b48a5becd2160a885ef3d1cfa8b0aa929",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -155,6 +155,17 @@
       "rationale": "The high-level calibration surface now exposes typed session, known-news, and market-profile preset references with explicit override patches and full explicit configuration payloads, replacing any need for ad hoc preset kwargs and making provenance serialization part of the approved public contract.",
       "snapshot_sha256": "5ff5192b6936874174e5c35d45f8cde9f8268559b4379ca24fbde69ede81381b",
       "summary": "Add typed preset reference contracts for high-level session, known-news, and market-profile configuration."
+    },
+    {
+      "approved_on": "2026-03-12",
+      "docs_updated": [
+        "README.md",
+        "docs/design/high_level_user_api_and_preset_strategy_plan.md",
+        "docs/design/programmatic_preset_generation_plan.md"
+      ],
+      "rationale": "Calibration now exposes a public preset registry with bundled runtime artifacts, deterministic export, and user-defined preset loading, so the approved Python contract snapshot must include the new registry types, preset artifact metadata, and resolved export surface.",
+      "snapshot_sha256": "0ba0f156c175f317d95d6d2e1e4f865b48a5becd2160a885ef3d1cfa8b0aa929",
+      "summary": "Add bundled preset registry, artifact metadata, and deterministic preset export contracts."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_1",

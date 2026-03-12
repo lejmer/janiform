@@ -115,6 +115,9 @@
     },
     "janiform.calibration": {
       "exports": [
+        "BUNDLED_PRESET_INDEX_SCHEMA_VERSION",
+        "BuiltInPresetRegistry",
+        "BundledPresetRegistryIndex",
         "CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY",
         "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
         "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
@@ -184,10 +187,13 @@
         "CalibrationValidationError",
         "CalibrationValidationFailure",
         "DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE",
+        "KNOWN_NEWS_PRESET_ARTIFACT_SCHEMA_VERSION",
         "KnownNewsConfigurationOverridePatch",
         "KnownNewsEvent",
         "KnownNewsExplicitConfiguration",
+        "KnownNewsPresetArtifact",
         "KnownNewsPresetReference",
+        "MARKET_PROFILE_PRESET_ARTIFACT_SCHEMA_VERSION",
         "MarketDataCalibrationPreparationDiagnostics",
         "MarketDataCalibrationPreparationProvenance",
         "MarketDataCalibrationRequest",
@@ -199,29 +205,46 @@
         "MarketProfileExplicitConfiguration",
         "MarketProfileKnownNewsPolicy",
         "MarketProfileOverridePatch",
+        "MarketProfilePresetArtifact",
         "MarketProfileReference",
+        "PRESET_CONTENT_HASH_ALGORITHM",
         "PreparedMarketDataCalibration",
+        "PresetArtifactMetadata",
+        "PresetArtifactProvenance",
+        "PresetCategory",
+        "PresetIndexEntry",
         "PresetReferenceUsageMode",
+        "PresetRegistry",
         "PresetRegistryScope",
+        "PresetUpstreamSourceVersion",
+        "RESOLVED_PRESET_EXPORT_SCHEMA_VERSION",
+        "ResolvedPresetExport",
+        "SESSION_PRESET_ARTIFACT_SCHEMA_VERSION",
         "SessionConfigurationOverridePatch",
         "SessionExplicitConfiguration",
+        "SessionPresetArtifact",
         "SessionPresetReference",
         "StagedCalibrationExecutionInput",
         "StagedCalibrationRequest",
         "StagedCalibrationResponse",
+        "UserPresetRegistry",
+        "compute_preset_artifact_content_hash",
         "deserialize_known_news_preset_reference",
         "deserialize_market_data_calibration_request",
         "deserialize_market_profile_reference",
+        "deserialize_preset_artifact",
         "deserialize_session_preset_reference",
         "deserialize_staged_calibration_execution_input",
         "deserialize_staged_calibration_request",
         "deserialize_staged_calibration_response",
+        "normalize_preset_artifact",
         "prepare_market_data_calibration",
         "run_market_data_calibration",
         "run_staged_calibration",
         "serialize_known_news_preset_reference",
         "serialize_market_data_calibration_request",
         "serialize_market_profile_reference",
+        "serialize_preset_artifact",
         "serialize_session_preset_reference",
         "serialize_staged_calibration_execution_input",
         "serialize_staged_calibration_request",
@@ -236,6 +259,11 @@
       ],
       "module_name": "janiform.calibration",
       "schema_identifiers": [
+        {
+          "name": "BUNDLED_PRESET_INDEX_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "preset.runtime.index.v1"
+        },
         {
           "name": "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
           "public_exported": true,
@@ -265,9 +293,51 @@
           "name": "CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION",
           "public_exported": true,
           "value": "calibration.orchestration.staged_run.report.v1"
+        },
+        {
+          "name": "KNOWN_NEWS_PRESET_ARTIFACT_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "preset.artifact.known_news.v1"
+        },
+        {
+          "name": "MARKET_PROFILE_PRESET_ARTIFACT_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "preset.artifact.market_profile.v1"
+        },
+        {
+          "name": "RESOLVED_PRESET_EXPORT_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "preset.runtime.export.v1"
+        },
+        {
+          "name": "SESSION_PRESET_ARTIFACT_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "preset.artifact.session.v1"
         }
       ],
       "symbols": {
+        "BUNDLED_PRESET_INDEX_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "preset.runtime.index.v1"
+        },
+        "BuiltInPresetRegistry": {
+          "base_classes": [],
+          "constructor_signature": "(*, index: 'BundledPresetRegistryIndex', preset_store: '_PresetStore') -> 'None'",
+          "kind": "class",
+          "origin_module": "janiform.calibration._preset_registry",
+          "qualname": "BuiltInPresetRegistry"
+        },
+        "BundledPresetRegistryIndex": {
+          "field_names": [
+            "schema_version",
+            "bundle_id",
+            "bundle_version",
+            "generated_on",
+            "entries"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', bundle_id: 'str', bundle_version: 'str', generated_on: 'str', entries: 'tuple[PresetIndexEntry, ...]') -> 'None'"
+        },
         "CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY": {
           "kind": "constant",
           "value": "cli_defaults_to_disk_python_importable_api_defaults_to_memory.v1"
@@ -987,6 +1057,10 @@
           "kind": "constant",
           "value": "memory"
         },
+        "KNOWN_NEWS_PRESET_ARTIFACT_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "preset.artifact.known_news.v1"
+        },
         "KnownNewsConfigurationOverridePatch": {
           "field_names": [
             "calendar_timezone_name",
@@ -1014,6 +1088,17 @@
           "kind": "contract_model",
           "signature": "(events: 'tuple[KnownNewsEvent, ...]', calendar_timezone_name: 'Optional[str]' = None) -> 'None'"
         },
+        "KnownNewsPresetArtifact": {
+          "field_names": [
+            "schema_version",
+            "category",
+            "preset_name",
+            "metadata",
+            "configuration"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', category: 'PresetCategory', preset_name: 'str', metadata: 'PresetArtifactMetadata', configuration: 'KnownNewsExplicitConfiguration') -> 'None'"
+        },
         "KnownNewsPresetReference": {
           "field_names": [
             "usage_mode",
@@ -1024,6 +1109,10 @@
           ],
           "kind": "contract_model",
           "signature": "(usage_mode: 'PresetReferenceUsageMode', registry_scope: 'Optional[PresetRegistryScope]' = None, preset_name: 'Optional[str]' = None, configuration: 'Optional[KnownNewsExplicitConfiguration]' = None, override_patch: 'Optional[KnownNewsConfigurationOverridePatch]' = None) -> 'None'"
+        },
+        "MARKET_PROFILE_PRESET_ARTIFACT_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "preset.artifact.market_profile.v1"
         },
         "MarketDataCalibrationPreparationDiagnostics": {
           "field_names": [
@@ -1187,6 +1276,17 @@
           "kind": "contract_model",
           "signature": "(session_reference: 'Optional[SessionPresetReference]' = None, known_news_reference: 'Optional[KnownNewsPresetReference]' = None, known_news_policy: 'Optional[MarketProfileKnownNewsPolicy]' = None, timestamp_timezone_name: 'Optional[str]' = None, column_alias_hints: 'Optional[tuple[MarketProfileColumnAliasHint, ...]]' = None, default_calibration_hint_ids: 'Optional[tuple[str, ...]]' = None) -> 'None'"
         },
+        "MarketProfilePresetArtifact": {
+          "field_names": [
+            "schema_version",
+            "category",
+            "preset_name",
+            "metadata",
+            "configuration"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', category: 'PresetCategory', preset_name: 'str', metadata: 'PresetArtifactMetadata', configuration: 'MarketProfileExplicitConfiguration') -> 'None'"
+        },
         "MarketProfileReference": {
           "field_names": [
             "usage_mode",
@@ -1197,6 +1297,10 @@
           ],
           "kind": "contract_model",
           "signature": "(usage_mode: 'PresetReferenceUsageMode', registry_scope: 'Optional[PresetRegistryScope]' = None, preset_name: 'Optional[str]' = None, configuration: 'Optional[MarketProfileExplicitConfiguration]' = None, override_patch: 'Optional[MarketProfileOverridePatch]' = None) -> 'None'"
+        },
+        "PRESET_CONTENT_HASH_ALGORITHM": {
+          "kind": "constant",
+          "value": "sha256"
         },
         "PreparedMarketDataCalibration": {
           "field_names": [
@@ -1209,6 +1313,61 @@
           ],
           "kind": "contract_model",
           "signature": "(schema_version: 'str', request: 'MarketDataCalibrationRequest', execution_input: 'StagedCalibrationExecutionInput', diagnostics: 'MarketDataCalibrationPreparationDiagnostics', provenance: 'MarketDataCalibrationPreparationProvenance', session_resolution: 'MarketDataSessionResolution') -> 'None'"
+        },
+        "PresetArtifactMetadata": {
+          "field_names": [
+            "display_name",
+            "description",
+            "version_label",
+            "provenance"
+          ],
+          "kind": "contract_model",
+          "signature": "(display_name: 'str', description: 'str', version_label: 'str', provenance: 'PresetArtifactProvenance') -> 'None'"
+        },
+        "PresetArtifactProvenance": {
+          "field_names": [
+            "bundle_id",
+            "bundle_version",
+            "generator_id",
+            "generator_version",
+            "generated_on",
+            "source_manifest_ids",
+            "upstream_source_versions",
+            "content_hash"
+          ],
+          "kind": "contract_model",
+          "signature": "(bundle_id: 'str', bundle_version: 'str', generator_id: 'str', generator_version: 'str', generated_on: 'str', source_manifest_ids: 'tuple[str, ...]', upstream_source_versions: 'tuple[PresetUpstreamSourceVersion, ...]' = (), content_hash: 'Optional[str]' = None) -> 'None'"
+        },
+        "PresetCategory": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "SESSION",
+              "value": "session"
+            },
+            {
+              "name": "KNOWN_NEWS",
+              "value": "known_news"
+            },
+            {
+              "name": "MARKET_PROFILE",
+              "value": "market_profile"
+            }
+          ]
+        },
+        "PresetIndexEntry": {
+          "field_names": [
+            "category",
+            "preset_name",
+            "display_name",
+            "description",
+            "version_label",
+            "registry_scope",
+            "content_hash",
+            "artifact_path"
+          ],
+          "kind": "contract_model",
+          "signature": "(category: 'PresetCategory', preset_name: 'str', display_name: 'str', description: 'str', version_label: 'str', registry_scope: 'PresetRegistryScope', content_hash: 'str', artifact_path: 'Optional[str]' = None) -> 'None'"
         },
         "PresetReferenceUsageMode": {
           "kind": "enum",
@@ -1227,6 +1386,13 @@
             }
           ]
         },
+        "PresetRegistry": {
+          "base_classes": [],
+          "constructor_signature": "(*, built_in: 'Optional[BuiltInPresetRegistry]' = None, user_registered: 'Optional[UserPresetRegistry]' = None) -> 'None'",
+          "kind": "class",
+          "origin_module": "janiform.calibration._preset_registry",
+          "qualname": "PresetRegistry"
+        },
         "PresetRegistryScope": {
           "kind": "enum",
           "members": [
@@ -1239,6 +1405,35 @@
               "value": "user_registered"
             }
           ]
+        },
+        "PresetUpstreamSourceVersion": {
+          "field_names": [
+            "source_name",
+            "version_label"
+          ],
+          "kind": "contract_model",
+          "signature": "(source_name: 'str', version_label: 'str') -> 'None'"
+        },
+        "RESOLVED_PRESET_EXPORT_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "preset.runtime.export.v1"
+        },
+        "ResolvedPresetExport": {
+          "field_names": [
+            "schema_version",
+            "requested_category",
+            "requested_scope",
+            "preset_name",
+            "session_preset",
+            "known_news_preset",
+            "market_profile_preset"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', requested_category: 'PresetCategory', requested_scope: 'PresetRegistryScope', preset_name: 'str', session_preset: 'Optional[SessionPresetArtifact]' = None, known_news_preset: 'Optional[KnownNewsPresetArtifact]' = None, market_profile_preset: 'Optional[MarketProfilePresetArtifact]' = None) -> 'None'"
+        },
+        "SESSION_PRESET_ARTIFACT_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "preset.artifact.session.v1"
         },
         "SessionConfigurationOverridePatch": {
           "field_names": [
@@ -1259,6 +1454,17 @@
           ],
           "kind": "contract_model",
           "signature": "(exchange_code: 'str', timezone_name: 'str', regular_session_windows: 'tuple[MarketDataSessionRegularWindow, ...]', recurring_closed_windows: 'tuple[MarketDataSessionRecurringClosedWindow, ...]' = (), exchange_name: 'Optional[str]' = None) -> 'None'"
+        },
+        "SessionPresetArtifact": {
+          "field_names": [
+            "schema_version",
+            "category",
+            "preset_name",
+            "metadata",
+            "configuration"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', category: 'PresetCategory', preset_name: 'str', metadata: 'PresetArtifactMetadata', configuration: 'SessionExplicitConfiguration') -> 'None'"
         },
         "SessionPresetReference": {
           "field_names": [
@@ -1316,6 +1522,17 @@
           "kind": "contract_model",
           "signature": "(schema_version: 'str', failure_triage_policy: 'str', run_id: 'str', execution_mode: 'CalibrationExecutionMode', status: 'CalibrationStageExecutionStatus', stage_reports: 'tuple[CalibrationStageReport, ...]', emitted_checkpoints: 'tuple[CalibrationCheckpointMetadata, ...]', resumed_from_checkpoint_reference: 'Optional[str]' = None, resumed_from_last_successful_stage: 'Optional[CalibrationStage]' = None, started_from_stage: 'Optional[CalibrationStage]' = None, failure: 'Optional[CalibrationFailureDetails]' = None) -> 'None'"
         },
+        "UserPresetRegistry": {
+          "base_classes": [],
+          "constructor_signature": "() -> 'None'",
+          "kind": "class",
+          "origin_module": "janiform.calibration._preset_registry",
+          "qualname": "UserPresetRegistry"
+        },
+        "compute_preset_artifact_content_hash": {
+          "kind": "function",
+          "signature": "(artifact: 'PresetArtifact') -> 'str'"
+        },
         "deserialize_known_news_preset_reference": {
           "kind": "function",
           "signature": "(payload_json: 'str') -> 'KnownNewsPresetReference'"
@@ -1327,6 +1544,10 @@
         "deserialize_market_profile_reference": {
           "kind": "function",
           "signature": "(payload_json: 'str') -> 'MarketProfileReference'"
+        },
+        "deserialize_preset_artifact": {
+          "kind": "function",
+          "signature": "(payload_json: 'str') -> 'PresetArtifact'"
         },
         "deserialize_session_preset_reference": {
           "kind": "function",
@@ -1343,6 +1564,10 @@
         "deserialize_staged_calibration_response": {
           "kind": "function",
           "signature": "(payload_json: 'str') -> 'StagedCalibrationResponse'"
+        },
+        "normalize_preset_artifact": {
+          "kind": "function",
+          "signature": "(artifact: 'PresetArtifact') -> 'PresetArtifact'"
         },
         "prepare_market_data_calibration": {
           "kind": "function",
@@ -1367,6 +1592,10 @@
         "serialize_market_profile_reference": {
           "kind": "function",
           "signature": "(reference: 'MarketProfileReference') -> 'str'"
+        },
+        "serialize_preset_artifact": {
+          "kind": "function",
+          "signature": "(artifact: 'PresetArtifact') -> 'str'"
         },
         "serialize_session_preset_reference": {
           "kind": "function",

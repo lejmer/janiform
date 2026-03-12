@@ -1,0 +1,26 @@
+{
+  "category": "known_news",
+  "configuration": {
+    "calendar_timezone_name": "UTC",
+    "events": []
+  },
+  "metadata": {
+    "description": "Explicitly disables scheduled known-news events.",
+    "display_name": "No Known News",
+    "provenance": {
+      "bundle_id": "janiform_bundled_presets",
+      "bundle_version": "v1",
+      "content_hash": "sha256:b4676af7e7e574857864398150de1d939bf40552f060291919c0063d5cf5c898",
+      "generated_on": "2026-03-12",
+      "generator_id": "janiform.curated_preset_generator",
+      "generator_version": "1.0.0",
+      "source_manifest_ids": [
+        "sources.known_news.none.v1"
+      ],
+      "upstream_source_versions": []
+    },
+    "version_label": "2026.03"
+  },
+  "preset_name": "none",
+  "schema_version": "preset.artifact.known_news.v1"
+}

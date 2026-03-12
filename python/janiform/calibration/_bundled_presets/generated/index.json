@@ -1,0 +1,108 @@
+{
+  "bundle_id": "janiform_bundled_presets",
+  "bundle_version": "v1",
+  "entries": [
+    {
+      "artifact_path": "known_news/eu_us_macro_fx_core.json",
+      "category": "known_news",
+      "content_hash": "sha256:b5defb53bdf7b0f3593140d8b54a6c0f89ed325c46a197c45819d6c0ce379088",
+      "description": "2026 schedule for US macro core releases plus ECB monetary policy decisions.",
+      "display_name": "EU and US Macro FX Core 2026",
+      "preset_name": "eu_us_macro_fx_core",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "known_news/none.json",
+      "category": "known_news",
+      "content_hash": "sha256:b4676af7e7e574857864398150de1d939bf40552f060291919c0063d5cf5c898",
+      "description": "Explicitly disables scheduled known-news events.",
+      "display_name": "No Known News",
+      "preset_name": "none",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "known_news/us_macro_core.json",
+      "category": "known_news",
+      "content_hash": "sha256:6fb760e9d4ccfbeaa05c40e6bf515d22232683efe6d804a9ab4d712bb6700a86",
+      "description": "2026 schedule for BLS CPI, BLS Employment Situation, and FOMC policy statements.",
+      "display_name": "US Macro Core 2026",
+      "preset_name": "us_macro_core",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "market_profiles/btcusd_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:c67ffda92233cbfc2d2beaa8156a7db60ecea0e63581987979fe838c619aa466",
+      "description": "Default BTC/USD spot profile with continuous 24/7 trading and no known-news events enabled.",
+      "display_name": "BTC/USD Spot",
+      "preset_name": "btcusd_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "market_profiles/eurusd_spot.json",
+      "category": "market_profile",
+      "content_hash": "sha256:29be85b9bd163b64ca32f18b488d92d61593da38b91badc91fe2189a99ba8582",
+      "description": "Default EUR/USD spot profile with the bundled 24/5 FX session and suggested EU and US macro events.",
+      "display_name": "EUR/USD Spot",
+      "preset_name": "eurusd_spot",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "market_profiles/us_equity_cash.json",
+      "category": "market_profile",
+      "content_hash": "sha256:823162971d88f8e7b038e235d19cf029d1b1c868f7ebfc2452fedd12b9a9df16",
+      "description": "Default US equity cash profile with NYSE weekday hours and suggested US macro releases.",
+      "display_name": "US Equity Cash",
+      "preset_name": "us_equity_cash",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "sessions/XNAS.json",
+      "category": "session",
+      "content_hash": "sha256:aa1a89354bbd069a944cc615927e97047ed500d20092461d6c281499366442a1",
+      "description": "Regular Nasdaq cash-market hours for weekday trading in New York local time.",
+      "display_name": "Nasdaq Cash Session",
+      "preset_name": "XNAS",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "sessions/XNYS.json",
+      "category": "session",
+      "content_hash": "sha256:674f64e57112bbc9f70f9b2f8c716e1e7d351515ee983ee1eddfdaa09d5c441e",
+      "description": "Regular NYSE cash-market hours for weekday trading in New York local time.",
+      "display_name": "New York Stock Exchange Cash Session",
+      "preset_name": "XNYS",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "sessions/crypto_24_7.json",
+      "category": "session",
+      "content_hash": "sha256:de441b8774a74aca382b32565a70a53d62752a2c56a0c62aefe9c3049e5c00e3",
+      "description": "Continuous 24/7 spot-crypto trading hours expressed in UTC.",
+      "display_name": "Crypto Spot 24/7",
+      "preset_name": "crypto_24_7",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    },
+    {
+      "artifact_path": "sessions/fx_spot_24_5.json",
+      "category": "session",
+      "content_hash": "sha256:38bed1b5d0df04c9d21e019268764c45878804f4374c821f12631b76b3884357",
+      "description": "Week-round OTC FX spot session with the weekend close from Friday 19:00 UTC to Sunday 21:00 UTC.",
+      "display_name": "FX Spot 24/5",
+      "preset_name": "fx_spot_24_5",
+      "registry_scope": "built_in",
+      "version_label": "2026.03"
+    }
+  ],
+  "generated_on": "2026-03-12",
+  "schema_version": "preset.runtime.index.v1"
+}

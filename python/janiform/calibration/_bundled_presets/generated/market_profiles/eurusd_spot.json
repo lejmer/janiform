@@ -1,0 +1,65 @@
+{
+  "category": "market_profile",
+  "configuration": {
+    "column_alias_hints": [
+      {
+        "aliases": [
+          "event_timestamp_utc",
+          "timestamp_utc",
+          "ts_utc"
+        ],
+        "canonical_name": "timestamp"
+      }
+    ],
+    "default_calibration_hint_ids": [
+      "fx_spot_defaults"
+    ],
+    "known_news_policy": "suggest_only",
+    "known_news_reference": {
+      "configuration": null,
+      "override_patch": null,
+      "preset_name": "eu_us_macro_fx_core",
+      "registry_scope": "built_in",
+      "usage_mode": "named"
+    },
+    "profile_name": "eurusd_spot",
+    "session_reference": {
+      "configuration": null,
+      "exchange_code_hint": null,
+      "override_patch": null,
+      "preset_name": "fx_spot_24_5",
+      "registry_scope": "built_in",
+      "timezone_name_hint": null,
+      "usage_mode": "named"
+    },
+    "timestamp_timezone_name": "UTC"
+  },
+  "metadata": {
+    "description": "Default EUR/USD spot profile with the bundled 24/5 FX session and suggested EU and US macro events.",
+    "display_name": "EUR/USD Spot",
+    "provenance": {
+      "bundle_id": "janiform_bundled_presets",
+      "bundle_version": "v1",
+      "content_hash": "sha256:29be85b9bd163b64ca32f18b488d92d61593da38b91badc91fe2189a99ba8582",
+      "generated_on": "2026-03-12",
+      "generator_id": "janiform.curated_preset_generator",
+      "generator_version": "1.0.0",
+      "source_manifest_ids": [
+        "sources.market_profiles.eurusd_spot.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "bundled_known_news_reference",
+          "version_label": "eu_us_macro_fx_core@2026.03"
+        },
+        {
+          "source_name": "bundled_session_reference",
+          "version_label": "fx_spot_24_5@2026.03"
+        }
+      ]
+    },
+    "version_label": "2026.03"
+  },
+  "preset_name": "eurusd_spot",
+  "schema_version": "preset.artifact.market_profile.v1"
+}

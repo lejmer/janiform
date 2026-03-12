@@ -184,7 +184,9 @@ This tells the script to use the `.venv-linux` venv, and to pass on the `-v` com
 
 - `crates/core/`: Rust core library
 - `crates/pybind/`: PyO3 extension module (`janiform._native`)
+- `presets/sources/`: Human-reviewed preset source manifests used to generate bundled runtime artifacts
 - `python/janiform/`: Python package, CLI entrypoints, and typed workflow contracts, including package-backed workflow namespaces such as `janiform.simulation`
+- `python/janiform/calibration/_bundled_presets/generated/`: Checked-in bundled preset artifacts and runtime index consumed by the preset registry
 - `examples/`: Executable public-API workflow examples for simulation, pricing, and calibration
 - `tests/`: Python tests and shared fixtures
 - `docs/`: Design and development documentation
