@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "0ba0f156c175f317d95d6d2e1e4f865b48a5becd2160a885ef3d1cfa8b0aa929",
+  "approved_snapshot_sha256": "2fb63cc1bc83d3f860fee48e351dc0d5d2d9d0b41644125fe435f04cd46e7c05",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -166,6 +166,15 @@
       "rationale": "Calibration now exposes a public preset registry with bundled runtime artifacts, deterministic export, and user-defined preset loading, so the approved Python contract snapshot must include the new registry types, preset artifact metadata, and resolved export surface.",
       "snapshot_sha256": "0ba0f156c175f317d95d6d2e1e4f865b48a5becd2160a885ef3d1cfa8b0aa929",
       "summary": "Add bundled preset registry, artifact metadata, and deterministic preset export contracts."
+    },
+    {
+      "approved_on": "2026-03-12",
+      "docs_updated": [
+        "docs/design/high_level_user_api_and_preset_strategy_plan.md"
+      ],
+      "rationale": "Calibration now exposes one resolved preset-workflow configuration with component-level provenance, deterministic override fields, inferred-session diagnostics, and explicit known-news recommendation outcomes, so the approved Python API snapshot must include the new resolution contracts and entrypoint.",
+      "snapshot_sha256": "2fb63cc1bc83d3f860fee48e351dc0d5d2d9d0b41644125fe435f04cd46e7c05",
+      "summary": "Add canonical resolved preset-workflow configuration contracts and resolution diagnostics."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_1",

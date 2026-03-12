@@ -186,6 +186,7 @@
         "CalibrationTradeSign",
         "CalibrationValidationError",
         "CalibrationValidationFailure",
+        "DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME",
         "DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE",
         "KNOWN_NEWS_PRESET_ARTIFACT_SCHEMA_VERSION",
         "KnownNewsConfigurationOverridePatch",
@@ -218,7 +219,17 @@
         "PresetRegistryScope",
         "PresetUpstreamSourceVersion",
         "RESOLVED_PRESET_EXPORT_SCHEMA_VERSION",
+        "RESOLVED_PRESET_WORKFLOW_CONFIGURATION_SCHEMA_VERSION",
+        "ResolvedKnownNewsComponent",
+        "ResolvedMarketProfileComponent",
         "ResolvedPresetExport",
+        "ResolvedPresetSelection",
+        "ResolvedPresetWorkflowConfiguration",
+        "ResolvedSessionComponent",
+        "ResolvedWorkflowComponent",
+        "ResolvedWorkflowComponentSource",
+        "ResolvedWorkflowDiagnostic",
+        "ResolvedWorkflowDiagnosticSeverity",
         "SESSION_PRESET_ARTIFACT_SCHEMA_VERSION",
         "SessionConfigurationOverridePatch",
         "SessionExplicitConfiguration",
@@ -239,6 +250,7 @@
         "deserialize_staged_calibration_response",
         "normalize_preset_artifact",
         "prepare_market_data_calibration",
+        "resolve_preset_workflow_configuration",
         "run_market_data_calibration",
         "run_staged_calibration",
         "serialize_known_news_preset_reference",
@@ -308,6 +320,11 @@
           "name": "RESOLVED_PRESET_EXPORT_SCHEMA_VERSION",
           "public_exported": true,
           "value": "preset.runtime.export.v1"
+        },
+        {
+          "name": "RESOLVED_PRESET_WORKFLOW_CONFIGURATION_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "calibration.preset_resolution.resolved_configuration.v1"
         },
         {
           "name": "SESSION_PRESET_ARTIFACT_SCHEMA_VERSION",
@@ -1053,6 +1070,10 @@
           "kind": "contract_model",
           "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
         },
+        "DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME": {
+          "kind": "constant",
+          "value": "none"
+        },
         "DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE": {
           "kind": "constant",
           "value": "memory"
@@ -1418,6 +1439,33 @@
           "kind": "constant",
           "value": "preset.runtime.export.v1"
         },
+        "RESOLVED_PRESET_WORKFLOW_CONFIGURATION_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "calibration.preset_resolution.resolved_configuration.v1"
+        },
+        "ResolvedKnownNewsComponent": {
+          "field_names": [
+            "configuration",
+            "source_kind",
+            "selected_preset",
+            "applied_override_fields",
+            "recommended_reference",
+            "recommendation_policy",
+            "recommendation_applied"
+          ],
+          "kind": "contract_model",
+          "signature": "(configuration: 'KnownNewsExplicitConfiguration', source_kind: 'ResolvedWorkflowComponentSource', selected_preset: 'Optional[ResolvedPresetSelection]' = None, applied_override_fields: 'tuple[str, ...]' = (), recommended_reference: 'Optional[KnownNewsPresetReference]' = None, recommendation_policy: 'Optional[MarketProfileKnownNewsPolicy]' = None, recommendation_applied: 'bool' = False) -> 'None'"
+        },
+        "ResolvedMarketProfileComponent": {
+          "field_names": [
+            "configuration",
+            "source_kind",
+            "selected_preset",
+            "applied_override_fields"
+          ],
+          "kind": "contract_model",
+          "signature": "(configuration: 'MarketProfileExplicitConfiguration', source_kind: 'ResolvedWorkflowComponentSource', selected_preset: 'Optional[ResolvedPresetSelection]' = None, applied_override_fields: 'tuple[str, ...]' = ()) -> 'None'"
+        },
         "ResolvedPresetExport": {
           "field_names": [
             "schema_version",
@@ -1430,6 +1478,99 @@
           ],
           "kind": "contract_model",
           "signature": "(schema_version: 'str', requested_category: 'PresetCategory', requested_scope: 'PresetRegistryScope', preset_name: 'str', session_preset: 'Optional[SessionPresetArtifact]' = None, known_news_preset: 'Optional[KnownNewsPresetArtifact]' = None, market_profile_preset: 'Optional[MarketProfilePresetArtifact]' = None) -> 'None'"
+        },
+        "ResolvedPresetSelection": {
+          "field_names": [
+            "category",
+            "registry_scope",
+            "preset_name"
+          ],
+          "kind": "contract_model",
+          "signature": "(category: 'PresetCategory', registry_scope: 'PresetRegistryScope', preset_name: 'str') -> 'None'"
+        },
+        "ResolvedPresetWorkflowConfiguration": {
+          "field_names": [
+            "schema_version",
+            "session",
+            "known_news",
+            "diagnostics",
+            "market_profile"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', session: 'ResolvedSessionComponent', known_news: 'ResolvedKnownNewsComponent', diagnostics: 'tuple[ResolvedWorkflowDiagnostic, ...]' = (), market_profile: 'Optional[ResolvedMarketProfileComponent]' = None) -> 'None'"
+        },
+        "ResolvedSessionComponent": {
+          "field_names": [
+            "configuration",
+            "source_kind",
+            "selected_preset",
+            "inferred_from_data",
+            "inference_resolution",
+            "applied_override_fields"
+          ],
+          "kind": "contract_model",
+          "signature": "(configuration: 'SessionExplicitConfiguration', source_kind: 'ResolvedWorkflowComponentSource', selected_preset: 'Optional[ResolvedPresetSelection]' = None, inferred_from_data: 'bool' = False, inference_resolution: 'Optional[MarketDataSessionResolution]' = None, applied_override_fields: 'tuple[str, ...]' = ()) -> 'None'"
+        },
+        "ResolvedWorkflowComponent": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "MARKET_PROFILE",
+              "value": "market_profile"
+            },
+            {
+              "name": "SESSION",
+              "value": "session"
+            },
+            {
+              "name": "KNOWN_NEWS",
+              "value": "known_news"
+            }
+          ]
+        },
+        "ResolvedWorkflowComponentSource": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "BUILT_IN",
+              "value": "built_in"
+            },
+            {
+              "name": "INFERRED",
+              "value": "inferred"
+            },
+            {
+              "name": "OVERRIDDEN",
+              "value": "overridden"
+            },
+            {
+              "name": "FULLY_CUSTOM",
+              "value": "fully_custom"
+            }
+          ]
+        },
+        "ResolvedWorkflowDiagnostic": {
+          "field_names": [
+            "component",
+            "severity",
+            "code",
+            "message"
+          ],
+          "kind": "contract_model",
+          "signature": "(component: 'ResolvedWorkflowComponent', severity: 'ResolvedWorkflowDiagnosticSeverity', code: 'str', message: 'str') -> 'None'"
+        },
+        "ResolvedWorkflowDiagnosticSeverity": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "INFO",
+              "value": "info"
+            },
+            {
+              "name": "WARNING",
+              "value": "warning"
+            }
+          ]
         },
         "SESSION_PRESET_ARTIFACT_SCHEMA_VERSION": {
           "kind": "constant",
@@ -1572,6 +1713,10 @@
         "prepare_market_data_calibration": {
           "kind": "function",
           "signature": "(request: 'MarketDataCalibrationRequest') -> 'PreparedMarketDataCalibration'"
+        },
+        "resolve_preset_workflow_configuration": {
+          "kind": "function",
+          "signature": "(*, registry: 'Optional[PresetRegistry]' = None, market_profile_reference: 'Optional[MarketProfileReference]' = None, session_reference: 'Optional[SessionPresetReference]' = None, known_news_reference: 'Optional[KnownNewsPresetReference]' = None, inferred_session_resolution: 'Optional[MarketDataSessionResolution]' = None) -> 'ResolvedPresetWorkflowConfiguration'"
         },
         "run_market_data_calibration": {
           "kind": "function",
