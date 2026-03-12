@@ -955,8 +955,7 @@ def _prepare_model_runtime_factors(
             return_components_fitted_parameters,
             "news_process_configuration",
             "return_components.fitted_parameters.news_process_configuration",
-        ),
-        field_path="return_components.fitted_parameters.news_process_configuration",
+        )
     )
     shared_mark_law = _require_payload_mapping(
         news_process_configuration.to_payload(),
