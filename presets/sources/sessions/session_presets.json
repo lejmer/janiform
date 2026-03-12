@@ -1,0 +1,254 @@
+{
+  "schema_version": "preset.source.sessions.v1",
+  "bundle_id": "janiform_bundled_presets",
+  "bundle_version": "v1",
+  "generator_id": "janiform.curated_preset_generator",
+  "generator_version": "1.0.0",
+  "generated_on": "2026-03-12",
+  "presets": [
+    {
+      "preset_name": "XNYS",
+      "display_name": "New York Stock Exchange Cash Session",
+      "description": "Regular NYSE cash-market hours for weekday trading in New York local time.",
+      "version_label": "2026.03",
+      "source_manifest_ids": [
+        "sources.sessions.XNYS.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "nyse_markets_hours_reference",
+          "version_label": "captured_2026-03-12"
+        }
+      ],
+      "configuration": {
+        "exchange_code": "XNYS",
+        "exchange_name": "New York Stock Exchange",
+        "timezone_name": "America/New_York",
+        "regular_session_windows": [
+          {
+            "weekday": "Monday",
+            "label": "cash",
+            "open_time": "09:30",
+            "close_time": "16:00"
+          },
+          {
+            "weekday": "Tuesday",
+            "label": "cash",
+            "open_time": "09:30",
+            "close_time": "16:00"
+          },
+          {
+            "weekday": "Wednesday",
+            "label": "cash",
+            "open_time": "09:30",
+            "close_time": "16:00"
+          },
+          {
+            "weekday": "Thursday",
+            "label": "cash",
+            "open_time": "09:30",
+            "close_time": "16:00"
+          },
+          {
+            "weekday": "Friday",
+            "label": "cash",
+            "open_time": "09:30",
+            "close_time": "16:00"
+          }
+        ],
+        "recurring_closed_windows": []
+      }
+    },
+    {
+      "preset_name": "XNAS",
+      "display_name": "Nasdaq Cash Session",
+      "description": "Regular Nasdaq cash-market hours for weekday trading in New York local time.",
+      "version_label": "2026.03",
+      "source_manifest_ids": [
+        "sources.sessions.XNAS.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "nasdaq_trader_market_hours_reference",
+          "version_label": "captured_2026-03-12"
+        }
+      ],
+      "configuration": {
+        "exchange_code": "XNAS",
+        "exchange_name": "Nasdaq Stock Market",
+        "timezone_name": "America/New_York",
+        "regular_session_windows": [
+          {
+            "weekday": "Monday",
+            "label": "cash",
+            "open_time": "09:30",
+            "close_time": "16:00"
+          },
+          {
+            "weekday": "Tuesday",
+            "label": "cash",
+            "open_time": "09:30",
+            "close_time": "16:00"
+          },
+          {
+            "weekday": "Wednesday",
+            "label": "cash",
+            "open_time": "09:30",
+            "close_time": "16:00"
+          },
+          {
+            "weekday": "Thursday",
+            "label": "cash",
+            "open_time": "09:30",
+            "close_time": "16:00"
+          },
+          {
+            "weekday": "Friday",
+            "label": "cash",
+            "open_time": "09:30",
+            "close_time": "16:00"
+          }
+        ],
+        "recurring_closed_windows": []
+      }
+    },
+    {
+      "preset_name": "fx_spot_24_5",
+      "display_name": "FX Spot 24/5",
+      "description": "Week-round OTC FX spot session with the weekend close from Friday 19:00 UTC to Sunday 21:00 UTC.",
+      "version_label": "2026.03",
+      "source_manifest_ids": [
+        "sources.sessions.fx_spot_24_5.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "fx_spot_market_convention_review",
+          "version_label": "captured_2026-03-12"
+        }
+      ],
+      "configuration": {
+        "exchange_code": "FXSPOT",
+        "exchange_name": "OTC FX Spot 24/5",
+        "timezone_name": "UTC",
+        "regular_session_windows": [
+          {
+            "weekday": "Monday",
+            "label": "spot",
+            "open_time": "00:00",
+            "close_time": "24:00"
+          },
+          {
+            "weekday": "Tuesday",
+            "label": "spot",
+            "open_time": "00:00",
+            "close_time": "24:00"
+          },
+          {
+            "weekday": "Wednesday",
+            "label": "spot",
+            "open_time": "00:00",
+            "close_time": "24:00"
+          },
+          {
+            "weekday": "Thursday",
+            "label": "spot",
+            "open_time": "00:00",
+            "close_time": "24:00"
+          },
+          {
+            "weekday": "Friday",
+            "label": "spot",
+            "open_time": "00:00",
+            "close_time": "24:00"
+          },
+          {
+            "weekday": "Saturday",
+            "label": "spot",
+            "open_time": "00:00",
+            "close_time": "24:00"
+          },
+          {
+            "weekday": "Sunday",
+            "label": "spot",
+            "open_time": "00:00",
+            "close_time": "24:00"
+          }
+        ],
+        "recurring_closed_windows": [
+          {
+            "start_weekday": "Friday",
+            "start_time": "19:00",
+            "end_weekday": "Sunday",
+            "end_time": "21:00",
+            "reason": "weekend_close"
+          }
+        ]
+      }
+    },
+    {
+      "preset_name": "crypto_24_7",
+      "display_name": "Crypto Spot 24/7",
+      "description": "Continuous 24/7 spot-crypto trading hours expressed in UTC.",
+      "version_label": "2026.03",
+      "source_manifest_ids": [
+        "sources.sessions.crypto_24_7.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "crypto_spot_market_convention_review",
+          "version_label": "captured_2026-03-12"
+        }
+      ],
+      "configuration": {
+        "exchange_code": "CRYPTO",
+        "exchange_name": "Crypto Spot 24/7",
+        "timezone_name": "UTC",
+        "regular_session_windows": [
+          {
+            "weekday": "Monday",
+            "label": "spot",
+            "open_time": "00:00",
+            "close_time": "24:00"
+          },
+          {
+            "weekday": "Tuesday",
+            "label": "spot",
+            "open_time": "00:00",
+            "close_time": "24:00"
+          },
+          {
+            "weekday": "Wednesday",
+            "label": "spot",
+            "open_time": "00:00",
+            "close_time": "24:00"
+          },
+          {
+            "weekday": "Thursday",
+            "label": "spot",
+            "open_time": "00:00",
+            "close_time": "24:00"
+          },
+          {
+            "weekday": "Friday",
+            "label": "spot",
+            "open_time": "00:00",
+            "close_time": "24:00"
+          },
+          {
+            "weekday": "Saturday",
+            "label": "spot",
+            "open_time": "00:00",
+            "close_time": "24:00"
+          },
+          {
+            "weekday": "Sunday",
+            "label": "spot",
+            "open_time": "00:00",
+            "close_time": "24:00"
+          }
+        ],
+        "recurring_closed_windows": []
+      }
+    }
+  ]
+}

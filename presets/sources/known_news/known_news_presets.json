@@ -1,0 +1,588 @@
+{
+  "schema_version": "preset.source.known_news.v1",
+  "bundle_id": "janiform_bundled_presets",
+  "bundle_version": "v1",
+  "generator_id": "janiform.curated_preset_generator",
+  "generator_version": "1.0.0",
+  "generated_on": "2026-03-12",
+  "presets": [
+    {
+      "preset_name": "none",
+      "display_name": "No Known News",
+      "description": "Explicitly disables scheduled known-news events.",
+      "version_label": "2026.03",
+      "source_manifest_ids": [
+        "sources.known_news.none.v1"
+      ],
+      "upstream_source_versions": [],
+      "configuration": {
+        "calendar_timezone_name": "UTC",
+        "events": []
+      }
+    },
+    {
+      "preset_name": "us_macro_core",
+      "display_name": "US Macro Core 2026",
+      "description": "2026 schedule for BLS CPI, BLS Employment Situation, and FOMC policy statements.",
+      "version_label": "2026.03",
+      "source_manifest_ids": [
+        "sources.known_news.us_macro_core.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "bls_cpi_release_schedule",
+          "version_label": "captured_2026-03-12"
+        },
+        {
+          "source_name": "bls_employment_situation_release_schedule",
+          "version_label": "captured_2026-03-12"
+        },
+        {
+          "source_name": "federal_reserve_fomc_schedule",
+          "version_label": "captured_2026-03-12"
+        }
+      ],
+      "configuration": {
+        "calendar_timezone_name": "UTC",
+        "events": [
+          {
+            "event_id": "cpi_2026_01",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-01-15T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_01",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-01-09T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "fomc_2026_01",
+            "event_name": "FOMC Policy Statement",
+            "scheduled_local": "2026-01-28T14:00:00",
+            "timezone_name": "America/New_York",
+            "tags": ["fomc", "macro", "rates", "us"]
+          },
+          {
+            "event_id": "cpi_2026_02",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-02-13T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_02",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-02-06T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "cpi_2026_03",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-03-13T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_03",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-03-06T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "fomc_2026_03",
+            "event_name": "FOMC Policy Statement",
+            "scheduled_local": "2026-03-18T14:00:00",
+            "timezone_name": "America/New_York",
+            "tags": ["fomc", "macro", "rates", "us"]
+          },
+          {
+            "event_id": "cpi_2026_04",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-04-10T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_04",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-04-03T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "fomc_2026_04",
+            "event_name": "FOMC Policy Statement",
+            "scheduled_local": "2026-04-29T14:00:00",
+            "timezone_name": "America/New_York",
+            "tags": ["fomc", "macro", "rates", "us"]
+          },
+          {
+            "event_id": "cpi_2026_05",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-05-13T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_05",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-05-08T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "cpi_2026_06",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-06-11T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_06",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-06-05T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "fomc_2026_06",
+            "event_name": "FOMC Policy Statement",
+            "scheduled_local": "2026-06-17T14:00:00",
+            "timezone_name": "America/New_York",
+            "tags": ["fomc", "macro", "rates", "us"]
+          },
+          {
+            "event_id": "cpi_2026_07",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-07-15T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_07",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-07-02T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "fomc_2026_07",
+            "event_name": "FOMC Policy Statement",
+            "scheduled_local": "2026-07-29T14:00:00",
+            "timezone_name": "America/New_York",
+            "tags": ["fomc", "macro", "rates", "us"]
+          },
+          {
+            "event_id": "cpi_2026_08",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-08-12T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_08",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-08-07T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "cpi_2026_09",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-09-11T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_09",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-09-04T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "fomc_2026_09",
+            "event_name": "FOMC Policy Statement",
+            "scheduled_local": "2026-09-16T14:00:00",
+            "timezone_name": "America/New_York",
+            "tags": ["fomc", "macro", "rates", "us"]
+          },
+          {
+            "event_id": "cpi_2026_10",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-10-15T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_10",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-10-02T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "fomc_2026_10",
+            "event_name": "FOMC Policy Statement",
+            "scheduled_local": "2026-10-28T14:00:00",
+            "timezone_name": "America/New_York",
+            "tags": ["fomc", "macro", "rates", "us"]
+          },
+          {
+            "event_id": "cpi_2026_11",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-11-13T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_11",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-11-06T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "cpi_2026_12",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-12-15T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_12",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-12-04T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "fomc_2026_12",
+            "event_name": "FOMC Policy Statement",
+            "scheduled_local": "2026-12-09T14:00:00",
+            "timezone_name": "America/New_York",
+            "tags": ["fomc", "macro", "rates", "us"]
+          }
+        ]
+      }
+    },
+    {
+      "preset_name": "eu_us_macro_fx_core",
+      "display_name": "EU and US Macro FX Core 2026",
+      "description": "2026 schedule for US macro core releases plus ECB monetary policy decisions.",
+      "version_label": "2026.03",
+      "source_manifest_ids": [
+        "sources.known_news.eu_us_macro_fx_core.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "bls_cpi_release_schedule",
+          "version_label": "captured_2026-03-12"
+        },
+        {
+          "source_name": "bls_employment_situation_release_schedule",
+          "version_label": "captured_2026-03-12"
+        },
+        {
+          "source_name": "federal_reserve_fomc_schedule",
+          "version_label": "captured_2026-03-12"
+        },
+        {
+          "source_name": "ecb_monetary_policy_meeting_calendar",
+          "version_label": "captured_2026-03-12"
+        }
+      ],
+      "configuration": {
+        "calendar_timezone_name": "UTC",
+        "events": [
+          {
+            "event_id": "cpi_2026_01",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-01-15T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_01",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-01-09T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "fomc_2026_01",
+            "event_name": "FOMC Policy Statement",
+            "scheduled_local": "2026-01-28T14:00:00",
+            "timezone_name": "America/New_York",
+            "tags": ["fomc", "macro", "rates", "us"]
+          },
+          {
+            "event_id": "ecb_2026_02",
+            "event_name": "ECB Monetary Policy Decision",
+            "scheduled_local": "2026-02-05T14:15:00",
+            "timezone_name": "Europe/Berlin",
+            "tags": ["ecb", "eu", "macro", "rates"]
+          },
+          {
+            "event_id": "cpi_2026_02",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-02-13T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_02",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-02-06T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "cpi_2026_03",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-03-13T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_03",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-03-06T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "fomc_2026_03",
+            "event_name": "FOMC Policy Statement",
+            "scheduled_local": "2026-03-18T14:00:00",
+            "timezone_name": "America/New_York",
+            "tags": ["fomc", "macro", "rates", "us"]
+          },
+          {
+            "event_id": "ecb_2026_03",
+            "event_name": "ECB Monetary Policy Decision",
+            "scheduled_local": "2026-03-19T14:15:00",
+            "timezone_name": "Europe/Berlin",
+            "tags": ["ecb", "eu", "macro", "rates"]
+          },
+          {
+            "event_id": "cpi_2026_04",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-04-10T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_04",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-04-03T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "fomc_2026_04",
+            "event_name": "FOMC Policy Statement",
+            "scheduled_local": "2026-04-29T14:00:00",
+            "timezone_name": "America/New_York",
+            "tags": ["fomc", "macro", "rates", "us"]
+          },
+          {
+            "event_id": "ecb_2026_04",
+            "event_name": "ECB Monetary Policy Decision",
+            "scheduled_local": "2026-04-30T14:15:00",
+            "timezone_name": "Europe/Berlin",
+            "tags": ["ecb", "eu", "macro", "rates"]
+          },
+          {
+            "event_id": "cpi_2026_05",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-05-13T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_05",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-05-08T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "cpi_2026_06",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-06-11T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_06",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-06-05T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "fomc_2026_06",
+            "event_name": "FOMC Policy Statement",
+            "scheduled_local": "2026-06-17T14:00:00",
+            "timezone_name": "America/New_York",
+            "tags": ["fomc", "macro", "rates", "us"]
+          },
+          {
+            "event_id": "ecb_2026_06",
+            "event_name": "ECB Monetary Policy Decision",
+            "scheduled_local": "2026-06-11T14:15:00",
+            "timezone_name": "Europe/Berlin",
+            "tags": ["ecb", "eu", "macro", "rates"]
+          },
+          {
+            "event_id": "cpi_2026_07",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-07-15T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_07",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-07-02T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "fomc_2026_07",
+            "event_name": "FOMC Policy Statement",
+            "scheduled_local": "2026-07-29T14:00:00",
+            "timezone_name": "America/New_York",
+            "tags": ["fomc", "macro", "rates", "us"]
+          },
+          {
+            "event_id": "ecb_2026_07",
+            "event_name": "ECB Monetary Policy Decision",
+            "scheduled_local": "2026-07-23T14:15:00",
+            "timezone_name": "Europe/Berlin",
+            "tags": ["ecb", "eu", "macro", "rates"]
+          },
+          {
+            "event_id": "cpi_2026_08",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-08-12T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_08",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-08-07T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "cpi_2026_09",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-09-11T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_09",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-09-04T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "fomc_2026_09",
+            "event_name": "FOMC Policy Statement",
+            "scheduled_local": "2026-09-16T14:00:00",
+            "timezone_name": "America/New_York",
+            "tags": ["fomc", "macro", "rates", "us"]
+          },
+          {
+            "event_id": "ecb_2026_09",
+            "event_name": "ECB Monetary Policy Decision",
+            "scheduled_local": "2026-09-10T14:15:00",
+            "timezone_name": "Europe/Berlin",
+            "tags": ["ecb", "eu", "macro", "rates"]
+          },
+          {
+            "event_id": "cpi_2026_10",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-10-15T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_10",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-10-02T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "fomc_2026_10",
+            "event_name": "FOMC Policy Statement",
+            "scheduled_local": "2026-10-28T14:00:00",
+            "timezone_name": "America/New_York",
+            "tags": ["fomc", "macro", "rates", "us"]
+          },
+          {
+            "event_id": "ecb_2026_10",
+            "event_name": "ECB Monetary Policy Decision",
+            "scheduled_local": "2026-10-29T14:15:00",
+            "timezone_name": "Europe/Berlin",
+            "tags": ["ecb", "eu", "macro", "rates"]
+          },
+          {
+            "event_id": "cpi_2026_11",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-11-13T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_11",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-11-06T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "cpi_2026_12",
+            "event_name": "US Consumer Price Index Release",
+            "scheduled_local": "2026-12-15T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["cpi", "macro", "us"]
+          },
+          {
+            "event_id": "employment_2026_12",
+            "event_name": "US Employment Situation Release",
+            "scheduled_local": "2026-12-04T08:30:00",
+            "timezone_name": "America/New_York",
+            "tags": ["employment", "macro", "nfp", "us"]
+          },
+          {
+            "event_id": "fomc_2026_12",
+            "event_name": "FOMC Policy Statement",
+            "scheduled_local": "2026-12-09T14:00:00",
+            "timezone_name": "America/New_York",
+            "tags": ["fomc", "macro", "rates", "us"]
+          },
+          {
+            "event_id": "ecb_2026_12",
+            "event_name": "ECB Monetary Policy Decision",
+            "scheduled_local": "2026-12-17T14:15:00",
+            "timezone_name": "Europe/Berlin",
+            "tags": ["ecb", "eu", "macro", "rates"]
+          }
+        ]
+      }
+    }
+  ]
+}

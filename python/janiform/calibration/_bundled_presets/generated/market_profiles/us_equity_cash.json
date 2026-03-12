@@ -1,0 +1,65 @@
+{
+  "category": "market_profile",
+  "configuration": {
+    "column_alias_hints": [
+      {
+        "aliases": [
+          "event_timestamp",
+          "timestamp_est",
+          "trade_time"
+        ],
+        "canonical_name": "timestamp"
+      }
+    ],
+    "default_calibration_hint_ids": [
+      "us_equity_cash_defaults"
+    ],
+    "known_news_policy": "suggest_only",
+    "known_news_reference": {
+      "configuration": null,
+      "override_patch": null,
+      "preset_name": "us_macro_core",
+      "registry_scope": "built_in",
+      "usage_mode": "named"
+    },
+    "profile_name": "us_equity_cash",
+    "session_reference": {
+      "configuration": null,
+      "exchange_code_hint": null,
+      "override_patch": null,
+      "preset_name": "XNYS",
+      "registry_scope": "built_in",
+      "timezone_name_hint": null,
+      "usage_mode": "named"
+    },
+    "timestamp_timezone_name": "America/New_York"
+  },
+  "metadata": {
+    "description": "Default US equity cash profile with NYSE weekday hours and suggested US macro releases.",
+    "display_name": "US Equity Cash",
+    "provenance": {
+      "bundle_id": "janiform_bundled_presets",
+      "bundle_version": "v1",
+      "content_hash": "sha256:823162971d88f8e7b038e235d19cf029d1b1c868f7ebfc2452fedd12b9a9df16",
+      "generated_on": "2026-03-12",
+      "generator_id": "janiform.curated_preset_generator",
+      "generator_version": "1.0.0",
+      "source_manifest_ids": [
+        "sources.market_profiles.us_equity_cash.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "bundled_known_news_reference",
+          "version_label": "us_macro_core@2026.03"
+        },
+        {
+          "source_name": "bundled_session_reference",
+          "version_label": "XNYS@2026.03"
+        }
+      ]
+    },
+    "version_label": "2026.03"
+  },
+  "preset_name": "us_equity_cash",
+  "schema_version": "preset.artifact.market_profile.v1"
+}
