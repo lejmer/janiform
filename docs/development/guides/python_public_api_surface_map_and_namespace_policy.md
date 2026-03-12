@@ -149,7 +149,7 @@ The package root `janiform` is intentionally minimal.
     - `deserialize_sufficient_statistics_risk_run_request`
     - `deserialize_sufficient_statistics_risk_path`
 - `janiform.calibration`
-  - Ownership: market-data calibration request contracts plus advanced staged calibration execution contracts
+  - Ownership: default high-level fit objects plus market-data calibration request contracts and advanced staged calibration execution contracts
   - Public symbols:
     - `CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION`
     - `CALIBRATION_RUN_SPEC_SCHEMA_VERSION`
@@ -228,6 +228,9 @@ The package root `janiform` is intentionally minimal.
     - `StagedCalibrationResponse`
     - `CalibrationValidationFailure`
     - `CalibrationValidationError`
+    - `JaniformEstimator`
+    - `JaniformModel`
+    - `JaniformFitReport`
     - `validate_market_data_calibration_request`
     - `prepare_market_data_calibration`
     - `run_market_data_calibration`
@@ -243,6 +246,7 @@ The package root `janiform` is intentionally minimal.
     - `deserialize_staged_calibration_execution_input`
     - `deserialize_staged_calibration_request`
     - `deserialize_staged_calibration_response`
+  - High-level fit policy: the default user-facing flow is `JaniformEstimator.fit(...) -> JaniformModel` with an optional `JaniformFitReport`, while explicit staged execution contracts remain the advanced surface
 
 ### Supporting public modules
 

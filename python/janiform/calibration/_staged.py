@@ -2060,24 +2060,11 @@ def deserialize_staged_calibration_response(payload_json: str) -> StagedCalibrat
     return validate_staged_calibration_response(dict(raw_payload))
 
 
-def run_staged_calibration(
+def _run_staged_calibration_with_raw_payload(
     execution_input: StagedCalibrationExecutionInput,
     *,
     calendar_registry: CalendarRegistry,
-) -> StagedCalibrationResponse:
-    """Run staged calibration from the explicit execution contract.
-
-    Example:
-        response = run_staged_calibration(
-            execution_input,
-            calendar_registry=calendar_registry,
-        )
-
-    Return-components stage inputs keep known-news open-window jumps and
-    closed-window gaps explicit while deriving surprise close-open gaps
-    from raw boundary observations inside Janiform.
-    """
-
+) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
     if not isinstance(execution_input, StagedCalibrationExecutionInput):
         raise _calibration_error("execution_input", "must be a StagedCalibrationExecutionInput")
     if not isinstance(calendar_registry, CalendarRegistry):
@@ -2115,8 +2102,16 @@ def run_staged_calibration(
             context={"source_exception_type": type(e).__name__},
         ) from e
 
+    raw_response_payload = dict(
+        parse_json_object(
+            response_json,
+            "staged calibration response",
+            CALIBRATION_ERROR_FACTORY,
+        )
+    )
+
     try:
-        return deserialize_staged_calibration_response(response_json)
+        normalized_response = validate_staged_calibration_response(raw_response_payload)
     except CalibrationValidationError as e:
         raise _calibration_integration_error(
             "native calibration returned an invalid response payload",
@@ -2124,3 +2119,31 @@ def run_staged_calibration(
             error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
             context={"source_error_id": e.error_id},
         ) from e
+
+    return normalized_response, raw_response_payload
+
+
+def run_staged_calibration(
+    execution_input: StagedCalibrationExecutionInput,
+    *,
+    calendar_registry: CalendarRegistry,
+) -> StagedCalibrationResponse:
+    """Run staged calibration from the explicit execution contract.
+
+    Example:
+        response = run_staged_calibration(
+            execution_input,
+            calendar_registry=calendar_registry,
+        )
+
+    Return-components stage inputs keep known-news open-window jumps and
+    closed-window gaps explicit while deriving surprise close-open gaps
+    from raw boundary observations inside Janiform.
+    """
+
+    normalized_response, _ = _run_staged_calibration_with_raw_payload(
+        execution_input,
+        calendar_registry=calendar_registry,
+    )
+
+    return normalized_response
