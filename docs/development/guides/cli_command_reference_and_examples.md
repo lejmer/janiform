@@ -15,8 +15,13 @@ It complements the namespace and contract guide in
 - copy-pastable example invocations
 - machine-readable output examples for automation
 
-The primary calibration workflow is market-data-first. The staged execution JSON path is retained
-for advanced or internal use.
+The primary workflow is now:
+
+1. inspect presets
+2. fit from market data
+3. simulate later from a saved model
+
+The older staged execution JSON path is retained for advanced or internal use.
 
 ## Shared Setup
 
@@ -56,12 +61,137 @@ The generated files include:
 - Primary workflow commands accept `--output {human,json}`.
 - `--output json` is the machine-readable mode for automation and CI.
 - Relative paths are resolved from the repository root.
+- High-level fit commands accept preset inputs such as `--market MARKET`,
+  `--session-preset SESSION_PRESET`, `--known-news KNOWN_NEWS`,
+  `--session-json PATH`, and `--known-news-json PATH`.
+- Use `--known-news none` to keep the off-by-default known-news baseline explicit.
+- `janiform fit` can persist a reusable fitted model with `--model-output-path PATH`.
+- `janiform simulate` consumes that persisted model through `--model-path PATH`.
+- `janiform simulate` and `janiform fit-and-simulate` use
+  `--simulation-output {coarse,ticks,both}` to choose the runtime artifact shape.
 - Calibration commands share `--execution-mode {disk,memory}`.
 - The CLI default is `disk` for calibration commands.
 - `--disk-checkpoint-directory` is required when the effective calibration execution mode is `disk`.
+- The high-level `fit` and `fit-and-simulate` commands default to `memory`.
 - The stylized-fact report command defaults to `memory`.
 - Stylized-fact artifact export uses `--artifact-export-json PATH` so the export contract stays the
   same across Python and CLI entrypoints.
+
+## Presets
+
+Use the preset commands to inspect the curated bundled defaults before fitting.
+
+### List Synopsis
+
+```text
+janiform presets list [--category {session,known-news,market-profile}] [--scope {auto,built_in,user_registered}] [--output {human,json}]
+```
+
+### Show Synopsis
+
+```text
+janiform presets show {session,known-news,market-profile} PRESET_NAME [--scope {auto,built_in,user_registered}] [--output {human,json}]
+```
+
+### Export Synopsis
+
+```text
+janiform presets export {session,known-news,market-profile} PRESET_NAME [--scope {auto,built_in,user_registered}] [--output {human,json}]
+```
+
+### Examples
+
+```bash
+janiform presets list --category market-profile --output json
+```
+
+```bash
+janiform presets show market-profile us_equity_cash --output json
+```
+
+```bash
+janiform presets export market-profile eurusd_spot --output json
+```
+
+## High-Level Fit
+
+Use `janiform fit` for the default user workflow. The command resolves the selected market profile,
+session preset or session inference result, and the chosen known-news baseline into one canonical
+resolved configuration with provenance.
+
+### Synopsis
+
+```text
+janiform fit --run-id RUN_ID --workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface} --tick-data-path PATH --tick-data-format {csv,parquet} --tick-timestamp-column TICK_TIMESTAMP_COLUMN --timestamp-timezone TIMESTAMP_TIMEZONE [--tick-data-provenance-label TICK_DATA_PROVENANCE_LABEL] [--tick-price-input-policy {explicit_price_column,trade_price_column,bid_ask_midpoint,close_price_column}] [--tick-price-column TICK_PRICE_COLUMN] [--tick-trade-price-column TICK_TRADE_PRICE_COLUMN] [--tick-trade-sign-column TICK_TRADE_SIGN_COLUMN] [--tick-bid-column TICK_BID_COLUMN] [--tick-ask-column TICK_ASK_COLUMN] [--tick-close-price-column TICK_CLOSE_PRICE_COLUMN] [--market MARKET] [--session-preset SESSION_PRESET] [--known-news KNOWN_NEWS] [--session-json PATH] [--known-news-json PATH] [--exchange-code EXCHANGE_CODE] [--session-timezone SESSION_TIMEZONE] [--option-surface-path PATH] [--option-surface-format {csv,parquet}] [--option-surface-provenance-label OPTION_SURFACE_PROVENANCE_LABEL] [--option-quote-input-policy {mid_price_column,bid_ask_midpoint,implied_volatility_column}] [--option-quote-timestamp-column OPTION_QUOTE_TIMESTAMP_COLUMN] [--option-expiry-column OPTION_EXPIRY_COLUMN] [--option-strike-column OPTION_STRIKE_COLUMN] [--option-type-column OPTION_TYPE_COLUMN] [--option-mid-price-column OPTION_MID_PRICE_COLUMN] [--option-bid-column OPTION_BID_COLUMN] [--option-ask-column OPTION_ASK_COLUMN] [--option-implied-volatility-column OPTION_IMPLIED_VOLATILITY_COLUMN] [--execution-mode {disk,memory}] [--disk-checkpoint-directory DIRECTORY] [--emit-derived-staged-execution-input] [--omit-input-provenance-report] [--model-output-path PATH] [--output {human,json}]
+```
+
+### Example
+
+```bash
+janiform fit \
+  --run-id cli-docs-fit \
+  --workflow-scope full_without_option_surface \
+  --tick-data-path tmp/cli-docs/data/ticks.csv \
+  --tick-data-format csv \
+  --tick-timestamp-column timestamp_utc \
+  --tick-trade-price-column trade_price \
+  --tick-trade-sign-column trade_sign \
+  --tick-price-input-policy trade_price_column \
+  --timestamp-timezone UTC \
+  --market us_equity_cash \
+  --known-news none \
+  --model-output-path tmp/cli-docs/fitted_model.json \
+  --output json
+```
+
+## High-Level Simulation
+
+Use `janiform simulate` when you already have a persisted model and want to generate coarse paths,
+seeded ticks, or both without reassembling runtime contracts by hand.
+
+### Simulate Synopsis
+
+```text
+janiform simulate --model-path PATH --seed SEED --start-time-utc START_TIME_UTC --horizon-interval-count HORIZON_INTERVAL_COUNT [--interval INTERVAL] [--simulation-output {coarse,ticks,both}] [--debug-trace-enabled] [--sample-every-nth-transition SAMPLE_EVERY_NTH_TRANSITION] [--max-records-per-chunk MAX_RECORDS_PER_CHUNK] [--output {human,json}]
+```
+
+### Fit-And-Simulate Synopsis
+
+```text
+janiform fit-and-simulate --run-id RUN_ID --workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface} --tick-data-path PATH --tick-data-format {csv,parquet} --tick-timestamp-column TICK_TIMESTAMP_COLUMN --timestamp-timezone TIMESTAMP_TIMEZONE --seed SEED --start-time-utc START_TIME_UTC --horizon-interval-count HORIZON_INTERVAL_COUNT [--market MARKET] [--session-preset SESSION_PRESET] [--known-news KNOWN_NEWS] [--session-json PATH] [--known-news-json PATH] [--model-output-path PATH] [--interval INTERVAL] [--simulation-output {coarse,ticks,both}] [--output {human,json}]
+```
+
+### Examples
+
+```bash
+janiform simulate \
+  --model-path tmp/cli-docs/fitted_model.json \
+  --seed 17 \
+  --start-time-utc 2026-02-02T15:00:00Z \
+  --horizon-interval-count 4 \
+  --simulation-output coarse \
+  --output json
+```
+
+```bash
+janiform fit-and-simulate \
+  --run-id cli-docs-fit-and-simulate \
+  --workflow-scope full_without_option_surface \
+  --tick-data-path tmp/cli-docs/data/ticks.csv \
+  --tick-data-format csv \
+  --tick-timestamp-column timestamp_utc \
+  --tick-trade-price-column trade_price \
+  --tick-trade-sign-column trade_sign \
+  --tick-price-input-policy trade_price_column \
+  --timestamp-timezone UTC \
+  --market us_equity_cash \
+  --known-news none \
+  --seed 17 \
+  --start-time-utc 2026-02-02T15:00:00Z \
+  --horizon-interval-count 4 \
+  --simulation-output coarse \
+  --output json
+```
 
 ## Simulation
 

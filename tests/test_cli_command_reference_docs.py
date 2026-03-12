@@ -19,6 +19,9 @@ def test_cli_command_reference_doc_contains_required_sections_and_commands() -> 
     required_sections: list[str] = [
         "## Shared Setup",
         "## Shared Conventions",
+        "## Presets",
+        "## High-Level Fit",
+        "## High-Level Simulation",
         "## Simulation",
         "## Seasonality",
         "## Hourly Factors",
@@ -32,6 +35,12 @@ def test_cli_command_reference_doc_contains_required_sections_and_commands() -> 
         assert required_section in reference_document
 
     required_commands: list[str] = [
+        "janiform presets list",
+        "janiform presets show",
+        "janiform presets export",
+        "janiform fit",
+        "janiform simulate",
+        "janiform fit-and-simulate",
         "janiform simulation coarse-interval",
         "janiform simulation seeded-ticks",
         "janiform seasonality diagnostics",
@@ -71,6 +80,11 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     simulation_help = normalize_help_output(render_help(["simulation", "seeded-ticks"]))
     seasonality_diagnostics_help = normalize_help_output(render_help(["seasonality", "diagnostics"]))
     seasonality_help = normalize_help_output(render_help(["seasonality", "preprocess-timestamps"]))
+    presets_list_help = normalize_help_output(render_help(["presets", "list"]))
+    presets_show_help = normalize_help_output(render_help(["presets", "show"]))
+    fit_help = normalize_help_output(render_help(["fit"]))
+    simulate_help = normalize_help_output(render_help(["simulate"]))
+    fit_and_simulate_help = normalize_help_output(render_help(["fit-and-simulate"]))
     hourly_factors_seasonality_help = normalize_help_output(
         render_help(["hourly-factors", "materialize-seasonality"])
     )
@@ -96,10 +110,27 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
         "--range-end-utc RANGE_END_UTC",
         "--metric-catalog-json PATH",
         "--comparison-request-json PATH",
+        "--market MARKET",
+        "--session-preset SESSION_PRESET",
+        "--known-news KNOWN_NEWS",
+        "--session-json PATH",
+        "--known-news-json PATH",
+        "--model-output-path PATH",
+        "--model-path PATH",
+        "--simulation-output {coarse,ticks,both}",
     )
     for expected_text in shared_expectations:
         assert expected_text in reference_document
 
+    assert "--category {session,known-news,market-profile}" in presets_list_help
+    assert "{session,known-news,market-profile}" in presets_show_help
+    assert "--market MARKET" in fit_help
+    assert "--session-preset SESSION_PRESET" in fit_help
+    assert "--known-news KNOWN_NEWS" in fit_help
+    assert "--model-output-path PATH" in fit_help
+    assert "--model-path PATH" in simulate_help
+    assert "--simulation-output {coarse,ticks,both}" in simulate_help
+    assert "--simulation-output {coarse,ticks,both}" in fit_and_simulate_help
     assert "--request-json PATH" in coarse_simulation_help
     assert "--request-json PATH" in simulation_help
     assert "--dataset-id DATASET_ID" in seasonality_diagnostics_help

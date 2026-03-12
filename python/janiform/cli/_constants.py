@@ -8,6 +8,7 @@ from ..calibration import (
     CalibrationMarketDataWorkflowScope,
     CalibrationOptionQuoteInputPolicy,
     CalibrationTickPriceInputPolicy,
+    PresetRegistryScope,
 )
 from ..seasonality import IntradaySmoothingKernel, SessionFilter
 
@@ -61,6 +62,21 @@ CLI_SEASONALITY_SESSION_FILTER_CHOICES: tuple[str, str, str] = (
 CLI_SEASONALITY_INTRADAY_SMOOTHING_KERNEL_CHOICES: tuple[str, str] = (
     IntradaySmoothingKernel.GAUSSIAN.value,
     IntradaySmoothingKernel.UNIFORM.value,
+)
+CLI_PRESET_CATEGORY_CHOICES: tuple[str, str, str] = (
+    "session",
+    "known-news",
+    "market-profile",
+)
+CLI_PRESET_SCOPE_CHOICES: tuple[str, str, str] = (
+    "auto",
+    PresetRegistryScope.BUILT_IN.value,
+    PresetRegistryScope.USER_REGISTERED.value,
+)
+CLI_MODEL_SIMULATION_OUTPUT_CHOICES: tuple[str, str, str] = (
+    "coarse",
+    "ticks",
+    "both",
 )
 CLI_CALIBRATION_EXECUTION_MODE_HELP = (
     "Calibration execution mode override. Precedence: --execution-mode, then the CLI default "
@@ -127,6 +143,24 @@ CLI_CALIBRATION_MARKET_DATA_INTERNAL_ERROR_ID = "cli.internal.calibration.market
 CLI_CALIBRATION_STAGED_ENTRYPOINT = "calibration.staged"
 CLI_CALIBRATION_STAGED_VALIDATION_ERROR_ID = "cli.validation.calibration.staged.invalid_input"
 CLI_CALIBRATION_STAGED_INTERNAL_ERROR_ID = "cli.internal.calibration.staged.failed"
+CLI_PRESETS_LIST_ENTRYPOINT = "presets.list"
+CLI_PRESETS_LIST_VALIDATION_ERROR_ID = "cli.validation.presets.list.invalid_input"
+CLI_PRESETS_LIST_INTERNAL_ERROR_ID = "cli.internal.presets.list.failed"
+CLI_PRESETS_SHOW_ENTRYPOINT = "presets.show"
+CLI_PRESETS_SHOW_VALIDATION_ERROR_ID = "cli.validation.presets.show.invalid_input"
+CLI_PRESETS_SHOW_INTERNAL_ERROR_ID = "cli.internal.presets.show.failed"
+CLI_PRESETS_EXPORT_ENTRYPOINT = "presets.export"
+CLI_PRESETS_EXPORT_VALIDATION_ERROR_ID = "cli.validation.presets.export.invalid_input"
+CLI_PRESETS_EXPORT_INTERNAL_ERROR_ID = "cli.internal.presets.export.failed"
+CLI_FIT_ENTRYPOINT = "fit"
+CLI_FIT_VALIDATION_ERROR_ID = "cli.validation.fit.invalid_input"
+CLI_FIT_INTERNAL_ERROR_ID = "cli.internal.fit.failed"
+CLI_HIGH_LEVEL_SIMULATE_ENTRYPOINT = "simulate"
+CLI_HIGH_LEVEL_SIMULATE_VALIDATION_ERROR_ID = "cli.validation.simulate.invalid_input"
+CLI_HIGH_LEVEL_SIMULATE_INTERNAL_ERROR_ID = "cli.internal.simulate.failed"
+CLI_FIT_AND_SIMULATE_ENTRYPOINT = "fit_and_simulate"
+CLI_FIT_AND_SIMULATE_VALIDATION_ERROR_ID = "cli.validation.fit_and_simulate.invalid_input"
+CLI_FIT_AND_SIMULATE_INTERNAL_ERROR_ID = "cli.internal.fit_and_simulate.failed"
 CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT = "dev.regression.deterministic"
 CLI_DETERMINISTIC_REGRESSION_VALIDATION_ERROR_ID = "cli.validation.deterministic_regression.invalid_input"
 CLI_DETERMINISTIC_REGRESSION_INTERNAL_ERROR_ID = "cli.internal.deterministic_regression.failed"
@@ -135,6 +169,11 @@ CLI_OPEN_CLOSED_GAP_VALIDATION_ERROR_ID = "cli.validation.open_closed_gap_leakag
 CLI_OPEN_CLOSED_GAP_INTERNAL_ERROR_ID = "cli.internal.open_closed_gap_leakage.failed"
 CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION = "cli.calibration.market_data.summary.v1"
 CLI_MARKET_DATA_SUMMARY_FIELD_SELECTION_POLICY = "user_facing_workflow_metadata_only.v1"
+CLI_PRESET_LIST_SCHEMA_VERSION = "cli.presets.list.result.v1"
+CLI_PRESET_SHOW_SCHEMA_VERSION = "cli.presets.show.result.v1"
+CLI_FIT_RESULT_SCHEMA_VERSION = "cli.fit.result.v1"
+CLI_SIMULATE_RESULT_SCHEMA_VERSION = "cli.simulate.result.v1"
+CLI_FIT_AND_SIMULATE_RESULT_SCHEMA_VERSION = "cli.fit_and_simulate.result.v1"
 CLI_COMMAND_CONFIG_SCHEMA_VERSION = "cli.command_config.v1"
 CLI_ARGUMENT_RESOLUTION_ENTRYPOINT = "cli.argument_resolution"
 CLI_ARGUMENT_RESOLUTION_VALIDATION_ERROR_ID = "cli.validation.arguments.invalid_input"
@@ -153,6 +192,14 @@ CLI_COMMAND_CONFIG_HELP = (
     "variables, which override config-file arguments."
 )
 CLI_PRIMARY_COMMAND_TREE: dict[str, dict[str, dict[str, dict[str, Any]]]] = {
+    "presets": {
+        "list": {},
+        "show": {},
+        "export": {},
+    },
+    "fit": {},
+    "simulate": {},
+    "fit-and-simulate": {},
     "simulation": {
         "coarse-interval": {},
         "seeded-ticks": {},
@@ -178,6 +225,12 @@ CLI_PRIMARY_COMMAND_TREE: dict[str, dict[str, dict[str, dict[str, Any]]]] = {
     },
 }
 CLI_PRIMARY_COMMAND_IDENTIFIERS: dict[tuple[str, ...], str] = {
+    ("presets", "list"): "presets.list",
+    ("presets", "show"): "presets.show",
+    ("presets", "export"): "presets.export",
+    ("fit",): "fit",
+    ("simulate",): "simulate",
+    ("fit-and-simulate",): "fit-and-simulate",
     ("simulation", "coarse-interval"): "simulation.coarse-interval",
     ("simulation", "seeded-ticks"): "simulation.seeded-ticks",
     ("seasonality", "diagnostics"): "seasonality.diagnostics",
@@ -255,6 +308,19 @@ __all__ = [
     "CLI_OUTPUT_MODE_CHOICES",
     "CLI_OUTPUT_MODE_HELP",
     "CLI_PATH_METAVAR",
+    "CLI_PRESET_CATEGORY_CHOICES",
+    "CLI_PRESET_LIST_SCHEMA_VERSION",
+    "CLI_PRESET_SCOPE_CHOICES",
+    "CLI_PRESET_SHOW_SCHEMA_VERSION",
+    "CLI_PRESETS_EXPORT_ENTRYPOINT",
+    "CLI_PRESETS_EXPORT_INTERNAL_ERROR_ID",
+    "CLI_PRESETS_EXPORT_VALIDATION_ERROR_ID",
+    "CLI_PRESETS_LIST_ENTRYPOINT",
+    "CLI_PRESETS_LIST_INTERNAL_ERROR_ID",
+    "CLI_PRESETS_LIST_VALIDATION_ERROR_ID",
+    "CLI_PRESETS_SHOW_ENTRYPOINT",
+    "CLI_PRESETS_SHOW_INTERNAL_ERROR_ID",
+    "CLI_PRESETS_SHOW_VALIDATION_ERROR_ID",
     "CLI_PRICING_VANILLA_OPTION_ENTRYPOINT",
     "CLI_PRICING_VANILLA_OPTION_INTERNAL_ERROR_ID",
     "CLI_PRICING_VANILLA_OPTION_VALIDATION_ERROR_ID",
@@ -275,6 +341,19 @@ __all__ = [
     "CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT",
     "CLI_SIMULATION_SEEDED_TICKS_INTERNAL_ERROR_ID",
     "CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID",
+    "CLI_MODEL_SIMULATION_OUTPUT_CHOICES",
+    "CLI_FIT_ENTRYPOINT",
+    "CLI_FIT_INTERNAL_ERROR_ID",
+    "CLI_FIT_RESULT_SCHEMA_VERSION",
+    "CLI_FIT_VALIDATION_ERROR_ID",
+    "CLI_FIT_AND_SIMULATE_ENTRYPOINT",
+    "CLI_FIT_AND_SIMULATE_INTERNAL_ERROR_ID",
+    "CLI_FIT_AND_SIMULATE_RESULT_SCHEMA_VERSION",
+    "CLI_FIT_AND_SIMULATE_VALIDATION_ERROR_ID",
+    "CLI_HIGH_LEVEL_SIMULATE_ENTRYPOINT",
+    "CLI_HIGH_LEVEL_SIMULATE_INTERNAL_ERROR_ID",
+    "CLI_HIGH_LEVEL_SIMULATE_VALIDATION_ERROR_ID",
+    "CLI_SIMULATE_RESULT_SCHEMA_VERSION",
     "CLI_STYLIZED_FACTS_HORIZON_COMPARISON_ENTRYPOINT",
     "CLI_STYLIZED_FACTS_HORIZON_COMPARISON_INTERNAL_ERROR_ID",
     "CLI_STYLIZED_FACTS_HORIZON_COMPARISON_VALIDATION_ERROR_ID",

@@ -9,6 +9,10 @@ from janiform import cli as cli_module
 def test_cli_top_level_help_lists_primary_and_developer_namespaces() -> None:
     help_output = _render_help([])
 
+    assert "presets" in help_output
+    assert "fit" in help_output
+    assert "simulate" in help_output
+    assert "fit-and-simulate" in help_output
     assert "simulation" in help_output
     assert "seasonality" in help_output
     assert "hourly-factors" in help_output

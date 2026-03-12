@@ -19,7 +19,7 @@ Reshape the CLI around the same high-level workflow and preset mental model as t
   - `--known-news ...`
   - `--known-news none`
   - explicit session and known-news JSON override paths
-- Keep low-level staged-execution and debugging commands available as advanced surfaces, but stop making them the primary onboarding story.
+- Keep low-level staged-execution and debugging commands available as advanced surfaces, but stop making them the primary onboarding story. They should be one level below where they are now.
 - Align command help, output schemas, and error behavior with the preset registry and provenance model so users can see what was inferred, selected, and overridden.
 
 ### Acceptance Criteria
