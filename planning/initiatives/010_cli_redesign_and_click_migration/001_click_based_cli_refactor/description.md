@@ -24,6 +24,7 @@ Replace the current `argparse` CLI with a Click-based application, reset the com
   - Click-native command boundary cleanup after the foundation lands
   - command-tree reset plus migration of `fit`, `simulate`, and their explicit low-level workflow subcommands
   - migration and cleanup of remaining command groups, help output, tests, examples, and temporary docs
+  - final Click application simplification and removal of migration-era CLI structure once all commands live on the canonical tree
 - The plan explicitly requires direct replacement of the old CLI surface and forbids compatibility shims, aliases, migration guides, and parallel `argparse` plus Click implementations.
 - Each issue names the affected modules, target command paths, acceptance criteria, and test expectations tightly enough for direct implementation.
 - The plan makes clear that temporary docs should be updated only far enough to remove stale names and architecture claims, not treated as the main deliverable of the refactor.

@@ -1,9 +1,4 @@
-from contextlib import redirect_stdout
-from io import StringIO
-
-import pytest
-
-import janiform.cli.command_tree as cli_command_tree_module
+from tests.cli_test_support import render_help
 
 
 def test_cli_top_level_help_lists_primary_and_developer_namespaces() -> None:
@@ -77,12 +72,4 @@ def test_regression_help_lists_developer_regression_commands() -> None:
 
 
 def _render_help(arguments: list[str]) -> str:
-    parser = cli_command_tree_module._build_parser()
-    stdout_buffer = StringIO()
-
-    with pytest.raises(SystemExit) as captured_exit:
-        with redirect_stdout(stdout_buffer):
-            parser.parse_args([*arguments, "--help"])
-
-    assert captured_exit.value.code == 0
-    return stdout_buffer.getvalue()
+    return render_help(arguments)

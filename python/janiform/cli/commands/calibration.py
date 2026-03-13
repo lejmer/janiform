@@ -1,8 +1,8 @@
-from argparse import Namespace
 from pathlib import Path
 from typing import Any, Optional, cast
 
 from .shared import _build_calendar_registry_from_document, _override_calibration_execution_mode
+from ..context import CliCommandContext
 from .._constants import (
     CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT,
     CLI_CALIBRATION_STAGED_ENTRYPOINT,
@@ -14,7 +14,7 @@ from .._constants import (
 )
 from ..documents import _load_json_document
 from ..errors import _classify_market_data_command_error, _classify_workflow_command_error
-from ..paths import _require_path_argument, _resolve_path_from_repository_root, resolve_repository_root
+from ..paths import _require_path_argument, _resolve_path_from_repository_root
 from ..rendering import (
     _render_calibration_staged_human_output,
     _render_market_data_calibration_human_output,
@@ -34,13 +34,16 @@ from ...calibration import (
 from ...errors import JaniformError
 
 
-def _run_calibration_market_data_command(parsed_arguments: Namespace) -> int:
-    repository_root = resolve_repository_root()
-
+def _run_calibration_market_data_command(
+    *,
+    cli_context: CliCommandContext,
+    output: str,
+    **command_arguments: object,
+) -> int:
     try:
         request = _build_market_data_calibration_request_from_arguments(
-            parsed_arguments,
-            repository_root=repository_root,
+            cli_context=cli_context,
+            **command_arguments,
         )
         prepared_calibration = prepare_market_data_calibration(request)
     except JaniformError as e:
@@ -49,7 +52,7 @@ def _run_calibration_market_data_command(parsed_arguments: Namespace) -> int:
         return _write_cli_error(_classify_market_data_command_error(e))
 
     _write_command_output(
-        parsed_arguments,
+        output,
         json_payload=_build_market_data_calibration_summary_payload(prepared_calibration),
         human_output_factory=lambda: _render_market_data_calibration_human_output(prepared_calibration),
     )
@@ -57,21 +60,28 @@ def _run_calibration_market_data_command(parsed_arguments: Namespace) -> int:
     return int(CliExitCode.SUCCESS)
 
 
-def _run_calibration_staged_command(parsed_arguments: Namespace) -> int:
-    repository_root = resolve_repository_root()
+def _run_calibration_staged_command(
+    *,
+    cli_context: CliCommandContext,
+    output: str,
+    execution_input_json: Path,
+    calendar_registry_json: Path,
+    execution_mode: str,
+    disk_checkpoint_directory: Optional[Path],
+    **_: object,
+) -> int:
     execution_input_path = _resolve_path_from_repository_root(
-        repository_root,
-        cast(Path, parsed_arguments.execution_input_json),
+        cli_context.repository_root,
+        execution_input_json,
     )
     calendar_registry_path = _resolve_path_from_repository_root(
-        repository_root,
-        cast(Path, parsed_arguments.calendar_registry_json),
+        cli_context.repository_root,
+        calendar_registry_json,
     )
 
-    disk_checkpoint_directory_argument = cast(Path | None, parsed_arguments.disk_checkpoint_directory)
-    disk_checkpoint_directory = (
-        _resolve_path_from_repository_root(repository_root, disk_checkpoint_directory_argument)
-        if disk_checkpoint_directory_argument is not None
+    resolved_disk_checkpoint_directory = (
+        _resolve_path_from_repository_root(cli_context.repository_root, disk_checkpoint_directory)
+        if disk_checkpoint_directory is not None
         else None
     )
 
@@ -83,8 +93,8 @@ def _run_calibration_staged_command(parsed_arguments: Namespace) -> int:
 
         normalized_execution_input = _override_calibration_execution_mode(
             execution_input=execution_input,
-            execution_mode=CalibrationExecutionMode(cast(str, parsed_arguments.execution_mode)),
-            disk_checkpoint_directory=disk_checkpoint_directory,
+            execution_mode=CalibrationExecutionMode(execution_mode),
+            disk_checkpoint_directory=resolved_disk_checkpoint_directory,
         )
 
         calendar_registry = _build_calendar_registry_from_document(calendar_registry_document)
@@ -107,7 +117,7 @@ def _run_calibration_staged_command(parsed_arguments: Namespace) -> int:
     payload = response.to_payload()
 
     _write_command_output(
-        parsed_arguments,
+        output,
         json_payload=payload,
         human_output_factory=lambda: _render_calibration_staged_human_output(payload),
     )
@@ -116,126 +126,166 @@ def _run_calibration_staged_command(parsed_arguments: Namespace) -> int:
 
 
 def _build_market_data_calibration_request_from_arguments(
-    parsed_arguments: Namespace,
     *,
-    repository_root: Path,
+    cli_context: CliCommandContext,
+    run_id: str,
+    tick_data_path: Optional[Path],
+    tick_data_format: str,
+    tick_data_provenance_label: str,
+    exchange_code: str,
+    tick_timestamp_column: str,
+    tick_price_column: Optional[str],
+    tick_trade_price_column: Optional[str],
+    tick_trade_sign_column: Optional[str],
+    tick_bid_column: Optional[str],
+    tick_ask_column: Optional[str],
+    tick_close_price_column: Optional[str],
+    workflow_scope: str,
+    timestamp_timezone: str,
+    disable_timestamp_sort: bool,
+    duplicate_record_policy: str,
+    tick_price_input_policy: Optional[str],
+    option_quote_input_policy: Optional[str],
+    execution_mode: str,
+    disk_checkpoint_directory: Optional[Path],
+    emit_derived_staged_execution_input: bool,
+    omit_input_provenance_report: bool,
+    session_timezone: Optional[str],
+    session_definition_path: Optional[Path],
+    session_definition_format: Optional[str],
+    session_definition_provenance_label: Optional[str],
+    option_surface_path: Optional[Path],
+    option_surface_format: Optional[str],
+    option_surface_provenance_label: Optional[str],
+    option_quote_timestamp_column: Optional[str],
+    option_expiry_column: Optional[str],
+    option_strike_column: Optional[str],
+    option_type_column: Optional[str],
+    option_mid_price_column: Optional[str],
+    option_bid_column: Optional[str],
+    option_ask_column: Optional[str],
+    option_implied_volatility_column: Optional[str],
+    known_news_path: Optional[Path],
+    known_news_format: Optional[str],
+    known_news_provenance_label: Optional[str],
+    known_news_timezone: Optional[str],
+    known_news_timestamp_column: Optional[str],
+    known_news_event_id_column: Optional[str],
+    **_: object,
 ) -> MarketDataCalibrationRequest:
+    repository_root = cli_context.repository_root
     tick_data_path = _require_path_argument(
         repository_root,
-        cast(Path | None, parsed_arguments.tick_data_path),
+        tick_data_path,
         argument_name="tick_data_path",
     )
-    session_definition_path_argument = cast(Path | None, parsed_arguments.session_definition_path)
     session_definition_path = (
         _require_path_argument(
             repository_root,
-            session_definition_path_argument,
+            session_definition_path,
             argument_name="session_definition_path",
         )
-        if session_definition_path_argument is not None
+        if session_definition_path is not None
         else None
     )
 
-    disk_checkpoint_directory_argument = cast(Path | None, parsed_arguments.disk_checkpoint_directory)
     disk_checkpoint_directory = (
-        _resolve_path_from_repository_root(repository_root, disk_checkpoint_directory_argument)
-        if disk_checkpoint_directory_argument is not None
+        _resolve_path_from_repository_root(repository_root, disk_checkpoint_directory)
+        if disk_checkpoint_directory is not None
         else None
     )
 
-    option_surface_path_argument = cast(Path | None, parsed_arguments.option_surface_path)
     option_surface_path = (
-        _resolve_path_from_repository_root(repository_root, option_surface_path_argument)
-        if option_surface_path_argument is not None
+        _resolve_path_from_repository_root(repository_root, option_surface_path)
+        if option_surface_path is not None
         else None
     )
 
-    known_news_path_argument = cast(Path | None, parsed_arguments.known_news_path)
     known_news_path = (
-        _resolve_path_from_repository_root(repository_root, known_news_path_argument)
-        if known_news_path_argument is not None
+        _resolve_path_from_repository_root(repository_root, known_news_path)
+        if known_news_path is not None
         else None
     )
 
     payload: dict[str, Any] = {
         "schema_version": CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,
-        "run_id": cast(str, parsed_arguments.run_id),
+        "run_id": run_id,
         "tick_data_source": {
             "path": str(tick_data_path),
-            "file_format": cast(str, parsed_arguments.tick_data_format),
-            "provenance_label": cast(str, parsed_arguments.tick_data_provenance_label),
+            "file_format": tick_data_format,
+            "provenance_label": tick_data_provenance_label,
         },
         "session_configuration": {
-            "exchange_code": cast(str, parsed_arguments.exchange_code),
+            "exchange_code": exchange_code,
         },
         "column_mapping": {
             "tick_data": {
-                "timestamp_column": cast(str, parsed_arguments.tick_timestamp_column),
-                "price_column": cast(Optional[str], parsed_arguments.tick_price_column),
-                "trade_price_column": cast(Optional[str], parsed_arguments.tick_trade_price_column),
-                "trade_sign_column": cast(Optional[str], parsed_arguments.tick_trade_sign_column),
-                "bid_column": cast(Optional[str], parsed_arguments.tick_bid_column),
-                "ask_column": cast(Optional[str], parsed_arguments.tick_ask_column),
-                "close_price_column": cast(Optional[str], parsed_arguments.tick_close_price_column),
+                "timestamp_column": tick_timestamp_column,
+                "price_column": tick_price_column,
+                "trade_price_column": tick_trade_price_column,
+                "trade_sign_column": tick_trade_sign_column,
+                "bid_column": tick_bid_column,
+                "ask_column": tick_ask_column,
+                "close_price_column": tick_close_price_column,
             },
         },
-        "workflow_scope": cast(str, parsed_arguments.workflow_scope),
+        "workflow_scope": workflow_scope,
         "normalization_policy": {
-            "timestamp_timezone": cast(str, parsed_arguments.timestamp_timezone),
-            "sort_records_by_timestamp": not bool(parsed_arguments.disable_timestamp_sort),
-            "duplicate_record_policy": cast(str, parsed_arguments.duplicate_record_policy),
-            "tick_price_input_policy": cast(Optional[str], parsed_arguments.tick_price_input_policy),
-            "option_quote_input_policy": cast(Optional[str], parsed_arguments.option_quote_input_policy),
+            "timestamp_timezone": timestamp_timezone,
+            "sort_records_by_timestamp": not disable_timestamp_sort,
+            "duplicate_record_policy": duplicate_record_policy,
+            "tick_price_input_policy": tick_price_input_policy,
+            "option_quote_input_policy": option_quote_input_policy,
         },
         "output_preferences": {
-            "execution_mode": cast(str, parsed_arguments.execution_mode),
+            "execution_mode": execution_mode,
             "disk_checkpoint_directory": None if disk_checkpoint_directory is None else str(disk_checkpoint_directory),
-            "emit_derived_staged_execution_input": bool(parsed_arguments.emit_derived_staged_execution_input),
-            "emit_input_provenance_report": not bool(parsed_arguments.omit_input_provenance_report),
+            "emit_derived_staged_execution_input": emit_derived_staged_execution_input,
+            "emit_input_provenance_report": not omit_input_provenance_report,
         },
     }
 
-    if parsed_arguments.session_timezone is not None:
-        payload["session_configuration"]["session_timezone"] = cast(str, parsed_arguments.session_timezone)
+    if session_timezone is not None:
+        payload["session_configuration"]["session_timezone"] = session_timezone
 
     if session_definition_path is not None:
         payload["session_configuration"]["session_definition_source"] = {
             "path": str(session_definition_path),
-            "file_format": cast(str, parsed_arguments.session_definition_format),
-            "provenance_label": cast(str, parsed_arguments.session_definition_provenance_label),
+            "file_format": session_definition_format,
+            "provenance_label": session_definition_provenance_label,
         }
 
     if option_surface_path is not None:
         payload["option_surface_source"] = {
             "path": str(option_surface_path),
-            "file_format": cast(Optional[str], parsed_arguments.option_surface_format),
-            "provenance_label": cast(Optional[str], parsed_arguments.option_surface_provenance_label),
+            "file_format": option_surface_format,
+            "provenance_label": option_surface_provenance_label,
         }
         payload["column_mapping"]["option_surface"] = {
-            "quote_timestamp_column": cast(Optional[str], parsed_arguments.option_quote_timestamp_column),
-            "expiry_timestamp_column": cast(Optional[str], parsed_arguments.option_expiry_column),
-            "strike_column": cast(Optional[str], parsed_arguments.option_strike_column),
-            "option_type_column": cast(Optional[str], parsed_arguments.option_type_column),
-            "mid_price_column": cast(Optional[str], parsed_arguments.option_mid_price_column),
-            "bid_column": cast(Optional[str], parsed_arguments.option_bid_column),
-            "ask_column": cast(Optional[str], parsed_arguments.option_ask_column),
-            "implied_volatility_column": cast(Optional[str], parsed_arguments.option_implied_volatility_column),
+            "quote_timestamp_column": option_quote_timestamp_column,
+            "expiry_timestamp_column": option_expiry_column,
+            "strike_column": option_strike_column,
+            "option_type_column": option_type_column,
+            "mid_price_column": option_mid_price_column,
+            "bid_column": option_bid_column,
+            "ask_column": option_ask_column,
+            "implied_volatility_column": option_implied_volatility_column,
         }
 
     if known_news_path is not None:
         payload["known_news_inputs"] = {
             "calendar_source": {
                 "path": str(known_news_path),
-                "file_format": cast(Optional[str], parsed_arguments.known_news_format),
-                "provenance_label": cast(Optional[str], parsed_arguments.known_news_provenance_label),
+                "file_format": known_news_format,
+                "provenance_label": known_news_provenance_label,
             },
-            "calendar_timezone": cast(Optional[str], parsed_arguments.known_news_timezone),
+            "calendar_timezone": known_news_timezone,
         }
 
-        if parsed_arguments.known_news_timestamp_column is not None:
+        if known_news_timestamp_column is not None:
             payload["column_mapping"]["known_news"] = {
-                "event_timestamp_column": cast(str, parsed_arguments.known_news_timestamp_column),
-                "event_identifier_column": cast(Optional[str], parsed_arguments.known_news_event_id_column),
+                "event_timestamp_column": known_news_timestamp_column,
+                "event_identifier_column": known_news_event_id_column,
             }
 
     return validate_market_data_calibration_request(payload)

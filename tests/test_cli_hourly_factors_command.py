@@ -7,13 +7,12 @@ import orjson
 import pytest
 
 import janiform.cli as cli_module
-import janiform.cli.command_tree as cli_command_tree_module
 from janiform.hourly_factors import (
     HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
     HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
     HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION,
 )
-from tests.cli_test_support import invoke_cli, normalize_help_output, render_help, write_json_path
+from tests.cli_test_support import invoke_cli, normalize_help_output, parse_cli_command, render_help, write_json_path
 
 
 def test_hourly_factors_cli_help_documents_materialization_and_contract_inputs() -> None:
@@ -34,8 +33,7 @@ def test_hourly_factors_cli_help_documents_materialization_and_contract_inputs()
 
 
 def test_hourly_factor_materialization_cli_parser_defaults_to_json_output() -> None:
-    parser = cli_command_tree_module._build_parser()
-    parsed_arguments = parser.parse_args(
+    parsed_arguments = parse_cli_command(
         [
             "hourly-factors",
             "materialize-seasonality",
@@ -52,12 +50,11 @@ def test_hourly_factor_materialization_cli_parser_defaults_to_json_output() -> N
         ]
     )
 
-    assert parsed_arguments.output == "json"
+    assert parsed_arguments.params["output"] == "json"
 
 
 def test_hourly_factor_build_contract_cli_parser_accepts_explicit_source_arguments() -> None:
-    parser = cli_command_tree_module._build_parser()
-    parsed_arguments = parser.parse_args(
+    parsed_arguments = parse_cli_command(
         [
             "hourly-factors",
             "build-contract",
@@ -76,13 +73,12 @@ def test_hourly_factor_build_contract_cli_parser_accepts_explicit_source_argumen
         ]
     )
 
-    assert Path(parsed_arguments.seasonality_explicit_source_json) == Path("seasonality-explicit.json")
-    assert Path(parsed_arguments.news_intensity_explicit_source_json) == Path("news-explicit.json")
+    assert Path(str(parsed_arguments.params["seasonality_explicit_source_json"])) == Path("seasonality-explicit.json")
+    assert Path(str(parsed_arguments.params["news_intensity_explicit_source_json"])) == Path("news-explicit.json")
 
 
 def test_hourly_factor_build_contract_cli_parser_accepts_materialized_source_arguments() -> None:
-    parser = cli_command_tree_module._build_parser()
-    parsed_arguments = parser.parse_args(
+    parsed_arguments = parse_cli_command(
         [
             "hourly-factors",
             "build-contract",
@@ -101,32 +97,29 @@ def test_hourly_factor_build_contract_cli_parser_accepts_materialized_source_arg
         ]
     )
 
-    assert Path(parsed_arguments.seasonality_materialized_source_json) == Path("seasonality-materialized.json")
-    assert Path(parsed_arguments.news_intensity_materialized_source_json) == Path("news-materialized.json")
+    assert Path(str(parsed_arguments.params["seasonality_materialized_source_json"])) == Path("seasonality-materialized.json")
+    assert Path(str(parsed_arguments.params["news_intensity_materialized_source_json"])) == Path("news-materialized.json")
 
 
 def test_hourly_factor_build_contract_cli_parser_requires_both_source_groups() -> None:
-    parser = cli_command_tree_module._build_parser()
+    exit_code, _, _ = invoke_cli(
+        [
+            "hourly-factors",
+            "build-contract",
+            "--calendar-registry-json",
+            "calendar-registry.json",
+            "--exchange-code",
+            "XNYS",
+            "--range-start-utc",
+            "2026-02-02T14:00:00Z",
+            "--range-end-utc",
+            "2026-02-02T17:00:00Z",
+            "--seasonality-explicit-source-json",
+            "seasonality-explicit.json",
+        ]
+    )
 
-    with pytest.raises(SystemExit) as captured_exit:
-        parser.parse_args(
-            [
-                "hourly-factors",
-                "build-contract",
-                "--calendar-registry-json",
-                "calendar-registry.json",
-                "--exchange-code",
-                "XNYS",
-                "--range-start-utc",
-                "2026-02-02T14:00:00Z",
-                "--range-end-utc",
-                "2026-02-02T17:00:00Z",
-                "--seasonality-explicit-source-json",
-                "seasonality-explicit.json",
-            ]
-        )
-
-    assert captured_exit.value.code == 2
+    assert exit_code == 2
 
 
 def test_hourly_factor_materialize_seasonality_cli_generates_canonical_report(

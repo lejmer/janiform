@@ -10,7 +10,6 @@ import pytest
 
 import janiform.calibration as calibration_module
 import janiform.cli as cli_module
-import janiform.cli.command_tree as cli_command_tree_module
 import janiform.cli.commands.calibration as cli_calibration_commands_module
 import janiform.cli.commands.pricing as cli_pricing_commands_module
 import janiform.cli.commands.simulation as cli_simulation_commands_module
@@ -35,6 +34,7 @@ from janiform.simulation import (
 from tests.calibration_test_support import build_valid_execution_input_model
 from tests.cli_test_support import (
     build_coarse_simulation_request as _build_coarse_simulation_request,
+    parse_cli_command as _parse_cli_command,
     build_pricing_execution_input as _build_pricing_execution_input,
     build_simulation_request as _build_simulation_request,
     invoke_cli as _invoke_cli,
@@ -176,34 +176,27 @@ def test_deterministic_regression_cli_help_documents_required_inputs() -> None:
 
 
 def test_deterministic_regression_cli_parser_requires_case_inputs() -> None:
-    parser = cli_command_tree_module._build_parser()
+    exit_code, _, _ = _invoke_cli(
+        [
+            "dev",
+            "regression",
+            "deterministic",
+            "--calendar-registry-json",
+            "calendar.json",
+        ]
+    )
 
-    with pytest.raises(SystemExit) as captured_exit:
-        parser.parse_args(
-            [
-                "dev",
-                "regression",
-                "deterministic",
-                "--calendar-registry-json",
-                "calendar.json",
-            ]
-        )
-
-    assert captured_exit.value.code == 2
+    assert exit_code == 2
 
 
 def test_coarse_simulation_cli_parser_requires_request_json() -> None:
-    parser = cli_command_tree_module._build_parser()
+    exit_code, _, _ = _invoke_cli(["simulation", "coarse-interval"])
 
-    with pytest.raises(SystemExit) as captured_exit:
-        parser.parse_args(["simulation", "coarse-interval"])
-
-    assert captured_exit.value.code == 2
+    assert exit_code == 2
 
 
 def test_deterministic_regression_cli_parser_defaults_output_to_human() -> None:
-    parser = cli_command_tree_module._build_parser()
-    parsed_arguments = parser.parse_args(
+    parsed_arguments = _parse_cli_command(
         [
             "dev",
             "regression",
@@ -217,12 +210,11 @@ def test_deterministic_regression_cli_parser_defaults_output_to_human() -> None:
         ]
     )
 
-    assert parsed_arguments.output == "human"
+    assert parsed_arguments.params["output"] == "human"
 
 
 def test_calibration_cli_parser_defaults_execution_mode_to_disk() -> None:
-    parser = cli_command_tree_module._build_parser()
-    parsed_arguments = parser.parse_args(
+    parsed_arguments = _parse_cli_command(
         [
             "calibration",
             "staged",
@@ -233,12 +225,11 @@ def test_calibration_cli_parser_defaults_execution_mode_to_disk() -> None:
         ]
     )
 
-    assert parsed_arguments.execution_mode == CalibrationExecutionMode.DISK.value
+    assert parsed_arguments.params["execution_mode"] == CalibrationExecutionMode.DISK.value
 
 
 def test_market_data_calibration_cli_parser_defaults_execution_mode_to_disk() -> None:
-    parser = cli_command_tree_module._build_parser()
-    parsed_arguments = parser.parse_args(
+    parsed_arguments = _parse_cli_command(
         [
             "calibration",
             "market-data",
@@ -261,7 +252,7 @@ def test_market_data_calibration_cli_parser_defaults_execution_mode_to_disk() ->
         ]
     )
 
-    assert parsed_arguments.execution_mode == CalibrationExecutionMode.DISK.value
+    assert parsed_arguments.params["execution_mode"] == CalibrationExecutionMode.DISK.value
 
 
 def test_market_data_calibration_cli_accepts_automatic_session_inference_without_override(
@@ -314,8 +305,7 @@ def test_market_data_calibration_cli_accepts_automatic_session_inference_without
 
 
 def test_seasonality_preprocess_cli_parser_uses_expected_defaults() -> None:
-    parser = cli_command_tree_module._build_parser()
-    parsed_arguments = parser.parse_args(
+    parsed_arguments = _parse_cli_command(
         [
             "seasonality",
             "preprocess-timestamps",
@@ -328,15 +318,14 @@ def test_seasonality_preprocess_cli_parser_uses_expected_defaults() -> None:
         ]
     )
 
-    assert parsed_arguments.output == "json"
-    assert parsed_arguments.timestamp_field_name == "timestamp"
-    assert parsed_arguments.session_filter == "open_only"
-    assert parsed_arguments.sparse_hour_event_threshold == 1
+    assert parsed_arguments.params["output"] == "json"
+    assert parsed_arguments.params["timestamp_field_name"] == "timestamp"
+    assert parsed_arguments.params["session_filter"] == "open_only"
+    assert parsed_arguments.params["sparse_hour_event_threshold"] == 1
 
 
 def test_seasonality_diagnostics_cli_parser_uses_expected_defaults() -> None:
-    parser = cli_command_tree_module._build_parser()
-    parsed_arguments = parser.parse_args(
+    parsed_arguments = _parse_cli_command(
         [
             "seasonality",
             "diagnostics",
@@ -351,47 +340,43 @@ def test_seasonality_diagnostics_cli_parser_uses_expected_defaults() -> None:
         ]
     )
 
-    assert parsed_arguments.output == "json"
-    assert parsed_arguments.timestamp_field_name == "timestamp"
-    assert parsed_arguments.session_filter == "open_only"
-    assert parsed_arguments.sparse_hour_event_threshold == 1
-    assert parsed_arguments.intraday_minutes_per_bin == 1
-    assert parsed_arguments.intraday_smoothing_kernel == "gaussian"
-    assert parsed_arguments.intraday_smoothing_bandwidth_bins == 3.0
-    assert parsed_arguments.intraday_minimum_bin_events == 1
-    assert parsed_arguments.intraday_pseudocount == 1e-6
-    assert parsed_arguments.day_of_week_minimum_bucket_events == 1
-    assert parsed_arguments.day_of_week_pseudocount == 1e-6
-    assert parsed_arguments.day_of_year_minimum_bucket_events == 1
-    assert parsed_arguments.day_of_year_pseudocount == 1e-6
-    assert parsed_arguments.estimator_version == "seasonality_estimator.v1"
+    assert parsed_arguments.params["output"] == "json"
+    assert parsed_arguments.params["timestamp_field_name"] == "timestamp"
+    assert parsed_arguments.params["session_filter"] == "open_only"
+    assert parsed_arguments.params["sparse_hour_event_threshold"] == 1
+    assert parsed_arguments.params["intraday_minutes_per_bin"] == 1
+    assert parsed_arguments.params["intraday_smoothing_kernel"] == "gaussian"
+    assert parsed_arguments.params["intraday_smoothing_bandwidth_bins"] == 3.0
+    assert parsed_arguments.params["intraday_minimum_bin_events"] == 1
+    assert parsed_arguments.params["intraday_pseudocount"] == 1e-6
+    assert parsed_arguments.params["day_of_week_minimum_bucket_events"] == 1
+    assert parsed_arguments.params["day_of_week_pseudocount"] == 1e-6
+    assert parsed_arguments.params["day_of_year_minimum_bucket_events"] == 1
+    assert parsed_arguments.params["day_of_year_pseudocount"] == 1e-6
+    assert parsed_arguments.params["estimator_version"] == "seasonality_estimator.v1"
 
 
 def test_seasonality_preprocess_cli_parser_rejects_invalid_session_filter() -> None:
-    parser = cli_command_tree_module._build_parser()
+    exit_code, _, _ = _invoke_cli(
+        [
+            "seasonality",
+            "preprocess-timestamps",
+            "--event-records-json",
+            "events.json",
+            "--calendar-registry-json",
+            "calendar.json",
+            "--exchange-code",
+            "XNYS",
+            "--session-filter",
+            "intraday_only",
+        ]
+    )
 
-    with pytest.raises(SystemExit) as captured_exit:
-        parser.parse_args(
-            [
-                "seasonality",
-                "preprocess-timestamps",
-                "--event-records-json",
-                "events.json",
-                "--calendar-registry-json",
-                "calendar.json",
-                "--exchange-code",
-                "XNYS",
-                "--session-filter",
-                "intraday_only",
-            ]
-        )
-
-    assert captured_exit.value.code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
 
 
 def test_seasonality_diagnostics_cli_parser_accepts_estimator_overrides() -> None:
-    parser = cli_command_tree_module._build_parser()
-    parsed_arguments = parser.parse_args(
+    parsed_arguments = _parse_cli_command(
         [
             "seasonality",
             "diagnostics",
@@ -430,23 +415,22 @@ def test_seasonality_diagnostics_cli_parser_accepts_estimator_overrides() -> Non
         ]
     )
 
-    assert parsed_arguments.session_filter == "all"
-    assert parsed_arguments.sparse_hour_event_threshold == 2
-    assert parsed_arguments.intraday_minutes_per_bin == 30
-    assert parsed_arguments.intraday_smoothing_kernel == "uniform"
-    assert parsed_arguments.intraday_smoothing_bandwidth_bins == 1.5
-    assert parsed_arguments.intraday_minimum_bin_events == 3
-    assert parsed_arguments.intraday_pseudocount == 0.25
-    assert parsed_arguments.day_of_week_minimum_bucket_events == 4
-    assert parsed_arguments.day_of_week_pseudocount == 0.5
-    assert parsed_arguments.day_of_year_minimum_bucket_events == 5
-    assert parsed_arguments.day_of_year_pseudocount == 0.75
-    assert parsed_arguments.estimator_version == "seasonality_estimator.dev"
+    assert parsed_arguments.params["session_filter"] == "all"
+    assert parsed_arguments.params["sparse_hour_event_threshold"] == 2
+    assert parsed_arguments.params["intraday_minutes_per_bin"] == 30
+    assert parsed_arguments.params["intraday_smoothing_kernel"] == "uniform"
+    assert parsed_arguments.params["intraday_smoothing_bandwidth_bins"] == 1.5
+    assert parsed_arguments.params["intraday_minimum_bin_events"] == 3
+    assert parsed_arguments.params["intraday_pseudocount"] == 0.25
+    assert parsed_arguments.params["day_of_week_minimum_bucket_events"] == 4
+    assert parsed_arguments.params["day_of_week_pseudocount"] == 0.5
+    assert parsed_arguments.params["day_of_year_minimum_bucket_events"] == 5
+    assert parsed_arguments.params["day_of_year_pseudocount"] == 0.75
+    assert parsed_arguments.params["estimator_version"] == "seasonality_estimator.dev"
 
 
 def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
-    parser = cli_command_tree_module._build_parser()
-    coarse_simulation_arguments = parser.parse_args(
+    coarse_simulation_arguments = _parse_cli_command(
         [
             "simulation",
             "coarse-interval",
@@ -454,7 +438,7 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
             "coarse-simulation.json",
         ]
     )
-    simulation_arguments = parser.parse_args(
+    simulation_arguments = _parse_cli_command(
         [
             "simulation",
             "seeded-ticks",
@@ -464,7 +448,7 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
             "calendar.json",
         ]
     )
-    seasonality_diagnostics_arguments = parser.parse_args(
+    seasonality_diagnostics_arguments = _parse_cli_command(
         [
             "seasonality",
             "diagnostics",
@@ -478,7 +462,7 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
             "XNYS",
         ]
     )
-    seasonality_arguments = parser.parse_args(
+    seasonality_arguments = _parse_cli_command(
         [
             "seasonality",
             "preprocess-timestamps",
@@ -490,7 +474,7 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
             "XNYS",
         ]
     )
-    hourly_factor_materialization_arguments = parser.parse_args(
+    hourly_factor_materialization_arguments = _parse_cli_command(
         [
             "hourly-factors",
             "materialize-seasonality",
@@ -506,7 +490,7 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
             "seasonality-input.json",
         ]
     )
-    hourly_factor_contract_arguments = parser.parse_args(
+    hourly_factor_contract_arguments = _parse_cli_command(
         [
             "hourly-factors",
             "build-contract",
@@ -524,7 +508,7 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
             "news-source.json",
         ]
     )
-    pricing_arguments = parser.parse_args(
+    pricing_arguments = _parse_cli_command(
         [
             "pricing",
             "vanilla-option",
@@ -532,7 +516,7 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
             "pricing.json",
         ]
     )
-    stylized_facts_arguments = parser.parse_args(
+    stylized_facts_arguments = _parse_cli_command(
         [
             "stylized-facts",
             "horizon-comparison",
@@ -542,7 +526,7 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
             "comparison-request.json",
         ]
     )
-    staged_arguments = parser.parse_args(
+    staged_arguments = _parse_cli_command(
         [
             "calibration",
             "staged",
@@ -553,20 +537,19 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
         ]
     )
 
-    assert coarse_simulation_arguments.output == "json"
-    assert simulation_arguments.output == "json"
-    assert seasonality_diagnostics_arguments.output == "json"
-    assert seasonality_arguments.output == "json"
-    assert hourly_factor_materialization_arguments.output == "json"
-    assert hourly_factor_contract_arguments.output == "json"
-    assert pricing_arguments.output == "json"
-    assert stylized_facts_arguments.output == "json"
-    assert staged_arguments.output == "json"
+    assert coarse_simulation_arguments.params["output"] == "json"
+    assert simulation_arguments.params["output"] == "json"
+    assert seasonality_diagnostics_arguments.params["output"] == "json"
+    assert seasonality_arguments.params["output"] == "json"
+    assert hourly_factor_materialization_arguments.params["output"] == "json"
+    assert hourly_factor_contract_arguments.params["output"] == "json"
+    assert pricing_arguments.params["output"] == "json"
+    assert stylized_facts_arguments.params["output"] == "json"
+    assert staged_arguments.params["output"] == "json"
 
 
 def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
-    parser = cli_command_tree_module._build_parser()
-    coarse_simulation_arguments = parser.parse_args(
+    coarse_simulation_arguments = _parse_cli_command(
         [
             "simulation",
             "coarse-interval",
@@ -576,7 +559,7 @@ def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
             "human",
         ]
     )
-    simulation_arguments = parser.parse_args(
+    simulation_arguments = _parse_cli_command(
         [
             "simulation",
             "seeded-ticks",
@@ -588,7 +571,7 @@ def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
             "human",
         ]
     )
-    seasonality_diagnostics_arguments = parser.parse_args(
+    seasonality_diagnostics_arguments = _parse_cli_command(
         [
             "seasonality",
             "diagnostics",
@@ -604,7 +587,7 @@ def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
             "human",
         ]
     )
-    seasonality_arguments = parser.parse_args(
+    seasonality_arguments = _parse_cli_command(
         [
             "seasonality",
             "preprocess-timestamps",
@@ -618,7 +601,7 @@ def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
             "human",
         ]
     )
-    hourly_factor_materialization_arguments = parser.parse_args(
+    hourly_factor_materialization_arguments = _parse_cli_command(
         [
             "hourly-factors",
             "materialize-seasonality",
@@ -636,7 +619,7 @@ def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
             "human",
         ]
     )
-    hourly_factor_contract_arguments = parser.parse_args(
+    hourly_factor_contract_arguments = _parse_cli_command(
         [
             "hourly-factors",
             "build-contract",
@@ -656,7 +639,7 @@ def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
             "human",
         ]
     )
-    pricing_arguments = parser.parse_args(
+    pricing_arguments = _parse_cli_command(
         [
             "pricing",
             "vanilla-option",
@@ -666,7 +649,7 @@ def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
             "human",
         ]
     )
-    stylized_facts_arguments = parser.parse_args(
+    stylized_facts_arguments = _parse_cli_command(
         [
             "stylized-facts",
             "horizon-comparison",
@@ -678,7 +661,7 @@ def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
             "human",
         ]
     )
-    staged_arguments = parser.parse_args(
+    staged_arguments = _parse_cli_command(
         [
             "calibration",
             "staged",
@@ -691,15 +674,15 @@ def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
         ]
     )
 
-    assert coarse_simulation_arguments.output == "human"
-    assert simulation_arguments.output == "human"
-    assert seasonality_diagnostics_arguments.output == "human"
-    assert seasonality_arguments.output == "human"
-    assert hourly_factor_materialization_arguments.output == "human"
-    assert hourly_factor_contract_arguments.output == "human"
-    assert pricing_arguments.output == "human"
-    assert stylized_facts_arguments.output == "human"
-    assert staged_arguments.output == "human"
+    assert coarse_simulation_arguments.params["output"] == "human"
+    assert simulation_arguments.params["output"] == "human"
+    assert seasonality_diagnostics_arguments.params["output"] == "human"
+    assert seasonality_arguments.params["output"] == "human"
+    assert hourly_factor_materialization_arguments.params["output"] == "human"
+    assert hourly_factor_contract_arguments.params["output"] == "human"
+    assert pricing_arguments.params["output"] == "human"
+    assert stylized_facts_arguments.params["output"] == "human"
+    assert staged_arguments.params["output"] == "human"
 
 
 def test_seasonality_preprocess_cli_maps_flags_to_canonical_payload(
@@ -1166,8 +1149,7 @@ def test_seasonality_preprocess_cli_invalid_calendar_timezone_returns_validation
 
 
 def test_calibration_cli_parser_accepts_explicit_memory_execution_mode() -> None:
-    parser = cli_command_tree_module._build_parser()
-    parsed_arguments = parser.parse_args(
+    parsed_arguments = _parse_cli_command(
         [
             "calibration",
             "staged",
@@ -1180,7 +1162,7 @@ def test_calibration_cli_parser_accepts_explicit_memory_execution_mode() -> None
         ]
     )
 
-    assert parsed_arguments.execution_mode == CalibrationExecutionMode.MEMORY.value
+    assert parsed_arguments.params["execution_mode"] == CalibrationExecutionMode.MEMORY.value
 
 
 def test_deterministic_regression_cli_runs_fixture_backed_harness(
@@ -1654,41 +1636,38 @@ def test_cli_explicit_flags_override_environment_defaults(
 
 
 def test_market_data_cli_parser_rejects_unsupported_tick_data_format() -> None:
-    parser = cli_command_tree_module._build_parser()
+    exit_code, _, _ = _invoke_cli(
+        [
+            "calibration",
+            "market-data",
+            "--run-id",
+            "market-data-run-unsupported-format",
+            "--workflow-scope",
+            "seasonality_only",
+            "--tick-data-path",
+            "ticks.json",
+            "--tick-data-format",
+            "json",
+            "--tick-data-provenance-label",
+            "ticks-primary",
+            "--tick-timestamp-column",
+            "timestamp_utc",
+            "--exchange-code",
+            "XNYS",
+            "--session-definition-path",
+            "sessions.json",
+            "--session-definition-format",
+            "json",
+            "--session-definition-provenance-label",
+            "session-calendar",
+            "--session-timezone",
+            "America/New_York",
+            "--timestamp-timezone",
+            "UTC",
+        ]
+    )
 
-    with pytest.raises(SystemExit) as captured_exit:
-        parser.parse_args(
-            [
-                "calibration",
-                "market-data",
-                "--run-id",
-                "market-data-run-unsupported-format",
-                "--workflow-scope",
-                "seasonality_only",
-                "--tick-data-path",
-                "ticks.json",
-                "--tick-data-format",
-                "json",
-                "--tick-data-provenance-label",
-                "ticks-primary",
-                "--tick-timestamp-column",
-                "timestamp_utc",
-                "--exchange-code",
-                "XNYS",
-                "--session-definition-path",
-                "sessions.json",
-                "--session-definition-format",
-                "json",
-                "--session-definition-provenance-label",
-                "session-calendar",
-                "--session-timezone",
-                "America/New_York",
-                "--timestamp-timezone",
-                "UTC",
-            ]
-        )
-
-    assert captured_exit.value.code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
 
 
 def test_market_data_cli_missing_tick_file_returns_validation_exit_code(

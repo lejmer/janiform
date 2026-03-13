@@ -1,7 +1,7 @@
-from argparse import Namespace
 from pathlib import Path
 from typing import cast
 
+from ..context import CliCommandContext
 from .._constants import (
     CLI_PRICING_VANILLA_OPTION_ENTRYPOINT,
     CLI_PRICING_VANILLA_OPTION_INTERNAL_ERROR_ID,
@@ -10,17 +10,22 @@ from .._constants import (
 )
 from ..documents import _load_json_document
 from ..errors import _classify_workflow_command_error
-from ..paths import _resolve_path_from_repository_root, resolve_repository_root
+from ..paths import _resolve_path_from_repository_root
 from ..rendering import _render_pricing_vanilla_option_human_output, _write_cli_error, _write_command_output
 from ...errors import JaniformError
 from ...pricing import run_vanilla_option_pricing, validate_vanilla_option_pricing_execution_input
 
 
-def _run_pricing_vanilla_option_command(parsed_arguments: Namespace) -> int:
-    repository_root = resolve_repository_root()
+def _run_pricing_vanilla_option_command(
+    *,
+    cli_context: CliCommandContext,
+    output: str,
+    execution_input_json: Path,
+    **_: object,
+) -> int:
     execution_input_path = _resolve_path_from_repository_root(
-        repository_root,
-        cast(Path, parsed_arguments.execution_input_json),
+        cli_context.repository_root,
+        execution_input_json,
     )
 
     try:
@@ -43,7 +48,7 @@ def _run_pricing_vanilla_option_command(parsed_arguments: Namespace) -> int:
 
     payload = run_result.to_payload()
     _write_command_output(
-        parsed_arguments,
+        output,
         json_payload=payload,
         human_output_factory=lambda: _render_pricing_vanilla_option_human_output(payload),
     )

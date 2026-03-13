@@ -1,7 +1,7 @@
-from argparse import Namespace
 from pathlib import Path
 from typing import Any, Optional, cast
 
+from ..context import CliCommandContext
 from .._constants import (
     CLI_STYLIZED_FACTS_HORIZON_COMPARISON_ENTRYPOINT,
     CLI_STYLIZED_FACTS_HORIZON_COMPARISON_INTERNAL_ERROR_ID,
@@ -10,26 +10,33 @@ from .._constants import (
 )
 from ..documents import _load_json_document
 from ..errors import _classify_workflow_command_error
-from ..paths import _resolve_path_from_repository_root, resolve_repository_root
+from ..paths import _resolve_path_from_repository_root
 from ..rendering import _render_stylized_facts_horizon_comparison_human_output, _write_cli_error, _write_command_output
 from ...errors import JaniformError
 from ...stylized_facts import run_stylized_fact_horizon_comparison_report_generator
 
 
-def _run_stylized_facts_horizon_comparison_command(parsed_arguments: Namespace) -> int:
-    repository_root = resolve_repository_root()
+def _run_stylized_facts_horizon_comparison_command(
+    *,
+    cli_context: CliCommandContext,
+    output: str,
+    metric_catalog_json: Path,
+    comparison_request_json: Path,
+    artifact_export_json: Optional[Path],
+    execution_mode: str,
+    **_: object,
+) -> int:
     metric_catalog_path = _resolve_path_from_repository_root(
-        repository_root,
-        cast(Path, parsed_arguments.metric_catalog_json),
+        cli_context.repository_root,
+        metric_catalog_json,
     )
     comparison_request_path = _resolve_path_from_repository_root(
-        repository_root,
-        cast(Path, parsed_arguments.comparison_request_json),
+        cli_context.repository_root,
+        comparison_request_json,
     )
-    artifact_export_path_argument = cast(Path | None, parsed_arguments.artifact_export_json)
     artifact_export_path = (
-        _resolve_path_from_repository_root(repository_root, artifact_export_path_argument)
-        if artifact_export_path_argument is not None
+        _resolve_path_from_repository_root(cli_context.repository_root, artifact_export_json)
+        if artifact_export_json is not None
         else None
     )
 
@@ -52,7 +59,7 @@ def _run_stylized_facts_horizon_comparison_command(parsed_arguments: Namespace) 
         report_bundle = run_stylized_fact_horizon_comparison_report_generator(
             metric_catalog=metric_catalog_document,
             comparison_request=comparison_request_document,
-            execution_mode=cast(str, parsed_arguments.execution_mode),
+            execution_mode=execution_mode,
             artifact_export=artifact_export_document,
         )
     except JaniformError as e:
@@ -69,11 +76,11 @@ def _run_stylized_facts_horizon_comparison_command(parsed_arguments: Namespace) 
             )
         )
     _write_command_output(
-        parsed_arguments,
+        output,
         json_payload=cast(dict[str, Any], report_bundle),
         human_output_factory=lambda: _render_stylized_facts_horizon_comparison_human_output(
             report_bundle,
-            execution_mode=cast(str, parsed_arguments.execution_mode),
+            execution_mode=execution_mode,
         ),
     )
     return int(CliExitCode.SUCCESS)

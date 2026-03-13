@@ -5,13 +5,12 @@ import orjson
 import pytest
 
 import janiform.cli as cli_module
-import janiform.cli.command_tree as cli_command_tree_module
 from examples._shared import (
     build_stylized_fact_artifact_export_config,
     build_stylized_fact_horizon_comparison_request,
     build_stylized_fact_metric_catalog,
 )
-from tests.cli_test_support import invoke_cli, normalize_help_output, render_help, write_json_path
+from tests.cli_test_support import invoke_cli, normalize_help_output, parse_cli_command, render_help, write_json_path
 
 
 def test_stylized_facts_cli_help_documents_report_inputs_and_export_config() -> None:
@@ -28,8 +27,7 @@ def test_stylized_facts_cli_help_documents_report_inputs_and_export_config() -> 
 
 
 def test_stylized_facts_cli_parser_defaults_to_memory_mode_and_json_output() -> None:
-    parser = cli_command_tree_module._build_parser()
-    parsed_arguments = parser.parse_args(
+    parsed_arguments = parse_cli_command(
         [
             "stylized-facts",
             "horizon-comparison",
@@ -40,14 +38,13 @@ def test_stylized_facts_cli_parser_defaults_to_memory_mode_and_json_output() -> 
         ]
     )
 
-    assert parsed_arguments.output == "json"
-    assert parsed_arguments.execution_mode == "memory"
-    assert parsed_arguments.artifact_export_json is None
+    assert parsed_arguments.params["output"] == "json"
+    assert parsed_arguments.params["execution_mode"] == "memory"
+    assert parsed_arguments.params["artifact_export_json"] is None
 
 
 def test_stylized_facts_cli_parser_accepts_disk_mode_and_artifact_export_argument() -> None:
-    parser = cli_command_tree_module._build_parser()
-    parsed_arguments = parser.parse_args(
+    parsed_arguments = parse_cli_command(
         [
             "stylized-facts",
             "horizon-comparison",
@@ -62,28 +59,25 @@ def test_stylized_facts_cli_parser_accepts_disk_mode_and_artifact_export_argumen
         ]
     )
 
-    assert parsed_arguments.execution_mode == "disk"
-    assert Path(parsed_arguments.artifact_export_json) == Path("artifact-export.json")
+    assert parsed_arguments.params["execution_mode"] == "disk"
+    assert Path(str(parsed_arguments.params["artifact_export_json"])) == Path("artifact-export.json")
 
 
 def test_stylized_facts_cli_parser_rejects_invalid_execution_mode() -> None:
-    parser = cli_command_tree_module._build_parser()
+    exit_code, _, _ = invoke_cli(
+        [
+            "stylized-facts",
+            "horizon-comparison",
+            "--metric-catalog-json",
+            "metric-catalog.json",
+            "--comparison-request-json",
+            "comparison-request.json",
+            "--execution-mode",
+            "invalid",
+        ]
+    )
 
-    with pytest.raises(SystemExit) as captured_exit:
-        parser.parse_args(
-            [
-                "stylized-facts",
-                "horizon-comparison",
-                "--metric-catalog-json",
-                "metric-catalog.json",
-                "--comparison-request-json",
-                "comparison-request.json",
-                "--execution-mode",
-                "invalid",
-            ]
-        )
-
-    assert captured_exit.value.code == 2
+    assert exit_code == 2
 
 
 def test_stylized_facts_cli_generates_report_bundle_in_memory_mode(tmp_path: Path) -> None:

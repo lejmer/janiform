@@ -1,6 +1,7 @@
-from argparse import Namespace
+from pathlib import Path
 from typing import Any, Optional, cast
 
+from ..context import CliCommandContext
 from .._constants import (
     CLI_PRESET_LIST_SCHEMA_VERSION,
     CLI_PRESET_SHOW_SCHEMA_VERSION,
@@ -16,7 +17,6 @@ from .._constants import (
     CliExitCode,
 )
 from ..errors import _classify_generic_cli_command_error
-from ..paths import resolve_repository_root
 from ..rendering import (
     _render_presets_export_human_output,
     _render_presets_list_human_output,
@@ -36,30 +36,36 @@ from .model_workflows import (
 from .shared import _require_non_empty_cli_string
 
 
-def _run_presets_list_command(parsed_arguments: Namespace) -> int:
-    repository_root = resolve_repository_root()
-
+def _run_presets_list_command(
+    *,
+    cli_context: CliCommandContext,
+    output: str,
+    user_preset_json: tuple[Path, ...],
+    category: Optional[str],
+    scope: Optional[str],
+    **_: object,
+) -> int:
     try:
         registry = _build_cli_preset_registry(
-            parsed_arguments,
-            repository_root=repository_root,
+            cli_context=cli_context,
+            user_preset_json=user_preset_json,
             entrypoint=CLI_PRESETS_LIST_ENTRYPOINT,
             error_id=CLI_PRESETS_LIST_VALIDATION_ERROR_ID,
         )
-        category = _parse_cli_preset_category(cast(Optional[str], getattr(parsed_arguments, "category", None)))
-        scope = _parse_cli_preset_scope(cast(Optional[str], getattr(parsed_arguments, "scope", None)))
-        include_built_in = scope in (None, PresetRegistryScope.BUILT_IN)
-        include_user_registered = scope in (None, PresetRegistryScope.USER_REGISTERED)
+        parsed_category = _parse_cli_preset_category(category)
+        parsed_scope = _parse_cli_preset_scope(scope)
+        include_built_in = parsed_scope in (None, PresetRegistryScope.BUILT_IN)
+        include_user_registered = parsed_scope in (None, PresetRegistryScope.USER_REGISTERED)
         entries = registry.list_presets(
-            category=category,
+            category=parsed_category,
             include_built_in=include_built_in,
             include_user_registered=include_user_registered,
         )
         payload = {
             "schema_version": CLI_PRESET_LIST_SCHEMA_VERSION,
             "command": CLI_PRESETS_LIST_ENTRYPOINT,
-            "category_filter": None if category is None else category.value,
-            "scope_filter": None if scope is None else scope.value,
+            "category_filter": None if parsed_category is None else parsed_category.value,
+            "scope_filter": None if parsed_scope is None else parsed_scope.value,
             "preset_count": len(entries),
             "presets": [entry.to_payload() for entry in entries],
         }
@@ -78,7 +84,7 @@ def _run_presets_list_command(parsed_arguments: Namespace) -> int:
         )
 
     _write_command_output(
-        parsed_arguments,
+        output,
         json_payload=payload,
         human_output_factory=lambda: _render_presets_list_human_output(payload),
     )
@@ -86,41 +92,48 @@ def _run_presets_list_command(parsed_arguments: Namespace) -> int:
     return int(CliExitCode.SUCCESS)
 
 
-def _run_presets_show_command(parsed_arguments: Namespace) -> int:
-    repository_root = resolve_repository_root()
-
+def _run_presets_show_command(
+    *,
+    cli_context: CliCommandContext,
+    output: str,
+    user_preset_json: tuple[Path, ...],
+    category: str,
+    preset_name: str,
+    scope: Optional[str],
+    **_: object,
+) -> int:
     try:
         registry = _build_cli_preset_registry(
-            parsed_arguments,
-            repository_root=repository_root,
+            cli_context=cli_context,
+            user_preset_json=user_preset_json,
             entrypoint=CLI_PRESETS_SHOW_ENTRYPOINT,
             error_id=CLI_PRESETS_SHOW_VALIDATION_ERROR_ID,
         )
-        category = _parse_cli_preset_category(cast(str, parsed_arguments.category))
-        preset_name = _require_non_empty_cli_string(
-            cast(str, parsed_arguments.preset_name),
+        parsed_category = _parse_cli_preset_category(category)
+        normalized_preset_name = _require_non_empty_cli_string(
+            preset_name,
             field_path="preset_name",
             error_id=CLI_PRESETS_SHOW_VALIDATION_ERROR_ID,
             entrypoint=CLI_PRESETS_SHOW_ENTRYPOINT,
         )
         registry_scope = _resolve_named_preset_scope(
             registry=registry,
-            category=category,
-            preset_name=preset_name,
-            raw_scope=cast(Optional[str], getattr(parsed_arguments, "scope", None)),
+            category=cast(Any, parsed_category),
+            preset_name=normalized_preset_name,
+            raw_scope=scope,
         )
         artifact = _resolve_preset_artifact(
             registry=registry,
-            category=category,
-            preset_name=preset_name,
+            category=cast(Any, parsed_category),
+            preset_name=normalized_preset_name,
             registry_scope=registry_scope,
         )
         payload = {
             "schema_version": CLI_PRESET_SHOW_SCHEMA_VERSION,
             "command": CLI_PRESETS_SHOW_ENTRYPOINT,
-            "requested_category": category.value,
+            "requested_category": cast(Any, parsed_category).value,
             "requested_scope": registry_scope.value,
-            "preset_name": preset_name,
+            "preset_name": normalized_preset_name,
             "artifact": artifact.to_payload(),
         }
     except JaniformError as e:
@@ -138,7 +151,7 @@ def _run_presets_show_command(parsed_arguments: Namespace) -> int:
         )
 
     _write_command_output(
-        parsed_arguments,
+        output,
         json_payload=payload,
         human_output_factory=lambda: _render_presets_show_human_output(payload),
     )
@@ -146,32 +159,39 @@ def _run_presets_show_command(parsed_arguments: Namespace) -> int:
     return int(CliExitCode.SUCCESS)
 
 
-def _run_presets_export_command(parsed_arguments: Namespace) -> int:
-    repository_root = resolve_repository_root()
-
+def _run_presets_export_command(
+    *,
+    cli_context: CliCommandContext,
+    output: str,
+    user_preset_json: tuple[Path, ...],
+    category: str,
+    preset_name: str,
+    scope: Optional[str],
+    **_: object,
+) -> int:
     try:
         registry = _build_cli_preset_registry(
-            parsed_arguments,
-            repository_root=repository_root,
+            cli_context=cli_context,
+            user_preset_json=user_preset_json,
             entrypoint=CLI_PRESETS_EXPORT_ENTRYPOINT,
             error_id=CLI_PRESETS_EXPORT_VALIDATION_ERROR_ID,
         )
-        category = _parse_cli_preset_category(cast(str, parsed_arguments.category))
-        preset_name = _require_non_empty_cli_string(
-            cast(str, parsed_arguments.preset_name),
+        parsed_category = _parse_cli_preset_category(category)
+        normalized_preset_name = _require_non_empty_cli_string(
+            preset_name,
             field_path="preset_name",
             error_id=CLI_PRESETS_EXPORT_VALIDATION_ERROR_ID,
             entrypoint=CLI_PRESETS_EXPORT_ENTRYPOINT,
         )
         registry_scope = _resolve_named_preset_scope(
             registry=registry,
-            category=category,
-            preset_name=preset_name,
-            raw_scope=cast(Optional[str], getattr(parsed_arguments, "scope", None)),
+            category=cast(Any, parsed_category),
+            preset_name=normalized_preset_name,
+            raw_scope=scope,
         )
         export_payload = registry.export_resolved_preset(
-            category=category,
-            preset_name=preset_name,
+            category=cast(Any, parsed_category),
+            preset_name=normalized_preset_name,
             registry_scope=registry_scope,
         ).to_payload()
         payload = {**export_payload, "command": CLI_PRESETS_EXPORT_ENTRYPOINT}
@@ -190,7 +210,7 @@ def _run_presets_export_command(parsed_arguments: Namespace) -> int:
         )
 
     _write_command_output(
-        parsed_arguments,
+        output,
         json_payload=payload,
         human_output_factory=lambda: _render_presets_export_human_output(payload),
     )
