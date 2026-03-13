@@ -2,7 +2,7 @@
 
 Document version: `python.api_contract_guardrails.pre_v0_1.v1`
 
-Status: active for the current pre-v0.1 milestone on March 7, 2026.
+Status: active for the current pre-v0.1 milestone on March 13, 2026.
 
 ## Purpose
 
@@ -17,6 +17,7 @@ For the guardrail snapshot, a breaking change is any change to the approved publ
 - the package-root export set for `janiform`
 - the `__all__` export set of public package roots and public submodules listed in
   `docs/development/guides/python_public_api_surface_map_and_namespace_policy.md`
+  including `janiform.cli` and its supported command and parsing submodules
 - callable signatures for exported public functions
 - constructor-visible field signatures for exported contract models
   - underscore-prefixed runtime-only dataclass fields are excluded from the guardrail snapshot
