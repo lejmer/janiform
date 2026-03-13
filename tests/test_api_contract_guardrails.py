@@ -179,6 +179,41 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
             "janiform.calibration.staged.runtime": [
                 "run_staged_calibration",
             ],
+            "janiform.cli": [
+                "main",
+            ],
+            "janiform.cli.commands.calibration": [
+                "_run_calibration_market_data_command",
+                "_run_calibration_staged_command",
+            ],
+            "janiform.cli.commands.development": [
+                "_run_deterministic_regression_command",
+            ],
+            "janiform.cli.commands.model_workflows": [
+                "_run_fit_command",
+                "_run_model_simulate_command",
+            ],
+            "janiform.cli.commands.simulation": [
+                "_run_simulation_seeded_ticks_command",
+            ],
+            "janiform.cli.parsing": [],
+            "janiform.cli.parsing.command_tree": [
+                "_build_parser",
+                "_parse_cli_arguments",
+            ],
+            "janiform.cli.parsing.calibration": [
+                "_build_calibration_parser",
+            ],
+            "janiform.cli.parsing.development": [
+                "_build_developer_parser",
+            ],
+            "janiform.cli.parsing.model_workflows": [
+                "_build_fit_parser",
+                "_build_model_simulate_parser",
+            ],
+            "janiform.cli.parsing.simulation": [
+                "_build_simulation_parser",
+            ],
         }
     )
     guardrail_manifest = _guardrail_manifest_for_snapshot(approved_snapshot)
@@ -208,6 +243,17 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
         "janiform.calibration.staged.request",
         "janiform.calibration.staged.results",
         "janiform.calibration.staged.runtime",
+        "janiform.cli",
+        "janiform.cli.commands.calibration",
+        "janiform.cli.commands.development",
+        "janiform.cli.commands.model_workflows",
+        "janiform.cli.commands.simulation",
+        "janiform.cli.parsing",
+        "janiform.cli.parsing.command_tree",
+        "janiform.cli.parsing.calibration",
+        "janiform.cli.parsing.development",
+        "janiform.cli.parsing.model_workflows",
+        "janiform.cli.parsing.simulation",
         "janiform.simulation",
         "janiform.simulation.coarse",
         "janiform.simulation.seeded",

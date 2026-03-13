@@ -7,6 +7,7 @@ import pytest
 
 import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.cli as cli_module
+import janiform.cli.parsing.command_tree as cli_command_tree_module
 from janiform.calibration.fit import JaniformEstimator, JaniformModel
 from janiform.calibration.market_data import (
     CalibrationDuplicateRecordPolicy,
@@ -42,7 +43,7 @@ def test_fit_help_documents_preset_and_override_inputs() -> None:
 
 
 def test_presets_show_and_fit_parser_map_high_level_arguments() -> None:
-    parser = cli_module._build_parser()
+    parser = cli_command_tree_module._build_parser()
 
     presets_arguments = parser.parse_args(
         [
@@ -401,7 +402,7 @@ def test_fit_fails_for_invalid_market_preset(tmp_path: Path) -> None:
 
 
 def test_fit_parser_rejects_contradictory_known_news_flags() -> None:
-    parser = cli_module._build_parser()
+    parser = cli_command_tree_module._build_parser()
 
     with pytest.raises(SystemExit) as captured_exit:
         parser.parse_args(
@@ -438,7 +439,7 @@ def test_advanced_calibration_help_remains_available_but_secondary() -> None:
 
 
 def _render_help(arguments: list[str]) -> str:
-    parser = cli_module._build_parser()
+    parser = cli_command_tree_module._build_parser()
     stdout_buffer = StringIO()
 
     with pytest.raises(SystemExit) as captured_exit:

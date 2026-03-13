@@ -148,6 +148,8 @@ from janiform.simulation.shared import HawkesKernelParameters
   - Ownership: public error taxonomy and formatting helpers
 - `janiform.stylized_facts`
   - Ownership: stylized-fact comparison reporting
+- `janiform.cli`
+  - Ownership: curated CLI entrypoints, command-tree parser construction, and supported command-group organization
 
 ### Public domain submodules
 
@@ -211,6 +213,26 @@ from janiform.simulation.shared import HawkesKernelParameters
   - Ownership: session-resolution contracts and weekly session window models
 - `janiform.calibration.sessions.resolution`
   - Ownership: market-data session-resolution workflow
+- `janiform.cli.commands.calibration`
+  - Ownership: calibration CLI command handlers and calibration-specific CLI boundary normalization
+- `janiform.cli.commands.development`
+  - Ownership: developer regression command handlers and regression-fixture extraction helpers
+- `janiform.cli.commands.model_workflows`
+  - Ownership: fit, simulate, and fit-and-simulate CLI workflow adapters around persisted models and preset-backed model construction
+- `janiform.cli.commands.simulation`
+  - Ownership: explicit simulation CLI command handlers
+- `janiform.cli.parsing`
+  - Ownership: curated namespace package for parser submodules
+- `janiform.cli.parsing.command_tree`
+  - Ownership: top-level CLI parser construction and argument-resolution entrypoints
+- `janiform.cli.parsing.calibration`
+  - Ownership: calibration command-tree parser builders
+- `janiform.cli.parsing.development`
+  - Ownership: developer regression parser builders
+- `janiform.cli.parsing.model_workflows`
+  - Ownership: fit and simulate parser builders for the model-workflow command surface
+- `janiform.cli.parsing.simulation`
+  - Ownership: explicit simulation parser builders
 
 Additional importable submodules are not public by default. A submodule becomes supported only when
 this document lists it explicitly and the public contract snapshot tracks it.

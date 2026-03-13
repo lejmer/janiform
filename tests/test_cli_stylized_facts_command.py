@@ -5,6 +5,7 @@ import orjson
 import pytest
 
 import janiform.cli as cli_module
+import janiform.cli.parsing.command_tree as cli_command_tree_module
 from examples._shared import (
     build_stylized_fact_artifact_export_config,
     build_stylized_fact_horizon_comparison_request,
@@ -27,7 +28,7 @@ def test_stylized_facts_cli_help_documents_report_inputs_and_export_config() -> 
 
 
 def test_stylized_facts_cli_parser_defaults_to_memory_mode_and_json_output() -> None:
-    parser = cli_module._build_parser()
+    parser = cli_command_tree_module._build_parser()
     parsed_arguments = parser.parse_args(
         [
             "stylized-facts",
@@ -45,7 +46,7 @@ def test_stylized_facts_cli_parser_defaults_to_memory_mode_and_json_output() -> 
 
 
 def test_stylized_facts_cli_parser_accepts_disk_mode_and_artifact_export_argument() -> None:
-    parser = cli_module._build_parser()
+    parser = cli_command_tree_module._build_parser()
     parsed_arguments = parser.parse_args(
         [
             "stylized-facts",
@@ -66,7 +67,7 @@ def test_stylized_facts_cli_parser_accepts_disk_mode_and_artifact_export_argumen
 
 
 def test_stylized_facts_cli_parser_rejects_invalid_execution_mode() -> None:
-    parser = cli_module._build_parser()
+    parser = cli_command_tree_module._build_parser()
 
     with pytest.raises(SystemExit) as captured_exit:
         parser.parse_args(

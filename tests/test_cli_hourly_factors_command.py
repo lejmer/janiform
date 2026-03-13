@@ -7,6 +7,7 @@ import orjson
 import pytest
 
 import janiform.cli as cli_module
+import janiform.cli.parsing.command_tree as cli_command_tree_module
 from janiform.hourly_factors import (
     HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
     HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
@@ -33,7 +34,7 @@ def test_hourly_factors_cli_help_documents_materialization_and_contract_inputs()
 
 
 def test_hourly_factor_materialization_cli_parser_defaults_to_json_output() -> None:
-    parser = cli_module._build_parser()
+    parser = cli_command_tree_module._build_parser()
     parsed_arguments = parser.parse_args(
         [
             "hourly-factors",
@@ -55,7 +56,7 @@ def test_hourly_factor_materialization_cli_parser_defaults_to_json_output() -> N
 
 
 def test_hourly_factor_build_contract_cli_parser_accepts_explicit_source_arguments() -> None:
-    parser = cli_module._build_parser()
+    parser = cli_command_tree_module._build_parser()
     parsed_arguments = parser.parse_args(
         [
             "hourly-factors",
@@ -80,7 +81,7 @@ def test_hourly_factor_build_contract_cli_parser_accepts_explicit_source_argumen
 
 
 def test_hourly_factor_build_contract_cli_parser_accepts_materialized_source_arguments() -> None:
-    parser = cli_module._build_parser()
+    parser = cli_command_tree_module._build_parser()
     parsed_arguments = parser.parse_args(
         [
             "hourly-factors",
@@ -105,7 +106,7 @@ def test_hourly_factor_build_contract_cli_parser_accepts_materialized_source_arg
 
 
 def test_hourly_factor_build_contract_cli_parser_requires_both_source_groups() -> None:
-    parser = cli_module._build_parser()
+    parser = cli_command_tree_module._build_parser()
 
     with pytest.raises(SystemExit) as captured_exit:
         parser.parse_args(
