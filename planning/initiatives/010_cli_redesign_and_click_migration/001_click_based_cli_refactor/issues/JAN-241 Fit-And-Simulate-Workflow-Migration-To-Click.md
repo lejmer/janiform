@@ -5,6 +5,8 @@ Reset the CLI command tree around `fit` and `simulate`, then migrate those workf
 
 This issue assumes JAN-243 has already removed the temporary `Namespace`-style handler boundary and parser-emulation test layer from the Click foundation. The commands migrated here should land directly on that final Click-native boundary rather than extending any interim compatibility scaffolding.
 
+This issue should implement the clean command ownership and registration shape that these workflows actually deserve. Do not preserve awkward command wiring, transitional helper layers, or centralized assembly patterns just to make the migration mechanically easier. JAN-244 is for residual repo-wide cleanup after every command group has landed on Click, not for deferring obvious design cleanup inside the `fit` and `simulate` families.
+
 This issue covers the commands most users should actually touch and the command-path changes that make them coherent:
 
 - `janiform fit`
@@ -42,6 +44,7 @@ If the combined fit-plus-simulate workflow remains supported, it should be repre
   - fold it into `fit` as explicit simulation flags
 - Keep one canonical implementation path for each workflow. Do not preserve the old command functions under renamed wrappers if the new Click command can call the same underlying workflow logic directly.
 - Use the Click-native command boundary established by JAN-243. Do not introduce new synthetic parser-result objects, `Namespace` adapters, or parser-emulation helpers while migrating these workflows.
+- If these workflow families need clearer command-group ownership, registration flow, or module boundaries to avoid carrying transitional Click wiring forward, make that cleanup as part of this issue rather than postponing it.
 - Ensure top-level help presents `fit` and `simulate` as the primary entry points, and ensure `fit --help` and `simulate --help` make the default workflow explicit while framing subcommands as more explicit control levels rather than unrelated sibling commands.
 - Review command constants, output payload `command` identifiers, tests, examples, and temporary docs touched by these workflow families so they all reflect the new canonical paths.
 
@@ -68,3 +71,4 @@ If the combined fit-plus-simulate workflow remains supported, it should be repre
 - There are no users yet. Do not add aliases, deprecation messages, or compatibility command stubs for the removed roots.
 - If JAN-243 has not landed yet, this issue is blocked. It should not absorb the command-boundary cleanup work indirectly.
 - This issue should not re-litigate the command-tree design. Its job is to implement the agreed model cleanly.
+- Do not leave behind workflow-specific transitional Click structure with the intention of cleaning it up in JAN-244. If the clean implementation is already obvious within this scope, do it here.

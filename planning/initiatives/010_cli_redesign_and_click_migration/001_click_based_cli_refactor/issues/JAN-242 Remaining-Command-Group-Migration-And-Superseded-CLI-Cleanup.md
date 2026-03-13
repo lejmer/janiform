@@ -5,6 +5,8 @@ Migrate the remaining standalone command groups to Click, then remove stale pars
 
 This issue assumes JAN-243 has already converted the CLI boundary and test infrastructure to normal Click patterns. The work here should migrate the remaining command groups onto that final boundary, not continue carrying parser-oriented compatibility helpers forward.
 
+This issue should also avoid preserving transitional Click structure just because the refactor is already in progress. The remaining command groups should land on their intended long-term ownership and registration pattern now. JAN-244 is only for residual cleanup that cannot be identified cleanly until every surviving command group is already on the final tree.
+
 The redesign is not complete if only the `fit` and `simulate` families move. `presets`, `seasonality`, `hourly-factors`, `pricing`, `stylized-facts`, and `dev` also need to live on the same Click application foundation, and the repo must stop documenting or testing the superseded `argparse` architecture and removed command roots.
 
 This issue intentionally includes cleanup. The documentation in the repo is temporary, but it still needs to stop teaching the wrong command tree and wrong implementation architecture.
@@ -21,6 +23,7 @@ This issue intentionally includes cleanup. The documentation in the repo is temp
 - Replace parser-era tests that depend on parser-construction implementation details with Click-oriented routing and help tests, using the Click-native test infrastructure established by JAN-243.
 - Update CLI smoke tests, command-reference tests, example invocations, and helper utilities to the new application structure and command tree.
 - Remove any remaining CLI implementation files whose only purpose was to support the old `argparse` parser tree once the surviving command groups have been migrated.
+- If a remaining command group still sits behind wiring or helper indirection that exists only because of the staged refactor order, simplify that structure as part of this issue instead of preserving it for later.
 - Remove or rewrite temporary docs that still describe:
   - the old `argparse` architecture
   - the superseded `calibration` and `simulation` roots
@@ -47,3 +50,4 @@ This issue intentionally includes cleanup. The documentation in the repo is temp
 - There are no external users and no supported legacy CLI. Do not add migration docs, alias tables, or compatibility wrappers.
 - If JAN-243 has not landed yet, this issue is blocked. It should not become the place where the temporary handler boundary and parser-test bridge are finally redesigned.
 - Be aggressive about deleting stale references. Temporary documentation is allowed to stay rough, but it is not allowed to stay wrong.
+- Do not knowingly leave behind command-group-specific transitional Click structure on the theory that JAN-244 will clean it up later. If the final shape is clear within this scope, implement it here.
