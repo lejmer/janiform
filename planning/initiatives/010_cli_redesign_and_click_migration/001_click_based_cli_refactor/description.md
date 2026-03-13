@@ -21,6 +21,7 @@ Replace the current `argparse` CLI with a Click-based application, reset the com
 ### Definition of Done
 - A project plan exists with focused issues for:
   - Click application foundation and shared CLI infrastructure
+  - Click-native command boundary cleanup after the foundation lands
   - command-tree reset plus migration of `fit`, `simulate`, and their explicit low-level workflow subcommands
   - migration and cleanup of remaining command groups, help output, tests, examples, and temporary docs
 - The plan explicitly requires direct replacement of the old CLI surface and forbids compatibility shims, aliases, migration guides, and parallel `argparse` plus Click implementations.

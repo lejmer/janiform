@@ -3,7 +3,7 @@ from io import StringIO
 
 import pytest
 
-import janiform.cli.parsing.command_tree as cli_command_tree_module
+import janiform.cli.command_tree as cli_command_tree_module
 
 
 def test_cli_top_level_help_lists_primary_and_developer_namespaces() -> None:

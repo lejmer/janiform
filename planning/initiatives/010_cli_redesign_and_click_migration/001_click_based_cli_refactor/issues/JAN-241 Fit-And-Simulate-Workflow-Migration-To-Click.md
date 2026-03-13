@@ -3,6 +3,8 @@
 ### Description
 Reset the CLI command tree around `fit` and `simulate`, then migrate those workflow families and their lower-level subcommands onto the new Click application structure so the public surface and implementation change together.
 
+This issue assumes JAN-243 has already removed the temporary `Namespace`-style handler boundary and parser-emulation test layer from the Click foundation. The commands migrated here should land directly on that final Click-native boundary rather than extending any interim compatibility scaffolding.
+
 This issue covers the commands most users should actually touch and the command-path changes that make them coherent:
 
 - `janiform fit`
@@ -39,6 +41,7 @@ If the combined fit-plus-simulate workflow remains supported, it should be repre
   - remove it completely, or
   - fold it into `fit` as explicit simulation flags
 - Keep one canonical implementation path for each workflow. Do not preserve the old command functions under renamed wrappers if the new Click command can call the same underlying workflow logic directly.
+- Use the Click-native command boundary established by JAN-243. Do not introduce new synthetic parser-result objects, `Namespace` adapters, or parser-emulation helpers while migrating these workflows.
 - Ensure top-level help presents `fit` and `simulate` as the primary entry points, and ensure `fit --help` and `simulate --help` make the default workflow explicit while framing subcommands as more explicit control levels rather than unrelated sibling commands.
 - Review command constants, output payload `command` identifiers, tests, examples, and temporary docs touched by these workflow families so they all reflect the new canonical paths.
 
@@ -49,6 +52,7 @@ If the combined fit-plus-simulate workflow remains supported, it should be repre
 - `fit` and `simulate` are the obvious primary entry points in top-level help.
 - Help text for `fit` and `simulate` clearly communicates the default workflow and the role of each subcommand.
 - The migrated workflows preserve current validation, output, and exit-code behavior unless the redesign intentionally changes the public CLI semantics.
+- The migrated workflows sit directly on the Click-native boundary from JAN-243 rather than on temporary parser-compatibility seams.
 - No in-repo test, example, or maintained temporary doc still presents the removed roots as supported for these workflow families.
 
 ### Unit tests
@@ -62,4 +66,5 @@ If the combined fit-plus-simulate workflow remains supported, it should be repre
 ### Notes/Constraints
 - Keep the combined fit-plus-simulate behavior subordinate to `fit` if it survives at all. It must not remain a top-level peer command.
 - There are no users yet. Do not add aliases, deprecation messages, or compatibility command stubs for the removed roots.
+- If JAN-243 has not landed yet, this issue is blocked. It should not absorb the command-boundary cleanup work indirectly.
 - This issue should not re-litigate the command-tree design. Its job is to implement the agreed model cleanly.

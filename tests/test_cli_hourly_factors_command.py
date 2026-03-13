@@ -7,7 +7,7 @@ import orjson
 import pytest
 
 import janiform.cli as cli_module
-import janiform.cli.parsing.command_tree as cli_command_tree_module
+import janiform.cli.command_tree as cli_command_tree_module
 from janiform.hourly_factors import (
     HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
     HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,

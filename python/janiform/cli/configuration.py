@@ -1,12 +1,12 @@
 import json
 import os
-import sys
-from argparse import ArgumentParser, Namespace
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, NoReturn, cast
+from typing import Any
 
-from .._constants import (
+import click
+
+from ._constants import (
     CLI_ARGUMENT_RESOLUTION_ENTRYPOINT,
     CLI_ARGUMENT_RESOLUTION_VALIDATION_ERROR_ID,
     CLI_CALIBRATION_DISK_CHECKPOINT_DIRECTORY_ENV_VAR,
@@ -15,114 +15,47 @@ from .._constants import (
     CLI_CONFIG_JSON_ENV_VAR,
     CLI_OUTPUT_ENV_VAR,
     CLI_PRIMARY_COMMAND_IDENTIFIERS,
-    CLI_PRIMARY_COMMAND_TREE,
 )
-from ..documents import _load_json_document
-from ..errors import _cli_validation_error
-from ..paths import _resolve_path_from_repository_root, resolve_repository_root
+from .documents import _load_json_document
+from .errors import _cli_validation_error
+from .paths import _resolve_path_from_repository_root, resolve_repository_root
 
 
-def _parse_cli_arguments(
-    parser: ArgumentParser,
-    arguments: list[str] | None = None,
+def build_click_default_map(
+    command: click.Command,
     *,
+    command_path: tuple[str, ...],
+    arguments: list[str],
     environment: Mapping[str, str] | None = None,
-) -> Namespace:
-    raw_arguments = list(sys.argv[1:] if arguments is None else arguments)
+) -> dict[str, Any]:
+    effective_environment = os.environ if environment is None else environment
 
-    resolved_arguments = _apply_cli_argument_defaults(
-        parser,
-        raw_arguments,
-        environment=os.environ if environment is None else environment,
-    )
-
-    return parser.parse_args(resolved_arguments)
-
-
-def _apply_cli_argument_defaults(
-    parser: ArgumentParser,
-    raw_arguments: list[str],
-    *,
-    environment: Mapping[str, str],
-) -> list[str]:
-    command_path = _extract_primary_command_path(raw_arguments)
-
-    if command_path not in CLI_PRIMARY_COMMAND_IDENTIFIERS:
-        return raw_arguments
-
-    command_parser = _resolve_command_parser(parser, command_path)
-
-    if command_parser is None:
-        return raw_arguments
+    command_identifier = CLI_PRIMARY_COMMAND_IDENTIFIERS.get(command_path)
+    if command_identifier is None:
+        return {}
 
     repository_root = resolve_repository_root()
     config_path = _resolve_command_config_path(
         command_path=command_path,
-        raw_arguments=raw_arguments,
-        environment=environment,
+        raw_arguments=arguments,
+        environment=effective_environment,
         repository_root=repository_root,
     )
-    config_arguments = (
-        _build_command_config_argument_vector(
-            command_parser,
-            command_path=command_path,
+    config_defaults = (
+        _build_command_config_default_map(
+            command,
+            command_identifier=command_identifier,
             config_path=config_path,
         )
         if config_path is not None
-        else []
+        else {}
     )
-    environment_arguments = _build_environment_argument_vector(
+    environment_defaults = _build_environment_default_map(
         command_path=command_path,
-        environment=environment,
+        environment=effective_environment,
     )
 
-    if not config_arguments and not environment_arguments:
-        return raw_arguments
-
-    return [
-        *raw_arguments[: len(command_path)],
-        *config_arguments,
-        *environment_arguments,
-        *raw_arguments[len(command_path) :],
-    ]
-
-
-def _extract_primary_command_path(raw_arguments: list[str]) -> tuple[str, ...]:
-    command_path: list[str] = []
-    subtree: dict[str, dict[str, Any]] = CLI_PRIMARY_COMMAND_TREE
-
-    for raw_argument in raw_arguments:
-        if raw_argument.startswith("-") or raw_argument not in subtree:
-            break
-
-        command_path.append(raw_argument)
-        subtree = subtree[raw_argument]
-
-    return tuple(command_path)
-
-
-def _resolve_command_parser(
-    parser: ArgumentParser,
-    command_path: tuple[str, ...],
-) -> ArgumentParser | None:
-    current_parser = parser
-
-    for command_segment in command_path:
-        next_parser: ArgumentParser | None = None
-
-        for action in current_parser._actions:
-            action_choices = getattr(action, "choices", None)
-
-            if isinstance(action_choices, dict) and command_segment in action_choices:
-                next_parser = cast(ArgumentParser, action_choices[command_segment])
-                break
-
-        if next_parser is None:
-            return None
-
-        current_parser = next_parser
-
-    return current_parser
+    return {**config_defaults, **environment_defaults}
 
 
 def _resolve_command_config_path(
@@ -133,7 +66,7 @@ def _resolve_command_config_path(
     repository_root: Path,
 ) -> Path | None:
     explicit_config_path = _extract_explicit_option_value(
-        raw_arguments[len(command_path) :],
+        raw_arguments,
         flag_name="--config-json",
     )
 
@@ -161,6 +94,11 @@ def _extract_explicit_option_value(arguments: list[str], *, flag_name: str) -> s
     while argument_index < len(arguments):
         current_argument = arguments[argument_index]
 
+        if current_argument.startswith(f"{flag_name}="):
+            explicit_value = current_argument.split("=", 1)[1]
+            argument_index += 1
+            continue
+
         if current_argument != flag_name:
             argument_index += 1
             continue
@@ -179,20 +117,19 @@ def _extract_explicit_option_value(arguments: list[str], *, flag_name: str) -> s
     return explicit_value
 
 
-def _build_command_config_argument_vector(
-    command_parser: ArgumentParser,
+def _build_command_config_default_map(
+    command: click.Command,
     *,
-    command_path: tuple[str, ...],
+    command_identifier: str,
     config_path: Path,
-) -> list[str]:
+) -> dict[str, Any]:
     config_document = _load_cli_command_config_document(config_path)
-    expected_command = CLI_PRIMARY_COMMAND_IDENTIFIERS[command_path]
     configured_command = config_document.get("command")
 
-    if configured_command != expected_command:
+    if configured_command != command_identifier:
         _raise_cli_argument_resolution_error(
             field_path="command",
-            message=f"must be {expected_command!r} for this command",
+            message=f"must be {command_identifier!r} for this command",
             context={"config_path": str(config_path)},
         )
 
@@ -205,8 +142,8 @@ def _build_command_config_argument_vector(
             context={"config_path": str(config_path)},
         )
 
-    action_by_flag = _build_configurable_action_map(command_parser)
-    argument_vector: list[str] = []
+    parameter_by_flag = _build_click_parameter_map(command)
+    default_map: dict[str, Any] = {}
 
     for raw_flag_name, raw_value in raw_arguments.items():
         if not isinstance(raw_flag_name, str):
@@ -216,21 +153,23 @@ def _build_command_config_argument_vector(
                 context={"config_path": str(config_path)},
             )
 
-        action = action_by_flag.get(raw_flag_name)
+        parameter = parameter_by_flag.get(raw_flag_name)
 
-        if action is None:
+        if parameter is None:
             _raise_cli_argument_resolution_error(
                 field_path=f"arguments.{raw_flag_name}",
                 message="is not a supported command-config argument",
                 context={"config_path": str(config_path)},
             )
 
-        option_string = _select_long_option_string(
-            action,
-            field_path=f"arguments.{raw_flag_name}",
-        )
+        if parameter.multiple:
+            _raise_cli_argument_resolution_error(
+                field_path=f"arguments.{raw_flag_name}",
+                message="does not support repeated values in command config",
+                context={"config_path": str(config_path)},
+            )
 
-        if action.nargs == 0:
+        if parameter.is_flag:
             if not isinstance(raw_value, bool):
                 _raise_cli_argument_resolution_error(
                     field_path=f"arguments.{raw_flag_name}",
@@ -238,9 +177,7 @@ def _build_command_config_argument_vector(
                     context={"config_path": str(config_path)},
                 )
 
-            if raw_value:
-                argument_vector.append(option_string)
-
+            default_map[parameter.name] = raw_value
             continue
 
         if isinstance(raw_value, bool) or raw_value is None:
@@ -250,9 +187,34 @@ def _build_command_config_argument_vector(
                 context={"config_path": str(config_path)},
             )
 
-        argument_vector.extend((option_string, str(raw_value)))
+        try:
+            converted_value = parameter.type_cast_value(None, raw_value)
+        except click.ClickException as e:
+            _raise_cli_argument_resolution_error(
+                field_path=f"arguments.{raw_flag_name}",
+                message=str(e),
+                context={"config_path": str(config_path)},
+            )
 
-    return argument_vector
+        default_map[parameter.name] = converted_value
+
+    return default_map
+
+
+def _build_click_parameter_map(command: click.Command) -> dict[str, click.Option]:
+    parameters_by_flag: dict[str, click.Option] = {}
+
+    for parameter in command.params:
+        if not isinstance(parameter, click.Option):
+            continue
+
+        for option_string in parameter.opts:
+            if option_string.startswith("--"):
+                flag_name = option_string[2:]
+                if flag_name != "config-json":
+                    parameters_by_flag[flag_name] = parameter
+
+    return parameters_by_flag
 
 
 def _load_cli_command_config_document(config_path: Path) -> dict[str, Any]:
@@ -299,37 +261,12 @@ def _load_cli_command_config_document(config_path: Path) -> dict[str, Any]:
     return config_document
 
 
-def _build_configurable_action_map(command_parser: ArgumentParser) -> dict[str, Any]:
-    action_by_flag: dict[str, Any] = {}
-
-    for action in command_parser._actions:
-        for option_string in cast(list[str], action.option_strings):
-            if option_string.startswith("--"):
-                flag_name = option_string[2:]
-
-                if flag_name != "config-json":
-                    action_by_flag[flag_name] = action
-
-    return action_by_flag
-
-
-def _select_long_option_string(action: Any, *, field_path: str) -> str:
-    for option_string in cast(list[str], action.option_strings):
-        if option_string.startswith("--"):
-            return option_string
-
-    _raise_cli_argument_resolution_error(
-        field_path=field_path,
-        message="is not configurable through command config",
-    )
-
-
-def _build_environment_argument_vector(
+def _build_environment_default_map(
     *,
     command_path: tuple[str, ...],
     environment: Mapping[str, str],
-) -> list[str]:
-    environment_argument_vector: list[str] = []
+) -> dict[str, Any]:
+    environment_default_map: dict[str, Any] = {}
     output_mode = environment.get(CLI_OUTPUT_ENV_VAR)
 
     if output_mode is not None:
@@ -339,38 +276,35 @@ def _build_environment_argument_vector(
                 message="environment variable must be non-empty when provided",
             )
 
-        environment_argument_vector.extend(("--output", output_mode))
+        environment_default_map["output"] = output_mode
 
-    if command_path[:1] != ("calibration",):
-        return environment_argument_vector
+    if command_path in (("calibration", "market-data"), ("calibration", "staged")):
+        execution_mode = environment.get(CLI_CALIBRATION_EXECUTION_MODE_ENV_VAR)
 
-    execution_mode = environment.get(CLI_CALIBRATION_EXECUTION_MODE_ENV_VAR)
+        if execution_mode is not None:
+            if not execution_mode.strip():
+                _raise_cli_argument_resolution_error(
+                    field_path=CLI_CALIBRATION_EXECUTION_MODE_ENV_VAR,
+                    message="environment variable must be non-empty when provided",
+                )
 
-    if execution_mode is not None:
-        if not execution_mode.strip():
-            _raise_cli_argument_resolution_error(
-                field_path=CLI_CALIBRATION_EXECUTION_MODE_ENV_VAR,
-                message="environment variable must be non-empty when provided",
+            environment_default_map["execution_mode"] = execution_mode
+
+        checkpoint_directory = environment.get(CLI_CALIBRATION_DISK_CHECKPOINT_DIRECTORY_ENV_VAR)
+
+        if checkpoint_directory is not None:
+            if not checkpoint_directory.strip():
+                _raise_cli_argument_resolution_error(
+                    field_path=CLI_CALIBRATION_DISK_CHECKPOINT_DIRECTORY_ENV_VAR,
+                    message="environment variable must be non-empty when provided",
+                )
+
+            environment_default_map["disk_checkpoint_directory"] = _resolve_path_from_repository_root(
+                resolve_repository_root(),
+                Path(checkpoint_directory),
             )
 
-        environment_argument_vector.extend(("--execution-mode", execution_mode))
-
-    disk_checkpoint_directory = environment.get(
-        CLI_CALIBRATION_DISK_CHECKPOINT_DIRECTORY_ENV_VAR,
-    )
-
-    if disk_checkpoint_directory is not None:
-        if not disk_checkpoint_directory.strip():
-            _raise_cli_argument_resolution_error(
-                field_path=CLI_CALIBRATION_DISK_CHECKPOINT_DIRECTORY_ENV_VAR,
-                message="environment variable must be non-empty when provided",
-            )
-
-        environment_argument_vector.extend(
-            ("--disk-checkpoint-directory", disk_checkpoint_directory),
-        )
-
-    return environment_argument_vector
+    return environment_default_map
 
 
 def _raise_cli_argument_resolution_error(
@@ -378,7 +312,7 @@ def _raise_cli_argument_resolution_error(
     field_path: str,
     message: str,
     context: dict[str, Any] | None = None,
-) -> NoReturn:
+) -> None:
     raise _cli_validation_error(
         field_path,
         message,
@@ -388,15 +322,4 @@ def _raise_cli_argument_resolution_error(
     )
 
 
-__all__ = [
-    "_apply_cli_argument_defaults",
-    "_build_command_config_argument_vector",
-    "_build_configurable_action_map",
-    "_build_environment_argument_vector",
-    "_extract_explicit_option_value",
-    "_extract_primary_command_path",
-    "_load_cli_command_config_document",
-    "_parse_cli_arguments",
-    "_resolve_command_config_path",
-    "_resolve_command_parser",
-]
+__all__ = ["build_click_default_map"]

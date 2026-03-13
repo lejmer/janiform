@@ -57,7 +57,7 @@ janiform
   - `simulation`
   - `calibration`
   - `development`
-- `janiform.cli.parsing.*` is the supported ownership path for parser construction by command group.
+- `janiform.cli.command_tree` owns Click application assembly, command registration, and shared default-resolution behavior.
 - Named command-group modules are preferred over catch-all buckets when the contents mirror a real command namespace.
 - Low-level CLI boundary helpers such as rendering, document loading, and path resolution may live in named helper modules, but they are not command-group ownership modules and should stay smaller than the workflow-facing packages.
 - New CLI modules should not use underscore-prefixed module names unless they are truly private implementation details.
@@ -105,7 +105,7 @@ without parsing English text:
 
 Additional policy notes:
 
-- `argparse` usage failures are part of the validation bucket and therefore also exit with `2`.
+- Click usage failures are part of the validation bucket and therefore also exit with `2`.
 - Primary workflow commands write one structured error line to stderr and never emit tracebacks in
   normal operation.
 - File-driven calibration validation errors include the failing file path, the field or column

@@ -7,7 +7,7 @@ import pytest
 
 import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.cli as cli_module
-import janiform.cli.parsing.command_tree as cli_command_tree_module
+import janiform.cli.command_tree as cli_command_tree_module
 from janiform.calibration.fit import JaniformEstimator, JaniformModel
 from janiform.calibration.market_data import (
     CalibrationDuplicateRecordPolicy,
