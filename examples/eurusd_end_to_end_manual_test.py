@@ -12,9 +12,8 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 from janiform.calendar import CalendarRegistry
-from janiform.calibration import (
+from janiform.calibration.market_data import (
     CalibrationDuplicateRecordPolicy,
-    CalibrationExecutionMode,
     CalibrationInputFileFormat,
     CalibrationInputFileReference,
     CalibrationMarketDataColumnMapping,
@@ -22,11 +21,14 @@ from janiform.calibration import (
     CalibrationMarketDataOutputPreferences,
     CalibrationMarketDataWorkflowScope,
     CalibrationSessionConfigurationInput,
-    CalibrationStageExecutionStatus,
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
     MarketDataCalibrationRequest,
     prepare_market_data_calibration,
+)
+from janiform.calibration.staged import (
+    CalibrationExecutionMode,
+    CalibrationStageExecutionStatus,
     run_staged_calibration,
 )
 from janiform.hourly_factors import (

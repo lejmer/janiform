@@ -201,7 +201,7 @@ This tells the script to use the `.venv-linux` venv, and to pass on the `-v` com
 - Advanced staged calibration example with default `memory` mode, explicit `disk` override, raw observed open-session return evidence for return-components fitting, and internal close-open gap detection from raw boundary observations: `examples/calibration_workflow.py`
 - Default high-level fitting now lives under `janiform.calibration` through `JaniformEstimator.fit(...)`, which returns a lean `JaniformModel` and can optionally surface a separate `JaniformFitReport`
 - Runtime hourly seasonality reconstructed from calibration output should use `janiform.hourly_factors.build_runtime_hourly_seasonality_source_from_calibration_payload(...)` rather than manual component recomposition in consumers
-- Workflow package roots remain curated convenience surfaces, and natural public domain modules such as `janiform.simulation.seeded` are also supported when they make ownership clearer
+- Workflow package roots remain curated convenience surfaces, and natural public domain modules such as `janiform.simulation.seeded` and `janiform.calibration.staged.inputs` are also supported when they make ownership clearer
 
 ## CLI Automation
 

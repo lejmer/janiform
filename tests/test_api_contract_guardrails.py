@@ -87,11 +87,127 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
                 "HawkesKernelParameters",
                 "SeededTickSimulationValidationError",
             ],
+            "janiform.calibration": [
+                "JaniformEstimator",
+                "MarketDataCalibrationRequest",
+            ],
+            "janiform.calibration.fit": [
+                "JaniformEstimator",
+                "JaniformModel",
+            ],
+            "janiform.calibration.fit.estimator": [
+                "JaniformEstimator",
+            ],
+            "janiform.calibration.fit.model": [
+                "JaniformModel",
+            ],
+            "janiform.calibration.fit.report": [
+                "JaniformFitReport",
+            ],
+            "janiform.calibration.market_data": [
+                "MarketDataCalibrationRequest",
+                "prepare_market_data_calibration",
+            ],
+            "janiform.calibration.market_data.contracts": [
+                "CalibrationInputFileReference",
+                "CalibrationMarketDataWorkflowScope",
+            ],
+            "janiform.calibration.market_data.request": [
+                "MarketDataCalibrationRequest",
+                "validate_market_data_calibration_request",
+            ],
+            "janiform.calibration.market_data.ingestion": [
+                "LoadedMarketDataCalibrationInputs",
+                "load_market_data_calibration_inputs",
+            ],
+            "janiform.calibration.market_data.translation": [
+                "MarketDataTranslationResult",
+                "translate_market_data_request_to_staged_execution_input",
+            ],
+            "janiform.calibration.market_data.workflow": [
+                "PreparedMarketDataCalibration",
+                "prepare_market_data_calibration",
+            ],
+            "janiform.calibration.presets": [
+                "PresetRegistry",
+                "resolve_preset_workflow_configuration",
+            ],
+            "janiform.calibration.presets.references": [
+                "MarketProfileReference",
+                "SessionPresetReference",
+            ],
+            "janiform.calibration.presets.registry": [
+                "PresetRegistry",
+                "serialize_preset_artifact",
+            ],
+            "janiform.calibration.presets.resolution": [
+                "ResolvedPresetWorkflowConfiguration",
+                "resolve_preset_workflow_configuration",
+            ],
+            "janiform.calibration.sessions": [
+                "MarketDataSessionResolution",
+                "resolve_market_data_session_configuration",
+            ],
+            "janiform.calibration.sessions.contracts": [
+                "MarketDataSessionRegularWindow",
+                "MarketDataSessionResolution",
+            ],
+            "janiform.calibration.sessions.resolution": [
+                "ResolvedMarketDataSession",
+                "resolve_market_data_session_configuration",
+            ],
+            "janiform.calibration.staged": [
+                "StagedCalibrationExecutionInput",
+                "run_staged_calibration",
+            ],
+            "janiform.calibration.staged.contracts": [
+                "CalibrationExecutionMode",
+                "CalibrationStage",
+            ],
+            "janiform.calibration.staged.inputs": [
+                "StagedCalibrationExecutionInput",
+                "validate_staged_calibration_execution_input",
+            ],
+            "janiform.calibration.staged.request": [
+                "StagedCalibrationRequest",
+                "validate_staged_calibration_request",
+            ],
+            "janiform.calibration.staged.results": [
+                "StagedCalibrationResponse",
+                "validate_staged_calibration_response",
+            ],
+            "janiform.calibration.staged.runtime": [
+                "run_staged_calibration",
+            ],
         }
     )
     guardrail_manifest = _guardrail_manifest_for_snapshot(approved_snapshot)
 
     assert set(approved_snapshot["public_modules"]) == {
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.estimator",
+        "janiform.calibration.fit.model",
+        "janiform.calibration.fit.report",
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.contracts",
+        "janiform.calibration.market_data.ingestion",
+        "janiform.calibration.market_data.request",
+        "janiform.calibration.market_data.translation",
+        "janiform.calibration.market_data.workflow",
+        "janiform.calibration.presets",
+        "janiform.calibration.presets.references",
+        "janiform.calibration.presets.registry",
+        "janiform.calibration.presets.resolution",
+        "janiform.calibration.sessions",
+        "janiform.calibration.sessions.contracts",
+        "janiform.calibration.sessions.resolution",
+        "janiform.calibration.staged",
+        "janiform.calibration.staged.contracts",
+        "janiform.calibration.staged.inputs",
+        "janiform.calibration.staged.request",
+        "janiform.calibration.staged.results",
+        "janiform.calibration.staged.runtime",
         "janiform.simulation",
         "janiform.simulation.coarse",
         "janiform.simulation.seeded",

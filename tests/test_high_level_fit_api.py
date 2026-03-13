@@ -4,20 +4,19 @@ from pathlib import Path
 
 import pytest
 
-import janiform.calibration._fit_api as high_level_module
-from janiform.calibration import (
+import janiform.calibration.fit.estimator as fit_estimator_module
+import janiform.calibration.fit.model as fit_model_module
+from janiform.calibration import CalibrationValidationError
+from janiform.calibration.fit import JaniformEstimator, JaniformFitReport, JaniformModel
+from janiform.calibration.market_data import (
     CalibrationDuplicateRecordPolicy,
     CalibrationInputFileFormat,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataWorkflowScope,
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
-    CalibrationValidationError,
-    JaniformEstimator,
-    JaniformFitReport,
-    JaniformModel,
-    validate_staged_calibration_response,
 )
+from janiform.calibration.staged import validate_staged_calibration_response
 
 
 def test_janiform_estimator_fit_returns_model_for_default_high_level_workflow(
@@ -244,7 +243,7 @@ def test_high_level_model_simulate_dispatches_by_output_mode(
         monkeypatch,
         run_id="high-level-model-simulate",
     )
-    prepared_inputs = high_level_module._PreparedModelSimulationInputs(
+    prepared_inputs = fit_model_module._PreparedModelSimulationInputs(
         coarse_request=object(),
         seeded_request=object(),
     )
@@ -253,17 +252,17 @@ def test_high_level_model_simulate_dispatches_by_output_mode(
     tick_result = object()
 
     monkeypatch.setattr(
-        high_level_module,
+        fit_model_module,
         "_prepare_model_simulation_inputs",
         lambda *args, **kwargs: prepared_inputs,
     )
     monkeypatch.setattr(
-        high_level_module,
+        fit_model_module,
         "run_coarse_simulation",
         lambda request: captured_calls.append(("coarse", request)) or coarse_result,
     )
     monkeypatch.setattr(
-        high_level_module,
+        fit_model_module,
         "run_seeded_tick_event_simulation",
         lambda request: captured_calls.append(("ticks", request)) or tick_result,
     )
@@ -312,12 +311,12 @@ def test_high_level_model_price_option_dispatches_through_canonical_pricing_runn
     pricing_result = object()
 
     monkeypatch.setattr(
-        high_level_module,
+        fit_model_module,
         "_prepare_model_pricing_execution_input",
         lambda *args, **kwargs: prepared_execution_input,
     )
     monkeypatch.setattr(
-        high_level_module,
+        fit_model_module,
         "run_vanilla_option_pricing",
         lambda execution_input: captured_execution_inputs.append(execution_input) or pricing_result,
     )
@@ -359,7 +358,7 @@ def test_high_level_fit_routes_through_prepared_staged_runner(
         return _successful_staged_runner_payload("high-level-fit-runner-path")
 
     monkeypatch.setattr(
-        high_level_module,
+        fit_estimator_module,
         "_run_staged_calibration_with_raw_payload",
         capturing_runner,
     )
@@ -478,7 +477,7 @@ def _patch_successful_staged_runner(
     run_id: str,
 ) -> None:
     monkeypatch.setattr(
-        high_level_module,
+        fit_estimator_module,
         "_run_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _successful_staged_runner_payload(run_id),
     )
@@ -507,7 +506,7 @@ def _build_full_workflow_model(
     )
 
     monkeypatch.setattr(
-        high_level_module,
+        fit_estimator_module,
         "_run_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _successful_full_model_staged_runner_payload(run_id),
     )

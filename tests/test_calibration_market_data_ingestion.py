@@ -5,11 +5,11 @@ import pyarrow as pa
 import pytest
 from pyarrow import parquet as pyarrow_parquet
 
-from janiform.calibration._market_data_ingestion import load_market_data_calibration_inputs
-from janiform.calibration import (
+from janiform.calibration.market_data.ingestion import load_market_data_calibration_inputs
+from janiform.calibration import CalibrationValidationError
+from janiform.calibration.market_data import (
     CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,
     CalibrationDuplicateRecordPolicy,
-    CalibrationExecutionMode,
     CalibrationInputFileFormat,
     CalibrationInputFileReference,
     CalibrationKnownNewsColumnMapping,
@@ -23,9 +23,9 @@ from janiform.calibration import (
     CalibrationSessionConfigurationInput,
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
-    CalibrationValidationError,
     MarketDataCalibrationRequest,
 )
+from janiform.calibration.staged import CalibrationExecutionMode
 
 
 def test_load_market_data_calibration_inputs_normalizes_csv_tick_midpoints_and_provenance(

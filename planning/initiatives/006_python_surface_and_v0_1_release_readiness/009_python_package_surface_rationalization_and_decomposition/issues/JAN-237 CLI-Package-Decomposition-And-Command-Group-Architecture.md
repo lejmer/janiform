@@ -9,6 +9,7 @@ Break `janiform.cli` out of the current large `_commands` and parser modules int
 - Preserve a simple `janiform.cli.main` entrypoint and the `python -m janiform` flow while allowing the internal package structure to grow sanely.
 - Decide which CLI modules should remain internal helpers and which should be named modules because they represent real command-group organization.
 - Update docs and tests that currently import `_commands` or `_parser` directly when those internals are replaced.
+- Please look at python/janiform/calibration/ and python/janiform/simulation/ as an example for how we
 
 ### Acceptance Criteria
 - The CLI package no longer centers around a monolithic `_commands.py` file.

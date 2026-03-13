@@ -13,6 +13,11 @@ README_PATH = REPOSITORY_ROOT / "README.md"
 ALLOWED_JANIFORM_IMPORTS = {
     "janiform.calendar",
     "janiform.calibration",
+    "janiform.calibration.fit",
+    "janiform.calibration.market_data",
+    "janiform.calibration.presets",
+    "janiform.calibration.sessions",
+    "janiform.calibration.staged",
     "janiform.hourly_factors",
     "janiform.pricing",
     "janiform.risk",

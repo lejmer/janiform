@@ -1,26 +1,15 @@
 from dataclasses import dataclass
 from enum import StrEnum
-from types import ModuleType
 from typing import TYPE_CHECKING, Any, Optional
 
-from ._common import (
-    CALIBRATION_ERROR_FACTORY,
-    CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
-    CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
+from .contracts import (
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
     CalibrationExecutionMode,
     CalibrationStage,
-    CalibrationStageExecutionStatus,
     CalibrationTradeSign,
-    CalibrationValidationError,
-    _calibration_error,
-    _calibration_execution_error,
-    _calibration_integration_error,
-    _parse_calibration_execution_mode,
-    _require_bool,
 )
-from ._requests import StagedCalibrationRequest
-from .._contracts import (
+from .._errors import CALIBRATION_ERROR_FACTORY, _calibration_error, _require_bool
+from ..._contracts import (
     ContractModel,
     parse_json_object,
     require_finite_number,
@@ -35,11 +24,10 @@ from .._contracts import (
     require_string,
     serialize_deterministic_json,
 )
-from .._native_api import native_module
-from ..calendar import CalendarRegistry
 
 if TYPE_CHECKING:
-    from ..pricing import GammaSeverityMarkConfiguration
+    from .request import StagedCalibrationRequest
+    from ...pricing import GammaSeverityMarkConfiguration
 
 
 def _parse_gamma_severity_mark_configuration(
@@ -47,7 +35,7 @@ def _parse_gamma_severity_mark_configuration(
     *,
     field_path: str,
 ) -> Any:
-    from ..pricing import GammaSeverityMarkConfiguration
+    from ...pricing import GammaSeverityMarkConfiguration
 
     return GammaSeverityMarkConfiguration.from_mapping(raw_payload, field_path=field_path)
 
@@ -1750,6 +1738,8 @@ class StagedCalibrationExecutionInput(ContractModel):
 
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any) -> StagedCalibrationExecutionInput:
+        from .request import StagedCalibrationRequest
+
         if not isinstance(raw_payload, dict):
             raise _calibration_error("staged_calibration_execution_input", "must be an object")
 
@@ -1825,217 +1815,10 @@ class StagedCalibrationExecutionInput(ContractModel):
             ),
         )
 
-
-@dataclass(frozen=True, slots=True)
-class CalibrationCheckpointMetadata(ContractModel):
-    checkpoint_reference: str
-    completed_stage: CalibrationStage
-    completed_stage_position: int
-    execution_mode: CalibrationExecutionMode
-
-    @staticmethod
-    def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationCheckpointMetadata:
-        if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
-
-        return CalibrationCheckpointMetadata(
-            checkpoint_reference=require_non_empty_string(
-                raw_payload,
-                "checkpoint_reference",
-                f"{field_path}.checkpoint_reference",
-                CALIBRATION_ERROR_FACTORY,
-            ),
-            completed_stage=CalibrationStage(
-                require_string(raw_payload, "completed_stage", f"{field_path}.completed_stage", CALIBRATION_ERROR_FACTORY)
-            ),
-            completed_stage_position=require_non_negative_integer(
-                raw_payload,
-                "completed_stage_position",
-                f"{field_path}.completed_stage_position",
-                CALIBRATION_ERROR_FACTORY,
-            ),
-            execution_mode=_parse_calibration_execution_mode(
-                require_string(raw_payload, "execution_mode", f"{field_path}.execution_mode", CALIBRATION_ERROR_FACTORY),
-                field_path=f"{field_path}.execution_mode",
-            ),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class CalibrationFailureDetails(ContractModel):
-    failure_kind: str
-    error_message: Optional[str] = None
-    stage: Optional[CalibrationStage] = None
-    checkpoint_reference: Optional[str] = None
-    artifact_reference: Optional[str] = None
-    run_id: Optional[str] = None
-
-    @staticmethod
-    def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationFailureDetails:
-        if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
-
-        raw_stage = raw_payload.get("stage")
-        if raw_stage is not None and not isinstance(raw_stage, str):
-            raise _calibration_error(f"{field_path}.stage", "must be a string when provided")
-
-        return CalibrationFailureDetails(
-            failure_kind=require_non_empty_string(
-                raw_payload,
-                "failure_kind",
-                f"{field_path}.failure_kind",
-                CALIBRATION_ERROR_FACTORY,
-            ),
-            error_message=raw_payload.get("error_message"),
-            stage=CalibrationStage(raw_stage) if raw_stage is not None else None,
-            checkpoint_reference=raw_payload.get("checkpoint_reference"),
-            artifact_reference=raw_payload.get("artifact_reference"),
-            run_id=raw_payload.get("run_id"),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class CalibrationStageReport(ContractModel):
-    stage_report_kind: CalibrationStage
-    stage: CalibrationStage
-    status: CalibrationStageExecutionStatus
-    run_id: str
-    execution_mode: CalibrationExecutionMode
-    handoff_policy: str
-    failure: Optional[CalibrationFailureDetails] = None
-
-    @staticmethod
-    def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationStageReport:
-        if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
-
-        return CalibrationStageReport(
-            stage_report_kind=CalibrationStage(
-                require_string(
-                    raw_payload,
-                    "stage_report_kind",
-                    f"{field_path}.stage_report_kind",
-                    CALIBRATION_ERROR_FACTORY,
-                )
-            ),
-            stage=CalibrationStage(
-                require_string(raw_payload, "stage", f"{field_path}.stage", CALIBRATION_ERROR_FACTORY)
-            ),
-            status=CalibrationStageExecutionStatus(
-                require_string(raw_payload, "status", f"{field_path}.status", CALIBRATION_ERROR_FACTORY)
-            ),
-            run_id=require_non_empty_string(raw_payload, "run_id", f"{field_path}.run_id", CALIBRATION_ERROR_FACTORY),
-            execution_mode=_parse_calibration_execution_mode(
-                require_string(raw_payload, "execution_mode", f"{field_path}.execution_mode", CALIBRATION_ERROR_FACTORY),
-                field_path=f"{field_path}.execution_mode",
-            ),
-            handoff_policy=require_non_empty_string(
-                raw_payload,
-                "handoff_policy",
-                f"{field_path}.handoff_policy",
-                CALIBRATION_ERROR_FACTORY,
-            ),
-            failure=(
-                CalibrationFailureDetails.from_mapping(raw_payload["failure"], field_path=f"{field_path}.failure")
-                if "failure" in raw_payload and raw_payload["failure"] is not None
-                else None
-            ),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class StagedCalibrationResponse(ContractModel):
-    """Typed staged-calibration response."""
-
-    schema_version: str
-    failure_triage_policy: str
-    run_id: str
-    execution_mode: CalibrationExecutionMode
-    status: CalibrationStageExecutionStatus
-    stage_reports: tuple[CalibrationStageReport, ...]
-    emitted_checkpoints: tuple[CalibrationCheckpointMetadata, ...]
-    resumed_from_checkpoint_reference: Optional[str] = None
-    resumed_from_last_successful_stage: Optional[CalibrationStage] = None
-    started_from_stage: Optional[CalibrationStage] = None
-    failure: Optional[CalibrationFailureDetails] = None
-
-    @staticmethod
-    def from_mapping(raw_payload: dict[str, Any] | Any) -> StagedCalibrationResponse:
-        if not isinstance(raw_payload, dict):
-            raise _calibration_error("staged_calibration_response", "must be an object")
-
-        raw_stage_reports = require_sequence(
-            raw_payload,
-            "stage_reports",
-            "stage_reports",
-            CALIBRATION_ERROR_FACTORY,
-        )
-        raw_emitted_checkpoints = require_sequence(
-            raw_payload,
-            "emitted_checkpoints",
-            "emitted_checkpoints",
-            CALIBRATION_ERROR_FACTORY,
-        )
-        raw_resumed_stage = raw_payload.get("resumed_from_last_successful_stage")
-        raw_started_stage = raw_payload.get("started_from_stage")
-
-        return StagedCalibrationResponse(
-            schema_version=require_non_empty_string(
-                raw_payload,
-                "schema_version",
-                "schema_version",
-                CALIBRATION_ERROR_FACTORY,
-            ),
-            failure_triage_policy=require_non_empty_string(
-                raw_payload,
-                "failure_triage_policy",
-                "failure_triage_policy",
-                CALIBRATION_ERROR_FACTORY,
-            ),
-            run_id=require_non_empty_string(raw_payload, "run_id", "run_id", CALIBRATION_ERROR_FACTORY),
-            execution_mode=_parse_calibration_execution_mode(
-                require_string(raw_payload, "execution_mode", "execution_mode", CALIBRATION_ERROR_FACTORY),
-                field_path="execution_mode",
-            ),
-            status=CalibrationStageExecutionStatus(
-                require_string(raw_payload, "status", "status", CALIBRATION_ERROR_FACTORY)
-            ),
-            stage_reports=tuple(
-                CalibrationStageReport.from_mapping(
-                    raw_stage_report,
-                    field_path=f"stage_reports[{stage_report_index}]",
-                )
-                for stage_report_index, raw_stage_report in enumerate(raw_stage_reports)
-            ),
-            emitted_checkpoints=tuple(
-                CalibrationCheckpointMetadata.from_mapping(
-                    raw_checkpoint,
-                    field_path=f"emitted_checkpoints[{checkpoint_index}]",
-                )
-                for checkpoint_index, raw_checkpoint in enumerate(raw_emitted_checkpoints)
-            ),
-            resumed_from_checkpoint_reference=raw_payload.get("resumed_from_checkpoint_reference"),
-            resumed_from_last_successful_stage=(
-                CalibrationStage(raw_resumed_stage)
-                if raw_resumed_stage is not None
-                else None
-            ),
-            started_from_stage=CalibrationStage(raw_started_stage) if raw_started_stage is not None else None,
-            failure=(
-                CalibrationFailureDetails.from_mapping(raw_payload["failure"], field_path="failure")
-                if "failure" in raw_payload and raw_payload["failure"] is not None
-                else None
-            ),
-        )
-
 def validate_staged_calibration_execution_input(
     raw_execution_input: dict[str, Any] | Any,
 ) -> StagedCalibrationExecutionInput:
     return StagedCalibrationExecutionInput.from_mapping(raw_execution_input)
-
-
-def validate_staged_calibration_response(raw_response: dict[str, Any] | Any) -> StagedCalibrationResponse:
-    return StagedCalibrationResponse.from_mapping(raw_response)
 
 
 def serialize_staged_calibration_execution_input(execution_input: StagedCalibrationExecutionInput) -> str:
@@ -2045,105 +1828,44 @@ def serialize_staged_calibration_execution_input(execution_input: StagedCalibrat
 def deserialize_staged_calibration_execution_input(payload_json: str) -> StagedCalibrationExecutionInput:
     raw_payload = parse_json_object(
         payload_json,
-        "staged calibration execution input",
+        'staged calibration execution input',
         CALIBRATION_ERROR_FACTORY,
     )
     return validate_staged_calibration_execution_input(dict(raw_payload))
 
 
-def serialize_staged_calibration_response(response: StagedCalibrationResponse) -> str:
-    return serialize_deterministic_json(response)
-
-
-def deserialize_staged_calibration_response(payload_json: str) -> StagedCalibrationResponse:
-    raw_payload = parse_json_object(payload_json, "staged calibration response", CALIBRATION_ERROR_FACTORY)
-    return validate_staged_calibration_response(dict(raw_payload))
-
-
-def _run_staged_calibration_with_raw_payload(
-    execution_input: StagedCalibrationExecutionInput,
-    *,
-    calendar_registry: CalendarRegistry,
-) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
-    if not isinstance(execution_input, StagedCalibrationExecutionInput):
-        raise _calibration_error("execution_input", "must be a StagedCalibrationExecutionInput")
-    if not isinstance(calendar_registry, CalendarRegistry):
-        raise _calibration_error("calendar_registry", "must be a CalendarRegistry")
-
-    normalized_execution_input = validate_staged_calibration_execution_input(
-        execution_input.to_payload()
-    )
-
-    try:
-        native: ModuleType = native_module()
-    except ModuleNotFoundError as e:
-        raise _calibration_integration_error(
-            "native calibration module is unavailable",
-            entrypoint="run_staged_calibration",
-            error_id=CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
-            context={"module_name": "janiform._native"},
-        ) from e
-
-    try:
-        response_json: str = native.run_staged_calibration(
-            serialize_staged_calibration_execution_input(normalized_execution_input),
-            calendar_registry._native_registry,
-        )
-    except native.CalibrationExecutionError as e:
-        raise _calibration_execution_error(
-            "staged calibration failed during native execution",
-            entrypoint="run_staged_calibration",
-            context={"source_exception_type": type(e).__name__},
-        ) from e
-    except Exception as e:
-        raise _calibration_execution_error(
-            "staged calibration failed during native execution",
-            entrypoint="run_staged_calibration",
-            context={"source_exception_type": type(e).__name__},
-        ) from e
-
-    raw_response_payload = dict(
-        parse_json_object(
-            response_json,
-            "staged calibration response",
-            CALIBRATION_ERROR_FACTORY,
-        )
-    )
-
-    try:
-        normalized_response = validate_staged_calibration_response(raw_response_payload)
-    except CalibrationValidationError as e:
-        raise _calibration_integration_error(
-            "native calibration returned an invalid response payload",
-            entrypoint="run_staged_calibration",
-            error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
-            context={"source_error_id": e.error_id},
-        ) from e
-
-    return normalized_response, raw_response_payload
-
-
-def run_staged_calibration(
-    execution_input: StagedCalibrationExecutionInput,
-    *,
-    calendar_registry: CalendarRegistry,
-) -> StagedCalibrationResponse:
-    """Run staged calibration from the explicit execution contract.
-
-    Example:
-        response = run_staged_calibration(
-            execution_input,
-            calendar_registry=calendar_registry,
-        )
-
-    Return-components stage inputs keep known-news open-window jumps and
-    closed-window gaps explicit while deriving surprise close-open gaps
-    from raw boundary observations inside Janiform.
-    """
-
-    normalized_response, _ = _run_staged_calibration_with_raw_payload(
-        execution_input,
-        calendar_registry=calendar_registry,
-    )
-
-    return normalized_response
+__all__ = [
+    'CalibrationCoupledGapMarkConfiguration',
+    'CalibrationDayOfWeekSeasonalityEstimatorSettings',
+    'CalibrationDayOfYearSeasonalityEstimatorSettings',
+    'CalibrationDoubleExponentialBaseShockConfiguration',
+    'CalibrationHawkesDirectionalLabelDiagnostics',
+    'CalibrationHawkesObservedSourceRegime',
+    'CalibrationHawkesStageCandidateInput',
+    'CalibrationHawkesStructuredAlphaParameterization',
+    'CalibrationHawkesStructuredRhoParameterization',
+    'CalibrationHawkesStructuredRhoSelfDominancePolicy',
+    'CalibrationIntradaySeasonalityEstimatorSettings',
+    'CalibrationIntradaySmoothingKernel',
+    'CalibrationObjectiveTermInput',
+    'CalibrationReturnComponentsCloseOpenGapDetectionPolicy',
+    'CalibrationReturnComponentsDetectedIntradayJumpCandidate',
+    'CalibrationReturnComponentsKnownNewsCalendarInput',
+    'CalibrationReturnComponentsKnownNewsReturnSample',
+    'CalibrationReturnComponentsObjectiveMetricWeights',
+    'CalibrationReturnComponentsObservedCloseOpenBoundaryObservation',
+    'CalibrationReturnComponentsObservedOpenSessionReturn',
+    'CalibrationReturnComponentsSignalSourceWindow',
+    'CalibrationReturnComponentsStageCandidateGenerationInput',
+    'CalibrationScheduledEventOverlay',
+    'CalibrationSeasonalityStageExecutionInput',
+    'CalibrationSeasonalityStageExecutionSettings',
+    'CalibrationSharedNewsMarkLawConfiguration',
+    'CalibrationStagedExecutionRuntimeResources',
+    'CalibrationTimestampEventRecord',
+    'CalibrationTimestampEventSessionFilter',
+    'StagedCalibrationExecutionInput',
+    'deserialize_staged_calibration_execution_input',
+    'serialize_staged_calibration_execution_input',
+    'validate_staged_calibration_execution_input',
+]

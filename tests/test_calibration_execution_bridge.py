@@ -1,10 +1,10 @@
 import pytest
 
-from janiform.calibration import (
+from janiform.calibration import CalibrationValidationError
+from janiform.calibration.staged import (
     CalibrationExecutionMode,
     CalibrationStage,
     CalibrationStageExecutionStatus,
-    CalibrationValidationError,
     run_staged_calibration,
     validate_staged_calibration_execution_input,
 )

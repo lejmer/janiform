@@ -331,129 +331,380 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
 
     expected_exports = {
         "CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY",
+        "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
         "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
         "CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_SCHEMA_VERSION",
         "CALIBRATION_RUN_SPEC_SCHEMA_VERSION",
         "CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION",
         "CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION",
-        "CalibrationCoupledGapMarkConfiguration",
-        "CalibrationCheckpointMetadata",
         "CalibrationDuplicateRecordPolicy",
-        "CalibrationDayOfWeekSeasonalityEstimatorSettings",
-        "CalibrationDayOfYearSeasonalityEstimatorSettings",
-        "CalibrationDoubleExponentialBaseShockConfiguration",
         "CalibrationExecutionMode",
-        "CalibrationFailureDetails",
+        "CalibrationInputFileFormat",
+        "CalibrationKnownNewsColumnMapping",
+        "CalibrationMarketDataNormalizationPolicy",
+        "CalibrationMarketDataOutputPreferences",
+        "CalibrationMarketDataWorkflowScope",
+        "CalibrationOptionQuoteInputPolicy",
+        "CalibrationOptionSurfaceColumnMapping",
+        "CalibrationTickDataColumnMapping",
+        "CalibrationTickPriceInputPolicy",
+        "CalibrationValidationError",
+        "CalibrationValidationFailure",
+        "DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME",
+        "KnownNewsExplicitConfiguration",
+        "KnownNewsPresetReference",
+        "JaniformEstimator",
+        "JaniformFitReport",
+        "JaniformModel",
+        "MarketDataCalibrationRequest",
+        "MarketDataSessionRecurringClosedWindow",
+        "MarketDataSessionRegularWindow",
+        "MarketDataSessionResolution",
+        "MarketProfileReference",
+        "PresetReferenceUsageMode",
+        "PresetCategory",
+        "PresetRegistry",
+        "PresetRegistryScope",
+        "SessionExplicitConfiguration",
+        "SessionPresetReference",
+        "StagedCalibrationExecutionInput",
+        "StagedCalibrationRequest",
+        "StagedCalibrationResponse",
+        "PreparedMarketDataCalibration",
+        "prepare_market_data_calibration",
+        "resolve_preset_workflow_configuration",
+        "run_market_data_calibration",
+        "run_staged_calibration",
+        "validate_market_data_calibration_request",
+        "validate_staged_calibration_execution_input",
+    }
+
+    assert set(calibration_module.__all__) == expected_exports
+    assert expected_exports <= set(dir(calibration_module))
+
+    root_exports = set(calibration_module.__all__)
+
+    assert "CalibrationCheckpointMetadata" not in root_exports
+    assert "CalibrationInputFileReference" not in root_exports
+    assert "serialize_preset_artifact" not in root_exports
+
+
+def test_calibration_public_module_is_a_package() -> None:
+    calibration_module = import_module("janiform.calibration")
+
+    assert hasattr(calibration_module, "__path__")
+
+
+def test_calibration_fit_public_submodule_is_supported_domain_import() -> None:
+    calibration_fit_module = import_module("janiform.calibration.fit")
+
+    assert set(calibration_fit_module.__all__) == {
+        "JaniformEstimator",
+        "JaniformFitReport",
+        "JaniformModel",
+    }
+
+
+def test_calibration_fit_public_ownership_submodules_are_supported_domain_imports() -> None:
+    calibration_fit_estimator_module = import_module("janiform.calibration.fit.estimator")
+    calibration_fit_model_module = import_module("janiform.calibration.fit.model")
+    calibration_fit_report_module = import_module("janiform.calibration.fit.report")
+
+    assert set(calibration_fit_estimator_module.__all__) == {"JaniformEstimator"}
+    assert set(calibration_fit_model_module.__all__) == {"JaniformModel"}
+    assert set(calibration_fit_report_module.__all__) == {"JaniformFitReport"}
+
+
+def test_calibration_market_data_public_submodule_is_supported_domain_import() -> None:
+    calibration_market_data_module = import_module("janiform.calibration.market_data")
+
+    expected_exports = {
+        "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
+        "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
+        "CalibrationDuplicateRecordPolicy",
         "CalibrationInputFileFormat",
         "CalibrationInputFileReference",
-        "CalibrationHawkesStageCandidateInput",
-        "CalibrationHawkesStructuredAlphaParameterization",
-        "CalibrationHawkesStructuredRhoParameterization",
-        "CalibrationHawkesStructuredRhoSelfDominancePolicy",
-        "CalibrationHandoffTransport",
-        "CalibrationIntradaySeasonalityEstimatorSettings",
-        "CalibrationIntradaySmoothingKernel",
         "CalibrationKnownNewsColumnMapping",
         "CalibrationKnownNewsInput",
         "CalibrationMarketDataColumnMapping",
         "CalibrationMarketDataNormalizationPolicy",
         "CalibrationMarketDataOutputPreferences",
         "CalibrationMarketDataWorkflowScope",
-        "MarketDataSessionRecurringClosedWindow",
-        "MarketDataSessionRegularWindow",
-        "MarketDataSessionResolution",
-        "CalibrationOptimizerSettings",
         "CalibrationOptionQuoteInputPolicy",
         "CalibrationOptionSurfaceColumnMapping",
-        "CalibrationObjectiveTermInput",
-        "CalibrationReturnComponentsCloseOpenGapDetectionPolicy",
-        "CalibrationReturnComponentsDetectedIntradayJumpCandidate",
-        "CalibrationReturnComponentsKnownNewsCalendarInput",
-        "CalibrationReturnComponentsKnownNewsReturnSample",
-        "CalibrationReturnComponentsObservedCloseOpenBoundaryObservation",
-        "CalibrationReturnComponentsObservedOpenSessionReturn",
-        "CalibrationReturnComponentsObjectiveMetricWeights",
-        "CalibrationReturnComponentsSignalSourceWindow",
-        "CalibrationReturnComponentsStageCandidateGenerationInput",
-        "CalibrationResumeSettings",
-        "CalibrationResumeSource",
-        "CalibrationRunDataInputs",
-        "CalibrationRunSeedSettings",
-        "CalibrationScheduledEventOverlay",
-        "CalibrationSeasonalityStageExecutionInput",
-        "CalibrationSeasonalityStageExecutionSettings",
         "CalibrationSessionConfigurationInput",
-        "CalibrationSharedNewsMarkLawConfiguration",
-        "CalibrationStage",
-        "CalibrationStageExecutionStatus",
-        "CalibrationStageHandoff",
-        "CalibrationStageReport",
-        "CalibrationStageSeedOverride",
-        "CalibrationStageSolverSettings",
-        "CalibrationStagedExecutionRuntimeResources",
-        "CalibrationTimestampEventRecord",
-        "CalibrationTimestampEventSessionFilter",
         "CalibrationTickDataColumnMapping",
         "CalibrationTickPriceInputPolicy",
-        "CalibrationValidationError",
-        "CalibrationValidationFailure",
-        "DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME",
-        "DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE",
-        "KnownNewsConfigurationOverridePatch",
-        "KnownNewsEvent",
-        "KnownNewsExplicitConfiguration",
-        "KnownNewsPresetReference",
+        "MarketDataCalibrationPreparationDiagnostics",
+        "MarketDataCalibrationPreparationProvenance",
         "MarketDataCalibrationRequest",
-        "MarketProfileColumnAliasHint",
-        "MarketProfileExplicitConfiguration",
-        "MarketProfileKnownNewsPolicy",
-        "MarketProfileOverridePatch",
-        "MarketProfileReference",
-        "PresetReferenceUsageMode",
-        "PresetRegistryScope",
-        "RESOLVED_PRESET_WORKFLOW_CONFIGURATION_SCHEMA_VERSION",
-        "ResolvedKnownNewsComponent",
-        "ResolvedMarketProfileComponent",
-        "ResolvedPresetSelection",
-        "ResolvedPresetWorkflowConfiguration",
-        "ResolvedSessionComponent",
-        "ResolvedWorkflowComponent",
-        "ResolvedWorkflowComponentSource",
-        "ResolvedWorkflowDiagnostic",
-        "ResolvedWorkflowDiagnosticSeverity",
-        "SessionConfigurationOverridePatch",
-        "SessionExplicitConfiguration",
-        "SessionPresetReference",
-        "deserialize_known_news_preset_reference",
+        "MarketDataCalibrationSourceSummary",
+        "PreparedMarketDataCalibration",
         "deserialize_market_data_calibration_request",
-        "deserialize_market_profile_reference",
-        "deserialize_session_preset_reference",
-        "serialize_known_news_preset_reference",
+        "prepare_market_data_calibration",
+        "run_market_data_calibration",
         "serialize_market_data_calibration_request",
-        "serialize_market_profile_reference",
-        "serialize_session_preset_reference",
+        "validate_market_data_calibration_request",
+    }
+
+    assert set(calibration_market_data_module.__all__) == expected_exports
+    assert expected_exports <= set(dir(calibration_market_data_module))
+
+
+def test_calibration_market_data_public_ownership_submodules_are_supported_domain_imports() -> None:
+    calibration_market_data_contracts_module = import_module("janiform.calibration.market_data.contracts")
+    calibration_market_data_request_module = import_module("janiform.calibration.market_data.request")
+    calibration_market_data_ingestion_module = import_module("janiform.calibration.market_data.ingestion")
+    calibration_market_data_translation_module = import_module("janiform.calibration.market_data.translation")
+    calibration_market_data_workflow_module = import_module("janiform.calibration.market_data.workflow")
+
+    assert {
+        "CalibrationInputFileReference",
+        "CalibrationMarketDataWorkflowScope",
+        "CalibrationSessionConfigurationInput",
+    } <= set(calibration_market_data_contracts_module.__all__)
+    assert set(calibration_market_data_request_module.__all__) == {
+        "MarketDataCalibrationRequest",
+        "deserialize_market_data_calibration_request",
+        "serialize_market_data_calibration_request",
+        "validate_market_data_calibration_request",
+    }
+    assert set(calibration_market_data_ingestion_module.__all__) == {
+        "LoadedKnownNewsSource",
+        "LoadedMarketDataCalibrationInputs",
+        "LoadedMarketDataSourceSummary",
+        "LoadedOptionSurfaceSource",
+        "LoadedTickDataSource",
+        "NormalizedKnownNewsRecord",
+        "NormalizedOptionSurfaceRecord",
+        "NormalizedTickDataRecord",
+        "load_market_data_calibration_inputs",
+    }
+    assert set(calibration_market_data_translation_module.__all__) == {
+        "MarketDataTranslationDiagnostics",
+        "MarketDataTranslationProvenance",
+        "MarketDataTranslationResult",
+        "translate_market_data_request_to_staged_execution_input",
+    }
+    assert set(calibration_market_data_workflow_module.__all__) == {
+        "MarketDataCalibrationPreparationDiagnostics",
+        "MarketDataCalibrationPreparationProvenance",
+        "MarketDataCalibrationSourceSummary",
+        "PreparedMarketDataCalibration",
+        "prepare_market_data_calibration",
+        "run_market_data_calibration",
+    }
+
+
+def test_calibration_staged_public_submodule_is_supported_domain_import() -> None:
+    calibration_staged_module = import_module("janiform.calibration.staged")
+
+    expected_exports = {
+        "CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY",
+        "CALIBRATION_RUN_SPEC_SCHEMA_VERSION",
+        "CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION",
+        "CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION",
+        "CalibrationExecutionMode",
+        "CalibrationOptimizerSettings",
+        "CalibrationRunDataInputs",
+        "CalibrationStage",
+        "CalibrationStageExecutionStatus",
+        "CalibrationTradeSign",
         "StagedCalibrationExecutionInput",
         "StagedCalibrationRequest",
         "StagedCalibrationResponse",
-        "validate_known_news_preset_reference",
-        "validate_market_data_calibration_request",
-        "validate_market_profile_reference",
-        "validate_session_preset_reference",
-        "deserialize_staged_calibration_execution_input",
-        "deserialize_staged_calibration_request",
-        "deserialize_staged_calibration_response",
-        "resolve_preset_workflow_configuration",
         "run_staged_calibration",
-        "serialize_staged_calibration_execution_input",
-        "serialize_staged_calibration_request",
-        "serialize_staged_calibration_response",
         "validate_staged_calibration_execution_input",
         "validate_staged_calibration_request",
         "validate_staged_calibration_response",
     }
 
-    assert expected_exports <= set(calibration_module.__all__)
-    assert expected_exports <= set(dir(calibration_module))
+    assert expected_exports <= set(calibration_staged_module.__all__)
+    assert expected_exports <= set(dir(calibration_staged_module))
+
+
+def test_calibration_staged_public_ownership_submodules_are_supported_domain_imports() -> None:
+    calibration_staged_contracts_module = import_module("janiform.calibration.staged.contracts")
+    calibration_staged_inputs_module = import_module("janiform.calibration.staged.inputs")
+    calibration_staged_request_module = import_module("janiform.calibration.staged.request")
+    calibration_staged_results_module = import_module("janiform.calibration.staged.results")
+    calibration_staged_runtime_module = import_module("janiform.calibration.staged.runtime")
+
+    assert {
+        "CalibrationExecutionMode",
+        "CalibrationRunDataInputs",
+        "CalibrationStage",
+    } <= set(calibration_staged_contracts_module.__all__)
+    assert set(calibration_staged_request_module.__all__) == {
+        "StagedCalibrationRequest",
+        "deserialize_staged_calibration_request",
+        "serialize_staged_calibration_request",
+        "validate_staged_calibration_request",
+    }
+    assert {
+        "StagedCalibrationExecutionInput",
+        "validate_staged_calibration_execution_input",
+    } <= set(calibration_staged_inputs_module.__all__)
+    assert {
+        "CalibrationStageReport",
+        "StagedCalibrationResponse",
+        "validate_staged_calibration_response",
+    } <= set(calibration_staged_results_module.__all__)
+    assert {
+        "run_staged_calibration",
+    } <= set(calibration_staged_runtime_module.__all__)
+
+
+def test_calibration_presets_public_submodule_is_supported_domain_import() -> None:
+    calibration_presets_module = import_module("janiform.calibration.presets")
+
+    expected_exports = {
+        "BUNDLED_PRESET_INDEX_SCHEMA_VERSION",
+        "DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME",
+        "KnownNewsExplicitConfiguration",
+        "KnownNewsPresetReference",
+        "MarketProfileReference",
+        "PresetCategory",
+        "PresetReferenceUsageMode",
+        "PresetRegistry",
+        "PresetRegistryScope",
+        "ResolvedPresetWorkflowConfiguration",
+        "SessionExplicitConfiguration",
+        "SessionPresetReference",
+        "resolve_preset_workflow_configuration",
+        "serialize_preset_artifact",
+    }
+
+    assert expected_exports <= set(calibration_presets_module.__all__)
+    assert expected_exports <= set(dir(calibration_presets_module))
+
+
+def test_calibration_presets_public_ownership_submodules_are_supported_domain_imports() -> None:
+    calibration_presets_references_module = import_module("janiform.calibration.presets.references")
+    calibration_presets_registry_module = import_module("janiform.calibration.presets.registry")
+    calibration_presets_resolution_module = import_module("janiform.calibration.presets.resolution")
+
+    assert {
+        "MarketProfileReference",
+        "PresetReferenceUsageMode",
+        "SessionPresetReference",
+    } <= set(calibration_presets_references_module.__all__)
+    assert {
+        "PresetCategory",
+        "PresetRegistry",
+        "serialize_preset_artifact",
+    } <= set(calibration_presets_registry_module.__all__)
+    assert {
+        "ResolvedPresetWorkflowConfiguration",
+        "ResolvedWorkflowComponent",
+        "resolve_preset_workflow_configuration",
+    } <= set(calibration_presets_resolution_module.__all__)
+
+
+def test_calibration_sessions_public_submodule_is_supported_domain_import() -> None:
+    calibration_sessions_module = import_module("janiform.calibration.sessions")
+
+    expected_exports = {
+        "CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_ENTRYPOINT",
+        "CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_ERROR_ID",
+        "CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_SCHEMA_VERSION",
+        "MarketDataSessionRecurringClosedWindow",
+        "MarketDataSessionRegularWindow",
+        "MarketDataSessionResolution",
+        "resolve_market_data_session_configuration",
+    }
+
+    assert set(calibration_sessions_module.__all__) == expected_exports
+    assert expected_exports <= set(dir(calibration_sessions_module))
+
+
+def test_calibration_sessions_public_ownership_submodules_are_supported_domain_imports() -> None:
+    calibration_sessions_contracts_module = import_module("janiform.calibration.sessions.contracts")
+    calibration_sessions_resolution_module = import_module("janiform.calibration.sessions.resolution")
+
+    assert set(calibration_sessions_contracts_module.__all__) == {
+        "CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_ENTRYPOINT",
+        "CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_ERROR_ID",
+        "CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_SCHEMA_VERSION",
+        "MarketDataSessionRecurringClosedWindow",
+        "MarketDataSessionRegularWindow",
+        "MarketDataSessionResolution",
+    }
+    assert set(calibration_sessions_resolution_module.__all__) == {
+        "ResolvedMarketDataSession",
+        "resolve_market_data_session_configuration",
+    }
+
+
+def test_calibration_root_and_public_submodules_share_supported_symbols() -> None:
+    calibration_module = import_module("janiform.calibration")
+    calibration_fit_module = import_module("janiform.calibration.fit")
+    calibration_market_data_module = import_module("janiform.calibration.market_data")
+    calibration_presets_module = import_module("janiform.calibration.presets")
+    calibration_sessions_module = import_module("janiform.calibration.sessions")
+    calibration_staged_module = import_module("janiform.calibration.staged")
+
+    assert calibration_module.JaniformEstimator is calibration_fit_module.JaniformEstimator
+    assert (
+        calibration_module.MarketDataCalibrationRequest
+        is calibration_market_data_module.MarketDataCalibrationRequest
+    )
+    assert calibration_module.PresetRegistry is calibration_presets_module.PresetRegistry
+    assert (
+        calibration_module.MarketDataSessionResolution
+        is calibration_sessions_module.MarketDataSessionResolution
+    )
+    assert (
+        calibration_module.StagedCalibrationExecutionInput
+        is calibration_staged_module.StagedCalibrationExecutionInput
+    )
+
+
+def test_calibration_root_and_public_ownership_submodules_share_supported_symbols() -> None:
+    calibration_module = import_module("janiform.calibration")
+
+    calibration_fit_estimator_module = import_module("janiform.calibration.fit.estimator")
+    calibration_fit_model_module = import_module("janiform.calibration.fit.model")
+    calibration_fit_report_module = import_module("janiform.calibration.fit.report")
+    calibration_market_data_contracts_module = import_module("janiform.calibration.market_data.contracts")
+    calibration_market_data_request_module = import_module("janiform.calibration.market_data.request")
+    calibration_presets_references_module = import_module("janiform.calibration.presets.references")
+    calibration_presets_registry_module = import_module("janiform.calibration.presets.registry")
+    calibration_presets_resolution_module = import_module("janiform.calibration.presets.resolution")
+    calibration_sessions_contracts_module = import_module("janiform.calibration.sessions.contracts")
+    calibration_staged_contracts_module = import_module("janiform.calibration.staged.contracts")
+    calibration_staged_inputs_module = import_module("janiform.calibration.staged.inputs")
+    calibration_staged_request_module = import_module("janiform.calibration.staged.request")
+    calibration_staged_results_module = import_module("janiform.calibration.staged.results")
+
+    assert calibration_module.JaniformEstimator is calibration_fit_estimator_module.JaniformEstimator
+    assert calibration_module.JaniformModel is calibration_fit_model_module.JaniformModel
+    assert calibration_module.JaniformFitReport is calibration_fit_report_module.JaniformFitReport
+    assert (
+        calibration_module.CalibrationMarketDataWorkflowScope
+        is calibration_market_data_contracts_module.CalibrationMarketDataWorkflowScope
+    )
+    assert (
+        calibration_module.MarketDataCalibrationRequest
+        is calibration_market_data_request_module.MarketDataCalibrationRequest
+    )
+    assert calibration_module.MarketProfileReference is calibration_presets_references_module.MarketProfileReference
+    assert calibration_module.PresetRegistry is calibration_presets_registry_module.PresetRegistry
+    assert (
+        calibration_module.resolve_preset_workflow_configuration
+        is calibration_presets_resolution_module.resolve_preset_workflow_configuration
+    )
+    assert (
+        calibration_module.MarketDataSessionResolution
+        is calibration_sessions_contracts_module.MarketDataSessionResolution
+    )
+    assert calibration_module.CalibrationExecutionMode is calibration_staged_contracts_module.CalibrationExecutionMode
+    assert calibration_module.StagedCalibrationRequest is calibration_staged_request_module.StagedCalibrationRequest
+    assert (
+        calibration_module.StagedCalibrationExecutionInput
+        is calibration_staged_inputs_module.StagedCalibrationExecutionInput
+    )
+    assert calibration_module.StagedCalibrationResponse is calibration_staged_results_module.StagedCalibrationResponse
 
 
 def test_readme_links_public_api_surface_policy() -> None:

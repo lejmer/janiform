@@ -7,10 +7,10 @@ from typing import Any
 
 import pytest
 
-from janiform.calibration import (
+from janiform.calibration import CalibrationValidationError
+from janiform.calibration.staged import (
     CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,
     CalibrationExecutionMode,
-    CalibrationValidationError,
     run_staged_calibration,
     validate_staged_calibration_execution_input,
     validate_staged_calibration_request,

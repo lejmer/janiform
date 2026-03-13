@@ -7,7 +7,7 @@ import pyarrow as pa
 from pyarrow import parquet as pyarrow_parquet
 
 from janiform.calendar import CalendarRegistry
-from janiform.calibration import (
+from janiform.calibration.staged import (
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
     CalibrationCoupledGapMarkConfiguration,
     CalibrationDayOfWeekSeasonalityEstimatorSettings,
