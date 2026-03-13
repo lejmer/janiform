@@ -10,7 +10,7 @@ import pytest
 
 import janiform.calibration as calibration_module
 import janiform.cli as cli_module
-import janiform.cli.parsing.command_tree as cli_command_tree_module
+import janiform.cli.command_tree as cli_command_tree_module
 import janiform.cli.commands.calibration as cli_calibration_commands_module
 import janiform.cli.commands.pricing as cli_pricing_commands_module
 import janiform.cli.commands.simulation as cli_simulation_commands_module

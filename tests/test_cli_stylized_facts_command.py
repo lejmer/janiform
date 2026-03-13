@@ -5,7 +5,7 @@ import orjson
 import pytest
 
 import janiform.cli as cli_module
-import janiform.cli.parsing.command_tree as cli_command_tree_module
+import janiform.cli.command_tree as cli_command_tree_module
 from examples._shared import (
     build_stylized_fact_artifact_export_config,
     build_stylized_fact_horizon_comparison_request,

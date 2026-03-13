@@ -50,22 +50,12 @@ def test_cli_public_command_submodules_are_supported_domain_imports() -> None:
     assert "run_coarse_simulation" in cli_simulation_commands_module.__all__
 
 
-def test_cli_public_parsing_submodules_are_supported_domain_imports() -> None:
-    cli_parsing_module = import_module("janiform.cli.parsing")
-    cli_command_tree_parsing_module = import_module("janiform.cli.parsing.command_tree")
-    cli_calibration_parsing_module = import_module("janiform.cli.parsing.calibration")
-    cli_development_parsing_module = import_module("janiform.cli.parsing.development")
-    cli_model_workflow_parsing_module = import_module("janiform.cli.parsing.model_workflows")
-    cli_simulation_parsing_module = import_module("janiform.cli.parsing.simulation")
+def test_cli_click_command_tree_helpers_remain_internal() -> None:
+    cli_command_tree_module = import_module("janiform.cli.command_tree")
 
-    assert "_build_parser" not in cli_parsing_module.__all__
-    assert "_parse_cli_arguments" not in cli_parsing_module.__all__
-    assert "_build_parser" in cli_command_tree_parsing_module.__all__
-    assert "_parse_cli_arguments" in cli_command_tree_parsing_module.__all__
-    assert "_build_calibration_parser" in cli_calibration_parsing_module.__all__
-    assert "_build_developer_parser" in cli_development_parsing_module.__all__
-    assert "_build_fit_parser" in cli_model_workflow_parsing_module.__all__
-    assert "_build_simulation_parser" in cli_simulation_parsing_module.__all__
+    assert "_build_app" in cli_command_tree_module.__all__
+    assert "_build_parser" in cli_command_tree_module.__all__
+    assert "_parse_cli_arguments" in cli_command_tree_module.__all__
 
 
 def test_simulation_public_symbols_live_in_simulation_module() -> None:

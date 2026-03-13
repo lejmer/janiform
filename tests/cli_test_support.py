@@ -8,7 +8,7 @@ import orjson
 import pyarrow as pa
 from pyarrow import parquet as pyarrow_parquet
 
-import janiform.cli.parsing.command_tree as cli_command_tree_module
+import janiform.cli.command_tree as cli_command_tree_module
 from examples._shared import (
     build_coarse_simulation_request as build_example_coarse_simulation_request,
     build_pricing_interval_factors,

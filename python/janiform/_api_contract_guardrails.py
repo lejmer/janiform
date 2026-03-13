@@ -59,12 +59,6 @@ PUBLIC_CONTRACT_MODULE_NAMES: tuple[str, ...] = (
     "janiform.cli.commands.development",
     "janiform.cli.commands.model_workflows",
     "janiform.cli.commands.simulation",
-    "janiform.cli.parsing",
-    "janiform.cli.parsing.command_tree",
-    "janiform.cli.parsing.calibration",
-    "janiform.cli.parsing.development",
-    "janiform.cli.parsing.model_workflows",
-    "janiform.cli.parsing.simulation",
     "janiform.validation",
     "janiform.stylized_facts",
 )
