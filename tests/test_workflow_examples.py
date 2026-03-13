@@ -17,6 +17,9 @@ ALLOWED_JANIFORM_IMPORTS = {
     "janiform.pricing",
     "janiform.risk",
     "janiform.simulation",
+    "janiform.simulation.coarse",
+    "janiform.simulation.seeded",
+    "janiform.simulation.shared",
 }
 
 

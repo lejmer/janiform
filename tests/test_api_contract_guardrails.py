@@ -75,9 +75,17 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
     approved_snapshot = _minimal_snapshot(
         public_modules={
             "janiform.simulation": ["SeededTickSimulationRequest", "run_seeded_tick_event_simulation"],
+            "janiform.simulation.coarse": [
+                "CoarseSimulationRunRequest",
+                "run_coarse_simulation",
+            ],
             "janiform.simulation.seeded": [
                 "SeededTickSimulationRequest",
                 "run_seeded_tick_event_simulation",
+            ],
+            "janiform.simulation.shared": [
+                "HawkesKernelParameters",
+                "SeededTickSimulationValidationError",
             ],
         }
     )
@@ -85,7 +93,9 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
 
     assert set(approved_snapshot["public_modules"]) == {
         "janiform.simulation",
+        "janiform.simulation.coarse",
         "janiform.simulation.seeded",
+        "janiform.simulation.shared",
     }
 
     validate_public_api_contract_guardrail_manifest(guardrail_manifest, approved_snapshot)

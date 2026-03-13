@@ -3262,6 +3262,7 @@
         "COARSE_SIMULATION_PATH_RECORD_SCHEMA_VERSION",
         "COARSE_SIMULATION_PATH_SCHEMA_VERSION",
         "COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION",
+        "CalendarRegistry",
         "CoarseSimulationModelInputs",
         "CoarseSimulationPath",
         "CoarseSimulationPathDiagnostics",
@@ -3274,6 +3275,9 @@
         "HawkesExcitationState",
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
+        "HourlyFactorContract",
+        "HourlyNewsIntensityProviderSource",
+        "HourlySeasonalityProviderSource",
         "KnownNewsArrivalConfiguration",
         "NewsArrivalConfiguration",
         "NewsComponentMarkScaleConfiguration",
@@ -3394,6 +3398,13 @@
         "COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION": {
           "kind": "constant",
           "value": "simulation.coarse_interval.run_request.v1"
+        },
+        "CalendarRegistry": {
+          "base_classes": [],
+          "constructor_signature": "(registry_json: 'str') -> 'None'",
+          "kind": "class",
+          "origin_module": "janiform.calendar",
+          "qualname": "CalendarRegistry"
         },
         "CoarseSimulationModelInputs": {
           "field_names": [
@@ -3549,6 +3560,21 @@
           ],
           "kind": "contract_model",
           "signature": "(lambda_bar: 'float', beta: 'float', alpha: 'HawkesKernelLoadings', rho: 'HawkesKernelLoadings') -> 'None'"
+        },
+        "HourlyFactorContract": {
+          "base_classes": [],
+          "constructor_signature": "(native_result: 'object') -> 'None'",
+          "kind": "class",
+          "origin_module": "janiform.hourly_factors",
+          "qualname": "HourlyFactorContract"
+        },
+        "HourlyNewsIntensityProviderSource": {
+          "kind": "constant",
+          "value": "HourlyNewsIntensityProviderSource"
+        },
+        "HourlySeasonalityProviderSource": {
+          "kind": "constant",
+          "value": "HourlySeasonalityProviderSource"
         },
         "KnownNewsArrivalConfiguration": {
           "field_names": [
@@ -3780,7 +3806,7 @@
           ],
           "constructor_signature": "(failure: 'ContractValidationFailure') -> 'None'",
           "kind": "exception_class",
-          "origin_module": "janiform.simulation._shared",
+          "origin_module": "janiform.simulation.shared.errors",
           "qualname": "SeededTickSimulationValidationError"
         },
         "SeededTickSimulationValidationFailure": {
@@ -3861,20 +3887,364 @@
         }
       }
     },
+    "janiform.simulation.coarse": {
+      "exports": [
+        "COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY",
+        "COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY",
+        "COARSE_SIMULATION_ENVIRONMENT_METADATA_POLICY",
+        "COARSE_SIMULATION_INTERVAL_FACTOR_ALIGNMENT_POLICY",
+        "COARSE_SIMULATION_INTERVAL_IDENTIFIER_POLICY",
+        "COARSE_SIMULATION_INTERVAL_TIMING_POLICY",
+        "COARSE_SIMULATION_PATH_DIAGNOSTICS_SCHEMA_VERSION",
+        "COARSE_SIMULATION_PATH_OUTPUT_SCHEMA_METADATA_VERSION",
+        "COARSE_SIMULATION_PATH_PROVENANCE_SCHEMA_VERSION",
+        "COARSE_SIMULATION_PATH_RECORD_SCHEMA_VERSION",
+        "COARSE_SIMULATION_PATH_SCHEMA_VERSION",
+        "COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION",
+        "CoarseSimulationModelInputs",
+        "CoarseSimulationPath",
+        "CoarseSimulationPathDiagnostics",
+        "CoarseSimulationPathOutputSchemaMetadata",
+        "CoarseSimulationPathProvenance",
+        "CoarseSimulationPathRecord",
+        "CoarseSimulationRunRequest",
+        "CoupledGapMarkConfiguration",
+        "DoubleExponentialBaseShockConfiguration",
+        "KnownNewsArrivalConfiguration",
+        "NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION",
+        "NewsArrivalConfiguration",
+        "NewsComponentMarkScaleConfiguration",
+        "NewsProcessConfiguration",
+        "SharedNewsMarkLawConfiguration",
+        "SurpriseNewsArrivalConfiguration",
+        "deserialize_coarse_simulation_path",
+        "deserialize_coarse_simulation_run_request",
+        "run_coarse_simulation",
+        "serialize_coarse_simulation_path",
+        "serialize_coarse_simulation_run_request",
+        "validate_coarse_simulation_path",
+        "validate_coarse_simulation_run_request"
+      ],
+      "module_name": "janiform.simulation.coarse",
+      "schema_identifiers": [
+        {
+          "name": "COARSE_SIMULATION_PATH_DIAGNOSTICS_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "simulation.coarse_interval.path_diagnostics.v1"
+        },
+        {
+          "name": "COARSE_SIMULATION_PATH_OUTPUT_SCHEMA_METADATA_VERSION",
+          "public_exported": true,
+          "value": "simulation.coarse_interval.path_output_schema_metadata.v1"
+        },
+        {
+          "name": "COARSE_SIMULATION_PATH_PROVENANCE_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "simulation.coarse_interval.path_provenance.v1"
+        },
+        {
+          "name": "COARSE_SIMULATION_PATH_RECORD_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "simulation.coarse_interval.path_record.v1"
+        },
+        {
+          "name": "COARSE_SIMULATION_PATH_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "simulation.coarse_interval.path.v1"
+        },
+        {
+          "name": "COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "simulation.coarse_interval.run_request.v1"
+        },
+        {
+          "name": "NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "news.process.configuration.v1"
+        }
+      ],
+      "symbols": {
+        "COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY": {
+          "kind": "constant",
+          "value": "time_indexed_coarse_interval_simulation_path_for_validation_and_analytics.v1"
+        },
+        "COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY": {
+          "kind": "constant",
+          "value": "interval_delta_must_map_to_an_exact_fixed_width_utc_nanosecond_grid.v1"
+        },
+        "COARSE_SIMULATION_ENVIRONMENT_METADATA_POLICY": {
+          "kind": "constant",
+          "value": "exclude_environment_specific_metadata.v1"
+        },
+        "COARSE_SIMULATION_INTERVAL_FACTOR_ALIGNMENT_POLICY": {
+          "kind": "constant",
+          "value": "factor_row_zero_anchors_to_start_time_utc_and_rows_progress_in_request_interval_order_without_implicit_resampling.v1"
+        },
+        "COARSE_SIMULATION_INTERVAL_IDENTIFIER_POLICY": {
+          "kind": "constant",
+          "value": "interval_index_and_explicit_utc_boundary_timestamps.v1"
+        },
+        "COARSE_SIMULATION_INTERVAL_TIMING_POLICY": {
+          "kind": "constant",
+          "value": "start_time_utc_anchor_plus_fixed_interval_delta_half_open_utc_boundaries.v1"
+        },
+        "COARSE_SIMULATION_PATH_DIAGNOSTICS_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "simulation.coarse_interval.path_diagnostics.v1"
+        },
+        "COARSE_SIMULATION_PATH_OUTPUT_SCHEMA_METADATA_VERSION": {
+          "kind": "constant",
+          "value": "simulation.coarse_interval.path_output_schema_metadata.v1"
+        },
+        "COARSE_SIMULATION_PATH_PROVENANCE_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "simulation.coarse_interval.path_provenance.v1"
+        },
+        "COARSE_SIMULATION_PATH_RECORD_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "simulation.coarse_interval.path_record.v1"
+        },
+        "COARSE_SIMULATION_PATH_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "simulation.coarse_interval.path.v1"
+        },
+        "COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "simulation.coarse_interval.run_request.v1"
+        },
+        "CoarseSimulationModelInputs": {
+          "field_names": [
+            "risk_model_inputs",
+            "news_process_configuration",
+            "calendar_registry_artifact",
+            "exchange_code"
+          ],
+          "kind": "contract_model",
+          "signature": "(risk_model_inputs: 'Any', news_process_configuration: 'NewsProcessConfiguration', calendar_registry_artifact: 'dict[str, Any]', exchange_code: 'str') -> 'None'"
+        },
+        "CoarseSimulationPath": {
+          "field_names": [
+            "schema_version",
+            "run_request_schema_version",
+            "output_schema_metadata",
+            "provenance",
+            "diagnostics",
+            "seed",
+            "start_time_utc_nanos",
+            "end_time_utc_nanos",
+            "interval_delta",
+            "simulated_interval_count",
+            "initial_excitation_state",
+            "terminal_excitation_state",
+            "records"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', run_request_schema_version: 'str', output_schema_metadata: 'CoarseSimulationPathOutputSchemaMetadata', provenance: 'CoarseSimulationPathProvenance', diagnostics: 'CoarseSimulationPathDiagnostics', seed: 'int', start_time_utc_nanos: 'int', end_time_utc_nanos: 'int', interval_delta: 'float', simulated_interval_count: 'int', initial_excitation_state: 'HawkesExcitationState', terminal_excitation_state: 'HawkesExcitationState', records: 'tuple[CoarseSimulationPathRecord, ...]') -> 'None'"
+        },
+        "CoarseSimulationPathDiagnostics": {
+          "field_names": [
+            "schema_version",
+            "simulated_interval_count",
+            "first_interval_index",
+            "last_interval_index",
+            "first_interval_start_utc_nanos",
+            "last_interval_end_utc_nanos",
+            "cumulative_a_plus",
+            "cumulative_a_minus",
+            "cumulative_n_plus",
+            "cumulative_n_minus",
+            "cumulative_trading_time_return",
+            "cumulative_open_jump_return",
+            "cumulative_closed_gap_return",
+            "cumulative_total_return",
+            "max_abs_total_return"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', simulated_interval_count: 'int', first_interval_index: 'int', last_interval_index: 'int', first_interval_start_utc_nanos: 'int', last_interval_end_utc_nanos: 'int', cumulative_a_plus: 'float', cumulative_a_minus: 'float', cumulative_n_plus: 'int', cumulative_n_minus: 'int', cumulative_trading_time_return: 'float', cumulative_open_jump_return: 'float', cumulative_closed_gap_return: 'float', cumulative_total_return: 'float', max_abs_total_return: 'float') -> 'None'"
+        },
+        "CoarseSimulationPathOutputSchemaMetadata": {
+          "field_names": [
+            "schema_version",
+            "provenance_schema_version",
+            "diagnostics_schema_version",
+            "artifact_workflow_policy",
+            "environment_metadata_policy",
+            "required_path_fields",
+            "required_record_fields",
+            "required_provenance_fields",
+            "required_diagnostics_fields"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', provenance_schema_version: 'str', diagnostics_schema_version: 'str', artifact_workflow_policy: 'str', environment_metadata_policy: 'str', required_path_fields: 'tuple[str, ...]', required_record_fields: 'tuple[str, ...]', required_provenance_fields: 'tuple[str, ...]', required_diagnostics_fields: 'tuple[str, ...]') -> 'None'"
+        },
+        "CoarseSimulationPathProvenance": {
+          "field_names": [
+            "schema_version",
+            "artifact_workflow_policy",
+            "environment_metadata_policy",
+            "interval_timing_policy",
+            "interval_identifier_policy",
+            "interval_factor_alignment_policy",
+            "compatible_interval_grid_policy",
+            "interval_factor_policy",
+            "transform_slice_sampling_policy",
+            "boundary_state_update_policy",
+            "interval_return_generation_policy",
+            "interval_return_component_routing_policy",
+            "batch_seed_partition_policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', artifact_workflow_policy: 'str', environment_metadata_policy: 'str', interval_timing_policy: 'str', interval_identifier_policy: 'str', interval_factor_alignment_policy: 'str', compatible_interval_grid_policy: 'str', interval_factor_policy: 'str', transform_slice_sampling_policy: 'str', boundary_state_update_policy: 'str', interval_return_generation_policy: 'str', interval_return_component_routing_policy: 'str', batch_seed_partition_policy: 'str') -> 'None'"
+        },
+        "CoarseSimulationPathRecord": {
+          "field_names": [
+            "schema_version",
+            "interval_index",
+            "interval_start_utc_nanos",
+            "interval_end_utc_nanos",
+            "sufficient_statistics",
+            "return_components"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', interval_index: 'int', interval_start_utc_nanos: 'int', interval_end_utc_nanos: 'int', sufficient_statistics: 'Any', return_components: 'Any') -> 'None'"
+        },
+        "CoarseSimulationRunRequest": {
+          "field_names": [
+            "schema_version",
+            "seed",
+            "start_time_utc_nanos",
+            "horizon_interval_count",
+            "interval_delta",
+            "model_inputs",
+            "interval_factors"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', seed: 'int', start_time_utc_nanos: 'int', horizon_interval_count: 'int', interval_delta: 'float', model_inputs: 'CoarseSimulationModelInputs', interval_factors: 'Any') -> 'None'"
+        },
+        "CoupledGapMarkConfiguration": {
+          "field_names": [
+            "sigma_g"
+          ],
+          "kind": "contract_model",
+          "signature": "(sigma_g: 'float') -> 'None'"
+        },
+        "DoubleExponentialBaseShockConfiguration": {
+          "field_names": [
+            "probability_positive",
+            "eta_plus",
+            "eta_minus"
+          ],
+          "kind": "contract_model",
+          "signature": "(probability_positive: 'float', eta_plus: 'float', eta_minus: 'float') -> 'None'"
+        },
+        "KnownNewsArrivalConfiguration": {
+          "field_names": [
+            "scheduled_event_timestamps_utc_nanos"
+          ],
+          "kind": "contract_model",
+          "signature": "(scheduled_event_timestamps_utc_nanos: 'tuple[int, ...]') -> 'None'"
+        },
+        "NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "news.process.configuration.v1"
+        },
+        "NewsArrivalConfiguration": {
+          "field_names": [
+            "known",
+            "surprise"
+          ],
+          "kind": "contract_model",
+          "signature": "(known: 'KnownNewsArrivalConfiguration', surprise: 'SurpriseNewsArrivalConfiguration') -> 'None'"
+        },
+        "NewsComponentMarkScaleConfiguration": {
+          "field_names": [
+            "activity_coupling_scale",
+            "return_jump_scale"
+          ],
+          "kind": "contract_model",
+          "signature": "(activity_coupling_scale: 'float', return_jump_scale: 'float') -> 'None'"
+        },
+        "NewsProcessConfiguration": {
+          "field_names": [
+            "schema_version",
+            "arrivals",
+            "shared_mark_law",
+            "known_component_mark_scales",
+            "surprise_component_mark_scales"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', arrivals: 'NewsArrivalConfiguration', shared_mark_law: 'SharedNewsMarkLawConfiguration', known_component_mark_scales: 'NewsComponentMarkScaleConfiguration', surprise_component_mark_scales: 'NewsComponentMarkScaleConfiguration') -> 'None'"
+        },
+        "SharedNewsMarkLawConfiguration": {
+          "field_names": [
+            "gamma_severity_marks",
+            "double_exponential_base_shock",
+            "coupled_gap_marks"
+          ],
+          "kind": "contract_model",
+          "signature": "(gamma_severity_marks: 'Any', double_exponential_base_shock: 'DoubleExponentialBaseShockConfiguration', coupled_gap_marks: 'CoupledGapMarkConfiguration') -> 'None'"
+        },
+        "SurpriseNewsArrivalConfiguration": {
+          "field_names": [
+            "baseline_intensity"
+          ],
+          "kind": "contract_model",
+          "signature": "(baseline_intensity: 'float') -> 'None'"
+        },
+        "deserialize_coarse_simulation_path": {
+          "kind": "function",
+          "signature": "(payload_json: 'str') -> 'CoarseSimulationPath'"
+        },
+        "deserialize_coarse_simulation_run_request": {
+          "kind": "function",
+          "signature": "(payload_json: 'str') -> 'CoarseSimulationRunRequest'"
+        },
+        "run_coarse_simulation": {
+          "kind": "function",
+          "signature": "(request: 'CoarseSimulationRunRequest') -> 'CoarseSimulationPath'"
+        },
+        "serialize_coarse_simulation_path": {
+          "kind": "function",
+          "signature": "(path: 'CoarseSimulationPath') -> 'str'"
+        },
+        "serialize_coarse_simulation_run_request": {
+          "kind": "function",
+          "signature": "(request: 'CoarseSimulationRunRequest') -> 'str'"
+        },
+        "validate_coarse_simulation_path": {
+          "kind": "function",
+          "signature": "(raw_path: 'dict[str, Any] | Any') -> 'CoarseSimulationPath'"
+        },
+        "validate_coarse_simulation_run_request": {
+          "kind": "function",
+          "signature": "(raw_request: 'dict[str, Any] | Any') -> 'CoarseSimulationRunRequest'"
+        }
+      }
+    },
     "janiform.simulation.seeded": {
       "exports": [
+        "CalendarRegistry",
         "HawkesExcitationState",
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
+        "HourlyFactorContract",
+        "HourlyNewsIntensityProviderSource",
+        "HourlySeasonalityProviderSource",
+        "SEEDED_TICK_SIMULATION_BOUNDARY_TRANSPORT_POLICY",
+        "SEEDED_TICK_SIMULATION_DIAGNOSTICS_SCHEMA_VERSION",
+        "SEEDED_TICK_SIMULATION_NATIVE_CHUNK_RECORD_COUNT",
+        "SEEDED_TICK_SIMULATION_PAYLOAD_TRANSPORT_POLICY",
         "SeededFinePathMetadata",
         "SeededFinePathNewsArrivalComponent",
         "SeededFinePathRecord",
         "SeededFinePathTransitionKind",
+        "SeededFinePathView",
         "SeededTickEventRecord",
         "SeededTickEventSide",
         "SeededTickEventStateSnapshot",
         "SeededTickEventStateSnapshotCapture",
         "SeededTickEventTapeMetadata",
+        "SeededTickEventTapeView",
         "SeededTickSimulationDiagnostics",
         "SeededTickSimulationHourlyFactorSummary",
         "SeededTickSimulationRequest",
@@ -3888,8 +4258,21 @@
         "validate_seeded_tick_simulation_response"
       ],
       "module_name": "janiform.simulation.seeded",
-      "schema_identifiers": [],
+      "schema_identifiers": [
+        {
+          "name": "SEEDED_TICK_SIMULATION_DIAGNOSTICS_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "simulation.seeded_tick.path_diagnostics.v1"
+        }
+      ],
       "symbols": {
+        "CalendarRegistry": {
+          "base_classes": [],
+          "constructor_signature": "(registry_json: 'str') -> 'None'",
+          "kind": "class",
+          "origin_module": "janiform.calendar",
+          "qualname": "CalendarRegistry"
+        },
         "HawkesExcitationState": {
           "field_names": [
             "y_plus_plus",
@@ -3919,6 +4302,37 @@
           ],
           "kind": "contract_model",
           "signature": "(lambda_bar: 'float', beta: 'float', alpha: 'HawkesKernelLoadings', rho: 'HawkesKernelLoadings') -> 'None'"
+        },
+        "HourlyFactorContract": {
+          "base_classes": [],
+          "constructor_signature": "(native_result: 'object') -> 'None'",
+          "kind": "class",
+          "origin_module": "janiform.hourly_factors",
+          "qualname": "HourlyFactorContract"
+        },
+        "HourlyNewsIntensityProviderSource": {
+          "kind": "constant",
+          "value": "HourlyNewsIntensityProviderSource"
+        },
+        "HourlySeasonalityProviderSource": {
+          "kind": "constant",
+          "value": "HourlySeasonalityProviderSource"
+        },
+        "SEEDED_TICK_SIMULATION_BOUNDARY_TRANSPORT_POLICY": {
+          "kind": "constant",
+          "value": "native_handle_chunked_json_projection.v1"
+        },
+        "SEEDED_TICK_SIMULATION_DIAGNOSTICS_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "simulation.seeded_tick.path_diagnostics.v1"
+        },
+        "SEEDED_TICK_SIMULATION_NATIVE_CHUNK_RECORD_COUNT": {
+          "kind": "constant",
+          "value": 256
+        },
+        "SEEDED_TICK_SIMULATION_PAYLOAD_TRANSPORT_POLICY": {
+          "kind": "constant",
+          "value": "materialized_payload_projection.v1"
         },
         "SeededFinePathMetadata": {
           "field_names": [
@@ -3983,6 +4397,22 @@
             }
           ]
         },
+        "SeededFinePathView": {
+          "base_classes": [
+            "_NativeBackedSequenceView",
+            "Sequence",
+            "Reversible",
+            "Collection",
+            "Sized",
+            "Iterable",
+            "Container",
+            "Generic"
+          ],
+          "constructor_signature": "(*, materialized_records: 'Optional[tuple[SeededFinePathRecord, ...]]' = None, native_result: 'Optional[Any]' = None, chunk_record_count: 'int' = 256, tracker: 'Optional[_SeededTickSimulationMaterializationTracker]' = None) -> 'None'",
+          "kind": "class",
+          "origin_module": "janiform.simulation.seeded.response",
+          "qualname": "SeededFinePathView"
+        },
         "SeededTickEventRecord": {
           "field_names": [
             "event_index",
@@ -4044,6 +4474,22 @@
           ],
           "kind": "contract_model",
           "signature": "(schema_version: 'str', event_record_schema_version: 'str', state_snapshot_schema_version: 'str', event_ordering_policy: 'str', timestamp_representation_policy: 'str', side_encoding_policy: 'str', state_snapshot_capture: 'SeededTickEventStateSnapshotCapture', state_snapshot_capture_point_policy: 'Optional[str]' = None) -> 'None'"
+        },
+        "SeededTickEventTapeView": {
+          "base_classes": [
+            "_NativeBackedSequenceView",
+            "Sequence",
+            "Reversible",
+            "Collection",
+            "Sized",
+            "Iterable",
+            "Container",
+            "Generic"
+          ],
+          "constructor_signature": "(*, materialized_records: 'Optional[tuple[SeededTickEventRecord, ...]]' = None, native_result: 'Optional[Any]' = None, chunk_record_count: 'int' = 256, tracker: 'Optional[_SeededTickSimulationMaterializationTracker]' = None) -> 'None'",
+          "kind": "class",
+          "origin_module": "janiform.simulation.seeded.response",
+          "qualname": "SeededTickEventTapeView"
         },
         "SeededTickSimulationDiagnostics": {
           "field_names": [
@@ -4116,7 +4562,7 @@
           ],
           "constructor_signature": "(failure: 'ContractValidationFailure') -> 'None'",
           "kind": "exception_class",
-          "origin_module": "janiform.simulation._shared",
+          "origin_module": "janiform.simulation.shared.errors",
           "qualname": "SeededTickSimulationValidationError"
         },
         "SeededTickSimulationValidationFailure": {
@@ -4150,6 +4596,101 @@
         "validate_seeded_tick_simulation_response": {
           "kind": "function",
           "signature": "(raw_response: 'dict[str, Any] | Any') -> 'SeededTickSimulationResponse'"
+        }
+      }
+    },
+    "janiform.simulation.shared": {
+      "exports": [
+        "HawkesExcitationState",
+        "HawkesKernelLoadings",
+        "HawkesKernelParameters",
+        "SeededTickEventSide",
+        "SeededTickEventStateSnapshotCapture",
+        "SeededTickSimulationValidationError",
+        "SeededTickSimulationValidationFailure"
+      ],
+      "module_name": "janiform.simulation.shared",
+      "schema_identifiers": [],
+      "symbols": {
+        "HawkesExcitationState": {
+          "field_names": [
+            "y_plus_plus",
+            "y_plus_minus",
+            "y_minus_plus",
+            "y_minus_minus"
+          ],
+          "kind": "contract_model",
+          "signature": "(y_plus_plus: 'float', y_plus_minus: 'float', y_minus_plus: 'float', y_minus_minus: 'float') -> 'None'"
+        },
+        "HawkesKernelLoadings": {
+          "field_names": [
+            "plus_plus",
+            "plus_minus",
+            "minus_plus",
+            "minus_minus"
+          ],
+          "kind": "contract_model",
+          "signature": "(plus_plus: 'float', plus_minus: 'float', minus_plus: 'float', minus_minus: 'float') -> 'None'"
+        },
+        "HawkesKernelParameters": {
+          "field_names": [
+            "lambda_bar",
+            "beta",
+            "alpha",
+            "rho"
+          ],
+          "kind": "contract_model",
+          "signature": "(lambda_bar: 'float', beta: 'float', alpha: 'HawkesKernelLoadings', rho: 'HawkesKernelLoadings') -> 'None'"
+        },
+        "SeededTickEventSide": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "BUY",
+              "value": "buy"
+            },
+            {
+              "name": "SELL",
+              "value": "sell"
+            }
+          ]
+        },
+        "SeededTickEventStateSnapshotCapture": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "DISABLED",
+              "value": "disabled"
+            },
+            {
+              "name": "POST_EVENT_TRANSITION",
+              "value": "post_event_transition"
+            }
+          ]
+        },
+        "SeededTickSimulationValidationError": {
+          "base_classes": [
+            "JaniformValidationError",
+            "JaniformError",
+            "Exception",
+            "BaseException"
+          ],
+          "constructor_signature": "(failure: 'ContractValidationFailure') -> 'None'",
+          "kind": "exception_class",
+          "origin_module": "janiform.simulation.shared.errors",
+          "qualname": "SeededTickSimulationValidationError"
+        },
+        "SeededTickSimulationValidationFailure": {
+          "field_names": [
+            "error_id",
+            "workflow",
+            "entrypoint",
+            "field_path",
+            "message",
+            "context_items"
+          ],
+          "kind": "contract_model",
+          "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
         }
       }
     },
