@@ -3,7 +3,7 @@ from io import StringIO
 
 import pytest
 
-from janiform import cli as cli_module
+import janiform.cli.parsing.command_tree as cli_command_tree_module
 
 
 def test_cli_top_level_help_lists_primary_and_developer_namespaces() -> None:
@@ -77,7 +77,7 @@ def test_regression_help_lists_developer_regression_commands() -> None:
 
 
 def _render_help(arguments: list[str]) -> str:
-    parser = cli_module._build_parser()
+    parser = cli_command_tree_module._build_parser()
     stdout_buffer = StringIO()
 
     with pytest.raises(SystemExit) as captured_exit:

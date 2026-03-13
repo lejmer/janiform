@@ -1,10 +1,9 @@
-from ._commands import (
-    _override_calibration_execution_mode,
-    _resolve_path_from_repository_root,
+from .commands.calibration import _override_calibration_execution_mode
+from .commands.development import (
     _run_deterministic_regression_command,
     _run_open_closed_gap_leakage_regression_command,
-    main,
 )
+from .dispatch import main
 from ._constants import (
     CLI_ARGUMENT_PRECEDENCE_POLICY,
     CLI_ARGUMENT_RESOLUTION_ENTRYPOINT,
@@ -105,7 +104,7 @@ from ._constants import (
     DEFAULT_CALENDAR_FIXTURE_PATH,
     DEFAULT_GAP_BEHAVIOR_FIXTURE_PATH,
 )
-from ._parser import _build_parser, _parse_cli_arguments
+from .paths import _resolve_path_from_repository_root
 
 __all__ = [
     "CLI_ARGUMENT_PRECEDENCE_POLICY",

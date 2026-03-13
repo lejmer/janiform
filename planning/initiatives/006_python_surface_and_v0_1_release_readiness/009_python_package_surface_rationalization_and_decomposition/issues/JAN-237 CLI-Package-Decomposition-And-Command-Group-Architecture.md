@@ -6,6 +6,7 @@ Break `janiform.cli` out of the current large `_commands` and parser modules int
 ### Implementation details
 - Replace `_commands.py` as the primary CLI implementation bucket with a package layout that can support multiple command-group modules without requiring an underscore-named subpackage.
 - Separate command dispatch, argument parsing, output rendering, environment and path resolution, and workflow adapters into clearer modules.
+- Do not give any of the new modules an underscored named.
 - Preserve a simple `janiform.cli.main` entrypoint and the `python -m janiform` flow while allowing the internal package structure to grow sanely.
 - Decide which CLI modules should remain internal helpers and which should be named modules because they represent real command-group organization.
 - Update docs and tests that currently import `_commands` or `_parser` directly when those internals are replaced.

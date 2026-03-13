@@ -8,7 +8,7 @@ import orjson
 import pyarrow as pa
 from pyarrow import parquet as pyarrow_parquet
 
-import janiform.cli as cli_module
+import janiform.cli.parsing.command_tree as cli_command_tree_module
 from examples._shared import (
     build_coarse_simulation_request as build_example_coarse_simulation_request,
     build_pricing_interval_factors,
@@ -141,7 +141,7 @@ def invoke_cli(
     *,
     environment: dict[str, str] | None = None,
 ) -> tuple[int, str, str]:
-    parsed_arguments = cli_module._parse_cli_arguments(
+    parsed_arguments = cli_command_tree_module._parse_cli_arguments(
         arguments,
         environment={} if environment is None else environment,
     )
@@ -156,7 +156,7 @@ def invoke_cli(
 
 
 def render_help(arguments: list[str]) -> str:
-    parser = cli_module._build_parser()
+    parser = cli_command_tree_module._build_parser()
     stdout_buffer = StringIO()
 
     try:

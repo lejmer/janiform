@@ -10,6 +10,10 @@ This guide defines the top-level Janiform CLI command tree for the current pre-v
 workflow surface. It keeps the primary user-facing workflows separate from internal
 developer utilities and aligns command names with the public Python workflow modules.
 
+It also defines the supported Python package layout for the CLI implementation so the
+command tree can grow without recreating monolithic `_commands.py` or `_parser.py`
+implementation buckets.
+
 ## Command tree
 
 ```text
@@ -44,6 +48,19 @@ janiform
 - `dev` is reserved for internal and developer-only utilities.
 - Developer-only commands must not be placed beside primary workflow groups at the top level.
 - Command aliases are forbidden because they add ambiguity to automation and shell scripts.
+
+## Python package layout
+
+- `janiform.cli` remains the curated convenience root for `main()` and stable CLI constants.
+- `janiform.cli.commands.*` is the supported ownership path for real command groups such as:
+  - `model_workflows`
+  - `simulation`
+  - `calibration`
+  - `development`
+- `janiform.cli.parsing.*` is the supported ownership path for parser construction by command group.
+- Named command-group modules are preferred over catch-all buckets when the contents mirror a real command namespace.
+- Low-level CLI boundary helpers such as rendering, document loading, and path resolution may live in named helper modules, but they are not command-group ownership modules and should stay smaller than the workflow-facing packages.
+- New CLI modules should not use underscore-prefixed module names unless they are truly private implementation details.
 
 ## Naming policy
 

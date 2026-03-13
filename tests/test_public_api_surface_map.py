@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 import janiform
+import janiform.cli as cli_module
 import janiform.errors as errors_module
 import janiform.hourly_factors as hourly_factors_module
 import janiform.pricing as pricing_module
@@ -25,6 +26,46 @@ def test_package_root_surface_is_intentionally_minimal() -> None:
     assert "load_hourly_factor_contract_for_pricing" not in root_exports
     assert "validate_sufficient_statistics_risk_run_request" not in root_exports
     assert "native_module" not in root_exports
+
+
+def test_cli_public_module_is_a_package_with_curated_root_exports() -> None:
+    assert hasattr(cli_module, "__path__")
+    assert "main" in cli_module.__all__
+    assert "_build_parser" not in cli_module.__dict__
+    assert "_parse_cli_arguments" not in cli_module.__dict__
+
+
+def test_cli_public_command_submodules_are_supported_domain_imports() -> None:
+    cli_commands_module = import_module("janiform.cli.commands")
+    cli_calibration_commands_module = import_module("janiform.cli.commands.calibration")
+    cli_development_commands_module = import_module("janiform.cli.commands.development")
+    cli_model_workflow_commands_module = import_module("janiform.cli.commands.model_workflows")
+    cli_simulation_commands_module = import_module("janiform.cli.commands.simulation")
+
+    assert "_run_fit_command" in cli_commands_module.__all__
+    assert "_run_calibration_market_data_command" in cli_calibration_commands_module.__all__
+    assert "_run_deterministic_regression_command" in cli_development_commands_module.__all__
+    assert "_run_model_simulate_command" in cli_model_workflow_commands_module.__all__
+    assert "_run_simulation_seeded_ticks_command" in cli_simulation_commands_module.__all__
+    assert "run_coarse_simulation" in cli_simulation_commands_module.__all__
+
+
+def test_cli_public_parsing_submodules_are_supported_domain_imports() -> None:
+    cli_parsing_module = import_module("janiform.cli.parsing")
+    cli_command_tree_parsing_module = import_module("janiform.cli.parsing.command_tree")
+    cli_calibration_parsing_module = import_module("janiform.cli.parsing.calibration")
+    cli_development_parsing_module = import_module("janiform.cli.parsing.development")
+    cli_model_workflow_parsing_module = import_module("janiform.cli.parsing.model_workflows")
+    cli_simulation_parsing_module = import_module("janiform.cli.parsing.simulation")
+
+    assert "_build_parser" not in cli_parsing_module.__all__
+    assert "_parse_cli_arguments" not in cli_parsing_module.__all__
+    assert "_build_parser" in cli_command_tree_parsing_module.__all__
+    assert "_parse_cli_arguments" in cli_command_tree_parsing_module.__all__
+    assert "_build_calibration_parser" in cli_calibration_parsing_module.__all__
+    assert "_build_developer_parser" in cli_development_parsing_module.__all__
+    assert "_build_fit_parser" in cli_model_workflow_parsing_module.__all__
+    assert "_build_simulation_parser" in cli_simulation_parsing_module.__all__
 
 
 def test_simulation_public_symbols_live_in_simulation_module() -> None:
