@@ -1,8 +1,32 @@
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Optional, cast
 
+import click
+
+from .model_workflows import (
+    _build_cli_preset_registry,
+    _parse_cli_preset_category,
+    _parse_cli_preset_scope,
+    _resolve_named_preset_scope,
+    _resolve_preset_artifact,
+)
+from .shared import _require_non_empty_cli_string
 from ..context import CliCommandContext
+from ..command_runtime import (
+    JaniformCommand,
+    JaniformGroup,
+    build_argument,
+    command_config_option,
+    command_option,
+    group_help_callback,
+    invoke_command_handler,
+    output_option,
+    preset_scope_option,
+    user_preset_json_option,
+)
 from .._constants import (
+    CLI_PRESET_CATEGORY_CHOICES,
     CLI_PRESET_LIST_SCHEMA_VERSION,
     CLI_PRESET_SHOW_SCHEMA_VERSION,
     CLI_PRESETS_EXPORT_ENTRYPOINT,
@@ -15,6 +39,7 @@ from .._constants import (
     CLI_PRESETS_SHOW_INTERNAL_ERROR_ID,
     CLI_PRESETS_SHOW_VALIDATION_ERROR_ID,
     CliExitCode,
+    CliOutputMode,
 )
 from ..errors import _classify_generic_cli_command_error
 from ..rendering import (
@@ -26,14 +51,6 @@ from ..rendering import (
 )
 from ...calibration.presets import PresetRegistryScope
 from ...errors import JaniformError
-from .model_workflows import (
-    _build_cli_preset_registry,
-    _parse_cli_preset_category,
-    _parse_cli_preset_scope,
-    _resolve_named_preset_scope,
-    _resolve_preset_artifact,
-)
-from .shared import _require_non_empty_cli_string
 
 
 def _run_presets_list_command(
@@ -216,6 +233,81 @@ def _run_presets_export_command(
     )
 
     return int(CliExitCode.SUCCESS)
+
+
+def _build_presets_group(*, environment: Mapping[str, str] | None = None) -> click.Group:
+    @click.group(
+        cls=JaniformGroup,
+        command_path=("presets",),
+        environment=environment,
+        help="Inspect bundled and user-registered presets.",
+        invoke_without_command=True,
+    )
+    @click.pass_context
+    def presets(ctx: click.Context) -> None:
+        group_help_callback(ctx)
+
+    @presets.command(
+        "list",
+        cls=JaniformCommand,
+        command_path=("presets", "list"),
+        environment=environment,
+        help="List available presets by category and registry scope.",
+        params=[
+            command_config_option(),
+            output_option(default_output_mode=CliOutputMode.JSON),
+            user_preset_json_option(),
+            command_option("--category", choice_options=CLI_PRESET_CATEGORY_CHOICES, help_text="Optional preset category filter."),
+            preset_scope_option("--scope", help_text="Registry scope filter. Default: auto.", include_auto=True),
+        ],
+    )
+    @click.pass_context
+    def list_presets(ctx: click.Context, **command_arguments: object) -> int:
+        return invoke_command_handler(
+            ctx,
+            handler=_run_presets_list_command,
+            command_path=("presets", "list"),
+            command_arguments=dict(command_arguments),
+        )
+
+    for command_name, handler, help_text in (
+        ("show", _run_presets_show_command, "Show a single preset artifact."),
+        ("export", _run_presets_export_command, "Export a preset with nested dependencies."),
+    ):
+        @presets.command(
+            command_name,
+            cls=JaniformCommand,
+            command_path=("presets", command_name),
+            environment=environment,
+            help=help_text,
+            params=[
+                command_config_option(),
+                output_option(default_output_mode=CliOutputMode.JSON),
+                user_preset_json_option(),
+                build_argument("category", choice_options=CLI_PRESET_CATEGORY_CHOICES),
+                build_argument("preset_name", metavar="PRESET_NAME"),
+                preset_scope_option(
+                    "--scope",
+                    help_text="Registry scope for the requested preset. Default: auto.",
+                    include_auto=True,
+                ),
+            ],
+        )
+        @click.pass_context
+        def named_preset_command(
+            ctx: click.Context,
+            _handler: Any = handler,
+            _command_name: str = command_name,
+            **command_arguments: object,
+        ) -> int:
+            return invoke_command_handler(
+                ctx,
+                handler=_handler,
+                command_path=("presets", _command_name),
+                command_arguments=dict(command_arguments),
+            )
+
+    return presets
 
 
 __all__ = [

@@ -1,12 +1,25 @@
+from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
+import click
+
+from ..command_runtime import (
+    JaniformCommand,
+    JaniformGroup,
+    command_config_option,
+    group_help_callback,
+    invoke_command_handler,
+    output_option,
+    required_json_path_option,
+)
 from ..context import CliCommandContext
 from .._constants import (
     CLI_PRICING_VANILLA_OPTION_ENTRYPOINT,
     CLI_PRICING_VANILLA_OPTION_INTERNAL_ERROR_ID,
     CLI_PRICING_VANILLA_OPTION_VALIDATION_ERROR_ID,
     CliExitCode,
+    CliOutputMode,
 )
 from ..documents import _load_json_document
 from ..errors import _classify_workflow_command_error
@@ -47,12 +60,54 @@ def _run_pricing_vanilla_option_command(
         )
 
     payload = run_result.to_payload()
+
     _write_command_output(
         output,
         json_payload=payload,
         human_output_factory=lambda: _render_pricing_vanilla_option_human_output(payload),
     )
+
     return int(CliExitCode.SUCCESS)
+
+
+def _build_pricing_group(*, environment: Mapping[str, str] | None = None) -> click.Group:
+    @click.group(
+        cls=JaniformGroup,
+        command_path=("pricing",),
+        environment=environment,
+        help="Pricing workflows.",
+        invoke_without_command=True,
+    )
+    @click.pass_context
+    def pricing(ctx: click.Context) -> None:
+        group_help_callback(ctx)
+
+    @pricing.command(
+        "vanilla-option",
+        cls=JaniformCommand,
+        command_path=("pricing", "vanilla-option"),
+        environment=environment,
+        help="Vanilla option pricing workflow.",
+        params=[
+            command_config_option(),
+            output_option(default_output_mode=CliOutputMode.JSON),
+            required_json_path_option(
+                "--execution-input-json",
+                contract_label="a vanilla-option pricing execution-input JSON object",
+                semantic_note="Interval factors keep known and surprise news intensity separate.",
+            ),
+        ],
+    )
+    @click.pass_context
+    def vanilla_option(ctx: click.Context, **command_arguments: object) -> int:
+        return invoke_command_handler(
+            ctx,
+            handler=_run_pricing_vanilla_option_command,
+            command_path=("pricing", "vanilla-option"),
+            command_arguments=dict(command_arguments),
+        )
+
+    return pricing
 
 
 __all__ = [

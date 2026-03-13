@@ -1,6 +1,33 @@
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Optional, cast
 
+import click
+
+from .shared import (
+    _build_calendar_registry_from_document,
+    _build_hourly_factor_contract_payload,
+    _build_hourly_news_intensity_materialization_payload,
+    _build_hourly_seasonality_materialization_payload,
+    _extract_explicit_hourly_factor_source_document,
+    _extract_hourly_news_intensity_materialization_input,
+    _extract_hourly_seasonality_materialization_input,
+    _extract_materialized_hourly_news_intensity_source_document,
+    _extract_materialized_hourly_seasonality_source_document,
+    _parse_utc_datetime_cli_argument,
+)
+from ..command_runtime import (
+    JaniformCommand,
+    JaniformGroup,
+    command_config_option,
+    command_option,
+    group_help_callback,
+    invoke_command_handler,
+    optional_path_option,
+    output_option,
+    required_datetime_option,
+    required_json_path_option,
+)
 from ..context import CliCommandContext
 from .._constants import (
     CLI_HOURLY_FACTORS_BUILD_CONTRACT_ENTRYPOINT,
@@ -13,6 +40,7 @@ from .._constants import (
     CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_INTERNAL_ERROR_ID,
     CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_VALIDATION_ERROR_ID,
     CliExitCode,
+    CliOutputMode,
 )
 from ..documents import _load_json_document
 from ..errors import _classify_workflow_command_error
@@ -29,18 +57,6 @@ from ...hourly_factors import (
     build_hourly_factor_contract,
     materialize_hourly_news_intensity_factors,
     materialize_hourly_seasonality_factors,
-)
-from .shared import (
-    _build_calendar_registry_from_document,
-    _build_hourly_factor_contract_payload,
-    _build_hourly_news_intensity_materialization_payload,
-    _build_hourly_seasonality_materialization_payload,
-    _extract_explicit_hourly_factor_source_document,
-    _extract_hourly_news_intensity_materialization_input,
-    _extract_hourly_seasonality_materialization_input,
-    _extract_materialized_hourly_news_intensity_source_document,
-    _extract_materialized_hourly_seasonality_source_document,
-    _parse_utc_datetime_cli_argument,
 )
 
 
@@ -120,11 +136,13 @@ def _run_hourly_factor_materialize_seasonality_command(
         )
 
     payload = _build_hourly_seasonality_materialization_payload(materialization)
+
     _write_command_output(
         output,
         json_payload=payload,
         human_output_factory=lambda: _render_hourly_factor_materialize_seasonality_human_output(payload),
     )
+
     return int(CliExitCode.SUCCESS)
 
 
@@ -200,6 +218,7 @@ def _run_hourly_factor_materialize_news_intensity_command(
         )
 
     payload = _build_hourly_news_intensity_materialization_payload(materialization)
+
     _write_command_output(
         output,
         json_payload=payload,
@@ -207,6 +226,7 @@ def _run_hourly_factor_materialize_news_intensity_command(
             payload,
         ),
     )
+
     return int(CliExitCode.SUCCESS)
 
 
@@ -343,12 +363,177 @@ def _run_hourly_factor_build_contract_command(
         )
 
     payload = _build_hourly_factor_contract_payload(contract)
+
     _write_command_output(
         output,
         json_payload=payload,
         human_output_factory=lambda: _render_hourly_factor_build_contract_human_output(payload),
     )
+
     return int(CliExitCode.SUCCESS)
+
+
+def _build_hourly_factors_group(*, environment: Mapping[str, str] | None = None) -> click.Group:
+    @click.group(
+        cls=JaniformGroup,
+        command_path=("hourly-factors",),
+        environment=environment,
+        help="Hourly factor materialization and contract-building workflows.",
+        invoke_without_command=True,
+    )
+    @click.pass_context
+    def hourly_factors(ctx: click.Context) -> None:
+        group_help_callback(ctx)
+
+    @hourly_factors.command(
+        "materialize-seasonality",
+        cls=JaniformCommand,
+        command_path=("hourly-factors", "materialize-seasonality"),
+        environment=environment,
+        help=(
+            "Materialize interval-aligned seasonality factors from timestamped source "
+            "samples. The command preserves the canonical seasonality materialization "
+            "report shape."
+        ),
+        params=[
+            *_hourly_factor_common_options(),
+            required_json_path_option(
+                "--materialization-input-json",
+                contract_label=(
+                    "an hourly seasonality materialization input document with source "
+                    "timestamps, source factors, and optional materialization settings"
+                ),
+            ),
+        ],
+    )
+    @click.pass_context
+    def materialize_seasonality(ctx: click.Context, **command_arguments: object) -> int:
+        return invoke_command_handler(
+            ctx,
+            handler=_run_hourly_factor_materialize_seasonality_command,
+            command_path=("hourly-factors", "materialize-seasonality"),
+            command_arguments=dict(command_arguments),
+        )
+
+    @hourly_factors.command(
+        "materialize-news-intensity",
+        cls=JaniformCommand,
+        command_path=("hourly-factors", "materialize-news-intensity"),
+        environment=environment,
+        help=(
+            "Materialize interval-aligned news-intensity factors from known-news and "
+            "surprise controls. The command preserves the canonical news-intensity "
+            "materialization report shape."
+        ),
+        params=[
+            *_hourly_factor_common_options(),
+            required_json_path_option(
+                "--materialization-input-json",
+                contract_label=(
+                    "an hourly news-intensity materialization input document with known-news "
+                    "timestamps, surprise baseline intensity, and optional interval multipliers"
+                ),
+            ),
+        ],
+    )
+    @click.pass_context
+    def materialize_news_intensity(ctx: click.Context, **command_arguments: object) -> int:
+        return invoke_command_handler(
+            ctx,
+            handler=_run_hourly_factor_materialize_news_intensity_command,
+            command_path=("hourly-factors", "materialize-news-intensity"),
+            command_arguments=dict(command_arguments),
+        )
+
+    @hourly_factors.command(
+        "build-contract",
+        cls=JaniformCommand,
+        command_path=("hourly-factors", "build-contract"),
+        environment=environment,
+        help=(
+            "Build the combined interval-factor contract for downstream simulation or "
+            "pricing workflows. Seasonality and news-intensity inputs can come from "
+            "explicit factor source documents or from canonical materialization report "
+            "files produced by Janiform."
+        ),
+        params=[
+            *_hourly_factor_common_options(),
+            optional_path_option(
+                "--seasonality-explicit-source-json",
+                help_text=(
+                    "Path to an explicit seasonality source document with `hourly_factors` and "
+                    "optional `materialization_method`."
+                ),
+            ),
+            optional_path_option(
+                "--seasonality-materialized-source-json",
+                help_text=(
+                    "Path to a canonical hourly seasonality materialization report produced by "
+                    "`hourly-factors materialize-seasonality`."
+                ),
+            ),
+            optional_path_option(
+                "--news-intensity-explicit-source-json",
+                help_text=(
+                    "Path to an explicit news-intensity source document with `hourly_factors` "
+                    "and optional `materialization_method`."
+                ),
+            ),
+            optional_path_option(
+                "--news-intensity-materialized-source-json",
+                help_text=(
+                    "Path to a canonical hourly news-intensity materialization report produced "
+                    "by `hourly-factors materialize-news-intensity`."
+                ),
+            ),
+        ],
+    )
+    @click.pass_context
+    def build_contract(ctx: click.Context, **command_arguments: object) -> int:
+        return invoke_command_handler(
+            ctx,
+            handler=_run_hourly_factor_build_contract_command,
+            command_path=("hourly-factors", "build-contract"),
+            command_arguments=dict(command_arguments),
+            required_one_of_groups=(
+                ("seasonality_explicit_source_json", "seasonality_materialized_source_json"),
+                ("news_intensity_explicit_source_json", "news_intensity_materialized_source_json"),
+            ),
+        )
+
+    return hourly_factors
+
+
+def _hourly_factor_common_options() -> list[click.Parameter]:
+    return [
+        command_config_option(),
+        output_option(default_output_mode=CliOutputMode.JSON),
+        required_json_path_option(
+            "--calendar-registry-json",
+            contract_label="a calendar registry JSON object used to resolve exchange-local interval labels",
+        ),
+        command_option(
+            "--exchange-code",
+            help_text="Exchange code used to resolve session state and interval-factor alignment.",
+            required=True,
+        ),
+        command_option(
+            "--interval",
+            default="1h",
+            help_text=(
+                "Fixed-width UTC interval specification used to derive the target grid, "
+                "for example 1h or 15min. Default: 1h."
+            ),
+        ),
+        required_datetime_option(
+            "--range-start-utc",
+            help_text="Inclusive UTC range start aligned to the first target interval boundary.",
+        ),
+        required_datetime_option(
+            "--range-end-utc",
+            help_text="Exclusive UTC range end aligned to the final target interval boundary.",
+        ),
+    ]
 
 
 __all__ = [
