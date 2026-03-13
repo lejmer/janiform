@@ -4535,6 +4535,1002 @@
         }
       }
     },
+    "janiform.cli": {
+      "exports": [
+        "CLI_ARGUMENT_PRECEDENCE_POLICY",
+        "CLI_ARGUMENT_RESOLUTION_ENTRYPOINT",
+        "CLI_ARGUMENT_RESOLUTION_VALIDATION_ERROR_ID",
+        "CLI_CALIBRATION_DISK_CHECKPOINT_DIRECTORY_ENV_VAR",
+        "CLI_CALIBRATION_DUPLICATE_RECORD_POLICY_CHOICES",
+        "CLI_CALIBRATION_EXECUTION_MODE_CHOICES",
+        "CLI_CALIBRATION_EXECUTION_MODE_ENV_VAR",
+        "CLI_CALIBRATION_EXECUTION_MODE_HELP",
+        "CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT",
+        "CLI_CALIBRATION_MARKET_DATA_EXECUTION_MODE_HELP",
+        "CLI_CALIBRATION_MARKET_DATA_INTERNAL_ERROR_ID",
+        "CLI_CALIBRATION_MARKET_DATA_SCOPE_CHOICES",
+        "CLI_CALIBRATION_MARKET_DATA_VALIDATION_ERROR_ID",
+        "CLI_CALIBRATION_OPTION_QUOTE_POLICY_CHOICES",
+        "CLI_CALIBRATION_STAGED_ENTRYPOINT",
+        "CLI_CALIBRATION_STAGED_INTERNAL_ERROR_ID",
+        "CLI_CALIBRATION_STAGED_VALIDATION_ERROR_ID",
+        "CLI_CALIBRATION_STRUCTURED_FILE_FORMAT_CHOICES",
+        "CLI_CALIBRATION_TICK_FILE_FORMAT_CHOICES",
+        "CLI_CALIBRATION_TICK_PRICE_POLICY_CHOICES",
+        "CLI_COMMAND_CONFIG_HELP",
+        "CLI_COMMAND_CONFIG_SCHEMA_VERSION",
+        "CLI_CONFIG_JSON_ENV_VAR",
+        "CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT",
+        "CLI_DETERMINISTIC_REGRESSION_INTERNAL_ERROR_ID",
+        "CLI_DETERMINISTIC_REGRESSION_VALIDATION_ERROR_ID",
+        "CLI_DIRECTORY_METAVAR",
+        "CLI_FIT_AND_SIMULATE_ENTRYPOINT",
+        "CLI_FIT_AND_SIMULATE_INTERNAL_ERROR_ID",
+        "CLI_FIT_AND_SIMULATE_RESULT_SCHEMA_VERSION",
+        "CLI_FIT_AND_SIMULATE_VALIDATION_ERROR_ID",
+        "CLI_FIT_ENTRYPOINT",
+        "CLI_FIT_INTERNAL_ERROR_ID",
+        "CLI_FIT_RESULT_SCHEMA_VERSION",
+        "CLI_FIT_VALIDATION_ERROR_ID",
+        "CLI_HIGH_LEVEL_SIMULATE_ENTRYPOINT",
+        "CLI_HIGH_LEVEL_SIMULATE_INTERNAL_ERROR_ID",
+        "CLI_HIGH_LEVEL_SIMULATE_VALIDATION_ERROR_ID",
+        "CLI_HOURLY_FACTORS_BUILD_CONTRACT_ENTRYPOINT",
+        "CLI_HOURLY_FACTORS_BUILD_CONTRACT_INTERNAL_ERROR_ID",
+        "CLI_HOURLY_FACTORS_BUILD_CONTRACT_VALIDATION_ERROR_ID",
+        "CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_ENTRYPOINT",
+        "CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_INTERNAL_ERROR_ID",
+        "CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_VALIDATION_ERROR_ID",
+        "CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_ENTRYPOINT",
+        "CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_INTERNAL_ERROR_ID",
+        "CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_VALIDATION_ERROR_ID",
+        "CLI_MARKET_DATA_SUMMARY_FIELD_SELECTION_POLICY",
+        "CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION",
+        "CLI_MODEL_SIMULATION_OUTPUT_CHOICES",
+        "CLI_OPEN_CLOSED_GAP_ENTRYPOINT",
+        "CLI_OPEN_CLOSED_GAP_INTERNAL_ERROR_ID",
+        "CLI_OPEN_CLOSED_GAP_VALIDATION_ERROR_ID",
+        "CLI_OUTPUT_ENV_VAR",
+        "CLI_OUTPUT_MODE_CHOICES",
+        "CLI_OUTPUT_MODE_HELP",
+        "CLI_PATH_METAVAR",
+        "CLI_PRESETS_EXPORT_ENTRYPOINT",
+        "CLI_PRESETS_EXPORT_INTERNAL_ERROR_ID",
+        "CLI_PRESETS_EXPORT_VALIDATION_ERROR_ID",
+        "CLI_PRESETS_LIST_ENTRYPOINT",
+        "CLI_PRESETS_LIST_INTERNAL_ERROR_ID",
+        "CLI_PRESETS_LIST_VALIDATION_ERROR_ID",
+        "CLI_PRESETS_SHOW_ENTRYPOINT",
+        "CLI_PRESETS_SHOW_INTERNAL_ERROR_ID",
+        "CLI_PRESETS_SHOW_VALIDATION_ERROR_ID",
+        "CLI_PRESET_CATEGORY_CHOICES",
+        "CLI_PRESET_LIST_SCHEMA_VERSION",
+        "CLI_PRESET_SCOPE_CHOICES",
+        "CLI_PRESET_SHOW_SCHEMA_VERSION",
+        "CLI_PRICING_VANILLA_OPTION_ENTRYPOINT",
+        "CLI_PRICING_VANILLA_OPTION_INTERNAL_ERROR_ID",
+        "CLI_PRICING_VANILLA_OPTION_VALIDATION_ERROR_ID",
+        "CLI_PRIMARY_COMMAND_IDENTIFIERS",
+        "CLI_PRIMARY_COMMAND_TREE",
+        "CLI_REPOSITORY_RELATIVE_PATH_POLICY",
+        "CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT",
+        "CLI_SEASONALITY_DIAGNOSTICS_INTERNAL_ERROR_ID",
+        "CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID",
+        "CLI_SEASONALITY_INTRADAY_SMOOTHING_KERNEL_CHOICES",
+        "CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_ENTRYPOINT",
+        "CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_INTERNAL_ERROR_ID",
+        "CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID",
+        "CLI_SEASONALITY_SESSION_FILTER_CHOICES",
+        "CLI_SIMULATE_RESULT_SCHEMA_VERSION",
+        "CLI_SIMULATION_COARSE_INTERVAL_ENTRYPOINT",
+        "CLI_SIMULATION_COARSE_INTERVAL_INTERNAL_ERROR_ID",
+        "CLI_SIMULATION_COARSE_INTERVAL_VALIDATION_ERROR_ID",
+        "CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT",
+        "CLI_SIMULATION_SEEDED_TICKS_INTERNAL_ERROR_ID",
+        "CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID",
+        "CLI_STYLIZED_FACTS_HORIZON_COMPARISON_ENTRYPOINT",
+        "CLI_STYLIZED_FACTS_HORIZON_COMPARISON_INTERNAL_ERROR_ID",
+        "CLI_STYLIZED_FACTS_HORIZON_COMPARISON_VALIDATION_ERROR_ID",
+        "CliExitCode",
+        "CliOutputMode",
+        "DEFAULT_CALENDAR_FIXTURE_PATH",
+        "DEFAULT_GAP_BEHAVIOR_FIXTURE_PATH",
+        "main"
+      ],
+      "module_name": "janiform.cli",
+      "schema_identifiers": [
+        {
+          "name": "CLI_COMMAND_CONFIG_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "cli.command_config.v1"
+        },
+        {
+          "name": "CLI_FIT_AND_SIMULATE_RESULT_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "cli.fit_and_simulate.result.v1"
+        },
+        {
+          "name": "CLI_FIT_RESULT_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "cli.fit.result.v1"
+        },
+        {
+          "name": "CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "cli.calibration.market_data.summary.v1"
+        },
+        {
+          "name": "CLI_PRESET_LIST_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "cli.presets.list.result.v1"
+        },
+        {
+          "name": "CLI_PRESET_SHOW_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "cli.presets.show.result.v1"
+        },
+        {
+          "name": "CLI_SIMULATE_RESULT_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "cli.simulate.result.v1"
+        }
+      ],
+      "symbols": {
+        "CLI_ARGUMENT_PRECEDENCE_POLICY": {
+          "kind": "constant",
+          "value": "explicit_flags_override_environment_override_config_override_defaults.v1"
+        },
+        "CLI_ARGUMENT_RESOLUTION_ENTRYPOINT": {
+          "kind": "constant",
+          "value": "cli.argument_resolution"
+        },
+        "CLI_ARGUMENT_RESOLUTION_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.arguments.invalid_input"
+        },
+        "CLI_CALIBRATION_DISK_CHECKPOINT_DIRECTORY_ENV_VAR": {
+          "kind": "constant",
+          "value": "JANIFORM_CLI_CALIBRATION_DISK_CHECKPOINT_DIRECTORY"
+        },
+        "CLI_CALIBRATION_DUPLICATE_RECORD_POLICY_CHOICES": {
+          "kind": "constant",
+          "value": [
+            "error",
+            "keep_first",
+            "keep_last"
+          ]
+        },
+        "CLI_CALIBRATION_EXECUTION_MODE_CHOICES": {
+          "kind": "constant",
+          "value": [
+            "disk",
+            "memory"
+          ]
+        },
+        "CLI_CALIBRATION_EXECUTION_MODE_ENV_VAR": {
+          "kind": "constant",
+          "value": "JANIFORM_CLI_CALIBRATION_EXECUTION_MODE"
+        },
+        "CLI_CALIBRATION_EXECUTION_MODE_HELP": {
+          "kind": "constant",
+          "value": "Calibration execution mode override. Precedence: --execution-mode, then the CLI default disk. This overrides request.execution_mode from --execution-input-json."
+        },
+        "CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT": {
+          "kind": "constant",
+          "value": "calibration.market_data"
+        },
+        "CLI_CALIBRATION_MARKET_DATA_EXECUTION_MODE_HELP": {
+          "kind": "constant",
+          "value": "Calibration execution mode recorded in the market-data request. The CLI default is disk so automation-friendly runs keep persistence explicit."
+        },
+        "CLI_CALIBRATION_MARKET_DATA_INTERNAL_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.internal.calibration.market_data.failed"
+        },
+        "CLI_CALIBRATION_MARKET_DATA_SCOPE_CHOICES": {
+          "kind": "constant",
+          "value": [
+            "seasonality_only",
+            "full_without_option_surface",
+            "full_with_option_surface"
+          ]
+        },
+        "CLI_CALIBRATION_MARKET_DATA_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.calibration.market_data.invalid_input"
+        },
+        "CLI_CALIBRATION_OPTION_QUOTE_POLICY_CHOICES": {
+          "kind": "constant",
+          "value": [
+            "mid_price_column",
+            "bid_ask_midpoint",
+            "implied_volatility_column"
+          ]
+        },
+        "CLI_CALIBRATION_STAGED_ENTRYPOINT": {
+          "kind": "constant",
+          "value": "calibration.staged"
+        },
+        "CLI_CALIBRATION_STAGED_INTERNAL_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.internal.calibration.staged.failed"
+        },
+        "CLI_CALIBRATION_STAGED_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.calibration.staged.invalid_input"
+        },
+        "CLI_CALIBRATION_STRUCTURED_FILE_FORMAT_CHOICES": {
+          "kind": "constant",
+          "value": [
+            "csv",
+            "parquet",
+            "json"
+          ]
+        },
+        "CLI_CALIBRATION_TICK_FILE_FORMAT_CHOICES": {
+          "kind": "constant",
+          "value": [
+            "csv",
+            "parquet"
+          ]
+        },
+        "CLI_CALIBRATION_TICK_PRICE_POLICY_CHOICES": {
+          "kind": "constant",
+          "value": [
+            "explicit_price_column",
+            "trade_price_column",
+            "bid_ask_midpoint",
+            "close_price_column"
+          ]
+        },
+        "CLI_COMMAND_CONFIG_HELP": {
+          "kind": "constant",
+          "value": "Path to a cli.command_config.v1 JSON object for this command. The arguments object uses long flag names without the leading --. Precedence: explicit flags override environment variables, which override config-file arguments."
+        },
+        "CLI_COMMAND_CONFIG_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "cli.command_config.v1"
+        },
+        "CLI_CONFIG_JSON_ENV_VAR": {
+          "kind": "constant",
+          "value": "JANIFORM_CLI_CONFIG_JSON"
+        },
+        "CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT": {
+          "kind": "constant",
+          "value": "dev.regression.deterministic"
+        },
+        "CLI_DETERMINISTIC_REGRESSION_INTERNAL_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.internal.deterministic_regression.failed"
+        },
+        "CLI_DETERMINISTIC_REGRESSION_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.deterministic_regression.invalid_input"
+        },
+        "CLI_DIRECTORY_METAVAR": {
+          "kind": "constant",
+          "value": "DIRECTORY"
+        },
+        "CLI_FIT_AND_SIMULATE_ENTRYPOINT": {
+          "kind": "constant",
+          "value": "fit_and_simulate"
+        },
+        "CLI_FIT_AND_SIMULATE_INTERNAL_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.internal.fit_and_simulate.failed"
+        },
+        "CLI_FIT_AND_SIMULATE_RESULT_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "cli.fit_and_simulate.result.v1"
+        },
+        "CLI_FIT_AND_SIMULATE_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.fit_and_simulate.invalid_input"
+        },
+        "CLI_FIT_ENTRYPOINT": {
+          "kind": "constant",
+          "value": "fit"
+        },
+        "CLI_FIT_INTERNAL_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.internal.fit.failed"
+        },
+        "CLI_FIT_RESULT_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "cli.fit.result.v1"
+        },
+        "CLI_FIT_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.fit.invalid_input"
+        },
+        "CLI_HIGH_LEVEL_SIMULATE_ENTRYPOINT": {
+          "kind": "constant",
+          "value": "simulate"
+        },
+        "CLI_HIGH_LEVEL_SIMULATE_INTERNAL_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.internal.simulate.failed"
+        },
+        "CLI_HIGH_LEVEL_SIMULATE_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.simulate.invalid_input"
+        },
+        "CLI_HOURLY_FACTORS_BUILD_CONTRACT_ENTRYPOINT": {
+          "kind": "constant",
+          "value": "hourly_factors.build_contract"
+        },
+        "CLI_HOURLY_FACTORS_BUILD_CONTRACT_INTERNAL_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.internal.hourly_factors.build_contract.failed"
+        },
+        "CLI_HOURLY_FACTORS_BUILD_CONTRACT_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.hourly_factors.build_contract.invalid_input"
+        },
+        "CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_ENTRYPOINT": {
+          "kind": "constant",
+          "value": "hourly_factors.materialize_news_intensity"
+        },
+        "CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_INTERNAL_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.internal.hourly_factors.materialize_news_intensity.failed"
+        },
+        "CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.hourly_factors.materialize_news_intensity.invalid_input"
+        },
+        "CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_ENTRYPOINT": {
+          "kind": "constant",
+          "value": "hourly_factors.materialize_seasonality"
+        },
+        "CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_INTERNAL_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.internal.hourly_factors.materialize_seasonality.failed"
+        },
+        "CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.hourly_factors.materialize_seasonality.invalid_input"
+        },
+        "CLI_MARKET_DATA_SUMMARY_FIELD_SELECTION_POLICY": {
+          "kind": "constant",
+          "value": "user_facing_workflow_metadata_only.v1"
+        },
+        "CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "cli.calibration.market_data.summary.v1"
+        },
+        "CLI_MODEL_SIMULATION_OUTPUT_CHOICES": {
+          "kind": "constant",
+          "value": [
+            "coarse",
+            "ticks",
+            "both"
+          ]
+        },
+        "CLI_OPEN_CLOSED_GAP_ENTRYPOINT": {
+          "kind": "constant",
+          "value": "dev.regression.open_closed_gap_leakage"
+        },
+        "CLI_OPEN_CLOSED_GAP_INTERNAL_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.internal.open_closed_gap_leakage.failed"
+        },
+        "CLI_OPEN_CLOSED_GAP_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.open_closed_gap_leakage.invalid_input"
+        },
+        "CLI_OUTPUT_ENV_VAR": {
+          "kind": "constant",
+          "value": "JANIFORM_CLI_OUTPUT"
+        },
+        "CLI_OUTPUT_MODE_CHOICES": {
+          "kind": "constant",
+          "value": [
+            "human",
+            "json"
+          ]
+        },
+        "CLI_OUTPUT_MODE_HELP": {
+          "kind": "constant",
+          "value": "Output mode. Use json for deterministic machine-readable output and human for concise operator-oriented text."
+        },
+        "CLI_PATH_METAVAR": {
+          "kind": "constant",
+          "value": "PATH"
+        },
+        "CLI_PRESETS_EXPORT_ENTRYPOINT": {
+          "kind": "constant",
+          "value": "presets.export"
+        },
+        "CLI_PRESETS_EXPORT_INTERNAL_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.internal.presets.export.failed"
+        },
+        "CLI_PRESETS_EXPORT_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.presets.export.invalid_input"
+        },
+        "CLI_PRESETS_LIST_ENTRYPOINT": {
+          "kind": "constant",
+          "value": "presets.list"
+        },
+        "CLI_PRESETS_LIST_INTERNAL_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.internal.presets.list.failed"
+        },
+        "CLI_PRESETS_LIST_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.presets.list.invalid_input"
+        },
+        "CLI_PRESETS_SHOW_ENTRYPOINT": {
+          "kind": "constant",
+          "value": "presets.show"
+        },
+        "CLI_PRESETS_SHOW_INTERNAL_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.internal.presets.show.failed"
+        },
+        "CLI_PRESETS_SHOW_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.presets.show.invalid_input"
+        },
+        "CLI_PRESET_CATEGORY_CHOICES": {
+          "kind": "constant",
+          "value": [
+            "session",
+            "known-news",
+            "market-profile"
+          ]
+        },
+        "CLI_PRESET_LIST_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "cli.presets.list.result.v1"
+        },
+        "CLI_PRESET_SCOPE_CHOICES": {
+          "kind": "constant",
+          "value": [
+            "auto",
+            "built_in",
+            "user_registered"
+          ]
+        },
+        "CLI_PRESET_SHOW_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "cli.presets.show.result.v1"
+        },
+        "CLI_PRICING_VANILLA_OPTION_ENTRYPOINT": {
+          "kind": "constant",
+          "value": "pricing.vanilla_option"
+        },
+        "CLI_PRICING_VANILLA_OPTION_INTERNAL_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.internal.pricing.vanilla_option.failed"
+        },
+        "CLI_PRICING_VANILLA_OPTION_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.pricing.vanilla_option.invalid_input"
+        },
+        "CLI_PRIMARY_COMMAND_IDENTIFIERS": {
+          "kind": "constant",
+          "value": {
+            "('calibration', 'market-data')": "calibration.market-data",
+            "('calibration', 'staged')": "calibration.staged",
+            "('fit',)": "fit",
+            "('fit-and-simulate',)": "fit-and-simulate",
+            "('hourly-factors', 'build-contract')": "hourly-factors.build-contract",
+            "('hourly-factors', 'materialize-news-intensity')": "hourly-factors.materialize-news-intensity",
+            "('hourly-factors', 'materialize-seasonality')": "hourly-factors.materialize-seasonality",
+            "('presets', 'export')": "presets.export",
+            "('presets', 'list')": "presets.list",
+            "('presets', 'show')": "presets.show",
+            "('pricing', 'vanilla-option')": "pricing.vanilla-option",
+            "('seasonality', 'diagnostics')": "seasonality.diagnostics",
+            "('seasonality', 'preprocess-timestamps')": "seasonality.preprocess-timestamps",
+            "('simulate',)": "simulate",
+            "('simulation', 'coarse-interval')": "simulation.coarse-interval",
+            "('simulation', 'seeded-ticks')": "simulation.seeded-ticks",
+            "('stylized-facts', 'horizon-comparison')": "stylized-facts.horizon-comparison"
+          }
+        },
+        "CLI_PRIMARY_COMMAND_TREE": {
+          "kind": "constant",
+          "value": {
+            "calibration": {
+              "market-data": {},
+              "staged": {}
+            },
+            "fit": {},
+            "fit-and-simulate": {},
+            "hourly-factors": {
+              "build-contract": {},
+              "materialize-news-intensity": {},
+              "materialize-seasonality": {}
+            },
+            "presets": {
+              "export": {},
+              "list": {},
+              "show": {}
+            },
+            "pricing": {
+              "vanilla-option": {}
+            },
+            "seasonality": {
+              "diagnostics": {},
+              "preprocess-timestamps": {}
+            },
+            "simulate": {},
+            "simulation": {
+              "coarse-interval": {},
+              "seeded-ticks": {}
+            },
+            "stylized-facts": {
+              "horizon-comparison": {}
+            }
+          }
+        },
+        "CLI_REPOSITORY_RELATIVE_PATH_POLICY": {
+          "kind": "constant",
+          "value": "Relative paths are resolved from the repository root."
+        },
+        "CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT": {
+          "kind": "constant",
+          "value": "seasonality.diagnostics"
+        },
+        "CLI_SEASONALITY_DIAGNOSTICS_INTERNAL_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.internal.seasonality.diagnostics.failed"
+        },
+        "CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.seasonality.diagnostics.invalid_input"
+        },
+        "CLI_SEASONALITY_INTRADAY_SMOOTHING_KERNEL_CHOICES": {
+          "kind": "constant",
+          "value": [
+            "gaussian",
+            "uniform"
+          ]
+        },
+        "CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_ENTRYPOINT": {
+          "kind": "constant",
+          "value": "seasonality.preprocess_timestamps"
+        },
+        "CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_INTERNAL_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.internal.seasonality.preprocess_timestamps.failed"
+        },
+        "CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.seasonality.preprocess_timestamps.invalid_input"
+        },
+        "CLI_SEASONALITY_SESSION_FILTER_CHOICES": {
+          "kind": "constant",
+          "value": [
+            "all",
+            "open_only",
+            "closed_only"
+          ]
+        },
+        "CLI_SIMULATE_RESULT_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "cli.simulate.result.v1"
+        },
+        "CLI_SIMULATION_COARSE_INTERVAL_ENTRYPOINT": {
+          "kind": "constant",
+          "value": "simulation.coarse_interval"
+        },
+        "CLI_SIMULATION_COARSE_INTERVAL_INTERNAL_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.internal.simulation.coarse_interval.failed"
+        },
+        "CLI_SIMULATION_COARSE_INTERVAL_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.simulation.coarse_interval.invalid_input"
+        },
+        "CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT": {
+          "kind": "constant",
+          "value": "simulation.seeded_ticks"
+        },
+        "CLI_SIMULATION_SEEDED_TICKS_INTERNAL_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.internal.simulation.seeded_ticks.failed"
+        },
+        "CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.simulation.seeded_ticks.invalid_input"
+        },
+        "CLI_STYLIZED_FACTS_HORIZON_COMPARISON_ENTRYPOINT": {
+          "kind": "constant",
+          "value": "stylized_facts.horizon_comparison"
+        },
+        "CLI_STYLIZED_FACTS_HORIZON_COMPARISON_INTERNAL_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.internal.stylized_facts.horizon_comparison.failed"
+        },
+        "CLI_STYLIZED_FACTS_HORIZON_COMPARISON_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.stylized_facts.horizon_comparison.invalid_input"
+        },
+        "CliExitCode": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "SUCCESS",
+              "value": 0
+            },
+            {
+              "name": "VALIDATION_ERROR",
+              "value": 2
+            },
+            {
+              "name": "RUNTIME_ERROR",
+              "value": 3
+            },
+            {
+              "name": "INTERNAL_ERROR",
+              "value": 4
+            }
+          ]
+        },
+        "CliOutputMode": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "HUMAN",
+              "value": "human"
+            },
+            {
+              "name": "JSON",
+              "value": "json"
+            }
+          ]
+        },
+        "DEFAULT_CALENDAR_FIXTURE_PATH": {
+          "kind": "constant",
+          "value": "tests/fixtures/calendar/calendar_service_regression_matrix.json"
+        },
+        "DEFAULT_GAP_BEHAVIOR_FIXTURE_PATH": {
+          "kind": "constant",
+          "value": "tests/fixtures/gap_behavior/open_closed_gap_behavior_scenarios.json"
+        },
+        "main": {
+          "kind": "function",
+          "signature": "() -> 'None'"
+        }
+      }
+    },
+    "janiform.cli.commands.calibration": {
+      "exports": [
+        "_build_market_data_calibration_request_from_arguments",
+        "_build_market_data_calibration_summary_payload",
+        "_override_calibration_execution_mode",
+        "_run_calibration_market_data_command",
+        "_run_calibration_staged_command"
+      ],
+      "module_name": "janiform.cli.commands.calibration",
+      "schema_identifiers": [
+        {
+          "name": "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
+          "public_exported": false,
+          "value": "calibration.market_data.request.v1"
+        },
+        {
+          "name": "CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION",
+          "public_exported": false,
+          "value": "cli.calibration.market_data.summary.v1"
+        }
+      ],
+      "symbols": {
+        "_build_market_data_calibration_request_from_arguments": {
+          "kind": "function",
+          "signature": "(parsed_arguments: 'Namespace', *, repository_root: 'Path') -> 'MarketDataCalibrationRequest'"
+        },
+        "_build_market_data_calibration_summary_payload": {
+          "kind": "function",
+          "signature": "(prepared_calibration: 'PreparedMarketDataCalibration') -> 'dict[str, Any]'"
+        },
+        "_override_calibration_execution_mode": {
+          "kind": "function",
+          "signature": "(*, execution_input: 'StagedCalibrationExecutionInput', execution_mode: 'CalibrationExecutionMode', disk_checkpoint_directory: 'Path | None') -> 'StagedCalibrationExecutionInput'"
+        },
+        "_run_calibration_market_data_command": {
+          "kind": "function",
+          "signature": "(parsed_arguments: 'Namespace') -> 'int'"
+        },
+        "_run_calibration_staged_command": {
+          "kind": "function",
+          "signature": "(parsed_arguments: 'Namespace') -> 'int'"
+        }
+      }
+    },
+    "janiform.cli.commands.development": {
+      "exports": [
+        "_build_calendar_registry_from_document",
+        "_extract_calendar_cases",
+        "_extract_gap_behavior_cases",
+        "_load_json_document",
+        "_run_deterministic_regression_command",
+        "_run_open_closed_gap_leakage_regression_command"
+      ],
+      "module_name": "janiform.cli.commands.development",
+      "schema_identifiers": [],
+      "symbols": {
+        "_build_calendar_registry_from_document": {
+          "kind": "function",
+          "signature": "(calendar_registry_document: 'dict[str, Any]') -> 'CalendarRegistry'"
+        },
+        "_extract_calendar_cases": {
+          "kind": "function",
+          "signature": "(calendar_cases_document: 'dict[str, Any]') -> 'list[dict[str, Any]]'"
+        },
+        "_extract_gap_behavior_cases": {
+          "kind": "function",
+          "signature": "(gap_behavior_fixture_document: 'dict[str, Any]') -> 'list[dict[str, Any]]'"
+        },
+        "_load_json_document": {
+          "kind": "function",
+          "signature": "(path: 'Path', context: 'str') -> 'dict[str, Any]'"
+        },
+        "_run_deterministic_regression_command": {
+          "kind": "function",
+          "signature": "(parsed_arguments: 'Namespace') -> 'int'"
+        },
+        "_run_open_closed_gap_leakage_regression_command": {
+          "kind": "function",
+          "signature": "(parsed_arguments: 'Namespace') -> 'int'"
+        }
+      }
+    },
+    "janiform.cli.commands.model_workflows": {
+      "exports": [
+        "_build_cli_fit_result_payload",
+        "_build_cli_preset_registry",
+        "_build_cli_simulate_result_payload",
+        "_execute_cli_fit",
+        "_parse_cli_preset_category",
+        "_parse_cli_preset_scope",
+        "_resolve_named_preset_scope",
+        "_resolve_preset_artifact",
+        "_run_fit_and_simulate_command",
+        "_run_fit_command",
+        "_run_model_simulate_command"
+      ],
+      "module_name": "janiform.cli.commands.model_workflows",
+      "schema_identifiers": [
+        {
+          "name": "CLI_FIT_AND_SIMULATE_RESULT_SCHEMA_VERSION",
+          "public_exported": false,
+          "value": "cli.fit_and_simulate.result.v1"
+        },
+        {
+          "name": "CLI_FIT_RESULT_SCHEMA_VERSION",
+          "public_exported": false,
+          "value": "cli.fit.result.v1"
+        },
+        {
+          "name": "CLI_SIMULATE_RESULT_SCHEMA_VERSION",
+          "public_exported": false,
+          "value": "cli.simulate.result.v1"
+        }
+      ],
+      "symbols": {
+        "_build_cli_fit_result_payload": {
+          "kind": "function",
+          "signature": "(*, model: 'JaniformModel', fit_report: 'JaniformFitReport', persisted_model_path: 'Optional[Path]', command: 'str', schema_version: 'str') -> 'dict[str, Any]'"
+        },
+        "_build_cli_preset_registry": {
+          "kind": "function",
+          "signature": "(parsed_arguments: 'Namespace', *, repository_root: 'Path', entrypoint: 'str', error_id: 'str') -> 'PresetRegistry'"
+        },
+        "_build_cli_simulate_result_payload": {
+          "kind": "function",
+          "signature": "(*, model: 'JaniformModel', parsed_arguments: 'Namespace', model_path: 'Optional[Path]', command: 'str', schema_version: 'str', entrypoint: 'str', error_id: 'str') -> 'dict[str, Any]'"
+        },
+        "_execute_cli_fit": {
+          "kind": "function",
+          "signature": "(parsed_arguments: 'Namespace', *, repository_root: 'Path', entrypoint: 'str', error_id: 'str') -> 'tuple[JaniformModel, JaniformFitReport, Optional[Path]]'"
+        },
+        "_parse_cli_preset_category": {
+          "kind": "function",
+          "signature": "(raw_value: 'Optional[str]') -> 'Optional[PresetCategory]'"
+        },
+        "_parse_cli_preset_scope": {
+          "kind": "function",
+          "signature": "(raw_value: 'Optional[str]') -> 'Optional[PresetRegistryScope]'"
+        },
+        "_resolve_named_preset_scope": {
+          "kind": "function",
+          "signature": "(*, registry: 'PresetRegistry', category: 'PresetCategory', preset_name: 'str', raw_scope: 'Optional[str]') -> 'PresetRegistryScope'"
+        },
+        "_resolve_preset_artifact": {
+          "kind": "function",
+          "signature": "(*, registry: 'PresetRegistry', category: 'PresetCategory', preset_name: 'str', registry_scope: 'PresetRegistryScope') -> 'Any'"
+        },
+        "_run_fit_and_simulate_command": {
+          "kind": "function",
+          "signature": "(parsed_arguments: 'Namespace') -> 'int'"
+        },
+        "_run_fit_command": {
+          "kind": "function",
+          "signature": "(parsed_arguments: 'Namespace') -> 'int'"
+        },
+        "_run_model_simulate_command": {
+          "kind": "function",
+          "signature": "(parsed_arguments: 'Namespace') -> 'int'"
+        }
+      }
+    },
+    "janiform.cli.commands.simulation": {
+      "exports": [
+        "_run_simulation_coarse_interval_command",
+        "_run_simulation_seeded_ticks_command",
+        "run_coarse_simulation",
+        "run_seeded_tick_event_simulation"
+      ],
+      "module_name": "janiform.cli.commands.simulation",
+      "schema_identifiers": [],
+      "symbols": {
+        "_run_simulation_coarse_interval_command": {
+          "kind": "function",
+          "signature": "(parsed_arguments: 'Namespace') -> 'int'"
+        },
+        "_run_simulation_seeded_ticks_command": {
+          "kind": "function",
+          "signature": "(parsed_arguments: 'Namespace') -> 'int'"
+        },
+        "run_coarse_simulation": {
+          "kind": "function",
+          "signature": "(request: 'CoarseSimulationRunRequest') -> 'CoarseSimulationPath'"
+        },
+        "run_seeded_tick_event_simulation": {
+          "kind": "function",
+          "signature": "(request: 'SeededTickSimulationRequest') -> 'SeededTickSimulationResponse'"
+        }
+      }
+    },
+    "janiform.cli.parsing": {
+      "exports": [
+        "_build_calibration_parser",
+        "_build_developer_parser",
+        "_build_fit_and_simulate_parser",
+        "_build_fit_parser",
+        "_build_hourly_factors_parser",
+        "_build_model_simulate_parser",
+        "_build_presets_parser",
+        "_build_pricing_parser",
+        "_build_seasonality_parser",
+        "_build_simulation_parser",
+        "_build_stylized_facts_parser"
+      ],
+      "module_name": "janiform.cli.parsing",
+      "schema_identifiers": [],
+      "symbols": {
+        "_build_calibration_parser": {
+          "kind": "function",
+          "signature": "(subparsers: '_SubParsersAction') -> 'None'"
+        },
+        "_build_developer_parser": {
+          "kind": "function",
+          "signature": "(subparsers: '_SubParsersAction') -> 'None'"
+        },
+        "_build_fit_and_simulate_parser": {
+          "kind": "function",
+          "signature": "(subparsers: '_SubParsersAction') -> 'None'"
+        },
+        "_build_fit_parser": {
+          "kind": "function",
+          "signature": "(subparsers: '_SubParsersAction') -> 'None'"
+        },
+        "_build_hourly_factors_parser": {
+          "kind": "function",
+          "signature": "(subparsers: '_SubParsersAction') -> 'None'"
+        },
+        "_build_model_simulate_parser": {
+          "kind": "function",
+          "signature": "(subparsers: '_SubParsersAction') -> 'None'"
+        },
+        "_build_presets_parser": {
+          "kind": "function",
+          "signature": "(subparsers: '_SubParsersAction') -> 'None'"
+        },
+        "_build_pricing_parser": {
+          "kind": "function",
+          "signature": "(subparsers: '_SubParsersAction') -> 'None'"
+        },
+        "_build_seasonality_parser": {
+          "kind": "function",
+          "signature": "(subparsers: '_SubParsersAction') -> 'None'"
+        },
+        "_build_simulation_parser": {
+          "kind": "function",
+          "signature": "(subparsers: '_SubParsersAction') -> 'None'"
+        },
+        "_build_stylized_facts_parser": {
+          "kind": "function",
+          "signature": "(subparsers: '_SubParsersAction') -> 'None'"
+        }
+      }
+    },
+    "janiform.cli.parsing.calibration": {
+      "exports": [
+        "_build_calibration_parser"
+      ],
+      "module_name": "janiform.cli.parsing.calibration",
+      "schema_identifiers": [],
+      "symbols": {
+        "_build_calibration_parser": {
+          "kind": "function",
+          "signature": "(subparsers: '_SubParsersAction') -> 'None'"
+        }
+      }
+    },
+    "janiform.cli.parsing.command_tree": {
+      "exports": [
+        "_build_parser",
+        "_parse_cli_arguments"
+      ],
+      "module_name": "janiform.cli.parsing.command_tree",
+      "schema_identifiers": [],
+      "symbols": {
+        "_build_parser": {
+          "kind": "function",
+          "signature": "() -> 'ArgumentParser'"
+        },
+        "_parse_cli_arguments": {
+          "kind": "function",
+          "signature": "(arguments: 'list[str] | None' = None, *, environment: 'dict[str, str] | None' = None)"
+        }
+      }
+    },
+    "janiform.cli.parsing.development": {
+      "exports": [
+        "_build_developer_parser"
+      ],
+      "module_name": "janiform.cli.parsing.development",
+      "schema_identifiers": [],
+      "symbols": {
+        "_build_developer_parser": {
+          "kind": "function",
+          "signature": "(subparsers: '_SubParsersAction') -> 'None'"
+        }
+      }
+    },
+    "janiform.cli.parsing.model_workflows": {
+      "exports": [
+        "_build_fit_and_simulate_parser",
+        "_build_fit_parser",
+        "_build_model_simulate_parser"
+      ],
+      "module_name": "janiform.cli.parsing.model_workflows",
+      "schema_identifiers": [],
+      "symbols": {
+        "_build_fit_and_simulate_parser": {
+          "kind": "function",
+          "signature": "(subparsers: '_SubParsersAction') -> 'None'"
+        },
+        "_build_fit_parser": {
+          "kind": "function",
+          "signature": "(subparsers: '_SubParsersAction') -> 'None'"
+        },
+        "_build_model_simulate_parser": {
+          "kind": "function",
+          "signature": "(subparsers: '_SubParsersAction') -> 'None'"
+        }
+      }
+    },
+    "janiform.cli.parsing.simulation": {
+      "exports": [
+        "_build_simulation_parser"
+      ],
+      "module_name": "janiform.cli.parsing.simulation",
+      "schema_identifiers": [],
+      "symbols": {
+        "_build_simulation_parser": {
+          "kind": "function",
+          "signature": "(subparsers: '_SubParsersAction') -> 'None'"
+        }
+      }
+    },
     "janiform.errors": {
       "exports": [
         "ContractValidationFailure",

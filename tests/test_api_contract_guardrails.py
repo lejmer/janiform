@@ -71,6 +71,28 @@ def test_public_api_contract_guardrail_accepts_documented_snapshot_update() -> N
     validate_public_api_contract_guardrail_manifest(guardrail_manifest, approved_snapshot)
 
 
+def test_public_api_contract_snapshot_tracks_supported_cli_modules() -> None:
+    current_snapshot = build_public_api_contract_snapshot()
+
+    assert {
+        "janiform.cli",
+        "janiform.cli.commands.calibration",
+        "janiform.cli.commands.development",
+        "janiform.cli.commands.model_workflows",
+        "janiform.cli.commands.simulation",
+        "janiform.cli.parsing",
+        "janiform.cli.parsing.command_tree",
+        "janiform.cli.parsing.calibration",
+        "janiform.cli.parsing.development",
+        "janiform.cli.parsing.model_workflows",
+        "janiform.cli.parsing.simulation",
+    } <= set(current_snapshot["public_modules"])
+
+    cli_exports = current_snapshot["public_modules"]["janiform.cli"]["exports"]
+    assert "main" in cli_exports
+    assert "_build_parser" not in cli_exports
+
+
 def test_public_api_contract_guardrail_supports_public_domain_submodules() -> None:
     approved_snapshot = _minimal_snapshot(
         public_modules={
