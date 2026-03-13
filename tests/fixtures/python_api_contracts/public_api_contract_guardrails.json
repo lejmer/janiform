@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "6a09538fba008a1f330b39e897e70c481b2381d517d586232286ea1651397ebe",
+  "approved_snapshot_sha256": "1e8ad2f98fbb91a7d4a28aff30b4295ed39ebf6906c90e1c4a1498e8e59992b6",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -214,6 +214,34 @@
       "rationale": "GammaSeverityMarkConfiguration is pricing-owned and was only exposed from janiform.simulation through a lazy module __getattr__ alias to dodge an import cycle, so the approved surface now removes that hack and requires callers to import the type from janiform.pricing instead.",
       "snapshot_sha256": "6a09538fba008a1f330b39e897e70c481b2381d517d586232286ea1651397ebe",
       "summary": "Remove the lazy simulation alias for the pricing-owned GammaSeverityMarkConfiguration."
+    },
+    {
+      "approved_on": "2026-03-13",
+      "docs_updated": [
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
+        "docs/development/guides/coarse_simulation_workflow_contract.md"
+      ],
+      "rationale": "The simulation namespace now exposes janiform.simulation.coarse, janiform.simulation.seeded, and janiform.simulation.shared as the supported discoverable package map while removing the old underscore-backed structure, so the approved snapshot must track the new modules and the moved symbol origins.",
+      "snapshot_sha256": "4a21fe0c03431f645f3ae87241fc367e7d8f7169004104cbff60d2a563b32317",
+      "summary": "Approve simulation subpackage decomposition for coarse, seeded, and shared surfaces."
+    },
+    {
+      "approved_on": "2026-03-13",
+      "docs_updated": [
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "The shared simulation package now keeps helper machinery out of its __init__ facade, so the approved snapshot must record that the public validation error type is defined in janiform.simulation.shared.errors while remaining re-exported from janiform.simulation.shared and janiform.simulation.seeded.",
+      "snapshot_sha256": "0170fa45f95e17c467f35171a4141a344492ef3f54cdcd24fc1614961f7758e4",
+      "summary": "Record helper extraction from janiform.simulation.shared.__init__."
+    },
+    {
+      "approved_on": "2026-03-13",
+      "docs_updated": [
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "The public seeded simulation convenience surface now re-exports the public calendar and hourly-factor types referenced by load_hourly_factor_contract_for_simulation so callers can follow the helper signature directly from janiform.simulation or janiform.simulation.seeded without dropping into separate modules first.",
+      "snapshot_sha256": "1e8ad2f98fbb91a7d4a28aff30b4295ed39ebf6906c90e1c4a1498e8e59992b6",
+      "summary": "Re-export seeded hourly-factor loader signature types from simulation convenience surfaces."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_2",

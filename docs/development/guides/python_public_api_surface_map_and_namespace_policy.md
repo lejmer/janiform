@@ -116,6 +116,14 @@ from janiform.simulation.seeded import (
 
 The root import is the convenience path. The submodule import is the natural ownership path.
 
+For coarse workflows and shared simulation contracts, the same pattern applies:
+
+```python
+from janiform.simulation.coarse import CoarseSimulationRunRequest, run_coarse_simulation
+
+from janiform.simulation.shared import HawkesKernelParameters
+```
+
 ## Supported public modules
 
 ### Package roots
@@ -143,9 +151,15 @@ The root import is the convenience path. The submodule import is the natural own
 
 ### Public domain submodules
 
+- `janiform.simulation.coarse`
+  - Ownership: coarse-interval simulation request and path contracts, news-process configuration, and coarse execution entrypoints
+  - Root coexistence policy: common coarse workflow symbols are also re-exported from `janiform.simulation` as curated convenience imports
 - `janiform.simulation.seeded`
   - Ownership: seeded-tick simulation request and response contracts, seeded-tick execution entrypoints, and seeded-tick workflow-specific record types
   - Root coexistence policy: key seeded workflow symbols are also re-exported from `janiform.simulation` as curated convenience imports
+- `janiform.simulation.shared`
+  - Ownership: shared Hawkes-state and simulation error contracts used across coarse and seeded workflows
+  - Root coexistence policy: core shared contracts remain re-exported from `janiform.simulation` for convenience, while `janiform.simulation.shared` is the ownership path
 
 Additional importable submodules are not public by default. A submodule becomes supported only when
 this document lists it explicitly and the public contract snapshot tracks it.

@@ -29,6 +29,7 @@ def test_package_root_surface_is_intentionally_minimal() -> None:
 
 def test_simulation_public_symbols_live_in_simulation_module() -> None:
     expected_exports = {
+        "CalendarRegistry",
         "COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY",
         "COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY",
         "COARSE_SIMULATION_ENVIRONMENT_METADATA_POLICY",
@@ -53,6 +54,9 @@ def test_simulation_public_symbols_live_in_simulation_module() -> None:
         "HawkesExcitationState",
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
+        "HourlyFactorContract",
+        "HourlyNewsIntensityProviderSource",
+        "HourlySeasonalityProviderSource",
         "KnownNewsArrivalConfiguration",
         "NewsArrivalConfiguration",
         "NewsComponentMarkScaleConfiguration",
@@ -95,9 +99,13 @@ def test_simulation_seeded_public_submodule_is_supported_domain_import() -> None
     simulation_seeded_module = import_module("janiform.simulation.seeded")
 
     expected_exports = {
+        "CalendarRegistry",
         "HawkesExcitationState",
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
+        "HourlyFactorContract",
+        "HourlyNewsIntensityProviderSource",
+        "HourlySeasonalityProviderSource",
         "SeededTickEventRecord",
         "SeededTickEventSide",
         "SeededTickEventStateSnapshot",
@@ -120,6 +128,45 @@ def test_simulation_seeded_public_submodule_is_supported_domain_import() -> None
     assert expected_exports <= set(dir(simulation_seeded_module))
 
 
+def test_simulation_coarse_public_submodule_is_supported_domain_import() -> None:
+    simulation_coarse_module = import_module("janiform.simulation.coarse")
+
+    expected_exports = {
+        "COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION",
+        "CoarseSimulationModelInputs",
+        "CoarseSimulationPath",
+        "CoarseSimulationRunRequest",
+        "NewsProcessConfiguration",
+        "deserialize_coarse_simulation_path",
+        "deserialize_coarse_simulation_run_request",
+        "run_coarse_simulation",
+        "serialize_coarse_simulation_path",
+        "serialize_coarse_simulation_run_request",
+        "validate_coarse_simulation_path",
+        "validate_coarse_simulation_run_request",
+    }
+
+    assert expected_exports <= set(simulation_coarse_module.__all__)
+    assert expected_exports <= set(dir(simulation_coarse_module))
+
+
+def test_simulation_shared_public_submodule_is_supported_domain_import() -> None:
+    simulation_shared_module = import_module("janiform.simulation.shared")
+
+    expected_exports = {
+        "HawkesExcitationState",
+        "HawkesKernelLoadings",
+        "HawkesKernelParameters",
+        "SeededTickEventSide",
+        "SeededTickEventStateSnapshotCapture",
+        "SeededTickSimulationValidationError",
+        "SeededTickSimulationValidationFailure",
+    }
+
+    assert set(simulation_shared_module.__all__) == expected_exports
+    assert expected_exports <= set(dir(simulation_shared_module))
+
+
 def test_simulation_root_and_seeded_submodule_share_supported_symbols() -> None:
     simulation_seeded_module = import_module("janiform.simulation.seeded")
 
@@ -139,6 +186,25 @@ def test_simulation_root_and_seeded_submodule_share_supported_symbols() -> None:
 
     with pytest.raises(AttributeError):
         simulation_module.GammaSeverityMarkConfiguration
+
+
+def test_simulation_root_and_coarse_submodule_share_supported_symbols() -> None:
+    simulation_coarse_module = import_module("janiform.simulation.coarse")
+
+    assert simulation_module.CoarseSimulationRunRequest is simulation_coarse_module.CoarseSimulationRunRequest
+    assert simulation_module.CoarseSimulationPath is simulation_coarse_module.CoarseSimulationPath
+    assert simulation_module.run_coarse_simulation is simulation_coarse_module.run_coarse_simulation
+
+
+def test_simulation_root_and_shared_submodule_share_supported_symbols() -> None:
+    simulation_shared_module = import_module("janiform.simulation.shared")
+
+    assert simulation_module.HawkesKernelParameters is simulation_shared_module.HawkesKernelParameters
+    assert simulation_module.HawkesExcitationState is simulation_shared_module.HawkesExcitationState
+    assert (
+        simulation_module.SeededTickSimulationValidationError
+        is simulation_shared_module.SeededTickSimulationValidationError
+    )
 
 
 def test_pricing_public_symbols_live_in_pricing_module() -> None:
@@ -227,7 +293,18 @@ def test_hourly_factor_support_symbols_live_in_hourly_factor_module() -> None:
 def test_private_modules_are_not_exposed_through_public_exports() -> None:
     assert "native_module" not in validation_module.__all__
     assert "harness" not in validation_module.__all__
+    assert import_module("janiform.simulation.coarse").__name__ == "janiform.simulation.coarse"
     assert import_module("janiform.simulation.seeded").__name__ == "janiform.simulation.seeded"
+    assert import_module("janiform.simulation.shared").__name__ == "janiform.simulation.shared"
+
+    with pytest.raises(ModuleNotFoundError):
+        import_module("janiform.simulation._coarse")
+
+    with pytest.raises(ModuleNotFoundError):
+        import_module("janiform.simulation._seeded")
+
+    with pytest.raises(ModuleNotFoundError):
+        import_module("janiform.simulation._shared")
 
     with pytest.raises(ModuleNotFoundError):
         import_module("janiform.api")

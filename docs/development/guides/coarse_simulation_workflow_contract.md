@@ -180,7 +180,9 @@ boundary timestamps that the sampler-only contract does not.
 
 ## Python Surface
 
-The public Python entrypoint for this workflow lives in `janiform.simulation`.
+The natural public Python module for this workflow is `janiform.simulation.coarse`.
+The package root `janiform.simulation` continues to re-export the common coarse symbols as a
+curated convenience surface.
 
 Public request, response, and execution symbols:
 

@@ -1,4 +1,10 @@
-from ._coarse import (
+from ..calendar import CalendarRegistry
+from ..hourly_factors import (
+    HourlyFactorContract,
+    HourlyNewsIntensityProviderSource,
+    HourlySeasonalityProviderSource,
+)
+from .coarse import (
     COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY,
     COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY,
     COARSE_SIMULATION_ENVIRONMENT_METADATA_POLICY,
@@ -63,6 +69,7 @@ from .seeded import (
 
 
 __all__ = [
+    "CalendarRegistry",
     "COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY",
     "COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY",
     "COARSE_SIMULATION_ENVIRONMENT_METADATA_POLICY",
@@ -87,6 +94,9 @@ __all__ = [
     "HawkesExcitationState",
     "HawkesKernelLoadings",
     "HawkesKernelParameters",
+    "HourlyFactorContract",
+    "HourlyNewsIntensityProviderSource",
+    "HourlySeasonalityProviderSource",
     "KnownNewsArrivalConfiguration",
     "NewsArrivalConfiguration",
     "NewsComponentMarkScaleConfiguration",
