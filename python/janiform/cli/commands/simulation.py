@@ -1,7 +1,7 @@
-from argparse import Namespace
 from pathlib import Path
 from typing import cast
 
+from ..context import CliCommandContext
 from .._constants import (
     CLI_SIMULATION_COARSE_INTERVAL_ENTRYPOINT,
     CLI_SIMULATION_COARSE_INTERVAL_INTERNAL_ERROR_ID,
@@ -13,7 +13,7 @@ from .._constants import (
 )
 from ..documents import _load_json_document
 from ..errors import _classify_workflow_command_error
-from ..paths import _resolve_path_from_repository_root, resolve_repository_root
+from ..paths import _resolve_path_from_repository_root
 from ..rendering import (
     _render_simulation_coarse_interval_human_output,
     _render_simulation_seeded_ticks_human_output,
@@ -30,9 +30,14 @@ from ...simulation import (
 from .shared import _attach_runtime_hourly_factor_contract, _build_calendar_registry_from_document
 
 
-def _run_simulation_coarse_interval_command(parsed_arguments: Namespace) -> int:
-    repository_root = resolve_repository_root()
-    request_path = _resolve_path_from_repository_root(repository_root, cast(Path, parsed_arguments.request_json))
+def _run_simulation_coarse_interval_command(
+    *,
+    cli_context: CliCommandContext,
+    output: str,
+    request_json: Path,
+    **_: object,
+) -> int:
+    request_path = _resolve_path_from_repository_root(cli_context.repository_root, request_json)
 
     try:
         request_document = _load_json_document(request_path, "coarse simulation request")
@@ -54,19 +59,25 @@ def _run_simulation_coarse_interval_command(parsed_arguments: Namespace) -> int:
 
     payload = response.to_payload()
     _write_command_output(
-        parsed_arguments,
+        output,
         json_payload=payload,
         human_output_factory=lambda: _render_simulation_coarse_interval_human_output(payload),
     )
     return int(CliExitCode.SUCCESS)
 
 
-def _run_simulation_seeded_ticks_command(parsed_arguments: Namespace) -> int:
-    repository_root = resolve_repository_root()
-    request_path = _resolve_path_from_repository_root(repository_root, cast(Path, parsed_arguments.request_json))
+def _run_simulation_seeded_ticks_command(
+    *,
+    cli_context: CliCommandContext,
+    output: str,
+    request_json: Path,
+    calendar_registry_json: Path,
+    **_: object,
+) -> int:
+    request_path = _resolve_path_from_repository_root(cli_context.repository_root, request_json)
     calendar_registry_path = _resolve_path_from_repository_root(
-        repository_root,
-        cast(Path, parsed_arguments.calendar_registry_json),
+        cli_context.repository_root,
+        calendar_registry_json,
     )
 
     try:
@@ -95,7 +106,7 @@ def _run_simulation_seeded_ticks_command(parsed_arguments: Namespace) -> int:
 
     payload = response.to_payload()
     _write_command_output(
-        parsed_arguments,
+        output,
         json_payload=payload,
         human_output_factory=lambda: _render_simulation_seeded_ticks_human_output(payload),
     )

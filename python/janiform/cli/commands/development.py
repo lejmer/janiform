@@ -1,8 +1,8 @@
-from argparse import Namespace
 from pathlib import Path
 from typing import Any, cast
 
 from .shared import _build_calendar_registry, _build_calendar_registry_from_document
+from ..context import CliCommandContext
 from .._constants import (
     CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT,
     CLI_DETERMINISTIC_REGRESSION_INTERNAL_ERROR_ID,
@@ -11,7 +11,7 @@ from .._constants import (
 )
 from ..documents import _load_json_document
 from ..errors import _classify_open_closed_gap_command_error, _classify_workflow_command_error
-from ..paths import _resolve_path_from_repository_root, resolve_repository_root
+from ..paths import _resolve_path_from_repository_root
 from ..rendering import (
     _write_cli_error,
     _write_contract_json,
@@ -91,19 +91,28 @@ def _extract_seasonality_cases(seasonality_cases_document: dict[str, Any]) -> li
     return parsed_cases
 
 
-def _run_deterministic_regression_command(parsed_arguments: Namespace) -> int:
-    repository_root = resolve_repository_root()
+def _run_deterministic_regression_command(
+    *,
+    cli_context: CliCommandContext,
+    output: str,
+    calendar_registry_json: Path,
+    calendar_cases_json: Path,
+    seasonality_cases_json: Path,
+    seasonality_absolute_tolerance: float,
+    news_intensity_absolute_tolerance: float,
+    **_: object,
+) -> int:
     calendar_registry_path = _resolve_path_from_repository_root(
-        repository_root,
-        cast(Path, parsed_arguments.calendar_registry_json),
+        cli_context.repository_root,
+        calendar_registry_json,
     )
     calendar_cases_path = _resolve_path_from_repository_root(
-        repository_root,
-        cast(Path, parsed_arguments.calendar_cases_json),
+        cli_context.repository_root,
+        calendar_cases_json,
     )
     seasonality_cases_path = _resolve_path_from_repository_root(
-        repository_root,
-        cast(Path, parsed_arguments.seasonality_cases_json),
+        cli_context.repository_root,
+        seasonality_cases_json,
     )
     file_field_path = "calendar_registry_json"
     document_field_path = "calendar_registry_document"
@@ -126,8 +135,8 @@ def _run_deterministic_regression_command(parsed_arguments: Namespace) -> int:
             calendar_registry=calendar_registry,
             calendar_cases=calendar_cases,
             seasonality_cases=seasonality_cases,
-            seasonality_absolute_tolerance=float(parsed_arguments.seasonality_absolute_tolerance),
-            news_intensity_absolute_tolerance=float(parsed_arguments.news_intensity_absolute_tolerance),
+            seasonality_absolute_tolerance=seasonality_absolute_tolerance,
+            news_intensity_absolute_tolerance=news_intensity_absolute_tolerance,
         )
     except JaniformError as e:
         return _write_cli_error(e)
@@ -145,7 +154,7 @@ def _run_deterministic_regression_command(parsed_arguments: Namespace) -> int:
 
     failed_case_count = cast(dict[str, int], report["summary"])["failed_case_count"]
 
-    if parsed_arguments.output == "json":
+    if output == "json":
         _write_contract_json(report)
         return int(CliExitCode.SUCCESS if failed_case_count == 0 else CliExitCode.RUNTIME_ERROR)
 
@@ -153,15 +162,22 @@ def _run_deterministic_regression_command(parsed_arguments: Namespace) -> int:
     return int(CliExitCode.SUCCESS if failed_case_count == 0 else CliExitCode.RUNTIME_ERROR)
 
 
-def _run_open_closed_gap_leakage_regression_command(parsed_arguments: Namespace) -> int:
-    repository_root = resolve_repository_root()
+def _run_open_closed_gap_leakage_regression_command(
+    *,
+    cli_context: CliCommandContext,
+    output: str,
+    calendar_fixture_path: Path,
+    gap_behavior_fixture_path: Path,
+    component_absolute_tolerance: float,
+    **_: object,
+) -> int:
     calendar_fixture_path = _resolve_path_from_repository_root(
-        repository_root,
-        cast(Path, parsed_arguments.calendar_fixture_path),
+        cli_context.repository_root,
+        calendar_fixture_path,
     )
     gap_behavior_fixture_path = _resolve_path_from_repository_root(
-        repository_root,
-        cast(Path, parsed_arguments.gap_behavior_fixture_path),
+        cli_context.repository_root,
+        gap_behavior_fixture_path,
     )
 
     try:
@@ -175,7 +191,7 @@ def _run_open_closed_gap_leakage_regression_command(parsed_arguments: Namespace)
         report = run_open_closed_gap_leakage_regression_harness(
             calendar_registry=calendar_registry,
             gap_behavior_cases=gap_behavior_cases,
-            component_absolute_tolerance=float(parsed_arguments.component_absolute_tolerance),
+            component_absolute_tolerance=component_absolute_tolerance,
         )
     except JaniformError as e:
         return _write_cli_error(e)
@@ -184,7 +200,7 @@ def _run_open_closed_gap_leakage_regression_command(parsed_arguments: Namespace)
 
     failed_case_count = cast(dict[str, int], report["summary"])["failed_case_count"]
 
-    if parsed_arguments.output == "json":
+    if output == "json":
         _write_contract_json(report)
         return int(CliExitCode.SUCCESS if failed_case_count == 0 else CliExitCode.RUNTIME_ERROR)
 

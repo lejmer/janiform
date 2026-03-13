@@ -1,7 +1,7 @@
-from argparse import Namespace
 from pathlib import Path
 from typing import Optional, cast
 
+from ..context import CliCommandContext
 from .._constants import (
     CLI_HOURLY_FACTORS_BUILD_CONTRACT_ENTRYPOINT,
     CLI_HOURLY_FACTORS_BUILD_CONTRACT_INTERNAL_ERROR_ID,
@@ -16,7 +16,7 @@ from .._constants import (
 )
 from ..documents import _load_json_document
 from ..errors import _classify_workflow_command_error
-from ..paths import _resolve_path_from_repository_root, resolve_repository_root
+from ..paths import _resolve_path_from_repository_root
 from ..rendering import (
     _render_hourly_factor_build_contract_human_output,
     _render_hourly_factor_materialize_news_intensity_human_output,
@@ -44,15 +44,25 @@ from .shared import (
 )
 
 
-def _run_hourly_factor_materialize_seasonality_command(parsed_arguments: Namespace) -> int:
-    repository_root = resolve_repository_root()
+def _run_hourly_factor_materialize_seasonality_command(
+    *,
+    cli_context: CliCommandContext,
+    output: str,
+    calendar_registry_json: Path,
+    materialization_input_json: Path,
+    range_start_utc: str,
+    range_end_utc: str,
+    exchange_code: str,
+    interval: str,
+    **_: object,
+) -> int:
     calendar_registry_path = _resolve_path_from_repository_root(
-        repository_root,
-        cast(Path, parsed_arguments.calendar_registry_json),
+        cli_context.repository_root,
+        calendar_registry_json,
     )
     materialization_input_path = _resolve_path_from_repository_root(
-        repository_root,
-        cast(Path, parsed_arguments.materialization_input_json),
+        cli_context.repository_root,
+        materialization_input_json,
     )
 
     file_field_path = "calendar_registry_json"
@@ -69,14 +79,14 @@ def _run_hourly_factor_materialize_seasonality_command(parsed_arguments: Namespa
         document_field_path = "calendar_registry_document"
         calendar_registry = _build_calendar_registry_from_document(calendar_registry_document)
         document_field_path = "command_input"
-        range_start_utc = _parse_utc_datetime_cli_argument(
-            cast(str, parsed_arguments.range_start_utc),
+        parsed_range_start_utc = _parse_utc_datetime_cli_argument(
+            range_start_utc,
             field_path="range_start_utc",
             error_id=CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_VALIDATION_ERROR_ID,
             entrypoint=CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_ENTRYPOINT,
         )
-        range_end_utc = _parse_utc_datetime_cli_argument(
-            cast(str, parsed_arguments.range_end_utc),
+        parsed_range_end_utc = _parse_utc_datetime_cli_argument(
+            range_end_utc,
             field_path="range_end_utc",
             error_id=CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_VALIDATION_ERROR_ID,
             entrypoint=CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_ENTRYPOINT,
@@ -87,10 +97,10 @@ def _run_hourly_factor_materialize_seasonality_command(parsed_arguments: Namespa
         )
         materialization = materialize_hourly_seasonality_factors(
             calendar_registry=calendar_registry,
-            exchange_code=cast(str, parsed_arguments.exchange_code),
-            range_start_utc=range_start_utc,
-            range_end_utc=range_end_utc,
-            interval=cast(str, parsed_arguments.interval),
+            exchange_code=exchange_code,
+            range_start_utc=parsed_range_start_utc,
+            range_end_utc=parsed_range_end_utc,
+            interval=interval,
             source_timestamps_utc=source_timestamps_utc,
             source_seasonality_factors=source_seasonality_factors,
             settings=settings,
@@ -111,22 +121,32 @@ def _run_hourly_factor_materialize_seasonality_command(parsed_arguments: Namespa
 
     payload = _build_hourly_seasonality_materialization_payload(materialization)
     _write_command_output(
-        parsed_arguments,
+        output,
         json_payload=payload,
         human_output_factory=lambda: _render_hourly_factor_materialize_seasonality_human_output(payload),
     )
     return int(CliExitCode.SUCCESS)
 
 
-def _run_hourly_factor_materialize_news_intensity_command(parsed_arguments: Namespace) -> int:
-    repository_root = resolve_repository_root()
+def _run_hourly_factor_materialize_news_intensity_command(
+    *,
+    cli_context: CliCommandContext,
+    output: str,
+    calendar_registry_json: Path,
+    materialization_input_json: Path,
+    range_start_utc: str,
+    range_end_utc: str,
+    exchange_code: str,
+    interval: str,
+    **_: object,
+) -> int:
     calendar_registry_path = _resolve_path_from_repository_root(
-        repository_root,
-        cast(Path, parsed_arguments.calendar_registry_json),
+        cli_context.repository_root,
+        calendar_registry_json,
     )
     materialization_input_path = _resolve_path_from_repository_root(
-        repository_root,
-        cast(Path, parsed_arguments.materialization_input_json),
+        cli_context.repository_root,
+        materialization_input_json,
     )
 
     file_field_path = "calendar_registry_json"
@@ -143,14 +163,14 @@ def _run_hourly_factor_materialize_news_intensity_command(parsed_arguments: Name
         document_field_path = "calendar_registry_document"
         calendar_registry = _build_calendar_registry_from_document(calendar_registry_document)
         document_field_path = "command_input"
-        range_start_utc = _parse_utc_datetime_cli_argument(
-            cast(str, parsed_arguments.range_start_utc),
+        parsed_range_start_utc = _parse_utc_datetime_cli_argument(
+            range_start_utc,
             field_path="range_start_utc",
             error_id=CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_VALIDATION_ERROR_ID,
             entrypoint=CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_ENTRYPOINT,
         )
-        range_end_utc = _parse_utc_datetime_cli_argument(
-            cast(str, parsed_arguments.range_end_utc),
+        parsed_range_end_utc = _parse_utc_datetime_cli_argument(
+            range_end_utc,
             field_path="range_end_utc",
             error_id=CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_VALIDATION_ERROR_ID,
             entrypoint=CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_ENTRYPOINT,
@@ -159,10 +179,10 @@ def _run_hourly_factor_materialize_news_intensity_command(parsed_arguments: Name
         settings = _extract_hourly_news_intensity_materialization_input(materialization_input_document)
         materialization = materialize_hourly_news_intensity_factors(
             calendar_registry=calendar_registry,
-            exchange_code=cast(str, parsed_arguments.exchange_code),
-            range_start_utc=range_start_utc,
-            range_end_utc=range_end_utc,
-            interval=cast(str, parsed_arguments.interval),
+            exchange_code=exchange_code,
+            range_start_utc=parsed_range_start_utc,
+            range_end_utc=parsed_range_end_utc,
+            interval=interval,
             settings=settings,
         )
     except JaniformError as e:
@@ -181,7 +201,7 @@ def _run_hourly_factor_materialize_news_intensity_command(parsed_arguments: Name
 
     payload = _build_hourly_news_intensity_materialization_payload(materialization)
     _write_command_output(
-        parsed_arguments,
+        output,
         json_payload=payload,
         human_output_factory=lambda: _render_hourly_factor_materialize_news_intensity_human_output(
             payload,
@@ -190,25 +210,24 @@ def _run_hourly_factor_materialize_news_intensity_command(parsed_arguments: Name
     return int(CliExitCode.SUCCESS)
 
 
-def _run_hourly_factor_build_contract_command(parsed_arguments: Namespace) -> int:
-    repository_root = resolve_repository_root()
+def _run_hourly_factor_build_contract_command(
+    *,
+    cli_context: CliCommandContext,
+    output: str,
+    calendar_registry_json: Path,
+    range_start_utc: str,
+    range_end_utc: str,
+    exchange_code: str,
+    interval: str,
+    seasonality_explicit_source_json: Optional[Path],
+    seasonality_materialized_source_json: Optional[Path],
+    news_intensity_explicit_source_json: Optional[Path],
+    news_intensity_materialized_source_json: Optional[Path],
+    **_: object,
+) -> int:
     calendar_registry_path = _resolve_path_from_repository_root(
-        repository_root,
-        cast(Path, parsed_arguments.calendar_registry_json),
-    )
-    seasonality_explicit_source_path_argument = cast(
-        Optional[Path],
-        parsed_arguments.seasonality_explicit_source_json,
-    )
-    seasonality_materialized_source_path_argument = cast(
-        Optional[Path], parsed_arguments.seasonality_materialized_source_json
-    )
-    news_intensity_explicit_source_path_argument = cast(
-        Optional[Path],
-        parsed_arguments.news_intensity_explicit_source_json,
-    )
-    news_intensity_materialized_source_path_argument = cast(
-        Optional[Path], parsed_arguments.news_intensity_materialized_source_json
+        cli_context.repository_root,
+        calendar_registry_json,
     )
 
     file_field_path = "calendar_registry_json"
@@ -218,26 +237,26 @@ def _run_hourly_factor_build_contract_command(parsed_arguments: Namespace) -> in
         calendar_registry_document = _load_json_document(calendar_registry_path, "calendar registry")
         calendar_registry = _build_calendar_registry_from_document(calendar_registry_document)
         document_field_path = "command_input"
-        range_start_utc = _parse_utc_datetime_cli_argument(
-            cast(str, parsed_arguments.range_start_utc),
+        parsed_range_start_utc = _parse_utc_datetime_cli_argument(
+            range_start_utc,
             field_path="range_start_utc",
             error_id=CLI_HOURLY_FACTORS_BUILD_CONTRACT_VALIDATION_ERROR_ID,
             entrypoint=CLI_HOURLY_FACTORS_BUILD_CONTRACT_ENTRYPOINT,
         )
-        range_end_utc = _parse_utc_datetime_cli_argument(
-            cast(str, parsed_arguments.range_end_utc),
+        parsed_range_end_utc = _parse_utc_datetime_cli_argument(
+            range_end_utc,
             field_path="range_end_utc",
             error_id=CLI_HOURLY_FACTORS_BUILD_CONTRACT_VALIDATION_ERROR_ID,
             entrypoint=CLI_HOURLY_FACTORS_BUILD_CONTRACT_ENTRYPOINT,
         )
 
-        if seasonality_explicit_source_path_argument is not None:
+        if seasonality_explicit_source_json is not None:
             file_field_path = "seasonality_explicit_source_json"
             document_field_path = "seasonality_source_document"
             seasonality_source_document = _load_json_document(
                 _resolve_path_from_repository_root(
-                    repository_root,
-                    seasonality_explicit_source_path_argument,
+                    cli_context.repository_root,
+                    seasonality_explicit_source_json,
                 ),
                 "explicit seasonality source",
             )
@@ -251,23 +270,26 @@ def _run_hourly_factor_build_contract_command(parsed_arguments: Namespace) -> in
             file_field_path = "seasonality_materialized_source_json"
             document_field_path = "seasonality_source_document"
             seasonality_source_document = _load_json_document(
-                _resolve_path_from_repository_root(repository_root, seasonality_materialized_source_path_argument),
+                _resolve_path_from_repository_root(
+                    cli_context.repository_root,
+                    seasonality_materialized_source_json,
+                ),
                 "materialized seasonality source",
             )
             seasonality_hourly_factors, seasonality_materialization_method = (
                 _extract_materialized_hourly_seasonality_source_document(
                     seasonality_source_document,
-                    exchange_code=cast(str, parsed_arguments.exchange_code),
-                    range_start_utc=range_start_utc,
-                    range_end_utc=range_end_utc,
+                    exchange_code=exchange_code,
+                    range_start_utc=parsed_range_start_utc,
+                    range_end_utc=parsed_range_end_utc,
                 )
             )
 
-        if news_intensity_explicit_source_path_argument is not None:
+        if news_intensity_explicit_source_json is not None:
             file_field_path = "news_intensity_explicit_source_json"
             document_field_path = "news_intensity_source_document"
             news_intensity_source_document = _load_json_document(
-                _resolve_path_from_repository_root(repository_root, news_intensity_explicit_source_path_argument),
+                _resolve_path_from_repository_root(cli_context.repository_root, news_intensity_explicit_source_json),
                 "explicit news-intensity source",
             )
             news_intensity_hourly_factors, news_intensity_materialization_method = (
@@ -280,24 +302,27 @@ def _run_hourly_factor_build_contract_command(parsed_arguments: Namespace) -> in
             file_field_path = "news_intensity_materialized_source_json"
             document_field_path = "news_intensity_source_document"
             news_intensity_source_document = _load_json_document(
-                _resolve_path_from_repository_root(repository_root, news_intensity_materialized_source_path_argument),
+                _resolve_path_from_repository_root(
+                    cli_context.repository_root,
+                    news_intensity_materialized_source_json,
+                ),
                 "materialized news-intensity source",
             )
             news_intensity_hourly_factors, news_intensity_materialization_method = (
                 _extract_materialized_hourly_news_intensity_source_document(
                     news_intensity_source_document,
-                    exchange_code=cast(str, parsed_arguments.exchange_code),
-                    range_start_utc=range_start_utc,
-                    range_end_utc=range_end_utc,
+                    exchange_code=exchange_code,
+                    range_start_utc=parsed_range_start_utc,
+                    range_end_utc=parsed_range_end_utc,
                 )
             )
 
         contract = build_hourly_factor_contract(
             calendar_registry=calendar_registry,
-            exchange_code=cast(str, parsed_arguments.exchange_code),
-            range_start_utc=range_start_utc,
-            range_end_utc=range_end_utc,
-            interval=cast(str, parsed_arguments.interval),
+            exchange_code=exchange_code,
+            range_start_utc=parsed_range_start_utc,
+            range_end_utc=parsed_range_end_utc,
+            interval=interval,
             seasonality_hourly_factors=seasonality_hourly_factors,
             news_intensity_hourly_factors=news_intensity_hourly_factors,
             seasonality_materialization_method=seasonality_materialization_method,
@@ -319,7 +344,7 @@ def _run_hourly_factor_build_contract_command(parsed_arguments: Namespace) -> in
 
     payload = _build_hourly_factor_contract_payload(contract)
     _write_command_output(
-        parsed_arguments,
+        output,
         json_payload=payload,
         human_output_factory=lambda: _render_hourly_factor_build_contract_human_output(payload),
     )

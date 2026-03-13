@@ -58,6 +58,8 @@ janiform
   - `calibration`
   - `development`
 - `janiform.cli.command_tree` owns Click application assembly, command registration, and shared default-resolution behavior.
+- Command callbacks use Click-native keyword parameters plus a small `CliCommandContext` built from `click.Context`.
+  The CLI must not reintroduce synthetic `argparse.Namespace` handoff layers or parser-emulation adapters.
 - Named command-group modules are preferred over catch-all buckets when the contents mirror a real command namespace.
 - Low-level CLI boundary helpers such as rendering, document loading, and path resolution may live in named helper modules, but they are not command-group ownership modules and should stay smaller than the workflow-facing packages.
 - New CLI modules should not use underscore-prefixed module names unless they are truly private implementation details.

@@ -1,6 +1,5 @@
 import json
 import sys
-from argparse import Namespace
 from collections.abc import Callable
 from enum import StrEnum
 from typing import Any, Optional, cast
@@ -30,12 +29,12 @@ def _write_cli_error(error: JaniformError) -> int:
 
 
 def _write_command_output(
-    parsed_arguments: Namespace,
+    output: str,
     *,
     json_payload: dict[str, Any],
     human_output_factory: Callable[[], str],
 ) -> None:
-    output_mode = CliOutputMode(cast(str, parsed_arguments.output))
+    output_mode = CliOutputMode(output)
     match output_mode:
         case CliOutputMode.JSON:
             _write_contract_json(json_payload)

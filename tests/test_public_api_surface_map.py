@@ -54,8 +54,6 @@ def test_cli_click_command_tree_helpers_remain_internal() -> None:
     cli_command_tree_module = import_module("janiform.cli.command_tree")
 
     assert "_build_app" in cli_command_tree_module.__all__
-    assert "_build_parser" in cli_command_tree_module.__all__
-    assert "_parse_cli_arguments" in cli_command_tree_module.__all__
 
 
 def test_simulation_public_symbols_live_in_simulation_module() -> None:

@@ -1,9 +1,7 @@
-from argparse import Namespace
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from pathlib import Path
 import sys
 from typing import Any, Optional, cast
-import warnings
 
 import click
 
@@ -71,30 +69,9 @@ from .context import CliCommandContext
 from .paths import resolve_repository_root
 from .. import __version__
 
-type CliHandler = Callable[[Namespace], int]
+type CliHandler = Callable[..., int]
 
 _UNSET_OPTION_DEFAULT = object()
-
-_COMMAND_DESTINATIONS: dict[tuple[str, ...], str] = {
-    ("presets",): "presets_command",
-    ("simulation",): "simulation_command",
-    ("seasonality",): "seasonality_command",
-    ("hourly-factors",): "hourly_factors_command",
-    ("calibration",): "calibration_command",
-    ("pricing",): "pricing_command",
-    ("stylized-facts",): "stylized_facts_command",
-    ("dev",): "developer_command",
-    ("dev", "regression"): "regression_command",
-}
-
-
-class _CliHelpTarget:
-    def __init__(self, command: click.Command, arguments: list[str]) -> None:
-        self._arguments = arguments
-        self._command = command
-
-    def print_help(self) -> None:
-        click.echo(self._command.get_help(_build_click_context(self._command, self._arguments)))
 
 
 class _JaniformCommandMixin:
@@ -103,12 +80,10 @@ class _JaniformCommandMixin:
         *args: Any,
         command_path: tuple[str, ...] | None = None,
         environment: Mapping[str, str] | None = None,
-        janiform_handler: CliHandler | None = None,
         **kwargs: Any,
     ) -> None:
         self._command_path = command_path
         self._environment = environment
-        self.janiform_handler = janiform_handler
 
         super().__init__(*args, **kwargs)
 
@@ -140,43 +115,8 @@ class JaniformGroup(_JaniformCommandMixin, click.Group):
     pass
 
 
-class CliParserAdapter:
-    def __init__(self, command: click.Command) -> None:
-        self._command = command
-
-    def parse_args(self, arguments: list[str]) -> Namespace:
-        if "--help" in arguments or "--version" in arguments:
-            try:
-                _invoke_click_command(self._command, arguments)
-            except SystemExit as e:
-                raise e
-
-            raise SystemExit(0)
-
-        try:
-            parsed_arguments = _parse_click_command_to_namespace(self._command, arguments)
-            _validate_parsed_namespace(parsed_arguments)
-        except click.ClickException as e:
-            raise SystemExit(e.exit_code) from e
-
-        return parsed_arguments
-
-
 def _build_app(*, environment: Mapping[str, str] | None = None) -> click.Command:
     return _build_root_group(environment=environment)
-
-
-def _build_parser(*, environment: Mapping[str, str] | None = None) -> CliParserAdapter:
-    return CliParserAdapter(_build_app(environment=environment))
-
-
-def _parse_cli_arguments(
-    arguments: list[str] | None = None,
-    *,
-    environment: Mapping[str, str] | None = None,
-) -> Namespace:
-    effective_arguments = list(sys.argv[1:] if arguments is None else arguments)
-    return _parse_click_command_to_namespace(_build_app(environment=environment), effective_arguments)
 
 
 def _invoke_application(
@@ -206,157 +146,10 @@ def _invoke_click_command(command: click.Command, arguments: list[str]) -> int |
         raise SystemExit(e.exit_code) from e
 
 
-def _parse_click_command_to_namespace(command: click.Command, arguments: list[str]) -> Namespace:
-    root_context = command.make_context("janiform", arguments, resilient_parsing=False)
-    namespace_values: dict[str, Any] = {}
-
-    return _populate_namespace_from_context(
-        command=command,
-        context=root_context,
-        arguments=arguments,
-        namespace_values=namespace_values,
-        command_path=(),
-    )
-
-
-def _populate_namespace_from_context(
-    *,
-    command: click.Command,
-    context: click.Context,
-    arguments: list[str],
-    namespace_values: dict[str, Any],
-    command_path: tuple[str, ...],
-) -> Namespace:
-    for name, value in context.params.items():
-        namespace_values[name] = list(value) if isinstance(value, tuple) else value
-
-    remaining_arguments = _remaining_arguments_for_context(context)
-
-    if isinstance(command, click.Group) and remaining_arguments:
-        command_name, subcommand, subcommand_arguments = command.resolve_command(context, remaining_arguments)
-        subcommand_path = (*command_path, command_name)
-
-        if command_path:
-            namespace_values[_COMMAND_DESTINATIONS[command_path]] = command_name
-        else:
-            namespace_values["command"] = command_name
-
-        subcommand_context = subcommand.make_context(
-            command_name,
-            subcommand_arguments,
-            parent=context,
-            resilient_parsing=False,
-        )
-
-        return _populate_namespace_from_context(
-            command=subcommand,
-            context=subcommand_context,
-            arguments=arguments,
-            namespace_values=namespace_values,
-            command_path=subcommand_path,
-        )
-
-    if command_path:
-        namespace_values["command"] = command_path[0]
-
-    namespace_values["handler"] = cast(_JaniformCommandMixin, command).janiform_handler
-    namespace_values["help_target"] = _CliHelpTarget(command, arguments)
-    namespace_values["cli_context"] = CliCommandContext(
-        command_path=command_path,
-        command_identifier=_command_identifier_for_path(command_path),
-        default_map=dict(context.default_map or {}),
-        environment=cast(Mapping[str, str], context.find_root().command._environment if isinstance(context.find_root().command, _JaniformCommandMixin) else {}),
-        repository_root=resolve_repository_root(),
-    )
-    return Namespace(**namespace_values)
-
-
-def _remaining_arguments_for_context(context: click.Context) -> list[str]:
-    context_vars = vars(context)
-
-    raw_protected_arguments = _coerce_argument_sequence(context_vars.get("protected_args"))
-    if raw_protected_arguments is not None:
-        return [*raw_protected_arguments, *context.args]
-
-    raw_internal_protected_arguments = _coerce_argument_sequence(context_vars.get("_protected_args"))
-    if raw_internal_protected_arguments is not None:
-        return [*raw_internal_protected_arguments, *context.args]
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        legacy_protected_arguments = _coerce_argument_sequence(getattr(context, "protected_args", None))
-
-    if legacy_protected_arguments is not None:
-        return [*legacy_protected_arguments, *context.args]
-
-    return list(context.args)
-
-
-def _coerce_argument_sequence(value: object) -> list[str] | None:
-    if isinstance(value, Sequence) and not isinstance(value, str):
-        return [str(argument) for argument in value]
-
-    return None
-
-
 def _command_identifier_for_path(command_path: tuple[str, ...]) -> str | None:
     from ._constants import CLI_PRIMARY_COMMAND_IDENTIFIERS
 
     return CLI_PRIMARY_COMMAND_IDENTIFIERS.get(command_path)
-
-
-def _namespace_command_path(parsed_arguments: Namespace) -> tuple[str, ...]:
-    command_path: list[str] = []
-
-    command = cast(Optional[str], getattr(parsed_arguments, "command", None))
-    if command is None:
-        return ()
-
-    command_path.append(command)
-
-    for attribute_name in (
-        "presets_command",
-        "simulation_command",
-        "seasonality_command",
-        "hourly_factors_command",
-        "calibration_command",
-        "pricing_command",
-        "stylized_facts_command",
-        "developer_command",
-        "regression_command",
-    ):
-        attribute_value = cast(Optional[str], getattr(parsed_arguments, attribute_name, None))
-        if attribute_value is not None:
-            command_path.append(attribute_value)
-
-    return tuple(command_path)
-
-
-def _validate_parsed_namespace(parsed_arguments: Namespace) -> None:
-    command_path = _namespace_command_path(parsed_arguments)
-    values = vars(parsed_arguments)
-
-    if command_path in (("fit",), ("fit-and-simulate",)):
-        _validate_option_groups(
-            values,
-            exclusivity_groups=(("session_preset", "session_json"), ("known_news", "known_news_json")),
-            required_one_of_groups=(),
-        )
-        return
-
-    if command_path == ("hourly-factors", "build-contract"):
-        _validate_option_groups(
-            values,
-            exclusivity_groups=(),
-            required_one_of_groups=(
-                ("seasonality_explicit_source_json", "seasonality_materialized_source_json"),
-                ("news_intensity_explicit_source_json", "news_intensity_materialized_source_json"),
-            ),
-        )
-
-
-def _build_click_context(command: click.Command, arguments: list[str]) -> click.Context:
-    return command.make_context("janiform", arguments, resilient_parsing=True)
 
 
 def _command_option(
@@ -1014,22 +807,27 @@ def _wrap_handler(
     exclusivity_groups: tuple[tuple[str, ...], ...] = (),
     required_one_of_groups: tuple[tuple[str, ...], ...] = (),
 ) -> Callable[..., int]:
-    def callback(**kwargs: Any) -> int:
+    @click.pass_context
+    def callback(ctx: click.Context, **kwargs: Any) -> int:
         _validate_option_groups(
             kwargs,
             exclusivity_groups=exclusivity_groups,
             required_one_of_groups=required_one_of_groups,
         )
 
-        namespace = Namespace(**kwargs)
-        namespace.cli_context = CliCommandContext(
+        cli_context = CliCommandContext(
             command_path=command_path,
             command_identifier=_command_identifier_for_path(command_path),
-            default_map={},
-            environment={},
+            default_map=dict(ctx.default_map or {}),
+            environment=cast(
+                Mapping[str, str],
+                ctx.find_root().command._environment
+                if isinstance(ctx.find_root().command, _JaniformCommandMixin)
+                else {},
+            ),
             repository_root=resolve_repository_root(),
         )
-        return handler(namespace)
+        return handler(cli_context=cli_context, **kwargs)
 
     return callback
 
@@ -1091,7 +889,6 @@ def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | 
             callback=_wrap_handler(_run_presets_list_command, command_path=("presets", "list")),
             command_path=("presets", "list"),
             environment=environment,
-            janiform_handler=_run_presets_list_command,
             help="List available presets by category and registry scope.",
             params=[
                 _command_config_option(),
@@ -1112,7 +909,6 @@ def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | 
                 callback=_wrap_handler(handler, command_path=("presets", command_name)),
                 command_path=("presets", command_name),
                 environment=environment,
-                janiform_handler=handler,
                 help=help_text,
                 params=[
                     _command_config_option(),
@@ -1139,7 +935,6 @@ def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | 
             ),
             command_path=("fit",),
             environment=environment,
-            janiform_handler=_run_fit_command,
             help="Fit a Janiform model from market data using named presets and session inference.",
             params=_model_workflow_fit_options(),
         )
@@ -1150,7 +945,6 @@ def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | 
             callback=_wrap_handler(_run_model_simulate_command, command_path=("simulate",)),
             command_path=("simulate",),
             environment=environment,
-            janiform_handler=_run_model_simulate_command,
             help="Simulate from a persisted JaniformModel.",
             params=_model_workflow_simulate_options(require_model_path=True),
         )
@@ -1165,7 +959,6 @@ def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | 
             ),
             command_path=("fit-and-simulate",),
             environment=environment,
-            janiform_handler=_run_fit_and_simulate_command,
             help="Fit a model and immediately simulate from it.",
             params=[
                 *_model_workflow_fit_options(),
@@ -1191,7 +984,6 @@ def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | 
             callback=_wrap_handler(_run_simulation_coarse_interval_command, command_path=("simulation", "coarse-interval")),
             command_path=("simulation", "coarse-interval"),
             environment=environment,
-            janiform_handler=_run_simulation_coarse_interval_command,
             help=(
                 "Direct coarse-interval path simulation workflow. Use this command when you "
                 "want the canonical coarse simulation path artifact at interval length Delta "
@@ -1217,7 +1009,6 @@ def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | 
             callback=_wrap_handler(_run_simulation_seeded_ticks_command, command_path=("simulation", "seeded-ticks")),
             command_path=("simulation", "seeded-ticks"),
             environment=environment,
-            janiform_handler=_run_simulation_seeded_ticks_command,
             help=(
                 "Seeded tick priced fine-path simulation workflow. Use this command when you "
                 "need the canonical fine-scale priced path, its derived event replay, or "
@@ -1257,7 +1048,6 @@ def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | 
             callback=_wrap_handler(_run_seasonality_diagnostics_command, command_path=("seasonality", "diagnostics")),
             command_path=("seasonality", "diagnostics"),
             environment=environment,
-            janiform_handler=_run_seasonality_diagnostics_command,
             help=(
                 "Run end-to-end seasonality diagnostics from raw timestamp events. This "
                 "task-oriented workflow validates timestamp records, applies session "
@@ -1304,7 +1094,6 @@ def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | 
             callback=_wrap_handler(_run_seasonality_preprocess_timestamps_command, command_path=("seasonality", "preprocess-timestamps")),
             command_path=("seasonality", "preprocess-timestamps"),
             environment=environment,
-            janiform_handler=_run_seasonality_preprocess_timestamps_command,
             help=(
                 "Preprocess timestamp events against the exchange calendar registry. This "
                 "standalone step validates timestamp records, applies session filtering, and "
@@ -1351,7 +1140,6 @@ def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | 
             callback=_wrap_handler(_run_hourly_factor_materialize_seasonality_command, command_path=("hourly-factors", "materialize-seasonality")),
             command_path=("hourly-factors", "materialize-seasonality"),
             environment=environment,
-            janiform_handler=_run_hourly_factor_materialize_seasonality_command,
             help=(
                 "Materialize interval-aligned seasonality factors from timestamped source "
                 "samples. The command preserves the canonical seasonality materialization "
@@ -1375,7 +1163,6 @@ def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | 
             callback=_wrap_handler(_run_hourly_factor_materialize_news_intensity_command, command_path=("hourly-factors", "materialize-news-intensity")),
             command_path=("hourly-factors", "materialize-news-intensity"),
             environment=environment,
-            janiform_handler=_run_hourly_factor_materialize_news_intensity_command,
             help=(
                 "Materialize interval-aligned news-intensity factors from known-news and "
                 "surprise controls. The command preserves the canonical news-intensity "
@@ -1406,7 +1193,6 @@ def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | 
             ),
             command_path=("hourly-factors", "build-contract"),
             environment=environment,
-            janiform_handler=_run_hourly_factor_build_contract_command,
             help=(
                 "Build the combined interval-factor contract for downstream simulation or "
                 "pricing workflows. Seasonality and news-intensity inputs can come from "
@@ -1464,7 +1250,6 @@ def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | 
             callback=_wrap_handler(_run_calibration_market_data_command, command_path=("calibration", "market-data")),
             command_path=("calibration", "market-data"),
             environment=environment,
-            janiform_handler=_run_calibration_market_data_command,
             help=(
                 "Market-data calibration request workflow. This command validates file-driven "
                 "inputs and emits a user-facing market-data calibration summary with "
@@ -1479,7 +1264,6 @@ def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | 
             callback=_wrap_handler(_run_calibration_staged_command, command_path=("calibration", "staged")),
             command_path=("calibration", "staged"),
             environment=environment,
-            janiform_handler=_run_calibration_staged_command,
             help="Staged calibration workflow.",
             params=_staged_calibration_options(),
         )
@@ -1502,7 +1286,6 @@ def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | 
             callback=_wrap_handler(_run_pricing_vanilla_option_command, command_path=("pricing", "vanilla-option")),
             command_path=("pricing", "vanilla-option"),
             environment=environment,
-            janiform_handler=_run_pricing_vanilla_option_command,
             help="Vanilla option pricing workflow.",
             params=[
                 _command_config_option(),
@@ -1533,7 +1316,6 @@ def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | 
             callback=_wrap_handler(_run_stylized_facts_horizon_comparison_command, command_path=("stylized-facts", "horizon-comparison")),
             command_path=("stylized-facts", "horizon-comparison"),
             environment=environment,
-            janiform_handler=_run_stylized_facts_horizon_comparison_command,
             help=(
                 "Generate a stylized-fact horizon-comparison report bundle from a metric "
                 "catalog, a comparison request, and optional artifact-export settings."
@@ -1592,7 +1374,6 @@ def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | 
             callback=_wrap_handler(_run_deterministic_regression_command, command_path=("dev", "regression", "deterministic")),
             command_path=("dev", "regression", "deterministic"),
             environment=environment,
-            janiform_handler=_run_deterministic_regression_command,
             help="Run deterministic calendar and hourly-factor regression harness.",
             params=[
                 _output_option(default_output_mode=CliOutputMode.HUMAN),
@@ -1629,7 +1410,6 @@ def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | 
             callback=_wrap_handler(_run_open_closed_gap_leakage_regression_command, command_path=("dev", "regression", "open-closed-gap-leakage")),
             command_path=("dev", "regression", "open-closed-gap-leakage"),
             environment=environment,
-            janiform_handler=_run_open_closed_gap_leakage_regression_command,
             help="Run open and closed gap leakage regression harness.",
             params=[
                 _output_option(default_output_mode=CliOutputMode.HUMAN),
@@ -1662,7 +1442,5 @@ def _group_help_callback(ctx: click.Context) -> None:
 
 __all__ = [
     "_build_app",
-    "_build_parser",
     "_invoke_application",
-    "_parse_cli_arguments",
 ]

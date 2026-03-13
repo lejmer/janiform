@@ -1,5 +1,3 @@
-from contextlib import redirect_stdout
-from io import StringIO
 from pathlib import Path
 
 import orjson
@@ -7,7 +5,6 @@ import pytest
 
 import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.cli as cli_module
-import janiform.cli.command_tree as cli_command_tree_module
 from janiform.calibration.fit import JaniformEstimator, JaniformModel
 from janiform.calibration.market_data import (
     CalibrationDuplicateRecordPolicy,
@@ -18,7 +15,7 @@ from janiform.calibration.market_data import (
     CalibrationTickPriceInputPolicy,
 )
 from janiform.calibration.staged import validate_staged_calibration_response
-from tests.cli_test_support import invoke_cli, normalize_help_output
+from tests.cli_test_support import invoke_cli, normalize_help_output, parse_cli_command, render_help
 
 
 def test_cli_top_level_help_lists_high_level_workflow_commands() -> None:
@@ -43,9 +40,7 @@ def test_fit_help_documents_preset_and_override_inputs() -> None:
 
 
 def test_presets_show_and_fit_parser_map_high_level_arguments() -> None:
-    parser = cli_command_tree_module._build_parser()
-
-    presets_arguments = parser.parse_args(
+    presets_arguments = parse_cli_command(
         [
             "presets",
             "show",
@@ -55,7 +50,7 @@ def test_presets_show_and_fit_parser_map_high_level_arguments() -> None:
             "built_in",
         ]
     )
-    fit_arguments = parser.parse_args(
+    fit_arguments = parse_cli_command(
         [
             "fit",
             "--run-id",
@@ -85,16 +80,15 @@ def test_presets_show_and_fit_parser_map_high_level_arguments() -> None:
         ]
     )
 
-    assert presets_arguments.command == "presets"
-    assert presets_arguments.presets_command == "show"
-    assert presets_arguments.category == "market-profile"
-    assert presets_arguments.scope == "built_in"
+    assert presets_arguments.command_path == ("presets", "show")
+    assert presets_arguments.params["category"] == "market-profile"
+    assert presets_arguments.params["scope"] == "built_in"
 
-    assert fit_arguments.command == "fit"
-    assert fit_arguments.market == "us_equity_cash"
-    assert fit_arguments.known_news == "none"
-    assert fit_arguments.model_output_path == Path("model.json")
-    assert fit_arguments.execution_mode == "memory"
+    assert fit_arguments.command_path == ("fit",)
+    assert fit_arguments.params["market"] == "us_equity_cash"
+    assert fit_arguments.params["known_news"] == "none"
+    assert fit_arguments.params["model_output_path"] == Path("model.json")
+    assert fit_arguments.params["execution_mode"] == "memory"
 
 
 def test_presets_list_outputs_bundled_presets() -> None:
@@ -402,32 +396,29 @@ def test_fit_fails_for_invalid_market_preset(tmp_path: Path) -> None:
 
 
 def test_fit_parser_rejects_contradictory_known_news_flags() -> None:
-    parser = cli_command_tree_module._build_parser()
+    exit_code, _, _ = invoke_cli(
+        [
+            "fit",
+            "--run-id",
+            "contradiction",
+            "--workflow-scope",
+            "seasonality_only",
+            "--tick-data-path",
+            "ticks.csv",
+            "--tick-data-format",
+            "csv",
+            "--tick-timestamp-column",
+            "timestamp_utc",
+            "--timestamp-timezone",
+            "UTC",
+            "--known-news",
+            "none",
+            "--known-news-json",
+            "known-news.json",
+        ]
+    )
 
-    with pytest.raises(SystemExit) as captured_exit:
-        parser.parse_args(
-            [
-                "fit",
-                "--run-id",
-                "contradiction",
-                "--workflow-scope",
-                "seasonality_only",
-                "--tick-data-path",
-                "ticks.csv",
-                "--tick-data-format",
-                "csv",
-                "--tick-timestamp-column",
-                "timestamp_utc",
-                "--timestamp-timezone",
-                "UTC",
-                "--known-news",
-                "none",
-                "--known-news-json",
-                "known-news.json",
-            ]
-        )
-
-    assert captured_exit.value.code == 2
+    assert exit_code == 2
 
 
 def test_advanced_calibration_help_remains_available_but_secondary() -> None:
@@ -439,15 +430,7 @@ def test_advanced_calibration_help_remains_available_but_secondary() -> None:
 
 
 def _render_help(arguments: list[str]) -> str:
-    parser = cli_command_tree_module._build_parser()
-    stdout_buffer = StringIO()
-
-    with pytest.raises(SystemExit) as captured_exit:
-        with redirect_stdout(stdout_buffer):
-            parser.parse_args([*arguments, "--help"])
-
-    assert captured_exit.value.code == 0
-    return stdout_buffer.getvalue()
+    return render_help(arguments)
 
 
 def _write_tick_data(path: Path, *, rows: tuple[str, ...]) -> Path:

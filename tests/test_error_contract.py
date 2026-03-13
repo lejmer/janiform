@@ -8,6 +8,7 @@ import janiform.calibration as calibration_module
 import janiform.calibration.staged.runtime as calibration_staged_runtime_module
 import janiform.cli as cli_module
 import janiform.cli.commands.development as cli_development_commands_module
+from janiform.cli.context import CliCommandContext
 import janiform.pricing as pricing_module
 import janiform.simulation as simulation_module
 import janiform.simulation.seeded.runtime as simulation_seeded_runtime_module
@@ -370,11 +371,17 @@ def test_cli_error_output_uses_shared_error_contract(
     monkeypatch.setattr(cli_development_commands_module, "_load_json_document", broken_load_json_document)
 
     exit_code = cli_module._run_open_closed_gap_leakage_regression_command(
-        Namespace(
-            calendar_fixture_path=Path("calendar.json"),
-            gap_behavior_fixture_path=Path("gap.json"),
-            component_absolute_tolerance=1e-12,
-        )
+        cli_context=CliCommandContext(
+            command_path=("dev", "regression", "open-closed-gap-leakage"),
+            command_identifier=None,
+            default_map={},
+            environment={},
+            repository_root=Path.cwd(),
+        ),
+        output="human",
+        calendar_fixture_path=Path("calendar.json"),
+        gap_behavior_fixture_path=Path("gap.json"),
+        component_absolute_tolerance=1e-12,
     )
 
     captured = capsys.readouterr()
@@ -412,14 +419,19 @@ def test_deterministic_regression_cli_error_output_uses_shared_error_contract(
     monkeypatch.setattr(cli_development_commands_module, "_extract_calendar_cases", broken_extract_calendar_cases)
 
     exit_code = cli_module._run_deterministic_regression_command(
-        Namespace(
-            calendar_registry_json=Path("calendar-registry.json"),
-            calendar_cases_json=Path("calendar-cases.json"),
-            seasonality_cases_json=Path("seasonality-cases.json"),
-            seasonality_absolute_tolerance=1e-12,
-            news_intensity_absolute_tolerance=1e-12,
-            output="human",
-        )
+        cli_context=CliCommandContext(
+            command_path=("dev", "regression", "deterministic"),
+            command_identifier=None,
+            default_map={},
+            environment={},
+            repository_root=Path.cwd(),
+        ),
+        output="human",
+        calendar_registry_json=Path("calendar-registry.json"),
+        calendar_cases_json=Path("calendar-cases.json"),
+        seasonality_cases_json=Path("seasonality-cases.json"),
+        seasonality_absolute_tolerance=1e-12,
+        news_intensity_absolute_tolerance=1e-12,
     )
 
     captured = capsys.readouterr()

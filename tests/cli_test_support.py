@@ -1,9 +1,12 @@
 import json
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import UTC, datetime, timedelta
+from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
+from typing import cast
 
+import click
 import orjson
 import pyarrow as pa
 from pyarrow import parquet as pyarrow_parquet
@@ -136,39 +139,94 @@ def build_coarse_simulation_request(calendar_registry_json: str) -> CoarseSimula
     return build_example_coarse_simulation_request(CalendarRegistry(calendar_registry_json))
 
 
+@dataclass(frozen=True, slots=True)
+class ParsedCliInvocation:
+    command_path: tuple[str, ...]
+    params: dict[str, object]
+    default_map: dict[str, object]
+
+
+def parse_cli_command(
+    arguments: list[str],
+    *,
+    environment: dict[str, str] | None = None,
+) -> ParsedCliInvocation:
+    command = cli_command_tree_module._build_app(environment={} if environment is None else environment)
+    context = command.make_context("janiform", arguments, resilient_parsing=False)
+    return _collect_click_invocation(command=command, context=context, command_path=())
+
+
+def _collect_click_invocation(
+    *,
+    command: click.Command,
+    context: click.Context,
+    command_path: tuple[str, ...],
+) -> ParsedCliInvocation:
+    params: dict[str, object] = {
+        name: list(value) if isinstance(value, tuple) else value for name, value in context.params.items()
+    }
+
+    remaining_arguments = _remaining_click_arguments(context)
+    if isinstance(command, click.Group) and remaining_arguments:
+        subcommand_name, subcommand, subcommand_arguments = command.resolve_command(context, remaining_arguments)
+        subcommand_context = subcommand.make_context(
+            subcommand_name,
+            subcommand_arguments,
+            parent=context,
+            resilient_parsing=False,
+        )
+        child_invocation = _collect_click_invocation(
+            command=subcommand,
+            context=subcommand_context,
+            command_path=(*command_path, subcommand_name),
+        )
+        return ParsedCliInvocation(
+            command_path=child_invocation.command_path,
+            params={**params, **child_invocation.params},
+            default_map=child_invocation.default_map,
+        )
+
+    return ParsedCliInvocation(
+        command_path=command_path,
+        params=params,
+        default_map=dict(context.default_map or {}),
+    )
+
+
+def _remaining_click_arguments(context: click.Context) -> list[str]:
+    raw_protected_arguments = cast(object, vars(context).get("protected_args"))
+    if raw_protected_arguments is None:
+        raw_protected_arguments = cast(object, vars(context).get("_protected_args"))
+
+    protected_arguments = [str(argument) for argument in raw_protected_arguments] if isinstance(raw_protected_arguments, list) else []
+    return [*protected_arguments, *context.args]
+
+
 def invoke_cli(
     arguments: list[str],
     *,
     environment: dict[str, str] | None = None,
 ) -> tuple[int, str, str]:
-    parsed_arguments = cli_command_tree_module._parse_cli_arguments(
-        arguments,
-        environment={} if environment is None else environment,
-    )
-
     stdout_buffer = StringIO()
     stderr_buffer = StringIO()
 
-    with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
-        exit_code = parsed_arguments.handler(parsed_arguments)
+    try:
+        with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
+            exit_code = cli_command_tree_module._invoke_application(
+                arguments,
+                environment={} if environment is None else environment,
+            )
+    except SystemExit as e:
+        exit_code = int(e.code)
 
     return exit_code, stdout_buffer.getvalue(), stderr_buffer.getvalue()
 
 
 def render_help(arguments: list[str]) -> str:
-    parser = cli_command_tree_module._build_parser()
-    stdout_buffer = StringIO()
-
-    try:
-        with redirect_stdout(stdout_buffer):
-            parser.parse_args([*arguments, "--help"])
-    except SystemExit as e:
-        if e.code != 0:
-            raise
-    else:
-        raise AssertionError("expected --help to exit")
-
-    return stdout_buffer.getvalue()
+    exit_code, stdout_text, stderr_text = invoke_cli([*arguments, "--help"])
+    if exit_code != 0:
+        raise AssertionError(f"expected help to succeed, got {exit_code}: {stderr_text}")
+    return stdout_text
 
 
 def normalize_help_output(help_output: str) -> str:

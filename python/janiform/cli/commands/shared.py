@@ -1,5 +1,4 @@
 import json
-from argparse import Namespace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional, cast
@@ -50,31 +49,36 @@ from ...simulation import (
 )
 
 
-def _build_intraday_seasonality_settings_from_arguments(
-    parsed_arguments: Namespace,
+def _build_intraday_seasonality_settings(
+    *,
+    intraday_minutes_per_bin: int,
+    intraday_smoothing_kernel: str,
+    intraday_smoothing_bandwidth_bins: float,
+    intraday_minimum_bin_events: int,
+    intraday_pseudocount: float,
 ) -> IntradaySeasonalityEstimatorSettings:
     return IntradaySeasonalityEstimatorSettings(
         minutes_per_bin=_require_positive_integer_cli_argument(
-            int(parsed_arguments.intraday_minutes_per_bin),
+            intraday_minutes_per_bin,
             field_path="intraday_minutes_per_bin",
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
         ),
-        smoothing_kernel=IntradaySmoothingKernel(cast(str, parsed_arguments.intraday_smoothing_kernel)),
+        smoothing_kernel=IntradaySmoothingKernel(intraday_smoothing_kernel),
         smoothing_bandwidth_bins=_require_positive_float_cli_argument(
-            float(parsed_arguments.intraday_smoothing_bandwidth_bins),
+            intraday_smoothing_bandwidth_bins,
             field_path="intraday_smoothing_bandwidth_bins",
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
         ),
         minimum_bin_events=_require_positive_integer_cli_argument(
-            int(parsed_arguments.intraday_minimum_bin_events),
+            intraday_minimum_bin_events,
             field_path="intraday_minimum_bin_events",
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
         ),
         pseudocount=_require_positive_float_cli_argument(
-            float(parsed_arguments.intraday_pseudocount),
+            intraday_pseudocount,
             field_path="intraday_pseudocount",
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
@@ -82,18 +86,20 @@ def _build_intraday_seasonality_settings_from_arguments(
     )
 
 
-def _build_day_of_week_seasonality_settings_from_arguments(
-    parsed_arguments: Namespace,
+def _build_day_of_week_seasonality_settings(
+    *,
+    day_of_week_minimum_bucket_events: int,
+    day_of_week_pseudocount: float,
 ) -> DayOfWeekSeasonalityEstimatorSettings:
     return DayOfWeekSeasonalityEstimatorSettings(
         minimum_bucket_events=_require_positive_integer_cli_argument(
-            int(parsed_arguments.day_of_week_minimum_bucket_events),
+            day_of_week_minimum_bucket_events,
             field_path="day_of_week_minimum_bucket_events",
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
         ),
         pseudocount=_require_positive_float_cli_argument(
-            float(parsed_arguments.day_of_week_pseudocount),
+            day_of_week_pseudocount,
             field_path="day_of_week_pseudocount",
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
@@ -101,18 +107,20 @@ def _build_day_of_week_seasonality_settings_from_arguments(
     )
 
 
-def _build_day_of_year_seasonality_settings_from_arguments(
-    parsed_arguments: Namespace,
+def _build_day_of_year_seasonality_settings(
+    *,
+    day_of_year_minimum_bucket_events: int,
+    day_of_year_pseudocount: float,
 ) -> DayOfYearSeasonalityEstimatorSettings:
     return DayOfYearSeasonalityEstimatorSettings(
         minimum_bucket_events=_require_positive_integer_cli_argument(
-            int(parsed_arguments.day_of_year_minimum_bucket_events),
+            day_of_year_minimum_bucket_events,
             field_path="day_of_year_minimum_bucket_events",
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
         ),
         pseudocount=_require_positive_float_cli_argument(
-            float(parsed_arguments.day_of_year_pseudocount),
+            day_of_year_pseudocount,
             field_path="day_of_year_pseudocount",
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
@@ -809,12 +817,12 @@ __all__ = [
     "_attach_runtime_hourly_factor_contract",
     "_build_calendar_registry",
     "_build_calendar_registry_from_document",
-    "_build_day_of_week_seasonality_settings_from_arguments",
-    "_build_day_of_year_seasonality_settings_from_arguments",
+    "_build_day_of_week_seasonality_settings",
+    "_build_day_of_year_seasonality_settings",
     "_build_hourly_factor_contract_payload",
     "_build_hourly_news_intensity_materialization_payload",
     "_build_hourly_seasonality_materialization_payload",
-    "_build_intraday_seasonality_settings_from_arguments",
+    "_build_intraday_seasonality_settings",
     "_build_timestamp_event_preprocessing_payload",
     "_extract_calendar_registry_payload",
     "_extract_datetime_sequence_field",

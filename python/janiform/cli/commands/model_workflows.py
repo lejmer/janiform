@@ -1,4 +1,3 @@
-from argparse import Namespace
 from pathlib import Path
 from typing import Any, Optional, cast
 
@@ -7,6 +6,7 @@ from .shared import (
     _require_non_empty_cli_string,
     _require_positive_integer_cli_argument,
 )
+from ..context import CliCommandContext
 from .._constants import (
     CLI_FIT_AND_SIMULATE_ENTRYPOINT,
     CLI_FIT_AND_SIMULATE_INTERNAL_ERROR_ID,
@@ -24,7 +24,7 @@ from .._constants import (
 )
 from ..documents import _load_json_document_for_cli_field
 from ..errors import _classify_generic_cli_command_error, _cli_validation_error
-from ..paths import _resolve_path_from_repository_root, resolve_repository_root
+from ..paths import _resolve_path_from_repository_root
 from ..rendering import (
     _render_fit_and_simulate_human_output,
     _render_fit_human_output,
@@ -59,15 +59,18 @@ from ...calibration.fit.estimator import _load_explicit_session_configuration
 from ...errors import JaniformError, JaniformErrorCategory, JaniformErrorDetails, JaniformExecutionError
 
 
-def _run_fit_command(parsed_arguments: Namespace) -> int:
-    repository_root = resolve_repository_root()
-
+def _run_fit_command(
+    *,
+    cli_context: CliCommandContext,
+    output: str,
+    **command_arguments: object,
+) -> int:
     try:
         model, fit_report, persisted_model_path = _execute_cli_fit(
-            parsed_arguments,
-            repository_root=repository_root,
+            cli_context=cli_context,
             entrypoint=CLI_FIT_ENTRYPOINT,
             error_id=CLI_FIT_VALIDATION_ERROR_ID,
+            command_arguments=command_arguments,
         )
         payload = _build_cli_fit_result_payload(
             model=model,
@@ -91,25 +94,30 @@ def _run_fit_command(parsed_arguments: Namespace) -> int:
         )
 
     _write_command_output(
-        parsed_arguments,
+        output,
         json_payload=payload,
         human_output_factory=lambda: _render_fit_human_output(payload),
     )
     return int(CliExitCode.SUCCESS)
 
 
-def _run_model_simulate_command(parsed_arguments: Namespace) -> int:
-    repository_root = resolve_repository_root()
+def _run_model_simulate_command(
+    *,
+    cli_context: CliCommandContext,
+    output: str,
+    model_path: Path,
+    **command_arguments: object,
+) -> int:
     model_path = _resolve_path_from_repository_root(
-        repository_root,
-        cast(Path, parsed_arguments.model_path),
+        cli_context.repository_root,
+        model_path,
     )
 
     try:
         model = JaniformModel.load(model_path)
         payload = _build_cli_simulate_result_payload(
             model=model,
-            parsed_arguments=parsed_arguments,
+            command_arguments=command_arguments,
             model_path=model_path,
             command=CLI_HIGH_LEVEL_SIMULATE_ENTRYPOINT,
             schema_version=CLI_SIMULATE_RESULT_SCHEMA_VERSION,
@@ -140,22 +148,25 @@ def _run_model_simulate_command(parsed_arguments: Namespace) -> int:
         )
 
     _write_command_output(
-        parsed_arguments,
+        output,
         json_payload=payload,
         human_output_factory=lambda: _render_simulate_human_output(payload),
     )
     return int(CliExitCode.SUCCESS)
 
 
-def _run_fit_and_simulate_command(parsed_arguments: Namespace) -> int:
-    repository_root = resolve_repository_root()
-
+def _run_fit_and_simulate_command(
+    *,
+    cli_context: CliCommandContext,
+    output: str,
+    **command_arguments: object,
+) -> int:
     try:
         model, fit_report, persisted_model_path = _execute_cli_fit(
-            parsed_arguments,
-            repository_root=repository_root,
+            cli_context=cli_context,
             entrypoint=CLI_FIT_AND_SIMULATE_ENTRYPOINT,
             error_id=CLI_FIT_AND_SIMULATE_VALIDATION_ERROR_ID,
+            command_arguments=command_arguments,
         )
         fit_payload = _build_cli_fit_result_payload(
             model=model,
@@ -166,7 +177,7 @@ def _run_fit_and_simulate_command(parsed_arguments: Namespace) -> int:
         )
         simulate_payload = _build_cli_simulate_result_payload(
             model=model,
-            parsed_arguments=parsed_arguments,
+            command_arguments=command_arguments,
             model_path=persisted_model_path,
             command=CLI_HIGH_LEVEL_SIMULATE_ENTRYPOINT,
             schema_version=CLI_SIMULATE_RESULT_SCHEMA_VERSION,
@@ -203,7 +214,7 @@ def _run_fit_and_simulate_command(parsed_arguments: Namespace) -> int:
         )
 
     _write_command_output(
-        parsed_arguments,
+        output,
         json_payload=payload,
         human_output_factory=lambda: _render_fit_and_simulate_human_output(payload),
     )
@@ -211,16 +222,15 @@ def _run_fit_and_simulate_command(parsed_arguments: Namespace) -> int:
 
 
 def _build_cli_preset_registry(
-    parsed_arguments: Namespace,
     *,
-    repository_root: Path,
+    cli_context: CliCommandContext,
+    user_preset_json: tuple[Path, ...],
     entrypoint: str,
     error_id: str,
 ) -> PresetRegistry:
     registry = PresetRegistry()
-    user_preset_paths = cast(list[Path], getattr(parsed_arguments, "user_preset_json", []))
-    for path in user_preset_paths:
-        resolved_path = _resolve_path_from_repository_root(repository_root, path)
+    for path in user_preset_json:
+        resolved_path = _resolve_path_from_repository_root(cli_context.repository_root, path)
         try:
             preset_json = resolved_path.read_text(encoding="utf-8")
         except FileNotFoundError as e:
@@ -291,95 +301,96 @@ def _resolve_preset_artifact(
 
 
 def _execute_cli_fit(
-    parsed_arguments: Namespace,
     *,
-    repository_root: Path,
+    cli_context: CliCommandContext,
     entrypoint: str,
     error_id: str,
+    command_arguments: dict[str, object],
 ) -> tuple[JaniformModel, JaniformFitReport, Optional[Path]]:
     registry = _build_cli_preset_registry(
-        parsed_arguments,
-        repository_root=repository_root,
+        cli_context=cli_context,
+        user_preset_json=cast(tuple[Path, ...], command_arguments.get("user_preset_json", ())),
         entrypoint=entrypoint,
         error_id=error_id,
     )
     market_profile = _build_market_profile_reference_from_arguments(
-        parsed_arguments,
+        command_arguments,
         registry=registry,
         entrypoint=entrypoint,
         error_id=error_id,
     )
     session_reference = _build_session_reference_from_arguments(
-        parsed_arguments,
-        repository_root=repository_root,
+        command_arguments,
+        repository_root=cli_context.repository_root,
         registry=registry,
         entrypoint=entrypoint,
         error_id=error_id,
     )
     known_news_reference = _build_known_news_reference_from_arguments(
-        parsed_arguments,
-        repository_root=repository_root,
+        command_arguments,
+        repository_root=cli_context.repository_root,
         registry=registry,
         entrypoint=entrypoint,
         error_id=error_id,
     )
     estimator = JaniformEstimator(
-        workflow_scope=CalibrationMarketDataWorkflowScope(cast(str, parsed_arguments.workflow_scope)),
-        tick_data_column_mapping=_build_tick_data_column_mapping_from_arguments(parsed_arguments),
-        normalization_policy=_build_model_workflow_normalization_policy_from_arguments(
-            parsed_arguments,
-        ),
+        workflow_scope=CalibrationMarketDataWorkflowScope(cast(str, command_arguments["workflow_scope"])),
+        tick_data_column_mapping=_build_tick_data_column_mapping_from_arguments(command_arguments),
+        normalization_policy=_build_model_workflow_normalization_policy_from_arguments(command_arguments),
         option_surface_column_mapping=_build_option_surface_column_mapping_from_arguments(
-            parsed_arguments,
+            command_arguments,
             entrypoint=entrypoint,
             error_id=error_id,
         ),
         output_preferences=_build_model_workflow_output_preferences_from_arguments(
-            parsed_arguments,
-            repository_root=repository_root,
+            command_arguments,
+            repository_root=cli_context.repository_root,
             entrypoint=entrypoint,
             error_id=error_id,
         ),
         market_profile=market_profile,
         session=session_reference,
         known_news=known_news_reference,
-        exchange_code=cast(Optional[str], parsed_arguments.exchange_code),
-        session_timezone=cast(Optional[str], parsed_arguments.session_timezone),
+        exchange_code=cast(Optional[str], command_arguments.get("exchange_code")),
+        session_timezone=cast(Optional[str], command_arguments.get("session_timezone")),
         registry=registry,
     )
 
-    tick_data_path = _resolve_path_from_repository_root(repository_root, cast(Path, parsed_arguments.tick_data_path))
-    option_surface_path = cast(Optional[Path], parsed_arguments.option_surface_path)
+    tick_data_path = _resolve_path_from_repository_root(
+        cli_context.repository_root,
+        cast(Path, command_arguments["tick_data_path"]),
+    )
+    option_surface_path = cast(Optional[Path], command_arguments.get("option_surface_path"))
     resolved_option_surface_path = (
-        _resolve_path_from_repository_root(repository_root, option_surface_path)
+        _resolve_path_from_repository_root(cli_context.repository_root, option_surface_path)
         if option_surface_path is not None
         else None
     )
     option_surface_format = (
         CalibrationInputFileFormat.PARQUET
-        if parsed_arguments.option_surface_format is None
-        else CalibrationInputFileFormat(cast(str, parsed_arguments.option_surface_format))
+        if command_arguments.get("option_surface_format") is None
+        else CalibrationInputFileFormat(cast(str, command_arguments["option_surface_format"]))
     )
     option_surface_provenance_label = (
         "option_surface"
-        if parsed_arguments.option_surface_provenance_label is None
-        else cast(str, parsed_arguments.option_surface_provenance_label)
+        if command_arguments.get("option_surface_provenance_label") is None
+        else cast(str, command_arguments["option_surface_provenance_label"])
     )
 
     _reject_orphan_market_data_arguments(
         resolved_option_surface_path is not None,
         (
-            ("option_surface_format", parsed_arguments.option_surface_format),
-            ("option_surface_provenance_label", parsed_arguments.option_surface_provenance_label),
-            ("option_quote_input_policy", parsed_arguments.option_quote_input_policy),
-            ("option_quote_timestamp_column", parsed_arguments.option_quote_timestamp_column),
-            ("option_expiry_column", parsed_arguments.option_expiry_column),
-            ("option_strike_column", parsed_arguments.option_strike_column),
-            ("option_type_column", parsed_arguments.option_type_column),
-            ("option_mid_price_column", parsed_arguments.option_mid_price_column),
-            ("option_bid_column", parsed_arguments.option_bid_column),
-            ("option_ask_column", parsed_arguments.option_ask_column),
-            ("option_implied_volatility_column", parsed_arguments.option_implied_volatility_column),
+            ("option_surface_format", command_arguments.get("option_surface_format")),
+            ("option_surface_provenance_label", command_arguments.get("option_surface_provenance_label")),
+            ("option_quote_input_policy", command_arguments.get("option_quote_input_policy")),
+            ("option_quote_timestamp_column", command_arguments.get("option_quote_timestamp_column")),
+            ("option_expiry_column", command_arguments.get("option_expiry_column")),
+            ("option_strike_column", command_arguments.get("option_strike_column")),
+            ("option_type_column", command_arguments.get("option_type_column")),
+            ("option_mid_price_column", command_arguments.get("option_mid_price_column")),
+            ("option_bid_column", command_arguments.get("option_bid_column")),
+            ("option_ask_column", command_arguments.get("option_ask_column")),
+            ("option_implied_volatility_column", command_arguments.get("option_implied_volatility_column")),
         ),
         message="option-surface flags require --option-surface-path",
     )
@@ -387,10 +398,10 @@ def _execute_cli_fit(
     model_result, fit_report = cast(
         tuple[Optional[JaniformModel], JaniformFitReport],
         estimator.fit(
-            run_id=cast(str, parsed_arguments.run_id),
+            run_id=cast(str, command_arguments["run_id"]),
             tick_data_path=tick_data_path,
-            tick_data_format=CalibrationInputFileFormat(cast(str, parsed_arguments.tick_data_format)),
-            tick_data_provenance_label=cast(str, parsed_arguments.tick_data_provenance_label),
+            tick_data_format=CalibrationInputFileFormat(cast(str, command_arguments["tick_data_format"])),
+            tick_data_provenance_label=cast(str, command_arguments["tick_data_provenance_label"]),
             option_surface_path=resolved_option_surface_path,
             option_surface_format=option_surface_format,
             option_surface_provenance_label=option_surface_provenance_label,
@@ -409,9 +420,9 @@ def _execute_cli_fit(
             )
         )
 
-    raw_model_output_path = cast(Optional[Path], getattr(parsed_arguments, "model_output_path", None))
+    raw_model_output_path = cast(Optional[Path], command_arguments.get("model_output_path"))
     persisted_model_path = (
-        _resolve_path_from_repository_root(repository_root, raw_model_output_path)
+        _resolve_path_from_repository_root(cli_context.repository_root, raw_model_output_path)
         if raw_model_output_path is not None
         else None
     )
@@ -421,14 +432,14 @@ def _execute_cli_fit(
 
 
 def _build_market_profile_reference_from_arguments(
-    parsed_arguments: Namespace,
+    command_arguments: dict[str, object],
     *,
     registry: PresetRegistry,
     entrypoint: str,
     error_id: str,
 ) -> Optional[MarketProfileReference]:
-    market_name = cast(Optional[str], getattr(parsed_arguments, "market", None))
-    raw_scope = cast(Optional[str], getattr(parsed_arguments, "market_scope", None))
+    market_name = cast(Optional[str], command_arguments.get("market"))
+    raw_scope = cast(Optional[str], command_arguments.get("market_scope"))
 
     if market_name is None:
         if raw_scope not in (None, "auto"):
@@ -455,16 +466,16 @@ def _build_market_profile_reference_from_arguments(
 
 
 def _build_session_reference_from_arguments(
-    parsed_arguments: Namespace,
+    command_arguments: dict[str, object],
     *,
     repository_root: Path,
     registry: PresetRegistry,
     entrypoint: str,
     error_id: str,
 ) -> Optional[SessionPresetReference]:
-    session_preset = cast(Optional[str], getattr(parsed_arguments, "session_preset", None))
-    session_json = cast(Optional[Path], getattr(parsed_arguments, "session_json", None))
-    raw_scope = cast(Optional[str], getattr(parsed_arguments, "session_scope", None))
+    session_preset = cast(Optional[str], command_arguments.get("session_preset"))
+    session_json = cast(Optional[Path], command_arguments.get("session_json"))
+    raw_scope = cast(Optional[str], command_arguments.get("session_scope"))
 
     if session_preset is None and session_json is None:
         if raw_scope not in (None, "auto"):
@@ -483,7 +494,7 @@ def _build_session_reference_from_arguments(
             usage_mode=PresetReferenceUsageMode.EXPLICIT,
             configuration=_load_explicit_session_configuration(
                 resolved_session_path,
-                exchange_code=cast(Optional[str], parsed_arguments.exchange_code),
+                exchange_code=cast(Optional[str], command_arguments.get("exchange_code")),
             ),
         )
 
@@ -501,16 +512,16 @@ def _build_session_reference_from_arguments(
 
 
 def _build_known_news_reference_from_arguments(
-    parsed_arguments: Namespace,
+    command_arguments: dict[str, object],
     *,
     repository_root: Path,
     registry: PresetRegistry,
     entrypoint: str,
     error_id: str,
 ) -> Optional[KnownNewsPresetReference]:
-    known_news = cast(Optional[str], getattr(parsed_arguments, "known_news", None))
-    known_news_json = cast(Optional[Path], getattr(parsed_arguments, "known_news_json", None))
-    raw_scope = cast(Optional[str], getattr(parsed_arguments, "known_news_scope", None))
+    known_news = cast(Optional[str], command_arguments.get("known_news"))
+    known_news_json = cast(Optional[Path], command_arguments.get("known_news_json"))
+    raw_scope = cast(Optional[str], command_arguments.get("known_news_scope"))
 
     if known_news is None and known_news_json is None:
         if raw_scope not in (None, "auto"):
@@ -553,70 +564,72 @@ def _build_known_news_reference_from_arguments(
     )
 
 
-def _build_tick_data_column_mapping_from_arguments(parsed_arguments: Namespace) -> CalibrationTickDataColumnMapping:
+def _build_tick_data_column_mapping_from_arguments(
+    parsed_arguments: dict[str, object],
+) -> CalibrationTickDataColumnMapping:
     return CalibrationTickDataColumnMapping(
-        timestamp_column=cast(str, parsed_arguments.tick_timestamp_column),
-        price_column=cast(Optional[str], parsed_arguments.tick_price_column),
-        trade_price_column=cast(Optional[str], parsed_arguments.tick_trade_price_column),
-        trade_sign_column=cast(Optional[str], parsed_arguments.tick_trade_sign_column),
-        bid_column=cast(Optional[str], parsed_arguments.tick_bid_column),
-        ask_column=cast(Optional[str], parsed_arguments.tick_ask_column),
-        close_price_column=cast(Optional[str], parsed_arguments.tick_close_price_column),
+        timestamp_column=cast(str, parsed_arguments["tick_timestamp_column"]),
+        price_column=cast(Optional[str], parsed_arguments.get("tick_price_column")),
+        trade_price_column=cast(Optional[str], parsed_arguments.get("tick_trade_price_column")),
+        trade_sign_column=cast(Optional[str], parsed_arguments.get("tick_trade_sign_column")),
+        bid_column=cast(Optional[str], parsed_arguments.get("tick_bid_column")),
+        ask_column=cast(Optional[str], parsed_arguments.get("tick_ask_column")),
+        close_price_column=cast(Optional[str], parsed_arguments.get("tick_close_price_column")),
     )
 
 
 def _build_option_surface_column_mapping_from_arguments(
-    parsed_arguments: Namespace,
+    parsed_arguments: dict[str, object],
     *,
     entrypoint: str,
     error_id: str,
 ) -> Optional[CalibrationOptionSurfaceColumnMapping]:
-    option_surface_path = cast(Optional[Path], parsed_arguments.option_surface_path)
+    option_surface_path = cast(Optional[Path], parsed_arguments.get("option_surface_path"))
     if option_surface_path is None:
         return None
     return CalibrationOptionSurfaceColumnMapping(
         quote_timestamp_column=_require_non_empty_cli_string(
-            cast(str, parsed_arguments.option_quote_timestamp_column),
+            cast(str, parsed_arguments["option_quote_timestamp_column"]),
             field_path="option_quote_timestamp_column",
             error_id=error_id,
             entrypoint=entrypoint,
         ),
         expiry_timestamp_column=_require_non_empty_cli_string(
-            cast(str, parsed_arguments.option_expiry_column),
+            cast(str, parsed_arguments["option_expiry_column"]),
             field_path="option_expiry_column",
             error_id=error_id,
             entrypoint=entrypoint,
         ),
         strike_column=_require_non_empty_cli_string(
-            cast(str, parsed_arguments.option_strike_column),
+            cast(str, parsed_arguments["option_strike_column"]),
             field_path="option_strike_column",
             error_id=error_id,
             entrypoint=entrypoint,
         ),
         option_type_column=_require_non_empty_cli_string(
-            cast(str, parsed_arguments.option_type_column),
+            cast(str, parsed_arguments["option_type_column"]),
             field_path="option_type_column",
             error_id=error_id,
             entrypoint=entrypoint,
         ),
-        mid_price_column=cast(Optional[str], parsed_arguments.option_mid_price_column),
-        bid_column=cast(Optional[str], parsed_arguments.option_bid_column),
-        ask_column=cast(Optional[str], parsed_arguments.option_ask_column),
-        implied_volatility_column=cast(Optional[str], parsed_arguments.option_implied_volatility_column),
+        mid_price_column=cast(Optional[str], parsed_arguments.get("option_mid_price_column")),
+        bid_column=cast(Optional[str], parsed_arguments.get("option_bid_column")),
+        ask_column=cast(Optional[str], parsed_arguments.get("option_ask_column")),
+        implied_volatility_column=cast(Optional[str], parsed_arguments.get("option_implied_volatility_column")),
     )
 
 
 def _build_model_workflow_normalization_policy_from_arguments(
-    parsed_arguments: Namespace,
+    parsed_arguments: dict[str, object],
 ) -> CalibrationMarketDataNormalizationPolicy:
-    tick_price_input_policy_raw = cast(Optional[str], parsed_arguments.tick_price_input_policy)
-    option_quote_input_policy_raw = cast(Optional[str], parsed_arguments.option_quote_input_policy)
+    tick_price_input_policy_raw = cast(Optional[str], parsed_arguments.get("tick_price_input_policy"))
+    option_quote_input_policy_raw = cast(Optional[str], parsed_arguments.get("option_quote_input_policy"))
 
     return CalibrationMarketDataNormalizationPolicy(
-        timestamp_timezone=cast(str, parsed_arguments.timestamp_timezone),
-        sort_records_by_timestamp=not bool(parsed_arguments.disable_timestamp_sort),
+        timestamp_timezone=cast(str, parsed_arguments["timestamp_timezone"]),
+        sort_records_by_timestamp=not bool(parsed_arguments.get("disable_timestamp_sort")),
         duplicate_record_policy=CalibrationDuplicateRecordPolicy(
-            cast(str, parsed_arguments.duplicate_record_policy),
+            cast(str, parsed_arguments["duplicate_record_policy"]),
         ),
         tick_price_input_policy=(
             CalibrationTickPriceInputPolicy(tick_price_input_policy_raw)
@@ -632,14 +645,14 @@ def _build_model_workflow_normalization_policy_from_arguments(
 
 
 def _build_model_workflow_output_preferences_from_arguments(
-    parsed_arguments: Namespace,
+    parsed_arguments: dict[str, object],
     *,
     repository_root: Path,
     entrypoint: str,
     error_id: str,
 ) -> CalibrationMarketDataOutputPreferences:
-    selected_execution_mode = CalibrationExecutionMode(cast(str, parsed_arguments.execution_mode))
-    raw_disk_checkpoint_directory = cast(Optional[Path], parsed_arguments.disk_checkpoint_directory)
+    selected_execution_mode = CalibrationExecutionMode(cast(str, parsed_arguments["execution_mode"]))
+    raw_disk_checkpoint_directory = cast(Optional[Path], parsed_arguments.get("disk_checkpoint_directory"))
     disk_checkpoint_directory = (
         _resolve_path_from_repository_root(repository_root, raw_disk_checkpoint_directory)
         if raw_disk_checkpoint_directory is not None
@@ -662,8 +675,8 @@ def _build_model_workflow_output_preferences_from_arguments(
     return CalibrationMarketDataOutputPreferences(
         execution_mode=selected_execution_mode,
         disk_checkpoint_directory=None if disk_checkpoint_directory is None else str(disk_checkpoint_directory),
-        emit_derived_staged_execution_input=bool(parsed_arguments.emit_derived_staged_execution_input),
-        emit_input_provenance_report=not bool(parsed_arguments.omit_input_provenance_report),
+        emit_derived_staged_execution_input=bool(parsed_arguments.get("emit_derived_staged_execution_input")),
+        emit_input_provenance_report=not bool(parsed_arguments.get("omit_input_provenance_report")),
     )
 
 
@@ -693,7 +706,7 @@ def _build_cli_fit_result_payload(
 def _build_cli_simulate_result_payload(
     *,
     model: JaniformModel,
-    parsed_arguments: Namespace,
+    command_arguments: dict[str, object],
     model_path: Optional[Path],
     command: str,
     schema_version: str,
@@ -701,37 +714,37 @@ def _build_cli_simulate_result_payload(
     error_id: str,
 ) -> dict[str, Any]:
     start_time_utc = _parse_utc_datetime_cli_argument(
-        cast(str, parsed_arguments.start_time_utc),
+        cast(str, command_arguments["start_time_utc"]),
         field_path="start_time_utc",
         error_id=error_id,
         entrypoint=entrypoint,
     )
     horizon_interval_count = _require_positive_integer_cli_argument(
-        int(parsed_arguments.horizon_interval_count),
+        int(cast(int, command_arguments["horizon_interval_count"])),
         field_path="horizon_interval_count",
         error_id=error_id,
         entrypoint=entrypoint,
     )
     sample_every_nth_transition = _require_positive_integer_cli_argument(
-        int(parsed_arguments.sample_every_nth_transition),
+        int(cast(int, command_arguments["sample_every_nth_transition"])),
         field_path="sample_every_nth_transition",
         error_id=error_id,
         entrypoint=entrypoint,
     )
     max_records_per_chunk = _require_positive_integer_cli_argument(
-        int(parsed_arguments.max_records_per_chunk),
+        int(cast(int, command_arguments["max_records_per_chunk"])),
         field_path="max_records_per_chunk",
         error_id=error_id,
         entrypoint=entrypoint,
     )
-    output_mode = cast(str, parsed_arguments.simulation_output)
+    output_mode = cast(str, command_arguments["simulation_output"])
     simulation_result = model.simulate(
-        seed=int(parsed_arguments.seed),
+        seed=int(cast(int, command_arguments["seed"])),
         start_time_utc=start_time_utc,
         horizon_interval_count=horizon_interval_count,
-        interval=cast(str, parsed_arguments.interval),
+        interval=cast(str, command_arguments["interval"]),
         output=cast(Any, output_mode),
-        debug_trace_enabled=bool(parsed_arguments.debug_trace_enabled),
+        debug_trace_enabled=bool(command_arguments.get("debug_trace_enabled")),
         sample_every_nth_transition=sample_every_nth_transition,
         max_records_per_chunk=max_records_per_chunk,
     )
