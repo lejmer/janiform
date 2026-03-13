@@ -189,7 +189,7 @@ Additional policy notes:
 The current pre-v0.1 CLI uses explicit JSON contract files at the command boundary so the
 command surface stays aligned with the typed Python workflow models.
 
-### `janiform simulation seeded-ticks`
+### `janiform simulate seeded-ticks`
 
 Required arguments:
 - `--request-json`: `SeededTickSimulationRequest` JSON object
@@ -204,7 +204,7 @@ Output:
 - `--output json` writes deterministic JSON for `simulation.seeded_tick_event.path.v1` to stdout.
 - `--output human` writes a concise completion summary with event-count metadata.
 
-### `janiform simulation coarse-interval`
+### `janiform simulate coarse-interval`
 
 Required arguments:
 - `--request-json`: `CoarseSimulationRunRequest` JSON object
@@ -383,7 +383,7 @@ Output:
 - `--output human` writes a concise summary over the same canonical report bundle, including
   report status and any exported artifact metadata.
 
-### `janiform calibration market-data`
+### `janiform fit plan`
 
 Required arguments:
 - `--run-id`
@@ -452,7 +452,7 @@ Behavior:
 - `--output human` writes a concise operator-oriented summary of the same user-facing metadata.
 - Translation into the canonical staged execution input remains a lower-level step documented separately.
 
-### `janiform calibration staged`
+### `janiform fit staged`
 
 Required arguments:
 - `--execution-input-json`: `StagedCalibrationExecutionInput` JSON object

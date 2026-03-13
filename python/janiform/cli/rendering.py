@@ -104,17 +104,6 @@ def _render_simulate_human_output(payload: dict[str, Any]) -> str:
     )
 
 
-def _render_fit_and_simulate_human_output(payload: dict[str, Any]) -> str:
-    fit_result = cast(dict[str, Any], payload["fit_result"])
-    simulation_result = cast(dict[str, Any], payload["simulation_result"])
-
-    return (
-        "fit-and-simulate completed: "
-        f"run_id={fit_result['run_id']} "
-        f"output={simulation_result['simulation_output']}\n"
-    )
-
-
 def _render_market_data_calibration_human_output(prepared_calibration: object) -> str:
     request = cast(Any, prepared_calibration).request
 
@@ -123,7 +112,7 @@ def _render_market_data_calibration_human_output(prepared_calibration: object) -
 
     lines: list[str] = [
         (
-            "calibration market-data request prepared: "
+            "fit plan prepared: "
             f"run_id={request.run_id} "
             f"workflow_scope={request.workflow_scope.value} "
             f"execution_mode={request.output_preferences.execution_mode.value}"
@@ -220,7 +209,7 @@ def _render_simulation_seeded_ticks_human_output(response_payload: dict[str, Any
     metadata = cast(dict[str, Any], response_payload["metadata"])
 
     return (
-        "simulation seeded-ticks completed: "
+        "simulate seeded-ticks completed: "
         f"schema_version={response_payload['schema_version']} "
         f"transition_count={diagnostics['transition_count']} "
         f"path_record_schema_version={metadata['path_record_schema_version']}\n"
@@ -230,7 +219,7 @@ def _render_simulation_seeded_ticks_human_output(response_payload: dict[str, Any
 def _render_simulation_coarse_interval_human_output(response_payload: dict[str, Any]) -> str:
     diagnostics = cast(dict[str, Any], response_payload["diagnostics"])
     return (
-        "simulation coarse-interval completed: "
+        "simulate coarse-interval completed: "
         f"schema_version={response_payload['schema_version']} "
         f"simulated_interval_count={response_payload['simulated_interval_count']} "
         f"interval_delta={response_payload['interval_delta']} "
@@ -425,7 +414,7 @@ def _render_stylized_facts_horizon_comparison_human_output(
 
 def _render_calibration_staged_human_output(response_payload: dict[str, Any]) -> str:
     return (
-        "calibration staged completed: "
+        "fit staged completed: "
         f"run_id={response_payload['run_id']} "
         f"execution_mode={response_payload['execution_mode']} "
         f"status={response_payload['status']} "
@@ -549,7 +538,6 @@ __all__ = [
     "_exit_code_for_error",
     "_optional_enum_value",
     "_render_calibration_staged_human_output",
-    "_render_fit_and_simulate_human_output",
     "_render_fit_human_output",
     "_render_hourly_factor_build_contract_human_output",
     "_render_hourly_factor_materialize_news_intensity_human_output",

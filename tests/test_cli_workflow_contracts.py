@@ -46,7 +46,7 @@ from tests.cli_test_support import (
 
 
 def test_simulation_cli_help_documents_required_contract_inputs() -> None:
-    help_output = _normalize_help_output(_render_help(["simulation", "seeded-ticks"]))
+    help_output = _normalize_help_output(_render_help(["simulate", "seeded-ticks"]))
 
     assert "--output {human,json}" in help_output
     assert "--request-json PATH" in help_output
@@ -55,7 +55,7 @@ def test_simulation_cli_help_documents_required_contract_inputs() -> None:
 
 
 def test_coarse_simulation_cli_help_documents_required_contract_inputs() -> None:
-    help_output = _normalize_help_output(_render_help(["simulation", "coarse-interval"]))
+    help_output = _normalize_help_output(_render_help(["simulate", "coarse-interval"]))
 
     assert "--config-json PATH" in help_output
     assert "--output {human,json}" in help_output
@@ -114,8 +114,8 @@ def test_stylized_facts_cli_help_documents_report_generation_contract() -> None:
     assert cli_module.CLI_REPOSITORY_RELATIVE_PATH_POLICY in help_output
 
 
-def test_calibration_cli_help_documents_mode_and_runtime_arguments() -> None:
-    help_output = _normalize_help_output(_render_help(["calibration", "staged"]))
+def test_fit_staged_cli_help_documents_mode_and_runtime_arguments() -> None:
+    help_output = _normalize_help_output(_render_help(["fit", "staged"]))
 
     assert "--config-json PATH" in help_output
     assert "--output {human,json}" in help_output
@@ -128,8 +128,8 @@ def test_calibration_cli_help_documents_mode_and_runtime_arguments() -> None:
     assert "overrides runtime_resources.disk_checkpoint_directory from --execution-input-json" in help_output
 
 
-def test_market_data_calibration_cli_help_documents_user_facing_file_inputs() -> None:
-    help_output = _normalize_help_output(_render_help(["calibration", "market-data"]))
+def test_fit_plan_cli_help_documents_user_facing_file_inputs() -> None:
+    help_output = _normalize_help_output(_render_help(["fit", "plan"]))
 
     assert "--config-json PATH" in help_output
     assert "--output {human,json}" in help_output
@@ -138,15 +138,15 @@ def test_market_data_calibration_cli_help_documents_user_facing_file_inputs() ->
     assert "--workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface}" in help_output
     assert "--tick-price-input-policy" in help_output
     assert "--execution-mode {disk,memory}" in help_output
-    assert "market-data calibration summary" in help_output
-    assert "preprocessing diagnostics and provenance" in help_output
+    assert "derived fit plan" in help_output
+    assert "without running the staged fit" in help_output
     assert "explicit flags override environment variables" in help_output
 
 
 def test_cli_shared_path_flags_use_standardized_repository_relative_help_text() -> None:
     help_outputs = (
-        _normalize_help_output(_render_help(["simulation", "coarse-interval"])),
-        _normalize_help_output(_render_help(["simulation", "seeded-ticks"])),
+        _normalize_help_output(_render_help(["simulate", "coarse-interval"])),
+        _normalize_help_output(_render_help(["simulate", "seeded-ticks"])),
         _normalize_help_output(_render_help(["seasonality", "diagnostics"])),
         _normalize_help_output(_render_help(["seasonality", "preprocess-timestamps"])),
         _normalize_help_output(_render_help(["hourly-factors", "materialize-seasonality"])),
@@ -154,8 +154,8 @@ def test_cli_shared_path_flags_use_standardized_repository_relative_help_text() 
         _normalize_help_output(_render_help(["hourly-factors", "build-contract"])),
         _normalize_help_output(_render_help(["pricing", "vanilla-option"])),
         _normalize_help_output(_render_help(["stylized-facts", "horizon-comparison"])),
-        _normalize_help_output(_render_help(["calibration", "market-data"])),
-        _normalize_help_output(_render_help(["calibration", "staged"])),
+        _normalize_help_output(_render_help(["fit", "plan"])),
+        _normalize_help_output(_render_help(["fit", "staged"])),
         _normalize_help_output(_render_help(["dev", "regression", "deterministic"])),
         _normalize_help_output(_render_help(["dev", "regression", "open-closed-gap-leakage"])),
     )
@@ -190,7 +190,7 @@ def test_deterministic_regression_cli_parser_requires_case_inputs() -> None:
 
 
 def test_coarse_simulation_cli_parser_requires_request_json() -> None:
-    exit_code, _, _ = _invoke_cli(["simulation", "coarse-interval"])
+    exit_code, _, _ = _invoke_cli(["simulate", "coarse-interval"])
 
     assert exit_code == 2
 
@@ -216,7 +216,7 @@ def test_deterministic_regression_cli_parser_defaults_output_to_human() -> None:
 def test_calibration_cli_parser_defaults_execution_mode_to_disk() -> None:
     parsed_arguments = _parse_cli_command(
         [
-            "calibration",
+            "fit",
             "staged",
             "--execution-input-json",
             "calibration.json",
@@ -231,8 +231,8 @@ def test_calibration_cli_parser_defaults_execution_mode_to_disk() -> None:
 def test_market_data_calibration_cli_parser_defaults_execution_mode_to_disk() -> None:
     parsed_arguments = _parse_cli_command(
         [
-            "calibration",
-            "market-data",
+            "fit",
+            "plan",
             "--run-id",
             "run-001",
             "--workflow-scope",
@@ -273,8 +273,8 @@ def test_market_data_calibration_cli_accepts_automatic_session_inference_without
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "calibration",
-            "market-data",
+            "fit",
+            "plan",
             "--run-id",
             "market-data-auto-session-run",
             "--workflow-scope",
@@ -432,7 +432,7 @@ def test_seasonality_diagnostics_cli_parser_accepts_estimator_overrides() -> Non
 def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
     coarse_simulation_arguments = _parse_cli_command(
         [
-            "simulation",
+            "simulate",
             "coarse-interval",
             "--request-json",
             "coarse-simulation.json",
@@ -440,7 +440,7 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
     )
     simulation_arguments = _parse_cli_command(
         [
-            "simulation",
+            "simulate",
             "seeded-ticks",
             "--request-json",
             "simulation.json",
@@ -528,7 +528,7 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
     )
     staged_arguments = _parse_cli_command(
         [
-            "calibration",
+            "fit",
             "staged",
             "--execution-input-json",
             "calibration.json",
@@ -551,7 +551,7 @@ def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
 def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
     coarse_simulation_arguments = _parse_cli_command(
         [
-            "simulation",
+            "simulate",
             "coarse-interval",
             "--request-json",
             "coarse-simulation.json",
@@ -561,7 +561,7 @@ def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
     )
     simulation_arguments = _parse_cli_command(
         [
-            "simulation",
+            "simulate",
             "seeded-ticks",
             "--request-json",
             "simulation.json",
@@ -663,7 +663,7 @@ def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
     )
     staged_arguments = _parse_cli_command(
         [
-            "calibration",
+            "fit",
             "staged",
             "--execution-input-json",
             "calibration.json",
@@ -1151,7 +1151,7 @@ def test_seasonality_preprocess_cli_invalid_calendar_timezone_returns_validation
 def test_calibration_cli_parser_accepts_explicit_memory_execution_mode() -> None:
     parsed_arguments = _parse_cli_command(
         [
-            "calibration",
+            "fit",
             "staged",
             "--execution-input-json",
             "calibration.json",
@@ -1309,8 +1309,8 @@ def test_market_data_calibration_cli_maps_flags_to_summary_contract(
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "calibration",
-            "market-data",
+            "fit",
+            "plan",
             "--run-id",
             "market-data-run-001",
             "--workflow-scope",
@@ -1427,8 +1427,8 @@ def test_market_data_calibration_cli_supports_human_output_mode(
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "calibration",
-            "market-data",
+            "fit",
+            "plan",
             "--run-id",
             "market-data-run-002",
             "--workflow-scope",
@@ -1461,7 +1461,7 @@ def test_market_data_calibration_cli_supports_human_output_mode(
     )
 
     assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
-    assert stdout_text.startswith("calibration market-data request prepared:")
+    assert stdout_text.startswith("fit plan prepared:")
     assert "workflow_scope=seasonality_only" in stdout_text
     assert "execution_mode=memory" in stdout_text
     assert "session_resolution:" in stdout_text
@@ -1486,7 +1486,7 @@ def test_market_data_calibration_cli_supports_config_driven_non_interactive_exec
 
     config_path = _write_cli_command_config(
         tmp_path / "market_data_config.json",
-        command="calibration.market-data",
+        command="fit.plan",
         arguments={
             "run-id": "market-data-config-run",
             "workflow-scope": "seasonality_only",
@@ -1515,8 +1515,8 @@ def test_market_data_calibration_cli_supports_config_driven_non_interactive_exec
     monkeypatch.setattr(sys, "stdin", _ExplodingStdin())
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "calibration",
-            "market-data",
+            "fit",
+            "plan",
             "--config-json",
             str(config_path),
         ]
@@ -1545,7 +1545,7 @@ def test_market_data_calibration_cli_environment_overrides_command_config_defaul
 
     config_path = _write_cli_command_config(
         tmp_path / "market_data_precedence_config.json",
-        command="calibration.market-data",
+        command="fit.plan",
         arguments={
             "run-id": "market-data-env-override-run",
             "workflow-scope": "seasonality_only",
@@ -1566,8 +1566,8 @@ def test_market_data_calibration_cli_environment_overrides_command_config_defaul
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "calibration",
-            "market-data",
+            "fit",
+            "plan",
             "--config-json",
             str(config_path),
         ],
@@ -1599,7 +1599,7 @@ def test_cli_explicit_flags_override_environment_defaults(
 
     config_path = _write_cli_command_config(
         tmp_path / "market_data_output_config.json",
-        command="calibration.market-data",
+        command="fit.plan",
         arguments={
             "run-id": "market-data-cli-override-run",
             "workflow-scope": "seasonality_only",
@@ -1620,8 +1620,8 @@ def test_cli_explicit_flags_override_environment_defaults(
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "calibration",
-            "market-data",
+            "fit",
+            "plan",
             "--config-json",
             str(config_path),
             "--output",
@@ -1631,15 +1631,15 @@ def test_cli_explicit_flags_override_environment_defaults(
     )
 
     assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
-    assert stdout_text.startswith("calibration market-data request prepared:")
+    assert stdout_text.startswith("fit plan prepared:")
     assert stderr_text == ""
 
 
 def test_market_data_cli_parser_rejects_unsupported_tick_data_format() -> None:
     exit_code, _, _ = _invoke_cli(
         [
-            "calibration",
-            "market-data",
+            "fit",
+            "plan",
             "--run-id",
             "market-data-run-unsupported-format",
             "--workflow-scope",
@@ -1682,8 +1682,8 @@ def test_market_data_cli_missing_tick_file_returns_validation_exit_code(
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "calibration",
-            "market-data",
+            "fit",
+            "plan",
             "--run-id",
             "market-data-run-missing-tick-file",
             "--workflow-scope",
@@ -1732,8 +1732,8 @@ def test_market_data_cli_ambiguous_timestamp_reports_file_field_and_normalizatio
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "calibration",
-            "market-data",
+            "fit",
+            "plan",
             "--run-id",
             "market-data-run-ambiguous-timestamp",
             "--workflow-scope",
@@ -1787,8 +1787,8 @@ def test_market_data_cli_missing_required_column_reports_source_file_and_normali
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "calibration",
-            "market-data",
+            "fit",
+            "plan",
             "--run-id",
             "market-data-run-missing-column",
             "--workflow-scope",
@@ -1853,8 +1853,8 @@ def test_market_data_cli_invalid_session_definition_returns_validation_exit_code
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "calibration",
-            "market-data",
+            "fit",
+            "plan",
             "--run-id",
             "market-data-run-invalid-session-definition",
             "--workflow-scope",
@@ -1902,8 +1902,8 @@ def test_market_data_cli_inconsistent_known_news_inputs_return_validation_exit_c
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "calibration",
-            "market-data",
+            "fit",
+            "plan",
             "--run-id",
             "market-data-run-inconsistent-known-news",
             "--workflow-scope",
@@ -1969,7 +1969,7 @@ def test_simulation_cli_maps_request_json_to_runtime_request(
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "simulation",
+            "simulate",
             "seeded-ticks",
             "--request-json",
             str(request_path),
@@ -2005,7 +2005,7 @@ def test_coarse_simulation_cli_maps_request_json_to_runtime_contract(
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "simulation",
+            "simulate",
             "coarse-interval",
             "--request-json",
             str(request_path),
@@ -2094,7 +2094,7 @@ def test_calibration_cli_defaults_execution_mode_to_disk(
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "calibration",
+            "fit",
             "staged",
             "--execution-input-json",
             str(execution_input_path),
@@ -2149,7 +2149,7 @@ def test_calibration_cli_honors_explicit_memory_override(
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "calibration",
+            "fit",
             "staged",
             "--execution-input-json",
             str(execution_input_path),
@@ -2226,7 +2226,7 @@ def test_calibration_cli_runtime_failures_return_runtime_exit_code(
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "calibration",
+            "fit",
             "staged",
             "--execution-input-json",
             str(execution_input_path),
@@ -2268,7 +2268,7 @@ def test_coarse_simulation_cli_runtime_failures_return_runtime_exit_code(
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "simulation",
+            "simulate",
             "coarse-interval",
             "--request-json",
             str(request_path),
@@ -2331,7 +2331,7 @@ def test_coarse_simulation_cli_rejects_malformed_request_document(tmp_path: Path
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "simulation",
+            "simulate",
             "coarse-interval",
             "--request-json",
             str(request_path),
@@ -2358,7 +2358,7 @@ def test_coarse_simulation_cli_rejects_interval_factor_alignment_mismatch(
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "simulation",
+            "simulate",
             "coarse-interval",
             "--request-json",
             str(request_path),
@@ -2383,7 +2383,7 @@ def test_coarse_simulation_cli_supports_human_output_mode(
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "simulation",
+            "simulate",
             "coarse-interval",
             "--request-json",
             str(request_path),
@@ -2393,7 +2393,7 @@ def test_coarse_simulation_cli_supports_human_output_mode(
     )
 
     assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
-    assert stdout_text.startswith("simulation coarse-interval completed:")
+    assert stdout_text.startswith("simulate coarse-interval completed:")
     assert "simulated_interval_count=3" in stdout_text
     assert "interval_delta=1.0" in stdout_text
     assert stderr_text == ""
@@ -2414,7 +2414,7 @@ def test_calibration_cli_requires_disk_checkpoint_directory_when_defaulting_to_d
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "calibration",
+            "fit",
             "staged",
             "--execution-input-json",
             str(execution_input_path),
@@ -2446,7 +2446,7 @@ def test_calibration_cli_rejects_disk_checkpoint_directory_in_memory_mode(
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "calibration",
+            "fit",
             "staged",
             "--execution-input-json",
             str(execution_input_path),
@@ -2486,7 +2486,7 @@ def test_calibration_cli_rejects_malformed_close_open_boundary_observation(
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "calibration",
+            "fit",
             "staged",
             "--execution-input-json",
             str(execution_input_path),

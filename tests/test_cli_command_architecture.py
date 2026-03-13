@@ -4,21 +4,25 @@ from tests.cli_test_support import render_help
 def test_cli_top_level_help_lists_primary_and_developer_namespaces() -> None:
     help_output = _render_help([])
 
-    assert "presets" in help_output
     assert "fit" in help_output
     assert "simulate" in help_output
-    assert "fit-and-simulate" in help_output
-    assert "simulation" in help_output
+    assert "presets" in help_output
     assert "seasonality" in help_output
     assert "hourly-factors" in help_output
-    assert "calibration" in help_output
     assert "pricing" in help_output
     assert "stylized-facts" in help_output
     assert "dev" in help_output
 
 
-def test_simulation_help_lists_seeded_tick_workflow() -> None:
-    help_output = _render_help(["simulation"])
+def test_fit_help_lists_default_and_explicit_workflows() -> None:
+    help_output = _render_help(["fit"])
+
+    assert "plan" in help_output
+    assert "staged" in help_output
+
+
+def test_simulate_help_lists_seeded_tick_workflow() -> None:
+    help_output = _render_help(["simulate"])
 
     assert "coarse-interval" in help_output
     assert "seeded-ticks" in help_output
@@ -37,14 +41,6 @@ def test_hourly_factors_help_lists_materialization_and_contract_workflows() -> N
     assert "materialize-seasonality" in help_output
     assert "materialize-news-intensity" in help_output
     assert "build-contract" in help_output
-
-
-def test_calibration_help_lists_staged_workflow() -> None:
-    help_output = _render_help(["calibration"])
-
-    assert "market-data" in help_output
-    assert "staged" in help_output
-
 
 def test_pricing_help_lists_vanilla_option_workflow() -> None:
     help_output = _render_help(["pricing"])

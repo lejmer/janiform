@@ -8,10 +8,6 @@ from .shared import (
 )
 from ..context import CliCommandContext
 from .._constants import (
-    CLI_FIT_AND_SIMULATE_ENTRYPOINT,
-    CLI_FIT_AND_SIMULATE_INTERNAL_ERROR_ID,
-    CLI_FIT_AND_SIMULATE_RESULT_SCHEMA_VERSION,
-    CLI_FIT_AND_SIMULATE_VALIDATION_ERROR_ID,
     CLI_FIT_ENTRYPOINT,
     CLI_FIT_INTERNAL_ERROR_ID,
     CLI_FIT_RESULT_SCHEMA_VERSION,
@@ -26,7 +22,6 @@ from ..documents import _load_json_document_for_cli_field
 from ..errors import _classify_generic_cli_command_error, _cli_validation_error
 from ..paths import _resolve_path_from_repository_root
 from ..rendering import (
-    _render_fit_and_simulate_human_output,
     _render_fit_human_output,
     _render_simulate_human_output,
     _write_cli_error,
@@ -151,72 +146,6 @@ def _run_model_simulate_command(
         output,
         json_payload=payload,
         human_output_factory=lambda: _render_simulate_human_output(payload),
-    )
-    return int(CliExitCode.SUCCESS)
-
-
-def _run_fit_and_simulate_command(
-    *,
-    cli_context: CliCommandContext,
-    output: str,
-    **command_arguments: object,
-) -> int:
-    try:
-        model, fit_report, persisted_model_path = _execute_cli_fit(
-            cli_context=cli_context,
-            entrypoint=CLI_FIT_AND_SIMULATE_ENTRYPOINT,
-            error_id=CLI_FIT_AND_SIMULATE_VALIDATION_ERROR_ID,
-            command_arguments=command_arguments,
-        )
-        fit_payload = _build_cli_fit_result_payload(
-            model=model,
-            fit_report=fit_report,
-            persisted_model_path=persisted_model_path,
-            command=CLI_FIT_ENTRYPOINT,
-            schema_version=CLI_FIT_RESULT_SCHEMA_VERSION,
-        )
-        simulate_payload = _build_cli_simulate_result_payload(
-            model=model,
-            command_arguments=command_arguments,
-            model_path=persisted_model_path,
-            command=CLI_HIGH_LEVEL_SIMULATE_ENTRYPOINT,
-            schema_version=CLI_SIMULATE_RESULT_SCHEMA_VERSION,
-            entrypoint=CLI_FIT_AND_SIMULATE_ENTRYPOINT,
-            error_id=CLI_FIT_AND_SIMULATE_VALIDATION_ERROR_ID,
-        )
-        payload = {
-            "schema_version": CLI_FIT_AND_SIMULATE_RESULT_SCHEMA_VERSION,
-            "command": CLI_FIT_AND_SIMULATE_ENTRYPOINT,
-            "fit_result": fit_payload,
-            "simulation_result": simulate_payload,
-        }
-    except JaniformError as e:
-        return _write_cli_error(e)
-    except RuntimeError as e:
-        return _write_cli_error(
-            _cli_validation_error(
-                "workflow_scope",
-                str(e),
-                error_id=CLI_FIT_AND_SIMULATE_VALIDATION_ERROR_ID,
-                entrypoint=CLI_FIT_AND_SIMULATE_ENTRYPOINT,
-            )
-        )
-    except Exception as e:
-        return _write_cli_error(
-            _classify_generic_cli_command_error(
-                e,
-                entrypoint=CLI_FIT_AND_SIMULATE_ENTRYPOINT,
-                validation_error_id=CLI_FIT_AND_SIMULATE_VALIDATION_ERROR_ID,
-                internal_error_id=CLI_FIT_AND_SIMULATE_INTERNAL_ERROR_ID,
-                file_field_path="tick_data_path",
-                document_field_path="fit_and_simulate_configuration",
-            )
-        )
-
-    _write_command_output(
-        output,
-        json_payload=payload,
-        human_output_factory=lambda: _render_fit_and_simulate_human_output(payload),
     )
     return int(CliExitCode.SUCCESS)
 
@@ -795,7 +724,6 @@ __all__ = [
     "_parse_cli_preset_scope",
     "_resolve_named_preset_scope",
     "_resolve_preset_artifact",
-    "_run_fit_and_simulate_command",
     "_run_fit_command",
     "_run_model_simulate_command",
 ]
