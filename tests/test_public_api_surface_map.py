@@ -91,6 +91,56 @@ def test_simulation_public_module_is_a_package() -> None:
     assert hasattr(simulation_module, "__path__")
 
 
+def test_simulation_seeded_public_submodule_is_supported_domain_import() -> None:
+    simulation_seeded_module = import_module("janiform.simulation.seeded")
+
+    expected_exports = {
+        "HawkesExcitationState",
+        "HawkesKernelLoadings",
+        "HawkesKernelParameters",
+        "SeededTickEventRecord",
+        "SeededTickEventSide",
+        "SeededTickEventStateSnapshot",
+        "SeededTickEventStateSnapshotCapture",
+        "SeededTickEventTapeMetadata",
+        "SeededTickSimulationDiagnostics",
+        "SeededTickSimulationHourlyFactorSummary",
+        "SeededTickSimulationRequest",
+        "SeededTickSimulationResponse",
+        "SeededTickSimulationValidationError",
+        "SeededTickSimulationValidationFailure",
+        "deserialize_seeded_tick_simulation_response",
+        "load_hourly_factor_contract_for_simulation",
+        "run_seeded_tick_event_simulation",
+        "serialize_seeded_tick_simulation_response",
+        "validate_seeded_tick_simulation_response",
+    }
+
+    assert expected_exports <= set(simulation_seeded_module.__all__)
+    assert expected_exports <= set(dir(simulation_seeded_module))
+
+
+def test_simulation_root_and_seeded_submodule_share_supported_symbols() -> None:
+    simulation_seeded_module = import_module("janiform.simulation.seeded")
+
+    assert (
+        simulation_module.SeededTickSimulationRequest
+        is simulation_seeded_module.SeededTickSimulationRequest
+    )
+    assert (
+        simulation_module.SeededTickSimulationResponse
+        is simulation_seeded_module.SeededTickSimulationResponse
+    )
+    assert (
+        simulation_module.run_seeded_tick_event_simulation
+        is simulation_seeded_module.run_seeded_tick_event_simulation
+    )
+    assert "GammaSeverityMarkConfiguration" not in simulation_module.__all__
+
+    with pytest.raises(AttributeError):
+        simulation_module.GammaSeverityMarkConfiguration
+
+
 def test_pricing_public_symbols_live_in_pricing_module() -> None:
     expected_exports = {
         "GammaSeverityMarkConfiguration",
@@ -177,6 +227,7 @@ def test_hourly_factor_support_symbols_live_in_hourly_factor_module() -> None:
 def test_private_modules_are_not_exposed_through_public_exports() -> None:
     assert "native_module" not in validation_module.__all__
     assert "harness" not in validation_module.__all__
+    assert import_module("janiform.simulation.seeded").__name__ == "janiform.simulation.seeded"
 
     with pytest.raises(ModuleNotFoundError):
         import_module("janiform.api")

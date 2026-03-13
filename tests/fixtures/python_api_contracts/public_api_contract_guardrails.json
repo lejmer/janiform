@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "25996317231a00a4eace0e37a1fd86d3776c7b563760d9ce5e6085b41c1933b6",
+  "approved_snapshot_sha256": "6a09538fba008a1f330b39e897e70c481b2381d517d586232286ea1651397ebe",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -194,8 +194,28 @@
       "rationale": "The high-level fit surface now lives in a private implementation module whose name reflects its actual role, so the approved API snapshot must update the recorded origin metadata for the public calibration fit classes.",
       "snapshot_sha256": "25996317231a00a4eace0e37a1fd86d3776c7b563760d9ce5e6085b41c1933b6",
       "summary": "Rename the private calibration high-level implementation module to _fit_api."
+    },
+    {
+      "approved_on": "2026-03-13",
+      "docs_updated": [
+        "README.md",
+        "docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "The Python surface policy now treats curated workflow roots and public domain submodules as complementary supported import paths, so the approved snapshot must include the new janiform.simulation.seeded module and the updated document version instead of preserving the old facade-only assumption.",
+      "snapshot_sha256": "f457863a7e3d7ad66799c7ce0d4b3e4eb9645cd14adde0f276291094a9e4a0da",
+      "summary": "Reset the Python namespace policy to allow curated roots plus public domain submodules."
+    },
+    {
+      "approved_on": "2026-03-13",
+      "docs_updated": [
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "GammaSeverityMarkConfiguration is pricing-owned and was only exposed from janiform.simulation through a lazy module __getattr__ alias to dodge an import cycle, so the approved surface now removes that hack and requires callers to import the type from janiform.pricing instead.",
+      "snapshot_sha256": "6a09538fba008a1f330b39e897e70c481b2381d517d586232286ea1651397ebe",
+      "summary": "Remove the lazy simulation alias for the pricing-owned GammaSeverityMarkConfiguration."
     }
   ],
-  "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_1",
+  "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_2",
   "schema_version": "python.public_api_contract.guardrail_manifest.v1"
 }

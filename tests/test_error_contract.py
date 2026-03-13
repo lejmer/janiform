@@ -34,7 +34,6 @@ from janiform.pricing import (
 from janiform.simulation import (
     CoupledGapMarkConfiguration,
     DoubleExponentialBaseShockConfiguration,
-    GammaSeverityMarkConfiguration as SimulationGammaSeverityMarkConfiguration,
     HawkesExcitationState,
     HawkesKernelLoadings,
     HawkesKernelParameters,
@@ -79,7 +78,7 @@ def test_validation_error_string_format_is_stable() -> None:
                     ),
                 ),
                 shared_mark_law=SharedNewsMarkLawConfiguration(
-                    gamma_severity_marks=SimulationGammaSeverityMarkConfiguration(
+                    gamma_severity_marks=GammaSeverityMarkConfiguration(
                         shape_k=1.5,
                         scale_theta=0.9,
                     ),
@@ -467,7 +466,7 @@ def _valid_simulation_request(calendar_registry: CalendarRegistry) -> SeededTick
                 ),
             ),
             shared_mark_law=SharedNewsMarkLawConfiguration(
-                gamma_severity_marks=SimulationGammaSeverityMarkConfiguration(
+                gamma_severity_marks=GammaSeverityMarkConfiguration(
                     shape_k=1.5,
                     scale_theta=0.9,
                 ),

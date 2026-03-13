@@ -20,12 +20,15 @@ from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
 )
-from janiform.pricing import NigSharedPlusShiftConfiguration, VanillaOptionPricingExecutionInput
+from janiform.pricing import (
+    GammaSeverityMarkConfiguration,
+    NigSharedPlusShiftConfiguration,
+    VanillaOptionPricingExecutionInput,
+)
 from janiform.simulation import (
     CoarseSimulationRunRequest,
     CoupledGapMarkConfiguration,
     DoubleExponentialBaseShockConfiguration,
-    GammaSeverityMarkConfiguration,
     HawkesExcitationState,
     HawkesKernelLoadings,
     HawkesKernelParameters,

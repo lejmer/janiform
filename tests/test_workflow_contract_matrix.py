@@ -40,7 +40,6 @@ from janiform.pricing import (
 from janiform.simulation import (
     CoupledGapMarkConfiguration,
     DoubleExponentialBaseShockConfiguration,
-    GammaSeverityMarkConfiguration as SimulationGammaSeverityMarkConfiguration,
     HawkesExcitationState,
     HawkesKernelLoadings,
     HawkesKernelParameters,
@@ -318,7 +317,7 @@ def _build_simulation_boundary_response_payload(calendar_registry, tmp_path: Pat
                 ),
             ),
             shared_mark_law=SharedNewsMarkLawConfiguration(
-                gamma_severity_marks=SimulationGammaSeverityMarkConfiguration(
+                gamma_severity_marks=GammaSeverityMarkConfiguration(
                     shape_k=1.5,
                     scale_theta=0.9,
                 ),

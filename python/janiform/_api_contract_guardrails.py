@@ -17,7 +17,7 @@ PUBLIC_API_CONTRACT_GUARDRAIL_MANIFEST_SCHEMA_VERSION = "python.public_api_contr
 PUBLIC_API_CONTRACT_APPROVAL_POLICY = (
     "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1"
 )
-PUBLIC_API_SURFACE_DOCUMENT_VERSION = "python.public_api_surface_map.pre_v0_1.milestone_1"
+PUBLIC_API_SURFACE_DOCUMENT_VERSION = "python.public_api_surface_map.pre_v0_1.milestone_2"
 PUBLIC_PACKAGE_ROOT_MODULE_NAME = "janiform"
 PUBLIC_CONTRACT_MODULE_NAMES: tuple[str, ...] = (
     "janiform.errors",
@@ -25,6 +25,7 @@ PUBLIC_CONTRACT_MODULE_NAMES: tuple[str, ...] = (
     "janiform.hourly_factors",
     "janiform.seasonality",
     "janiform.simulation",
+    "janiform.simulation.seeded",
     "janiform.pricing",
     "janiform.risk",
     "janiform.calibration",
@@ -305,7 +306,7 @@ def _dataclass_contract_model_signature(contract_model_type: type[object]) -> Op
             contract_model_type,
             format=annotationlib.Format.STRING,
         )
-    except Exception:
+    except (AttributeError, NameError, TypeError, ValueError):
         annotation_strings = {}
 
     parameters: list[str] = []
