@@ -35,42 +35,31 @@ from ._coarse import (
     validate_coarse_simulation_path,
     validate_coarse_simulation_run_request,
 )
-from ._seeded import (
+from .seeded import (
+    HawkesExcitationState,
+    HawkesKernelLoadings,
+    HawkesKernelParameters,
     SeededFinePathMetadata,
     SeededFinePathNewsArrivalComponent,
     SeededFinePathRecord,
     SeededFinePathTransitionKind,
     SeededTickEventRecord,
+    SeededTickEventSide,
     SeededTickEventStateSnapshot,
+    SeededTickEventStateSnapshotCapture,
     SeededTickEventTapeMetadata,
     SeededTickSimulationDiagnostics,
     SeededTickSimulationHourlyFactorSummary,
     SeededTickSimulationRequest,
     SeededTickSimulationResponse,
+    SeededTickSimulationValidationError,
+    SeededTickSimulationValidationFailure,
     deserialize_seeded_tick_simulation_response,
     load_hourly_factor_contract_for_simulation,
     run_seeded_tick_event_simulation,
     serialize_seeded_tick_simulation_response,
     validate_seeded_tick_simulation_response,
 )
-from ._shared import (
-    HawkesExcitationState,
-    HawkesKernelLoadings,
-    HawkesKernelParameters,
-    SeededTickEventSide,
-    SeededTickEventStateSnapshotCapture,
-    SeededTickSimulationValidationError,
-    SeededTickSimulationValidationFailure,
-)
-
-
-def __getattr__(name: str) -> object:
-    if name == "GammaSeverityMarkConfiguration":
-        from ..pricing import GammaSeverityMarkConfiguration
-
-        return GammaSeverityMarkConfiguration
-
-    raise AttributeError(f"module 'janiform.simulation' has no attribute {name!r}")
 
 
 __all__ = [
@@ -95,7 +84,6 @@ __all__ = [
     "CoarseSimulationRunRequest",
     "CoupledGapMarkConfiguration",
     "DoubleExponentialBaseShockConfiguration",
-    "GammaSeverityMarkConfiguration",
     "HawkesExcitationState",
     "HawkesKernelLoadings",
     "HawkesKernelParameters",

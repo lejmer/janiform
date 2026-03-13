@@ -1,14 +1,15 @@
 # Python Public API Surface Map And Namespace Policy
 
-Document version: `python.public_api_surface_map.pre_v0_1.milestone_1`
+Document version: `python.public_api_surface_map.pre_v0_1.milestone_2`
 
-Status: active for the current pre-v0.1 milestone on March 7, 2026.
+Status: active for the current pre-v0.1 milestone on March 13, 2026.
 
 ## Purpose
 
-This document defines the public Python namespace for Janiform's current pre-v0.1 milestone.
-It exists to keep the import surface minimal, task-oriented, and explicit while the simulation,
-pricing, risk, and calibration workflows are still evolving.
+This document defines the supported Python namespace for Janiform's current pre-v0.1 milestone.
+The policy is maintainability-first and discoverability-first.
+Curated package roots remain part of the design, but they are no longer treated as the only
+acceptable public import location for workflow packages.
 
 Compatibility review and snapshot-update workflow for this public surface lives in
 `docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md`.
@@ -16,256 +17,144 @@ Compatibility review and snapshot-update workflow for this public surface lives 
 Experimental namespace policy lives in
 `docs/development/guides/python_experimental_api_policy.md`.
 
+Exact exported symbol sets are tracked by the approved contract snapshot fixture. This guide defines
+which package roots and submodules are intentionally public and how they should be organized.
+
+## Superseded guidance
+
+The earlier milestone 1 facade-first guidance is superseded wherever it implied any of the following:
+
+- workflow packages should primarily expose one flat root module
+- importable public domain submodules are a design smell by themselves
+- underscore-prefixed packages are an acceptable substitute for coherent public package structure
+
+Pre-v0.1 contract evolution rules apply to this reset. When a better package structure requires a
+breaking import-path change, replace the old path directly and update in-repo callers, tests, docs,
+and examples in the same change.
+
+## Design goals
+
+- Discoverability is a first-class public API concern.
+- Package decomposition is a first-class public API concern.
+- Curated convenience imports should reduce friction without hiding the natural domain structure.
+- Public workflow and domain modules should read like a map of the product.
+- Private-by-convention naming is not a substitute for clear package boundaries.
+
 ## Public package root
 
-The package root `janiform` is intentionally minimal.
+The package root `janiform` remains intentionally minimal.
 
 - Public exports:
   - `__version__`
 - Policy:
-  - Do not add workflow functions, request types, response types, or helper classes to the root package.
-  - Users should import from task-specific modules instead of relying on root-level re-exports.
+  - Do not add workflow functions, request types, response types, or helper classes to `janiform`.
+  - Users should import from task-specific workflow packages or supporting public modules.
 
-## Public modules and ownership
+## Namespace policy
 
-### Primary workflow modules
+### Curated root re-export criteria
+
+Expose a symbol from a workflow package root such as `janiform.simulation` or
+`janiform.calibration` when all of the following are true:
+
+- the symbol is part of the workflow package's main user path
+- root-level availability materially improves ergonomics for common examples or scripts
+- the root stays curated enough that `__all__` is still a readable overview of the package
+- the re-export does not hide the symbol's natural domain module from docs or tests
+
+Curated root exports are convenience imports. They are not a rule that every public symbol must live
+only at the root.
+
+### Public submodule criteria
+
+Create or keep a public submodule when all of the following are true:
+
+- it names a real workflow area or domain concept
+- it gives users and maintainers a more discoverable place to look than a large root module
+- the contents form a coherent group that can grow without turning into another monolith
+- the submodule name is suitable for documentation, examples, and long-lived import paths
+
+Public submodules are recommended for workflow packages whenever they improve decomposition or
+clarity. Importability of a non-root public domain module is not a design problem by itself.
+
+### Private underscore helper criteria
+
+Reserve underscore-prefixed modules and packages for true internals only, such as:
+
+- low-level adapters
+- boundary plumbing
+- serialization helpers
+- internal composition helpers
+- implementation shards that are not meant to be part of the supported mental model
+
+Do not use underscore-prefixed modules to hide coherent workflow areas that should instead have
+named public submodules.
+
+## Multiple supported import paths
+
+One symbol may intentionally be available from both:
+
+- a curated convenience root export
+- its natural public domain module
+
+That is an allowed and recommended pattern when the root import is ergonomic and the submodule
+import is clearer about ownership.
+
+For example, both of these are supported:
+
+```python
+from janiform.simulation import (
+    SeededTickSimulationRequest,
+    run_seeded_tick_event_simulation,
+)
+
+from janiform.simulation.seeded import (
+    SeededTickSimulationRequest,
+    run_seeded_tick_event_simulation,
+)
+```
+
+The root import is the convenience path. The submodule import is the natural ownership path.
+
+## Supported public modules
+
+### Package roots
 
 - `janiform.simulation`
-  - Ownership: seeded tick simulation workflow and coarse-interval simulation workflow
-  - Implementation note: the module is package-backed, with private submodules partitioning shared contracts, seeded-tick execution, and coarse-interval execution. Public imports still flow through `janiform.simulation`, while introspection reflects the defining private submodule when applicable.
-  - Public symbols:
-    - `COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY`
-    - `COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY`
-    - `COARSE_SIMULATION_ENVIRONMENT_METADATA_POLICY`
-    - `COARSE_SIMULATION_INTERVAL_FACTOR_ALIGNMENT_POLICY`
-    - `COARSE_SIMULATION_INTERVAL_IDENTIFIER_POLICY`
-    - `COARSE_SIMULATION_INTERVAL_TIMING_POLICY`
-    - `COARSE_SIMULATION_PATH_DIAGNOSTICS_SCHEMA_VERSION`
-    - `COARSE_SIMULATION_PATH_OUTPUT_SCHEMA_METADATA_VERSION`
-    - `COARSE_SIMULATION_PATH_PROVENANCE_SCHEMA_VERSION`
-    - `COARSE_SIMULATION_PATH_RECORD_SCHEMA_VERSION`
-    - `COARSE_SIMULATION_PATH_SCHEMA_VERSION`
-    - `COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION`
-    - `KnownNewsArrivalConfiguration`
-    - `NewsArrivalConfiguration`
-    - `NewsComponentMarkScaleConfiguration`
-    - `DoubleExponentialBaseShockConfiguration`
-    - `CoupledGapMarkConfiguration`
-    - `SharedNewsMarkLawConfiguration`
-    - `SurpriseNewsArrivalConfiguration`
-    - `NewsProcessConfiguration`
-    - `CoarseSimulationModelInputs`
-    - `CoarseSimulationRunRequest`
-    - `CoarseSimulationPathRecord`
-    - `CoarseSimulationPathOutputSchemaMetadata`
-    - `CoarseSimulationPathProvenance`
-    - `CoarseSimulationPathDiagnostics`
-    - `CoarseSimulationPath`
-    - `GammaSeverityMarkConfiguration`
-    - `HawkesKernelLoadings`
-    - `HawkesKernelParameters`
-    - `HawkesExcitationState`
-    - `SeededFinePathTransitionKind`
-    - `SeededFinePathNewsArrivalComponent`
-    - `SeededFinePathRecord`
-    - `SeededFinePathMetadata`
-    - `SeededTickEventSide`
-    - `SeededTickEventStateSnapshotCapture`
-    - `SeededTickEventStateSnapshot`
-    - `SeededTickEventRecord`
-    - `SeededTickEventTapeMetadata`
-    - `SeededTickSimulationDiagnostics`
-    - `SeededTickSimulationHourlyFactorSummary`
-    - `SeededTickSimulationRequest`
-    - `SeededTickSimulationResponse`
-    - `SeededTickSimulationValidationFailure`
-    - `SeededTickSimulationValidationError`
-    - `validate_coarse_simulation_run_request`
-    - `validate_coarse_simulation_path`
-    - `serialize_coarse_simulation_run_request`
-    - `serialize_coarse_simulation_path`
-    - `deserialize_coarse_simulation_run_request`
-    - `deserialize_coarse_simulation_path`
-    - `run_coarse_simulation`
-    - `load_hourly_factor_contract_for_simulation`
-    - `run_seeded_tick_event_simulation`
-    - `validate_seeded_tick_simulation_response`
-    - `serialize_seeded_tick_simulation_response`
-    - `deserialize_seeded_tick_simulation_response`
-  - Seeded response policy: normal execution returns lazy fine-path and event-tape views with surfaced boundary diagnostics instead of eagerly round-tripping one giant fine-path JSON payload through Python.
+  - Ownership: curated convenience surface for seeded-tick and coarse-interval simulation workflows
 - `janiform.pricing`
-  - Ownership: vanilla option pricing contract, execution input, native runner, and pricing-side interval factor loading
-  - Public symbols:
-    - `GammaSeverityMarkConfiguration`
-    - `NigSharedPlusShiftConfiguration`
-    - `VanillaOptionPricingCalibrationHooks`
-    - `VanillaOptionPricingExecutionInput`
-    - `VanillaOptionPricingIntervalFactors`
-    - `VanillaOptionPricingOptionalOutputSelection`
-    - `VanillaOptionPayoffConfiguration`
-    - `VanillaOptionPayoffType`
-    - `VanillaOptionPricingDiagnostics`
-    - `VanillaOptionPricingMarketInputs`
-    - `VanillaOptionPricingModelParameters`
-    - `VanillaOptionPricingRequest`
-    - `VanillaOptionPricingResponse`
-    - `VanillaOptionPricingRunDiagnostics`
-    - `VanillaOptionPricingRunOutputSchemaMetadata`
-    - `VanillaOptionPricingRunResult`
-    - `VanillaOptionPricingValidationError`
-    - `VanillaOptionPricingValidationFailure`
-    - `load_hourly_factor_contract_for_pricing`
-    - `run_vanilla_option_pricing`
-    - `validate_vanilla_option_pricing_execution_input`
-    - `validate_vanilla_option_pricing_request`
-    - `validate_vanilla_option_pricing_response`
-    - `validate_vanilla_option_pricing_run_result`
-    - `serialize_vanilla_option_pricing_execution_input`
-    - `serialize_vanilla_option_pricing_request`
-    - `serialize_vanilla_option_pricing_response`
-    - `serialize_vanilla_option_pricing_run_result`
-    - `deserialize_vanilla_option_pricing_execution_input`
-    - `deserialize_vanilla_option_pricing_request`
-    - `deserialize_vanilla_option_pricing_response`
-    - `deserialize_vanilla_option_pricing_run_result`
+  - Ownership: vanilla option pricing contracts, execution input, and runtime factor loading
 - `janiform.risk`
-  - Ownership: sufficient-statistics risk workflow contract
-  - Public symbols:
-    - `SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY`
-    - `SufficientStatisticsRiskEquationSpecification`
-    - `SufficientStatisticsRiskIntervalFactors`
-    - `SufficientStatisticsRiskModelInputs`
-    - `SufficientStatisticsRiskRunRequest`
-    - `SufficientStatisticsIntervalStatistics`
-    - `SufficientStatisticsRiskReturnComponents`
-    - `SufficientStatisticsRiskPathRecord`
-    - `SufficientStatisticsRiskPath`
-    - `SufficientStatisticsRiskValidationError`
-    - `SufficientStatisticsRiskValidationFailure`
-    - `validate_sufficient_statistics_risk_run_request`
-    - `validate_sufficient_statistics_risk_path`
-    - `serialize_sufficient_statistics_risk_run_request`
-    - `serialize_sufficient_statistics_risk_path`
-    - `deserialize_sufficient_statistics_risk_run_request`
-    - `deserialize_sufficient_statistics_risk_path`
+  - Ownership: sufficient-statistics risk workflow contracts
 - `janiform.calibration`
-  - Ownership: default high-level fit objects plus market-data calibration request contracts and advanced staged calibration execution contracts
-  - Public symbols:
-    - `CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION`
-    - `CALIBRATION_RUN_SPEC_SCHEMA_VERSION`
-    - `CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION`
-    - `CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION`
-    - `CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY`
-    - `DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE`
-    - `CalibrationInputFileFormat`
-    - `CalibrationDuplicateRecordPolicy`
-    - `CalibrationTickPriceInputPolicy`
-    - `CalibrationTradeSign`
-    - `CalibrationOptionQuoteInputPolicy`
-    - `CalibrationMarketDataWorkflowScope`
-    - `CalibrationInputFileReference`
-    - `CalibrationSessionConfigurationInput`
-    - `CalibrationKnownNewsInput`
-    - `CalibrationTickDataColumnMapping`
-    - `CalibrationOptionSurfaceColumnMapping`
-    - `CalibrationKnownNewsColumnMapping`
-    - `CalibrationMarketDataColumnMapping`
-    - `CalibrationMarketDataNormalizationPolicy`
-    - `CalibrationMarketDataOutputPreferences`
-    - `MarketDataCalibrationRequest`
-    - `CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION`
-    - `MarketDataCalibrationSourceSummary`
-    - `MarketDataCalibrationPreparationDiagnostics`
-    - `MarketDataCalibrationPreparationProvenance`
-    - `MarketDataSessionRegularWindow`
-    - `MarketDataSessionRecurringClosedWindow`
-    - `MarketDataSessionResolution`
-    - `PreparedMarketDataCalibration`
-    - `CalibrationTimestampEventSessionFilter`
-    - `CalibrationIntradaySmoothingKernel`
-    - `CalibrationExecutionMode`
-    - `CalibrationStage`
-    - `CalibrationStageExecutionStatus`
-    - `CalibrationHandoffTransport`
-    - `CalibrationResumeSource`
-    - `CalibrationRunDataInputs`
-    - `CalibrationTimestampEventRecord`
-    - `CalibrationScheduledEventOverlay`
-    - `CalibrationIntradaySeasonalityEstimatorSettings`
-    - `CalibrationDayOfWeekSeasonalityEstimatorSettings`
-    - `CalibrationDayOfYearSeasonalityEstimatorSettings`
-    - `CalibrationSeasonalityStageExecutionSettings`
-    - `CalibrationSeasonalityStageExecutionInput`
-    - `CalibrationHawkesStructuredAlphaParameterization`
-    - `CalibrationHawkesStructuredRhoParameterization`
-    - `CalibrationHawkesStructuredRhoSelfDominancePolicy`
-    - `CalibrationObjectiveTermInput`
-    - `CalibrationHawkesStageCandidateInput`
-    - `CalibrationReturnComponentsSignalSourceWindow`
-    - `CalibrationReturnComponentsKnownNewsCalendarInput`
-    - `CalibrationReturnComponentsKnownNewsReturnSample`
-    - `CalibrationReturnComponentsDetectedIntradayJumpCandidate`
-    - `CalibrationReturnComponentsObservedCloseOpenBoundaryObservation`
-    - `CalibrationReturnComponentsObservedOpenSessionReturn`
-    - `CalibrationReturnComponentsCloseOpenGapDetectionPolicy`
-    - `CalibrationReturnComponentsObjectiveMetricWeights`
-    - `CalibrationDoubleExponentialBaseShockConfiguration`
-    - `CalibrationCoupledGapMarkConfiguration`
-    - `CalibrationSharedNewsMarkLawConfiguration`
-    - `CalibrationReturnComponentsStageCandidateGenerationInput`
-    - `CalibrationStageSeedOverride`
-    - `CalibrationRunSeedSettings`
-    - `CalibrationOptimizerSettings`
-    - `CalibrationStageSolverSettings`
-    - `CalibrationStageHandoff`
-    - `CalibrationResumeSettings`
-    - `CalibrationStagedExecutionRuntimeResources`
-    - `StagedCalibrationExecutionInput`
-    - `StagedCalibrationRequest`
-    - `CalibrationCheckpointMetadata`
-    - `CalibrationFailureDetails`
-    - `CalibrationStageReport`
-    - `StagedCalibrationResponse`
-    - `CalibrationValidationFailure`
-    - `CalibrationValidationError`
-    - `JaniformEstimator`
-    - `JaniformModel`
-    - `JaniformFitReport`
-    - `validate_market_data_calibration_request`
-    - `prepare_market_data_calibration`
-    - `run_market_data_calibration`
-    - `serialize_market_data_calibration_request`
-    - `deserialize_market_data_calibration_request`
-    - `run_staged_calibration`
-    - `validate_staged_calibration_execution_input`
-    - `validate_staged_calibration_request`
-    - `validate_staged_calibration_response`
-    - `serialize_staged_calibration_execution_input`
-    - `serialize_staged_calibration_request`
-    - `serialize_staged_calibration_response`
-    - `deserialize_staged_calibration_execution_input`
-    - `deserialize_staged_calibration_request`
-    - `deserialize_staged_calibration_response`
-  - High-level fit policy: the default user-facing flow is `JaniformEstimator.fit(...) -> JaniformModel` with an optional `JaniformFitReport`, while explicit staged execution contracts remain the advanced surface
-
-### Supporting public modules
-
+  - Ownership: curated convenience surface for high-level fitting, market-data calibration, staged execution, and preset-facing calibration objects
 - `janiform.calendar`
-  - Ownership: exchange calendar queries used by simulation, pricing, and later calibration
+  - Ownership: exchange calendar queries shared across workflows
 - `janiform.hourly_factors`
   - Ownership: interval-aligned `s_h` and `nu_h` contract materialization shared by simulation and pricing
-  - Public note: runtime seasonality should be derived from calibration output through `build_runtime_hourly_seasonality_source_from_calibration_payload(...)` instead of recomposing intraday, day-of-week, and day-of-year factors in consumers
 - `janiform.seasonality`
   - Ownership: deterministic seasonality estimation and composition
 - `janiform.validation`
   - Ownership: regression harnesses and validation artifacts
+- `janiform.errors`
+  - Ownership: public error taxonomy and formatting helpers
 - `janiform.stylized_facts`
   - Ownership: stylized-fact comparison reporting
 
+### Public domain submodules
+
+- `janiform.simulation.seeded`
+  - Ownership: seeded-tick simulation request and response contracts, seeded-tick execution entrypoints, and seeded-tick workflow-specific record types
+  - Root coexistence policy: key seeded workflow symbols are also re-exported from `janiform.simulation` as curated convenience imports
+
+Additional importable submodules are not public by default. A submodule becomes supported only when
+this document lists it explicitly and the public contract snapshot tracks it.
+
 ## Calibration namespace status
 
-`janiform.calibration` is now public for the recommended market-data request contract,
-advanced staged execution-input and response contracts, and top-level staged orchestration.
+`janiform.calibration` is public for the recommended market-data request contract, the default
+high-level fit surface, advanced staged execution contracts, and preset-backed calibration
+configuration objects.
 
 The recommended public request boundary is:
 
@@ -274,57 +163,55 @@ The recommended public request boundary is:
 - `prepare_market_data_calibration`
 - `run_market_data_calibration`
 
-`CalibrationSessionConfigurationInput` now treats `session_definition_source` as an explicit
-override rather than a required input. `PreparedMarketDataCalibration.session_resolution`
-surfaces the resolved calendar artifact and the inference diagnostics that downstream calibration
-and simulation preparation should reuse.
+The default high-level path is:
+
+- `JaniformEstimator.fit(...) -> JaniformModel`
+- optional `JaniformFitReport`
 
 The advanced staged-calibration entrypoint is:
 
 - `run_staged_calibration`
 
-The staged return-components execution contract expects observed evidence, not caller-baked model
-seeds. Public staged inputs now carry raw observed open-session returns, known-news and boundary
-activity-lift diagnostics, and explicit fit-bucket weights instead of a pre-generated
-`nig_shared_plus_shift_candidates` list.
+The calibration package root is curated convenience surface. Future calibration decomposition should
+use named public domain submodules when that produces a clearer map than keeping everything inside
+`janiform.calibration.__init__`.
 
 ## Experimental namespace policy
 
 `janiform.experimental` is a separate preview namespace for opt-in workflow iteration.
 
-- Preview endpoint modules live under `janiform.experimental`
-- The current landing zone for future preview entrypoints is `janiform.experimental.api`
-- Preview modules require explicit opt-in through `JANIFORM_EXPERIMENTAL`
-- Preview modules are not part of the primary public API contract or snapshot guardrails
-- Preview modules must never be re-exported from `janiform` or from primary public modules
+- preview endpoint modules live under `janiform.experimental`
+- the current landing zone for future preview entrypoints is `janiform.experimental.api`
+- preview modules require explicit opt-in through `JANIFORM_EXPERIMENTAL`
+- preview modules are not part of the primary public API contract or snapshot guardrails
+- preview modules must never be re-exported from `janiform` or from primary public modules
 
 ## Private namespace policy
 
 The following namespaces are private implementation details and may change without warning inside the
 pre-v0.1 line:
 
-- any module whose name starts with `_`
+- any module or package whose name starts with `_`
 - any submodule not listed in this document
 - implementation helpers nested under public packages, such as `janiform.validation.harness`
-
-Specific private modules for the current milestone:
-
-- `janiform._native`
-- `janiform._native_api`
+- low-level native adapters and boundary plumbing, such as `janiform._native` and `janiform._native_api`
 
 Private modules must not be re-exported from `janiform` or from public module `__all__` lists.
 
 ## Contract evolution rules
 
-- Pre-v0.1 correctness and clarity take priority over compatibility.
-- Breaking API and schema changes are allowed when they simplify the model contract or fix semantics.
-- New public symbols must be added to a task-specific public module, not to the package root.
-- If a symbol is not listed in this document, treat it as private even if Python still allows importing it.
-- When a public symbol moves modules, update in-repo call sites, tests, and docs in the same change.
+- Pre-v0.1 correctness, maintainability, and clarity take priority over compatibility.
+- Breaking API and import-path changes are allowed when they produce a better public package design.
+- Do not add compatibility shims, legacy aliases, or dual old-and-new public layouts unless a task explicitly asks for them.
+- When a symbol is public, choose both its natural domain module and any curated root re-export intentionally.
+- When a public symbol moves, update in-repo call sites, tests, docs, examples, and the approved snapshot in the same change.
+- If a symbol or submodule is not listed in this document, treat it as private even if Python still allows importing it.
 
 ## Review checklist for future API changes
 
-- Is the symbol part of a user task rather than an implementation detail?
-- Does it belong in an existing public module instead of the root package?
-- Does it avoid leaking private native-adapter or harness internals?
-- Are README and export regression tests updated in the same change?
+- Is the symbol part of a real user-facing workflow or domain concept?
+- Should it live in an existing curated root export set, a named public submodule, or a private underscore helper?
+- Does the package layout improve discoverability for both users and maintainers?
+- Are multiple supported import paths intentional and documented rather than accidental?
+- Are private helpers still private instead of becoming a shadow public API through examples or tests?
+- Are README, docs, examples, and export guardrails updated in the same change?

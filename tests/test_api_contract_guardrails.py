@@ -1,13 +1,18 @@
 import json
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+import annotationlib
+import pytest
 
 from janiform._api_contract_guardrails import (
     PUBLIC_API_CONTRACT_APPROVAL_POLICY,
     PUBLIC_API_CONTRACT_GUARDRAIL_MANIFEST_SCHEMA_VERSION,
     PUBLIC_API_CONTRACT_SNAPSHOT_SCHEMA_VERSION,
     PUBLIC_API_SURFACE_DOCUMENT_VERSION,
+    _dataclass_contract_model_signature,
     build_public_api_contract_snapshot,
     compute_public_api_contract_snapshot_sha256,
     public_api_contract_snapshot_matches_approved,
@@ -53,6 +58,7 @@ def test_public_api_contract_guardrail_rejects_undocumented_snapshot_drift() -> 
 
     assert not public_api_contract_snapshot_matches_approved(current_snapshot, approved_snapshot)
     assert "NewSymbol" in diff
+
     validate_public_api_contract_guardrail_manifest(guardrail_manifest, approved_snapshot)
 
 
@@ -61,7 +67,59 @@ def test_public_api_contract_guardrail_accepts_documented_snapshot_update() -> N
     guardrail_manifest = _guardrail_manifest_for_snapshot(approved_snapshot)
 
     assert public_api_contract_snapshot_matches_approved(approved_snapshot, approved_snapshot)
+
     validate_public_api_contract_guardrail_manifest(guardrail_manifest, approved_snapshot)
+
+
+def test_public_api_contract_guardrail_supports_public_domain_submodules() -> None:
+    approved_snapshot = _minimal_snapshot(
+        public_modules={
+            "janiform.simulation": ["SeededTickSimulationRequest", "run_seeded_tick_event_simulation"],
+            "janiform.simulation.seeded": [
+                "SeededTickSimulationRequest",
+                "run_seeded_tick_event_simulation",
+            ],
+        }
+    )
+    guardrail_manifest = _guardrail_manifest_for_snapshot(approved_snapshot)
+
+    assert set(approved_snapshot["public_modules"]) == {
+        "janiform.simulation",
+        "janiform.simulation.seeded",
+    }
+
+    validate_public_api_contract_guardrail_manifest(guardrail_manifest, approved_snapshot)
+
+
+def test_dataclass_contract_model_signature_falls_back_for_annotation_lookup_value_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    @dataclass
+    class ExampleContract:
+        value: int
+
+    def raise_value_error(*args: Any, **kwargs: Any) -> dict[str, str]:
+        raise ValueError("annotation formatting unavailable")
+
+    monkeypatch.setattr(annotationlib, "get_annotations", raise_value_error)
+
+    assert _dataclass_contract_model_signature(ExampleContract) == "(value: 'int') -> 'None'"
+
+
+def test_dataclass_contract_model_signature_does_not_swallow_unexpected_runtime_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    @dataclass
+    class ExampleContract:
+        value: int
+
+    def raise_runtime_error(*args: Any, **kwargs: Any) -> dict[str, str]:
+        raise RuntimeError("unexpected annotation failure")
+
+    monkeypatch.setattr(annotationlib, "get_annotations", raise_runtime_error)
+
+    with pytest.raises(RuntimeError, match="unexpected annotation failure"):
+        _dataclass_contract_model_signature(ExampleContract)
 
 
 def _load_json_document(path: Path) -> dict[str, Any]:
@@ -72,7 +130,19 @@ def _load_json_document(path: Path) -> dict[str, Any]:
     return payload
 
 
-def _minimal_snapshot(*, module_exports: list[str]) -> dict[str, Any]:
+def _minimal_snapshot(
+    *,
+    module_exports: list[str] | None = None,
+    public_modules: Mapping[str, list[str]] | None = None,
+) -> dict[str, Any]:
+    module_export_map: Mapping[str, list[str]]
+    if public_modules is not None:
+        module_export_map = public_modules
+    elif module_exports is not None:
+        module_export_map = {"janiform.simulation": module_exports}
+    else:
+        raise TypeError("module_exports or public_modules must be provided")
+
     return {
         "schema_version": PUBLIC_API_CONTRACT_SNAPSHOT_SCHEMA_VERSION,
         "public_api_surface_document_version": PUBLIC_API_SURFACE_DOCUMENT_VERSION,
@@ -81,30 +151,36 @@ def _minimal_snapshot(*, module_exports: list[str]) -> dict[str, Any]:
             "exports": ["__version__"],
         },
         "public_modules": {
-            "janiform.simulation": {
-                "module_name": "janiform.simulation",
-                "exports": module_exports,
-                "schema_identifiers": [
-                    {
-                        "name": "SIMULATION_EXAMPLE_SCHEMA_VERSION",
-                        "value": "simulation.example.v1",
-                        "public_exported": False,
-                    }
-                ],
-                "symbols": {
-                    export_name: {
-                        "kind": "function",
-                        "signature": "() -> None",
-                    }
-                    for export_name in module_exports
-                },
+            module_name: _minimal_module_snapshot(module_name=module_name, module_exports=exports)
+            for module_name, exports in module_export_map.items()
+        },
+    }
+
+
+def _minimal_module_snapshot(*, module_name: str, module_exports: list[str]) -> dict[str, Any]:
+    return {
+        "module_name": module_name,
+        "exports": module_exports,
+        "schema_identifiers": [
+            {
+                "name": "SIMULATION_EXAMPLE_SCHEMA_VERSION",
+                "value": "simulation.example.v1",
+                "public_exported": False,
             }
+        ],
+        "symbols": {
+            export_name: {
+                "kind": "function",
+                "signature": "() -> None",
+            }
+            for export_name in module_exports
         },
     }
 
 
 def _guardrail_manifest_for_snapshot(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     snapshot_sha256 = compute_public_api_contract_snapshot_sha256(snapshot)
+
     return {
         "schema_version": PUBLIC_API_CONTRACT_GUARDRAIL_MANIFEST_SCHEMA_VERSION,
         "public_api_surface_document_version": PUBLIC_API_SURFACE_DOCUMENT_VERSION,

@@ -3,11 +3,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from janiform.pricing import NigSharedPlusShiftConfiguration
+from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 from janiform.simulation import (
     CoupledGapMarkConfiguration,
     DoubleExponentialBaseShockConfiguration,
-    GammaSeverityMarkConfiguration,
     HawkesExcitationState,
     HawkesKernelLoadings,
     HawkesKernelParameters,

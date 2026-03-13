@@ -5,11 +5,10 @@ from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
 )
-from janiform.pricing import NigSharedPlusShiftConfiguration
+from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 from janiform.simulation import (
     CoupledGapMarkConfiguration,
     DoubleExponentialBaseShockConfiguration,
-    GammaSeverityMarkConfiguration,
     HawkesExcitationState,
     HawkesKernelParameters,
     KnownNewsArrivalConfiguration,
