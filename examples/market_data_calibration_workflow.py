@@ -2,9 +2,8 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from janiform.calibration import (
+from janiform.calibration.market_data import (
     CalibrationDuplicateRecordPolicy,
-    CalibrationExecutionMode,
     CalibrationInputFileFormat,
     CalibrationInputFileReference,
     CalibrationKnownNewsColumnMapping,
@@ -21,6 +20,7 @@ from janiform.calibration import (
     MarketDataCalibrationRequest,
     prepare_market_data_calibration,
 )
+from janiform.calibration.staged import CalibrationExecutionMode
 
 from ._shared import write_market_data_fixture_files
 

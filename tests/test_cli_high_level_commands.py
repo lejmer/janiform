@@ -5,19 +5,18 @@ from pathlib import Path
 import orjson
 import pytest
 
-import janiform.calibration._fit_api as high_level_module
+import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.cli as cli_module
-from janiform.calibration import (
+from janiform.calibration.fit import JaniformEstimator, JaniformModel
+from janiform.calibration.market_data import (
     CalibrationDuplicateRecordPolicy,
     CalibrationInputFileFormat,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataWorkflowScope,
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
-    JaniformEstimator,
-    JaniformModel,
-    validate_staged_calibration_response,
 )
+from janiform.calibration.staged import validate_staged_calibration_response
 from tests.cli_test_support import invoke_cli, normalize_help_output
 
 
@@ -157,7 +156,7 @@ def test_fit_outputs_resolved_configuration_and_provenance(
     model_output_path = tmp_path / "model.json"
 
     monkeypatch.setattr(
-        high_level_module,
+        fit_estimator_module,
         "_run_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _successful_full_model_staged_runner_payload("cli-fit-success"),
     )
@@ -265,7 +264,7 @@ def test_fit_and_simulate_outputs_fit_and_simulation_sections(
     )
 
     monkeypatch.setattr(
-        high_level_module,
+        fit_estimator_module,
         "_run_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _successful_full_model_staged_runner_payload("cli-fit-and-simulate"),
     )
@@ -482,7 +481,7 @@ def _build_full_workflow_model(
     )
 
     monkeypatch.setattr(
-        high_level_module,
+        fit_estimator_module,
         "_run_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _successful_full_model_staged_runner_payload(run_id),
     )

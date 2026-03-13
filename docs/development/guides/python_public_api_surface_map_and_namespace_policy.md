@@ -160,6 +160,57 @@ from janiform.simulation.shared import HawkesKernelParameters
 - `janiform.simulation.shared`
   - Ownership: shared Hawkes-state and simulation error contracts used across coarse and seeded workflows
   - Root coexistence policy: core shared contracts remain re-exported from `janiform.simulation` for convenience, while `janiform.simulation.shared` is the ownership path
+- `janiform.calibration.fit`
+  - Ownership: default estimator-model-report fit workflow
+  - Root coexistence policy: the fit classes remain re-exported from `janiform.calibration` for convenience, while `janiform.calibration.fit` is the ownership path
+- `janiform.calibration.fit.estimator`
+  - Ownership: estimator construction and high-level fit orchestration
+- `janiform.calibration.fit.model`
+  - Ownership: fitted model runtime, persistence, pricing, and simulation helpers
+- `janiform.calibration.fit.report`
+  - Ownership: high-level fit report contract
+- `janiform.calibration.market_data`
+  - Ownership: market-data request contracts, input normalization policy, preparation diagnostics, and the market-data calibration entrypoints
+  - Root coexistence policy: the most common market-data calibration entrypoints remain re-exported from `janiform.calibration` for convenience, while `janiform.calibration.market_data` is the ownership path
+- `janiform.calibration.market_data.contracts`
+  - Ownership: market-data request and normalization contracts
+- `janiform.calibration.market_data.request`
+  - Ownership: typed market-data request validation and serialization
+- `janiform.calibration.market_data.ingestion`
+  - Ownership: source-loading and normalized market-data records
+- `janiform.calibration.market_data.translation`
+  - Ownership: translation from market-data requests into staged execution inputs
+- `janiform.calibration.market_data.workflow`
+  - Ownership: prepared market-data calibration artifacts and workflow entrypoints
+- `janiform.calibration.staged`
+  - Ownership: staged execution contracts, staged execution inputs and responses, and staged runner entrypoints
+  - Root coexistence policy: the root keeps the main staged runner and request boundary as convenience imports, while `janiform.calibration.staged` is the ownership path for advanced orchestration contracts
+- `janiform.calibration.staged.contracts`
+  - Ownership: shared staged execution contracts and stage-selection settings
+- `janiform.calibration.staged.inputs`
+  - Ownership: staged execution input contracts and stage-specific input payload models
+- `janiform.calibration.staged.request`
+  - Ownership: staged calibration request contract
+- `janiform.calibration.staged.results`
+  - Ownership: staged execution response, stage report, and checkpoint report contracts
+- `janiform.calibration.staged.runtime`
+  - Ownership: staged runner entrypoints and native execution bridge
+- `janiform.calibration.presets`
+  - Ownership: preset references, registry artifacts, resolved preset workflow configuration, and preset-resolution entrypoints
+  - Root coexistence policy: the root keeps the common preset-facing workflow references as convenience imports, while `janiform.calibration.presets` is the ownership path
+- `janiform.calibration.presets.references`
+  - Ownership: preset reference contracts and explicit override configuration models
+- `janiform.calibration.presets.registry`
+  - Ownership: preset artifact registries and serialization helpers
+- `janiform.calibration.presets.resolution`
+  - Ownership: resolved preset workflow configuration and resolution entrypoints
+- `janiform.calibration.sessions`
+  - Ownership: market-data session-resolution contracts and session window models
+  - Root coexistence policy: the root re-exports the core session-resolution contracts, while `janiform.calibration.sessions` is the ownership path
+- `janiform.calibration.sessions.contracts`
+  - Ownership: session-resolution contracts and weekly session window models
+- `janiform.calibration.sessions.resolution`
+  - Ownership: market-data session-resolution workflow
 
 Additional importable submodules are not public by default. A submodule becomes supported only when
 this document lists it explicitly and the public contract snapshot tracks it.
@@ -186,9 +237,57 @@ The advanced staged-calibration entrypoint is:
 
 - `run_staged_calibration`
 
-The calibration package root is curated convenience surface. Future calibration decomposition should
-use named public domain submodules when that produces a clearer map than keeping everything inside
-`janiform.calibration.__init__`.
+The supported calibration ownership modules are:
+
+- `janiform.calibration.fit`
+- `janiform.calibration.fit.estimator`
+- `janiform.calibration.fit.model`
+- `janiform.calibration.fit.report`
+- `janiform.calibration.market_data`
+- `janiform.calibration.market_data.contracts`
+- `janiform.calibration.market_data.request`
+- `janiform.calibration.market_data.ingestion`
+- `janiform.calibration.market_data.translation`
+- `janiform.calibration.market_data.workflow`
+- `janiform.calibration.staged`
+- `janiform.calibration.staged.contracts`
+- `janiform.calibration.staged.inputs`
+- `janiform.calibration.staged.request`
+- `janiform.calibration.staged.results`
+- `janiform.calibration.staged.runtime`
+- `janiform.calibration.presets`
+- `janiform.calibration.presets.references`
+- `janiform.calibration.presets.registry`
+- `janiform.calibration.presets.resolution`
+- `janiform.calibration.sessions`
+- `janiform.calibration.sessions.contracts`
+- `janiform.calibration.sessions.resolution`
+
+The calibration package root is curated convenience surface. It is not the only discoverable map of
+the package anymore.
+
+For example, both of these import styles are supported:
+
+```python
+from janiform.calibration import JaniformEstimator, MarketDataCalibrationRequest
+
+from janiform.calibration.fit import JaniformEstimator
+from janiform.calibration.fit.model import JaniformModel
+from janiform.calibration.market_data import MarketDataCalibrationRequest
+from janiform.calibration.market_data.translation import (
+    translate_market_data_request_to_staged_execution_input,
+)
+from janiform.calibration.staged import StagedCalibrationExecutionInput
+from janiform.calibration.staged.inputs import CalibrationSeasonalityStageExecutionInput
+from janiform.calibration.staged.request import StagedCalibrationRequest
+from janiform.calibration.staged.results import StagedCalibrationResponse
+from janiform.calibration.presets import PresetRegistry, SessionPresetReference
+from janiform.calibration.presets.references import MarketProfileReference
+from janiform.calibration.sessions import MarketDataSessionResolution
+from janiform.calibration.sessions.resolution import (
+    resolve_market_data_session_configuration,
+)
+```
 
 ## Experimental namespace policy
 

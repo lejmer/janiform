@@ -5,13 +5,13 @@ import pyarrow as pa
 import pytest
 from pyarrow import parquet as pyarrow_parquet
 
-from janiform.calibration._market_data_translation import (
+from janiform.calibration.market_data.translation import (
     translate_market_data_request_to_staged_execution_input,
 )
-from janiform.calibration import (
+from janiform.calibration import CalibrationValidationError
+from janiform.calibration.market_data import (
     CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
     CalibrationDuplicateRecordPolicy,
-    CalibrationExecutionMode,
     CalibrationInputFileFormat,
     CalibrationInputFileReference,
     CalibrationKnownNewsColumnMapping,
@@ -23,15 +23,17 @@ from janiform.calibration import (
     CalibrationOptionQuoteInputPolicy,
     CalibrationOptionSurfaceColumnMapping,
     CalibrationSessionConfigurationInput,
-    CalibrationStage,
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
-    CalibrationTradeSign,
-    CalibrationValidationError,
     MarketDataCalibrationRequest,
     prepare_market_data_calibration,
-    run_staged_calibration,
     run_market_data_calibration,
+)
+from janiform.calibration.staged import (
+    CalibrationExecutionMode,
+    CalibrationStage,
+    CalibrationTradeSign,
+    run_staged_calibration,
 )
 
 

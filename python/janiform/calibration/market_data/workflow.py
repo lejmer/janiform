@@ -1,18 +1,20 @@
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from ._common import (
+from .contracts import (
     CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
     CalibrationInputFileFormat,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataWorkflowScope,
-    CalibrationStage,
-    _calibration_error,
 )
-from ._requests import MarketDataCalibrationRequest, validate_market_data_calibration_request
-from ._session_resolution import MarketDataSessionResolution
-from ._staged import StagedCalibrationExecutionInput, StagedCalibrationResponse, run_staged_calibration
-from .._contracts import ContractModel
+from .request import MarketDataCalibrationRequest, validate_market_data_calibration_request
+from .._errors import _calibration_error
+from ..sessions.contracts import MarketDataSessionResolution
+from ..staged.inputs import StagedCalibrationExecutionInput
+from ..staged.results import StagedCalibrationResponse
+from ..staged.runtime import run_staged_calibration
+from ..._contracts import ContractModel
+
 
 @dataclass(frozen=True, slots=True)
 class MarketDataCalibrationSourceSummary(ContractModel):
@@ -31,7 +33,7 @@ class MarketDataCalibrationSourceSummary(ContractModel):
 @dataclass(frozen=True, slots=True)
 class MarketDataCalibrationPreparationDiagnostics(ContractModel):
     workflow_scope: CalibrationMarketDataWorkflowScope
-    selected_stages: tuple[CalibrationStage, ...]
+    selected_stages: tuple[Any, ...]
     executed_preprocessing_steps: tuple[str, ...]
     tick_record_count: int
     option_surface_record_count: int
@@ -56,7 +58,7 @@ class MarketDataCalibrationPreparationProvenance(ContractModel):
     known_news_summary: Optional[MarketDataCalibrationSourceSummary]
     normalization_policy: CalibrationMarketDataNormalizationPolicy
     workflow_scope: CalibrationMarketDataWorkflowScope
-    selected_stages: tuple[CalibrationStage, ...]
+    selected_stages: tuple[Any, ...]
     session_definition_path: Optional[str]
     derived_trade_events_data_reference: str
     derived_option_surface_data_reference: Optional[str]
@@ -79,14 +81,6 @@ class PreparedMarketDataCalibration(ContractModel):
                 "schema_version",
                 f"must be `{CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION}`",
             )
-
-
-def _translate_market_data_calibration_request(
-    request: MarketDataCalibrationRequest,
-) -> Any:
-    from ._market_data_translation import translate_market_data_request_to_staged_execution_input
-
-    return translate_market_data_request_to_staged_execution_input(request)
 
 
 def _build_market_data_source_summary(source_summary: Any) -> MarketDataCalibrationSourceSummary:
@@ -152,34 +146,19 @@ def _build_market_data_preparation_provenance(provenance: Any) -> MarketDataCali
 
 def _build_market_data_session_resolution(session_resolution: Any) -> MarketDataSessionResolution:
     if not isinstance(session_resolution, MarketDataSessionResolution):
-        raise _calibration_error(
-            "session_resolution",
-            "must be a MarketDataSessionResolution",
-        )
+        raise _calibration_error("session_resolution", "must be a MarketDataSessionResolution")
 
     return session_resolution
 
 
-def prepare_market_data_calibration(
-    request: MarketDataCalibrationRequest,
-) -> PreparedMarketDataCalibration:
-    """Translate a market-data request into the canonical staged calibration input.
-
-    Example:
-        prepared = prepare_market_data_calibration(request)
-        response = run_staged_calibration(
-            prepared.execution_input,
-            calendar_registry=CalendarRegistry(
-                prepared.session_resolution.resolved_session_definition_json
-            ),
-        )
-    """
-
+def prepare_market_data_calibration(request: MarketDataCalibrationRequest) -> PreparedMarketDataCalibration:
     if not isinstance(request, MarketDataCalibrationRequest):
         raise _calibration_error("request", "must be a MarketDataCalibrationRequest")
 
+    from .translation import translate_market_data_request_to_staged_execution_input
+
     normalized_request = validate_market_data_calibration_request(request.to_payload())
-    translation_result = _translate_market_data_calibration_request(normalized_request)
+    translation_result = translate_market_data_request_to_staged_execution_input(normalized_request)
 
     return PreparedMarketDataCalibration(
         schema_version=CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
@@ -187,24 +166,30 @@ def prepare_market_data_calibration(
         execution_input=translation_result.execution_input,
         diagnostics=_build_market_data_preparation_diagnostics(translation_result.diagnostics),
         provenance=_build_market_data_preparation_provenance(translation_result.provenance),
-        session_resolution=_build_market_data_session_resolution(
-            translation_result.session_resolution
-        ),
+        session_resolution=_build_market_data_session_resolution(translation_result.session_resolution),
     )
 
 
-def run_market_data_calibration(
-    request: MarketDataCalibrationRequest,
-) -> StagedCalibrationResponse:
-    """Run the market-data-first calibration workflow through the staged engine."""
-
+def run_market_data_calibration(request: MarketDataCalibrationRequest) -> StagedCalibrationResponse:
     if not isinstance(request, MarketDataCalibrationRequest):
         raise _calibration_error("request", "must be a MarketDataCalibrationRequest")
 
+    from .translation import translate_market_data_request_to_staged_execution_input
+
     normalized_request = validate_market_data_calibration_request(request.to_payload())
-    translation_result = _translate_market_data_calibration_request(normalized_request)
+    translation_result = translate_market_data_request_to_staged_execution_input(normalized_request)
 
     return run_staged_calibration(
         translation_result.execution_input,
         calendar_registry=translation_result.calendar_registry,
     )
+
+
+__all__ = [
+    "MarketDataCalibrationPreparationDiagnostics",
+    "MarketDataCalibrationPreparationProvenance",
+    "MarketDataCalibrationSourceSummary",
+    "PreparedMarketDataCalibration",
+    "prepare_market_data_calibration",
+    "run_market_data_calibration",
+]

@@ -5,18 +5,8 @@ from enum import StrEnum
 from importlib.resources import files
 from typing import Any, Optional, cast
 
-from .._contracts import (
-    ContractModel,
-    parse_json_object,
-    require_field,
-    require_non_empty_string,
-    require_sequence,
-    serialize_deterministic_json,
-)
-from ._common import CALIBRATION_ERROR_FACTORY, _calibration_error
-from ._preset_references import (
+from .references import (
     KnownNewsConfigurationOverridePatch,
-    KnownNewsEvent,
     KnownNewsExplicitConfiguration,
     KnownNewsPresetReference,
     MarketProfileExplicitConfiguration,
@@ -27,6 +17,16 @@ from ._preset_references import (
     SessionExplicitConfiguration,
     SessionPresetReference,
 )
+from .._errors import CALIBRATION_ERROR_FACTORY, _calibration_error
+from ..._contracts import (
+    ContractModel,
+    parse_json_object,
+    require_field,
+    require_non_empty_string,
+    require_sequence,
+    serialize_deterministic_json,
+)
+
 
 SESSION_PRESET_ARTIFACT_SCHEMA_VERSION = "preset.artifact.session.v1"
 KNOWN_NEWS_PRESET_ARTIFACT_SCHEMA_VERSION = "preset.artifact.known_news.v1"
@@ -243,6 +243,7 @@ class PresetArtifactMetadata(ContractModel):
             f"{field_path}.provenance",
             CALIBRATION_ERROR_FACTORY,
         )
+
         return PresetArtifactMetadata(
             display_name=require_non_empty_string(
                 raw_payload,
@@ -631,6 +632,7 @@ class BundledPresetRegistryIndex(ContractModel):
             f"{field_path}.entries",
             CALIBRATION_ERROR_FACTORY,
         )
+
         return BundledPresetRegistryIndex(
             schema_version=require_non_empty_string(
                 raw_payload,
@@ -880,11 +882,13 @@ class UserPresetRegistry:
 
     def register_preset(self, artifact: PresetArtifact) -> PresetArtifact:
         normalized_artifact = normalize_preset_artifact(artifact)
+
         self._preset_store.register(
             normalized_artifact,
             registry_scope=PresetRegistryScope.USER_REGISTERED,
             field_path="user_registered_presets",
         )
+
         return normalized_artifact
 
 
@@ -1029,7 +1033,9 @@ class PresetRegistry:
             preset_name=preset_name,
             registry_scope=registry_scope,
         )
+
         market_profile_artifact = artifact if isinstance(artifact, MarketProfilePresetArtifact) else None
+
         session_artifact: Optional[SessionPresetArtifact] = (
             cast(SessionPresetArtifact, artifact)
             if isinstance(artifact, SessionPresetArtifact)
@@ -1224,6 +1230,7 @@ class _PresetStore:
                         content_hash=cast(str, artifact.metadata.provenance.content_hash),
                     )
                 )
+
         return tuple(entries)
 
 
@@ -1608,6 +1615,7 @@ def _is_content_hash(raw_value: str) -> bool:
 def _parse_preset_category(raw_value: object, *, field_path: str) -> PresetCategory:
     if not isinstance(raw_value, str):
         raise _preset_registry_error(field_path, "must be a string")
+
     try:
         return PresetCategory(raw_value)
     except ValueError as e:
@@ -1620,6 +1628,7 @@ def _parse_preset_category(raw_value: object, *, field_path: str) -> PresetCateg
 def _parse_preset_registry_scope(raw_value: object, *, field_path: str) -> PresetRegistryScope:
     if not isinstance(raw_value, str):
         raise _preset_registry_error(field_path, "must be a string")
+
     try:
         return PresetRegistryScope(raw_value)
     except ValueError as e:

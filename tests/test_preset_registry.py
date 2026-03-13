@@ -4,16 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from janiform.calibration import (
+from janiform.calibration import CalibrationValidationError
+from janiform.calibration.presets import (
     BUNDLED_PRESET_INDEX_SCHEMA_VERSION,
     BuiltInPresetRegistry,
-    CalibrationValidationError,
     KnownNewsEvent,
     KnownNewsExplicitConfiguration,
     KnownNewsPresetArtifact,
     KnownNewsPresetReference,
-    MarketDataSessionRecurringClosedWindow,
-    MarketDataSessionRegularWindow,
     MarketProfileExplicitConfiguration,
     MarketProfilePresetArtifact,
     PresetArtifactMetadata,
@@ -30,6 +28,10 @@ from janiform.calibration import (
     SessionPresetReference,
     UserPresetRegistry,
     serialize_preset_artifact,
+)
+from janiform.calibration.sessions import (
+    MarketDataSessionRecurringClosedWindow,
+    MarketDataSessionRegularWindow,
 )
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]

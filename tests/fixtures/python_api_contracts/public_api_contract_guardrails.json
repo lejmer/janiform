@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "1e8ad2f98fbb91a7d4a28aff30b4295ed39ebf6906c90e1c4a1498e8e59992b6",
+  "approved_snapshot_sha256": "c99c7ab2d17564b1f7a396e562c4ef4a62058566986dee8b99cf917b883d2b64",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -242,6 +242,35 @@
       "rationale": "The public seeded simulation convenience surface now re-exports the public calendar and hourly-factor types referenced by load_hourly_factor_contract_for_simulation so callers can follow the helper signature directly from janiform.simulation or janiform.simulation.seeded without dropping into separate modules first.",
       "snapshot_sha256": "1e8ad2f98fbb91a7d4a28aff30b4295ed39ebf6906c90e1c4a1498e8e59992b6",
       "summary": "Re-export seeded hourly-factor loader signature types from simulation convenience surfaces."
+    },
+    {
+      "approved_on": "2026-03-13",
+      "docs_updated": [
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
+        "docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md"
+      ],
+      "rationale": "Calibration now exposes supported fit, market_data, staged, presets, and sessions submodules while keeping janiform.calibration as a curated convenience root, so the approved contract snapshot must track both the root and the new ownership paths.",
+      "snapshot_sha256": "972e860cab0239cc3f40bdc38a59acbcb95eede124c9d3fe92cc11aeb09d6bf4",
+      "summary": "Approve calibration public submodule decomposition."
+    },
+    {
+      "approved_on": "2026-03-13",
+      "docs_updated": [
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "Calibration now exposes supported ownership submodules for fit, market-data, presets, sessions, and staged execution, so the approved contract snapshot must track those explicit import paths instead of only the package roots.",
+      "snapshot_sha256": "fd9cf11e8068c74d52f8c25e526c689fb568fbaf988b66a536a341811bc057e6",
+      "summary": "Deepen calibration public submodule decomposition into ownership modules."
+    },
+    {
+      "approved_on": "2026-03-13",
+      "docs_updated": [
+        "README.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "Staged calibration ownership now lives in explicit inputs, results, and runtime modules instead of hidden private monoliths, so the approved snapshot must reflect the deeper public submodule map and the reduced runtime surface.",
+      "snapshot_sha256": "c99c7ab2d17564b1f7a396e562c4ef4a62058566986dee8b99cf917b883d2b64",
+      "summary": "Split staged calibration into public input, result, and runtime ownership modules."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_2",

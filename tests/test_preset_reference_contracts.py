@@ -3,13 +3,12 @@ from datetime import UTC, datetime
 
 import pytest
 
-from janiform.calibration import (
+from janiform.calibration import CalibrationValidationError
+from janiform.calibration.presets import (
     KnownNewsConfigurationOverridePatch,
     KnownNewsEvent,
     KnownNewsExplicitConfiguration,
     KnownNewsPresetReference,
-    MarketDataSessionRecurringClosedWindow,
-    MarketDataSessionRegularWindow,
     MarketProfileColumnAliasHint,
     MarketProfileExplicitConfiguration,
     MarketProfileKnownNewsPolicy,
@@ -20,7 +19,6 @@ from janiform.calibration import (
     SessionConfigurationOverridePatch,
     SessionExplicitConfiguration,
     SessionPresetReference,
-    CalibrationValidationError,
     deserialize_known_news_preset_reference,
     deserialize_market_profile_reference,
     deserialize_session_preset_reference,
@@ -30,6 +28,10 @@ from janiform.calibration import (
     validate_known_news_preset_reference,
     validate_market_profile_reference,
     validate_session_preset_reference,
+)
+from janiform.calibration.sessions import (
+    MarketDataSessionRecurringClosedWindow,
+    MarketDataSessionRegularWindow,
 )
 
 
