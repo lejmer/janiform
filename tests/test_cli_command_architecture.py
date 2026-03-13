@@ -1,3 +1,8 @@
+from typing import cast
+
+import click
+
+from janiform.cli.command_tree import _build_app
 from tests.cli_test_support import render_help
 
 
@@ -42,6 +47,7 @@ def test_hourly_factors_help_lists_materialization_and_contract_workflows() -> N
     assert "materialize-news-intensity" in help_output
     assert "build-contract" in help_output
 
+
 def test_pricing_help_lists_vanilla_option_workflow() -> None:
     help_output = _render_help(["pricing"])
 
@@ -65,6 +71,36 @@ def test_regression_help_lists_developer_regression_commands() -> None:
 
     assert "deterministic" in help_output
     assert "open-closed-gap-leakage" in help_output
+
+
+def test_click_app_exposes_the_expected_live_command_tree() -> None:
+    root_command = _build_app(environment={})
+
+    assert isinstance(root_command, click.Group)
+    assert tuple(root_command.commands) == (
+        "fit",
+        "simulate",
+        "presets",
+        "seasonality",
+        "hourly-factors",
+        "pricing",
+        "stylized-facts",
+        "dev",
+    )
+
+    fit_group = root_command.commands["fit"]
+    simulate_group = root_command.commands["simulate"]
+    dev_group = root_command.commands["dev"]
+
+    assert isinstance(fit_group, click.Group)
+    assert isinstance(simulate_group, click.Group)
+    assert isinstance(dev_group, click.Group)
+    assert tuple(fit_group.commands) == ("plan", "staged")
+    assert tuple(simulate_group.commands) == ("coarse-interval", "seeded-ticks")
+    assert tuple(cast(click.Group, dev_group.commands["regression"]).commands) == (
+        "deterministic",
+        "open-closed-gap-leakage",
+    )
 
 
 def _render_help(arguments: list[str]) -> str:

@@ -1,16 +1,38 @@
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Optional, cast
 
+import click
+
 from .shared import _build_calendar_registry_from_document, _override_calibration_execution_mode
+from ..command_runtime import (
+    JaniformCommand,
+    command_config_option,
+    command_option,
+    invoke_command_handler,
+    optional_path_option,
+    output_option,
+    required_json_path_option,
+)
 from ..context import CliCommandContext
 from .._constants import (
+    CLI_CALIBRATION_DUPLICATE_RECORD_POLICY_CHOICES,
+    CLI_CALIBRATION_EXECUTION_MODE_CHOICES,
+    CLI_CALIBRATION_EXECUTION_MODE_HELP,
     CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT,
+    CLI_CALIBRATION_MARKET_DATA_EXECUTION_MODE_HELP,
+    CLI_CALIBRATION_MARKET_DATA_SCOPE_CHOICES,
+    CLI_CALIBRATION_OPTION_QUOTE_POLICY_CHOICES,
     CLI_CALIBRATION_STAGED_ENTRYPOINT,
     CLI_CALIBRATION_STAGED_INTERNAL_ERROR_ID,
     CLI_CALIBRATION_STAGED_VALIDATION_ERROR_ID,
+    CLI_CALIBRATION_STRUCTURED_FILE_FORMAT_CHOICES,
+    CLI_CALIBRATION_TICK_FILE_FORMAT_CHOICES,
+    CLI_CALIBRATION_TICK_PRICE_POLICY_CHOICES,
     CLI_MARKET_DATA_SUMMARY_FIELD_SELECTION_POLICY,
     CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION,
     CliExitCode,
+    CliOutputMode,
 )
 from ..documents import _load_json_document
 from ..errors import _classify_market_data_command_error, _classify_workflow_command_error
@@ -365,6 +387,250 @@ def _build_market_data_calibration_summary_payload(
             ],
         },
     }
+
+
+def _build_fit_plan_command(*, environment: Mapping[str, str] | None = None) -> click.Command:
+    @click.command(
+        "plan",
+        cls=JaniformCommand,
+        command_path=("fit", "plan"),
+        environment=environment,
+        help=(
+            "Validate market-data inputs, resolve presets and provenance, and build the "
+            "derived fit plan without running the staged fit."
+        ),
+        params=_market_data_calibration_options(),
+    )
+    @click.pass_context
+    def plan(ctx: click.Context, **command_arguments: object) -> int:
+        return invoke_command_handler(
+            ctx,
+            handler=_run_calibration_market_data_command,
+            command_path=("fit", "plan"),
+            command_arguments=dict(command_arguments),
+        )
+
+    return plan
+
+
+def _build_fit_staged_command(*, environment: Mapping[str, str] | None = None) -> click.Command:
+    @click.command(
+        "staged",
+        cls=JaniformCommand,
+        command_path=("fit", "staged"),
+        environment=environment,
+        help="Run the explicit staged fit workflow from a prepared execution-input contract.",
+        params=_staged_calibration_options(),
+    )
+    @click.pass_context
+    def staged(ctx: click.Context, **command_arguments: object) -> int:
+        return invoke_command_handler(
+            ctx,
+            handler=_run_calibration_staged_command,
+            command_path=("fit", "staged"),
+            command_arguments=dict(command_arguments),
+        )
+
+    return staged
+
+
+def _market_data_calibration_options() -> list[click.Parameter]:
+    return [
+        command_config_option(),
+        output_option(default_output_mode=CliOutputMode.JSON),
+        command_option(
+            "--run-id",
+            help_text="Stable run identifier recorded in the market-data request payload.",
+            required=True,
+        ),
+        command_option(
+            "--workflow-scope",
+            choice_options=CLI_CALIBRATION_MARKET_DATA_SCOPE_CHOICES,
+            help_text=(
+                "High-level calibration scope. Use seasonality_only for activity-only estimation, "
+                "full_without_option_surface for full calibration from tick data only, and "
+                "full_with_option_surface when option-surface data is supplied."
+            ),
+            required=True,
+        ),
+        command_option(
+            "--tick-data-path",
+            help_text="Path to the input tick-data file.",
+            path_type=True,
+            required=True,
+        ),
+        command_option(
+            "--tick-data-format",
+            choice_options=CLI_CALIBRATION_TICK_FILE_FORMAT_CHOICES,
+            help_text="Tick-data file format.",
+            required=True,
+        ),
+        command_option(
+            "--tick-data-provenance-label",
+            help_text="Stable provenance label recorded for the tick-data source.",
+            required=True,
+        ),
+        command_option(
+            "--tick-timestamp-column",
+            help_text="Tick-data timestamp column name.",
+            required=True,
+        ),
+        command_option(
+            "--tick-price-input-policy",
+            choice_options=CLI_CALIBRATION_TICK_PRICE_POLICY_CHOICES,
+            help_text="Explicit tick-price normalization policy for non-seasonality workflows.",
+        ),
+        command_option("--tick-price-column", help_text="Tick-data explicit price column."),
+        command_option("--tick-trade-price-column", help_text="Tick-data trade price column."),
+        command_option(
+            "--tick-trade-sign-column",
+            help_text="Tick-data trade sign column required for canonical full-model Hawkes calibration.",
+        ),
+        command_option("--tick-bid-column", help_text="Tick-data bid column."),
+        command_option("--tick-ask-column", help_text="Tick-data ask column."),
+        command_option("--tick-close-price-column", help_text="Tick-data close price column."),
+        command_option(
+            "--exchange-code",
+            help_text="Exchange code used to resolve session state and hourly factors.",
+            required=True,
+        ),
+        optional_path_option(
+            "--session-definition-path",
+            help_text="Optional path to an explicit session-definition file override.",
+        ),
+        command_option(
+            "--session-definition-format",
+            choice_options=CLI_CALIBRATION_STRUCTURED_FILE_FORMAT_CHOICES,
+            help_text="Explicit session-definition file format when --session-definition-path is provided.",
+        ),
+        command_option(
+            "--session-definition-provenance-label",
+            help_text="Stable provenance label recorded for the explicit session-definition source.",
+        ),
+        command_option(
+            "--session-timezone",
+            help_text="Optional timezone hint for automatic session inference or explicit session overrides.",
+        ),
+        optional_path_option("--known-news-path", help_text="Optional path to the known-news calendar file."),
+        command_option(
+            "--known-news-format",
+            choice_options=CLI_CALIBRATION_STRUCTURED_FILE_FORMAT_CHOICES,
+            help_text="Known-news calendar file format.",
+        ),
+        command_option(
+            "--known-news-provenance-label",
+            help_text="Stable provenance label recorded for the known-news source.",
+        ),
+        command_option("--known-news-timezone", help_text="Optional timezone for known-news timestamps."),
+        command_option(
+            "--known-news-timestamp-column",
+            help_text="Known-news timestamp column name for csv or parquet inputs.",
+        ),
+        command_option(
+            "--known-news-event-id-column",
+            help_text="Optional known-news event identifier column name.",
+        ),
+        optional_path_option("--option-surface-path", help_text="Optional path to the option-surface file."),
+        command_option(
+            "--option-surface-format",
+            choice_options=CLI_CALIBRATION_TICK_FILE_FORMAT_CHOICES,
+            help_text="Option-surface file format.",
+        ),
+        command_option(
+            "--option-surface-provenance-label",
+            help_text="Stable provenance label recorded for the option-surface source.",
+        ),
+        command_option(
+            "--option-quote-input-policy",
+            choice_options=CLI_CALIBRATION_OPTION_QUOTE_POLICY_CHOICES,
+            help_text="Explicit option-quote normalization policy.",
+        ),
+        command_option("--option-quote-timestamp-column", help_text="Option-surface quote timestamp column name."),
+        command_option("--option-expiry-column", help_text="Option-surface expiry column name."),
+        command_option("--option-strike-column", help_text="Option-surface strike column name."),
+        command_option("--option-type-column", help_text="Option-surface option type column name."),
+        command_option("--option-mid-price-column", help_text="Option-surface mid-price column name."),
+        command_option("--option-bid-column", help_text="Option-surface bid column name."),
+        command_option("--option-ask-column", help_text="Option-surface ask column name."),
+        command_option(
+            "--option-implied-volatility-column",
+            help_text="Option-surface implied volatility column name.",
+        ),
+        command_option(
+            "--timestamp-timezone",
+            help_text="Timezone used to normalize tick-data timestamps before staged translation.",
+            required=True,
+        ),
+        command_option(
+            "--duplicate-record-policy",
+            choice_options=CLI_CALIBRATION_DUPLICATE_RECORD_POLICY_CHOICES,
+            default="error",
+            help_text="Duplicate-record normalization policy recorded in provenance.",
+        ),
+        command_option(
+            "--disable-timestamp-sort",
+            help_text="Record that source data should not be re-sorted by timestamp before translation.",
+            is_flag=True,
+        ),
+        command_option(
+            "--execution-mode",
+            choice_options=CLI_CALIBRATION_EXECUTION_MODE_CHOICES,
+            default="disk",
+            help_text=CLI_CALIBRATION_MARKET_DATA_EXECUTION_MODE_HELP,
+        ),
+        optional_path_option(
+            "--disk-checkpoint-directory",
+            directory=True,
+            help_text=(
+                "Disk checkpoint directory recorded in output_preferences. Required when "
+                "--execution-mode disk is selected."
+            ),
+        ),
+        command_option(
+            "--emit-derived-staged-execution-input",
+            help_text="Request emission of the derived staged execution input for replay or debugging.",
+            is_flag=True,
+        ),
+        command_option(
+            "--omit-input-provenance-report",
+            help_text="Disable provenance-report emission in output_preferences.",
+            is_flag=True,
+        ),
+    ]
+
+
+def _staged_calibration_options() -> list[click.Parameter]:
+    return [
+        command_config_option(),
+        output_option(default_output_mode=CliOutputMode.JSON),
+        required_json_path_option(
+            "--execution-input-json",
+            contract_label="a staged calibration execution-input JSON object",
+            semantic_note=(
+                "The execution input must provide explicit known-news return samples and raw "
+                "close-open boundary observations for internal gap detection."
+            ),
+        ),
+        required_json_path_option(
+            "--calendar-registry-json",
+            contract_label="a calendar registry JSON object consumed by the staged calibration runner",
+        ),
+        command_option(
+            "--execution-mode",
+            choice_options=CLI_CALIBRATION_EXECUTION_MODE_CHOICES,
+            default="disk",
+            help_text=CLI_CALIBRATION_EXECUTION_MODE_HELP,
+        ),
+        optional_path_option(
+            "--disk-checkpoint-directory",
+            directory=True,
+            help_text=(
+                "Checkpoint directory override. Use only with --execution-mode disk. When "
+                "provided, this overrides runtime_resources.disk_checkpoint_directory from "
+                "--execution-input-json."
+            ),
+        ),
+    ]
 
 
 __all__ = [

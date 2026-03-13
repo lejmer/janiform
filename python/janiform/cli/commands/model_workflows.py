@@ -1,13 +1,35 @@
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Optional, cast
 
+import click
+
+from .calibration import _build_fit_plan_command, _build_fit_staged_command
+from .simulation import _build_simulation_coarse_interval_command, _build_simulation_seeded_ticks_command
 from .shared import (
     _parse_utc_datetime_cli_argument,
     _require_non_empty_cli_string,
     _require_positive_integer_cli_argument,
 )
+from ..command_runtime import (
+    JaniformGroup,
+    command_config_option,
+    command_option,
+    invoke_group_default_handler,
+    optional_path_option,
+    output_option,
+    preset_scope_option,
+    required_datetime_option,
+    user_preset_json_option,
+)
 from ..context import CliCommandContext
 from .._constants import (
+    CLI_CALIBRATION_DUPLICATE_RECORD_POLICY_CHOICES,
+    CLI_CALIBRATION_EXECUTION_MODE_CHOICES,
+    CLI_CALIBRATION_MARKET_DATA_SCOPE_CHOICES,
+    CLI_CALIBRATION_OPTION_QUOTE_POLICY_CHOICES,
+    CLI_CALIBRATION_TICK_FILE_FORMAT_CHOICES,
+    CLI_CALIBRATION_TICK_PRICE_POLICY_CHOICES,
     CLI_FIT_ENTRYPOINT,
     CLI_FIT_INTERNAL_ERROR_ID,
     CLI_FIT_RESULT_SCHEMA_VERSION,
@@ -15,8 +37,10 @@ from .._constants import (
     CLI_HIGH_LEVEL_SIMULATE_ENTRYPOINT,
     CLI_HIGH_LEVEL_SIMULATE_INTERNAL_ERROR_ID,
     CLI_HIGH_LEVEL_SIMULATE_VALIDATION_ERROR_ID,
+    CLI_MODEL_SIMULATION_OUTPUT_CHOICES,
     CLI_SIMULATE_RESULT_SCHEMA_VERSION,
     CliExitCode,
+    CliOutputMode,
 )
 from ..documents import _load_json_document_for_cli_field
 from ..errors import _classify_generic_cli_command_error, _cli_validation_error
@@ -93,6 +117,7 @@ def _run_fit_command(
         json_payload=payload,
         human_output_factory=lambda: _render_fit_human_output(payload),
     )
+
     return int(CliExitCode.SUCCESS)
 
 
@@ -147,6 +172,7 @@ def _run_model_simulate_command(
         json_payload=payload,
         human_output_factory=lambda: _render_simulate_human_output(payload),
     )
+
     return int(CliExitCode.SUCCESS)
 
 
@@ -158,6 +184,7 @@ def _build_cli_preset_registry(
     error_id: str,
 ) -> PresetRegistry:
     registry = PresetRegistry()
+
     for path in user_preset_json:
         resolved_path = _resolve_path_from_repository_root(cli_context.repository_root, path)
         try:
@@ -178,19 +205,23 @@ def _build_cli_preset_registry(
                 entrypoint=entrypoint,
                 context={"path": str(resolved_path)},
             ) from e
+
         registry.load_user_preset_json(preset_json)
+
     return registry
 
 
 def _parse_cli_preset_category(raw_value: Optional[str]) -> Optional[PresetCategory]:
     if raw_value is None:
         return None
+
     return PresetCategory(raw_value.replace("-", "_"))
 
 
 def _parse_cli_preset_scope(raw_value: Optional[str]) -> Optional[PresetRegistryScope]:
     if raw_value is None or raw_value == "auto":
         return None
+
     return PresetRegistryScope(raw_value)
 
 
@@ -202,6 +233,7 @@ def _resolve_named_preset_scope(
     raw_scope: Optional[str],
 ) -> PresetRegistryScope:
     explicit_scope = _parse_cli_preset_scope(raw_scope)
+
     match category:
         case PresetCategory.SESSION:
             resolved_scope, _ = registry.resolve_session_preset(preset_name, registry_scope=explicit_scope)
@@ -209,6 +241,7 @@ def _resolve_named_preset_scope(
             resolved_scope, _ = registry.resolve_known_news_preset(preset_name, registry_scope=explicit_scope)
         case PresetCategory.MARKET_PROFILE:
             resolved_scope, _ = registry.resolve_market_profile_preset(preset_name, registry_scope=explicit_scope)
+
     return resolved_scope
 
 
@@ -226,6 +259,7 @@ def _resolve_preset_artifact(
             _, artifact = registry.resolve_known_news_preset(preset_name, registry_scope=registry_scope)
         case PresetCategory.MARKET_PROFILE:
             _, artifact = registry.resolve_market_profile_preset(preset_name, registry_scope=registry_scope)
+
     return artifact
 
 
@@ -350,6 +384,7 @@ def _execute_cli_fit(
         )
 
     raw_model_output_path = cast(Optional[Path], command_arguments.get("model_output_path"))
+
     persisted_model_path = (
         _resolve_path_from_repository_root(cli_context.repository_root, raw_model_output_path)
         if raw_model_output_path is not None
@@ -357,6 +392,7 @@ def _execute_cli_fit(
     )
     if persisted_model_path is not None:
         model_result.save(persisted_model_path)
+
     return model_result, fit_report, persisted_model_path
 
 
@@ -433,6 +469,7 @@ def _build_session_reference_from_arguments(
         preset_name=cast(str, session_preset),
         raw_scope=raw_scope,
     )
+
     return SessionPresetReference(
         usage_mode=PresetReferenceUsageMode.NAMED,
         registry_scope=resolved_scope,
@@ -486,6 +523,7 @@ def _build_known_news_reference_from_arguments(
         preset_name=cast(str, known_news),
         raw_scope=raw_scope,
     )
+
     return KnownNewsPresetReference(
         usage_mode=PresetReferenceUsageMode.NAMED,
         registry_scope=resolved_scope,
@@ -516,6 +554,7 @@ def _build_option_surface_column_mapping_from_arguments(
     option_surface_path = cast(Optional[Path], parsed_arguments.get("option_surface_path"))
     if option_surface_path is None:
         return None
+
     return CalibrationOptionSurfaceColumnMapping(
         quote_timestamp_column=_require_non_empty_cli_string(
             cast(str, parsed_arguments["option_quote_timestamp_column"]),
@@ -581,12 +620,15 @@ def _build_model_workflow_output_preferences_from_arguments(
     error_id: str,
 ) -> CalibrationMarketDataOutputPreferences:
     selected_execution_mode = CalibrationExecutionMode(cast(str, parsed_arguments["execution_mode"]))
+
     raw_disk_checkpoint_directory = cast(Optional[Path], parsed_arguments.get("disk_checkpoint_directory"))
+
     disk_checkpoint_directory = (
         _resolve_path_from_repository_root(repository_root, raw_disk_checkpoint_directory)
         if raw_disk_checkpoint_directory is not None
         else None
     )
+
     if selected_execution_mode.value == "disk" and disk_checkpoint_directory is None:
         raise _cli_validation_error(
             "disk_checkpoint_directory",
@@ -601,6 +643,7 @@ def _build_model_workflow_output_preferences_from_arguments(
             error_id=error_id,
             entrypoint=entrypoint,
         )
+
     return CalibrationMarketDataOutputPreferences(
         execution_mode=selected_execution_mode,
         disk_checkpoint_directory=None if disk_checkpoint_directory is None else str(disk_checkpoint_directory),
@@ -648,6 +691,7 @@ def _build_cli_simulate_result_payload(
         error_id=error_id,
         entrypoint=entrypoint,
     )
+
     horizon_interval_count = _require_positive_integer_cli_argument(
         int(cast(int, command_arguments["horizon_interval_count"])),
         field_path="horizon_interval_count",
@@ -666,7 +710,9 @@ def _build_cli_simulate_result_payload(
         error_id=error_id,
         entrypoint=entrypoint,
     )
+
     output_mode = cast(str, command_arguments["simulation_output"])
+
     simulation_result = model.simulate(
         seed=int(cast(int, command_arguments["seed"])),
         start_time_utc=start_time_utc,
@@ -677,8 +723,10 @@ def _build_cli_simulate_result_payload(
         sample_every_nth_transition=sample_every_nth_transition,
         max_records_per_chunk=max_records_per_chunk,
     )
+
     coarse_payload: Optional[dict[str, Any]] = None
     seeded_tick_payload: Optional[dict[str, Any]] = None
+
     match output_mode:
         case "coarse":
             coarse_payload = simulation_result.to_payload()
@@ -688,6 +736,7 @@ def _build_cli_simulate_result_payload(
             coarse_result, seeded_tick_result = cast(tuple[Any, Any], simulation_result)
             coarse_payload = coarse_result.to_payload()
             seeded_tick_payload = seeded_tick_result.to_payload()
+
     return {
         "schema_version": schema_version,
         "command": command,
@@ -710,9 +759,342 @@ def _reject_orphan_market_data_arguments(
 ) -> None:
     if has_primary_path:
         return
+
     for _, argument_value in optional_arguments:
         if argument_value is not None:
             raise ValueError(message)
+
+
+def _build_fit_group(*, environment: Mapping[str, str] | None = None) -> click.Group:
+    @click.group(
+        cls=JaniformGroup,
+        command_path=("fit",),
+        environment=environment,
+        help=(
+            "Fit a Janiform model from market data.\n\n"
+            "Run `janiform fit` with the options below for the default end-to-end fitting "
+            "workflow. Use `fit plan` to inspect the derived fit plan before execution, and "
+            "use `fit staged` only when you need direct control over the staged execution boundary."
+        ),
+        invoke_without_command=True,
+        params=_model_workflow_fit_options(enforce_required=False),
+    )
+    @click.pass_context
+    def fit(ctx: click.Context, **command_arguments: object) -> int | None:
+        return invoke_group_default_handler(
+            ctx,
+            handler=_run_fit_command,
+            command_path=("fit",),
+            command_arguments=dict(command_arguments),
+            required_option_names=(
+                "run_id",
+                "workflow_scope",
+                "tick_data_path",
+                "tick_data_format",
+                "tick_timestamp_column",
+                "timestamp_timezone",
+            ),
+            exclusivity_groups=(("session_preset", "session_json"), ("known_news", "known_news_json")),
+        )
+
+    fit_group = fit
+
+    fit_group.add_command(_build_fit_plan_command(environment=environment))
+    fit_group.add_command(_build_fit_staged_command(environment=environment))
+
+    return fit_group
+
+
+def _build_simulate_group(*, environment: Mapping[str, str] | None = None) -> click.Group:
+    @click.group(
+        cls=JaniformGroup,
+        command_path=("simulate",),
+        environment=environment,
+        help=(
+            "Simulate from a persisted Janiform model.\n\n"
+            "Run `janiform simulate` with the options below for the default model-driven "
+            "simulation workflow. Use `simulate coarse-interval` or `simulate seeded-ticks` "
+            "when you need direct control over those explicit workflow contracts."
+        ),
+        invoke_without_command=True,
+        params=_model_workflow_simulate_options(
+            require_model_path=True,
+            enforce_required=False,
+        ),
+    )
+    @click.pass_context
+    def simulate(ctx: click.Context, **command_arguments: object) -> int | None:
+        return invoke_group_default_handler(
+            ctx,
+            handler=_run_model_simulate_command,
+            command_path=("simulate",),
+            command_arguments=dict(command_arguments),
+            required_option_names=("model_path", "seed", "start_time_utc", "horizon_interval_count"),
+        )
+
+    simulate_group = simulate
+
+    simulate_group.add_command(_build_simulation_coarse_interval_command(environment=environment))
+    simulate_group.add_command(_build_simulation_seeded_ticks_command(environment=environment))
+
+    return simulate_group
+
+
+def _model_workflow_fit_options(*, enforce_required: bool = True) -> list[click.Parameter]:
+    return [
+        command_config_option(),
+        output_option(default_output_mode=CliOutputMode.JSON),
+        user_preset_json_option(),
+        command_option(
+            "--market",
+            help_text="Optional market-profile preset name used as the high-level workflow baseline.",
+        ),
+        preset_scope_option(
+            "--market-scope",
+            help_text="Registry scope for --market. Default: auto.",
+            include_auto=True,
+        ),
+        optional_path_option(
+            "--session-json",
+            help_text=(
+                "Optional explicit session JSON override. Accepts a calendar.registry.v1 document or "
+                "a SessionExplicitConfiguration JSON object."
+            ),
+        ),
+        command_option(
+            "--session-preset",
+            help_text="Optional session preset name. When omitted, Janiform may infer the session from data.",
+        ),
+        preset_scope_option(
+            "--session-scope",
+            help_text="Registry scope for --session-preset. Default: auto.",
+            include_auto=True,
+        ),
+        command_option(
+            "--known-news",
+            help_text=(
+                "Optional known-news preset name. Use `none` to keep the bundled off-by-default "
+                "baseline explicit."
+            ),
+        ),
+        optional_path_option(
+            "--known-news-json",
+            help_text=(
+                "Optional explicit known-news configuration JSON override using the "
+                "KnownNewsExplicitConfiguration shape."
+            ),
+        ),
+        preset_scope_option(
+            "--known-news-scope",
+            help_text="Registry scope for --known-news. Default: auto.",
+            include_auto=True,
+        ),
+        command_option(
+            "--exchange-code",
+            help_text=(
+                "Optional exchange-code hint for session inference when neither the selected market "
+                "profile nor explicit session input already supplies it."
+            ),
+        ),
+        command_option(
+            "--session-timezone",
+            help_text="Optional timezone hint for automatic session inference.",
+        ),
+        command_option(
+            "--run-id",
+            help_text="Stable run identifier recorded on the fitted model and fit report.",
+            required=enforce_required,
+        ),
+        command_option(
+            "--workflow-scope",
+            choice_options=CLI_CALIBRATION_MARKET_DATA_SCOPE_CHOICES,
+            help_text=(
+                "High-level calibration scope. Use seasonality_only for activity-only estimation, "
+                "full_without_option_surface for full calibration from tick data only, and "
+                "full_with_option_surface when option-surface data is supplied."
+            ),
+            required=enforce_required,
+        ),
+        command_option(
+            "--tick-data-path",
+            help_text="Path to the input tick-data file.",
+            path_type=True,
+            required=enforce_required,
+        ),
+        command_option(
+            "--tick-data-format",
+            choice_options=CLI_CALIBRATION_TICK_FILE_FORMAT_CHOICES,
+            help_text="Tick-data file format.",
+            required=enforce_required,
+        ),
+        command_option(
+            "--tick-data-provenance-label",
+            default="tick_data",
+            help_text="Stable provenance label recorded for the tick-data source. Default: tick_data.",
+        ),
+        command_option(
+            "--tick-timestamp-column",
+            help_text="Tick-data timestamp column name.",
+            required=enforce_required,
+        ),
+        command_option(
+            "--tick-price-input-policy",
+            choice_options=CLI_CALIBRATION_TICK_PRICE_POLICY_CHOICES,
+            help_text="Explicit tick-price normalization policy for non-seasonality workflows.",
+        ),
+        command_option("--tick-price-column", help_text="Tick-data explicit price column."),
+        command_option("--tick-trade-price-column", help_text="Tick-data trade price column."),
+        command_option(
+            "--tick-trade-sign-column",
+            help_text="Tick-data trade sign column required for canonical full-model Hawkes calibration.",
+        ),
+        command_option("--tick-bid-column", help_text="Tick-data bid column."),
+        command_option("--tick-ask-column", help_text="Tick-data ask column."),
+        command_option("--tick-close-price-column", help_text="Tick-data close price column."),
+        command_option(
+            "--timestamp-timezone",
+            help_text="Timezone used to normalize tick-data timestamps before fitting.",
+            required=enforce_required,
+        ),
+        command_option(
+            "--duplicate-record-policy",
+            choice_options=CLI_CALIBRATION_DUPLICATE_RECORD_POLICY_CHOICES,
+            default="error",
+            help_text="Duplicate-record normalization policy recorded in provenance.",
+        ),
+        command_option(
+            "--disable-timestamp-sort",
+            help_text="Record that source data should not be re-sorted by timestamp before translation.",
+            is_flag=True,
+        ),
+        optional_path_option("--option-surface-path", help_text="Optional path to the option-surface file."),
+        command_option(
+            "--option-surface-format",
+            choice_options=CLI_CALIBRATION_TICK_FILE_FORMAT_CHOICES,
+            help_text="Option-surface file format. Default when provided: parquet.",
+        ),
+        command_option(
+            "--option-surface-provenance-label",
+            help_text="Stable provenance label recorded for the option-surface source. Default when provided: option_surface.",
+        ),
+        command_option(
+            "--option-quote-input-policy",
+            choice_options=CLI_CALIBRATION_OPTION_QUOTE_POLICY_CHOICES,
+            help_text="Explicit option-quote normalization policy.",
+        ),
+        command_option("--option-quote-timestamp-column", help_text="Option-surface quote timestamp column name."),
+        command_option("--option-expiry-column", help_text="Option-surface expiry column name."),
+        command_option("--option-strike-column", help_text="Option-surface strike column name."),
+        command_option("--option-type-column", help_text="Option-surface option type column name."),
+        command_option("--option-mid-price-column", help_text="Option-surface mid-price column name."),
+        command_option("--option-bid-column", help_text="Option-surface bid column name."),
+        command_option("--option-ask-column", help_text="Option-surface ask column name."),
+        command_option(
+            "--option-implied-volatility-column",
+            help_text="Option-surface implied volatility column name.",
+        ),
+        command_option(
+            "--execution-mode",
+            choice_options=CLI_CALIBRATION_EXECUTION_MODE_CHOICES,
+            default="memory",
+            help_text=(
+                "Execution mode recorded in the high-level fit workflow. Default: memory. "
+                "Use disk when you want checkpoint artifacts in addition to the fitted model."
+            ),
+        ),
+        optional_path_option(
+            "--disk-checkpoint-directory",
+            directory=True,
+            help_text=(
+                "Disk checkpoint directory recorded in output_preferences. Required when "
+                "--execution-mode disk is selected."
+            ),
+        ),
+        command_option(
+            "--emit-derived-staged-execution-input",
+            help_text="Request emission of the derived staged execution input for replay or debugging.",
+            is_flag=True,
+        ),
+        command_option(
+            "--omit-input-provenance-report",
+            help_text="Disable provenance-report emission in output_preferences.",
+            is_flag=True,
+        ),
+        command_option(
+            "--model-output-path",
+            help_text="Optional path where the fitted JaniformModel should be persisted.",
+            path_type=True,
+        ),
+    ]
+
+
+def _model_workflow_simulate_options(
+    *,
+    require_model_path: bool,
+    include_shared_arguments: bool = True,
+    enforce_required: bool = True,
+) -> list[click.Parameter]:
+    parameters: list[click.Parameter] = []
+    if include_shared_arguments:
+        parameters.append(command_config_option())
+        parameters.append(output_option(default_output_mode=CliOutputMode.JSON))
+
+    if require_model_path:
+        parameters.append(
+            command_option(
+                "--model-path",
+                help_text="Path to a persisted JaniformModel JSON payload.",
+                path_type=True,
+                required=enforce_required,
+            )
+        )
+
+    parameters.extend(
+        [
+            command_option("--seed", help_text="Simulation random seed.", required=enforce_required, value_type=int),
+            required_datetime_option(
+                "--start-time-utc",
+                help_text="Simulation start time in UTC.",
+                required=enforce_required,
+            ),
+            command_option(
+                "--horizon-interval-count",
+                help_text="Number of simulation intervals to generate.",
+                required=enforce_required,
+                value_type=int,
+            ),
+            command_option(
+                "--interval",
+                default="1h",
+                help_text="Simulation interval such as `1h` or `30m`. Default: 1h.",
+            ),
+            command_option(
+                "--simulation-output",
+                choice_options=CLI_MODEL_SIMULATION_OUTPUT_CHOICES,
+                default="coarse",
+                help_text="Model simulation output mode. Default: coarse.",
+            ),
+            command_option(
+                "--debug-trace-enabled",
+                help_text="Enable seeded-tick debug tracing when the simulation output includes ticks.",
+                is_flag=True,
+            ),
+            command_option(
+                "--sample-every-nth-transition",
+                default=1,
+                help_text="Keep every nth transition in the seeded-tick trace. Default: 1.",
+                value_type=int,
+            ),
+            command_option(
+                "--max-records-per-chunk",
+                default=1024,
+                help_text="Maximum seeded-tick records emitted per chunk. Default: 1024.",
+                value_type=int,
+            ),
+        ]
+    )
+
+    return parameters
 
 
 __all__ = [

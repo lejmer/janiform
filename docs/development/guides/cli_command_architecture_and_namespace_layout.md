@@ -69,7 +69,10 @@ janiform
   - `simulation`
   - `calibration`
   - `development`
-- `janiform.cli.command_tree` owns Click application assembly, command registration, and shared default-resolution behavior.
+- `janiform.cli.command_tree` owns only the root application object, top-level group assembly, and process entrypoint invocation.
+- Each `janiform.cli.commands.*` owner module defines its live Click group or command objects with Click decorators and attaches any namespace-local subcommands directly in that module.
+- `janiform.cli.command_runtime` holds the small shared command-runtime layer:
+  custom `Command` and `Group` classes for default resolution, common option factories, and `CliCommandContext` construction.
 - Command callbacks use Click-native keyword parameters plus a small `CliCommandContext` built from `click.Context`.
   The CLI must not reintroduce synthetic `argparse.Namespace` handoff layers or parser-emulation adapters.
 - Named command-group modules are preferred over catch-all buckets when the contents mirror a real command namespace.
