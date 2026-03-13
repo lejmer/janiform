@@ -1,8 +1,8 @@
 # CLI Command Architecture And Namespace Layout
 
-Document version: `cli.command_architecture.pre_v0_1.milestone_1`
+Document version: `cli.command_architecture.pre_v0_1.milestone_2`
 
-Status: active for the current pre-v0.1 milestone on March 8, 2026.
+Status: active for the current pre-v0.1 milestone on March 13, 2026.
 
 ## Purpose
 
@@ -18,9 +18,18 @@ implementation buckets.
 
 ```text
 janiform
-├── simulation
+├── fit
+│   ├── [default high-level fit workflow]
+│   ├── plan
+│   └── staged
+├── simulate
+│   ├── [default high-level simulation workflow]
 │   ├── coarse-interval
 │   └── seeded-ticks
+├── presets
+│   ├── list
+│   ├── show
+│   └── export
 ├── seasonality
 │   ├── diagnostics
 │   └── preprocess-timestamps
@@ -28,9 +37,6 @@ janiform
 │   ├── materialize-seasonality
 │   ├── materialize-news-intensity
 │   └── build-contract
-├── calibration
-│   ├── market-data
-│   └── staged
 ├── pricing
 │   └── vanilla-option
 ├── stylized-facts
@@ -43,8 +49,9 @@ janiform
 
 ## Namespace policy
 
-- `simulation`, `seasonality`, `hourly-factors`, `calibration`, `pricing`, and `stylized-facts`
-  are the primary user-facing workflow groups.
+- `fit` and `simulate` are the primary workflow roots that first-time users should encounter.
+- `presets`, `seasonality`, `hourly-factors`, `pricing`, and `stylized-facts` remain top-level
+  because they are standalone domains rather than variants of `fit` or `simulate`.
 - `dev` is reserved for internal and developer-only utilities.
 - Developer-only commands must not be placed beside primary workflow groups at the top level.
 - Command aliases are forbidden because they add ambiguity to automation and shell scripts.
@@ -54,6 +61,11 @@ janiform
 - `janiform.cli` remains the curated convenience root for `main()` and stable CLI constants.
 - `janiform.cli.commands.*` is the supported ownership path for real command groups such as:
   - `model_workflows`
+  - `presets`
+  - `seasonality`
+  - `hourly_factors`
+  - `pricing`
+  - `stylized_facts`
   - `simulation`
   - `calibration`
   - `development`
@@ -66,10 +78,17 @@ janiform
 
 ## Naming policy
 
-- Top-level command groups use the same workflow nouns as the public Python modules:
-  `janiform.simulation`, `janiform.seasonality`, `janiform.hourly_factors`,
-  `janiform.calibration`, `janiform.pricing`, and `janiform.stylized_facts`.
+- Top-level command groups follow the workflow-first CLI surface:
+  - `fit`
+  - `simulate`
+  - `presets`
+  - `seasonality`
+  - `hourly-factors`
+  - `pricing`
+  - `stylized-facts`
 - Subcommand names stay short while preserving the specific workflow identity:
+  - `plan` for the recommended file-driven fitting boundary
+  - `staged` for advanced staged calibration orchestration
   - `coarse-interval` for direct interval-path simulation on a chosen coarse grid
   - `seeded-ticks` for the seeded tick-event simulator
   - `diagnostics` for the primary end-to-end seasonality estimation and diagnostics workflow
@@ -78,8 +97,6 @@ janiform
   - `materialize-seasonality` for materializing hourly `s_h` from timestamped source samples
   - `materialize-news-intensity` for materializing hourly `nu_h` from known-news and surprise controls
   - `build-contract` for building the combined hourly-factor contract from explicit or materialized artifacts
-  - `market-data` for the recommended file-driven calibration request boundary
-  - `staged` for advanced staged calibration orchestration
   - `vanilla-option` for vanilla option pricing
   - `horizon-comparison` for stylized-fact horizon-comparison report generation
 - Developer-only validation harnesses remain explicit about their function:
@@ -88,10 +105,12 @@ janiform
 
 ## Help-output expectations
 
-- `janiform --help` lists the seven top-level namespaces in the order above.
-- `janiform simulation --help`, `janiform seasonality --help`, `janiform hourly-factors --help`,
-  `janiform calibration --help`, `janiform pricing --help`, and `janiform stylized-facts --help`
-  each list their current workflow subcommands.
+- `janiform --help` lists the eight top-level namespaces in the order above.
+- `janiform fit --help` and `janiform simulate --help` make the high-level defaults obvious while
+  still listing their explicit expert subcommands.
+- `janiform presets --help`, `janiform seasonality --help`, `janiform hourly-factors --help`,
+  `janiform pricing --help`, and `janiform stylized-facts --help` each list their current
+  workflow subcommands.
 - `janiform dev --help` lists internal-only utility groups.
 - Incomplete command paths print the help for the selected namespace branch.
 
@@ -159,7 +178,7 @@ Additional policy notes:
 ```json
 {
   "schema_version": "cli.command_config.v1",
-  "command": "calibration.market-data",
+  "command": "fit.plan",
   "arguments": {
     "run-id": "market-data-run-001",
     "workflow-scope": "seasonality_only",

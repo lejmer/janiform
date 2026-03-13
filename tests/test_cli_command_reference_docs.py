@@ -11,6 +11,11 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CLI_COMMAND_REFERENCE_PATH = (
     REPOSITORY_ROOT / "docs" / "development" / "guides" / "cli_command_reference_and_examples.md"
 )
+CLI_ARCHITECTURE_GUIDE_PATH = (
+    REPOSITORY_ROOT / "docs" / "development" / "guides" / "cli_command_architecture_and_namespace_layout.md"
+)
+HIGH_LEVEL_API_PLAN_PATH = REPOSITORY_ROOT / "docs" / "design" / "high_level_user_api_and_preset_strategy_plan.md"
+README_PATH = REPOSITORY_ROOT / "README.md"
 
 
 def test_cli_command_reference_doc_contains_required_sections_and_commands() -> None:
@@ -71,6 +76,27 @@ def test_cli_command_reference_doc_documents_execution_modes_and_market_data_inp
     assert "explicit fit workflow boundary" in normalized_document
     assert "tick-data-first" not in normalized_document
     assert "market-data-first" in normalized_document
+
+
+def test_maintained_cli_docs_do_not_reference_removed_roots_as_supported_commands() -> None:
+    removed_command_markers = (
+        "janiform calibration",
+        "janiform simulation",
+        "janiform fit-and-simulate",
+        '"command": "calibration.market-data"',
+    )
+
+    for document_path in (
+        CLI_COMMAND_REFERENCE_PATH,
+        CLI_ARCHITECTURE_GUIDE_PATH,
+        HIGH_LEVEL_API_PLAN_PATH,
+        README_PATH,
+    ):
+        document_text = document_path.read_text(encoding="utf-8")
+        for removed_command_marker in removed_command_markers:
+            assert removed_command_marker not in document_text, (
+                f"{document_path} still references removed CLI command {removed_command_marker!r}"
+            )
 
 
 def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:

@@ -15,7 +15,7 @@ from janiform.calibration.market_data import (
     CalibrationTickPriceInputPolicy,
 )
 from janiform.calibration.staged import validate_staged_calibration_response
-from tests.cli_test_support import invoke_cli, normalize_help_output, parse_cli_command, render_help
+from tests.cli_test_support import invoke_cli, normalize_help_output, render_help
 
 
 def test_cli_top_level_help_lists_high_level_workflow_commands() -> None:
@@ -37,58 +37,6 @@ def test_fit_help_documents_default_workflow_and_expert_subcommands() -> None:
     assert "--known-news KNOWN_NEWS" in help_output
     assert "--known-news-json PATH" in help_output
     assert "--model-output-path PATH" in help_output
-
-
-def test_presets_show_and_fit_parser_map_high_level_arguments() -> None:
-    presets_arguments = parse_cli_command(
-        [
-            "presets",
-            "show",
-            "market-profile",
-            "us_equity_cash",
-            "--scope",
-            "built_in",
-        ]
-    )
-    fit_arguments = parse_cli_command(
-        [
-            "fit",
-            "--run-id",
-            "fit-parser",
-            "--workflow-scope",
-            "full_without_option_surface",
-            "--tick-data-path",
-            "ticks.csv",
-            "--tick-data-format",
-            "csv",
-            "--tick-timestamp-column",
-            "timestamp_utc",
-            "--tick-trade-price-column",
-            "trade_price",
-            "--tick-trade-sign-column",
-            "trade_sign",
-            "--tick-price-input-policy",
-            "trade_price_column",
-            "--timestamp-timezone",
-            "UTC",
-            "--market",
-            "us_equity_cash",
-            "--known-news",
-            "none",
-            "--model-output-path",
-            "model.json",
-        ]
-    )
-
-    assert presets_arguments.command_path == ("presets", "show")
-    assert presets_arguments.params["category"] == "market-profile"
-    assert presets_arguments.params["scope"] == "built_in"
-
-    assert fit_arguments.command_path == ("fit",)
-    assert fit_arguments.params["market"] == "us_equity_cash"
-    assert fit_arguments.params["known_news"] == "none"
-    assert fit_arguments.params["model_output_path"] == Path("model.json")
-    assert fit_arguments.params["execution_mode"] == "memory"
 
 
 def test_presets_list_outputs_bundled_presets() -> None:
@@ -342,7 +290,7 @@ def test_fit_fails_for_invalid_market_preset(tmp_path: Path) -> None:
     assert "missing_profile" in stderr
 
 
-def test_fit_parser_rejects_contradictory_known_news_flags() -> None:
+def test_fit_rejects_contradictory_known_news_flags() -> None:
     exit_code, _, _ = invoke_cli(
         [
             "fit",

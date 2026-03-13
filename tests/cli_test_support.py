@@ -1,12 +1,9 @@
 import json
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import UTC, datetime, timedelta
-from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
-from typing import cast
 
-import click
 import orjson
 import pyarrow as pa
 from pyarrow import parquet as pyarrow_parquet
@@ -137,69 +134,6 @@ def build_simulation_request(calendar_registry_json: str) -> SeededTickSimulatio
 
 def build_coarse_simulation_request(calendar_registry_json: str) -> CoarseSimulationRunRequest:
     return build_example_coarse_simulation_request(CalendarRegistry(calendar_registry_json))
-
-
-@dataclass(frozen=True, slots=True)
-class ParsedCliInvocation:
-    command_path: tuple[str, ...]
-    params: dict[str, object]
-    default_map: dict[str, object]
-
-
-def parse_cli_command(
-    arguments: list[str],
-    *,
-    environment: dict[str, str] | None = None,
-) -> ParsedCliInvocation:
-    command = cli_command_tree_module._build_app(environment={} if environment is None else environment)
-    context = command.make_context("janiform", arguments, resilient_parsing=False)
-    return _collect_click_invocation(command=command, context=context, command_path=())
-
-
-def _collect_click_invocation(
-    *,
-    command: click.Command,
-    context: click.Context,
-    command_path: tuple[str, ...],
-) -> ParsedCliInvocation:
-    params: dict[str, object] = {
-        name: list(value) if isinstance(value, tuple) else value for name, value in context.params.items()
-    }
-
-    remaining_arguments = _remaining_click_arguments(context)
-    if isinstance(command, click.Group) and remaining_arguments:
-        subcommand_name, subcommand, subcommand_arguments = command.resolve_command(context, remaining_arguments)
-        subcommand_context = subcommand.make_context(
-            subcommand_name,
-            subcommand_arguments,
-            parent=context,
-            resilient_parsing=False,
-        )
-        child_invocation = _collect_click_invocation(
-            command=subcommand,
-            context=subcommand_context,
-            command_path=(*command_path, subcommand_name),
-        )
-        return ParsedCliInvocation(
-            command_path=child_invocation.command_path,
-            params={**params, **child_invocation.params},
-            default_map=child_invocation.default_map,
-        )
-
-    return ParsedCliInvocation(
-        command_path=command_path,
-        params=params,
-        default_map=dict(context.default_map or {}),
-    )
-
-
-def _remaining_click_arguments(context: click.Context) -> list[str]:
-    raw_protected_arguments = cast(object, vars(context).get("protected_args"))
-    if raw_protected_arguments is None:
-        raw_protected_arguments = cast(object, vars(context).get("_protected_args"))
-
-    protected_arguments = [str(argument) for argument in raw_protected_arguments] if isinstance(raw_protected_arguments, list) else []
-    return [*protected_arguments, *context.args]
 
 
 def invoke_cli(

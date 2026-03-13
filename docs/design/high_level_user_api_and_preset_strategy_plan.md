@@ -322,8 +322,11 @@ The CLI should mirror the same layering.
 Conceptual commands:
 
 - `janiform fit ...`
+- `janiform fit plan ...`
+- `janiform fit staged ...`
 - `janiform simulate ...`
-- `janiform fit-and-simulate ...`
+- `janiform simulate coarse-interval ...`
+- `janiform simulate seeded-ticks ...`
 - `janiform presets list`
 - `janiform presets show ...`
 - `janiform presets export ...`

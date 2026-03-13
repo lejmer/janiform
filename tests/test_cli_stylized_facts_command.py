@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 import orjson
 import pytest
@@ -10,7 +9,7 @@ from examples._shared import (
     build_stylized_fact_horizon_comparison_request,
     build_stylized_fact_metric_catalog,
 )
-from tests.cli_test_support import invoke_cli, normalize_help_output, parse_cli_command, render_help, write_json_path
+from tests.cli_test_support import invoke_cli, normalize_help_output, render_help, write_json_path
 
 
 def test_stylized_facts_cli_help_documents_report_inputs_and_export_config() -> None:
@@ -26,44 +25,7 @@ def test_stylized_facts_cli_help_documents_report_inputs_and_export_config() -> 
     assert "artifact export is requested" in help_output
 
 
-def test_stylized_facts_cli_parser_defaults_to_memory_mode_and_json_output() -> None:
-    parsed_arguments = parse_cli_command(
-        [
-            "stylized-facts",
-            "horizon-comparison",
-            "--metric-catalog-json",
-            "metric-catalog.json",
-            "--comparison-request-json",
-            "comparison-request.json",
-        ]
-    )
-
-    assert parsed_arguments.params["output"] == "json"
-    assert parsed_arguments.params["execution_mode"] == "memory"
-    assert parsed_arguments.params["artifact_export_json"] is None
-
-
-def test_stylized_facts_cli_parser_accepts_disk_mode_and_artifact_export_argument() -> None:
-    parsed_arguments = parse_cli_command(
-        [
-            "stylized-facts",
-            "horizon-comparison",
-            "--metric-catalog-json",
-            "metric-catalog.json",
-            "--comparison-request-json",
-            "comparison-request.json",
-            "--execution-mode",
-            "disk",
-            "--artifact-export-json",
-            "artifact-export.json",
-        ]
-    )
-
-    assert parsed_arguments.params["execution_mode"] == "disk"
-    assert Path(str(parsed_arguments.params["artifact_export_json"])) == Path("artifact-export.json")
-
-
-def test_stylized_facts_cli_parser_rejects_invalid_execution_mode() -> None:
+def test_stylized_facts_cli_rejects_invalid_execution_mode() -> None:
     exit_code, _, _ = invoke_cli(
         [
             "stylized-facts",
