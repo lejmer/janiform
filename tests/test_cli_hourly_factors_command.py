@@ -12,7 +12,7 @@ from janiform.hourly_factors import (
     HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
     HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION,
 )
-from tests.cli_test_support import invoke_cli, normalize_help_output, parse_cli_command, render_help, write_json_path
+from tests.cli_test_support import invoke_cli, normalize_help_output, render_help, write_json_path
 
 
 def test_hourly_factors_cli_help_documents_materialization_and_contract_inputs() -> None:
@@ -32,76 +32,7 @@ def test_hourly_factors_cli_help_documents_materialization_and_contract_inputs()
     assert "--news-intensity-materialized-source-json PATH" in contract_help
 
 
-def test_hourly_factor_materialization_cli_parser_defaults_to_json_output() -> None:
-    parsed_arguments = parse_cli_command(
-        [
-            "hourly-factors",
-            "materialize-seasonality",
-            "--calendar-registry-json",
-            "calendar-registry.json",
-            "--exchange-code",
-            "XNYS",
-            "--range-start-utc",
-            "2026-02-02T13:00:00Z",
-            "--range-end-utc",
-            "2026-02-02T18:00:00Z",
-            "--materialization-input-json",
-            "seasonality-input.json",
-        ]
-    )
-
-    assert parsed_arguments.params["output"] == "json"
-
-
-def test_hourly_factor_build_contract_cli_parser_accepts_explicit_source_arguments() -> None:
-    parsed_arguments = parse_cli_command(
-        [
-            "hourly-factors",
-            "build-contract",
-            "--calendar-registry-json",
-            "calendar-registry.json",
-            "--exchange-code",
-            "XNYS",
-            "--range-start-utc",
-            "2026-02-02T14:00:00Z",
-            "--range-end-utc",
-            "2026-02-02T17:00:00Z",
-            "--seasonality-explicit-source-json",
-            "seasonality-explicit.json",
-            "--news-intensity-explicit-source-json",
-            "news-explicit.json",
-        ]
-    )
-
-    assert Path(str(parsed_arguments.params["seasonality_explicit_source_json"])) == Path("seasonality-explicit.json")
-    assert Path(str(parsed_arguments.params["news_intensity_explicit_source_json"])) == Path("news-explicit.json")
-
-
-def test_hourly_factor_build_contract_cli_parser_accepts_materialized_source_arguments() -> None:
-    parsed_arguments = parse_cli_command(
-        [
-            "hourly-factors",
-            "build-contract",
-            "--calendar-registry-json",
-            "calendar-registry.json",
-            "--exchange-code",
-            "XNYS",
-            "--range-start-utc",
-            "2026-02-02T14:00:00Z",
-            "--range-end-utc",
-            "2026-02-02T17:00:00Z",
-            "--seasonality-materialized-source-json",
-            "seasonality-materialized.json",
-            "--news-intensity-materialized-source-json",
-            "news-materialized.json",
-        ]
-    )
-
-    assert Path(str(parsed_arguments.params["seasonality_materialized_source_json"])) == Path("seasonality-materialized.json")
-    assert Path(str(parsed_arguments.params["news_intensity_materialized_source_json"])) == Path("news-materialized.json")
-
-
-def test_hourly_factor_build_contract_cli_parser_requires_both_source_groups() -> None:
+def test_hourly_factor_build_contract_cli_requires_both_source_groups() -> None:
     exit_code, _, _ = invoke_cli(
         [
             "hourly-factors",

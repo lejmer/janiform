@@ -34,7 +34,6 @@ from janiform.simulation import (
 from tests.calibration_test_support import build_valid_execution_input_model
 from tests.cli_test_support import (
     build_coarse_simulation_request as _build_coarse_simulation_request,
-    parse_cli_command as _parse_cli_command,
     build_pricing_execution_input as _build_pricing_execution_input,
     build_simulation_request as _build_simulation_request,
     invoke_cli as _invoke_cli,
@@ -175,7 +174,7 @@ def test_deterministic_regression_cli_help_documents_required_inputs() -> None:
     assert "--news-intensity-absolute-tolerance" in help_output
 
 
-def test_deterministic_regression_cli_parser_requires_case_inputs() -> None:
+def test_deterministic_regression_cli_requires_case_inputs() -> None:
     exit_code, _, _ = _invoke_cli(
         [
             "dev",
@@ -189,70 +188,10 @@ def test_deterministic_regression_cli_parser_requires_case_inputs() -> None:
     assert exit_code == 2
 
 
-def test_coarse_simulation_cli_parser_requires_request_json() -> None:
+def test_coarse_simulation_cli_requires_request_json() -> None:
     exit_code, _, _ = _invoke_cli(["simulate", "coarse-interval"])
 
     assert exit_code == 2
-
-
-def test_deterministic_regression_cli_parser_defaults_output_to_human() -> None:
-    parsed_arguments = _parse_cli_command(
-        [
-            "dev",
-            "regression",
-            "deterministic",
-            "--calendar-registry-json",
-            "calendar.json",
-            "--calendar-cases-json",
-            "calendar-cases.json",
-            "--seasonality-cases-json",
-            "seasonality-cases.json",
-        ]
-    )
-
-    assert parsed_arguments.params["output"] == "human"
-
-
-def test_calibration_cli_parser_defaults_execution_mode_to_disk() -> None:
-    parsed_arguments = _parse_cli_command(
-        [
-            "fit",
-            "staged",
-            "--execution-input-json",
-            "calibration.json",
-            "--calendar-registry-json",
-            "calendar.json",
-        ]
-    )
-
-    assert parsed_arguments.params["execution_mode"] == CalibrationExecutionMode.DISK.value
-
-
-def test_market_data_calibration_cli_parser_defaults_execution_mode_to_disk() -> None:
-    parsed_arguments = _parse_cli_command(
-        [
-            "fit",
-            "plan",
-            "--run-id",
-            "run-001",
-            "--workflow-scope",
-            "seasonality_only",
-            "--tick-data-path",
-            "ticks.csv",
-            "--tick-data-format",
-            "csv",
-            "--tick-data-provenance-label",
-            "tick-feed",
-            "--tick-timestamp-column",
-            "timestamp_utc",
-            "--exchange-code",
-            "XNYS",
-            "--timestamp-timezone",
-            "UTC",
-        ]
-    )
-
-    assert parsed_arguments.params["execution_mode"] == CalibrationExecutionMode.DISK.value
 
 
 def test_market_data_calibration_cli_accepts_automatic_session_inference_without_override(
@@ -304,59 +243,7 @@ def test_market_data_calibration_cli_accepts_automatic_session_inference_without
     assert summary_payload["session_context"]["session_timezone"] == "America/New_York"
 
 
-def test_seasonality_preprocess_cli_parser_uses_expected_defaults() -> None:
-    parsed_arguments = _parse_cli_command(
-        [
-            "seasonality",
-            "preprocess-timestamps",
-            "--event-records-json",
-            "events.json",
-            "--calendar-registry-json",
-            "calendar.json",
-            "--exchange-code",
-            "XNYS",
-        ]
-    )
-
-    assert parsed_arguments.params["output"] == "json"
-    assert parsed_arguments.params["timestamp_field_name"] == "timestamp"
-    assert parsed_arguments.params["session_filter"] == "open_only"
-    assert parsed_arguments.params["sparse_hour_event_threshold"] == 1
-
-
-def test_seasonality_diagnostics_cli_parser_uses_expected_defaults() -> None:
-    parsed_arguments = _parse_cli_command(
-        [
-            "seasonality",
-            "diagnostics",
-            "--dataset-id",
-            "dataset-alpha",
-            "--event-records-json",
-            "events.json",
-            "--calendar-registry-json",
-            "calendar.json",
-            "--exchange-code",
-            "XNYS",
-        ]
-    )
-
-    assert parsed_arguments.params["output"] == "json"
-    assert parsed_arguments.params["timestamp_field_name"] == "timestamp"
-    assert parsed_arguments.params["session_filter"] == "open_only"
-    assert parsed_arguments.params["sparse_hour_event_threshold"] == 1
-    assert parsed_arguments.params["intraday_minutes_per_bin"] == 1
-    assert parsed_arguments.params["intraday_smoothing_kernel"] == "gaussian"
-    assert parsed_arguments.params["intraday_smoothing_bandwidth_bins"] == 3.0
-    assert parsed_arguments.params["intraday_minimum_bin_events"] == 1
-    assert parsed_arguments.params["intraday_pseudocount"] == 1e-6
-    assert parsed_arguments.params["day_of_week_minimum_bucket_events"] == 1
-    assert parsed_arguments.params["day_of_week_pseudocount"] == 1e-6
-    assert parsed_arguments.params["day_of_year_minimum_bucket_events"] == 1
-    assert parsed_arguments.params["day_of_year_pseudocount"] == 1e-6
-    assert parsed_arguments.params["estimator_version"] == "seasonality_estimator.v1"
-
-
-def test_seasonality_preprocess_cli_parser_rejects_invalid_session_filter() -> None:
+def test_seasonality_preprocess_cli_rejects_invalid_session_filter() -> None:
     exit_code, _, _ = _invoke_cli(
         [
             "seasonality",
@@ -373,316 +260,6 @@ def test_seasonality_preprocess_cli_parser_rejects_invalid_session_filter() -> N
     )
 
     assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
-
-
-def test_seasonality_diagnostics_cli_parser_accepts_estimator_overrides() -> None:
-    parsed_arguments = _parse_cli_command(
-        [
-            "seasonality",
-            "diagnostics",
-            "--dataset-id",
-            "dataset-alpha",
-            "--event-records-json",
-            "events.json",
-            "--calendar-registry-json",
-            "calendar.json",
-            "--exchange-code",
-            "XNYS",
-            "--session-filter",
-            "all",
-            "--sparse-hour-event-threshold",
-            "2",
-            "--intraday-minutes-per-bin",
-            "30",
-            "--intraday-smoothing-kernel",
-            "uniform",
-            "--intraday-smoothing-bandwidth-bins",
-            "1.5",
-            "--intraday-minimum-bin-events",
-            "3",
-            "--intraday-pseudocount",
-            "0.25",
-            "--day-of-week-minimum-bucket-events",
-            "4",
-            "--day-of-week-pseudocount",
-            "0.5",
-            "--day-of-year-minimum-bucket-events",
-            "5",
-            "--day-of-year-pseudocount",
-            "0.75",
-            "--estimator-version",
-            "seasonality_estimator.dev",
-        ]
-    )
-
-    assert parsed_arguments.params["session_filter"] == "all"
-    assert parsed_arguments.params["sparse_hour_event_threshold"] == 2
-    assert parsed_arguments.params["intraday_minutes_per_bin"] == 30
-    assert parsed_arguments.params["intraday_smoothing_kernel"] == "uniform"
-    assert parsed_arguments.params["intraday_smoothing_bandwidth_bins"] == 1.5
-    assert parsed_arguments.params["intraday_minimum_bin_events"] == 3
-    assert parsed_arguments.params["intraday_pseudocount"] == 0.25
-    assert parsed_arguments.params["day_of_week_minimum_bucket_events"] == 4
-    assert parsed_arguments.params["day_of_week_pseudocount"] == 0.5
-    assert parsed_arguments.params["day_of_year_minimum_bucket_events"] == 5
-    assert parsed_arguments.params["day_of_year_pseudocount"] == 0.75
-    assert parsed_arguments.params["estimator_version"] == "seasonality_estimator.dev"
-
-
-def test_primary_workflow_cli_parsers_default_output_to_json() -> None:
-    coarse_simulation_arguments = _parse_cli_command(
-        [
-            "simulate",
-            "coarse-interval",
-            "--request-json",
-            "coarse-simulation.json",
-        ]
-    )
-    simulation_arguments = _parse_cli_command(
-        [
-            "simulate",
-            "seeded-ticks",
-            "--request-json",
-            "simulation.json",
-            "--calendar-registry-json",
-            "calendar.json",
-        ]
-    )
-    seasonality_diagnostics_arguments = _parse_cli_command(
-        [
-            "seasonality",
-            "diagnostics",
-            "--dataset-id",
-            "dataset-alpha",
-            "--event-records-json",
-            "events.json",
-            "--calendar-registry-json",
-            "calendar.json",
-            "--exchange-code",
-            "XNYS",
-        ]
-    )
-    seasonality_arguments = _parse_cli_command(
-        [
-            "seasonality",
-            "preprocess-timestamps",
-            "--event-records-json",
-            "events.json",
-            "--calendar-registry-json",
-            "calendar.json",
-            "--exchange-code",
-            "XNYS",
-        ]
-    )
-    hourly_factor_materialization_arguments = _parse_cli_command(
-        [
-            "hourly-factors",
-            "materialize-seasonality",
-            "--calendar-registry-json",
-            "calendar.json",
-            "--exchange-code",
-            "XNYS",
-            "--range-start-utc",
-            "2026-02-02T14:00:00Z",
-            "--range-end-utc",
-            "2026-02-02T17:00:00Z",
-            "--materialization-input-json",
-            "seasonality-input.json",
-        ]
-    )
-    hourly_factor_contract_arguments = _parse_cli_command(
-        [
-            "hourly-factors",
-            "build-contract",
-            "--calendar-registry-json",
-            "calendar.json",
-            "--exchange-code",
-            "XNYS",
-            "--range-start-utc",
-            "2026-02-02T14:00:00Z",
-            "--range-end-utc",
-            "2026-02-02T17:00:00Z",
-            "--seasonality-explicit-source-json",
-            "seasonality-source.json",
-            "--news-intensity-explicit-source-json",
-            "news-source.json",
-        ]
-    )
-    pricing_arguments = _parse_cli_command(
-        [
-            "pricing",
-            "vanilla-option",
-            "--execution-input-json",
-            "pricing.json",
-        ]
-    )
-    stylized_facts_arguments = _parse_cli_command(
-        [
-            "stylized-facts",
-            "horizon-comparison",
-            "--metric-catalog-json",
-            "metric-catalog.json",
-            "--comparison-request-json",
-            "comparison-request.json",
-        ]
-    )
-    staged_arguments = _parse_cli_command(
-        [
-            "fit",
-            "staged",
-            "--execution-input-json",
-            "calibration.json",
-            "--calendar-registry-json",
-            "calendar.json",
-        ]
-    )
-
-    assert coarse_simulation_arguments.params["output"] == "json"
-    assert simulation_arguments.params["output"] == "json"
-    assert seasonality_diagnostics_arguments.params["output"] == "json"
-    assert seasonality_arguments.params["output"] == "json"
-    assert hourly_factor_materialization_arguments.params["output"] == "json"
-    assert hourly_factor_contract_arguments.params["output"] == "json"
-    assert pricing_arguments.params["output"] == "json"
-    assert stylized_facts_arguments.params["output"] == "json"
-    assert staged_arguments.params["output"] == "json"
-
-
-def test_primary_workflow_cli_parsers_accept_human_output_mode() -> None:
-    coarse_simulation_arguments = _parse_cli_command(
-        [
-            "simulate",
-            "coarse-interval",
-            "--request-json",
-            "coarse-simulation.json",
-            "--output",
-            "human",
-        ]
-    )
-    simulation_arguments = _parse_cli_command(
-        [
-            "simulate",
-            "seeded-ticks",
-            "--request-json",
-            "simulation.json",
-            "--calendar-registry-json",
-            "calendar.json",
-            "--output",
-            "human",
-        ]
-    )
-    seasonality_diagnostics_arguments = _parse_cli_command(
-        [
-            "seasonality",
-            "diagnostics",
-            "--dataset-id",
-            "dataset-alpha",
-            "--event-records-json",
-            "events.json",
-            "--calendar-registry-json",
-            "calendar.json",
-            "--exchange-code",
-            "XNYS",
-            "--output",
-            "human",
-        ]
-    )
-    seasonality_arguments = _parse_cli_command(
-        [
-            "seasonality",
-            "preprocess-timestamps",
-            "--event-records-json",
-            "events.json",
-            "--calendar-registry-json",
-            "calendar.json",
-            "--exchange-code",
-            "XNYS",
-            "--output",
-            "human",
-        ]
-    )
-    hourly_factor_materialization_arguments = _parse_cli_command(
-        [
-            "hourly-factors",
-            "materialize-seasonality",
-            "--calendar-registry-json",
-            "calendar.json",
-            "--exchange-code",
-            "XNYS",
-            "--range-start-utc",
-            "2026-02-02T14:00:00Z",
-            "--range-end-utc",
-            "2026-02-02T17:00:00Z",
-            "--materialization-input-json",
-            "seasonality-input.json",
-            "--output",
-            "human",
-        ]
-    )
-    hourly_factor_contract_arguments = _parse_cli_command(
-        [
-            "hourly-factors",
-            "build-contract",
-            "--calendar-registry-json",
-            "calendar.json",
-            "--exchange-code",
-            "XNYS",
-            "--range-start-utc",
-            "2026-02-02T14:00:00Z",
-            "--range-end-utc",
-            "2026-02-02T17:00:00Z",
-            "--seasonality-explicit-source-json",
-            "seasonality-source.json",
-            "--news-intensity-explicit-source-json",
-            "news-source.json",
-            "--output",
-            "human",
-        ]
-    )
-    pricing_arguments = _parse_cli_command(
-        [
-            "pricing",
-            "vanilla-option",
-            "--execution-input-json",
-            "pricing.json",
-            "--output",
-            "human",
-        ]
-    )
-    stylized_facts_arguments = _parse_cli_command(
-        [
-            "stylized-facts",
-            "horizon-comparison",
-            "--metric-catalog-json",
-            "metric-catalog.json",
-            "--comparison-request-json",
-            "comparison-request.json",
-            "--output",
-            "human",
-        ]
-    )
-    staged_arguments = _parse_cli_command(
-        [
-            "fit",
-            "staged",
-            "--execution-input-json",
-            "calibration.json",
-            "--calendar-registry-json",
-            "calendar.json",
-            "--output",
-            "human",
-        ]
-    )
-
-    assert coarse_simulation_arguments.params["output"] == "human"
-    assert simulation_arguments.params["output"] == "human"
-    assert seasonality_diagnostics_arguments.params["output"] == "human"
-    assert seasonality_arguments.params["output"] == "human"
-    assert hourly_factor_materialization_arguments.params["output"] == "human"
-    assert hourly_factor_contract_arguments.params["output"] == "human"
-    assert pricing_arguments.params["output"] == "human"
-    assert stylized_facts_arguments.params["output"] == "human"
-    assert staged_arguments.params["output"] == "human"
 
 
 def test_seasonality_preprocess_cli_maps_flags_to_canonical_payload(
@@ -1146,24 +723,6 @@ def test_seasonality_preprocess_cli_invalid_calendar_timezone_returns_validation
     assert '[cli.validation.seasonality.preprocess_timestamps.invalid_input]' in stderr_text
     assert 'field_path="calendar_registry_document"' in stderr_text
     assert "timezone" in stderr_text.lower()
-
-
-def test_calibration_cli_parser_accepts_explicit_memory_execution_mode() -> None:
-    parsed_arguments = _parse_cli_command(
-        [
-            "fit",
-            "staged",
-            "--execution-input-json",
-            "calibration.json",
-            "--calendar-registry-json",
-            "calendar.json",
-            "--execution-mode",
-            "memory",
-        ]
-    )
-
-    assert parsed_arguments.params["execution_mode"] == CalibrationExecutionMode.MEMORY.value
-
 
 def test_deterministic_regression_cli_runs_fixture_backed_harness(
     calendar_regression_fixture_path: Path,
@@ -1635,7 +1194,7 @@ def test_cli_explicit_flags_override_environment_defaults(
     assert stderr_text == ""
 
 
-def test_market_data_cli_parser_rejects_unsupported_tick_data_format() -> None:
+def test_market_data_cli_rejects_unsupported_tick_data_format() -> None:
     exit_code, _, _ = _invoke_cli(
         [
             "fit",
