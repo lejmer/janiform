@@ -21,14 +21,14 @@ def test_cli_command_reference_doc_contains_required_sections_and_commands() -> 
         "## Shared Conventions",
         "## Presets",
         "## High-Level Fit",
+        "## Fit Plan",
+        "## Fit Staged",
         "## High-Level Simulation",
-        "## Simulation",
+        "## Explicit Simulation",
         "## Seasonality",
         "## Hourly Factors",
         "## Pricing",
         "## Stylized Facts",
-        "## Market-Data Calibration",
-        "## Advanced Staged Calibration",
         "## Developer Regression",
     ]
     for required_section in required_sections:
@@ -39,10 +39,11 @@ def test_cli_command_reference_doc_contains_required_sections_and_commands() -> 
         "janiform presets show",
         "janiform presets export",
         "janiform fit",
+        "janiform fit plan",
+        "janiform fit staged",
         "janiform simulate",
-        "janiform fit-and-simulate",
-        "janiform simulation coarse-interval",
-        "janiform simulation seeded-ticks",
+        "janiform simulate coarse-interval",
+        "janiform simulate seeded-ticks",
         "janiform seasonality diagnostics",
         "janiform seasonality preprocess-timestamps",
         "janiform hourly-factors materialize-seasonality",
@@ -50,8 +51,6 @@ def test_cli_command_reference_doc_contains_required_sections_and_commands() -> 
         "janiform hourly-factors build-contract",
         "janiform pricing vanilla-option",
         "janiform stylized-facts horizon-comparison",
-        "janiform calibration market-data",
-        "janiform calibration staged",
         "janiform dev regression deterministic",
     ]
     for required_command in required_commands:
@@ -63,28 +62,29 @@ def test_cli_command_reference_doc_documents_execution_modes_and_market_data_inp
     normalized_document = " ".join(reference_document.split())
 
     assert "--execution-mode {disk,memory}" in reference_document
-    assert "The CLI default is `disk` for calibration commands." in reference_document
+    assert "The CLI default is `disk` for `fit plan` and `fit staged`." in reference_document
     assert "The stylized-fact report command defaults to `memory`." in reference_document
     assert "--disk-checkpoint-directory" in reference_document
     assert "--artifact-export-json" in reference_document
     assert "--known-news-path" in reference_document
     assert "--option-surface-path" in reference_document
-    assert "advanced or internal calibration path" in normalized_document
+    assert "explicit fit workflow boundary" in normalized_document
     assert "tick-data-first" not in normalized_document
     assert "market-data-first" in normalized_document
 
 
 def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     reference_document = _cli_command_reference_text()
-    coarse_simulation_help = normalize_help_output(render_help(["simulation", "coarse-interval"]))
-    simulation_help = normalize_help_output(render_help(["simulation", "seeded-ticks"]))
+    coarse_simulation_help = normalize_help_output(render_help(["simulate", "coarse-interval"]))
+    simulation_help = normalize_help_output(render_help(["simulate", "seeded-ticks"]))
     seasonality_diagnostics_help = normalize_help_output(render_help(["seasonality", "diagnostics"]))
     seasonality_help = normalize_help_output(render_help(["seasonality", "preprocess-timestamps"]))
     presets_list_help = normalize_help_output(render_help(["presets", "list"]))
     presets_show_help = normalize_help_output(render_help(["presets", "show"]))
     fit_help = normalize_help_output(render_help(["fit"]))
     simulate_help = normalize_help_output(render_help(["simulate"]))
-    fit_and_simulate_help = normalize_help_output(render_help(["fit-and-simulate"]))
+    fit_plan_help = normalize_help_output(render_help(["fit", "plan"]))
+    fit_staged_help = normalize_help_output(render_help(["fit", "staged"]))
     hourly_factors_seasonality_help = normalize_help_output(
         render_help(["hourly-factors", "materialize-seasonality"])
     )
@@ -93,8 +93,6 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     )
     pricing_help = normalize_help_output(render_help(["pricing", "vanilla-option"]))
     stylized_facts_help = normalize_help_output(render_help(["stylized-facts", "horizon-comparison"]))
-    market_data_help = normalize_help_output(render_help(["calibration", "market-data"]))
-    staged_help = normalize_help_output(render_help(["calibration", "staged"]))
     deterministic_help = normalize_help_output(render_help(["dev", "regression", "deterministic"]))
 
     shared_expectations: tuple[str, ...] = (
@@ -130,9 +128,11 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     assert "--model-output-path PATH" in fit_help
     assert "--model-path PATH" in simulate_help
     assert "--simulation-output {coarse,ticks,both}" in simulate_help
-    assert "--simulation-output {coarse,ticks,both}" in fit_and_simulate_help
     assert "--request-json PATH" in coarse_simulation_help
     assert "--request-json PATH" in simulation_help
+    assert "--workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface}" in fit_plan_help
+    assert "--execution-mode {disk,memory}" in fit_plan_help
+    assert "--execution-mode {disk,memory}" in fit_staged_help
     assert "--dataset-id DATASET_ID" in seasonality_diagnostics_help
     assert "--intraday-smoothing-kernel {gaussian,uniform}" in seasonality_diagnostics_help
     assert "--calendar-registry-json PATH" in simulation_help
@@ -145,9 +145,6 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     assert "--metric-catalog-json PATH" in stylized_facts_help
     assert "--comparison-request-json PATH" in stylized_facts_help
     assert "--artifact-export-json PATH" in stylized_facts_help
-    assert "--workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface}" in market_data_help
-    assert "--execution-mode {disk,memory}" in market_data_help
-    assert "--execution-mode {disk,memory}" in staged_help
     assert "--calendar-registry-json PATH" in deterministic_help
     assert "--calendar-cases-json PATH" in deterministic_help
     assert "--seasonality-cases-json PATH" in deterministic_help
@@ -158,7 +155,7 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path
 
     coarse_simulation_exit_code, coarse_simulation_stdout, coarse_simulation_stderr = invoke_cli(
         [
-            "simulation",
+            "simulate",
             "coarse-interval",
             "--request-json",
             documented_paths["coarse_simulation_request_json"],
@@ -172,7 +169,7 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path
 
     simulation_exit_code, simulation_stdout, simulation_stderr = invoke_cli(
         [
-            "simulation",
+            "simulate",
             "seeded-ticks",
             "--request-json",
             documented_paths["simulation_request_json"],
@@ -358,8 +355,8 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path
 
     market_data_default_exit_code, market_data_default_stdout, market_data_default_stderr = invoke_cli(
         [
-            "calibration",
-            "market-data",
+            "fit",
+            "plan",
             "--run-id",
             "cli-market-data-default-disk",
             "--workflow-scope",
@@ -401,8 +398,8 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path
 
     market_data_memory_exit_code, market_data_memory_stdout, market_data_memory_stderr = invoke_cli(
         [
-            "calibration",
-            "market-data",
+            "fit",
+            "plan",
             "--run-id",
             "cli-market-data-memory-option-surface",
             "--workflow-scope",
@@ -475,7 +472,7 @@ def test_cli_command_reference_doc_examples_smoke_for_advanced_staged_workflow(t
 
     exit_code, stdout_text, stderr_text = invoke_cli(
         [
-            "calibration",
+            "fit",
             "staged",
             "--execution-input-json",
             documented_paths["calibration_execution_input_json"],

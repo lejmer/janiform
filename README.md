@@ -21,12 +21,12 @@ On Linux:
 ```bash
 ./scripts/bootstrap-linux.sh
 janiform --help
-janiform simulation coarse-interval --help
+janiform simulate coarse-interval --help
 janiform stylized-facts horizon-comparison --help
 janiform seasonality diagnostics --help
 janiform seasonality preprocess-timestamps --help
 janiform hourly-factors build-contract --help
-janiform calibration market-data --help
+janiform fit plan --help
 python3 -m examples.market_data_calibration_workflow
 python3 -m examples.pricing_workflow
 ```
@@ -36,12 +36,12 @@ On Windows:
 ```powershell
 ./scripts/bootstrap-win.ps1
 janiform --help
-janiform simulation coarse-interval --help
+janiform simulate coarse-interval --help
 janiform stylized-facts horizon-comparison --help
 janiform seasonality diagnostics --help
 janiform seasonality preprocess-timestamps --help
 janiform hourly-factors build-contract --help
-janiform calibration market-data --help
+janiform fit plan --help
 python -m examples.market_data_calibration_workflow
 python -m examples.pricing_workflow
 ```
@@ -216,7 +216,7 @@ Primary commands also accept `--config-json PATH` with schema `cli.command_confi
 ```json
 {
   "schema_version": "cli.command_config.v1",
-  "command": "calibration.market-data",
+  "command": "fit.plan",
   "arguments": {
     "run-id": "market-data-run-001",
     "workflow-scope": "seasonality_only",

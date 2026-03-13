@@ -278,7 +278,7 @@ def _build_environment_default_map(
 
         environment_default_map["output"] = output_mode
 
-    if command_path in (("calibration", "market-data"), ("calibration", "staged")):
+    if command_path in (("fit", "plan"), ("fit", "staged")):
         execution_mode = environment.get(CLI_CALIBRATION_EXECUTION_MODE_ENV_VAR)
 
         if execution_mode is not None:

@@ -86,14 +86,12 @@ CLI_CALIBRATION_MARKET_DATA_EXECUTION_MODE_HELP = (
     "Calibration execution mode recorded in the market-data request. The CLI default is disk so "
     "automation-friendly runs keep persistence explicit."
 )
-CLI_SIMULATION_COARSE_INTERVAL_ENTRYPOINT = "simulation.coarse_interval"
-CLI_SIMULATION_COARSE_INTERVAL_VALIDATION_ERROR_ID = (
-    "cli.validation.simulation.coarse_interval.invalid_input"
-)
-CLI_SIMULATION_COARSE_INTERVAL_INTERNAL_ERROR_ID = "cli.internal.simulation.coarse_interval.failed"
-CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT = "simulation.seeded_ticks"
-CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID = "cli.validation.simulation.seeded_ticks.invalid_input"
-CLI_SIMULATION_SEEDED_TICKS_INTERNAL_ERROR_ID = "cli.internal.simulation.seeded_ticks.failed"
+CLI_SIMULATION_COARSE_INTERVAL_ENTRYPOINT = "simulate.coarse_interval"
+CLI_SIMULATION_COARSE_INTERVAL_VALIDATION_ERROR_ID = "cli.validation.simulate.coarse_interval.invalid_input"
+CLI_SIMULATION_COARSE_INTERVAL_INTERNAL_ERROR_ID = "cli.internal.simulate.coarse_interval.failed"
+CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT = "simulate.seeded_ticks"
+CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID = "cli.validation.simulate.seeded_ticks.invalid_input"
+CLI_SIMULATION_SEEDED_TICKS_INTERNAL_ERROR_ID = "cli.internal.simulate.seeded_ticks.failed"
 CLI_PRICING_VANILLA_OPTION_ENTRYPOINT = "pricing.vanilla_option"
 CLI_PRICING_VANILLA_OPTION_VALIDATION_ERROR_ID = "cli.validation.pricing.vanilla_option.invalid_input"
 CLI_PRICING_VANILLA_OPTION_INTERNAL_ERROR_ID = "cli.internal.pricing.vanilla_option.failed"
@@ -137,12 +135,12 @@ CLI_HOURLY_FACTORS_BUILD_CONTRACT_VALIDATION_ERROR_ID = (
 CLI_HOURLY_FACTORS_BUILD_CONTRACT_INTERNAL_ERROR_ID = (
     "cli.internal.hourly_factors.build_contract.failed"
 )
-CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT = "calibration.market_data"
-CLI_CALIBRATION_MARKET_DATA_VALIDATION_ERROR_ID = "cli.validation.calibration.market_data.invalid_input"
-CLI_CALIBRATION_MARKET_DATA_INTERNAL_ERROR_ID = "cli.internal.calibration.market_data.failed"
-CLI_CALIBRATION_STAGED_ENTRYPOINT = "calibration.staged"
-CLI_CALIBRATION_STAGED_VALIDATION_ERROR_ID = "cli.validation.calibration.staged.invalid_input"
-CLI_CALIBRATION_STAGED_INTERNAL_ERROR_ID = "cli.internal.calibration.staged.failed"
+CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT = "fit.plan"
+CLI_CALIBRATION_MARKET_DATA_VALIDATION_ERROR_ID = "cli.validation.fit.plan.invalid_input"
+CLI_CALIBRATION_MARKET_DATA_INTERNAL_ERROR_ID = "cli.internal.fit.plan.failed"
+CLI_CALIBRATION_STAGED_ENTRYPOINT = "fit.staged"
+CLI_CALIBRATION_STAGED_VALIDATION_ERROR_ID = "cli.validation.fit.staged.invalid_input"
+CLI_CALIBRATION_STAGED_INTERNAL_ERROR_ID = "cli.internal.fit.staged.failed"
 CLI_PRESETS_LIST_ENTRYPOINT = "presets.list"
 CLI_PRESETS_LIST_VALIDATION_ERROR_ID = "cli.validation.presets.list.invalid_input"
 CLI_PRESETS_LIST_INTERNAL_ERROR_ID = "cli.internal.presets.list.failed"
@@ -158,9 +156,6 @@ CLI_FIT_INTERNAL_ERROR_ID = "cli.internal.fit.failed"
 CLI_HIGH_LEVEL_SIMULATE_ENTRYPOINT = "simulate"
 CLI_HIGH_LEVEL_SIMULATE_VALIDATION_ERROR_ID = "cli.validation.simulate.invalid_input"
 CLI_HIGH_LEVEL_SIMULATE_INTERNAL_ERROR_ID = "cli.internal.simulate.failed"
-CLI_FIT_AND_SIMULATE_ENTRYPOINT = "fit_and_simulate"
-CLI_FIT_AND_SIMULATE_VALIDATION_ERROR_ID = "cli.validation.fit_and_simulate.invalid_input"
-CLI_FIT_AND_SIMULATE_INTERNAL_ERROR_ID = "cli.internal.fit_and_simulate.failed"
 CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT = "dev.regression.deterministic"
 CLI_DETERMINISTIC_REGRESSION_VALIDATION_ERROR_ID = "cli.validation.deterministic_regression.invalid_input"
 CLI_DETERMINISTIC_REGRESSION_INTERNAL_ERROR_ID = "cli.internal.deterministic_regression.failed"
@@ -173,7 +168,6 @@ CLI_PRESET_LIST_SCHEMA_VERSION = "cli.presets.list.result.v1"
 CLI_PRESET_SHOW_SCHEMA_VERSION = "cli.presets.show.result.v1"
 CLI_FIT_RESULT_SCHEMA_VERSION = "cli.fit.result.v1"
 CLI_SIMULATE_RESULT_SCHEMA_VERSION = "cli.simulate.result.v1"
-CLI_FIT_AND_SIMULATE_RESULT_SCHEMA_VERSION = "cli.fit_and_simulate.result.v1"
 CLI_COMMAND_CONFIG_SCHEMA_VERSION = "cli.command_config.v1"
 CLI_ARGUMENT_RESOLUTION_ENTRYPOINT = "cli.argument_resolution"
 CLI_ARGUMENT_RESOLUTION_VALIDATION_ERROR_ID = "cli.validation.arguments.invalid_input"
@@ -192,17 +186,18 @@ CLI_COMMAND_CONFIG_HELP = (
     "variables, which override config-file arguments."
 )
 CLI_PRIMARY_COMMAND_TREE: dict[str, dict[str, dict[str, dict[str, Any]]]] = {
+    "fit": {
+        "plan": {},
+        "staged": {},
+    },
+    "simulate": {
+        "coarse-interval": {},
+        "seeded-ticks": {},
+    },
     "presets": {
         "list": {},
         "show": {},
         "export": {},
-    },
-    "fit": {},
-    "simulate": {},
-    "fit-and-simulate": {},
-    "simulation": {
-        "coarse-interval": {},
-        "seeded-ticks": {},
     },
     "seasonality": {
         "diagnostics": {},
@@ -213,10 +208,6 @@ CLI_PRIMARY_COMMAND_TREE: dict[str, dict[str, dict[str, dict[str, Any]]]] = {
         "materialize-news-intensity": {},
         "build-contract": {},
     },
-    "calibration": {
-        "market-data": {},
-        "staged": {},
-    },
     "pricing": {
         "vanilla-option": {},
     },
@@ -225,21 +216,20 @@ CLI_PRIMARY_COMMAND_TREE: dict[str, dict[str, dict[str, dict[str, Any]]]] = {
     },
 }
 CLI_PRIMARY_COMMAND_IDENTIFIERS: dict[tuple[str, ...], str] = {
+    ("fit",): "fit",
+    ("fit", "plan"): "fit.plan",
+    ("fit", "staged"): "fit.staged",
+    ("simulate",): "simulate",
+    ("simulate", "coarse-interval"): "simulate.coarse-interval",
+    ("simulate", "seeded-ticks"): "simulate.seeded-ticks",
     ("presets", "list"): "presets.list",
     ("presets", "show"): "presets.show",
     ("presets", "export"): "presets.export",
-    ("fit",): "fit",
-    ("simulate",): "simulate",
-    ("fit-and-simulate",): "fit-and-simulate",
-    ("simulation", "coarse-interval"): "simulation.coarse-interval",
-    ("simulation", "seeded-ticks"): "simulation.seeded-ticks",
     ("seasonality", "diagnostics"): "seasonality.diagnostics",
     ("seasonality", "preprocess-timestamps"): "seasonality.preprocess-timestamps",
     ("hourly-factors", "materialize-seasonality"): "hourly-factors.materialize-seasonality",
     ("hourly-factors", "materialize-news-intensity"): "hourly-factors.materialize-news-intensity",
     ("hourly-factors", "build-contract"): "hourly-factors.build-contract",
-    ("calibration", "market-data"): "calibration.market-data",
-    ("calibration", "staged"): "calibration.staged",
     ("pricing", "vanilla-option"): "pricing.vanilla-option",
     ("stylized-facts", "horizon-comparison"): "stylized-facts.horizon-comparison",
 }
@@ -346,10 +336,6 @@ __all__ = [
     "CLI_FIT_INTERNAL_ERROR_ID",
     "CLI_FIT_RESULT_SCHEMA_VERSION",
     "CLI_FIT_VALIDATION_ERROR_ID",
-    "CLI_FIT_AND_SIMULATE_ENTRYPOINT",
-    "CLI_FIT_AND_SIMULATE_INTERNAL_ERROR_ID",
-    "CLI_FIT_AND_SIMULATE_RESULT_SCHEMA_VERSION",
-    "CLI_FIT_AND_SIMULATE_VALIDATION_ERROR_ID",
     "CLI_HIGH_LEVEL_SIMULATE_ENTRYPOINT",
     "CLI_HIGH_LEVEL_SIMULATE_INTERNAL_ERROR_ID",
     "CLI_HIGH_LEVEL_SIMULATE_VALIDATION_ERROR_ID",

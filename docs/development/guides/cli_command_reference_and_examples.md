@@ -21,7 +21,8 @@ The primary workflow is now:
 2. fit from market data
 3. simulate later from a saved model
 
-The older staged execution JSON path is retained for advanced or internal use.
+The older explicit workflow-boundary contracts are still available under `fit plan`, `fit staged`,
+`simulate coarse-interval`, and `simulate seeded-ticks` when you need that control.
 
 ## Shared Setup
 
@@ -67,12 +68,11 @@ The generated files include:
 - Use `--known-news none` to keep the off-by-default known-news baseline explicit.
 - `janiform fit` can persist a reusable fitted model with `--model-output-path PATH`.
 - `janiform simulate` consumes that persisted model through `--model-path PATH`.
-- `janiform simulate` and `janiform fit-and-simulate` use
-  `--simulation-output {coarse,ticks,both}` to choose the runtime artifact shape.
-- Calibration commands share `--execution-mode {disk,memory}`.
-- The CLI default is `disk` for calibration commands.
-- `--disk-checkpoint-directory` is required when the effective calibration execution mode is `disk`.
-- The high-level `fit` and `fit-and-simulate` commands default to `memory`.
+- `janiform simulate` uses `--simulation-output {coarse,ticks,both}` to choose the runtime artifact shape.
+- `fit plan` and `fit staged` share `--execution-mode {disk,memory}`.
+- The CLI default is `disk` for `fit plan` and `fit staged`.
+- `--disk-checkpoint-directory` is required when the effective fit execution mode is `disk`.
+- The high-level `fit` command defaults to `memory`.
 - The stylized-fact report command defaults to `memory`.
 - Stylized-fact artifact export uses `--artifact-export-json PATH` so the export contract stays the
   same across Python and CLI entrypoints.
@@ -155,12 +155,6 @@ seeded ticks, or both without reassembling runtime contracts by hand.
 janiform simulate --model-path PATH --seed SEED --start-time-utc START_TIME_UTC --horizon-interval-count HORIZON_INTERVAL_COUNT [--interval INTERVAL] [--simulation-output {coarse,ticks,both}] [--debug-trace-enabled] [--sample-every-nth-transition SAMPLE_EVERY_NTH_TRANSITION] [--max-records-per-chunk MAX_RECORDS_PER_CHUNK] [--output {human,json}]
 ```
 
-### Fit-And-Simulate Synopsis
-
-```text
-janiform fit-and-simulate --run-id RUN_ID --workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface} --tick-data-path PATH --tick-data-format {csv,parquet} --tick-timestamp-column TICK_TIMESTAMP_COLUMN --timestamp-timezone TIMESTAMP_TIMEZONE --seed SEED --start-time-utc START_TIME_UTC --horizon-interval-count HORIZON_INTERVAL_COUNT [--market MARKET] [--session-preset SESSION_PRESET] [--known-news KNOWN_NEWS] [--session-json PATH] [--known-news-json PATH] [--model-output-path PATH] [--interval INTERVAL] [--simulation-output {coarse,ticks,both}] [--output {human,json}]
-```
-
 ### Examples
 
 ```bash
@@ -173,27 +167,7 @@ janiform simulate \
   --output json
 ```
 
-```bash
-janiform fit-and-simulate \
-  --run-id cli-docs-fit-and-simulate \
-  --workflow-scope full_without_option_surface \
-  --tick-data-path tmp/cli-docs/data/ticks.csv \
-  --tick-data-format csv \
-  --tick-timestamp-column timestamp_utc \
-  --tick-trade-price-column trade_price \
-  --tick-trade-sign-column trade_sign \
-  --tick-price-input-policy trade_price_column \
-  --timestamp-timezone UTC \
-  --market us_equity_cash \
-  --known-news none \
-  --seed 17 \
-  --start-time-utc 2026-02-02T15:00:00Z \
-  --horizon-interval-count 4 \
-  --simulation-output coarse \
-  --output json
-```
-
-## Simulation
+## Explicit Simulation
 
 Use `coarse-interval` when you want a direct Delta-spaced path artifact for analytics, pricing
 validation, or risk-style simulation at the interval boundary. Use `seeded-ticks` when you need
@@ -202,7 +176,7 @@ a priced fine path, transition ordering, or tick replay diagnostics.
 ### Coarse-Interval Synopsis
 
 ```text
-janiform simulation coarse-interval --request-json PATH [--output {human,json}]
+janiform simulate coarse-interval --request-json PATH [--output {human,json}]
 ```
 
 ### Coarse-Interval Options
@@ -215,7 +189,7 @@ janiform simulation coarse-interval --request-json PATH [--output {human,json}]
 Machine-readable output to stdout:
 
 ```bash
-janiform simulation coarse-interval \
+janiform simulate coarse-interval \
   --request-json tmp/cli-docs/coarse_simulation_request.json \
   --output json
 ```
@@ -223,7 +197,7 @@ janiform simulation coarse-interval \
 Machine-readable output redirected to a file:
 
 ```bash
-janiform simulation coarse-interval \
+janiform simulate coarse-interval \
   --request-json tmp/cli-docs/coarse_simulation_request.json \
   --output json \
   > tmp/cli-docs/coarse_simulation_result.json
@@ -232,7 +206,7 @@ janiform simulation coarse-interval \
 ### Seeded-Ticks Synopsis
 
 ```text
-janiform simulation seeded-ticks --request-json PATH --calendar-registry-json PATH [--output {human,json}]
+janiform simulate seeded-ticks --request-json PATH --calendar-registry-json PATH [--output {human,json}]
 ```
 
 ### Seeded-Ticks Options
@@ -246,7 +220,7 @@ janiform simulation seeded-ticks --request-json PATH --calendar-registry-json PA
 Machine-readable output to stdout:
 
 ```bash
-janiform simulation seeded-ticks \
+janiform simulate seeded-ticks \
   --request-json tmp/cli-docs/simulation_request.json \
   --calendar-registry-json tmp/cli-docs/calendar_registry.json \
   --output json
@@ -255,7 +229,7 @@ janiform simulation seeded-ticks \
 Machine-readable output redirected to a file:
 
 ```bash
-janiform simulation seeded-ticks \
+janiform simulate seeded-ticks \
   --request-json tmp/cli-docs/simulation_request.json \
   --calendar-registry-json tmp/cli-docs/calendar_registry.json \
   --output json \
@@ -551,7 +525,36 @@ janiform stylized-facts horizon-comparison \
   --output json
 ```
 
-## Market-Data Calibration
+## Fit Staged
+
+This is the explicit fit workflow boundary. Use it when you already have a
+`StagedCalibrationExecutionInput` JSON payload and want to run staged orchestration directly.
+
+### Synopsis
+
+```text
+janiform fit staged --execution-input-json PATH --calendar-registry-json PATH [--execution-mode {disk,memory}] [--disk-checkpoint-directory DIRECTORY] [--output {human,json}]
+```
+
+### Options
+
+- `--execution-input-json`: `StagedCalibrationExecutionInput` contract file
+- `--calendar-registry-json`: `calendar.registry.v1` contract file
+- `--execution-mode {disk,memory}`: CLI default is `disk`
+- `--disk-checkpoint-directory`: required when the effective execution mode is `disk`
+- `--output {human,json}`
+
+### Example: Explicit Staged Fit Workflow With Memory Override
+
+```bash
+janiform fit staged \
+  --execution-input-json tmp/cli-docs/calibration_execution_input.json \
+  --calendar-registry-json tmp/cli-docs/calendar_registry.json \
+  --execution-mode memory \
+  --output json
+```
+
+## Fit Plan
 
 This is the recommended calibration workflow for market users. Supply external files plus session
 context and optional known-news or option-surface inputs, and Janiform derives the staged
@@ -560,7 +563,7 @@ calibration scope for you.
 ### Synopsis
 
 ```text
-janiform calibration market-data --run-id TEXT --workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface} --tick-data-path PATH --tick-data-format {csv,parquet} --tick-data-provenance-label TEXT --tick-timestamp-column TEXT --exchange-code TEXT --timestamp-timezone TEXT [OPTIONS]
+janiform fit plan --run-id TEXT --workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface} --tick-data-path PATH --tick-data-format {csv,parquet} --tick-data-provenance-label TEXT --tick-timestamp-column TEXT --exchange-code TEXT --timestamp-timezone TEXT [OPTIONS]
 ```
 
 ### Options
@@ -637,7 +640,7 @@ This example shows the default calibration behavior on the CLI. It omits `--exec
 the command uses `disk` and therefore includes `--disk-checkpoint-directory`.
 
 ```bash
-janiform calibration market-data \
+janiform fit plan \
   --run-id cli-market-data-default-disk \
   --workflow-scope seasonality_only \
   --tick-data-path tmp/cli-docs/data/ticks.csv \
@@ -666,7 +669,7 @@ This example shows the same market-data-first boundary with:
 - explicit `--execution-mode memory`
 
 ```bash
-janiform calibration market-data \
+janiform fit plan \
   --run-id cli-market-data-memory-option-surface \
   --workflow-scope full_with_option_surface \
   --tick-data-path tmp/cli-docs/data/ticks.parquet \
@@ -701,7 +704,7 @@ janiform calibration market-data \
 ### Machine-Readable Output Example
 
 ```bash
-janiform calibration market-data \
+janiform fit plan \
   --run-id cli-market-data-json \
   --workflow-scope seasonality_only \
   --tick-data-path tmp/cli-docs/data/ticks.csv \
@@ -715,34 +718,6 @@ janiform calibration market-data \
   > tmp/cli-docs/market_data_summary.json
 ```
 
-## Advanced Staged Calibration
-
-This is the advanced or internal calibration path. Use it when you already have a
-`StagedCalibrationExecutionInput` JSON payload and want to run staged orchestration directly.
-
-### Synopsis
-
-```text
-janiform calibration staged --execution-input-json PATH --calendar-registry-json PATH [--execution-mode {disk,memory}] [--disk-checkpoint-directory DIRECTORY] [--output {human,json}]
-```
-
-### Options
-
-- `--execution-input-json`: `StagedCalibrationExecutionInput` contract file
-- `--calendar-registry-json`: `calendar.registry.v1` contract file
-- `--execution-mode {disk,memory}`: CLI default is `disk`
-- `--disk-checkpoint-directory`: required when the effective execution mode is `disk`
-- `--output {human,json}`
-
-### Example: Advanced Or Internal Workflow With Explicit Memory Override
-
-```bash
-janiform calibration staged \
-  --execution-input-json tmp/cli-docs/calibration_execution_input.json \
-  --calendar-registry-json tmp/cli-docs/calendar_registry.json \
-  --execution-mode memory \
-  --output json
-```
 
 ## Developer Regression
 

@@ -101,7 +101,7 @@ def _regression_scenarios() -> tuple[CliRegressionScenario, ...]:
             expected_exit_code=int(cli_module.CliExitCode.VALIDATION_ERROR),
             expected_stdout="",
             expected_stderr_substrings=(
-                "[cli.validation.simulation.seeded_ticks.invalid_input]",
+                "[cli.validation.simulate.seeded_ticks.invalid_input]",
                 'field_path="request_json"',
                 '"path": ',
             ),
@@ -134,7 +134,7 @@ def _regression_scenarios() -> tuple[CliRegressionScenario, ...]:
             expected_exit_code=int(cli_module.CliExitCode.VALIDATION_ERROR),
             expected_stdout="",
             expected_stderr_substrings=(
-                "[cli.validation.calibration.staged.invalid_input]",
+                "[cli.validation.fit.staged.invalid_input]",
                 'field_path="disk_checkpoint_directory"',
                 'message="--disk-checkpoint-directory requires --execution-mode disk"',
             ),
@@ -152,7 +152,7 @@ def _build_simulation_smoke_invocation(calendar_registry_json: str, tmp_path: Pa
 
     return CliSmokeInvocation(
         command_arguments=[
-            "simulation",
+            "simulate",
             "seeded-ticks",
             "--request-json",
             str(request_path),
@@ -172,7 +172,7 @@ def _build_coarse_simulation_smoke_invocation(
 
     return CliSmokeInvocation(
         command_arguments=[
-            "simulation",
+            "simulate",
             "coarse-interval",
             "--request-json",
             str(request_path),
@@ -409,8 +409,8 @@ def _build_market_data_smoke_invocation(calendar_registry_json: str, tmp_path: P
 
     return CliSmokeInvocation(
         command_arguments=[
-            "calibration",
-            "market-data",
+            "fit",
+            "plan",
             "--run-id",
             "cli-smoke-market-data",
             "--workflow-scope",
@@ -479,8 +479,8 @@ def _build_market_data_parquet_option_surface_smoke_invocation(
 
     return CliSmokeInvocation(
         command_arguments=[
-            "calibration",
-            "market-data",
+            "fit",
+            "plan",
             "--run-id",
             "cli-smoke-market-data-parquet",
             "--workflow-scope",
@@ -569,7 +569,7 @@ def _build_staged_disk_smoke_invocation(calendar_registry_json: str, tmp_path: P
 
     return CliSmokeInvocation(
         command_arguments=[
-            "calibration",
+            "fit",
             "staged",
             "--execution-input-json",
             str(execution_input_path),
@@ -600,7 +600,7 @@ def _build_staged_memory_smoke_invocation(calendar_registry_json: str, tmp_path:
 
     return CliSmokeInvocation(
         command_arguments=[
-            "calibration",
+            "fit",
             "staged",
             "--execution-input-json",
             str(execution_input_path),
@@ -620,7 +620,7 @@ def _build_simulation_missing_request_arguments(calendar_registry_json: str, tmp
     )
 
     return [
-        "simulation",
+        "simulate",
         "seeded-ticks",
         "--request-json",
         str(tmp_path / "missing_request.json"),
@@ -657,8 +657,8 @@ def _build_market_data_inconsistent_known_news_arguments(
     )
 
     return [
-        "calibration",
-        "market-data",
+        "fit",
+        "plan",
         "--run-id",
         "cli-regression-known-news-mapping",
         "--workflow-scope",
@@ -710,7 +710,7 @@ def _build_staged_memory_incompatible_checkpoint_arguments(
     )
 
     return [
-        "calibration",
+        "fit",
         "staged",
         "--execution-input-json",
         str(execution_input_path),

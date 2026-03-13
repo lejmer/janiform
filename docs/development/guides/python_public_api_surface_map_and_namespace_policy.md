@@ -218,7 +218,7 @@ from janiform.simulation.shared import HawkesKernelParameters
 - `janiform.cli.commands.development`
   - Ownership: developer regression command handlers and regression-fixture extraction helpers
 - `janiform.cli.commands.model_workflows`
-  - Ownership: fit, simulate, and fit-and-simulate CLI workflow adapters around persisted models and preset-backed model construction
+  - Ownership: fit and simulate CLI workflow adapters around persisted models and preset-backed model construction
 - `janiform.cli.commands.simulation`
   - Ownership: explicit simulation CLI command handlers
 

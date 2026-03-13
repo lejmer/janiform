@@ -14,7 +14,6 @@ from .development import (
     _run_open_closed_gap_leakage_regression_command,
 )
 from .model_workflows import (
-    _run_fit_and_simulate_command,
     _run_fit_command,
     _run_model_simulate_command,
 )
@@ -50,7 +49,6 @@ __all__ = [
     "_run_calibration_market_data_command",
     "_run_calibration_staged_command",
     "_run_deterministic_regression_command",
-    "_run_fit_and_simulate_command",
     "_run_fit_command",
     "_run_model_simulate_command",
     "_run_hourly_factor_build_contract_command",

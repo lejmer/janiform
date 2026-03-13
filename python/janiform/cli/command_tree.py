@@ -45,7 +45,6 @@ from .commands.hourly_factors import (
     _run_hourly_factor_materialize_seasonality_command,
 )
 from .commands.model_workflows import (
-    _run_fit_and_simulate_command,
     _run_fit_command,
     _run_model_simulate_command,
 )
@@ -94,7 +93,7 @@ class _JaniformCommandMixin:
         parent: click.Context | None = None,
         **extra: Any,
     ) -> click.Context:
-        if self._command_path is not None:
+        if self._command_path is not None and not _arguments_target_known_subcommand(self, args):
             command_default_map = build_click_default_map(
                 self,
                 command_path=self._command_path,
@@ -113,6 +112,14 @@ class JaniformCommand(_JaniformCommandMixin, click.Command):
 
 class JaniformGroup(_JaniformCommandMixin, click.Group):
     pass
+
+
+def _arguments_target_known_subcommand(command: click.Command, arguments: list[str]) -> bool:
+    if not isinstance(command, click.Group):
+        return False
+
+    subcommand_names = set(command.list_commands(click.Context(command)))
+    return any(argument in subcommand_names for argument in arguments)
 
 
 def _build_app(*, environment: Mapping[str, str] | None = None) -> click.Command:
@@ -282,11 +289,16 @@ def _optional_path_option(
     )
 
 
-def _required_datetime_option(flag_name: str, *, help_text: str) -> click.Option:
+def _required_datetime_option(
+    flag_name: str,
+    *,
+    help_text: str,
+    required: bool = True,
+) -> click.Option:
     return _command_option(
         flag_name,
         help_text=f"{help_text} Use an ISO 8601 timezone-aware timestamp.",
-        required=True,
+        required=required,
     )
 
 
@@ -318,7 +330,7 @@ def _preset_scope_option(
     )
 
 
-def _model_workflow_fit_options() -> list[click.Parameter]:
+def _model_workflow_fit_options(*, enforce_required: bool = True) -> list[click.Parameter]:
     return [
         _command_config_option(),
         _output_option(default_output_mode=CliOutputMode.JSON),
@@ -381,7 +393,7 @@ def _model_workflow_fit_options() -> list[click.Parameter]:
         _command_option(
             "--run-id",
             help_text="Stable run identifier recorded on the fitted model and fit report.",
-            required=True,
+            required=enforce_required,
         ),
         _command_option(
             "--workflow-scope",
@@ -391,19 +403,19 @@ def _model_workflow_fit_options() -> list[click.Parameter]:
                 "full_without_option_surface for full calibration from tick data only, and "
                 "full_with_option_surface when option-surface data is supplied."
             ),
-            required=True,
+            required=enforce_required,
         ),
         _command_option(
             "--tick-data-path",
             help_text=_path_help_text("Path to the input tick-data file."),
             path_type=True,
-            required=True,
+            required=enforce_required,
         ),
         _command_option(
             "--tick-data-format",
             choice_options=CLI_CALIBRATION_TICK_FILE_FORMAT_CHOICES,
             help_text="Tick-data file format.",
-            required=True,
+            required=enforce_required,
         ),
         _command_option(
             "--tick-data-provenance-label",
@@ -413,7 +425,7 @@ def _model_workflow_fit_options() -> list[click.Parameter]:
         _command_option(
             "--tick-timestamp-column",
             help_text="Tick-data timestamp column name.",
-            required=True,
+            required=enforce_required,
         ),
         _command_option(
             "--tick-price-input-policy",
@@ -432,7 +444,7 @@ def _model_workflow_fit_options() -> list[click.Parameter]:
         _command_option(
             "--timestamp-timezone",
             help_text="Timezone used to normalize tick-data timestamps before fitting.",
-            required=True,
+            required=enforce_required,
         ),
         _command_option(
             "--duplicate-record-policy",
@@ -510,6 +522,7 @@ def _model_workflow_simulate_options(
     *,
     require_model_path: bool,
     include_shared_arguments: bool = True,
+    enforce_required: bool = True,
 ) -> list[click.Parameter]:
     parameters: list[click.Parameter] = []
     if include_shared_arguments:
@@ -522,18 +535,22 @@ def _model_workflow_simulate_options(
                 "--model-path",
                 help_text=_path_help_text("Path to a persisted JaniformModel JSON payload."),
                 path_type=True,
-                required=True,
+                required=enforce_required,
             )
         )
 
     parameters.extend(
         [
-            _command_option("--seed", help_text="Simulation random seed.", required=True, value_type=int),
-            _required_datetime_option("--start-time-utc", help_text="Simulation start time in UTC."),
+            _command_option("--seed", help_text="Simulation random seed.", required=enforce_required, value_type=int),
+            _required_datetime_option(
+                "--start-time-utc",
+                help_text="Simulation start time in UTC.",
+                required=enforce_required,
+            ),
             _command_option(
                 "--horizon-interval-count",
                 help_text="Number of simulation intervals to generate.",
-                required=True,
+                required=enforce_required,
                 value_type=int,
             ),
             _command_option(
@@ -815,21 +832,55 @@ def _wrap_handler(
             required_one_of_groups=required_one_of_groups,
         )
 
-        cli_context = CliCommandContext(
-            command_path=command_path,
-            command_identifier=_command_identifier_for_path(command_path),
-            default_map=dict(ctx.default_map or {}),
-            environment=cast(
-                Mapping[str, str],
-                ctx.find_root().command._environment
-                if isinstance(ctx.find_root().command, _JaniformCommandMixin)
-                else {},
-            ),
-            repository_root=resolve_repository_root(),
-        )
+        cli_context = _build_cli_context(ctx, command_path=command_path)
         return handler(cli_context=cli_context, **kwargs)
 
     return callback
+
+
+def _wrap_group_default_handler(
+    handler: CliHandler,
+    *,
+    command_path: tuple[str, ...],
+    required_option_names: tuple[str, ...],
+    exclusivity_groups: tuple[tuple[str, ...], ...] = (),
+    required_one_of_groups: tuple[tuple[str, ...], ...] = (),
+) -> Callable[..., int | None]:
+    @click.pass_context
+    def callback(ctx: click.Context, **kwargs: Any) -> int | None:
+        if ctx.invoked_subcommand is not None:
+            return None
+
+        _validate_required_options(
+            ctx,
+            values=kwargs,
+            required_option_names=required_option_names,
+        )
+        _validate_option_groups(
+            kwargs,
+            exclusivity_groups=exclusivity_groups,
+            required_one_of_groups=required_one_of_groups,
+        )
+
+        cli_context = _build_cli_context(ctx, command_path=command_path)
+        return handler(cli_context=cli_context, **kwargs)
+
+    return callback
+
+
+def _build_cli_context(ctx: click.Context, *, command_path: tuple[str, ...]) -> CliCommandContext:
+    return CliCommandContext(
+        command_path=command_path,
+        command_identifier=_command_identifier_for_path(command_path),
+        default_map=dict(ctx.default_map or {}),
+        environment=cast(
+            Mapping[str, str],
+            ctx.find_root().command._environment
+            if isinstance(ctx.find_root().command, _JaniformCommandMixin)
+            else {},
+        ),
+        repository_root=resolve_repository_root(),
+    )
 
 
 def _validate_option_groups(
@@ -853,13 +904,47 @@ def _validate_option_groups(
             )
 
 
+def _validate_required_options(
+    ctx: click.Context,
+    *,
+    values: dict[str, Any],
+    required_option_names: tuple[str, ...],
+) -> None:
+    for option_name in required_option_names:
+        if values.get(option_name) not in (None, [], ()):
+            continue
+
+        parameter = _find_option_parameter(ctx.command, option_name)
+        if parameter is None:
+            raise click.UsageError(f"missing required option --{option_name.replace('_', '-')}")
+
+        raise click.MissingParameter(ctx=ctx, param=parameter)
+
+
+def _find_option_parameter(command: click.Command, option_name: str) -> click.Option | None:
+    for parameter in command.params:
+        if isinstance(parameter, click.Option) and parameter.name == option_name:
+            return parameter
+
+    return None
+
+
 def _build_root_group(*, environment: Mapping[str, str] | None = None) -> click.Command:
     @click.group(
         cls=JaniformGroup,
         command_path=(),
         environment=environment,
         invoke_without_command=True,
-        help="Command line interface for Janiform workflows and developer utilities.",
+        help=(
+            "Primary workflows are the fit and simulate commands.\n\n"
+            "\b\n"
+            "Use the fit command to fit a Janiform model from market data.\n"
+            "Use the simulate command to simulate from a persisted Janiform model.\n\n"
+            "\b\n"
+            "See also:\n"
+            "  janiform fit --help\n"
+            "  janiform simulate --help"
+        ),
     )
     @click.version_option(version=__version__)
     @click.pass_context
@@ -872,6 +957,133 @@ def _build_root_group(*, environment: Mapping[str, str] | None = None) -> click.
 
 
 def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | None = None) -> None:
+    root.add_command(
+        JaniformGroup(
+            "fit",
+            callback=_wrap_group_default_handler(
+                _run_fit_command,
+                command_path=("fit",),
+                required_option_names=(
+                    "run_id",
+                    "workflow_scope",
+                    "tick_data_path",
+                    "tick_data_format",
+                    "tick_timestamp_column",
+                    "timestamp_timezone",
+                ),
+                exclusivity_groups=(("session_preset", "session_json"), ("known_news", "known_news_json")),
+            ),
+            command_path=("fit",),
+            environment=environment,
+            help=(
+                "Fit a Janiform model from market data.\n\n"
+                "Run `janiform fit` with the options below for the default end-to-end fitting "
+                "workflow. Use `fit plan` to inspect the derived fit plan before execution, and "
+                "use `fit staged` only when you need direct control over the staged execution boundary."
+            ),
+            invoke_without_command=True,
+            params=_model_workflow_fit_options(enforce_required=False),
+        )
+    )
+    fit_group = cast(click.Group, root.get_command(click.Context(root), "fit"))
+    fit_group.add_command(
+        JaniformCommand(
+            "plan",
+            callback=_wrap_handler(_run_calibration_market_data_command, command_path=("fit", "plan")),
+            command_path=("fit", "plan"),
+            environment=environment,
+            help=(
+                "Validate market-data inputs, resolve presets and provenance, and build the "
+                "derived fit plan without running the staged fit."
+            ),
+            params=_market_data_calibration_options(),
+        )
+    )
+    fit_group.add_command(
+        JaniformCommand(
+            "staged",
+            callback=_wrap_handler(_run_calibration_staged_command, command_path=("fit", "staged")),
+            command_path=("fit", "staged"),
+            environment=environment,
+            help="Run the explicit staged fit workflow from a prepared execution-input contract.",
+            params=_staged_calibration_options(),
+        )
+    )
+
+    root.add_command(
+        JaniformGroup(
+            "simulate",
+            callback=_wrap_group_default_handler(
+                _run_model_simulate_command,
+                command_path=("simulate",),
+                required_option_names=("model_path", "seed", "start_time_utc", "horizon_interval_count"),
+            ),
+            command_path=("simulate",),
+            environment=environment,
+            help=(
+                "Simulate from a persisted Janiform model.\n\n"
+                "Run `janiform simulate` with the options below for the default model-driven "
+                "simulation workflow. Use `simulate coarse-interval` or `simulate seeded-ticks` "
+                "when you need direct control over those explicit workflow contracts."
+            ),
+            invoke_without_command=True,
+            params=_model_workflow_simulate_options(
+                require_model_path=True,
+                enforce_required=False,
+            ),
+        )
+    )
+    simulate_group = cast(click.Group, root.get_command(click.Context(root), "simulate"))
+    simulate_group.add_command(
+        JaniformCommand(
+            "coarse-interval",
+            callback=_wrap_handler(_run_simulation_coarse_interval_command, command_path=("simulate", "coarse-interval")),
+            command_path=("simulate", "coarse-interval"),
+            environment=environment,
+            help=(
+                "Run the explicit coarse-interval simulation workflow when you want the canonical "
+                "coarse path artifact without replaying fine-scale seeded ticks."
+            ),
+            params=[
+                _command_config_option(),
+                _output_option(default_output_mode=CliOutputMode.JSON),
+                _required_json_path_option(
+                    "--request-json",
+                    contract_label="a coarse-interval simulation request JSON object",
+                    semantic_note=(
+                        "Use coarse-interval simulation for direct Delta-spaced paths. Use "
+                        "seeded-ticks when you need a priced fine path or tick replay."
+                    ),
+                ),
+            ],
+        )
+    )
+    simulate_group.add_command(
+        JaniformCommand(
+            "seeded-ticks",
+            callback=_wrap_handler(_run_simulation_seeded_ticks_command, command_path=("simulate", "seeded-ticks")),
+            command_path=("simulate", "seeded-ticks"),
+            environment=environment,
+            help=(
+                "Run the explicit seeded-tick simulation workflow when you need the fine-scale "
+                "priced path, event replay, or direct component realizations."
+            ),
+            params=[
+                _command_config_option(),
+                _output_option(default_output_mode=CliOutputMode.JSON),
+                _required_json_path_option(
+                    "--request-json",
+                    contract_label="a seeded-tick simulation request JSON object",
+                    semantic_note="The request summary must preserve open-jump versus closed-gap hourly factors.",
+                ),
+                _required_json_path_option(
+                    "--calendar-registry-json",
+                    contract_label="a calendar registry JSON object used to rehydrate hourly factors",
+                ),
+            ],
+        )
+    )
+
     root.add_command(
         JaniformGroup(
             "presets",
@@ -924,112 +1136,6 @@ def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | 
                 ],
             )
         )
-
-    root.add_command(
-        JaniformCommand(
-            "fit",
-            callback=_wrap_handler(
-                _run_fit_command,
-                command_path=("fit",),
-                exclusivity_groups=(("session_preset", "session_json"), ("known_news", "known_news_json")),
-            ),
-            command_path=("fit",),
-            environment=environment,
-            help="Fit a Janiform model from market data using named presets and session inference.",
-            params=_model_workflow_fit_options(),
-        )
-    )
-    root.add_command(
-        JaniformCommand(
-            "simulate",
-            callback=_wrap_handler(_run_model_simulate_command, command_path=("simulate",)),
-            command_path=("simulate",),
-            environment=environment,
-            help="Simulate from a persisted JaniformModel.",
-            params=_model_workflow_simulate_options(require_model_path=True),
-        )
-    )
-    root.add_command(
-        JaniformCommand(
-            "fit-and-simulate",
-            callback=_wrap_handler(
-                _run_fit_and_simulate_command,
-                command_path=("fit-and-simulate",),
-                exclusivity_groups=(("session_preset", "session_json"), ("known_news", "known_news_json")),
-            ),
-            command_path=("fit-and-simulate",),
-            environment=environment,
-            help="Fit a model and immediately simulate from it.",
-            params=[
-                *_model_workflow_fit_options(),
-                *_model_workflow_simulate_options(require_model_path=False, include_shared_arguments=False),
-            ],
-        )
-    )
-
-    root.add_command(
-        JaniformGroup(
-            "simulation",
-            callback=_group_help_callback,
-            command_path=("simulation",),
-            environment=environment,
-            help="Advanced explicit simulation contract workflows.",
-            invoke_without_command=True,
-        )
-    )
-    simulation_group = cast(click.Group, root.get_command(click.Context(root), "simulation"))
-    simulation_group.add_command(
-        JaniformCommand(
-            "coarse-interval",
-            callback=_wrap_handler(_run_simulation_coarse_interval_command, command_path=("simulation", "coarse-interval")),
-            command_path=("simulation", "coarse-interval"),
-            environment=environment,
-            help=(
-                "Direct coarse-interval path simulation workflow. Use this command when you "
-                "want the canonical coarse simulation path artifact at interval length Delta "
-                "without replaying fine-scale seeded ticks."
-            ),
-            params=[
-                _command_config_option(),
-                _output_option(default_output_mode=CliOutputMode.JSON),
-                _required_json_path_option(
-                    "--request-json",
-                    contract_label="a coarse-interval simulation request JSON object",
-                    semantic_note=(
-                        "Use coarse-interval simulation for direct Delta-spaced paths. Use "
-                        "seeded-ticks when you need a priced fine path or tick replay."
-                    ),
-                ),
-            ],
-        )
-    )
-    simulation_group.add_command(
-        JaniformCommand(
-            "seeded-ticks",
-            callback=_wrap_handler(_run_simulation_seeded_ticks_command, command_path=("simulation", "seeded-ticks")),
-            command_path=("simulation", "seeded-ticks"),
-            environment=environment,
-            help=(
-                "Seeded tick priced fine-path simulation workflow. Use this command when you "
-                "need the canonical fine-scale priced path, its derived event replay, or "
-                "direct news and return component realization rather than coarse-interval "
-                "aggregation."
-            ),
-            params=[
-                _command_config_option(),
-                _output_option(default_output_mode=CliOutputMode.JSON),
-                _required_json_path_option(
-                    "--request-json",
-                    contract_label="a seeded-tick simulation request JSON object",
-                    semantic_note="The request summary must preserve open-jump versus closed-gap hourly factors.",
-                ),
-                _required_json_path_option(
-                    "--calendar-registry-json",
-                    contract_label="a calendar registry JSON object used to rehydrate hourly factors",
-                ),
-            ],
-        )
-    )
 
     root.add_command(
         JaniformGroup(
@@ -1230,42 +1336,6 @@ def _attach_current_tree(root: click.Group, *, environment: Mapping[str, str] | 
                     ),
                 ),
             ],
-        )
-    )
-
-    root.add_command(
-        JaniformGroup(
-            "calibration",
-            callback=_group_help_callback,
-            command_path=("calibration",),
-            environment=environment,
-            help="Advanced calibration request and staged execution workflows.",
-            invoke_without_command=True,
-        )
-    )
-    calibration_group = cast(click.Group, root.get_command(click.Context(root), "calibration"))
-    calibration_group.add_command(
-        JaniformCommand(
-            "market-data",
-            callback=_wrap_handler(_run_calibration_market_data_command, command_path=("calibration", "market-data")),
-            command_path=("calibration", "market-data"),
-            environment=environment,
-            help=(
-                "Market-data calibration request workflow. This command validates file-driven "
-                "inputs and emits a user-facing market-data calibration summary with "
-                "preprocessing diagnostics and provenance."
-            ),
-            params=_market_data_calibration_options(),
-        )
-    )
-    calibration_group.add_command(
-        JaniformCommand(
-            "staged",
-            callback=_wrap_handler(_run_calibration_staged_command, command_path=("calibration", "staged")),
-            command_path=("calibration", "staged"),
-            environment=environment,
-            help="Staged calibration workflow.",
-            params=_staged_calibration_options(),
         )
     )
 

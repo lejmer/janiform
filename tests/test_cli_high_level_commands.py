@@ -21,16 +21,16 @@ from tests.cli_test_support import invoke_cli, normalize_help_output, parse_cli_
 def test_cli_top_level_help_lists_high_level_workflow_commands() -> None:
     help_output = _render_help([])
 
-    assert "presets" in help_output
     assert "fit" in help_output
     assert "simulate" in help_output
-    assert "fit-and-simulate" in help_output
-    assert "calibration" in help_output
+    assert "presets" in help_output
 
 
-def test_fit_help_documents_preset_and_override_inputs() -> None:
+def test_fit_help_documents_default_workflow_and_expert_subcommands() -> None:
     help_output = normalize_help_output(_render_help(["fit"]))
 
+    assert "fit plan" in help_output
+    assert "fit staged" in help_output
     assert "--market MARKET" in help_output
     assert "--session-preset SESSION_PRESET" in help_output
     assert "--session-json PATH" in help_output
@@ -243,71 +243,18 @@ def test_simulate_outputs_model_provenance_and_simulation_payload(
     assert payload["seeded_tick_simulation"] is None
 
 
-def test_fit_and_simulate_outputs_fit_and_simulation_sections(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    tick_data_path = _write_tick_data(
-        tmp_path / "fit-and-simulate.csv",
-        rows=(
-            "2026-02-02T14:30:00Z,100.0,buy",
-            "2026-02-02T15:00:00Z,101.0,sell",
-            "2026-02-02T20:59:00Z,102.0,buy",
-            "2026-02-03T14:30:00Z,99.0,sell",
-            "2026-02-03T20:59:00Z,98.0,buy",
-        ),
-    )
+def test_removed_duplicate_roots_are_rejected() -> None:
+    for arguments in (
+        ["fit-and-simulate"],
+        ["calibration", "market-data"],
+        ["calibration", "staged"],
+        ["simulation", "coarse-interval"],
+        ["simulation", "seeded-ticks"],
+    ):
+        exit_code, _, stderr = invoke_cli(arguments)
 
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
-        lambda *args, **kwargs: _successful_full_model_staged_runner_payload("cli-fit-and-simulate"),
-    )
-
-    exit_code, stdout, stderr = invoke_cli(
-        [
-            "fit-and-simulate",
-            "--run-id",
-            "cli-fit-and-simulate",
-            "--workflow-scope",
-            "full_without_option_surface",
-            "--tick-data-path",
-            str(tick_data_path),
-            "--tick-data-format",
-            "csv",
-            "--tick-timestamp-column",
-            "timestamp_utc",
-            "--tick-trade-price-column",
-            "trade_price",
-            "--tick-trade-sign-column",
-            "trade_sign",
-            "--tick-price-input-policy",
-            "trade_price_column",
-            "--timestamp-timezone",
-            "UTC",
-            "--market",
-            "us_equity_cash",
-            "--known-news",
-            "none",
-            "--seed",
-            "17",
-            "--start-time-utc",
-            "2026-02-02T15:00:00Z",
-            "--horizon-interval-count",
-            "2",
-            "--simulation-output",
-            "coarse",
-            "--output",
-            "json",
-        ]
-    )
-
-    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr
-    payload = orjson.loads(stdout)
-
-    assert payload["schema_version"] == cli_module.CLI_FIT_AND_SIMULATE_RESULT_SCHEMA_VERSION
-    assert payload["fit_result"]["resolved_configuration"]["known_news"]["selected_preset"]["preset_name"] == "none"
-    assert payload["simulation_result"]["coarse_simulation"]["schema_version"] == "simulation.coarse_interval.path.v1"
+        assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+        assert "No such command" in stderr
 
 
 def test_fit_fails_for_ambiguous_session_inference(tmp_path: Path) -> None:
@@ -421,12 +368,11 @@ def test_fit_parser_rejects_contradictory_known_news_flags() -> None:
     assert exit_code == 2
 
 
-def test_advanced_calibration_help_remains_available_but_secondary() -> None:
-    help_output = normalize_help_output(_render_help(["calibration"]))
+def test_explicit_fit_workflows_remain_available_but_secondary() -> None:
+    help_output = normalize_help_output(_render_help(["fit"]))
 
-    assert "Advanced calibration request and staged execution workflows." in help_output
-    assert "market-data" in help_output
-    assert "staged" in help_output
+    assert "fit plan" in help_output
+    assert "fit staged" in help_output
 
 
 def _render_help(arguments: list[str]) -> str:
