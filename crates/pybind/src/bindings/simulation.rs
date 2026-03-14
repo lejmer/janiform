@@ -12,14 +12,18 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyMapping, PyModule};
 
 use super::calendar::parse_timestamp_utc;
+use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
 use crate::SeasonalityInputValidationError;
 use crate::SimulationExecutionError;
 use crate::types::{PyHourlyFactorContractResult, PySeededTickSimulationNativeResult};
 
 #[pyfunction]
-fn run_coarse_simulation(py: Python<'_>, run_request_json: &str) -> PyResult<String> {
+fn run_coarse_simulation(
+    py: Python<'_>,
+    run_request: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
     let run_request: CoarseSimulationRunRequest =
-        serde_json::from_str(run_request_json).map_err(|source| {
+        serde_json::from_value(py_any_to_json_value(run_request)?).map_err(|source| {
             SimulationExecutionError::new_err(format!(
                 "failed to deserialize coarse simulation run request: {source}"
             ))
@@ -28,15 +32,17 @@ fn run_coarse_simulation(py: Python<'_>, run_request_json: &str) -> PyResult<Str
         .allow_threads(|| run_coarse_simulation_core(run_request))
         .map_err(|source| SimulationExecutionError::new_err(source.to_string()))?;
 
-    serde_json::to_string(&coarse_path).map_err(|source| {
+    let serialized_coarse_path = serde_json::to_value(&coarse_path).map_err(|source| {
         SimulationExecutionError::new_err(format!(
             "failed to serialize coarse simulation path payload: {source}"
         ))
-    })
+    })?;
+
+    json_value_to_py_object(py, &serialized_coarse_path)
 }
 
 #[pyfunction]
-#[pyo3(signature = (seed, start_time_utc, horizon_interval_count, kernel_parameters, nig_shared_plus_shift_configuration, initial_excitation_state, hourly_factor_contract, news_process_configuration_json, *, debug_trace_enabled = false, sample_every_nth_transition = 1, max_records_per_chunk = 1024, state_snapshot_capture = "disabled"))]
+#[pyo3(signature = (seed, start_time_utc, horizon_interval_count, kernel_parameters, nig_shared_plus_shift_configuration, initial_excitation_state, hourly_factor_contract, news_process_configuration, *, debug_trace_enabled = false, sample_every_nth_transition = 1, max_records_per_chunk = 1024, state_snapshot_capture = "disabled"))]
 fn run_seeded_tick_event_simulation(
     py: Python<'_>,
     seed: u64,
@@ -46,7 +52,7 @@ fn run_seeded_tick_event_simulation(
     nig_shared_plus_shift_configuration: &Bound<'_, PyAny>,
     initial_excitation_state: &Bound<'_, PyAny>,
     hourly_factor_contract: &PyHourlyFactorContractResult,
-    news_process_configuration_json: &str,
+    news_process_configuration: &Bound<'_, PyAny>,
     debug_trace_enabled: bool,
     sample_every_nth_transition: u64,
     max_records_per_chunk: usize,
@@ -60,14 +66,15 @@ fn run_seeded_tick_event_simulation(
         )?;
     let parsed_initial_excitation_state =
         parse_seeded_simulation_initial_excitation_state(initial_excitation_state)?;
-    let parsed_news_process_configuration = serde_json::from_str::<NewsProcessConfiguration>(
-        news_process_configuration_json,
-    )
-    .map_err(|source| {
-        SeasonalityInputValidationError::new_err(format!(
-            "news_process_configuration_json failed to deserialize: {source}"
-        ))
-    })?;
+    let parsed_news_process_configuration =
+        serde_json::from_value::<NewsProcessConfiguration>(py_any_to_json_value(
+            news_process_configuration,
+        )?)
+        .map_err(|source| {
+            SeasonalityInputValidationError::new_err(format!(
+                "news_process_configuration failed to deserialize: {source}"
+            ))
+        })?;
     let parsed_state_snapshot_capture =
         parse_seeded_simulation_state_snapshot_capture(state_snapshot_capture)?;
 

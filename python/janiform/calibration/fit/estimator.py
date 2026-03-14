@@ -37,7 +37,11 @@ from ..market_data.contracts import (
 )
 from ..market_data.ingestion import load_market_data_calibration_inputs
 from ..market_data.request import MarketDataCalibrationRequest
-from ..market_data.workflow import PreparedMarketDataCalibration, prepare_market_data_calibration
+from ..market_data.translation import translate_market_data_request_to_staged_execution_input
+from ..market_data.workflow import (
+    PreparedMarketDataCalibration,
+    _prepare_market_data_calibration_from_translation_result,
+)
 from ..presets.references import (
     KnownNewsExplicitConfiguration,
     KnownNewsPresetReference,
@@ -210,8 +214,8 @@ class JaniformEstimator:
 
         with self._stdout_suppression_context(effective_silent=effective_silent):
             try:
-                with output_controller.progress("fit", total_steps=7) as progress:
-                    progress.update(detail="inferring market-data inputs")
+                with output_controller.progress("fit", total_steps=6) as progress:
+                    progress.update(detail="inferring workflow inputs")
                     prepared_workflow = self._prepare_fit_workflow(
                         run_id=run_id,
                         tick_data_path=tick_data_path,
@@ -376,7 +380,6 @@ class JaniformEstimator:
         resolved_market_profile_configuration = (
             self._resolve_market_profile_configuration()
         )
-        effective_progress.update(detail="inferring market-data inputs")
         input_inference = infer_high_level_fit_inputs(
             tick_data_path=Path(tick_data_path),
             tick_data_format=tick_data_format,
@@ -423,7 +426,7 @@ class JaniformEstimator:
                 working_directory = Path(temporary_directory.name)
             else:
                 working_directory = None
-            effective_progress.update(detail="preparing market-data workflow")
+            effective_progress.update(detail="building market-data request")
             request = self._build_market_data_request(
                 run_id=input_inference.run_id,
                 tick_data_source=input_inference.tick_data_source,
@@ -433,10 +436,14 @@ class JaniformEstimator:
                 normalization_policy=input_inference.normalization_policy,
                 working_directory=working_directory,
             )
-            effective_progress.update(detail="translating market-data inputs")
-            prepared = prepare_market_data_calibration(request)
-            effective_progress.update(detail="loading normalized inputs")
-            loaded_inputs = load_market_data_calibration_inputs(request)
+            effective_progress.update(detail="loading and translating market data")
+            translation_result = translate_market_data_request_to_staged_execution_input(
+                request
+            )
+            prepared = _prepare_market_data_calibration_from_translation_result(
+                request=request,
+                translation_result=translation_result,
+            )
         except Exception:
             if temporary_directory is not None:
                 temporary_directory.cleanup()
@@ -447,8 +454,12 @@ class JaniformEstimator:
             prepared=prepared,
             resolved_configuration=resolved_configuration,
             input_inference=input_inference,
-            fit_warning=_detect_interval_data_warning(loaded_inputs.tick_data.records),
-            reference_price=_extract_reference_price(loaded_inputs.tick_data.records),
+            fit_warning=_detect_interval_data_warning(
+                translation_result.loaded_inputs.tick_data.records
+            ),
+            reference_price=_extract_reference_price(
+                translation_result.loaded_inputs.tick_data.records
+            ),
             temporary_directory=temporary_directory,
         )
 

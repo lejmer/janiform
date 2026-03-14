@@ -44,7 +44,7 @@ from ..staged.inputs import (
     StagedCalibrationExecutionInput,
 )
 from ..staged.request import StagedCalibrationRequest
-from ..._contracts import parse_json_object, serialize_deterministic_json
+from ..._contracts import serialize_deterministic_json
 from ..._native_api import native_module
 from ..._timestamps import datetime_to_utc_nanos
 from ...calendar import CalendarRegistry
@@ -440,8 +440,8 @@ def _preprocess_market_data_translation_inputs(
     }
 
     try:
-        response_json: str = native.preprocess_market_data_translation_request(
-            serialize_deterministic_json(preprocessing_request),
+        raw_payload = native.preprocess_market_data_translation_request(
+            preprocessing_request,
             calendar_registry._native_registry,
         )
     except native.CalibrationExecutionError as e:
@@ -460,12 +460,15 @@ def _preprocess_market_data_translation_inputs(
             },
         ) from e
 
-    try:
-        raw_payload = parse_json_object(
-            response_json,
-            "market-data translation preprocessing output",
-            CALIBRATION_ERROR_FACTORY,
+    if not isinstance(raw_payload, dict):
+        raise _calibration_integration_error(
+            "native market-data preprocessing returned an invalid response payload",
+            entrypoint=CALIBRATION_MARKET_DATA_TRANSLATION_ENTRYPOINT,
+            error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
+            context={"returned_type": type(raw_payload).__name__},
         )
+
+    try:
         raw_hawkes_candidates = raw_payload.get("hawkes_candidate_inputs")
         if raw_hawkes_candidates is not None and not isinstance(
             raw_hawkes_candidates,

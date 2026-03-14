@@ -5,21 +5,23 @@ use janiform_core::calibration::{
     run_staged_calibration_from_execution_input,
 };
 use pyo3::prelude::*;
+use pyo3::types::PyAny;
 use pyo3::types::PyModule;
 use serde_json::Value;
 
 use crate::CalibrationExecutionError;
+use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
 use crate::types::{PyCalendarRegistry, PyCalibrationMemoryCheckpointStore};
 
 #[pyfunction]
-#[pyo3(signature = (preprocessing_request_json, calendar_registry))]
+#[pyo3(signature = (preprocessing_request, calendar_registry))]
 fn preprocess_market_data_translation_request(
     py: Python<'_>,
-    preprocessing_request_json: &str,
+    preprocessing_request: &Bound<'_, PyAny>,
     calendar_registry: &PyCalendarRegistry,
-) -> PyResult<String> {
+) -> PyResult<Py<PyAny>> {
     let preprocessing_request: MarketDataTranslationPreprocessingRequest =
-        serde_json::from_str(preprocessing_request_json).map_err(|source| {
+        serde_json::from_value(py_any_to_json_value(preprocessing_request)?).map_err(|source| {
             CalibrationExecutionError::new_err(format!(
                 "failed to deserialize market-data preprocessing request: {source}"
             ))
@@ -34,31 +36,37 @@ fn preprocess_market_data_translation_request(
         })
         .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
 
-    serialize_market_data_translation_preprocessing_output(&preprocessing_output).map_err(
+    market_data_translation_preprocessing_output_to_py_object(py, &preprocessing_output).map_err(
         |source| {
             CalibrationExecutionError::new_err(format!(
-                "failed to serialize market-data preprocessing output: {source}"
+                "failed to materialize market-data preprocessing output: {source}"
             ))
         },
     )
 }
 
-fn serialize_market_data_translation_preprocessing_output(
+fn market_data_translation_preprocessing_output_to_py_object(
+    py: Python<'_>,
     preprocessing_output: &MarketDataTranslationPreprocessingOutput,
-) -> Result<String, serde_json::Error> {
-    serde_json::to_string(preprocessing_output)
+) -> PyResult<Py<PyAny>> {
+    let raw_value = serde_json::to_value(preprocessing_output).map_err(|source| {
+        CalibrationExecutionError::new_err(format!(
+            "failed to serialize market-data preprocessing output: {source}"
+        ))
+    })?;
+    json_value_to_py_object(py, &raw_value)
 }
 
 #[pyfunction]
-#[pyo3(signature = (execution_input_json, calendar_registry, memory_checkpoint_store = None))]
+#[pyo3(signature = (execution_input, calendar_registry, memory_checkpoint_store = None))]
 fn run_staged_calibration(
     py: Python<'_>,
-    execution_input_json: &str,
+    execution_input: &Bound<'_, PyAny>,
     calendar_registry: &PyCalendarRegistry,
     memory_checkpoint_store: Option<&mut PyCalibrationMemoryCheckpointStore>,
-) -> PyResult<String> {
+) -> PyResult<Py<PyAny>> {
     let execution_input: CalibrationStagedExecutionInput =
-        serde_json::from_str(execution_input_json).map_err(|source| {
+        serde_json::from_value(py_any_to_json_value(execution_input)?).map_err(|source| {
             CalibrationExecutionError::new_err(format!(
                 "failed to deserialize staged calibration execution input: {source}"
             ))
@@ -74,17 +82,18 @@ fn run_staged_calibration(
         })
         .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
 
-    serialize_python_staged_calibration_report(&report).map_err(|source| {
+    python_staged_calibration_report_to_py_object(py, &report)
+}
+
+fn python_staged_calibration_report_to_py_object(
+    py: Python<'_>,
+    report: &CalibrationStagedRunReport,
+) -> PyResult<Py<PyAny>> {
+    let mut serialized_report = match serde_json::to_value(report).map_err(|source| {
         CalibrationExecutionError::new_err(format!(
             "failed to serialize staged calibration report: {source}"
         ))
-    })
-}
-
-fn serialize_python_staged_calibration_report(
-    report: &CalibrationStagedRunReport,
-) -> Result<String, serde_json::Error> {
-    let mut serialized_report = match serde_json::to_value(report)? {
+    })? {
         Value::Object(object) => object,
         _ => unreachable!("staged calibration report should serialize to an object"),
     };
@@ -93,13 +102,18 @@ fn serialize_python_staged_calibration_report(
         .stage_reports
         .iter()
         .map(flatten_stage_report_for_python)
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to flatten staged calibration report for Python: {source}"
+            ))
+        })?;
     serialized_report.insert(
         "stage_reports".to_string(),
         Value::Array(flattened_stage_reports),
     );
 
-    serde_json::to_string(&Value::Object(serialized_report))
+    json_value_to_py_object(py, &Value::Object(serialized_report))
 }
 
 fn flatten_stage_report_for_python(

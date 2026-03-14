@@ -270,8 +270,8 @@ def test_pricing_run_maps_invalid_native_response_to_integration_error(
         PricingExecutionError = NativeExecutionError
 
         @staticmethod
-        def run_vanilla_option_pricing(*args, **kwargs) -> str:
-            return "{}"
+        def run_vanilla_option_pricing(*args, **kwargs) -> dict[str, Any]:
+            return {}
 
     monkeypatch.setattr(pricing_module, "native_module", lambda: FakeNative())
 
@@ -344,8 +344,8 @@ def test_calibration_run_maps_invalid_native_response_to_integration_error(
         CalibrationExecutionError = NativeExecutionError
 
         @staticmethod
-        def run_staged_calibration(*args, **kwargs) -> str:
-            return "{}"
+        def run_staged_calibration(*args, **kwargs) -> dict[str, Any]:
+            return {}
 
     monkeypatch.setattr(calibration_staged_runtime_module, "native_module", lambda: FakeNative())
 

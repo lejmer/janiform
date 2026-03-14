@@ -8,7 +8,12 @@ import pytest
 import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.calibration.fit.model as fit_model_module
 from janiform.calibration import CalibrationValidationError
-from janiform.calibration.fit import JaniformEstimator, JaniformFitReport, JaniformModel
+from janiform.calibration.fit import (
+    JaniformEstimator,
+    JaniformFitReport,
+    JaniformModel,
+    JaniformSimulationResult,
+)
 from janiform.calibration.market_data import (
     CalibrationDuplicateRecordPolicy,
     CalibrationInputFileFormat,
@@ -428,6 +433,21 @@ def test_high_level_model_simulate_dispatches_by_interval_mode(
         "run_seeded_tick_event_simulation",
         lambda request: captured_calls.append(("ticks", request)) or tick_result,
     )
+    monkeypatch.setattr(
+        fit_model_module,
+        "_build_high_level_simulation_result",
+        lambda **kwargs: JaniformSimulationResult(
+            simulation_kind=(
+                "seeded_tick"
+                if kwargs["simulation_result"] is tick_result
+                else "coarse_interval"
+            ),
+            metadata={},
+            provenance={},
+            diagnostics={},
+            raw_result=kwargs["simulation_result"],
+        ),
+    )
 
     observed_seeded = model.simulate(
         seed=17,
@@ -441,12 +461,77 @@ def test_high_level_model_simulate_dispatches_by_interval_mode(
         interval="15min",
     )
 
-    assert observed_seeded is tick_result
-    assert observed_coarse is coarse_result
+    assert isinstance(observed_seeded, JaniformSimulationResult)
+    assert isinstance(observed_coarse, JaniformSimulationResult)
+    assert observed_seeded.raw_result is tick_result
+    assert observed_coarse.raw_result is coarse_result
+    assert observed_seeded.simulation_kind == "seeded_tick"
+    assert observed_coarse.simulation_kind == "coarse_interval"
     assert captured_calls == [
         ("ticks", prepared_inputs.seeded_request),
         ("coarse", prepared_inputs.coarse_request),
     ]
+
+
+def test_high_level_simulation_result_exposes_tabular_exports(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_output_paths: list[Path] = []
+
+    def capture_persist_coarse_simulation(
+        *,
+        simulation_result: object,
+        output_path: str | Path,
+        sink: Any = None,
+    ) -> None:
+        del simulation_result
+        captured_output_paths.append(Path(output_path))
+        if sink is not None:
+            sink.write_records(
+                [
+                    {
+                        "interval_index": 0,
+                        "interval_start_utc": "2026-02-02T15:00:00Z",
+                        "interval_end_utc": "2026-02-02T16:00:00Z",
+                        "total_return": 0.01,
+                    }
+                ]
+            )
+            sink.close()
+            return
+
+        Path(output_path).write_text("parquet placeholder", encoding="utf-8")
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "persist_coarse_simulation",
+        capture_persist_coarse_simulation,
+    )
+
+    result = JaniformSimulationResult(
+        simulation_kind="coarse_interval",
+        metadata={"schema_version": "simulation.coarse_interval.path_output_schema_metadata.v1"},
+        provenance={"model_run_id": "model-1"},
+        diagnostics={"simulated_interval_count": 1},
+        raw_result=object(),
+    )
+
+    pandas_frame = result.to_pandas()
+    numpy_array = result.to_numpy()
+    parquet_path = tmp_path / "simulation.parquet"
+    result.to_parquet(parquet_path)
+
+    assert list(pandas_frame.columns) == [
+        "interval_index",
+        "interval_start_utc",
+        "interval_end_utc",
+        "total_return",
+    ]
+    assert pandas_frame.iloc[0]["total_return"] == pytest.approx(0.01)
+    assert numpy_array.shape == (1, 4)
+    assert parquet_path.read_text(encoding="utf-8") == "parquet placeholder"
+    assert captured_output_paths[-1] == parquet_path
 
 
 def test_high_level_model_price_option_dispatches_through_canonical_pricing_runner(
@@ -537,6 +622,78 @@ def test_high_level_fit_routes_through_prepared_staged_runner(
 
     captured_input = captured_execution_input["execution_input"]
     assert captured_input == fit_report.execution_input
+
+
+def test_high_level_fit_reuses_single_translation_pass_when_session_is_explicit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc",
+                "2026-02-02T14:30:00Z",
+                "2026-02-02T15:00:00Z",
+                "2026-02-02T20:59:00Z",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    translation_call_count = 0
+    extra_python_load_count = 0
+    original_translate = fit_estimator_module.translate_market_data_request_to_staged_execution_input
+    original_load_market_data = fit_estimator_module.load_market_data_calibration_inputs
+
+    def counting_translate(*args, **kwargs):
+        nonlocal translation_call_count
+        translation_call_count += 1
+        return original_translate(*args, **kwargs)
+
+    def unexpected_extra_python_load(*args, **kwargs):
+        nonlocal extra_python_load_count
+        extra_python_load_count += 1
+        return original_load_market_data(*args, **kwargs)
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "translate_market_data_request_to_staged_execution_input",
+        counting_translate,
+    )
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "load_market_data_calibration_inputs",
+        unexpected_extra_python_load,
+    )
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_staged_calibration_with_raw_payload",
+        lambda *args, **kwargs: _successful_staged_runner_payload("high-level-fit-single-pass"),
+    )
+
+    estimator = JaniformEstimator(
+        workflow_scope=CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY,
+        tick_data_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
+        ),
+        session="XNYS",
+        known_news="none",
+    )
+
+    estimator.fit(
+        run_id="high-level-fit-single-pass",
+        tick_data_path=tick_data_path,
+        tick_data_format=CalibrationInputFileFormat.CSV,
+    )
+
+    assert translation_call_count == 1
+    assert extra_python_load_count == 0
 
 
 def test_high_level_fit_report_returns_failure_details_without_model(

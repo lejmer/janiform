@@ -60,11 +60,20 @@ janiform fit inspect data/eurusd_ticks.csv --market eurusd_spot --output json
 ```
 
 ```python
+from datetime import UTC, datetime
+
 from janiform.calibration import JaniformEstimator
 
 model = JaniformEstimator(market_profile="eurusd_spot").fit(
     tick_data_path="data/eurusd_ticks.csv",
 )
+
+simulation = model.simulate(
+    seed=7,
+    start_time_utc=datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
+    horizon_interval_count=8,
+)
+pandas_frame = simulation.to_pandas()
 ```
 
 ## Developer Environment Setup
@@ -216,7 +225,8 @@ This tells the script to use the `.venv-linux` venv, and to pass on the `-v` com
 
 - Workflow examples and expected output summaries: `examples/README.md`
 - Seeded simulation example: `examples/simulation_workflow.py`
-  - Seeded responses expose lazy `fine_path` and `event_tape` views plus `diagnostics`, so normal runs avoid a full fine-path JSON round-trip and only materialize chunks on demand.
+  - High-level `JaniformModel.simulate(...)` returns `JaniformSimulationResult`, which keeps Janiform metadata and diagnostics attached while exposing `to_pandas()`, `to_numpy()`, and `to_parquet(path)`.
+  - Seeded responses still expose lazy `fine_path` and `event_tape` views plus `diagnostics`, so normal runs avoid a full fine-path JSON round-trip and only materialize chunks on demand.
 - Vanilla option pricing example: `examples/pricing_workflow.py`
 - Primary market-data calibration example with tick-data `csv`, tick-data `parquet`, explicit known-news inputs, and optional option-surface files: `examples/market_data_calibration_workflow.py`
 - Advanced staged calibration example with default `memory` mode, explicit `disk` override, raw observed open-session return evidence for return-components fitting, and internal close-open gap detection from raw boundary observations: `examples/calibration_workflow.py`
