@@ -76,8 +76,11 @@ When running `cargo test`, do so with `TMPDIR=/tmp` so that verification stays i
 
 ### 2. Python
 - Type hints everywhere (functions, attributes, locals where it matters).
-- Never use quoted / stringed type hints; repo requires Python 3.14 and PEP 649 and PEP 749 is accepted in that version.
+- Never use quoted / stringed type hints; repo requires Python >=3.12 and PEP 649 and PEP 749 is accepted in that version.
 - Imports grouped and alphabetized per guide.
+- Use `Any` instead of `object` for most things where inference is hard or impossible. This includes tuples, lists and dicts that take non-builtin types that are hard to infer.
+- Don't be lazy and do `list[Any]` any time we have non-builtin types. That's bad practice. Most of the time types are inferable and should be used explicitly.
+- Never use `object` or `Any` as a cop-out / shortcut to get around specifying a type that is known. Even if it leads to circular imports. Deal with circular imports a different way! Good type hints are a priority! They make bugs less likely.
 - Strings: double quotes for paths/logs/UI; single quotes for enum‑like values and keys.
 - Enums: use `StrEnum`, `IntEnum`, or `IntFlag`; UPPERCASE members.
 - Control flow: prefer `match` over long if/elif chains where suitable.
