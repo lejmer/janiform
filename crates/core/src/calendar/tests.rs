@@ -3,10 +3,11 @@ use super::{
     ExchangeCalendarDefinition, ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact,
     ExchangeCalendarRegistryLoadError, ExchangeCalendarRegistryLoader,
     ExchangeCalendarRegistryLookupError, ExchangeCalendarResolveError,
-    ExchangeCalendarValidationError, MarketState, RegularSessionArtifact, SessionWindowArtifact,
-    TimestampEventInputRecord, TimestampEventPreprocessingError, TimestampEventSessionFilter,
-    TradingWeekday,
+    ExchangeCalendarValidationError, MarketState, RegularSessionArtifact,
+    SessionWindowArtifact, TimestampEventInputRecord, TimestampEventPreprocessingError,
+    TimestampEventSessionFilter, TradingWeekday,
 };
+use crate::calendar::definition::resolve_market_state_for_definition_at_utc;
 use chrono::{DateTime, TimeZone, Utc};
 
 #[test]
@@ -148,6 +149,52 @@ fn valid_definition_with_multiple_weekdays_builds_successfully() {
     assert_eq!(
         definition.regular_sessions()[2].weekday(),
         TradingWeekday::Wednesday
+    );
+}
+
+#[test]
+fn full_day_window_accepts_24_00_close_and_treats_it_as_exclusive_end_of_day() {
+    let artifact = ExchangeCalendarArtifact {
+        schema_version: "calendar.v1".to_string(),
+        exchange_code: "FXSPOT".to_string(),
+        exchange_name: "OTC FX Spot".to_string(),
+        timezone_name: Some("UTC".to_string()),
+        rule_metadata: CalendarRuleMetadataArtifact {
+            holiday_calendar_code: "FX_24_5".to_string(),
+            early_close_rule_set: None,
+        },
+        regular_sessions: vec![RegularSessionArtifact {
+            weekday: TradingWeekday::Monday,
+            windows: vec![SessionWindowArtifact {
+                label: "regular".to_string(),
+                open_time: "00:00".to_string(),
+                close_time: "24:00".to_string(),
+            }],
+        }],
+        holiday_dates: vec![],
+        early_close_sessions: vec![],
+    };
+
+    let definition = ExchangeCalendarDefinition::from_artifact(artifact)
+        .expect("24:00 close should be accepted as the end-of-day boundary");
+    let monday_late = timestamp_utc(2026, 2, 2, 23, 59, 0);
+    let tuesday_boundary = timestamp_utc(2026, 2, 3, 0, 0, 0);
+
+    assert_eq!(
+        resolve_market_state_for_definition_at_utc(
+            &definition,
+            chrono_tz::UTC,
+            monday_late,
+        ),
+        MarketState::Open
+    );
+    assert_eq!(
+        resolve_market_state_for_definition_at_utc(
+            &definition,
+            chrono_tz::UTC,
+            tuesday_boundary,
+        ),
+        MarketState::Closed
     );
 }
 
