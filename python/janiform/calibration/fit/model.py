@@ -40,6 +40,7 @@ from ..staged.inputs import StagedCalibrationExecutionInput
 from ..staged.results import StagedCalibrationResponse
 from ..._workflow_outputs import (
     SimulationArtifactSink,
+    _seeded_tick_output_columns,
     generate_workflow_run_id,
     persist_coarse_simulation,
     persist_seeded_tick_simulation,
@@ -95,12 +96,23 @@ from ...simulation import (
 
 _HIGH_LEVEL_MODEL_PERSISTENCE_SCHEMA_VERSION = "calibration.high_level.model.v1"
 _DEFAULT_HIGH_LEVEL_SIMULATION_INTERVAL = "1h"
+_COARSE_SIMULATION_RESULT_COLUMNS: tuple[str, ...] = (
+    "interval_index",
+    "interval_start_utc",
+    "interval_end_utc",
+    "buy_side_return",
+    "sell_side_return",
+    "trading_time_return",
+    "open_jump_return",
+    "closed_gap_return",
+    "total_return",
+)
 
 
 @dataclass(frozen=True, slots=True)
 class _PreparedModelSimulationInputs:
-    coarse_request: CoarseSimulationRunRequest
-    seeded_request: SeededTickSimulationRequest
+    coarse_request: Optional[CoarseSimulationRunRequest]
+    seeded_request: Optional[SeededTickSimulationRequest]
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,16 +156,21 @@ class JaniformSimulationResult:
     def to_pandas(self) -> Any:
         import pandas
 
-        return pandas.DataFrame.from_records(self._rows())
+        rows = self._rows()
+        if len(rows) == 0:
+            return pandas.DataFrame(columns=self._column_names())
+
+        return pandas.DataFrame.from_records(rows)
 
     def to_numpy(self) -> Any:
         import numpy
 
         rows = self._rows()
         if len(rows) == 0:
-            return numpy.empty((0, 0), dtype=object)
+            return numpy.empty((0, len(self._column_names())), dtype=object)
 
         column_names = tuple(rows[0].keys())
+
         return numpy.asarray(
             [
                 tuple(row[column_name] for column_name in column_names)
@@ -205,6 +222,15 @@ class JaniformSimulationResult:
         self._rows_cache = sink.rows
         return self._rows_cache
 
+    def _column_names(self) -> tuple[str, ...]:
+        if self.simulation_kind == "seeded_tick":
+            if self._preferences is None:
+                raise RuntimeError("seeded simulation exports require output preferences")
+
+            return _seeded_tick_output_columns(self._preferences)
+
+        return _COARSE_SIMULATION_RESULT_COLUMNS
+
 
 @dataclass(frozen=True, slots=True)
 class JaniformModel:
@@ -250,6 +276,7 @@ class JaniformModel:
 
         effective_interval = _DEFAULT_HIGH_LEVEL_SIMULATION_INTERVAL if interval is None else interval
         output_controller = JaniformOutputController(silent=silent)
+        simulation_kind = "seeded_tick" if interval is None else "coarse_interval"
 
         execution_inputs = _prepare_model_simulation_inputs(
             self,
@@ -257,6 +284,7 @@ class JaniformModel:
             start_time_utc=start_time_utc,
             horizon_interval_count=horizon_interval_count,
             interval=effective_interval,
+            simulation_kind=simulation_kind,
             initial_excitation_state=initial_excitation_state,
             debug_trace_enabled=debug_trace_enabled,
             sample_every_nth_transition=sample_every_nth_transition,
@@ -264,13 +292,21 @@ class JaniformModel:
             state_snapshot_capture=state_snapshot_capture,
         )
         with output_controller.progress("simulate") as progress:
-            if interval is None:
+            if simulation_kind == "seeded_tick":
                 progress.update(detail="simulating seeded ticks")
+
+                if execution_inputs.seeded_request is None:
+                    raise RuntimeError("JaniformModel seeded simulation inputs were not prepared")
+
                 raw_simulation_result = run_seeded_tick_event_simulation(
                     execution_inputs.seeded_request
                 )
             else:
                 progress.update(detail="simulating coarse intervals")
+
+                if execution_inputs.coarse_request is None:
+                    raise RuntimeError("JaniformModel coarse simulation inputs were not prepared")
+
                 raw_simulation_result = run_coarse_simulation(
                     execution_inputs.coarse_request
                 )
@@ -475,6 +511,7 @@ def _prepare_model_simulation_inputs(
     start_time_utc: datetime,
     horizon_interval_count: int,
     interval: str | timedelta,
+    simulation_kind: str,
     initial_excitation_state: Optional[HawkesExcitationState],
     debug_trace_enabled: bool,
     sample_every_nth_transition: int,
@@ -493,61 +530,71 @@ def _prepare_model_simulation_inputs(
         else initial_excitation_state
     )
 
-    coarse_request = CoarseSimulationRunRequest.from_runtime_inputs(
-        seed=seed,
-        start_time_utc=start_time_utc,
-        horizon_interval_count=horizon_interval_count,
-        interval_delta=runtime_factors.interval_delta,
-        risk_model_inputs=SufficientStatisticsRiskModelInputs(
-            equation_specification=SufficientStatisticsRiskEquationSpecification(
-                hawkes_kernel_parameters=runtime_factors.kernel_parameters,
-                gamma_severity_mark_configuration=runtime_factors.gamma_severity_mark_configuration,
-            ),
-            nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
-            initial_excitation_state=effective_initial_state,
-        ),
-        interval_factors=SufficientStatisticsRiskIntervalFactors(
-            interval_delta=runtime_factors.interval_delta,
-            s_h=runtime_factors.seasonality_hourly_factors,
-            nu_h_known=runtime_factors.known_component_nu_h,
-            nu_h_surprise=runtime_factors.surprise_component_nu_h,
-        ),
-        news_process_configuration=runtime_factors.news_process_configuration,
-        calendar_registry=runtime_factors.calendar_registry,
-        exchange_code=runtime_factors.exchange_code,
-    )
-    seeded_request = SeededTickSimulationRequest.from_runtime_inputs(
-        seed=seed,
-        start_time_utc=start_time_utc,
-        horizon_interval_count=horizon_interval_count,
-        kernel_parameters=runtime_factors.kernel_parameters,
-        nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
-        news_process_configuration=runtime_factors.news_process_configuration,
-        initial_excitation_state=effective_initial_state,
-        hourly_factor_contract=load_hourly_factor_contract_for_simulation(
-            calendar_registry=runtime_factors.calendar_registry,
-            exchange_code=runtime_factors.exchange_code,
-            range_start_utc=start_time_utc,
-            range_end_utc=runtime_factors.range_end_utc,
-            interval=interval,
-            seasonality_source=_build_runtime_hourly_seasonality_source_from_model(
-                model,
+    coarse_request: Optional[CoarseSimulationRunRequest] = None
+    seeded_request: Optional[SeededTickSimulationRequest] = None
+
+    match simulation_kind:
+        case "coarse_interval":
+            coarse_request = CoarseSimulationRunRequest.from_runtime_inputs(
+                seed=seed,
+                start_time_utc=start_time_utc,
+                horizon_interval_count=horizon_interval_count,
+                interval_delta=runtime_factors.interval_delta,
+                risk_model_inputs=SufficientStatisticsRiskModelInputs(
+                    equation_specification=SufficientStatisticsRiskEquationSpecification(
+                        hawkes_kernel_parameters=runtime_factors.kernel_parameters,
+                        gamma_severity_mark_configuration=runtime_factors.gamma_severity_mark_configuration,
+                    ),
+                    nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
+                    initial_excitation_state=effective_initial_state,
+                ),
+                interval_factors=SufficientStatisticsRiskIntervalFactors(
+                    interval_delta=runtime_factors.interval_delta,
+                    s_h=runtime_factors.seasonality_hourly_factors,
+                    nu_h_known=runtime_factors.known_component_nu_h,
+                    nu_h_surprise=runtime_factors.surprise_component_nu_h,
+                ),
+                news_process_configuration=runtime_factors.news_process_configuration,
                 calendar_registry=runtime_factors.calendar_registry,
                 exchange_code=runtime_factors.exchange_code,
-                range_start_utc=start_time_utc,
-                range_end_utc=runtime_factors.range_end_utc,
-                interval=interval,
-            ),
-            news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
-                known_scheduled_event_timestamps_utc=_resolved_known_news_event_timestamps(model),
-                surprise_baseline_intensity=_surprise_baseline_intensity(model),
-            ),
-        ),
-        debug_trace_enabled=debug_trace_enabled,
-        sample_every_nth_transition=sample_every_nth_transition,
-        max_records_per_chunk=max_records_per_chunk,
-        state_snapshot_capture=state_snapshot_capture,
-    )
+            )
+        case "seeded_tick":
+            seeded_request = SeededTickSimulationRequest.from_runtime_inputs(
+                seed=seed,
+                start_time_utc=start_time_utc,
+                horizon_interval_count=horizon_interval_count,
+                kernel_parameters=runtime_factors.kernel_parameters,
+                nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
+                news_process_configuration=runtime_factors.news_process_configuration,
+                initial_excitation_state=effective_initial_state,
+                hourly_factor_contract=load_hourly_factor_contract_for_simulation(
+                    calendar_registry=runtime_factors.calendar_registry,
+                    exchange_code=runtime_factors.exchange_code,
+                    range_start_utc=start_time_utc,
+                    range_end_utc=runtime_factors.range_end_utc,
+                    interval=interval,
+                    seasonality_source=_build_runtime_hourly_seasonality_source_from_model(
+                        model,
+                        calendar_registry=runtime_factors.calendar_registry,
+                        exchange_code=runtime_factors.exchange_code,
+                        range_start_utc=start_time_utc,
+                        range_end_utc=runtime_factors.range_end_utc,
+                        interval=interval,
+                    ),
+                    news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
+                        known_scheduled_event_timestamps_utc=_resolved_known_news_event_timestamps(model),
+                        surprise_baseline_intensity=_surprise_baseline_intensity(model),
+                    ),
+                ),
+                debug_trace_enabled=debug_trace_enabled,
+                sample_every_nth_transition=sample_every_nth_transition,
+                max_records_per_chunk=max_records_per_chunk,
+                state_snapshot_capture=state_snapshot_capture,
+            )
+        case _:
+            raise RuntimeError(
+                "JaniformModel simulate must prepare either `seeded_tick` or `coarse_interval` inputs"
+            )
 
     return _PreparedModelSimulationInputs(
         coarse_request=coarse_request,

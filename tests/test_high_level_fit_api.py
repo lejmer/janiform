@@ -1,6 +1,7 @@
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, NoReturn
 
 import pytest
@@ -473,6 +474,63 @@ def test_high_level_model_simulate_dispatches_by_interval_mode(
     ]
 
 
+def test_high_level_model_coarse_simulation_skips_seeded_contract_preparation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-coarse-only",
+    )
+    coarse_result = object()
+
+    def _unexpected_seeded_contract_loader(**kwargs) -> NoReturn:
+        del kwargs
+        raise AssertionError("coarse simulation should not prepare seeded hourly factor inputs")
+
+    def _unexpected_seeded_runtime(request: Any) -> NoReturn:
+        del request
+        raise AssertionError("coarse simulation should not dispatch the seeded runtime")
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "load_hourly_factor_contract_for_simulation",
+        _unexpected_seeded_contract_loader,
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "run_seeded_tick_event_simulation",
+        _unexpected_seeded_runtime,
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "run_coarse_simulation",
+        lambda request: coarse_result,
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "_build_high_level_simulation_result",
+        lambda **kwargs: JaniformSimulationResult(
+            simulation_kind="coarse_interval",
+            metadata={},
+            provenance={},
+            diagnostics={},
+            raw_result=kwargs["simulation_result"],
+        ),
+    )
+
+    observed = model.simulate(
+        seed=17,
+        start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        horizon_interval_count=2,
+        interval="15min",
+    )
+
+    assert observed.simulation_kind == "coarse_interval"
+    assert observed.raw_result is coarse_result
+
+
 def test_high_level_simulation_result_exposes_tabular_exports(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -532,6 +590,56 @@ def test_high_level_simulation_result_exposes_tabular_exports(
     assert numpy_array.shape == (1, 4)
     assert parquet_path.read_text(encoding="utf-8") == "parquet placeholder"
     assert captured_output_paths[-1] == parquet_path
+
+
+def test_high_level_seeded_simulation_result_preserves_empty_tabular_schema(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def capture_empty_seeded_simulation(
+        *,
+        simulation_result: object,
+        output_path: str | Path,
+        preferences: Any,
+        sink: Any = None,
+    ) -> None:
+        del simulation_result, output_path, preferences
+        if sink is not None:
+            sink.close()
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "persist_seeded_tick_simulation",
+        capture_empty_seeded_simulation,
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "_seeded_tick_output_columns",
+        lambda preferences: (
+            preferences.timestamp_column,
+            preferences.trade_price_column,
+            preferences.trade_sign_column,
+        ),
+    )
+
+    result = JaniformSimulationResult(
+        simulation_kind="seeded_tick",
+        metadata={},
+        provenance={},
+        diagnostics={},
+        raw_result=object(),
+        _preferences=SimpleNamespace(
+            timestamp_column="timestamp_utc",
+            trade_price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+    )
+
+    pandas_frame = result.to_pandas()
+    numpy_array = result.to_numpy()
+
+    assert list(pandas_frame.columns) == ["timestamp_utc", "trade_price", "trade_sign"]
+    assert pandas_frame.empty
+    assert numpy_array.shape == (0, 3)
 
 
 def test_high_level_model_price_option_dispatches_through_canonical_pricing_runner(
