@@ -1,7 +1,7 @@
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
+from typing import cast, Any
 
 import orjson
 import pytest
@@ -59,7 +59,7 @@ def test_hourly_factor_materialize_seasonality_cli_generates_canonical_report(
 ) -> None:
     calendar_registry_path = write_json_path(
         tmp_path / "calendar_registry.json",
-        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+        cast(dict[str, Any], orjson.loads(calendar_registry_json)),
     )
     materialization_input_path = write_json_path(
         tmp_path / "seasonality_materialization_input.json",

@@ -69,6 +69,55 @@ def test_janiform_estimator_fit_returns_model_for_default_high_level_workflow(
     assert model.metadata["selected_stages"] == ["seasonality"]
 
 
+def test_janiform_estimator_supports_simple_zero_config_tick_fit_without_tempdir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "simple_ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T15:00:00Z,101.0,sell",
+                "2026-02-02T20:59:00Z,102.0,buy",
+                "2026-02-03T14:30:00Z,99.0,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_staged_calibration_with_raw_payload",
+        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
+            execution_input.request.run_id
+        ),
+    )
+
+    def _unexpected_tempdir(*args: object, **kwargs: object) -> object:
+        raise AssertionError("temporary directory should not be created for the common memory path")
+
+    monkeypatch.setattr(fit_estimator_module, "TemporaryDirectory", _unexpected_tempdir)
+
+    estimator = JaniformEstimator(
+        market_profile="us_equity_cash",
+    )
+
+    model = estimator.fit(
+        tick_data_path=tick_data_path,
+    )
+
+    assert isinstance(model, JaniformModel)
+    assert model.run_id.startswith("simple_ticks_")
+    assert model.metadata["workflow_scope"] == "full_without_option_surface"
+    assert model.metadata["input_inference"]["tick_data_format"] == "csv"
+    assert model.metadata["input_inference"]["timestamp_column"] == "timestamp_utc"
+    assert model.metadata["input_inference"]["tick_price_input_policy"] == "trade_price_column"
+    assert model.metadata["input_inference"]["tick_price_columns"]["trade_price_column"] == "trade_price"
+    assert model.metadata["input_inference"]["tick_price_columns"]["trade_sign_column"] == "trade_sign"
+
+
 def test_high_level_session_calendar_registry_preserves_fx_weekend_closure() -> None:
     registry = fit_estimator_module.PresetRegistry()
     _, session_artifact = registry.resolve_session_preset("fx_spot_24_5")
@@ -246,7 +295,7 @@ def test_high_level_model_summary_exposes_fitted_parameters_and_provenance(
         "event_count": 0,
         "active": False,
     }
-    assert summary["session_resolution"]["resolution_kind"] == "explicit_override"
+    assert summary["session_resolution"]["resolution_kind"] == "automatic_inference"
     assert summary["fitted_parameter_summary"]["selected_candidate_ids"] == {
         "hawkes": "candidate_stable_low_loss",
         "return_components": "return_candidate_balanced",

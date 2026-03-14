@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pyarrow as pa
 import pytest
@@ -815,7 +816,7 @@ def _build_market_data_request(
     exchange_code: str = "XNYS",
     session_timezone: str | None = "America/New_York",
 ) -> MarketDataCalibrationRequest:
-    session_configuration_fields: dict[str, object] = {
+    session_configuration_fields: dict[str, Any] = {
         "exchange_code": exchange_code,
     }
     if session_definition_path is not None:

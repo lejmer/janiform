@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 from janiform.pricing import (
     VanillaOptionPricingExecutionInput,
@@ -12,7 +13,7 @@ from ._shared import (
 )
 
 
-def run_example() -> dict[str, object]:
+def run_example() -> dict[str, Any]:
     request = build_pricing_request()
     execution_input = VanillaOptionPricingExecutionInput(
         request=request,

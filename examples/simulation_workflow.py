@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 from janiform.simulation.seeded import (
     SeededTickSimulationRequest,
@@ -19,7 +20,7 @@ from ._shared import (
 )
 
 
-def run_example() -> dict[str, object]:
+def run_example() -> dict[str, Any]:
     calendar_registry = build_calendar_registry()
     hourly_factor_contract = load_hourly_factor_contract_for_simulation(
         calendar_registry=calendar_registry,

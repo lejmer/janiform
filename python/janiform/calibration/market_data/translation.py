@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from types import ModuleType
-from typing import Optional
+from typing import Optional, Any
 
 from .contracts import (
     CalibrationMarketDataNormalizationPolicy,
@@ -382,7 +382,7 @@ def _preprocess_market_data_translation_inputs(
             context={"module_name": "janiform._native"},
         ) from e
 
-    preprocessing_request: dict[str, object] = {
+    preprocessing_request: dict[str, Any] = {
         "exchange_code": exchange_code,
         "trade_events_data_reference": trade_events_data_reference,
         "tick_records": [

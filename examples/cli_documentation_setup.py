@@ -2,6 +2,7 @@ import argparse
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from janiform.calibration import CalibrationExecutionMode
 from janiform.hourly_factors import (
@@ -299,7 +300,7 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
 
 def _build_hourly_seasonality_materialization_payload(
     materialization: HourlySeasonalityMaterialization,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     return {
         "schema_version": materialization.schema_version,
         "exchange_code": materialization.exchange_code,
@@ -333,7 +334,7 @@ def _build_hourly_seasonality_materialization_payload(
 
 def _build_hourly_news_intensity_materialization_payload(
     materialization: HourlyNewsIntensityMaterialization,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     return {
         "schema_version": materialization.schema_version,
         "exchange_code": materialization.exchange_code,

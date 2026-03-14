@@ -245,21 +245,27 @@ def _infer_session_template(
     configured_session_timezone: Optional[str],
     tick_data: LoadedTickDataSource,
 ) -> _SessionTemplate:
-    if exchange_code == "XNYS":
+    if exchange_code in {"XNYS", "XNAS"}:
+        default_timezone_name = "America/New_York"
+        exchange_name = (
+            "New York Stock Exchange"
+            if exchange_code == "XNYS"
+            else "Nasdaq Stock Market"
+        )
         if configured_session_timezone is not None and configured_session_timezone != "America/New_York":
             raise _session_resolution_error(
                 "session_configuration.session_timezone",
                 (
-                    "conflicts with the built-in exchange default for XNYS. "
+                    f"conflicts with the built-in exchange default for {exchange_code}. "
                     "Provide an explicit session_definition_source to override the default."
                 ),
                 context={"exchange_code": exchange_code},
             )
 
         return _SessionTemplate(
-            policy_id="exchange_code_builtin_default.xnys_regular_session.v1",
-            exchange_name="New York Stock Exchange",
-            timezone_name="America/New_York",
+            policy_id=f"exchange_code_builtin_default.{exchange_code.lower()}_regular_session.v1",
+            exchange_name=exchange_name,
+            timezone_name=default_timezone_name,
             timezone_source="exchange_code_builtin_default",
             holiday_calendar_code="US_EQUITIES",
             early_close_rule_set="US_EQUITIES_EARLY_CLOSE",
@@ -271,6 +277,78 @@ def _infer_session_template(
                     close_time="16:00",
                 )
                 for weekday in _TRADING_WEEKDAYS
+            ),
+        )
+
+    if exchange_code == "FXSPOT":
+        if configured_session_timezone is not None and configured_session_timezone != "UTC":
+            raise _session_resolution_error(
+                "session_configuration.session_timezone",
+                (
+                    "conflicts with the built-in exchange default for FXSPOT. "
+                    "Provide an explicit session_definition_source to override the default."
+                ),
+                context={"exchange_code": exchange_code},
+            )
+
+        return _SessionTemplate(
+            policy_id="exchange_code_builtin_default.fxspot_weekend_window.v1",
+            exchange_name="OTC FX Spot 24/5",
+            timezone_name="UTC",
+            timezone_source="exchange_code_builtin_default",
+            holiday_calendar_code="FX_24_5",
+            early_close_rule_set=None,
+            regular_session_windows=(
+                *tuple(
+                    MarketDataSessionRegularWindow(
+                        weekday=weekday,
+                        label="spot",
+                        open_time="00:00",
+                        close_time="24:00",
+                    )
+                    for weekday in ("Monday", "Tuesday", "Wednesday", "Thursday")
+                ),
+                MarketDataSessionRegularWindow(
+                    weekday="Friday",
+                    label="spot",
+                    open_time="00:00",
+                    close_time="19:00",
+                ),
+                MarketDataSessionRegularWindow(
+                    weekday="Sunday",
+                    label="spot",
+                    open_time="21:00",
+                    close_time="24:00",
+                ),
+            ),
+        )
+
+    if exchange_code == "CRYPTO":
+        if configured_session_timezone is not None and configured_session_timezone != "UTC":
+            raise _session_resolution_error(
+                "session_configuration.session_timezone",
+                (
+                    "conflicts with the built-in exchange default for CRYPTO. "
+                    "Provide an explicit session_definition_source to override the default."
+                ),
+                context={"exchange_code": exchange_code},
+            )
+
+        return _SessionTemplate(
+            policy_id="exchange_code_builtin_default.crypto_continuous_session.v1",
+            exchange_name="Crypto Spot 24/7",
+            timezone_name="UTC",
+            timezone_source="exchange_code_builtin_default",
+            holiday_calendar_code="CRYPTO_24_7",
+            early_close_rule_set=None,
+            regular_session_windows=tuple(
+                MarketDataSessionRegularWindow(
+                    weekday=weekday,
+                    label="spot",
+                    open_time="00:00",
+                    close_time="24:00",
+                )
+                for weekday in _WEEKDAY_NAMES
             ),
         )
 
@@ -551,7 +629,7 @@ def _materialize_calendar_regular_sessions(
     *,
     regular_session_windows: tuple[MarketDataSessionRegularWindow, ...],
     recurring_closed_windows: tuple[MarketDataSessionRecurringClosedWindow, ...],
-) -> list[dict[str, object]]:
+) -> list[dict[str, Any]]:
     retained_open_intervals = _subtract_closed_intervals_from_open_intervals(
         open_intervals=tuple(
             (

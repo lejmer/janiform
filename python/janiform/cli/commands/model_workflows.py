@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional, cast
 
@@ -12,8 +13,10 @@ from .shared import (
     _require_positive_integer_cli_argument,
 )
 from ..command_runtime import (
+    JaniformCommand,
     JaniformGroup,
     command_config_option,
+    invoke_command_handler,
     command_option,
     invoke_group_default_handler,
     optional_path_option,
@@ -31,6 +34,10 @@ from .._constants import (
     CLI_CALIBRATION_TICK_FILE_FORMAT_CHOICES,
     CLI_CALIBRATION_TICK_PRICE_POLICY_CHOICES,
     CLI_FIT_ENTRYPOINT,
+    CLI_FIT_INSPECT_ENTRYPOINT,
+    CLI_FIT_INSPECT_INTERNAL_ERROR_ID,
+    CLI_FIT_INSPECT_RESULT_SCHEMA_VERSION,
+    CLI_FIT_INSPECT_VALIDATION_ERROR_ID,
     CLI_FIT_INTERNAL_ERROR_ID,
     CLI_FIT_RESULT_SCHEMA_VERSION,
     CLI_FIT_VALIDATION_ERROR_ID,
@@ -47,6 +54,7 @@ from ..errors import _classify_generic_cli_command_error, _cli_validation_error
 from ..paths import _resolve_path_from_repository_root
 from ..rendering import (
     _render_fit_human_output,
+    _render_fit_inspect_human_output,
     _render_simulate_human_output,
     _write_cli_error,
     _write_command_output,
@@ -59,9 +67,9 @@ from ...calibration import (
     CalibrationMarketDataWorkflowScope,
     CalibrationOptionQuoteInputPolicy,
     CalibrationOptionSurfaceColumnMapping,
-    CalibrationExecutionMode,
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
+    CalibrationExecutionMode,
     JaniformEstimator,
     JaniformFitReport,
     JaniformModel,
@@ -75,7 +83,25 @@ from ...calibration import (
     SessionPresetReference,
 )
 from ...calibration.fit.estimator import _load_explicit_session_configuration
+from ...calibration.fit.input_resolution import (
+    HighLevelFitInference,
+    HighLevelNormalizationPolicyOverrides,
+    HighLevelTickDataColumnOverrides,
+    build_fit_inference_payload,
+    infer_high_level_fit_inputs,
+)
 from ...errors import JaniformError, JaniformErrorCategory, JaniformErrorDetails, JaniformExecutionError
+
+
+@dataclass(frozen=True, slots=True)
+class _ConfiguredCliFitCommand:
+    estimator: JaniformEstimator
+    input_inference: HighLevelFitInference
+    tick_data_path: Path
+    option_surface_path: Optional[Path]
+    option_surface_format: CalibrationInputFileFormat
+    option_surface_provenance_label: str
+    explain_requested: bool
 
 
 def _run_fit_command(
@@ -97,6 +123,7 @@ def _run_fit_command(
             persisted_model_path=persisted_model_path,
             command=CLI_FIT_ENTRYPOINT,
             schema_version=CLI_FIT_RESULT_SCHEMA_VERSION,
+            explain_requested=bool(command_arguments.get("explain")),
         )
     except JaniformError as e:
         return _write_cli_error(e)
@@ -112,11 +139,49 @@ def _run_fit_command(
             )
         )
 
-    _write_command_output(
-        output,
-        json_payload=payload,
-        human_output_factory=lambda: _render_fit_human_output(payload),
-    )
+    if not bool(command_arguments.get("silent")):
+        _write_command_output(
+            output,
+            json_payload=payload,
+            human_output_factory=lambda: _render_fit_human_output(payload),
+        )
+
+    return int(CliExitCode.SUCCESS)
+
+
+def _run_fit_inspect_command(
+    *,
+    cli_context: CliCommandContext,
+    output: str,
+    **command_arguments: object,
+) -> int:
+    try:
+        payload = _build_cli_fit_inspect_payload(
+            cli_context=cli_context,
+            entrypoint=CLI_FIT_INSPECT_ENTRYPOINT,
+            error_id=CLI_FIT_INSPECT_VALIDATION_ERROR_ID,
+            command_arguments=command_arguments,
+        )
+    except JaniformError as e:
+        return _write_cli_error(e)
+    except Exception as e:
+        return _write_cli_error(
+            _classify_generic_cli_command_error(
+                e,
+                entrypoint=CLI_FIT_INSPECT_ENTRYPOINT,
+                validation_error_id=CLI_FIT_INSPECT_VALIDATION_ERROR_ID,
+                internal_error_id=CLI_FIT_INSPECT_INTERNAL_ERROR_ID,
+                file_field_path="tick_data_path",
+                document_field_path="fit_inspection_configuration",
+            )
+        )
+
+    if not bool(command_arguments.get("silent")):
+        _write_command_output(
+            output,
+            json_payload=payload,
+            human_output_factory=lambda: _render_fit_inspect_human_output(payload),
+        )
 
     return int(CliExitCode.SUCCESS)
 
@@ -263,13 +328,13 @@ def _resolve_preset_artifact(
     return artifact
 
 
-def _execute_cli_fit(
+def _configure_cli_fit_command(
     *,
     cli_context: CliCommandContext,
     entrypoint: str,
     error_id: str,
     command_arguments: dict[str, object],
-) -> tuple[JaniformModel, JaniformFitReport, Optional[Path]]:
+) -> _ConfiguredCliFitCommand:
     registry = _build_cli_preset_registry(
         cli_context=cli_context,
         user_preset_json=cast(tuple[Path, ...], command_arguments.get("user_preset_json", ())),
@@ -296,32 +361,12 @@ def _execute_cli_fit(
         entrypoint=entrypoint,
         error_id=error_id,
     )
-    estimator = JaniformEstimator(
-        workflow_scope=CalibrationMarketDataWorkflowScope(cast(str, command_arguments["workflow_scope"])),
-        tick_data_column_mapping=_build_tick_data_column_mapping_from_arguments(command_arguments),
-        normalization_policy=_build_model_workflow_normalization_policy_from_arguments(command_arguments),
-        option_surface_column_mapping=_build_option_surface_column_mapping_from_arguments(
-            command_arguments,
-            entrypoint=entrypoint,
-            error_id=error_id,
-        ),
-        output_preferences=_build_model_workflow_output_preferences_from_arguments(
-            command_arguments,
-            repository_root=cli_context.repository_root,
-            entrypoint=entrypoint,
-            error_id=error_id,
-        ),
-        market_profile=market_profile,
-        session=session_reference,
-        known_news=known_news_reference,
-        exchange_code=cast(Optional[str], command_arguments.get("exchange_code")),
-        session_timezone=cast(Optional[str], command_arguments.get("session_timezone")),
-        registry=registry,
-    )
 
-    tick_data_path = _resolve_path_from_repository_root(
-        cli_context.repository_root,
-        cast(Path, command_arguments["tick_data_path"]),
+    tick_data_path = _resolve_required_tick_data_path(
+        cli_context=cli_context,
+        entrypoint=entrypoint,
+        error_id=error_id,
+        raw_tick_data_path=cast(Optional[Path], command_arguments.get("tick_data_path")),
     )
     option_surface_path = cast(Optional[Path], command_arguments.get("option_surface_path"))
     resolved_option_surface_path = (
@@ -358,16 +403,235 @@ def _execute_cli_fit(
         message="option-surface flags require --option-surface-path",
     )
 
+    workflow_scope = CalibrationMarketDataWorkflowScope(
+        cast(
+            str,
+            command_arguments.get("workflow_scope", "full_without_option_surface"),
+        )
+    )
+    option_surface_column_mapping = _build_option_surface_column_mapping_from_arguments(
+        command_arguments,
+        entrypoint=entrypoint,
+        error_id=error_id,
+    )
+    output_preferences = _build_model_workflow_output_preferences_from_arguments(
+        command_arguments,
+        repository_root=cli_context.repository_root,
+        entrypoint=entrypoint,
+        error_id=error_id,
+    )
+
+    preliminary_estimator = JaniformEstimator(
+        workflow_scope=workflow_scope,
+        option_surface_column_mapping=option_surface_column_mapping,
+        output_preferences=output_preferences,
+        market_profile=market_profile,
+        session=session_reference,
+        known_news=known_news_reference,
+        exchange_code=cast(Optional[str], command_arguments.get("exchange_code")),
+        session_timezone=cast(Optional[str], command_arguments.get("session_timezone")),
+        registry=registry,
+        silent=bool(command_arguments.get("silent")),
+    )
+    input_inference = infer_high_level_fit_inputs(
+        tick_data_path=tick_data_path,
+        tick_data_format=_optional_tick_data_format_from_arguments(command_arguments),
+        tick_data_provenance_label=_tick_data_provenance_label_from_arguments(command_arguments),
+        workflow_scope=workflow_scope,
+        run_id=cast(Optional[str], command_arguments.get("run_id")),
+        column_overrides=_build_high_level_tick_data_column_overrides_from_arguments(command_arguments),
+        normalization_overrides=_build_high_level_normalization_overrides_from_arguments(command_arguments),
+        market_profile_configuration=preliminary_estimator._resolve_market_profile_configuration(),
+    )
+
+    estimator = JaniformEstimator(
+        workflow_scope=workflow_scope,
+        tick_data_column_mapping=input_inference.tick_data_column_mapping,
+        normalization_policy=input_inference.normalization_policy,
+        option_surface_column_mapping=option_surface_column_mapping,
+        output_preferences=output_preferences,
+        market_profile=market_profile,
+        session=session_reference,
+        known_news=known_news_reference,
+        exchange_code=cast(Optional[str], command_arguments.get("exchange_code")),
+        session_timezone=cast(Optional[str], command_arguments.get("session_timezone")),
+        registry=registry,
+        silent=bool(command_arguments.get("silent")),
+    )
+
+    return _ConfiguredCliFitCommand(
+        estimator=estimator,
+        input_inference=input_inference,
+        tick_data_path=tick_data_path,
+        option_surface_path=resolved_option_surface_path,
+        option_surface_format=option_surface_format,
+        option_surface_provenance_label=option_surface_provenance_label,
+        explain_requested=bool(command_arguments.get("explain")),
+    )
+
+
+def _resolve_required_tick_data_path(
+    *,
+    cli_context: CliCommandContext,
+    entrypoint: str,
+    error_id: str,
+    raw_tick_data_path: Optional[Path],
+) -> Path:
+    if raw_tick_data_path is None:
+        raise _cli_validation_error(
+            "tick_data_path",
+            "Please provide a tick-data path as `janiform fit PATH ...` or with --tick-data-path.",
+            error_id=error_id,
+            entrypoint=entrypoint,
+        )
+
+    return _resolve_path_from_repository_root(cli_context.repository_root, raw_tick_data_path)
+
+
+def _optional_tick_data_format_from_arguments(
+    command_arguments: dict[str, object],
+) -> Optional[CalibrationInputFileFormat]:
+    raw_tick_data_format = cast(Optional[str], command_arguments.get("tick_data_format"))
+    if raw_tick_data_format is None:
+        return None
+
+    return CalibrationInputFileFormat(raw_tick_data_format)
+
+
+def _tick_data_provenance_label_from_arguments(command_arguments: dict[str, object]) -> str:
+    return cast(str, command_arguments.get("tick_data_provenance_label", "tick_data"))
+
+
+def _build_high_level_tick_data_column_overrides_from_arguments(
+    parsed_arguments: dict[str, object],
+) -> Optional[HighLevelTickDataColumnOverrides]:
+    overrides = HighLevelTickDataColumnOverrides(
+        timestamp_column=cast(Optional[str], parsed_arguments.get("tick_timestamp_column")),
+        price_column=cast(Optional[str], parsed_arguments.get("tick_price_column")),
+        trade_price_column=cast(Optional[str], parsed_arguments.get("tick_trade_price_column")),
+        trade_sign_column=cast(Optional[str], parsed_arguments.get("tick_trade_sign_column")),
+        bid_column=cast(Optional[str], parsed_arguments.get("tick_bid_column")),
+        ask_column=cast(Optional[str], parsed_arguments.get("tick_ask_column")),
+        close_price_column=cast(Optional[str], parsed_arguments.get("tick_close_price_column")),
+    )
+
+    if all(
+        field_value is None
+        for field_value in (
+            overrides.timestamp_column,
+            overrides.price_column,
+            overrides.trade_price_column,
+            overrides.trade_sign_column,
+            overrides.bid_column,
+            overrides.ask_column,
+            overrides.close_price_column,
+        )
+    ):
+        return None
+
+    return overrides
+
+
+def _build_high_level_normalization_overrides_from_arguments(
+    parsed_arguments: dict[str, object],
+) -> Optional[HighLevelNormalizationPolicyOverrides]:
+    duplicate_record_policy_raw = cast(Optional[str], parsed_arguments.get("duplicate_record_policy"))
+    tick_price_input_policy_raw = cast(Optional[str], parsed_arguments.get("tick_price_input_policy"))
+    option_quote_input_policy_raw = cast(Optional[str], parsed_arguments.get("option_quote_input_policy"))
+
+    overrides = HighLevelNormalizationPolicyOverrides(
+        timestamp_timezone=cast(Optional[str], parsed_arguments.get("timestamp_timezone")),
+        sort_records_by_timestamp=(
+            False
+            if bool(parsed_arguments.get("disable_timestamp_sort"))
+            else None
+        ),
+        duplicate_record_policy=(
+            CalibrationDuplicateRecordPolicy(duplicate_record_policy_raw)
+            if duplicate_record_policy_raw is not None
+            else None
+        ),
+        tick_price_input_policy=(
+            CalibrationTickPriceInputPolicy(tick_price_input_policy_raw)
+            if tick_price_input_policy_raw is not None
+            else None
+        ),
+        option_quote_input_policy=(
+            CalibrationOptionQuoteInputPolicy(option_quote_input_policy_raw)
+            if option_quote_input_policy_raw is not None
+            else None
+        ),
+    )
+
+    if all(
+        field_value is None
+        for field_value in (
+            overrides.timestamp_timezone,
+            overrides.sort_records_by_timestamp,
+            overrides.duplicate_record_policy,
+            overrides.tick_price_input_policy,
+            overrides.option_quote_input_policy,
+        )
+    ):
+        return None
+
+    return overrides
+
+
+def _build_cli_fit_input_inference_payload(prepared_workflow: Any) -> dict[str, object]:
+    return build_fit_inference_payload(
+        inference=prepared_workflow.input_inference,
+        workflow_scope=prepared_workflow.prepared.request.workflow_scope,
+        market_profile_name=(
+            prepared_workflow.resolved_configuration.market_profile.selected_preset.preset_name
+            if (
+                prepared_workflow.resolved_configuration.market_profile is not None
+                and prepared_workflow.resolved_configuration.market_profile.selected_preset is not None
+            )
+            else None
+        ),
+        known_news_preset_name=(
+            prepared_workflow.resolved_configuration.known_news.selected_preset.preset_name
+            if prepared_workflow.resolved_configuration.known_news.selected_preset is not None
+            else None
+        ),
+        known_news_recommended_name=(
+            prepared_workflow.resolved_configuration.known_news.recommended_reference.preset_name
+            if prepared_workflow.resolved_configuration.known_news.recommended_reference is not None
+            else None
+        ),
+        known_news_recommendation_applied=(
+            prepared_workflow.resolved_configuration.known_news.recommendation_applied
+        ),
+        session_source_kind=prepared_workflow.resolved_configuration.session.source_kind.value,
+        known_news_source_kind=prepared_workflow.resolved_configuration.known_news.source_kind.value,
+    )
+
+
+def _execute_cli_fit(
+    *,
+    cli_context: CliCommandContext,
+    entrypoint: str,
+    error_id: str,
+    command_arguments: dict[str, object],
+) -> tuple[JaniformModel, JaniformFitReport, Optional[Path]]:
+    configured_command = _configure_cli_fit_command(
+        cli_context=cli_context,
+        entrypoint=entrypoint,
+        error_id=error_id,
+        command_arguments=command_arguments,
+    )
+
     model_result, fit_report = cast(
         tuple[Optional[JaniformModel], JaniformFitReport],
-        estimator.fit(
-            run_id=cast(str, command_arguments["run_id"]),
-            tick_data_path=tick_data_path,
-            tick_data_format=CalibrationInputFileFormat(cast(str, command_arguments["tick_data_format"])),
-            tick_data_provenance_label=cast(str, command_arguments["tick_data_provenance_label"]),
-            option_surface_path=resolved_option_surface_path,
-            option_surface_format=option_surface_format,
-            option_surface_provenance_label=option_surface_provenance_label,
+        configured_command.estimator.fit(
+            run_id=configured_command.input_inference.run_id,
+            tick_data_path=configured_command.tick_data_path,
+            tick_data_format=configured_command.input_inference.tick_data_source.file_format,
+            tick_data_provenance_label=configured_command.input_inference.tick_data_source.provenance_label,
+            option_surface_path=configured_command.option_surface_path,
+            option_surface_format=configured_command.option_surface_format,
+            option_surface_provenance_label=configured_command.option_surface_provenance_label,
             report=True,
         ),
     )
@@ -394,6 +658,50 @@ def _execute_cli_fit(
         model_result.save(persisted_model_path)
 
     return model_result, fit_report, persisted_model_path
+
+
+def _build_cli_fit_inspect_payload(
+    *,
+    cli_context: CliCommandContext,
+    entrypoint: str,
+    error_id: str,
+    command_arguments: dict[str, object],
+) -> dict[str, Any]:
+    configured_command = _configure_cli_fit_command(
+        cli_context=cli_context,
+        entrypoint=entrypoint,
+        error_id=error_id,
+        command_arguments=command_arguments,
+    )
+
+    with configured_command.estimator._stdout_suppression_context():
+        prepared_workflow = configured_command.estimator._prepare_fit_workflow(
+            run_id=configured_command.input_inference.run_id,
+            tick_data_path=configured_command.tick_data_path,
+            tick_data_format=configured_command.input_inference.tick_data_source.file_format,
+            tick_data_provenance_label=configured_command.input_inference.tick_data_source.provenance_label,
+            option_surface_path=configured_command.option_surface_path,
+            option_surface_format=configured_command.option_surface_format,
+            option_surface_provenance_label=configured_command.option_surface_provenance_label,
+        )
+
+    try:
+        return {
+            "schema_version": CLI_FIT_INSPECT_RESULT_SCHEMA_VERSION,
+            "command": CLI_FIT_INSPECT_ENTRYPOINT,
+            "run_id": prepared_workflow.run_id,
+            "tick_data_path": str(configured_command.tick_data_path),
+            "input_inference": _build_cli_fit_input_inference_payload(prepared_workflow),
+            "resolved_configuration": prepared_workflow.resolved_configuration.to_payload(),
+            "session_resolution": prepared_workflow.prepared.session_resolution.to_payload(),
+            "preparation_diagnostics": prepared_workflow.prepared.diagnostics.to_payload(),
+            "preparation_provenance": prepared_workflow.prepared.provenance.to_payload(),
+            "execution_mode": prepared_workflow.prepared.execution_input.request.execution_mode.value,
+            "temporary_workspace_materialized": prepared_workflow.temporary_directory is not None,
+        }
+    finally:
+        if prepared_workflow.temporary_directory is not None:
+            prepared_workflow.temporary_directory.cleanup()
 
 
 def _build_market_profile_reference_from_arguments(
@@ -659,6 +967,7 @@ def _build_cli_fit_result_payload(
     persisted_model_path: Optional[Path],
     command: str,
     schema_version: str,
+    explain_requested: bool,
 ) -> dict[str, Any]:
     return {
         "schema_version": schema_version,
@@ -666,6 +975,8 @@ def _build_cli_fit_result_payload(
         "run_id": model.run_id,
         "model_output_path": None if persisted_model_path is None else str(persisted_model_path),
         "model_summary": model.summary(),
+        "input_inference": cast(dict[str, Any], model.summary()["input_inference"]),
+        "explain_requested": explain_requested,
         "fit_report_summary": fit_report.summary(),
         "resolved_configuration": fit_report.resolved_configuration.to_payload(),
         "session_resolution": fit_report.session_resolution.to_payload(),
@@ -786,19 +1097,35 @@ def _build_fit_group(*, environment: Mapping[str, str] | None = None) -> click.G
             handler=_run_fit_command,
             command_path=("fit",),
             command_arguments=dict(command_arguments),
-            required_option_names=(
-                "run_id",
-                "workflow_scope",
-                "tick_data_path",
-                "tick_data_format",
-                "tick_timestamp_column",
-                "timestamp_timezone",
-            ),
+            required_option_names=("tick_data_path",),
             exclusivity_groups=(("session_preset", "session_json"), ("known_news", "known_news_json")),
         )
 
     fit_group = fit
 
+    @click.command(
+        "inspect",
+        cls=JaniformCommand,
+        command_path=("fit", "inspect"),
+        environment=environment,
+        help="Inspect the inferred beginner-path fit configuration without running calibration.",
+        params=_model_workflow_fit_options(
+            enforce_required=False,
+            include_model_output_path=False,
+            include_explain=False,
+        ),
+    )
+    @click.pass_context
+    def fit_inspect(ctx: click.Context, **command_arguments: object) -> int:
+        return invoke_command_handler(
+            ctx,
+            handler=_run_fit_inspect_command,
+            command_path=("fit", "inspect"),
+            command_arguments=dict(command_arguments),
+            exclusivity_groups=(("session_preset", "session_json"), ("known_news", "known_news_json")),
+        )
+
+    fit_group.add_command(fit_inspect)
     fit_group.add_command(_build_fit_plan_command(environment=environment))
     fit_group.add_command(_build_fit_staged_command(environment=environment))
 
@@ -840,7 +1167,12 @@ def _build_simulate_group(*, environment: Mapping[str, str] | None = None) -> cl
     return simulate_group
 
 
-def _model_workflow_fit_options(*, enforce_required: bool = True) -> list[click.Parameter]:
+def _model_workflow_fit_options(
+    *,
+    enforce_required: bool = True,
+    include_model_output_path: bool = True,
+    include_explain: bool = True,
+) -> list[click.Parameter]:
     return [
         command_config_option(),
         output_option(default_output_mode=CliOutputMode.JSON),
@@ -902,18 +1234,21 @@ def _model_workflow_fit_options(*, enforce_required: bool = True) -> list[click.
         ),
         command_option(
             "--run-id",
-            help_text="Stable run identifier recorded on the fitted model and fit report.",
-            required=enforce_required,
+            help_text=(
+                "Stable run identifier recorded on the fitted model and fit report. "
+                "Default: inferred from the tick-data file stem plus a UTC timestamp."
+            ),
         ),
         command_option(
             "--workflow-scope",
             choice_options=CLI_CALIBRATION_MARKET_DATA_SCOPE_CHOICES,
+            default="full_without_option_surface",
             help_text=(
                 "High-level calibration scope. Use seasonality_only for activity-only estimation, "
                 "full_without_option_surface for full calibration from tick data only, and "
-                "full_with_option_surface when option-surface data is supplied."
+                "full_with_option_surface when option-surface data is supplied. "
+                "Default: full_without_option_surface."
             ),
-            required=enforce_required,
         ),
         command_option(
             "--tick-data-path",
@@ -924,8 +1259,7 @@ def _model_workflow_fit_options(*, enforce_required: bool = True) -> list[click.
         command_option(
             "--tick-data-format",
             choice_options=CLI_CALIBRATION_TICK_FILE_FORMAT_CHOICES,
-            help_text="Tick-data file format.",
-            required=enforce_required,
+            help_text="Tick-data file format. Default: inferred from the file extension.",
         ),
         command_option(
             "--tick-data-provenance-label",
@@ -934,8 +1268,7 @@ def _model_workflow_fit_options(*, enforce_required: bool = True) -> list[click.
         ),
         command_option(
             "--tick-timestamp-column",
-            help_text="Tick-data timestamp column name.",
-            required=enforce_required,
+            help_text="Tick-data timestamp column name override. Default: auto-detected from common aliases.",
         ),
         command_option(
             "--tick-price-input-policy",
@@ -953,8 +1286,10 @@ def _model_workflow_fit_options(*, enforce_required: bool = True) -> list[click.
         command_option("--tick-close-price-column", help_text="Tick-data close price column."),
         command_option(
             "--timestamp-timezone",
-            help_text="Timezone used to normalize tick-data timestamps before fitting.",
-            required=enforce_required,
+            help_text=(
+                "Timezone used to normalize tick-data timestamps before fitting. "
+                "Default: inferred from the selected market profile, otherwise UTC."
+            ),
         ),
         command_option(
             "--duplicate-record-policy",
@@ -966,6 +1301,22 @@ def _model_workflow_fit_options(*, enforce_required: bool = True) -> list[click.
             "--disable-timestamp-sort",
             help_text="Record that source data should not be re-sorted by timestamp before translation.",
             is_flag=True,
+        ),
+        command_option(
+            "--silent",
+            help_text="Suppress successful command output and silence non-error stdout from the high-level fit path.",
+            is_flag=True,
+        ),
+        *(
+            [
+                command_option(
+                    "--explain",
+                    help_text="Include a human-readable summary of the inferred beginner-path configuration.",
+                    is_flag=True,
+                ),
+            ]
+            if include_explain
+            else []
         ),
         optional_path_option("--option-surface-path", help_text="Optional path to the option-surface file."),
         command_option(
@@ -1020,10 +1371,16 @@ def _model_workflow_fit_options(*, enforce_required: bool = True) -> list[click.
             help_text="Disable provenance-report emission in output_preferences.",
             is_flag=True,
         ),
-        command_option(
-            "--model-output-path",
-            help_text="Optional path where the fitted JaniformModel should be persisted.",
-            path_type=True,
+        *(
+            [
+                command_option(
+                    "--model-output-path",
+                    help_text="Optional path where the fitted JaniformModel should be persisted.",
+                    path_type=True,
+                ),
+            ]
+            if include_model_output_path
+            else []
         ),
     ]
 

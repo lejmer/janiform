@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 
 from janiform.calibration.market_data import (
     CalibrationDuplicateRecordPolicy,
@@ -25,7 +26,7 @@ from janiform.calibration.staged import CalibrationExecutionMode
 from ._shared import write_market_data_fixture_files
 
 
-def run_example(*, working_directory: Path) -> dict[str, object]:
+def run_example(*, working_directory: Path) -> dict[str, Any]:
     file_paths = write_market_data_fixture_files(working_directory)
 
     csv_request = _build_market_data_request(
@@ -92,7 +93,7 @@ def run_example(*, working_directory: Path) -> dict[str, object]:
     }
 
 
-def _summarize_market_data_workflow(request: MarketDataCalibrationRequest) -> dict[str, object]:
+def _summarize_market_data_workflow(request: MarketDataCalibrationRequest) -> dict[str, Any]:
     prepared = prepare_market_data_calibration(request)
 
     return {

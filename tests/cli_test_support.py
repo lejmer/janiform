@@ -3,6 +3,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from datetime import UTC, datetime, timedelta
 from io import StringIO
 from pathlib import Path
+from typing import Any
 
 import orjson
 import pyarrow as pa
@@ -167,7 +168,7 @@ def normalize_help_output(help_output: str) -> str:
     return " ".join(help_output.split())
 
 
-def write_json_path(path: Path, payload: dict[str, object]) -> Path:
+def write_json_path(path: Path, payload: dict[str, Any]) -> Path:
     path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
     return path
 

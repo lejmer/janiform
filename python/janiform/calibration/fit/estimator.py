@@ -1,8 +1,18 @@
+from contextlib import AbstractContextManager, nullcontext, redirect_stdout
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Literal, Optional, overload, cast
 
+from .input_resolution import (
+    HighLevelFitInference,
+    build_fit_inference_payload,
+    column_overrides_from_mapping,
+    infer_high_level_fit_inputs,
+    normalization_overrides_from_policy,
+)
 from .model import (
     JaniformModel,
     _build_model_metadata,
@@ -27,10 +37,11 @@ from ..market_data.contracts import (
 )
 from ..market_data.ingestion import load_market_data_calibration_inputs
 from ..market_data.request import MarketDataCalibrationRequest
-from ..market_data.workflow import prepare_market_data_calibration
+from ..market_data.workflow import PreparedMarketDataCalibration, prepare_market_data_calibration
 from ..presets.references import (
     KnownNewsExplicitConfiguration,
     KnownNewsPresetReference,
+    MarketProfileExplicitConfiguration,
     MarketProfileReference,
     PresetReferenceUsageMode,
     PresetRegistryScope,
@@ -66,13 +77,24 @@ _DEFAULT_HIGH_LEVEL_OUTPUT_PREFERENCES = CalibrationMarketDataOutputPreferences(
     emit_derived_staged_execution_input=False,
     emit_input_provenance_report=True,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedHighLevelFitWorkflow:
+    run_id: str
+    prepared: PreparedMarketDataCalibration
+    resolved_configuration: ResolvedPresetWorkflowConfiguration
+    input_inference: HighLevelFitInference
+    temporary_directory: Optional[TemporaryDirectory[str]]
+
+
 class JaniformEstimator:
     def __init__(
         self,
         *,
-        workflow_scope: CalibrationMarketDataWorkflowScope,
-        tick_data_column_mapping: CalibrationTickDataColumnMapping,
-        normalization_policy: CalibrationMarketDataNormalizationPolicy,
+        workflow_scope: CalibrationMarketDataWorkflowScope = CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_data_column_mapping: Optional[CalibrationTickDataColumnMapping] = None,
+        normalization_policy: Optional[CalibrationMarketDataNormalizationPolicy] = None,
         option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping] = None,
         output_preferences: Optional[CalibrationMarketDataOutputPreferences] = None,
         market_profile: Optional[str | MarketProfileReference] = None,
@@ -81,6 +103,7 @@ class JaniformEstimator:
         exchange_code: Optional[str] = None,
         session_timezone: Optional[str] = None,
         registry: Optional[PresetRegistry] = None,
+        silent: bool = False,
     ) -> None:
         if exchange_code is not None and not exchange_code.strip():
             raise _calibration_error("exchange_code", "must be a non-empty string when provided")
@@ -91,8 +114,12 @@ class JaniformEstimator:
             )
 
         self._workflow_scope: CalibrationMarketDataWorkflowScope = workflow_scope
-        self._tick_data_column_mapping: CalibrationTickDataColumnMapping = tick_data_column_mapping
-        self._normalization_policy: CalibrationMarketDataNormalizationPolicy = normalization_policy
+        self._tick_data_column_mapping: Optional[CalibrationTickDataColumnMapping] = (
+            tick_data_column_mapping
+        )
+        self._normalization_policy: Optional[CalibrationMarketDataNormalizationPolicy] = (
+            normalization_policy
+        )
         self._option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping] = (
             option_surface_column_mapping
         )
@@ -104,6 +131,7 @@ class JaniformEstimator:
         self._registry: PresetRegistry = PresetRegistry() if registry is None else registry
         self._exchange_code: Optional[str] = exchange_code
         self._session_timezone: Optional[str] = session_timezone
+        self._silent: bool = silent
         self._market_profile_reference: Optional[MarketProfileReference] = (
             _coerce_market_profile_reference(market_profile)
         )
@@ -119,9 +147,9 @@ class JaniformEstimator:
     def fit(
         self,
         *,
-        run_id: str,
+        run_id: Optional[str] = None,
         tick_data_path: str | Path,
-        tick_data_format: CalibrationInputFileFormat,
+        tick_data_format: Optional[CalibrationInputFileFormat] = None,
         tick_data_provenance_label: str = "tick_data",
         option_surface_path: Optional[str | Path] = None,
         option_surface_format: CalibrationInputFileFormat = CalibrationInputFileFormat.PARQUET,
@@ -133,9 +161,9 @@ class JaniformEstimator:
     def fit(
         self,
         *,
-        run_id: str,
+        run_id: Optional[str] = None,
         tick_data_path: str | Path,
-        tick_data_format: CalibrationInputFileFormat,
+        tick_data_format: Optional[CalibrationInputFileFormat] = None,
         tick_data_provenance_label: str = "tick_data",
         option_surface_path: Optional[str | Path] = None,
         option_surface_format: CalibrationInputFileFormat = CalibrationInputFileFormat.PARQUET,
@@ -146,17 +174,15 @@ class JaniformEstimator:
     def fit(
         self,
         *,
-        run_id: str,
+        run_id: Optional[str] = None,
         tick_data_path: str | Path,
-        tick_data_format: CalibrationInputFileFormat,
+        tick_data_format: Optional[CalibrationInputFileFormat] = None,
         tick_data_provenance_label: str = "tick_data",
         option_surface_path: Optional[str | Path] = None,
         option_surface_format: CalibrationInputFileFormat = CalibrationInputFileFormat.PARQUET,
         option_surface_provenance_label: str = "option_surface",
         report: bool = False,
     ) -> JaniformModel | tuple[Optional[JaniformModel], JaniformFitReport]:
-        if not run_id.strip():
-            raise _calibration_error("run_id", "must be a non-empty string")
         if not tick_data_provenance_label.strip():
             raise _calibration_error(
                 "tick_data_provenance_label",
@@ -168,58 +194,36 @@ class JaniformEstimator:
                 "must be a non-empty string",
             )
 
-        tick_data_source = CalibrationInputFileReference(
-            path=str(Path(tick_data_path)),
-            file_format=tick_data_format,
-            provenance_label=tick_data_provenance_label,
-        )
-        option_surface_source = (
-            CalibrationInputFileReference(
-                path=str(Path(option_surface_path)),
-                file_format=option_surface_format,
-                provenance_label=option_surface_provenance_label,
-            )
-            if option_surface_path is not None
-            else None
-        )
-
-        with TemporaryDirectory(prefix="janiform-fit-") as working_directory_text:
-            working_directory = Path(working_directory_text)
-            inferred_session_resolution = self._infer_session_resolution(
+        with self._stdout_suppression_context():
+            prepared_workflow = self._prepare_fit_workflow(
                 run_id=run_id,
-                tick_data_source=tick_data_source,
+                tick_data_path=tick_data_path,
+                tick_data_format=tick_data_format,
+                tick_data_provenance_label=tick_data_provenance_label,
+                option_surface_path=option_surface_path,
+                option_surface_format=option_surface_format,
+                option_surface_provenance_label=option_surface_provenance_label,
             )
-            resolved_configuration = resolve_preset_workflow_configuration(
-                registry=self._registry,
-                market_profile_reference=self._market_profile_reference,
-                session_reference=self._effective_session_reference(),
-                known_news_reference=self._known_news_reference,
-                inferred_session_resolution=inferred_session_resolution,
-            )
-            request = self._build_market_data_request(
-                run_id=run_id,
-                tick_data_source=tick_data_source,
-                option_surface_source=option_surface_source,
-                resolved_configuration=resolved_configuration,
-                working_directory=working_directory,
-            )
-            prepared = prepare_market_data_calibration(request)
-            staged_response, raw_response_payload = _run_staged_calibration_with_raw_payload(
-                prepared.execution_input,
-                calendar_registry=CalendarRegistry(
-                    prepared.session_resolution.resolved_session_definition_json
-                ),
-            )
+            try:
+                staged_response, raw_response_payload = _run_staged_calibration_with_raw_payload(
+                    prepared_workflow.prepared.execution_input,
+                    calendar_registry=CalendarRegistry(
+                        prepared_workflow.prepared.session_resolution.resolved_session_definition_json
+                    ),
+                )
+            finally:
+                if prepared_workflow.temporary_directory is not None:
+                    prepared_workflow.temporary_directory.cleanup()
 
         fit_report = JaniformFitReport(
-            run_id=run_id,
+            run_id=prepared_workflow.run_id,
             workflow_scope=self._workflow_scope,
             success=staged_response.status == CalibrationStageExecutionStatus.SUCCESS,
-            resolved_configuration=resolved_configuration,
-            session_resolution=prepared.session_resolution,
-            preparation_diagnostics=prepared.diagnostics,
-            preparation_provenance=prepared.provenance,
-            execution_input=prepared.execution_input,
+            resolved_configuration=prepared_workflow.resolved_configuration,
+            session_resolution=prepared_workflow.prepared.session_resolution,
+            preparation_diagnostics=prepared_workflow.prepared.diagnostics,
+            preparation_provenance=prepared_workflow.prepared.provenance,
+            execution_input=prepared_workflow.prepared.execution_input,
             staged_response=staged_response,
             stage_report_payloads=_raw_stage_report_payloads(raw_response_payload),
         )
@@ -234,22 +238,49 @@ class JaniformEstimator:
                 else "fit_failed"
             )
             raise RuntimeError(
-                f"Janiform fit failed for run_id `{run_id}` with failure_kind `{failure_kind}`"
+                f"Janiform fit failed for run_id `{prepared_workflow.run_id}` with failure_kind `{failure_kind}`"
             )
 
         model = JaniformModel(
-            run_id=run_id,
+            run_id=prepared_workflow.run_id,
             workflow_scope=self._workflow_scope,
             parameters=_extract_model_parameters(fit_report.stage_report_payloads),
             metadata=_build_model_metadata(
-                resolved_configuration=resolved_configuration,
-                prepared=prepared,
+                resolved_configuration=prepared_workflow.resolved_configuration,
+                prepared=prepared_workflow.prepared,
                 staged_response=staged_response,
                 stage_report_payloads=fit_report.stage_report_payloads,
+                input_inference=build_fit_inference_payload(
+                    inference=prepared_workflow.input_inference,
+                    workflow_scope=self._workflow_scope,
+                    market_profile_name=(
+                        prepared_workflow.resolved_configuration.market_profile.selected_preset.preset_name
+                        if (
+                            prepared_workflow.resolved_configuration.market_profile is not None
+                            and prepared_workflow.resolved_configuration.market_profile.selected_preset is not None
+                        )
+                        else None
+                    ),
+                    known_news_preset_name=(
+                        prepared_workflow.resolved_configuration.known_news.selected_preset.preset_name
+                        if prepared_workflow.resolved_configuration.known_news.selected_preset is not None
+                        else None
+                    ),
+                    known_news_recommended_name=(
+                        prepared_workflow.resolved_configuration.known_news.recommended_reference.preset_name
+                        if prepared_workflow.resolved_configuration.known_news.recommended_reference is not None
+                        else None
+                    ),
+                    known_news_recommendation_applied=(
+                        prepared_workflow.resolved_configuration.known_news.recommendation_applied
+                    ),
+                    session_source_kind=prepared_workflow.resolved_configuration.session.source_kind.value,
+                    known_news_source_kind=prepared_workflow.resolved_configuration.known_news.source_kind.value,
+                ),
             ),
-            resolved_configuration=resolved_configuration,
-            session_resolution=prepared.session_resolution,
-            _execution_input=prepared.execution_input,
+            resolved_configuration=prepared_workflow.resolved_configuration,
+            session_resolution=prepared_workflow.prepared.session_resolution,
+            _execution_input=prepared_workflow.prepared.execution_input,
             _stage_report_payloads=fit_report.stage_report_payloads,
         )
         if report:
@@ -264,7 +295,9 @@ class JaniformEstimator:
         tick_data_source: CalibrationInputFileReference,
         option_surface_source: Optional[CalibrationInputFileReference],
         resolved_configuration: ResolvedPresetWorkflowConfiguration,
-        working_directory: Path,
+        tick_data_column_mapping: CalibrationTickDataColumnMapping,
+        normalization_policy: CalibrationMarketDataNormalizationPolicy,
+        working_directory: Optional[Path],
     ) -> MarketDataCalibrationRequest:
         session_configuration = _build_session_configuration_input(
             resolved_configuration.session,
@@ -275,7 +308,7 @@ class JaniformEstimator:
             working_directory=working_directory,
         )
         column_mapping = CalibrationMarketDataColumnMapping(
-            tick_data=self._tick_data_column_mapping,
+            tick_data=tick_data_column_mapping,
             option_surface=self._option_surface_column_mapping,
             known_news=(
                 _DEFAULT_HIGH_LEVEL_KNOWN_NEWS_COLUMNS
@@ -291,10 +324,90 @@ class JaniformEstimator:
             session_configuration=session_configuration,
             column_mapping=column_mapping,
             workflow_scope=self._workflow_scope,
-            normalization_policy=self._normalization_policy,
+            normalization_policy=normalization_policy,
             output_preferences=self._output_preferences,
             option_surface_source=option_surface_source,
             known_news_inputs=known_news_input,
+        )
+
+    def _prepare_fit_workflow(
+        self,
+        *,
+        run_id: Optional[str],
+        tick_data_path: str | Path,
+        tick_data_format: Optional[CalibrationInputFileFormat],
+        tick_data_provenance_label: str,
+        option_surface_path: Optional[str | Path],
+        option_surface_format: CalibrationInputFileFormat,
+        option_surface_provenance_label: str,
+    ) -> _PreparedHighLevelFitWorkflow:
+        resolved_market_profile_configuration = (
+            self._resolve_market_profile_configuration()
+        )
+        input_inference = infer_high_level_fit_inputs(
+            tick_data_path=Path(tick_data_path),
+            tick_data_format=tick_data_format,
+            tick_data_provenance_label=tick_data_provenance_label,
+            workflow_scope=self._workflow_scope,
+            run_id=run_id,
+            column_overrides=column_overrides_from_mapping(self._tick_data_column_mapping),
+            normalization_overrides=normalization_overrides_from_policy(self._normalization_policy),
+            market_profile_configuration=resolved_market_profile_configuration,
+        )
+        option_surface_source = (
+            CalibrationInputFileReference(
+                path=str(Path(option_surface_path)),
+                file_format=option_surface_format,
+                provenance_label=option_surface_provenance_label,
+            )
+            if option_surface_path is not None
+            else None
+        )
+
+        temporary_directory: Optional[TemporaryDirectory[str]] = None
+        try:
+            inferred_session_resolution = self._infer_session_resolution(
+                run_id=input_inference.run_id,
+                tick_data_source=input_inference.tick_data_source,
+                tick_data_column_mapping=input_inference.tick_data_column_mapping,
+                normalization_policy=input_inference.normalization_policy,
+            )
+            resolved_configuration = resolve_preset_workflow_configuration(
+                registry=self._registry,
+                market_profile_reference=self._market_profile_reference,
+                session_reference=self._effective_session_reference(),
+                known_news_reference=self._known_news_reference,
+                inferred_session_resolution=inferred_session_resolution,
+            )
+            requires_materialization = _resolved_configuration_requires_materialization(
+                resolved_configuration
+            )
+            if requires_materialization:
+                temporary_directory = TemporaryDirectory(prefix="janiform-fit-")
+                working_directory = Path(temporary_directory.name)
+            else:
+                working_directory = None
+            request = self._build_market_data_request(
+                run_id=input_inference.run_id,
+                tick_data_source=input_inference.tick_data_source,
+                option_surface_source=option_surface_source,
+                resolved_configuration=resolved_configuration,
+                tick_data_column_mapping=input_inference.tick_data_column_mapping,
+                normalization_policy=input_inference.normalization_policy,
+                working_directory=working_directory,
+            )
+            prepared = prepare_market_data_calibration(request)
+        except Exception:
+            if temporary_directory is not None:
+                temporary_directory.cleanup()
+            raise
+
+        return _PreparedHighLevelFitWorkflow(
+            run_id=input_inference.run_id,
+            prepared=prepared,
+            resolved_configuration=resolved_configuration,
+            input_inference=input_inference,
+            temporary_directory=temporary_directory,
         )
 
     def _effective_session_reference(self) -> Optional[SessionPresetReference]:
@@ -315,6 +428,8 @@ class JaniformEstimator:
         *,
         run_id: str,
         tick_data_source: CalibrationInputFileReference,
+        tick_data_column_mapping: CalibrationTickDataColumnMapping,
+        normalization_policy: CalibrationMarketDataNormalizationPolicy,
     ) -> Optional[MarketDataSessionResolution]:
         if not self._requires_session_inference():
             return None
@@ -329,10 +444,10 @@ class JaniformEstimator:
                 session_timezone=self._session_timezone,
             ),
             column_mapping=CalibrationMarketDataColumnMapping(
-                tick_data=self._tick_data_column_mapping,
+                tick_data=tick_data_column_mapping,
             ),
             workflow_scope=self._workflow_scope,
-            normalization_policy=self._normalization_policy,
+            normalization_policy=normalization_policy,
             output_preferences=self._output_preferences,
         )
         loaded_inputs = load_market_data_calibration_inputs(request)
@@ -347,8 +462,17 @@ class JaniformEstimator:
         if self._session_reference is not None:
             return self._session_reference.usage_mode == PresetReferenceUsageMode.AUTOMATIC
 
-        if self._market_profile_reference is None:
+        market_profile_configuration = self._resolve_market_profile_configuration()
+        if market_profile_configuration is None:
             return True
+
+        return market_profile_configuration.session_reference.usage_mode == PresetReferenceUsageMode.AUTOMATIC
+
+    def _resolve_market_profile_configuration(
+        self,
+    ) -> Optional[MarketProfileExplicitConfiguration]:
+        if self._market_profile_reference is None:
+            return None
 
         if self._market_profile_reference.usage_mode == PresetReferenceUsageMode.EXPLICIT:
             configuration = self._market_profile_reference.configuration
@@ -358,7 +482,7 @@ class JaniformEstimator:
                     "is required when usage_mode=explicit",
                 )
 
-            return configuration.session_reference.usage_mode == PresetReferenceUsageMode.AUTOMATIC
+            return configuration
 
         if self._market_profile_reference.preset_name is None:
             raise _calibration_error(
@@ -375,8 +499,7 @@ class JaniformEstimator:
             self._market_profile_reference.preset_name,
             registry_scope=self._market_profile_reference.registry_scope,
         )
-
-        return artifact.configuration.session_reference.usage_mode == PresetReferenceUsageMode.AUTOMATIC
+        return artifact.configuration
 
     def _resolve_exchange_code_for_inference(self) -> str:
         if self._exchange_code is not None:
@@ -398,6 +521,12 @@ class JaniformEstimator:
                 "profile provides the exchange baseline"
             ),
         )
+
+    def _stdout_suppression_context(self) -> AbstractContextManager[object]:
+        if self._silent:
+            return redirect_stdout(StringIO())
+
+        return nullcontext()
 
 
 def _coerce_market_profile_reference(
@@ -639,15 +768,23 @@ def _exchange_code_from_market_profile_reference(
 def _build_session_configuration_input(
     resolved_session: ResolvedSessionComponent,
     *,
-    working_directory: Path,
+    working_directory: Optional[Path],
 ) -> CalibrationSessionConfigurationInput:
-    if resolved_session.inferred_from_data and len(resolved_session.applied_override_fields) == 0:
+    if len(resolved_session.applied_override_fields) == 0 and (
+        resolved_session.inferred_from_data
+        or resolved_session.selected_preset is not None
+    ):
         return CalibrationSessionConfigurationInput(
             exchange_code=resolved_session.configuration.exchange_code,
             session_timezone=resolved_session.configuration.timezone_name,
         )
 
     session_configuration = resolved_session.configuration
+    if working_directory is None:
+        raise _calibration_error(
+            "session_configuration",
+            "resolved session materialization requires a working directory",
+        )
     session_definition_path = working_directory / "resolved-session-definition.json"
     session_definition_path.write_text(
         _calendar_registry_json_from_session_configuration(session_configuration),
@@ -686,10 +823,16 @@ def _calendar_registry_json_from_session_configuration(
 def _build_known_news_input(
     known_news_configuration: KnownNewsExplicitConfiguration,
     *,
-    working_directory: Path,
+    working_directory: Optional[Path],
 ) -> Optional[CalibrationKnownNewsInput]:
     if len(known_news_configuration.events) == 0:
         return None
+
+    if working_directory is None:
+        raise _calibration_error(
+            "known_news",
+            "resolved known-news materialization requires a working directory",
+        )
 
     known_news_path = working_directory / "resolved-known-news.csv"
     rows = [
@@ -708,6 +851,21 @@ def _build_known_news_input(
             provenance_label="resolved-known-news-configuration",
         ),
         calendar_timezone=known_news_configuration.calendar_timezone_name or "UTC",
+    )
+
+
+def _resolved_configuration_requires_materialization(
+    resolved_configuration: ResolvedPresetWorkflowConfiguration,
+) -> bool:
+    if len(resolved_configuration.known_news.configuration.events) > 0:
+        return True
+
+    return not (
+        len(resolved_configuration.session.applied_override_fields) == 0
+        and (
+            resolved_configuration.session.inferred_from_data
+            or resolved_configuration.session.selected_preset is not None
+        )
     )
 
 

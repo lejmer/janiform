@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 import orjson
 import pytest
@@ -400,19 +401,19 @@ def _valid_market_data_request_model() -> MarketDataCalibrationRequest:
     )
 
 
-def _valid_request_payload() -> dict[str, object]:
+def _valid_request_payload() -> dict[str, Any]:
     return _valid_request_model().to_payload()
 
 
-def _valid_market_data_request_payload() -> dict[str, object]:
+def _valid_market_data_request_payload() -> dict[str, Any]:
     return _valid_market_data_request_model().to_payload()
 
 
-def _valid_execution_input_payload() -> dict[str, object]:
+def _valid_execution_input_payload() -> dict[str, Any]:
     return build_valid_execution_input_payload()
 
 
-def _valid_response_payload() -> dict[str, object]:
+def _valid_response_payload() -> dict[str, Any]:
     return {
         "schema_version": "calibration.orchestration.staged_run.report.v1",
         "failure_triage_policy": "mode_aware_failure_kind_and_checkpoint_context.v1",

@@ -138,6 +138,9 @@ CLI_HOURLY_FACTORS_BUILD_CONTRACT_INTERNAL_ERROR_ID = (
 CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT = "fit.plan"
 CLI_CALIBRATION_MARKET_DATA_VALIDATION_ERROR_ID = "cli.validation.fit.plan.invalid_input"
 CLI_CALIBRATION_MARKET_DATA_INTERNAL_ERROR_ID = "cli.internal.fit.plan.failed"
+CLI_FIT_INSPECT_ENTRYPOINT = "fit.inspect"
+CLI_FIT_INSPECT_VALIDATION_ERROR_ID = "cli.validation.fit.inspect.invalid_input"
+CLI_FIT_INSPECT_INTERNAL_ERROR_ID = "cli.internal.fit.inspect.failed"
 CLI_CALIBRATION_STAGED_ENTRYPOINT = "fit.staged"
 CLI_CALIBRATION_STAGED_VALIDATION_ERROR_ID = "cli.validation.fit.staged.invalid_input"
 CLI_CALIBRATION_STAGED_INTERNAL_ERROR_ID = "cli.internal.fit.staged.failed"
@@ -167,6 +170,7 @@ CLI_MARKET_DATA_SUMMARY_FIELD_SELECTION_POLICY = "user_facing_workflow_metadata_
 CLI_PRESET_LIST_SCHEMA_VERSION = "cli.presets.list.result.v1"
 CLI_PRESET_SHOW_SCHEMA_VERSION = "cli.presets.show.result.v1"
 CLI_FIT_RESULT_SCHEMA_VERSION = "cli.fit.result.v1"
+CLI_FIT_INSPECT_RESULT_SCHEMA_VERSION = "cli.fit.inspect.result.v1"
 CLI_SIMULATE_RESULT_SCHEMA_VERSION = "cli.simulate.result.v1"
 CLI_COMMAND_CONFIG_SCHEMA_VERSION = "cli.command_config.v1"
 CLI_ARGUMENT_RESOLUTION_ENTRYPOINT = "cli.argument_resolution"
@@ -187,6 +191,7 @@ CLI_COMMAND_CONFIG_HELP = (
 )
 CLI_PRIMARY_COMMAND_TREE: dict[str, dict[str, dict[str, dict[str, Any]]]] = {
     "fit": {
+        "inspect": {},
         "plan": {},
         "staged": {},
     },
@@ -217,6 +222,7 @@ CLI_PRIMARY_COMMAND_TREE: dict[str, dict[str, dict[str, dict[str, Any]]]] = {
 }
 CLI_PRIMARY_COMMAND_IDENTIFIERS: dict[tuple[str, ...], str] = {
     ("fit",): "fit",
+    ("fit", "inspect"): "fit.inspect",
     ("fit", "plan"): "fit.plan",
     ("fit", "staged"): "fit.staged",
     ("simulate",): "simulate",
@@ -267,6 +273,10 @@ __all__ = [
     "CLI_CALIBRATION_MARKET_DATA_SCOPE_CHOICES",
     "CLI_CALIBRATION_MARKET_DATA_VALIDATION_ERROR_ID",
     "CLI_CALIBRATION_OPTION_QUOTE_POLICY_CHOICES",
+    "CLI_FIT_INSPECT_ENTRYPOINT",
+    "CLI_FIT_INSPECT_INTERNAL_ERROR_ID",
+    "CLI_FIT_INSPECT_RESULT_SCHEMA_VERSION",
+    "CLI_FIT_INSPECT_VALIDATION_ERROR_ID",
     "CLI_CALIBRATION_STAGED_ENTRYPOINT",
     "CLI_CALIBRATION_STAGED_INTERNAL_ERROR_ID",
     "CLI_CALIBRATION_STAGED_VALIDATION_ERROR_ID",

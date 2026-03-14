@@ -1097,6 +1097,7 @@ def _build_model_metadata(
     prepared: PreparedMarketDataCalibration,
     staged_response: StagedCalibrationResponse,
     stage_report_payloads: tuple[dict[str, Any], ...],
+    input_inference: dict[str, Any],
 ) -> dict[str, Any]:
     market_profile_name = (
         resolved_configuration.market_profile.selected_preset.preset_name
@@ -1186,6 +1187,7 @@ def _build_model_metadata(
             "event_count": known_news_event_count,
             "active": known_news_event_count > 0,
         },
+        "input_inference": input_inference,
         "diagnostics": [
             {
                 "component": diagnostic.component.value,

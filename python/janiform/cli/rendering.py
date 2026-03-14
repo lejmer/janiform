@@ -84,16 +84,71 @@ def _render_fit_human_output(payload: dict[str, Any]) -> str:
     model_output_path = cast(Optional[str], payload["model_output_path"])
     model_summary = cast(dict[str, Any], payload["model_summary"])
 
-    return (
-        "fit completed: "
-        f"run_id={payload['run_id']} "
-        f"workflow_scope={model_summary['workflow_scope']} "
-        f"market_profile={model_summary['market_profile'] or 'none'} "
-        "known_news="
-        f"{model_summary['known_news_preset'] or DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME}"
-        + (f" model_path={model_output_path}" if model_output_path is not None else "")
-        + "\n"
-    )
+    lines = [
+        (
+            "fit completed: "
+            f"run_id={payload['run_id']} "
+            f"workflow_scope={model_summary['workflow_scope']} "
+            f"market_profile={model_summary['market_profile'] or 'none'} "
+            "known_news="
+            f"{model_summary['known_news_preset'] or DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME}"
+            + (f" model_path={model_output_path}" if model_output_path is not None else "")
+        )
+    ]
+
+    if bool(payload.get("explain_requested")):
+        lines.extend(_render_input_inference_lines(cast(dict[str, Any], payload["input_inference"])))
+
+    return "\n".join(lines) + "\n"
+
+
+def _render_fit_inspect_human_output(payload: dict[str, Any]) -> str:
+    lines = [
+        (
+            "fit inspect completed: "
+            f"run_id={payload['run_id']} "
+            f"temporary_workspace_materialized={str(payload['temporary_workspace_materialized']).lower()} "
+            f"execution_mode={payload['execution_mode']}"
+        ),
+        f"tick_data: path={payload['tick_data_path']}",
+        *_render_input_inference_lines(cast(dict[str, Any], payload["input_inference"])),
+    ]
+
+    return "\n".join(lines) + "\n"
+
+
+def _render_input_inference_lines(input_inference: dict[str, Any]) -> list[str]:
+    tick_price_columns = cast(dict[str, Any], input_inference["tick_price_columns"])
+    known_news = cast(dict[str, Any], input_inference["known_news"])
+
+    return [
+        (
+            "inference: "
+            f"tick_data_format={input_inference['tick_data_format']} "
+            f"timestamp_column={input_inference['timestamp_column']} "
+            f"tick_price_input_policy={input_inference['tick_price_input_policy'] or 'none'} "
+            f"timestamp_timezone={input_inference['timestamp_timezone']} "
+            f"timestamp_timezone_source={input_inference['timestamp_timezone_source']}"
+        ),
+        (
+            "price_columns: "
+            f"price={tick_price_columns['price_column'] or 'none'} "
+            f"trade_price={tick_price_columns['trade_price_column'] or 'none'} "
+            f"trade_sign={tick_price_columns['trade_sign_column'] or 'none'} "
+            f"bid={tick_price_columns['bid_column'] or 'none'} "
+            f"ask={tick_price_columns['ask_column'] or 'none'} "
+            f"close={tick_price_columns['close_price_column'] or 'none'}"
+        ),
+        (
+            "preset_defaults: "
+            f"market_profile={input_inference['market_profile'] or 'none'} "
+            f"session_source={input_inference['session_source_kind']} "
+            "known_news_selected="
+            f"{known_news['selected_preset'] or DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME} "
+            f"known_news_recommended={known_news['recommended_preset'] or 'none'} "
+            f"known_news_recommendation_applied={str(known_news['recommendation_applied']).lower()}"
+        ),
+    ]
 
 
 def _render_simulate_human_output(payload: dict[str, Any]) -> str:
