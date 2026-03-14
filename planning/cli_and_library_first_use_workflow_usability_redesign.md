@@ -9,6 +9,8 @@ Janiform currently exposes internal workflow structure too directly in its first
 - CLI `simulate` currently routes through JSON payloads, which does not scale to large path outputs.
 - Human output is improving, but the command model still makes users think about implementation details instead of outcomes.
 - The library and CLI do not yet make a clean distinction between in-memory workflows and durable artifact workflows.
+- `simulate` semantics are currently more complicated than they need to be for a first-use path.
+- `price` is not yet aligned with the same high-level workflow model as `fit` and `simulate`.
 
 The redesign must make the product feel like a normal professional CLI and a normal professional Python library:
 
@@ -16,6 +18,8 @@ The redesign must make the product feel like a normal professional CLI and a nor
 - Library defaults should stay in memory unless the caller explicitly asks for persistence.
 - `fit`, `simulate`, and `price` should feel like one coherent workflow family.
 - `plan` and `staged` should remain first-class professional commands, not hidden or demoted.
+- Both the CLI and the library should provide useful runtime feedback by default for slow operations.
+- `simulate` and `price` should be high-level task-shaped workflows, not execution-input-first workflows.
 
 ## Pre-release Policy
 
@@ -39,6 +43,8 @@ Janiform is still pre-release and has no external users. This redesign should be
 5. Large simulation outputs must be streamed directly to their final file format. They must never be materialized as JSON for persistence.
 6. Human-readable output should explain where artifacts are going before expensive work begins.
 7. Pre-release freedom should be used to simplify the product, not to preserve accidental historical behavior.
+8. Slow operations should provide continuous visible progress by default instead of leaving the user with no feedback.
+9. Silence mode should be fully supported and should skip non-essential progress/reporting work rather than only hiding its rendering.
 
 ## Core UX Contract
 
@@ -51,6 +57,7 @@ The CLI is job-oriented. By default it should persist the primary result of a su
 - `janiform price ...` saves pricing output by default.
 - Commands should print the resolved output location before work starts.
 - Commands should print the saved artifact paths when they finish.
+- Long-running commands should display progress feedback by default.
 
 ### Library defaults
 
@@ -59,6 +66,27 @@ The library is programmatic and in-memory-first. By default it should not persis
 - `JaniformEstimator.fit(...)` returns `JaniformModel` and does not write to disk unless explicitly requested.
 - `JaniformModel.simulate(...)` returns simulation results and does not write to disk unless explicitly requested.
 - `JaniformModel.price_option(...)` returns pricing results and does not write to disk unless explicitly requested.
+- Long-running library calls should emit useful progress feedback by default unless silence mode is enabled.
+
+### Silence and verbosity
+
+Both surfaces should support two clear modes:
+
+- default verbose mode for ad hoc and first-time usage
+- explicit silence mode for production pipelines and automation
+
+Behavioral requirements:
+
+- verbose mode should be the default
+- silence mode should suppress all non-error output
+- silence mode should still emit errors and warnings
+- silence mode should disable runtime progress-update work rather than merely hiding rendered output
+- silence mode must be available from the CLI and the library public API
+
+Recommended controls:
+
+- CLI: `--silent`
+- library: `silent: bool = False`
 
 ## Command and API Model
 
@@ -72,6 +100,37 @@ The following commands should remain first-class:
 - `janiform price`
 
 The key change is not command removal. The key change is that the basic commands should behave like outcome-oriented commands, while the more explicit commands should remain available for professional workflow control.
+
+## Decided Workflow Semantics
+
+### Simulation interval model
+
+`simulate` should use one simple model in both the CLI and the library:
+
+- interval is required as a concept
+- no interval means seeded tick simulation
+- a supplied interval like `1min`, `15min`, `1h`, or `1D` means coarse simulation
+
+This should replace the current user-facing need to think in terms of separate `ticks`, `coarse`, or `both` choices for the first-use path.
+
+For professional workflows, richer explicit simulation controls may still exist internally, but the high-level public model should be interval-driven.
+
+### Pricing model
+
+`price` should be a high-level workflow just like `fit` and `simulate`.
+
+The first-use path should be model-driven and user-facing, not execution-input-JSON-driven.
+
+### Fit input sanity warning
+
+When `fit` is given source data that appears to be interval data rather than tick data, Janiform should emit a warning.
+
+The warning should make clear that:
+
+- the input does not appear to be tick data
+- fitting the model on interval data will likely produce an invalid fit
+
+This warning should apply in both the CLI and the library verbose path. In silence mode it should still be emitted because it is a warning.
 
 ## Implementation Hygiene
 
@@ -144,12 +203,15 @@ Recommended shape:
 - `JaniformEstimator.fit(..., output_dir: str | Path | None = None, ...)`
 - `JaniformModel.simulate(..., output_path: str | Path | None = None, ...)`
 - `JaniformModel.price_option(..., output_path: str | Path | None = None, ...)`
+- long-running library entry points should also expose a silence control through a consistent public parameter
+- advanced streaming and batch-job use cases should also be supported through explicit writer or sink abstractions
 
 Behavior:
 
 - `None` means in-memory only.
 - A provided path or directory enables explicit persistence.
 - The method still returns the in-memory result object unless there is a strong reason not to.
+- silence mode should suppress all non-error reporting and progress work
 
 ## Default Artifact Layout
 
@@ -190,6 +252,13 @@ run.json
 
 The exact primary filename depends on the chosen or inferred output format.
 
+The decided defaults are:
+
+- seeded tick simulation with no interval:
+  - `simulation.csv` or `simulation.parquet`
+- coarse simulation with an interval:
+  - `simulation_<interval>.csv` or `simulation_<interval>.parquet`
+
 ### CLI price
 
 If the user does not provide `--output-path`, default to something under:
@@ -207,6 +276,12 @@ run.json
 ```
 
 Pricing outputs are small enough that JSON is acceptable by default for the current pricing surface.
+
+The decided default output layout is:
+
+- `fit`: `./janiform_runs/<run_id>/`
+- `simulate`: `./janiform_runs/<run_id>/simulation.<csv|parquet>` or interval-specific equivalent
+- `price`: `./janiform_runs/<run_id>/pricing.json`
 
 ## Simulation Output Requirements
 
@@ -262,13 +337,13 @@ This avoids both:
 
 For the simple path:
 
-- `simulate` should default to the user-facing seeded tick path
+- `simulate` should default to the user-facing seeded tick path when no interval is provided
 - default persistence format should be CSV or Parquet, never JSON
+- an explicit interval should select the coarse path
 
 For professional workflows:
 
 - coarse simulation output remains supported
-- `both` remains supported
 - coarse outputs should also avoid JSON persistence for large path data
 - if JSON remains in use for small metadata envelopes, the path data itself should still be written as row-oriented files
 
@@ -291,6 +366,7 @@ By default it should:
 - save `run.json`
 - avoid saving bulky intermediate artifacts
 - print the output directory and model path before work starts
+- warn if the source data appears to be interval data rather than true tick data
 
 ### Library fit
 
@@ -324,8 +400,10 @@ janiform simulate --model-path ./janiform_runs/run_123/model.json --start-time-u
 
 Behavior:
 
+- no interval means seeded tick simulation
+- an explicit interval means coarse simulation
 - infer default output format from model metadata
-- stream seeded tick output directly to CSV or Parquet
+- stream output directly to CSV or Parquet
 - save a small simulation report alongside the main output
 - print the destination before work starts
 
@@ -345,6 +423,11 @@ result = model.simulate(..., output_path="simulation.parquet")
 
 If `output_path` is provided, the implementation should prefer direct streaming to disk over full in-memory accumulation.
 
+The library API should support both:
+
+- simple `output_path=` convenience usage
+- advanced streaming or sink-oriented usage for batch workflows
+
 ## Price Command Semantics
 
 ### CLI price
@@ -354,6 +437,7 @@ If `output_path` is provided, the implementation should prefer direct streaming 
 - save pricing result by default
 - print where the pricing result will be saved before execution
 - keep result format user-facing and predictable
+- use a high-level model-driven command shape rather than requiring raw execution-input JSON for first use
 
 For the current single-run pricing workflow, JSON remains acceptable because the result is small.
 
@@ -371,9 +455,50 @@ Explicit persistence:
 pricing = model.price_option(..., output_path="pricing.json")
 ```
 
+Advanced writer or sink-oriented extensions are acceptable if needed, but the simple public path should remain straightforward.
+
 ## Human Output Design
 
 All top-level CLI workflows should follow the same reporting shape.
+
+## Progress Reporting
+
+Slow operations should provide visible progress by default in both the CLI and the library.
+
+### Requirements
+
+- Use in-place TUI-style progress bars or equivalent in-place progress rendering.
+- Do not use append-only "dot" progress or endlessly growing log spam.
+- Standardize the progress implementation so all long-running stages can use the same mechanism.
+- Progress code should support stage-level updates, elapsed time, and meaningful labels.
+- The implementation should be reusable across fit, simulate, price, and any explicit staged workflows that need it.
+
+### Silence-mode interaction
+
+- In silence mode, progress bars must not be rendered.
+- In silence mode, progress-update work should also not be performed if it is not required for correctness.
+- The goal is to reduce overhead in production pipelines, not just hide terminal output.
+
+### Library interaction
+
+Library progress behavior should follow the same rules as the CLI:
+
+- verbose by default
+- fully silent when requested
+- standardized progress plumbing instead of workflow-specific ad hoc prints
+- default progress destination should be `stdout`
+- caller-provided hooks or callbacks should not be suppressed by Janiform silence mode unless they are Janiform-owned
+
+### Shared implementation
+
+Progress and output plumbing should live in a shared implementation layer used by both the CLI and the library.
+
+Requirements:
+
+- do not duplicate progress-rendering logic
+- do not duplicate silence checks throughout the codebase
+- provide a shared Janiform-owned output helper that can no-op immediately when silence mode is enabled
+- keep the progress bar implementation separate from plain text output helpers because it is materially different
 
 ### Before execution
 
@@ -404,6 +529,17 @@ Print:
 - any saved artifacts
 - whether resume is possible
 - the resume command if applicable
+
+### During execution
+
+Render:
+
+- current stage
+- progress bar or equivalent in-place indicator
+- elapsed time
+- meaningful status text when stage-level progress can be estimated
+
+When exact progress cannot be estimated, the command should still provide in-place activity feedback rather than remaining idle and silent.
 
 ## Checkpointing and Resume
 
@@ -468,6 +604,11 @@ The following gaps should be addressed:
 - define run directory layout
 - define simulation output-format rules
 - identify current code paths that should be deleted or collapsed rather than adapted piecemeal
+- define the shared verbosity and silence contract for CLI and library
+- define the standardized progress-reporting abstraction
+- define the interval-driven high-level simulation contract
+- define the high-level pricing contract
+- define the shared run-manifest and report-envelope contracts
 
 ### Phase 2: Fit redesign
 
@@ -475,6 +616,9 @@ The following gaps should be addressed:
 - add explicit library `output_dir` parameter with default `None`
 - update startup and completion rendering
 - remove superseded fit persistence branches once the canonical path is in place
+- add standardized progress reporting for long-running fit steps
+- ensure silence mode bypasses progress-update work
+- add interval-data detection and invalid-fit warning behavior
 
 ### Phase 3: Simulation redesign
 
@@ -483,6 +627,9 @@ The following gaps should be addressed:
 - carry fit-time schema metadata into model persistence
 - add library `output_path` support without forcing persistence by default
 - remove JSON-based persistence paths for simulation outputs
+- add standardized progress reporting for long-running simulation output generation and streaming
+- replace the high-level `ticks` versus `coarse` choice with interval-driven semantics
+- add advanced shared sink/writer support for batch workloads
 
 ### Phase 4: Pricing redesign
 
@@ -490,6 +637,8 @@ The following gaps should be addressed:
 - add explicit library `output_path` support
 - standardize output reporting
 - remove redundant pricing persistence glue if it becomes unnecessary
+- apply the shared verbosity and silence model to pricing execution
+- replace the first-use execution-input-JSON shape with a high-level model-driven pricing path
 
 ### Phase 5: Resume and checkpoint refinement
 
@@ -504,6 +653,7 @@ The following gaps should be addressed:
 - add examples for fit, simulate, and price using both CLI and library
 - document the persistence split explicitly
 - ensure docs describe only the final intended behavior, not transitional behavior
+- document the interval-driven simulate contract and the tick-data fit warning explicitly
 
 ## Acceptance Criteria
 
@@ -519,6 +669,11 @@ The redesign is complete when all of the following are true.
 - simulation outputs are written as CSV or Parquet, never JSON
 - simulation persistence uses streaming writes rather than end-of-run conversion
 - bulky intermediate artifacts are not emitted by default
+- CLI workflows are verbose by default and show in-place progress for slow operations
+- `--silent` suppresses all non-error output and disables non-essential progress-update work
+- high-level `simulate` uses no-interval equals ticks and explicit-interval equals coarse semantics
+- high-level `price` is model-driven and does not require raw execution-input JSON for first use
+- `fit` warns when the supplied data appears to be interval data rather than tick data
 
 ### Library
 
@@ -527,23 +682,21 @@ The redesign is complete when all of the following are true.
 - `JaniformModel.price_option(...)` remains in-memory by default
 - each workflow supports explicit output-path or output-dir persistence parameters
 - explicit persistence does not require awkward post-hoc manual wiring for common use cases
+- long-running library workflows are verbose by default
+- library silence mode suppresses all non-error output and disables non-essential progress-update work
+- the library also supports advanced writer or sink-oriented persistence for streaming and batch use cases
+- library progress defaults to `stdout`
+- Janiform silence mode suppresses only Janiform-owned output
 
 ### Cross-surface consistency
 
 - `fit`, `simulate`, and `price` share a coherent persistence model
 - `fit inspect`, `fit plan`, and `fit staged` remain first-class and consistent with the same artifact model
 - the product no longer makes first-time users guess where results went
-
-## Open Design Decisions
-
-These need explicit resolution during implementation.
-
-1. Whether `simulate` should default to `ticks` for the high-level path even though the current surface also supports `coarse` and `both`.
-2. Whether pricing should also grow a higher-level `--model-path`-based first-use command separate from raw execution-input JSON.
-3. Whether `run.json` should be a single shared lightweight manifest format across fit, simulate, and price.
-4. Whether `fit_report.json` and `simulation_report.json` should be standardized around a common run-summary envelope.
-5. Whether the library should expose explicit result writer objects or simpler `output_path=` convenience parameters only.
+- `run.json` is a shared lightweight manifest format across fit, simulate, and price
+- fit, simulation, and pricing reports share one easy-to-read common envelope with workflow-specific sections
+- progress and output plumbing are implemented in one shared reusable layer
 
 ## Immediate Recommendation
 
-The implementation should start by resetting persistence semantics for `fit`, then use that same model for `simulate` and `price` before rewriting docs. The current docs should not constrain the redesign. Use the pre-release status to remove obsolete code directly and converge on one clean implementation path per concern.
+The implementation should start by resetting persistence semantics for `fit`, then use that same model for `simulate` and `price` before rewriting docs. The current docs should not constrain the redesign. Use the pre-release status to remove obsolete code and docs directly and converge on one clean implementation path per concern.
