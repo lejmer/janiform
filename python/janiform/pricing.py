@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from types import ModuleType
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from ._contracts import (
@@ -16,6 +17,7 @@ from ._contracts import (
     require_positive_finite_scalar,
     require_string,
     serialize_deterministic_json,
+    serialize_pretty_json,
     validate_exact_string,
     validate_required_field_list,
 )
@@ -1019,6 +1021,9 @@ class VanillaOptionPricingRunResult(ContractModel):
     response: VanillaOptionPricingResponse
     run_diagnostics: Optional[VanillaOptionPricingRunDiagnostics]
     calibration_hooks: Optional[VanillaOptionPricingCalibrationHooks]
+
+    def save(self, path: str | Path) -> None:
+        Path(path).write_text(serialize_pretty_json(self), encoding="utf-8")
 
     @staticmethod
     def from_mapping(

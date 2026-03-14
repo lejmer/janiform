@@ -15,12 +15,12 @@ from examples._shared import (
 from tests.calibration_test_support import build_valid_execution_input_model
 from tests.cli_test_support import (
     build_coarse_simulation_request,
-    build_pricing_execution_input,
     build_simulation_request,
     invoke_cli,
     write_json_path,
     write_market_data_input_files,
 )
+from tests.test_cli_high_level_commands import _build_full_workflow_model
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,8 +67,8 @@ def _smoke_scenarios() -> tuple[CliSmokeScenario, ...]:
             build_invocation=_build_hourly_factors_build_contract_smoke_invocation,
         ),
         CliSmokeScenario(
-            scenario_id="pricing_vanilla_option_json_nominal",
-            build_invocation=_build_pricing_smoke_invocation,
+            scenario_id="price_json_nominal",
+            build_invocation=_build_price_smoke_invocation,
         ),
         CliSmokeScenario(
             scenario_id="stylized_facts_horizon_comparison_disk_export_json_nominal",
@@ -107,14 +107,13 @@ def _regression_scenarios() -> tuple[CliRegressionScenario, ...]:
             ),
         ),
         CliRegressionScenario(
-            scenario_id="pricing_missing_strike_reports_market_inputs_field_path",
-            build_arguments=_build_pricing_missing_strike_arguments,
-            expected_exit_code=int(cli_module.CliExitCode.VALIDATION_ERROR),
+            scenario_id="price_missing_strike_reports_required_option",
+            build_arguments=_build_price_missing_strike_arguments,
+            expected_exit_code=2,
             expected_stdout="",
             expected_stderr_substrings=(
-                "[pricing.validation.contract]",
-                'field_path="market_inputs.strike"',
-                'message="is required"',
+                "Usage: janiform price [OPTIONS]",
+                "Missing option '--strike'",
             ),
         ),
         CliRegressionScenario(
@@ -181,21 +180,29 @@ def _build_coarse_simulation_smoke_invocation(
     )
 
 
-def _build_pricing_smoke_invocation(_: str, tmp_path: Path) -> CliSmokeInvocation:
-    execution_input = build_pricing_execution_input()
-    execution_input_path = write_json_path(
-        tmp_path / "pricing_execution_input.json",
-        execution_input.to_payload(),
-    )
+def _build_price_smoke_invocation(_: str, tmp_path: Path) -> CliSmokeInvocation:
+    model_path = _write_price_model(tmp_path, run_id="smoke-price-model")
+    output_path = tmp_path / "pricing.json"
 
     return CliSmokeInvocation(
         command_arguments=[
-            "pricing",
-            "vanilla-option",
-            "--execution-input-json",
-            str(execution_input_path),
+            "price",
+            "--model-path",
+            str(model_path),
+            "--valuation-time-utc",
+            "2026-02-02T15:00:00Z",
+            "--spot",
+            "101.0",
+            "--strike",
+            "100.0",
+            "--maturity-interval",
+            "1.0",
+            "--output-path",
+            str(output_path),
+            "--output",
+            "json",
         ],
-        validate_stdout=_validate_pricing_smoke_stdout,
+        validate_stdout=_validate_price_smoke_stdout,
     )
 
 
@@ -629,20 +636,18 @@ def _build_simulation_missing_request_arguments(calendar_registry_json: str, tmp
     ]
 
 
-def _build_pricing_missing_strike_arguments(_: str, tmp_path: Path) -> list[str]:
-    execution_input_payload = build_pricing_execution_input().to_payload()
-    del execution_input_payload["request"]["market_inputs"]["strike"]
-
-    execution_input_path = write_json_path(
-        tmp_path / "pricing_missing_strike.json",
-        execution_input_payload,
-    )
-
+def _build_price_missing_strike_arguments(_: str, tmp_path: Path) -> list[str]:
+    model_path = _write_price_model(tmp_path, run_id="missing-strike-price-model")
     return [
-        "pricing",
-        "vanilla-option",
-        "--execution-input-json",
-        str(execution_input_path),
+        "price",
+        "--model-path",
+        str(model_path),
+        "--valuation-time-utc",
+        "2026-02-02T15:00:00Z",
+        "--spot",
+        "101.0",
+        "--maturity-interval",
+        "1.0",
     ]
 
 
@@ -731,11 +736,28 @@ def _validate_simulation_smoke_stdout(stdout_text: str) -> None:
     assert isinstance(payload["event_tape"], list)
 
 
-def _validate_pricing_smoke_stdout(stdout_text: str) -> None:
+def _validate_price_smoke_stdout(stdout_text: str) -> None:
     payload = _parse_json_command_output(stdout_text)
-    assert payload["schema_version"] == "pricing.vanilla_option.run_result.v1"
+    assert payload["schema_version"] == cli_module.CLI_PRICE_RESULT_SCHEMA_VERSION
     assert payload["response"]["price"] >= 0.0
     assert payload["response"]["diagnostics"]["forward_price"] > 0.0
+
+
+def _write_price_model(tmp_path: Path, *, run_id: str) -> Path:
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        monkeypatch.chdir(tmp_path)
+        model = _build_full_workflow_model(
+            tmp_path,
+            monkeypatch,
+            run_id=run_id,
+        )
+    finally:
+        monkeypatch.undo()
+
+    model_path = tmp_path / f"{run_id}.json"
+    model.save(model_path)
+    return model_path
 
 
 def _validate_hourly_factors_build_contract_smoke_stdout(stdout_text: str) -> None:

@@ -9,7 +9,7 @@ from .commands.development import _build_development_group
 from .commands.hourly_factors import _build_hourly_factors_group
 from .commands.model_workflows import _build_fit_group, _build_simulate_group
 from .commands.presets import _build_presets_group
-from .commands.pricing import _build_pricing_group
+from .commands.pricing import _build_price_command
 from .commands.seasonality import _build_seasonality_group
 from .commands.stylized_facts import _build_stylized_facts_group
 from ._constants import CliExitCode
@@ -23,14 +23,16 @@ def _build_app(*, environment: Optional[Mapping[str, str]] = None) -> click.Comm
         environment=environment,
         invoke_without_command=True,
         help=(
-            "Primary workflows are the fit and simulate commands.\n\n"
+            "Primary workflows are the fit, simulate, and price commands.\n\n"
             "\b\n"
             "Use the fit command to fit a Janiform model from market data.\n"
             "Use the simulate command to simulate from a persisted Janiform model.\n\n"
+            "Use the price command to price options from a persisted Janiform model.\n\n"
             "\b\n"
             "See also:\n"
             "  janiform fit --help\n"
-            "  janiform simulate --help"
+            "  janiform simulate --help\n"
+            "  janiform price --help"
         ),
     )
     @click.version_option(version=__version__)
@@ -42,10 +44,10 @@ def _build_app(*, environment: Optional[Mapping[str, str]] = None) -> click.Comm
     for group_builder in (
         _build_fit_group,
         _build_simulate_group,
+        _build_price_command,
         _build_presets_group,
         _build_seasonality_group,
         _build_hourly_factors_group,
-        _build_pricing_group,
         _build_stylized_facts_group,
         _build_development_group,
     ):

@@ -65,6 +65,8 @@ from ..sessions.resolution import (
 )
 from ..staged.contracts import CalibrationStageExecutionStatus
 from ..staged.runtime import _run_staged_calibration_with_raw_payload
+from ..._workflow_outputs import write_fit_artifacts
+from ..._workflow_progress import AbstractProgress, JaniformOutputController, NullProgress
 from ...calendar import CalendarRegistry
 
 
@@ -85,6 +87,8 @@ class _PreparedHighLevelFitWorkflow:
     prepared: PreparedMarketDataCalibration
     resolved_configuration: ResolvedPresetWorkflowConfiguration
     input_inference: HighLevelFitInference
+    fit_warning: Optional[str]
+    reference_price: Optional[float]
     temporary_directory: Optional[TemporaryDirectory[str]]
 
 
@@ -154,6 +158,8 @@ class JaniformEstimator:
         option_surface_path: Optional[str | Path] = None,
         option_surface_format: CalibrationInputFileFormat = CalibrationInputFileFormat.PARQUET,
         option_surface_provenance_label: str = "option_surface",
+        output_dir: Optional[str | Path] = None,
+        silent: Optional[bool] = None,
         report: Literal[False] = False,
     ) -> JaniformModel: ...
 
@@ -168,6 +174,8 @@ class JaniformEstimator:
         option_surface_path: Optional[str | Path] = None,
         option_surface_format: CalibrationInputFileFormat = CalibrationInputFileFormat.PARQUET,
         option_surface_provenance_label: str = "option_surface",
+        output_dir: Optional[str | Path] = None,
+        silent: Optional[bool] = None,
         report: Literal[True],
     ) -> tuple[Optional[JaniformModel], JaniformFitReport]: ...
 
@@ -181,6 +189,8 @@ class JaniformEstimator:
         option_surface_path: Optional[str | Path] = None,
         option_surface_format: CalibrationInputFileFormat = CalibrationInputFileFormat.PARQUET,
         option_surface_provenance_label: str = "option_surface",
+        output_dir: Optional[str | Path] = None,
+        silent: Optional[bool] = None,
         report: bool = False,
     ) -> JaniformModel | tuple[Optional[JaniformModel], JaniformFitReport]:
         if not tick_data_provenance_label.strip():
@@ -194,25 +204,38 @@ class JaniformEstimator:
                 "must be a non-empty string",
             )
 
-        with self._stdout_suppression_context():
-            prepared_workflow = self._prepare_fit_workflow(
-                run_id=run_id,
-                tick_data_path=tick_data_path,
-                tick_data_format=tick_data_format,
-                tick_data_provenance_label=tick_data_provenance_label,
-                option_surface_path=option_surface_path,
-                option_surface_format=option_surface_format,
-                option_surface_provenance_label=option_surface_provenance_label,
-            )
+        effective_silent = self._silent if silent is None else silent
+        output_controller = JaniformOutputController(silent=effective_silent)
+        prepared_workflow: Optional[_PreparedHighLevelFitWorkflow] = None
+
+        with self._stdout_suppression_context(effective_silent=effective_silent):
             try:
-                staged_response, raw_response_payload = _run_staged_calibration_with_raw_payload(
-                    prepared_workflow.prepared.execution_input,
-                    calendar_registry=CalendarRegistry(
-                        prepared_workflow.prepared.session_resolution.resolved_session_definition_json
-                    ),
-                )
+                with output_controller.progress("fit", total_steps=7) as progress:
+                    progress.update(detail="inferring market-data inputs")
+                    prepared_workflow = self._prepare_fit_workflow(
+                        run_id=run_id,
+                        tick_data_path=tick_data_path,
+                        tick_data_format=tick_data_format,
+                        tick_data_provenance_label=tick_data_provenance_label,
+                        option_surface_path=option_surface_path,
+                        option_surface_format=option_surface_format,
+                        option_surface_provenance_label=option_surface_provenance_label,
+                        progress=progress,
+                    )
+                    if prepared_workflow.fit_warning is not None:
+                        output_controller.warning(prepared_workflow.fit_warning)
+                    progress.update(detail="running calibration")
+                    staged_response, raw_response_payload = _run_staged_calibration_with_raw_payload(
+                        prepared_workflow.prepared.execution_input,
+                        calendar_registry=CalendarRegistry(
+                            prepared_workflow.prepared.session_resolution.resolved_session_definition_json
+                        ),
+                    )
             finally:
-                if prepared_workflow.temporary_directory is not None:
+                if (
+                    prepared_workflow is not None
+                    and prepared_workflow.temporary_directory is not None
+                ):
                     prepared_workflow.temporary_directory.cleanup()
 
         fit_report = JaniformFitReport(
@@ -277,12 +300,19 @@ class JaniformEstimator:
                     session_source_kind=prepared_workflow.resolved_configuration.session.source_kind.value,
                     known_news_source_kind=prepared_workflow.resolved_configuration.known_news.source_kind.value,
                 ),
+                reference_price=prepared_workflow.reference_price,
             ),
             resolved_configuration=prepared_workflow.resolved_configuration,
             session_resolution=prepared_workflow.prepared.session_resolution,
             _execution_input=prepared_workflow.prepared.execution_input,
             _stage_report_payloads=fit_report.stage_report_payloads,
         )
+        if output_dir is not None:
+            write_fit_artifacts(
+                model=model,
+                fit_report=fit_report,
+                output_dir=output_dir,
+            )
         if report:
             return model, fit_report
 
@@ -340,10 +370,13 @@ class JaniformEstimator:
         option_surface_path: Optional[str | Path],
         option_surface_format: CalibrationInputFileFormat,
         option_surface_provenance_label: str,
+        progress: Optional[AbstractProgress] = None,
     ) -> _PreparedHighLevelFitWorkflow:
+        effective_progress = NullProgress() if progress is None else progress
         resolved_market_profile_configuration = (
             self._resolve_market_profile_configuration()
         )
+        effective_progress.update(detail="inferring market-data inputs")
         input_inference = infer_high_level_fit_inputs(
             tick_data_path=Path(tick_data_path),
             tick_data_format=tick_data_format,
@@ -366,12 +399,15 @@ class JaniformEstimator:
 
         temporary_directory: Optional[TemporaryDirectory[str]] = None
         try:
+            effective_progress.update(detail="resolving session configuration")
             inferred_session_resolution = self._infer_session_resolution(
                 run_id=input_inference.run_id,
                 tick_data_source=input_inference.tick_data_source,
                 tick_data_column_mapping=input_inference.tick_data_column_mapping,
                 normalization_policy=input_inference.normalization_policy,
+                progress=effective_progress,
             )
+            effective_progress.update(detail="resolving preset configuration")
             resolved_configuration = resolve_preset_workflow_configuration(
                 registry=self._registry,
                 market_profile_reference=self._market_profile_reference,
@@ -387,6 +423,7 @@ class JaniformEstimator:
                 working_directory = Path(temporary_directory.name)
             else:
                 working_directory = None
+            effective_progress.update(detail="preparing market-data workflow")
             request = self._build_market_data_request(
                 run_id=input_inference.run_id,
                 tick_data_source=input_inference.tick_data_source,
@@ -396,7 +433,10 @@ class JaniformEstimator:
                 normalization_policy=input_inference.normalization_policy,
                 working_directory=working_directory,
             )
+            effective_progress.update(detail="translating market-data inputs")
             prepared = prepare_market_data_calibration(request)
+            effective_progress.update(detail="loading normalized inputs")
+            loaded_inputs = load_market_data_calibration_inputs(request)
         except Exception:
             if temporary_directory is not None:
                 temporary_directory.cleanup()
@@ -407,6 +447,8 @@ class JaniformEstimator:
             prepared=prepared,
             resolved_configuration=resolved_configuration,
             input_inference=input_inference,
+            fit_warning=_detect_interval_data_warning(loaded_inputs.tick_data.records),
+            reference_price=_extract_reference_price(loaded_inputs.tick_data.records),
             temporary_directory=temporary_directory,
         )
 
@@ -430,6 +472,7 @@ class JaniformEstimator:
         tick_data_source: CalibrationInputFileReference,
         tick_data_column_mapping: CalibrationTickDataColumnMapping,
         normalization_policy: CalibrationMarketDataNormalizationPolicy,
+        progress: AbstractProgress,
     ) -> Optional[MarketDataSessionResolution]:
         if not self._requires_session_inference():
             return None
@@ -450,7 +493,9 @@ class JaniformEstimator:
             normalization_policy=normalization_policy,
             output_preferences=self._output_preferences,
         )
+        progress.update(detail="loading tick data for session inference")
         loaded_inputs = load_market_data_calibration_inputs(request)
+        progress.update(detail="resolving inferred session")
         resolved_session = resolve_market_data_session_configuration(
             request,
             loaded_inputs.tick_data,
@@ -522,8 +567,12 @@ class JaniformEstimator:
             ),
         )
 
-    def _stdout_suppression_context(self) -> AbstractContextManager[object]:
-        if self._silent:
+    def _stdout_suppression_context(
+        self,
+        *,
+        effective_silent: Optional[bool] = None,
+    ) -> AbstractContextManager[object]:
+        if self._silent if effective_silent is None else effective_silent:
             return redirect_stdout(StringIO())
 
         return nullcontext()
@@ -867,6 +916,62 @@ def _resolved_configuration_requires_materialization(
             or resolved_configuration.session.selected_preset is not None
         )
     )
+
+
+def _extract_reference_price(normalized_records: tuple[Any, ...]) -> Optional[float]:
+    if len(normalized_records) == 0:
+        return None
+
+    last_record = normalized_records[-1]
+    price = cast(Optional[float], last_record.price)
+    return price
+
+
+def _detect_interval_data_warning(normalized_records: tuple[Any, ...]) -> Optional[str]:
+    if len(normalized_records) < 4:
+        return None
+
+    deltas_in_seconds: list[int] = []
+    for previous_record, current_record in zip(normalized_records, normalized_records[1:]):
+        previous_timestamp = cast(datetime, previous_record.timestamp)
+        current_timestamp = cast(datetime, current_record.timestamp)
+        delta_seconds = int((current_timestamp - previous_timestamp).total_seconds())
+        if delta_seconds > 0:
+            deltas_in_seconds.append(delta_seconds)
+
+    if len(deltas_in_seconds) < 3:
+        return None
+
+    aligned_to_minute_count = sum(delta_seconds % 60 == 0 for delta_seconds in deltas_in_seconds)
+    dominant_delta_seconds = max(
+        set(deltas_in_seconds),
+        key=deltas_in_seconds.count,
+    )
+    dominant_delta_share = deltas_in_seconds.count(dominant_delta_seconds) / len(deltas_in_seconds)
+
+    if dominant_delta_seconds < 60:
+        return None
+    if aligned_to_minute_count / len(deltas_in_seconds) < 0.8:
+        return None
+    if dominant_delta_share < 0.6:
+        return None
+
+    return (
+        "The supplied fit input appears to be interval data rather than tick data. "
+        f"Janiform detected a dominant spacing of {_format_interval_warning_delta(dominant_delta_seconds)}, "
+        "so fitting the model on this data will likely produce an invalid fit."
+    )
+
+
+def _format_interval_warning_delta(delta_seconds: int) -> str:
+    if delta_seconds % 86_400 == 0:
+        return f"{delta_seconds // 86_400}D"
+    if delta_seconds % 3_600 == 0:
+        return f"{delta_seconds // 3_600}h"
+    if delta_seconds % 60 == 0:
+        return f"{delta_seconds // 60}min"
+
+    return f"{delta_seconds}s"
 
 
 __all__ = ["JaniformEstimator"]

@@ -26,6 +26,10 @@ def serialize_deterministic_json(value: object) -> str:
     return json.dumps(_to_jsonable(value), sort_keys=True)
 
 
+def serialize_pretty_json(value: object) -> str:
+    return json.dumps(_to_jsonable(value), indent=2, sort_keys=True)
+
+
 def parse_json_object(
     payload_json: str,
     payload_label: str,

@@ -112,8 +112,8 @@ janiform
 - `janiform fit --help` and `janiform simulate --help` make the high-level defaults obvious while
   still listing their explicit expert subcommands.
 - `janiform presets --help`, `janiform seasonality --help`, `janiform hourly-factors --help`,
-  `janiform pricing --help`, and `janiform stylized-facts --help` each list their current
-  workflow subcommands.
+  `janiform price --help`, and `janiform stylized-facts --help` each list their current
+  workflow commands or subcommands.
 - `janiform dev --help` lists internal-only utility groups.
 - Incomplete command paths print the help for the selected namespace branch.
 
@@ -306,7 +306,7 @@ Output:
 - `--output human` writes a concise completion summary with accepted-record and coverage-diagnostic
   metadata.
 
-### `janiform pricing vanilla-option`
+### `janiform price`
 
 Required arguments:
 - `--execution-input-json`: `VanillaOptionPricingExecutionInput` JSON object

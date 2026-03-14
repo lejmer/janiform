@@ -46,7 +46,6 @@ The generated files include:
 - `tmp/cli-docs/hourly_factor_explicit_news_source.json`
 - `tmp/cli-docs/hourly_factor_materialized_seasonality.json`
 - `tmp/cli-docs/hourly_factor_materialized_news_intensity.json`
-- `tmp/cli-docs/pricing_execution_input.json`
 - `tmp/cli-docs/stylized_fact_metric_catalog.json`
 - `tmp/cli-docs/stylized_fact_comparison_request.json`
 - `tmp/cli-docs/stylized_fact_artifact_export.json`
@@ -66,9 +65,13 @@ The generated files include:
   `--session-preset SESSION_PRESET`, `--known-news KNOWN_NEWS`,
   `--session-json PATH`, and `--known-news-json PATH`.
 - Use `--known-news none` to keep the off-by-default known-news baseline explicit.
-- `janiform fit` can persist a reusable fitted model with `--model-output-path PATH`.
+- `janiform fit` persists `model.json`, `fit_report.json`, and `run.json` by default.
+- Override the fit artifact location with `--output-dir DIRECTORY`.
 - `janiform simulate` consumes that persisted model through `--model-path PATH`.
-- `janiform simulate` uses `--simulation-output {coarse,ticks,both}` to choose the runtime artifact shape.
+- Omit `--interval` on `janiform simulate` for seeded tick output.
+- Provide `--interval INTERVAL` on `janiform simulate` for coarse interval output.
+- Override the primary simulation artifact with `--output-path PATH`.
+- `janiform price` is model-driven and writes pricing artifacts by default.
 - `fit plan` and `fit staged` share `--execution-mode {disk,memory}`.
 - The CLI default is `disk` for `fit plan` and `fit staged`.
 - `--disk-checkpoint-directory` is required when the effective fit execution mode is `disk`.
@@ -129,7 +132,7 @@ preview the inferred configuration without running calibration.
 ### Synopsis
 
 ```text
-janiform fit [PATH] [--market MARKET] [--run-id RUN_ID] [--workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface}] [--tick-data-path PATH] [--tick-data-format {csv,parquet}] [--tick-timestamp-column TICK_TIMESTAMP_COLUMN] [--timestamp-timezone TIMESTAMP_TIMEZONE] [--tick-data-provenance-label TICK_DATA_PROVENANCE_LABEL] [--tick-price-input-policy {explicit_price_column,trade_price_column,bid_ask_midpoint,close_price_column}] [--tick-price-column TICK_PRICE_COLUMN] [--tick-trade-price-column TICK_TRADE_PRICE_COLUMN] [--tick-trade-sign-column TICK_TRADE_SIGN_COLUMN] [--tick-bid-column TICK_BID_COLUMN] [--tick-ask-column TICK_ASK_COLUMN] [--tick-close-price-column TICK_CLOSE_PRICE_COLUMN] [--session-preset SESSION_PRESET] [--known-news KNOWN_NEWS] [--session-json PATH] [--known-news-json PATH] [--exchange-code EXCHANGE_CODE] [--session-timezone SESSION_TIMEZONE] [--explain] [--silent] [--option-surface-path PATH] [--option-surface-format {csv,parquet}] [--option-surface-provenance-label OPTION_SURFACE_PROVENANCE_LABEL] [--option-quote-input-policy {mid_price_column,bid_ask_midpoint,implied_volatility_column}] [--option-quote-timestamp-column OPTION_QUOTE_TIMESTAMP_COLUMN] [--option-expiry-column OPTION_EXPIRY_COLUMN] [--option-strike-column OPTION_STRIKE_COLUMN] [--option-type-column OPTION_TYPE_COLUMN] [--option-mid-price-column OPTION_MID_PRICE_COLUMN] [--option-bid-column OPTION_BID_COLUMN] [--option-ask-column OPTION_ASK_COLUMN] [--option-implied-volatility-column OPTION_IMPLIED_VOLATILITY_COLUMN] [--execution-mode {disk,memory}] [--disk-checkpoint-directory DIRECTORY] [--emit-derived-staged-execution-input] [--omit-input-provenance-report] [--model-output-path PATH] [--output {human,json}]
+janiform fit [PATH] [--market MARKET] [--run-id RUN_ID] [--workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface}] [--tick-data-path PATH] [--tick-data-format {csv,parquet}] [--tick-timestamp-column TICK_TIMESTAMP_COLUMN] [--timestamp-timezone TIMESTAMP_TIMEZONE] [--tick-data-provenance-label TICK_DATA_PROVENANCE_LABEL] [--tick-price-input-policy {explicit_price_column,trade_price_column,bid_ask_midpoint,close_price_column}] [--tick-price-column TICK_PRICE_COLUMN] [--tick-trade-price-column TICK_TRADE_PRICE_COLUMN] [--tick-trade-sign-column TICK_TRADE_SIGN_COLUMN] [--tick-bid-column TICK_BID_COLUMN] [--tick-ask-column TICK_ASK_COLUMN] [--tick-close-price-column TICK_CLOSE_PRICE_COLUMN] [--session-preset SESSION_PRESET] [--known-news KNOWN_NEWS] [--session-json PATH] [--known-news-json PATH] [--exchange-code EXCHANGE_CODE] [--session-timezone SESSION_TIMEZONE] [--explain] [--silent] [--option-surface-path PATH] [--option-surface-format {csv,parquet}] [--option-surface-provenance-label OPTION_SURFACE_PROVENANCE_LABEL] [--option-quote-input-policy {mid_price_column,bid_ask_midpoint,implied_volatility_column}] [--option-quote-timestamp-column OPTION_QUOTE_TIMESTAMP_COLUMN] [--option-expiry-column OPTION_EXPIRY_COLUMN] [--option-strike-column OPTION_STRIKE_COLUMN] [--option-type-column OPTION_TYPE_COLUMN] [--option-mid-price-column OPTION_MID_PRICE_COLUMN] [--option-bid-column OPTION_BID_COLUMN] [--option-ask-column OPTION_ASK_COLUMN] [--option-implied-volatility-column OPTION_IMPLIED_VOLATILITY_COLUMN] [--execution-mode {disk,memory}] [--disk-checkpoint-directory DIRECTORY] [--emit-derived-staged-execution-input] [--omit-input-provenance-report] [--output-dir DIRECTORY] [--output {human,json}]
 ```
 
 ### Example
@@ -138,30 +141,30 @@ janiform fit [PATH] [--market MARKET] [--run-id RUN_ID] [--workflow-scope {seaso
 janiform fit tmp/cli-docs/data/ticks.csv \
   --market us_equity_cash \
   --explain \
-  --model-output-path tmp/cli-docs/fitted_model.json \
+  --output-dir tmp/cli-docs/fitted_run \
   --output human
 ```
 
 ## High-Level Simulation
 
-Use `janiform simulate` when you already have a persisted model and want to generate coarse paths,
-seeded ticks, or both without reassembling runtime contracts by hand.
+Use `janiform simulate` when you already have a persisted model and want the default seeded tick
+workflow or the coarse interval workflow without reassembling runtime contracts by hand.
 
 ### Simulate Synopsis
 
 ```text
-janiform simulate --model-path PATH --seed SEED --start-time-utc START_TIME_UTC --horizon-interval-count HORIZON_INTERVAL_COUNT [--interval INTERVAL] [--simulation-output {coarse,ticks,both}] [--debug-trace-enabled] [--sample-every-nth-transition SAMPLE_EVERY_NTH_TRANSITION] [--max-records-per-chunk MAX_RECORDS_PER_CHUNK] [--output {human,json}]
+janiform simulate --model-path PATH --seed SEED --start-time-utc START_TIME_UTC --horizon-interval-count HORIZON_INTERVAL_COUNT [--interval INTERVAL] [--output-path PATH] [--silent] [--debug-trace-enabled] [--sample-every-nth-transition SAMPLE_EVERY_NTH_TRANSITION] [--max-records-per-chunk MAX_RECORDS_PER_CHUNK] [--output {human,json}]
 ```
 
 ### Examples
 
 ```bash
 janiform simulate \
-  --model-path tmp/cli-docs/fitted_model.json \
+  --model-path tmp/cli-docs/fitted_run/model.json \
   --seed 17 \
   --start-time-utc 2026-02-02T15:00:00Z \
   --horizon-interval-count 4 \
-  --simulation-output coarse \
+  --interval 1h \
   --output json
 ```
 
@@ -339,19 +342,27 @@ janiform seasonality preprocess-timestamps \
 ### Synopsis
 
 ```text
-janiform pricing vanilla-option --execution-input-json PATH [--output {human,json}]
+janiform price --model-path PATH --valuation-time-utc VALUATION_TIME_UTC --spot FLOAT --strike FLOAT --maturity-interval FLOAT [--payoff-type {call,put}] [--risk-free-rate FLOAT] [--dividend-yield FLOAT] [--output-path PATH] [--silent] [--output {human,json}]
 ```
 
 ### Options
 
-- `--execution-input-json`: `VanillaOptionPricingExecutionInput` contract file
+- `--model-path`: persisted `JaniformModel`
+- `--valuation-time-utc`: valuation timestamp in UTC
+- `--spot`: spot price
+- `--strike`: option strike
+- `--maturity-interval`: maturity in model time units
 - `--output {human,json}`: operator summary or machine-readable result
 
 ### Example
 
 ```bash
-janiform pricing vanilla-option \
-  --execution-input-json tmp/cli-docs/pricing_execution_input.json \
+janiform price \
+  --model-path tmp/cli-docs/fitted_run/model.json \
+  --valuation-time-utc 2026-02-02T15:00:00Z \
+  --spot 100.0 \
+  --strike 105.0 \
+  --maturity-interval 4.0 \
   --output json
 ```
 

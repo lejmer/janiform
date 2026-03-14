@@ -73,11 +73,6 @@ CLI_PRESET_SCOPE_CHOICES: tuple[str, str, str] = (
     PresetRegistryScope.BUILT_IN.value,
     PresetRegistryScope.USER_REGISTERED.value,
 )
-CLI_MODEL_SIMULATION_OUTPUT_CHOICES: tuple[str, str, str] = (
-    "coarse",
-    "ticks",
-    "both",
-)
 CLI_CALIBRATION_EXECUTION_MODE_HELP = (
     "Calibration execution mode override. Precedence: --execution-mode, then the CLI default "
     "disk. This overrides request.execution_mode from --execution-input-json."
@@ -92,9 +87,9 @@ CLI_SIMULATION_COARSE_INTERVAL_INTERNAL_ERROR_ID = "cli.internal.simulate.coarse
 CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT = "simulate.seeded_ticks"
 CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID = "cli.validation.simulate.seeded_ticks.invalid_input"
 CLI_SIMULATION_SEEDED_TICKS_INTERNAL_ERROR_ID = "cli.internal.simulate.seeded_ticks.failed"
-CLI_PRICING_VANILLA_OPTION_ENTRYPOINT = "pricing.vanilla_option"
-CLI_PRICING_VANILLA_OPTION_VALIDATION_ERROR_ID = "cli.validation.pricing.vanilla_option.invalid_input"
-CLI_PRICING_VANILLA_OPTION_INTERNAL_ERROR_ID = "cli.internal.pricing.vanilla_option.failed"
+CLI_PRICE_ENTRYPOINT = "price"
+CLI_PRICE_VALIDATION_ERROR_ID = "cli.validation.price.invalid_input"
+CLI_PRICE_INTERNAL_ERROR_ID = "cli.internal.price.failed"
 CLI_STYLIZED_FACTS_HORIZON_COMPARISON_ENTRYPOINT = "stylized_facts.horizon_comparison"
 CLI_STYLIZED_FACTS_HORIZON_COMPARISON_VALIDATION_ERROR_ID = (
     "cli.validation.stylized_facts.horizon_comparison.invalid_input"
@@ -172,6 +167,7 @@ CLI_PRESET_SHOW_SCHEMA_VERSION = "cli.presets.show.result.v1"
 CLI_FIT_RESULT_SCHEMA_VERSION = "cli.fit.result.v1"
 CLI_FIT_INSPECT_RESULT_SCHEMA_VERSION = "cli.fit.inspect.result.v1"
 CLI_SIMULATE_RESULT_SCHEMA_VERSION = "cli.simulate.result.v1"
+CLI_PRICE_RESULT_SCHEMA_VERSION = "cli.price.result.v1"
 CLI_COMMAND_CONFIG_SCHEMA_VERSION = "cli.command_config.v1"
 CLI_ARGUMENT_RESOLUTION_ENTRYPOINT = "cli.argument_resolution"
 CLI_ARGUMENT_RESOLUTION_VALIDATION_ERROR_ID = "cli.validation.arguments.invalid_input"
@@ -213,9 +209,7 @@ CLI_PRIMARY_COMMAND_TREE: dict[str, dict[str, dict[str, dict[str, Any]]]] = {
         "materialize-news-intensity": {},
         "build-contract": {},
     },
-    "pricing": {
-        "vanilla-option": {},
-    },
+    "price": {},
     "stylized-facts": {
         "horizon-comparison": {},
     },
@@ -321,9 +315,10 @@ __all__ = [
     "CLI_PRESETS_SHOW_ENTRYPOINT",
     "CLI_PRESETS_SHOW_INTERNAL_ERROR_ID",
     "CLI_PRESETS_SHOW_VALIDATION_ERROR_ID",
-    "CLI_PRICING_VANILLA_OPTION_ENTRYPOINT",
-    "CLI_PRICING_VANILLA_OPTION_INTERNAL_ERROR_ID",
-    "CLI_PRICING_VANILLA_OPTION_VALIDATION_ERROR_ID",
+    "CLI_PRICE_ENTRYPOINT",
+    "CLI_PRICE_INTERNAL_ERROR_ID",
+    "CLI_PRICE_RESULT_SCHEMA_VERSION",
+    "CLI_PRICE_VALIDATION_ERROR_ID",
     "CLI_PRIMARY_COMMAND_IDENTIFIERS",
     "CLI_PRIMARY_COMMAND_TREE",
     "CLI_REPOSITORY_RELATIVE_PATH_POLICY",
@@ -341,7 +336,6 @@ __all__ = [
     "CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT",
     "CLI_SIMULATION_SEEDED_TICKS_INTERNAL_ERROR_ID",
     "CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID",
-    "CLI_MODEL_SIMULATION_OUTPUT_CHOICES",
     "CLI_FIT_ENTRYPOINT",
     "CLI_FIT_INTERNAL_ERROR_ID",
     "CLI_FIT_RESULT_SCHEMA_VERSION",
@@ -349,6 +343,7 @@ __all__ = [
     "CLI_HIGH_LEVEL_SIMULATE_ENTRYPOINT",
     "CLI_HIGH_LEVEL_SIMULATE_INTERNAL_ERROR_ID",
     "CLI_HIGH_LEVEL_SIMULATE_VALIDATION_ERROR_ID",
+    "CLI_PRICE_RESULT_SCHEMA_VERSION",
     "CLI_SIMULATE_RESULT_SCHEMA_VERSION",
     "CLI_STYLIZED_FACTS_HORIZON_COMPARISON_ENTRYPOINT",
     "CLI_STYLIZED_FACTS_HORIZON_COMPARISON_INTERNAL_ERROR_ID",
