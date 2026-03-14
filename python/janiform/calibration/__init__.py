@@ -1,5 +1,5 @@
 from ._errors import CalibrationValidationError, CalibrationValidationFailure
-from .fit import JaniformEstimator, JaniformFitReport, JaniformModel
+from .fit import JaniformEstimator, JaniformFitReport, JaniformModel, JaniformSimulationResult
 from .market_data import (
     CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,
     CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
@@ -76,6 +76,7 @@ __all__ = [
     "JaniformEstimator",
     "JaniformFitReport",
     "JaniformModel",
+    "JaniformSimulationResult",
     "KnownNewsExplicitConfiguration",
     "KnownNewsPresetReference",
     "MarketDataCalibrationRequest",

@@ -3,7 +3,6 @@ from typing import Any
 
 from .inputs import (
     StagedCalibrationExecutionInput,
-    serialize_staged_calibration_execution_input,
     validate_staged_calibration_execution_input,
 )
 from .results import StagedCalibrationResponse, validate_staged_calibration_response
@@ -16,7 +15,6 @@ from .._errors import (
     _calibration_execution_error,
     _calibration_integration_error,
 )
-from ..._contracts import parse_json_object
 from ..._native_api import native_module
 from ...calendar import CalendarRegistry
 
@@ -46,8 +44,8 @@ def _run_staged_calibration_with_raw_payload(
         ) from e
 
     try:
-        response_json: str = native.run_staged_calibration(
-            serialize_staged_calibration_execution_input(normalized_execution_input),
+        raw_response_payload = native.run_staged_calibration(
+            normalized_execution_input.to_payload(),
             calendar_registry._native_registry,
         )
     except native.CalibrationExecutionError as e:
@@ -63,13 +61,13 @@ def _run_staged_calibration_with_raw_payload(
             context={"source_exception_type": type(e).__name__},
         ) from e
 
-    raw_response_payload = dict(
-        parse_json_object(
-            response_json,
-            "staged calibration response",
-            CALIBRATION_ERROR_FACTORY,
+    if not isinstance(raw_response_payload, dict):
+        raise _calibration_integration_error(
+            "native calibration returned an invalid response payload",
+            entrypoint="run_staged_calibration",
+            error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
+            context={"returned_type": type(raw_response_payload).__name__},
         )
-    )
 
     try:
         normalized_response = validate_staged_calibration_response(raw_response_payload)

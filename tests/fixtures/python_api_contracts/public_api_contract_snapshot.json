@@ -139,6 +139,7 @@
         "JaniformEstimator",
         "JaniformFitReport",
         "JaniformModel",
+        "JaniformSimulationResult",
         "KnownNewsExplicitConfiguration",
         "KnownNewsPresetReference",
         "MarketDataCalibrationRequest",
@@ -446,6 +447,17 @@
           "kind": "contract_model",
           "signature": "(run_id: 'str', workflow_scope: 'CalibrationMarketDataWorkflowScope', parameters: 'dict[str, Any]', metadata: 'dict[str, Any]', resolved_configuration: 'ResolvedPresetWorkflowConfiguration', session_resolution: 'MarketDataSessionResolution') -> 'None'"
         },
+        "JaniformSimulationResult": {
+          "field_names": [
+            "simulation_kind",
+            "metadata",
+            "provenance",
+            "diagnostics",
+            "raw_result"
+          ],
+          "kind": "contract_model",
+          "signature": "(simulation_kind: 'str', metadata: 'dict[str, Any]', provenance: 'dict[str, Any]', diagnostics: 'dict[str, Any]', raw_result: 'CoarseSimulationPath | SeededTickSimulationResponse') -> 'None'"
+        },
         "KnownNewsExplicitConfiguration": {
           "field_names": [
             "events",
@@ -699,7 +711,8 @@
       "exports": [
         "JaniformEstimator",
         "JaniformFitReport",
-        "JaniformModel"
+        "JaniformModel",
+        "JaniformSimulationResult"
       ],
       "module_name": "janiform.calibration.fit",
       "schema_identifiers": [],
@@ -738,6 +751,17 @@
           ],
           "kind": "contract_model",
           "signature": "(run_id: 'str', workflow_scope: 'CalibrationMarketDataWorkflowScope', parameters: 'dict[str, Any]', metadata: 'dict[str, Any]', resolved_configuration: 'ResolvedPresetWorkflowConfiguration', session_resolution: 'MarketDataSessionResolution') -> 'None'"
+        },
+        "JaniformSimulationResult": {
+          "field_names": [
+            "simulation_kind",
+            "metadata",
+            "provenance",
+            "diagnostics",
+            "raw_result"
+          ],
+          "kind": "contract_model",
+          "signature": "(simulation_kind: 'str', metadata: 'dict[str, Any]', provenance: 'dict[str, Any]', diagnostics: 'dict[str, Any]', raw_result: 'CoarseSimulationPath | SeededTickSimulationResponse') -> 'None'"
         }
       }
     },
@@ -762,7 +786,8 @@
     },
     "janiform.calibration.fit.model": {
       "exports": [
-        "JaniformModel"
+        "JaniformModel",
+        "JaniformSimulationResult"
       ],
       "module_name": "janiform.calibration.fit.model",
       "schema_identifiers": [
@@ -784,6 +809,17 @@
           ],
           "kind": "contract_model",
           "signature": "(run_id: 'str', workflow_scope: 'CalibrationMarketDataWorkflowScope', parameters: 'dict[str, Any]', metadata: 'dict[str, Any]', resolved_configuration: 'ResolvedPresetWorkflowConfiguration', session_resolution: 'MarketDataSessionResolution') -> 'None'"
+        },
+        "JaniformSimulationResult": {
+          "field_names": [
+            "simulation_kind",
+            "metadata",
+            "provenance",
+            "diagnostics",
+            "raw_result"
+          ],
+          "kind": "contract_model",
+          "signature": "(simulation_kind: 'str', metadata: 'dict[str, Any]', provenance: 'dict[str, Any]', diagnostics: 'dict[str, Any]', raw_result: 'CoarseSimulationPath | SeededTickSimulationResponse') -> 'None'"
         }
       }
     },

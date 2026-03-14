@@ -765,26 +765,26 @@ def run_stylized_fact_horizon_comparison_report_generator(
 
 
 def run_vanilla_option_pricing(
-    execution_input_json: str,
-) -> str: ...
+    execution_input: object,
+) -> object: ...
 
 
 def run_staged_calibration(
-    execution_input_json: str,
+    execution_input: object,
     calendar_registry: CalendarRegistry,
     memory_checkpoint_store: Optional[CalibrationMemoryCheckpointStore] = None,
-) -> str: ...
+) -> object: ...
 
 
 def preprocess_market_data_translation_request(
-    preprocessing_request_json: str,
+    preprocessing_request: object,
     calendar_registry: CalendarRegistry,
-) -> str: ...
+) -> object: ...
 
 
 def run_coarse_simulation(
-    run_request_json: str,
-) -> str: ...
+    run_request: object,
+) -> object: ...
 
 
 def run_seeded_tick_event_simulation(
@@ -795,7 +795,7 @@ def run_seeded_tick_event_simulation(
     nig_shared_plus_shift_configuration: object,
     initial_excitation_state: object,
     hourly_factor_contract: HourlyFactorContractResult,
-    news_process_configuration_json: str,
+    news_process_configuration: object,
     *,
     debug_trace_enabled: bool = False,
     sample_every_nth_transition: int = 1,

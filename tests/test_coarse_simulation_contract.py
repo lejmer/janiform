@@ -32,6 +32,7 @@ from janiform.simulation import (
     run_coarse_simulation,
     serialize_coarse_simulation_path,
     serialize_coarse_simulation_run_request,
+    validate_coarse_simulation_path,
     validate_coarse_simulation_run_request,
 )
 
@@ -85,8 +86,8 @@ def test_coarse_simulation_python_wrapper_matches_native_json_bridge(
     request = _build_coarse_run_request(calendar_registry)
 
     wrapped_path = run_coarse_simulation(request)
-    native_path = deserialize_coarse_simulation_path(
-        native_module().run_coarse_simulation(serialize_coarse_simulation_run_request(request))
+    native_path = validate_coarse_simulation_path(
+        native_module().run_coarse_simulation(request.to_payload())
     )
 
     assert wrapped_path == native_path

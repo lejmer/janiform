@@ -8,6 +8,7 @@ from .contracts import (
     CalibrationMarketDataWorkflowScope,
 )
 from .request import MarketDataCalibrationRequest, validate_market_data_calibration_request
+from .translation import MarketDataTranslationResult
 from .._errors import _calibration_error
 from ..sessions.contracts import MarketDataSessionResolution
 from ..staged.inputs import StagedCalibrationExecutionInput
@@ -160,9 +161,20 @@ def prepare_market_data_calibration(request: MarketDataCalibrationRequest) -> Pr
     normalized_request = validate_market_data_calibration_request(request.to_payload())
     translation_result = translate_market_data_request_to_staged_execution_input(normalized_request)
 
+    return _prepare_market_data_calibration_from_translation_result(
+        request=normalized_request,
+        translation_result=translation_result,
+    )
+
+
+def _prepare_market_data_calibration_from_translation_result(
+    *,
+    request: MarketDataCalibrationRequest,
+    translation_result: MarketDataTranslationResult,
+) -> PreparedMarketDataCalibration:
     return PreparedMarketDataCalibration(
         schema_version=CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
-        request=normalized_request,
+        request=request,
         execution_input=translation_result.execution_input,
         diagnostics=_build_market_data_preparation_diagnostics(translation_result.diagnostics),
         provenance=_build_market_data_preparation_provenance(translation_result.provenance),

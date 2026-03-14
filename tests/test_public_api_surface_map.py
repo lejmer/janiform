@@ -385,6 +385,7 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
         "JaniformEstimator",
         "JaniformFitReport",
         "JaniformModel",
+        "JaniformSimulationResult",
         "MarketDataCalibrationRequest",
         "MarketDataSessionRecurringClosedWindow",
         "MarketDataSessionRegularWindow",
@@ -431,6 +432,7 @@ def test_calibration_fit_public_submodule_is_supported_domain_import() -> None:
         "JaniformEstimator",
         "JaniformFitReport",
         "JaniformModel",
+        "JaniformSimulationResult",
     }
 
 
@@ -440,7 +442,10 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
     calibration_fit_report_module = import_module("janiform.calibration.fit.report")
 
     assert set(calibration_fit_estimator_module.__all__) == {"JaniformEstimator"}
-    assert set(calibration_fit_model_module.__all__) == {"JaniformModel"}
+    assert set(calibration_fit_model_module.__all__) == {
+        "JaniformModel",
+        "JaniformSimulationResult",
+    }
     assert set(calibration_fit_report_module.__all__) == {"JaniformFitReport"}
 
 

@@ -98,8 +98,6 @@ from ...calibration.fit.input_resolution import (
     infer_high_level_fit_inputs,
 )
 from ...errors import JaniformError, JaniformErrorCategory, JaniformErrorDetails, JaniformExecutionError
-from ...simulation import SeededTickSimulationResponse
-
 type CliCommandArguments = dict[str, Any]
 
 
@@ -1094,11 +1092,7 @@ def _build_cli_simulate_result_payload(
         "command": command,
         "model_path": None if model_path is None else str(model_path),
         "run_id": simulation_run_id,
-        "simulation_kind": (
-            "seeded_tick"
-            if isinstance(simulation_result, SeededTickSimulationResponse)
-            else "coarse_interval"
-        ),
+        "simulation_kind": simulation_result.simulation_kind,
         "primary_output_path": str(artifact_paths.primary_output_path),
         "report_path": str(artifact_paths.report_path),
         "manifest_path": str(artifact_paths.manifest_path),
@@ -1106,7 +1100,7 @@ def _build_cli_simulate_result_payload(
         "model_summary": model.summary(),
         "resolved_configuration": model.resolved_configuration.to_payload(),
         "session_resolution": model.session_resolution.to_payload(),
-        "simulation_diagnostics": simulation_result.diagnostics.to_payload(),
+        "simulation_diagnostics": simulation_result.diagnostics,
     }
 
 

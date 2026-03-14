@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
@@ -41,6 +41,9 @@ from ..staged.results import StagedCalibrationResponse
 from ..._workflow_outputs import (
     SimulationArtifactSink,
     generate_workflow_run_id,
+    persist_coarse_simulation,
+    persist_seeded_tick_simulation,
+    simulation_output_preferences_from_model,
     write_pricing_artifacts,
     write_simulation_artifacts,
 )
@@ -115,6 +118,94 @@ class _PreparedModelRuntimeFactors:
     surprise_component_nu_h: tuple[float, ...]
 
 
+class _MemorySimulationSink:
+    __slots__ = ("rows",)
+
+    def __init__(self) -> None:
+        self.rows: list[dict[str, Any]] = []
+
+    def write_records(self, records: list[dict[str, Any]]) -> None:
+        self.rows.extend(records)
+
+    def close(self) -> None:
+        return None
+
+
+@dataclass(slots=True)
+class JaniformSimulationResult:
+    simulation_kind: str
+    metadata: dict[str, Any]
+    provenance: dict[str, Any]
+    diagnostics: dict[str, Any]
+    raw_result: CoarseSimulationPath | SeededTickSimulationResponse = field(repr=False)
+    _preferences: Optional[Any] = field(repr=False, default=None)
+    _rows_cache: Optional[list[dict[str, Any]]] = field(init=False, repr=False, default=None)
+
+    def to_pandas(self) -> Any:
+        import pandas
+
+        return pandas.DataFrame.from_records(self._rows())
+
+    def to_numpy(self) -> Any:
+        import numpy
+
+        rows = self._rows()
+        if len(rows) == 0:
+            return numpy.empty((0, 0), dtype=object)
+
+        column_names = tuple(rows[0].keys())
+        return numpy.asarray(
+            [
+                tuple(row[column_name] for column_name in column_names)
+                for row in rows
+            ],
+            dtype=object,
+        )
+
+    def to_parquet(self, path: str | Path) -> None:
+        output_path = Path(path)
+        if self.simulation_kind == "seeded_tick":
+            if self._preferences is None:
+                raise RuntimeError("seeded simulation exports require output preferences")
+
+            persist_seeded_tick_simulation(
+                simulation_result=cast(SeededTickSimulationResponse, self.raw_result),
+                output_path=output_path,
+                preferences=self._preferences,
+            )
+            return
+
+        persist_coarse_simulation(
+            simulation_result=cast(CoarseSimulationPath, self.raw_result),
+            output_path=output_path,
+        )
+
+    def _rows(self) -> list[dict[str, Any]]:
+        if self._rows_cache is not None:
+            return self._rows_cache
+
+        sink = _MemorySimulationSink()
+        if self.simulation_kind == "seeded_tick":
+            if self._preferences is None:
+                raise RuntimeError("seeded simulation materialization requires output preferences")
+
+            persist_seeded_tick_simulation(
+                simulation_result=cast(SeededTickSimulationResponse, self.raw_result),
+                output_path=Path("simulation.csv"),
+                preferences=self._preferences,
+                sink=sink,
+            )
+        else:
+            persist_coarse_simulation(
+                simulation_result=cast(CoarseSimulationPath, self.raw_result),
+                output_path=Path("simulation.csv"),
+                sink=sink,
+            )
+
+        self._rows_cache = sink.rows
+        return self._rows_cache
+
+
 @dataclass(frozen=True, slots=True)
 class JaniformModel:
     run_id: str
@@ -150,7 +241,7 @@ class JaniformModel:
         max_records_per_chunk: int = 1024,
         state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED,
         silent: bool = False,
-    ) -> CoarseSimulationPath | SeededTickSimulationResponse:
+    ) -> JaniformSimulationResult:
         if output_path is not None and sink is not None:
             raise _calibration_error(
                 "sink",
@@ -174,34 +265,44 @@ class JaniformModel:
         )
         with output_controller.progress("simulate") as progress:
             if interval is None:
-                progress.update(detail="running seeded tick simulation")
-                simulation_result = run_seeded_tick_event_simulation(execution_inputs.seeded_request)
+                progress.update(detail="simulating seeded ticks")
+                raw_simulation_result = run_seeded_tick_event_simulation(
+                    execution_inputs.seeded_request
+                )
             else:
-                progress.update(detail="running coarse interval simulation")
-                simulation_result = run_coarse_simulation(execution_inputs.coarse_request)
+                progress.update(detail="simulating coarse intervals")
+                raw_simulation_result = run_coarse_simulation(
+                    execution_inputs.coarse_request
+                )
+
+        preferences = simulation_output_preferences_from_model(self)
+        simulation_result = _build_high_level_simulation_result(
+            model=self,
+            simulation_result=raw_simulation_result,
+            preferences=preferences,
+        )
 
         if sink is not None:
-            if not isinstance(simulation_result, SeededTickSimulationResponse):
+            if simulation_result.simulation_kind != "seeded_tick":
                 raise _calibration_error(
                     "sink",
                     "sink output is currently supported only for seeded tick simulation",
                 )
-            from ..._workflow_outputs import (
-                persist_seeded_tick_simulation,
-                simulation_output_preferences_from_model,
-            )
 
             persist_seeded_tick_simulation(
-                simulation_result=simulation_result,
+                simulation_result=cast(
+                    SeededTickSimulationResponse,
+                    simulation_result.raw_result,
+                ),
                 output_path=Path("simulation.csv"),
-                preferences=simulation_output_preferences_from_model(self),
+                preferences=preferences,
                 sink=sink,
             )
         elif output_path is not None:
             simulation_run_id = generate_workflow_run_id(f"{self.run_id}_simulate")
             write_simulation_artifacts(
                 model=self,
-                simulation_result=simulation_result,
+                simulation_result=raw_simulation_result,
                 output_path=output_path,
                 simulation_run_id=simulation_run_id,
                 interval_label=None if interval is None else _normalize_interval_label(effective_interval),
@@ -333,6 +434,38 @@ class JaniformModel:
             _execution_input=None,
             _stage_report_payloads=(),
         )
+
+
+def _build_high_level_simulation_result(
+    *,
+    model: JaniformModel,
+    simulation_result: CoarseSimulationPath | SeededTickSimulationResponse,
+    preferences: Any,
+) -> JaniformSimulationResult:
+    if isinstance(simulation_result, SeededTickSimulationResponse):
+        return JaniformSimulationResult(
+            simulation_kind="seeded_tick",
+            metadata=simulation_result.metadata.to_payload(),
+            provenance={
+                "model_run_id": model.run_id,
+                "event_tape_metadata": simulation_result.event_tape_metadata.to_payload(),
+                "simulation_output_preferences": asdict(preferences),
+            },
+            diagnostics=simulation_result.diagnostics.to_payload(),
+            raw_result=simulation_result,
+            _preferences=preferences,
+        )
+
+    return JaniformSimulationResult(
+        simulation_kind="coarse_interval",
+        metadata=simulation_result.output_schema_metadata.to_payload(),
+        provenance={
+            "model_run_id": model.run_id,
+            **simulation_result.provenance.to_payload(),
+        },
+        diagnostics=simulation_result.diagnostics.to_payload(),
+        raw_result=simulation_result,
+    )
 
 
 def _prepare_model_simulation_inputs(
@@ -1411,4 +1544,4 @@ def _normalize_interval_label(interval: str | timedelta) -> str:
     return f"{total_seconds}s"
 
 
-__all__ = ["JaniformModel"]
+__all__ = ["JaniformModel", "JaniformSimulationResult"]

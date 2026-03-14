@@ -17,7 +17,7 @@ from ..shared.errors import (
     _simulation_execution_error,
     _simulation_integration_error,
 )
-from ..._contracts import require_datetime_utc, serialize_deterministic_json
+from ..._contracts import require_datetime_utc
 from ..._native_api import native_module
 from ...calendar import (
     CalendarInvalidTimestampError,
@@ -134,7 +134,7 @@ def run_seeded_tick_event_simulation(
             normalized_request.nig_shared_plus_shift_configuration.to_payload(),
             normalized_request.initial_excitation_state.to_payload(),
             normalized_request.hourly_factor_contract._native_result,
-            serialize_deterministic_json(normalized_request.news_process_configuration),
+            normalized_request.news_process_configuration.to_payload(),
             debug_trace_enabled=normalized_request.debug_trace_enabled,
             sample_every_nth_transition=normalized_request.sample_every_nth_transition,
             max_records_per_chunk=normalized_request.max_records_per_chunk,

@@ -1256,8 +1256,8 @@ def run_vanilla_option_pricing(
         ) from e
 
     try:
-        run_result_json: str = native.run_vanilla_option_pricing(
-            serialize_vanilla_option_pricing_execution_input(normalized_execution_input)
+        raw_run_result = native.run_vanilla_option_pricing(
+            normalized_execution_input.to_payload()
         )
     except native.PricingExecutionError as e:
         raise _pricing_execution_error(
@@ -1272,8 +1272,16 @@ def run_vanilla_option_pricing(
             context={"source_exception_type": type(e).__name__},
         ) from e
 
+    if not isinstance(raw_run_result, dict):
+        raise _pricing_integration_error(
+            "native pricing returned an invalid response payload",
+            entrypoint="run_vanilla_option_pricing",
+            error_id=PRICING_INTEGRATION_RESPONSE_ERROR_ID,
+            context={"returned_type": type(raw_run_result).__name__},
+        )
+
     try:
-        return deserialize_vanilla_option_pricing_run_result(run_result_json)
+        return validate_vanilla_option_pricing_run_result(raw_run_result)
     except VanillaOptionPricingValidationError as e:
         raise _pricing_integration_error(
             "native pricing returned an invalid response payload",

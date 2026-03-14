@@ -1,4 +1,5 @@
 mod bindings;
+mod python_value;
 mod types;
 
 use pyo3::create_exception;

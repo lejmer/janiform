@@ -167,6 +167,7 @@ from janiform.simulation.shared import HawkesKernelParameters
   - Ownership: default estimator-model-report fit workflow
   - Root coexistence policy: the fit classes remain re-exported from `janiform.calibration` for convenience, while `janiform.calibration.fit` is the ownership path
   - Beginner-path policy: `JaniformEstimator()` should remain usable for the common tick-data path without requiring explicit workflow scope, normalization-policy construction, or file-format selection
+  - Simulation policy: `JaniformModel.simulate(...)` returns `JaniformSimulationResult`, which keeps workflow metadata and diagnostics attached while exposing `to_pandas()`, `to_numpy()`, and `to_parquet(path)`
 - `janiform.calibration.fit.estimator`
   - Ownership: estimator construction and high-level fit orchestration
 - `janiform.calibration.fit.model`

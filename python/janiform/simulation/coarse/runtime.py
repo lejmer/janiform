@@ -1,8 +1,7 @@
 from .path import (
     CoarseSimulationPath,
     CoarseSimulationRunRequest,
-    deserialize_coarse_simulation_path,
-    serialize_coarse_simulation_run_request,
+    validate_coarse_simulation_path,
     validate_coarse_simulation_run_request,
 )
 from ..shared import SeededTickSimulationValidationError
@@ -33,8 +32,8 @@ def run_coarse_simulation(request: CoarseSimulationRunRequest) -> CoarseSimulati
         ) from e
 
     try:
-        path_json: str = native.run_coarse_simulation(
-            serialize_coarse_simulation_run_request(normalized_request)
+        raw_path = native.run_coarse_simulation(
+            normalized_request.to_payload()
         )
     except native.SimulationExecutionError as e:
         raise _simulation_execution_error(
@@ -49,8 +48,16 @@ def run_coarse_simulation(request: CoarseSimulationRunRequest) -> CoarseSimulati
             context={"source_exception_type": type(e).__name__},
         ) from e
 
+    if not isinstance(raw_path, dict):
+        raise _simulation_integration_error(
+            "native coarse simulation returned an invalid response payload",
+            entrypoint="run_coarse_simulation",
+            error_id=SIMULATION_INTEGRATION_RESPONSE_ERROR_ID,
+            context={"returned_type": type(raw_path).__name__},
+        )
+
     try:
-        return deserialize_coarse_simulation_path(path_json)
+        return validate_coarse_simulation_path(raw_path)
     except SeededTickSimulationValidationError as e:
         raise _simulation_integration_error(
             "native coarse simulation returned an invalid response payload",
