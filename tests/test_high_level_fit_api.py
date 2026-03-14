@@ -541,6 +541,7 @@ def test_high_level_simulation_result_exposes_tabular_exports(
         *,
         simulation_result: object,
         output_path: str | Path,
+        preferences: Any,
         sink: Any = None,
     ) -> None:
         del simulation_result
@@ -549,10 +550,9 @@ def test_high_level_simulation_result_exposes_tabular_exports(
             sink.write_records(
                 [
                     {
-                        "interval_index": 0,
-                        "interval_start_utc": "2026-02-02T15:00:00Z",
-                        "interval_end_utc": "2026-02-02T16:00:00Z",
-                        "total_return": 0.01,
+                        preferences.timestamp_column: "2026-02-02T16:00:00Z",
+                        preferences.bid_column: 1.01,
+                        preferences.ask_column: 1.01,
                     }
                 ]
             )
@@ -573,6 +573,12 @@ def test_high_level_simulation_result_exposes_tabular_exports(
         provenance={"model_run_id": "model-1"},
         diagnostics={"simulated_interval_count": 1},
         raw_result=object(),
+        _preferences=SimpleNamespace(
+            timestamp_column="time",
+            tick_price_input_policy="bid_ask_midpoint",
+            bid_column="bid",
+            ask_column="ask",
+        ),
     )
 
     pandas_frame = result.to_pandas()
@@ -581,13 +587,12 @@ def test_high_level_simulation_result_exposes_tabular_exports(
     result.to_parquet(parquet_path)
 
     assert list(pandas_frame.columns) == [
-        "interval_index",
-        "interval_start_utc",
-        "interval_end_utc",
-        "total_return",
+        "time",
+        "bid",
+        "ask",
     ]
-    assert pandas_frame.iloc[0]["total_return"] == pytest.approx(0.01)
-    assert numpy_array.shape == (1, 4)
+    assert pandas_frame.iloc[0]["bid"] == pytest.approx(1.01)
+    assert numpy_array.shape == (1, 3)
     assert parquet_path.read_text(encoding="utf-8") == "parquet placeholder"
     assert captured_output_paths[-1] == parquet_path
 
@@ -611,15 +616,6 @@ def test_high_level_seeded_simulation_result_preserves_empty_tabular_schema(
         "persist_seeded_tick_simulation",
         capture_empty_seeded_simulation,
     )
-    monkeypatch.setattr(
-        fit_model_module,
-        "_seeded_tick_output_columns",
-        lambda preferences: (
-            preferences.timestamp_column,
-            preferences.trade_price_column,
-            preferences.trade_sign_column,
-        ),
-    )
 
     result = JaniformSimulationResult(
         simulation_kind="seeded_tick",
@@ -629,6 +625,7 @@ def test_high_level_seeded_simulation_result_preserves_empty_tabular_schema(
         raw_result=object(),
         _preferences=SimpleNamespace(
             timestamp_column="timestamp_utc",
+            tick_price_input_policy="trade_price_column",
             trade_price_column="trade_price",
             trade_sign_column="trade_sign",
         ),
@@ -640,6 +637,58 @@ def test_high_level_seeded_simulation_result_preserves_empty_tabular_schema(
     assert list(pandas_frame.columns) == ["timestamp_utc", "trade_price", "trade_sign"]
     assert pandas_frame.empty
     assert numpy_array.shape == (0, 3)
+
+
+def test_high_level_simulation_result_materializes_datetime_timestamps_in_memory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_output_paths: list[Path] = []
+
+    def capture_seeded_simulation(
+        *,
+        simulation_result: object,
+        output_path: str | Path,
+        preferences: Any,
+        sink: Any = None,
+    ) -> None:
+        del simulation_result, preferences
+        captured_output_paths.append(Path(output_path))
+        if sink is not None:
+            sink.write_records(
+                [
+                    {
+                        "timestamp_utc": datetime(2026, 2, 2, 15, tzinfo=UTC),
+                        "trade_price": 101.0,
+                        "trade_sign": "buy",
+                    }
+                ]
+            )
+            sink.close()
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "persist_seeded_tick_simulation",
+        capture_seeded_simulation,
+    )
+
+    result = JaniformSimulationResult(
+        simulation_kind="seeded_tick",
+        metadata={},
+        provenance={},
+        diagnostics={},
+        raw_result=object(),
+        _preferences=SimpleNamespace(
+            timestamp_column="timestamp_utc",
+            tick_price_input_policy="trade_price_column",
+            trade_price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+    )
+
+    pandas_frame = result.to_pandas()
+
+    assert pandas_frame.iloc[0]["timestamp_utc"] == datetime(2026, 2, 2, 15, tzinfo=UTC)
+    assert captured_output_paths == [Path("simulation.parquet")]
 
 
 def test_high_level_model_price_option_dispatches_through_canonical_pricing_runner(

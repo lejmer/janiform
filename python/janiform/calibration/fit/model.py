@@ -40,7 +40,6 @@ from ..staged.inputs import StagedCalibrationExecutionInput
 from ..staged.results import StagedCalibrationResponse
 from ..._workflow_outputs import (
     SimulationArtifactSink,
-    _seeded_tick_output_columns,
     generate_workflow_run_id,
     persist_coarse_simulation,
     persist_seeded_tick_simulation,
@@ -96,17 +95,6 @@ from ...simulation import (
 
 _HIGH_LEVEL_MODEL_PERSISTENCE_SCHEMA_VERSION = "calibration.high_level.model.v1"
 _DEFAULT_HIGH_LEVEL_SIMULATION_INTERVAL = "1h"
-_COARSE_SIMULATION_RESULT_COLUMNS: tuple[str, ...] = (
-    "interval_index",
-    "interval_start_utc",
-    "interval_end_utc",
-    "buy_side_return",
-    "sell_side_return",
-    "trading_time_return",
-    "open_jump_return",
-    "closed_gap_return",
-    "total_return",
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -195,6 +183,7 @@ class JaniformSimulationResult:
         persist_coarse_simulation(
             simulation_result=cast(CoarseSimulationPath, self.raw_result),
             output_path=output_path,
+            preferences=cast(Any, self._preferences),
         )
 
     def _rows(self) -> list[dict[str, Any]]:
@@ -208,14 +197,15 @@ class JaniformSimulationResult:
 
             persist_seeded_tick_simulation(
                 simulation_result=cast(SeededTickSimulationResponse, self.raw_result),
-                output_path=Path("simulation.csv"),
+                output_path=Path("simulation.parquet"),
                 preferences=self._preferences,
                 sink=sink,
             )
         else:
             persist_coarse_simulation(
                 simulation_result=cast(CoarseSimulationPath, self.raw_result),
-                output_path=Path("simulation.csv"),
+                output_path=Path("simulation.parquet"),
+                preferences=cast(Any, self._preferences),
                 sink=sink,
             )
 
@@ -223,13 +213,32 @@ class JaniformSimulationResult:
         return self._rows_cache
 
     def _column_names(self) -> tuple[str, ...]:
-        if self.simulation_kind == "seeded_tick":
-            if self._preferences is None:
-                raise RuntimeError("seeded simulation exports require output preferences")
+        if self._preferences is None:
+            raise RuntimeError("simulation exports require output preferences")
 
-            return _seeded_tick_output_columns(self._preferences)
-
-        return _COARSE_SIMULATION_RESULT_COLUMNS
+        timestamp_column = self._preferences.timestamp_column
+        match self._preferences.tick_price_input_policy:
+            case "trade_price_column":
+                column_names = [timestamp_column, self._preferences.trade_price_column or "trade_price"]
+                if self._preferences.trade_sign_column is not None:
+                    column_names.append(self._preferences.trade_sign_column)
+                return tuple(column_names)
+            case "close_price_column":
+                return (
+                    timestamp_column,
+                    self._preferences.close_price_column or "close_price",
+                )
+            case "bid_ask_midpoint":
+                return (
+                    timestamp_column,
+                    self._preferences.bid_column or "bid",
+                    self._preferences.ask_column or "ask",
+                )
+            case _:
+                return (
+                    timestamp_column,
+                    self._preferences.price_column or "price",
+                )
 
 
 @dataclass(frozen=True, slots=True)
@@ -497,10 +506,12 @@ def _build_high_level_simulation_result(
         metadata=simulation_result.output_schema_metadata.to_payload(),
         provenance={
             "model_run_id": model.run_id,
+            "simulation_output_preferences": asdict(preferences),
             **simulation_result.provenance.to_payload(),
         },
         diagnostics=simulation_result.diagnostics.to_payload(),
         raw_result=simulation_result,
+        _preferences=preferences,
     )
 
 

@@ -178,6 +178,7 @@ def write_simulation_artifacts(
         persist_coarse_simulation(
             simulation_result=simulation_result,
             output_path=paths.primary_output_path,
+            preferences=preferences,
         )
         report_payload = build_simulation_report_payload(
             simulation_kind="coarse_interval",
@@ -304,48 +305,33 @@ def persist_coarse_simulation(
     *,
     simulation_result: CoarseSimulationPath,
     output_path: str | Path,
+    preferences: SimulationOutputPreferences,
     sink: Optional[SimulationArtifactSink] = None,
 ) -> None:
     resolved_output_path = Path(output_path)
 
     effective_sink = sink or _build_simulation_sink(
         output_path=resolved_output_path,
-        columns=(
-            "interval_index",
-            "interval_start_utc",
-            "interval_end_utc",
-            "buy_side_return",
-            "sell_side_return",
-            "trading_time_return",
-            "open_jump_return",
-            "closed_gap_return",
-            "total_return",
-        ),
+        columns=_seeded_tick_output_columns(preferences),
     )
 
     try:
         record_batch: list[dict[str, Any]] = []
+        cumulative_log_return = 0.0
         for record in simulation_result.records:
+            cumulative_log_return += record.return_components.total_return
             record_batch.append(
-                {
-                    "interval_index": record.interval_index,
-                    "interval_start_utc": _convert_timestamp_for_output(
-                        record.interval_start_utc_nanos,
-                        timezone_name="UTC",
-                        output_path=resolved_output_path,
-                    ),
-                    "interval_end_utc": _convert_timestamp_for_output(
+                _seeded_tick_output_row(
+                    timestamp_value=_convert_timestamp_for_output(
                         record.interval_end_utc_nanos,
-                        timezone_name="UTC",
+                        timezone_name=preferences.timestamp_timezone,
                         output_path=resolved_output_path,
                     ),
-                    "buy_side_return": record.return_components.buy_side_return,
-                    "sell_side_return": record.return_components.sell_side_return,
-                    "trading_time_return": record.return_components.trading_time_return,
-                    "open_jump_return": record.return_components.open_jump_return,
-                    "closed_gap_return": record.return_components.closed_gap_return,
-                    "total_return": record.return_components.total_return,
-                }
+                    timestamp_column=preferences.timestamp_column,
+                    price_value=preferences.reference_price * math.exp(cumulative_log_return),
+                    side_value=None,
+                    preferences=preferences,
+                )
             )
             if len(record_batch) >= 256:
                 effective_sink.write_records(record_batch)
@@ -480,7 +466,7 @@ def _seeded_tick_output_row(
     timestamp_value: datetime | str,
     timestamp_column: str,
     price_value: float,
-    side_value: str,
+    side_value: Optional[str],
     preferences: SimulationOutputPreferences,
 ) -> dict[str, Any]:
     output_row: dict[str, Any] = {
