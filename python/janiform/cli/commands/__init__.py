@@ -27,7 +27,7 @@ from .presets import (
     _run_presets_list_command,
     _run_presets_show_command,
 )
-from .pricing import _run_pricing_vanilla_option_command
+from .pricing import _run_price_command
 from .seasonality import (
     _run_seasonality_diagnostics_command,
     _run_seasonality_preprocess_timestamps_command,
@@ -58,7 +58,7 @@ __all__ = [
     "_run_presets_export_command",
     "_run_presets_list_command",
     "_run_presets_show_command",
-    "_run_pricing_vanilla_option_command",
+    "_run_price_command",
     "_run_seasonality_diagnostics_command",
     "_run_seasonality_preprocess_timestamps_command",
     "_run_simulation_coarse_interval_command",

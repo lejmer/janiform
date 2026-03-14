@@ -52,6 +52,7 @@ fn serialize_market_data_translation_preprocessing_output(
 #[pyfunction]
 #[pyo3(signature = (execution_input_json, calendar_registry, memory_checkpoint_store = None))]
 fn run_staged_calibration(
+    py: Python<'_>,
     execution_input_json: &str,
     calendar_registry: &PyCalendarRegistry,
     memory_checkpoint_store: Option<&mut PyCalibrationMemoryCheckpointStore>,
@@ -63,12 +64,15 @@ fn run_staged_calibration(
             ))
         })?;
 
-    let report = run_staged_calibration_from_execution_input(
-        execution_input,
-        &calendar_registry.registry,
-        memory_checkpoint_store.map(|store| &mut store.store),
-    )
-    .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+    let report = py
+        .allow_threads(move || {
+            run_staged_calibration_from_execution_input(
+                execution_input,
+                &calendar_registry.registry,
+                memory_checkpoint_store.map(|store| &mut store.store),
+            )
+        })
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
 
     serialize_python_staged_calibration_report(&report).map_err(|source| {
         CalibrationExecutionError::new_err(format!(

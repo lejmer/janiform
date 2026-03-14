@@ -17,14 +17,15 @@ use crate::SimulationExecutionError;
 use crate::types::{PyHourlyFactorContractResult, PySeededTickSimulationNativeResult};
 
 #[pyfunction]
-fn run_coarse_simulation(run_request_json: &str) -> PyResult<String> {
+fn run_coarse_simulation(py: Python<'_>, run_request_json: &str) -> PyResult<String> {
     let run_request: CoarseSimulationRunRequest =
         serde_json::from_str(run_request_json).map_err(|source| {
             SimulationExecutionError::new_err(format!(
                 "failed to deserialize coarse simulation run request: {source}"
             ))
         })?;
-    let coarse_path = run_coarse_simulation_core(run_request)
+    let coarse_path = py
+        .allow_threads(|| run_coarse_simulation_core(run_request))
         .map_err(|source| SimulationExecutionError::new_err(source.to_string()))?;
 
     serde_json::to_string(&coarse_path).map_err(|source| {

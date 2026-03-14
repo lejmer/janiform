@@ -754,7 +754,7 @@
           "kind": "class",
           "origin_module": "janiform.calibration.fit.estimator",
           "public_methods": {
-            "fit": "(self, *, run_id: 'Optional[str]' = None, tick_data_path: 'str | Path', tick_data_format: 'Optional[CalibrationInputFileFormat]' = None, tick_data_provenance_label: 'str' = 'tick_data', option_surface_path: 'Optional[str | Path]' = None, option_surface_format: 'CalibrationInputFileFormat' = <CalibrationInputFileFormat.PARQUET: 'parquet'>, option_surface_provenance_label: 'str' = 'option_surface', report: 'bool' = False) -> 'JaniformModel | tuple[Optional[JaniformModel], JaniformFitReport]'"
+            "fit": "(self, *, run_id: 'Optional[str]' = None, tick_data_path: 'str | Path', tick_data_format: 'Optional[CalibrationInputFileFormat]' = None, tick_data_provenance_label: 'str' = 'tick_data', option_surface_path: 'Optional[str | Path]' = None, option_surface_format: 'CalibrationInputFileFormat' = <CalibrationInputFileFormat.PARQUET: 'parquet'>, option_surface_provenance_label: 'str' = 'option_surface', output_dir: 'Optional[str | Path]' = None, silent: 'Optional[bool]' = None, report: 'bool' = False) -> 'JaniformModel | tuple[Optional[JaniformModel], JaniformFitReport]'"
           },
           "qualname": "JaniformEstimator"
         }
@@ -4586,7 +4586,6 @@
         "CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_VALIDATION_ERROR_ID",
         "CLI_MARKET_DATA_SUMMARY_FIELD_SELECTION_POLICY",
         "CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION",
-        "CLI_MODEL_SIMULATION_OUTPUT_CHOICES",
         "CLI_OPEN_CLOSED_GAP_ENTRYPOINT",
         "CLI_OPEN_CLOSED_GAP_INTERNAL_ERROR_ID",
         "CLI_OPEN_CLOSED_GAP_VALIDATION_ERROR_ID",
@@ -4607,9 +4606,10 @@
         "CLI_PRESET_LIST_SCHEMA_VERSION",
         "CLI_PRESET_SCOPE_CHOICES",
         "CLI_PRESET_SHOW_SCHEMA_VERSION",
-        "CLI_PRICING_VANILLA_OPTION_ENTRYPOINT",
-        "CLI_PRICING_VANILLA_OPTION_INTERNAL_ERROR_ID",
-        "CLI_PRICING_VANILLA_OPTION_VALIDATION_ERROR_ID",
+        "CLI_PRICE_ENTRYPOINT",
+        "CLI_PRICE_INTERNAL_ERROR_ID",
+        "CLI_PRICE_RESULT_SCHEMA_VERSION",
+        "CLI_PRICE_VALIDATION_ERROR_ID",
         "CLI_PRIMARY_COMMAND_IDENTIFIERS",
         "CLI_PRIMARY_COMMAND_TREE",
         "CLI_REPOSITORY_RELATIVE_PATH_POLICY",
@@ -4668,6 +4668,11 @@
           "name": "CLI_PRESET_SHOW_SCHEMA_VERSION",
           "public_exported": true,
           "value": "cli.presets.show.result.v1"
+        },
+        {
+          "name": "CLI_PRICE_RESULT_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "cli.price.result.v1"
         },
         {
           "name": "CLI_SIMULATE_RESULT_SCHEMA_VERSION",
@@ -4899,14 +4904,6 @@
           "kind": "constant",
           "value": "cli.calibration.market_data.summary.v1"
         },
-        "CLI_MODEL_SIMULATION_OUTPUT_CHOICES": {
-          "kind": "constant",
-          "value": [
-            "coarse",
-            "ticks",
-            "both"
-          ]
-        },
         "CLI_OPEN_CLOSED_GAP_ENTRYPOINT": {
           "kind": "constant",
           "value": "dev.regression.open_closed_gap_leakage"
@@ -4998,17 +4995,21 @@
           "kind": "constant",
           "value": "cli.presets.show.result.v1"
         },
-        "CLI_PRICING_VANILLA_OPTION_ENTRYPOINT": {
+        "CLI_PRICE_ENTRYPOINT": {
           "kind": "constant",
-          "value": "pricing.vanilla_option"
+          "value": "price"
         },
-        "CLI_PRICING_VANILLA_OPTION_INTERNAL_ERROR_ID": {
+        "CLI_PRICE_INTERNAL_ERROR_ID": {
           "kind": "constant",
-          "value": "cli.internal.pricing.vanilla_option.failed"
+          "value": "cli.internal.price.failed"
         },
-        "CLI_PRICING_VANILLA_OPTION_VALIDATION_ERROR_ID": {
+        "CLI_PRICE_RESULT_SCHEMA_VERSION": {
           "kind": "constant",
-          "value": "cli.validation.pricing.vanilla_option.invalid_input"
+          "value": "cli.price.result.v1"
+        },
+        "CLI_PRICE_VALIDATION_ERROR_ID": {
+          "kind": "constant",
+          "value": "cli.validation.price.invalid_input"
         },
         "CLI_PRIMARY_COMMAND_IDENTIFIERS": {
           "kind": "constant",
@@ -5050,9 +5051,7 @@
               "list": {},
               "show": {}
             },
-            "pricing": {
-              "vanilla-option": {}
-            },
+            "price": {},
             "seasonality": {
               "diagnostics": {},
               "preprocess-timestamps": {}
@@ -5313,7 +5312,7 @@
       "symbols": {
         "_build_cli_fit_result_payload": {
           "kind": "function",
-          "signature": "(*, model: 'JaniformModel', fit_report: 'JaniformFitReport', persisted_model_path: 'Optional[Path]', command: 'str', schema_version: 'str', explain_requested: 'bool') -> 'dict[str, Any]'"
+          "signature": "(*, model: 'JaniformModel', fit_report: 'JaniformFitReport', artifact_paths: 'WorkflowArtifactPaths', command: 'str', schema_version: 'str', explain_requested: 'bool') -> 'dict[str, Any]'"
         },
         "_build_cli_preset_registry": {
           "kind": "function",
@@ -5321,11 +5320,11 @@
         },
         "_build_cli_simulate_result_payload": {
           "kind": "function",
-          "signature": "(*, model: 'JaniformModel', command_arguments: 'CliCommandArguments', model_path: 'Optional[Path]', command: 'str', schema_version: 'str', entrypoint: 'str', error_id: 'str') -> 'dict[str, Any]'"
+          "signature": "(*, model: 'JaniformModel', command_arguments: 'CliCommandArguments', model_path: 'Optional[Path]', command: 'str', schema_version: 'str', entrypoint: 'str', error_id: 'str', output_mode: 'str') -> 'dict[str, Any]'"
         },
         "_execute_cli_fit": {
           "kind": "function",
-          "signature": "(*, cli_context: 'CliCommandContext', entrypoint: 'str', error_id: 'str', command_arguments: 'CliCommandArguments') -> 'tuple[JaniformModel, JaniformFitReport, Optional[Path]]'"
+          "signature": "(*, configured_command: '_ConfiguredCliFitCommand', output: 'str', command_arguments: 'CliCommandArguments') -> 'tuple[JaniformModel, JaniformFitReport, WorkflowArtifactPaths]'"
         },
         "_parse_cli_preset_category": {
           "kind": "function",

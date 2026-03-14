@@ -41,7 +41,7 @@ def test_fit_help_documents_default_workflow_and_expert_subcommands() -> None:
     assert "--session-json PATH" in help_output
     assert "--known-news KNOWN_NEWS" in help_output
     assert "--known-news-json PATH" in help_output
-    assert "--model-output-path PATH" in help_output
+    assert "--output-dir DIRECTORY" in help_output
 
 
 def test_presets_list_outputs_bundled_presets() -> None:
@@ -101,7 +101,7 @@ def test_fit_outputs_resolved_configuration_and_provenance(
             "2026-02-03T20:59:00Z,98.0,buy",
         ),
     )
-    model_output_path = tmp_path / "model.json"
+    output_dir = tmp_path / "fit-artifacts"
 
     monkeypatch.setattr(
         fit_estimator_module,
@@ -134,8 +134,8 @@ def test_fit_outputs_resolved_configuration_and_provenance(
             "us_equity_cash",
             "--known-news",
             "none",
-            "--model-output-path",
-            str(model_output_path),
+            "--output-dir",
+            str(output_dir),
             "--output",
             "json",
         ]
@@ -146,19 +146,29 @@ def test_fit_outputs_resolved_configuration_and_provenance(
 
     assert payload["schema_version"] == cli_module.CLI_FIT_RESULT_SCHEMA_VERSION
     assert payload["command"] == cli_module.CLI_FIT_ENTRYPOINT
-    assert payload["model_output_path"] == str(model_output_path)
+    assert payload["model_output_path"] == str(output_dir / "model.json")
+    assert payload["report_path"] == str(output_dir / "fit_report.json")
     assert payload["resolved_configuration"]["market_profile"]["selected_preset"]["preset_name"] == "us_equity_cash"
     assert payload["resolved_configuration"]["session"]["selected_preset"]["preset_name"] == "XNYS"
     assert payload["resolved_configuration"]["known_news"]["selected_preset"]["preset_name"] == "none"
     assert payload["model_summary"]["preset_provenance"]["session"]["inferred_from_data"] is False
     assert payload["session_resolution"]["resolution_kind"] == "automatic_inference"
-    assert model_output_path.exists()
+    assert (output_dir / "model.json").exists()
+    assert (output_dir / "fit_report.json").exists()
+    assert (output_dir / "run.json").exists()
+    assert (output_dir / "model.json").read_text(encoding="utf-8").startswith("{\n  ")
+
+    persisted_report = orjson.loads((output_dir / "fit_report.json").read_text(encoding="utf-8"))
+    assert "execution_input" not in persisted_report
+    assert "stage_report_payloads" not in persisted_report
 
 
 def test_fit_supports_beginner_positional_tick_path_and_inferred_defaults(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.chdir(tmp_path)
+
     tick_data_path = _write_tick_data(
         tmp_path / "eurusd_ticks.csv",
         rows=(
@@ -206,6 +216,8 @@ def test_fit_supports_eurusd_market_preset_with_full_day_fx_session_windows(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.chdir(tmp_path)
+
     tick_data_path = _write_tick_data(
         tmp_path / "eurusd_ticks.csv",
         rows=(
@@ -251,6 +263,8 @@ def test_fit_explain_and_silent_flags_control_success_output(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.chdir(tmp_path)
+
     tick_data_path = _write_tick_data(
         tmp_path / "explained_ticks.csv",
         rows=(
@@ -280,7 +294,7 @@ def test_fit_explain_and_silent_flags_control_success_output(
     )
 
     assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr
-    assert "inference:\n" in stdout
+    assert "inferred:\n" in stdout
     assert "  tick data format: csv" in stdout
     assert "  timestamp column: timestamp_utc" in stdout
     assert "  tick price input policy: trade_price_column" in stdout
@@ -347,6 +361,8 @@ def test_simulate_outputs_model_provenance_and_simulation_payload(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.chdir(tmp_path)
+
     model = _build_full_workflow_model(
         tmp_path,
         monkeypatch,
@@ -366,8 +382,8 @@ def test_simulate_outputs_model_provenance_and_simulation_payload(
             "2026-02-02T15:00:00Z",
             "--horizon-interval-count",
             "2",
-            "--simulation-output",
-            "coarse",
+            "--interval",
+            "1h",
             "--output",
             "json",
         ]
@@ -380,8 +396,9 @@ def test_simulate_outputs_model_provenance_and_simulation_payload(
     assert payload["command"] == cli_module.CLI_HIGH_LEVEL_SIMULATE_ENTRYPOINT
     assert payload["model_path"] == str(model_path)
     assert payload["resolved_configuration"]["market_profile"]["selected_preset"]["preset_name"] == "us_equity_cash"
-    assert payload["coarse_simulation"]["schema_version"] == "simulation.coarse_interval.path.v1"
-    assert payload["seeded_tick_simulation"] is None
+    assert payload["simulation_kind"] == "coarse_interval"
+    assert payload["primary_output_path"].endswith(".csv")
+    assert payload["report_path"].endswith("simulation_report.json")
 
 
 def test_removed_duplicate_roots_are_rejected() -> None:

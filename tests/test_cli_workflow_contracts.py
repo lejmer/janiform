@@ -26,7 +26,6 @@ from janiform.calibration import (
     CalibrationMarketDataWorkflowScope,
 )
 from janiform.errors import JaniformErrorCategory, JaniformErrorDetails, JaniformExecutionError
-from janiform.pricing import VanillaOptionPricingExecutionInput
 from janiform.simulation import (
     CoarseSimulationRunRequest,
     SeededTickSimulationRequest,
@@ -34,7 +33,6 @@ from janiform.simulation import (
 from tests.calibration_test_support import build_valid_execution_input_model
 from tests.cli_test_support import (
     build_coarse_simulation_request as _build_coarse_simulation_request,
-    build_pricing_execution_input as _build_pricing_execution_input,
     build_simulation_request as _build_simulation_request,
     invoke_cli as _invoke_cli,
     normalize_help_output as _normalize_help_output,
@@ -42,6 +40,7 @@ from tests.cli_test_support import (
     write_json_path as _write_json_path,
     write_market_data_input_files as _write_market_data_input_files,
 )
+from tests.test_cli_high_level_commands import _build_full_workflow_model
 
 
 def test_simulation_cli_help_documents_required_contract_inputs() -> None:
@@ -94,11 +93,16 @@ def test_seasonality_cli_help_documents_diagnostics_contract() -> None:
     assert "canonical diagnostics report" in help_output
 
 
-def test_pricing_cli_help_documents_execution_input_contract() -> None:
-    help_output = _normalize_help_output(_render_help(["pricing", "vanilla-option"]))
+def test_price_cli_help_documents_model_driven_workflow_contract() -> None:
+    help_output = _normalize_help_output(_render_help(["price"]))
 
     assert "--output {human,json}" in help_output
-    assert "--execution-input-json PATH" in help_output
+    assert "--model-path PATH" in help_output
+    assert "--valuation-time-utc VALUATION_TIME_UTC" in help_output
+    assert "--spot SPOT" in help_output
+    assert "--strike STRIKE" in help_output
+    assert "--maturity-interval MATURITY_INTERVAL" in help_output
+    assert "--output-path PATH" in help_output
     assert cli_module.CLI_REPOSITORY_RELATIVE_PATH_POLICY in help_output
 
 
@@ -151,7 +155,7 @@ def test_cli_shared_path_flags_use_standardized_repository_relative_help_text() 
         _normalize_help_output(_render_help(["hourly-factors", "materialize-seasonality"])),
         _normalize_help_output(_render_help(["hourly-factors", "materialize-news-intensity"])),
         _normalize_help_output(_render_help(["hourly-factors", "build-contract"])),
-        _normalize_help_output(_render_help(["pricing", "vanilla-option"])),
+        _normalize_help_output(_render_help(["price"])),
         _normalize_help_output(_render_help(["stylized-facts", "horizon-comparison"])),
         _normalize_help_output(_render_help(["fit", "plan"])),
         _normalize_help_output(_render_help(["fit", "staged"])),
@@ -1580,43 +1584,83 @@ def test_coarse_simulation_cli_maps_request_json_to_runtime_contract(
     assert len(command_output["records"]) == 3
 
 
-def test_pricing_cli_maps_execution_input_json_to_runtime_contract(
+def test_price_cli_maps_model_and_flags_to_runtime_contract(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    execution_input = _build_pricing_execution_input()
-    captured_execution_input: dict[str, VanillaOptionPricingExecutionInput] = {}
+    model_path = _write_saved_price_model(tmp_path)
+    captured_arguments: dict[str, Any] = {}
+    original_price_option = cli_pricing_commands_module.JaniformModel.price_option
 
-    def capturing_runner(
-        execution_input_model: VanillaOptionPricingExecutionInput,
+    def capturing_price_option(
+        self: calibration_module.JaniformModel,
+        **pricing_arguments: Any,
     ) -> pricing_module.VanillaOptionPricingRunResult:
-        captured_execution_input["execution_input"] = execution_input_model
-        return pricing_module.run_vanilla_option_pricing(execution_input_model)
+        captured_arguments.update(pricing_arguments)
+        return original_price_option(self, **pricing_arguments)
 
-    monkeypatch.setattr(cli_pricing_commands_module, "run_vanilla_option_pricing", capturing_runner)
-
-    execution_input_path = _write_json_path(
-        tmp_path / "pricing_execution_input.json",
-        execution_input.to_payload(),
-    )
+    monkeypatch.setattr(cli_pricing_commands_module.JaniformModel, "price_option", capturing_price_option)
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "pricing",
-            "vanilla-option",
-            "--execution-input-json",
-            str(execution_input_path),
+            "price",
+            "--model-path",
+            str(model_path),
+            "--valuation-time-utc",
+            "2026-02-02T15:00:00Z",
+            "--spot",
+            "101.0",
+            "--strike",
+            "100.0",
+            "--maturity-interval",
+            "1.0",
+            "--risk-free-rate",
+            "0.02",
+            "--dividend-yield",
+            "0.01",
+            "--payoff-type",
+            "call",
+            "--include-transform-diagnostics",
+            "--include-integration-quality-diagnostics",
+            "--include-calibration-hooks",
+            "--output-path",
+            str(tmp_path / "pricing.json"),
+            "--output",
+            "json",
         ]
     )
 
     assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
-    assert captured_execution_input["execution_input"].request.payoff.payoff_type.value == "call"
-    assert captured_execution_input["execution_input"].interval_factors.nu_h_known == pytest.approx(0.01)
-    assert captured_execution_input["execution_input"].interval_factors.nu_h_surprise == pytest.approx(0.02)
+    assert captured_arguments["spot"] == pytest.approx(101.0)
+    assert captured_arguments["strike"] == pytest.approx(100.0)
+    assert captured_arguments["maturity_interval"] == pytest.approx(1.0)
+    assert captured_arguments["risk_free_rate"] == pytest.approx(0.02)
+    assert captured_arguments["dividend_yield"] == pytest.approx(0.01)
+    assert captured_arguments["payoff_type"] == "call"
+    assert captured_arguments["include_transform_diagnostics"] is True
+    assert captured_arguments["include_integration_quality_diagnostics"] is True
+    assert captured_arguments["include_calibration_hooks"] is True
 
     command_output = orjson.loads(stdout_text)
-    assert command_output["schema_version"] == "pricing.vanilla_option.run_result.v1"
+    assert command_output["schema_version"] == cli_module.CLI_PRICE_RESULT_SCHEMA_VERSION
     assert command_output["response"]["price"] >= 0.0
+
+
+def _write_saved_price_model(tmp_path: Path) -> Path:
+    helper_monkeypatch = pytest.MonkeyPatch()
+    try:
+        helper_monkeypatch.chdir(tmp_path)
+        model = _build_full_workflow_model(
+            tmp_path,
+            helper_monkeypatch,
+            run_id="workflow-contract-price-model",
+        )
+    finally:
+        helper_monkeypatch.undo()
+
+    model_path = tmp_path / "workflow-contract-price-model.json"
+    model.save(model_path)
+    return model_path
 
 
 def test_calibration_cli_defaults_execution_mode_to_disk(
@@ -1844,28 +1888,38 @@ def test_pricing_cli_unexpected_failures_return_internal_exit_code(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    execution_input_path = _write_json_path(
-        tmp_path / "pricing_execution_input.json",
-        _build_pricing_execution_input().to_payload(),
-    )
+    monkeypatch.chdir(tmp_path)
+    model_path = _write_saved_price_model(tmp_path)
 
-    def broken_runner(_: VanillaOptionPricingExecutionInput) -> pricing_module.VanillaOptionPricingRunResult:
+    def broken_price_option(
+        self: calibration_module.JaniformModel,
+        **_: Any,
+    ) -> pricing_module.VanillaOptionPricingRunResult:
+        del self
         raise RuntimeError("unexpected pricing bug")
 
-    monkeypatch.setattr(cli_pricing_commands_module, "run_vanilla_option_pricing", broken_runner)
+    monkeypatch.setattr(cli_pricing_commands_module.JaniformModel, "price_option", broken_price_option)
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
         [
-            "pricing",
-            "vanilla-option",
-            "--execution-input-json",
-            str(execution_input_path),
+            "price",
+            "--model-path",
+            str(model_path),
+            "--valuation-time-utc",
+            "2026-02-02T15:00:00Z",
+            "--spot",
+            "101.0",
+            "--strike",
+            "100.0",
+            "--maturity-interval",
+            "1.0",
         ]
     )
 
     assert exit_code == int(cli_module.CliExitCode.INTERNAL_ERROR)
-    assert stdout_text == ""
-    assert '[cli.internal.pricing.vanilla_option.failed]' in stderr_text
+    assert "price run_id:" in stdout_text
+    assert "primary output:" in stdout_text
+    assert '[cli.internal.price.failed]' in stderr_text
     assert 'category="integration"' in stderr_text
 
 

@@ -81,19 +81,22 @@ def _render_presets_export_human_output(payload: dict[str, Any]) -> str:
 
 
 def _render_fit_human_output(payload: dict[str, Any]) -> str:
-    model_output_path = cast(Optional[str], payload["model_output_path"])
     model_summary = cast(dict[str, Any], payload["model_summary"])
 
     lines = [
         (
-            "fit completed: "
+            "fit completed:"
+        ),
+        (
             f"run_id={payload['run_id']} "
             f"workflow_scope={model_summary['workflow_scope']} "
             f"market_profile={model_summary['market_profile'] or 'none'} "
             "known_news="
             f"{model_summary['known_news_preset'] or DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME}"
-            + (f" model_path={model_output_path}" if model_output_path is not None else "")
-        )
+        ),
+        f"model path: {payload['model_output_path']}",
+        f"report path: {payload['report_path']}",
+        f"run directory: {payload['run_directory']}",
     ]
 
     if bool(payload.get("explain_requested")):
@@ -111,6 +114,7 @@ def _render_fit_inspect_human_output(payload: dict[str, Any]) -> str:
             f"execution_mode={payload['execution_mode']}"
         ),
         f"tick_data: path={payload['tick_data_path']}",
+        f"resolved output directory: {payload['output_directory']}",
         *_render_input_inference_lines(cast(dict[str, Any], payload["input_inference"])),
     ]
 
@@ -122,7 +126,7 @@ def _render_input_inference_lines(input_inference: dict[str, Any]) -> list[str]:
     known_news = cast(dict[str, Any], input_inference["known_news"])
 
     return [
-        "inference:",
+        "inferred:",
         f"  tick data format: {input_inference['tick_data_format']}",
         f"  timestamp column: {input_inference['timestamp_column']}",
         (
@@ -160,11 +164,15 @@ def _render_input_inference_lines(input_inference: dict[str, Any]) -> list[str]:
 
 
 def _render_simulate_human_output(payload: dict[str, Any]) -> str:
-    return (
-        "simulate completed: "
-        f"run_id={payload['run_id']} "
-        f"output={payload['simulation_output']}\n"
-    )
+    return "\n".join(
+        [
+            "simulate completed:",
+            f"run_id={payload['run_id']} kind={payload['simulation_kind']}",
+            f"primary output: {payload['primary_output_path']}",
+            f"report path: {payload['report_path']}",
+            f"run directory: {payload['run_directory']}",
+        ]
+    ) + "\n"
 
 
 def _render_market_data_calibration_human_output(prepared_calibration: object) -> str:
@@ -290,13 +298,12 @@ def _render_simulation_coarse_interval_human_output(response_payload: dict[str, 
     )
 
 
-def _render_pricing_vanilla_option_human_output(run_result_payload: dict[str, Any]) -> str:
+def _render_price_human_output(run_result_payload: dict[str, Any]) -> str:
     response_payload = cast(dict[str, Any], run_result_payload["response"])
     return (
-        "pricing vanilla-option completed: "
-        f"schema_version={run_result_payload['schema_version']} "
-        f"price={response_payload['price']} "
-        f"delta={response_payload['delta']}\n"
+        "price completed:\n"
+        f"run_id={run_result_payload['run_id']} price={response_payload['price']} "
+        f"primary_output={run_result_payload['primary_output_path']}\n"
     )
 
 
@@ -609,7 +616,7 @@ __all__ = [
     "_render_presets_export_human_output",
     "_render_presets_list_human_output",
     "_render_presets_show_human_output",
-    "_render_pricing_vanilla_option_human_output",
+    "_render_price_human_output",
     "_render_seasonality_diagnostics_human_output",
     "_render_seasonality_preprocess_timestamps_human_output",
     "_render_simulate_human_output",

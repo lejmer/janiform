@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
-from typing import Any, Literal, Optional, overload, cast
+from typing import Any, Optional, cast
 
 from ..market_data.contracts import CalibrationMarketDataWorkflowScope
 from ..market_data.workflow import (
@@ -38,14 +38,21 @@ from ..sessions.contracts import (
 )
 from ..staged.inputs import StagedCalibrationExecutionInput
 from ..staged.results import StagedCalibrationResponse
-from ..._contracts import serialize_deterministic_json
+from ..._workflow_outputs import (
+    SimulationArtifactSink,
+    generate_workflow_run_id,
+    write_pricing_artifacts,
+    write_simulation_artifacts,
+)
+from ..._workflow_progress import JaniformOutputController
+from ..._contracts import serialize_pretty_json
 from ...calendar import CalendarRegistry
 from .._errors import _calibration_error
 from ...hourly_factors import (
     HourlyNewsIntensityMaterializationSettings,
     HourlyNewsIntensityProviderMaterializedSource,
+    HourlySeasonalityProviderExplicitSource,
     _parse_interval_duration_nanos,
-    build_runtime_hourly_seasonality_source_from_calibration_payload,
     materialize_hourly_news_intensity_factors,
 )
 from ...pricing import (
@@ -62,6 +69,7 @@ from ...pricing import (
     VanillaOptionPricingRunResult,
     run_vanilla_option_pricing,
 )
+from ...seasonality import SessionFilter, preprocess_timestamp_events
 from ...risk import (
     SufficientStatisticsRiskEquationSpecification,
     SufficientStatisticsRiskIntervalFactors,
@@ -83,13 +91,7 @@ from ...simulation import (
 
 
 _HIGH_LEVEL_MODEL_PERSISTENCE_SCHEMA_VERSION = "calibration.high_level.model.v1"
-
-type _JaniformModelSimulationOutputMode = Literal["coarse", "ticks", "both"]
-type _JaniformModelSimulationResult = (
-    CoarseSimulationPath
-    | SeededTickSimulationResponse
-    | tuple[CoarseSimulationPath, SeededTickSimulationResponse]
-)
+_DEFAULT_HIGH_LEVEL_SIMULATION_INTERVAL = "1h"
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,7 +123,7 @@ class JaniformModel:
     metadata: dict[str, Any]
     resolved_configuration: ResolvedPresetWorkflowConfiguration
     session_resolution: MarketDataSessionResolution
-    _execution_input: StagedCalibrationExecutionInput = field(repr=False, compare=False)
+    _execution_input: Optional[StagedCalibrationExecutionInput] = field(repr=False, compare=False)
     _stage_report_payloads: tuple[dict[str, Any], ...] = field(repr=False, compare=False)
 
     @property
@@ -133,97 +135,79 @@ class JaniformModel:
         summary["fitted_parameters"] = deepcopy(self.parameters)
         return summary
 
-    @overload
     def simulate(
         self,
         *,
         seed: int,
         start_time_utc: datetime,
         horizon_interval_count: int,
-        interval: str | timedelta = "1h",
-        output: Literal["coarse"] = "coarse",
+        interval: Optional[str | timedelta] = None,
+        output_path: Optional[str | Path] = None,
+        sink: Optional[SimulationArtifactSink] = None,
         initial_excitation_state: Optional[HawkesExcitationState] = None,
         debug_trace_enabled: bool = False,
         sample_every_nth_transition: int = 1,
         max_records_per_chunk: int = 1024,
         state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED,
-    ) -> CoarseSimulationPath: ...
-
-    @overload
-    def simulate(
-        self,
-        *,
-        seed: int,
-        start_time_utc: datetime,
-        horizon_interval_count: int,
-        interval: str | timedelta = "1h",
-        output: Literal["ticks"],
-        initial_excitation_state: Optional[HawkesExcitationState] = None,
-        debug_trace_enabled: bool = False,
-        sample_every_nth_transition: int = 1,
-        max_records_per_chunk: int = 1024,
-        state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED,
-    ) -> SeededTickSimulationResponse: ...
-
-    @overload
-    def simulate(
-        self,
-        *,
-        seed: int,
-        start_time_utc: datetime,
-        horizon_interval_count: int,
-        interval: str | timedelta = "1h",
-        output: Literal["both"],
-        initial_excitation_state: Optional[HawkesExcitationState] = None,
-        debug_trace_enabled: bool = False,
-        sample_every_nth_transition: int = 1,
-        max_records_per_chunk: int = 1024,
-        state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED,
-    ) -> tuple[CoarseSimulationPath, SeededTickSimulationResponse]: ...
-
-    def simulate(
-        self,
-        *,
-        seed: int,
-        start_time_utc: datetime,
-        horizon_interval_count: int,
-        interval: str | timedelta = "1h",
-        output: _JaniformModelSimulationOutputMode = "coarse",
-        initial_excitation_state: Optional[HawkesExcitationState] = None,
-        debug_trace_enabled: bool = False,
-        sample_every_nth_transition: int = 1,
-        max_records_per_chunk: int = 1024,
-        state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED,
-    ) -> _JaniformModelSimulationResult:
-        if output not in ("coarse", "ticks", "both"):
+        silent: bool = False,
+    ) -> CoarseSimulationPath | SeededTickSimulationResponse:
+        if output_path is not None and sink is not None:
             raise _calibration_error(
-                "output",
-                "must be one of: coarse, ticks, both",
+                "sink",
+                "output_path and sink are mutually exclusive",
             )
+
+        effective_interval = _DEFAULT_HIGH_LEVEL_SIMULATION_INTERVAL if interval is None else interval
+        output_controller = JaniformOutputController(silent=silent)
 
         execution_inputs = _prepare_model_simulation_inputs(
             self,
             seed=seed,
             start_time_utc=start_time_utc,
             horizon_interval_count=horizon_interval_count,
-            interval=interval,
+            interval=effective_interval,
             initial_excitation_state=initial_excitation_state,
             debug_trace_enabled=debug_trace_enabled,
             sample_every_nth_transition=sample_every_nth_transition,
             max_records_per_chunk=max_records_per_chunk,
             state_snapshot_capture=state_snapshot_capture,
         )
+        with output_controller.progress("simulate") as progress:
+            if interval is None:
+                progress.update(detail="running seeded tick simulation")
+                simulation_result = run_seeded_tick_event_simulation(execution_inputs.seeded_request)
+            else:
+                progress.update(detail="running coarse interval simulation")
+                simulation_result = run_coarse_simulation(execution_inputs.coarse_request)
 
-        match output:
-            case "coarse":
-                return run_coarse_simulation(execution_inputs.coarse_request)
-            case "ticks":
-                return run_seeded_tick_event_simulation(execution_inputs.seeded_request)
-            case "both":
-                return (
-                    run_coarse_simulation(execution_inputs.coarse_request),
-                    run_seeded_tick_event_simulation(execution_inputs.seeded_request),
+        if sink is not None:
+            if not isinstance(simulation_result, SeededTickSimulationResponse):
+                raise _calibration_error(
+                    "sink",
+                    "sink output is currently supported only for seeded tick simulation",
                 )
+            from ..._workflow_outputs import (
+                persist_seeded_tick_simulation,
+                simulation_output_preferences_from_model,
+            )
+
+            persist_seeded_tick_simulation(
+                simulation_result=simulation_result,
+                output_path=Path("simulation.csv"),
+                preferences=simulation_output_preferences_from_model(self),
+                sink=sink,
+            )
+        elif output_path is not None:
+            simulation_run_id = generate_workflow_run_id(f"{self.run_id}_simulate")
+            write_simulation_artifacts(
+                model=self,
+                simulation_result=simulation_result,
+                output_path=output_path,
+                simulation_run_id=simulation_run_id,
+                interval_label=None if interval is None else _normalize_interval_label(effective_interval),
+            )
+
+        return simulation_result
 
     def price_option(
         self,
@@ -239,7 +223,10 @@ class JaniformModel:
         include_transform_diagnostics: bool = False,
         include_integration_quality_diagnostics: bool = False,
         include_calibration_hooks: bool = False,
+        output_path: Optional[str | Path] = None,
+        silent: bool = False,
     ) -> VanillaOptionPricingRunResult:
+        output_controller = JaniformOutputController(silent=silent)
         execution_input = _prepare_model_pricing_execution_input(
             self,
             valuation_time_utc=valuation_time_utc,
@@ -254,13 +241,25 @@ class JaniformModel:
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
             include_calibration_hooks=include_calibration_hooks,
         )
+        with output_controller.progress("price") as progress:
+            progress.update(detail="running pricing workflow")
+            pricing_result = run_vanilla_option_pricing(execution_input)
 
-        return run_vanilla_option_pricing(execution_input)
+        if output_path is not None:
+            pricing_run_id = generate_workflow_run_id(f"{self.run_id}_price")
+            write_pricing_artifacts(
+                model=self,
+                pricing_result=pricing_result,
+                output_path=output_path,
+                pricing_run_id=pricing_run_id,
+            )
+
+        return pricing_result
 
     def save(self, path: str | Path) -> None:
         model_path = Path(path)
         model_path.write_text(
-            serialize_deterministic_json(_build_model_persistence_payload(self)),
+            serialize_pretty_json(_build_model_persistence_payload(self)),
             encoding="utf-8",
         )
 
@@ -302,8 +301,6 @@ class JaniformModel:
 
         raw_parameters = payload.get("parameters")
         raw_metadata = payload.get("metadata")
-        raw_execution_input = payload.get("execution_input")
-        raw_stage_report_payloads = payload.get("stage_report_payloads")
         raw_resolved_configuration = payload.get("resolved_configuration")
         raw_session_resolution = payload.get("session_resolution")
 
@@ -311,16 +308,10 @@ class JaniformModel:
             raise _calibration_error("parameters", "must be an object")
         if not isinstance(raw_metadata, dict):
             raise _calibration_error("metadata", "must be an object")
-        if not isinstance(raw_execution_input, dict):
-            raise _calibration_error("execution_input", "must be an object")
-        if not isinstance(raw_stage_report_payloads, list):
-            raise _calibration_error("stage_report_payloads", "must be a sequence")
         if not isinstance(raw_resolved_configuration, dict):
             raise _calibration_error("resolved_configuration", "must be an object")
         if not isinstance(raw_session_resolution, dict):
             raise _calibration_error("session_resolution", "must be an object")
-
-        stage_report_payloads = _stage_report_payloads_from_sequence(raw_stage_report_payloads)
 
         try:
             workflow_scope = CalibrationMarketDataWorkflowScope(workflow_scope_value)
@@ -333,14 +324,14 @@ class JaniformModel:
         return JaniformModel(
             run_id=_require_model_persistence_string(payload, "run_id"),
             workflow_scope=workflow_scope,
-            parameters=_extract_model_parameters(stage_report_payloads),
+            parameters=_normalize_model_parameters(raw_parameters),
             metadata=deepcopy(raw_metadata),
             resolved_configuration=_resolved_preset_workflow_configuration_from_mapping(
                 raw_resolved_configuration
             ),
             session_resolution=_market_data_session_resolution_from_mapping(raw_session_resolution),
-            _execution_input=StagedCalibrationExecutionInput.from_mapping(raw_execution_input),
-            _stage_report_payloads=stage_report_payloads,
+            _execution_input=None,
+            _stage_report_payloads=(),
         )
 
 
@@ -406,12 +397,13 @@ def _prepare_model_simulation_inputs(
             range_start_utc=start_time_utc,
             range_end_utc=runtime_factors.range_end_utc,
             interval=interval,
-            seasonality_source=build_runtime_hourly_seasonality_source_from_calibration_payload(
+            seasonality_source=_build_runtime_hourly_seasonality_source_from_model(
+                model,
                 calendar_registry=runtime_factors.calendar_registry,
+                exchange_code=runtime_factors.exchange_code,
                 range_start_utc=start_time_utc,
                 range_end_utc=runtime_factors.range_end_utc,
                 interval=interval,
-                seasonality_stage_payload=_seasonality_stage_payload(model),
             ),
             news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
                 known_scheduled_event_timestamps_utc=_resolved_known_news_event_timestamps(model),
@@ -515,12 +507,13 @@ def _prepare_model_runtime_factors(
 
     calendar_registry = CalendarRegistry(model.session_resolution.resolved_session_definition_json)
     exchange_code = model.session_resolution.exchange_code
-    seasonality_source = build_runtime_hourly_seasonality_source_from_calibration_payload(
+    seasonality_source = _build_runtime_hourly_seasonality_source_from_model(
+        model,
         calendar_registry=calendar_registry,
+        exchange_code=exchange_code,
         range_start_utc=start_time_utc,
         range_end_utc=range_end_utc,
         interval=interval,
-        seasonality_stage_payload=_seasonality_stage_payload(model),
     )
     news_materialization = materialize_hourly_news_intensity_factors(
         calendar_registry=calendar_registry,
@@ -613,52 +606,135 @@ def _require_timezone_aware_datetime(value: datetime, *, field_path: str) -> Non
         raise _calibration_error(field_path, "must be timezone-aware")
 
 
-def _seasonality_stage_payload(model: JaniformModel) -> Mapping[str, Any]:
-    for stage_report_payload in model._stage_report_payloads:
-        if stage_report_payload.get("stage_report_kind") != "seasonality":
-            continue
+def _build_runtime_hourly_seasonality_source_from_model(
+    model: JaniformModel,
+    *,
+    calendar_registry: CalendarRegistry,
+    exchange_code: str,
+    range_start_utc: datetime,
+    range_end_utc: datetime,
+    interval: str | timedelta,
+) -> HourlySeasonalityProviderExplicitSource:
+    seasonality_parameters = _seasonality_parameters_payload(model)
+    intraday_minutes_per_bin = int(
+        _seasonality_intraday_minutes_per_bin(seasonality_parameters)
+    )
+    if intraday_minutes_per_bin <= 0:
+        raise RuntimeError(
+            "JaniformModel seasonality.intraday_minutes_per_bin must be a positive integer"
+        )
 
-        normalized_stage_payload = stage_report_payload.get("normalized_stage_payload")
-        if isinstance(normalized_stage_payload, Mapping):
-            return normalized_stage_payload
+    intraday_factors = _require_payload_numeric_sequence(
+        seasonality_parameters,
+        "intraday_factor_by_bin",
+        "seasonality.intraday_factor_by_bin",
+    )
+    day_of_week_factors = _require_payload_numeric_sequence(
+        seasonality_parameters,
+        "day_of_week_factor",
+        "seasonality.day_of_week_factor",
+    )
+    day_of_year_factors = _require_payload_numeric_sequence(
+        seasonality_parameters,
+        "day_of_year_factor",
+        "seasonality.day_of_year_factor",
+    )
+    interval_duration_nanos = _parse_interval_duration_nanos(interval, field_name="interval")
+    interval_duration = timedelta(seconds=interval_duration_nanos / 1_000_000_000)
+    timestamp_event_records = _build_runtime_timestamp_event_records(
+        range_start_utc=range_start_utc,
+        range_end_utc=range_end_utc,
+        interval_duration=interval_duration,
+    )
 
-        raise RuntimeError("JaniformModel is missing the normalized seasonality stage payload")
+    if not timestamp_event_records:
+        return HourlySeasonalityProviderExplicitSource(
+            hourly_factors=(),
+            materialization_method="runtime_compact_seasonality_parameters_mean_renormalized.v1",
+        )
 
-    raise RuntimeError("JaniformModel does not contain a seasonality stage payload")
+    preprocessed_events = preprocess_timestamp_events(
+        timestamp_event_records,
+        exchange_code=exchange_code,
+        calendar_registry=calendar_registry,
+        timestamp_field_name="timestamp",
+        session_filter=SessionFilter.ALL,
+        sparse_hour_event_threshold=1,
+    )
+
+    hourly_factors: list[float] = []
+    for minute_of_day, day_of_week, day_of_year in zip(
+        preprocessed_events.exchange_local_minute_of_day,
+        preprocessed_events.exchange_local_day_of_week,
+        preprocessed_events.exchange_local_day_of_year,
+        strict=True,
+    ):
+        intraday_index = min(
+            minute_of_day // intraday_minutes_per_bin,
+            len(intraday_factors) - 1,
+        )
+        day_of_week_index = day_of_week - 1
+        day_of_year_index = day_of_year - 1
+        hourly_factors.append(
+            intraday_factors[intraday_index]
+            * day_of_week_factors[day_of_week_index]
+            * day_of_year_factors[day_of_year_index]
+        )
+
+    return HourlySeasonalityProviderExplicitSource(
+        hourly_factors=_mean_renormalize_factors(tuple(hourly_factors)),
+        materialization_method="runtime_compact_seasonality_parameters_mean_renormalized.v1",
+    )
+
+
+def _build_runtime_timestamp_event_records(
+    *,
+    range_start_utc: datetime,
+    range_end_utc: datetime,
+    interval_duration: timedelta,
+) -> list[dict[str, datetime]]:
+    event_records: list[dict[str, datetime]] = []
+    current_timestamp = range_start_utc
+
+    while current_timestamp < range_end_utc:
+        event_records.append({"timestamp": current_timestamp})
+        current_timestamp += interval_duration
+
+    return event_records
+
+
+def _seasonality_parameters_payload(model: JaniformModel) -> Mapping[str, Any]:
+    raw_seasonality = model.parameters.get("seasonality")
+    if not isinstance(raw_seasonality, Mapping):
+        raise RuntimeError("JaniformModel does not contain compact seasonality parameters")
+
+    return raw_seasonality
 
 
 def _hawkes_fitted_parameters_payload(model: JaniformModel) -> Mapping[str, Any]:
-    return _stage_fitted_parameters_payload(model, stage_kind="hawkes")
+    return _fitted_parameters_from_model_parameters(model, stage_kind="hawkes")
 
 
 def _return_components_fitted_parameters_payload(model: JaniformModel) -> Mapping[str, Any]:
-    return _stage_fitted_parameters_payload(model, stage_kind="return_components")
+    return _fitted_parameters_from_model_parameters(model, stage_kind="return_components")
 
 
-def _stage_fitted_parameters_payload(
+def _fitted_parameters_from_model_parameters(
     model: JaniformModel,
     *,
     stage_kind: str,
 ) -> Mapping[str, Any]:
-    for stage_report_payload in model._stage_report_payloads:
-        if stage_report_payload.get("stage_report_kind") != stage_kind:
-            continue
+    stage_parameters = model.parameters.get(stage_kind)
+    if not isinstance(stage_parameters, Mapping):
+        raise RuntimeError(f"JaniformModel does not contain `{stage_kind}` parameters")
 
-        raw_fitted_stage_payload = stage_report_payload.get("fitted_stage_payload")
-        if not isinstance(raw_fitted_stage_payload, Mapping):
-            raise RuntimeError(
-                f"JaniformModel is missing the fitted payload for stage `{stage_kind}`"
-            )
+    fitted_parameters = stage_parameters.get("fitted_parameters")
+    if not isinstance(fitted_parameters, Mapping):
+        raise RuntimeError(
+            f"JaniformModel is missing fitted parameters for stage `{stage_kind}`"
+        )
 
-        fitted_parameters = raw_fitted_stage_payload.get("fitted_parameters")
-        if not isinstance(fitted_parameters, Mapping):
-            raise RuntimeError(
-                f"JaniformModel is missing fitted parameters for stage `{stage_kind}`"
-            )
-
-        return fitted_parameters
-
-    raise RuntimeError(f"JaniformModel does not contain the `{stage_kind}` stage payload")
+    return fitted_parameters
 
 
 def _resolved_known_news_event_timestamps(model: JaniformModel) -> tuple[datetime, ...]:
@@ -714,8 +790,6 @@ def _build_model_persistence_payload(model: JaniformModel) -> dict[str, Any]:
         "metadata": deepcopy(model.metadata),
         "resolved_configuration": model.resolved_configuration.to_payload(),
         "session_resolution": model.session_resolution.to_payload(),
-        "execution_input": model._execution_input.to_payload(),
-        "stage_report_payloads": [deepcopy(payload) for payload in model._stage_report_payloads],
     }
 
 
@@ -1052,6 +1126,7 @@ def _extract_model_parameters(stage_report_payloads: tuple[dict[str, Any], ...])
                     parameters["seasonality"] = {
                         "schema_version": normalized_stage_payload.get("composition_schema_version"),
                         "exchange_code": normalized_stage_payload.get("exchange_code"),
+                        "intraday_minutes_per_bin": normalized_stage_payload.get("intraday_minutes_per_bin"),
                         "intraday_factor_by_bin": tuple(
                             cast(list[float], normalized_stage_payload.get("intraday_factor_by_bin", []))
                         ),
@@ -1098,6 +1173,7 @@ def _build_model_metadata(
     staged_response: StagedCalibrationResponse,
     stage_report_payloads: tuple[dict[str, Any], ...],
     input_inference: dict[str, Any],
+    reference_price: Optional[float],
 ) -> dict[str, Any]:
     market_profile_name = (
         resolved_configuration.market_profile.selected_preset.preset_name
@@ -1187,6 +1263,9 @@ def _build_model_metadata(
             "event_count": known_news_event_count,
             "active": known_news_event_count > 0,
         },
+        "simulation_output_preferences": {
+            "reference_price": reference_price,
+        },
         "input_inference": input_inference,
         "diagnostics": [
             {
@@ -1215,6 +1294,88 @@ def _selected_candidate_ids(stage_report_payloads: tuple[dict[str, Any], ...]) -
     return selected_candidate_ids
 
 
+def _require_payload_numeric_value(
+    payload: Mapping[str, Any],
+    field_name: str,
+    field_path: str,
+) -> float:
+    raw_value = payload.get(field_name)
+    if not isinstance(raw_value, int | float) or isinstance(raw_value, bool):
+        raise RuntimeError(f"JaniformModel payload field `{field_path}` must be numeric")
+
+    return float(raw_value)
+
+
+def _seasonality_intraday_minutes_per_bin(seasonality_parameters: Mapping[str, Any]) -> float:
+    raw_value = seasonality_parameters.get("intraday_minutes_per_bin")
+    if isinstance(raw_value, int | float) and not isinstance(raw_value, bool):
+        return float(raw_value)
+
+    intraday_factors = _require_payload_numeric_sequence(
+        seasonality_parameters,
+        "intraday_factor_by_bin",
+        "seasonality.intraday_factor_by_bin",
+    )
+    inferred_minutes_per_bin, remainder = divmod(1440, len(intraday_factors))
+    if remainder != 0:
+        raise RuntimeError(
+            "JaniformModel seasonality parameters must include intraday_minutes_per_bin when "
+            "intraday_factor_by_bin does not evenly partition a day"
+        )
+
+    return float(inferred_minutes_per_bin)
+
+
+def _require_payload_numeric_sequence(
+    payload: Mapping[str, Any],
+    field_name: str,
+    field_path: str,
+) -> tuple[float, ...]:
+    raw_value = payload.get(field_name)
+    if isinstance(raw_value, str) or not isinstance(raw_value, list | tuple):
+        raise RuntimeError(f"JaniformModel payload field `{field_path}` must be a sequence")
+
+    values: list[float] = []
+    for entry_index, entry_value in enumerate(raw_value):
+        if not isinstance(entry_value, int | float) or isinstance(entry_value, bool):
+            raise RuntimeError(
+                f"JaniformModel payload field `{field_path}[{entry_index}]` must be numeric"
+            )
+        values.append(float(entry_value))
+
+    if not values:
+        raise RuntimeError(f"JaniformModel payload field `{field_path}` must not be empty")
+
+    return tuple(values)
+
+
+def _mean_renormalize_factors(factors: tuple[float, ...]) -> tuple[float, ...]:
+    if not factors:
+        raise RuntimeError("JaniformModel seasonality factors must not be empty")
+
+    mean_factor = sum(factors) / len(factors)
+    if mean_factor == 0.0:
+        raise RuntimeError("JaniformModel seasonality factors must not average to zero")
+
+    return tuple(factor / mean_factor for factor in factors)
+
+
+def _normalize_model_parameters(raw_parameters: Mapping[str, Any]) -> dict[str, Any]:
+    parameters = deepcopy(dict(raw_parameters))
+    raw_seasonality = parameters.get("seasonality")
+    if isinstance(raw_seasonality, dict):
+        for field_name in (
+            "intraday_factor_by_bin",
+            "day_of_week_factor",
+            "day_of_year_factor",
+        ):
+            raw_value = raw_seasonality.get(field_name)
+            if isinstance(raw_value, list):
+                raw_seasonality[field_name] = tuple(raw_value)
+
+    return parameters
+
+
 def _resolved_component_provenance(
     source_kind: ResolvedWorkflowComponentSource,
     selected_preset: Optional[ResolvedPresetSelection],
@@ -1233,6 +1394,21 @@ def _resolved_component_provenance(
         ),
         "applied_override_fields": list(applied_override_fields),
     }
+
+
+def _normalize_interval_label(interval: str | timedelta) -> str:
+    if isinstance(interval, str):
+        return interval.replace("/", "_")
+
+    total_seconds = int(interval.total_seconds())
+    if total_seconds % 86_400 == 0:
+        return f"{total_seconds // 86_400}D"
+    if total_seconds % 3_600 == 0:
+        return f"{total_seconds // 3_600}h"
+    if total_seconds % 60 == 0:
+        return f"{total_seconds // 60}min"
+
+    return f"{total_seconds}s"
 
 
 __all__ = ["JaniformModel"]

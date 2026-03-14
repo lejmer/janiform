@@ -318,14 +318,85 @@ def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_metada
     model.save(first_path)
     loaded_model = JaniformModel.load(first_path)
     loaded_model.save(second_path)
+    persisted_payload = json.loads(first_path.read_text(encoding="utf-8"))
 
     assert loaded_model.parameters == model.parameters
     assert loaded_model.metadata == model.metadata
     assert loaded_model.summary() == model.summary()
+    assert "execution_input" not in persisted_payload
+    assert "stage_report_payloads" not in persisted_payload
+    assert first_path.read_text(encoding="utf-8").startswith("{\n  ")
     assert first_path.read_text(encoding="utf-8") == second_path.read_text(encoding="utf-8")
 
 
-def test_high_level_model_simulate_dispatches_by_output_mode(
+def test_loaded_high_level_model_runtime_seasonality_uses_native_timestamp_preprocessing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-native-seasonality",
+    )
+    persisted_model_path = tmp_path / "model.json"
+    model.save(persisted_model_path)
+    loaded_model = JaniformModel.load(persisted_model_path)
+
+    calendar_registry = CalendarRegistry(
+        loaded_model.session_resolution.resolved_session_definition_json
+    )
+    captured_call: dict[str, Any] = {}
+
+    class _FakeTimestampEventPreprocessingResult:
+        exchange_local_minute_of_day = [570, 630]
+        exchange_local_day_of_week = bytes([1, 1])
+        exchange_local_day_of_year = [33, 33]
+
+    def _capture_preprocess_timestamp_events(
+        event_records: list[dict[str, datetime]],
+        *,
+        exchange_code: str,
+        calendar_registry: CalendarRegistry,
+        timestamp_field_name: str = "timestamp",
+        session_filter: fit_model_module.SessionFilter = fit_model_module.SessionFilter.OPEN_ONLY,
+        sparse_hour_event_threshold: int = 1,
+    ) -> _FakeTimestampEventPreprocessingResult:
+        captured_call["event_records"] = event_records
+        captured_call["exchange_code"] = exchange_code
+        captured_call["calendar_registry"] = calendar_registry
+        captured_call["timestamp_field_name"] = timestamp_field_name
+        captured_call["session_filter"] = session_filter
+        captured_call["sparse_hour_event_threshold"] = sparse_hour_event_threshold
+        return _FakeTimestampEventPreprocessingResult()
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "preprocess_timestamp_events",
+        _capture_preprocess_timestamp_events,
+    )
+
+    seasonality_source = fit_model_module._build_runtime_hourly_seasonality_source_from_model(
+        loaded_model,
+        calendar_registry=calendar_registry,
+        exchange_code=loaded_model.session_resolution.exchange_code,
+        range_start_utc=datetime(2026, 2, 2, 14, tzinfo=UTC),
+        range_end_utc=datetime(2026, 2, 2, 16, tzinfo=UTC),
+        interval="1h",
+    )
+
+    assert captured_call["exchange_code"] == loaded_model.session_resolution.exchange_code
+    assert captured_call["calendar_registry"] is calendar_registry
+    assert captured_call["timestamp_field_name"] == "timestamp"
+    assert captured_call["session_filter"] == fit_model_module.SessionFilter.ALL
+    assert captured_call["sparse_hour_event_threshold"] == 1
+    assert captured_call["event_records"] == [
+        {"timestamp": datetime(2026, 2, 2, 14, tzinfo=UTC)},
+        {"timestamp": datetime(2026, 2, 2, 15, tzinfo=UTC)},
+    ]
+    assert seasonality_source.hourly_factors == (1.0, 1.0)
+
+
+def test_high_level_model_simulate_dispatches_by_interval_mode(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -358,33 +429,23 @@ def test_high_level_model_simulate_dispatches_by_output_mode(
         lambda request: captured_calls.append(("ticks", request)) or tick_result,
     )
 
+    observed_seeded = model.simulate(
+        seed=17,
+        start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        horizon_interval_count=2,
+    )
     observed_coarse = model.simulate(
         seed=17,
         start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         horizon_interval_count=2,
-        output="coarse",
-    )
-    observed_ticks = model.simulate(
-        seed=17,
-        start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
-        horizon_interval_count=2,
-        output="ticks",
-    )
-    observed_both = model.simulate(
-        seed=17,
-        start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
-        horizon_interval_count=2,
-        output="both",
+        interval="15min",
     )
 
+    assert observed_seeded is tick_result
     assert observed_coarse is coarse_result
-    assert observed_ticks is tick_result
-    assert observed_both == (coarse_result, tick_result)
     assert captured_calls == [
-        ("coarse", prepared_inputs.coarse_request),
         ("ticks", prepared_inputs.seeded_request),
         ("coarse", prepared_inputs.coarse_request),
-        ("ticks", prepared_inputs.seeded_request),
     ]
 
 

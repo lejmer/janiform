@@ -11,10 +11,10 @@ def test_cli_top_level_help_lists_primary_and_developer_namespaces() -> None:
 
     assert "fit" in help_output
     assert "simulate" in help_output
+    assert "price" in help_output
     assert "presets" in help_output
     assert "seasonality" in help_output
     assert "hourly-factors" in help_output
-    assert "pricing" in help_output
     assert "stylized-facts" in help_output
     assert "dev" in help_output
 
@@ -48,10 +48,13 @@ def test_hourly_factors_help_lists_materialization_and_contract_workflows() -> N
     assert "build-contract" in help_output
 
 
-def test_pricing_help_lists_vanilla_option_workflow() -> None:
-    help_output = _render_help(["pricing"])
+def test_price_help_documents_high_level_pricing_workflow() -> None:
+    help_output = _render_help(["price"])
 
-    assert "vanilla-option" in help_output
+    assert "--model-path" in help_output
+    assert "--spot" in help_output
+    assert "--strike" in help_output
+    assert "--maturity-interval" in help_output
 
 
 def test_stylized_facts_help_lists_horizon_comparison_workflow() -> None:
@@ -80,10 +83,10 @@ def test_click_app_exposes_the_expected_live_command_tree() -> None:
     assert tuple(root_command.commands) == (
         "fit",
         "simulate",
+        "price",
         "presets",
         "seasonality",
         "hourly-factors",
-        "pricing",
         "stylized-facts",
         "dev",
     )

@@ -5,6 +5,14 @@ from typing import Any, Optional, cast
 
 import click
 
+from ..._workflow_outputs import (
+    WorkflowArtifactPaths,
+    generate_workflow_run_id,
+    resolve_fit_artifact_paths,
+    resolve_simulation_artifact_paths,
+    simulation_output_preferences_from_model,
+)
+from ..._workflow_progress import JaniformOutputController
 from .calibration import _build_fit_plan_command, _build_fit_staged_command
 from .simulation import _build_simulation_coarse_interval_command, _build_simulation_seeded_ticks_command
 from .shared import (
@@ -44,7 +52,6 @@ from .._constants import (
     CLI_HIGH_LEVEL_SIMULATE_ENTRYPOINT,
     CLI_HIGH_LEVEL_SIMULATE_INTERNAL_ERROR_ID,
     CLI_HIGH_LEVEL_SIMULATE_VALIDATION_ERROR_ID,
-    CLI_MODEL_SIMULATION_OUTPUT_CHOICES,
     CLI_SIMULATE_RESULT_SCHEMA_VERSION,
     CliExitCode,
     CliOutputMode,
@@ -91,6 +98,7 @@ from ...calibration.fit.input_resolution import (
     infer_high_level_fit_inputs,
 )
 from ...errors import JaniformError, JaniformErrorCategory, JaniformErrorDetails, JaniformExecutionError
+from ...simulation import SeededTickSimulationResponse
 
 type CliCommandArguments = dict[str, Any]
 
@@ -103,6 +111,7 @@ class _ConfiguredCliFitCommand:
     option_surface_path: Optional[Path]
     option_surface_format: CalibrationInputFileFormat
     option_surface_provenance_label: str
+    output_dir: Path
     explain_requested: bool
 
 
@@ -113,16 +122,28 @@ def _run_fit_command(
     **command_arguments,
 ) -> int:
     try:
-        model, fit_report, persisted_model_path = _execute_cli_fit(
+        configured_command = _configure_cli_fit_command(
             cli_context=cli_context,
             entrypoint=CLI_FIT_ENTRYPOINT,
             error_id=CLI_FIT_VALIDATION_ERROR_ID,
             command_arguments=command_arguments,
         )
+        output_controller = JaniformOutputController(silent=bool(command_arguments.get("silent")))
+        if output == CliOutputMode.HUMAN.value and not bool(command_arguments.get("silent")):
+            output_controller.info(f"fit run_id: {configured_command.input_inference.run_id}")
+            output_controller.info(f"tick data: {configured_command.tick_data_path}")
+            output_controller.info(f"output directory: {configured_command.output_dir}")
+            output_controller.info(f"model path: {configured_command.output_dir / 'model.json'}")
+
+        model, fit_report, artifact_paths = _execute_cli_fit(
+            configured_command=configured_command,
+            output=output,
+            command_arguments=command_arguments,
+        )
         payload = _build_cli_fit_result_payload(
             model=model,
             fit_report=fit_report,
-            persisted_model_path=persisted_model_path,
+            artifact_paths=artifact_paths,
             command=CLI_FIT_ENTRYPOINT,
             schema_version=CLI_FIT_RESULT_SCHEMA_VERSION,
             explain_requested=bool(command_arguments.get("explain")),
@@ -210,6 +231,7 @@ def _run_model_simulate_command(
             schema_version=CLI_SIMULATE_RESULT_SCHEMA_VERSION,
             entrypoint=CLI_HIGH_LEVEL_SIMULATE_ENTRYPOINT,
             error_id=CLI_HIGH_LEVEL_SIMULATE_VALIDATION_ERROR_ID,
+            output_mode=output,
         )
     except JaniformError as e:
         return _write_cli_error(e)
@@ -234,11 +256,12 @@ def _run_model_simulate_command(
             )
         )
 
-    _write_command_output(
-        output,
-        json_payload=payload,
-        human_output_factory=lambda: _render_simulate_human_output(payload),
-    )
+    if not bool(command_arguments.get("silent")):
+        _write_command_output(
+            output,
+            json_payload=payload,
+            human_output_factory=lambda: _render_simulate_human_output(payload),
+        )
 
     return int(CliExitCode.SUCCESS)
 
@@ -461,6 +484,13 @@ def _configure_cli_fit_command(
         silent=bool(command_arguments.get("silent")),
     )
 
+    raw_output_dir = cast(Optional[Path], command_arguments.get("output_dir"))
+    output_dir = (
+        _resolve_path_from_repository_root(cli_context.repository_root, raw_output_dir)
+        if raw_output_dir is not None
+        else resolve_fit_artifact_paths(run_id=input_inference.run_id, output_dir=None).run_directory
+    )
+
     return _ConfiguredCliFitCommand(
         estimator=estimator,
         input_inference=input_inference,
@@ -468,6 +498,7 @@ def _configure_cli_fit_command(
         option_surface_path=resolved_option_surface_path,
         option_surface_format=option_surface_format,
         option_surface_provenance_label=option_surface_provenance_label,
+        output_dir=output_dir,
         explain_requested=bool(command_arguments.get("explain")),
     )
 
@@ -612,17 +643,11 @@ def _build_cli_fit_input_inference_payload(prepared_workflow: Any) -> dict[str, 
 
 def _execute_cli_fit(
     *,
-    cli_context: CliCommandContext,
-    entrypoint: str,
-    error_id: str,
+    configured_command: _ConfiguredCliFitCommand,
+    output: str,
     command_arguments: CliCommandArguments,
-) -> tuple[JaniformModel, JaniformFitReport, Optional[Path]]:
-    configured_command = _configure_cli_fit_command(
-        cli_context=cli_context,
-        entrypoint=entrypoint,
-        error_id=error_id,
-        command_arguments=command_arguments,
-    )
+) -> tuple[JaniformModel, JaniformFitReport, WorkflowArtifactPaths]:
+    execution_silent = bool(command_arguments.get("silent")) or output == CliOutputMode.JSON.value
 
     model_result, fit_report = cast(
         tuple[Optional[JaniformModel], JaniformFitReport],
@@ -634,6 +659,8 @@ def _execute_cli_fit(
             option_surface_path=configured_command.option_surface_path,
             option_surface_format=configured_command.option_surface_format,
             option_surface_provenance_label=configured_command.option_surface_provenance_label,
+            output_dir=configured_command.output_dir,
+            silent=execution_silent,
             report=True,
         ),
     )
@@ -649,17 +676,12 @@ def _execute_cli_fit(
             )
         )
 
-    raw_model_output_path = cast(Optional[Path], command_arguments.get("model_output_path"))
-
-    persisted_model_path = (
-        _resolve_path_from_repository_root(cli_context.repository_root, raw_model_output_path)
-        if raw_model_output_path is not None
-        else None
+    artifact_paths = resolve_fit_artifact_paths(
+        run_id=model_result.run_id,
+        output_dir=configured_command.output_dir,
     )
-    if persisted_model_path is not None:
-        model_result.save(persisted_model_path)
 
-    return model_result, fit_report, persisted_model_path
+    return model_result, fit_report, artifact_paths
 
 
 def _build_cli_fit_inspect_payload(
@@ -693,6 +715,9 @@ def _build_cli_fit_inspect_payload(
             "command": CLI_FIT_INSPECT_ENTRYPOINT,
             "run_id": prepared_workflow.run_id,
             "tick_data_path": str(configured_command.tick_data_path),
+            "output_directory": str(configured_command.output_dir),
+            "model_output_path": str(configured_command.output_dir / "model.json"),
+            "report_path": str(configured_command.output_dir / "fit_report.json"),
             "input_inference": _build_cli_fit_input_inference_payload(prepared_workflow),
             "resolved_configuration": prepared_workflow.resolved_configuration.to_payload(),
             "session_resolution": prepared_workflow.prepared.session_resolution.to_payload(),
@@ -966,7 +991,7 @@ def _build_cli_fit_result_payload(
     *,
     model: JaniformModel,
     fit_report: JaniformFitReport,
-    persisted_model_path: Optional[Path],
+    artifact_paths: WorkflowArtifactPaths,
     command: str,
     schema_version: str,
     explain_requested: bool,
@@ -975,7 +1000,10 @@ def _build_cli_fit_result_payload(
         "schema_version": schema_version,
         "command": command,
         "run_id": model.run_id,
-        "model_output_path": None if persisted_model_path is None else str(persisted_model_path),
+        "run_directory": str(artifact_paths.run_directory),
+        "model_output_path": str(artifact_paths.primary_output_path),
+        "report_path": str(artifact_paths.report_path),
+        "manifest_path": str(artifact_paths.manifest_path),
         "model_summary": model.summary(),
         "input_inference": cast(dict[str, Any], model.summary()["input_inference"]),
         "explain_requested": explain_requested,
@@ -997,6 +1025,7 @@ def _build_cli_simulate_result_payload(
     schema_version: str,
     entrypoint: str,
     error_id: str,
+    output_mode: str,
 ) -> dict[str, Any]:
     start_time_utc = _parse_utc_datetime_cli_argument(
         cast(str, command_arguments["start_time_utc"]),
@@ -1024,43 +1053,60 @@ def _build_cli_simulate_result_payload(
         entrypoint=entrypoint,
     )
 
-    output_mode = cast(str, command_arguments["simulation_output"])
+    interval_value = cast(Optional[str], command_arguments.get("interval"))
+    simulation_run_id = generate_workflow_run_id(f"{model.run_id}_simulate")
+    output_path_argument = cast(Optional[Path], command_arguments.get("output_path"))
+    resolved_output_path_argument = (
+        _resolve_path_from_repository_root(Path.cwd(), output_path_argument)
+        if output_path_argument is not None
+        else None
+    )
+    output_preferences = simulation_output_preferences_from_model(model)
+    artifact_paths = resolve_simulation_artifact_paths(
+        run_id=simulation_run_id,
+        output_path=resolved_output_path_argument,
+        default_file_format=output_preferences.file_format,
+        interval_label=None if interval_value is None else interval_value,
+    )
+
+    execution_silent = bool(command_arguments.get("silent")) or output_mode == CliOutputMode.JSON.value
+    output_controller = JaniformOutputController(silent=bool(command_arguments.get("silent")))
+    if output_mode == CliOutputMode.HUMAN.value and not bool(command_arguments.get("silent")):
+        output_controller.info(f"simulate run_id: {simulation_run_id}")
+        output_controller.info(f"model path: {model_path}")
+        output_controller.info(f"primary output: {artifact_paths.primary_output_path}")
+        output_controller.info(f"report path: {artifact_paths.report_path}")
 
     simulation_result = model.simulate(
         seed=int(cast(int, command_arguments["seed"])),
         start_time_utc=start_time_utc,
         horizon_interval_count=horizon_interval_count,
-        interval=cast(str, command_arguments["interval"]),
-        output=cast(Any, output_mode),
+        interval=interval_value,
+        output_path=artifact_paths.primary_output_path,
         debug_trace_enabled=bool(command_arguments.get("debug_trace_enabled")),
         sample_every_nth_transition=sample_every_nth_transition,
         max_records_per_chunk=max_records_per_chunk,
+        silent=execution_silent,
     )
-
-    coarse_payload: Optional[dict[str, Any]] = None
-    seeded_tick_payload: Optional[dict[str, Any]] = None
-
-    match output_mode:
-        case "coarse":
-            coarse_payload = simulation_result.to_payload()
-        case "ticks":
-            seeded_tick_payload = simulation_result.to_payload()
-        case "both":
-            coarse_result, seeded_tick_result = cast(tuple[Any, Any], simulation_result)
-            coarse_payload = coarse_result.to_payload()
-            seeded_tick_payload = seeded_tick_result.to_payload()
 
     return {
         "schema_version": schema_version,
         "command": command,
         "model_path": None if model_path is None else str(model_path),
-        "run_id": model.run_id,
-        "simulation_output": output_mode,
+        "run_id": simulation_run_id,
+        "simulation_kind": (
+            "seeded_tick"
+            if isinstance(simulation_result, SeededTickSimulationResponse)
+            else "coarse_interval"
+        ),
+        "primary_output_path": str(artifact_paths.primary_output_path),
+        "report_path": str(artifact_paths.report_path),
+        "manifest_path": str(artifact_paths.manifest_path),
+        "run_directory": str(artifact_paths.run_directory),
         "model_summary": model.summary(),
         "resolved_configuration": model.resolved_configuration.to_payload(),
         "session_resolution": model.session_resolution.to_payload(),
-        "coarse_simulation": coarse_payload,
-        "seeded_tick_simulation": seeded_tick_payload,
+        "simulation_diagnostics": simulation_result.diagnostics.to_payload(),
     }
 
 
@@ -1113,7 +1159,7 @@ def _build_fit_group(*, environment: Optional[Mapping[str, str]] = None) -> clic
         help="Inspect the inferred beginner-path fit configuration without running calibration.",
         params=_model_workflow_fit_options(
             enforce_required=False,
-            include_model_output_path=False,
+            include_output_dir=True,
             include_explain=False,
         ),
     )
@@ -1141,9 +1187,9 @@ def _build_simulate_group(*, environment: Optional[Mapping[str, str]] = None) ->
         environment=environment,
         help=(
             "Simulate from a persisted Janiform model.\n\n"
-            "Run `janiform simulate` with the options below for the default model-driven "
-            "simulation workflow. Use `simulate coarse-interval` or `simulate seeded-ticks` "
-            "when you need direct control over those explicit workflow contracts."
+            "Run `janiform simulate` without --interval for the default seeded tick workflow. "
+            "Provide --interval for the coarse interval workflow. Use `simulate coarse-interval` "
+            "or `simulate seeded-ticks` when you need direct control over those explicit contracts."
         ),
         invoke_without_command=True,
         params=_model_workflow_simulate_options(
@@ -1172,12 +1218,12 @@ def _build_simulate_group(*, environment: Optional[Mapping[str, str]] = None) ->
 def _model_workflow_fit_options(
     *,
     enforce_required: bool = True,
-    include_model_output_path: bool = True,
+    include_output_dir: bool = True,
     include_explain: bool = True,
 ) -> list[click.Parameter]:
     return [
         command_config_option(),
-        output_option(default_output_mode=CliOutputMode.JSON),
+        output_option(default_output_mode=CliOutputMode.HUMAN),
         user_preset_json_option(),
         command_option(
             "--market",
@@ -1376,12 +1422,13 @@ def _model_workflow_fit_options(
         *(
             [
                 command_option(
-                    "--model-output-path",
-                    help_text="Optional path where the fitted JaniformModel should be persisted.",
+                    "--output-dir",
+                    help_text="Directory for model.json, fit_report.json, and run.json.",
+                    directory=True,
                     path_type=True,
                 ),
             ]
-            if include_model_output_path
+            if include_output_dir
             else []
         ),
     ]
@@ -1396,7 +1443,7 @@ def _model_workflow_simulate_options(
     parameters: list[click.Parameter] = []
     if include_shared_arguments:
         parameters.append(command_config_option())
-        parameters.append(output_option(default_output_mode=CliOutputMode.JSON))
+        parameters.append(output_option(default_output_mode=CliOutputMode.HUMAN))
 
     if require_model_path:
         parameters.append(
@@ -1424,18 +1471,23 @@ def _model_workflow_simulate_options(
             ),
             command_option(
                 "--interval",
-                default="1h",
-                help_text="Simulation interval such as `1h` or `30m`. Default: 1h.",
+                help_text=(
+                    "Optional coarse simulation interval such as `1min`, `15min`, `1h`, or `1D`. "
+                    "When omitted, Janiform runs the default seeded tick simulation path."
+                ),
+            ),
+            optional_path_option(
+                "--output-path",
+                help_text="Primary simulation output path. Default: ./janiform_runs/<run_id>/simulation.<csv|parquet>.",
             ),
             command_option(
-                "--simulation-output",
-                choice_options=CLI_MODEL_SIMULATION_OUTPUT_CHOICES,
-                default="coarse",
-                help_text="Model simulation output mode. Default: coarse.",
+                "--silent",
+                help_text="Suppress non-error simulate output.",
+                is_flag=True,
             ),
             command_option(
                 "--debug-trace-enabled",
-                help_text="Enable seeded-tick debug tracing when the simulation output includes ticks.",
+                help_text="Enable seeded-tick debug tracing for the seeded simulation path.",
                 is_flag=True,
             ),
             command_option(

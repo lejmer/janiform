@@ -2,9 +2,11 @@ import json
 from pathlib import Path
 
 import orjson
+import pytest
 
 import janiform.cli as cli_module
 from examples.cli_documentation_setup import write_cli_documentation_inputs
+from tests.test_cli_high_level_commands import _build_full_workflow_model
 from tests.cli_test_support import invoke_cli, normalize_help_output, render_help
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -54,7 +56,7 @@ def test_cli_command_reference_doc_contains_required_sections_and_commands() -> 
         "janiform hourly-factors materialize-seasonality",
         "janiform hourly-factors materialize-news-intensity",
         "janiform hourly-factors build-contract",
-        "janiform pricing vanilla-option",
+        "janiform price",
         "janiform stylized-facts horizon-comparison",
         "janiform dev regression deterministic",
     ]
@@ -117,7 +119,7 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     hourly_factors_contract_help = normalize_help_output(
         render_help(["hourly-factors", "build-contract"])
     )
-    pricing_help = normalize_help_output(render_help(["pricing", "vanilla-option"]))
+    pricing_help = normalize_help_output(render_help(["price"]))
     stylized_facts_help = normalize_help_output(render_help(["stylized-facts", "horizon-comparison"]))
     deterministic_help = normalize_help_output(render_help(["dev", "regression", "deterministic"]))
 
@@ -139,9 +141,9 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
         "--known-news KNOWN_NEWS",
         "--session-json PATH",
         "--known-news-json PATH",
-        "--model-output-path PATH",
+        "--output-dir DIRECTORY",
         "--model-path PATH",
-        "--simulation-output {coarse,ticks,both}",
+        "--output-path PATH",
     )
     for expected_text in shared_expectations:
         assert expected_text in reference_document
@@ -151,9 +153,9 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     assert "--market MARKET" in fit_help
     assert "--session-preset SESSION_PRESET" in fit_help
     assert "--known-news KNOWN_NEWS" in fit_help
-    assert "--model-output-path PATH" in fit_help
+    assert "--output-dir DIRECTORY" in fit_help
     assert "--model-path PATH" in simulate_help
-    assert "--simulation-output {coarse,ticks,both}" in simulate_help
+    assert "--output-path PATH" in simulate_help
     assert "--request-json PATH" in coarse_simulation_help
     assert "--request-json PATH" in simulation_help
     assert "--workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface}" in fit_plan_help
@@ -167,7 +169,7 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     assert "--materialization-input-json PATH" in hourly_factors_seasonality_help
     assert "--seasonality-explicit-source-json PATH" in hourly_factors_contract_help
     assert "--news-intensity-materialized-source-json PATH" in hourly_factors_contract_help
-    assert "--execution-input-json PATH" in pricing_help
+    assert "--maturity-interval MATURITY_INTERVAL" in pricing_help
     assert "--metric-catalog-json PATH" in stylized_facts_help
     assert "--comparison-request-json PATH" in stylized_facts_help
     assert "--artifact-export-json PATH" in stylized_facts_help
@@ -176,7 +178,12 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     assert "--seasonality-cases-json PATH" in deterministic_help
 
 
-def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path: Path) -> None:
+def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
     documented_paths = write_cli_documentation_inputs(tmp_path / "cli-docs")
 
     coarse_simulation_exit_code, coarse_simulation_stdout, coarse_simulation_stderr = invoke_cli(
@@ -323,19 +330,38 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(tmp_path
     hourly_factor_contract_payload = orjson.loads(hourly_factor_contract_stdout)
     assert hourly_factor_contract_payload["schema_version"] == "seasonality.hourly_factor.contract.v1"
 
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        model = _build_full_workflow_model(
+            tmp_path,
+            monkeypatch,
+            run_id="cli-docs-model",
+        )
+        model_path = tmp_path / "cli-docs-model.json"
+        model.save(model_path)
+    finally:
+        monkeypatch.undo()
+
     pricing_exit_code, pricing_stdout, pricing_stderr = invoke_cli(
         [
-            "pricing",
-            "vanilla-option",
-            "--execution-input-json",
-            documented_paths["pricing_execution_input_json"],
+            "price",
+            "--model-path",
+            str(model_path),
+            "--valuation-time-utc",
+            "2026-02-02T15:00:00Z",
+            "--spot",
+            "100.0",
+            "--strike",
+            "105.0",
+            "--maturity-interval",
+            "4.0",
             "--output",
             "json",
         ]
     )
     assert pricing_exit_code == int(cli_module.CliExitCode.SUCCESS), pricing_stderr
     pricing_payload = orjson.loads(pricing_stdout)
-    assert pricing_payload["schema_version"] == "pricing.vanilla_option.run_result.v1"
+    assert pricing_payload["schema_version"] == cli_module.CLI_PRICE_RESULT_SCHEMA_VERSION
 
     stylized_facts_memory_exit_code, stylized_facts_memory_stdout, stylized_facts_memory_stderr = invoke_cli(
         [
