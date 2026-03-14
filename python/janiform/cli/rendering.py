@@ -122,31 +122,39 @@ def _render_input_inference_lines(input_inference: dict[str, Any]) -> list[str]:
     known_news = cast(dict[str, Any], input_inference["known_news"])
 
     return [
+        "inference:",
+        f"  tick data format: {input_inference['tick_data_format']}",
+        f"  timestamp column: {input_inference['timestamp_column']}",
         (
-            "inference: "
-            f"tick_data_format={input_inference['tick_data_format']} "
-            f"timestamp_column={input_inference['timestamp_column']} "
-            f"tick_price_input_policy={input_inference['tick_price_input_policy'] or 'none'} "
-            f"timestamp_timezone={input_inference['timestamp_timezone']} "
-            f"timestamp_timezone_source={input_inference['timestamp_timezone_source']}"
+            "  tick price input policy: "
+            f"{input_inference['tick_price_input_policy'] or 'none'}"
+        ),
+        f"  timestamp timezone: {input_inference['timestamp_timezone']}",
+        (
+            "  timestamp timezone source: "
+            f"{input_inference['timestamp_timezone_source']}"
+        ),
+        "price columns:",
+        f"  price: {tick_price_columns['price_column'] or 'none'}",
+        f"  trade price: {tick_price_columns['trade_price_column'] or 'none'}",
+        f"  trade sign: {tick_price_columns['trade_sign_column'] or 'none'}",
+        f"  bid: {tick_price_columns['bid_column'] or 'none'}",
+        f"  ask: {tick_price_columns['ask_column'] or 'none'}",
+        f"  close: {tick_price_columns['close_price_column'] or 'none'}",
+        "preset defaults:",
+        f"  market profile: {input_inference['market_profile'] or 'none'}",
+        f"  session source: {input_inference['session_source_kind']}",
+        (
+            "  known news selected: "
+            f"{known_news['selected_preset'] or DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME}"
         ),
         (
-            "price_columns: "
-            f"price={tick_price_columns['price_column'] or 'none'} "
-            f"trade_price={tick_price_columns['trade_price_column'] or 'none'} "
-            f"trade_sign={tick_price_columns['trade_sign_column'] or 'none'} "
-            f"bid={tick_price_columns['bid_column'] or 'none'} "
-            f"ask={tick_price_columns['ask_column'] or 'none'} "
-            f"close={tick_price_columns['close_price_column'] or 'none'}"
+            "  known news recommended: "
+            f"{known_news['recommended_preset'] or 'none'}"
         ),
         (
-            "preset_defaults: "
-            f"market_profile={input_inference['market_profile'] or 'none'} "
-            f"session_source={input_inference['session_source_kind']} "
-            "known_news_selected="
-            f"{known_news['selected_preset'] or DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME} "
-            f"known_news_recommended={known_news['recommended_preset'] or 'none'} "
-            f"known_news_recommendation_applied={str(known_news['recommendation_applied']).lower()}"
+            "  known news recommendation applied: "
+            f"{str(known_news['recommendation_applied']).lower()}"
         ),
     ]
 

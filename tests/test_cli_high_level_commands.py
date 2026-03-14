@@ -202,6 +202,51 @@ def test_fit_supports_beginner_positional_tick_path_and_inferred_defaults(
     assert payload["resolved_configuration"]["known_news"]["selected_preset"]["preset_name"] == "none"
 
 
+def test_fit_supports_eurusd_market_preset_with_full_day_fx_session_windows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = _write_tick_data(
+        tmp_path / "eurusd_ticks.csv",
+        rows=(
+            "2023-03-21T19:00:00Z,1.0830,buy",
+            "2023-03-21T19:05:00Z,1.0831,sell",
+            "2023-03-22T00:30:00Z,1.0832,buy",
+            "2023-03-22T00:35:00Z,1.0833,sell",
+            "2023-03-24T18:30:00Z,1.0840,buy",
+            "2023-03-24T18:35:00Z,1.0841,sell",
+            "2023-03-26T21:30:00Z,1.0842,buy",
+            "2023-03-26T21:35:00Z,1.0844,sell",
+        ),
+    )
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_staged_calibration_with_raw_payload",
+        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
+            execution_input.request.run_id
+        ),
+    )
+
+    exit_code, stdout, stderr = invoke_cli(
+        [
+            "fit",
+            str(tick_data_path),
+            "--market",
+            "eurusd_spot",
+            "--output",
+            "json",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr
+    payload = orjson.loads(stdout)
+
+    assert payload["resolved_configuration"]["market_profile"]["selected_preset"]["preset_name"] == "eurusd_spot"
+    assert payload["resolved_configuration"]["session"]["selected_preset"]["preset_name"] == "fx_spot_24_5"
+    assert payload["session_resolution"]["exchange_code"] == "FXSPOT"
+
+
 def test_fit_explain_and_silent_flags_control_success_output(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -235,9 +280,12 @@ def test_fit_explain_and_silent_flags_control_success_output(
     )
 
     assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr
-    assert "inference: tick_data_format=csv" in stdout
-    assert "timestamp_column=timestamp_utc" in stdout
-    assert "tick_price_input_policy=trade_price_column" in stdout
+    assert "inference:\n" in stdout
+    assert "  tick data format: csv" in stdout
+    assert "  timestamp column: timestamp_utc" in stdout
+    assert "  tick price input policy: trade_price_column" in stdout
+    assert "price columns:\n" in stdout
+    assert "preset defaults:\n" in stdout
 
     silent_exit_code, silent_stdout, silent_stderr = invoke_cli(
         [
