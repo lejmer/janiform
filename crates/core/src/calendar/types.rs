@@ -335,8 +335,11 @@ impl SessionTime {
             .parse::<u8>()
             .map_err(|_| "minute must be a numeric value")?;
 
-        if hour > 23 {
-            return Err("hour must be between 00 and 23");
+        if hour > 24 {
+            return Err("hour must be between 00 and 24");
+        }
+        if hour == 24 && minute != 0 {
+            return Err("24:00 is the only valid 24-hour clock boundary");
         }
         if minute > 59 {
             return Err("minute must be between 00 and 59");

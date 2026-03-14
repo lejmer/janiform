@@ -17,6 +17,7 @@ from janiform.calibration.market_data import (
     CalibrationTickPriceInputPolicy,
 )
 from janiform.calibration.staged import validate_staged_calibration_response
+from janiform.calendar import CalendarRegistry, MarketState
 
 
 def test_janiform_estimator_fit_returns_model_for_default_high_level_workflow(
@@ -66,6 +67,46 @@ def test_janiform_estimator_fit_returns_model_for_default_high_level_workflow(
     assert "seasonality" in model.parameters
     assert model.metadata["market_profile"] == "us_equity_cash"
     assert model.metadata["selected_stages"] == ["seasonality"]
+
+
+def test_high_level_session_calendar_registry_preserves_fx_weekend_closure() -> None:
+    registry = fit_estimator_module.PresetRegistry()
+    _, session_artifact = registry.resolve_session_preset("fx_spot_24_5")
+
+    calendar_registry = CalendarRegistry(
+        fit_estimator_module._calendar_registry_json_from_session_configuration(
+            session_artifact.configuration
+        )
+    )
+
+    assert (
+        calendar_registry.resolve_market_state(
+            "FXSPOT",
+            datetime(2026, 2, 6, 18, 59, tzinfo=UTC),
+        )
+        == MarketState.OPEN
+    )
+    assert (
+        calendar_registry.resolve_market_state(
+            "FXSPOT",
+            datetime(2026, 2, 6, 19, 0, tzinfo=UTC),
+        )
+        == MarketState.CLOSED
+    )
+    assert (
+        calendar_registry.resolve_market_state(
+            "FXSPOT",
+            datetime(2026, 2, 8, 20, 59, tzinfo=UTC),
+        )
+        == MarketState.CLOSED
+    )
+    assert (
+        calendar_registry.resolve_market_state(
+            "FXSPOT",
+            datetime(2026, 2, 8, 21, 0, tzinfo=UTC),
+        )
+        == MarketState.OPEN
+    )
 
 
 def test_janiform_estimator_fit_report_true_returns_model_and_report(

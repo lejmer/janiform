@@ -46,6 +46,7 @@ from ..presets.resolution import (
 from ..sessions.contracts import MarketDataSessionResolution
 from ..sessions.resolution import (
     _SessionTemplate,
+    _build_calendar_registry_json_from_windows,
     _build_recurring_closed_windows,
     _looks_like_continuous_weekday_template,
     _regular_session_windows_from_exchange_artifact,
@@ -53,7 +54,6 @@ from ..sessions.resolution import (
 )
 from ..staged.contracts import CalibrationStageExecutionStatus
 from ..staged.runtime import _run_staged_calibration_with_raw_payload
-from ..._contracts import serialize_deterministic_json
 from ...calendar import CalendarRegistry
 
 
@@ -66,17 +66,6 @@ _DEFAULT_HIGH_LEVEL_OUTPUT_PREFERENCES = CalibrationMarketDataOutputPreferences(
     emit_derived_staged_execution_input=False,
     emit_input_provenance_report=True,
 )
-_WEEKDAY_ORDER: tuple[str, ...] = (
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-    "Sunday",
-)
-
-
 class JaniformEstimator:
     def __init__(
         self,
@@ -679,48 +668,19 @@ def _build_session_configuration_input(
 def _calendar_registry_json_from_session_configuration(
     session_configuration: SessionExplicitConfiguration,
 ) -> str:
-    windows_by_weekday: dict[str, list[dict[str, str]]] = {}
-    for session_window in session_configuration.regular_session_windows:
-        windows_by_weekday.setdefault(session_window.weekday, []).append(
-            {
-                "label": session_window.label,
-                "open_time": session_window.open_time,
-                "close_time": session_window.close_time,
-            }
-        )
-
-    payload: dict[str, Any] = {
-        "schema_version": "calendar.registry.v1",
-        "artifact_date": datetime.now(tz=UTC).date().isoformat(),
-        "exchanges": [
-            {
-                "schema_version": "calendar.v1",
-                "exchange_code": session_configuration.exchange_code,
-                "exchange_name": (
-                    session_configuration.exchange_name
-                    if session_configuration.exchange_name is not None
-                    else session_configuration.exchange_code
-                ),
-                "timezone_name": session_configuration.timezone_name,
-                "rule_metadata": {
-                    "holiday_calendar_code": "USER_DEFINED",
-                    "early_close_rule_set": None,
-                },
-                "regular_sessions": [
-                    {
-                        "weekday": weekday,
-                        "windows": windows_by_weekday[weekday],
-                    }
-                    for weekday in _WEEKDAY_ORDER
-                    if weekday in windows_by_weekday
-                ],
-                "holiday_dates": [],
-                "early_close_sessions": [],
-            }
-        ],
-    }
-
-    return serialize_deterministic_json(payload)
+    return _build_calendar_registry_json_from_windows(
+        exchange_code=session_configuration.exchange_code,
+        exchange_name=(
+            session_configuration.exchange_name
+            if session_configuration.exchange_name is not None
+            else session_configuration.exchange_code
+        ),
+        timezone_name=session_configuration.timezone_name,
+        holiday_calendar_code="USER_DEFINED",
+        early_close_rule_set=None,
+        regular_session_windows=session_configuration.regular_session_windows,
+        recurring_closed_windows=session_configuration.recurring_closed_windows,
+    )
 
 
 def _build_known_news_input(
