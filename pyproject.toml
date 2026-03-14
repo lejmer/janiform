@@ -10,7 +10,9 @@ requires-python = ">=3.12"
 dynamic = ["version"]
 dependencies = [
     "click>=8.3.1",
+    "numpy>=2.4.3",
     "orjson>=3.11.7",
+    "pandas>=3.0.1",
     "pyarrow>=23.0.1",
 ]
 
