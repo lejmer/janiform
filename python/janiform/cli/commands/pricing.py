@@ -34,7 +34,7 @@ def _run_pricing_vanilla_option_command(
     cli_context: CliCommandContext,
     output: str,
     execution_input_json: Path,
-    **_: object,
+    **_,
 ) -> int:
     execution_input_path = _resolve_path_from_repository_root(
         cli_context.repository_root,
@@ -70,7 +70,7 @@ def _run_pricing_vanilla_option_command(
     return int(CliExitCode.SUCCESS)
 
 
-def _build_pricing_group(*, environment: Mapping[str, str] | None = None) -> click.Group:
+def _build_pricing_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
     @click.group(
         cls=JaniformGroup,
         command_path=("pricing",),
@@ -99,7 +99,7 @@ def _build_pricing_group(*, environment: Mapping[str, str] | None = None) -> cli
         ],
     )
     @click.pass_context
-    def vanilla_option(ctx: click.Context, **command_arguments: object) -> int:
+    def vanilla_option(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
             handler=_run_pricing_vanilla_option_command,

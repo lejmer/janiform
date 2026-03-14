@@ -1,3 +1,4 @@
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from enum import StrEnum
 from types import ModuleType
@@ -81,11 +82,11 @@ class CalendarRegistry:
     def _preprocess_timestamp_events_native(
         self,
         exchange_code: str,
-        event_records: object,
+        event_records: Sequence[Mapping[str, Any]],
         timestamp_field_name: str,
         session_filter: str,
         sparse_hour_event_threshold: int,
-    ) -> object:
+    ) -> Any:
         return self._native_registry.preprocess_timestamp_events(
             exchange_code,
             event_records,

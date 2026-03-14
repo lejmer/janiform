@@ -126,7 +126,7 @@ def _run_deterministic_regression_command(
     seasonality_cases_json: Path,
     seasonality_absolute_tolerance: float,
     news_intensity_absolute_tolerance: float,
-    **_: object,
+    **_,
 ) -> int:
     calendar_registry_path = _resolve_path_from_repository_root(
         cli_context.repository_root,
@@ -195,7 +195,7 @@ def _run_open_closed_gap_leakage_regression_command(
     calendar_fixture_path: Path,
     gap_behavior_fixture_path: Path,
     component_absolute_tolerance: float,
-    **_: object,
+    **_,
 ) -> int:
     calendar_fixture_path = _resolve_path_from_repository_root(
         cli_context.repository_root,
@@ -234,7 +234,7 @@ def _run_open_closed_gap_leakage_regression_command(
     return int(CliExitCode.SUCCESS if failed_case_count == 0 else CliExitCode.RUNTIME_ERROR)
 
 
-def _build_development_group(*, environment: Mapping[str, str] | None = None) -> click.Group:
+def _build_development_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
     @click.group(
         cls=JaniformGroup,
         command_path=("dev",),
@@ -293,7 +293,7 @@ def _build_development_group(*, environment: Mapping[str, str] | None = None) ->
         ],
     )
     @click.pass_context
-    def deterministic(ctx: click.Context, **command_arguments: object) -> int:
+    def deterministic(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
             handler=_run_deterministic_regression_command,
@@ -328,7 +328,7 @@ def _build_development_group(*, environment: Mapping[str, str] | None = None) ->
         ],
     )
     @click.pass_context
-    def open_closed_gap_leakage(ctx: click.Context, **command_arguments: object) -> int:
+    def open_closed_gap_leakage(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
             handler=_run_open_closed_gap_leakage_regression_command,

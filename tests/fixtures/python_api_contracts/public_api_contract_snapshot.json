@@ -5221,7 +5221,7 @@
       "symbols": {
         "_build_market_data_calibration_request_from_arguments": {
           "kind": "function",
-          "signature": "(*, cli_context: 'CliCommandContext', run_id: 'str', tick_data_path: 'Optional[Path]', tick_data_format: 'str', tick_data_provenance_label: 'str', exchange_code: 'str', tick_timestamp_column: 'str', tick_price_column: 'Optional[str]', tick_trade_price_column: 'Optional[str]', tick_trade_sign_column: 'Optional[str]', tick_bid_column: 'Optional[str]', tick_ask_column: 'Optional[str]', tick_close_price_column: 'Optional[str]', workflow_scope: 'str', timestamp_timezone: 'str', disable_timestamp_sort: 'bool', duplicate_record_policy: 'str', tick_price_input_policy: 'Optional[str]', option_quote_input_policy: 'Optional[str]', execution_mode: 'str', disk_checkpoint_directory: 'Optional[Path]', emit_derived_staged_execution_input: 'bool', omit_input_provenance_report: 'bool', session_timezone: 'Optional[str]', session_definition_path: 'Optional[Path]', session_definition_format: 'Optional[str]', session_definition_provenance_label: 'Optional[str]', option_surface_path: 'Optional[Path]', option_surface_format: 'Optional[str]', option_surface_provenance_label: 'Optional[str]', option_quote_timestamp_column: 'Optional[str]', option_expiry_column: 'Optional[str]', option_strike_column: 'Optional[str]', option_type_column: 'Optional[str]', option_mid_price_column: 'Optional[str]', option_bid_column: 'Optional[str]', option_ask_column: 'Optional[str]', option_implied_volatility_column: 'Optional[str]', known_news_path: 'Optional[Path]', known_news_format: 'Optional[str]', known_news_provenance_label: 'Optional[str]', known_news_timezone: 'Optional[str]', known_news_timestamp_column: 'Optional[str]', known_news_event_id_column: 'Optional[str]', **_: 'object') -> 'MarketDataCalibrationRequest'"
+          "signature": "(*, cli_context: 'CliCommandContext', run_id: 'str', tick_data_path: 'Optional[Path]', tick_data_format: 'str', tick_data_provenance_label: 'str', exchange_code: 'str', tick_timestamp_column: 'str', tick_price_column: 'Optional[str]', tick_trade_price_column: 'Optional[str]', tick_trade_sign_column: 'Optional[str]', tick_bid_column: 'Optional[str]', tick_ask_column: 'Optional[str]', tick_close_price_column: 'Optional[str]', workflow_scope: 'str', timestamp_timezone: 'str', disable_timestamp_sort: 'bool', duplicate_record_policy: 'str', tick_price_input_policy: 'Optional[str]', option_quote_input_policy: 'Optional[str]', execution_mode: 'str', disk_checkpoint_directory: 'Optional[Path]', emit_derived_staged_execution_input: 'bool', omit_input_provenance_report: 'bool', session_timezone: 'Optional[str]', session_definition_path: 'Optional[Path]', session_definition_format: 'Optional[str]', session_definition_provenance_label: 'Optional[str]', option_surface_path: 'Optional[Path]', option_surface_format: 'Optional[str]', option_surface_provenance_label: 'Optional[str]', option_quote_timestamp_column: 'Optional[str]', option_expiry_column: 'Optional[str]', option_strike_column: 'Optional[str]', option_type_column: 'Optional[str]', option_mid_price_column: 'Optional[str]', option_bid_column: 'Optional[str]', option_ask_column: 'Optional[str]', option_implied_volatility_column: 'Optional[str]', known_news_path: 'Optional[Path]', known_news_format: 'Optional[str]', known_news_provenance_label: 'Optional[str]', known_news_timezone: 'Optional[str]', known_news_timestamp_column: 'Optional[str]', known_news_event_id_column: 'Optional[str]', **_) -> 'MarketDataCalibrationRequest'"
         },
         "_build_market_data_calibration_summary_payload": {
           "kind": "function",
@@ -5229,15 +5229,15 @@
         },
         "_override_calibration_execution_mode": {
           "kind": "function",
-          "signature": "(*, execution_input: 'StagedCalibrationExecutionInput', execution_mode: 'CalibrationExecutionMode', disk_checkpoint_directory: 'Path | None') -> 'StagedCalibrationExecutionInput'"
+          "signature": "(*, execution_input: 'StagedCalibrationExecutionInput', execution_mode: 'CalibrationExecutionMode', disk_checkpoint_directory: 'Optional[Path]') -> 'StagedCalibrationExecutionInput'"
         },
         "_run_calibration_market_data_command": {
           "kind": "function",
-          "signature": "(*, cli_context: 'CliCommandContext', output: 'str', **command_arguments: 'object') -> 'int'"
+          "signature": "(*, cli_context: 'CliCommandContext', output: 'str', **command_arguments) -> 'int'"
         },
         "_run_calibration_staged_command": {
           "kind": "function",
-          "signature": "(*, cli_context: 'CliCommandContext', output: 'str', execution_input_json: 'Path', calendar_registry_json: 'Path', execution_mode: 'str', disk_checkpoint_directory: 'Optional[Path]', **_: 'object') -> 'int'"
+          "signature": "(*, cli_context: 'CliCommandContext', output: 'str', execution_input_json: 'Path', calendar_registry_json: 'Path', execution_mode: 'str', disk_checkpoint_directory: 'Optional[Path]', **_) -> 'int'"
         }
       }
     },
@@ -5271,11 +5271,11 @@
         },
         "_run_deterministic_regression_command": {
           "kind": "function",
-          "signature": "(*, cli_context: 'CliCommandContext', output: 'str', calendar_registry_json: 'Path', calendar_cases_json: 'Path', seasonality_cases_json: 'Path', seasonality_absolute_tolerance: 'float', news_intensity_absolute_tolerance: 'float', **_: 'object') -> 'int'"
+          "signature": "(*, cli_context: 'CliCommandContext', output: 'str', calendar_registry_json: 'Path', calendar_cases_json: 'Path', seasonality_cases_json: 'Path', seasonality_absolute_tolerance: 'float', news_intensity_absolute_tolerance: 'float', **_) -> 'int'"
         },
         "_run_open_closed_gap_leakage_regression_command": {
           "kind": "function",
-          "signature": "(*, cli_context: 'CliCommandContext', output: 'str', calendar_fixture_path: 'Path', gap_behavior_fixture_path: 'Path', component_absolute_tolerance: 'float', **_: 'object') -> 'int'"
+          "signature": "(*, cli_context: 'CliCommandContext', output: 'str', calendar_fixture_path: 'Path', gap_behavior_fixture_path: 'Path', component_absolute_tolerance: 'float', **_) -> 'int'"
         }
       }
     },
@@ -5321,11 +5321,11 @@
         },
         "_build_cli_simulate_result_payload": {
           "kind": "function",
-          "signature": "(*, model: 'JaniformModel', command_arguments: 'dict[str, object]', model_path: 'Optional[Path]', command: 'str', schema_version: 'str', entrypoint: 'str', error_id: 'str') -> 'dict[str, Any]'"
+          "signature": "(*, model: 'JaniformModel', command_arguments: 'CliCommandArguments', model_path: 'Optional[Path]', command: 'str', schema_version: 'str', entrypoint: 'str', error_id: 'str') -> 'dict[str, Any]'"
         },
         "_execute_cli_fit": {
           "kind": "function",
-          "signature": "(*, cli_context: 'CliCommandContext', entrypoint: 'str', error_id: 'str', command_arguments: 'dict[str, object]') -> 'tuple[JaniformModel, JaniformFitReport, Optional[Path]]'"
+          "signature": "(*, cli_context: 'CliCommandContext', entrypoint: 'str', error_id: 'str', command_arguments: 'CliCommandArguments') -> 'tuple[JaniformModel, JaniformFitReport, Optional[Path]]'"
         },
         "_parse_cli_preset_category": {
           "kind": "function",
@@ -5345,11 +5345,11 @@
         },
         "_run_fit_command": {
           "kind": "function",
-          "signature": "(*, cli_context: 'CliCommandContext', output: 'str', **command_arguments: 'object') -> 'int'"
+          "signature": "(*, cli_context: 'CliCommandContext', output: 'str', **command_arguments) -> 'int'"
         },
         "_run_model_simulate_command": {
           "kind": "function",
-          "signature": "(*, cli_context: 'CliCommandContext', output: 'str', model_path: 'Path', **command_arguments: 'object') -> 'int'"
+          "signature": "(*, cli_context: 'CliCommandContext', output: 'str', model_path: 'Path', **command_arguments) -> 'int'"
         }
       }
     },
@@ -5365,11 +5365,11 @@
       "symbols": {
         "_run_simulation_coarse_interval_command": {
           "kind": "function",
-          "signature": "(*, cli_context: 'CliCommandContext', output: 'str', request_json: 'Path', **_: 'object') -> 'int'"
+          "signature": "(*, cli_context: 'CliCommandContext', output: 'str', request_json: 'Path', **_) -> 'int'"
         },
         "_run_simulation_seeded_ticks_command": {
           "kind": "function",
-          "signature": "(*, cli_context: 'CliCommandContext', output: 'str', request_json: 'Path', calendar_registry_json: 'Path', **_: 'object') -> 'int'"
+          "signature": "(*, cli_context: 'CliCommandContext', output: 'str', request_json: 'Path', calendar_registry_json: 'Path', **_) -> 'int'"
         },
         "run_coarse_simulation": {
           "kind": "function",

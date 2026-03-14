@@ -29,7 +29,7 @@ def _calibration_error(
     *,
     entrypoint: str = "contract",
     error_id: str = CALIBRATION_VALIDATION_ERROR_ID,
-    context: Optional[dict[str, str | int | float | bool | None]] = None,
+    context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
 ) -> CalibrationValidationError:
     return CalibrationValidationError(
         CalibrationValidationFailure.from_context(
@@ -47,7 +47,7 @@ def _calibration_execution_error(
     message: str,
     *,
     entrypoint: str,
-    context: Optional[dict[str, str | int | float | bool | None]] = None,
+    context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
 ) -> JaniformExecutionError:
     return JaniformExecutionError(
         JaniformErrorDetails.from_context(
@@ -67,7 +67,7 @@ def _calibration_integration_error(
     entrypoint: str,
     error_id: str,
     field_path: Optional[str] = None,
-    context: Optional[dict[str, str | int | float | bool | None]] = None,
+    context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
 ) -> JaniformIntegrationError:
     return JaniformIntegrationError(
         JaniformErrorDetails.from_context(

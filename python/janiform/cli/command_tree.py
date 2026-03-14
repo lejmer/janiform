@@ -16,7 +16,7 @@ from ._constants import CliExitCode
 from .. import __version__
 
 
-def _build_app(*, environment: Mapping[str, str] | None = None) -> click.Command:
+def _build_app(*, environment: Optional[Mapping[str, str]] = None) -> click.Command:
     @click.group(
         cls=JaniformGroup,
         command_path=(),
@@ -55,9 +55,9 @@ def _build_app(*, environment: Mapping[str, str] | None = None) -> click.Command
 
 
 def _invoke_application(
-    arguments: list[str] | None = None,
+    arguments: Optional[list[str]] = None,
     *,
-    environment: Mapping[str, str] | None = None,
+    environment: Optional[Mapping[str, str]] = None,
 ) -> int:
     effective_arguments = _rewrite_beginner_fit_arguments(
         list(sys.argv[1:] if arguments is None else arguments)
@@ -66,7 +66,7 @@ def _invoke_application(
     return int(CliExitCode.SUCCESS if result is None else result)
 
 
-def _invoke_click_command(command: click.Command, arguments: list[str]) -> int | None:
+def _invoke_click_command(command: click.Command, arguments: list[str]) -> Optional[int]:
     try:
         return cast(
             Optional[int],

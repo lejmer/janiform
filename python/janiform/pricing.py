@@ -99,7 +99,7 @@ def _pricing_failure(
     *,
     entrypoint: str = "contract",
     error_id: str = PRICING_VALIDATION_ERROR_ID,
-    context: Optional[dict[str, str | int | float | bool | None]] = None,
+    context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
 ) -> VanillaOptionPricingValidationFailure:
     return VanillaOptionPricingValidationFailure.from_context(
         error_id=error_id,
@@ -117,7 +117,7 @@ def _pricing_error(
     *,
     entrypoint: str = "contract",
     error_id: str = PRICING_VALIDATION_ERROR_ID,
-    context: Optional[dict[str, str | int | float | bool | None]] = None,
+    context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
 ) -> VanillaOptionPricingValidationError:
     return VanillaOptionPricingValidationError(
         _pricing_failure(
@@ -136,7 +136,7 @@ def _pricing_integration_error(
     entrypoint: str,
     error_id: str,
     field_path: Optional[str] = None,
-    context: Optional[dict[str, str | int | float | bool | None]] = None,
+    context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
 ) -> JaniformIntegrationError:
     return JaniformIntegrationError(
         JaniformErrorDetails.from_context(
@@ -155,7 +155,7 @@ def _pricing_execution_error(
     message: str,
     *,
     entrypoint: str,
-    context: Optional[dict[str, str | int | float | bool | None]] = None,
+    context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
 ) -> JaniformExecutionError:
     return JaniformExecutionError(
         JaniformErrorDetails.from_context(

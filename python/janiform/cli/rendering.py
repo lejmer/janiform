@@ -496,7 +496,7 @@ def _write_deterministic_regression_human_output(report: dict[str, Any]) -> None
         if case_report["status"] != "fail":
             continue
 
-        failure = cast(dict[str, Any] | None, case_report["failure"])
+        failure = cast(Optional[dict[str, Any]], case_report["failure"])
         failure_kind = failure["failure_kind"] if failure is not None else "unknown"
         sys.stderr.write(
             f"fixture_id={case_report['fixture_id']} "

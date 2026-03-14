@@ -1,6 +1,7 @@
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, NoReturn
 
 import pytest
 
@@ -16,7 +17,7 @@ from janiform.calibration.market_data import (
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
 )
-from janiform.calibration.staged import validate_staged_calibration_response
+from janiform.calibration.staged import StagedCalibrationResponse, validate_staged_calibration_response
 from janiform.calendar import CalendarRegistry, MarketState
 
 
@@ -95,7 +96,7 @@ def test_janiform_estimator_supports_simple_zero_config_tick_fit_without_tempdir
         ),
     )
 
-    def _unexpected_tempdir(*args: object, **kwargs: object) -> object:
+    def _unexpected_tempdir(*args, **kwargs) -> NoReturn:
         raise AssertionError("temporary directory should not be created for the common memory path")
 
     monkeypatch.setattr(fit_estimator_module, "TemporaryDirectory", _unexpected_tempdir)
@@ -337,7 +338,7 @@ def test_high_level_model_simulate_dispatches_by_output_mode(
         coarse_request=object(),
         seeded_request=object(),
     )
-    captured_calls: list[tuple[str, object]] = []
+    captured_calls: list[tuple[str, Any]] = []
     coarse_result = object()
     tick_result = object()
 
@@ -397,7 +398,7 @@ def test_high_level_model_price_option_dispatches_through_canonical_pricing_runn
         run_id="high-level-model-pricing",
     )
     prepared_execution_input = object()
-    captured_execution_inputs: list[object] = []
+    captured_execution_inputs: list[Any] = []
     pricing_result = object()
 
     monkeypatch.setattr(
@@ -441,7 +442,7 @@ def test_high_level_fit_routes_through_prepared_staged_runner(
         encoding="utf-8",
     )
 
-    captured_execution_input: dict[str, object] = {}
+    captured_execution_input: dict[str, Any] = {}
 
     def capturing_runner(*args, **kwargs):
         captured_execution_input["execution_input"] = args[0]
@@ -624,7 +625,7 @@ def _build_full_workflow_model(
     )
 
 
-def _successful_staged_runner_payload(run_id: str) -> tuple[object, dict[str, object]]:
+def _successful_staged_runner_payload(run_id: str) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
     raw_response = {
         "schema_version": "calibration.orchestration.staged_run.report.v1",
         "failure_triage_policy": "mode_aware_failure_kind_and_checkpoint_context.v1",
@@ -654,7 +655,7 @@ def _successful_staged_runner_payload(run_id: str) -> tuple[object, dict[str, ob
     return validate_staged_calibration_response(raw_response), raw_response
 
 
-def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[object, dict[str, object]]:
+def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
     raw_response = {
         "schema_version": "calibration.orchestration.staged_run.report.v1",
         "failure_triage_policy": "mode_aware_failure_kind_and_checkpoint_context.v1",

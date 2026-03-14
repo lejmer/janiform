@@ -92,6 +92,8 @@ from ...calibration.fit.input_resolution import (
 )
 from ...errors import JaniformError, JaniformErrorCategory, JaniformErrorDetails, JaniformExecutionError
 
+type CliCommandArguments = dict[str, Any]
+
 
 @dataclass(frozen=True, slots=True)
 class _ConfiguredCliFitCommand:
@@ -108,7 +110,7 @@ def _run_fit_command(
     *,
     cli_context: CliCommandContext,
     output: str,
-    **command_arguments: object,
+    **command_arguments,
 ) -> int:
     try:
         model, fit_report, persisted_model_path = _execute_cli_fit(
@@ -153,7 +155,7 @@ def _run_fit_inspect_command(
     *,
     cli_context: CliCommandContext,
     output: str,
-    **command_arguments: object,
+    **command_arguments,
 ) -> int:
     try:
         payload = _build_cli_fit_inspect_payload(
@@ -191,7 +193,7 @@ def _run_model_simulate_command(
     cli_context: CliCommandContext,
     output: str,
     model_path: Path,
-    **command_arguments: object,
+    **command_arguments,
 ) -> int:
     model_path = _resolve_path_from_repository_root(
         cli_context.repository_root,
@@ -333,7 +335,7 @@ def _configure_cli_fit_command(
     cli_context: CliCommandContext,
     entrypoint: str,
     error_id: str,
-    command_arguments: dict[str, object],
+    command_arguments: CliCommandArguments,
 ) -> _ConfiguredCliFitCommand:
     registry = _build_cli_preset_registry(
         cli_context=cli_context,
@@ -489,7 +491,7 @@ def _resolve_required_tick_data_path(
 
 
 def _optional_tick_data_format_from_arguments(
-    command_arguments: dict[str, object],
+    command_arguments: CliCommandArguments,
 ) -> Optional[CalibrationInputFileFormat]:
     raw_tick_data_format = cast(Optional[str], command_arguments.get("tick_data_format"))
     if raw_tick_data_format is None:
@@ -498,12 +500,12 @@ def _optional_tick_data_format_from_arguments(
     return CalibrationInputFileFormat(raw_tick_data_format)
 
 
-def _tick_data_provenance_label_from_arguments(command_arguments: dict[str, object]) -> str:
+def _tick_data_provenance_label_from_arguments(command_arguments: CliCommandArguments) -> str:
     return cast(str, command_arguments.get("tick_data_provenance_label", "tick_data"))
 
 
 def _build_high_level_tick_data_column_overrides_from_arguments(
-    parsed_arguments: dict[str, object],
+    parsed_arguments: CliCommandArguments,
 ) -> Optional[HighLevelTickDataColumnOverrides]:
     overrides = HighLevelTickDataColumnOverrides(
         timestamp_column=cast(Optional[str], parsed_arguments.get("tick_timestamp_column")),
@@ -533,7 +535,7 @@ def _build_high_level_tick_data_column_overrides_from_arguments(
 
 
 def _build_high_level_normalization_overrides_from_arguments(
-    parsed_arguments: dict[str, object],
+    parsed_arguments: CliCommandArguments,
 ) -> Optional[HighLevelNormalizationPolicyOverrides]:
     duplicate_record_policy_raw = cast(Optional[str], parsed_arguments.get("duplicate_record_policy"))
     tick_price_input_policy_raw = cast(Optional[str], parsed_arguments.get("tick_price_input_policy"))
@@ -578,7 +580,7 @@ def _build_high_level_normalization_overrides_from_arguments(
     return overrides
 
 
-def _build_cli_fit_input_inference_payload(prepared_workflow: Any) -> dict[str, object]:
+def _build_cli_fit_input_inference_payload(prepared_workflow: Any) -> dict[str, Any]:
     return build_fit_inference_payload(
         inference=prepared_workflow.input_inference,
         workflow_scope=prepared_workflow.prepared.request.workflow_scope,
@@ -613,7 +615,7 @@ def _execute_cli_fit(
     cli_context: CliCommandContext,
     entrypoint: str,
     error_id: str,
-    command_arguments: dict[str, object],
+    command_arguments: CliCommandArguments,
 ) -> tuple[JaniformModel, JaniformFitReport, Optional[Path]]:
     configured_command = _configure_cli_fit_command(
         cli_context=cli_context,
@@ -665,7 +667,7 @@ def _build_cli_fit_inspect_payload(
     cli_context: CliCommandContext,
     entrypoint: str,
     error_id: str,
-    command_arguments: dict[str, object],
+    command_arguments: CliCommandArguments,
 ) -> dict[str, Any]:
     configured_command = _configure_cli_fit_command(
         cli_context=cli_context,
@@ -705,7 +707,7 @@ def _build_cli_fit_inspect_payload(
 
 
 def _build_market_profile_reference_from_arguments(
-    command_arguments: dict[str, object],
+    command_arguments: CliCommandArguments,
     *,
     registry: PresetRegistry,
     entrypoint: str,
@@ -739,7 +741,7 @@ def _build_market_profile_reference_from_arguments(
 
 
 def _build_session_reference_from_arguments(
-    command_arguments: dict[str, object],
+    command_arguments: CliCommandArguments,
     *,
     repository_root: Path,
     registry: PresetRegistry,
@@ -786,7 +788,7 @@ def _build_session_reference_from_arguments(
 
 
 def _build_known_news_reference_from_arguments(
-    command_arguments: dict[str, object],
+    command_arguments: CliCommandArguments,
     *,
     repository_root: Path,
     registry: PresetRegistry,
@@ -840,7 +842,7 @@ def _build_known_news_reference_from_arguments(
 
 
 def _build_tick_data_column_mapping_from_arguments(
-    parsed_arguments: dict[str, object],
+    parsed_arguments: CliCommandArguments,
 ) -> CalibrationTickDataColumnMapping:
     return CalibrationTickDataColumnMapping(
         timestamp_column=cast(str, parsed_arguments["tick_timestamp_column"]),
@@ -854,7 +856,7 @@ def _build_tick_data_column_mapping_from_arguments(
 
 
 def _build_option_surface_column_mapping_from_arguments(
-    parsed_arguments: dict[str, object],
+    parsed_arguments: CliCommandArguments,
     *,
     entrypoint: str,
     error_id: str,
@@ -896,7 +898,7 @@ def _build_option_surface_column_mapping_from_arguments(
 
 
 def _build_model_workflow_normalization_policy_from_arguments(
-    parsed_arguments: dict[str, object],
+    parsed_arguments: CliCommandArguments,
 ) -> CalibrationMarketDataNormalizationPolicy:
     tick_price_input_policy_raw = cast(Optional[str], parsed_arguments.get("tick_price_input_policy"))
     option_quote_input_policy_raw = cast(Optional[str], parsed_arguments.get("option_quote_input_policy"))
@@ -921,7 +923,7 @@ def _build_model_workflow_normalization_policy_from_arguments(
 
 
 def _build_model_workflow_output_preferences_from_arguments(
-    parsed_arguments: dict[str, object],
+    parsed_arguments: CliCommandArguments,
     *,
     repository_root: Path,
     entrypoint: str,
@@ -989,7 +991,7 @@ def _build_cli_fit_result_payload(
 def _build_cli_simulate_result_payload(
     *,
     model: JaniformModel,
-    command_arguments: dict[str, object],
+    command_arguments: CliCommandArguments,
     model_path: Optional[Path],
     command: str,
     schema_version: str,
@@ -1064,7 +1066,7 @@ def _build_cli_simulate_result_payload(
 
 def _reject_orphan_market_data_arguments(
     has_primary_path: bool,
-    optional_arguments: tuple[tuple[str, object], ...],
+    optional_arguments: tuple[tuple[str, Any], ...],
     *,
     message: str,
 ) -> None:
@@ -1076,7 +1078,7 @@ def _reject_orphan_market_data_arguments(
             raise ValueError(message)
 
 
-def _build_fit_group(*, environment: Mapping[str, str] | None = None) -> click.Group:
+def _build_fit_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
     @click.group(
         cls=JaniformGroup,
         command_path=("fit",),
@@ -1091,7 +1093,7 @@ def _build_fit_group(*, environment: Mapping[str, str] | None = None) -> click.G
         params=_model_workflow_fit_options(enforce_required=False),
     )
     @click.pass_context
-    def fit(ctx: click.Context, **command_arguments: object) -> int | None:
+    def fit(ctx: click.Context, **command_arguments) -> Optional[int]:
         return invoke_group_default_handler(
             ctx,
             handler=_run_fit_command,
@@ -1116,7 +1118,7 @@ def _build_fit_group(*, environment: Mapping[str, str] | None = None) -> click.G
         ),
     )
     @click.pass_context
-    def fit_inspect(ctx: click.Context, **command_arguments: object) -> int:
+    def fit_inspect(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
             handler=_run_fit_inspect_command,
@@ -1132,7 +1134,7 @@ def _build_fit_group(*, environment: Mapping[str, str] | None = None) -> click.G
     return fit_group
 
 
-def _build_simulate_group(*, environment: Mapping[str, str] | None = None) -> click.Group:
+def _build_simulate_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
     @click.group(
         cls=JaniformGroup,
         command_path=("simulate",),
@@ -1150,7 +1152,7 @@ def _build_simulate_group(*, environment: Mapping[str, str] | None = None) -> cl
         ),
     )
     @click.pass_context
-    def simulate(ctx: click.Context, **command_arguments: object) -> int | None:
+    def simulate(ctx: click.Context, **command_arguments) -> Optional[int]:
         return invoke_group_default_handler(
             ctx,
             handler=_run_model_simulate_command,

@@ -2,7 +2,7 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import orjson
@@ -276,7 +276,7 @@ def test_seasonality_preprocess_cli_maps_flags_to_canonical_payload(
     )
     calendar_registry_path = _write_json_path(
         tmp_path / "calendar-registry.json",
-        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+        cast(dict[str, Any], orjson.loads(calendar_registry_json)),
     )
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
@@ -332,7 +332,7 @@ def test_seasonality_preprocess_cli_supports_human_output_mode(
     )
     calendar_registry_path = _write_json_path(
         tmp_path / "calendar-registry-human.json",
-        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+        cast(dict[str, Any], orjson.loads(calendar_registry_json)),
     )
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
@@ -367,7 +367,7 @@ def test_seasonality_diagnostics_cli_generates_canonical_report_from_event_recor
     )
     calendar_registry_path = _write_json_path(
         tmp_path / "seasonality-diagnostics-calendar.json",
-        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+        cast(dict[str, Any], orjson.loads(calendar_registry_json)),
     )
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
@@ -422,7 +422,7 @@ def test_seasonality_diagnostics_cli_supports_human_output_mode(
     )
     calendar_registry_path = _write_json_path(
         tmp_path / "seasonality-diagnostics-human-calendar.json",
-        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+        cast(dict[str, Any], orjson.loads(calendar_registry_json)),
     )
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
@@ -462,7 +462,7 @@ def test_seasonality_diagnostics_cli_invalid_estimator_setting_returns_validatio
     )
     calendar_registry_path = _write_json_path(
         tmp_path / "seasonality-diagnostics-invalid-estimator-calendar.json",
-        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+        cast(dict[str, Any], orjson.loads(calendar_registry_json)),
     )
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
@@ -499,7 +499,7 @@ def test_seasonality_diagnostics_cli_rejects_malformed_event_records_document(
     )
     calendar_registry_path = _write_json_path(
         tmp_path / "seasonality-diagnostics-malformed-calendar.json",
-        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+        cast(dict[str, Any], orjson.loads(calendar_registry_json)),
     )
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
@@ -534,7 +534,7 @@ def test_seasonality_diagnostics_cli_unknown_exchange_returns_validation_error(
     )
     calendar_registry_path = _write_json_path(
         tmp_path / "seasonality-diagnostics-unknown-exchange-calendar.json",
-        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+        cast(dict[str, Any], orjson.loads(calendar_registry_json)),
     )
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
@@ -568,7 +568,7 @@ def test_seasonality_preprocess_cli_unknown_exchange_returns_validation_error(
     )
     calendar_registry_path = _write_json_path(
         tmp_path / "calendar-registry-unknown-exchange.json",
-        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+        cast(dict[str, Any], orjson.loads(calendar_registry_json)),
     )
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
@@ -600,7 +600,7 @@ def test_seasonality_preprocess_cli_missing_timestamp_field_returns_validation_e
     )
     calendar_registry_path = _write_json_path(
         tmp_path / "calendar-registry-missing-timestamp.json",
-        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+        cast(dict[str, Any], orjson.loads(calendar_registry_json)),
     )
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
@@ -633,7 +633,7 @@ def test_seasonality_preprocess_cli_invalid_timestamp_returns_validation_error(
     )
     calendar_registry_path = _write_json_path(
         tmp_path / "calendar-registry-invalid-timestamp.json",
-        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+        cast(dict[str, Any], orjson.loads(calendar_registry_json)),
     )
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
@@ -666,7 +666,7 @@ def test_seasonality_preprocess_cli_rejects_malformed_event_records_document(
     )
     calendar_registry_path = _write_json_path(
         tmp_path / "calendar-registry-malformed.json",
-        cast(dict[str, object], orjson.loads(calendar_registry_json)),
+        cast(dict[str, Any], orjson.loads(calendar_registry_json)),
     )
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
@@ -693,8 +693,8 @@ def test_seasonality_preprocess_cli_invalid_calendar_timezone_returns_validation
     calendar_registry_json: str,
     tmp_path: Path,
 ) -> None:
-    calendar_registry_payload = cast(dict[str, object], orjson.loads(calendar_registry_json))
-    exchanges = cast(list[dict[str, object]], calendar_registry_payload["exchanges"])
+    calendar_registry_payload = cast(dict[str, Any], orjson.loads(calendar_registry_json))
+    exchanges = cast(list[dict[str, Any]], calendar_registry_payload["exchanges"])
     exchanges[0]["timezone_name"] = "Mars/Phobos"
     event_records_path = _write_event_records_document(
         tmp_path / "event-records-invalid-timezone.json",
@@ -2065,14 +2065,14 @@ def test_calibration_cli_rejects_malformed_close_open_boundary_observation(
     assert 'message="is required"' in stderr_text
 
 
-def _write_event_records_document(path: Path, event_records: list[dict[str, object]]) -> Path:
+def _write_event_records_document(path: Path, event_records: list[dict[str, Any]]) -> Path:
     return _write_json_path(
         path,
         {"event_records": event_records},
     )
 
 
-def _seasonality_diagnostics_event_records() -> list[dict[str, object]]:
+def _seasonality_diagnostics_event_records() -> list[dict[str, Any]]:
     return [
         {"timestamp": "2026-02-02T14:30:00Z"},
         {"timestamp": "2026-02-02T15:30:00Z"},
@@ -2089,7 +2089,7 @@ def _write_cli_command_config(
     path: Path,
     *,
     command: str,
-    arguments: dict[str, object],
+    arguments: dict[str, Any],
 ) -> Path:
     return _write_json_path(
         path,
@@ -2127,8 +2127,8 @@ class _ExplodingStdin:
     def isatty(self) -> bool:
         raise AssertionError("CLI should not inspect stdin for automation-friendly commands")
 
-    def read(self, *_args: object, **_kwargs: object) -> str:
+    def read(self, *_args, **_kwargs) -> str:
         raise AssertionError("CLI should not read stdin for automation-friendly commands")
 
-    def readline(self, *_args: object, **_kwargs: object) -> str:
+    def readline(self, *_args, **_kwargs) -> str:
         raise AssertionError("CLI should not read stdin for automation-friendly commands")

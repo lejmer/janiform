@@ -234,7 +234,7 @@ def test_deterministic_regression_harness_rejects_malformed_report_payload(
     class FakeNativeModule:
         def run_deterministic_regression_harness(
             self,
-            _calendar_registry: object,
+            _calendar_registry: CalendarRegistry,
             _calendar_cases: list[dict[str, Any]],
             _seasonality_cases: list[dict[str, Any]],
             *,

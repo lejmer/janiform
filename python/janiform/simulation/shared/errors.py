@@ -30,7 +30,7 @@ def _simulation_failure(
     *,
     entrypoint: str = "contract",
     error_id: str = SIMULATION_VALIDATION_ERROR_ID,
-    context: Optional[dict[str, str | int | float | bool | None]] = None,
+    context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
 ) -> SeededTickSimulationValidationFailure:
     return SeededTickSimulationValidationFailure.from_context(
         error_id=error_id,
@@ -48,7 +48,7 @@ def _simulation_error(
     *,
     entrypoint: str = "contract",
     error_id: str = SIMULATION_VALIDATION_ERROR_ID,
-    context: Optional[dict[str, str | int | float | bool | None]] = None,
+    context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
 ) -> SeededTickSimulationValidationError:
     return SeededTickSimulationValidationError(
         _simulation_failure(
@@ -65,7 +65,7 @@ def _simulation_execution_error(
     message: str,
     *,
     entrypoint: str,
-    context: Optional[dict[str, str | int | float | bool | None]] = None,
+    context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
 ) -> JaniformExecutionError:
     return JaniformExecutionError(
         JaniformErrorDetails.from_context(
@@ -85,7 +85,7 @@ def _simulation_integration_error(
     entrypoint: str,
     error_id: str,
     field_path: Optional[str] = None,
-    context: Optional[dict[str, str | int | float | bool | None]] = None,
+    context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
 ) -> JaniformIntegrationError:
     return JaniformIntegrationError(
         JaniformErrorDetails.from_context(

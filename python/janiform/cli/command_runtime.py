@@ -27,10 +27,10 @@ _UNSET_OPTION_DEFAULT = object()
 class _JaniformCommandMixin:
     def __init__(
         self,
-        *args: Any,
-        command_path: tuple[str, ...] | None = None,
-        environment: Mapping[str, str] | None = None,
-        **kwargs: Any,
+        *args,
+        command_path: Optional[tuple[str, ...]] = None,
+        environment: Optional[Mapping[str, str]] = None,
+        **kwargs,
     ) -> None:
         self._command_path = command_path
         self._environment = environment
@@ -39,9 +39,9 @@ class _JaniformCommandMixin:
 
     def make_context(
         self,
-        info_name: str | None,
+        info_name: Optional[str],
         args: list[str],
-        parent: click.Context | None = None,
+        parent: Optional[click.Context] = None,
         **extra: Any,
     ) -> click.Context:
         if self._command_path is not None and not _arguments_target_known_subcommand(self, args):
@@ -68,8 +68,8 @@ class JaniformGroup(_JaniformCommandMixin, click.Group):
 def build_argument(
     argument_name: str,
     *,
-    choice_options: tuple[str, ...] | None = None,
-    metavar: str | None = None,
+    choice_options: Optional[tuple[str, ...]] = None,
+    metavar: Optional[str] = None,
 ) -> click.Argument:
     argument_type: click.ParamType | type[Any]
     if choice_options is None:
@@ -112,18 +112,18 @@ def command_option(
     flag_name: str,
     *,
     help_text: str,
-    choice_options: tuple[str, ...] | None = None,
+    choice_options: Optional[tuple[str, ...]] = None,
     default: Any = _UNSET_OPTION_DEFAULT,
     directory: bool = False,
     is_flag: bool = False,
     multiple: bool = False,
     path_type: bool = False,
     required: bool = False,
-    value_type: click.ParamType | type[Any] | None = None,
-    metavar: str | None = None,
+    value_type: Optional[click.ParamType | type[Any]] = None,
+    metavar: Optional[str] = None,
     show_default: bool = False,
 ) -> click.Option:
-    option_type: click.ParamType | type[Any] | None = value_type
+    option_type: Optional[click.ParamType | type[Any]] = value_type
 
     if choice_options is not None:
         option_type = click.Choice(choice_options, case_sensitive=True)
@@ -188,7 +188,7 @@ def invoke_group_default_handler(
     required_option_names: tuple[str, ...],
     exclusivity_groups: tuple[tuple[str, ...], ...] = (),
     required_one_of_groups: tuple[tuple[str, ...], ...] = (),
-) -> int | None:
+) -> Optional[int]:
     if ctx.invoked_subcommand is not None:
         return None
 
@@ -212,7 +212,7 @@ def optional_path_option(
     *,
     help_text: str,
     directory: bool = False,
-    default: Path | None = None,
+    default: Optional[Path] = None,
 ) -> click.Option:
     return command_option(
         flag_name,
@@ -265,7 +265,7 @@ def required_json_path_option(
     flag_name: str,
     *,
     contract_label: str,
-    semantic_note: str | None = None,
+    semantic_note: Optional[str] = None,
 ) -> click.Option:
     help_segments: list[str] = [f"Path to {contract_label}.", CLI_REPOSITORY_RELATIVE_PATH_POLICY]
     if semantic_note is not None:
@@ -300,7 +300,7 @@ def _arguments_target_known_subcommand(command: click.Command, arguments: list[s
     return any(argument in subcommand_names for argument in arguments)
 
 
-def _find_option_parameter(command: click.Command, option_name: str) -> click.Option | None:
+def _find_option_parameter(command: click.Command, option_name: str) -> Optional[click.Option]:
     for parameter in command.params:
         if isinstance(parameter, click.Option) and parameter.name == option_name:
             return parameter

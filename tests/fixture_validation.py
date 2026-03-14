@@ -96,7 +96,7 @@ SCALE_CONSISTENCY_REGRESSION_REPEATED_RUN_COMPARISON_POLICY: str = (
 
 
 type JsonObject = dict[str, Any]
-type JsonArray = list[object]
+type JsonArray = list[Any]
 
 
 class ValidationFixtureVersioningPolicy(TypedDict):
@@ -3506,7 +3506,7 @@ def _extract_registry_exchange_codes(calendar_registry: JsonObject) -> set[str]:
     return exchange_codes
 
 
-def _read_json_document(document_path: Path) -> object:
+def _read_json_document(document_path: Path) -> Any:
     return orjson.loads(document_path.read_text(encoding="utf-8"))
 
 

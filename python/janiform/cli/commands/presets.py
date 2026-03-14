@@ -60,7 +60,7 @@ def _run_presets_list_command(
     user_preset_json: tuple[Path, ...],
     category: Optional[str],
     scope: Optional[str],
-    **_: object,
+    **_,
 ) -> int:
     try:
         registry = _build_cli_preset_registry(
@@ -117,7 +117,7 @@ def _run_presets_show_command(
     category: str,
     preset_name: str,
     scope: Optional[str],
-    **_: object,
+    **_,
 ) -> int:
     try:
         registry = _build_cli_preset_registry(
@@ -133,22 +133,25 @@ def _run_presets_show_command(
             error_id=CLI_PRESETS_SHOW_VALIDATION_ERROR_ID,
             entrypoint=CLI_PRESETS_SHOW_ENTRYPOINT,
         )
+        if parsed_category is None:
+            raise RuntimeError("preset category is required")
+
         registry_scope = _resolve_named_preset_scope(
             registry=registry,
-            category=cast(Any, parsed_category),
+            category=parsed_category,
             preset_name=normalized_preset_name,
             raw_scope=scope,
         )
         artifact = _resolve_preset_artifact(
             registry=registry,
-            category=cast(Any, parsed_category),
+            category=parsed_category,
             preset_name=normalized_preset_name,
             registry_scope=registry_scope,
         )
         payload = {
             "schema_version": CLI_PRESET_SHOW_SCHEMA_VERSION,
             "command": CLI_PRESETS_SHOW_ENTRYPOINT,
-            "requested_category": cast(Any, parsed_category).value,
+            "requested_category": parsed_category.value,
             "requested_scope": registry_scope.value,
             "preset_name": normalized_preset_name,
             "artifact": artifact.to_payload(),
@@ -184,7 +187,7 @@ def _run_presets_export_command(
     category: str,
     preset_name: str,
     scope: Optional[str],
-    **_: object,
+    **_,
 ) -> int:
     try:
         registry = _build_cli_preset_registry(
@@ -200,14 +203,17 @@ def _run_presets_export_command(
             error_id=CLI_PRESETS_EXPORT_VALIDATION_ERROR_ID,
             entrypoint=CLI_PRESETS_EXPORT_ENTRYPOINT,
         )
+        if parsed_category is None:
+            raise RuntimeError("preset category is required")
+
         registry_scope = _resolve_named_preset_scope(
             registry=registry,
-            category=cast(Any, parsed_category),
+            category=parsed_category,
             preset_name=normalized_preset_name,
             raw_scope=scope,
         )
         export_payload = registry.export_resolved_preset(
-            category=cast(Any, parsed_category),
+            category=parsed_category,
             preset_name=normalized_preset_name,
             registry_scope=registry_scope,
         ).to_payload()
@@ -235,7 +241,7 @@ def _run_presets_export_command(
     return int(CliExitCode.SUCCESS)
 
 
-def _build_presets_group(*, environment: Mapping[str, str] | None = None) -> click.Group:
+def _build_presets_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
     @click.group(
         cls=JaniformGroup,
         command_path=("presets",),
@@ -262,7 +268,7 @@ def _build_presets_group(*, environment: Mapping[str, str] | None = None) -> cli
         ],
     )
     @click.pass_context
-    def list_presets(ctx: click.Context, **command_arguments: object) -> int:
+    def list_presets(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
             handler=_run_presets_list_command,
@@ -298,7 +304,7 @@ def _build_presets_group(*, environment: Mapping[str, str] | None = None) -> cli
             ctx: click.Context,
             _handler: Any = handler,
             _command_name: str = command_name,
-            **command_arguments: object,
+            **command_arguments,
         ) -> int:
             return invoke_command_handler(
                 ctx,

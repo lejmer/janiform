@@ -111,6 +111,7 @@ Type hints are required for **functions, attributes, fields, parameters, generic
 - Use `Optional[T]` instead of `T | None`.
 - Use `Type1 | Type2` instead of `Union[Type1, Type2]`
 - Use `Any` when you mean "literally anything," use `object` only when you truly mean *object* (eg. `Signal(object)`).
+- For heterogeneous JSON-like objects, use `dict[str, Any]` instead of `dict[str, object]`.
 - Use **PEP 695 generics** (Python 3.12+ syntax). Don't touch the old `TypeVar`/`Generic[...]` mess.
 - Never use stringed type hints.
 - When simplifying complicated type hints with type aliases, use `type` statements (Python 3.12+ syntax).
@@ -200,6 +201,7 @@ except KeyError, ValueError:  # No `as` is used, so no parentheses this time (va
 - No rogue singletons.
 - Be thread-safe when it matters.
 - Keep fields private unless it's a dataclass (expose with getter property if necessary).
+- Do not annotate `*args` or `**kwargs`.
 
 ---
 

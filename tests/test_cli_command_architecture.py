@@ -95,7 +95,7 @@ def test_click_app_exposes_the_expected_live_command_tree() -> None:
     assert isinstance(fit_group, click.Group)
     assert isinstance(simulate_group, click.Group)
     assert isinstance(dev_group, click.Group)
-    assert tuple(fit_group.commands) == ("plan", "staged")
+    assert tuple(fit_group.commands) == ("inspect", "plan", "staged")
     assert tuple(simulate_group.commands) == ("coarse-interval", "seeded-ticks")
     assert tuple(cast(click.Group, dev_group.commands["regression"]).commands) == (
         "deterministic",

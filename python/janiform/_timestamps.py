@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from math import isfinite
+from typing import Optional
 
 
 _COMMON_TIMESTAMP_FORMATS: tuple[str, ...] = (
@@ -88,7 +89,7 @@ def _parse_timestamp_text(raw_value: str) -> datetime:
     raise ValueError(f"unsupported timestamp format: {raw_value}")
 
 
-def _try_parse_numeric_timestamp_text(raw_value: str) -> datetime | None:
+def _try_parse_numeric_timestamp_text(raw_value: str) -> Optional[datetime]:
     unsigned_value = raw_value.lstrip("+-")
     if unsigned_value.isdigit():
         digit_count = len(unsigned_value)

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import orjson
 import pytest
@@ -267,7 +267,7 @@ def test_fit_inspect_previews_inference_without_materializing_workspace(
         ),
     )
 
-    def _unexpected_tempdir(*args: object, **kwargs: object) -> object:
+    def _unexpected_tempdir(*args, **kwargs) -> NoReturn:
         raise AssertionError("temporary directory should not be created for fit inspect")
 
     monkeypatch.setattr(fit_estimator_module, "TemporaryDirectory", _unexpected_tempdir)

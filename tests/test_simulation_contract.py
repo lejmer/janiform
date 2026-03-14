@@ -1,5 +1,6 @@
 import json
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -213,7 +214,7 @@ def _valid_news_process_configuration() -> NewsProcessConfiguration:
     )
 
 
-def _valid_response_payload() -> dict[str, object]:
+def _valid_response_payload() -> dict[str, Any]:
     return {
         "schema_version": "simulation.seeded_tick_event.path.v1",
         "metadata": {

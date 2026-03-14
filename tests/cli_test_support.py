@@ -3,7 +3,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from datetime import UTC, datetime, timedelta
 from io import StringIO
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import orjson
 import pyarrow as pa
@@ -140,7 +140,7 @@ def build_coarse_simulation_request(calendar_registry_json: str) -> CoarseSimula
 def invoke_cli(
     arguments: list[str],
     *,
-    environment: dict[str, str] | None = None,
+    environment: Optional[dict[str, str]] = None,
 ) -> tuple[int, str, str]:
     stdout_buffer = StringIO()
     stderr_buffer = StringIO()

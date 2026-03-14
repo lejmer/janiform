@@ -45,7 +45,7 @@ def _run_simulation_coarse_interval_command(
     cli_context: CliCommandContext,
     output: str,
     request_json: Path,
-    **_: object,
+    **_,
 ) -> int:
     request_path = _resolve_path_from_repository_root(cli_context.repository_root, request_json)
 
@@ -84,7 +84,7 @@ def _run_simulation_seeded_ticks_command(
     output: str,
     request_json: Path,
     calendar_registry_json: Path,
-    **_: object,
+    **_,
 ) -> int:
     request_path = _resolve_path_from_repository_root(cli_context.repository_root, request_json)
     calendar_registry_path = _resolve_path_from_repository_root(
@@ -129,7 +129,7 @@ def _run_simulation_seeded_ticks_command(
 
 def _build_simulation_coarse_interval_command(
     *,
-    environment: Mapping[str, str] | None = None,
+    environment: Optional[Mapping[str, str]] = None,
 ) -> click.Command:
     @click.command(
         "coarse-interval",
@@ -154,7 +154,7 @@ def _build_simulation_coarse_interval_command(
         ],
     )
     @click.pass_context
-    def coarse_interval(ctx: click.Context, **command_arguments: object) -> int:
+    def coarse_interval(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
             handler=_run_simulation_coarse_interval_command,
@@ -167,7 +167,7 @@ def _build_simulation_coarse_interval_command(
 
 def _build_simulation_seeded_ticks_command(
     *,
-    environment: Mapping[str, str] | None = None,
+    environment: Optional[Mapping[str, str]] = None,
 ) -> click.Command:
     @click.command(
         "seeded-ticks",
@@ -193,7 +193,7 @@ def _build_simulation_seeded_ticks_command(
         ],
     )
     @click.pass_context
-    def seeded_ticks(ctx: click.Context, **command_arguments: object) -> int:
+    def seeded_ticks(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
             handler=_run_simulation_seeded_ticks_command,

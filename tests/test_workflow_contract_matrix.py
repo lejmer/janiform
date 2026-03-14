@@ -3,7 +3,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import pytest
 
@@ -630,7 +630,7 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
     )
 
 
-def _build_schema_profile(value: Any, *, field_name: str | None = None) -> Any:
+def _build_schema_profile(value: Any, *, field_name: Optional[str] = None) -> Any:
     if value is None:
         return {"type": "null"}
 

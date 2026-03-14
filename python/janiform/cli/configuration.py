@@ -2,7 +2,7 @@ import json
 import os
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import click
 
@@ -26,7 +26,7 @@ def build_click_default_map(
     *,
     command_path: tuple[str, ...],
     arguments: list[str],
-    environment: Mapping[str, str] | None = None,
+    environment: Optional[Mapping[str, str]] = None,
 ) -> dict[str, Any]:
     effective_environment = os.environ if environment is None else environment
 
@@ -64,7 +64,7 @@ def _resolve_command_config_path(
     raw_arguments: list[str],
     environment: Mapping[str, str],
     repository_root: Path,
-) -> Path | None:
+) -> Optional[Path]:
     explicit_config_path = _extract_explicit_option_value(
         raw_arguments,
         flag_name="--config-json",
@@ -87,8 +87,8 @@ def _resolve_command_config_path(
     return _resolve_path_from_repository_root(repository_root, Path(environment_config_path))
 
 
-def _extract_explicit_option_value(arguments: list[str], *, flag_name: str) -> str | None:
-    explicit_value: str | None = None
+def _extract_explicit_option_value(arguments: list[str], *, flag_name: str) -> Optional[str]:
+    explicit_value: Optional[str] = None
     argument_index = 0
 
     while argument_index < len(arguments):
@@ -311,7 +311,7 @@ def _raise_cli_argument_resolution_error(
     *,
     field_path: str,
     message: str,
-    context: dict[str, Any] | None = None,
+    context: Optional[dict[str, Any]] = None,
 ) -> None:
     raise _cli_validation_error(
         field_path,

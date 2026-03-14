@@ -70,7 +70,7 @@ def _run_hourly_factor_materialize_seasonality_command(
     range_end_utc: str,
     exchange_code: str,
     interval: str,
-    **_: object,
+    **_,
 ) -> int:
     calendar_registry_path = _resolve_path_from_repository_root(
         cli_context.repository_root,
@@ -156,7 +156,7 @@ def _run_hourly_factor_materialize_news_intensity_command(
     range_end_utc: str,
     exchange_code: str,
     interval: str,
-    **_: object,
+    **_,
 ) -> int:
     calendar_registry_path = _resolve_path_from_repository_root(
         cli_context.repository_root,
@@ -243,7 +243,7 @@ def _run_hourly_factor_build_contract_command(
     seasonality_materialized_source_json: Optional[Path],
     news_intensity_explicit_source_json: Optional[Path],
     news_intensity_materialized_source_json: Optional[Path],
-    **_: object,
+    **_,
 ) -> int:
     calendar_registry_path = _resolve_path_from_repository_root(
         cli_context.repository_root,
@@ -373,7 +373,7 @@ def _run_hourly_factor_build_contract_command(
     return int(CliExitCode.SUCCESS)
 
 
-def _build_hourly_factors_group(*, environment: Mapping[str, str] | None = None) -> click.Group:
+def _build_hourly_factors_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
     @click.group(
         cls=JaniformGroup,
         command_path=("hourly-factors",),
@@ -407,7 +407,7 @@ def _build_hourly_factors_group(*, environment: Mapping[str, str] | None = None)
         ],
     )
     @click.pass_context
-    def materialize_seasonality(ctx: click.Context, **command_arguments: object) -> int:
+    def materialize_seasonality(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
             handler=_run_hourly_factor_materialize_seasonality_command,
@@ -437,7 +437,7 @@ def _build_hourly_factors_group(*, environment: Mapping[str, str] | None = None)
         ],
     )
     @click.pass_context
-    def materialize_news_intensity(ctx: click.Context, **command_arguments: object) -> int:
+    def materialize_news_intensity(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
             handler=_run_hourly_factor_materialize_news_intensity_command,
@@ -489,7 +489,7 @@ def _build_hourly_factors_group(*, environment: Mapping[str, str] | None = None)
         ],
     )
     @click.pass_context
-    def build_contract(ctx: click.Context, **command_arguments: object) -> int:
+    def build_contract(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
             handler=_run_hourly_factor_build_contract_command,

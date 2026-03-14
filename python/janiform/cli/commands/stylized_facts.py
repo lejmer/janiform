@@ -40,7 +40,7 @@ def _run_stylized_facts_horizon_comparison_command(
     comparison_request_json: Path,
     artifact_export_json: Optional[Path],
     execution_mode: str,
-    **_: object,
+    **_,
 ) -> int:
     metric_catalog_path = _resolve_path_from_repository_root(
         cli_context.repository_root,
@@ -110,7 +110,7 @@ def _run_stylized_facts_horizon_comparison_command(
     return int(CliExitCode.SUCCESS)
 
 
-def _build_stylized_facts_group(*, environment: Mapping[str, str] | None = None) -> click.Group:
+def _build_stylized_facts_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
     @click.group(
         cls=JaniformGroup,
         command_path=("stylized-facts",),
@@ -156,7 +156,7 @@ def _build_stylized_facts_group(*, environment: Mapping[str, str] | None = None)
         ],
     )
     @click.pass_context
-    def horizon_comparison(ctx: click.Context, **command_arguments: object) -> int:
+    def horizon_comparison(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
             handler=_run_stylized_facts_horizon_comparison_command,

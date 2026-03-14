@@ -47,7 +47,7 @@ def require_field(
     field_name: str,
     field_path: str,
     error_factory: ValidationErrorFactory,
-) -> object:
+) -> Any:
     if field_name not in mapping:
         raise error_factory(field_path, "is required")
 
@@ -362,7 +362,7 @@ def validate_required_field_list(
             )
 
 
-def _to_jsonable(value: object) -> object:
+def _to_jsonable(value: object) -> Any:
     if value is None or isinstance(value, str | int | float | bool):
         return value
 

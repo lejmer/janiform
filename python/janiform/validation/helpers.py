@@ -174,7 +174,7 @@ def require_boolean(parent: Mapping[str, Any], field_name: str, context: str) ->
     return field_value
 
 
-def require_field(parent: Mapping[str, Any], field_name: str, context: str) -> object:
+def require_field(parent: Mapping[str, Any], field_name: str, context: str) -> Any:
     if field_name not in parent:
         raise SeasonalityInputValidationError(
             f"{context}.{field_name} is required",

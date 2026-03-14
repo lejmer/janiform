@@ -66,7 +66,7 @@ def _run_seasonality_preprocess_timestamps_command(
     timestamp_field_name: str,
     session_filter: str,
     sparse_hour_event_threshold: int,
-    **_: object,
+    **_,
 ) -> int:
     event_records_path = _resolve_path_from_repository_root(
         cli_context.repository_root,
@@ -139,7 +139,7 @@ def _run_seasonality_diagnostics_command(
     day_of_year_minimum_bucket_events: int,
     day_of_year_pseudocount: float,
     estimator_version: str,
-    **_: object,
+    **_,
 ) -> int:
     event_records_path = _resolve_path_from_repository_root(
         cli_context.repository_root,
@@ -248,7 +248,7 @@ def _run_seasonality_diagnostics_command(
     return int(CliExitCode.SUCCESS)
 
 
-def _build_seasonality_group(*, environment: Mapping[str, str] | None = None) -> click.Group:
+def _build_seasonality_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
     @click.group(
         cls=JaniformGroup,
         command_path=("seasonality",),
@@ -305,7 +305,7 @@ def _build_seasonality_group(*, environment: Mapping[str, str] | None = None) ->
         ],
     )
     @click.pass_context
-    def diagnostics(ctx: click.Context, **command_arguments: object) -> int:
+    def diagnostics(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
             handler=_run_seasonality_diagnostics_command,
@@ -346,7 +346,7 @@ def _build_seasonality_group(*, environment: Mapping[str, str] | None = None) ->
         ],
     )
     @click.pass_context
-    def preprocess_timestamps(ctx: click.Context, **command_arguments: object) -> int:
+    def preprocess_timestamps(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
             handler=_run_seasonality_preprocess_timestamps_command,
