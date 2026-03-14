@@ -169,7 +169,7 @@ def test_open_closed_gap_leakage_regression_harness_rejects_malformed_artifact_p
     class FakeNativeModule:
         def run_open_closed_gap_leakage_regression_harness(
             self,
-            _calendar_registry: object,
+            _calendar_registry: CalendarRegistry,
             _gap_behavior_cases: list[dict[str, Any]],
             component_absolute_tolerance: float,
         ) -> str:
@@ -298,7 +298,7 @@ def test_open_closed_gap_leakage_regression_harness_rejects_invalid_component_vo
     class FakeNativeModule:
         def run_open_closed_gap_leakage_regression_harness(
             self,
-            _calendar_registry: object,
+            _calendar_registry: CalendarRegistry,
             _gap_behavior_cases: list[dict[str, Any]],
             component_absolute_tolerance: float,
         ) -> str:

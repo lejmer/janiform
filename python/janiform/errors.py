@@ -5,7 +5,7 @@ from enum import StrEnum
 from typing import Optional
 
 
-type ErrorContextValue = str | int | float | bool | None
+type ErrorContextValue = Optional[str | int | float | bool]
 
 
 class JaniformErrorCategory(StrEnum):

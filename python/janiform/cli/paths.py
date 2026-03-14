@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 
 
 def resolve_repository_root() -> Path:
@@ -14,7 +15,7 @@ def _resolve_path_from_repository_root(repository_root: Path, path: Path) -> Pat
 
 def _require_path_argument(
     repository_root: Path,
-    path: Path | None,
+    path: Optional[Path],
     *,
     argument_name: str,
 ) -> Path:

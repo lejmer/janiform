@@ -922,7 +922,7 @@ def _build_market_data_request(
     session_timezone: str,
     timestamp_timezone: str,
 ) -> MarketDataCalibrationRequest:
-    session_configuration_fields: dict[str, object] = {
+    session_configuration_fields: dict[str, Any] = {
         "exchange_code": exchange_code,
         "session_timezone": session_timezone,
     }

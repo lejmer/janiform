@@ -802,7 +802,7 @@ def _require_mapping(payload: object, field_name: str, context: str) -> Mapping[
     return payload_mapping
 
 
-def _require_field(payload: Mapping[str, Any], field_name: str, context: str) -> object:
+def _require_field(payload: Mapping[str, Any], field_name: str, context: str) -> Any:
     if field_name not in payload:
         raise SeasonalityInputValidationError(f"{context}.{field_name} is required")
 

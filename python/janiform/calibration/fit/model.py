@@ -731,7 +731,7 @@ def _require_model_persistence_string(
 
 
 def _stage_report_payloads_from_sequence(
-    raw_stage_report_payloads: list[object],
+    raw_stage_report_payloads: list[Any],
 ) -> tuple[dict[str, Any], ...]:
     payloads: list[dict[str, Any]] = []
     for stage_index, raw_stage_report in enumerate(raw_stage_report_payloads):
@@ -976,7 +976,7 @@ def _require_model_persistence_mapping(
 def _require_model_persistence_sequence(
     payload: Mapping[str, Any],
     field_name: str,
-) -> list[object]:
+) -> list[Any]:
     raw_value = payload.get(field_name)
     if not isinstance(raw_value, list):
         raise _calibration_error(field_name, "must be a sequence")
@@ -1097,6 +1097,7 @@ def _build_model_metadata(
     prepared: PreparedMarketDataCalibration,
     staged_response: StagedCalibrationResponse,
     stage_report_payloads: tuple[dict[str, Any], ...],
+    input_inference: dict[str, Any],
 ) -> dict[str, Any]:
     market_profile_name = (
         resolved_configuration.market_profile.selected_preset.preset_name
@@ -1186,6 +1187,7 @@ def _build_model_metadata(
             "event_count": known_news_event_count,
             "active": known_news_event_count > 0,
         },
+        "input_inference": input_inference,
         "diagnostics": [
             {
                 "component": diagnostic.component.value,

@@ -1,10 +1,12 @@
 from pathlib import Path
+from typing import Any, NoReturn
 
 import orjson
 import pytest
 
 import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.cli as cli_module
+from janiform.calibration import StagedCalibrationResponse
 from janiform.calibration.fit import JaniformEstimator, JaniformModel
 from janiform.calibration.market_data import (
     CalibrationDuplicateRecordPolicy,
@@ -29,9 +31,12 @@ def test_cli_top_level_help_lists_high_level_workflow_commands() -> None:
 def test_fit_help_documents_default_workflow_and_expert_subcommands() -> None:
     help_output = normalize_help_output(_render_help(["fit"]))
 
+    assert "inspect Inspect the inferred beginner-path fit configuration" in help_output
     assert "fit plan" in help_output
     assert "fit staged" in help_output
     assert "--market MARKET" in help_output
+    assert "--explain" in help_output
+    assert "--silent" in help_output
     assert "--session-preset SESSION_PRESET" in help_output
     assert "--session-json PATH" in help_output
     assert "--known-news KNOWN_NEWS" in help_output
@@ -146,8 +151,196 @@ def test_fit_outputs_resolved_configuration_and_provenance(
     assert payload["resolved_configuration"]["session"]["selected_preset"]["preset_name"] == "XNYS"
     assert payload["resolved_configuration"]["known_news"]["selected_preset"]["preset_name"] == "none"
     assert payload["model_summary"]["preset_provenance"]["session"]["inferred_from_data"] is False
-    assert payload["session_resolution"]["resolution_kind"] == "explicit_override"
+    assert payload["session_resolution"]["resolution_kind"] == "automatic_inference"
     assert model_output_path.exists()
+
+
+def test_fit_supports_beginner_positional_tick_path_and_inferred_defaults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = _write_tick_data(
+        tmp_path / "eurusd_ticks.csv",
+        rows=(
+            "2026-02-02T14:30:00Z,1.0850,buy",
+            "2026-02-02T15:00:00Z,1.0852,sell",
+            "2026-02-02T20:59:00Z,1.0854,buy",
+            "2026-02-03T14:30:00Z,1.0851,sell",
+        ),
+    )
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_staged_calibration_with_raw_payload",
+        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
+            execution_input.request.run_id
+        ),
+    )
+
+    exit_code, stdout, stderr = invoke_cli(
+        [
+            "fit",
+            str(tick_data_path),
+            "--market",
+            "us_equity_cash",
+            "--output",
+            "json",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr
+    payload = orjson.loads(stdout)
+
+    assert payload["run_id"].startswith("eurusd_ticks_")
+    assert payload["model_summary"]["workflow_scope"] == "full_without_option_surface"
+    assert payload["input_inference"]["tick_data_format"] == "csv"
+    assert payload["input_inference"]["timestamp_column"] == "timestamp_utc"
+    assert payload["input_inference"]["tick_price_input_policy"] == "trade_price_column"
+    assert payload["input_inference"]["tick_price_columns"]["trade_price_column"] == "trade_price"
+    assert payload["input_inference"]["tick_price_columns"]["trade_sign_column"] == "trade_sign"
+    assert payload["resolved_configuration"]["session"]["selected_preset"]["preset_name"] == "XNYS"
+    assert payload["resolved_configuration"]["known_news"]["selected_preset"]["preset_name"] == "none"
+
+
+def test_fit_supports_eurusd_market_preset_with_full_day_fx_session_windows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = _write_tick_data(
+        tmp_path / "eurusd_ticks.csv",
+        rows=(
+            "2023-03-21T19:00:00Z,1.0830,buy",
+            "2023-03-21T19:05:00Z,1.0831,sell",
+            "2023-03-22T00:30:00Z,1.0832,buy",
+            "2023-03-22T00:35:00Z,1.0833,sell",
+            "2023-03-24T18:30:00Z,1.0840,buy",
+            "2023-03-24T18:35:00Z,1.0841,sell",
+            "2023-03-26T21:30:00Z,1.0842,buy",
+            "2023-03-26T21:35:00Z,1.0844,sell",
+        ),
+    )
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_staged_calibration_with_raw_payload",
+        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
+            execution_input.request.run_id
+        ),
+    )
+
+    exit_code, stdout, stderr = invoke_cli(
+        [
+            "fit",
+            str(tick_data_path),
+            "--market",
+            "eurusd_spot",
+            "--output",
+            "json",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr
+    payload = orjson.loads(stdout)
+
+    assert payload["resolved_configuration"]["market_profile"]["selected_preset"]["preset_name"] == "eurusd_spot"
+    assert payload["resolved_configuration"]["session"]["selected_preset"]["preset_name"] == "fx_spot_24_5"
+    assert payload["session_resolution"]["exchange_code"] == "FXSPOT"
+
+
+def test_fit_explain_and_silent_flags_control_success_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = _write_tick_data(
+        tmp_path / "explained_ticks.csv",
+        rows=(
+            "2026-02-02T14:30:00Z,100.0,buy",
+            "2026-02-02T15:00:00Z,101.0,sell",
+        ),
+    )
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_staged_calibration_with_raw_payload",
+        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
+            execution_input.request.run_id
+        ),
+    )
+
+    exit_code, stdout, stderr = invoke_cli(
+        [
+            "fit",
+            str(tick_data_path),
+            "--market",
+            "us_equity_cash",
+            "--explain",
+            "--output",
+            "human",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr
+    assert "inference:\n" in stdout
+    assert "  tick data format: csv" in stdout
+    assert "  timestamp column: timestamp_utc" in stdout
+    assert "  tick price input policy: trade_price_column" in stdout
+    assert "price columns:\n" in stdout
+    assert "preset defaults:\n" in stdout
+
+    silent_exit_code, silent_stdout, silent_stderr = invoke_cli(
+        [
+            "fit",
+            str(tick_data_path),
+            "--market",
+            "us_equity_cash",
+            "--silent",
+            "--output",
+            "json",
+        ]
+    )
+
+    assert silent_exit_code == int(cli_module.CliExitCode.SUCCESS), silent_stderr
+    assert silent_stdout == ""
+
+
+def test_fit_inspect_previews_inference_without_materializing_workspace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = _write_tick_data(
+        tmp_path / "inspect_ticks.csv",
+        rows=(
+            "2026-02-02T14:30:00Z,100.0,buy",
+            "2026-02-02T15:00:00Z,101.0,sell",
+        ),
+    )
+
+    def _unexpected_tempdir(*args, **kwargs) -> NoReturn:
+        raise AssertionError("temporary directory should not be created for fit inspect")
+
+    monkeypatch.setattr(fit_estimator_module, "TemporaryDirectory", _unexpected_tempdir)
+
+    exit_code, stdout, stderr = invoke_cli(
+        [
+            "fit",
+            "inspect",
+            str(tick_data_path),
+            "--market",
+            "us_equity_cash",
+            "--output",
+            "json",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr
+    payload = orjson.loads(stdout)
+
+    assert payload["schema_version"] == cli_module.CLI_FIT_INSPECT_RESULT_SCHEMA_VERSION
+    assert payload["command"] == cli_module.CLI_FIT_INSPECT_ENTRYPOINT
+    assert payload["input_inference"]["tick_data_format"] == "csv"
+    assert payload["input_inference"]["timestamp_column"] == "timestamp_utc"
+    assert payload["input_inference"]["tick_price_input_policy"] == "trade_price_column"
+    assert payload["temporary_workspace_materialized"] is False
 
 
 def test_simulate_outputs_model_provenance_and_simulation_payload(
@@ -387,7 +580,7 @@ def _build_full_workflow_model(
     )
 
 
-def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[object, dict[str, object]]:
+def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
     raw_response = {
         "schema_version": "calibration.orchestration.staged_run.report.v1",
         "failure_triage_policy": "mode_aware_failure_kind_and_checkpoint_context.v1",

@@ -1,3 +1,5 @@
+from typing import Any
+
 from janiform.calibration.staged import (
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
     CalibrationCoupledGapMarkConfiguration,
@@ -257,7 +259,7 @@ def build_valid_execution_input_model(
     )
 
 
-def build_valid_execution_input_payload() -> dict[str, object]:
+def build_valid_execution_input_payload() -> dict[str, Any]:
     return build_valid_execution_input_model().to_payload()
 
 

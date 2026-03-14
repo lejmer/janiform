@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 import pytest
 
@@ -309,11 +310,11 @@ def _valid_runtime_execution_input_model() -> VanillaOptionPricingExecutionInput
     )
 
 
-def _valid_request_payload() -> dict[str, object]:
+def _valid_request_payload() -> dict[str, Any]:
     return _valid_request_model().to_payload()
 
 
-def _valid_response_payload() -> dict[str, object]:
+def _valid_response_payload() -> dict[str, Any]:
     return {
         "price": 12.5,
         "diagnostics": {

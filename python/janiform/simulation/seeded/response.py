@@ -242,7 +242,7 @@ def _require_native_result_attribute(
     attribute_name: str,
     *,
     field_path: str,
-) -> object:
+) -> Any:
     try:
         return getattr(native_result, attribute_name)
     except AttributeError as e:

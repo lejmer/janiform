@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Optional
 
 import pyarrow as pa
 import pytest
@@ -490,8 +491,8 @@ def _build_market_data_request(
     column_mapping: CalibrationMarketDataColumnMapping,
     normalization_policy: CalibrationMarketDataNormalizationPolicy,
     workflow_scope: CalibrationMarketDataWorkflowScope = CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
-    option_surface_source: CalibrationInputFileReference | None = None,
-    known_news_inputs: CalibrationKnownNewsInput | None = None,
+    option_surface_source: Optional[CalibrationInputFileReference] = None,
+    known_news_inputs: Optional[CalibrationKnownNewsInput] = None,
 ) -> MarketDataCalibrationRequest:
     return MarketDataCalibrationRequest(
         schema_version=CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,

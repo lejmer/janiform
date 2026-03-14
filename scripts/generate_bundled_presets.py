@@ -2,7 +2,7 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
+from typing import cast, Any
 from zoneinfo import ZoneInfo
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -11,7 +11,7 @@ if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
 from janiform._contracts import serialize_deterministic_json
-from janiform.calibration._preset_references import (
+from janiform.calibration.presets.references import (
     KnownNewsEvent,
     KnownNewsExplicitConfiguration,
     MarketProfileColumnAliasHint,
@@ -23,7 +23,7 @@ from janiform.calibration._preset_references import (
     SessionExplicitConfiguration,
     SessionPresetReference,
 )
-from janiform.calibration._preset_registry import (
+from janiform.calibration.presets.registry import (
     BUNDLED_PRESET_INDEX_SCHEMA_VERSION,
     BundledPresetRegistryIndex,
     KnownNewsPresetArtifact,
@@ -80,7 +80,7 @@ def main() -> None:
     )
 
 
-def _build_session_artifacts(source_document: dict[str, object]) -> tuple[SessionPresetArtifact, ...]:
+def _build_session_artifacts(source_document: dict[str, Any]) -> tuple[SessionPresetArtifact, ...]:
     root_metadata = _root_metadata(source_document)
     artifacts: list[SessionPresetArtifact] = []
 
@@ -108,7 +108,7 @@ def _build_session_artifacts(source_document: dict[str, object]) -> tuple[Sessio
     return tuple(artifacts)
 
 
-def _build_known_news_artifacts(source_document: dict[str, object]) -> tuple[KnownNewsPresetArtifact, ...]:
+def _build_known_news_artifacts(source_document: dict[str, Any]) -> tuple[KnownNewsPresetArtifact, ...]:
     root_metadata = _root_metadata(source_document)
     artifacts: list[KnownNewsPresetArtifact] = []
 
@@ -140,7 +140,7 @@ def _build_known_news_artifacts(source_document: dict[str, object]) -> tuple[Kno
 
 
 def _build_market_profile_artifacts(
-    source_document: dict[str, object],
+    source_document: dict[str, Any],
 ) -> tuple[MarketProfilePresetArtifact, ...]:
     root_metadata = _root_metadata(source_document)
 
@@ -219,7 +219,7 @@ def _build_known_news_event(raw_event: object) -> KnownNewsEvent:
 
 
 def _build_metadata(
-    entry: dict[str, object],
+    entry: dict[str, Any],
     root_metadata: dict[str, str],
 ) -> PresetArtifactMetadata:
     raw_source_manifest_ids = _require_sequence(entry, "source_manifest_ids")
@@ -243,8 +243,8 @@ def _build_metadata(
             ),
             upstream_source_versions=tuple(
                 PresetUpstreamSourceVersion(
-                    source_name=_require_non_empty_string(cast(dict[str, object], raw_source), "source_name"),
-                    version_label=_require_non_empty_string(cast(dict[str, object], raw_source), "version_label"),
+                    source_name=_require_non_empty_string(cast(dict[str, Any], raw_source), "source_name"),
+                    version_label=_require_non_empty_string(cast(dict[str, Any], raw_source), "version_label"),
                 )
                 for raw_source in raw_upstream_source_versions
             ),
@@ -252,7 +252,7 @@ def _build_metadata(
     )
 
 
-def _root_metadata(source_document: dict[str, object]) -> dict[str, str]:
+def _root_metadata(source_document: dict[str, Any]) -> dict[str, str]:
     return {
         "bundle_id": _require_non_empty_string(source_document, "bundle_id"),
         "bundle_version": _require_non_empty_string(source_document, "bundle_version"),
@@ -293,7 +293,7 @@ def _write_category_artifacts(
     return tuple(entries)
 
 
-def _load_json(path: Path) -> dict[str, object]:
+def _load_json(path: Path) -> dict[str, Any]:
     document = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(document, dict):
         raise TypeError(f"{path} must decode to an object")
@@ -301,23 +301,23 @@ def _load_json(path: Path) -> dict[str, object]:
     return document
 
 
-def _require_mapping(mapping: dict[str, object], field_name: str) -> dict[str, object]:
+def _require_mapping(mapping: dict[str, Any], field_name: str) -> dict[str, Any]:
     raw_value = mapping[field_name]
     if not isinstance(raw_value, dict):
         raise TypeError(f"{field_name} must be an object")
 
-    return cast(dict[str, object], raw_value)
+    return cast(dict[str, Any], raw_value)
 
 
-def _require_sequence(mapping: dict[str, object], field_name: str) -> list[object] | tuple[object, ...]:
+def _require_sequence(mapping: dict[str, Any], field_name: str) -> list[Any] | tuple[Any, ...]:
     raw_value = mapping[field_name]
     if isinstance(raw_value, str) or not isinstance(raw_value, list | tuple):
         raise TypeError(f"{field_name} must be a sequence")
 
-    return cast(list[object] | tuple[object, ...], raw_value)
+    return cast(list[Any] | tuple[Any, ...], raw_value)
 
 
-def _require_non_empty_string(mapping: dict[str, object], field_name: str) -> str:
+def _require_non_empty_string(mapping: dict[str, Any], field_name: str) -> str:
     raw_value = mapping[field_name]
     if not isinstance(raw_value, str) or not raw_value.strip():
         raise TypeError(f"{field_name} must be a non-empty string")

@@ -162,7 +162,7 @@ def _risk_error(
     *,
     entrypoint: str = "contract",
     error_id: str = RISK_VALIDATION_ERROR_ID,
-    context: Optional[dict[str, str | int | float | bool | None]] = None,
+    context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
 ) -> SufficientStatisticsRiskValidationError:
     return SufficientStatisticsRiskValidationError(
         SufficientStatisticsRiskValidationFailure.from_context(

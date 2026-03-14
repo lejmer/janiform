@@ -1,13 +1,14 @@
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 
 from janiform.calibration import CalibrationExecutionMode, run_staged_calibration
 
 from ._shared import build_calendar_registry, build_calibration_execution_input
 
 
-def run_example(*, disk_checkpoint_directory: Path) -> dict[str, object]:
+def run_example(*, disk_checkpoint_directory: Path) -> dict[str, Any]:
     calendar_registry = build_calendar_registry()
 
     memory_execution_input = build_calibration_execution_input()

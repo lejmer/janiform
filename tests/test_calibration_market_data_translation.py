@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any, Optional
 
 import pyarrow as pa
 import pytest
@@ -803,19 +804,19 @@ def test_translate_market_data_request_full_with_option_surface_sets_option_refe
 
 def _build_market_data_request(
     *,
-    session_definition_path: Path | None,
+    session_definition_path: Optional[Path],
     tick_data_path: Path,
     workflow_scope: CalibrationMarketDataWorkflowScope,
     tick_column_mapping: CalibrationTickDataColumnMapping,
     normalization_policy: CalibrationMarketDataNormalizationPolicy,
-    known_news_inputs: CalibrationKnownNewsInput | None = None,
-    known_news_column_mapping: CalibrationKnownNewsColumnMapping | None = None,
-    option_surface_source: CalibrationInputFileReference | None = None,
-    option_surface_column_mapping: CalibrationOptionSurfaceColumnMapping | None = None,
+    known_news_inputs: Optional[CalibrationKnownNewsInput] = None,
+    known_news_column_mapping: Optional[CalibrationKnownNewsColumnMapping] = None,
+    option_surface_source: Optional[CalibrationInputFileReference] = None,
+    option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping] = None,
     exchange_code: str = "XNYS",
-    session_timezone: str | None = "America/New_York",
+    session_timezone: Optional[str] = "America/New_York",
 ) -> MarketDataCalibrationRequest:
-    session_configuration_fields: dict[str, object] = {
+    session_configuration_fields: dict[str, Any] = {
         "exchange_code": exchange_code,
     }
     if session_definition_path is not None:

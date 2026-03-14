@@ -60,7 +60,7 @@ def _run_calibration_market_data_command(
     *,
     cli_context: CliCommandContext,
     output: str,
-    **command_arguments: object,
+    **command_arguments,
 ) -> int:
     try:
         request = _build_market_data_calibration_request_from_arguments(
@@ -90,7 +90,7 @@ def _run_calibration_staged_command(
     calendar_registry_json: Path,
     execution_mode: str,
     disk_checkpoint_directory: Optional[Path],
-    **_: object,
+    **_,
 ) -> int:
     execution_input_path = _resolve_path_from_repository_root(
         cli_context.repository_root,
@@ -193,7 +193,7 @@ def _build_market_data_calibration_request_from_arguments(
     known_news_timezone: Optional[str],
     known_news_timestamp_column: Optional[str],
     known_news_event_id_column: Optional[str],
-    **_: object,
+    **_,
 ) -> MarketDataCalibrationRequest:
     repository_root = cli_context.repository_root
     tick_data_path = _require_path_argument(
@@ -389,7 +389,7 @@ def _build_market_data_calibration_summary_payload(
     }
 
 
-def _build_fit_plan_command(*, environment: Mapping[str, str] | None = None) -> click.Command:
+def _build_fit_plan_command(*, environment: Optional[Mapping[str, str]] = None) -> click.Command:
     @click.command(
         "plan",
         cls=JaniformCommand,
@@ -402,7 +402,7 @@ def _build_fit_plan_command(*, environment: Mapping[str, str] | None = None) -> 
         params=_market_data_calibration_options(),
     )
     @click.pass_context
-    def plan(ctx: click.Context, **command_arguments: object) -> int:
+    def plan(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
             handler=_run_calibration_market_data_command,
@@ -413,7 +413,7 @@ def _build_fit_plan_command(*, environment: Mapping[str, str] | None = None) -> 
     return plan
 
 
-def _build_fit_staged_command(*, environment: Mapping[str, str] | None = None) -> click.Command:
+def _build_fit_staged_command(*, environment: Optional[Mapping[str, str]] = None) -> click.Command:
     @click.command(
         "staged",
         cls=JaniformCommand,
@@ -423,7 +423,7 @@ def _build_fit_staged_command(*, environment: Mapping[str, str] | None = None) -
         params=_staged_calibration_options(),
     )
     @click.pass_context
-    def staged(ctx: click.Context, **command_arguments: object) -> int:
+    def staged(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
             handler=_run_calibration_staged_command,

@@ -1,9 +1,9 @@
 import csv
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Hashable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, tzinfo
 from math import isfinite
-from typing import Optional, Protocol
+from typing import Any, Optional, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pyarrow
@@ -111,7 +111,7 @@ class _HasSourceRowNumber(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class _LoadedSourceRows:
-    rows: tuple[Mapping[str, object], ...]
+    rows: tuple[Mapping[str, Any], ...]
     available_columns: tuple[str, ...]
 
 
@@ -225,10 +225,10 @@ def _market_data_ingestion_error(
     field_path: str,
     message: str,
     *,
-    context: Optional[dict[str, str | int | float | bool | None]] = None,
+    context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
     normalization_step: Optional[str] = None,
 ) -> Exception:
-    error_context: dict[str, str | int | float | bool | None] = dict(context or {})
+    error_context: dict[str, Optional[str | int | float | bool]] = dict(context or {})
     if normalization_step is not None:
         error_context["normalization_step"] = normalization_step
 
@@ -669,7 +669,7 @@ def _normalize_known_news(
 
 
 def _normalize_tick_row(
-    source_row: Mapping[str, object],
+    source_row: Mapping[str, Any],
     *,
     source_row_number: int,
     column_mapping: CalibrationTickDataColumnMapping,
@@ -1002,7 +1002,7 @@ def _first_true_index(mask: pyarrow.Array) -> Optional[int]:
 
 
 def _normalize_option_surface_row(
-    source_row: Mapping[str, object],
+    source_row: Mapping[str, Any],
     *,
     source_row_number: int,
     column_mapping: CalibrationOptionSurfaceColumnMapping,
@@ -1125,7 +1125,7 @@ def _normalize_option_surface_row(
 
 
 def _normalize_known_news_row(
-    source_row: Mapping[str, object],
+    source_row: Mapping[str, Any],
     *,
     source_row_number: int,
     known_news_inputs: CalibrationKnownNewsInput,
@@ -1158,14 +1158,14 @@ def _normalize_known_news_row(
 def _deduplicate_records[RecordType: _HasSourceRowNumber](
     records: tuple[RecordType, ...],
     *,
-    key_builder: Callable[[RecordType], object],
+    key_builder: Callable[[RecordType], Hashable],
     duplicate_record_policy: CalibrationDuplicateRecordPolicy,
     field_path: str,
     source_path: str,
 ) -> tuple[tuple[RecordType, ...], int]:
     match duplicate_record_policy:
         case CalibrationDuplicateRecordPolicy.ERROR:
-            seen_row_numbers: dict[object, int] = {}
+            seen_row_numbers: dict[Hashable, int] = {}
             for record in records:
                 deduplication_key = key_builder(record)
                 existing_row_number = seen_row_numbers.get(deduplication_key)
@@ -1186,7 +1186,7 @@ def _deduplicate_records[RecordType: _HasSourceRowNumber](
             return records, 0
         case CalibrationDuplicateRecordPolicy.KEEP_FIRST:
             retained_records: list[RecordType] = []
-            seen_keys: set[object] = set()
+            seen_keys: set[Hashable] = set()
             for record in records:
                 deduplication_key = key_builder(record)
                 if deduplication_key in seen_keys:
@@ -1196,7 +1196,7 @@ def _deduplicate_records[RecordType: _HasSourceRowNumber](
 
             return tuple(retained_records), len(records) - len(retained_records)
         case CalibrationDuplicateRecordPolicy.KEEP_LAST:
-            last_index_by_key: dict[object, int] = {}
+            last_index_by_key: dict[Hashable, int] = {}
             for record_index, record in enumerate(records):
                 last_index_by_key[key_builder(record)] = record_index
 

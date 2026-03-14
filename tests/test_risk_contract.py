@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 import pytest
 
@@ -272,11 +273,11 @@ def _valid_run_request_model() -> SufficientStatisticsRiskRunRequest:
     )
 
 
-def _valid_run_request_payload() -> dict[str, object]:
+def _valid_run_request_payload() -> dict[str, Any]:
     return _valid_run_request_model().to_payload()
 
 
-def _valid_path_payload() -> dict[str, object]:
+def _valid_path_payload() -> dict[str, Any]:
     path = SufficientStatisticsRiskPath(
         schema_version="risk.sufficient_statistics.path.v1",
         run_request_schema_version="risk.sufficient_statistics.run_request.v1",

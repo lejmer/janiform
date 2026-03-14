@@ -14,7 +14,7 @@ def _session_resolution_error(
     field_path: str,
     message: str,
     *,
-    context: dict[str, str | int | float | bool | None] | None = None,
+    context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
 ) -> Exception:
     return _calibration_error(
         field_path,

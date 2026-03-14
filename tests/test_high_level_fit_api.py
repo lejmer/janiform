@@ -1,6 +1,7 @@
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, NoReturn
 
 import pytest
 
@@ -16,7 +17,7 @@ from janiform.calibration.market_data import (
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
 )
-from janiform.calibration.staged import validate_staged_calibration_response
+from janiform.calibration.staged import StagedCalibrationResponse, validate_staged_calibration_response
 from janiform.calendar import CalendarRegistry, MarketState
 
 
@@ -67,6 +68,55 @@ def test_janiform_estimator_fit_returns_model_for_default_high_level_workflow(
     assert "seasonality" in model.parameters
     assert model.metadata["market_profile"] == "us_equity_cash"
     assert model.metadata["selected_stages"] == ["seasonality"]
+
+
+def test_janiform_estimator_supports_simple_zero_config_tick_fit_without_tempdir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "simple_ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T15:00:00Z,101.0,sell",
+                "2026-02-02T20:59:00Z,102.0,buy",
+                "2026-02-03T14:30:00Z,99.0,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_staged_calibration_with_raw_payload",
+        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
+            execution_input.request.run_id
+        ),
+    )
+
+    def _unexpected_tempdir(*args, **kwargs) -> NoReturn:
+        raise AssertionError("temporary directory should not be created for the common memory path")
+
+    monkeypatch.setattr(fit_estimator_module, "TemporaryDirectory", _unexpected_tempdir)
+
+    estimator = JaniformEstimator(
+        market_profile="us_equity_cash",
+    )
+
+    model = estimator.fit(
+        tick_data_path=tick_data_path,
+    )
+
+    assert isinstance(model, JaniformModel)
+    assert model.run_id.startswith("simple_ticks_")
+    assert model.metadata["workflow_scope"] == "full_without_option_surface"
+    assert model.metadata["input_inference"]["tick_data_format"] == "csv"
+    assert model.metadata["input_inference"]["timestamp_column"] == "timestamp_utc"
+    assert model.metadata["input_inference"]["tick_price_input_policy"] == "trade_price_column"
+    assert model.metadata["input_inference"]["tick_price_columns"]["trade_price_column"] == "trade_price"
+    assert model.metadata["input_inference"]["tick_price_columns"]["trade_sign_column"] == "trade_sign"
 
 
 def test_high_level_session_calendar_registry_preserves_fx_weekend_closure() -> None:
@@ -246,7 +296,7 @@ def test_high_level_model_summary_exposes_fitted_parameters_and_provenance(
         "event_count": 0,
         "active": False,
     }
-    assert summary["session_resolution"]["resolution_kind"] == "explicit_override"
+    assert summary["session_resolution"]["resolution_kind"] == "automatic_inference"
     assert summary["fitted_parameter_summary"]["selected_candidate_ids"] == {
         "hawkes": "candidate_stable_low_loss",
         "return_components": "return_candidate_balanced",
@@ -288,7 +338,7 @@ def test_high_level_model_simulate_dispatches_by_output_mode(
         coarse_request=object(),
         seeded_request=object(),
     )
-    captured_calls: list[tuple[str, object]] = []
+    captured_calls: list[tuple[str, Any]] = []
     coarse_result = object()
     tick_result = object()
 
@@ -348,7 +398,7 @@ def test_high_level_model_price_option_dispatches_through_canonical_pricing_runn
         run_id="high-level-model-pricing",
     )
     prepared_execution_input = object()
-    captured_execution_inputs: list[object] = []
+    captured_execution_inputs: list[Any] = []
     pricing_result = object()
 
     monkeypatch.setattr(
@@ -392,7 +442,7 @@ def test_high_level_fit_routes_through_prepared_staged_runner(
         encoding="utf-8",
     )
 
-    captured_execution_input: dict[str, object] = {}
+    captured_execution_input: dict[str, Any] = {}
 
     def capturing_runner(*args, **kwargs):
         captured_execution_input["execution_input"] = args[0]
@@ -575,7 +625,7 @@ def _build_full_workflow_model(
     )
 
 
-def _successful_staged_runner_payload(run_id: str) -> tuple[object, dict[str, object]]:
+def _successful_staged_runner_payload(run_id: str) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
     raw_response = {
         "schema_version": "calibration.orchestration.staged_run.report.v1",
         "failure_triage_policy": "mode_aware_failure_kind_and_checkpoint_context.v1",
@@ -605,7 +655,7 @@ def _successful_staged_runner_payload(run_id: str) -> tuple[object, dict[str, ob
     return validate_staged_calibration_response(raw_response), raw_response
 
 
-def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[object, dict[str, object]]:
+def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
     raw_response = {
         "schema_version": "calibration.orchestration.staged_run.report.v1",
         "failure_triage_policy": "mode_aware_failure_kind_and_checkpoint_context.v1",

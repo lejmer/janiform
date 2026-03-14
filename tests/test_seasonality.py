@@ -25,6 +25,7 @@ from janiform.seasonality import (
     SeasonalityDiagnosticsBatchInput,
     SessionFilter,
     SeasonalityInputValidationError,
+    TimestampEventPreprocessingResult,
     compose_deterministic_seasonality_signal,
     estimate_day_of_week_seasonality,
     estimate_day_of_year_seasonality,
@@ -825,7 +826,7 @@ def _build_diagnostics_report_components(
     )
 
 
-def _result_snapshot(result: object) -> dict[str, Any]:
+def _result_snapshot(result: TimestampEventPreprocessingResult) -> dict[str, Any]:
     return {
         "schema_version": cast(str, result.schema_version),
         "input_schema_version": cast(str, result.input_schema_version),
@@ -851,7 +852,7 @@ def _result_snapshot(result: object) -> dict[str, Any]:
     }
 
 
-def _intraday_estimate_snapshot(estimate: object) -> dict[str, Any]:
+def _intraday_estimate_snapshot(estimate: IntradaySeasonalityEstimate) -> dict[str, Any]:
     return {
         "schema_version": cast(str, estimate.schema_version),
         "minutes_per_bin": cast(int, estimate.minutes_per_bin),
@@ -872,7 +873,7 @@ def _intraday_estimate_snapshot(estimate: object) -> dict[str, Any]:
     }
 
 
-def _composition_snapshot(composition: object) -> dict[str, Any]:
+def _composition_snapshot(composition: DeterministicSeasonalityComposition) -> dict[str, Any]:
     return {
         "schema_version": cast(str, composition.schema_version),
         "intraday_minutes_per_bin": cast(int, composition.intraday_minutes_per_bin),

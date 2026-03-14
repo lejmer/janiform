@@ -46,6 +46,25 @@ python -m examples.market_data_calibration_workflow
 python -m examples.pricing_workflow
 ```
 
+## First-Time Fit
+
+For the common tick-data path, both the Python API and CLI now default to the beginner workflow.
+If your headers are conventional and the market preset is known, you can usually start with just
+the data path and market.
+
+```bash
+janiform fit data/eurusd_ticks.csv --market eurusd_spot --explain --output human
+janiform fit inspect data/eurusd_ticks.csv --market eurusd_spot --output json
+```
+
+```python
+from janiform.calibration import JaniformEstimator
+
+model = JaniformEstimator(market_profile="eurusd_spot").fit(
+    tick_data_path="data/eurusd_ticks.csv",
+)
+```
+
 ## Developer Environment Setup
 
 ### Linux

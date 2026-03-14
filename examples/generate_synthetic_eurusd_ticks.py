@@ -4,7 +4,7 @@ import math
 import random
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-
+from typing import Any
 
 DEFAULT_OUTPUT_PATH = Path("/tmp/janiform_synthetic_eurusd_ticks.csv")
 DEFAULT_ROW_COUNT = 10_000
@@ -24,7 +24,7 @@ def run_example(
     start_price: float = DEFAULT_START_PRICE,
     seed: int = DEFAULT_SEED,
     plot_path: Path | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     if row_count <= 1:
         raise ValueError("row_count must be greater than 1")
     if duration_minutes <= 0.0:
@@ -35,6 +35,7 @@ def run_example(
     resolved_start_time_utc = start_time_utc or datetime.fromisoformat(DEFAULT_START_TIME)
     if resolved_start_time_utc.tzinfo is None:
         resolved_start_time_utc = resolved_start_time_utc.replace(tzinfo=UTC)
+
     resolved_start_time_utc = resolved_start_time_utc.astimezone(UTC)
 
     total_duration_microseconds = int(duration_minutes * 60.0 * 1_000_000.0)
@@ -125,6 +126,7 @@ def _build_irregular_intervals_microseconds(
         else:
             extra_for_interval = int(extra_microseconds * (weight / weight_sum))
             allocated_extra_microseconds += extra_for_interval
+
         intervals[interval_index] += extra_for_interval
 
     return intervals
@@ -140,6 +142,7 @@ def _build_timestamps(
     for gap_microseconds in interval_microseconds:
         current_timestamp = current_timestamp + timedelta(microseconds=gap_microseconds)
         timestamps.append(current_timestamp)
+
     return timestamps
 
 
@@ -155,6 +158,7 @@ def _build_prices(
     for row_index in range(1, row_count):
         regime_scale = 1.0 + 0.35 * (1.0 + math.sin(row_index / 650.0))
         volatility = 2.5e-5 * regime_scale
+
         jump = 0.0
         if randomness.random() < 0.0015:
             jump = randomness.gauss(0.0, 2.0e-4)
@@ -265,11 +269,13 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Optional output path for a PNG showing the synthetic path and interarrival distribution.",
     )
+
     return parser.parse_args()
 
 
 def main() -> None:
     args = _parse_args()
+
     summary = run_example(
         output_path=args.output_path,
         row_count=args.row_count,
@@ -279,6 +285,7 @@ def main() -> None:
         seed=args.seed,
         plot_path=args.plot_path,
     )
+
     for key, value in summary.items():
         print(f"{key}: {value}")
 

@@ -2,7 +2,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import annotationlib
 import pytest
@@ -296,8 +296,8 @@ def _load_json_document(path: Path) -> dict[str, Any]:
 
 def _minimal_snapshot(
     *,
-    module_exports: list[str] | None = None,
-    public_modules: Mapping[str, list[str]] | None = None,
+    module_exports: Optional[list[str]] = None,
+    public_modules: Optional[Mapping[str, list[str]]] = None,
 ) -> dict[str, Any]:
     module_export_map: Mapping[str, list[str]]
     if public_modules is not None:

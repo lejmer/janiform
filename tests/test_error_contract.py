@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any, NoReturn
 
 import pytest
 
@@ -126,7 +127,7 @@ def test_simulation_hourly_factor_loader_wraps_lower_level_validation_errors(
     calendar_registry: CalendarRegistry,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def raising_provider(**_: object) -> object:
+    def raising_provider(**_) -> NoReturn:
         raise CalendarMissingExchangeError("exchange_code is unknown")
 
     monkeypatch.setattr(simulation_seeded_runtime_module, "provide_hourly_factor_contract", raising_provider)
@@ -154,7 +155,7 @@ def test_simulation_run_maps_missing_native_module_to_integration_error(
     calendar_registry: CalendarRegistry,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def missing_native_module() -> object:
+    def missing_native_module() -> NoReturn:
         raise ModuleNotFoundError("janiform._native")
 
     monkeypatch.setattr(simulation_seeded_runtime_module, "native_module", missing_native_module)
@@ -179,7 +180,7 @@ def test_simulation_run_maps_native_validation_failure_to_execution_error(
         SeasonalityInputValidationError = NativeValidationError
 
         @staticmethod
-        def run_seeded_tick_event_simulation(*args: object, **kwargs: object) -> str:
+        def run_seeded_tick_event_simulation(*args, **kwargs) -> str:
             raise NativeValidationError("rejected by native layer")
 
     monkeypatch.setattr(simulation_seeded_runtime_module, "native_module", lambda: FakeNative())
@@ -204,7 +205,7 @@ def test_simulation_run_maps_invalid_native_response_to_integration_error(
         SeasonalityInputValidationError = NativeValidationError
 
         @staticmethod
-        def run_seeded_tick_event_simulation(*args: object, **kwargs: object) -> str:
+        def run_seeded_tick_event_simulation(*args, **kwargs) -> str:
             return "{}"
 
     monkeypatch.setattr(simulation_seeded_runtime_module, "native_module", lambda: FakeNative())
@@ -221,7 +222,7 @@ def test_simulation_run_maps_invalid_native_response_to_integration_error(
 def test_pricing_run_maps_missing_native_module_to_integration_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def missing_native_module() -> object:
+    def missing_native_module() -> NoReturn:
         raise ModuleNotFoundError("janiform._native")
 
     monkeypatch.setattr(pricing_module, "native_module", missing_native_module)
@@ -245,7 +246,7 @@ def test_pricing_run_maps_native_execution_failure_to_execution_error(
         PricingExecutionError = NativeExecutionError
 
         @staticmethod
-        def run_vanilla_option_pricing(*args: object, **kwargs: object) -> str:
+        def run_vanilla_option_pricing(*args, **kwargs) -> str:
             raise NativeExecutionError("native pricer failed")
 
     monkeypatch.setattr(pricing_module, "native_module", lambda: FakeNative())
@@ -269,7 +270,7 @@ def test_pricing_run_maps_invalid_native_response_to_integration_error(
         PricingExecutionError = NativeExecutionError
 
         @staticmethod
-        def run_vanilla_option_pricing(*args: object, **kwargs: object) -> str:
+        def run_vanilla_option_pricing(*args, **kwargs) -> str:
             return "{}"
 
     monkeypatch.setattr(pricing_module, "native_module", lambda: FakeNative())
@@ -287,7 +288,7 @@ def test_calibration_run_maps_missing_native_module_to_integration_error(
     calendar_registry: CalendarRegistry,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def missing_native_module() -> object:
+    def missing_native_module() -> NoReturn:
         raise ModuleNotFoundError("janiform._native")
 
     monkeypatch.setattr(calibration_staged_runtime_module, "native_module", missing_native_module)
@@ -315,7 +316,7 @@ def test_calibration_run_maps_native_execution_failure_to_execution_error(
         CalibrationExecutionError = NativeExecutionError
 
         @staticmethod
-        def run_staged_calibration(*args: object, **kwargs: object) -> str:
+        def run_staged_calibration(*args, **kwargs) -> str:
             raise NativeExecutionError("native calibration failed")
 
     monkeypatch.setattr(calibration_staged_runtime_module, "native_module", lambda: FakeNative())
@@ -343,7 +344,7 @@ def test_calibration_run_maps_invalid_native_response_to_integration_error(
         CalibrationExecutionError = NativeExecutionError
 
         @staticmethod
-        def run_staged_calibration(*args: object, **kwargs: object) -> str:
+        def run_staged_calibration(*args, **kwargs) -> str:
             return "{}"
 
     monkeypatch.setattr(calibration_staged_runtime_module, "native_module", lambda: FakeNative())
@@ -364,7 +365,7 @@ def test_cli_error_output_uses_shared_error_contract(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    def broken_load_json_document(path: object, context: object) -> dict[str, object]:
+    def broken_load_json_document(path: Any, context: Any) -> dict[str, Any]:
         raise ValueError("gap behavior fixture must include list field `cases`")
 
     monkeypatch.setattr(cli_development_commands_module, "_load_json_document", broken_load_json_document)
@@ -396,17 +397,17 @@ def test_deterministic_regression_cli_error_output_uses_shared_error_contract(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    def broken_load_json_document(path: object, context: object) -> dict[str, object]:
+    def broken_load_json_document(path: Any, context: Any) -> dict[str, Any]:
         if context == "calendar registry":
             return {"schema_version": "calendar.registry.v1", "exchanges": []}
         if context == "calendar cases":
             return {"cases": []}
         return {"canonical_output_cases": []}
 
-    def broken_extract_calendar_cases(_: dict[str, object]) -> list[dict[str, object]]:
+    def broken_extract_calendar_cases(_: dict[str, Any]) -> list[dict[str, Any]]:
         raise ValueError("calendar cases document case must be an object")
 
-    def build_placeholder_calendar_registry(_: dict[str, object]) -> object:
+    def build_placeholder_calendar_registry(_: dict[str, Any]) -> Any:
         return object()
 
     monkeypatch.setattr(cli_development_commands_module, "_load_json_document", broken_load_json_document)

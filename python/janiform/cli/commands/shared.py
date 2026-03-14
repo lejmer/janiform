@@ -279,7 +279,7 @@ def _extract_hourly_news_intensity_materialization_input(
         "surprise_deterministic_time_multiplier_by_interval_index"
     )
     if raw_interval_multipliers is None:
-        surprise_deterministic_time_multiplier_by_interval_index: dict[int, float] | None = None
+        surprise_deterministic_time_multiplier_by_interval_index: Optional[dict[int, float]] = None
     else:
         if not isinstance(raw_interval_multipliers, dict):
             raise ValueError(
@@ -489,7 +489,7 @@ def _extract_string_field(
     *,
     field_name: str,
     field_prefix: str,
-    default: str | None = None,
+    default: Optional[str] = None,
 ) -> str:
     raw_value = document.get(field_name, default)
     if not isinstance(raw_value, str) or not raw_value.strip():
@@ -503,7 +503,7 @@ def _extract_int_field(
     *,
     field_name: str,
     field_prefix: str,
-    default: int | None = None,
+    default: Optional[int] = None,
 ) -> int:
     raw_value = document.get(field_name, default)
     if isinstance(raw_value, bool) or not isinstance(raw_value, int):
@@ -780,7 +780,7 @@ def _override_calibration_execution_mode(
     *,
     execution_input: StagedCalibrationExecutionInput,
     execution_mode: CalibrationExecutionMode,
-    disk_checkpoint_directory: Path | None,
+    disk_checkpoint_directory: Optional[Path],
 ) -> StagedCalibrationExecutionInput:
     if execution_mode == CalibrationExecutionMode.MEMORY and disk_checkpoint_directory is not None:
         raise JaniformValidationError(

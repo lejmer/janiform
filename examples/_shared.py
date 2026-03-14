@@ -820,7 +820,7 @@ def build_calibration_request(
     *,
     execution_mode: Optional[CalibrationExecutionMode] = None,
 ) -> StagedCalibrationRequest:
-    request_fields: dict[str, object] = {
+    request_fields: dict[str, Any] = {
         "run_id": "run-001",
         "data_inputs": CalibrationRunDataInputs(
             exchange_code="XNYS",

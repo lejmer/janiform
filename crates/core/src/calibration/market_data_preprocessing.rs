@@ -3,7 +3,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
-use chrono::{DateTime, Datelike, Duration, LocalResult, TimeZone, Timelike, Utc};
+use chrono::{DateTime, Datelike, Duration, LocalResult, NaiveDate, TimeZone, Timelike, Utc};
 use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 
@@ -826,6 +826,9 @@ fn derive_close_open_boundary_observations(
 
         let close_timestamp_utc_nanos = previous_tick.session_close_utc_nanos;
         let open_timestamp_utc_nanos = current_tick.session_open_utc_nanos;
+        if open_timestamp_utc_nanos <= close_timestamp_utc_nanos {
+            continue;
+        }
 
         observations_by_boundary.insert(
             (close_timestamp_utc_nanos, open_timestamp_utc_nanos),
@@ -1359,12 +1362,46 @@ fn local_datetime_for_session_time(
     hour: u8,
     minute: u8,
 ) -> Result<DateTime<Tz>, MarketDataTranslationPreprocessingError> {
+    let (resolved_year, resolved_month, resolved_day, resolved_hour, resolved_minute) =
+        if hour == 24 && minute == 0 {
+            let next_day = NaiveDate::from_ymd_opt(
+                local_date.year,
+                local_date.month as u32,
+                local_date.day as u32,
+            )
+            .and_then(|date| date.succ_opt())
+            .ok_or_else(|| {
+                MarketDataTranslationPreprocessingError::AmbiguousSessionBoundary {
+                    exchange_code: exchange_code.to_string(),
+                    timezone_name: timezone.name().to_string(),
+                    local_date: local_date.to_string(),
+                    local_time: local_time_label.to_string(),
+                }
+            })?;
+
+            (
+                next_day.year(),
+                next_day.month(),
+                next_day.day(),
+                0_u32,
+                0_u32,
+            )
+        } else {
+            (
+                local_date.year,
+                local_date.month as u32,
+                local_date.day as u32,
+                hour as u32,
+                minute as u32,
+            )
+        };
+
     match timezone.with_ymd_and_hms(
-        local_date.year,
-        local_date.month as u32,
-        local_date.day as u32,
-        hour as u32,
-        minute as u32,
+        resolved_year,
+        resolved_month,
+        resolved_day,
+        resolved_hour,
+        resolved_minute,
         0,
     ) {
         LocalResult::Single(timestamp_local) => Ok(timestamp_local),
@@ -1376,6 +1413,140 @@ fn local_datetime_for_session_time(
                 local_time: local_time_label.to_string(),
             },
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{TimeZone, Utc};
+
+    use super::{
+        OpenTickRecord, derive_close_open_boundary_observations,
+        resolve_market_state_and_session_window,
+    };
+    use crate::calendar::{
+        CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, MarketState,
+        ExchangeCalendarDefinition,
+        RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
+    };
+
+    #[test]
+    fn full_day_session_window_uses_next_day_midnight_for_24_00_close() {
+        let definition = ExchangeCalendarDefinition::from_artifact(ExchangeCalendarArtifact {
+            schema_version: "calendar.v1".to_string(),
+            exchange_code: "FXSPOT".to_string(),
+            exchange_name: "OTC FX Spot".to_string(),
+            timezone_name: Some("UTC".to_string()),
+            rule_metadata: CalendarRuleMetadataArtifact {
+                holiday_calendar_code: "FX_24_5".to_string(),
+                early_close_rule_set: None,
+            },
+            regular_sessions: vec![RegularSessionArtifact {
+                weekday: TradingWeekday::Tuesday,
+                windows: vec![SessionWindowArtifact {
+                    label: "regular".to_string(),
+                    open_time: "00:00".to_string(),
+                    close_time: "24:00".to_string(),
+                }],
+            }],
+            holiday_dates: vec![],
+            early_close_sessions: vec![],
+        })
+        .expect("fixture calendar should be valid");
+
+        let timestamp_utc = chrono_tz::UTC
+            .with_ymd_and_hms(2026, 2, 3, 12, 0, 0)
+            .single()
+            .expect("fixture timestamp should be valid")
+            .with_timezone(&Utc);
+
+        let (market_state, session_window) = resolve_market_state_and_session_window(
+            &definition,
+            chrono_tz::UTC,
+            "FXSPOT",
+            timestamp_utc,
+        )
+        .expect("24:00 close boundary should resolve through preprocessing");
+
+        let session_window = session_window.expect("open timestamp should resolve a session window");
+        assert_eq!(market_state, MarketState::Open);
+        assert_eq!(
+            session_window.close_utc_nanos,
+            chrono_tz::UTC
+                .with_ymd_and_hms(2026, 2, 4, 0, 0, 0)
+                .single()
+                .expect("fixture timestamp should be valid")
+                .with_timezone(&Utc)
+                .timestamp_nanos_opt()
+                .expect("fixture timestamp should fit in nanos"),
+        );
+    }
+
+    #[test]
+    fn full_day_adjacent_sessions_do_not_emit_zero_width_close_open_boundaries() {
+        let open_price_ticks = vec![
+            OpenTickRecord {
+                timestamp_utc_nanos: chrono_tz::UTC
+                    .with_ymd_and_hms(2026, 2, 3, 23, 30, 0)
+                    .single()
+                    .expect("fixture timestamp should be valid")
+                    .with_timezone(&Utc)
+                    .timestamp_nanos_opt()
+                    .expect("fixture timestamp should fit in nanos"),
+                price: 1.08,
+                session_open_utc_nanos: chrono_tz::UTC
+                    .with_ymd_and_hms(2026, 2, 3, 0, 0, 0)
+                    .single()
+                    .expect("fixture timestamp should be valid")
+                    .with_timezone(&Utc)
+                    .timestamp_nanos_opt()
+                    .expect("fixture timestamp should fit in nanos"),
+                session_close_utc_nanos: chrono_tz::UTC
+                    .with_ymd_and_hms(2026, 2, 4, 0, 0, 0)
+                    .single()
+                    .expect("fixture timestamp should be valid")
+                    .with_timezone(&Utc)
+                    .timestamp_nanos_opt()
+                    .expect("fixture timestamp should fit in nanos"),
+            },
+            OpenTickRecord {
+                timestamp_utc_nanos: chrono_tz::UTC
+                    .with_ymd_and_hms(2026, 2, 4, 0, 30, 0)
+                    .single()
+                    .expect("fixture timestamp should be valid")
+                    .with_timezone(&Utc)
+                    .timestamp_nanos_opt()
+                    .expect("fixture timestamp should fit in nanos"),
+                price: 1.081,
+                session_open_utc_nanos: chrono_tz::UTC
+                    .with_ymd_and_hms(2026, 2, 4, 0, 0, 0)
+                    .single()
+                    .expect("fixture timestamp should be valid")
+                    .with_timezone(&Utc)
+                    .timestamp_nanos_opt()
+                    .expect("fixture timestamp should fit in nanos"),
+                session_close_utc_nanos: chrono_tz::UTC
+                    .with_ymd_and_hms(2026, 2, 5, 0, 0, 0)
+                    .single()
+                    .expect("fixture timestamp should be valid")
+                    .with_timezone(&Utc)
+                    .timestamp_nanos_opt()
+                    .expect("fixture timestamp should fit in nanos"),
+            },
+        ];
+
+        let observations = derive_close_open_boundary_observations(
+            open_price_ticks.as_slice(),
+            &open_price_ticks
+                .iter()
+                .map(|tick| tick.timestamp_utc_nanos)
+                .collect::<Vec<_>>(),
+        );
+
+        assert!(
+            observations.is_empty(),
+            "adjacent full-day sessions should not emit zero-width close-open boundaries"
+        );
     }
 }
 
