@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Optional
 
@@ -196,6 +197,45 @@ def test_load_market_data_calibration_inputs_supports_explicit_price_tick_inputs
 
     assert [record.price for record in loaded_inputs.tick_data.records] == pytest.approx([101.25])
     assert loaded_inputs.tick_data.summary.value_mapping_policy == "explicit_price_column"
+
+
+def test_load_market_data_calibration_inputs_supports_decimal_parquet_tick_prices(
+    tmp_path: Path,
+) -> None:
+    tick_data_path = tmp_path / "ticks.parquet"
+    tick_data_table = pa.table(
+        {
+            "time": [datetime(2026, 1, 2, 14, 30, tzinfo=UTC)],
+            "close": pa.array([Decimal("1.07649")], type=pa.decimal128(7, 5)),
+        }
+    )
+    pyarrow_parquet.write_table(tick_data_table, tick_data_path)
+
+    request = _build_market_data_request(
+        tick_data_source=CalibrationInputFileReference(
+            path=str(tick_data_path),
+            file_format=CalibrationInputFileFormat.PARQUET,
+            provenance_label="parquet-decimal-ticks",
+        ),
+        column_mapping=CalibrationMarketDataColumnMapping(
+            tick_data=CalibrationTickDataColumnMapping(
+                timestamp_column="time",
+                price_column="close",
+            ),
+            known_news=None,
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+        ),
+    )
+
+    loaded_inputs = load_market_data_calibration_inputs(request)
+
+    assert [record.price for record in loaded_inputs.tick_data.records] == pytest.approx([1.07649])
+    assert loaded_inputs.tick_data.records[0].close_price == pytest.approx(1.07649)
 
 
 def test_load_market_data_calibration_inputs_rejects_malformed_tick_timestamp(

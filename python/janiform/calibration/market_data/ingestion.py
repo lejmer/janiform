@@ -2,6 +2,7 @@ import csv
 from collections.abc import Callable, Hashable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, tzinfo
+from decimal import Decimal
 from math import isfinite
 from typing import Any, Optional, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -1365,7 +1366,7 @@ def _normalize_optional_numeric_value(
                 normalization_step="numeric_value_normalization",
             ) from e
     else:
-        if isinstance(raw_value, bool) or not isinstance(raw_value, int | float):
+        if isinstance(raw_value, bool) or not isinstance(raw_value, int | float | Decimal):
             raise _market_data_ingestion_error(
                 field_path,
                 "must be a finite numeric value when provided",
@@ -1373,7 +1374,15 @@ def _normalize_optional_numeric_value(
                 normalization_step="numeric_value_normalization",
             )
 
-        numeric_value = float(raw_value)
+        try:
+            numeric_value = float(raw_value)
+        except (OverflowError, ValueError) as e:
+            raise _market_data_ingestion_error(
+                field_path,
+                "must be a finite numeric value when provided",
+                context={"source_path": source_path, "received_type": type(raw_value).__name__},
+                normalization_step="numeric_value_normalization",
+            ) from e
 
     if not isfinite(numeric_value):
         raise _market_data_ingestion_error(
