@@ -3,7 +3,7 @@ import math
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, NoReturn
+from typing import Any, NoReturn, Self
 
 import pytest
 
@@ -911,7 +911,7 @@ def test_high_level_fit_routes_through_prepared_staged_runner(
     assert captured_input == fit_report.execution_input
 
 
-def test_high_level_fit_reuses_single_translation_pass_when_session_is_explicit(
+def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_explicit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -928,15 +928,24 @@ def test_high_level_fit_reuses_single_translation_pass_when_session_is_explicit(
         encoding="utf-8",
     )
 
-    translation_call_count = 0
+    load_call_count = 0
+    translate_call_count = 0
     extra_python_load_count = 0
-    original_translate = fit_estimator_module.translate_market_data_request_to_staged_execution_input
+    original_load_translation_inputs = fit_estimator_module._load_market_data_translation_inputs
+    original_translate_loaded_inputs = (
+        fit_estimator_module._translate_loaded_market_data_request_to_staged_execution_input
+    )
     original_load_market_data = fit_estimator_module.load_market_data_calibration_inputs
 
-    def counting_translate(*args, **kwargs):
-        nonlocal translation_call_count
-        translation_call_count += 1
-        return original_translate(*args, **kwargs)
+    def counting_load_translation_inputs(*args, **kwargs):
+        nonlocal load_call_count
+        load_call_count += 1
+        return original_load_translation_inputs(*args, **kwargs)
+
+    def counting_translate_loaded_inputs(*args, **kwargs):
+        nonlocal translate_call_count
+        translate_call_count += 1
+        return original_translate_loaded_inputs(*args, **kwargs)
 
     def unexpected_extra_python_load(*args, **kwargs):
         nonlocal extra_python_load_count
@@ -945,8 +954,13 @@ def test_high_level_fit_reuses_single_translation_pass_when_session_is_explicit(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "translate_market_data_request_to_staged_execution_input",
-        counting_translate,
+        "_load_market_data_translation_inputs",
+        counting_load_translation_inputs,
+    )
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_translate_loaded_market_data_request_to_staged_execution_input",
+        counting_translate_loaded_inputs,
     )
     monkeypatch.setattr(
         fit_estimator_module,
@@ -979,8 +993,94 @@ def test_high_level_fit_reuses_single_translation_pass_when_session_is_explicit(
         tick_data_format=CalibrationInputFileFormat.CSV,
     )
 
-    assert translation_call_count == 1
+    assert load_call_count == 1
+    assert translate_call_count == 1
     assert extra_python_load_count == 0
+
+
+def test_high_level_fit_progress_splits_loading_and_translation_steps(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc",
+                "2026-02-02T14:30:00Z",
+                "2026-02-02T15:00:00Z",
+                "2026-02-02T20:59:00Z",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    progress_details: list[str] = []
+
+    class _CapturingProgress:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback) -> None:
+            _ = exc_type
+            _ = exc_value
+            _ = traceback
+            return None
+
+        def update(self, *, detail: str | None = None) -> None:
+            if detail is not None:
+                progress_details.append(detail)
+
+    def capturing_progress(
+        self: Any,
+        label: str,
+        *,
+        total_steps: int | None = None,
+    ) -> _CapturingProgress:
+        assert label == "fit"
+        assert total_steps == 7
+        return _CapturingProgress()
+
+    monkeypatch.setattr(
+        fit_estimator_module.JaniformOutputController,
+        "progress",
+        capturing_progress,
+    )
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_staged_calibration_with_raw_payload",
+        lambda *args, **kwargs: _successful_staged_runner_payload("high-level-fit-progress"),
+    )
+
+    estimator = JaniformEstimator(
+        workflow_scope=CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY,
+        tick_data_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
+        ),
+        session="XNYS",
+        known_news="none",
+    )
+
+    estimator.fit(
+        run_id="high-level-fit-progress",
+        tick_data_path=tick_data_path,
+        tick_data_format=CalibrationInputFileFormat.CSV,
+    )
+
+    assert progress_details == [
+        "inferring workflow inputs",
+        "resolving session configuration",
+        "resolving preset configuration",
+        "building market-data request",
+        "loading market data",
+        "translating market data",
+        "running calibration",
+    ]
 
 
 def test_high_level_fit_report_returns_failure_details_without_model(
