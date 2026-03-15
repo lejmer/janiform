@@ -23,9 +23,75 @@ def _exit_code_for_error(error: JaniformError) -> CliExitCode:
             return CliExitCode.INTERNAL_ERROR
 
 
-def _write_cli_error(error: JaniformError) -> int:
-    sys.stderr.write(f"{error}\n")
+def _write_cli_error(error: JaniformError, *, output: Optional[str] = None) -> int:
+    if output == CliOutputMode.HUMAN.value:
+        sys.stderr.write(_render_cli_error_human_output(error))
+    else:
+        sys.stderr.write(f"{error}\n")
+
     return int(_exit_code_for_error(error))
+
+
+def _render_cli_error_human_output(error: JaniformError) -> str:
+    details = error.details
+
+    lines = [
+        f"{details.entrypoint} failed:",
+        f"  reason: {details.message}",
+        f"  category: {details.category.value}",
+        f"  error id: {details.error_id}",
+    ]
+
+    if details.field_path is not None:
+        lines.append(f"  field: {details.field_path}")
+
+    for field_name, field_value in _ordered_cli_error_context_entries(details.context):
+        if field_value is None:
+            continue
+
+        lines.append(f"  {field_name}: {field_value}")
+
+    return "\n".join(lines) + "\n"
+
+
+def _ordered_cli_error_context_entries(context: dict[str, Any]) -> list[tuple[str, Any]]:
+    label_by_field_name = {
+        "failed_stage": "failed stage",
+        "failure_kind": "failure kind",
+        "failure_error_message": "stage error",
+        "run_id": "run id",
+        "staged_status": "staged status",
+        "checkpoint_reference": "checkpoint reference",
+        "artifact_reference": "artifact reference",
+    }
+    preferred_field_order = (
+        "failed_stage",
+        "failure_kind",
+        "failure_error_message",
+        "field_path",
+        "run_id",
+        "staged_status",
+        "checkpoint_reference",
+        "artifact_reference",
+    )
+
+    ordered_entries: list[tuple[str, Any]] = []
+    emitted_field_names: set[str] = set()
+
+    for field_name in preferred_field_order:
+        if field_name not in context:
+            continue
+
+        ordered_entries.append((label_by_field_name.get(field_name, field_name.replace("_", " ")), context[field_name]))
+        emitted_field_names.add(field_name)
+
+    for field_name in sorted(context):
+        if field_name in emitted_field_names:
+            continue
+
+        ordered_entries.append((label_by_field_name.get(field_name, field_name.replace("_", " ")), context[field_name]))
+
+    return ordered_entries
 
 
 def _write_command_output(
@@ -255,7 +321,8 @@ def _render_market_data_calibration_human_output(prepared_calibration: object) -
             "normalization_policy: "
             f"timestamp_timezone={request.normalization_policy.timestamp_timezone} "
             f"sort_records_by_timestamp={str(request.normalization_policy.sort_records_by_timestamp).lower()} "
-            f"duplicate_record_policy={request.normalization_policy.duplicate_record_policy.value} "
+            "duplicate_record_policy="
+            f"{_optional_enum_value(request.normalization_policy.duplicate_record_policy) or 'preserve'} "
             f"tick_price_input_policy={_optional_enum_value(request.normalization_policy.tick_price_input_policy)} "
             f"option_quote_input_policy={_optional_enum_value(request.normalization_policy.option_quote_input_policy)}"
         )
@@ -600,4 +667,3 @@ def _write_open_closed_gap_human_output(report: dict[str, Any]) -> None:
 
 def _optional_enum_value(value: Optional[StrEnum]) -> str:
     return value.value if value is not None else "none"
-

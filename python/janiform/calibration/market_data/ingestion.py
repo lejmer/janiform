@@ -568,7 +568,7 @@ def _normalize_option_surface(
         for source_row_number, source_row in enumerate(source_rows.rows, start=1)
     )
 
-    deduplicated_records, dropped_duplicate_row_count = _deduplicate_records(
+    _reject_duplicate_records(
         normalized_records,
         key_builder=lambda record: (
             record.quote_timestamp,
@@ -581,10 +581,11 @@ def _normalize_option_surface(
             record.ask_price,
             record.implied_volatility,
         ),
-        duplicate_record_policy=normalization_policy.duplicate_record_policy,
         field_path="option_surface_source",
         source_path=file_reference.path,
     )
+    deduplicated_records = normalized_records
+    dropped_duplicate_row_count = 0
 
     if normalization_policy.sort_records_by_timestamp:
         deduplicated_records = tuple(
@@ -640,13 +641,14 @@ def _normalize_known_news(
         for source_row_number, source_row in enumerate(source_rows.rows, start=1)
     )
 
-    deduplicated_records, dropped_duplicate_row_count = _deduplicate_records(
+    _reject_duplicate_records(
         normalized_records,
         key_builder=lambda record: (record.event_timestamp, record.event_identifier),
-        duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
         field_path="known_news_inputs.calendar_source",
         source_path=known_news_inputs.calendar_source.path,
     )
+    deduplicated_records = normalized_records
+    dropped_duplicate_row_count = 0
 
     return LoadedKnownNewsSource(
         records=tuple(sorted(deduplicated_records, key=lambda record: (record.event_timestamp, record.source_row_number))),
@@ -1136,31 +1138,14 @@ def _deduplicate_records[RecordType: _HasSourceRowNumber](
     records: tuple[RecordType, ...],
     *,
     key_builder: Callable[[RecordType], Hashable],
-    duplicate_record_policy: CalibrationDuplicateRecordPolicy,
+    duplicate_record_policy: Optional[CalibrationDuplicateRecordPolicy],
     field_path: str,
     source_path: str,
 ) -> tuple[tuple[RecordType, ...], int]:
-    match duplicate_record_policy:
-        case CalibrationDuplicateRecordPolicy.ERROR:
-            seen_row_numbers: dict[Hashable, int] = {}
-            for record in records:
-                deduplication_key = key_builder(record)
-                existing_row_number = seen_row_numbers.get(deduplication_key)
-                if existing_row_number is not None:
-                    raise _market_data_ingestion_error(
-                        field_path,
-                        "contains duplicate normalized rows. Use duplicate_record_policy=keep_first "
-                        "or keep_last if the feed legitimately repeats identical rows.",
-                        context={
-                            "first_source_row_number": existing_row_number,
-                            "duplicate_source_row_number": record.source_row_number,
-                            "source_path": source_path,
-                        },
-                        normalization_step="duplicate_record_normalization",
-                    )
-                seen_row_numbers[deduplication_key] = record.source_row_number
+    if duplicate_record_policy is None:
+        return records, 0
 
-            return records, 0
+    match duplicate_record_policy:
         case CalibrationDuplicateRecordPolicy.KEEP_FIRST:
             retained_records: list[RecordType] = []
             seen_keys: set[Hashable] = set()
@@ -1184,6 +1169,32 @@ def _deduplicate_records[RecordType: _HasSourceRowNumber](
             )
 
             return retained_records, len(records) - len(retained_records)
+
+
+def _reject_duplicate_records[RecordType: _HasSourceRowNumber](
+    records: tuple[RecordType, ...],
+    *,
+    key_builder: Callable[[RecordType], Hashable],
+    field_path: str,
+    source_path: str,
+) -> None:
+    seen_row_numbers: dict[Hashable, int] = {}
+    for record in records:
+        deduplication_key = key_builder(record)
+        existing_row_number = seen_row_numbers.get(deduplication_key)
+        if existing_row_number is not None:
+            raise _market_data_ingestion_error(
+                field_path,
+                "contains duplicate normalized rows",
+                context={
+                    "first_source_row_number": existing_row_number,
+                    "duplicate_source_row_number": record.source_row_number,
+                    "source_path": source_path,
+                },
+                normalization_step="duplicate_record_normalization",
+            )
+
+        seen_row_numbers[deduplication_key] = record.source_row_number
 
 
 def _normalize_timestamp_value(

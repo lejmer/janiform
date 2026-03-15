@@ -142,7 +142,6 @@ def test_load_market_data_calibration_inputs_normalizes_parquet_option_surface_q
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
             option_quote_input_policy=CalibrationOptionQuoteInputPolicy.BID_ASK_MIDPOINT,
         ),
@@ -188,7 +187,6 @@ def test_load_market_data_calibration_inputs_supports_explicit_price_tick_inputs
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
     )
@@ -197,6 +195,48 @@ def test_load_market_data_calibration_inputs_supports_explicit_price_tick_inputs
 
     assert [record.price for record in loaded_inputs.tick_data.records] == pytest.approx([101.25])
     assert loaded_inputs.tick_data.summary.value_mapping_policy == "explicit_price_column"
+
+
+def test_load_market_data_calibration_inputs_preserves_duplicate_tick_rows_by_default(
+    tmp_path: Path,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price",
+                "2026-01-02T14:30:00Z,100.0",
+                "2026-01-02T14:30:00Z,100.0",
+                "2026-01-02T14:31:00Z,101.0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    request = _build_market_data_request(
+        tick_data_source=CalibrationInputFileReference(
+            path=str(tick_data_path),
+            file_format=CalibrationInputFileFormat.CSV,
+            provenance_label="ticks-primary",
+        ),
+        column_mapping=CalibrationMarketDataColumnMapping(
+            tick_data=CalibrationTickDataColumnMapping(
+                timestamp_column="timestamp_utc",
+                price_column="trade_price",
+            ),
+            known_news=None,
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+        ),
+    )
+
+    loaded_inputs = load_market_data_calibration_inputs(request)
+
+    assert [record.source_row_number for record in loaded_inputs.tick_data.records] == [1, 2, 3]
+    assert loaded_inputs.tick_data.summary.dropped_duplicate_row_count == 0
 
 
 def test_load_market_data_calibration_inputs_supports_decimal_parquet_tick_prices(
@@ -227,7 +267,6 @@ def test_load_market_data_calibration_inputs_supports_decimal_parquet_tick_price
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
     )
@@ -268,7 +307,6 @@ def test_load_market_data_calibration_inputs_rejects_malformed_tick_timestamp(
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
     )
@@ -317,7 +355,6 @@ def test_load_market_data_calibration_inputs_accepts_common_day_first_timestamp_
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
     )
@@ -361,7 +398,6 @@ def test_load_market_data_calibration_inputs_accepts_unix_epoch_millisecond_stri
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
     )
@@ -447,7 +483,6 @@ def test_load_market_data_calibration_inputs_rejects_missing_mapped_columns_with
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
     )
@@ -513,7 +548,6 @@ def test_load_market_data_calibration_inputs_normalizes_known_news_parquet_sourc
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
     )

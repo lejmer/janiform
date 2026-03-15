@@ -376,7 +376,6 @@ def _valid_market_data_request_model() -> MarketDataCalibrationRequest:
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
             option_quote_input_policy=CalibrationOptionQuoteInputPolicy.BID_ASK_MIDPOINT,
         ),

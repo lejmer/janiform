@@ -500,6 +500,184 @@ def test_fit_fails_for_invalid_market_preset(tmp_path: Path) -> None:
     assert "missing_profile" in stderr
 
 
+def test_fit_surfaces_staged_failure_details_in_cli_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = _write_tick_data(
+        tmp_path / "failure-debug.csv",
+        rows=(
+            "2026-02-02T14:30:00Z,100.0,buy",
+            "2026-02-02T15:00:00Z,101.0,sell",
+            "2026-02-02T20:59:00Z,102.0,buy",
+        ),
+    )
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_staged_calibration_with_raw_payload",
+        lambda *args, **kwargs: _failed_return_components_staged_runner_payload("cli-fit-stage-failure"),
+    )
+
+    exit_code, _, stderr = invoke_cli(
+        [
+            "fit",
+            "--run-id",
+            "cli-fit-stage-failure",
+            "--workflow-scope",
+            "full_without_option_surface",
+            "--tick-data-path",
+            str(tick_data_path),
+            "--tick-data-format",
+            "csv",
+            "--tick-timestamp-column",
+            "timestamp_utc",
+            "--tick-price-column",
+            "trade_price",
+            "--tick-trade-sign-column",
+            "trade_sign",
+            "--tick-price-input-policy",
+            "explicit_price_column",
+            "--timestamp-timezone",
+            "UTC",
+            "--market",
+            "eurusd_spot",
+            "--output",
+            "json",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.RUNTIME_ERROR)
+    assert '"failed_stage": "return_components"' in stderr
+    assert '"failure_kind": "invalid_candidate_generation_input"' in stderr
+    assert (
+        '"failure_error_message": "open boundary for exchange `FXSPOT` at '
+        '1774224000000000000 must transition from closed to open, found previous=Open '
+        'and boundary=Open"'
+    ) in stderr
+
+
+def test_fit_prefers_failed_stage_message_over_generic_top_level_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = _write_tick_data(
+        tmp_path / "failure-generic-top-level.csv",
+        rows=(
+            "2026-02-02T14:30:00Z,100.0,buy",
+            "2026-02-02T15:00:00Z,101.0,sell",
+            "2026-02-02T20:59:00Z,102.0,buy",
+        ),
+    )
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_staged_calibration_with_raw_payload",
+        lambda *args, **kwargs: _failed_return_components_with_generic_top_level_staged_runner_payload(
+            "cli-fit-generic-top-level"
+        ),
+    )
+
+    exit_code, _, stderr = invoke_cli(
+        [
+            "fit",
+            "--run-id",
+            "cli-fit-generic-top-level",
+            "--workflow-scope",
+            "full_without_option_surface",
+            "--tick-data-path",
+            str(tick_data_path),
+            "--tick-data-format",
+            "csv",
+            "--tick-timestamp-column",
+            "timestamp_utc",
+            "--tick-price-column",
+            "trade_price",
+            "--tick-trade-sign-column",
+            "trade_sign",
+            "--tick-price-input-policy",
+            "explicit_price_column",
+            "--timestamp-timezone",
+            "UTC",
+            "--market",
+            "eurusd_spot",
+            "--output",
+            "json",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.RUNTIME_ERROR)
+    assert '"failed_stage": "return_components"' in stderr
+    assert '"failure_kind": "invalid_candidate_generation_input"' in stderr
+    assert '"failure_kind": "stage_execution_failed"' not in stderr
+    assert (
+        '"failure_error_message": "open boundary for exchange `FXSPOT` at '
+        '1774224000000000000 must transition from closed to open, found previous=Open '
+        'and boundary=Open"'
+    ) in stderr
+
+
+def test_fit_renders_human_error_output_with_labeled_lines(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = _write_tick_data(
+        tmp_path / "failure-human-output.csv",
+        rows=(
+            "2026-02-02T14:30:00Z,100.0,buy",
+            "2026-02-02T15:00:00Z,101.0,sell",
+            "2026-02-02T20:59:00Z,102.0,buy",
+        ),
+    )
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_staged_calibration_with_raw_payload",
+        lambda *args, **kwargs: _failed_return_components_with_generic_top_level_staged_runner_payload(
+            "cli-fit-human-error"
+        ),
+    )
+
+    exit_code, _, stderr = invoke_cli(
+        [
+            "fit",
+            "--run-id",
+            "cli-fit-human-error",
+            "--workflow-scope",
+            "full_without_option_surface",
+            "--tick-data-path",
+            str(tick_data_path),
+            "--tick-data-format",
+            "csv",
+            "--tick-timestamp-column",
+            "timestamp_utc",
+            "--tick-price-column",
+            "trade_price",
+            "--tick-trade-sign-column",
+            "trade_sign",
+            "--tick-price-input-policy",
+            "explicit_price_column",
+            "--timestamp-timezone",
+            "UTC",
+            "--market",
+            "eurusd_spot",
+            "--output",
+            "human",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.RUNTIME_ERROR)
+    assert "fit failed:\n" in stderr
+    assert "  reason: high-level fit failed before a JaniformModel could be materialized\n" in stderr
+    assert "  failed stage: return_components\n" in stderr
+    assert "  failure kind: invalid_candidate_generation_input\n" in stderr
+    assert (
+        "  stage error: open boundary for exchange `FXSPOT` at 1774224000000000000 "
+        "must transition from closed to open, found previous=Open and boundary=Open\n"
+    ) in stderr
+    assert "context={" not in stderr
+
+
 def test_fit_rejects_contradictory_known_news_flags() -> None:
     exit_code, _, _ = invoke_cli(
         [
@@ -584,7 +762,6 @@ def _build_full_workflow_model(
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
         market_profile="us_equity_cash",
@@ -708,6 +885,178 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                             },
                         },
                     },
+                },
+            },
+        ],
+        "emitted_checkpoints": [],
+    }
+
+    return validate_staged_calibration_response(raw_response), raw_response
+
+
+def _failed_return_components_staged_runner_payload(run_id: str) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
+    failure = {
+        "failure_kind": "invalid_candidate_generation_input",
+        "stage": "return_components",
+        "error_message": (
+            "open boundary for exchange `FXSPOT` at 1774224000000000000 must transition from "
+            "closed to open, found previous=Open and boundary=Open"
+        ),
+        "run_id": run_id,
+    }
+    raw_response = {
+        "schema_version": "calibration.orchestration.staged_run.report.v1",
+        "failure_triage_policy": "mode_aware_failure_kind_and_checkpoint_context.v1",
+        "run_id": run_id,
+        "execution_mode": "memory",
+        "status": "failure",
+        "failure": failure,
+        "stage_reports": [
+            {
+                "stage_report_kind": "seasonality",
+                "stage": "seasonality",
+                "status": "success",
+                "run_id": run_id,
+                "execution_mode": "memory",
+                "handoff_policy": "explicit_run_spec_handoffs_mode_aware_transport.v1",
+                "normalized_stage_payload": {
+                    "composition_schema_version": "seasonality.deterministic.composition.v1",
+                    "exchange_code": "FXSPOT",
+                    "timestamp_utc_nanos": [
+                        1770042600000000000,
+                        1770046200000000000,
+                        1770129000000000000,
+                    ],
+                    "normalized_combined_factor_by_event": [0.95, 1.05, 1.0],
+                    "intraday_factor_by_bin": [1.0] * 3,
+                    "day_of_week_factor": [1.0] * 7,
+                    "day_of_year_factor": [1.0] * 366,
+                },
+            },
+            {
+                "stage_report_kind": "hawkes",
+                "stage": "hawkes",
+                "status": "success",
+                "run_id": run_id,
+                "execution_mode": "memory",
+                "handoff_policy": "explicit_run_spec_handoffs_mode_aware_transport.v1",
+                "fitted_stage_payload": {
+                    "schema_version": "calibration.stage_output.hawkes.v1",
+                    "selected_candidate_id": "candidate_stable_low_loss",
+                    "fitted_parameters": {
+                        "kernel_parameters": {
+                            "lambda_bar": 0.8,
+                            "beta": 1.6,
+                            "alpha": {
+                                "plus_plus": 0.2,
+                                "plus_minus": 0.1,
+                                "minus_plus": 0.1,
+                                "minus_minus": 0.25,
+                            },
+                            "rho": {
+                                "plus_plus": 0.08,
+                                "plus_minus": 0.04,
+                                "minus_plus": 0.05,
+                                "minus_minus": 0.1,
+                            },
+                        },
+                    },
+                },
+            },
+            {
+                "stage_report_kind": "return_components",
+                "stage": "return_components",
+                "status": "failure",
+                "run_id": run_id,
+                "execution_mode": "memory",
+                "handoff_policy": "explicit_run_spec_handoffs_mode_aware_transport.v1",
+                "failure": failure,
+            },
+        ],
+        "emitted_checkpoints": [],
+    }
+
+    return validate_staged_calibration_response(raw_response), raw_response
+
+
+def _failed_return_components_with_generic_top_level_staged_runner_payload(
+    run_id: str,
+) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
+    raw_response = {
+        "schema_version": "calibration.orchestration.staged_run.report.v1",
+        "failure_triage_policy": "mode_aware_failure_kind_and_checkpoint_context.v1",
+        "run_id": run_id,
+        "execution_mode": "memory",
+        "status": "failure",
+        "failure": {
+            "failure_kind": "stage_execution_failed",
+            "stage": "return_components",
+        },
+        "stage_reports": [
+            {
+                "stage_report_kind": "seasonality",
+                "stage": "seasonality",
+                "status": "success",
+                "run_id": run_id,
+                "execution_mode": "memory",
+                "handoff_policy": "explicit_run_spec_handoffs_mode_aware_transport.v1",
+                "normalized_stage_payload": {
+                    "composition_schema_version": "seasonality.deterministic.composition.v1",
+                    "exchange_code": "FXSPOT",
+                    "timestamp_utc_nanos": [
+                        1770042600000000000,
+                        1770046200000000000,
+                        1770129000000000000,
+                    ],
+                    "normalized_combined_factor_by_event": [0.95, 1.05, 1.0],
+                    "intraday_factor_by_bin": [1.0] * 3,
+                    "day_of_week_factor": [1.0] * 7,
+                    "day_of_year_factor": [1.0] * 366,
+                },
+            },
+            {
+                "stage_report_kind": "hawkes",
+                "stage": "hawkes",
+                "status": "success",
+                "run_id": run_id,
+                "execution_mode": "memory",
+                "handoff_policy": "explicit_run_spec_handoffs_mode_aware_transport.v1",
+                "fitted_stage_payload": {
+                    "schema_version": "calibration.stage_output.hawkes.v1",
+                    "selected_candidate_id": "candidate_stable_low_loss",
+                    "fitted_parameters": {
+                        "kernel_parameters": {
+                            "lambda_bar": 0.8,
+                            "beta": 1.6,
+                            "alpha": {
+                                "plus_plus": 0.2,
+                                "plus_minus": 0.1,
+                                "minus_plus": 0.1,
+                                "minus_minus": 0.25,
+                            },
+                            "rho": {
+                                "plus_plus": 0.08,
+                                "plus_minus": 0.04,
+                                "minus_plus": 0.05,
+                                "minus_minus": 0.1,
+                            },
+                        },
+                    },
+                },
+            },
+            {
+                "stage_report_kind": "return_components",
+                "stage": "return_components",
+                "status": "failure",
+                "run_id": run_id,
+                "execution_mode": "memory",
+                "handoff_policy": "explicit_run_spec_handoffs_mode_aware_transport.v1",
+                "failure": {
+                    "failure_kind": "invalid_candidate_generation_input",
+                    "error_message": (
+                        "open boundary for exchange `FXSPOT` at 1774224000000000000 must "
+                        "transition from closed to open, found previous=Open and boundary=Open"
+                    ),
                 },
             },
         ],

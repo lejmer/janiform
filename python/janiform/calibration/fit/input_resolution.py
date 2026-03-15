@@ -246,11 +246,7 @@ def infer_high_level_fit_inputs(
             if effective_normalization_overrides.sort_records_by_timestamp is None
             else effective_normalization_overrides.sort_records_by_timestamp
         ),
-        duplicate_record_policy=(
-            CalibrationDuplicateRecordPolicy.ERROR
-            if effective_normalization_overrides.duplicate_record_policy is None
-            else effective_normalization_overrides.duplicate_record_policy
-        ),
+        duplicate_record_policy=effective_normalization_overrides.duplicate_record_policy,
         tick_price_input_policy=tick_price_input_policy,
         option_quote_input_policy=effective_normalization_overrides.option_quote_input_policy,
     )

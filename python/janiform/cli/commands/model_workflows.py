@@ -97,7 +97,14 @@ from ...calibration.fit.input_resolution import (
     build_fit_inference_payload,
     infer_high_level_fit_inputs,
 )
-from ...errors import JaniformError, JaniformErrorCategory, JaniformErrorDetails, JaniformExecutionError
+from ...calibration.staged.results import CalibrationFailureDetails
+from ...errors import (
+    ErrorContextValue,
+    JaniformError,
+    JaniformErrorCategory,
+    JaniformErrorDetails,
+    JaniformExecutionError,
+)
 type CliCommandArguments = dict[str, Any]
 
 
@@ -149,7 +156,7 @@ def _run_fit_command(
             explain_requested=bool(command_arguments.get("explain")),
         )
     except JaniformError as e:
-        return _write_cli_error(e)
+        return _write_cli_error(e, output=output)
     except Exception as e:
         return _write_cli_error(
             _classify_generic_cli_command_error(
@@ -159,7 +166,8 @@ def _run_fit_command(
                 internal_error_id=CLI_FIT_INTERNAL_ERROR_ID,
                 file_field_path="tick_data_path",
                 document_field_path="fit_workflow_configuration",
-            )
+            ),
+            output=output,
         )
 
     if not bool(command_arguments.get("silent")):
@@ -186,7 +194,7 @@ def _run_fit_inspect_command(
             command_arguments=command_arguments,
         )
     except JaniformError as e:
-        return _write_cli_error(e)
+        return _write_cli_error(e, output=output)
     except Exception as e:
         return _write_cli_error(
             _classify_generic_cli_command_error(
@@ -196,7 +204,8 @@ def _run_fit_inspect_command(
                 internal_error_id=CLI_FIT_INSPECT_INTERNAL_ERROR_ID,
                 file_field_path="tick_data_path",
                 document_field_path="fit_inspection_configuration",
-            )
+            ),
+            output=output,
         )
 
     if not bool(command_arguments.get("silent")):
@@ -234,7 +243,7 @@ def _run_model_simulate_command(
             output_mode=output,
         )
     except JaniformError as e:
-        return _write_cli_error(e)
+        return _write_cli_error(e, output=output)
     except RuntimeError as e:
         return _write_cli_error(
             _cli_validation_error(
@@ -242,7 +251,8 @@ def _run_model_simulate_command(
                 str(e),
                 error_id=CLI_HIGH_LEVEL_SIMULATE_VALIDATION_ERROR_ID,
                 entrypoint=CLI_HIGH_LEVEL_SIMULATE_ENTRYPOINT,
-            )
+            ),
+            output=output,
         )
     except Exception as e:
         return _write_cli_error(
@@ -253,7 +263,8 @@ def _run_model_simulate_command(
                 internal_error_id=CLI_HIGH_LEVEL_SIMULATE_INTERNAL_ERROR_ID,
                 file_field_path="model_path",
                 document_field_path="model_payload",
-            )
+            ),
+            output=output,
         )
 
     if not bool(command_arguments.get("silent")):
@@ -663,6 +674,7 @@ def _execute_cli_fit(
         ),
     )
     if model_result is None:
+        failure_context = _build_cli_fit_failure_context(fit_report)
         raise JaniformExecutionError(
             JaniformErrorDetails.from_context(
                 error_id=error_id,
@@ -670,7 +682,7 @@ def _execute_cli_fit(
                 workflow="cli",
                 entrypoint=entrypoint,
                 message="high-level fit failed before a JaniformModel could be materialized",
-                context={"run_id": fit_report.run_id, "staged_status": fit_report.staged_response.status.value},
+                context=failure_context,
             )
         )
 
@@ -680,6 +692,67 @@ def _execute_cli_fit(
     )
 
     return model_result, fit_report, artifact_paths
+
+
+def _build_cli_fit_failure_context(fit_report: JaniformFitReport) -> dict[str, ErrorContextValue]:
+    failure_context: dict[str, ErrorContextValue] = {
+        "run_id": fit_report.run_id,
+        "staged_status": fit_report.staged_response.status.value,
+    }
+    selected_failure = fit_report.staged_response.failure
+    failed_stage = selected_failure.stage.value if selected_failure is not None and selected_failure.stage is not None else None
+
+    for stage_report in reversed(fit_report.staged_response.stage_reports):
+        if stage_report.failure is None:
+            continue
+
+        if _prefer_cli_fit_failure_details(selected_failure, stage_report.failure):
+            selected_failure = stage_report.failure
+
+        if failed_stage is None:
+            failed_stage = stage_report.stage.value
+
+    if selected_failure is None:
+        return failure_context
+
+    failure_context["failure_kind"] = selected_failure.failure_kind
+
+    if failed_stage is not None:
+        failure_context["failed_stage"] = failed_stage
+    if selected_failure.error_message is not None:
+        failure_context["failure_error_message"] = selected_failure.error_message
+    if selected_failure.checkpoint_reference is not None:
+        failure_context["checkpoint_reference"] = selected_failure.checkpoint_reference
+    if selected_failure.artifact_reference is not None:
+        failure_context["artifact_reference"] = selected_failure.artifact_reference
+
+    return failure_context
+
+
+def _prefer_cli_fit_failure_details(
+    current_failure: Optional[CalibrationFailureDetails],
+    candidate_failure: CalibrationFailureDetails,
+) -> bool:
+    if current_failure is None:
+        return True
+
+    current_has_error_message = current_failure.error_message is not None
+    candidate_has_error_message = candidate_failure.error_message is not None
+
+    if candidate_has_error_message and not current_has_error_message:
+        return True
+    if current_has_error_message and not candidate_has_error_message:
+        return False
+
+    current_is_generic = current_failure.failure_kind == "stage_execution_failed"
+    candidate_is_generic = candidate_failure.failure_kind == "stage_execution_failed"
+
+    if current_is_generic and not candidate_is_generic:
+        return True
+    if candidate_is_generic and not current_is_generic:
+        return False
+
+    return False
 
 
 def _build_cli_fit_inspect_payload(
@@ -921,14 +994,17 @@ def _build_option_surface_column_mapping_from_arguments(
 def _build_model_workflow_normalization_policy_from_arguments(
     parsed_arguments: CliCommandArguments,
 ) -> CalibrationMarketDataNormalizationPolicy:
+    duplicate_record_policy_raw = cast(Optional[str], parsed_arguments.get("duplicate_record_policy"))
     tick_price_input_policy_raw = cast(Optional[str], parsed_arguments.get("tick_price_input_policy"))
     option_quote_input_policy_raw = cast(Optional[str], parsed_arguments.get("option_quote_input_policy"))
 
     return CalibrationMarketDataNormalizationPolicy(
         timestamp_timezone=cast(str, parsed_arguments["timestamp_timezone"]),
         sort_records_by_timestamp=not bool(parsed_arguments.get("disable_timestamp_sort")),
-        duplicate_record_policy=CalibrationDuplicateRecordPolicy(
-            cast(str, parsed_arguments["duplicate_record_policy"]),
+        duplicate_record_policy=(
+            CalibrationDuplicateRecordPolicy(duplicate_record_policy_raw)
+            if duplicate_record_policy_raw is not None
+            else None
         ),
         tick_price_input_policy=(
             CalibrationTickPriceInputPolicy(tick_price_input_policy_raw)
@@ -1332,8 +1408,7 @@ def _model_workflow_fit_options(
         command_option(
             "--duplicate-record-policy",
             choice_options=CLI_CALIBRATION_DUPLICATE_RECORD_POLICY_CHOICES,
-            default="error",
-            help_text="Duplicate-record normalization policy recorded in provenance.",
+            help_text="Optional tick-data deduplication policy. Omit to preserve duplicate tick rows.",
         ),
         command_option(
             "--disable-timestamp-sort",

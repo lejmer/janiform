@@ -448,7 +448,7 @@ Optional arguments:
 - `--option-bid-column`
 - `--option-ask-column`
 - `--option-implied-volatility-column`
-- `--duplicate-record-policy {error,keep_first,keep_last}`
+- `--duplicate-record-policy {keep_first,keep_last}`
 - `--disable-timestamp-sort`
 - `--execution-mode {disk,memory}`: defaults to `disk` on the CLI
 - `--disk-checkpoint-directory`: required when the effective execution mode is `disk`

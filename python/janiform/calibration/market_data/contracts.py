@@ -37,7 +37,6 @@ class CalibrationMarketDataWorkflowScope(StrEnum):
 
 
 class CalibrationDuplicateRecordPolicy(StrEnum):
-    ERROR = "error"
     KEEP_FIRST = "keep_first"
     KEEP_LAST = "keep_last"
 
@@ -400,7 +399,7 @@ class CalibrationMarketDataColumnMapping(ContractModel):
 class CalibrationMarketDataNormalizationPolicy(ContractModel):
     timestamp_timezone: str
     sort_records_by_timestamp: bool = True
-    duplicate_record_policy: CalibrationDuplicateRecordPolicy = CalibrationDuplicateRecordPolicy.ERROR
+    duplicate_record_policy: Optional[CalibrationDuplicateRecordPolicy] = None
     tick_price_input_policy: Optional[CalibrationTickPriceInputPolicy] = None
     option_quote_input_policy: Optional[CalibrationOptionQuoteInputPolicy] = None
 
@@ -425,6 +424,10 @@ class CalibrationMarketDataNormalizationPolicy(ContractModel):
         if raw_option_quote_input_policy is not None and not isinstance(raw_option_quote_input_policy, str):
             raise _calibration_error(f"{field_path}.option_quote_input_policy", "must be a string when provided")
 
+        raw_duplicate_record_policy = raw_payload.get("duplicate_record_policy")
+        if raw_duplicate_record_policy is not None and not isinstance(raw_duplicate_record_policy, str):
+            raise _calibration_error(f"{field_path}.duplicate_record_policy", "must be a string when provided")
+
         return CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone=require_non_empty_string(
                 raw_payload,
@@ -437,13 +440,10 @@ class CalibrationMarketDataNormalizationPolicy(ContractModel):
                 "sort_records_by_timestamp",
                 f"{field_path}.sort_records_by_timestamp",
             ),
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy(
-                require_string(
-                    raw_payload,
-                    "duplicate_record_policy",
-                    f"{field_path}.duplicate_record_policy",
-                    CALIBRATION_ERROR_FACTORY,
-                )
+            duplicate_record_policy=(
+                CalibrationDuplicateRecordPolicy(raw_duplicate_record_policy)
+                if raw_duplicate_record_policy is not None
+                else None
             ),
             tick_price_input_policy=(
                 CalibrationTickPriceInputPolicy(raw_tick_price_input_policy)

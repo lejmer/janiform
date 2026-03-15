@@ -38,8 +38,7 @@ CLI_CALIBRATION_MARKET_DATA_SCOPE_CHOICES: tuple[str, str, str] = (
     CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE.value,
     CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE.value,
 )
-CLI_CALIBRATION_DUPLICATE_RECORD_POLICY_CHOICES: tuple[str, str, str] = (
-    CalibrationDuplicateRecordPolicy.ERROR.value,
+CLI_CALIBRATION_DUPLICATE_RECORD_POLICY_CHOICES: tuple[str, str] = (
     CalibrationDuplicateRecordPolicy.KEEP_FIRST.value,
     CalibrationDuplicateRecordPolicy.KEEP_LAST.value,
 )

@@ -56,7 +56,6 @@ def test_janiform_estimator_fit_returns_model_for_default_high_level_workflow(
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
         ),
         market_profile="us_equity_cash",
     )
@@ -127,6 +126,45 @@ def test_janiform_estimator_supports_simple_zero_config_tick_fit_without_tempdir
     assert model.metadata["input_inference"]["tick_price_columns"]["trade_sign_column"] == "trade_sign"
 
 
+def test_janiform_estimator_preserves_duplicate_ticks_by_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "duplicate_ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T15:00:00Z,101.0,sell",
+                "2026-02-02T20:59:00Z,102.0,buy",
+                "2026-02-03T14:30:00Z,99.0,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_staged_calibration_with_raw_payload",
+        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
+            execution_input.request.run_id
+        ),
+    )
+
+    estimator = JaniformEstimator(
+        market_profile="us_equity_cash",
+    )
+
+    model = estimator.fit(
+        tick_data_path=tick_data_path,
+    )
+
+    assert isinstance(model, JaniformModel)
+    assert model.run_id.startswith("duplicate_ticks_")
+
+
 def test_high_level_session_calendar_registry_preserves_fx_weekend_closure() -> None:
     registry = fit_estimator_module.PresetRegistry()
     _, session_artifact = registry.resolve_session_preset("fx_spot_24_5")
@@ -194,7 +232,6 @@ def test_janiform_estimator_fit_report_true_returns_model_and_report(
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
         ),
         market_profile="us_equity_cash",
     )
@@ -254,7 +291,6 @@ def test_high_level_fit_does_not_retain_raw_market_data_paths_on_model(
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
         ),
         market_profile="us_equity_cash",
     )
@@ -895,7 +931,6 @@ def test_high_level_fit_routes_through_prepared_staged_runner(
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
         ),
         market_profile="us_equity_cash",
     )
@@ -981,7 +1016,6 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
         ),
         session="XNYS",
         known_news="none",
@@ -1060,7 +1094,6 @@ def test_high_level_fit_progress_splits_loading_and_translation_steps(
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
         ),
         session="XNYS",
         known_news="none",
@@ -1112,7 +1145,6 @@ def test_high_level_fit_report_returns_failure_details_without_model(
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
         market_profile="us_equity_cash",
@@ -1155,7 +1187,6 @@ def test_high_level_fit_rejects_missing_exchange_context_for_automatic_session_i
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
         ),
     )
 
@@ -1217,7 +1248,6 @@ def _build_full_workflow_model(
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
         market_profile="us_equity_cash",
