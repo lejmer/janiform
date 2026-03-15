@@ -354,14 +354,12 @@
           "field_names": [
             "timestamp_column",
             "price_column",
-            "trade_price_column",
             "trade_sign_column",
             "bid_column",
-            "ask_column",
-            "close_price_column"
+            "ask_column"
           ],
           "kind": "contract_model",
-          "signature": "(timestamp_column: 'str', price_column: 'Optional[str]' = None, trade_price_column: 'Optional[str]' = None, trade_sign_column: 'Optional[str]' = None, bid_column: 'Optional[str]' = None, ask_column: 'Optional[str]' = None, close_price_column: 'Optional[str]' = None) -> 'None'"
+          "signature": "(timestamp_column: 'str', price_column: 'Optional[str]' = None, trade_sign_column: 'Optional[str]' = None, bid_column: 'Optional[str]' = None, ask_column: 'Optional[str]' = None) -> 'None'"
         },
         "CalibrationTickPriceInputPolicy": {
           "kind": "enum",
@@ -371,16 +369,8 @@
               "value": "explicit_price_column"
             },
             {
-              "name": "TRADE_PRICE_COLUMN",
-              "value": "trade_price_column"
-            },
-            {
               "name": "BID_ASK_MIDPOINT",
               "value": "bid_ask_midpoint"
-            },
-            {
-              "name": "CLOSE_PRICE_COLUMN",
-              "value": "close_price_column"
             }
           ]
         },
@@ -1049,14 +1039,12 @@
           "field_names": [
             "timestamp_column",
             "price_column",
-            "trade_price_column",
             "trade_sign_column",
             "bid_column",
-            "ask_column",
-            "close_price_column"
+            "ask_column"
           ],
           "kind": "contract_model",
-          "signature": "(timestamp_column: 'str', price_column: 'Optional[str]' = None, trade_price_column: 'Optional[str]' = None, trade_sign_column: 'Optional[str]' = None, bid_column: 'Optional[str]' = None, ask_column: 'Optional[str]' = None, close_price_column: 'Optional[str]' = None) -> 'None'"
+          "signature": "(timestamp_column: 'str', price_column: 'Optional[str]' = None, trade_sign_column: 'Optional[str]' = None, bid_column: 'Optional[str]' = None, ask_column: 'Optional[str]' = None) -> 'None'"
         },
         "CalibrationTickPriceInputPolicy": {
           "kind": "enum",
@@ -1066,16 +1054,8 @@
               "value": "explicit_price_column"
             },
             {
-              "name": "TRADE_PRICE_COLUMN",
-              "value": "trade_price_column"
-            },
-            {
               "name": "BID_ASK_MIDPOINT",
               "value": "bid_ask_midpoint"
-            },
-            {
-              "name": "CLOSE_PRICE_COLUMN",
-              "value": "close_price_column"
             }
           ]
         },
@@ -1380,14 +1360,12 @@
           "field_names": [
             "timestamp_column",
             "price_column",
-            "trade_price_column",
             "trade_sign_column",
             "bid_column",
-            "ask_column",
-            "close_price_column"
+            "ask_column"
           ],
           "kind": "contract_model",
-          "signature": "(timestamp_column: 'str', price_column: 'Optional[str]' = None, trade_price_column: 'Optional[str]' = None, trade_sign_column: 'Optional[str]' = None, bid_column: 'Optional[str]' = None, ask_column: 'Optional[str]' = None, close_price_column: 'Optional[str]' = None) -> 'None'"
+          "signature": "(timestamp_column: 'str', price_column: 'Optional[str]' = None, trade_sign_column: 'Optional[str]' = None, bid_column: 'Optional[str]' = None, ask_column: 'Optional[str]' = None) -> 'None'"
         },
         "CalibrationTickPriceInputPolicy": {
           "kind": "enum",
@@ -1397,16 +1375,8 @@
               "value": "explicit_price_column"
             },
             {
-              "name": "TRADE_PRICE_COLUMN",
-              "value": "trade_price_column"
-            },
-            {
               "name": "BID_ASK_MIDPOINT",
               "value": "bid_ask_midpoint"
-            },
-            {
-              "name": "CLOSE_PRICE_COLUMN",
-              "value": "close_price_column"
             }
           ]
         },
@@ -4819,9 +4789,7 @@
           "kind": "constant",
           "value": [
             "explicit_price_column",
-            "trade_price_column",
-            "bid_ask_midpoint",
-            "close_price_column"
+            "bid_ask_midpoint"
           ]
         },
         "CLI_COMMAND_CONFIG_HELP": {
@@ -5256,7 +5224,7 @@
       "symbols": {
         "_build_market_data_calibration_request_from_arguments": {
           "kind": "function",
-          "signature": "(*, cli_context: 'CliCommandContext', run_id: 'str', tick_data_path: 'Optional[Path]', tick_data_format: 'str', tick_data_provenance_label: 'str', exchange_code: 'str', tick_timestamp_column: 'str', tick_price_column: 'Optional[str]', tick_trade_price_column: 'Optional[str]', tick_trade_sign_column: 'Optional[str]', tick_bid_column: 'Optional[str]', tick_ask_column: 'Optional[str]', tick_close_price_column: 'Optional[str]', workflow_scope: 'str', timestamp_timezone: 'str', disable_timestamp_sort: 'bool', duplicate_record_policy: 'str', tick_price_input_policy: 'Optional[str]', option_quote_input_policy: 'Optional[str]', execution_mode: 'str', disk_checkpoint_directory: 'Optional[Path]', emit_derived_staged_execution_input: 'bool', omit_input_provenance_report: 'bool', session_timezone: 'Optional[str]', session_definition_path: 'Optional[Path]', session_definition_format: 'Optional[str]', session_definition_provenance_label: 'Optional[str]', option_surface_path: 'Optional[Path]', option_surface_format: 'Optional[str]', option_surface_provenance_label: 'Optional[str]', option_quote_timestamp_column: 'Optional[str]', option_expiry_column: 'Optional[str]', option_strike_column: 'Optional[str]', option_type_column: 'Optional[str]', option_mid_price_column: 'Optional[str]', option_bid_column: 'Optional[str]', option_ask_column: 'Optional[str]', option_implied_volatility_column: 'Optional[str]', known_news_path: 'Optional[Path]', known_news_format: 'Optional[str]', known_news_provenance_label: 'Optional[str]', known_news_timezone: 'Optional[str]', known_news_timestamp_column: 'Optional[str]', known_news_event_id_column: 'Optional[str]', **_) -> 'MarketDataCalibrationRequest'"
+          "signature": "(*, cli_context: 'CliCommandContext', run_id: 'str', tick_data_path: 'Optional[Path]', tick_data_format: 'str', tick_data_provenance_label: 'str', exchange_code: 'str', tick_timestamp_column: 'str', tick_price_column: 'Optional[str]', tick_trade_sign_column: 'Optional[str]', tick_bid_column: 'Optional[str]', tick_ask_column: 'Optional[str]', workflow_scope: 'str', timestamp_timezone: 'str', disable_timestamp_sort: 'bool', duplicate_record_policy: 'str', tick_price_input_policy: 'Optional[str]', option_quote_input_policy: 'Optional[str]', execution_mode: 'str', disk_checkpoint_directory: 'Optional[Path]', emit_derived_staged_execution_input: 'bool', omit_input_provenance_report: 'bool', session_timezone: 'Optional[str]', session_definition_path: 'Optional[Path]', session_definition_format: 'Optional[str]', session_definition_provenance_label: 'Optional[str]', option_surface_path: 'Optional[Path]', option_surface_format: 'Optional[str]', option_surface_provenance_label: 'Optional[str]', option_quote_timestamp_column: 'Optional[str]', option_expiry_column: 'Optional[str]', option_strike_column: 'Optional[str]', option_type_column: 'Optional[str]', option_mid_price_column: 'Optional[str]', option_bid_column: 'Optional[str]', option_ask_column: 'Optional[str]', option_implied_volatility_column: 'Optional[str]', known_news_path: 'Optional[Path]', known_news_format: 'Optional[str]', known_news_provenance_label: 'Optional[str]', known_news_timezone: 'Optional[str]', known_news_timestamp_column: 'Optional[str]', known_news_event_id_column: 'Optional[str]', **_) -> 'MarketDataCalibrationRequest'"
         },
         "_build_market_data_calibration_summary_payload": {
           "kind": "function",

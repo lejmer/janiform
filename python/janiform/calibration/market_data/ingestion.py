@@ -433,17 +433,11 @@ def _normalize_tick_data(
         case CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN:
             if column_mapping.price_column is not None:
                 required_columns.append(column_mapping.price_column)
-        case CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN:
-            if column_mapping.trade_price_column is not None:
-                required_columns.append(column_mapping.trade_price_column)
         case CalibrationTickPriceInputPolicy.BID_ASK_MIDPOINT:
             if column_mapping.bid_column is not None:
                 required_columns.append(column_mapping.bid_column)
             if column_mapping.ask_column is not None:
                 required_columns.append(column_mapping.ask_column)
-        case CalibrationTickPriceInputPolicy.CLOSE_PRICE_COLUMN:
-            if column_mapping.close_price_column is not None:
-                required_columns.append(column_mapping.close_price_column)
         case None:
             pass
 
@@ -684,9 +678,9 @@ def _normalize_tick_row(
         source_path=source_path,
     )
     trade_price = _normalize_optional_numeric_value(
-        source_row.get(column_mapping.trade_price_column) if column_mapping.trade_price_column is not None else None,
-        field_path=f"{row_field_path}.{column_mapping.trade_price_column}"
-        if column_mapping.trade_price_column is not None
+        source_row.get(column_mapping.price_column) if column_mapping.price_column is not None else None,
+        field_path=f"{row_field_path}.{column_mapping.price_column}"
+        if column_mapping.price_column is not None
         else row_field_path,
         source_path=source_path,
         allow_zero=True,
@@ -715,9 +709,9 @@ def _normalize_tick_row(
         allow_negative=False,
     )
     close_price = _normalize_optional_numeric_value(
-        source_row.get(column_mapping.close_price_column) if column_mapping.close_price_column is not None else None,
-        field_path=f"{row_field_path}.{column_mapping.close_price_column}"
-        if column_mapping.close_price_column is not None
+        source_row.get(column_mapping.price_column) if column_mapping.price_column is not None else None,
+        field_path=f"{row_field_path}.{column_mapping.price_column}"
+        if column_mapping.price_column is not None
         else row_field_path,
         source_path=source_path,
         allow_zero=True,
@@ -741,15 +735,6 @@ def _normalize_tick_row(
                 )
 
             price = explicit_price
-        case CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN:
-            if trade_price is None:
-                raise _market_data_ingestion_error(
-                    f"{row_field_path}.{column_mapping.trade_price_column}",
-                    "is required for trade_price_column tick normalization and cannot be blank",
-                    context={"source_path": source_path, "source_row_number": source_row_number},
-                )
-
-            price = trade_price
         case CalibrationTickPriceInputPolicy.BID_ASK_MIDPOINT:
             if bid_price is None or ask_price is None:
                 raise _market_data_ingestion_error(
@@ -766,15 +751,6 @@ def _normalize_tick_row(
                 )
 
             price = (bid_price + ask_price) / 2.0
-        case CalibrationTickPriceInputPolicy.CLOSE_PRICE_COLUMN:
-            if close_price is None:
-                raise _market_data_ingestion_error(
-                    f"{row_field_path}.{column_mapping.close_price_column}",
-                    "is required for close_price_column tick normalization and cannot be blank",
-                    context={"source_path": source_path, "source_row_number": source_row_number},
-                )
-
-            price = close_price
         case None:
             price = None
 

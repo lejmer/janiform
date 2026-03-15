@@ -120,8 +120,8 @@ def test_janiform_estimator_supports_simple_zero_config_tick_fit_without_tempdir
     assert model.metadata["workflow_scope"] == "full_without_option_surface"
     assert model.metadata["input_inference"]["tick_data_format"] == "csv"
     assert model.metadata["input_inference"]["timestamp_column"] == "timestamp_utc"
-    assert model.metadata["input_inference"]["tick_price_input_policy"] == "trade_price_column"
-    assert model.metadata["input_inference"]["tick_price_columns"]["trade_price_column"] == "trade_price"
+    assert model.metadata["input_inference"]["tick_price_input_policy"] == "explicit_price_column"
+    assert model.metadata["input_inference"]["tick_price_columns"]["price_column"] == "trade_price"
     assert model.metadata["input_inference"]["tick_price_columns"]["trade_sign_column"] == "trade_sign"
 
 
@@ -551,8 +551,7 @@ def test_high_level_simulation_result_exposes_tabular_exports(
                 [
                     {
                         preferences.timestamp_column: "2026-02-02T16:00:00Z",
-                        preferences.bid_column: 1.01,
-                        preferences.ask_column: 1.01,
+                        "mid_price": 1.01,
                     }
                 ]
             )
@@ -588,11 +587,10 @@ def test_high_level_simulation_result_exposes_tabular_exports(
 
     assert list(pandas_frame.columns) == [
         "time",
-        "bid",
-        "ask",
+        "mid_price",
     ]
-    assert pandas_frame.iloc[0]["bid"] == pytest.approx(1.01)
-    assert numpy_array.shape == (1, 3)
+    assert pandas_frame.iloc[0]["mid_price"] == pytest.approx(1.01)
+    assert numpy_array.shape == (1, 2)
     assert parquet_path.read_text(encoding="utf-8") == "parquet placeholder"
     assert captured_output_paths[-1] == parquet_path
 
@@ -625,8 +623,8 @@ def test_high_level_seeded_simulation_result_preserves_empty_tabular_schema(
         raw_result=object(),
         _preferences=SimpleNamespace(
             timestamp_column="timestamp_utc",
-            tick_price_input_policy="trade_price_column",
-            trade_price_column="trade_price",
+            tick_price_input_policy="explicit_price_column",
+            price_column="trade_price",
             trade_sign_column="trade_sign",
         ),
     )
@@ -679,8 +677,8 @@ def test_high_level_simulation_result_materializes_datetime_timestamps_in_memory
         raw_result=object(),
         _preferences=SimpleNamespace(
             timestamp_column="timestamp_utc",
-            tick_price_input_policy="trade_price_column",
-            trade_price_column="trade_price",
+            tick_price_input_policy="explicit_price_column",
+            price_column="trade_price",
             trade_sign_column="trade_sign",
         ),
     )
@@ -876,14 +874,14 @@ def test_high_level_fit_report_returns_failure_details_without_model(
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         tick_data_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
-            trade_price_column="trade_price",
+            price_column="trade_price",
             trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
         market_profile="us_equity_cash",
     )
@@ -981,14 +979,14 @@ def _build_full_workflow_model(
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         tick_data_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
-            trade_price_column="trade_price",
+            price_column="trade_price",
             trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
         market_profile="us_equity_cash",
     )

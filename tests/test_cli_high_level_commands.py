@@ -122,12 +122,12 @@ def test_fit_outputs_resolved_configuration_and_provenance(
             "csv",
             "--tick-timestamp-column",
             "timestamp_utc",
-            "--tick-trade-price-column",
+            "--tick-price-column",
             "trade_price",
             "--tick-trade-sign-column",
             "trade_sign",
             "--tick-price-input-policy",
-            "trade_price_column",
+            "explicit_price_column",
             "--timestamp-timezone",
             "UTC",
             "--market",
@@ -205,8 +205,8 @@ def test_fit_supports_beginner_positional_tick_path_and_inferred_defaults(
     assert payload["model_summary"]["workflow_scope"] == "full_without_option_surface"
     assert payload["input_inference"]["tick_data_format"] == "csv"
     assert payload["input_inference"]["timestamp_column"] == "timestamp_utc"
-    assert payload["input_inference"]["tick_price_input_policy"] == "trade_price_column"
-    assert payload["input_inference"]["tick_price_columns"]["trade_price_column"] == "trade_price"
+    assert payload["input_inference"]["tick_price_input_policy"] == "explicit_price_column"
+    assert payload["input_inference"]["tick_price_columns"]["price_column"] == "trade_price"
     assert payload["input_inference"]["tick_price_columns"]["trade_sign_column"] == "trade_sign"
     assert payload["resolved_configuration"]["session"]["selected_preset"]["preset_name"] == "XNYS"
     assert payload["resolved_configuration"]["known_news"]["selected_preset"]["preset_name"] == "none"
@@ -297,7 +297,7 @@ def test_fit_explain_and_silent_flags_control_success_output(
     assert "inferred:\n" in stdout
     assert "  tick data format: csv" in stdout
     assert "  timestamp column: timestamp_utc" in stdout
-    assert "  tick price input policy: trade_price_column" in stdout
+    assert "  tick price input policy: explicit_price_column" in stdout
     assert "price columns:\n" in stdout
     assert "preset defaults:\n" in stdout
 
@@ -353,7 +353,7 @@ def test_fit_inspect_previews_inference_without_materializing_workspace(
     assert payload["command"] == cli_module.CLI_FIT_INSPECT_ENTRYPOINT
     assert payload["input_inference"]["tick_data_format"] == "csv"
     assert payload["input_inference"]["timestamp_column"] == "timestamp_utc"
-    assert payload["input_inference"]["tick_price_input_policy"] == "trade_price_column"
+    assert payload["input_inference"]["tick_price_input_policy"] == "explicit_price_column"
     assert payload["temporary_workspace_materialized"] is False
 
 
@@ -438,12 +438,12 @@ def test_fit_fails_for_ambiguous_session_inference(tmp_path: Path) -> None:
             "csv",
             "--tick-timestamp-column",
             "timestamp_utc",
-            "--tick-trade-price-column",
+            "--tick-price-column",
             "trade_price",
             "--tick-trade-sign-column",
             "trade_sign",
             "--tick-price-input-policy",
-            "trade_price_column",
+            "explicit_price_column",
             "--timestamp-timezone",
             "UTC",
             "--exchange-code",
@@ -481,12 +481,12 @@ def test_fit_fails_for_invalid_market_preset(tmp_path: Path) -> None:
             "csv",
             "--tick-timestamp-column",
             "timestamp_utc",
-            "--tick-trade-price-column",
+            "--tick-price-column",
             "trade_price",
             "--tick-trade-sign-column",
             "trade_sign",
             "--tick-price-input-policy",
-            "trade_price_column",
+            "explicit_price_column",
             "--timestamp-timezone",
             "UTC",
             "--market",
@@ -578,14 +578,14 @@ def _build_full_workflow_model(
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         tick_data_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
-            trade_price_column="trade_price",
+            price_column="trade_price",
             trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
         market_profile="us_equity_cash",
     )

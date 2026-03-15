@@ -125,7 +125,7 @@ def test_market_data_calibration_request_requires_bid_and_ask_mapping_for_tick_m
     del request_payload["column_mapping"]["option_surface"]
     request_payload["normalization_policy"]["option_quote_input_policy"] = None
     request_payload["normalization_policy"]["tick_price_input_policy"] = "bid_ask_midpoint"
-    del request_payload["column_mapping"]["tick_data"]["trade_price_column"]
+    del request_payload["column_mapping"]["tick_data"]["price_column"]
 
     with pytest.raises(CalibrationValidationError) as captured_error:
         validate_market_data_calibration_request(request_payload)
@@ -357,7 +357,7 @@ def _valid_market_data_request_model() -> MarketDataCalibrationRequest:
         column_mapping=CalibrationMarketDataColumnMapping(
             tick_data=CalibrationTickDataColumnMapping(
                 timestamp_column="timestamp_utc",
-                trade_price_column="trade_price",
+                price_column="trade_price",
             ),
             option_surface=CalibrationOptionSurfaceColumnMapping(
                 quote_timestamp_column="quote_timestamp_utc",
@@ -377,7 +377,7 @@ def _valid_market_data_request_model() -> MarketDataCalibrationRequest:
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
             option_quote_input_policy=CalibrationOptionQuoteInputPolicy.BID_ASK_MIDPOINT,
         ),
         output_preferences=CalibrationMarketDataOutputPreferences(

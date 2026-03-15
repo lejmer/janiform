@@ -539,11 +539,9 @@ def _build_high_level_tick_data_column_overrides_from_arguments(
     overrides = HighLevelTickDataColumnOverrides(
         timestamp_column=cast(Optional[str], parsed_arguments.get("tick_timestamp_column")),
         price_column=cast(Optional[str], parsed_arguments.get("tick_price_column")),
-        trade_price_column=cast(Optional[str], parsed_arguments.get("tick_trade_price_column")),
         trade_sign_column=cast(Optional[str], parsed_arguments.get("tick_trade_sign_column")),
         bid_column=cast(Optional[str], parsed_arguments.get("tick_bid_column")),
         ask_column=cast(Optional[str], parsed_arguments.get("tick_ask_column")),
-        close_price_column=cast(Optional[str], parsed_arguments.get("tick_close_price_column")),
     )
 
     if all(
@@ -551,11 +549,9 @@ def _build_high_level_tick_data_column_overrides_from_arguments(
         for field_value in (
             overrides.timestamp_column,
             overrides.price_column,
-            overrides.trade_price_column,
             overrides.trade_sign_column,
             overrides.bid_column,
             overrides.ask_column,
-            overrides.close_price_column,
         )
     ):
         return None
@@ -870,11 +866,9 @@ def _build_tick_data_column_mapping_from_arguments(
     return CalibrationTickDataColumnMapping(
         timestamp_column=cast(str, parsed_arguments["tick_timestamp_column"]),
         price_column=cast(Optional[str], parsed_arguments.get("tick_price_column")),
-        trade_price_column=cast(Optional[str], parsed_arguments.get("tick_trade_price_column")),
         trade_sign_column=cast(Optional[str], parsed_arguments.get("tick_trade_sign_column")),
         bid_column=cast(Optional[str], parsed_arguments.get("tick_bid_column")),
         ask_column=cast(Optional[str], parsed_arguments.get("tick_ask_column")),
-        close_price_column=cast(Optional[str], parsed_arguments.get("tick_close_price_column")),
     )
 
 
@@ -1318,14 +1312,12 @@ def _model_workflow_fit_options(
             help_text="Explicit tick-price normalization policy for non-seasonality workflows.",
         ),
         command_option("--tick-price-column", help_text="Tick-data explicit price column."),
-        command_option("--tick-trade-price-column", help_text="Tick-data trade price column."),
         command_option(
             "--tick-trade-sign-column",
             help_text="Tick-data trade sign column required for canonical full-model Hawkes calibration.",
         ),
         command_option("--tick-bid-column", help_text="Tick-data bid column."),
         command_option("--tick-ask-column", help_text="Tick-data ask column."),
-        command_option("--tick-close-price-column", help_text="Tick-data close price column."),
         command_option(
             "--timestamp-timezone",
             help_text=(

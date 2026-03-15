@@ -39,11 +39,9 @@ class SimulationOutputPreferences:
     timestamp_timezone: str
     tick_price_input_policy: Optional[str]
     price_column: Optional[str]
-    trade_price_column: Optional[str]
     trade_sign_column: Optional[str]
     bid_column: Optional[str]
     ask_column: Optional[str]
-    close_price_column: Optional[str]
     reference_price: float
 
 
@@ -248,11 +246,9 @@ def simulation_output_preferences_from_model(model: JaniformModel) -> Simulation
         timestamp_timezone=cast(str, input_inference["timestamp_timezone"]),
         tick_price_input_policy=cast(Optional[str], input_inference["tick_price_input_policy"]),
         price_column=cast(Optional[str], price_columns["price_column"]),
-        trade_price_column=cast(Optional[str], price_columns["trade_price_column"]),
         trade_sign_column=cast(Optional[str], price_columns["trade_sign_column"]),
         bid_column=cast(Optional[str], price_columns["bid_column"]),
         ask_column=cast(Optional[str], price_columns["ask_column"]),
-        close_price_column=cast(Optional[str], price_columns["close_price_column"]),
         reference_price=1.0 if reference_price is None else reference_price,
     )
 
@@ -446,15 +442,12 @@ def _file_format_for_simulation_path(output_path: Path, default_file_format: str
 def _seeded_tick_output_columns(preferences: SimulationOutputPreferences) -> tuple[str, ...]:
     columns = [preferences.timestamp_column]
     match preferences.tick_price_input_policy:
-        case "trade_price_column":
-            columns.append(preferences.trade_price_column or "trade_price")
+        case "explicit_price_column":
+            columns.append(preferences.price_column or "price")
             if preferences.trade_sign_column is not None:
                 columns.append(preferences.trade_sign_column)
-        case "close_price_column":
-            columns.append(preferences.close_price_column or "close_price")
         case "bid_ask_midpoint":
-            columns.append(preferences.bid_column or "bid")
-            columns.append(preferences.ask_column or "ask")
+            columns.append("mid_price")
         case _:
             columns.append(preferences.price_column or "price")
 
@@ -474,15 +467,12 @@ def _seeded_tick_output_row(
     }
 
     match preferences.tick_price_input_policy:
-        case "trade_price_column":
-            output_row[preferences.trade_price_column or "trade_price"] = price_value
+        case "explicit_price_column":
+            output_row[preferences.price_column or "price"] = price_value
             if preferences.trade_sign_column is not None:
                 output_row[preferences.trade_sign_column] = side_value
-        case "close_price_column":
-            output_row[preferences.close_price_column or "close_price"] = price_value
         case "bid_ask_midpoint":
-            output_row[preferences.bid_column or "bid"] = price_value
-            output_row[preferences.ask_column or "ask"] = price_value
+            output_row["mid_price"] = price_value
         case _:
             output_row[preferences.price_column or "price"] = price_value
 

@@ -423,7 +423,7 @@ Required arguments:
 
 Optional arguments:
 - `--config-json PATH`
-- `--tick-price-input-policy {explicit_price_column,trade_price_column,bid_ask_midpoint,close_price_column}`
+- `--tick-price-input-policy {explicit_price_column,bid_ask_midpoint}`
 - `--tick-price-column`
 - `--tick-trade-price-column`
 - `--tick-bid-column`

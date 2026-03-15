@@ -43,11 +43,9 @@ CLI_CALIBRATION_DUPLICATE_RECORD_POLICY_CHOICES: tuple[str, str, str] = (
     CalibrationDuplicateRecordPolicy.KEEP_FIRST.value,
     CalibrationDuplicateRecordPolicy.KEEP_LAST.value,
 )
-CLI_CALIBRATION_TICK_PRICE_POLICY_CHOICES: tuple[str, str, str, str] = (
+CLI_CALIBRATION_TICK_PRICE_POLICY_CHOICES: tuple[str, str] = (
     CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN.value,
-    CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN.value,
     CalibrationTickPriceInputPolicy.BID_ASK_MIDPOINT.value,
-    CalibrationTickPriceInputPolicy.CLOSE_PRICE_COLUMN.value,
 )
 CLI_CALIBRATION_OPTION_QUOTE_POLICY_CHOICES: tuple[str, str, str] = (
     CalibrationOptionQuoteInputPolicy.MID_PRICE_COLUMN.value,
