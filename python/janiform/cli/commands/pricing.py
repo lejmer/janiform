@@ -210,5 +210,3 @@ def _build_price_command(*, environment: Optional[Mapping[str, str]] = None) -> 
 
     return price
 
-
-__all__ = ["_build_price_command"]

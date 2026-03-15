@@ -1,3 +1,4 @@
+import ast
 from importlib import import_module
 from pathlib import Path
 
@@ -42,18 +43,58 @@ def test_cli_public_command_submodules_are_supported_domain_imports() -> None:
     cli_model_workflow_commands_module = import_module("janiform.cli.commands.model_workflows")
     cli_simulation_commands_module = import_module("janiform.cli.commands.simulation")
 
-    assert "_run_fit_command" in cli_commands_module.__all__
-    assert "_run_calibration_market_data_command" in cli_calibration_commands_module.__all__
-    assert "_run_deterministic_regression_command" in cli_development_commands_module.__all__
-    assert "_run_model_simulate_command" in cli_model_workflow_commands_module.__all__
-    assert "_run_simulation_seeded_ticks_command" in cli_simulation_commands_module.__all__
+    assert not hasattr(cli_commands_module, "_run_fit_command")
+    assert cli_calibration_commands_module.__all__ == []
+    assert cli_development_commands_module.__all__ == []
+    assert cli_model_workflow_commands_module.__all__ == []
     assert "run_coarse_simulation" in cli_simulation_commands_module.__all__
+    assert "run_seeded_tick_event_simulation" in cli_simulation_commands_module.__all__
 
 
 def test_cli_click_command_tree_helpers_remain_internal() -> None:
     cli_command_tree_module = import_module("janiform.cli.command_tree")
 
-    assert "_build_app" in cli_command_tree_module.__all__
+    assert not hasattr(cli_command_tree_module, "__all__")
+
+
+def test_python_package_all_exports_exclude_private_names() -> None:
+    python_root = REPOSITORY_ROOT / "python" / "janiform"
+
+    for module_path in sorted(python_root.rglob("*.py")):
+        module_tree = ast.parse(module_path.read_text(encoding="utf-8"))
+        module_exports: list[str] | None = None
+
+        for statement in module_tree.body:
+            if isinstance(statement, ast.Assign):
+                targets = statement.targets
+            elif isinstance(statement, ast.AnnAssign):
+                targets = [statement.target]
+            else:
+                continue
+
+            if not any(isinstance(target, ast.Name) and target.id == "__all__" for target in targets):
+                continue
+
+            try:
+                resolved_exports = ast.literal_eval(statement.value)
+            except Exception as error:  # pragma: no cover - test invariant fallback
+                raise AssertionError(f"Could not statically evaluate {module_path} __all__") from error
+
+            if not isinstance(resolved_exports, list):
+                raise AssertionError(f"{module_path} __all__ must be a list literal")
+
+            module_exports = resolved_exports
+            break
+
+        if module_exports is None:
+            continue
+
+        private_exports = [
+            export_name
+            for export_name in module_exports
+            if export_name.startswith("_") and not export_name.startswith("__")
+        ]
+        assert private_exports == [], f"{module_path} exports private names in __all__: {private_exports}"
 
 
 def test_simulation_public_symbols_live_in_simulation_module() -> None:

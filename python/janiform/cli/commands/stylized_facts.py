@@ -166,5 +166,3 @@ def _build_stylized_facts_group(*, environment: Optional[Mapping[str, str]] = No
 
     return stylized_facts
 
-
-__all__ = ["_run_stylized_facts_horizon_comparison_command"]

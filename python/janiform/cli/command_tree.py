@@ -110,9 +110,3 @@ def _rewrite_beginner_fit_arguments(arguments: list[str]) -> list[str]:
         arguments[1],
         *arguments[2:],
     ]
-
-
-__all__ = [
-    "_build_app",
-    "_invoke_application",
-]
