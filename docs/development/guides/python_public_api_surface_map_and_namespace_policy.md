@@ -323,6 +323,8 @@ pre-v0.1 line:
 - low-level native adapters and boundary plumbing, such as `janiform._native` and `janiform._native_api`
 
 Private modules must not be re-exported from `janiform` or from public module `__all__` lists.
+Underscore-prefixed symbols must not appear in any module `__all__` list unless they are
+double-underscore protocol names such as `__version__`.
 
 ## Contract evolution rules
 

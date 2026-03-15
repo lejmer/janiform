@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "87ca6aba5029031f66f36fdc8fdfb592a7b4ecf6f8b0bb9b91cc140d165008ca",
+  "approved_snapshot_sha256": "de73c4c3bdb4c6bd09a92d7fc59c2d79e53efeab0e6e00aefafd9de699809303",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -365,6 +365,17 @@
       "rationale": "Tick-price input policy now distinguishes only between an explicit single-price column and a derived bid-ask midpoint, so the approved Python and CLI contract snapshot must drop the arbitrary trade-price and close-price variants and reflect the simpler input and output schema model.",
       "snapshot_sha256": "87ca6aba5029031f66f36fdc8fdfb592a7b4ecf6f8b0bb9b91cc140d165008ca",
       "summary": "Approve the simplified explicit-price versus midpoint tick-price policy surface."
+    },
+    {
+      "approved_on": "2026-03-15",
+      "docs_updated": [
+        "docs/development/guides/cli_command_architecture_and_namespace_layout.md",
+        "docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "CLI helper modules remain importable ownership boundaries, but underscore-prefixed callbacks and utility helpers are internal implementation details rather than approved public exports, so the snapshot must stop treating those names as part of the supported Python contract.",
+      "snapshot_sha256": "de73c4c3bdb4c6bd09a92d7fc59c2d79e53efeab0e6e00aefafd9de699809303",
+      "summary": "Remove underscore-prefixed helper names from Python __all__ exports and the approved API snapshot."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_2",

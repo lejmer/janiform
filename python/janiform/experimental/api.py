@@ -11,4 +11,4 @@ from .._experimental import require_experimental_api_enabled
 require_experimental_api_enabled(__name__)
 
 
-__all__: list[str] = []
+__all__ = []

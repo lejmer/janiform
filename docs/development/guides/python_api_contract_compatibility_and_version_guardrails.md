@@ -18,6 +18,7 @@ For the guardrail snapshot, a breaking change is any change to the approved publ
 - the `__all__` export set of public package roots and public submodules listed in
   `docs/development/guides/python_public_api_surface_map_and_namespace_policy.md`
   including `janiform.cli` and its supported command and parsing submodules
+  - underscore-prefixed helper names are not public contract exports and must not appear in `__all__`
 - callable signatures for exported public functions
 - constructor-visible field signatures for exported contract models
   - underscore-prefixed runtime-only dataclass fields are excluded from the guardrail snapshot

@@ -370,7 +370,7 @@ def test_cli_error_output_uses_shared_error_contract(
 
     monkeypatch.setattr(cli_development_commands_module, "_load_json_document", broken_load_json_document)
 
-    exit_code = cli_module._run_open_closed_gap_leakage_regression_command(
+    exit_code = cli_development_commands_module._run_open_closed_gap_leakage_regression_command(
         cli_context=CliCommandContext(
             command_path=("dev", "regression", "open-closed-gap-leakage"),
             command_identifier=None,
@@ -418,7 +418,7 @@ def test_deterministic_regression_cli_error_output_uses_shared_error_contract(
     )
     monkeypatch.setattr(cli_development_commands_module, "_extract_calendar_cases", broken_extract_calendar_cases)
 
-    exit_code = cli_module._run_deterministic_regression_command(
+    exit_code = cli_development_commands_module._run_deterministic_regression_command(
         cli_context=CliCommandContext(
             command_path=("dev", "regression", "deterministic"),
             command_identifier=None,

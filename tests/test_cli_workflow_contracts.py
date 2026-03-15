@@ -11,6 +11,7 @@ import pytest
 import janiform.calibration as calibration_module
 import janiform.cli as cli_module
 import janiform.cli.commands.calibration as cli_calibration_commands_module
+import janiform.cli.paths as cli_paths_module
 import janiform.cli.commands.pricing as cli_pricing_commands_module
 import janiform.cli.commands.simulation as cli_simulation_commands_module
 import janiform.pricing as pricing_module
@@ -1777,11 +1778,11 @@ def test_calibration_cli_resolves_relative_disk_checkpoint_directory_from_reposi
     execution_input = build_valid_execution_input_model()
     relative_checkpoint_directory = Path("tmp") / "cli-checkpoints"
     repository_root = Path(cli_module.__file__).resolve().parents[3]
-    resolved_checkpoint_directory = cli_module._resolve_path_from_repository_root(
+    resolved_checkpoint_directory = cli_paths_module._resolve_path_from_repository_root(
         repository_root,
         relative_checkpoint_directory,
     )
-    normalized_execution_input = cli_module._override_calibration_execution_mode(
+    normalized_execution_input = cli_calibration_commands_module._override_calibration_execution_mode(
         execution_input=execution_input,
         execution_mode=CalibrationExecutionMode.DISK,
         disk_checkpoint_directory=resolved_checkpoint_directory,

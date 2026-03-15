@@ -175,7 +175,7 @@ def _build_price_command(*, environment: Optional[Mapping[str, str]] = None) -> 
             ),
             optional_path_option(
                 "--output-path",
-                help_text="Primary pricing output path. Default: ./janiform_runs/<run_id>/pricing.json.",
+                help_text="Primary pricing output path. Default: ./.janiform/<run_id>/pricing.json.",
             ),
             command_option(
                 "--include-transform-diagnostics",
@@ -210,5 +210,3 @@ def _build_price_command(*, environment: Optional[Mapping[str, str]] = None) -> 
 
     return price
 
-
-__all__ = ["_build_price_command"]

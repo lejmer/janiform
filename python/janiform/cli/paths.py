@@ -26,7 +26,5 @@ def _require_path_argument(
 
 
 __all__ = [
-    "_require_path_argument",
-    "_resolve_path_from_repository_root",
     "resolve_repository_root",
 ]

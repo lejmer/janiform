@@ -420,7 +420,7 @@ def _resolve_run_directory(
     output_dir: Optional[str | Path],
 ) -> Path:
     if output_dir is None:
-        return Path.cwd() / "janiform_runs" / run_id
+        return Path.cwd() / ".janiform" / run_id
 
     return Path(output_dir)
 
@@ -433,7 +433,7 @@ def _resolve_output_path(
     default_file_format: str,
 ) -> Path:
     if output_path is None:
-        run_directory = Path.cwd() / "janiform_runs" / run_id
+        run_directory = Path.cwd() / ".janiform" / run_id
         return run_directory / f"{default_stem}.{default_file_format}"
 
     resolved_output_path = Path(output_path)

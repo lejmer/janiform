@@ -198,19 +198,12 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
             "janiform.cli": [
                 "main",
             ],
-            "janiform.cli.commands.calibration": [
-                "_run_calibration_market_data_command",
-                "_run_calibration_staged_command",
-            ],
-            "janiform.cli.commands.development": [
-                "_run_deterministic_regression_command",
-            ],
-            "janiform.cli.commands.model_workflows": [
-                "_run_fit_command",
-                "_run_model_simulate_command",
-            ],
+            "janiform.cli.commands.calibration": [],
+            "janiform.cli.commands.development": [],
+            "janiform.cli.commands.model_workflows": [],
             "janiform.cli.commands.simulation": [
-                "_run_simulation_seeded_ticks_command",
+                "run_coarse_simulation",
+                "run_seeded_tick_event_simulation",
             ],
         }
     )
