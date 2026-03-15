@@ -199,10 +199,15 @@ where
         return Ok(Vec::new());
     }
 
-    let chunking_settings =
-        SufficientStatisticsStreamingChunkingSettings::try_new(slices_batch.len())
-            .expect("non-empty slices batch must produce a valid chunking setting");
+    let chunking_settings = SufficientStatisticsStreamingChunkingSettings::try_new(
+        slices_batch.len(),
+    )
+    .map_err(|source| {
+        SufficientStatisticsTransformSliceSamplingError::InvalidChunkingSettings { source }
+    })?;
+
     let mut sampled_statistics = Vec::with_capacity(slices_batch.len());
+
     stream_interval_statistics_from_transform_slices_with_randomness_factory_internal(
         seed,
         slices_batch,

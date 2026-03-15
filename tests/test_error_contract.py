@@ -4,6 +4,7 @@ from typing import Any, NoReturn
 
 import pytest
 
+import janiform.calendar as calendar_module
 import janiform.calibration as calibration_module
 import janiform.calibration.staged.runtime as calibration_staged_runtime_module
 import janiform.cli as cli_module
@@ -260,6 +261,23 @@ def test_pricing_run_maps_native_execution_failure_to_execution_error(
     assert captured_error.value.context == {"source_exception_type": "NativeExecutionError"}
 
 
+def test_pricing_run_does_not_raise_attribute_error_when_native_exception_type_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeNative:
+        @staticmethod
+        def run_vanilla_option_pricing(*args, **kwargs) -> str:
+            raise RuntimeError("native pricer failed")
+
+    monkeypatch.setattr(pricing_module, "native_module", lambda: FakeNative())
+
+    with pytest.raises(JaniformExecutionError) as captured_error:
+        run_vanilla_option_pricing(_valid_pricing_execution_input())
+
+    assert captured_error.value.error_id == "pricing.execution.run_failed"
+    assert captured_error.value.context == {"source_exception_type": "RuntimeError"}
+
+
 def test_pricing_run_maps_invalid_native_response_to_integration_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -361,14 +379,43 @@ def test_calibration_run_maps_invalid_native_response_to_integration_error(
     assert captured_error.value.context == {"source_error_id": "calibration.validation.contract"}
 
 
+def test_calendar_registry_resolve_does_not_mask_runtime_errors_when_native_exception_types_are_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeNativeRegistry:
+        @staticmethod
+        def resolve_market_state(exchange_code: str, timestamp_utc: str) -> str:
+            raise RuntimeError("native calendar failure")
+
+    class FakeNative:
+        @staticmethod
+        def CalendarRegistry(registry_json: str) -> FakeNativeRegistry:
+            return FakeNativeRegistry()
+
+    monkeypatch.setattr(calendar_module, "native_module", lambda: FakeNative())
+
+    registry = calendar_module.CalendarRegistry('{"schema_version":"calendar.registry.v1","exchanges":[]}')
+
+    with pytest.raises(RuntimeError, match="native calendar failure"):
+        registry.resolve_market_state("XNYS", START_TIME_UTC)
+
+
 def test_cli_error_output_uses_shared_error_contract(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    def broken_load_json_document(path: Any, context: Any) -> dict[str, Any]:
+    def broken_load_json_document_for_cli_field(
+        *,
+        context: str,
+        **_: Any,
+    ) -> dict[str, Any]:
         raise ValueError("gap behavior fixture must include list field `cases`")
 
-    monkeypatch.setattr(cli_development_commands_module, "_load_json_document", broken_load_json_document)
+    monkeypatch.setattr(
+        cli_development_commands_module,
+        "_load_json_document_for_cli_field",
+        broken_load_json_document_for_cli_field,
+    )
 
     exit_code = cli_development_commands_module._run_open_closed_gap_leakage_regression_command(
         cli_context=CliCommandContext(
@@ -397,7 +444,11 @@ def test_deterministic_regression_cli_error_output_uses_shared_error_contract(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    def broken_load_json_document(path: Any, context: Any) -> dict[str, Any]:
+    def broken_load_json_document_for_cli_field(
+        *,
+        context: str,
+        **_: Any,
+    ) -> dict[str, Any]:
         if context == "calendar registry":
             return {"schema_version": "calendar.registry.v1", "exchanges": []}
         if context == "calendar cases":
@@ -410,7 +461,11 @@ def test_deterministic_regression_cli_error_output_uses_shared_error_contract(
     def build_placeholder_calendar_registry(_: dict[str, Any]) -> Any:
         return object()
 
-    monkeypatch.setattr(cli_development_commands_module, "_load_json_document", broken_load_json_document)
+    monkeypatch.setattr(
+        cli_development_commands_module,
+        "_load_json_document_for_cli_field",
+        broken_load_json_document_for_cli_field,
+    )
     monkeypatch.setattr(
         cli_development_commands_module,
         "_build_calendar_registry_from_document",

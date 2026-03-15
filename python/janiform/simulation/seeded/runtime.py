@@ -18,7 +18,7 @@ from ..shared.errors import (
     _simulation_integration_error,
 )
 from ..._contracts import require_datetime_utc
-from ..._native_api import native_module
+from ..._native_api import native_exception_matches, native_module
 from ...calendar import (
     CalendarInvalidTimestampError,
     CalendarInvalidTimezoneError,
@@ -141,13 +141,14 @@ def run_seeded_tick_event_simulation(
             state_snapshot_capture=normalized_request.state_snapshot_capture.value,
         )
         native_runtime_seconds = perf_counter() - native_run_started
-    except native.SeasonalityInputValidationError as e:
-        raise _simulation_execution_error(
-            "native simulation rejected the normalized run request",
-            entrypoint="run_seeded_tick_event_simulation",
-            context={"source_category": "native_validation"},
-        ) from e
     except Exception as e:
+        if native_exception_matches(native, e, "SeasonalityInputValidationError"):
+            raise _simulation_execution_error(
+                "native simulation rejected the normalized run request",
+                entrypoint="run_seeded_tick_event_simulation",
+                context={"source_category": "native_validation"},
+            ) from e
+
         raise _simulation_execution_error(
             "seeded tick simulation failed during native execution",
             entrypoint="run_seeded_tick_event_simulation",

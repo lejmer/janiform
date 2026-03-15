@@ -46,7 +46,7 @@ from ..staged.inputs import (
 )
 from ..staged.request import StagedCalibrationRequest
 from ..._contracts import serialize_deterministic_json
-from ..._native_api import native_module
+from ..._native_api import native_exception_matches, native_module
 from ..._timestamps import datetime_to_utc_nanos
 from ...calendar import CalendarRegistry
 
@@ -463,13 +463,14 @@ def _preprocess_market_data_translation_inputs(
             preprocessing_request,
             calendar_registry._native_registry,
         )
-    except native.CalibrationExecutionError as e:
-        raise _translation_error(
-            "tick_data_source",
-            f"native market-data preprocessing failed: {e}",
-            context={"translation_step": "native_preprocessing"},
-        ) from e
     except Exception as e:
+        if native_exception_matches(native, e, "CalibrationExecutionError"):
+            raise _translation_error(
+                "tick_data_source",
+                f"native market-data preprocessing failed: {e}",
+                context={"translation_step": "native_preprocessing"},
+            ) from e
+
         raise _translation_error(
             "tick_data_source",
             f"native market-data preprocessing failed: {e}",

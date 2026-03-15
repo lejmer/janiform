@@ -21,7 +21,7 @@ from ._contracts import (
     validate_exact_string,
     validate_required_field_list,
 )
-from ._native_api import native_module
+from ._native_api import native_exception_matches, native_module
 from .calendar import (
     CalendarInvalidTimestampError,
     CalendarInvalidTimezoneError,
@@ -1259,13 +1259,14 @@ def run_vanilla_option_pricing(
         raw_run_result = native.run_vanilla_option_pricing(
             normalized_execution_input.to_payload()
         )
-    except native.PricingExecutionError as e:
-        raise _pricing_execution_error(
-            "vanilla option pricing failed during native execution",
-            entrypoint="run_vanilla_option_pricing",
-            context={"source_exception_type": type(e).__name__},
-        ) from e
     except Exception as e:
+        if native_exception_matches(native, e, "PricingExecutionError"):
+            raise _pricing_execution_error(
+                "vanilla option pricing failed during native execution",
+                entrypoint="run_vanilla_option_pricing",
+                context={"source_exception_type": type(e).__name__},
+            ) from e
+
         raise _pricing_execution_error(
             "vanilla option pricing failed during native execution",
             entrypoint="run_vanilla_option_pricing",

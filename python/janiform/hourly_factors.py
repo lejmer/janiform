@@ -6,7 +6,7 @@ import re
 from types import ModuleType
 from typing import Any, Optional, cast
 
-from ._native_api import native_module
+from ._native_api import native_module, remap_native_exception_by_type
 from .calendar import (
     CalendarInvalidTimestampError,
     CalendarInvalidTimezoneError,
@@ -134,6 +134,19 @@ class HourlyFactorProviderMissingInputError(HourlyFactorProviderError):
 
 class HourlyFactorProviderUnsupportedRangeError(HourlyFactorProviderError):
     """Raised when the requested range is unsupported by hourly interval rules."""
+
+
+_HOURLY_FACTOR_NATIVE_EXCEPTION_TYPES: dict[str, type[Exception]] = {
+    "SeasonalityInputValidationError": SeasonalityInputValidationError,
+    "CalendarMissingExchangeError": CalendarMissingExchangeError,
+    "CalendarInvalidTimezoneError": CalendarInvalidTimezoneError,
+    "CalendarTimestampParseError": CalendarInvalidTimestampError,
+}
+_HOURLY_FACTOR_PROVIDER_NATIVE_EXCEPTION_TYPES: dict[str, type[Exception]] = {
+    **_HOURLY_FACTOR_NATIVE_EXCEPTION_TYPES,
+    "HourlyFactorProviderMissingInputError": HourlyFactorProviderMissingInputError,
+    "HourlyFactorProviderUnsupportedRangeError": HourlyFactorProviderUnsupportedRangeError,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -787,18 +800,15 @@ def provide_hourly_factor_contract(
             seasonality_source=serialized_seasonality_source,
             news_intensity_source=serialized_news_intensity_source,
         )
-    except native.HourlyFactorProviderMissingInputError as e:
-        raise HourlyFactorProviderMissingInputError(str(e)) from e
-    except native.HourlyFactorProviderUnsupportedRangeError as e:
-        raise HourlyFactorProviderUnsupportedRangeError(str(e)) from e
-    except native.SeasonalityInputValidationError as e:
-        raise SeasonalityInputValidationError(str(e)) from e
-    except native.CalendarMissingExchangeError as e:
-        raise CalendarMissingExchangeError(str(e)) from e
-    except native.CalendarInvalidTimezoneError as e:
-        raise CalendarInvalidTimezoneError(str(e)) from e
-    except native.CalendarTimestampParseError as e:
-        raise CalendarInvalidTimestampError(str(e)) from e
+    except Exception as e:
+        mapped_error = remap_native_exception_by_type(
+            native,
+            e,
+            _HOURLY_FACTOR_PROVIDER_NATIVE_EXCEPTION_TYPES,
+        )
+        if mapped_error is not None:
+            raise mapped_error from e
+        raise
 
     return HourlyFactorContract(native_result)
 
@@ -841,14 +851,15 @@ def build_hourly_factor_contract(
             seasonality_materialization_method=seasonality_materialization_method,
             news_intensity_materialization_method=news_intensity_materialization_method,
         )
-    except native.SeasonalityInputValidationError as e:
-        raise SeasonalityInputValidationError(str(e)) from e
-    except native.CalendarMissingExchangeError as e:
-        raise CalendarMissingExchangeError(str(e)) from e
-    except native.CalendarInvalidTimezoneError as e:
-        raise CalendarInvalidTimezoneError(str(e)) from e
-    except native.CalendarTimestampParseError as e:
-        raise CalendarInvalidTimestampError(str(e)) from e
+    except Exception as e:
+        mapped_error = remap_native_exception_by_type(
+            native,
+            e,
+            _HOURLY_FACTOR_NATIVE_EXCEPTION_TYPES,
+        )
+        if mapped_error is not None:
+            raise mapped_error from e
+        raise
 
     return HourlyFactorContract(native_result)
 
@@ -972,14 +983,15 @@ def materialize_hourly_seasonality_factors(
             sparse_fallback_policy=settings.sparse_fallback_policy,
             sparse_hour_minimum_observation_count=settings.sparse_hour_minimum_observation_count,
         )
-    except native.SeasonalityInputValidationError as e:
-        raise SeasonalityInputValidationError(str(e)) from e
-    except native.CalendarMissingExchangeError as e:
-        raise CalendarMissingExchangeError(str(e)) from e
-    except native.CalendarInvalidTimezoneError as e:
-        raise CalendarInvalidTimezoneError(str(e)) from e
-    except native.CalendarTimestampParseError as e:
-        raise CalendarInvalidTimestampError(str(e)) from e
+    except Exception as e:
+        mapped_error = remap_native_exception_by_type(
+            native,
+            e,
+            _HOURLY_FACTOR_NATIVE_EXCEPTION_TYPES,
+        )
+        if mapped_error is not None:
+            raise mapped_error from e
+        raise
 
     return HourlySeasonalityMaterialization(native_result)
 
@@ -1101,14 +1113,15 @@ def materialize_hourly_news_intensity_factors(
                 surprise_deterministic_time_multiplier_by_interval_index
             ),
         )
-    except native.SeasonalityInputValidationError as e:
-        raise SeasonalityInputValidationError(str(e)) from e
-    except native.CalendarMissingExchangeError as e:
-        raise CalendarMissingExchangeError(str(e)) from e
-    except native.CalendarInvalidTimezoneError as e:
-        raise CalendarInvalidTimezoneError(str(e)) from e
-    except native.CalendarTimestampParseError as e:
-        raise CalendarInvalidTimestampError(str(e)) from e
+    except Exception as e:
+        mapped_error = remap_native_exception_by_type(
+            native,
+            e,
+            _HOURLY_FACTOR_NATIVE_EXCEPTION_TYPES,
+        )
+        if mapped_error is not None:
+            raise mapped_error from e
+        raise
 
     return HourlyNewsIntensityMaterialization(native_result)
 

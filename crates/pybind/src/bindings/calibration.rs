@@ -95,7 +95,11 @@ fn python_staged_calibration_report_to_py_object(
         ))
     })? {
         Value::Object(object) => object,
-        _ => unreachable!("staged calibration report should serialize to an object"),
+        _ => {
+            return Err(CalibrationExecutionError::new_err(
+                "failed to serialize staged calibration report: expected a JSON object",
+            ));
+        }
     };
 
     let flattened_stage_reports = report
@@ -133,7 +137,11 @@ fn flatten_stage_report_for_python(
 
     let mut flattened_report = match raw_report {
         Value::Object(object) => object,
-        _ => unreachable!("stage report should serialize to an object"),
+        _ => {
+            return Err(serde_json::Error::io(std::io::Error::other(
+                "stage report should serialize to a JSON object",
+            )));
+        }
     };
     flattened_report.insert(
         "stage_report_kind".to_string(),

@@ -1,5 +1,6 @@
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Optional
 
 import click
 
@@ -28,16 +29,17 @@ from .._constants import (
     CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
     CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
     CLI_SEASONALITY_INTRADAY_SMOOTHING_KERNEL_CHOICES,
+    CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_ENTRYPOINT,
+    CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID,
     CLI_SEASONALITY_SESSION_FILTER_CHOICES,
     CliExitCode,
     CliOutputMode,
 )
-from ..documents import _load_json_document
+from ..documents import _load_json_document_for_cli_field
 from ..errors import (
     _classify_seasonality_diagnostics_command_error,
     _classify_seasonality_preprocess_command_error,
 )
-from ..paths import _resolve_path_from_repository_root
 from ..rendering import (
     _render_seasonality_diagnostics_human_output,
     _render_seasonality_preprocess_timestamps_human_output,
@@ -68,24 +70,27 @@ def _run_seasonality_preprocess_timestamps_command(
     sparse_hour_event_threshold: int,
     **_,
 ) -> int:
-    event_records_path = _resolve_path_from_repository_root(
-        cli_context.repository_root,
-        event_records_json,
-    )
-    calendar_registry_path = _resolve_path_from_repository_root(
-        cli_context.repository_root,
-        calendar_registry_json,
-    )
-
-    file_field_path = "event_records_json"
     document_field_path = "event_records_document"
 
     try:
-        event_records_document = _load_json_document(event_records_path, "event records")
+        event_records_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=event_records_json,
+            context="event records",
+            field_path="event_records_json",
+            error_id=CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID,
+            entrypoint=CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_ENTRYPOINT,
+        )
         event_records = _extract_event_records(event_records_document)
-        file_field_path = "calendar_registry_json"
         document_field_path = "calendar_registry_document"
-        calendar_registry_document = _load_json_document(calendar_registry_path, "calendar registry")
+        calendar_registry_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=calendar_registry_json,
+            context="calendar registry",
+            field_path="calendar_registry_json",
+            error_id=CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID,
+            entrypoint=CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_ENTRYPOINT,
+        )
         calendar_registry = _build_calendar_registry_from_document(calendar_registry_document)
         document_field_path = "event_records_document"
         preprocessed_events = preprocess_timestamp_events(
@@ -102,7 +107,7 @@ def _run_seasonality_preprocess_timestamps_command(
         return _write_cli_error(
             _classify_seasonality_preprocess_command_error(
                 e,
-                file_field_path=file_field_path,
+                file_field_path="event_records_json",
                 document_field_path=document_field_path,
             )
         )
@@ -141,24 +146,27 @@ def _run_seasonality_diagnostics_command(
     estimator_version: str,
     **_,
 ) -> int:
-    event_records_path = _resolve_path_from_repository_root(
-        cli_context.repository_root,
-        event_records_json,
-    )
-    calendar_registry_path = _resolve_path_from_repository_root(
-        cli_context.repository_root,
-        calendar_registry_json,
-    )
-
-    file_field_path = "event_records_json"
     document_field_path = "event_records_document"
 
     try:
-        event_records_document = _load_json_document(event_records_path, "event records")
+        event_records_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=event_records_json,
+            context="event records",
+            field_path="event_records_json",
+            error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
+            entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
+        )
         event_records = _extract_event_records(event_records_document)
-        file_field_path = "calendar_registry_json"
         document_field_path = "calendar_registry_document"
-        calendar_registry_document = _load_json_document(calendar_registry_path, "calendar registry")
+        calendar_registry_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=calendar_registry_json,
+            context="calendar registry",
+            field_path="calendar_registry_json",
+            error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
+            entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
+        )
         calendar_registry = _build_calendar_registry_from_document(calendar_registry_document)
         document_field_path = "command_input"
         normalized_dataset_id = _require_non_empty_cli_string(
@@ -228,7 +236,7 @@ def _run_seasonality_diagnostics_command(
         return _write_cli_error(
             _classify_seasonality_diagnostics_command_error(
                 e,
-                file_field_path=file_field_path,
+                file_field_path="event_records_json",
                 document_field_path=document_field_path,
             )
         )
@@ -355,4 +363,3 @@ def _build_seasonality_group(*, environment: Optional[Mapping[str, str]] = None)
         )
 
     return seasonality
-

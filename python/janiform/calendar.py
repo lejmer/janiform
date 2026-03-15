@@ -6,7 +6,7 @@ from typing import Any
 
 import orjson
 
-from ._native_api import native_module
+from ._native_api import native_module, remap_native_exception_by_type
 
 
 class CalendarError(Exception):
@@ -50,8 +50,16 @@ class CalendarRegistry:
 
         try:
             native_registry: object = native.CalendarRegistry(registry_json)
-        except native.CalendarRegistryLoadError as e:
-            raise CalendarRegistryLoadError(str(e)) from e
+        except Exception as e:
+            mapped_error = remap_native_exception_by_type(
+                native,
+                e,
+                {"CalendarRegistryLoadError": CalendarRegistryLoadError},
+            )
+            if mapped_error is not None:
+                raise mapped_error from e
+
+            raise
 
         self._native_registry: object = native_registry
         self._native: ModuleType = native
@@ -64,12 +72,20 @@ class CalendarRegistry:
 
         try:
             state_value: str = self._native_registry.resolve_market_state(exchange_code, native_timestamp)
-        except self._native.CalendarMissingExchangeError as e:
-            raise CalendarMissingExchangeError(str(e)) from e
-        except self._native.CalendarInvalidTimezoneError as e:
-            raise CalendarInvalidTimezoneError(str(e)) from e
-        except self._native.CalendarTimestampParseError as e:
-            raise CalendarInvalidTimestampError(str(e)) from e
+        except Exception as e:
+            mapped_error = remap_native_exception_by_type(
+                self._native,
+                e,
+                {
+                    "CalendarMissingExchangeError": CalendarMissingExchangeError,
+                    "CalendarInvalidTimezoneError": CalendarInvalidTimezoneError,
+                    "CalendarTimestampParseError": CalendarInvalidTimestampError,
+                },
+            )
+            if mapped_error is not None:
+                raise mapped_error from e
+
+            raise
 
         match state_value:
             case MarketState.OPEN.value:
