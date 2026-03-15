@@ -139,6 +139,8 @@ class JaniformSimulationResult:
     diagnostics: dict[str, Any]
     raw_result: CoarseSimulationPath | SeededTickSimulationResponse = field(repr=False)
     _preferences: Optional[Any] = field(repr=False, default=None)
+    _calendar_registry: Optional[CalendarRegistry] = field(init=False, repr=False, default=None)
+    _exchange_code: Optional[str] = field(init=False, repr=False, default=None)
     _rows_cache: Optional[list[dict[str, Any]]] = field(init=False, repr=False, default=None)
 
     def to_pandas(self) -> Any:
@@ -184,6 +186,8 @@ class JaniformSimulationResult:
             simulation_result=cast(CoarseSimulationPath, self.raw_result),
             output_path=output_path,
             preferences=cast(Any, self._preferences),
+            calendar_registry=self._calendar_registry,
+            exchange_code=self._exchange_code,
         )
 
     def _rows(self) -> list[dict[str, Any]]:
@@ -207,6 +211,8 @@ class JaniformSimulationResult:
                 output_path=Path("simulation.parquet"),
                 preferences=cast(Any, self._preferences),
                 sink=sink,
+                calendar_registry=self._calendar_registry,
+                exchange_code=self._exchange_code,
             )
 
         self._rows_cache = sink.rows
@@ -495,7 +501,7 @@ def _build_high_level_simulation_result(
             _preferences=preferences,
         )
 
-    return JaniformSimulationResult(
+    result = JaniformSimulationResult(
         simulation_kind="coarse_interval",
         metadata=simulation_result.output_schema_metadata.to_payload(),
         provenance={
@@ -507,6 +513,9 @@ def _build_high_level_simulation_result(
         raw_result=simulation_result,
         _preferences=preferences,
     )
+    result._calendar_registry = CalendarRegistry(model.session_resolution.resolved_session_definition_json)
+    result._exchange_code = model.session_resolution.exchange_code
+    return result
 
 
 def _prepare_model_simulation_inputs(

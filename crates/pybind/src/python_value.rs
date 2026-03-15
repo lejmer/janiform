@@ -68,9 +68,10 @@ pub(crate) fn py_any_to_json_value(value: &Bound<'_, PyAny>) -> PyResult<Value> 
 pub(crate) fn json_value_to_py_object(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
     match value {
         Value::Null => Ok(py.None()),
-        Value::Bool(boolean_value) => {
-            Ok(PyBool::new(py, *boolean_value).to_owned().into_any().unbind())
-        }
+        Value::Bool(boolean_value) => Ok(PyBool::new(py, *boolean_value)
+            .to_owned()
+            .into_any()
+            .unbind()),
         Value::Number(number_value) => {
             if let Some(integer_value) = number_value.as_i64() {
                 Ok(integer_value.into_pyobject(py)?.into_any().unbind())

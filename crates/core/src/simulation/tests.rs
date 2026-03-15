@@ -41,13 +41,13 @@ use crate::simulation::{
     SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY,
     SEEDED_TICK_EVENT_STATE_SNAPSHOT_SCHEMA_VERSION,
     SEEDED_TICK_EVENT_TAPE_METADATA_SCHEMA_VERSION,
-    SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY, SeededTickEventDebugTraceTransitionKind,
-    SeededTickEventSide, SeededTickEventStateSnapshotCapture,
-    SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
-    SeededTickSimulationNewsEventMarketState, SeededTickSimulationRunConfig,
-    SeededTickSimulationRunError, SeededTickSimulationRunOptions, run_seeded_tick_event_simulation,
-    run_seeded_tick_event_simulation_with_randomness_factory, sample_nig_trading_time_increment,
-    sample_nig_trading_time_increment_with_edge_mode,
+    SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY, SeededFinePathTransitionKind,
+    SeededTickEventDebugTraceTransitionKind, SeededTickEventSide,
+    SeededTickEventStateSnapshotCapture, SeededTickSimulationDebugTraceOptions,
+    SeededTickSimulationModelInputs, SeededTickSimulationNewsEventMarketState,
+    SeededTickSimulationRunConfig, SeededTickSimulationRunError, SeededTickSimulationRunOptions,
+    run_seeded_tick_event_simulation, run_seeded_tick_event_simulation_with_randomness_factory,
+    sample_nig_trading_time_increment, sample_nig_trading_time_increment_with_edge_mode,
 };
 
 const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
@@ -692,6 +692,92 @@ fn seeded_simulation_suppresses_endogenous_events_while_market_is_closed() {
             .expect("closed-market run should complete");
 
     assert_eq!(run_result.event_count(), 0);
+}
+
+#[test]
+fn seeded_simulation_suppresses_surprise_news_while_market_is_closed() {
+    let mut model_inputs = one_interval_closed_market_model_inputs();
+    model_inputs.hourly_factor_contract.nu_h = vec![1.0];
+
+    let run_config = SeededTickSimulationRunConfig::try_new(
+        8_016,
+        DateTime::<Utc>::from_timestamp_nanos(1_705_928_400_000_000_000),
+        1,
+        model_inputs,
+        Some(SeededTickSimulationRunOptions {
+            debug_trace_enabled: true,
+            debug_trace_options: SeededTickSimulationDebugTraceOptions {
+                sample_every_nth_transition: 1,
+                max_records_per_chunk: 8,
+            },
+            state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
+        }),
+    )
+    .expect("closed-market surprise-news run config should initialize");
+
+    let scripted_factory = ScriptedRandomnessFactory::new(
+        vec![1.0],
+        vec![1.0],
+        vec![],
+        vec![],
+        vec![0.0],
+        vec![0.25],
+        vec![],
+        vec![],
+    );
+
+    let run_result =
+        run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
+            .expect("closed-market surprise-news run should complete");
+
+    let trace_records = run_result
+        .debug_trace_output
+        .as_ref()
+        .expect("debug trace output should exist")
+        .trace_chunks
+        .iter()
+        .flat_map(|trace_chunk| trace_chunk.records.iter())
+        .collect::<Vec<_>>();
+
+    assert_eq!(run_result.event_count(), 0);
+    assert_eq!(
+        run_result
+            .fine_path
+            .iter()
+            .filter(|record| {
+                record.transition_kind == SeededFinePathTransitionKind::ExogenousNews
+            })
+            .count(),
+        0
+    );
+    assert_eq!(
+        trace_records
+            .iter()
+            .filter(|trace_record| {
+                trace_record.transition_kind
+                    == SeededTickEventDebugTraceTransitionKind::ExogenousNews
+            })
+            .count(),
+        0
+    );
+    assert_float_close(
+        run_result
+            .news_routing_totals
+            .cumulative_activity_coupling_j_t_increment,
+        0.0,
+    );
+    assert_float_close(
+        run_result
+            .news_routing_totals
+            .cumulative_open_window_return_jump_m_t_increment,
+        0.0,
+    );
+    assert_float_close(
+        run_result
+            .news_routing_totals
+            .cumulative_closed_window_gap_g_t_increment,
+        0.0,
+    );
 }
 
 #[test]

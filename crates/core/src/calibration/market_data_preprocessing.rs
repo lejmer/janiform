@@ -1425,9 +1425,8 @@ mod tests {
         resolve_market_state_and_session_window,
     };
     use crate::calendar::{
-        CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, MarketState,
-        ExchangeCalendarDefinition,
-        RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
+        CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarDefinition,
+        MarketState, RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
     };
 
     #[test]
@@ -1468,7 +1467,8 @@ mod tests {
         )
         .expect("24:00 close boundary should resolve through preprocessing");
 
-        let session_window = session_window.expect("open timestamp should resolve a session window");
+        let session_window =
+            session_window.expect("open timestamp should resolve a session window");
         assert_eq!(market_state, MarketState::Open);
         assert_eq!(
             session_window.close_utc_nanos,

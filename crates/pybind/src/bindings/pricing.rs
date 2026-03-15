@@ -6,8 +6,8 @@ use pyo3::prelude::*;
 use pyo3::types::PyAny;
 use pyo3::types::PyModule;
 
-use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
 use crate::PricingExecutionError;
+use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
 
 #[pyfunction]
 fn run_vanilla_option_pricing(
@@ -28,8 +28,7 @@ fn run_vanilla_option_pricing(
         PricingExecutionError::new_err(format!(
             "failed to serialize vanilla option pricing run result: {source}"
         ))
-    })
-    ?;
+    })?;
 
     json_value_to_py_object(py, &serialized_run_result)
 }
