@@ -297,6 +297,9 @@ pub fn preprocess_market_data_translation_request(
     let (return_components_candidate_generation_input, material_close_open_gap_count) =
         if request.require_return_components {
             let output = build_return_components_candidate_generation_input(
+                definition,
+                timezone,
+                request.exchange_code.as_str(),
                 tick_summary.open_price_ticks.as_slice(),
                 tick_summary.open_signed_tick_count,
                 tick_summary.open_session_sell_tick_count,
@@ -708,6 +711,9 @@ fn build_hawkes_candidate_inputs(
 }
 
 fn build_return_components_candidate_generation_input(
+    definition: &ExchangeCalendarDefinition,
+    timezone: Tz,
+    exchange_code: &str,
     open_price_ticks: &[OpenTickRecord],
     open_signed_tick_count: usize,
     open_session_sell_tick_count: usize,
@@ -735,9 +741,12 @@ fn build_return_components_candidate_generation_input(
         open_price_tick_timestamps.as_slice(),
     );
     let close_open_boundary_observations = derive_close_open_boundary_observations(
+        definition,
+        timezone,
+        exchange_code,
         open_price_ticks,
         open_price_tick_timestamps.as_slice(),
-    );
+    )?;
 
     let known_news_return_samples = derive_known_news_return_samples(
         retained_known_news,
@@ -807,9 +816,15 @@ fn build_return_components_candidate_generation_input(
 }
 
 fn derive_close_open_boundary_observations(
+    definition: &ExchangeCalendarDefinition,
+    timezone: Tz,
+    exchange_code: &str,
     open_price_ticks: &[OpenTickRecord],
     open_price_tick_timestamps: &[i64],
-) -> Vec<CalibrationReturnComponentsObservedCloseOpenBoundaryObservation> {
+) -> Result<
+    Vec<CalibrationReturnComponentsObservedCloseOpenBoundaryObservation>,
+    MarketDataTranslationPreprocessingError,
+> {
     let mut observations_by_boundary: BTreeMap<
         (i64, i64),
         CalibrationReturnComponentsObservedCloseOpenBoundaryObservation,
@@ -825,7 +840,16 @@ fn derive_close_open_boundary_observations(
         }
 
         let close_timestamp_utc_nanos = previous_tick.session_close_utc_nanos;
-        let open_timestamp_utc_nanos = current_tick.session_open_utc_nanos;
+        let Some(open_timestamp_utc_nanos) = first_open_boundary_after_close(
+            definition,
+            timezone,
+            exchange_code,
+            close_timestamp_utc_nanos,
+            current_tick.timestamp_utc_nanos,
+        )?
+        else {
+            continue;
+        };
         if open_timestamp_utc_nanos <= close_timestamp_utc_nanos {
             continue;
         }
@@ -845,7 +869,95 @@ fn derive_close_open_boundary_observations(
         );
     }
 
-    observations_by_boundary.into_values().collect()
+    Ok(observations_by_boundary.into_values().collect())
+}
+
+fn first_open_boundary_after_close(
+    definition: &ExchangeCalendarDefinition,
+    timezone: Tz,
+    exchange_code: &str,
+    close_timestamp_utc_nanos: i64,
+    upper_bound_timestamp_utc_nanos: i64,
+) -> Result<Option<i64>, MarketDataTranslationPreprocessingError> {
+    if upper_bound_timestamp_utc_nanos <= close_timestamp_utc_nanos {
+        return Ok(None);
+    }
+
+    let search_start_timestamp = datetime_from_nanos(
+        close_timestamp_utc_nanos.saturating_add(1),
+        MarketDataTranslationPreprocessingError::InvalidSessionBoundary {
+            exchange_code: exchange_code.to_string(),
+            timestamp_utc_nanos: close_timestamp_utc_nanos.saturating_add(1),
+        },
+    )?;
+    let search_end_timestamp = datetime_from_nanos(
+        upper_bound_timestamp_utc_nanos,
+        MarketDataTranslationPreprocessingError::InvalidSessionBoundary {
+            exchange_code: exchange_code.to_string(),
+            timestamp_utc_nanos: upper_bound_timestamp_utc_nanos,
+        },
+    )?;
+
+    let mut current_local_date =
+        CalendarDate::from_local_timestamp(&search_start_timestamp.with_timezone(&timezone));
+    let final_local_date =
+        CalendarDate::from_local_timestamp(&search_end_timestamp.with_timezone(&timezone));
+
+    loop {
+        let local_weekday = TradingWeekday::from_chrono_weekday(
+            NaiveDate::from_ymd_opt(
+                current_local_date.year,
+                current_local_date.month as u32,
+                current_local_date.day as u32,
+            )
+            .expect("calendar date produced from timestamp should be valid")
+            .weekday(),
+        );
+        let session_windows =
+            session_windows_for_local_date(definition, current_local_date, local_weekday);
+
+        for session_window in session_windows {
+            let session_window_utc = build_session_window_utc(
+                timezone,
+                exchange_code,
+                current_local_date,
+                session_window,
+            )?;
+            if session_window_utc.open_utc_nanos <= close_timestamp_utc_nanos {
+                continue;
+            }
+            if session_window_utc.open_utc_nanos > upper_bound_timestamp_utc_nanos {
+                return Ok(None);
+            }
+
+            return Ok(Some(session_window_utc.open_utc_nanos));
+        }
+
+        if current_local_date == final_local_date {
+            break;
+        }
+
+        let next_date = NaiveDate::from_ymd_opt(
+            current_local_date.year,
+            current_local_date.month as u32,
+            current_local_date.day as u32,
+        )
+        .and_then(|date| date.succ_opt())
+        .ok_or_else(|| {
+            MarketDataTranslationPreprocessingError::InvalidSessionBoundary {
+                exchange_code: exchange_code.to_string(),
+                timestamp_utc_nanos: upper_bound_timestamp_utc_nanos,
+            }
+        })?;
+
+        current_local_date = CalendarDate {
+            year: next_date.year(),
+            month: next_date.month() as u8,
+            day: next_date.day() as u8,
+        };
+    }
+
+    Ok(None)
 }
 
 fn derive_known_news_return_samples(
@@ -1287,19 +1399,7 @@ fn resolve_market_state_and_session_window(
         return Ok((MarketState::Closed, None));
     }
 
-    let session_windows = if let Some(early_close_windows) =
-        definition.early_close_sessions_by_date.get(&local_date)
-    {
-        early_close_windows.as_ref()
-    } else if let Some(regular_session) = definition
-        .regular_sessions
-        .iter()
-        .find(|regular_session| regular_session.weekday == local_weekday)
-    {
-        regular_session.windows()
-    } else {
-        &[]
-    };
+    let session_windows = session_windows_for_local_date(definition, local_date, local_weekday);
 
     let Some(session_window) = session_windows
         .iter()
@@ -1317,6 +1417,30 @@ fn resolve_market_state_and_session_window(
             session_window,
         )?),
     ))
+}
+
+fn session_windows_for_local_date(
+    definition: &ExchangeCalendarDefinition,
+    local_date: CalendarDate,
+    local_weekday: TradingWeekday,
+) -> &[SessionWindowDefinition] {
+    if definition.holiday_dates.contains(&local_date) {
+        return &[];
+    }
+
+    if let Some(early_close_windows) = definition.early_close_sessions_by_date.get(&local_date) {
+        return early_close_windows.as_ref();
+    }
+
+    if let Some(regular_session) = definition
+        .regular_sessions
+        .iter()
+        .find(|regular_session| regular_session.weekday == local_weekday)
+    {
+        return regular_session.windows();
+    }
+
+    &[]
 }
 
 fn build_session_window_utc(
@@ -1484,6 +1608,7 @@ mod tests {
 
     #[test]
     fn full_day_adjacent_sessions_do_not_emit_zero_width_close_open_boundaries() {
+        let definition = fx_spot_weekend_definition();
         let open_price_ticks = vec![
             OpenTickRecord {
                 timestamp_utc_nanos: chrono_tz::UTC
@@ -1536,17 +1661,153 @@ mod tests {
         ];
 
         let observations = derive_close_open_boundary_observations(
+            &definition,
+            chrono_tz::UTC,
+            "FXSPOT",
             open_price_ticks.as_slice(),
             &open_price_ticks
                 .iter()
                 .map(|tick| tick.timestamp_utc_nanos)
                 .collect::<Vec<_>>(),
-        );
+        )
+        .expect("adjacent sessions should resolve without boundary errors");
 
         assert!(
             observations.is_empty(),
             "adjacent full-day sessions should not emit zero-width close-open boundaries"
         );
+    }
+
+    #[test]
+    fn fxspot_weekend_gap_uses_sunday_reopen_even_when_first_tick_arrives_monday() {
+        let definition = fx_spot_weekend_definition();
+        let open_price_ticks = vec![
+            OpenTickRecord {
+                timestamp_utc_nanos: chrono_tz::UTC
+                    .with_ymd_and_hms(2026, 3, 20, 18, 30, 0)
+                    .single()
+                    .expect("fixture timestamp should be valid")
+                    .with_timezone(&Utc)
+                    .timestamp_nanos_opt()
+                    .expect("fixture timestamp should fit in nanos"),
+                price: 1.01268,
+                session_open_utc_nanos: chrono_tz::UTC
+                    .with_ymd_and_hms(2026, 3, 20, 0, 0, 0)
+                    .single()
+                    .expect("fixture timestamp should be valid")
+                    .with_timezone(&Utc)
+                    .timestamp_nanos_opt()
+                    .expect("fixture timestamp should fit in nanos"),
+                session_close_utc_nanos: chrono_tz::UTC
+                    .with_ymd_and_hms(2026, 3, 20, 19, 0, 0)
+                    .single()
+                    .expect("fixture timestamp should be valid")
+                    .with_timezone(&Utc)
+                    .timestamp_nanos_opt()
+                    .expect("fixture timestamp should fit in nanos"),
+            },
+            OpenTickRecord {
+                timestamp_utc_nanos: chrono_tz::UTC
+                    .with_ymd_and_hms(2026, 3, 23, 0, 0, 0)
+                    .single()
+                    .expect("fixture timestamp should be valid")
+                    .with_timezone(&Utc)
+                    .timestamp_nanos_opt()
+                    .expect("fixture timestamp should fit in nanos"),
+                price: 1.0113,
+                session_open_utc_nanos: chrono_tz::UTC
+                    .with_ymd_and_hms(2026, 3, 23, 0, 0, 0)
+                    .single()
+                    .expect("fixture timestamp should be valid")
+                    .with_timezone(&Utc)
+                    .timestamp_nanos_opt()
+                    .expect("fixture timestamp should fit in nanos"),
+                session_close_utc_nanos: chrono_tz::UTC
+                    .with_ymd_and_hms(2026, 3, 24, 0, 0, 0)
+                    .single()
+                    .expect("fixture timestamp should be valid")
+                    .with_timezone(&Utc)
+                    .timestamp_nanos_opt()
+                    .expect("fixture timestamp should fit in nanos"),
+            },
+        ];
+
+        let observations = derive_close_open_boundary_observations(
+            &definition,
+            chrono_tz::UTC,
+            "FXSPOT",
+            open_price_ticks.as_slice(),
+            &open_price_ticks
+                .iter()
+                .map(|tick| tick.timestamp_utc_nanos)
+                .collect::<Vec<_>>(),
+        )
+        .expect("weekend reopen boundary should resolve through the calendar");
+
+        assert_eq!(observations.len(), 1);
+        assert_eq!(
+            observations[0].close_timestamp_utc_nanos,
+            chrono_tz::UTC
+                .with_ymd_and_hms(2026, 3, 20, 19, 0, 0)
+                .single()
+                .expect("fixture timestamp should be valid")
+                .with_timezone(&Utc)
+                .timestamp_nanos_opt()
+                .expect("fixture timestamp should fit in nanos"),
+        );
+        assert_eq!(
+            observations[0].open_timestamp_utc_nanos,
+            chrono_tz::UTC
+                .with_ymd_and_hms(2026, 3, 22, 21, 0, 0)
+                .single()
+                .expect("fixture timestamp should be valid")
+                .with_timezone(&Utc)
+                .timestamp_nanos_opt()
+                .expect("fixture timestamp should fit in nanos"),
+        );
+        assert_eq!(observations[0].open_price, 1.0113);
+    }
+
+    fn fx_spot_weekend_definition() -> ExchangeCalendarDefinition {
+        ExchangeCalendarDefinition::from_artifact(ExchangeCalendarArtifact {
+            schema_version: "calendar.v1".to_string(),
+            exchange_code: "FXSPOT".to_string(),
+            exchange_name: "OTC FX Spot".to_string(),
+            timezone_name: Some("UTC".to_string()),
+            rule_metadata: CalendarRuleMetadataArtifact {
+                holiday_calendar_code: "FX_24_5".to_string(),
+                early_close_rule_set: None,
+            },
+            regular_sessions: vec![
+                RegularSessionArtifact {
+                    weekday: TradingWeekday::Friday,
+                    windows: vec![SessionWindowArtifact {
+                        label: "spot".to_string(),
+                        open_time: "00:00".to_string(),
+                        close_time: "19:00".to_string(),
+                    }],
+                },
+                RegularSessionArtifact {
+                    weekday: TradingWeekday::Sunday,
+                    windows: vec![SessionWindowArtifact {
+                        label: "spot".to_string(),
+                        open_time: "21:00".to_string(),
+                        close_time: "24:00".to_string(),
+                    }],
+                },
+                RegularSessionArtifact {
+                    weekday: TradingWeekday::Monday,
+                    windows: vec![SessionWindowArtifact {
+                        label: "spot".to_string(),
+                        open_time: "00:00".to_string(),
+                        close_time: "24:00".to_string(),
+                    }],
+                },
+            ],
+            holiday_dates: vec![],
+            early_close_sessions: vec![],
+        })
+        .expect("fixture calendar should be valid")
     }
 }
 
