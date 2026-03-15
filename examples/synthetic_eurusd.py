@@ -13,7 +13,7 @@ from janiform.calibration import (
 
 
 DATA_PATH: Final[Path] = (
-    Path(__file__).resolve().parents[1] / "data" / "EURUSD_2023_03_21_19_00_00_to_2023_03_28_18_59_59.csv"
+    Path(__file__).resolve().parents[1] / "data" / "Synthetic_EURUSD_Data_1M_ticks.parquet"
 )
 SIMULATION_START_UTC: Final[datetime] = datetime(2023, 3, 28, 19, 0, tzinfo=UTC)
 COARSE_INTERVAL: Final[str] = "15min"
@@ -49,7 +49,7 @@ def main() -> None:
         color="tab:blue",
         linewidth=1.5,
     )
-    axes[0].set_title("eurusd coarse simulation (15 minute intervals)")
+    axes[0].set_title("synthetic eurusd coarse simulation (15 minute intervals)")
     axes[0].set_ylabel(PRICE_COLUMN)
     axes[0].grid(True, alpha=0.3)
 
@@ -59,7 +59,7 @@ def main() -> None:
         color="tab:orange",
         linewidth=1.0,
     )
-    axes[1].set_title("eurusd seeded tick simulation")
+    axes[1].set_title("synthetic eurusd seeded tick simulation")
     axes[1].set_xlabel("timestamp")
     axes[1].set_ylabel(PRICE_COLUMN)
     axes[1].grid(True, alpha=0.3)
