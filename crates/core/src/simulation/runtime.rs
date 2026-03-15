@@ -988,6 +988,19 @@ where
             &mut news_timestamp_stream,
         );
 
+        if resolve_news_event_market_state(
+            &run_config.model_inputs.calendar_registry,
+            run_config
+                .model_inputs
+                .hourly_factor_contract
+                .exchange_code
+                .as_str(),
+            timestamp_utc_nanos,
+        )? != MarketState::Open
+        {
+            continue;
+        }
+
         event_inputs.push(
             build_timestamped_news_event_input(
                 &mark_pipeline,

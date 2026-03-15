@@ -3,9 +3,9 @@ use super::{
     ExchangeCalendarDefinition, ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact,
     ExchangeCalendarRegistryLoadError, ExchangeCalendarRegistryLoader,
     ExchangeCalendarRegistryLookupError, ExchangeCalendarResolveError,
-    ExchangeCalendarValidationError, MarketState, RegularSessionArtifact,
-    SessionWindowArtifact, TimestampEventInputRecord, TimestampEventPreprocessingError,
-    TimestampEventSessionFilter, TradingWeekday,
+    ExchangeCalendarValidationError, MarketState, RegularSessionArtifact, SessionWindowArtifact,
+    TimestampEventInputRecord, TimestampEventPreprocessingError, TimestampEventSessionFilter,
+    TradingWeekday,
 };
 use crate::calendar::definition::resolve_market_state_for_definition_at_utc;
 use chrono::{DateTime, TimeZone, Utc};
@@ -181,19 +181,11 @@ fn full_day_window_accepts_24_00_close_and_treats_it_as_exclusive_end_of_day() {
     let tuesday_boundary = timestamp_utc(2026, 2, 3, 0, 0, 0);
 
     assert_eq!(
-        resolve_market_state_for_definition_at_utc(
-            &definition,
-            chrono_tz::UTC,
-            monday_late,
-        ),
+        resolve_market_state_for_definition_at_utc(&definition, chrono_tz::UTC, monday_late),
         MarketState::Open
     );
     assert_eq!(
-        resolve_market_state_for_definition_at_utc(
-            &definition,
-            chrono_tz::UTC,
-            tuesday_boundary,
-        ),
+        resolve_market_state_for_definition_at_utc(&definition, chrono_tz::UTC, tuesday_boundary),
         MarketState::Closed
     );
 }

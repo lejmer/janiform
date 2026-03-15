@@ -1,34 +1,38 @@
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Final
 
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from janiform.calibration import JaniformEstimator
+from janiform.calibration import (
+    JaniformEstimator,
+    JaniformModel,
+    JaniformSimulationResult,
+)
 
 
-DATA_PATH = (
+DATA_PATH: Final[Path] = (
     Path(__file__).resolve().parents[1] / "data" / "EURUSD_2023_03_21_19_00_00_to_2023_03_28_18_59_59.csv"
 )
-SIMULATION_START_UTC = datetime(2023, 3, 28, 19, 0, tzinfo=UTC)
-COARSE_INTERVAL = "15min"
-COARSE_INTERVAL_COUNT = 96
-SEEDED_TICKS_HOURS = 24
-TIMESTAMP_COLUMN = "time"
-PRICE_COLUMN = "close"
+SIMULATION_START_UTC: Final[datetime] = datetime(2023, 3, 28, 19, 0, tzinfo=UTC)
+COARSE_INTERVAL: Final[str] = "15min"
+COARSE_INTERVAL_COUNT: Final[int] = 96 * 7
+SEEDED_TICKS_HOURS: Final[int] = 24 * 7
+TIMESTAMP_COLUMN: Final[str] = "time"
+PRICE_COLUMN: Final[str] = "close"
 
 
 def main() -> None:
     estimator = JaniformEstimator(market_profile="eurusd_spot")
-    model = estimator.fit(tick_data_path=DATA_PATH)
-
-    coarse_simulation = model.simulate(
+    model: JaniformModel = estimator.fit(tick_data_path=DATA_PATH)
+    coarse_simulation: JaniformSimulationResult = model.simulate(
         seed=17,
         start_time_utc=SIMULATION_START_UTC,
         horizon_interval_count=COARSE_INTERVAL_COUNT,
         interval=COARSE_INTERVAL,
     )
-    seeded_simulation = model.simulate(
+    seeded_simulation: JaniformSimulationResult = model.simulate(
         seed=17,
         start_time_utc=SIMULATION_START_UTC,
         horizon_interval_count=SEEDED_TICKS_HOURS,

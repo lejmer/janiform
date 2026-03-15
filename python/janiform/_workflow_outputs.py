@@ -10,6 +10,7 @@ from pyarrow import parquet as pyarrow_parquet
 
 from ._contracts import serialize_pretty_json
 from .calibration.fit.report import JaniformFitReport
+from .calendar import CalendarRegistry, MarketState
 from .pricing import VanillaOptionPricingRunResult
 from .simulation import CoarseSimulationPath, SeededTickSimulationResponse
 
@@ -177,6 +178,8 @@ def write_simulation_artifacts(
             simulation_result=simulation_result,
             output_path=paths.primary_output_path,
             preferences=preferences,
+            calendar_registry=CalendarRegistry(model.session_resolution.resolved_session_definition_json),
+            exchange_code=model.session_resolution.exchange_code,
         )
         report_payload = build_simulation_report_payload(
             simulation_kind="coarse_interval",
@@ -303,8 +306,13 @@ def persist_coarse_simulation(
     output_path: str | Path,
     preferences: SimulationOutputPreferences,
     sink: Optional[SimulationArtifactSink] = None,
+    calendar_registry: Optional[CalendarRegistry] = None,
+    exchange_code: Optional[str] = None,
 ) -> None:
     resolved_output_path = Path(output_path)
+
+    if (calendar_registry is None) != (exchange_code is None):
+        raise ValueError("calendar_registry and exchange_code must be provided together")
 
     effective_sink = sink or _build_simulation_sink(
         output_path=resolved_output_path,
@@ -316,6 +324,13 @@ def persist_coarse_simulation(
         cumulative_log_return = 0.0
         for record in simulation_result.records:
             cumulative_log_return += record.return_components.total_return
+            if not _coarse_interval_is_open(
+                interval_start_utc_nanos=record.interval_start_utc_nanos,
+                calendar_registry=calendar_registry,
+                exchange_code=exchange_code,
+            ):
+                continue
+
             record_batch.append(
                 _seeded_tick_output_row(
                     timestamp_value=_convert_timestamp_for_output(
@@ -485,13 +500,35 @@ def _convert_timestamp_for_output(
     timezone_name: str,
     output_path: Path,
 ) -> datetime | str:
-    seconds, nanos_remainder = divmod(timestamp_utc_nanos, 1_000_000_000)
-    timestamp_utc = datetime.fromtimestamp(seconds, tz=UTC) + timedelta(microseconds=nanos_remainder / 1000.0)
+    timestamp_utc = _datetime_from_utc_nanos(timestamp_utc_nanos)
     normalized_timestamp = timestamp_utc.astimezone(_zoneinfo(timezone_name))
     if output_path.suffix.lower() == ".csv":
         return normalized_timestamp.isoformat().replace("+00:00", "Z")
 
     return normalized_timestamp
+
+
+def _coarse_interval_is_open(
+    *,
+    interval_start_utc_nanos: int,
+    calendar_registry: Optional[CalendarRegistry],
+    exchange_code: Optional[str],
+) -> bool:
+    if calendar_registry is None:
+        return True
+
+    return (
+        calendar_registry.resolve_market_state(
+            cast(str, exchange_code),
+            _datetime_from_utc_nanos(interval_start_utc_nanos),
+        )
+        == MarketState.OPEN
+    )
+
+
+def _datetime_from_utc_nanos(timestamp_utc_nanos: int) -> datetime:
+    seconds, nanos_remainder = divmod(timestamp_utc_nanos, 1_000_000_000)
+    return datetime.fromtimestamp(seconds, tz=UTC) + timedelta(microseconds=nanos_remainder / 1000.0)
 
 
 def _zoneinfo(timezone_name: str):

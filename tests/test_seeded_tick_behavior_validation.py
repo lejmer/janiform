@@ -62,6 +62,30 @@ def test_seeded_behavior_validation_is_deterministic_for_repeated_seeded_runs(
     assert first_payload == second_payload
 
 
+def test_seeded_behavior_validation_suppresses_surprise_news_fine_path_records_while_market_is_closed(
+    calendar_registry,
+) -> None:
+    start_time_utc = datetime(2026, 2, 7, tzinfo=UTC)
+    payload = _run_seeded_case(
+        calendar_registry=calendar_registry,
+        seed=91_007,
+        kernel_parameters=_symmetric_kernel_parameters(),
+        horizon_interval_count=48,
+        seasonality_factor=1.0,
+        news_intensity=1.0,
+        start_time_utc=start_time_utc,
+    )
+
+    assert len(payload.event_tape) == 0
+    assert all(
+        not (
+            record.transition_kind.value == "exogenous_news"
+            and record.market_state.value == "closed"
+        )
+        for record in payload.fine_path
+    )
+
+
 def test_seeded_behavior_validation_exhibits_clustering_and_non_grid_signatures(
     calendar_registry,
 ) -> None:
@@ -267,12 +291,13 @@ def _run_seeded_case(
     horizon_interval_count: int,
     seasonality_factor: float,
     news_intensity: float,
+    start_time_utc: datetime = START_TIME_UTC,
 ) -> SeededTickSimulationResponse:
-    range_end_utc = START_TIME_UTC + timedelta(hours=horizon_interval_count)
+    range_end_utc = start_time_utc + timedelta(hours=horizon_interval_count)
     hourly_factor_contract = load_hourly_factor_contract_for_simulation(
         calendar_registry=calendar_registry,
         exchange_code="XNYS",
-        range_start_utc=START_TIME_UTC,
+        range_start_utc=start_time_utc,
         range_end_utc=range_end_utc,
         seasonality_source=HourlySeasonalityProviderExplicitSource(
             hourly_factors=[seasonality_factor] * horizon_interval_count,
@@ -286,7 +311,7 @@ def _run_seeded_case(
 
     request = SeededTickSimulationRequest.from_runtime_inputs(
         seed=seed,
-        start_time_utc=START_TIME_UTC,
+        start_time_utc=start_time_utc,
         horizon_interval_count=horizon_interval_count,
         kernel_parameters=HawkesKernelParameters.from_mapping(kernel_parameters),
         nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(

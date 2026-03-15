@@ -1,4 +1,5 @@
 import json
+import math
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,6 +10,7 @@ import pytest
 import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.calibration.fit.model as fit_model_module
 from janiform.calibration import CalibrationValidationError
+from janiform._timestamps import datetime_to_utc_nanos
 from janiform.calibration.fit import (
     JaniformEstimator,
     JaniformFitReport,
@@ -536,6 +538,8 @@ def test_high_level_simulation_result_exposes_tabular_exports(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured_output_paths: list[Path] = []
+    captured_export_context: list[tuple[Any, Any]] = []
+    calendar_registry_sentinel = object()
 
     def capture_persist_coarse_simulation(
         *,
@@ -543,9 +547,12 @@ def test_high_level_simulation_result_exposes_tabular_exports(
         output_path: str | Path,
         preferences: Any,
         sink: Any = None,
+        calendar_registry: Any = None,
+        exchange_code: Any = None,
     ) -> None:
         del simulation_result
         captured_output_paths.append(Path(output_path))
+        captured_export_context.append((calendar_registry, exchange_code))
         if sink is not None:
             sink.write_records(
                 [
@@ -579,6 +586,8 @@ def test_high_level_simulation_result_exposes_tabular_exports(
             ask_column="ask",
         ),
     )
+    result._calendar_registry = calendar_registry_sentinel
+    result._exchange_code = "FXSPOT"
 
     pandas_frame = result.to_pandas()
     numpy_array = result.to_numpy()
@@ -593,6 +602,129 @@ def test_high_level_simulation_result_exposes_tabular_exports(
     assert numpy_array.shape == (1, 2)
     assert parquet_path.read_text(encoding="utf-8") == "parquet placeholder"
     assert captured_output_paths[-1] == parquet_path
+    assert captured_export_context == [
+        (calendar_registry_sentinel, "FXSPOT"),
+        (calendar_registry_sentinel, "FXSPOT"),
+    ]
+
+
+def test_build_high_level_coarse_simulation_result_preserves_session_context_for_exports(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import janiform._workflow_outputs as workflow_outputs_module
+
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-coarse-export-context",
+    )
+    coarse_result = SimpleNamespace(
+        output_schema_metadata=SimpleNamespace(to_payload=lambda: {"schema_version": "test"}),
+        provenance=SimpleNamespace(to_payload=lambda: {"source": "test"}),
+        diagnostics=SimpleNamespace(to_payload=lambda: {"simulated_interval_count": 1}),
+    )
+    preferences = workflow_outputs_module.SimulationOutputPreferences(
+        file_format="parquet",
+        timestamp_column="time",
+        timestamp_timezone="UTC",
+        tick_price_input_policy="bid_ask_midpoint",
+        price_column=None,
+        trade_sign_column=None,
+        bid_column="bid",
+        ask_column="ask",
+        reference_price=1.0,
+    )
+
+    result = fit_model_module._build_high_level_simulation_result(
+        model=model,
+        simulation_result=coarse_result,
+        preferences=preferences,
+    )
+
+    assert result._exchange_code == model.session_resolution.exchange_code
+    assert result._calendar_registry is not None
+    assert (
+        result._calendar_registry.resolve_market_state(
+            model.session_resolution.exchange_code,
+            datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+        )
+        == MarketState.OPEN
+    )
+
+
+def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
+    import janiform._workflow_outputs as workflow_outputs_module
+
+    registry = fit_estimator_module.PresetRegistry()
+    _, session_artifact = registry.resolve_session_preset("fx_spot_24_5")
+    calendar_registry = CalendarRegistry(
+        fit_estimator_module._calendar_registry_json_from_session_configuration(
+            session_artifact.configuration
+        )
+    )
+
+    class _CapturingSink:
+        def __init__(self) -> None:
+            self.rows: list[dict[str, Any]] = []
+
+        def write_records(self, records: list[dict[str, Any]]) -> None:
+            self.rows.extend(records)
+
+        def close(self) -> None:
+            return None
+
+    sink = _CapturingSink()
+    preferences = workflow_outputs_module.SimulationOutputPreferences(
+        file_format="parquet",
+        timestamp_column="timestamp_utc",
+        timestamp_timezone="UTC",
+        tick_price_input_policy="bid_ask_midpoint",
+        price_column=None,
+        trade_sign_column=None,
+        bid_column=None,
+        ask_column=None,
+        reference_price=1.0,
+    )
+    simulation_result = SimpleNamespace(
+        records=(
+            SimpleNamespace(
+                interval_start_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 6, 18, 45, tzinfo=UTC)),
+                interval_end_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 6, 19, 0, tzinfo=UTC)),
+                return_components=SimpleNamespace(total_return=0.01),
+            ),
+            SimpleNamespace(
+                interval_start_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 20, 45, tzinfo=UTC)),
+                interval_end_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 21, 0, tzinfo=UTC)),
+                return_components=SimpleNamespace(total_return=0.02),
+            ),
+            SimpleNamespace(
+                interval_start_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 21, 0, tzinfo=UTC)),
+                interval_end_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 21, 15, tzinfo=UTC)),
+                return_components=SimpleNamespace(total_return=0.03),
+            ),
+        )
+    )
+
+    workflow_outputs_module.persist_coarse_simulation(
+        simulation_result=simulation_result,
+        output_path=Path("simulation.parquet"),
+        preferences=preferences,
+        sink=sink,
+        calendar_registry=calendar_registry,
+        exchange_code="FXSPOT",
+    )
+
+    assert [row["timestamp_utc"] for row in sink.rows] == [
+        datetime(2026, 2, 6, 19, 0, tzinfo=UTC),
+        datetime(2026, 2, 8, 21, 15, tzinfo=UTC),
+    ]
+    assert [row["mid_price"] for row in sink.rows] == pytest.approx(
+        [
+            math.exp(0.01),
+            math.exp(0.06),
+        ]
+    )
 
 
 def test_high_level_seeded_simulation_result_preserves_empty_tabular_schema(

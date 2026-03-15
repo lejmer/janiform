@@ -12,16 +12,13 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyMapping, PyModule};
 
 use super::calendar::parse_timestamp_utc;
-use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
 use crate::SeasonalityInputValidationError;
 use crate::SimulationExecutionError;
+use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
 use crate::types::{PyHourlyFactorContractResult, PySeededTickSimulationNativeResult};
 
 #[pyfunction]
-fn run_coarse_simulation(
-    py: Python<'_>,
-    run_request: &Bound<'_, PyAny>,
-) -> PyResult<Py<PyAny>> {
+fn run_coarse_simulation(py: Python<'_>, run_request: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
     let run_request: CoarseSimulationRunRequest =
         serde_json::from_value(py_any_to_json_value(run_request)?).map_err(|source| {
             SimulationExecutionError::new_err(format!(
@@ -66,15 +63,14 @@ fn run_seeded_tick_event_simulation(
         )?;
     let parsed_initial_excitation_state =
         parse_seeded_simulation_initial_excitation_state(initial_excitation_state)?;
-    let parsed_news_process_configuration =
-        serde_json::from_value::<NewsProcessConfiguration>(py_any_to_json_value(
-            news_process_configuration,
-        )?)
-        .map_err(|source| {
-            SeasonalityInputValidationError::new_err(format!(
-                "news_process_configuration failed to deserialize: {source}"
-            ))
-        })?;
+    let parsed_news_process_configuration = serde_json::from_value::<NewsProcessConfiguration>(
+        py_any_to_json_value(news_process_configuration)?,
+    )
+    .map_err(|source| {
+        SeasonalityInputValidationError::new_err(format!(
+            "news_process_configuration failed to deserialize: {source}"
+        ))
+    })?;
     let parsed_state_snapshot_capture =
         parse_seeded_simulation_state_snapshot_capture(state_snapshot_capture)?;
 

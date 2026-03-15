@@ -53,6 +53,7 @@ Validation behavior:
 - Missing hourly intervals (gaps) and interval overlaps fail fast during run-config validation.
 - Factor intervals control intensity scaling and news intensity only.
 - Event timestamps are sampled in event time inside each interval and are never snapped to a fixed intra-interval lattice.
+- Synthetic surprise-news timestamps are retained only when the exchange calendar resolves the sampled timestamp to an open market state. Explicit known-news timestamps preserve their scheduled calendar position and continue to route closed-session shocks into `G_t`.
 
 ## Event record fields
 
