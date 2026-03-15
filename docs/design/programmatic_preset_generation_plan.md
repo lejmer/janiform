@@ -198,10 +198,10 @@ We should expose internal generator commands that are easy to automate.
 
 Conceptual commands:
 
-- `janiform-dev generate session-presets`
-- `janiform-dev generate known-news-presets`
-- `janiform-dev generate market-profiles`
-- `janiform-dev validate presets`
+- `janiform dev generate session-presets`
+- `janiform dev generate known-news-presets`
+- `janiform dev generate market-profiles`
+- `janiform dev validate presets`
 
 These do not need to be part of the normal user CLI. They are a maintenance workflow.
 
