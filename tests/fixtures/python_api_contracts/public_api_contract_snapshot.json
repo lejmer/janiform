@@ -230,10 +230,6 @@
           "kind": "enum",
           "members": [
             {
-              "name": "ERROR",
-              "value": "error"
-            },
-            {
               "name": "KEEP_FIRST",
               "value": "keep_first"
             },
@@ -290,7 +286,7 @@
             "option_quote_input_policy"
           ],
           "kind": "contract_model",
-          "signature": "(timestamp_timezone: 'str', sort_records_by_timestamp: 'bool' = True, duplicate_record_policy: 'CalibrationDuplicateRecordPolicy' = <CalibrationDuplicateRecordPolicy.ERROR: 'error'>, tick_price_input_policy: 'Optional[CalibrationTickPriceInputPolicy]' = None, option_quote_input_policy: 'Optional[CalibrationOptionQuoteInputPolicy]' = None) -> 'None'"
+          "signature": "(timestamp_timezone: 'str', sort_records_by_timestamp: 'bool' = True, duplicate_record_policy: 'Optional[CalibrationDuplicateRecordPolicy]' = None, tick_price_input_policy: 'Optional[CalibrationTickPriceInputPolicy]' = None, option_quote_input_policy: 'Optional[CalibrationOptionQuoteInputPolicy]' = None) -> 'None'"
         },
         "CalibrationMarketDataOutputPreferences": {
           "field_names": [
@@ -893,10 +889,6 @@
           "kind": "enum",
           "members": [
             {
-              "name": "ERROR",
-              "value": "error"
-            },
-            {
               "name": "KEEP_FIRST",
               "value": "keep_first"
             },
@@ -966,7 +958,7 @@
             "option_quote_input_policy"
           ],
           "kind": "contract_model",
-          "signature": "(timestamp_timezone: 'str', sort_records_by_timestamp: 'bool' = True, duplicate_record_policy: 'CalibrationDuplicateRecordPolicy' = <CalibrationDuplicateRecordPolicy.ERROR: 'error'>, tick_price_input_policy: 'Optional[CalibrationTickPriceInputPolicy]' = None, option_quote_input_policy: 'Optional[CalibrationOptionQuoteInputPolicy]' = None) -> 'None'"
+          "signature": "(timestamp_timezone: 'str', sort_records_by_timestamp: 'bool' = True, duplicate_record_policy: 'Optional[CalibrationDuplicateRecordPolicy]' = None, tick_price_input_policy: 'Optional[CalibrationTickPriceInputPolicy]' = None, option_quote_input_policy: 'Optional[CalibrationOptionQuoteInputPolicy]' = None) -> 'None'"
         },
         "CalibrationMarketDataOutputPreferences": {
           "field_names": [
@@ -1214,10 +1206,6 @@
           "kind": "enum",
           "members": [
             {
-              "name": "ERROR",
-              "value": "error"
-            },
-            {
               "name": "KEEP_FIRST",
               "value": "keep_first"
             },
@@ -1287,7 +1275,7 @@
             "option_quote_input_policy"
           ],
           "kind": "contract_model",
-          "signature": "(timestamp_timezone: 'str', sort_records_by_timestamp: 'bool' = True, duplicate_record_policy: 'CalibrationDuplicateRecordPolicy' = <CalibrationDuplicateRecordPolicy.ERROR: 'error'>, tick_price_input_policy: 'Optional[CalibrationTickPriceInputPolicy]' = None, option_quote_input_policy: 'Optional[CalibrationOptionQuoteInputPolicy]' = None) -> 'None'"
+          "signature": "(timestamp_timezone: 'str', sort_records_by_timestamp: 'bool' = True, duplicate_record_policy: 'Optional[CalibrationDuplicateRecordPolicy]' = None, tick_price_input_policy: 'Optional[CalibrationTickPriceInputPolicy]' = None, option_quote_input_policy: 'Optional[CalibrationOptionQuoteInputPolicy]' = None) -> 'None'"
         },
         "CalibrationMarketDataOutputPreferences": {
           "field_names": [
@@ -4706,7 +4694,6 @@
         "CLI_CALIBRATION_DUPLICATE_RECORD_POLICY_CHOICES": {
           "kind": "constant",
           "value": [
-            "error",
             "keep_first",
             "keep_last"
           ]

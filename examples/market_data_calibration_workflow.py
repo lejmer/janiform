@@ -4,7 +4,6 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 from janiform.calibration.market_data import (
-    CalibrationDuplicateRecordPolicy,
     CalibrationInputFileFormat,
     CalibrationInputFileReference,
     CalibrationKnownNewsColumnMapping,
@@ -42,7 +41,6 @@ def run_example(*, working_directory: Path) -> dict[str, Any]:
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
         known_news_path=file_paths["known_news"],
@@ -60,7 +58,6 @@ def run_example(*, working_directory: Path) -> dict[str, Any]:
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
         known_news_path=file_paths["known_news"],
@@ -78,7 +75,6 @@ def run_example(*, working_directory: Path) -> dict[str, Any]:
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
-            duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
             option_quote_input_policy=CalibrationOptionQuoteInputPolicy.BID_ASK_MIDPOINT,
         ),
@@ -180,6 +176,8 @@ def _build_market_data_request(
             calendar_timezone="UTC",
         ),
     )
+
+
 def main() -> None:
     with TemporaryDirectory(prefix="janiform-market-data-example-") as working_directory:
         summary = run_example(working_directory=Path(working_directory))

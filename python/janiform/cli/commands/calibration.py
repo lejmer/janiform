@@ -163,7 +163,7 @@ def _build_market_data_calibration_request_from_arguments(
     workflow_scope: str,
     timestamp_timezone: str,
     disable_timestamp_sort: bool,
-    duplicate_record_policy: str,
+    duplicate_record_policy: Optional[str],
     tick_price_input_policy: Optional[str],
     option_quote_input_policy: Optional[str],
     execution_mode: str,
@@ -251,7 +251,6 @@ def _build_market_data_calibration_request_from_arguments(
         "normalization_policy": {
             "timestamp_timezone": timestamp_timezone,
             "sort_records_by_timestamp": not disable_timestamp_sort,
-            "duplicate_record_policy": duplicate_record_policy,
             "tick_price_input_policy": tick_price_input_policy,
             "option_quote_input_policy": option_quote_input_policy,
         },
@@ -262,6 +261,9 @@ def _build_market_data_calibration_request_from_arguments(
             "emit_input_provenance_report": not omit_input_provenance_report,
         },
     }
+
+    if duplicate_record_policy is not None:
+        payload["normalization_policy"]["duplicate_record_policy"] = duplicate_record_policy
 
     if session_timezone is not None:
         payload["session_configuration"]["session_timezone"] = session_timezone
@@ -558,8 +560,7 @@ def _market_data_calibration_options() -> list[click.Parameter]:
         command_option(
             "--duplicate-record-policy",
             choice_options=CLI_CALIBRATION_DUPLICATE_RECORD_POLICY_CHOICES,
-            default="error",
-            help_text="Duplicate-record normalization policy recorded in provenance.",
+            help_text="Optional tick-data deduplication policy. Omit to preserve duplicate tick rows.",
         ),
         command_option(
             "--disable-timestamp-sort",
