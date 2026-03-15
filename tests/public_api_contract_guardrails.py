@@ -1,7 +1,7 @@
+import annotationlib
 import hashlib
 import inspect
 import json
-import annotationlib
 from collections.abc import Mapping
 from dataclasses import MISSING, fields, is_dataclass
 from difflib import unified_diff
@@ -10,7 +10,7 @@ from importlib import import_module
 from types import ModuleType
 from typing import Any, Optional
 
-from ._contracts import ContractModel, serialize_deterministic_json
+from janiform._contracts import ContractModel, serialize_deterministic_json
 
 PUBLIC_API_CONTRACT_SNAPSHOT_SCHEMA_VERSION = "python.public_api_contract.snapshot.v1"
 PUBLIC_API_CONTRACT_GUARDRAIL_MANIFEST_SCHEMA_VERSION = "python.public_api_contract.guardrail_manifest.v1"
