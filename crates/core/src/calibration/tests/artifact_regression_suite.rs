@@ -694,14 +694,6 @@ fn commit_persisted_artifact_regression_fixture(
         .expect("stage artifact should persist");
     }
 
-    for validation_metric_artifact in &validation_metric_artifacts {
-        persist_calibration_validation_metric_artifact_to_run_directory(
-            writer.pending_run_directory(),
-            validation_metric_artifact,
-        )
-        .expect("validation metric artifact should persist");
-    }
-
     persist_calibration_artifact_manifest_to_run_directory(
         writer.pending_run_directory(),
         &manifest,
@@ -709,6 +701,14 @@ fn commit_persisted_artifact_regression_fixture(
     .expect("manifest should persist");
 
     writer.commit().expect("artifact set should commit");
+
+    for validation_metric_artifact in &validation_metric_artifacts {
+        persist_calibration_validation_metric_artifact_to_disk(
+            root_directory.as_path(),
+            validation_metric_artifact,
+        )
+        .expect("validation metric artifact should persist");
+    }
 
     let experiment_index = load_calibration_experiment_index_from_disk(root_directory.as_path())
         .expect("experiment index should load");

@@ -361,12 +361,6 @@ fn commit_indexed_run(
         .expect("stage artifact should persist");
     }
 
-    persist_calibration_validation_metric_artifact_to_run_directory(
-        writer.pending_run_directory(),
-        &diagnostics_artifact,
-    )
-    .expect("diagnostics artifact should persist");
-
     persist_calibration_artifact_manifest_to_run_directory(
         writer.pending_run_directory(),
         &manifest,
@@ -376,6 +370,12 @@ fn commit_indexed_run(
     writer
         .commit()
         .expect("commit should update experiment index");
+
+    persist_calibration_validation_metric_artifact_to_disk(
+        persistence_root_directory,
+        &diagnostics_artifact,
+    )
+    .expect("diagnostics artifact should persist");
 
     IndexedRunFixture { manifest }
 }
