@@ -37,7 +37,10 @@ from ..market_data.contracts import (
 )
 from ..market_data.ingestion import load_market_data_calibration_inputs
 from ..market_data.request import MarketDataCalibrationRequest
-from ..market_data.translation import translate_market_data_request_to_staged_execution_input
+from ..market_data.translation import (
+    _load_market_data_translation_inputs,
+    _translate_loaded_market_data_request_to_staged_execution_input,
+)
 from ..market_data.workflow import (
     PreparedMarketDataCalibration,
     _prepare_market_data_calibration_from_translation_result,
@@ -214,7 +217,10 @@ class JaniformEstimator:
 
         with self._stdout_suppression_context(effective_silent=effective_silent):
             try:
-                with output_controller.progress("fit", total_steps=6) as progress:
+                with output_controller.progress(
+                    "fit",
+                    total_steps=self._fit_progress_total_steps(),
+                ) as progress:
                     progress.update(detail="inferring workflow inputs")
                     prepared_workflow = self._prepare_fit_workflow(
                         run_id=run_id,
@@ -321,6 +327,12 @@ class JaniformEstimator:
             return model, fit_report
 
         return model
+
+    def _fit_progress_total_steps(self) -> int:
+        if self._requires_session_inference():
+            return 9
+
+        return 7
 
     def _build_market_data_request(
         self,
@@ -436,9 +448,12 @@ class JaniformEstimator:
                 normalization_policy=input_inference.normalization_policy,
                 working_directory=working_directory,
             )
-            effective_progress.update(detail="loading and translating market data")
-            translation_result = translate_market_data_request_to_staged_execution_input(
-                request
+            effective_progress.update(detail="loading market data")
+            loaded_inputs_result = _load_market_data_translation_inputs(request)
+            effective_progress.update(detail="translating market data")
+            translation_result = _translate_loaded_market_data_request_to_staged_execution_input(
+                normalized_request=request,
+                loaded_inputs_result=loaded_inputs_result,
             )
             prepared = _prepare_market_data_calibration_from_translation_result(
                 request=request,

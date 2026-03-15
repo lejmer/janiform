@@ -11,6 +11,7 @@ from .ingestion import (
     LoadedMarketDataCalibrationInputs,
     LoadedMarketDataSourceSummary,
     LoadedTickDataSource,
+    _LoadedMarketDataCalibrationInputsResult,
     _TradeSignResolutionDiagnostics,
     _load_market_data_calibration_inputs,
 )
@@ -126,13 +127,31 @@ def translate_market_data_request_to_staged_execution_input(
         )
 
     normalized_request = MarketDataCalibrationRequest.from_mapping(request.to_payload())
+    loaded_inputs_result = _load_market_data_translation_inputs(normalized_request)
 
+    return _translate_loaded_market_data_request_to_staged_execution_input(
+        normalized_request=normalized_request,
+        loaded_inputs_result=loaded_inputs_result,
+    )
+
+
+def _load_market_data_translation_inputs(
+    normalized_request: MarketDataCalibrationRequest,
+) -> _LoadedMarketDataCalibrationInputsResult:
     selected_stages = _selected_stages_for_scope(normalized_request.workflow_scope)
 
-    loaded_inputs_result = _load_market_data_calibration_inputs(
+    return _load_market_data_calibration_inputs(
         normalized_request,
         resolve_unsigned_trade_signs=CalibrationStage.HAWKES in selected_stages,
     )
+
+
+def _translate_loaded_market_data_request_to_staged_execution_input(
+    *,
+    normalized_request: MarketDataCalibrationRequest,
+    loaded_inputs_result: _LoadedMarketDataCalibrationInputsResult,
+) -> MarketDataTranslationResult:
+    selected_stages = _selected_stages_for_scope(normalized_request.workflow_scope)
     loaded_inputs = loaded_inputs_result.inputs
 
     _validate_tick_records_present(loaded_inputs.tick_data)
