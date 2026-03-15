@@ -11,6 +11,7 @@ use crate::news::GammaSeverityMarkConfiguration;
 use crate::nig::NigSharedPlusShiftConfiguration;
 use crate::randomness::SplitMix64SimulationRandomnessStream;
 use crate::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
+use std::error::Error;
 
 use super::{
     SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY,
@@ -31,7 +32,8 @@ use super::{
     SufficientStatisticsRiskPathRecord, SufficientStatisticsRiskReturnComponents,
     SufficientStatisticsRiskReturnGenerationOptions, SufficientStatisticsRiskRunRequest,
     SufficientStatisticsRiskRunRequestError, SufficientStatisticsStreamingChunkingSettings,
-    SufficientStatisticsTransformSliceContext, SufficientStatisticsTransformSliceExecutionError,
+    SufficientStatisticsStreamingChunkingSettingsError, SufficientStatisticsTransformSliceContext,
+    SufficientStatisticsTransformSliceExecutionError,
     SufficientStatisticsTransformSliceSamplingError, SufficientStatisticsTransformSliceSettings,
     SufficientStatisticsTransformSliceSettingsError, SufficientStatisticsTransformSlices,
     derive_sufficient_statistics_batch_path_seed, generate_interval_return_from_sampled_statistics,
@@ -1191,6 +1193,28 @@ fn transform_slice_streaming_sampler_rejects_zero_chunk_size() {
         error,
         SufficientStatisticsTransformSliceExecutionError::InvalidChunkingSettings { .. }
     ));
+}
+
+#[test]
+fn transform_slice_sampling_error_preserves_chunking_validation_source() {
+    let source = SufficientStatisticsStreamingChunkingSettingsError::InvalidMaxIntervalsPerChunk {
+        value: 0,
+    };
+    let error = SufficientStatisticsTransformSliceSamplingError::InvalidChunkingSettings {
+        source: source.clone(),
+    };
+
+    assert_eq!(
+        error.to_string(),
+        "invalid batch chunking settings for sampling: max_intervals_per_chunk must be greater than 0, found 0"
+    );
+    assert_eq!(
+        error
+            .source()
+            .expect("chunking validation source should be preserved")
+            .to_string(),
+        source.to_string()
+    );
 }
 
 #[test]

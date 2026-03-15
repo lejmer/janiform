@@ -12,7 +12,7 @@ from ..shared.errors import (
     _simulation_execution_error,
     _simulation_integration_error,
 )
-from ..._native_api import native_module
+from ..._native_api import native_exception_matches, native_module
 
 
 def run_coarse_simulation(request: CoarseSimulationRunRequest) -> CoarseSimulationPath:
@@ -35,13 +35,14 @@ def run_coarse_simulation(request: CoarseSimulationRunRequest) -> CoarseSimulati
         raw_path = native.run_coarse_simulation(
             normalized_request.to_payload()
         )
-    except native.SimulationExecutionError as e:
-        raise _simulation_execution_error(
-            "coarse simulation failed during native execution",
-            entrypoint="run_coarse_simulation",
-            context={"source_exception_type": type(e).__name__},
-        ) from e
     except Exception as e:
+        if native_exception_matches(native, e, "SimulationExecutionError"):
+            raise _simulation_execution_error(
+                "coarse simulation failed during native execution",
+                entrypoint="run_coarse_simulation",
+                context={"source_exception_type": type(e).__name__},
+            ) from e
+
         raise _simulation_execution_error(
             "coarse simulation failed during native execution",
             entrypoint="run_coarse_simulation",

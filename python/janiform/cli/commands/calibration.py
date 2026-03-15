@@ -34,7 +34,7 @@ from .._constants import (
     CliExitCode,
     CliOutputMode,
 )
-from ..documents import _load_json_document
+from ..documents import _load_json_document_for_cli_field
 from ..errors import _classify_market_data_command_error, _classify_workflow_command_error
 from ..paths import _require_path_argument, _resolve_path_from_repository_root
 from ..rendering import (
@@ -92,15 +92,6 @@ def _run_calibration_staged_command(
     disk_checkpoint_directory: Optional[Path],
     **_,
 ) -> int:
-    execution_input_path = _resolve_path_from_repository_root(
-        cli_context.repository_root,
-        execution_input_json,
-    )
-    calendar_registry_path = _resolve_path_from_repository_root(
-        cli_context.repository_root,
-        calendar_registry_json,
-    )
-
     resolved_disk_checkpoint_directory = (
         _resolve_path_from_repository_root(cli_context.repository_root, disk_checkpoint_directory)
         if disk_checkpoint_directory is not None
@@ -108,8 +99,22 @@ def _run_calibration_staged_command(
     )
 
     try:
-        execution_input_document = _load_json_document(execution_input_path, "calibration execution input")
-        calendar_registry_document = _load_json_document(calendar_registry_path, "calendar registry")
+        execution_input_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=execution_input_json,
+            context="calibration execution input",
+            field_path="execution_input_json",
+            error_id=CLI_CALIBRATION_STAGED_VALIDATION_ERROR_ID,
+            entrypoint=CLI_CALIBRATION_STAGED_ENTRYPOINT,
+        )
+        calendar_registry_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=calendar_registry_json,
+            context="calendar registry",
+            field_path="calendar_registry_json",
+            error_id=CLI_CALIBRATION_STAGED_VALIDATION_ERROR_ID,
+            entrypoint=CLI_CALIBRATION_STAGED_ENTRYPOINT,
+        )
 
         execution_input = validate_staged_calibration_execution_input(execution_input_document)
 

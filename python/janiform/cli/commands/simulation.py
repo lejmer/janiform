@@ -1,5 +1,6 @@
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Optional
 
 import click
 
@@ -22,9 +23,8 @@ from .._constants import (
     CliExitCode,
     CliOutputMode,
 )
-from ..documents import _load_json_document
+from ..documents import _load_json_document_for_cli_field
 from ..errors import _classify_workflow_command_error
-from ..paths import _resolve_path_from_repository_root
 from ..rendering import (
     _render_simulation_coarse_interval_human_output,
     _render_simulation_seeded_ticks_human_output,
@@ -47,10 +47,15 @@ def _run_simulation_coarse_interval_command(
     request_json: Path,
     **_,
 ) -> int:
-    request_path = _resolve_path_from_repository_root(cli_context.repository_root, request_json)
-
     try:
-        request_document = _load_json_document(request_path, "coarse simulation request")
+        request_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=request_json,
+            context="coarse simulation request",
+            field_path="request_json",
+            error_id=CLI_SIMULATION_COARSE_INTERVAL_VALIDATION_ERROR_ID,
+            entrypoint=CLI_SIMULATION_COARSE_INTERVAL_ENTRYPOINT,
+        )
         request = CoarseSimulationRunRequest.from_mapping(request_document)
         response = run_coarse_simulation(request)
     except JaniformError as e:
@@ -86,15 +91,23 @@ def _run_simulation_seeded_ticks_command(
     calendar_registry_json: Path,
     **_,
 ) -> int:
-    request_path = _resolve_path_from_repository_root(cli_context.repository_root, request_json)
-    calendar_registry_path = _resolve_path_from_repository_root(
-        cli_context.repository_root,
-        calendar_registry_json,
-    )
-
     try:
-        request_document = _load_json_document(request_path, "simulation request")
-        calendar_registry_document = _load_json_document(calendar_registry_path, "calendar registry")
+        request_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=request_json,
+            context="simulation request",
+            field_path="request_json",
+            error_id=CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID,
+            entrypoint=CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT,
+        )
+        calendar_registry_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=calendar_registry_json,
+            context="calendar registry",
+            field_path="calendar_registry_json",
+            error_id=CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID,
+            entrypoint=CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT,
+        )
         request = SeededTickSimulationRequest.from_mapping(request_document)
         calendar_registry = _build_calendar_registry_from_document(calendar_registry_document)
         request_with_runtime_contract = _attach_runtime_hourly_factor_contract(

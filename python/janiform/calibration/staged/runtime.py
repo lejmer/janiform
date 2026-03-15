@@ -15,7 +15,7 @@ from .._errors import (
     _calibration_execution_error,
     _calibration_integration_error,
 )
-from ..._native_api import native_module
+from ..._native_api import native_exception_matches, native_module
 from ...calendar import CalendarRegistry
 
 
@@ -48,13 +48,14 @@ def _run_staged_calibration_with_raw_payload(
             normalized_execution_input.to_payload(),
             calendar_registry._native_registry,
         )
-    except native.CalibrationExecutionError as e:
-        raise _calibration_execution_error(
-            "staged calibration failed during native execution",
-            entrypoint="run_staged_calibration",
-            context={"source_exception_type": type(e).__name__},
-        ) from e
     except Exception as e:
+        if native_exception_matches(native, e, "CalibrationExecutionError"):
+            raise _calibration_execution_error(
+                "staged calibration failed during native execution",
+                entrypoint="run_staged_calibration",
+                context={"source_exception_type": type(e).__name__},
+            ) from e
+
         raise _calibration_execution_error(
             "staged calibration failed during native execution",
             entrypoint="run_staged_calibration",

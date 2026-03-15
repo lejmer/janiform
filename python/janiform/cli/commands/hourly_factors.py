@@ -42,9 +42,8 @@ from .._constants import (
     CliExitCode,
     CliOutputMode,
 )
-from ..documents import _load_json_document
+from ..documents import _load_json_document_for_cli_field
 from ..errors import _classify_workflow_command_error
-from ..paths import _resolve_path_from_repository_root
 from ..rendering import (
     _render_hourly_factor_build_contract_human_output,
     _render_hourly_factor_materialize_news_intensity_human_output,
@@ -72,25 +71,25 @@ def _run_hourly_factor_materialize_seasonality_command(
     interval: str,
     **_,
 ) -> int:
-    calendar_registry_path = _resolve_path_from_repository_root(
-        cli_context.repository_root,
-        calendar_registry_json,
-    )
-    materialization_input_path = _resolve_path_from_repository_root(
-        cli_context.repository_root,
-        materialization_input_json,
-    )
-
-    file_field_path = "calendar_registry_json"
     document_field_path = "calendar_registry_document"
 
     try:
-        calendar_registry_document = _load_json_document(calendar_registry_path, "calendar registry")
-        file_field_path = "materialization_input_json"
+        calendar_registry_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=calendar_registry_json,
+            context="calendar registry",
+            field_path="calendar_registry_json",
+            error_id=CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_VALIDATION_ERROR_ID,
+            entrypoint=CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_ENTRYPOINT,
+        )
         document_field_path = "materialization_input_document"
-        materialization_input_document = _load_json_document(
-            materialization_input_path,
-            "hourly seasonality materialization input",
+        materialization_input_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=materialization_input_json,
+            context="hourly seasonality materialization input",
+            field_path="materialization_input_json",
+            error_id=CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_VALIDATION_ERROR_ID,
+            entrypoint=CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_ENTRYPOINT,
         )
         document_field_path = "calendar_registry_document"
         calendar_registry = _build_calendar_registry_from_document(calendar_registry_document)
@@ -130,7 +129,7 @@ def _run_hourly_factor_materialize_seasonality_command(
                 entrypoint=CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_ENTRYPOINT,
                 validation_error_id=CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_VALIDATION_ERROR_ID,
                 internal_error_id=CLI_HOURLY_FACTORS_MATERIALIZE_SEASONALITY_INTERNAL_ERROR_ID,
-                file_field_path=file_field_path,
+                file_field_path="calendar_registry_json",
                 document_field_path=document_field_path,
             )
         )
@@ -158,25 +157,25 @@ def _run_hourly_factor_materialize_news_intensity_command(
     interval: str,
     **_,
 ) -> int:
-    calendar_registry_path = _resolve_path_from_repository_root(
-        cli_context.repository_root,
-        calendar_registry_json,
-    )
-    materialization_input_path = _resolve_path_from_repository_root(
-        cli_context.repository_root,
-        materialization_input_json,
-    )
-
-    file_field_path = "calendar_registry_json"
     document_field_path = "calendar_registry_document"
 
     try:
-        calendar_registry_document = _load_json_document(calendar_registry_path, "calendar registry")
-        file_field_path = "materialization_input_json"
+        calendar_registry_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=calendar_registry_json,
+            context="calendar registry",
+            field_path="calendar_registry_json",
+            error_id=CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_VALIDATION_ERROR_ID,
+            entrypoint=CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_ENTRYPOINT,
+        )
         document_field_path = "materialization_input_document"
-        materialization_input_document = _load_json_document(
-            materialization_input_path,
-            "hourly news-intensity materialization input",
+        materialization_input_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=materialization_input_json,
+            context="hourly news-intensity materialization input",
+            field_path="materialization_input_json",
+            error_id=CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_VALIDATION_ERROR_ID,
+            entrypoint=CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_ENTRYPOINT,
         )
         document_field_path = "calendar_registry_document"
         calendar_registry = _build_calendar_registry_from_document(calendar_registry_document)
@@ -212,7 +211,7 @@ def _run_hourly_factor_materialize_news_intensity_command(
                 entrypoint=CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_ENTRYPOINT,
                 validation_error_id=CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_VALIDATION_ERROR_ID,
                 internal_error_id=CLI_HOURLY_FACTORS_MATERIALIZE_NEWS_INTENSITY_INTERNAL_ERROR_ID,
-                file_field_path=file_field_path,
+                file_field_path="calendar_registry_json",
                 document_field_path=document_field_path,
             )
         )
@@ -245,16 +244,17 @@ def _run_hourly_factor_build_contract_command(
     news_intensity_materialized_source_json: Optional[Path],
     **_,
 ) -> int:
-    calendar_registry_path = _resolve_path_from_repository_root(
-        cli_context.repository_root,
-        calendar_registry_json,
-    )
-
-    file_field_path = "calendar_registry_json"
     document_field_path = "calendar_registry_document"
 
     try:
-        calendar_registry_document = _load_json_document(calendar_registry_path, "calendar registry")
+        calendar_registry_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=calendar_registry_json,
+            context="calendar registry",
+            field_path="calendar_registry_json",
+            error_id=CLI_HOURLY_FACTORS_BUILD_CONTRACT_VALIDATION_ERROR_ID,
+            entrypoint=CLI_HOURLY_FACTORS_BUILD_CONTRACT_ENTRYPOINT,
+        )
         calendar_registry = _build_calendar_registry_from_document(calendar_registry_document)
         document_field_path = "command_input"
         parsed_range_start_utc = _parse_utc_datetime_cli_argument(
@@ -271,14 +271,14 @@ def _run_hourly_factor_build_contract_command(
         )
 
         if seasonality_explicit_source_json is not None:
-            file_field_path = "seasonality_explicit_source_json"
             document_field_path = "seasonality_source_document"
-            seasonality_source_document = _load_json_document(
-                _resolve_path_from_repository_root(
-                    cli_context.repository_root,
-                    seasonality_explicit_source_json,
-                ),
-                "explicit seasonality source",
+            seasonality_source_document = _load_json_document_for_cli_field(
+                repository_root=cli_context.repository_root,
+                path=seasonality_explicit_source_json,
+                context="explicit seasonality source",
+                field_path="seasonality_explicit_source_json",
+                error_id=CLI_HOURLY_FACTORS_BUILD_CONTRACT_VALIDATION_ERROR_ID,
+                entrypoint=CLI_HOURLY_FACTORS_BUILD_CONTRACT_ENTRYPOINT,
             )
             seasonality_hourly_factors, seasonality_materialization_method = (
                 _extract_explicit_hourly_factor_source_document(
@@ -287,14 +287,14 @@ def _run_hourly_factor_build_contract_command(
                 )
             )
         else:
-            file_field_path = "seasonality_materialized_source_json"
             document_field_path = "seasonality_source_document"
-            seasonality_source_document = _load_json_document(
-                _resolve_path_from_repository_root(
-                    cli_context.repository_root,
-                    seasonality_materialized_source_json,
-                ),
-                "materialized seasonality source",
+            seasonality_source_document = _load_json_document_for_cli_field(
+                repository_root=cli_context.repository_root,
+                path=seasonality_materialized_source_json,
+                context="materialized seasonality source",
+                field_path="seasonality_materialized_source_json",
+                error_id=CLI_HOURLY_FACTORS_BUILD_CONTRACT_VALIDATION_ERROR_ID,
+                entrypoint=CLI_HOURLY_FACTORS_BUILD_CONTRACT_ENTRYPOINT,
             )
             seasonality_hourly_factors, seasonality_materialization_method = (
                 _extract_materialized_hourly_seasonality_source_document(
@@ -306,11 +306,14 @@ def _run_hourly_factor_build_contract_command(
             )
 
         if news_intensity_explicit_source_json is not None:
-            file_field_path = "news_intensity_explicit_source_json"
             document_field_path = "news_intensity_source_document"
-            news_intensity_source_document = _load_json_document(
-                _resolve_path_from_repository_root(cli_context.repository_root, news_intensity_explicit_source_json),
-                "explicit news-intensity source",
+            news_intensity_source_document = _load_json_document_for_cli_field(
+                repository_root=cli_context.repository_root,
+                path=news_intensity_explicit_source_json,
+                context="explicit news-intensity source",
+                field_path="news_intensity_explicit_source_json",
+                error_id=CLI_HOURLY_FACTORS_BUILD_CONTRACT_VALIDATION_ERROR_ID,
+                entrypoint=CLI_HOURLY_FACTORS_BUILD_CONTRACT_ENTRYPOINT,
             )
             news_intensity_hourly_factors, news_intensity_materialization_method = (
                 _extract_explicit_hourly_factor_source_document(
@@ -319,14 +322,14 @@ def _run_hourly_factor_build_contract_command(
                 )
             )
         else:
-            file_field_path = "news_intensity_materialized_source_json"
             document_field_path = "news_intensity_source_document"
-            news_intensity_source_document = _load_json_document(
-                _resolve_path_from_repository_root(
-                    cli_context.repository_root,
-                    news_intensity_materialized_source_json,
-                ),
-                "materialized news-intensity source",
+            news_intensity_source_document = _load_json_document_for_cli_field(
+                repository_root=cli_context.repository_root,
+                path=news_intensity_materialized_source_json,
+                context="materialized news-intensity source",
+                field_path="news_intensity_materialized_source_json",
+                error_id=CLI_HOURLY_FACTORS_BUILD_CONTRACT_VALIDATION_ERROR_ID,
+                entrypoint=CLI_HOURLY_FACTORS_BUILD_CONTRACT_ENTRYPOINT,
             )
             news_intensity_hourly_factors, news_intensity_materialization_method = (
                 _extract_materialized_hourly_news_intensity_source_document(
@@ -357,7 +360,7 @@ def _run_hourly_factor_build_contract_command(
                 entrypoint=CLI_HOURLY_FACTORS_BUILD_CONTRACT_ENTRYPOINT,
                 validation_error_id=CLI_HOURLY_FACTORS_BUILD_CONTRACT_VALIDATION_ERROR_ID,
                 internal_error_id=CLI_HOURLY_FACTORS_BUILD_CONTRACT_INTERNAL_ERROR_ID,
-                file_field_path=file_field_path,
+                file_field_path="calendar_registry_json",
                 document_field_path=document_field_path,
             )
         )

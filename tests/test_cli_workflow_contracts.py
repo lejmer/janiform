@@ -1551,6 +1551,33 @@ def test_simulation_cli_maps_request_json_to_runtime_request(
     assert "event_tape" in command_output
 
 
+def test_simulation_cli_missing_calendar_registry_file_reports_calendar_registry_argument(
+    calendar_registry_json: str,
+    tmp_path: Path,
+) -> None:
+    request_path = _write_json_path(
+        tmp_path / "simulation_request.json",
+        _build_simulation_request(calendar_registry_json).to_payload(),
+    )
+    missing_calendar_registry_path = tmp_path / "missing-calendar-registry.json"
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "simulate",
+            "seeded-ticks",
+            "--request-json",
+            str(request_path),
+            "--calendar-registry-json",
+            str(missing_calendar_registry_path),
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert stdout_text == ""
+    assert 'field_path="calendar_registry_json"' in stderr_text
+    assert '[cli.validation.simulate.seeded_ticks.invalid_input]' in stderr_text
+
+
 def test_coarse_simulation_cli_maps_request_json_to_runtime_contract(
     calendar_registry_json: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -2042,6 +2069,34 @@ def test_calibration_cli_requires_disk_checkpoint_directory_when_defaulting_to_d
 
     assert 'field_path="runtime_resources.disk_checkpoint_directory"' in stderr_text
     assert 'message="is required when execution_mode=disk"' in stderr_text
+
+
+def test_calibration_cli_missing_calendar_registry_file_reports_calendar_registry_argument(
+    tmp_path: Path,
+) -> None:
+    execution_input_path = _write_json_path(
+        tmp_path / "calibration_execution_input.json",
+        build_valid_execution_input_model().to_payload(),
+    )
+    missing_calendar_registry_path = tmp_path / "missing-calendar-registry.json"
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "fit",
+            "staged",
+            "--execution-input-json",
+            str(execution_input_path),
+            "--calendar-registry-json",
+            str(missing_calendar_registry_path),
+            "--execution-mode",
+            "memory",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert stdout_text == ""
+    assert 'field_path="calendar_registry_json"' in stderr_text
+    assert '[cli.validation.fit.staged.invalid_input]' in stderr_text
 
 
 def test_calibration_cli_rejects_disk_checkpoint_directory_in_memory_mode(

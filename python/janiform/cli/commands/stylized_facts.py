@@ -24,9 +24,8 @@ from .._constants import (
     CliExitCode,
     CliOutputMode,
 )
-from ..documents import _load_json_document
+from ..documents import _load_json_document_for_cli_field
 from ..errors import _classify_workflow_command_error
-from ..paths import _resolve_path_from_repository_root
 from ..rendering import _render_stylized_facts_horizon_comparison_human_output, _write_cli_error, _write_command_output
 from ...errors import JaniformError
 from ...stylized_facts import run_stylized_fact_horizon_comparison_report_generator
@@ -42,38 +41,37 @@ def _run_stylized_facts_horizon_comparison_command(
     execution_mode: str,
     **_,
 ) -> int:
-    metric_catalog_path = _resolve_path_from_repository_root(
-        cli_context.repository_root,
-        metric_catalog_json,
-    )
-    comparison_request_path = _resolve_path_from_repository_root(
-        cli_context.repository_root,
-        comparison_request_json,
-    )
-    artifact_export_path = (
-        _resolve_path_from_repository_root(cli_context.repository_root, artifact_export_json)
-        if artifact_export_json is not None
-        else None
-    )
-
-    file_field_path = "metric_catalog_json"
     document_field_path = "metric_catalog_document"
 
     try:
-        metric_catalog_document = _load_json_document(metric_catalog_path, "stylized-fact metric catalog")
-
-        file_field_path = "comparison_request_json"
+        metric_catalog_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=metric_catalog_json,
+            context="stylized-fact metric catalog",
+            field_path="metric_catalog_json",
+            error_id=CLI_STYLIZED_FACTS_HORIZON_COMPARISON_VALIDATION_ERROR_ID,
+            entrypoint=CLI_STYLIZED_FACTS_HORIZON_COMPARISON_ENTRYPOINT,
+        )
         document_field_path = "comparison_request_document"
-
-        comparison_request_document = _load_json_document(comparison_request_path, "stylized-fact comparison request")
+        comparison_request_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=comparison_request_json,
+            context="stylized-fact comparison request",
+            field_path="comparison_request_json",
+            error_id=CLI_STYLIZED_FACTS_HORIZON_COMPARISON_VALIDATION_ERROR_ID,
+            entrypoint=CLI_STYLIZED_FACTS_HORIZON_COMPARISON_ENTRYPOINT,
+        )
 
         artifact_export_document: Optional[dict[str, Any]] = None
-        if artifact_export_path is not None:
-            file_field_path = "artifact_export_json"
+        if artifact_export_json is not None:
             document_field_path = "artifact_export_document"
-            artifact_export_document = _load_json_document(
-                artifact_export_path,
-                "stylized-fact artifact export config",
+            artifact_export_document = _load_json_document_for_cli_field(
+                repository_root=cli_context.repository_root,
+                path=artifact_export_json,
+                context="stylized-fact artifact export config",
+                field_path="artifact_export_json",
+                error_id=CLI_STYLIZED_FACTS_HORIZON_COMPARISON_VALIDATION_ERROR_ID,
+                entrypoint=CLI_STYLIZED_FACTS_HORIZON_COMPARISON_ENTRYPOINT,
             )
 
         document_field_path = "command_input"
@@ -93,7 +91,7 @@ def _run_stylized_facts_horizon_comparison_command(
                 entrypoint=CLI_STYLIZED_FACTS_HORIZON_COMPARISON_ENTRYPOINT,
                 validation_error_id=CLI_STYLIZED_FACTS_HORIZON_COMPARISON_VALIDATION_ERROR_ID,
                 internal_error_id=CLI_STYLIZED_FACTS_HORIZON_COMPARISON_INTERNAL_ERROR_ID,
-                file_field_path=file_field_path,
+                file_field_path="metric_catalog_json",
                 document_field_path=document_field_path,
             )
         )
@@ -165,4 +163,3 @@ def _build_stylized_facts_group(*, environment: Optional[Mapping[str, str]] = No
         )
 
     return stylized_facts
-

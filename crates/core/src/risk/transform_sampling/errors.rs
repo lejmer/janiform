@@ -243,6 +243,9 @@ pub enum SufficientStatisticsTransformSliceSamplingError {
     InvalidSlices {
         source: SufficientStatisticsTransformSlicesError,
     },
+    InvalidChunkingSettings {
+        source: SufficientStatisticsStreamingChunkingSettingsError,
+    },
     NonRealTransformSlice {
         interval_index: usize,
         field: &'static str,
@@ -268,6 +271,12 @@ impl Display for SufficientStatisticsTransformSliceSamplingError {
         match self {
             Self::InvalidSlices { source } => {
                 write!(formatter, "invalid transform slices for sampling: {source}")
+            }
+            Self::InvalidChunkingSettings { source } => {
+                write!(
+                    formatter,
+                    "invalid batch chunking settings for sampling: {source}"
+                )
             }
             Self::NonRealTransformSlice {
                 interval_index,
@@ -310,6 +319,7 @@ impl Error for SufficientStatisticsTransformSliceSamplingError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidSlices { source } => Some(source),
+            Self::InvalidChunkingSettings { source } => Some(source),
             Self::InvalidSampledStatistics { source, .. } => Some(source),
             _ => None,
         }

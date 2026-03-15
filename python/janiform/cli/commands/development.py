@@ -20,14 +20,15 @@ from .._constants import (
     CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT,
     CLI_DETERMINISTIC_REGRESSION_INTERNAL_ERROR_ID,
     CLI_DETERMINISTIC_REGRESSION_VALIDATION_ERROR_ID,
+    CLI_OPEN_CLOSED_GAP_ENTRYPOINT,
+    CLI_OPEN_CLOSED_GAP_VALIDATION_ERROR_ID,
     CliExitCode,
     DEFAULT_CALENDAR_FIXTURE_PATH,
     DEFAULT_GAP_BEHAVIOR_FIXTURE_PATH,
     CliOutputMode,
 )
-from ..documents import _load_json_document
+from ..documents import _load_json_document_for_cli_field
 from ..errors import _classify_open_closed_gap_command_error, _classify_workflow_command_error
-from ..paths import _resolve_path_from_repository_root
 from ..rendering import (
     _write_cli_error,
     _write_contract_json,
@@ -128,29 +129,35 @@ def _run_deterministic_regression_command(
     news_intensity_absolute_tolerance: float,
     **_,
 ) -> int:
-    calendar_registry_path = _resolve_path_from_repository_root(
-        cli_context.repository_root,
-        calendar_registry_json,
-    )
-    calendar_cases_path = _resolve_path_from_repository_root(
-        cli_context.repository_root,
-        calendar_cases_json,
-    )
-    seasonality_cases_path = _resolve_path_from_repository_root(
-        cli_context.repository_root,
-        seasonality_cases_json,
-    )
-    file_field_path = "calendar_registry_json"
     document_field_path = "calendar_registry_document"
 
     try:
-        calendar_registry_document = _load_json_document(calendar_registry_path, "calendar registry")
-        file_field_path = "calendar_cases_json"
+        calendar_registry_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=calendar_registry_json,
+            context="calendar registry",
+            field_path="calendar_registry_json",
+            error_id=CLI_DETERMINISTIC_REGRESSION_VALIDATION_ERROR_ID,
+            entrypoint=CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT,
+        )
         document_field_path = "calendar_cases_document"
-        calendar_cases_document = _load_json_document(calendar_cases_path, "calendar cases")
-        file_field_path = "seasonality_cases_json"
+        calendar_cases_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=calendar_cases_json,
+            context="calendar cases",
+            field_path="calendar_cases_json",
+            error_id=CLI_DETERMINISTIC_REGRESSION_VALIDATION_ERROR_ID,
+            entrypoint=CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT,
+        )
         document_field_path = "seasonality_cases_document"
-        seasonality_cases_document = _load_json_document(seasonality_cases_path, "seasonality cases")
+        seasonality_cases_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=seasonality_cases_json,
+            context="seasonality cases",
+            field_path="seasonality_cases_json",
+            error_id=CLI_DETERMINISTIC_REGRESSION_VALIDATION_ERROR_ID,
+            entrypoint=CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT,
+        )
         document_field_path = "calendar_registry_document"
         calendar_registry = _build_calendar_registry_from_document(calendar_registry_document)
         document_field_path = "calendar_cases_document"
@@ -173,7 +180,7 @@ def _run_deterministic_regression_command(
                 entrypoint=CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT,
                 validation_error_id=CLI_DETERMINISTIC_REGRESSION_VALIDATION_ERROR_ID,
                 internal_error_id=CLI_DETERMINISTIC_REGRESSION_INTERNAL_ERROR_ID,
-                file_field_path=file_field_path,
+                file_field_path="calendar_registry_json",
                 document_field_path=document_field_path,
             )
         )
@@ -197,20 +204,22 @@ def _run_open_closed_gap_leakage_regression_command(
     component_absolute_tolerance: float,
     **_,
 ) -> int:
-    calendar_fixture_path = _resolve_path_from_repository_root(
-        cli_context.repository_root,
-        calendar_fixture_path,
-    )
-    gap_behavior_fixture_path = _resolve_path_from_repository_root(
-        cli_context.repository_root,
-        gap_behavior_fixture_path,
-    )
-
     try:
-        calendar_fixture_document = _load_json_document(calendar_fixture_path, "calendar fixture")
-        gap_behavior_fixture_document = _load_json_document(
-            gap_behavior_fixture_path,
-            "open closed gap behavior fixture",
+        calendar_fixture_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=calendar_fixture_path,
+            context="calendar fixture",
+            field_path="calendar_fixture_path",
+            error_id=CLI_OPEN_CLOSED_GAP_VALIDATION_ERROR_ID,
+            entrypoint=CLI_OPEN_CLOSED_GAP_ENTRYPOINT,
+        )
+        gap_behavior_fixture_document = _load_json_document_for_cli_field(
+            repository_root=cli_context.repository_root,
+            path=gap_behavior_fixture_path,
+            context="open closed gap behavior fixture",
+            field_path="gap_behavior_fixture_path",
+            error_id=CLI_OPEN_CLOSED_GAP_VALIDATION_ERROR_ID,
+            entrypoint=CLI_OPEN_CLOSED_GAP_ENTRYPOINT,
         )
         calendar_registry = _build_calendar_registry(calendar_fixture_document)
         gap_behavior_cases = _extract_gap_behavior_cases(gap_behavior_fixture_document)

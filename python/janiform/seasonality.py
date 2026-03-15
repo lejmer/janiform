@@ -10,7 +10,7 @@ from typing import Any, Optional, cast
 
 import orjson
 
-from ._native_api import native_module
+from ._native_api import native_module, remap_native_exception_by_type
 from .calendar import (
     CalendarInvalidTimezoneError,
     CalendarMissingExchangeError,
@@ -34,6 +34,16 @@ class SeasonalityPreprocessingError(Exception):
 
 class SeasonalityInputValidationError(SeasonalityPreprocessingError):
     """Raised when event records violate the timestamp input contract."""
+
+
+_SEASONALITY_NATIVE_EXCEPTION_TYPES: dict[str, type[Exception]] = {
+    "SeasonalityInputValidationError": SeasonalityInputValidationError,
+}
+_SEASONALITY_PREPROCESS_NATIVE_EXCEPTION_TYPES: dict[str, type[Exception]] = {
+    **_SEASONALITY_NATIVE_EXCEPTION_TYPES,
+    "CalendarMissingExchangeError": CalendarMissingExchangeError,
+    "CalendarInvalidTimezoneError": CalendarInvalidTimezoneError,
+}
 
 
 class SessionFilter(StrEnum):
@@ -645,12 +655,16 @@ def preprocess_timestamp_events(
             session_filter=session_filter.value,
             sparse_hour_event_threshold=sparse_hour_event_threshold,
         )
-    except native.SeasonalityInputValidationError as e:
-        raise SeasonalityInputValidationError(str(e)) from e
-    except native.CalendarMissingExchangeError as e:
-        raise CalendarMissingExchangeError(str(e)) from e
-    except native.CalendarInvalidTimezoneError as e:
-        raise CalendarInvalidTimezoneError(str(e)) from e
+    except Exception as e:
+        mapped_error = remap_native_exception_by_type(
+            native,
+            e,
+            _SEASONALITY_PREPROCESS_NATIVE_EXCEPTION_TYPES,
+        )
+        if mapped_error is not None:
+            raise mapped_error from e
+
+        raise
 
     return TimestampEventPreprocessingResult(native_result)
 
@@ -674,8 +688,16 @@ def estimate_intraday_seasonality(
             minimum_bin_events=estimator_settings.minimum_bin_events,
             pseudocount=estimator_settings.pseudocount,
         )
-    except native.SeasonalityInputValidationError as e:
-        raise SeasonalityInputValidationError(str(e)) from e
+    except Exception as e:
+        mapped_error = remap_native_exception_by_type(
+            native,
+            e,
+            _SEASONALITY_NATIVE_EXCEPTION_TYPES,
+        )
+        if mapped_error is not None:
+            raise mapped_error from e
+
+        raise
 
     return IntradaySeasonalityEstimate(native_result)
 
@@ -696,8 +718,16 @@ def estimate_day_of_week_seasonality(
             minimum_bucket_events=estimator_settings.minimum_bucket_events,
             pseudocount=estimator_settings.pseudocount,
         )
-    except native.SeasonalityInputValidationError as e:
-        raise SeasonalityInputValidationError(str(e)) from e
+    except Exception as e:
+        mapped_error = remap_native_exception_by_type(
+            native,
+            e,
+            _SEASONALITY_NATIVE_EXCEPTION_TYPES,
+        )
+        if mapped_error is not None:
+            raise mapped_error from e
+
+        raise
 
     return DayOfWeekSeasonalityEstimate(native_result)
 
@@ -718,8 +748,16 @@ def estimate_day_of_year_seasonality(
             minimum_bucket_events=estimator_settings.minimum_bucket_events,
             pseudocount=estimator_settings.pseudocount,
         )
-    except native.SeasonalityInputValidationError as e:
-        raise SeasonalityInputValidationError(str(e)) from e
+    except Exception as e:
+        mapped_error = remap_native_exception_by_type(
+            native,
+            e,
+            _SEASONALITY_NATIVE_EXCEPTION_TYPES,
+        )
+        if mapped_error is not None:
+            raise mapped_error from e
+
+        raise
 
     return DayOfYearSeasonalityEstimate(native_result)
 
@@ -751,8 +789,16 @@ def compose_deterministic_seasonality_signal(
             intraday_minutes_per_bin=intraday_estimate.minutes_per_bin,
             scheduled_event_overlays=serialized_scheduled_event_overlays,
         )
-    except native.SeasonalityInputValidationError as e:
-        raise SeasonalityInputValidationError(str(e)) from e
+    except Exception as e:
+        mapped_error = remap_native_exception_by_type(
+            native,
+            e,
+            _SEASONALITY_NATIVE_EXCEPTION_TYPES,
+        )
+        if mapped_error is not None:
+            raise mapped_error from e
+
+        raise
 
     return DeterministicSeasonalityComposition(native_result)
 
@@ -779,8 +825,16 @@ def generate_seasonality_diagnostics_report(
             composition._native_result,
             estimator_version=estimator_version,
         )
-    except native.SeasonalityInputValidationError as e:
-        raise SeasonalityInputValidationError(str(e)) from e
+    except Exception as e:
+        mapped_error = remap_native_exception_by_type(
+            native,
+            e,
+            _SEASONALITY_NATIVE_EXCEPTION_TYPES,
+        )
+        if mapped_error is not None:
+            raise mapped_error from e
+
+        raise
 
     return cast(dict[str, Any], orjson.loads(cast(str, report_json)))
 
