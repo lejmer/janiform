@@ -1464,7 +1464,7 @@ def _model_workflow_simulate_options(
             ),
             optional_path_option(
                 "--output-path",
-                help_text="Primary simulation output path. Default: ./janiform_runs/<run_id>/simulation.<csv|parquet>.",
+                help_text="Primary simulation output path. Default: ./.janiform/<run_id>/simulation.<csv|parquet>.",
             ),
             command_option(
                 "--silent",

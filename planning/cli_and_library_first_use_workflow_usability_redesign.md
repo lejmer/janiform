@@ -220,7 +220,7 @@ Behavior:
 If the user does not provide `--output-dir`, default to:
 
 ```text
-./janiform_runs/<run_id>/
+./.janiform/<run_id>/
 ```
 
 Contents:
@@ -238,7 +238,7 @@ Do not emit bulky intermediate market-data payloads by default.
 If the user does not provide `--output-path`, default to something under:
 
 ```text
-./janiform_runs/<run_id>/
+./.janiform/<run_id>/
 ```
 
 Examples:
@@ -264,7 +264,7 @@ The decided defaults are:
 If the user does not provide `--output-path`, default to something under:
 
 ```text
-./janiform_runs/<run_id>/
+./.janiform/<run_id>/
 ```
 
 Examples:
@@ -279,9 +279,9 @@ Pricing outputs are small enough that JSON is acceptable by default for the curr
 
 The decided default output layout is:
 
-- `fit`: `./janiform_runs/<run_id>/`
-- `simulate`: `./janiform_runs/<run_id>/simulation.<csv|parquet>` or interval-specific equivalent
-- `price`: `./janiform_runs/<run_id>/pricing.json`
+- `fit`: `./.janiform/<run_id>/`
+- `simulate`: `./.janiform/<run_id>/simulation.<csv|parquet>` or interval-specific equivalent
+- `price`: `./.janiform/<run_id>/pricing.json`
 
 ## Simulation Output Requirements
 
@@ -395,7 +395,7 @@ The simple high-level path should save a simulation file by default.
 Examples:
 
 ```bash
-janiform simulate --model-path ./janiform_runs/run_123/model.json --start-time-utc ... --horizon-interval-count ... --seed 7
+janiform simulate --model-path ./.janiform/run_123/model.json --start-time-utc ... --horizon-interval-count ... --seed 7
 ```
 
 Behavior:
