@@ -1148,7 +1148,7 @@ def _build_fit_group(*, environment: Optional[Mapping[str, str]] = None) -> clic
         cls=JaniformCommand,
         command_path=("fit", "inspect"),
         environment=environment,
-        help="Inspect the inferred beginner-path fit configuration without running calibration.",
+        help="Inspect the inferred fit configuration without running calibration.",
         params=_model_workflow_fit_options(
             enforce_required=False,
             include_output_dir=True,
@@ -1349,7 +1349,7 @@ def _model_workflow_fit_options(
             [
                 command_option(
                     "--explain",
-                    help_text="Include a human-readable summary of the inferred beginner-path configuration.",
+                    help_text="Include a human-readable summary of the inferred configuration.",
                     is_flag=True,
                 ),
             ]

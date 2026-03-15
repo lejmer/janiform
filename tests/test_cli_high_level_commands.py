@@ -31,7 +31,7 @@ def test_cli_top_level_help_lists_high_level_workflow_commands() -> None:
 def test_fit_help_documents_default_workflow_and_expert_subcommands() -> None:
     help_output = normalize_help_output(_render_help(["fit"]))
 
-    assert "inspect Inspect the inferred beginner-path fit configuration" in help_output
+    assert "inspect Inspect the inferred fit configuration" in help_output
     assert "fit plan" in help_output
     assert "fit staged" in help_output
     assert "--market MARKET" in help_output
