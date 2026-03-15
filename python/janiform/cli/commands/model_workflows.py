@@ -137,6 +137,8 @@ def _run_fit_command(
             configured_command=configured_command,
             output=output,
             command_arguments=command_arguments,
+            entrypoint=CLI_FIT_ENTRYPOINT,
+            error_id=CLI_FIT_INTERNAL_ERROR_ID,
         )
         payload = _build_cli_fit_result_payload(
             model=model,
@@ -640,6 +642,8 @@ def _execute_cli_fit(
     configured_command: _ConfiguredCliFitCommand,
     output: str,
     command_arguments: CliCommandArguments,
+    entrypoint: str,
+    error_id: str,
 ) -> tuple[JaniformModel, JaniformFitReport, WorkflowArtifactPaths]:
     execution_silent = bool(command_arguments.get("silent")) or output == CliOutputMode.JSON.value
 
@@ -661,7 +665,7 @@ def _execute_cli_fit(
     if model_result is None:
         raise JaniformExecutionError(
             JaniformErrorDetails.from_context(
-                error_id=f"{error_id}.fit_failed",
+                error_id=error_id,
                 category=JaniformErrorCategory.EXECUTION,
                 workflow="cli",
                 entrypoint=entrypoint,
