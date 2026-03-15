@@ -132,7 +132,7 @@ preview the inferred configuration without running calibration.
 ### Synopsis
 
 ```text
-janiform fit [PATH] [--market MARKET] [--run-id RUN_ID] [--workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface}] [--tick-data-path PATH] [--tick-data-format {csv,parquet}] [--tick-timestamp-column TICK_TIMESTAMP_COLUMN] [--timestamp-timezone TIMESTAMP_TIMEZONE] [--tick-data-provenance-label TICK_DATA_PROVENANCE_LABEL] [--tick-price-input-policy {explicit_price_column,trade_price_column,bid_ask_midpoint,close_price_column}] [--tick-price-column TICK_PRICE_COLUMN] [--tick-trade-price-column TICK_TRADE_PRICE_COLUMN] [--tick-trade-sign-column TICK_TRADE_SIGN_COLUMN] [--tick-bid-column TICK_BID_COLUMN] [--tick-ask-column TICK_ASK_COLUMN] [--tick-close-price-column TICK_CLOSE_PRICE_COLUMN] [--session-preset SESSION_PRESET] [--known-news KNOWN_NEWS] [--session-json PATH] [--known-news-json PATH] [--exchange-code EXCHANGE_CODE] [--session-timezone SESSION_TIMEZONE] [--explain] [--silent] [--option-surface-path PATH] [--option-surface-format {csv,parquet}] [--option-surface-provenance-label OPTION_SURFACE_PROVENANCE_LABEL] [--option-quote-input-policy {mid_price_column,bid_ask_midpoint,implied_volatility_column}] [--option-quote-timestamp-column OPTION_QUOTE_TIMESTAMP_COLUMN] [--option-expiry-column OPTION_EXPIRY_COLUMN] [--option-strike-column OPTION_STRIKE_COLUMN] [--option-type-column OPTION_TYPE_COLUMN] [--option-mid-price-column OPTION_MID_PRICE_COLUMN] [--option-bid-column OPTION_BID_COLUMN] [--option-ask-column OPTION_ASK_COLUMN] [--option-implied-volatility-column OPTION_IMPLIED_VOLATILITY_COLUMN] [--execution-mode {disk,memory}] [--disk-checkpoint-directory DIRECTORY] [--emit-derived-staged-execution-input] [--omit-input-provenance-report] [--output-dir DIRECTORY] [--output {human,json}]
+janiform fit [PATH] [--market MARKET] [--run-id RUN_ID] [--workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface}] [--tick-data-path PATH] [--tick-data-format {csv,parquet}] [--tick-timestamp-column TICK_TIMESTAMP_COLUMN] [--timestamp-timezone TIMESTAMP_TIMEZONE] [--tick-data-provenance-label TICK_DATA_PROVENANCE_LABEL] [--tick-price-input-policy {explicit_price_column,bid_ask_midpoint}] [--tick-price-column TICK_PRICE_COLUMN] [--tick-trade-sign-column TICK_TRADE_SIGN_COLUMN] [--tick-bid-column TICK_BID_COLUMN] [--tick-ask-column TICK_ASK_COLUMN] [--session-preset SESSION_PRESET] [--known-news KNOWN_NEWS] [--session-json PATH] [--known-news-json PATH] [--exchange-code EXCHANGE_CODE] [--session-timezone SESSION_TIMEZONE] [--explain] [--silent] [--option-surface-path PATH] [--option-surface-format {csv,parquet}] [--option-surface-provenance-label OPTION_SURFACE_PROVENANCE_LABEL] [--option-quote-input-policy {mid_price_column,bid_ask_midpoint,implied_volatility_column}] [--option-quote-timestamp-column OPTION_QUOTE_TIMESTAMP_COLUMN] [--option-expiry-column OPTION_EXPIRY_COLUMN] [--option-strike-column OPTION_STRIKE_COLUMN] [--option-type-column OPTION_TYPE_COLUMN] [--option-mid-price-column OPTION_MID_PRICE_COLUMN] [--option-bid-column OPTION_BID_COLUMN] [--option-ask-column OPTION_ASK_COLUMN] [--option-implied-volatility-column OPTION_IMPLIED_VOLATILITY_COLUMN] [--execution-mode {disk,memory}] [--disk-checkpoint-directory DIRECTORY] [--emit-derived-staged-execution-input] [--omit-input-provenance-report] [--output-dir DIRECTORY] [--output {human,json}]
 ```
 
 ### Example
@@ -597,7 +597,7 @@ Optional session-resolution overrides:
 
 Common normalization and output options:
 
-- `--tick-price-input-policy {explicit_price_column,trade_price_column,bid_ask_midpoint,close_price_column}`
+- `--tick-price-input-policy {explicit_price_column,bid_ask_midpoint}`
 - `--tick-price-column`
 - `--tick-trade-price-column`
 - `--tick-trade-sign-column`
@@ -685,8 +685,8 @@ janiform fit plan \
   --tick-data-format parquet \
   --tick-data-provenance-label primary-tick-feed \
   --tick-timestamp-column timestamp_utc \
-  --tick-price-input-policy trade_price_column \
-  --tick-trade-price-column trade_price \
+  --tick-price-input-policy explicit_price_column \
+  --tick-price-column trade_price \
   --tick-trade-sign-column trade_sign \
   --exchange-code XNYS \
   --known-news-path tmp/cli-docs/config/known-news.csv \

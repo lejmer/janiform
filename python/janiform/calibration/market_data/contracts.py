@@ -44,9 +44,7 @@ class CalibrationDuplicateRecordPolicy(StrEnum):
 
 class CalibrationTickPriceInputPolicy(StrEnum):
     EXPLICIT_PRICE_COLUMN = "explicit_price_column"
-    TRADE_PRICE_COLUMN = "trade_price_column"
     BID_ASK_MIDPOINT = "bid_ask_midpoint"
-    CLOSE_PRICE_COLUMN = "close_price_column"
 
 
 class CalibrationTradeSign(StrEnum):
@@ -191,11 +189,9 @@ class CalibrationKnownNewsInput(ContractModel):
 class CalibrationTickDataColumnMapping(ContractModel):
     timestamp_column: str
     price_column: Optional[str] = None
-    trade_price_column: Optional[str] = None
     trade_sign_column: Optional[str] = None
     bid_column: Optional[str] = None
     ask_column: Optional[str] = None
-    close_price_column: Optional[str] = None
 
     def __post_init__(self) -> None:
         if not self.timestamp_column.strip():
@@ -203,11 +199,9 @@ class CalibrationTickDataColumnMapping(ContractModel):
 
         for field_name, field_value in (
             ("price_column", self.price_column),
-            ("trade_price_column", self.trade_price_column),
             ("trade_sign_column", self.trade_sign_column),
             ("bid_column", self.bid_column),
             ("ask_column", self.ask_column),
-            ("close_price_column", self.close_price_column),
         ):
             if field_value is not None and not field_value.strip():
                 raise _calibration_error(field_name, "must be non-empty when provided")
@@ -219,11 +213,9 @@ class CalibrationTickDataColumnMapping(ContractModel):
 
         raw_optional_fields = {
             "price_column": raw_payload.get("price_column"),
-            "trade_price_column": raw_payload.get("trade_price_column"),
             "trade_sign_column": raw_payload.get("trade_sign_column"),
             "bid_column": raw_payload.get("bid_column"),
             "ask_column": raw_payload.get("ask_column"),
-            "close_price_column": raw_payload.get("close_price_column"),
         }
         for field_name, field_value in raw_optional_fields.items():
             if field_value is not None and not isinstance(field_value, str):
@@ -237,11 +229,9 @@ class CalibrationTickDataColumnMapping(ContractModel):
                 CALIBRATION_ERROR_FACTORY,
             ),
             price_column=cast(Optional[str], raw_optional_fields["price_column"]),
-            trade_price_column=cast(Optional[str], raw_optional_fields["trade_price_column"]),
             trade_sign_column=cast(Optional[str], raw_optional_fields["trade_sign_column"]),
             bid_column=cast(Optional[str], raw_optional_fields["bid_column"]),
             ask_column=cast(Optional[str], raw_optional_fields["ask_column"]),
-            close_price_column=cast(Optional[str], raw_optional_fields["close_price_column"]),
         )
 
 
@@ -548,23 +538,11 @@ def validate_tick_price_input_policy(
                     "column_mapping.tick_data.price_column",
                     "is required when tick_price_input_policy=explicit_price_column",
                 )
-        case CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN:
-            if column_mapping.trade_price_column is None:
-                raise _calibration_error(
-                    "column_mapping.tick_data.trade_price_column",
-                    "is required when tick_price_input_policy=trade_price_column",
-                )
         case CalibrationTickPriceInputPolicy.BID_ASK_MIDPOINT:
             if column_mapping.bid_column is None or column_mapping.ask_column is None:
                 raise _calibration_error(
                     "column_mapping.tick_data",
                     "bid_column and ask_column are required when tick_price_input_policy=bid_ask_midpoint",
-                )
-        case CalibrationTickPriceInputPolicy.CLOSE_PRICE_COLUMN:
-            if column_mapping.close_price_column is None:
-                raise _calibration_error(
-                    "column_mapping.tick_data.close_price_column",
-                    "is required when tick_price_input_policy=close_price_column",
                 )
 
 

@@ -945,7 +945,7 @@ def _build_market_data_request(
         column_mapping=CalibrationMarketDataColumnMapping(
             tick_data=CalibrationTickDataColumnMapping(
                 timestamp_column="time",
-                close_price_column="close",
+                price_column="close",
                 trade_sign_column="sign",
             ),
         ),
@@ -954,7 +954,7 @@ def _build_market_data_request(
             timestamp_timezone=timestamp_timezone,
             sort_records_by_timestamp=True,
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.CLOSE_PRICE_COLUMN,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
         output_preferences=CalibrationMarketDataOutputPreferences(
             execution_mode=CalibrationExecutionMode.DISK,

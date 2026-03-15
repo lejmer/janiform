@@ -2,8 +2,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import numpy
-import pandas
+import pandas as pd
 
 from janiform.calibration import JaniformEstimator
 
@@ -35,8 +34,8 @@ def main() -> None:
         horizon_interval_count=SEEDED_TICKS_HOURS,
     )
 
-    coarse_frame = coarse_simulation.to_pandas()
-    seeded_frame = seeded_simulation.to_pandas()
+    coarse_frame: pd.DataFrame = coarse_simulation.to_pandas()
+    seeded_frame: pd.DataFrame = seeded_simulation.to_pandas()
 
     figure, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=False)
 

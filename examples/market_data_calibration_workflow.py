@@ -36,14 +36,14 @@ def run_example(*, working_directory: Path) -> dict[str, Any]:
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
-            trade_price_column="trade_price",
+            price_column="trade_price",
             trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
         known_news_path=file_paths["known_news"],
     )
@@ -54,14 +54,14 @@ def run_example(*, working_directory: Path) -> dict[str, Any]:
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
-            trade_price_column="trade_price",
+            price_column="trade_price",
             trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
         known_news_path=file_paths["known_news"],
     )
@@ -72,14 +72,14 @@ def run_example(*, working_directory: Path) -> dict[str, Any]:
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE,
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
-            trade_price_column="trade_price",
+            price_column="trade_price",
             trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
             option_quote_input_policy=CalibrationOptionQuoteInputPolicy.BID_ASK_MIDPOINT,
         ),
         known_news_path=file_paths["known_news"],

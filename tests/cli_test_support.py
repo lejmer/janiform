@@ -180,7 +180,7 @@ def write_market_data_input_files(
     include_known_news: bool = False,
     include_option_surface: bool = False,
     ambiguous_tick_timestamp: bool = False,
-    tick_trade_price_column_name: str = "trade_price",
+    tick_price_column_name: str = "trade_price",
     tick_trade_sign_column_name: str = "trade_sign",
     tick_data_format: str = "csv",
 ) -> dict[str, Path]:
@@ -206,7 +206,7 @@ def write_market_data_input_files(
             tick_data_path.write_text(
                 "\n".join(
                     [
-                        f"timestamp_utc,{tick_trade_price_column_name},{tick_trade_sign_column_name}",
+                        f"timestamp_utc,{tick_price_column_name},{tick_trade_sign_column_name}",
                         "2026-02-02T14:30:00Z,100.0,buy",
                         "2026-02-02T15:00:00Z,101.0,sell",
                         "2026-02-02T20:59:00Z,102.0,buy",
@@ -225,7 +225,7 @@ def write_market_data_input_files(
                         datetime(2026, 2, 2, 20, 59, tzinfo=UTC),
                         datetime(2026, 2, 4, 14, 30, tzinfo=UTC),
                     ],
-                    tick_trade_price_column_name: [100.0, 101.0, 102.0, 95.0],
+                    tick_price_column_name: [100.0, 101.0, 102.0, 95.0],
                     tick_trade_sign_column_name: ["buy", "sell", "buy", "sell"],
                 }
             ),

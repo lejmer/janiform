@@ -218,21 +218,15 @@ class JaniformSimulationResult:
 
         timestamp_column = self._preferences.timestamp_column
         match self._preferences.tick_price_input_policy:
-            case "trade_price_column":
-                column_names = [timestamp_column, self._preferences.trade_price_column or "trade_price"]
+            case "explicit_price_column":
+                column_names = [timestamp_column, self._preferences.price_column or "price"]
                 if self._preferences.trade_sign_column is not None:
                     column_names.append(self._preferences.trade_sign_column)
                 return tuple(column_names)
-            case "close_price_column":
-                return (
-                    timestamp_column,
-                    self._preferences.close_price_column or "close_price",
-                )
             case "bid_ask_midpoint":
                 return (
                     timestamp_column,
-                    self._preferences.bid_column or "bid",
-                    self._preferences.ask_column or "ask",
+                    "mid_price",
                 )
             case _:
                 return (

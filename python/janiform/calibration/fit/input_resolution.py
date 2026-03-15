@@ -40,14 +40,15 @@ _GENERIC_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "mid_point",
         "mark_price",
         "mark",
-    ),
-    "trade_price": (
         "trade_price",
         "tradeprice",
         "last_price",
         "last_trade_price",
         "traded_price",
-        "price",
+        "close",
+        "close_price",
+        "closeprice",
+        "last_close",
     ),
     "trade_sign": (
         "trade_sign",
@@ -69,12 +70,6 @@ _GENERIC_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "askprice",
         "best_ask",
     ),
-    "close_price": (
-        "close",
-        "close_price",
-        "closeprice",
-        "last_close",
-    ),
 }
 _SUPPORTED_TICK_DATA_EXTENSIONS: dict[str, CalibrationInputFileFormat] = {
     ".csv": CalibrationInputFileFormat.CSV,
@@ -87,21 +82,17 @@ _SUPPORTED_TICK_DATA_EXTENSIONS: dict[str, CalibrationInputFileFormat] = {
 class HighLevelTickDataColumnOverrides:
     timestamp_column: Optional[str] = None
     price_column: Optional[str] = None
-    trade_price_column: Optional[str] = None
     trade_sign_column: Optional[str] = None
     bid_column: Optional[str] = None
     ask_column: Optional[str] = None
-    close_price_column: Optional[str] = None
 
     def __post_init__(self) -> None:
         for field_name, field_value in (
             ("timestamp_column", self.timestamp_column),
             ("price_column", self.price_column),
-            ("trade_price_column", self.trade_price_column),
             ("trade_sign_column", self.trade_sign_column),
             ("bid_column", self.bid_column),
             ("ask_column", self.ask_column),
-            ("close_price_column", self.close_price_column),
         ):
             if field_value is not None and not field_value.strip():
                 raise _calibration_error(field_name, "must be non-empty when provided")
@@ -128,12 +119,10 @@ class HighLevelFitInference:
     normalization_policy: CalibrationMarketDataNormalizationPolicy
     available_columns: tuple[str, ...]
     timestamp_candidates: tuple[str, ...]
-    explicit_price_candidates: tuple[str, ...]
-    trade_price_candidates: tuple[str, ...]
+    price_candidates: tuple[str, ...]
     trade_sign_candidates: tuple[str, ...]
     bid_candidates: tuple[str, ...]
     ask_candidates: tuple[str, ...]
-    close_price_candidates: tuple[str, ...]
     timestamp_timezone_source: str
     default_calibration_hint_ids: tuple[str, ...]
 
@@ -189,13 +178,9 @@ def infer_high_level_fit_inputs(
         available_columns=available_columns,
         aliases=alias_map["timestamp"],
     )
-    explicit_price_candidates = _ordered_candidates(
+    price_candidates = _ordered_candidates(
         available_columns=available_columns,
         aliases=alias_map["price"],
-    )
-    trade_price_candidates = _ordered_candidates(
-        available_columns=available_columns,
-        aliases=alias_map["trade_price"],
     )
     trade_sign_candidates = _ordered_candidates(
         available_columns=available_columns,
@@ -209,11 +194,6 @@ def infer_high_level_fit_inputs(
         available_columns=available_columns,
         aliases=alias_map["ask"],
     )
-    close_price_candidates = _ordered_candidates(
-        available_columns=available_columns,
-        aliases=alias_map["close_price"],
-    )
-
     timestamp_column = (
         effective_column_overrides.timestamp_column
         if effective_column_overrides.timestamp_column is not None
@@ -237,16 +217,11 @@ def infer_high_level_fit_inputs(
         workflow_scope=workflow_scope,
         explicit_policy=effective_normalization_overrides.tick_price_input_policy,
         explicit_price_column=effective_column_overrides.price_column,
-        explicit_trade_price_column=effective_column_overrides.trade_price_column,
         explicit_bid_column=effective_column_overrides.bid_column,
         explicit_ask_column=effective_column_overrides.ask_column,
-        explicit_close_price_column=effective_column_overrides.close_price_column,
-        trade_sign_column=trade_sign_column,
-        explicit_price_candidates=explicit_price_candidates,
-        trade_price_candidates=trade_price_candidates,
+        price_candidates=price_candidates,
         bid_candidates=bid_candidates,
         ask_candidates=ask_candidates,
-        close_price_candidates=close_price_candidates,
     )
 
     tick_data_column_mapping = _build_tick_data_column_mapping(
@@ -254,11 +229,9 @@ def infer_high_level_fit_inputs(
         tick_price_input_policy=tick_price_input_policy,
         column_overrides=effective_column_overrides,
         trade_sign_column=trade_sign_column,
-        explicit_price_candidates=explicit_price_candidates,
-        trade_price_candidates=trade_price_candidates,
+        price_candidates=price_candidates,
         bid_candidates=bid_candidates,
         ask_candidates=ask_candidates,
-        close_price_candidates=close_price_candidates,
     )
 
     timestamp_timezone, timestamp_timezone_source = _resolve_timestamp_timezone(
@@ -289,12 +262,10 @@ def infer_high_level_fit_inputs(
         normalization_policy=normalization_policy,
         available_columns=available_columns,
         timestamp_candidates=timestamp_candidates,
-        explicit_price_candidates=explicit_price_candidates,
-        trade_price_candidates=trade_price_candidates,
+        price_candidates=price_candidates,
         trade_sign_candidates=trade_sign_candidates,
         bid_candidates=bid_candidates,
         ask_candidates=ask_candidates,
-        close_price_candidates=close_price_candidates,
         timestamp_timezone_source=timestamp_timezone_source,
         default_calibration_hint_ids=(
             ()
@@ -313,11 +284,9 @@ def column_overrides_from_mapping(
     return HighLevelTickDataColumnOverrides(
         timestamp_column=tick_data_column_mapping.timestamp_column,
         price_column=tick_data_column_mapping.price_column,
-        trade_price_column=tick_data_column_mapping.trade_price_column,
         trade_sign_column=tick_data_column_mapping.trade_sign_column,
         bid_column=tick_data_column_mapping.bid_column,
         ask_column=tick_data_column_mapping.ask_column,
-        close_price_column=tick_data_column_mapping.close_price_column,
     )
 
 
@@ -360,11 +329,9 @@ def build_fit_inference_payload(
         ),
         "tick_price_columns": {
             "price_column": inference.tick_data_column_mapping.price_column,
-            "trade_price_column": inference.tick_data_column_mapping.trade_price_column,
             "trade_sign_column": inference.tick_data_column_mapping.trade_sign_column,
             "bid_column": inference.tick_data_column_mapping.bid_column,
             "ask_column": inference.tick_data_column_mapping.ask_column,
-            "close_price_column": inference.tick_data_column_mapping.close_price_column,
         },
         "timestamp_timezone": inference.normalization_policy.timestamp_timezone,
         "timestamp_timezone_source": inference.timestamp_timezone_source,
@@ -379,12 +346,10 @@ def build_fit_inference_payload(
         },
         "candidate_columns": {
             "timestamp": list(inference.timestamp_candidates),
-            "explicit_price": list(inference.explicit_price_candidates),
-            "trade_price": list(inference.trade_price_candidates),
+            "price": list(inference.price_candidates),
             "trade_sign": list(inference.trade_sign_candidates),
             "bid": list(inference.bid_candidates),
             "ask": list(inference.ask_candidates),
-            "close_price": list(inference.close_price_candidates),
         },
     }
 
@@ -432,16 +397,11 @@ def _resolve_tick_price_input_policy(
     workflow_scope: CalibrationMarketDataWorkflowScope,
     explicit_policy: Optional[CalibrationTickPriceInputPolicy],
     explicit_price_column: Optional[str],
-    explicit_trade_price_column: Optional[str],
     explicit_bid_column: Optional[str],
     explicit_ask_column: Optional[str],
-    explicit_close_price_column: Optional[str],
-    trade_sign_column: Optional[str],
-    explicit_price_candidates: tuple[str, ...],
-    trade_price_candidates: tuple[str, ...],
+    price_candidates: tuple[str, ...],
     bid_candidates: tuple[str, ...],
     ask_candidates: tuple[str, ...],
-    close_price_candidates: tuple[str, ...],
 ) -> Optional[CalibrationTickPriceInputPolicy]:
     if workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY:
         return None
@@ -449,15 +409,7 @@ def _resolve_tick_price_input_policy(
     if explicit_policy is not None:
         return explicit_policy
 
-    if explicit_trade_price_column is not None or len(trade_price_candidates) > 0:
-        return CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN
-
-    if trade_sign_column is not None and (
-        explicit_price_column is not None or len(explicit_price_candidates) > 0
-    ):
-        return CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN
-
-    if explicit_price_column is not None or len(explicit_price_candidates) > 0:
+    if explicit_price_column is not None or len(price_candidates) > 0:
         return CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN
 
     has_bid_source = explicit_bid_column is not None or len(bid_candidates) > 0
@@ -465,17 +417,12 @@ def _resolve_tick_price_input_policy(
     if has_bid_source and has_ask_source:
         return CalibrationTickPriceInputPolicy.BID_ASK_MIDPOINT
 
-    if explicit_close_price_column is not None or len(close_price_candidates) > 0:
-        return CalibrationTickPriceInputPolicy.CLOSE_PRICE_COLUMN
-
     found_price_candidates = tuple(
         dict.fromkeys(
             [
-                *trade_price_candidates,
-                *explicit_price_candidates,
+                *price_candidates,
                 *bid_candidates,
                 *ask_candidates,
-                *close_price_candidates,
             ]
         )
     )
@@ -496,32 +443,20 @@ def _build_tick_data_column_mapping(
     tick_price_input_policy: Optional[CalibrationTickPriceInputPolicy],
     column_overrides: HighLevelTickDataColumnOverrides,
     trade_sign_column: Optional[str],
-    explicit_price_candidates: tuple[str, ...],
-    trade_price_candidates: tuple[str, ...],
+    price_candidates: tuple[str, ...],
     bid_candidates: tuple[str, ...],
     ask_candidates: tuple[str, ...],
-    close_price_candidates: tuple[str, ...],
 ) -> CalibrationTickDataColumnMapping:
     price_column: Optional[str] = None
-    trade_price_column: Optional[str] = None
     bid_column: Optional[str] = None
     ask_column: Optional[str] = None
-    close_price_column: Optional[str] = None
 
     match tick_price_input_policy:
         case CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN:
             price_column = _resolve_required_price_column(
                 explicit_column=column_overrides.price_column,
-                candidates=explicit_price_candidates,
+                candidates=price_candidates,
                 field_path="column_mapping.tick_data.price_column",
-            )
-        case CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN:
-            trade_price_column = _resolve_required_price_column(
-                explicit_column=column_overrides.trade_price_column,
-                candidates=trade_price_candidates
-                if len(trade_price_candidates) > 0
-                else explicit_price_candidates,
-                field_path="column_mapping.tick_data.trade_price_column",
             )
         case CalibrationTickPriceInputPolicy.BID_ASK_MIDPOINT:
             bid_column = _resolve_required_price_column(
@@ -534,23 +469,15 @@ def _build_tick_data_column_mapping(
                 candidates=ask_candidates,
                 field_path="column_mapping.tick_data.ask_column",
             )
-        case CalibrationTickPriceInputPolicy.CLOSE_PRICE_COLUMN:
-            close_price_column = _resolve_required_price_column(
-                explicit_column=column_overrides.close_price_column,
-                candidates=close_price_candidates,
-                field_path="column_mapping.tick_data.close_price_column",
-            )
         case None:
             pass
 
     return CalibrationTickDataColumnMapping(
         timestamp_column=timestamp_column,
         price_column=price_column,
-        trade_price_column=trade_price_column,
         trade_sign_column=trade_sign_column,
         bid_column=bid_column,
         ask_column=ask_column,
-        close_price_column=close_price_column,
     )
 
 

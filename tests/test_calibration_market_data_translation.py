@@ -124,14 +124,14 @@ def test_translate_market_data_request_derives_boundaries_known_news_and_diagnos
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
-            trade_price_column="trade_price",
+            price_column="trade_price",
             trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
         known_news_inputs=CalibrationKnownNewsInput(
             calendar_source=CalibrationInputFileReference(
@@ -218,14 +218,14 @@ def test_translate_market_data_request_infers_session_without_manual_definition(
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
-            trade_price_column="trade_price",
+            price_column="trade_price",
             trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
     )
 
@@ -264,14 +264,14 @@ def test_translate_market_data_request_rejects_ambiguous_session_inference_witho
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
-            trade_price_column="trade_price",
+            price_column="trade_price",
             trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
         exchange_code="BROKER_SPOT",
         session_timezone="UTC",
@@ -312,14 +312,14 @@ def test_translate_market_data_request_without_known_news_runs_staged_calibratio
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
-            trade_price_column="trade_price",
+            price_column="trade_price",
             trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
     )
 
@@ -379,14 +379,14 @@ def test_translate_market_data_request_scales_nig_candidates_to_tick_return_magn
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
-            trade_price_column="trade_price",
+            price_column="trade_price",
             trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
     )
 
@@ -428,14 +428,14 @@ def test_translate_market_data_request_applies_hourly_nig_shape_mass_floor_for_d
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
-            trade_price_column="trade_price",
+            price_column="trade_price",
             trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
     )
 
@@ -476,14 +476,14 @@ def test_translate_market_data_request_infers_missing_trade_signs_from_price_dir
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
-            trade_price_column="trade_price",
+            price_column="trade_price",
             trade_sign_column=None,
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
     )
 
@@ -539,14 +539,14 @@ def test_translate_market_data_request_preserves_provided_trade_sign_diagnostics
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
-            trade_price_column="trade_price",
+            price_column="trade_price",
             trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
     )
 
@@ -614,14 +614,14 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
-            trade_price_column="trade_price",
+            price_column="trade_price",
             trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
         known_news_inputs=CalibrationKnownNewsInput(
             calendar_source=CalibrationInputFileReference(
@@ -698,14 +698,14 @@ def test_run_market_data_calibration_executes_market_data_first_workflow(
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
-            trade_price_column="trade_price",
+            price_column="trade_price",
             trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
     )
 
@@ -771,14 +771,14 @@ def test_translate_market_data_request_full_with_option_surface_sets_option_refe
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE,
         tick_column_mapping=CalibrationTickDataColumnMapping(
             timestamp_column="timestamp_utc",
-            trade_price_column="trade_price",
+            price_column="trade_price",
             trade_sign_column="trade_sign",
         ),
         normalization_policy=CalibrationMarketDataNormalizationPolicy(
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
             duplicate_record_policy=CalibrationDuplicateRecordPolicy.ERROR,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.TRADE_PRICE_COLUMN,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
             option_quote_input_policy=CalibrationOptionQuoteInputPolicy.BID_ASK_MIDPOINT,
         ),
         option_surface_source=CalibrationInputFileReference(

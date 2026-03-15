@@ -887,8 +887,8 @@ def test_market_data_calibration_cli_maps_flags_to_summary_contract(
             "--tick-timestamp-column",
             "timestamp_utc",
             "--tick-price-input-policy",
-            "trade_price_column",
-            "--tick-trade-price-column",
+            "explicit_price_column",
+            "--tick-price-column",
             "trade_price",
             "--tick-trade-sign-column",
             "trade_sign",
@@ -1345,7 +1345,7 @@ def test_market_data_cli_missing_required_column_reports_source_file_and_normali
     market_data_paths = _write_market_data_input_files(
         tmp_path,
         calendar_registry_json=calendar_registry_json,
-        tick_trade_price_column_name="last_trade",
+        tick_price_column_name="last_trade",
     )
 
     exit_code, stdout_text, stderr_text = _invoke_cli(
@@ -1365,8 +1365,8 @@ def test_market_data_cli_missing_required_column_reports_source_file_and_normali
             "--tick-timestamp-column",
             "timestamp_utc",
             "--tick-price-input-policy",
-            "trade_price_column",
-            "--tick-trade-price-column",
+            "explicit_price_column",
+            "--tick-price-column",
             "trade_price",
             "--tick-trade-sign-column",
             "trade_sign",
