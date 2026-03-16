@@ -93,9 +93,9 @@ The initial target internal workspace graph is the following:
 | Crate | Role | Primary ownership | Allowed internal dependencies |
 | --- | --- | --- | --- |
 | `janiform-foundations` | low-level shared base | math helpers, deterministic utilities, shared primitives | none |
-| `janiform-model-kernels` | model-domain kernel crate | Hawkes, NIG, news-process domain, return decomposition, risk-neutral kernel helpers | `janiform-foundations` |
-| `janiform-affine-oracle` | shared transform solver crate | affine transform contracts and solver internals | `janiform-foundations`, `janiform-model-kernels` |
-| `janiform-market-time` | shared time/calendar infrastructure | calendar, seasonality, hourly factors, interval alignment | `janiform-foundations`, `janiform-model-kernels` |
+| `janiform-model-kernels` | model-domain kernel crate | Hawkes, NIG, news-process domain, return decomposition, risk-neutral kernel helpers | `janiform-foundations`, `janiform-test-support` |
+| `janiform-affine-oracle` | shared transform solver crate | affine transform contracts and solver internals | `janiform-foundations`, `janiform-model-kernels`, `janiform-test-support` |
+| `janiform-market-time` | shared time/calendar infrastructure | calendar, seasonality, hourly factors, interval alignment | `janiform-foundations`, `janiform-model-kernels`, `janiform-test-support` |
 | `janiform-engine-pricing` | pricing runtime engine | pricing contracts and execution | `janiform-foundations`, `janiform-model-kernels`, `janiform-affine-oracle`, `janiform-market-time` |
 | `janiform-engine-risk` | risk runtime engine | sufficient-statistics risk sampling and path outputs | `janiform-foundations`, `janiform-model-kernels`, `janiform-affine-oracle`, `janiform-market-time` |
 | `janiform-engine-simulation` | simulation runtime engine | coarse and seeded simulation execution | `janiform-foundations`, `janiform-model-kernels`, `janiform-affine-oracle`, `janiform-market-time` |
@@ -105,7 +105,7 @@ The initial target internal workspace graph is the following:
 | `janiform-validation` | validation crate | regression harnesses, scale consistency, deterministic checks, validation contracts | `janiform-foundations`, `janiform-model-kernels`, `janiform-affine-oracle`, `janiform-market-time`, `janiform-engine-pricing`, `janiform-engine-risk`, `janiform-engine-simulation`, `janiform-calibration-artifacts`, `janiform-analytics-stylized-facts`, `janiform-governance-bench` |
 | `janiform-governance` | governance crate | regression drift attribution, acceptance governance, deterministic regression orchestration, performance baseline ownership | `janiform-foundations`, `janiform-model-kernels`, `janiform-market-time`, `janiform-engine-pricing`, `janiform-engine-risk`, `janiform-engine-simulation`, `janiform-calibration-artifacts`, `janiform-analytics-stylized-facts`, `janiform-validation`, `janiform-governance-bench` |
 | `janiform-governance-bench` | benchmark-only governance crate | benchmark catalogs, harnesses, policies, and microbenchmark fixture support shared by validation and governance workflows | `janiform-foundations`, `janiform-model-kernels`, `janiform-affine-oracle`, `janiform-market-time`, `janiform-engine-pricing`, `janiform-engine-risk`, `janiform-engine-simulation`, `janiform-calibration-artifacts` |
-| `janiform-test-support` | test-only support crate | shared regression-fixture readers and helper contracts used only by Rust tests | `janiform-market-time`, `janiform-validation` |
+| `janiform-test-support` | test-only support crate | shared regression-fixture readers and helper contracts used only by Rust tests | `janiform-foundations`, `janiform-model-kernels`, `janiform-engine-pricing`, `janiform-market-time`, `janiform-validation` |
 | `janiform` | umbrella facade | curated public Rust surface during migration | all internal crates above except `janiform-pybind` |
 | `janiform-pybind` | Python boundary crate | PyO3 conversion and error mapping | `janiform` only |
 
@@ -238,6 +238,8 @@ The following dependency directions are forbidden unless this policy is explicit
 
 - shared Rust regression-fixture readers should move into `janiform-test-support` instead of
   being copied into multiple crate-local `tests/support` directories
+- extracted owner crates may take a test-only dependency on `janiform-test-support` when moved
+  regression suites still need shared fixture readers or diagnostic helpers
 - `janiform-test-support` may depend on internal crates only when a fixture contract genuinely
   needs those types, and it must stay out of production dependency paths
 

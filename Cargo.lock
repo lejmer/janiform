@@ -336,6 +336,7 @@ version = "0.1.0"
 dependencies = [
  "janiform-foundations",
  "janiform-model-kernels",
+ "janiform-test-support",
  "serde",
  "serde_json",
 ]
@@ -372,8 +373,10 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "chrono-tz",
+ "janiform-affine-oracle",
  "janiform-calibration-artifacts",
  "janiform-engine-pricing",
+ "janiform-engine-simulation",
  "janiform-foundations",
  "janiform-market-time",
  "janiform-model-kernels",
@@ -465,6 +468,7 @@ dependencies = [
  "chrono-tz",
  "janiform-foundations",
  "janiform-model-kernels",
+ "janiform-test-support",
  "serde",
  "serde_json",
 ]
@@ -475,6 +479,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "janiform-foundations",
+ "janiform-test-support",
  "serde",
  "serde_json",
 ]
@@ -494,7 +499,10 @@ name = "janiform-test-support"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "janiform-engine-pricing",
+ "janiform-foundations",
  "janiform-market-time",
+ "janiform-model-kernels",
  "janiform-validation",
  "serde",
  "serde_json",
