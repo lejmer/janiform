@@ -1,32 +1,35 @@
 #[test]
 fn pricing_and_simulation_public_api_names_must_not_include_consumer_suffixes() {
     let pricing_sources = [
-        ("pricing/mod.rs", include_str!("../src/pricing/mod.rs")),
         (
-            "pricing/characteristic.rs",
-            include_str!("../src/pricing/characteristic.rs"),
+            "engine-pricing/lib.rs",
+            include_str!("../../engine-pricing/src/lib.rs"),
         ),
         (
-            "pricing/constants.rs",
-            include_str!("../src/pricing/constants.rs"),
+            "engine-pricing/characteristic.rs",
+            include_str!("../../engine-pricing/src/characteristic.rs"),
         ),
         (
-            "pricing/contracts.rs",
-            include_str!("../src/pricing/contracts.rs"),
+            "engine-pricing/constants.rs",
+            include_str!("../../engine-pricing/src/constants.rs"),
         ),
         (
-            "pricing/fourier.rs",
-            include_str!("../src/pricing/fourier.rs"),
+            "engine-pricing/contracts.rs",
+            include_str!("../../engine-pricing/src/contracts.rs"),
+        ),
+        (
+            "engine-pricing/fourier.rs",
+            include_str!("../../engine-pricing/src/fourier.rs"),
         ),
     ];
-    let simulation_source = include_str!("../src/simulation/mod.rs");
+    let simulation_source = include_str!("../../engine-simulation/src/lib.rs");
 
     let pricing_violations: Vec<String> = pricing_sources
         .into_iter()
         .flat_map(|(source_name, source)| collect_public_for_api_items(source_name, source))
         .collect();
     let simulation_violations =
-        collect_public_for_api_items("simulation/mod.rs", simulation_source);
+        collect_public_for_api_items("engine-simulation/lib.rs", simulation_source);
 
     assert!(
         pricing_violations.is_empty(),
@@ -35,7 +38,7 @@ fn pricing_and_simulation_public_api_names_must_not_include_consumer_suffixes() 
     );
     assert!(
         simulation_violations.is_empty(),
-        "simulation/mod.rs contains public API items with `*_for_*` names:\n{}",
+        "engine-simulation/lib.rs contains public API items with `*_for_*` names:\n{}",
         simulation_violations.join("\n")
     );
 }

@@ -324,6 +324,46 @@ dependencies = [
  "chrono-tz",
  "criterion",
  "janiform-affine-oracle",
+ "janiform-engine-pricing",
+ "janiform-engine-risk",
+ "janiform-engine-simulation",
+ "janiform-foundations",
+ "janiform-market-time",
+ "janiform-model-kernels",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "janiform-engine-pricing"
+version = "0.1.0"
+dependencies = [
+ "janiform-affine-oracle",
+ "janiform-foundations",
+ "janiform-market-time",
+ "janiform-model-kernels",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "janiform-engine-risk"
+version = "0.1.0"
+dependencies = [
+ "janiform-affine-oracle",
+ "janiform-foundations",
+ "janiform-market-time",
+ "janiform-model-kernels",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "janiform-engine-simulation"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "janiform-affine-oracle",
  "janiform-foundations",
  "janiform-market-time",
  "janiform-model-kernels",

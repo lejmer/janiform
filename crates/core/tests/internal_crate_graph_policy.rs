@@ -171,6 +171,12 @@ fn rust_internal_crate_graph_policy_fixture_declares_required_crates_and_facade_
     assert_eq!(policy.crates["janiform-foundations"].status, "existing");
     assert_eq!(policy.crates["janiform-model-kernels"].status, "existing");
     assert_eq!(policy.crates["janiform-affine-oracle"].status, "existing");
+    assert_eq!(policy.crates["janiform-engine-pricing"].status, "existing");
+    assert_eq!(policy.crates["janiform-engine-risk"].status, "existing");
+    assert_eq!(
+        policy.crates["janiform-engine-simulation"].status,
+        "existing"
+    );
     assert_eq!(policy.crates["janiform-pybind"].status, "existing");
     assert_eq!(policy.crates["janiform-pybind"].kind, "boundary");
     assert_eq!(policy.crates["janiform-pybind"].layer, "python_boundary");
