@@ -1,6 +1,5 @@
 use serde_json::json;
 
-use crate::complex_math::ComplexScalar;
 use crate::pricing::{
     FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION, FourierInversionContour,
     FourierInversionContourError, FourierInversionEngineSettings,
@@ -10,6 +9,7 @@ use crate::pricing::{
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
     price_vanilla_option_via_fourier_inversion,
 };
+use janiform_foundations::complex_math::ComplexScalar;
 
 use super::support::{black_scholes_log_return_characteristic_function, black_scholes_price};
 #[test]

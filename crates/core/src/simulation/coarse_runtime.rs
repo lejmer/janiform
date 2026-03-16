@@ -1,17 +1,6 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use crate::hawkes::{HawkesTransitionError, HawkesTransitionStep, evolve_hawkes_state};
-use crate::news::{
-    NewsArrivalComponent, NewsMarkInterfaceError, NewsProcessConfigurationError,
-    SharedNewsAccumulatorState, SharedNewsEventDispatchError, SharedNewsEventTimestampedInput,
-    dispatch_shared_news_events_with_resolved_market_states,
-};
-use crate::randomness::{
-    SimulationRandomnessFactory, SimulationRandomnessSubstreamDomain,
-    SplitMix64SimulationRandomnessFactory,
-};
-use crate::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
 use crate::risk::{
     SufficientStatisticsBoundaryStateUpdateError, SufficientStatisticsBoundaryStateUpdateSnapshot,
     SufficientStatisticsRiskReturnComponents, SufficientStatisticsRiskReturnComponentsError,
@@ -20,6 +9,19 @@ use crate::risk::{
     sample_interval_statistics_from_transform_slices_with_randomness_factory,
     solve_sufficient_statistics_transform_slices, update_boundary_state_from_interval_statistics,
 };
+use janiform_foundations::randomness::{
+    SimulationRandomnessFactory, SimulationRandomnessSubstreamDomain,
+    SplitMix64SimulationRandomnessFactory,
+};
+use janiform_model_kernels::hawkes::{
+    HawkesTransitionError, HawkesTransitionStep, evolve_hawkes_state,
+};
+use janiform_model_kernels::news::{
+    NewsArrivalComponent, NewsMarkInterfaceError, NewsProcessConfigurationError,
+    SharedNewsAccumulatorState, SharedNewsEventDispatchError, SharedNewsEventTimestampedInput,
+    dispatch_shared_news_events_with_resolved_market_states,
+};
+use janiform_model_kernels::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
 
 use super::coarse::{CoarseSimulationPath, CoarseSimulationPathError, CoarseSimulationPathRecord};
 use super::runtime::{
@@ -112,11 +114,12 @@ where
                 source,
             },
         )?;
-        let interval_statistics_seed = crate::randomness::derive_simulation_substream_seed(
-            run_request.seed,
-            SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling,
-            interval_index as u64,
-        );
+        let interval_statistics_seed =
+            janiform_foundations::randomness::derive_simulation_substream_seed(
+                run_request.seed,
+                SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling,
+                interval_index as u64,
+            );
         let sampled_statistics =
             sample_interval_statistics_from_transform_slices_with_randomness_factory(
                 interval_statistics_seed,
@@ -275,7 +278,7 @@ pub enum CoarseSimulationRunError {
         source: crate::calendar::ExchangeCalendarRegistryLoadError,
     },
     InvalidNigDriverConfiguration {
-        source: crate::nig::NigSharedPlusShiftConfigurationError,
+        source: janiform_model_kernels::nig::NigSharedPlusShiftConfigurationError,
     },
     InvalidIntervalDelta {
         source: super::coarse::IntervalDeltaGridError,
@@ -314,11 +317,11 @@ pub enum CoarseSimulationRunError {
     },
     InvalidReturnDecomposition {
         interval_index: usize,
-        source: crate::return_decomposition::ReturnDecompositionValidationError,
+        source: janiform_model_kernels::return_decomposition::ReturnDecompositionValidationError,
     },
     TradingTimeSamplingFailure {
         interval_index: usize,
-        source: crate::nig::NigTradingTimeIncrementSamplingError,
+        source: janiform_model_kernels::nig::NigTradingTimeIncrementSamplingError,
     },
     InvalidReturnComponents {
         interval_index: usize,
@@ -626,11 +629,11 @@ where
 }
 
 fn apply_interval_news_activity_coupling_at_boundary(
-    state_before_news_update: crate::hawkes::HawkesExcitationState,
-    kernel_parameters: crate::hawkes::HawkesKernelParameters,
+    state_before_news_update: janiform_model_kernels::hawkes::HawkesExcitationState,
+    kernel_parameters: janiform_model_kernels::hawkes::HawkesKernelParameters,
     interval_index: usize,
     activity_coupling_j_t_increment: f64,
-) -> Result<crate::hawkes::HawkesExcitationState, CoarseSimulationRunError> {
+) -> Result<janiform_model_kernels::hawkes::HawkesExcitationState, CoarseSimulationRunError> {
     if activity_coupling_j_t_increment == 0.0 {
         return Ok(state_before_news_update);
     }

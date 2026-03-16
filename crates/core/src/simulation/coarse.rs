@@ -10,8 +10,6 @@ use crate::calendar::{
     ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact, ExchangeCalendarRegistryLoadError,
     ExchangeCalendarRegistryLookupError,
 };
-use crate::hawkes::HawkesExcitationState;
-use crate::news::{NewsProcessConfiguration, NewsProcessConfigurationError};
 use crate::risk::{
     SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY,
     SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY,
@@ -24,6 +22,8 @@ use crate::risk::{
     SufficientStatisticsRiskModelInputsError, SufficientStatisticsRiskReturnComponents,
     SufficientStatisticsRiskReturnComponentsError,
 };
+use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::news::{NewsProcessConfiguration, NewsProcessConfigurationError};
 
 use super::runtime::compute_max_effective_endogenous_branching_ratio;
 
@@ -1729,19 +1729,19 @@ fn validate_diagnostics_field(
 mod tests {
     use serde_json::json;
 
-    use crate::affine_oracle::ExponentialAffineTransformEquationSpecification;
     use crate::calendar::{
         CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarRegistryArtifact,
         RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
     };
-    use crate::hawkes::{HawkesKernelLoadings, HawkesKernelParameters};
-    use crate::news::{
+    use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
+    use janiform_model_kernels::hawkes::{HawkesKernelLoadings, HawkesKernelParameters};
+    use janiform_model_kernels::news::{
         CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
         GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
         NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
         SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
     };
-    use crate::nig::NigSharedPlusShiftConfiguration;
+    use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
     use super::*;
 

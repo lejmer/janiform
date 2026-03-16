@@ -4,7 +4,7 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::hawkes::HawkesExcitationState;
+use janiform_model_kernels::hawkes::HawkesExcitationState;
 
 pub const BENCHMARK_SCENARIO_CATALOG_SCHEMA_VERSION: &str = "benchmark.scenario.catalog.v1";
 pub const BENCHMARK_SCENARIO_CATALOG_SCHEMA_FAMILY: &str = "benchmark.scenario.catalog";

@@ -1,10 +1,10 @@
 use serde::Serialize;
 
-use crate::affine_oracle::{
+use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformNewsIntensityInput,
 };
-use crate::hawkes::HawkesExcitationState;
-use crate::nig::NigSharedPlusShiftConfiguration;
+use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
 use super::constants::{
     DEFAULT_INTRADAY_RISK_INTERVAL_DELTA, NEWS_INTENSITY_COMPONENT_SUM_TOLERANCE,

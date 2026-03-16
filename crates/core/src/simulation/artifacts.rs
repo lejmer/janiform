@@ -5,9 +5,9 @@ use serde::Serialize;
 use std::mem::size_of;
 
 use crate::calendar::MarketState;
-use crate::hawkes::HawkesExcitationState;
-use crate::news::{NewsArrivalComponent, NewsReturnJumpRoutingTarget};
 use crate::risk::SufficientStatisticsRiskReturnComponents;
+use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::news::{NewsArrivalComponent, NewsReturnJumpRoutingTarget};
 
 use super::config::SeededTickEventStateSnapshotCapture;
 

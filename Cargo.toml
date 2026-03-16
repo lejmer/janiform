@@ -1,5 +1,11 @@
 [workspace]
-members = ["crates/core", "crates/pybind"]
+members = [
+    "crates/affine-oracle",
+    "crates/core",
+    "crates/foundations",
+    "crates/model-kernels",
+    "crates/pybind",
+]
 resolver = "2"
 
 [workspace.package]

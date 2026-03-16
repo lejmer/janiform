@@ -1,8 +1,8 @@
 use serde::Deserialize;
 
-use crate::affine_oracle::ExponentialAffineTransformEquationSpecification;
-use crate::hawkes::HawkesExcitationState;
-use crate::nig::NigSharedPlusShiftConfiguration;
+use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
+use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
 use super::super::request::{
     DEFAULT_INTRADAY_RISK_INTERVAL_DELTA, SUFFICIENT_STATISTICS_RISK_PATH_RECORD_SCHEMA_VERSION,

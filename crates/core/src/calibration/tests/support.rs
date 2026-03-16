@@ -125,19 +125,19 @@ pub(super) use crate::calibration::{
     transform_nig_exponent_for_calibration_under_esscher_tilt,
     update_calibration_experiment_index_for_run,
 };
-pub(super) use crate::complex_math::ComplexScalar;
-pub(super) use crate::hawkes::{
+pub(super) use crate::pricing::VanillaOptionPricingCalibrationHooks;
+pub(super) use janiform_foundations::complex_math::ComplexScalar;
+pub(super) use janiform_model_kernels::hawkes::{
     HAWKES_KERNEL_PARAMETER_VALIDATION_REPORT_SCHEMA_VERSION, HawkesKernelLoadings,
     HawkesKernelValidationStatus, HawkesStructuredAlphaParameterization,
     HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
 };
-pub(super) use crate::news::{
+pub(super) use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, SharedNewsMarkLawConfiguration,
 };
-pub(super) use crate::nig::{NigParameters, NigSharedPlusShiftConfiguration};
-pub(super) use crate::pricing::VanillaOptionPricingCalibrationHooks;
-pub(super) use crate::risk_neutral::{
+pub(super) use janiform_model_kernels::nig::{NigParameters, NigSharedPlusShiftConfiguration};
+pub(super) use janiform_model_kernels::risk_neutral::{
     EsscherMartingaleConditionInput, NigEsscherTransformationInput,
 };
 pub(super) use serde_json::json;

@@ -1,19 +1,19 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use crate::affine_oracle::{
-    ExponentialAffineTransformInput, ExponentialAffineTransformSolverSettings,
-    ExponentialAffineTransformSolverSettingsError,
-};
-use crate::complex_math::{ComplexScalar, complex_exponential};
-use crate::hawkes::{
-    HawkesEventSide, HawkesExcitationState, HawkesKernelParameters, HawkesTransitionStep,
-};
 use crate::pricing::{
     FourierInversionEngineSettings, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
     VanillaOptionPricingMarketInputs,
 };
 use crate::risk::SufficientStatisticsTransformSlices;
+use janiform_affine_oracle::affine_oracle::{
+    ExponentialAffineTransformInput, ExponentialAffineTransformSolverSettings,
+    ExponentialAffineTransformSolverSettingsError,
+};
+use janiform_foundations::complex_math::{ComplexScalar, complex_exponential};
+use janiform_model_kernels::hawkes::{
+    HawkesEventSide, HawkesExcitationState, HawkesKernelParameters, HawkesTransitionStep,
+};
 
 use super::builders::{
     build_equation_specification, build_oracle_transform_input, build_pricing_engine_settings,
@@ -324,7 +324,7 @@ impl MicrobenchmarkFixtureSet {
         profile: &BenchmarkScenarioWorkloadProfile,
     ) -> Result<ExponentialAffineTransformSolverSettings, MicrobenchmarkFixtureError> {
         ExponentialAffineTransformSolverSettings::try_new(
-            crate::affine_oracle::ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
+            janiform_affine_oracle::affine_oracle::ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
             profile.interval_settings.oracle_solver_step_count,
         )
         .map_err(

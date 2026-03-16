@@ -6,7 +6,7 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::affine_oracle::{
+use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformGuardFailureCode, ExponentialAffineTransformInput,
     ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformIntegrationStatus,
     ExponentialAffineTransformIntegratorMethod, ExponentialAffineTransformOutput,
@@ -14,7 +14,7 @@ use crate::affine_oracle::{
     ExponentialAffineTransformSolverSettingsError, ExponentialAffineTransformTelemetryMode,
     solve_exponential_affine_transform_with_settings,
 };
-use crate::complex_math::ComplexScalar;
+use janiform_foundations::complex_math::ComplexScalar;
 
 pub const EXPONENTIAL_AFFINE_TRANSFORM_METHOD_COMPARISON_TOLERANCE_POLICY_SCHEMA_VERSION: &str =
     "affine_oracle.method_comparison.tolerance_policy.v1";

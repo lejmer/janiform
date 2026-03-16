@@ -1,6 +1,5 @@
 use serde_json::json;
 
-use crate::hawkes::HawkesExcitationState;
 use crate::pricing::{
     DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
     VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
@@ -17,6 +16,7 @@ use crate::pricing::{
     VanillaOptionPricingResponseError, VanillaOptionPricingRunResultBuildError,
     build_vanilla_option_pricing_run_result,
 };
+use janiform_model_kernels::hawkes::HawkesExcitationState;
 
 use super::support::{
     build_reference_integration_diagnostics_source, build_reference_market_inputs,

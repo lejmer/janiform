@@ -4,12 +4,6 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use crate::calendar::ExchangeCalendarRegistry;
-use crate::hawkes::{
-    HawkesExcitationState, HawkesIntensityProjection, HawkesKernelLoadings,
-    HawkesKernelParameterValidationReport, HawkesKernelParameters, HawkesSeasonalityIntervalError,
-    HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
-    HawkesStructuredRhoSelfDominancePolicy, HawkesTransitionError, HawkesTransitionStep,
-};
 use crate::hourly_factors::{
     HourlyFactorContractOutput, HourlyFactorProviderError, HourlyFactorProviderRequest,
     provide_hourly_factor_contract,
@@ -17,7 +11,13 @@ use crate::hourly_factors::{
 use crate::pricing::{
     VanillaOptionPricingCalibrationHooks, VanillaOptionPricingCalibrationHooksError,
 };
-use crate::risk_neutral::{
+use janiform_model_kernels::hawkes::{
+    HawkesExcitationState, HawkesIntensityProjection, HawkesKernelLoadings,
+    HawkesKernelParameterValidationReport, HawkesKernelParameters, HawkesSeasonalityIntervalError,
+    HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
+    HawkesStructuredRhoSelfDominancePolicy, HawkesTransitionError, HawkesTransitionStep,
+};
+use janiform_model_kernels::risk_neutral::{
     EsscherMartingaleConditionError, EsscherMartingaleConditionInput,
     EsscherMartingaleConditionReport, EsscherTransformError, NigEsscherTransformationInput,
     NigEsscherTransformedExponent, evaluate_esscher_martingale_condition,
@@ -70,7 +70,7 @@ pub fn project_hawkes_intensities_for_calibration_interval(
 ) -> Result<HawkesIntensityProjection, HawkesSeasonalityIntervalError> {
     state.project_intensities_for_hourly_interval(
         parameters.lambda_bar,
-        hourly_factor_contract,
+        &hourly_factor_contract.s_h,
         interval_index,
     )
 }

@@ -1,17 +1,17 @@
-use crate::affine_oracle::{
+use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
     ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformIntegrationStatus,
     ExponentialAffineTransformSolverError, ExponentialAffineTransformSolverSettings,
     solve_exponential_affine_transform_with_optional_settings,
 };
-use crate::complex_math::ComplexScalar;
-use crate::hawkes::{
-    HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
-    HawkesTransitionStep, evolve_hawkes_state,
-};
-use crate::randomness::{
+use janiform_foundations::complex_math::ComplexScalar;
+use janiform_foundations::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
     SplitMix64SimulationRandomnessFactory, derive_simulation_substream_seed,
+};
+use janiform_model_kernels::hawkes::{
+    HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
+    HawkesTransitionStep, evolve_hawkes_state,
 };
 
 use super::super::request::validate_excitation_state;

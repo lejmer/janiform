@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::calendar::{ExchangeCalendarRegistry, MarketState};
-use crate::news::{
+use janiform_model_kernels::news::{
     NewsArrivalComponent, SharedNewsAccumulatorState, SharedNewsEventTimestampedInput,
     dispatch_shared_news_events_with_resolved_market_states,
 };

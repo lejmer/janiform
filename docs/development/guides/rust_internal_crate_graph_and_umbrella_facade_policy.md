@@ -22,6 +22,19 @@ Detailed staged extraction work remains tracked by:
 - `JAN-263` for `pybind` and facade realignment
 - `JAN-264` for benchmark support and boundary enforcement
 
+For every extraction issue above, "extract" means the target crate becomes the physical source
+owner for the moved modules, their crate-local helpers, and their unit tests.
+
+The following do not count as a completed extraction:
+
+- compiling implementation files from `crates/core` through `#[path = "..."]`
+- leaving unit tests and crate-local support files physically owned by `crates/core`
+- treating `janiform-core` as the long-term implementation home while only changing Cargo edges
+
+`janiform-core` may remain the umbrella facade and may re-export extracted modules during
+migration, but it must not remain the physical implementation crate for code that is claimed to be
+extracted.
+
 ## Problem Statement
 
 `janiform-core` currently mixes several distinct ownership domains inside one crate:
@@ -67,6 +80,10 @@ layout indefinitely.
 
 Behavior-preserving extraction comes first.
 Cleanup, renaming, and smaller internal API reshaping come after the ownership boundary exists.
+
+That ownership boundary is not only a dependency-graph concern.
+For `JAN-259` through `JAN-264`, the destination crate should own the moved source files and unit
+tests directly instead of compiling them from `crates/core` through path indirection.
 
 ## Target Workspace Crate Graph
 
@@ -218,6 +235,10 @@ The following dependency directions are forbidden unless this policy is explicit
 ## Review And CI Enforcement
 
 The target graph must be enforceable before the migration is complete.
+
+Review and CI should treat source-ownership indirection as a boundary regression.
+When an issue says a domain moved to an internal crate, the implementation and unit tests for that
+domain should live under that crate's directory unless an explicit policy update says otherwise.
 
 ### Required mechanical checks
 

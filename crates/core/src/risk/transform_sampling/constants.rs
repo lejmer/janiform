@@ -1,5 +1,5 @@
-use crate::news::SHARED_NEWS_EVENT_DISPATCH_RETURN_ROUTING_POLICY;
-use crate::randomness::SimulationRandomnessSubstreamDomain;
+use janiform_foundations::randomness::SimulationRandomnessSubstreamDomain;
+use janiform_model_kernels::news::SHARED_NEWS_EVENT_DISPATCH_RETURN_ROUTING_POLICY;
 
 pub const SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SETTINGS_POLICY: &str =
     "positive_u_probes_and_positive_non_unit_z_probes_for_oracle_slice_sampling.v1";

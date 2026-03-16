@@ -1,13 +1,13 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use crate::affine_oracle::{
+use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformGuardFailureCode, ExponentialAffineTransformInputError,
     ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformNewsIntensityInputError,
     ExponentialAffineTransformSolverError,
 };
-use crate::complex_math::ComplexScalar;
-use crate::hawkes::{HawkesEventSide, HawkesTransitionError};
+use janiform_foundations::complex_math::ComplexScalar;
+use janiform_model_kernels::hawkes::{HawkesEventSide, HawkesTransitionError};
 
 use super::contracts::{
     SufficientStatisticsBoundaryStateUpdateSnapshot, SufficientStatisticsTransformSliceContext,

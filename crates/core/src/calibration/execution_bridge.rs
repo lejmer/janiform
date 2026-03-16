@@ -8,17 +8,17 @@ use serde::{Deserialize, Serialize};
 use crate::calendar::{
     ExchangeCalendarRegistry, TimestampEventInputRecord, TimestampEventSessionFilter,
 };
-use crate::hawkes::{
-    HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
-    HawkesStructuredRhoSelfDominancePolicy,
-};
-use crate::news::{
-    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
-    GammaSeverityMarkConfiguration, SharedNewsMarkLawConfiguration,
-};
 use crate::seasonality::{
     DayOfWeekSeasonalityEstimatorSettings, DayOfYearSeasonalityEstimatorSettings,
     IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel, ScheduledEventOverlayDefinition,
+};
+use janiform_model_kernels::hawkes::{
+    HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
+    HawkesStructuredRhoSelfDominancePolicy,
+};
+use janiform_model_kernels::news::{
+    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
+    GammaSeverityMarkConfiguration, SharedNewsMarkLawConfiguration,
 };
 
 use super::checkpointing::CalibrationMemoryCheckpointStore;

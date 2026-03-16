@@ -3,8 +3,10 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::hawkes::{HawkesKernelLoadings, HawkesKernelParameterError, HawkesKernelParameters};
-use crate::news::{GammaSeverityMarkConfiguration, NewsMarkConfigurationError};
+use janiform_model_kernels::hawkes::{
+    HawkesKernelLoadings, HawkesKernelParameterError, HawkesKernelParameters,
+};
+use janiform_model_kernels::news::{GammaSeverityMarkConfiguration, NewsMarkConfigurationError};
 
 pub const ORACLE_PRICER_RISK_BENCHMARK_POLICY_SCHEMA_VERSION: &str =
     "benchmark.oracle_pricer_risk.policy.v1";

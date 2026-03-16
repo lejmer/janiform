@@ -1,8 +1,8 @@
 use serde::Serialize;
 
-use crate::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
-use crate::complex_math::ComplexScalar;
-use crate::hawkes::HawkesExcitationState;
+use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
+use janiform_foundations::complex_math::ComplexScalar;
+use janiform_model_kernels::hawkes::HawkesExcitationState;
 
 use super::super::request::validate_excitation_state;
 use super::constants::{

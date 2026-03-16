@@ -5,11 +5,11 @@ use std::fmt::{Display, Formatter};
 
 use serde::Serialize;
 
-use crate::hawkes::HawkesExcitationState;
 use crate::simulation::{
     CoarseSimulationPath, SeededTickEventDebugTraceRecord, SeededTickEventDebugTraceTransitionKind,
     SeededTickSimulationRunConfig, SeededTickSimulationRunResult,
 };
+use janiform_model_kernels::hawkes::HawkesExcitationState;
 
 use super::contracts::RegressionCaseStatus;
 

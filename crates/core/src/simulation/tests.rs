@@ -2,9 +2,6 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 
 use crate::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
-use crate::hawkes::{
-    HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters, HawkesTransitionStep,
-};
 use crate::hourly_factors::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
     HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION, HOURLY_FACTOR_FALL_BACK_POLICY,
@@ -12,20 +9,6 @@ use crate::hourly_factors::{
     HOURLY_FACTOR_SPRING_FORWARD_POLICY, HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
     HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
     HourlyFactorMaterializationMetadata,
-};
-use crate::news::{
-    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
-    GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalComponent,
-    NewsArrivalConfiguration, NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
-    NewsReturnJumpRoutingTarget, SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
-};
-use crate::nig::{NIG_TRADING_TIME_INCREMENT_COMPOSITION_POLICY, NigSharedPlusShiftConfiguration};
-use crate::randomness::{
-    SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
-    SplitMix64SimulationRandomnessStream, derive_simulation_substream_seed,
-};
-use crate::return_decomposition::{
-    ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionInput,
 };
 use crate::simulation::{
     SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNK_SCHEMA_VERSION,
@@ -48,6 +31,25 @@ use crate::simulation::{
     SeededTickSimulationRunConfig, SeededTickSimulationRunError, SeededTickSimulationRunOptions,
     run_seeded_tick_event_simulation, run_seeded_tick_event_simulation_with_randomness_factory,
     sample_nig_trading_time_increment, sample_nig_trading_time_increment_with_edge_mode,
+};
+use janiform_foundations::randomness::{
+    SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
+    SplitMix64SimulationRandomnessStream, derive_simulation_substream_seed,
+};
+use janiform_model_kernels::hawkes::{
+    HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters, HawkesTransitionStep,
+};
+use janiform_model_kernels::news::{
+    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
+    GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalComponent,
+    NewsArrivalConfiguration, NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
+    NewsReturnJumpRoutingTarget, SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
+};
+use janiform_model_kernels::nig::{
+    NIG_TRADING_TIME_INCREMENT_COMPOSITION_POLICY, NigSharedPlusShiftConfiguration,
+};
+use janiform_model_kernels::return_decomposition::{
+    ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionInput,
 };
 
 const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
@@ -167,7 +169,7 @@ fn trading_time_assembler_is_seed_deterministic() {
     assert_eq!(first_contributions, second_contributions);
 }
 
-fn valid_nig_driver_parameters() -> crate::nig::NigBuySellDriverParameters {
+fn valid_nig_driver_parameters() -> janiform_model_kernels::nig::NigBuySellDriverParameters {
     valid_nig_shared_plus_shift_configuration()
         .derive_driver_parameters()
         .expect("test shared-plus-shift payload should derive drivers")
