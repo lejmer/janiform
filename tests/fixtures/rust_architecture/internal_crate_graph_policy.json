@@ -29,13 +29,13 @@
   ],
   "crates": {
     "janiform-foundations": {
-      "status": "planned",
+      "status": "existing",
       "kind": "production",
       "layer": "foundations",
       "allowed_internal_dependencies": []
     },
     "janiform-model-kernels": {
-      "status": "planned",
+      "status": "existing",
       "kind": "production",
       "layer": "model_kernels",
       "allowed_internal_dependencies": [
@@ -43,7 +43,7 @@
       ]
     },
     "janiform-affine-oracle": {
-      "status": "planned",
+      "status": "existing",
       "kind": "production",
       "layer": "shared_engine_infrastructure",
       "allowed_internal_dependencies": [

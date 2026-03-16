@@ -3,6 +3,7 @@ use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Datelike, Utc, Weekday as ChronoWeekday};
 use chrono_tz::Tz;
+pub use janiform_foundations::market_time::MarketState;
 use serde::{Deserialize, Serialize};
 
 /// Weekday used by regular exchange sessions.
@@ -76,23 +77,6 @@ impl Display for CalendarDate {
             "{:04}-{:02}-{:02}",
             self.year, self.month, self.day
         )
-    }
-}
-
-/// Canonical market state returned by calendar resolution for v0.1.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MarketState {
-    Open,
-    Closed,
-}
-
-impl Display for MarketState {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-        let value = match self {
-            Self::Open => "open",
-            Self::Closed => "closed",
-        };
-        formatter.write_str(value)
     }
 }
 

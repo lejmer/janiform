@@ -1,4 +1,4 @@
-use crate::randomness::splitmix64_output_mixer;
+use janiform_foundations::splitmix64_output_mixer;
 
 use super::{
     CalibrationOptimizerSettings, CalibrationResolvedStageSeed, CalibrationRunSpec,

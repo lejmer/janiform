@@ -5,10 +5,6 @@ use crate::calibration::{
     evolve_hawkes_state_for_calibration_step, load_hourly_factor_contract_for_calibration,
     project_hawkes_intensities_for_calibration_interval,
 };
-use crate::hawkes::{
-    HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
-    HawkesTransitionStep,
-};
 use crate::hourly_factors::HourlyFactorContractError;
 use crate::hourly_factors::{
     HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_MATERIALIZATION_METHOD,
@@ -25,6 +21,10 @@ use crate::simulation::{
     evolve_hawkes_state as evolve_hawkes_state_simulation_step,
     load_hourly_factor_contract as load_hourly_factor_contract_for_simulation_path,
     project_hawkes_intensities_simulation_interval,
+};
+use janiform_model_kernels::hawkes::{
+    HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
+    HawkesTransitionStep,
 };
 
 const SIMULATION_SHARED_SEASONALITY_HOURLY_FACTORS: [f64; 3] = [1.0, 0.9, 1.1];

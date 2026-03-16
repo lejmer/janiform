@@ -3,7 +3,7 @@ use std::fmt::{Display, Formatter};
 
 use serde::Serialize;
 
-use crate::hawkes::HawkesExcitationState;
+use janiform_model_kernels::hawkes::HawkesExcitationState;
 
 use super::super::request::{
     SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY,

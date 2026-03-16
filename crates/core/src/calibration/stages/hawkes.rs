@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::calendar::ExchangeCalendarRegistry;
 use crate::calibration::precheck_structured_hawkes_kernel_parameter_domain;
-use crate::hawkes::{
+use janiform_model_kernels::hawkes::{
     HawkesKernelParameterValidationReport, HawkesKernelParameters,
     HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
     HawkesStructuredRhoSelfDominancePolicy,
@@ -1133,8 +1133,8 @@ fn build_candidate_objective_terms(
     observed_activity_targets: HawkesObservedActivityTargets,
     lambda_bar_scaling_ratio_applied: f64,
     max_runtime_hourly_seasonality_factor: f64,
-    derived_alpha: Option<crate::hawkes::HawkesKernelLoadings>,
-    derived_rho: Option<crate::hawkes::HawkesKernelLoadings>,
+    derived_alpha: Option<janiform_model_kernels::hawkes::HawkesKernelLoadings>,
+    derived_rho: Option<janiform_model_kernels::hawkes::HawkesKernelLoadings>,
 ) -> (
     Vec<CalibrationObjectiveTermInput>,
     Vec<HawkesStageObjectiveTermDiagnostic>,
@@ -1537,7 +1537,7 @@ fn adjust_candidate_for_deseasonalized_activity(
 
 fn check_seasonality_scaled_stationarity(
     max_seasonality_factor: f64,
-    derived_alpha: crate::hawkes::HawkesKernelLoadings,
+    derived_alpha: janiform_model_kernels::hawkes::HawkesKernelLoadings,
     beta: f64,
 ) -> Option<SeasonalityScaledStationarityCheck> {
     let spectral_radius_alpha_over_beta = spectral_radius_alpha_over_beta(derived_alpha, beta);
@@ -1558,8 +1558,8 @@ fn derive_candidate_implied_metrics(
     observed_activity_targets: HawkesObservedActivityTargets,
     lambda_bar_scaling_ratio_applied: f64,
     max_runtime_hourly_seasonality_factor: f64,
-    derived_alpha: crate::hawkes::HawkesKernelLoadings,
-    derived_rho: crate::hawkes::HawkesKernelLoadings,
+    derived_alpha: janiform_model_kernels::hawkes::HawkesKernelLoadings,
+    derived_rho: janiform_model_kernels::hawkes::HawkesKernelLoadings,
 ) -> HawkesStageImpliedMetricsDiagnostic {
     let scaled_plus_plus = derived_alpha.plus_plus / candidate_input.beta;
     let scaled_plus_minus = derived_alpha.plus_minus / candidate_input.beta;
@@ -1718,7 +1718,10 @@ fn observed_directional_imbalance_magnitude(
         * 2.0
 }
 
-fn spectral_radius_alpha_over_beta(alpha: crate::hawkes::HawkesKernelLoadings, beta: f64) -> f64 {
+fn spectral_radius_alpha_over_beta(
+    alpha: janiform_model_kernels::hawkes::HawkesKernelLoadings,
+    beta: f64,
+) -> f64 {
     let scaled_plus_plus = alpha.plus_plus / beta;
     let scaled_plus_minus = alpha.plus_minus / beta;
     let scaled_minus_plus = alpha.minus_plus / beta;

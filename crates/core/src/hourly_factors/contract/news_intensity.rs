@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 
 use crate::calendar::ExchangeCalendarRegistry;
-use crate::news::{
+use janiform_model_kernels::news::{
     KnownNewsArrivalConfiguration, NEWS_ARRIVAL_COMPONENT_INTENSITY_POLICY,
     NewsArrivalConfiguration, NewsArrivalConfigurationError, NewsArrivalIntensityEvaluationInput,
     NewsComponentIntensityEvaluationError, SurpriseNewsArrivalConfiguration,

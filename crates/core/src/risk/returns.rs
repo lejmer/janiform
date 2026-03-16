@@ -4,9 +4,11 @@ use std::fmt::{Display, Formatter};
 use serde::Serialize;
 
 use crate::calendar::MarketState;
-use crate::nig::{NigBuySellDriverParameters, NigTradingTimeIncrementSamplingError};
-use crate::randomness::SimulationRandomnessStream;
-use crate::return_decomposition::{
+use janiform_foundations::randomness::SimulationRandomnessStream;
+use janiform_model_kernels::nig::{
+    NigBuySellDriverParameters, NigTradingTimeIncrementSamplingError,
+};
+use janiform_model_kernels::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionInput, ReturnDecompositionValidationError,
 };
 

@@ -1,7 +1,8 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use crate::affine_oracle::{
+use crate::hourly_factors::HourlyFactorContractOutput;
+use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
     ExponentialAffineTransformInputError, ExponentialAffineTransformIntegrationResult,
     ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformOutput,
@@ -9,18 +10,19 @@ use crate::affine_oracle::{
     ExponentialAffineTransformSolverSettings,
     solve_exponential_affine_transform_with_optional_settings,
 };
-use crate::complex_math::ComplexScalar;
-use crate::complex_math::{complex_exponential, complex_multiply};
-use crate::hawkes::{
+use janiform_foundations::complex_math::ComplexScalar;
+use janiform_foundations::complex_math::{complex_exponential, complex_multiply};
+use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesIntensityProjection, HawkesKernelParameters,
     HawkesSeasonalityIntervalError,
 };
-use crate::hourly_factors::HourlyFactorContractOutput;
-use crate::nig::{NigBuySellDriverParameters, NigTradingTimeCharacteristicExponentContributions};
-use crate::return_decomposition::{
+use janiform_model_kernels::nig::{
+    NigBuySellDriverParameters, NigTradingTimeCharacteristicExponentContributions,
+};
+use janiform_model_kernels::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionValidationError,
 };
-use crate::risk_neutral::{
+use janiform_model_kernels::risk_neutral::{
     EsscherMartingaleConditionError, EsscherMartingaleConditionInput,
     EsscherMartingaleConditionReport, EsscherTransformError, NigEsscherTransformationInput,
     evaluate_esscher_martingale_condition,
@@ -253,7 +255,7 @@ pub fn project_hawkes_intensities_coarse_interval(
 ) -> Result<HawkesIntensityProjection, HawkesSeasonalityIntervalError> {
     state.project_intensities_for_hourly_interval(
         parameters.lambda_bar,
-        hourly_factor_contract,
+        &hourly_factor_contract.s_h,
         interval_index,
     )
 }
@@ -374,7 +376,7 @@ pub fn compose_nig_trading_time_exponent(
 }
 
 /// Compose trading-time characteristic exponent for pricing with optional edge-mode gating.
-pub use crate::return_decomposition::compose_nig_trading_time_exponent_with_edge_mode;
+pub use janiform_model_kernels::return_decomposition::compose_nig_trading_time_exponent_with_edge_mode;
 
 /// Compose full return characteristic function for pricing through one shared assembler.
 ///
@@ -478,7 +480,7 @@ pub fn validate_pricing_martingale_condition_under_esscher_tilt(
 }
 
 /// Apply one coarse-time transform-path Hawkes state transition using canonical call order.
-pub use crate::hawkes::evolve_hawkes_state;
+pub use janiform_model_kernels::hawkes::evolve_hawkes_state;
 pub fn compose_total_return_characteristic_function_with_edge_mode(
     driver_parameters: NigBuySellDriverParameters,
     argument: ComplexScalar,

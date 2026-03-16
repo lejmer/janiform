@@ -6,12 +6,12 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::calendar::{ExchangeCalendarRegistry, MarketState};
-use crate::news::{
+use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
 };
-use crate::nig::NigSharedPlusShiftConfiguration;
+use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
 use super::super::contracts::{
     CALIBRATION_RETURN_COMPONENTS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
@@ -3262,7 +3262,7 @@ fn resolve_market_state_at_nanos(
 
     calendar_registry
         .resolve_market_state_at_utc(exchange_code, timestamp_utc)
-        .map_err(|source| {
+        .map_err(|source: crate::calendar::ExchangeCalendarResolveError| {
             ReturnComponentsStageCandidateGenerationInputError::CloseOpenBoundaryStateResolutionFailed {
                 exchange_code: exchange_code.to_string(),
                 timestamp_utc_nanos,

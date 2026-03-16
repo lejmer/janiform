@@ -1,6 +1,6 @@
 //! Simulation schema and policy constants.
 
-use crate::randomness::{
+use janiform_foundations::randomness::{
     SIMULATION_RANDOMNESS_STREAM_POLICY, SIMULATION_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY,
 };
 

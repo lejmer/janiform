@@ -6,12 +6,12 @@ use std::fmt::{Display, Formatter};
 use chrono::{DateTime, Utc};
 
 use crate::calendar::ExchangeCalendarResolveError;
-use crate::hawkes::HawkesTransitionError;
-use crate::news::NewsProcessConfigurationError;
-use crate::news::{NewsMarkInterfaceError, SharedNewsEventDispatchError};
-use crate::nig::NigSharedPlusShiftConfigurationError;
-use crate::return_decomposition::ReturnDecompositionValidationError;
 use crate::risk::SufficientStatisticsRiskReturnComponentsError;
+use janiform_model_kernels::hawkes::HawkesTransitionError;
+use janiform_model_kernels::news::NewsProcessConfigurationError;
+use janiform_model_kernels::news::{NewsMarkInterfaceError, SharedNewsEventDispatchError};
+use janiform_model_kernels::nig::NigSharedPlusShiftConfigurationError;
+use janiform_model_kernels::return_decomposition::ReturnDecompositionValidationError;
 
 /// Structured simulator run failure with explicit validation diagnostics.
 #[derive(Debug, Clone, PartialEq)]
@@ -104,7 +104,7 @@ pub enum SeededTickSimulationRunError {
     },
     TradingTimeSamplingFailure {
         interval_index: usize,
-        source: crate::nig::NigTradingTimeIncrementSamplingError,
+        source: janiform_model_kernels::nig::NigTradingTimeIncrementSamplingError,
     },
     InvalidReturnComponents {
         interval_index: usize,

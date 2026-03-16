@@ -4,13 +4,13 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::affine_oracle::{
+use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformIntegrationStatus,
     ExponentialAffineTransformNewsIntensityInput,
     ExponentialAffineTransformNewsIntensityInputError, ExponentialAffineTransformSolverError,
 };
-use crate::complex_math::ComplexScalar;
-use crate::nig::NigSharedPlusShiftConfigurationError;
+use janiform_foundations::complex_math::ComplexScalar;
+use janiform_model_kernels::nig::NigSharedPlusShiftConfigurationError;
 
 use super::characteristic::{
     PricingTransformInputBuildError, build_pricing_transform_input,
@@ -321,7 +321,7 @@ fn build_pricing_response(
 
 fn evaluate_pricing_log_return_characteristic_function(
     pricing_request: VanillaOptionPricingRequest,
-    driver_parameters: crate::nig::NigBuySellDriverParameters,
+    driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
     interval_factors: VanillaOptionPricingIntervalFactors,
     news_intensity: ExponentialAffineTransformNewsIntensityInput,
     argument: ComplexScalar,

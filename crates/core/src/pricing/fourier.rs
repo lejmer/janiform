@@ -5,8 +5,8 @@ use std::fmt::{Display, Formatter};
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::complex_math::ComplexScalar;
-use crate::complex_math::complex_multiply;
+use janiform_foundations::complex_math::ComplexScalar;
+use janiform_foundations::complex_math::complex_multiply;
 
 use super::constants::{
     DEFAULT_FOURIER_INVERSION_CONVERGENCE_ABSOLUTE_TOLERANCE,

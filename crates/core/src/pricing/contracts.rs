@@ -4,12 +4,16 @@ use std::fmt::{Display, Formatter};
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::affine_oracle::{
+use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformIntegrationStatus,
 };
-use crate::hawkes::{HawkesExcitationState, HawkesKernelParameterError, HawkesKernelParameters};
-use crate::news::{GammaSeverityMarkConfiguration, NewsMarkConfigurationError};
-use crate::nig::{NigSharedPlusShiftConfiguration, NigSharedPlusShiftConfigurationError};
+use janiform_model_kernels::hawkes::{
+    HawkesExcitationState, HawkesKernelParameterError, HawkesKernelParameters,
+};
+use janiform_model_kernels::news::{GammaSeverityMarkConfiguration, NewsMarkConfigurationError};
+use janiform_model_kernels::nig::{
+    NigSharedPlusShiftConfiguration, NigSharedPlusShiftConfigurationError,
+};
 
 use super::constants::{
     DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, VANILLA_OPTION_CALIBRATION_HOOK_POLICY,

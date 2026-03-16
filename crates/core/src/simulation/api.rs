@@ -1,16 +1,18 @@
 //! Public simulation adapters bridging shared factor, Hawkes, and NIG APIs.
 
-use crate::hawkes::{
+use crate::hourly_factors::HourlyFactorContractOutput;
+use janiform_foundations::randomness::SimulationRandomnessStream;
+use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesIntensityProjection, HawkesKernelParameters,
     HawkesSeasonalityIntervalError,
 };
-use crate::hourly_factors::HourlyFactorContractOutput;
-use crate::nig::{
+use janiform_model_kernels::nig::{
     NigBuySellDriverParameters, NigTradingTimeIncrementContributions,
     NigTradingTimeIncrementSamplingError,
 };
-use crate::randomness::SimulationRandomnessStream;
-use crate::return_decomposition::{ReturnDecomposition, ReturnDecompositionEdgeMode};
+use janiform_model_kernels::return_decomposition::{
+    ReturnDecomposition, ReturnDecompositionEdgeMode,
+};
 
 /// Resolve interval-aligned hourly factors for the simulation path.
 pub use crate::hourly_factors::provide_hourly_factor_contract as load_hourly_factor_contract;
@@ -24,7 +26,7 @@ pub fn project_hawkes_intensities_simulation_interval(
 ) -> Result<HawkesIntensityProjection, HawkesSeasonalityIntervalError> {
     state.project_intensities_for_hourly_interval(
         parameters.lambda_bar,
-        hourly_factor_contract,
+        &hourly_factor_contract.s_h,
         interval_index,
     )
 }
@@ -38,7 +40,7 @@ pub fn sample_nig_trading_time_increment<R>(
 where
     R: SimulationRandomnessStream,
 {
-    crate::return_decomposition::sample_nig_trading_time_increment_with_edge_mode(
+    janiform_model_kernels::return_decomposition::sample_nig_trading_time_increment_with_edge_mode(
         driver_parameters,
         return_decomposition,
         ReturnDecompositionEdgeMode::Disabled,
@@ -47,7 +49,7 @@ where
 }
 
 /// Sample one simulation trading-time increment with optional decomposition edge-mode gating.
-pub use crate::return_decomposition::sample_nig_trading_time_increment_with_edge_mode;
+pub use janiform_model_kernels::return_decomposition::sample_nig_trading_time_increment_with_edge_mode;
 
 /// Apply one simulation-path Hawkes state transition using canonical call order.
-pub use crate::hawkes::evolve_hawkes_state;
+pub use janiform_model_kernels::hawkes::evolve_hawkes_state;

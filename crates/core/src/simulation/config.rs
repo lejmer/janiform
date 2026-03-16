@@ -4,10 +4,10 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::calendar::ExchangeCalendarRegistry;
-use crate::hawkes::{HawkesExcitationState, HawkesKernelParameters};
 use crate::hourly_factors::HourlyFactorContractOutput;
-use crate::news::NewsProcessConfiguration;
-use crate::nig::NigSharedPlusShiftConfiguration;
+use janiform_model_kernels::hawkes::{HawkesExcitationState, HawkesKernelParameters};
+use janiform_model_kernels::news::NewsProcessConfiguration;
+use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
 use super::constants::{
     DEFAULT_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK, DEFAULT_DEBUG_TRACE_SAMPLE_EVERY_NTH_TRANSITION,

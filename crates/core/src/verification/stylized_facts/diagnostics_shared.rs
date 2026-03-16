@@ -1,8 +1,9 @@
 //! Shared helpers for stylized-fact diagnostics modules.
 
-use crate::randomness::{
-    SimulationRandomnessStream, SplitMix64SimulationRandomnessStream, splitmix64_output_mixer,
+use janiform_foundations::randomness::{
+    SimulationRandomnessStream, SplitMix64SimulationRandomnessStream,
 };
+use janiform_foundations::splitmix64_output_mixer;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct BlockBootstrapConfiguration {

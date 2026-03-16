@@ -6,7 +6,6 @@ use std::fmt::{Display, Formatter};
 
 use serde::Serialize;
 
-use crate::hawkes::HawkesExcitationState;
 use crate::risk::{
     SufficientStatisticsBoundaryStateUpdateError, SufficientStatisticsBoundaryStateUpdateSnapshot,
     SufficientStatisticsIntervalStatistics, SufficientStatisticsRiskRunRequest,
@@ -16,6 +15,7 @@ use crate::risk::{
     derive_sufficient_statistics_batch_path_seed, sample_interval_statistics_from_transform_slices,
     solve_sufficient_statistics_transform_slices, update_boundary_state_from_interval_statistics,
 };
+use janiform_model_kernels::hawkes::HawkesExcitationState;
 
 use super::contracts::RegressionCaseStatus;
 
@@ -888,7 +888,7 @@ fn extract_real_transform_component(
     validation_scenario: &SufficientStatisticsMultiIntervalValidationScenario,
     interval_index: usize,
     check_id: &'static str,
-    value: crate::complex_math::ComplexScalar,
+    value: janiform_foundations::complex_math::ComplexScalar,
 ) -> Result<f64, SufficientStatisticsMultiIntervalValidationError> {
     if !value.is_finite()
         || value.imaginary.abs()

@@ -3,21 +3,21 @@
 use chrono::{DateTime, Utc};
 
 use crate::calendar::{ExchangeCalendarRegistry, MarketState};
-use crate::hawkes::{
+use crate::risk::SufficientStatisticsRiskReturnComponents;
+use janiform_foundations::randomness::{
+    SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
+    SplitMix64SimulationRandomnessFactory,
+};
+use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesKernelParameters, HawkesTransitionError,
     HawkesTransitionStep, evolve_hawkes_state,
 };
-use crate::news::{
+use janiform_model_kernels::news::{
     NewsArrivalComponent, NewsComponentMarkScaleConfiguration, NewsReturnJumpRoutingTarget,
     SharedNewsAccumulatorState, SharedNewsEventTimestampedInput,
     dispatch_shared_news_events_with_resolved_market_states,
 };
-use crate::randomness::{
-    SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
-    SplitMix64SimulationRandomnessFactory,
-};
-use crate::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
-use crate::risk::SufficientStatisticsRiskReturnComponents;
+use janiform_model_kernels::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
 
 use super::artifacts::{
     SeededFinePathMetadata, SeededFinePathRecord, SeededFinePathTransitionKind,
@@ -454,7 +454,7 @@ struct TradingTimeReturnComponents {
 }
 
 fn sample_transition_trading_time_return<R>(
-    driver_parameters: crate::nig::NigBuySellDriverParameters,
+    driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
     state: HawkesExcitationState,
     lambda_bar: f64,
     beta: f64,
@@ -1639,14 +1639,14 @@ where
 }
 
 pub(crate) fn build_timestamped_news_event_input(
-    mark_pipeline: &crate::news::DefaultNewsMarkPipeline,
+    mark_pipeline: &janiform_model_kernels::news::DefaultNewsMarkPipeline,
     news_arrival_component: NewsArrivalComponent,
     event_timestamp_utc_nanos: i64,
     event_generation_order: u64,
     mark_scales: NewsComponentMarkScaleConfiguration,
-    randomness_stream: &mut dyn crate::randomness::SimulationRandomnessStream,
+    randomness_stream: &mut dyn janiform_foundations::randomness::SimulationRandomnessStream,
     _interval_index: usize,
-) -> Result<SharedNewsEventTimestampedInput, crate::news::NewsMarkInterfaceError> {
+) -> Result<SharedNewsEventTimestampedInput, janiform_model_kernels::news::NewsMarkInterfaceError> {
     let sampled_mark_payload = mark_pipeline.sample_coupled_marks(randomness_stream)?;
 
     Ok(SharedNewsEventTimestampedInput {

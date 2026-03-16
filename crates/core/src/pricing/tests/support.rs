@@ -1,11 +1,3 @@
-use crate::affine_oracle::{
-    ExponentialAffineTransformDVector, ExponentialAffineTransformIntegrationResult,
-    ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformOutput,
-};
-use crate::complex_math::{ComplexScalar, complex_exponential};
-use crate::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
-use crate::news::GammaSeverityMarkConfiguration;
-use crate::nig::NigSharedPlusShiftConfiguration;
 use crate::pricing::{
     FourierInversionDiagnostics, FourierInversionEngineSettings, VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType, VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
@@ -13,6 +5,16 @@ use crate::pricing::{
     build_pricing_transform_input, price_vanilla_option_via_fourier_inversion,
     solve_exponential_affine_transform,
 };
+use janiform_affine_oracle::affine_oracle::{
+    ExponentialAffineTransformDVector, ExponentialAffineTransformIntegrationResult,
+    ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformOutput,
+};
+use janiform_foundations::complex_math::{ComplexScalar, complex_exponential};
+use janiform_model_kernels::hawkes::{
+    HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
+};
+use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
+use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
 pub(super) fn build_valid_vanilla_option_request() -> VanillaOptionPricingRequest {
     VanillaOptionPricingRequest::try_new(

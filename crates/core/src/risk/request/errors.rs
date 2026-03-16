@@ -1,8 +1,8 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use crate::affine_oracle::ExponentialAffineTransformEquationSpecificationError;
-use crate::nig::NigSharedPlusShiftConfigurationError;
+use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecificationError;
+use janiform_model_kernels::nig::NigSharedPlusShiftConfigurationError;
 
 use super::constants::NEWS_INTENSITY_COMPONENT_SUM_TOLERANCE;
 

@@ -1,16 +1,16 @@
-use crate::affine_oracle::{
+use crate::calendar::MarketState;
+use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformNewsIntensityInput,
 };
-use crate::calendar::MarketState;
-use crate::complex_math::ComplexScalar;
-use crate::hawkes::{
+use janiform_foundations::complex_math::ComplexScalar;
+use janiform_foundations::randomness::SplitMix64SimulationRandomnessStream;
+use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
     HawkesTransitionError, HawkesTransitionStep, evolve_hawkes_state,
 };
-use crate::news::GammaSeverityMarkConfiguration;
-use crate::nig::NigSharedPlusShiftConfiguration;
-use crate::randomness::SplitMix64SimulationRandomnessStream;
-use crate::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
+use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
+use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use janiform_model_kernels::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
 use std::error::Error;
 
 use super::{
@@ -1348,7 +1348,7 @@ fn build_model_inputs() -> SufficientStatisticsRiskModelInputs {
     .expect("model inputs should be valid")
 }
 
-fn valid_nig_driver_parameters() -> crate::nig::NigBuySellDriverParameters {
+fn valid_nig_driver_parameters() -> janiform_model_kernels::nig::NigBuySellDriverParameters {
     build_model_inputs()
         .nig_shared_plus_shift_configuration
         .derive_driver_parameters()

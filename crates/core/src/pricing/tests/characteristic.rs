@@ -1,6 +1,3 @@
-use crate::affine_oracle::{ExponentialAffineTransformDVector, ExponentialAffineTransformOutput};
-use crate::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
-use crate::nig::NigSharedPlusShiftConfiguration;
 use crate::pricing::{
     PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY, PricingMartingaleConditionValidationError,
     RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
@@ -11,10 +8,15 @@ use crate::pricing::{
     compose_total_return_characteristic_function_with_edge_mode,
     validate_pricing_martingale_condition_under_esscher_tilt,
 };
-use crate::return_decomposition::{
+use janiform_affine_oracle::affine_oracle::{
+    ExponentialAffineTransformDVector, ExponentialAffineTransformOutput,
+};
+use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
+use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use janiform_model_kernels::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionInput,
 };
-use crate::risk_neutral::{
+use janiform_model_kernels::risk_neutral::{
     NigEsscherTransformationInput, transform_nig_characteristic_exponent_under_esscher_tilt,
 };
 

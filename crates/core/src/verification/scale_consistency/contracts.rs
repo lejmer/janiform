@@ -7,10 +7,12 @@ use std::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 use crate::calibration::CalibrationExecutionMode;
-use crate::randomness::{SimulationRandomnessSubstreamDomain, derive_simulation_substream_seed};
 use crate::risk::{
     SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskIntervalFactorsError,
     SufficientStatisticsRiskModelInputs, SufficientStatisticsRiskModelInputsError,
+};
+use janiform_foundations::randomness::{
+    SimulationRandomnessSubstreamDomain, derive_simulation_substream_seed,
 };
 
 use super::interval_grid::{PartitionedIntervalPair, PartitionedIntervalPairError};

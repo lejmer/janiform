@@ -1,4 +1,4 @@
-use crate::hawkes::HawkesExcitationState;
+use janiform_model_kernels::hawkes::HawkesExcitationState;
 
 pub(crate) fn validate_excitation_state(
     state: HawkesExcitationState,

@@ -12,11 +12,11 @@ use crate::calendar::{
     ExchangeCalendarRegistryLookupError, MarketState, SessionTime, SessionWindowDefinition,
     TradingWeekday,
 };
-use crate::hawkes::{
+use janiform_model_kernels::hawkes::{
     HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
     HawkesStructuredRhoSelfDominancePolicy,
 };
-use crate::news::{
+use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration,
 };
