@@ -1,27 +1,29 @@
-pub use janiform_model_kernels::news::*;
-
-use chrono::{DateTime, Utc};
-
-use crate::calendar::ExchangeCalendarRegistry;
-
-impl SharedNewsEventMarketStateResolver for ExchangeCalendarRegistry {
-    fn resolve_market_state_at_utc(
-        &self,
-        exchange_code: &str,
-        event_timestamp_utc: DateTime<Utc>,
-    ) -> Result<
-        janiform_foundations::market_time::MarketState,
-        SharedNewsEventMarketStateResolutionError,
-    > {
-        ExchangeCalendarRegistry::resolve_market_state_at_utc(
-            self,
-            exchange_code,
-            event_timestamp_utc,
-        )
-        .map_err(|source: crate::calendar::ExchangeCalendarResolveError| {
-            SharedNewsEventMarketStateResolutionError {
-                reason: source.to_string(),
-            }
-        })
-    }
-}
+pub use janiform_model_kernels::news::{
+    COMPOSABLE_NEWS_MARK_INTERFACE_POLICY, COUPLED_GAP_MARK_CONSTRUCTION_POLICY,
+    ComposableNewsMarkPayload, ComposableNewsMarkPipeline, CoupledGapMarkConfiguration,
+    CoupledGapMarkConstruction, CoupledGapMarkConstructionError,
+    DOUBLE_EXPONENTIAL_BASE_SHOCK_SAMPLING_POLICY, DefaultNewsMarkPipeline,
+    DoubleExponentialBaseShockConfiguration, DoubleExponentialBaseShockSamplingError,
+    GAMMA_SEVERITY_MARK_SAMPLING_POLICY, GammaSeverityMarkConfiguration,
+    GammaSeverityMarkSamplingError, KnownNewsArrivalConfiguration,
+    NEWS_ARRIVAL_COMPONENT_INTENSITY_POLICY, NEWS_INTENSITY_BASELINE_POLICY,
+    NEWS_INTENSITY_DETERMINISTIC_INPUT_POLICY, NEWS_PROCESS_CONFIGURATION_SCHEMA_VERSION,
+    NewsArrivalComponent, NewsArrivalConfiguration, NewsArrivalConfigurationError,
+    NewsArrivalIntensityEvaluationInput, NewsArrivalIntensityEvaluationOutput,
+    NewsArrivalIntensityGenerator, NewsBaseShockMarkSampler, NewsComponentIntensityEvaluationError,
+    NewsComponentMarkScaleConfiguration, NewsComponentMarkScaleConfigurationError,
+    NewsCoupledMarkConstructor, NewsDeterministicIntensityEvaluationError,
+    NewsIntensityConfiguration, NewsIntensityError, NewsMarkConfigurationError,
+    NewsMarkInterfaceError, NewsMarkInterfaceStage, NewsProcessConfiguration,
+    NewsProcessConfigurationError, NewsReturnJumpRoutingTarget, NewsSeverityMarkSampler,
+    SHARED_NEWS_EVENT_BOUNDARY_POLICY, SHARED_NEWS_EVENT_DISPATCH_GT_GATING_POLICY,
+    SHARED_NEWS_EVENT_DISPATCH_JT_UPDATE_POLICY, SHARED_NEWS_EVENT_DISPATCH_MT_GATING_POLICY,
+    SHARED_NEWS_EVENT_DISPATCH_ORDERING_POLICY, SHARED_NEWS_EVENT_DISPATCH_RETURN_ROUTING_POLICY,
+    SHARED_NEWS_EVENT_MARKET_STATE_DEPENDENCY, SharedNewsAccumulatorState,
+    SharedNewsEventDispatchError, SharedNewsEventDispatchInput, SharedNewsEventDispatchOutput,
+    SharedNewsEventDispatchRecord, SharedNewsEventMarketStateResolutionError,
+    SharedNewsEventMarketStateResolver, SharedNewsEventTimestampedInput,
+    SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration, dispatch_shared_news_events,
+    dispatch_shared_news_events_with_resolved_market_states,
+    resolve_shared_news_event_market_states,
+};

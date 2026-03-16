@@ -110,6 +110,7 @@ pub use crate::seasonality::{
 
 mod definition;
 mod errors;
+mod news_market_state_resolver;
 mod preprocessing;
 mod registry;
 mod types;
