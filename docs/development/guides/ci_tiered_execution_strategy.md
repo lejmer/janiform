@@ -8,6 +8,7 @@ This guide defines the regression and benchmark CI tiers for Initiative 004 Proj
 | --- | --- | --- | --- | --- |
 | Fast deterministic regression | `.github/workflows/ci-fast-regression.yml` | `pull_request`, `push` to `main`, manual dispatch | Target <= 30 minutes on `ubuntu-latest` | Required |
 | Benchmark smoke tier | `.github/workflows/ci-benchmark-tier.yml` | Weekday schedule (`0 6 * * 1-5`) and manual dispatch | Target <= 60 minutes on `ubuntu-latest` | Not required on every commit |
+| Microbenchmark smoke | `.github/workflows/ci-benchmark-tier.yml` | Manual dispatch only | Target <= 30 minutes on `ubuntu-latest` | Never required on every commit |
 
 ## Fast deterministic regression tier
 
@@ -44,6 +45,17 @@ Its purpose is to keep benchmark contracts wired and observable without making m
 
 For the real-data seeded runtime path, `native_estimated_retained_bytes` is currently documented and
 enforced as an estimated retained-memory proxy. It is not a portable peak-RSS measurement.
+
+## Microbenchmark smoke
+
+- Validates Criterion bench discovery without treating timings as a merge gate:
+  - `cargo bench -p janiform-core --bench rust_microbenchmarks -- --list`
+- Validates the Python `pytest-benchmark` suite wiring without recording noisy timing artifacts:
+  - `PYTHONPATH=python .venv-linux/bin/pytest --benchmark-disable tests/benchmarks/python_microbenchmarks.py -q`
+
+This job is manual-only. It exists so contributors can verify the microbenchmark suites
+stay runnable in CI-like environments while keeping timing noise out of required pull-request
+checks.
 
 ## Failure diagnostics and links
 

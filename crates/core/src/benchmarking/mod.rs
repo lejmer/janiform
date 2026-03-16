@@ -3,6 +3,7 @@
 mod builders;
 mod catalog;
 mod harness;
+mod microbench;
 mod policy;
 mod report;
 mod utilities;
@@ -23,6 +24,14 @@ pub use catalog::{
 };
 pub use harness::{
     OraclePricerRiskBenchmarkHarnessError, run_oracle_pricer_risk_benchmark_harness,
+};
+pub use microbench::{
+    MICROBENCHMARK_REPRODUCIBILITY_SEED, MicrobenchmarkFixtureError, MicrobenchmarkFixtureSet,
+    ORACLE_SOLVER_MICROBENCHMARK_PROFILE_ID, PRICING_KERNEL_MICROBENCHMARK_PROFILE_ID,
+    PreparedOracleSolverBenchmarkCase, PreparedPricingKernelBenchmarkCase,
+    PreparedRiskSamplingBenchmarkCase, PreparedSimulationPrimitiveBenchmarkCase,
+    RISK_SAMPLING_MICROBENCHMARK_PROFILE_ID, SIMULATION_PRIMITIVE_MICROBENCHMARK_PROFILE_ID,
+    load_microbenchmark_fixture_set,
 };
 pub use policy::{
     ORACLE_PRICER_RISK_BENCHMARK_POLICY_SCHEMA_VERSION, OraclePricerRiskBenchmarkExecutionConfig,

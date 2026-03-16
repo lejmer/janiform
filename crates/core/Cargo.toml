@@ -14,3 +14,10 @@ chrono = { workspace = true }
 chrono-tz = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[[bench]]
+name = "rust_microbenchmarks"
+harness = false
