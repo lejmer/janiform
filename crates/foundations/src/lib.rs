@@ -3,7 +3,7 @@
 #![forbid(unsafe_code)]
 
 pub mod complex_math;
-pub mod market_time;
+pub mod market_state;
 pub mod randomness;
 
 pub const fn splitmix64_output_mixer(mut value: u64) -> u64 {

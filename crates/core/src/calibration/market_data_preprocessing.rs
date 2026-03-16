@@ -1395,7 +1395,7 @@ fn resolve_market_state_and_session_window(
     let local_minute = timestamp_local.minute() as u8;
     let local_clock = SessionTime::from_hour_minute(local_hour, local_minute);
 
-    if definition.holiday_dates.contains(&local_date) {
+    if definition.is_holiday(local_date) {
         return Ok((MarketState::Closed, None));
     }
 
@@ -1424,23 +1424,7 @@ fn session_windows_for_local_date(
     local_date: CalendarDate,
     local_weekday: TradingWeekday,
 ) -> &[SessionWindowDefinition] {
-    if definition.holiday_dates.contains(&local_date) {
-        return &[];
-    }
-
-    if let Some(early_close_windows) = definition.early_close_sessions_by_date.get(&local_date) {
-        return early_close_windows.as_ref();
-    }
-
-    if let Some(regular_session) = definition
-        .regular_sessions
-        .iter()
-        .find(|regular_session| regular_session.weekday == local_weekday)
-    {
-        return regular_session.windows();
-    }
-
-    &[]
+    definition.session_windows_for_local_date(local_date, local_weekday)
 }
 
 fn build_session_window_utc(

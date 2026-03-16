@@ -11,7 +11,7 @@ impl SharedNewsEventMarketStateResolver for ExchangeCalendarRegistry {
         exchange_code: &str,
         event_timestamp_utc: DateTime<Utc>,
     ) -> Result<
-        janiform_foundations::market_time::MarketState,
+        janiform_foundations::market_state::MarketState,
         SharedNewsEventMarketStateResolutionError,
     > {
         ExchangeCalendarRegistry::resolve_market_state_at_utc(

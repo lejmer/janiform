@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Utc};
-use janiform_foundations::market_time::MarketState;
+use janiform_foundations::market_state::MarketState;
 
 use super::interface::{
     NewsArrivalComponent, NewsReturnJumpRoutingTarget, SHARED_NEWS_EVENT_BOUNDARY_POLICY,

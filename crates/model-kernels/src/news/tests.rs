@@ -22,7 +22,7 @@ use super::{
     resolve_shared_news_event_market_states,
 };
 use chrono::{DateTime, Utc};
-use janiform_foundations::market_time::MarketState;
+use janiform_foundations::market_state::MarketState;
 use janiform_foundations::randomness::{
     SimulationRandomnessStream, SplitMix64SimulationRandomnessStream,
 };

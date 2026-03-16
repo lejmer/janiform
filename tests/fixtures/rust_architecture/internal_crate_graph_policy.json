@@ -52,11 +52,12 @@
       ]
     },
     "janiform-market-time": {
-      "status": "planned",
+      "status": "existing",
       "kind": "production",
       "layer": "shared_time_infrastructure",
       "allowed_internal_dependencies": [
-        "janiform-foundations"
+        "janiform-foundations",
+        "janiform-model-kernels"
       ]
     },
     "janiform-engine-pricing": {

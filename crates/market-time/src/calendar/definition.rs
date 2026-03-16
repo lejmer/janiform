@@ -175,6 +175,34 @@ impl ExchangeCalendarDefinition {
         &self.regular_sessions
     }
 
+    pub fn is_holiday(&self, local_date: CalendarDate) -> bool {
+        self.holiday_dates.contains(&local_date)
+    }
+
+    pub fn session_windows_for_local_date(
+        &self,
+        local_date: CalendarDate,
+        local_weekday: TradingWeekday,
+    ) -> &[SessionWindowDefinition] {
+        if self.is_holiday(local_date) {
+            return &[];
+        }
+
+        if let Some(early_close_windows) = self.early_close_sessions_by_date.get(&local_date) {
+            return early_close_windows.as_ref();
+        }
+
+        if let Some(regular_session) = self
+            .regular_sessions
+            .iter()
+            .find(|definition| definition.weekday == local_weekday)
+        {
+            return regular_session.windows();
+        }
+
+        &[]
+    }
+
     pub(crate) fn resolve_market_state_for_local_timestamp(
         &self,
         local_date: CalendarDate,
@@ -185,31 +213,14 @@ impl ExchangeCalendarDefinition {
         // 1. Holidays always resolve closed
         // 2. Early-close windows override regular sessions for the same date
         // 3. Regular sessions apply for all remaining dates
-        if self.holiday_dates.contains(&local_date) {
+        if self.is_holiday(local_date) {
             return MarketState::Closed;
         }
 
-        if let Some(early_close_windows) = self.early_close_sessions_by_date.get(&local_date) {
-            return resolve_market_state_for_session_windows(early_close_windows, local_clock);
-        }
-
-        self.resolve_regular_market_state_for_local_clock(weekday, local_clock)
-    }
-
-    fn resolve_regular_market_state_for_local_clock(
-        &self,
-        weekday: TradingWeekday,
-        local_clock: SessionTime,
-    ) -> MarketState {
-        let Some(regular_session) = self
-            .regular_sessions
-            .iter()
-            .find(|definition| definition.weekday == weekday)
-        else {
-            return MarketState::Closed;
-        };
-
-        resolve_market_state_for_session_windows(&regular_session.windows, local_clock)
+        resolve_market_state_for_session_windows(
+            self.session_windows_for_local_date(local_date, weekday),
+            local_clock,
+        )
     }
 }
 

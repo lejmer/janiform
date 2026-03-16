@@ -94,7 +94,7 @@ The initial target internal workspace graph is the following:
 | `janiform-foundations` | low-level shared base | math helpers, deterministic utilities, shared primitives | none |
 | `janiform-model-kernels` | model-domain kernel crate | Hawkes, NIG, news-process domain, return decomposition, risk-neutral kernel helpers | `janiform-foundations` |
 | `janiform-affine-oracle` | shared transform solver crate | affine transform contracts and solver internals | `janiform-foundations`, `janiform-model-kernels` |
-| `janiform-market-time` | shared time/calendar infrastructure | calendar, seasonality, hourly factors, interval alignment | `janiform-foundations` |
+| `janiform-market-time` | shared time/calendar infrastructure | calendar, seasonality, hourly factors, interval alignment | `janiform-foundations`, `janiform-model-kernels` |
 | `janiform-engine-pricing` | pricing runtime engine | pricing contracts and execution | `janiform-foundations`, `janiform-model-kernels`, `janiform-affine-oracle`, `janiform-market-time` |
 | `janiform-engine-risk` | risk runtime engine | sufficient-statistics risk sampling and path outputs | `janiform-foundations`, `janiform-model-kernels`, `janiform-affine-oracle`, `janiform-market-time` |
 | `janiform-engine-simulation` | simulation runtime engine | coarse and seeded simulation execution | `janiform-foundations`, `janiform-model-kernels`, `janiform-affine-oracle`, `janiform-market-time` |

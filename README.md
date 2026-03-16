@@ -213,6 +213,7 @@ This tells the script to use the `.venv-linux` venv, and to pass on the `-v` com
 ## Project Layout
 
 - `crates/core/`: Rust core library
+- `crates/market-time/`: Internal shared market-time infrastructure for calendars, seasonality, and hourly factors
 - `crates/pybind/`: PyO3 extension module (`janiform._native`)
 - `presets/sources/`: Human-reviewed preset source manifests used to generate bundled runtime artifacts
 - `python/janiform/`: Python package, CLI entrypoints, and typed workflow contracts, including package-backed workflow namespaces such as `janiform.simulation`

@@ -14,6 +14,7 @@ chrono = { workspace = true }
 chrono-tz = { workspace = true }
 janiform-affine-oracle = { path = "../affine-oracle" }
 janiform-foundations = { path = "../foundations" }
+janiform-market-time = { path = "../market-time" }
 janiform-model-kernels = { path = "../model-kernels" }
 serde = { workspace = true }
 serde_json = { workspace = true }
