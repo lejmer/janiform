@@ -1,0 +1,30 @@
+[package]
+name = "janiform-governance-bench"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Benchmark governance support for Janiform."
+
+[lib]
+name = "janiform_governance_bench"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+janiform-affine-oracle = { path = "../affine-oracle" }
+janiform-engine-pricing = { path = "../engine-pricing" }
+janiform-engine-risk = { path = "../engine-risk" }
+janiform-foundations = { path = "../foundations" }
+janiform-model-kernels = { path = "../model-kernels" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+chrono = { workspace = true }
+criterion = "0.5.1"
+janiform-engine-simulation = { path = "../engine-simulation" }
+janiform-market-time = { path = "../market-time" }
+
+[[bench]]
+name = "rust_microbenchmarks"
+harness = false

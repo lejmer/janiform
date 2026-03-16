@@ -317,6 +317,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "janiform-analytics-stylized-facts"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "janiform-calibration-artifacts",
+ "janiform-engine-simulation",
+ "janiform-foundations",
+ "janiform-market-time",
+ "janiform-model-kernels",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "janiform-calibration-artifacts"
 version = "0.1.0"
 dependencies = [
@@ -348,16 +362,19 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "chrono-tz",
- "criterion",
  "janiform-affine-oracle",
+ "janiform-analytics-stylized-facts",
  "janiform-calibration-artifacts",
  "janiform-calibration-runtime",
  "janiform-engine-pricing",
  "janiform-engine-risk",
  "janiform-engine-simulation",
  "janiform-foundations",
+ "janiform-governance",
+ "janiform-governance-bench",
  "janiform-market-time",
  "janiform-model-kernels",
+ "janiform-validation",
  "serde",
  "serde_json",
 ]
@@ -407,6 +424,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "janiform-governance"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "janiform-governance-bench",
+ "janiform-market-time",
+ "janiform-model-kernels",
+ "janiform-validation",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "janiform-governance-bench"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "criterion",
+ "janiform-affine-oracle",
+ "janiform-engine-pricing",
+ "janiform-engine-risk",
+ "janiform-engine-simulation",
+ "janiform-foundations",
+ "janiform-market-time",
+ "janiform-model-kernels",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "janiform-market-time"
 version = "0.1.0"
 dependencies = [
@@ -435,6 +482,25 @@ dependencies = [
  "chrono",
  "janiform-core",
  "pyo3",
+ "serde_json",
+]
+
+[[package]]
+name = "janiform-validation"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "janiform-affine-oracle",
+ "janiform-analytics-stylized-facts",
+ "janiform-calibration-artifacts",
+ "janiform-engine-pricing",
+ "janiform-engine-risk",
+ "janiform-engine-simulation",
+ "janiform-foundations",
+ "janiform-governance-bench",
+ "janiform-market-time",
+ "janiform-model-kernels",
+ "serde",
  "serde_json",
 ]
 
