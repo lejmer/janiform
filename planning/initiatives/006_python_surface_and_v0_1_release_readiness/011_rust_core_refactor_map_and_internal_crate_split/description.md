@@ -32,3 +32,10 @@ Define the refactor map and staged internal crate split for `crates/core` so the
 ### Initiative alignment
 - Extends Initiative 006 from Python and release-surface planning into the Rust architecture that underpins those surfaces.
 - Reduces the risk that v0.1 ships with a better external interface while the Rust implementation remains too monolithic to sustain iteration and ownership.
+
+### Planning artifacts
+- Policy guide: `docs/development/guides/rust_internal_crate_graph_and_umbrella_facade_policy.md`
+- Machine-readable graph fixture: `tests/fixtures/rust_architecture/internal_crate_graph_policy.json`
+- Temporary cargo metadata guard test: `crates/core/tests/internal_crate_graph_policy.rs`
+- Temporary facade surface guard test: `crates/core/tests/umbrella_facade_surface.rs`
+- Removal of the temporary guard tests is part of `JAN-264` once permanent extracted-crate enforcement replaces the planning-phase scaffolding.
