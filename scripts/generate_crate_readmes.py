@@ -104,6 +104,7 @@ def main() -> int:
         if args.check:
             if not path.exists() or path.read_text(encoding="utf-8") != expected_content:
                 drifted_paths.append(path)
+
             continue
 
         path.write_text(expected_content, encoding="utf-8")
@@ -113,8 +114,10 @@ def main() -> int:
             print("Generated crate README files are out of date:")
             for path in drifted_paths:
                 print(f"- {path.relative_to(workspace_root)}")
+
             print("Regenerate them with `python3 scripts/generate_crate_readmes.py`.")
             return 1
+
         return 0
 
     print(f"Generated {len(expected_readmes)} crate README files.")
@@ -204,6 +207,7 @@ def select_template(package: WorkspacePackage) -> str:
         return PYBIND_TEMPLATE
     if not package.publish:
         return UNPUBLISHED_TEMPLATE
+
     return INTERNAL_TEMPLATE
 
 
@@ -215,10 +219,13 @@ def render_workspace_members(
     for package in packages:
         if package.name == "janiform":
             continue
+
         crate_path = package.crate_directory.relative_to(workspace_root).as_posix()
         source_url = f"{REPOSITORY_URL}/blob/main/{crate_path}"
         unpublished_suffix = " Not published independently." if not package.publish else ""
+
         lines.append(f"- [{package.name}]({source_url}): {package.description}{unpublished_suffix}")
+
     return "\n".join(lines)
 
 
