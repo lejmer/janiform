@@ -94,7 +94,7 @@
       ]
     },
     "janiform-calibration-artifacts": {
-      "status": "planned",
+      "status": "existing",
       "kind": "production",
       "layer": "calibration_artifacts",
       "allowed_internal_dependencies": [
@@ -104,7 +104,7 @@
       ]
     },
     "janiform-calibration-runtime": {
-      "status": "planned",
+      "status": "existing",
       "kind": "production",
       "layer": "calibration_runtime",
       "allowed_internal_dependencies": [
@@ -119,18 +119,20 @@
       ]
     },
     "janiform-analytics-stylized-facts": {
-      "status": "planned",
+      "status": "existing",
       "kind": "production",
       "layer": "analytics",
       "allowed_internal_dependencies": [
         "janiform-foundations",
         "janiform-model-kernels",
         "janiform-market-time",
-        "janiform-engine-simulation"
+        "janiform-engine-simulation",
+        "janiform-calibration-artifacts",
+        "janiform-test-support"
       ]
     },
     "janiform-validation": {
-      "status": "planned",
+      "status": "existing",
       "kind": "production",
       "layer": "validation",
       "allowed_internal_dependencies": [
@@ -142,35 +144,52 @@
         "janiform-engine-risk",
         "janiform-engine-simulation",
         "janiform-calibration-artifacts",
-        "janiform-analytics-stylized-facts"
+        "janiform-analytics-stylized-facts",
+        "janiform-governance-bench",
+        "janiform-test-support"
       ]
     },
     "janiform-governance": {
-      "status": "planned",
+      "status": "existing",
       "kind": "production",
       "layer": "governance",
       "allowed_internal_dependencies": [
         "janiform-foundations",
+        "janiform-model-kernels",
         "janiform-market-time",
         "janiform-engine-pricing",
         "janiform-engine-risk",
         "janiform-engine-simulation",
         "janiform-calibration-artifacts",
         "janiform-analytics-stylized-facts",
-        "janiform-validation"
+        "janiform-validation",
+        "janiform-governance-bench",
+        "janiform-test-support"
       ]
     },
     "janiform-governance-bench": {
-      "status": "planned",
+      "status": "existing",
       "kind": "benchmark_only",
       "layer": "governance_bench",
       "allowed_internal_dependencies": [
         "janiform-foundations",
+        "janiform-model-kernels",
+        "janiform-affine-oracle",
+        "janiform-market-time",
         "janiform-engine-pricing",
         "janiform-engine-risk",
         "janiform-engine-simulation",
         "janiform-calibration-artifacts",
-        "janiform-governance"
+        "janiform-test-support"
+      ]
+    },
+    "janiform-test-support": {
+      "status": "existing",
+      "kind": "test_only",
+      "layer": "test_support",
+      "allowed_internal_dependencies": [
+        "janiform-market-time",
+        "janiform-validation"
       ]
     },
     "janiform-core": {
@@ -190,7 +209,8 @@
         "janiform-analytics-stylized-facts",
         "janiform-validation",
         "janiform-governance",
-        "janiform-governance-bench"
+        "janiform-governance-bench",
+        "janiform-test-support"
       ]
     },
     "janiform-pybind": {

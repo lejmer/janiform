@@ -1,3 +1,26 @@
 //! Curated facade re-export for market-time seasonality infrastructure.
 
-pub use janiform_market_time::seasonality::*;
+pub use janiform_market_time::seasonality::{
+    DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
+    DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
+    DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION, DayOfWeekSeasonalityDiagnostics,
+    DayOfWeekSeasonalityEstimateOutput, DayOfWeekSeasonalityEstimationError,
+    DayOfWeekSeasonalityEstimatorSettings, DayOfYearSeasonalityDiagnostics,
+    DayOfYearSeasonalityEstimateOutput, DayOfYearSeasonalityEstimationError,
+    DayOfYearSeasonalityEstimatorSettings, DeterministicSeasonalityCompositionDiagnostics,
+    DeterministicSeasonalityCompositionError, DeterministicSeasonalityCompositionOutput,
+    INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION, IntradaySeasonalityDiagnostics,
+    IntradaySeasonalityEstimateOutput, IntradaySeasonalityEstimationError,
+    IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel,
+    SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION,
+    SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION, ScheduledEventOverlayDefinition,
+    ScheduledEventOverlayProvenanceMetadata, SeasonalityComponentDiagnosticsSummary,
+    SeasonalityDiagnosticsBatchReportOutput, SeasonalityDiagnosticsReportError,
+    SeasonalityDiagnosticsReportInput, SeasonalityDiagnosticsReportOutput,
+    SeasonalityEstimatorConfigurationMetadata, SeasonalityFitQualityMetrics,
+    SeasonalityInputSnapshotMetadata, SeasonalityNormalizationMetadata,
+    SeasonalityOverlayComponentDiagnosticsSummary, SeasonalityReproducibilityMetadata,
+    compose_deterministic_seasonality_signal, estimate_day_of_week_seasonality,
+    estimate_day_of_year_seasonality, estimate_intraday_seasonality,
+    generate_seasonality_diagnostics_batch_report, generate_seasonality_diagnostics_report,
+};

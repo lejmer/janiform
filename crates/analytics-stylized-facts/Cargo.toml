@@ -1,0 +1,24 @@
+[package]
+name = "janiform-analytics-stylized-facts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Stylized-fact analytics for Janiform."
+
+[lib]
+name = "janiform_analytics_stylized_facts"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+janiform-calibration-artifacts = { path = "../calibration-artifacts" }
+janiform-engine-simulation = { path = "../engine-simulation" }
+janiform-foundations = { path = "../foundations" }
+janiform-market-time = { path = "../market-time" }
+janiform-model-kernels = { path = "../model-kernels" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+chrono = { workspace = true }
+janiform-test-support = { path = "../test-support" }

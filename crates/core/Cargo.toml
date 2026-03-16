@@ -12,6 +12,7 @@ path = "src/lib.rs"
 [dependencies]
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
+janiform-analytics-stylized-facts = { path = "../analytics-stylized-facts" }
 janiform-affine-oracle = { path = "../affine-oracle" }
 janiform-calibration-artifacts = { path = "../calibration-artifacts" }
 janiform-calibration-runtime = { path = "../calibration-runtime" }
@@ -19,14 +20,13 @@ janiform-engine-pricing = { path = "../engine-pricing" }
 janiform-engine-risk = { path = "../engine-risk" }
 janiform-engine-simulation = { path = "../engine-simulation" }
 janiform-foundations = { path = "../foundations" }
+janiform-governance = { path = "../governance" }
+janiform-governance-bench = { path = "../governance-bench" }
 janiform-market-time = { path = "../market-time" }
 janiform-model-kernels = { path = "../model-kernels" }
+janiform-validation = { path = "../validation" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
-criterion = "0.5.1"
-
-[[bench]]
-name = "rust_microbenchmarks"
-harness = false
+janiform-test-support = { path = "../test-support" }

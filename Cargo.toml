@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/analytics-stylized-facts",
     "crates/affine-oracle",
     "crates/calibration-artifacts",
     "crates/calibration-runtime",
@@ -8,9 +9,13 @@ members = [
     "crates/engine-risk",
     "crates/engine-simulation",
     "crates/foundations",
+    "crates/governance",
+    "crates/governance-bench",
     "crates/market-time",
     "crates/model-kernels",
     "crates/pybind",
+    "crates/test-support",
+    "crates/validation",
 ]
 resolver = "2"
 

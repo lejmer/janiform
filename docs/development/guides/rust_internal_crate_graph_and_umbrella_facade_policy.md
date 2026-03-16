@@ -75,8 +75,9 @@ layout indefinitely.
   move toward `janiform-calibration-runtime`
 - `verification/stylized_facts` moves toward `janiform-analytics-stylized-facts`
 - remaining verification domains move toward `janiform-validation`
-- `benchmarking`, performance baselines, and regression-governance helpers move toward governance
-  crates rather than remaining in the umbrella runtime crate by default
+- `benchmarking` moves toward `janiform-governance-bench`
+- deterministic regression orchestration, performance baselines, and regression-governance helpers
+  move toward `janiform-governance`
 
 Behavior-preserving extraction comes first.
 Cleanup, renaming, and smaller internal API reshaping come after the ownership boundary exists.
@@ -100,10 +101,11 @@ The initial target internal workspace graph is the following:
 | `janiform-engine-simulation` | simulation runtime engine | coarse and seeded simulation execution | `janiform-foundations`, `janiform-model-kernels`, `janiform-affine-oracle`, `janiform-market-time` |
 | `janiform-calibration-artifacts` | calibration contract and artifact crate | run specs, manifests, reload/index helpers, artifact schema ownership | `janiform-foundations`, `janiform-model-kernels`, `janiform-market-time` |
 | `janiform-calibration-runtime` | calibration execution crate | staged execution, objectives, optimizers, runtime orchestration | `janiform-foundations`, `janiform-model-kernels`, `janiform-affine-oracle`, `janiform-market-time`, `janiform-engine-pricing`, `janiform-engine-risk`, `janiform-engine-simulation`, `janiform-calibration-artifacts` |
-| `janiform-analytics-stylized-facts` | analytics crate | stylized-fact metrics, comparisons, and reporting | `janiform-foundations`, `janiform-model-kernels`, `janiform-market-time`, `janiform-engine-simulation` |
-| `janiform-validation` | validation crate | regression harnesses, scale consistency, deterministic checks, validation contracts | `janiform-foundations`, `janiform-model-kernels`, `janiform-affine-oracle`, `janiform-market-time`, `janiform-engine-pricing`, `janiform-engine-risk`, `janiform-engine-simulation`, `janiform-calibration-artifacts`, `janiform-analytics-stylized-facts` |
-| `janiform-governance` | governance crate | regression drift attribution, acceptance governance, non-benchmark governance reporting | `janiform-foundations`, `janiform-market-time`, `janiform-engine-pricing`, `janiform-engine-risk`, `janiform-engine-simulation`, `janiform-calibration-artifacts`, `janiform-analytics-stylized-facts`, `janiform-validation` |
-| `janiform-governance-bench` | benchmark-only governance crate | benchmark catalogs, harnesses, policies, microbenchmark fixture support | `janiform-foundations`, `janiform-engine-pricing`, `janiform-engine-risk`, `janiform-engine-simulation`, `janiform-calibration-artifacts`, `janiform-governance` |
+| `janiform-analytics-stylized-facts` | analytics crate | stylized-fact metrics, comparisons, and reporting | `janiform-foundations`, `janiform-model-kernels`, `janiform-market-time`, `janiform-engine-simulation`, `janiform-calibration-artifacts` |
+| `janiform-validation` | validation crate | regression harnesses, scale consistency, deterministic checks, validation contracts | `janiform-foundations`, `janiform-model-kernels`, `janiform-affine-oracle`, `janiform-market-time`, `janiform-engine-pricing`, `janiform-engine-risk`, `janiform-engine-simulation`, `janiform-calibration-artifacts`, `janiform-analytics-stylized-facts`, `janiform-governance-bench` |
+| `janiform-governance` | governance crate | regression drift attribution, acceptance governance, deterministic regression orchestration, performance baseline ownership | `janiform-foundations`, `janiform-model-kernels`, `janiform-market-time`, `janiform-engine-pricing`, `janiform-engine-risk`, `janiform-engine-simulation`, `janiform-calibration-artifacts`, `janiform-analytics-stylized-facts`, `janiform-validation`, `janiform-governance-bench` |
+| `janiform-governance-bench` | benchmark-only governance crate | benchmark catalogs, harnesses, policies, and microbenchmark fixture support shared by validation and governance workflows | `janiform-foundations`, `janiform-model-kernels`, `janiform-affine-oracle`, `janiform-market-time`, `janiform-engine-pricing`, `janiform-engine-risk`, `janiform-engine-simulation`, `janiform-calibration-artifacts` |
+| `janiform-test-support` | test-only support crate | shared regression-fixture readers and helper contracts used only by Rust tests | `janiform-market-time`, `janiform-validation` |
 | `janiform-core` | umbrella facade | curated public Rust surface during migration | all internal crates above except `janiform-pybind` |
 | `janiform-pybind` | Python boundary crate | PyO3 conversion and error mapping | `janiform-core` only |
 
@@ -114,6 +116,7 @@ The graph is intentionally directional:
 - calibration runtime may call into engines
 - validation may observe engines and calibration artifacts
 - governance may observe engines and validation outputs
+- shared Rust test-fixture readers should live in a test-only support crate instead of being copied across crate-local test trees
 - `janiform-core` stays on top as the curated Rust facade
 - `janiform-pybind` stays above the facade rather than reconstructing the graph directly
 
@@ -207,23 +210,36 @@ The following dependency directions are forbidden unless this policy is explicit
 ### Validation and analytics rules
 
 - `janiform-analytics-stylized-facts` may depend on engine outputs when required for analytics
-- `janiform-validation` may depend on engines, analytics outputs, and calibration artifacts
+- `janiform-analytics-stylized-facts` may depend on calibration-artifact contracts when
+  report-generation ownership metadata needs them
+- `janiform-validation` may depend on engines, analytics outputs, calibration artifacts, and
+  benchmark-only governance support required to build benchmark-shaped validation inputs
 - validation and analytics crates must not introduce reverse dependencies from engines back into
   validation workflows
 
 ### Governance rules
 
 - governance may depend on engines and validation outputs, but not the reverse
+- governance may depend on benchmark-only governance support for baseline capture inputs and
+  benchmark report contracts
 - governance may aggregate benchmark, regression, and acceptance-policy logic
 - governance must not become a foundational dependency for runtime execution crates
 
 ### Benchmark-only rules
 
 - benchmark-only support must not grow production crate surfaces
-- `janiform-governance-bench` is benchmark-only and must not become a dependency of foundational,
-  model-kernel, market-time, engine, or calibration crates
+- `janiform-governance-bench` is benchmark-only and may support validation and governance
+  workflows, but it must not become a dependency of foundational, model-kernel, market-time,
+  engine, or calibration crates
 - new benchmark helpers should land in governance-bench or test-only code unless a production
   contract need is explicitly documented
+
+### Test-only support rules
+
+- shared Rust regression-fixture readers should move into `janiform-test-support` instead of
+  being copied into multiple crate-local `tests/support` directories
+- `janiform-test-support` may depend on internal crates only when a fixture contract genuinely
+  needs those types, and it must stay out of production dependency paths
 
 ### Pybind boundary rule
 
