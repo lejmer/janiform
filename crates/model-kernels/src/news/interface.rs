@@ -6,7 +6,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use janiform_foundations::market_time::{
+use janiform_foundations::market_state::{
     MARKET_STATE_RESOLUTION_POLICY, SESSION_WINDOW_BOUNDARY_POLICY,
 };
 use janiform_foundations::randomness::SimulationRandomnessStream;

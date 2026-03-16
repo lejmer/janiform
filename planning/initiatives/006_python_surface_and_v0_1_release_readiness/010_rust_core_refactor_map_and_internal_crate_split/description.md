@@ -1,4 +1,4 @@
-## Project 011: Rust Core Refactor Map And Internal Crate Split Plan
+## Project 010: Rust Core Refactor Map And Internal Crate Split Plan
 
 Define the refactor map and staged internal crate split for `crates/core` so the Rust implementation stops concentrating most domain, workflow, validation, and governance code inside one oversized crate.
 

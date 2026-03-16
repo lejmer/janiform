@@ -3,7 +3,7 @@ use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Datelike, Utc, Weekday as ChronoWeekday};
 use chrono_tz::Tz;
-pub use janiform_foundations::market_time::MarketState;
+pub use janiform_foundations::market_state::MarketState;
 use serde::{Deserialize, Serialize};
 
 /// Weekday used by regular exchange sessions.
@@ -34,7 +34,7 @@ impl Display for TradingWeekday {
 }
 
 impl TradingWeekday {
-    pub(crate) fn from_chrono_weekday(weekday: ChronoWeekday) -> Self {
+    pub fn from_chrono_weekday(weekday: ChronoWeekday) -> Self {
         match weekday {
             ChronoWeekday::Mon => Self::Monday,
             ChronoWeekday::Tue => Self::Tuesday,
@@ -49,19 +49,19 @@ impl TradingWeekday {
 
 /// Local exchange date used for holiday and early-close schedule keys.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct CalendarDate {
-    pub(crate) year: i32,
-    pub(crate) month: u8,
-    pub(crate) day: u8,
+pub struct CalendarDate {
+    pub year: i32,
+    pub month: u8,
+    pub day: u8,
 }
 
 impl CalendarDate {
-    pub(crate) fn parse(raw: &str) -> Result<Self, &'static str> {
+    pub fn parse(raw: &str) -> Result<Self, &'static str> {
         let (year, month, day) = crate::calendar::validation::parse_iso_date_parts(raw)?;
         Ok(Self { year, month, day })
     }
 
-    pub(crate) fn from_local_timestamp(timestamp_local: &DateTime<Tz>) -> Self {
+    pub fn from_local_timestamp(timestamp_local: &DateTime<Tz>) -> Self {
         Self {
             year: timestamp_local.year(),
             month: timestamp_local.month() as u8,
@@ -270,7 +270,7 @@ impl SessionWindowDefinition {
         self.close_time
     }
 
-    pub(crate) fn contains_local_clock(&self, local_clock: SessionTime) -> bool {
+    pub fn contains_local_clock(&self, local_clock: SessionTime) -> bool {
         // Boundary policy is [open, close): exact open resolves open and exact close resolves closed.
         local_clock >= self.open_time && local_clock < self.close_time
     }
@@ -284,7 +284,7 @@ pub struct SessionTime {
 }
 
 impl SessionTime {
-    pub(crate) fn from_hour_minute(hour: u8, minute: u8) -> Self {
+    pub fn from_hour_minute(hour: u8, minute: u8) -> Self {
         Self { hour, minute }
     }
 

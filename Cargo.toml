@@ -3,6 +3,7 @@ members = [
     "crates/affine-oracle",
     "crates/core",
     "crates/foundations",
+    "crates/market-time",
     "crates/model-kernels",
     "crates/pybind",
 ]

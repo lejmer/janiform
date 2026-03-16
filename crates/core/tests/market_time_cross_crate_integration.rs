@@ -1,26 +1,24 @@
 use chrono::{DateTime, Utc};
 
-use crate::calendar::ExchangeCalendarRegistryLoader;
-use crate::calibration::{
+use janiform_core::calibration::{
     evolve_hawkes_state_for_calibration_step, load_hourly_factor_contract_for_calibration,
     project_hawkes_intensities_for_calibration_interval,
 };
-use crate::hourly_factors::HourlyFactorContractError;
-use crate::hourly_factors::{
-    HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_MATERIALIZATION_METHOD,
-    HOURLY_FACTOR_PROVIDER_SEASONALITY_MATERIALIZATION_METHOD, HourlyFactorProviderError,
-    HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
-    provide_hourly_factor_contract,
-};
-use crate::pricing::{
+use janiform_core::pricing::{
     evolve_hawkes_state as evolve_hawkes_state_coarse_interval_step,
     load_hourly_factor_contract as load_hourly_factor_contract_for_pricing_path,
     project_hawkes_intensities_coarse_interval,
 };
-use crate::simulation::{
+use janiform_core::simulation::{
     evolve_hawkes_state as evolve_hawkes_state_simulation_step,
     load_hourly_factor_contract as load_hourly_factor_contract_for_simulation_path,
     project_hawkes_intensities_simulation_interval,
+};
+use janiform_market_time::calendar::ExchangeCalendarRegistryLoader;
+use janiform_market_time::hourly_factors::{
+    HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_MATERIALIZATION_METHOD,
+    HOURLY_FACTOR_PROVIDER_SEASONALITY_MATERIALIZATION_METHOD, HourlyFactorProviderRequest,
+    HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
 };
 use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
@@ -33,87 +31,7 @@ const SURPRISE_NEWS_TIME_MULTIPLIERS: [(u64, f64); 3] = [(0, 1.0), (1, 0.5), (2,
 const ONE_HOUR_INTERVAL_NANOS: i64 = 3_600_000_000_000;
 
 #[test]
-fn provider_returns_structured_error_for_missing_seasonality_source() {
-    let registry = build_calendar_registry();
-
-    let request = HourlyFactorProviderRequest {
-        exchange_code: "XNYS",
-        range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
-        range_end_utc: parse_timestamp("2026-02-02T16:00:00Z"),
-        interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
-        seasonality_source: None,
-        news_intensity_source: Some(HourlyNewsIntensityFactorSource::Explicit {
-            hourly_factors: &[0.1, 0.0],
-            materialization_method: "explicit_hourly_input.v1",
-        }),
-    };
-
-    let error = provide_hourly_factor_contract(&registry, request)
-        .expect_err("missing seasonality source must fail");
-
-    assert!(matches!(
-        error,
-        HourlyFactorProviderError::MissingSeasonalitySource
-    ));
-}
-
-#[test]
-fn provider_returns_structured_error_for_missing_news_intensity_source() {
-    let registry = build_calendar_registry();
-
-    let request = HourlyFactorProviderRequest {
-        exchange_code: "XNYS",
-        range_start_utc: parse_timestamp("2026-02-02T14:00:00Z"),
-        range_end_utc: parse_timestamp("2026-02-02T16:00:00Z"),
-        interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
-        seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
-            hourly_factors: &[1.0, 1.0],
-            materialization_method: "explicit_hourly_input.v1",
-        }),
-        news_intensity_source: None,
-    };
-
-    let error = provide_hourly_factor_contract(&registry, request)
-        .expect_err("missing news intensity source must fail");
-
-    assert!(matches!(
-        error,
-        HourlyFactorProviderError::MissingNewsIntensitySource
-    ));
-}
-
-#[test]
-fn provider_returns_structured_error_for_unsupported_range_requests() {
-    let registry = build_calendar_registry();
-
-    let request = HourlyFactorProviderRequest {
-        exchange_code: "XNYS",
-        range_start_utc: parse_timestamp("2026-02-02T14:30:00Z"),
-        range_end_utc: parse_timestamp("2026-02-02T16:00:00Z"),
-        interval_duration_nanos: ONE_HOUR_INTERVAL_NANOS,
-        seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
-            hourly_factors: &[1.0],
-            materialization_method: "explicit_hourly_input.v1",
-        }),
-        news_intensity_source: Some(HourlyNewsIntensityFactorSource::Explicit {
-            hourly_factors: &[0.0],
-            materialization_method: "explicit_hourly_input.v1",
-        }),
-    };
-
-    let error = provide_hourly_factor_contract(&registry, request)
-        .expect_err("range duration must divide evenly by interval width");
-
-    assert!(matches!(
-        error,
-        HourlyFactorProviderError::UnsupportedRange {
-            source: HourlyFactorContractError::RangeDurationNotDivisibleByInterval { .. }
-        }
-    ));
-}
-
-#[test]
-fn pricing_path_consumes_shared_hourly_factor_provider() {
+fn pricing_path_consumes_market_time_hourly_factor_provider() {
     let registry = build_calendar_registry();
 
     let request = HourlyFactorProviderRequest {
@@ -211,7 +129,7 @@ fn provider_supports_deterministic_news_intensity_inputs_for_pricing_and_simulat
 }
 
 #[test]
-fn simulation_path_consumes_shared_hourly_factor_provider() {
+fn simulation_path_consumes_market_time_hourly_factor_provider() {
     let registry = build_calendar_registry();
 
     let request = shared_simulation_hourly_factor_provider_request();
@@ -258,7 +176,7 @@ fn simulation_path_resamples_explicit_hourly_sources_to_sub_hour_intervals() {
 }
 
 #[test]
-fn calibration_path_consumes_shared_hourly_factor_provider() {
+fn calibration_path_consumes_market_time_hourly_factor_provider() {
     let registry = build_calendar_registry();
 
     let request = HourlyFactorProviderRequest {
@@ -428,7 +346,7 @@ fn shared_simulation_hourly_factor_provider_request() -> HourlyFactorProviderReq
     }
 }
 
-fn build_calendar_registry() -> crate::calendar::ExchangeCalendarRegistry {
+fn build_calendar_registry() -> janiform_market_time::calendar::ExchangeCalendarRegistry {
     ExchangeCalendarRegistryLoader::load_from_json(
         r#"
             {

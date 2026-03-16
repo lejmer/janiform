@@ -8,7 +8,7 @@
 //!
 //! A single regular session per day:
 //! ```rust
-//! use janiform_core::calendar::{
+//! use janiform_market_time::calendar::{
 //!     CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarDefinition,
 //!     RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
 //! };
@@ -36,12 +36,12 @@
 //!
 //! let definition = ExchangeCalendarDefinition::from_artifact(artifact)?;
 //! assert_eq!(definition.timezone_name(), "America/New_York");
-//! # Ok::<(), janiform_core::calendar::ExchangeCalendarValidationError>(())
+//! # Ok::<(), janiform_market_time::calendar::ExchangeCalendarValidationError>(())
 //! ```
 //!
 //! A split session on a single weekday:
 //! ```rust
-//! use janiform_core::calendar::{
+//! use janiform_market_time::calendar::{
 //!     CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarDefinition,
 //!     RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
 //! };
@@ -76,13 +76,13 @@
 //!
 //! let definition = ExchangeCalendarDefinition::from_artifact(artifact)?;
 //! assert_eq!(definition.regular_sessions().len(), 1);
-//! # Ok::<(), janiform_core::calendar::ExchangeCalendarValidationError>(())
+//! # Ok::<(), janiform_market_time::calendar::ExchangeCalendarValidationError>(())
 //! ```
 
 pub const TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION: &str = "seasonality.timestamp_event.v1";
 pub const PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION: &str =
     "seasonality.timestamp_event.preprocessed.v1";
-pub use janiform_foundations::market_time::{
+pub use janiform_foundations::market_state::{
     MARKET_STATE_RESOLUTION_POLICY, SESSION_WINDOW_BOUNDARY_POLICY,
 };
 
@@ -122,9 +122,8 @@ pub use errors::{
     TimestampEventPreprocessingError,
 };
 pub use registry::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
-pub(crate) use types::CalendarDate;
 pub use types::{
-    CalendarRuleMetadata, CalendarRuleMetadataArtifact, EarlyCloseSessionArtifact,
+    CalendarDate, CalendarRuleMetadata, CalendarRuleMetadataArtifact, EarlyCloseSessionArtifact,
     ExchangeCalendarArtifact, ExchangeCalendarDefinition, ExchangeCalendarRegistryArtifact,
     ExchangeMetadata, MarketState, RegularSessionArtifact, RegularSessionDefinition, SessionTime,
     SessionWindowArtifact, SessionWindowDefinition, TimestampEventInputRecord,
