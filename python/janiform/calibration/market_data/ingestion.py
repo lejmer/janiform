@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pyarrow
 from pyarrow import compute as pyarrow_compute
-from pyarrow import parquet as pyarrow_parquet
+from pyarrow import parquet
 
 from .contracts import (
     CalibrationTradeSign,
@@ -255,7 +255,7 @@ def _load_source_rows(
                     field_path=field_path,
                 )
             case CalibrationInputFileFormat.PARQUET:
-                table = pyarrow_parquet.read_table(file_reference.path)
+                table = parquet.read_table(file_reference.path)
             case _:
                 raise _market_data_ingestion_error(
                     f"{field_path}.file_format",

@@ -5,7 +5,7 @@
 - Policy: `real_data_seeded_runtime_threshold_policy` `1.0.0`
 - Memory metric: `native_estimated_retained_bytes` is an estimated retained-memory proxy and not true peak RSS.
 
-### synthetic_eurusd_unsigned_4096row_96h_v1
+### synthetic_eurusd_parquet_slice_250000_8192row_v1
 - Status: `pass`
 - Primary failure classification: `none`
 - Threshold failures: none

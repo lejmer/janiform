@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 import orjson
 import pyarrow as pa
-from pyarrow import parquet as pyarrow_parquet
+from pyarrow import parquet
 
 import janiform.cli.command_tree as cli_command_tree_module
 from examples._shared import (
@@ -216,7 +216,7 @@ def write_market_data_input_files(
                 encoding="utf-8",
             )
     else:
-        pyarrow_parquet.write_table(
+        parquet.write_table(
             pa.table(
                 {
                     "timestamp_utc": [
@@ -256,7 +256,7 @@ def write_market_data_input_files(
 
     if include_option_surface:
         option_surface_path = data_directory / "options.parquet"
-        pyarrow_parquet.write_table(
+        parquet.write_table(
             pa.table(
                 {
                     "quote_timestamp_utc": [datetime(2026, 2, 2, 20, 0, tzinfo=UTC)],

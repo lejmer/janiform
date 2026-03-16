@@ -6,6 +6,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Optional, cast
 
+from pyarrow import parquet
+
 from .._contracts import (
     ContractModel,
     parse_json_object,
@@ -21,7 +23,6 @@ from .._contracts import (
 from ..calibration import JaniformEstimator
 from ..calibration.fit import JaniformFitReport, JaniformSimulationResult
 from ..simulation.seeded import SeededTickSimulationResponse
-from .synthetic_market_data import write_synthetic_eurusd_tick_csv
 
 
 REAL_DATA_SEEDED_RUNTIME_BENCHMARK_FIXTURE_SCHEMA_VERSION = (
@@ -45,11 +46,11 @@ REAL_DATA_SEEDED_RUNTIME_COMPARISON_REPORT_SCHEMA_VERSION = (
 REAL_DATA_SEEDED_RUNTIME_MEMORY_METRIC_SEMANTICS = (
     "estimated_native_retained_bytes_proxy_not_peak_rss.v1"
 )
-REAL_DATA_SEEDED_RUNTIME_DATASET_GENERATION_POLICY = (
-    "synthetic_eurusd_irregular_unsigned_tick_generator.v1"
+REAL_DATA_SEEDED_RUNTIME_DATASET_SOURCE_POLICY = (
+    "checked_in_synthetic_eurusd_parquet_row_slice.v1"
 )
 REAL_DATA_SEEDED_RUNTIME_UNSIGNED_MARKET_DATA_POLICY = (
-    "synthetic_fixture_omits_trade_sign_column_and_relies_on_unsigned_fit_path.v1"
+    "checked_in_fixture_omits_trade_sign_column_and_relies_on_unsigned_fit_path.v1"
 )
 REAL_DATA_SEEDED_RUNTIME_FIXTURE_LOADING_ORDER_POLICY = "fixture_id_ascending.v1"
 REAL_DATA_SEEDED_RUNTIME_CAPTURE_POLICY = (
@@ -87,12 +88,15 @@ REAL_DATA_SEEDED_RUNTIME_REQUIRED_ACCESS_PATTERN_FIELDS = (
     "materialized_event_count",
 )
 REAL_DATA_SEEDED_RUNTIME_REQUIRED_PROVENANCE_FIELDS = (
-    "dataset_generation_policy",
+    "dataset_source_policy",
     "unsigned_market_data_policy",
-    "dataset_row_count",
-    "dataset_duration_minutes",
-    "dataset_seed",
-    "dataset_start_time_utc",
+    "source_tick_data_path",
+    "source_tick_data_format",
+    "source_tick_data_row_offset",
+    "source_tick_data_row_count",
+    "source_timestamp_column",
+    "source_price_column",
+    "source_trade_sign_column",
     "market_profile",
     "execution_mode",
     "simulation_seed",
@@ -226,10 +230,13 @@ class RealDataSeededRuntimeBenchmarkFixture(ContractModel):
     fixture_version: str
     description: str
     tags: tuple[str, ...]
-    dataset_row_count: int
-    dataset_duration_minutes: float
-    dataset_seed: int
-    dataset_start_time_utc: datetime
+    source_tick_data_path: str
+    source_tick_data_format: str
+    source_tick_data_row_offset: int
+    source_tick_data_row_count: int
+    source_timestamp_column: str
+    source_price_column: str
+    source_trade_sign_column: Optional[str]
     market_profile: str
     execution_mode: str
     simulation_seed: int
@@ -250,15 +257,32 @@ class RealDataSeededRuntimeBenchmarkFixture(ContractModel):
             raise _benchmark_error("tags", "must contain at least one tag")
         if any(not tag.strip() for tag in self.tags):
             raise _benchmark_error("tags", "must not contain empty tag values")
-        if self.dataset_row_count <= 1:
-            raise _benchmark_error("dataset_row_count", "must be greater than 1")
-        if self.dataset_duration_minutes <= 0.0:
+        if not self.source_tick_data_path.strip():
+            raise _benchmark_error("source_tick_data_path", "must be a non-empty string")
+        if self.source_tick_data_format != "parquet":
+            raise _benchmark_error("source_tick_data_format", "must be `parquet`")
+        if self.source_tick_data_row_offset < 0:
             raise _benchmark_error(
-                "dataset_duration_minutes",
-                "must be strictly positive",
+                "source_tick_data_row_offset",
+                "must be non-negative",
             )
-        if self.dataset_seed < 0:
-            raise _benchmark_error("dataset_seed", "must be non-negative")
+        if self.source_tick_data_row_count <= 1:
+            raise _benchmark_error(
+                "source_tick_data_row_count",
+                "must be greater than 1",
+            )
+        if not self.source_timestamp_column.strip():
+            raise _benchmark_error("source_timestamp_column", "must be a non-empty string")
+        if not self.source_price_column.strip():
+            raise _benchmark_error("source_price_column", "must be a non-empty string")
+        if (
+            self.source_trade_sign_column is not None
+            and not self.source_trade_sign_column.strip()
+        ):
+            raise _benchmark_error(
+                "source_trade_sign_column",
+                "must be a non-empty string when provided",
+            )
         if not self.market_profile.strip():
             raise _benchmark_error("market_profile", "must be a non-empty string")
         if self.execution_mode != "memory":
@@ -304,6 +328,11 @@ class RealDataSeededRuntimeBenchmarkFixture(ContractModel):
             f"{field_path}.materialization_access_patterns",
             _benchmark_error,
         )
+        source_trade_sign_column = _optional_non_empty_string(
+            raw_payload,
+            "source_trade_sign_column",
+            f"{field_path}.source_trade_sign_column",
+        )
 
         return RealDataSeededRuntimeBenchmarkFixture(
             fixture_id=require_non_empty_string(
@@ -333,34 +362,43 @@ class RealDataSeededRuntimeBenchmarkFixture(ContractModel):
                 )
                 for tag_index, raw_value in enumerate(raw_tags)
             ),
-            dataset_row_count=require_positive_integer(
+            source_tick_data_path=require_non_empty_string(
                 raw_payload,
-                "dataset_row_count",
-                f"{field_path}.dataset_row_count",
+                "source_tick_data_path",
+                f"{field_path}.source_tick_data_path",
                 _benchmark_error,
             ),
-            dataset_duration_minutes=require_positive_finite_number(
+            source_tick_data_format=require_non_empty_string(
                 raw_payload,
-                "dataset_duration_minutes",
-                f"{field_path}.dataset_duration_minutes",
+                "source_tick_data_format",
+                f"{field_path}.source_tick_data_format",
                 _benchmark_error,
             ),
-            dataset_seed=require_non_negative_integer(
+            source_tick_data_row_offset=require_non_negative_integer(
                 raw_payload,
-                "dataset_seed",
-                f"{field_path}.dataset_seed",
+                "source_tick_data_row_offset",
+                f"{field_path}.source_tick_data_row_offset",
                 _benchmark_error,
             ),
-            dataset_start_time_utc=require_datetime_utc(
-                require_non_empty_string(
-                    raw_payload,
-                    "dataset_start_time_utc",
-                    f"{field_path}.dataset_start_time_utc",
-                    _benchmark_error,
-                ),
-                f"{field_path}.dataset_start_time_utc",
+            source_tick_data_row_count=require_positive_integer(
+                raw_payload,
+                "source_tick_data_row_count",
+                f"{field_path}.source_tick_data_row_count",
                 _benchmark_error,
             ),
+            source_timestamp_column=require_non_empty_string(
+                raw_payload,
+                "source_timestamp_column",
+                f"{field_path}.source_timestamp_column",
+                _benchmark_error,
+            ),
+            source_price_column=require_non_empty_string(
+                raw_payload,
+                "source_price_column",
+                f"{field_path}.source_price_column",
+                _benchmark_error,
+            ),
+            source_trade_sign_column=source_trade_sign_column,
             market_profile=require_non_empty_string(
                 raw_payload,
                 "market_profile",
@@ -423,7 +461,7 @@ class RealDataSeededRuntimeBenchmarkFixture(ContractModel):
 class RealDataSeededRuntimeBenchmarkFixtureDocument(ContractModel):
     schema_version: str
     fixture_set_id: str
-    dataset_generation_policy: str
+    dataset_source_policy: str
     unsigned_market_data_policy: str
     fixture_loading_order_policy: str
     fixtures: tuple[RealDataSeededRuntimeBenchmarkFixture, ...]
@@ -441,12 +479,12 @@ class RealDataSeededRuntimeBenchmarkFixtureDocument(ContractModel):
             )
 
         if (
-            self.dataset_generation_policy
-            != REAL_DATA_SEEDED_RUNTIME_DATASET_GENERATION_POLICY
+            self.dataset_source_policy
+            != REAL_DATA_SEEDED_RUNTIME_DATASET_SOURCE_POLICY
         ):
             raise _benchmark_error(
-                "dataset_generation_policy",
-                f"must be `{REAL_DATA_SEEDED_RUNTIME_DATASET_GENERATION_POLICY}`",
+                "dataset_source_policy",
+                f"must be `{REAL_DATA_SEEDED_RUNTIME_DATASET_SOURCE_POLICY}`",
             )
 
         if (
@@ -506,10 +544,10 @@ class RealDataSeededRuntimeBenchmarkFixtureDocument(ContractModel):
                 "fixture_set_id",
                 _benchmark_error,
             ),
-            dataset_generation_policy=require_non_empty_string(
+            dataset_source_policy=require_non_empty_string(
                 raw_payload,
-                "dataset_generation_policy",
-                "dataset_generation_policy",
+                "dataset_source_policy",
+                "dataset_source_policy",
                 _benchmark_error,
             ),
             unsigned_market_data_policy=require_non_empty_string(
@@ -757,12 +795,15 @@ class RealDataSeededRuntimeBenchmarkReportOutputSchemaMetadata(ContractModel):
 
 @dataclass(frozen=True, slots=True)
 class RealDataSeededRuntimeBenchmarkProvenance(ContractModel):
-    dataset_generation_policy: str
+    dataset_source_policy: str
     unsigned_market_data_policy: str
-    dataset_row_count: int
-    dataset_duration_minutes: float
-    dataset_seed: int
-    dataset_start_time_utc: str
+    source_tick_data_path: str
+    source_tick_data_format: str
+    source_tick_data_row_offset: int
+    source_tick_data_row_count: int
+    source_timestamp_column: str
+    source_price_column: str
+    source_trade_sign_column: Optional[str]
     market_profile: str
     execution_mode: str
     simulation_seed: int
@@ -1001,21 +1042,75 @@ def serialize_real_data_seeded_runtime_baseline_to_json(
     return serialize_pretty_json(baseline)
 
 
+def serialize_real_data_seeded_runtime_comparison_report_to_json(
+    comparison_report: RealDataSeededRuntimeBenchmarkComparisonReport,
+) -> str:
+    comparison_report.validate()
+    return serialize_pretty_json(comparison_report)
+
+
+def _repository_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+def _resolve_source_tick_data_path(source_tick_data_path: str) -> Path:
+    candidate_path = Path(source_tick_data_path)
+    if candidate_path.is_absolute():
+        return candidate_path
+
+    return _repository_root() / candidate_path
+
+
+def _write_source_tick_data_slice(
+    *,
+    fixture: RealDataSeededRuntimeBenchmarkFixture,
+    output_path: Path,
+) -> None:
+    source_path = _resolve_source_tick_data_path(fixture.source_tick_data_path)
+    selected_columns = list(
+        dict.fromkeys(
+            [
+                fixture.source_timestamp_column,
+                fixture.source_price_column,
+                fixture.source_trade_sign_column,
+            ]
+        )
+    )
+    selected_columns = [
+        column_name
+        for column_name in selected_columns
+        if column_name is not None
+    ]
+
+    source_table = parquet.read_table(
+        source_path,
+        columns=selected_columns,
+    )
+    sliced_table = source_table.slice(
+        fixture.source_tick_data_row_offset,
+        fixture.source_tick_data_row_count,
+    )
+    if sliced_table.num_rows != fixture.source_tick_data_row_count:
+        raise _benchmark_error(
+            "source_tick_data_row_count",
+            (
+                "requested parquet slice extends beyond the available row count "
+                f"for `{fixture.source_tick_data_path}`"
+            ),
+        )
+
+    parquet.write_table(sliced_table, output_path)
+
+
 def run_real_data_seeded_runtime_benchmark_fixture(
     fixture: RealDataSeededRuntimeBenchmarkFixture,
 ) -> RealDataSeededRuntimeBenchmarkReport:
     with TemporaryDirectory(prefix="janiform-real-data-seeded-runtime-benchmark-") as temp_dir:
         temp_path = Path(temp_dir)
-        tick_data_path = temp_path / "synthetic_eurusd_unsigned.csv"
-        write_synthetic_eurusd_tick_csv(
+        tick_data_path = temp_path / "source_tick_slice.parquet"
+        _write_source_tick_data_slice(
+            fixture=fixture,
             output_path=tick_data_path,
-            row_count=fixture.dataset_row_count,
-            duration_minutes=fixture.dataset_duration_minutes,
-            start_time_utc=fixture.dataset_start_time_utc,
-            seed=fixture.dataset_seed,
-            timestamp_column="timestamp_utc",
-            price_column="trade_price",
-            trade_sign_column=None,
         )
 
         model, fit_report = JaniformEstimator(
@@ -1075,12 +1170,15 @@ def run_real_data_seeded_runtime_benchmark_fixture(
                 required_provenance_fields=REAL_DATA_SEEDED_RUNTIME_REQUIRED_PROVENANCE_FIELDS,
             ),
             provenance=RealDataSeededRuntimeBenchmarkProvenance(
-                dataset_generation_policy=REAL_DATA_SEEDED_RUNTIME_DATASET_GENERATION_POLICY,
+                dataset_source_policy=REAL_DATA_SEEDED_RUNTIME_DATASET_SOURCE_POLICY,
                 unsigned_market_data_policy=REAL_DATA_SEEDED_RUNTIME_UNSIGNED_MARKET_DATA_POLICY,
-                dataset_row_count=fixture.dataset_row_count,
-                dataset_duration_minutes=fixture.dataset_duration_minutes,
-                dataset_seed=fixture.dataset_seed,
-                dataset_start_time_utc=fixture.dataset_start_time_utc.isoformat(),
+                source_tick_data_path=fixture.source_tick_data_path,
+                source_tick_data_format=fixture.source_tick_data_format,
+                source_tick_data_row_offset=fixture.source_tick_data_row_offset,
+                source_tick_data_row_count=fixture.source_tick_data_row_count,
+                source_timestamp_column=fixture.source_timestamp_column,
+                source_price_column=fixture.source_price_column,
+                source_trade_sign_column=fixture.source_trade_sign_column,
                 market_profile=fixture.market_profile,
                 execution_mode=fixture.execution_mode,
                 simulation_seed=fixture.simulation_seed,
@@ -1847,6 +1945,24 @@ def _access_pattern_report_from_mapping(
     )
 
 
+def _optional_non_empty_string(
+    mapping: dict[str, Any],
+    field_name: str,
+    field_path: str,
+) -> Optional[str]:
+    if field_name not in mapping or mapping[field_name] is None:
+        return None
+
+    raw_value = mapping[field_name]
+    if not isinstance(raw_value, str):
+        raise _benchmark_error(field_path, "must be a string when provided")
+
+    if not raw_value.strip():
+        raise _benchmark_error(field_path, "must be a non-empty string when provided")
+
+    return raw_value
+
+
 def _optional_non_negative_number(
     mapping: dict[str, Any],
     field_name: str,
@@ -1883,5 +1999,6 @@ __all__ = [
     "render_real_data_seeded_runtime_comparison_summary_markdown",
     "run_real_data_seeded_runtime_benchmark_fixture",
     "serialize_real_data_seeded_runtime_baseline_to_json",
+    "serialize_real_data_seeded_runtime_comparison_report_to_json",
     "serialize_real_data_seeded_runtime_benchmark_report_to_json",
 ]

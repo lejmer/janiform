@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import pyarrow as pa
-from pyarrow import parquet as pyarrow_parquet
+from pyarrow import parquet
 
 from janiform.calendar import CalendarRegistry
 from janiform.calibration.staged import (
@@ -761,7 +761,7 @@ def write_market_data_fixture_files(working_directory: Path) -> dict[str, Path]:
     )
 
     tick_parquet_path = data_directory / "ticks.parquet"
-    pyarrow_parquet.write_table(
+    parquet.write_table(
         pa.table(
             {
                 "timestamp_utc": [
@@ -793,7 +793,7 @@ def write_market_data_fixture_files(working_directory: Path) -> dict[str, Path]:
     )
 
     option_surface_path = data_directory / "options.parquet"
-    pyarrow_parquet.write_table(
+    parquet.write_table(
         pa.table(
             {
                 "quote_timestamp_utc": [datetime(2026, 2, 2, 20, 0, tzinfo=UTC)],

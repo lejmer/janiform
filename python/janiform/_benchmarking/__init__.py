@@ -19,6 +19,7 @@ from .seeded_runtime import (
     render_real_data_seeded_runtime_comparison_summary_markdown,
     run_real_data_seeded_runtime_benchmark_fixture,
     serialize_real_data_seeded_runtime_baseline_to_json,
+    serialize_real_data_seeded_runtime_comparison_report_to_json,
     serialize_real_data_seeded_runtime_benchmark_report_to_json,
 )
 
@@ -44,5 +45,6 @@ __all__ = [
     "render_real_data_seeded_runtime_comparison_summary_markdown",
     "run_real_data_seeded_runtime_benchmark_fixture",
     "serialize_real_data_seeded_runtime_baseline_to_json",
+    "serialize_real_data_seeded_runtime_comparison_report_to_json",
     "serialize_real_data_seeded_runtime_benchmark_report_to_json",
 ]

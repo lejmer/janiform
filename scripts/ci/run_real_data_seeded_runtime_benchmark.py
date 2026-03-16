@@ -8,6 +8,7 @@ from janiform._benchmarking import (
     load_real_data_seeded_runtime_benchmark_policy_from_json,
     render_real_data_seeded_runtime_comparison_summary_markdown,
     run_real_data_seeded_runtime_benchmark_fixture,
+    serialize_real_data_seeded_runtime_comparison_report_to_json,
     serialize_real_data_seeded_runtime_benchmark_report_to_json,
 )
 
@@ -91,7 +92,7 @@ def main() -> int:
         encoding="utf-8",
     )
     (output_dir / "real_data_seeded_runtime_benchmark_comparison.json").write_text(
-        comparison_report.to_json(),
+        serialize_real_data_seeded_runtime_comparison_report_to_json(comparison_report),
         encoding="utf-8",
     )
     (output_dir / "real_data_seeded_runtime_benchmark_summary.md").write_text(

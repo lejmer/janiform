@@ -4,7 +4,7 @@ from typing import Any, Optional
 
 import pyarrow as pa
 import pytest
-from pyarrow import parquet as pyarrow_parquet
+from pyarrow import parquet
 
 from janiform.calibration.market_data.translation import (
     translate_market_data_request_to_staged_execution_input,
@@ -740,7 +740,7 @@ def test_translate_market_data_request_full_with_option_surface_sets_option_refe
     )
     option_surface_path = tmp_path / "options.parquet"
 
-    pyarrow_parquet.write_table(
+    parquet.write_table(
         pa.table(
             {
                 "quote_timestamp_utc": ["2026-02-02T20:00:00Z"],

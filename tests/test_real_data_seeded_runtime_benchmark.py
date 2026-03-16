@@ -48,7 +48,7 @@ def test_real_data_seeded_runtime_report_captures_seeded_diagnostics_and_require
     assert report.output_schema_metadata.required_report_fields
     assert report.output_schema_metadata.required_access_pattern_fields
     assert report.output_schema_metadata.required_provenance_fields
-    assert report.observed_source_tick_count == 4096
+    assert report.observed_source_tick_count == 8192
     assert report.seeded_transition_count >= report.seeded_event_count
     assert report.native_runtime_seconds > 0.0
     assert report.python_materialization_seconds > 0.0
@@ -57,6 +57,11 @@ def test_real_data_seeded_runtime_report_captures_seeded_diagnostics_and_require
     assert len(report.access_pattern_reports) == 2
     assert report.access_pattern_reports[0].materialized_event_count == 256
     assert report.access_pattern_reports[1].materialized_transition_count == report.seeded_transition_count
+    assert report.provenance.source_tick_data_path == "data/Synthetic_EURUSD_Data_1M_ticks.parquet"
+    assert report.provenance.source_tick_data_format == "parquet"
+    assert report.provenance.source_tick_data_row_offset == 250000
+    assert report.provenance.source_tick_data_row_count == 8192
+    assert report.provenance.source_trade_sign_column is None
     assert (
         report.provenance.memory_metric_semantics
         == "estimated_native_retained_bytes_proxy_not_peak_rss.v1"
@@ -119,11 +124,29 @@ def test_real_data_seeded_runtime_comparison_classifies_boundary_and_materializa
     report = _cached_fixture_report(fixtures_root)
     policy = _policy_artifact(fixtures_root)
     baseline = _baseline_artifact(fixtures_root)
+    thresholds = policy.threshold_for_fixture(report.fixture_id)
+    baseline_record = baseline.record_for_fixture(report.fixture_id)
 
     candidate = replace(
         report,
-        python_materialization_seconds=report.python_materialization_seconds + 0.5,
-        boundary_transport_bytes=report.boundary_transport_bytes + 1_100_000,
+        python_materialization_seconds=max(
+            report.python_materialization_seconds,
+            baseline_record.python_materialization_seconds
+            + thresholds.maximum_python_materialization_absolute_regression_seconds
+            + 1.0,
+            baseline_record.python_materialization_seconds
+            * (1.0 + thresholds.maximum_python_materialization_relative_regression + 0.25),
+        ),
+        boundary_transport_bytes=int(
+            max(
+                float(report.boundary_transport_bytes),
+                float(baseline_record.boundary_transport_bytes)
+                + float(thresholds.maximum_boundary_transport_absolute_growth_bytes)
+                + 1_000_000.0,
+                float(baseline_record.boundary_transport_bytes)
+                * (1.0 + thresholds.maximum_boundary_transport_relative_growth + 0.05),
+            )
+        ),
     )
 
     comparison = compare_real_data_seeded_runtime_benchmark_report_to_baseline(
@@ -169,7 +192,9 @@ def test_real_data_seeded_runtime_benchmark_runner_writes_artifacts(
 
     assert process.returncode == 0, process.stderr
     assert (tmp_path / "real_data_seeded_runtime_benchmark_report.json").exists()
-    assert (tmp_path / "real_data_seeded_runtime_benchmark_comparison.json").exists()
+    comparison_path = tmp_path / "real_data_seeded_runtime_benchmark_comparison.json"
+    assert comparison_path.exists()
+    assert comparison_path.read_text(encoding="utf-8").startswith("{\n")
 
     summary_path = tmp_path / "real_data_seeded_runtime_benchmark_summary.md"
     assert summary_path.exists()

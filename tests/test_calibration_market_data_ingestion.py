@@ -5,7 +5,7 @@ from typing import Optional
 
 import pyarrow as pa
 import pytest
-from pyarrow import parquet as pyarrow_parquet
+from pyarrow import parquet
 
 from janiform.calibration.market_data.ingestion import load_market_data_calibration_inputs
 from janiform.calibration import CalibrationValidationError
@@ -110,7 +110,7 @@ def test_load_market_data_calibration_inputs_normalizes_parquet_option_surface_q
             "ask": [4.5],
         }
     )
-    pyarrow_parquet.write_table(option_surface_table, option_surface_path)
+    parquet.write_table(option_surface_table, option_surface_path)
 
     request = _build_market_data_request(
         tick_data_source=CalibrationInputFileReference(
@@ -249,7 +249,7 @@ def test_load_market_data_calibration_inputs_supports_decimal_parquet_tick_price
             "close": pa.array([Decimal("1.07649")], type=pa.decimal128(7, 5)),
         }
     )
-    pyarrow_parquet.write_table(tick_data_table, tick_data_path)
+    parquet.write_table(tick_data_table, tick_data_path)
 
     request = _build_market_data_request(
         tick_data_source=CalibrationInputFileReference(
@@ -519,7 +519,7 @@ def test_load_market_data_calibration_inputs_normalizes_known_news_parquet_sourc
             "event_code": ["NFP"],
         }
     )
-    pyarrow_parquet.write_table(known_news_table, known_news_path)
+    parquet.write_table(known_news_table, known_news_path)
 
     request = _build_market_data_request(
         tick_data_source=CalibrationInputFileReference(

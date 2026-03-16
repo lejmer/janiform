@@ -52,9 +52,11 @@ benchmark harnesses.
     `interval_delta` metadata for profile-matrix comparability
 - Real-data seeded runtime benchmark fixture fields include:
   - `schema_version`: `benchmark.real_data_seeded_runtime.fixture.v1`
-  - deterministic unsigned synthetic EUR/USD-style dataset controls:
-    `dataset_row_count`, `dataset_duration_minutes`, `dataset_seed`, and
-    `dataset_start_time_utc`
+  - checked-in unsigned EUR/USD parquet slice controls:
+    `source_tick_data_path`, `source_tick_data_format`,
+    `source_tick_data_row_offset`, `source_tick_data_row_count`,
+    `source_timestamp_column`, `source_price_column`, and
+    `source_trade_sign_column`
   - execution controls for the repaired high-level runtime path:
     `market_profile`, `coarse_interval`, `coarse_horizon_interval_count`,
     `seeded_horizon_interval_count`, and `simulation_seed`
