@@ -2,13 +2,13 @@ mod support;
 
 use std::collections::BTreeSet;
 
-use janiform_foundations::complex_math::ComplexScalar;
-use janiform_model_kernels::nig::{
-    NIG_TRADING_TIME_RETURN_SIGN_CONVENTION_POLICY, NigSharedPlusShiftConfiguration,
-};
 use janiform_engine_pricing::{
     RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY, compose_nig_trading_time_exponent,
     compose_total_return_characteristic_function,
+};
+use janiform_foundations::complex_math::ComplexScalar;
+use janiform_model_kernels::nig::{
+    NIG_TRADING_TIME_RETURN_SIGN_CONVENTION_POLICY, NigSharedPlusShiftConfiguration,
 };
 use janiform_model_kernels::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
 

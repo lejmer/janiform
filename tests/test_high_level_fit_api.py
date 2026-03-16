@@ -1,6 +1,7 @@
 import json
 import math
-from datetime import UTC, datetime
+from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, NoReturn, Self
@@ -373,7 +374,7 @@ def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_metada
     assert first_path.read_text(encoding="utf-8") == second_path.read_text(encoding="utf-8")
 
 
-def test_loaded_high_level_model_runtime_seasonality_uses_native_timestamp_preprocessing(
+def test_loaded_high_level_model_runtime_seasonality_uses_stage_payload_materialization(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -391,6 +392,101 @@ def test_loaded_high_level_model_runtime_seasonality_uses_native_timestamp_prepr
     )
     captured_call: dict[str, Any] = {}
 
+    def _capture_build_runtime_hourly_seasonality_source_from_calibration_payload(
+        *,
+        calendar_registry: CalendarRegistry,
+        range_start_utc: datetime,
+        range_end_utc: datetime,
+        interval: str | timedelta,
+        seasonality_stage_payload: Mapping[str, Any],
+        mean_renormalize: bool = True,
+    ) -> fit_model_module.HourlySeasonalityProviderExplicitSource:
+        captured_call["calendar_registry"] = calendar_registry
+        captured_call["range_start_utc"] = range_start_utc
+        captured_call["range_end_utc"] = range_end_utc
+        captured_call["interval"] = interval
+        captured_call["seasonality_stage_payload"] = seasonality_stage_payload
+        captured_call["mean_renormalize"] = mean_renormalize
+        return fit_model_module.HourlySeasonalityProviderExplicitSource(
+            hourly_factors=(1.0, 1.0),
+            materialization_method="runtime_calibration_stage_payload_mean_renormalized.v1",
+        )
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "build_runtime_hourly_seasonality_source_from_calibration_payload",
+        _capture_build_runtime_hourly_seasonality_source_from_calibration_payload,
+    )
+
+    seasonality_source = fit_model_module._build_runtime_hourly_seasonality_source_from_model(
+        loaded_model,
+        calendar_registry=calendar_registry,
+        exchange_code=loaded_model.session_resolution.exchange_code,
+        range_start_utc=datetime(2026, 2, 2, 14, tzinfo=UTC),
+        range_end_utc=datetime(2026, 2, 2, 16, tzinfo=UTC),
+        interval="1h",
+    )
+
+    assert captured_call["calendar_registry"] is calendar_registry
+    assert captured_call["range_start_utc"] == datetime(2026, 2, 2, 14, tzinfo=UTC)
+    assert captured_call["range_end_utc"] == datetime(2026, 2, 2, 16, tzinfo=UTC)
+    assert captured_call["interval"] == "1h"
+    assert captured_call["seasonality_stage_payload"] is loaded_model.parameters["seasonality"]
+    assert captured_call["mean_renormalize"] is True
+    assert seasonality_source.hourly_factors == (1.0, 1.0)
+
+
+def test_loaded_high_level_model_runtime_seasonality_falls_back_to_compact_parameters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "compact_seasonality.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc",
+                "2026-02-02T14:30:00Z",
+                "2026-02-02T15:00:00Z",
+                "2026-02-02T20:59:00Z",
+                "2026-02-03T14:30:00Z",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_staged_calibration_with_raw_payload",
+        lambda *args, **kwargs: _successful_staged_runner_payload(
+            "high-level-model-compact-seasonality"
+        ),
+    )
+    estimator = JaniformEstimator(
+        workflow_scope=CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY,
+        tick_data_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+        ),
+        market_profile="us_equity_cash",
+    )
+    model = estimator.fit(
+        run_id="high-level-model-compact-seasonality",
+        tick_data_path=tick_data_path,
+        tick_data_format=CalibrationInputFileFormat.CSV,
+    )
+    persisted_model_path = tmp_path / "compact_model.json"
+    model.save(persisted_model_path)
+    loaded_model = JaniformModel.load(persisted_model_path)
+
+    registry = CalendarRegistry(
+        loaded_model.session_resolution.resolved_session_definition_json
+    )
+
+    def _unexpected_materialized_builder(*args, **kwargs) -> NoReturn:
+        raise AssertionError("compact seasonality payload should not use stage-payload materialization")
+
     class _FakeTimestampEventPreprocessingResult:
         exchange_local_minute_of_day = [570, 630]
         exchange_local_day_of_week = bytes([1, 1])
@@ -405,14 +501,22 @@ def test_loaded_high_level_model_runtime_seasonality_uses_native_timestamp_prepr
         session_filter: fit_model_module.SessionFilter = fit_model_module.SessionFilter.OPEN_ONLY,
         sparse_hour_event_threshold: int = 1,
     ) -> _FakeTimestampEventPreprocessingResult:
-        captured_call["event_records"] = event_records
-        captured_call["exchange_code"] = exchange_code
-        captured_call["calendar_registry"] = calendar_registry
-        captured_call["timestamp_field_name"] = timestamp_field_name
-        captured_call["session_filter"] = session_filter
-        captured_call["sparse_hour_event_threshold"] = sparse_hour_event_threshold
+        assert exchange_code == loaded_model.session_resolution.exchange_code
+        assert calendar_registry is registry
+        assert timestamp_field_name == "timestamp"
+        assert session_filter == fit_model_module.SessionFilter.ALL
+        assert sparse_hour_event_threshold == 1
+        assert event_records == [
+            {"timestamp": datetime(2026, 2, 2, 14, tzinfo=UTC)},
+            {"timestamp": datetime(2026, 2, 2, 15, tzinfo=UTC)},
+        ]
         return _FakeTimestampEventPreprocessingResult()
 
+    monkeypatch.setattr(
+        fit_model_module,
+        "build_runtime_hourly_seasonality_source_from_calibration_payload",
+        _unexpected_materialized_builder,
+    )
     monkeypatch.setattr(
         fit_model_module,
         "preprocess_timestamp_events",
@@ -421,22 +525,13 @@ def test_loaded_high_level_model_runtime_seasonality_uses_native_timestamp_prepr
 
     seasonality_source = fit_model_module._build_runtime_hourly_seasonality_source_from_model(
         loaded_model,
-        calendar_registry=calendar_registry,
+        calendar_registry=registry,
         exchange_code=loaded_model.session_resolution.exchange_code,
         range_start_utc=datetime(2026, 2, 2, 14, tzinfo=UTC),
         range_end_utc=datetime(2026, 2, 2, 16, tzinfo=UTC),
         interval="1h",
     )
 
-    assert captured_call["exchange_code"] == loaded_model.session_resolution.exchange_code
-    assert captured_call["calendar_registry"] is calendar_registry
-    assert captured_call["timestamp_field_name"] == "timestamp"
-    assert captured_call["session_filter"] == fit_model_module.SessionFilter.ALL
-    assert captured_call["sparse_hour_event_threshold"] == 1
-    assert captured_call["event_records"] == [
-        {"timestamp": datetime(2026, 2, 2, 14, tzinfo=UTC)},
-        {"timestamp": datetime(2026, 2, 2, 15, tzinfo=UTC)},
-    ]
     assert seasonality_source.hourly_factors == (1.0, 1.0)
 
 

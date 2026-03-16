@@ -1053,6 +1053,7 @@ fn run_stage_for_staged_execution(
                             CalibrationStage::Hawkes,
                             CalibrationStage::ReturnComponents,
                         ),
+                        payload: payload_state.hawkes_stage_payload.clone(),
                     }
                 }
             };

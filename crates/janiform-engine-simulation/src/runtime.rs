@@ -544,7 +544,7 @@ fn map_side_to_transition_kind(side: SeededTickEventSide) -> SeededFinePathTrans
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum IntervalStochasticUpdate {
+pub(crate) enum IntervalStochasticUpdate {
     EndogenousEvent {
         timestamp_utc_nanos: i64,
         side: SeededTickEventSide,
@@ -914,6 +914,124 @@ where
         SimulationRandomnessSubstreamDomain::EndogenousSellEventTimestamp,
         interval_index as u64,
     );
+    let exogenous_interval_updates = schedule_exogenous_interval_news_updates(
+        interval_index,
+        interval_start_utc_nanos,
+        interval_duration_nanos,
+        interval_duration_in_hours,
+        interval_news_intensity,
+        run_config,
+        interval_known_news_event_timestamps_utc_nanos,
+        randomness_factory,
+    )?;
+
+    let _ = endogenous_auxiliary_stream.next_unit_interval_f64();
+
+    let interval_end_utc_nanos = interval_start_utc_nanos + interval_duration_nanos;
+    let mut endogenous_interval_updates =
+        schedule_endogenous_interval_events_with_event_time_feedback(
+            interval_start_state,
+            kernel_parameters,
+            interval_seasonality_factor,
+            interval_start_utc_nanos,
+            interval_end_utc_nanos,
+            &exogenous_interval_updates,
+            &run_config.model_inputs.calendar_registry,
+            run_config
+                .model_inputs
+                .hourly_factor_contract
+                .exchange_code
+                .as_str(),
+            &mut endogenous_wait_stream,
+            &mut endogenous_acceptance_stream,
+            &mut endogenous_side_stream,
+        )?;
+
+    let mut interval_updates: Vec<IntervalStochasticUpdate> = Vec::with_capacity(
+        endogenous_interval_updates
+            .len()
+            .saturating_add(exogenous_interval_updates.len()),
+    );
+    interval_updates.append(&mut endogenous_interval_updates);
+    interval_updates.extend(exogenous_interval_updates);
+    interval_updates.sort_by_key(IntervalStochasticUpdate::ordering_key);
+
+    Ok(interval_updates)
+}
+
+pub(crate) fn schedule_exogenous_interval_news_updates<F>(
+    interval_index: usize,
+    interval_start_utc_nanos: i64,
+    interval_duration_nanos: i64,
+    interval_duration_in_hours: f64,
+    interval_news_intensity: f64,
+    run_config: &SeededTickSimulationRunConfig,
+    interval_known_news_event_timestamps_utc_nanos: &[i64],
+    randomness_factory: &F,
+) -> Result<Vec<IntervalStochasticUpdate>, SeededTickSimulationRunError>
+where
+    F: SimulationRandomnessFactory,
+{
+    let event_inputs = build_interval_news_event_inputs(
+        interval_index,
+        interval_start_utc_nanos,
+        interval_duration_nanos,
+        interval_duration_in_hours,
+        interval_news_intensity,
+        run_config,
+        interval_known_news_event_timestamps_utc_nanos,
+        randomness_factory,
+    )?;
+    let dispatch_output = dispatch_shared_news_events_with_resolved_market_states(
+        &run_config.model_inputs.calendar_registry,
+        run_config
+            .model_inputs
+            .hourly_factor_contract
+            .exchange_code
+            .as_str(),
+        SharedNewsAccumulatorState::new(0.0, 0.0, 0.0),
+        event_inputs.as_slice(),
+    )
+    .map_err(
+        |source| SeededTickSimulationRunError::SharedNewsDispatchFailure {
+            interval_index,
+            source,
+        },
+    )?;
+
+    let mut exogenous_interval_updates = Vec::with_capacity(dispatch_output.records.len());
+    for dispatch_record in dispatch_output.records {
+        exogenous_interval_updates.push(IntervalStochasticUpdate::ExogenousNews {
+            timestamp_utc_nanos: dispatch_record.event_timestamp_utc_nanos,
+            news_arrival_component: dispatch_record.news_arrival_component,
+            activity_coupling_mark: dispatch_record.j_t_increment,
+            return_jump_mark: dispatch_record.coupled_return_jump_mark,
+            market_state: dispatch_record.market_state,
+            return_jump_routing_target: dispatch_record.return_jump_routing_target,
+            open_window_return_jump_increment: dispatch_record.m_t_increment,
+            closed_window_gap_increment: dispatch_record.g_t_increment,
+            generation_order: dispatch_record.event_generation_order,
+        });
+    }
+
+    exogenous_interval_updates.sort_by_key(IntervalStochasticUpdate::ordering_key);
+
+    Ok(exogenous_interval_updates)
+}
+
+pub(crate) fn build_interval_news_event_inputs<F>(
+    interval_index: usize,
+    interval_start_utc_nanos: i64,
+    interval_duration_nanos: i64,
+    interval_duration_in_hours: f64,
+    interval_news_intensity: f64,
+    run_config: &SeededTickSimulationRunConfig,
+    interval_known_news_event_timestamps_utc_nanos: &[i64],
+    randomness_factory: &F,
+) -> Result<Vec<SharedNewsEventTimestampedInput>, SeededTickSimulationRunError>
+where
+    F: SimulationRandomnessFactory,
+{
     let mut news_count_stream = randomness_factory.create_substream(
         run_config.seed,
         SimulationRandomnessSubstreamDomain::ExogenousNewsCount,
@@ -936,10 +1054,6 @@ where
         interval_duration_in_hours,
         interval_known_news_event_count,
     );
-    // Keep component assumptions explicit
-    // - known arrivals are fixed UTC anchors from the provided calendar slice
-    // - surprise arrivals are sampled independently from a Poisson count using nu_surprise
-    // - nu_news follows the documented superposition nu_known + nu_surprise
     let interval_surprise_news_expected_count = interval_news_arrival_decomposition
         .surprise_component_intensity
         * interval_duration_in_hours;
@@ -988,19 +1102,6 @@ where
             &mut news_timestamp_stream,
         );
 
-        if resolve_news_event_market_state(
-            &run_config.model_inputs.calendar_registry,
-            run_config
-                .model_inputs
-                .hourly_factor_contract
-                .exchange_code
-                .as_str(),
-            timestamp_utc_nanos,
-        )? != MarketState::Open
-        {
-            continue;
-        }
-
         event_inputs.push(
             build_timestamped_news_event_input(
                 &mark_pipeline,
@@ -1025,73 +1126,7 @@ where
         next_generation_order = next_generation_order.saturating_add(1);
     }
 
-    let dispatch_output = dispatch_shared_news_events_with_resolved_market_states(
-        &run_config.model_inputs.calendar_registry,
-        run_config
-            .model_inputs
-            .hourly_factor_contract
-            .exchange_code
-            .as_str(),
-        SharedNewsAccumulatorState::new(0.0, 0.0, 0.0),
-        event_inputs.as_slice(),
-    )
-    .map_err(
-        |source| SeededTickSimulationRunError::SharedNewsDispatchFailure {
-            interval_index,
-            source,
-        },
-    )?;
-
-    let mut exogenous_interval_updates: Vec<IntervalStochasticUpdate> =
-        Vec::with_capacity(dispatch_output.records.len());
-    for dispatch_record in dispatch_output.records {
-        exogenous_interval_updates.push(IntervalStochasticUpdate::ExogenousNews {
-            timestamp_utc_nanos: dispatch_record.event_timestamp_utc_nanos,
-            news_arrival_component: dispatch_record.news_arrival_component,
-            activity_coupling_mark: dispatch_record.j_t_increment,
-            return_jump_mark: dispatch_record.coupled_return_jump_mark,
-            market_state: dispatch_record.market_state,
-            return_jump_routing_target: dispatch_record.return_jump_routing_target,
-            open_window_return_jump_increment: dispatch_record.m_t_increment,
-            closed_window_gap_increment: dispatch_record.g_t_increment,
-            generation_order: dispatch_record.event_generation_order,
-        });
-    }
-
-    exogenous_interval_updates.sort_by_key(IntervalStochasticUpdate::ordering_key);
-
-    let _ = endogenous_auxiliary_stream.next_unit_interval_f64();
-
-    let interval_end_utc_nanos = interval_start_utc_nanos + interval_duration_nanos;
-    let mut endogenous_interval_updates =
-        schedule_endogenous_interval_events_with_event_time_feedback(
-            interval_start_state,
-            kernel_parameters,
-            interval_seasonality_factor,
-            interval_start_utc_nanos,
-            interval_end_utc_nanos,
-            &exogenous_interval_updates,
-            &run_config.model_inputs.calendar_registry,
-            run_config
-                .model_inputs
-                .hourly_factor_contract
-                .exchange_code
-                .as_str(),
-            &mut endogenous_wait_stream,
-            &mut endogenous_acceptance_stream,
-            &mut endogenous_side_stream,
-        )?;
-
-    let mut interval_updates: Vec<IntervalStochasticUpdate> = Vec::with_capacity(
-        endogenous_interval_updates
-            .len()
-            .saturating_add(exogenous_interval_updates.len()),
-    );
-    interval_updates.append(&mut endogenous_interval_updates);
-    interval_updates.extend(exogenous_interval_updates);
-    interval_updates.sort_by_key(IntervalStochasticUpdate::ordering_key);
-
-    Ok(interval_updates)
+    Ok(event_inputs)
 }
 
 fn schedule_endogenous_interval_events_with_event_time_feedback<

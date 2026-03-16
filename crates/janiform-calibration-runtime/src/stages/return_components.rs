@@ -997,35 +997,11 @@ impl ReturnComponentsSurpriseNewsArrivalCandidateFamily {
 /// Explicit return-jump mark-scale candidate family generated from jump and gap bins.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct ReturnComponentsReturnJumpMarkScaleCandidateFamily {
-    pub known_return_jump_scale: f64,
-    pub surprise_return_jump_scale: f64,
     pub sigma_g: f64,
 }
 
 impl ReturnComponentsReturnJumpMarkScaleCandidateFamily {
     fn validate(self) -> Result<(), ReturnComponentsStageCandidateInputError> {
-        NewsComponentMarkScaleConfiguration {
-            activity_coupling_scale: 1.0,
-            return_jump_scale: self.known_return_jump_scale,
-        }
-        .validate()
-        .map_err(|source| {
-            ReturnComponentsStageCandidateInputError::InvalidReturnJumpMarkScaleFamily {
-                error_message: source.to_string(),
-            }
-        })?;
-
-        NewsComponentMarkScaleConfiguration {
-            activity_coupling_scale: 1.0,
-            return_jump_scale: self.surprise_return_jump_scale,
-        }
-        .validate()
-        .map_err(|source| {
-            ReturnComponentsStageCandidateInputError::InvalidReturnJumpMarkScaleFamily {
-                error_message: source.to_string(),
-            }
-        })?;
-
         CoupledGapMarkConfiguration::new(self.sigma_g)
             .construct_gap_jump_mark(1.0, 1.0)
             .map_err(|source| {
@@ -1097,11 +1073,13 @@ impl ReturnComponentsStageCandidateFamilies {
 pub struct ReturnComponentsStageObservedSignalSummaryStatistics {
     pub known_calendar_event_count: usize,
     pub known_realized_sample_count: usize,
+    pub source_window_duration_hours: f64,
     pub observed_open_session_return_count: usize,
     pub continuous_fit_return_count: usize,
     pub intraday_jump_candidate_count: usize,
     pub close_open_gap_candidate_count: usize,
     pub open_session_sell_share_proxy: f64,
+    pub mean_continuous_business_time_scale: f64,
     pub continuous_return_mean: f64,
     pub continuous_return_volatility: f64,
     pub continuous_return_skewness: f64,
@@ -1252,8 +1230,8 @@ pub struct ReturnComponentsStageJumpDiagnostic {
     pub observed_jump_count: usize,
     pub observed_jump_frequency_per_hour: f64,
     pub observed_mean_abs_jump_return: f64,
-    pub fitted_known_return_jump_scale: f64,
-    pub fitted_surprise_return_jump_scale: f64,
+    pub fitted_mean_abs_jump_return: f64,
+    pub fitted_sigma_g: f64,
     pub fitted_surprise_arrival_intensity_per_hour: f64,
 }
 
@@ -1263,6 +1241,7 @@ pub struct ReturnComponentsStageGapDiagnostic {
     pub observed_gap_count: usize,
     pub observed_gap_frequency_per_hour: f64,
     pub observed_mean_abs_gap_return: f64,
+    pub fitted_mean_abs_gap_return: f64,
     pub fitted_sigma_g: f64,
 }
 
@@ -1537,8 +1516,13 @@ impl ReturnComponentsStageCandidateInput {
 /// Upstream activity-side handoff input resolved for return-components-stage execution.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ReturnComponentsStageActivityInput {
-    InMemoryOutput { payload: HawkesStageFittedPayload },
-    PersistedArtifactReference { artifact_reference: String },
+    InMemoryOutput {
+        payload: HawkesStageFittedPayload,
+    },
+    PersistedArtifactReference {
+        artifact_reference: String,
+        payload: Option<HawkesStageFittedPayload>,
+    },
 }
 
 impl ReturnComponentsStageActivityInput {
@@ -1554,14 +1538,25 @@ impl ReturnComponentsStageActivityInput {
     fn artifact_reference(&self) -> Option<&str> {
         match self {
             Self::InMemoryOutput { .. } => None,
-            Self::PersistedArtifactReference { artifact_reference } => Some(artifact_reference),
+            Self::PersistedArtifactReference {
+                artifact_reference, ..
+            } => Some(artifact_reference),
         }
     }
 
     fn selected_hawkes_candidate_id(&self) -> Option<&str> {
         match self {
             Self::InMemoryOutput { payload } => Some(payload.selected_candidate_id.as_str()),
-            Self::PersistedArtifactReference { .. } => None,
+            Self::PersistedArtifactReference { payload, .. } => payload
+                .as_ref()
+                .map(|payload| payload.selected_candidate_id.as_str()),
+        }
+    }
+
+    fn hawkes_payload(&self) -> Option<&HawkesStageFittedPayload> {
+        match self {
+            Self::InMemoryOutput { payload } => Some(payload),
+            Self::PersistedArtifactReference { payload, .. } => payload.as_ref(),
         }
     }
 }
@@ -1590,9 +1585,22 @@ impl ReturnComponentsStageExecutionInput {
         artifact_reference: impl Into<String>,
         candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
     ) -> Self {
+        Self::from_persisted_activity_artifact_reference_with_payload(
+            artifact_reference,
+            None,
+            candidate_generation_input,
+        )
+    }
+
+    pub fn from_persisted_activity_artifact_reference_with_payload(
+        artifact_reference: impl Into<String>,
+        hawkes_payload: Option<HawkesStageFittedPayload>,
+        candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
+    ) -> Self {
         Self {
             activity_input: ReturnComponentsStageActivityInput::PersistedArtifactReference {
                 artifact_reference: artifact_reference.into(),
+                payload: hawkes_payload,
             },
             candidate_generation_input,
         }
@@ -1874,6 +1882,7 @@ pub fn run_return_components_calibration_stage(
         prepared_candidate_generation_input
             .close_open_gap_detection_filter
             .as_str(),
+        resolve_activity_calibration_context(&stage_input.activity_input),
         candidate_generation_seed,
     ) {
         Ok(output) => output,
@@ -2177,10 +2186,13 @@ pub fn run_return_components_calibration_stage(
         objective_metric_bucket_policy: RETURN_COMPONENTS_STAGE_OBJECTIVE_METRIC_BUCKET_POLICY,
         candidate_family_counts: generated_candidates.candidate_family_counts.clone(),
         activity_input_transport: stage_input.activity_input.transport(),
-        activity_selected_hawkes_candidate_id: stage_input
-            .activity_input
-            .selected_hawkes_candidate_id()
-            .map(ToOwned::to_owned),
+        activity_selected_hawkes_candidate_id: match stage_input.activity_input.transport() {
+            CalibrationStageHandoffTransport::InMemoryOutput => stage_input
+                .activity_input
+                .selected_hawkes_candidate_id()
+                .map(ToOwned::to_owned),
+            CalibrationStageHandoffTransport::PersistedArtifactReference => None,
+        },
         activity_artifact_reference: stage_input
             .activity_input
             .artifact_reference()
@@ -2223,6 +2235,7 @@ fn generate_return_components_stage_candidate_inputs(
     candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
     derived_close_open_gap_candidates: &[ReturnComponentsDetectedCloseOpenGapCandidate],
     close_open_gap_detection_filter: &str,
+    activity_calibration_context: Option<ReturnComponentsStageActivityCalibrationContext>,
     stage_seed: u64,
 ) -> Result<
     ReturnComponentsStageCandidateGenerationOutput,
@@ -2234,8 +2247,11 @@ fn generate_return_components_stage_candidate_inputs(
         candidate_generation_input,
         derived_close_open_gap_candidates,
     );
-    let summary_statistics =
-        summarize_candidate_generation_signals(candidate_generation_input, &sorted_signals);
+    let summary_statistics = summarize_candidate_generation_signals(
+        candidate_generation_input,
+        &sorted_signals,
+        activity_calibration_context,
+    );
 
     let jump_abs_return_bin_edges = deterministic_quantile_bins(
         sorted_signals.surprise_open_jump_magnitudes.as_slice(),
@@ -2276,6 +2292,36 @@ fn generate_return_components_stage_candidate_inputs(
     })
 }
 
+fn resolve_activity_calibration_context(
+    activity_input: &ReturnComponentsStageActivityInput,
+) -> Option<ReturnComponentsStageActivityCalibrationContext> {
+    let hawkes_payload = activity_input.hawkes_payload()?;
+    let selected_candidate = hawkes_payload
+        .candidate_diagnostics
+        .iter()
+        .find(|candidate| candidate.candidate_id == hawkes_payload.selected_candidate_id)?;
+    let modeled_open_event_rate_per_hour = selected_candidate
+        .implied_metrics
+        .model_implied_open_event_rate_per_hour;
+    let representative_interarrival_hours = selected_candidate
+        .source_regime
+        .open_session_mean_interarrival_seconds
+        / 3_600.0;
+
+    if !modeled_open_event_rate_per_hour.is_finite()
+        || modeled_open_event_rate_per_hour <= 0.0
+        || !representative_interarrival_hours.is_finite()
+        || representative_interarrival_hours <= 0.0
+    {
+        return None;
+    }
+
+    Some(ReturnComponentsStageActivityCalibrationContext {
+        modeled_open_event_rate_per_hour,
+        representative_interarrival_hours,
+    })
+}
+
 #[derive(Debug, Clone)]
 struct ReturnComponentsStageSortedSignalInputs {
     known_return_samples: Vec<ReturnComponentsRealizedKnownNewsReturnSample>,
@@ -2294,6 +2340,12 @@ struct ReturnComponentsStagePreparedCandidateGenerationInput {
     candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
     derived_close_open_gap_candidates: Vec<ReturnComponentsDetectedCloseOpenGapCandidate>,
     close_open_gap_detection_filter: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ReturnComponentsStageActivityCalibrationContext {
+    modeled_open_event_rate_per_hour: f64,
+    representative_interarrival_hours: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -2427,11 +2479,16 @@ fn sort_candidate_generation_signals(
 fn summarize_candidate_generation_signals(
     candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
     sorted_signals: &ReturnComponentsStageSortedSignalInputs,
+    activity_calibration_context: Option<ReturnComponentsStageActivityCalibrationContext>,
 ) -> ReturnComponentsStageObservedSignalSummaryStatistics {
     let source_window_duration_hours = sorted_signals
         .source_window
         .duration_hours()
         .max(f64::EPSILON);
+    let continuous_fit_business_time_scales =
+        derive_continuous_fit_business_time_scales(sorted_signals, activity_calibration_context);
+    let mean_continuous_business_time_scale =
+        arithmetic_mean(continuous_fit_business_time_scales.as_slice()).max(1.0e-8);
     let continuous_distribution = summarize_return_distribution(
         sorted_signals
             .continuous_fit_returns
@@ -2439,6 +2496,7 @@ fn summarize_candidate_generation_signals(
             .map(|observation| observation.log_return)
             .collect::<Vec<_>>()
             .as_slice(),
+        mean_continuous_business_time_scale,
     );
     let observed_log_price_span = compute_observed_log_price_span(
         sorted_signals
@@ -2466,11 +2524,13 @@ fn summarize_candidate_generation_signals(
             .scheduled_event_timestamps_utc_nanos
             .len(),
         known_realized_sample_count: sorted_signals.known_return_samples.len(),
+        source_window_duration_hours,
         observed_open_session_return_count: sorted_signals.observed_open_session_returns.len(),
         continuous_fit_return_count: sorted_signals.continuous_fit_returns.len(),
         intraday_jump_candidate_count: sorted_signals.intraday_jump_candidates.len(),
         close_open_gap_candidate_count: sorted_signals.close_open_gap_candidates.len(),
         open_session_sell_share_proxy: candidate_generation_input.open_session_sell_share_proxy,
+        mean_continuous_business_time_scale,
         continuous_return_mean: continuous_distribution.mean_return,
         continuous_return_volatility: continuous_distribution.volatility,
         continuous_return_skewness: continuous_distribution.skewness,
@@ -2568,7 +2628,13 @@ fn build_candidate_family_sets(
             gap_abs_return_bin_edges,
         ),
         RETURN_COMPONENTS_STAGE_MAX_RETURN_JUMP_MARK_SCALE_FAMILIES,
-        |family| rank_return_jump_mark_scale_family(summary_statistics, family),
+        |family| {
+            rank_return_jump_mark_scale_family(
+                summary_statistics,
+                candidate_generation_input.shared_mark_law_template,
+                family,
+            )
+        },
     );
     let activity_coupling_families = rank_and_truncate_candidates(
         build_activity_coupling_families(summary_statistics),
@@ -2668,56 +2734,48 @@ fn build_return_jump_mark_scale_families(
     jump_abs_return_bin_edges: &[f64],
     gap_abs_return_bin_edges: &[f64],
 ) -> Vec<ReturnComponentsReturnJumpMarkScaleCandidateFamily> {
-    let mut return_jump_mark_scale_families = Vec::new();
-    let known_return_jump_values =
-        scale_candidates_from_target(summary_statistics.mean_abs_known_open_jump_return, false);
-    let surprise_return_jump_values = if summary_statistics.intraday_jump_candidate_count
-        < RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT
-    {
-        vec![0.0]
-    } else {
-        scale_candidates_from_target(
-            arithmetic_mean(jump_abs_return_bin_edges)
-                .max(summary_statistics.mean_abs_surprise_open_jump_return),
-            false,
-        )
-    };
-    let sigma_g_values = if summary_statistics.close_open_gap_candidate_count
-        < RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT
-    {
-        vec![0.0]
-    } else {
-        let mut candidates = scale_candidates_from_target(
-            arithmetic_mean(gap_abs_return_bin_edges)
-                .max(summary_statistics.mean_abs_surprise_closed_gap_return),
-            false,
-        );
-        if candidates.is_empty() {
-            candidates.push(round_candidate_value(
-                candidate_generation_input
-                    .shared_mark_law_template
-                    .coupled_gap_marks
-                    .sigma_g,
-            ));
-        }
-        candidates
-    };
-
-    for known_return_jump_scale in &known_return_jump_values {
-        for surprise_return_jump_scale in &surprise_return_jump_values {
-            for sigma_g in &sigma_g_values {
-                return_jump_mark_scale_families.push(
-                    ReturnComponentsReturnJumpMarkScaleCandidateFamily {
-                        known_return_jump_scale: *known_return_jump_scale,
-                        surprise_return_jump_scale: *surprise_return_jump_scale,
-                        sigma_g: *sigma_g,
-                    },
-                );
-            }
-        }
+    let total_shock_evidence_count = summary_statistics.known_realized_sample_count
+        + summary_statistics.intraday_jump_candidate_count
+        + summary_statistics.close_open_gap_candidate_count;
+    if total_shock_evidence_count < RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT {
+        return vec![ReturnComponentsReturnJumpMarkScaleCandidateFamily { sigma_g: 0.0 }];
     }
 
-    return_jump_mark_scale_families
+    let weighted_shock_magnitude_sum = summary_statistics.known_realized_sample_count as f64
+        * summary_statistics.mean_abs_known_open_jump_return
+        + summary_statistics.known_realized_sample_count as f64
+            * summary_statistics.mean_abs_known_closed_gap_return
+        + summary_statistics.intraday_jump_candidate_count as f64
+            * arithmetic_mean(jump_abs_return_bin_edges)
+                .max(summary_statistics.mean_abs_surprise_open_jump_return)
+        + summary_statistics.close_open_gap_candidate_count as f64
+            * arithmetic_mean(gap_abs_return_bin_edges)
+                .max(summary_statistics.mean_abs_surprise_closed_gap_return);
+    let weighted_shock_magnitude_count = (summary_statistics.known_realized_sample_count * 2
+        + summary_statistics.intraday_jump_candidate_count
+        + summary_statistics.close_open_gap_candidate_count)
+        .max(1) as f64;
+    let observed_mean_abs_shock_magnitude =
+        weighted_shock_magnitude_sum / weighted_shock_magnitude_count;
+    let shared_mark_multiplier = shared_mark_law_mean_abs_jump_multiplier(
+        candidate_generation_input.shared_mark_law_template,
+    )
+    .max(1.0e-8);
+    let sigma_g_target = observed_mean_abs_shock_magnitude / shared_mark_multiplier;
+    let mut sigma_g_values = scale_candidates_from_target(sigma_g_target, false);
+    if sigma_g_values.is_empty() {
+        sigma_g_values.push(round_candidate_value(
+            candidate_generation_input
+                .shared_mark_law_template
+                .coupled_gap_marks
+                .sigma_g,
+        ));
+    }
+
+    sigma_g_values
+        .into_iter()
+        .map(|sigma_g| ReturnComponentsReturnJumpMarkScaleCandidateFamily { sigma_g })
+        .collect()
 }
 
 fn build_activity_coupling_families(
@@ -2987,14 +3045,17 @@ fn rank_nig_candidate(
 
 fn rank_return_jump_mark_scale_family(
     summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
+    shared_mark_law_template: SharedNewsMarkLawConfiguration,
     family: &ReturnComponentsReturnJumpMarkScaleCandidateFamily,
 ) -> f64 {
+    let fitted_mean_abs_jump_return = fitted_mean_abs_jump_return(shared_mark_law_template, family);
+
     zero_aware_relative_error(
-        family.known_return_jump_scale,
+        fitted_mean_abs_jump_return,
         summary_statistics.mean_abs_known_open_jump_return,
         1.0e-6,
     ) + zero_aware_relative_error(
-        family.surprise_return_jump_scale,
+        fitted_mean_abs_jump_return,
         if summary_statistics.intraday_jump_candidate_count
             < RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT
         {
@@ -3004,7 +3065,7 @@ fn rank_return_jump_mark_scale_family(
         },
         1.0e-6,
     ) + zero_aware_relative_error(
-        family.sigma_g,
+        fitted_mean_abs_jump_return,
         if summary_statistics.close_open_gap_candidate_count
             < RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT
         {
@@ -3012,6 +3073,10 @@ fn rank_return_jump_mark_scale_family(
         } else {
             summary_statistics.mean_abs_surprise_closed_gap_return
         },
+        1.0e-6,
+    ) + zero_aware_relative_error(
+        fitted_mean_abs_jump_return,
+        summary_statistics.mean_abs_known_closed_gap_return,
         1.0e-6,
     )
 }
@@ -3060,12 +3125,101 @@ fn scale_candidates_from_target(target_value: f64, include_zero: bool) -> Vec<f6
     values
 }
 
-fn summarize_return_distribution(values: &[f64]) -> ReturnComponentsStageReturnDistributionSummary {
+fn derive_continuous_fit_business_time_scales(
+    sorted_signals: &ReturnComponentsStageSortedSignalInputs,
+    activity_calibration_context: Option<ReturnComponentsStageActivityCalibrationContext>,
+) -> Vec<f64> {
+    let Some(activity_calibration_context) = activity_calibration_context else {
+        return vec![1.0; sorted_signals.continuous_fit_returns.len()];
+    };
+
+    let representative_interarrival_hours = activity_calibration_context
+        .representative_interarrival_hours
+        .max(1.0e-8);
+    let maximum_elapsed_hours = representative_interarrival_hours * 8.0;
+    let fallback_business_time_scale = (activity_calibration_context
+        .modeled_open_event_rate_per_hour
+        * representative_interarrival_hours)
+        .max(1.0e-8);
+    let mut business_time_scale_by_timestamp = BTreeMap::new();
+    let mut previous_timestamp_utc_nanos: Option<i64> = None;
+
+    for observation in &sorted_signals.observed_open_session_returns {
+        let elapsed_hours = previous_timestamp_utc_nanos
+            .map(|previous_timestamp_utc_nanos_value| {
+                (observation.return_timestamp_utc_nanos - previous_timestamp_utc_nanos_value) as f64
+                    / 3_600_000_000_000.0
+            })
+            .filter(|elapsed_hours_value| {
+                elapsed_hours_value.is_finite()
+                    && *elapsed_hours_value > 0.0
+                    && *elapsed_hours_value <= maximum_elapsed_hours
+            })
+            .unwrap_or(representative_interarrival_hours);
+        let business_time_scale = (activity_calibration_context.modeled_open_event_rate_per_hour
+            * elapsed_hours)
+            .max(1.0e-8);
+
+        business_time_scale_by_timestamp
+            .insert(observation.return_timestamp_utc_nanos, business_time_scale);
+
+        previous_timestamp_utc_nanos = Some(observation.return_timestamp_utc_nanos);
+    }
+
+    sorted_signals
+        .continuous_fit_returns
+        .iter()
+        .map(|observation| {
+            business_time_scale_by_timestamp
+                .get(&observation.return_timestamp_utc_nanos)
+                .copied()
+                .unwrap_or(fallback_business_time_scale)
+        })
+        .collect()
+}
+
+fn shared_mark_law_mean_abs_jump_multiplier(
+    shared_mark_law_template: SharedNewsMarkLawConfiguration,
+) -> f64 {
+    let severity_scale_proxy = (shared_mark_law_template.gamma_severity_marks.shape_k
+        * shared_mark_law_template.gamma_severity_marks.scale_theta)
+        .sqrt();
+    let base_shock_mean_absolute_value = shared_mark_law_template
+        .double_exponential_base_shock
+        .probability_positive
+        / shared_mark_law_template
+            .double_exponential_base_shock
+            .eta_plus
+        + (1.0
+            - shared_mark_law_template
+                .double_exponential_base_shock
+                .probability_positive)
+            / shared_mark_law_template
+                .double_exponential_base_shock
+                .eta_minus;
+
+    severity_scale_proxy * base_shock_mean_absolute_value
+}
+
+fn fitted_mean_abs_jump_return(
+    shared_mark_law_template: SharedNewsMarkLawConfiguration,
+    return_jump_family: &ReturnComponentsReturnJumpMarkScaleCandidateFamily,
+) -> f64 {
+    return_jump_family.sigma_g * shared_mark_law_mean_abs_jump_multiplier(shared_mark_law_template)
+}
+
+fn summarize_return_distribution(
+    values: &[f64],
+    mean_business_time_scale: f64,
+) -> ReturnComponentsStageReturnDistributionSummary {
+    let normalized_business_time_scale = mean_business_time_scale.max(1.0e-8);
     ReturnComponentsStageReturnDistributionSummary {
-        mean_return: arithmetic_mean_signed(values),
-        volatility: sample_standard_deviation(values),
-        skewness: sample_adjusted_skewness(values).unwrap_or(0.0),
-        excess_kurtosis: sample_adjusted_excess_kurtosis(values).unwrap_or(0.0),
+        mean_return: arithmetic_mean_signed(values) / normalized_business_time_scale,
+        volatility: sample_standard_deviation(values) / normalized_business_time_scale.sqrt(),
+        skewness: sample_adjusted_skewness(values).unwrap_or(0.0)
+            * normalized_business_time_scale.sqrt(),
+        excess_kurtosis: sample_adjusted_excess_kurtosis(values).unwrap_or(0.0)
+            * normalized_business_time_scale,
     }
 }
 
@@ -3340,9 +3494,13 @@ fn enumerate_candidate_inputs(
                             summary_statistics,
                             surprise_arrival_family,
                             return_jump_family,
+                            candidate_generation_input.shared_mark_law_template,
                         );
-                        let gap_diagnostic =
-                            build_gap_diagnostic(summary_statistics, return_jump_family);
+                        let gap_diagnostic = build_gap_diagnostic(
+                            summary_statistics,
+                            return_jump_family,
+                            candidate_generation_input.shared_mark_law_template,
+                        );
                         let activity_coupling_diagnostic = build_activity_coupling_diagnostic(
                             summary_statistics,
                             activity_coupling_family,
@@ -3352,6 +3510,7 @@ fn enumerate_candidate_inputs(
                             return_distribution_diagnostic,
                             surprise_arrival_family,
                             return_jump_family,
+                            candidate_generation_input.shared_mark_law_template,
                         );
                         let objective_metric_buckets = score_candidate_metric_buckets(
                             return_distribution_diagnostic,
@@ -3468,11 +3627,11 @@ fn build_news_process_configuration_from_candidate_families(
         shared_mark_law,
         NewsComponentMarkScaleConfiguration {
             activity_coupling_scale: activity_coupling_family.known_activity_coupling_scale,
-            return_jump_scale: return_jump_family.known_return_jump_scale,
+            return_jump_scale: 1.0,
         },
         NewsComponentMarkScaleConfiguration {
             activity_coupling_scale: activity_coupling_family.surprise_activity_coupling_scale,
-            return_jump_scale: return_jump_family.surprise_return_jump_scale,
+            return_jump_scale: 1.0,
         },
     )
     .map_err(|source| {
@@ -3497,12 +3656,12 @@ fn score_candidate_metric_buckets(
         jump_diagnostic.observed_jump_frequency_per_hour,
         1.0e-8,
     ) + zero_aware_relative_error(
-        jump_diagnostic.fitted_surprise_return_jump_scale,
+        jump_diagnostic.fitted_mean_abs_jump_return,
         jump_diagnostic.observed_mean_abs_jump_return,
         1.0e-6,
     );
     let closed_gap_fit = zero_aware_relative_error(
-        gap_diagnostic.fitted_sigma_g,
+        gap_diagnostic.fitted_mean_abs_gap_return,
         gap_diagnostic.observed_mean_abs_gap_return,
         1.0e-6,
     );
@@ -3564,7 +3723,11 @@ fn build_jump_diagnostic(
     summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
     surprise_arrival_family: &ReturnComponentsSurpriseNewsArrivalCandidateFamily,
     return_jump_family: &ReturnComponentsReturnJumpMarkScaleCandidateFamily,
+    shared_mark_law_template: SharedNewsMarkLawConfiguration,
 ) -> ReturnComponentsStageJumpDiagnostic {
+    let fitted_mean_abs_jump_return =
+        fitted_mean_abs_jump_return(shared_mark_law_template, return_jump_family);
+
     ReturnComponentsStageJumpDiagnostic {
         evidence_state: evidence_state_from_count(summary_statistics.intraday_jump_candidate_count)
             .to_string(),
@@ -3583,8 +3746,8 @@ fn build_jump_diagnostic(
         } else {
             summary_statistics.mean_abs_surprise_open_jump_return
         },
-        fitted_known_return_jump_scale: return_jump_family.known_return_jump_scale,
-        fitted_surprise_return_jump_scale: return_jump_family.surprise_return_jump_scale,
+        fitted_mean_abs_jump_return,
+        fitted_sigma_g: return_jump_family.sigma_g,
         fitted_surprise_arrival_intensity_per_hour: surprise_arrival_family.baseline_intensity,
     }
 }
@@ -3592,7 +3755,11 @@ fn build_jump_diagnostic(
 fn build_gap_diagnostic(
     summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
     return_jump_family: &ReturnComponentsReturnJumpMarkScaleCandidateFamily,
+    shared_mark_law_template: SharedNewsMarkLawConfiguration,
 ) -> ReturnComponentsStageGapDiagnostic {
+    let fitted_mean_abs_gap_return =
+        fitted_mean_abs_jump_return(shared_mark_law_template, return_jump_family);
+
     ReturnComponentsStageGapDiagnostic {
         evidence_state: evidence_state_from_count(
             summary_statistics.close_open_gap_candidate_count,
@@ -3614,6 +3781,7 @@ fn build_gap_diagnostic(
         } else {
             summary_statistics.mean_abs_surprise_closed_gap_return
         },
+        fitted_mean_abs_gap_return,
         fitted_sigma_g: return_jump_family.sigma_g,
     }
 }
@@ -3648,17 +3816,22 @@ fn build_price_range_sanity_diagnostic(
     return_distribution_diagnostic: ReturnComponentsStageReturnDistributionDiagnostic,
     surprise_arrival_family: &ReturnComponentsSurpriseNewsArrivalCandidateFamily,
     return_jump_family: &ReturnComponentsReturnJumpMarkScaleCandidateFamily,
+    shared_mark_law_template: SharedNewsMarkLawConfiguration,
 ) -> ReturnComponentsStagePriceRangeSanityDiagnostic {
     let continuous_reference_span = 6.0
         * return_distribution_diagnostic.fitted_return_volatility
-        * (summary_statistics.observed_open_session_return_count as f64)
+        * (summary_statistics.observed_open_session_return_count as f64
+            * summary_statistics.mean_continuous_business_time_scale)
             .sqrt()
             .max(1.0);
+    let fitted_mean_abs_jump_return =
+        fitted_mean_abs_jump_return(shared_mark_law_template, return_jump_family);
     let fitted_reference_log_price_span = continuous_reference_span
-        + surprise_arrival_family.baseline_intensity
-            * summary_statistics.known_news_coverage_ratio.max(1.0)
-            * return_jump_family.surprise_return_jump_scale
-        + summary_statistics.close_open_gap_candidate_count as f64 * return_jump_family.sigma_g;
+        + (summary_statistics.known_realized_sample_count as f64
+            + surprise_arrival_family.baseline_intensity
+                * summary_statistics.source_window_duration_hours)
+            * fitted_mean_abs_jump_return
+        + summary_statistics.close_open_gap_candidate_count as f64 * fitted_mean_abs_jump_return;
     let expansion_ratio =
         fitted_reference_log_price_span / summary_statistics.observed_log_price_span.max(1.0e-8);
     let is_flagged = expansion_ratio > RETURN_COMPONENTS_STAGE_PRICE_RANGE_SANITY_THRESHOLD_RATIO
@@ -4251,11 +4424,13 @@ mod tests {
         let summary_statistics = ReturnComponentsStageObservedSignalSummaryStatistics {
             known_calendar_event_count: 3,
             known_realized_sample_count: 1,
+            source_window_duration_hours: 12.0,
             observed_open_session_return_count: 2_000,
             continuous_fit_return_count: 1_980,
             intraday_jump_candidate_count: 0,
             close_open_gap_candidate_count: 0,
             open_session_sell_share_proxy: 0.51,
+            mean_continuous_business_time_scale: 1.0,
             continuous_return_mean: 0.0,
             continuous_return_volatility: 2.5e-6,
             continuous_return_skewness: -0.15,

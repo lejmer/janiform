@@ -646,8 +646,9 @@ fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_hando
     let disk_report = run_return_components_calibration_stage(
         &disk_run_spec,
         &calendar_registry,
-        ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
+        ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference_with_payload(
             "artifact://hawkes/run-001",
+            Some(hawkes_payload.clone()),
             return_components_stage_candidate_generation_fixture(),
         ),
     );
@@ -905,16 +906,18 @@ fn return_components_stage_execution_is_deterministic_under_fixed_settings() {
     let first_disk_report = run_return_components_calibration_stage(
         &disk_run_spec,
         &calendar_registry,
-        ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
+        ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference_with_payload(
             "artifact://hawkes/run-001",
+            Some(build_hawkes_stage_success_payload()),
             return_components_stage_candidate_generation_fixture(),
         ),
     );
     let second_disk_report = run_return_components_calibration_stage(
         &disk_run_spec,
         &calendar_registry,
-        ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference(
+        ReturnComponentsStageExecutionInput::from_persisted_activity_artifact_reference_with_payload(
             "artifact://hawkes/run-001",
+            Some(build_hawkes_stage_success_payload()),
             return_components_stage_candidate_generation_fixture(),
         ),
     );

@@ -299,7 +299,10 @@ fn hourly_factor_threshold_policy_range_check_fails_when_exceeded() {
 fn build_contract_for_canonical_case(
     registry: &ExchangeCalendarRegistry,
     fixture_case: &HourlyFactorCanonicalOutputCaseFixture,
-) -> Result<janiform_market_time::hourly_factors::HourlyFactorContractOutput, HourlyFactorContractError> {
+) -> Result<
+    janiform_market_time::hourly_factors::HourlyFactorContractOutput,
+    HourlyFactorContractError,
+> {
     let range_start_utc = parse_utc_timestamp(&fixture_case.range_start_utc);
     let range_end_utc = parse_utc_timestamp(&fixture_case.range_end_utc);
 
