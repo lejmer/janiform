@@ -229,6 +229,5 @@ pull_requests/
 # Codex
 .codex/
 
-# Janiform data and exports
-data/
+# Janiform exports
 .janiform/
