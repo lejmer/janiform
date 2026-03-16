@@ -1,0 +1,22 @@
+[package]
+name = "janiform-calibration-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Calibration runtime orchestration for Janiform."
+
+[lib]
+name = "janiform_calibration_runtime"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+janiform-calibration-artifacts = { path = "../calibration-artifacts" }
+janiform-engine-pricing = { path = "../engine-pricing" }
+janiform-foundations = { path = "../foundations" }
+janiform-market-time = { path = "../market-time" }
+janiform-model-kernels = { path = "../model-kernels" }
+serde = { workspace = true }
+serde_json = { workspace = true }
