@@ -14,5 +14,5 @@ Define explicit core-domain structures for the 4D Hawkes excitation state and it
 - Field mapping against known component ordering
 
 ### Notes/Constraints
-- Keep types in `crates/core` and free of PyO3 concerns
+- Keep types in `crates/janiform` and free of PyO3 concerns
 - Avoid tuple-based state containers in public core interfaces

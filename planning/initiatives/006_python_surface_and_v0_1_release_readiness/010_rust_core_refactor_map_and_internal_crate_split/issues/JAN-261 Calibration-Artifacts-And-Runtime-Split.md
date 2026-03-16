@@ -17,13 +17,13 @@ Split calibration into separate artifact and runtime crates so persistent workfl
   - market-data preprocessing
   - optimizer adapters
   - runtime objectives and adapters
-- Physically move artifact-owned and runtime-owned source files, crate-local helpers, and unit tests into their destination crates. Do not leave them implemented under `crates/core` behind `#[path = "..."]` or equivalent indirection.
+- Physically move artifact-owned and runtime-owned source files, crate-local helpers, and unit tests into their destination crates. Do not leave them implemented under `crates/janiform` behind `#[path = "..."]` or equivalent indirection.
 - Ensure runtime depends on artifacts, but artifacts do not depend on runtime orchestration.
-- Update `janiform-core` and pybind-facing callers to consume the new boundaries through curated re-exports.
+- Update `janiform` and pybind-facing callers to consume the new boundaries through curated re-exports.
 
 ### Acceptance Criteria
 - Calibration artifact logic and calibration runtime logic are separate internal crates with one-way dependencies.
-- Artifact and runtime code are no longer physically co-owned under `crates/core`.
+- Artifact and runtime code are no longer physically co-owned under `crates/janiform`.
 - The calibration runtime no longer owns artifact persistence internals directly.
 - Artifact crates remain free of optimizer and stage-execution concerns.
 - Existing staged calibration behavior remains intact through the migration.

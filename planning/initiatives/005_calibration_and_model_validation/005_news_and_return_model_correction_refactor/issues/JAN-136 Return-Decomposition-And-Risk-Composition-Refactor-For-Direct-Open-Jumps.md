@@ -4,9 +4,9 @@
 Refactor return-decomposition and risk-return composition contracts so open-window direct news jumps and closed-window gap jumps are represented as separate components.
 
 ### Implementation details
-- Refactor `crates/core/src/return_decomposition.rs` to include explicit open-jump and closed-gap components in the decomposition contract.
+- Refactor `crates/janiform/src/return_decomposition.rs` to include explicit open-jump and closed-gap components in the decomposition contract.
 - Update edge-mode semantics so component toggles align with the new decomposition shape and naming.
-- Refactor `crates/core/src/risk.rs` interval-return generation contracts to accept and compose open-jump and closed-gap inputs explicitly.
+- Refactor `crates/janiform/src/risk.rs` interval-return generation contracts to accept and compose open-jump and closed-gap inputs explicitly.
 - Replace gap-only gating policy fields in risk provenance and diagnostics with component-aware routing policy fields.
 - Update risk path record and diagnostics schemas to expose cumulative open-jump and cumulative closed-gap summaries.
 - Align transform-slice and risk-run request surfaces with updated decomposition and component naming conventions.

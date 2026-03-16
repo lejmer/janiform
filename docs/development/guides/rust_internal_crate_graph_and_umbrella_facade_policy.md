@@ -7,7 +7,7 @@ Status: active for the current pre-extraction migration on March 16, 2026.
 ## Purpose
 
 This document defines the target internal workspace crate graph for the Rust implementation and
-the umbrella-facade policy for `janiform-core`.
+the umbrella-facade policy for `janiform`.
 
 The point of the split is ownership clarity, dependency hygiene, and compile-boundary isolation.
 The point is not to maximize crate count or to expose every internal crate publicly.
@@ -27,17 +27,17 @@ owner for the moved modules, their crate-local helpers, and their unit tests.
 
 The following do not count as a completed extraction:
 
-- compiling implementation files from `crates/core` through `#[path = "..."]`
-- leaving unit tests and crate-local support files physically owned by `crates/core`
-- treating `janiform-core` as the long-term implementation home while only changing Cargo edges
+- compiling implementation files from `crates/janiform` through `#[path = "..."]`
+- leaving unit tests and crate-local support files physically owned by `crates/janiform`
+- treating `janiform` as the long-term implementation home while only changing Cargo edges
 
-`janiform-core` may remain the umbrella facade and may re-export extracted modules during
+`janiform` may remain the umbrella facade and may re-export extracted modules during
 migration, but it must not remain the physical implementation crate for code that is claimed to be
 extracted.
 
 ## Problem Statement
 
-`janiform-core` currently mixes several distinct ownership domains inside one crate:
+`janiform` currently mixes several distinct ownership domains inside one crate:
 
 - low-level numerical and model-kernel code
 - market-time infrastructure and hourly-factor materialization
@@ -50,7 +50,7 @@ That concentration makes several things unclear:
 
 - which modules are foundational and should stay dependency-light
 - which modules are engine runtime concerns versus governance concerns
-- which APIs should stay stable through `janiform-core` during migration
+- which APIs should stay stable through `janiform` during migration
 - which dependency directions are forbidden even before every extraction lands
 
 Without an explicit target graph, extraction work would be driven by local file moves and would
@@ -84,7 +84,7 @@ Cleanup, renaming, and smaller internal API reshaping come after the ownership b
 
 That ownership boundary is not only a dependency-graph concern.
 For `JAN-259` through `JAN-264`, the destination crate should own the moved source files and unit
-tests directly instead of compiling them from `crates/core` through path indirection.
+tests directly instead of compiling them from `crates/janiform` through path indirection.
 
 ## Target Workspace Crate Graph
 
@@ -106,8 +106,8 @@ The initial target internal workspace graph is the following:
 | `janiform-governance` | governance crate | regression drift attribution, acceptance governance, deterministic regression orchestration, performance baseline ownership | `janiform-foundations`, `janiform-model-kernels`, `janiform-market-time`, `janiform-engine-pricing`, `janiform-engine-risk`, `janiform-engine-simulation`, `janiform-calibration-artifacts`, `janiform-analytics-stylized-facts`, `janiform-validation`, `janiform-governance-bench` |
 | `janiform-governance-bench` | benchmark-only governance crate | benchmark catalogs, harnesses, policies, and microbenchmark fixture support shared by validation and governance workflows | `janiform-foundations`, `janiform-model-kernels`, `janiform-affine-oracle`, `janiform-market-time`, `janiform-engine-pricing`, `janiform-engine-risk`, `janiform-engine-simulation`, `janiform-calibration-artifacts` |
 | `janiform-test-support` | test-only support crate | shared regression-fixture readers and helper contracts used only by Rust tests | `janiform-market-time`, `janiform-validation` |
-| `janiform-core` | umbrella facade | curated public Rust surface during migration | all internal crates above except `janiform-pybind` |
-| `janiform-pybind` | Python boundary crate | PyO3 conversion and error mapping | `janiform-core` only |
+| `janiform` | umbrella facade | curated public Rust surface during migration | all internal crates above except `janiform-pybind` |
+| `janiform-pybind` | Python boundary crate | PyO3 conversion and error mapping | `janiform` only |
 
 The graph is intentionally directional:
 
@@ -117,15 +117,15 @@ The graph is intentionally directional:
 - validation may observe engines and calibration artifacts
 - governance may observe engines and validation outputs
 - shared Rust test-fixture readers should live in a test-only support crate instead of being copied across crate-local test trees
-- `janiform-core` stays on top as the curated Rust facade
+- `janiform` stays on top as the curated Rust facade
 - `janiform-pybind` stays above the facade rather than reconstructing the graph directly
 
 ## Umbrella Facade Policy
 
-`janiform-core` remains the single umbrella Rust facade during migration.
+`janiform` remains the single umbrella Rust facade during migration.
 Internal crates are ownership and compile boundaries behind that facade.
 
-### What stays re-exported from `janiform-core`
+### What stays re-exported from `janiform`
 
 Continue re-exporting the current high-level module roots that define the curated Rust map used by
 `pybind` and by in-repo integration callers:
@@ -173,7 +173,7 @@ The following should remain internal unless an explicit policy update says other
 - governance-only orchestration internals
 
 Internal crate names themselves are not the public product surface.
-The public product-facing Rust map stays organized by `janiform-core`.
+The public product-facing Rust map stays organized by `janiform`.
 
 ### Transitional facade rule
 
@@ -183,7 +183,7 @@ because current in-repo callers already rely on them.
 That transitional status is narrow:
 
 - preserve existing curated callers while extraction proceeds
-- do not add new benchmark-only or governance-only exports to `janiform-core` by default
+- do not add new benchmark-only or governance-only exports to `janiform` by default
 - move ownership out first, then reduce facade exposure in a later explicitly approved change
 
 ## Dependency Direction Rules
@@ -243,7 +243,7 @@ The following dependency directions are forbidden unless this policy is explicit
 
 ### Pybind boundary rule
 
-- `janiform-pybind` should continue depending on `janiform-core` rather than taking direct
+- `janiform-pybind` should continue depending on `janiform` rather than taking direct
   dependencies on each internal crate
 - exceptions require an explicit policy update and should be treated as boundary regressions by
   default
@@ -262,7 +262,7 @@ domain should live under that crate's directory unless an explicit policy update
   their allowed internal dependency directions
 - a cargo-metadata based test must fail when an actual workspace dependency direction is not in the
   approved policy
-- a facade surface test must fail when `janiform-core` drops approved module roots or the
+- a facade surface test must fail when `janiform` drops approved module roots or the
   representative imports used by `pybind` and in-repo callers
 
 ### Required review rules
@@ -273,7 +273,7 @@ Reviewers should reject changes that do any of the following without a correspon
 - add a new dependency direction between internal crates that is not in the approved graph
 - expose a new internal crate directly to `pybind`
 - add benchmark-only helpers to foundational or engine crates
-- broaden `janiform-core` with new governance-only exports just because a new internal crate exists
+- broaden `janiform` with new governance-only exports just because a new internal crate exists
 
 ### Migration discipline
 
@@ -281,7 +281,7 @@ When an extraction PR introduces a new internal crate:
 
 - add the crate to the workspace
 - add its dependency edges to the machine-readable policy
-- keep `janiform-core` compiling as the umbrella facade
+- keep `janiform` compiling as the umbrella facade
 - move behavior-preserving ownership first
 - defer secondary cleanup until after the boundary is established
 

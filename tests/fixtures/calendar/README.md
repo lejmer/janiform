@@ -133,7 +133,7 @@ The fixture includes timezone-aware RFC3339 UTC timestamps (`Z` offset) around a
 2. Keep existing `fixture_id` values stable. Add new cases instead of renaming old ones.
 3. If a behavior change is intentional, update `expected_state` and `description` for affected cases.
 4. Run verification:
-   - `cargo test -p janiform-core calendar_regression`
+   - `cargo test -p janiform calendar_regression`
    - `pytest tests/test_calendar.py`
 5. When behavior changes by design, update this README.
 

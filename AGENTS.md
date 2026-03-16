@@ -23,11 +23,11 @@ This codebase is pre-v0.1 and has no external users.
 ---
 
 ## Repo Orientation
-- `crates/core/`: The Rust core of the library
-- `crates/pybind/`: Depends on `core` and translates
+- `crates/janiform/`: The umbrella Rust facade of the library
+- `crates/janiform-pybind/`: Depends on `janiform` and translates
 - `python/janiform/`: Python package and CLI
 - `tests/`: Python unit and integration tests, shared fixtures, and validation harnesses
-- `crates/core/tests/`: Rust unit and integration tests for the core crate
+- `crates/janiform/tests/`: Rust unit and integration tests for the facade crate
 - `docs/`: Design docs, development guides, planning
 
 ---

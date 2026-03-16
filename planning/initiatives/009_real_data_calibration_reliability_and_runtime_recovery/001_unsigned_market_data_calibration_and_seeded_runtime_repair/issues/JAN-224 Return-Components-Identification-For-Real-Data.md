@@ -9,7 +9,7 @@ The current return-components fit is weakly identified:
 - In `python/janiform/calibration/_market_data_translation.py`, `_derive_intraday_jump_candidates` keeps only material returns above a threshold and falls back to the single largest candidate if none exceed the threshold.
 - `_derive_nig_candidates` returns exactly one NIG shared-plus-shift configuration from crude moments such as mean return, RMS return, sell-share proxy, mean open tick intensity on the chosen calibration basis, and average option quote level.
 - In the investigated EUR/USD run, the diagnostics reported `intraday_jump_candidate_count = 1`, `material_close_open_gap_count = 0`, and the return-components artifact still selected nontrivial activity-coupling and jump scales from that sparse evidence.
-- In `crates/core/src/calibration/stages/return_components.rs`, candidate families are built from only a few summary statistics, with tiny multiplicative families around surprise intensity, activity coupling, and mark scales.
+- In `crates/janiform/src/calibration/stages/return_components.rs`, candidate families are built from only a few summary statistics, with tiny multiplicative families around surprise intensity, activity coupling, and mark scales.
 - The stage objective is then scored from relative error to those summary statistics rather than from a richer fit to observed return distributions or cross-scale behavior.
 
 That structure is not robust enough to identify realistic return scale on noisy real data. It is especially weak when gaps are rare, known-news anchors are sparse, or the input is unsigned market data where asymmetry must be inferred indirectly.

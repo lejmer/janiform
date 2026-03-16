@@ -1,15 +1,15 @@
 ## Refactor Verification Domain And Harness Modules
 
 ### Description
-`crates/core/src/validation.rs` currently acts as a mixed regression and verification harness module, while other verification-heavy workflows live in `crates/core/src/benchmarking.rs` and `crates/core/src/affine_oracle.rs`. This spreads verification orchestration across multiple large files and makes maintenance harder.
+`crates/janiform/src/validation.rs` currently acts as a mixed regression and verification harness module, while other verification-heavy workflows live in `crates/janiform/src/benchmarking.rs` and `crates/janiform/src/affine_oracle.rs`. This spreads verification orchestration across multiple large files and makes maintenance harder.
 
-Refactor verification and regression harness code into a dedicated `crates/core/src/verification/` domain with focused modules, and keep domain input validation logic in its domain modules (`pricing`, `risk`, `hawkes`, `seasonality`, `calendar`, `news`, etc).
+Refactor verification and regression harness code into a dedicated `crates/janiform/src/verification/` domain with focused modules, and keep domain input validation logic in its domain modules (`pricing`, `risk`, `hawkes`, `seasonality`, `calendar`, `news`, etc).
 
 This refactor is structural. Do not preserve legacy module paths. We are in initial development, so direct path updates are allowed.
 
 ### Acceptance Criteria
-- `crates/core/src/validation.rs` is removed and replaced by `crates/core/src/verification/`.
-- `crates/core/src/verification/mod.rs` provides the public verification surface.
+- `crates/janiform/src/validation.rs` is removed and replaced by `crates/janiform/src/verification/`.
+- `crates/janiform/src/verification/mod.rs` provides the public verification surface.
 - Verification harness code is split into focused modules, including at minimum:
   - deterministic regression harness
   - open/closed gap leakage regression harness
@@ -19,7 +19,7 @@ This refactor is structural. Do not preserve legacy module paths. We are in init
   - affine oracle method-comparison harness and tolerance-policy/report types
   - coarse/fine consistency regression harness and tolerance-policy loading
   - performance baseline comparison and regression drift attribution report building
-- `crates/core/src/lib.rs` exports `pub mod verification;` and no longer exports `pub mod validation;`.
+- `crates/janiform/src/lib.rs` exports `pub mod verification;` and no longer exports `pub mod validation;`.
 - All in-repo imports are updated to the new module paths (core, pybind, tests, and docs where relevant).
 - No behavior or schema payload changes are introduced by relocation.
 - No compatibility re-exports are added.

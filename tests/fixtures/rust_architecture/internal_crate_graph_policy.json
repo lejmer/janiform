@@ -2,7 +2,7 @@
   "schema_version": "v1",
   "document_version": "rust.internal_crate_graph_and_umbrella_facade_policy.pre_v0_1.milestone_1",
   "policy_document": "docs/development/guides/rust_internal_crate_graph_and_umbrella_facade_policy.md",
-  "umbrella_facade_crate": "janiform-core",
+  "umbrella_facade_crate": "janiform",
   "pybind_boundary_crate": "janiform-pybind",
   "curated_facade_module_roots": [
     "affine_oracle",
@@ -192,7 +192,7 @@
         "janiform-validation"
       ]
     },
-    "janiform-core": {
+    "janiform": {
       "status": "existing",
       "kind": "facade",
       "layer": "umbrella_facade",
@@ -218,7 +218,7 @@
       "kind": "boundary",
       "layer": "python_boundary",
       "allowed_internal_dependencies": [
-        "janiform-core"
+        "janiform"
       ]
     }
   }

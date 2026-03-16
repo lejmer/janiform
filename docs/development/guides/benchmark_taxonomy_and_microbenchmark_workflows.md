@@ -32,7 +32,7 @@ behavior or release budget regress".
 ## Criterion
 
 Use Criterion for pure Rust kernels and component-level hot paths under
-`crates/core/benches/rust_microbenchmarks.rs`.
+`crates/janiform/benches/rust_microbenchmarks.rs`.
 
 The initial Rust microbenchmark suite covers:
 
@@ -43,7 +43,7 @@ The initial Rust microbenchmark suite covers:
 
 These benches do not use ad hoc inline constants. They load the checked-in benchmark scenario
 catalog and benchmark policy fixtures from `tests/fixtures/benchmarks/` through the shared
-`janiform_core::benchmarking` microbenchmark support layer.
+`janiform::benchmarking` microbenchmark support layer.
 
 ## Pytest Benchmark
 
@@ -80,8 +80,8 @@ classification.
 Rust microbenchmark workflow:
 
 ```bash
-cargo bench -p janiform-core --bench rust_microbenchmarks -- --list
-TMPDIR=/tmp cargo bench -p janiform-core --bench rust_microbenchmarks
+cargo bench -p janiform --bench rust_microbenchmarks -- --list
+TMPDIR=/tmp cargo bench -p janiform --bench rust_microbenchmarks
 ```
 
 Python microbenchmark workflow:
@@ -94,7 +94,7 @@ PYTHONPATH=python:. pytest benches/python/test_microbenchmark_tooling.py benches
 Workflow acceptance and governance benchmarks:
 
 ```bash
-TMPDIR=/tmp cargo test -p janiform-core --test oracle_pricer_risk_benchmark_harness -- --nocapture
+TMPDIR=/tmp cargo test -p janiform --test oracle_pricer_risk_benchmark_harness -- --nocapture
 PYTHONPATH=python:. python3 scripts/ci/run_real_data_seeded_runtime_benchmark.py \
   --fixture-path tests/fixtures/benchmarks/real_data_seeded_runtime_benchmark_fixture.json \
   --policy-path tests/fixtures/benchmarks/real_data_seeded_runtime_benchmark_policy.json \

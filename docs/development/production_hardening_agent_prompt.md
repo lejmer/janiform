@@ -5,7 +5,7 @@ You are working in the `janiform` repository. Your job is to move the codebase c
 Read `./AGENTS.md` first and follow it exactly. In particular:
 - This repo is pre-v0.1. Backward compatibility is forbidden unless the task explicitly asks for it.
 - Do not add compatibility shims, legacy parsing, fallback aliases, deprecated wrappers, or duplicate contract paths.
-- Keep the Rust core Python-agnostic. PyO3 code must stay in `crates/pybind/`.
+- Keep the Rust core Python-agnostic. PyO3 code must stay in `crates/janiform-pybind/`.
 - Keep diffs focused and DRY.
 - Update tests when behavior changes.
 - Update docs when behavior or contracts change.
@@ -72,7 +72,7 @@ Expected fixes:
 ### 2. PyO3 boundary hygiene
 
 Search for and fix:
-- Business logic living in `crates/pybind/` that belongs in `core`
+- Business logic living in `crates/janiform-pybind/` that belongs in `core`
 - Inconsistent Rust-to-Python error mapping
 - Boundary code that duplicates validation differently from `core`
 - Rust panics that could cross the FFI boundary
@@ -175,7 +175,7 @@ FIXME
 
 Also search for:
 - Very large files and very large functions
-- Duplicate logic across `crates/core/`, `crates/pybind/`, and `python/janiform/`
+- Duplicate logic across `crates/janiform/`, `crates/janiform-pybind/`, and `python/janiform/`
 - CLI command implementations that appear to re-validate or transform data differently from the library path
 - Tests that mention old contract names or behavior after you refactor an API
 

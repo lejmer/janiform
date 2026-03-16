@@ -2,8 +2,8 @@
 
 This guide documents the model-validation threshold policy and pass-fail decision engine implemented in:
 
-- `janiform_core::verification::load_scale_consistency_threshold_policy_from_json`
-- `janiform_core::verification::run_scale_consistency_threshold_decision_engine`
+- `janiform::verification::load_scale_consistency_threshold_policy_from_json`
+- `janiform::verification::run_scale_consistency_threshold_decision_engine`
 
 ## Scope
 

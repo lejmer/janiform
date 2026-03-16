@@ -9,7 +9,7 @@ Split the runtime engine domains into explicit internal engine crates so pricing
   - risk engine
   - simulation engine
 - Move engine contracts, execution logic, and engine-local helpers into those crates.
-- Physically move the extracted engine source files, crate-local support code, and unit tests into the destination crates. Do not satisfy this issue through `#[path = "..."]` compilation from `crates/core` or by changing Cargo dependencies while keeping the implementation owned by `janiform-core`.
+- Physically move the extracted engine source files, crate-local support code, and unit tests into the destination crates. Do not satisfy this issue through `#[path = "..."]` compilation from `crates/janiform` or by changing Cargo dependencies while keeping the implementation owned by `janiform`.
 - Keep engines dependent only on:
   - foundation utilities
   - model-kernel crates

@@ -21,7 +21,7 @@ This issue is specifically about adding that second benchmark layer, not about r
 - add canonical tooling for low-level or narrower timing-oriented benchmarks
 
 ### Implementation Details
-- Add `Criterion`-based Rust benchmark targets under `crates/core/benches/` for representative pure-Rust kernels and component-level hot paths.
+- Add `Criterion`-based Rust benchmark targets under `crates/janiform/benches/` for representative pure-Rust kernels and component-level hot paths.
 - Start with a bounded but meaningful set of Rust benchmarks, such as:
   - oracle solver inner-path work
   - pricing kernel or transform-evaluation hot paths
@@ -52,7 +52,7 @@ This issue is specifically about adding that second benchmark layer, not about r
   - the existing fixture-driven baseline system remains the source of truth for end-to-end acceptance checks and regression classification
 
 ### Acceptance Criteria
-- The repository includes `Criterion` benchmarks for a representative set of pure-Rust hot paths under `crates/core/benches/`.
+- The repository includes `Criterion` benchmarks for a representative set of pure-Rust hot paths under `crates/janiform/benches/`.
 - The repository includes a canonical Python microbenchmark suite for narrower wrapper or boundary paths using `pytest-benchmark`.
 - Benchmark documentation explains clearly which benchmark mechanism should be used for:
   - low-level Rust timing work

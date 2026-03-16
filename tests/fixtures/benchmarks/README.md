@@ -122,7 +122,7 @@ boundary transport, Python materialization, and retained-memory regressions.
 
 - Ownership policy: `initiative_004_project_004_maintainers.v1`
 - Owner team: `coarse_time_pricing_and_risk_engines`
-- On-call alias: `janiform-core-owners`
+- On-call alias: `janiform-owners`
 
 ## Performance baseline refresh process
 
@@ -134,4 +134,4 @@ boundary transport, Python materialization, and retained-memory regressions.
    change.
 4. Save the updated JSON artifact in this directory and keep prior versions for drift comparisons.
 5. Validate with:
-   `cargo test -p janiform-core --test performance_baseline_capture_and_storage`.
+   `cargo test -p janiform --test performance_baseline_capture_and_storage`.

@@ -4,7 +4,7 @@
 Refactor pricing characteristic-function composition so direct open-window news jumps and closed-window gap jumps are both represented in total-return assembly.
 
 ### Implementation details
-- Refactor `crates/core/src/pricing.rs` total-return CF assembly contracts to compose trading-time, open-jump, and closed-gap factors explicitly.
+- Refactor `crates/janiform/src/pricing.rs` total-return CF assembly contracts to compose trading-time, open-jump, and closed-gap factors explicitly.
 - Update factor-composition structs and error taxonomy so each factor is validated and surfaced independently.
 - Refactor oracle-output composition helpers so transformed outputs can be combined with component-aware news-jump factors consistently.
 - Update policy identifiers and composition metadata to remove gap-only wording.

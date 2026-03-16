@@ -10,7 +10,7 @@
   "ownership_metadata": {
     "ownership_policy": "initiative_004_project_004_maintainers.v1",
     "owner_team": "coarse_time_pricing_and_risk_engines",
-    "owner_oncall": "janiform-core-owners",
+    "owner_oncall": "janiform-owners",
     "refresh_process": "tests/fixtures/benchmarks/README.md#performance-baseline-refresh-process"
   },
   "capture_policy": "extract_component_latency_throughput_and_operation_counts_from_benchmark_report.v1",

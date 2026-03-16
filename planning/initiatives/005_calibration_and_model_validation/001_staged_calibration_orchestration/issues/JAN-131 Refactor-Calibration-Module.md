@@ -1,14 +1,14 @@
 ## Refactor Calibration Module
 
 ### Description
-`crates/core/src/calibration.rs` is currently too large and mixes unrelated concerns (contracts, optimizer composition, stage execution, checkpointing, orchestration, and tests) in one file.
+`crates/janiform/src/calibration.rs` is currently too large and mixes unrelated concerns (contracts, optimizer composition, stage execution, checkpointing, orchestration, and tests) in one file.
 
-Refactor the calibration module into a multi-file layout with clear boundaries while preserving the existing public API surface at `janiform_core::calibration::*` via re-exports from a module facade.
+Refactor the calibration module into a multi-file layout with clear boundaries while preserving the existing public API surface at `janiform::calibration::*` via re-exports from a module facade.
 
 This refactor is structural only. It must not change runtime behavior, schema constants, serialized payload shapes, or mode-aware orchestration semantics.
 
 ### Acceptance Criteria
-- `crates/core/src/calibration.rs` is replaced by a directory-based module with focused files for:
+- `crates/janiform/src/calibration.rs` is replaced by a directory-based module with focused files for:
   - adapters
   - contracts/run-spec and stage graph
   - objective composition
@@ -18,10 +18,10 @@ This refactor is structural only. It must not change runtime behavior, schema co
   - return-components stage
   - checkpointing
   - staged runner orchestration
-- `crates/core/src/calibration/mod.rs` re-exports all currently public calibration items so existing import paths continue to work.
+- `crates/janiform/src/calibration/mod.rs` re-exports all currently public calibration items so existing import paths continue to work.
 - No public API breakage for existing in-repo consumers, including:
-  - `crates/core/src/hourly_factor_provider.rs` test imports from `crate::calibration`
-  - `crates/core/tests/pricing_calibration_hook_consumer_integration.rs` imports from `janiform_core::calibration`
+  - `crates/janiform/src/hourly_factor_provider.rs` test imports from `crate::calibration`
+  - `crates/janiform/tests/pricing_calibration_hook_consumer_integration.rs` imports from `janiform::calibration`
 - Existing schema/version constants and serialized structures remain unchanged.
 - All calibration tests pass after relocation, and no calibration behavior regressions are introduced.
 - Documentation is updated for module path references:

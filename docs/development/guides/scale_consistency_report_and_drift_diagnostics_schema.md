@@ -2,8 +2,8 @@
 
 This guide documents the concise report layer implemented in:
 
-- `janiform_core::verification::build_scale_consistency_report`
-- `janiform_core::verification::render_scale_consistency_report_summary`
+- `janiform::verification::build_scale_consistency_report`
+- `janiform::verification::render_scale_consistency_report_summary`
 
 ## Scope
 

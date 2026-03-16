@@ -66,7 +66,7 @@
       "diagnostic_kind": "activity_clustering",
       "tolerance_policy_id": "stylized_fact_exact_match_policy.v1",
       "provenance": {
-        "baseline_source": "crates/core/tests/activity_clustering_diagnostics.rs",
+        "baseline_source": "crates/janiform/tests/activity_clustering_diagnostics.rs",
         "captured_at_utc": "2026-03-05T00:00:00Z",
         "update_guidance": "Regenerate only when controlled activity-clustering diagnostics change intentionally."
       },
@@ -223,7 +223,7 @@
       "diagnostic_kind": "tail_skew",
       "tolerance_policy_id": "stylized_fact_exact_match_policy.v1",
       "provenance": {
-        "baseline_source": "crates/core/tests/tail_skew_diagnostics.rs",
+        "baseline_source": "crates/janiform/tests/tail_skew_diagnostics.rs",
         "captured_at_utc": "2026-03-05T00:00:00Z",
         "update_guidance": "Regenerate only when controlled tail-skew diagnostics change intentionally."
       },
@@ -680,7 +680,7 @@
       "diagnostic_kind": "volatility_persistence",
       "tolerance_policy_id": "stylized_fact_seeded_bootstrap_policy.v1",
       "provenance": {
-        "baseline_source": "crates/core/tests/volatility_persistence_diagnostics.rs",
+        "baseline_source": "crates/janiform/tests/volatility_persistence_diagnostics.rs",
         "captured_at_utc": "2026-03-05T00:00:00Z",
         "update_guidance": "Regenerate only when controlled volatility-persistence diagnostics change intentionally."
       },
@@ -819,7 +819,7 @@
       "diagnostic_kind": "gap_behavior",
       "tolerance_policy_id": "stylized_fact_seeded_bootstrap_policy.v1",
       "provenance": {
-        "baseline_source": "crates/core/tests/gap_behavior_diagnostics.rs",
+        "baseline_source": "crates/janiform/tests/gap_behavior_diagnostics.rs",
         "captured_at_utc": "2026-03-05T00:00:00Z",
         "update_guidance": "Regenerate only when controlled gap-behavior diagnostics change intentionally."
       },

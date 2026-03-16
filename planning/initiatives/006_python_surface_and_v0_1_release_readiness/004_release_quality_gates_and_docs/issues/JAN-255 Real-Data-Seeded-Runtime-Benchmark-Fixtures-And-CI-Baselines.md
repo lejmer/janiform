@@ -5,8 +5,8 @@ Add representative real-data benchmark fixtures, acceptance baselines, and CI co
 
 This gap is now concrete:
 - `python/janiform/simulation/seeded/contracts.py` defines diagnostics such as `transition_count`, `event_count`, `native_runtime_seconds`, `python_response_construction_seconds`, `python_materialization_seconds`, `boundary_transport_bytes`, and `native_estimated_retained_bytes`.
-- `crates/pybind/src/types/simulation.rs` exposes native retained-byte estimates and chunked result accessors.
-- `crates/core/src/simulation/artifacts.rs` computes native retained-memory estimates for the canonical seeded result.
+- `crates/janiform-pybind/src/types/simulation.rs` exposes native retained-byte estimates and chunked result accessors.
+- `crates/janiform/src/simulation/artifacts.rs` computes native retained-memory estimates for the canonical seeded result.
 - Current CI tiers validate engine benchmark harnesses and benchmark contracts for oracle, pricing, and risk paths, but they do not run a representative real-data seeded workflow or compare runtime and memory diagnostics against a stored acceptance baseline.
 
 As a result, the repository can regress in seeded runtime behavior without a canonical signal that answers the questions we actually care about:

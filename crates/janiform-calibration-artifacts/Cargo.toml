@@ -1,0 +1,18 @@
+[package]
+name = "janiform-calibration-artifacts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Calibration artifact contracts and persistence for Janiform."
+
+[lib]
+name = "janiform_calibration_artifacts"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+chrono = { workspace = true }
+janiform-foundations = { path = "../janiform-foundations" }
+janiform-model-kernels = { path = "../janiform-model-kernels" }
+serde = { workspace = true }
+serde_json = { workspace = true }

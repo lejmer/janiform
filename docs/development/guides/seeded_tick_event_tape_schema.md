@@ -2,7 +2,7 @@
 
 This guide defines the deterministic priced fine-path payload, the derived event-tape projection,
 and the optional debug trace payload emitted by the seeded tick simulator in
-`crates/core/src/simulation.rs`.
+`crates/janiform/src/simulation.rs`.
 
 ## Schema versions
 

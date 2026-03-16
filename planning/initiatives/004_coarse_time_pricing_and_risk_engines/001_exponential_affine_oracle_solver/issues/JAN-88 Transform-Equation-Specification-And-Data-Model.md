@@ -14,5 +14,5 @@ Define the canonical equation specification and data model for the exponential a
 - Invalid input payload handling and error messages
 
 ### Notes/Constraints
-- Keep model definitions in `crates/core` and reusable by pricing and risk engines
+- Keep model definitions in `crates/janiform` and reusable by pricing and risk engines
 - Avoid anonymous tuple inputs in public solver interfaces

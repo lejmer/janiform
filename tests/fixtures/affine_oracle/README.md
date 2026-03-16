@@ -40,19 +40,19 @@ Reference fixture:
 
 1. Make the intentional solver or equation change.
 2. Run the ignored print helper to capture fresh outputs:
-   `cargo test -p janiform-core --test affine_oracle_solver_reference_regression print_reference_outputs_for_fixture_update -- --ignored --nocapture`
+   `cargo test -p janiform --test affine_oracle_solver_reference_regression print_reference_outputs_for_fixture_update -- --ignored --nocapture`
 3. Update `affine_oracle_solver_reference_fixture.json` expected outputs and tolerances as needed.
 4. Run the deterministic suite:
-   `cargo test -p janiform-core --test affine_oracle_solver_reference_regression`
+   `cargo test -p janiform --test affine_oracle_solver_reference_regression`
 5. If tolerances are changed, explain the reason in the PR description.
 
 Method-comparison fixture:
 
 1. Make the intentional solver, tolerance-policy, or method-comparison change.
 2. Run the ignored print helper:
-   `cargo test -p janiform-core --test affine_oracle_solver_method_comparison print_method_comparison_outputs_for_fixture_update -- --ignored --nocapture`
+   `cargo test -p janiform --test affine_oracle_solver_method_comparison print_method_comparison_outputs_for_fixture_update -- --ignored --nocapture`
 3. Update `affine_oracle_solver_method_comparison_fixture.json` expected status, failure codes,
    and output-difference snapshots.
 4. Run:
-   `cargo test -p janiform-core --test affine_oracle_solver_method_comparison`
+   `cargo test -p janiform --test affine_oracle_solver_method_comparison`
 5. If policy version or tolerance bands change, update change-log metadata in the fixture.

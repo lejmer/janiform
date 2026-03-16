@@ -62,7 +62,7 @@ When updating:
 3. If tolerances change intentionally, update the matching entry in `tolerance_policies`.
 4. Refresh the manifest content hash in `tests/fixtures/validation/validation_fixture_manifest.json`.
 5. Run verification:
-   - `cargo test -p janiform-core stylized_fact_metric_regression`
-   - `cargo test -p janiform-core validation_fixture`
+   - `cargo test -p janiform stylized_fact_metric_regression`
+   - `cargo test -p janiform validation_fixture`
    - `pytest tests/test_validation_fixtures.py -k stylized_fact`
    - `python3 -m py_compile python/janiform/*.py tests/conftest.py`

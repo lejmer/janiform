@@ -15,7 +15,7 @@ Move bench-only and test-only support to the right locations and add enforcement
   - cargo metadata or workspace policy checks
   - compile-fail or lint-like dependency rules
   - contributor guidance for where new code should land
-- Add or extend checks that reject fake extractions where a crate claims ownership in Cargo but the implementation is still compiled from `crates/core` through `#[path = "..."]` or equivalent indirection.
+- Add or extend checks that reject fake extractions where a crate claims ownership in Cargo but the implementation is still compiled from `crates/janiform` through `#[path = "..."]` or equivalent indirection.
 - Remove the migration-only guard tests introduced for the pre-extraction planning phase once the permanent ownership-boundary enforcement lives in the final extracted crate layout. This includes the temporary `internal_crate_graph_policy.rs` and `umbrella_facade_surface.rs` guards if their intent is fully covered by the permanent checks.
 - Update documentation so contributors understand the new internal ownership map and do not reintroduce monolithic growth by convenience.
 

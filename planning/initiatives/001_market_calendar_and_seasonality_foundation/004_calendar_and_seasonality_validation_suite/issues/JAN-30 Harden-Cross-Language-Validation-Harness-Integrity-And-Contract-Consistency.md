@@ -8,13 +8,13 @@ Janiform is being positioned as a production-ready quantitative library for exte
 
 **Observed liabilities (current state)**
 
-1. Hourly regression fixtures are outside shared manifest/hash validation. `tests/fixtures/validation/validation_fixture_manifest.json` only tracks calendar fixtures. Hourly fixture files are loaded directly in `tests/conftest.py` and `crates/core/tests/hourly_factor_regression_fixture_matrix.rs`.
+1. Hourly regression fixtures are outside shared manifest/hash validation. `tests/fixtures/validation/validation_fixture_manifest.json` only tracks calendar fixtures. Hourly fixture files are loaded directly in `tests/conftest.py` and `crates/janiform/tests/hourly_factor_regression_fixture_matrix.rs`.
 2. Regression metadata is duplicated across Rust and Python tests. Required tags and expected fixture ID sets are repeated in:
    - `tests/test_calendar.py`
-   - `crates/core/tests/calendar_regression_fixture_matrix.rs`
+   - `crates/janiform/tests/calendar_regression_fixture_matrix.rs`
    - `tests/test_hourly_factor_regression_matrix.py`
-   - `crates/core/tests/hourly_factor_regression_fixture_matrix.rs`
-3. Seasonality source timestamp field naming is inconsistent. Python serialization emits `source_timestamp_utc` in `python/janiform/hourly_factors.py`, while fixture/test paths use `source_timestamps_utc`. PyO3 currently accepts both in `crates/pybind/lib.r`, which hides schema drift.
+   - `crates/janiform/tests/hourly_factor_regression_fixture_matrix.rs`
+3. Seasonality source timestamp field naming is inconsistent. Python serialization emits `source_timestamp_utc` in `python/janiform/hourly_factors.py`, while fixture/test paths use `source_timestamps_utc`. PyO3 currently accepts both in `crates/janiform-pybind/lib.r`, which hides schema drift.
 4. Python harness wrapper is weakly typed at runtime. `python/janiform/validation.py` passes raw mappings and casts parsed JSON to `TypedDict` without structural validation.
 
 **Scope**
@@ -43,11 +43,11 @@ Janiform is being positioned as a production-ready quantitative library for exte
 - `tests/fixtures/validation/validation_fixture_manifest.json`
 - `tests/conftest.py`
 - `tests/fixture_validation.py`
-- `crates/core/tests/support/validation_fixture.rs`
-- `crates/core/tests/hourly_factor_regression_fixture_matrix.rs`
+- `crates/janiform/tests/support/validation_fixture.rs`
+- `crates/janiform/tests/hourly_factor_regression_fixture_matrix.rs`
 - `tests/test_hourly_factor_regression_matrix.py`
 - `python/janiform/hourly_factors.py`
-- `crates/pybind/lib.r`
+- `crates/janiform-pybind/lib.r`
 - `python/janiform/validation.py`
 
 **Verification commands**

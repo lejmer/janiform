@@ -6,8 +6,8 @@ Follow up JAN-104 by removing consumer-oriented `*_for_*` naming from the core p
 The goal is to keep one canonical public API per behavior, expressed with domain-oriented names rather than use-case suffixes.
 
 Target scope:
-- `crates/core/src/pricing.rs`
-- `crates/core/src/simulation.rs`
+- `crates/janiform/src/pricing.rs`
+- `crates/janiform/src/simulation.rs`
 - related Rust integration tests and docs in this initiative
 
 Legacy names removed in scope:
