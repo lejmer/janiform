@@ -25,3 +25,4 @@ Extract `calendar`, `seasonality`, and `hourly_factors` into a dedicated interna
 ### Notes/Constraints
 - Keep this split centered on shared market-time infrastructure, not on workflow orchestration.
 - Do not mix pybind or Python-specific concerns into the extracted crate.
+- For context, see the full plan: docs/development/guides/`rust_internal_crate_graph_and_umbrella_facade_policy.md`.

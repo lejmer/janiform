@@ -34,3 +34,4 @@ Split calibration into separate artifact and runtime crates so persistent workfl
 ### Notes/Constraints
 - Calibration is one of the largest current ownership hotspots. Do not move it as one giant extracted crate.
 - Keep the split aligned with responsibility, not just with file count.
+- For context, see the full plan: docs/development/guides/`rust_internal_crate_graph_and_umbrella_facade_policy.md`.

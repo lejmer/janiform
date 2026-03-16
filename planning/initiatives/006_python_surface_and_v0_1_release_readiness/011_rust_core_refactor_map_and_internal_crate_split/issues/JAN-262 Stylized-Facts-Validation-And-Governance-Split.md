@@ -35,3 +35,4 @@ Separate stylized-fact analytics, engine-facing validation domains, and benchmar
 ### Notes/Constraints
 - Treat governance as a repository and release-quality concern, not as a runtime dependency.
 - Keep terminology precise so validation domains and governance policies do not blur together again.
+- For context, see the full plan: docs/development/guides/`rust_internal_crate_graph_and_umbrella_facade_policy.md`.

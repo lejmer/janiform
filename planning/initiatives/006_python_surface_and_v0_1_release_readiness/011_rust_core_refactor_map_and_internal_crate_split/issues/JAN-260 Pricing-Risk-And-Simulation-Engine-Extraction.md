@@ -31,3 +31,4 @@ Split the runtime engine domains into explicit internal engine crates so pricing
 ### Notes/Constraints
 - Do not use this split to redesign engine semantics.
 - Keep extraction behavior-preserving first, then consider local cleanup once boundaries hold.
+- For context, see the full plan: docs/development/guides/`rust_internal_crate_graph_and_umbrella_facade_policy.md`.
