@@ -26,3 +26,4 @@ Extract the low-level foundational and model-kernel code into dedicated internal
 ### Notes/Constraints
 - This extraction should happen before engine, calibration, or governance splits.
 - Prefer behavior-preserving moves over opportunistic redesign.
+- For context, see the full plan: docs/development/guides/`rust_internal_crate_graph_and_umbrella_facade_policy.md`.

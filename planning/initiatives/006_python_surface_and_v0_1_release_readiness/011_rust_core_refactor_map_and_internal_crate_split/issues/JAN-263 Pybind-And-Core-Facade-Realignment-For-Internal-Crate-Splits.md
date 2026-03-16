@@ -24,3 +24,4 @@ Realign `pybind` and the umbrella `janiform-core` facade after the internal crat
 ### Notes/Constraints
 - The point of the split is not to make pybind smarter about internal structure. The point is to make Rust ownership cleaner while keeping the boundary thin.
 - Preserve the existing rule that Python-specific code belongs only in `pybind`.
+- For context, see the full plan: docs/development/guides/`rust_internal_crate_graph_and_umbrella_facade_policy.md`.
