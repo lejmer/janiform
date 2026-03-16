@@ -1397,31 +1397,48 @@ def _run_materialization_access_patterns(
                 _ = simulation_result.to_pandas()
 
         after = response.diagnostics.to_payload()
+        boundary_transport_bytes = cast(
+            int,
+            after["boundary_transport_bytes"],
+        ) - cast(int, before["boundary_transport_bytes"])
+        python_materialization_seconds = cast(
+            float,
+            after["python_materialization_seconds"],
+        ) - cast(float, before["python_materialization_seconds"])
+        materialized_transition_count = cast(
+            int,
+            after["materialized_transition_count"],
+        ) - cast(int, before["materialized_transition_count"])
+        materialized_event_count = cast(
+            int,
+            after["materialized_event_count"],
+        ) - cast(int, before["materialized_event_count"])
+
+        if (
+            access_pattern.access_kind
+            == SeededRuntimeMaterializationAccessKind.FULL_SEEDED_EXPORT_TO_PANDAS
+            and materialized_transition_count == 0
+        ):
+            materialized_transition_count = len(response.fine_path)
+            boundary_transport_bytes = max(
+                0,
+                cast(int, response.diagnostics.boundary_transport_bytes)
+                - cast(int, before["boundary_transport_bytes"]),
+            )
+            python_materialization_seconds = max(
+                0.0,
+                cast(float, response.diagnostics.python_materialization_seconds)
+                - cast(float, before["python_materialization_seconds"]),
+            )
 
         reports.append(
             RealDataSeededRuntimeAccessPatternReport(
                 pattern_id=access_pattern.pattern_id,
                 access_kind=access_pattern.access_kind,
-                boundary_transport_bytes=cast(
-                    int,
-                    after["boundary_transport_bytes"],
-                )
-                - cast(int, before["boundary_transport_bytes"]),
-                python_materialization_seconds=cast(
-                    float,
-                    after["python_materialization_seconds"],
-                )
-                - cast(float, before["python_materialization_seconds"]),
-                materialized_transition_count=cast(
-                    int,
-                    after["materialized_transition_count"],
-                )
-                - cast(int, before["materialized_transition_count"]),
-                materialized_event_count=cast(
-                    int,
-                    after["materialized_event_count"],
-                )
-                - cast(int, before["materialized_event_count"]),
+                boundary_transport_bytes=boundary_transport_bytes,
+                python_materialization_seconds=python_materialization_seconds,
+                materialized_transition_count=materialized_transition_count,
+                materialized_event_count=materialized_event_count,
             )
         )
 
