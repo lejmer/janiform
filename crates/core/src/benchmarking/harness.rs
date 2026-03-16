@@ -3,9 +3,8 @@ use std::fmt::{Display, Formatter};
 use std::time::Instant;
 
 use crate::affine_oracle::{
-    ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformGuardFailureCode,
-    ExponentialAffineTransformInputError, ExponentialAffineTransformIntegrationStatus,
-    ExponentialAffineTransformIntegratorMethod, ExponentialAffineTransformNewsIntensityInput,
+    ExponentialAffineTransformGuardFailureCode, ExponentialAffineTransformInputError,
+    ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformIntegratorMethod,
     ExponentialAffineTransformSolverError, ExponentialAffineTransformSolverSettings,
     ExponentialAffineTransformSolverSettingsError,
     solve_exponential_affine_transform_with_settings,
@@ -20,16 +19,14 @@ use crate::pricing::{
     VanillaOptionPricingMarketInputsError, price_vanilla_option_via_fourier_inversion,
 };
 use crate::risk::{
-    SufficientStatisticsTransformSliceContext, SufficientStatisticsTransformSliceContextError,
-    SufficientStatisticsTransformSliceSamplingError, SufficientStatisticsTransformSliceSettings,
-    SufficientStatisticsTransformSliceSolveError, SufficientStatisticsTransformSlices,
+    SufficientStatisticsTransformSliceContextError,
+    SufficientStatisticsTransformSliceSamplingError, SufficientStatisticsTransformSliceSolveError,
     sample_interval_statistics_batch_from_transform_slices,
-    solve_sufficient_statistics_transform_slices_with_solver_settings,
 };
 
 use super::builders::{
     build_equation_specification, build_oracle_transform_input, build_pricing_engine_settings,
-    build_pricing_market_inputs,
+    build_pricing_market_inputs, build_risk_transform_slices,
 };
 use super::catalog::{
     BenchmarkScenarioCatalog, BenchmarkScenarioCatalogLoadError, BenchmarkScenarioWorkloadProfile,
@@ -577,85 +574,6 @@ fn resolve_profile_run_length(
         warmup_iteration_count,
         measured_iteration_count,
     })
-}
-
-fn build_risk_transform_slices(
-    profile: &BenchmarkScenarioWorkloadProfile,
-    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
-    equation_specification: ExponentialAffineTransformEquationSpecification,
-    solver_settings: ExponentialAffineTransformSolverSettings,
-    component_seed: u64,
-) -> Result<Vec<SufficientStatisticsTransformSlices>, OraclePricerRiskBenchmarkHarnessError> {
-    let mut slices_by_interval: Vec<SufficientStatisticsTransformSlices> =
-        Vec::with_capacity(profile.interval_settings.horizon_interval_count);
-    let sampling_settings = SufficientStatisticsTransformSliceSettings::default();
-
-    for interval_index in 0..profile.interval_settings.horizon_interval_count {
-        let interval_seed = derive_invocation_seed(component_seed, interval_index + 1);
-        let factor_noise = unit_interval_from_seed(interval_seed);
-        let seasonality_factor = interpolate_range(
-            benchmark_policy.oracle_solver_probes.seasonality_factor_min,
-            benchmark_policy.oracle_solver_probes.seasonality_factor_max,
-            factor_noise,
-        );
-        let news_intensity_factor = interpolate_range(
-            benchmark_policy
-                .oracle_solver_probes
-                .news_intensity_factor_min,
-            benchmark_policy
-                .oracle_solver_probes
-                .news_intensity_factor_max,
-            1.0 - factor_noise,
-        );
-        let known_news_intensity_factor = news_intensity_factor * factor_noise;
-        let surprise_news_intensity_factor = news_intensity_factor - known_news_intensity_factor;
-        let news_intensity_input = ExponentialAffineTransformNewsIntensityInput::try_new(
-            known_news_intensity_factor,
-            surprise_news_intensity_factor,
-        )
-        .map_err(|source| {
-            OraclePricerRiskBenchmarkHarnessError::InvalidRiskSliceContext {
-                profile_id: profile.profile_id.clone(),
-                interval_index,
-                source: SufficientStatisticsTransformSliceContextError::InvalidNewsIntensity {
-                    interval_index,
-                    source,
-                },
-            }
-        })?;
-
-        let context = SufficientStatisticsTransformSliceContext::try_new(
-            interval_index,
-            seasonality_factor,
-            news_intensity_input,
-            profile.interval_settings.interval_delta,
-            profile.model_state.initial_excitation_state,
-        )
-        .map_err(|source| {
-            OraclePricerRiskBenchmarkHarnessError::InvalidRiskSliceContext {
-                profile_id: profile.profile_id.clone(),
-                interval_index,
-                source,
-            }
-        })?;
-
-        let solved_slices = solve_sufficient_statistics_transform_slices_with_solver_settings(
-            equation_specification,
-            context,
-            sampling_settings,
-            Some(solver_settings),
-        )
-        .map_err(|source| {
-            OraclePricerRiskBenchmarkHarnessError::RiskSliceSolveFailure {
-                profile_id: profile.profile_id.clone(),
-                interval_index,
-                source,
-            }
-        })?;
-        slices_by_interval.push(solved_slices);
-    }
-
-    Ok(slices_by_interval)
 }
 
 fn run_component_benchmark<F>(

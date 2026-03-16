@@ -113,3 +113,48 @@ jobs:
           name: real-data-seeded-runtime-benchmark-artifacts
           path: .artifacts/real-data-seeded-runtime-benchmark
           if-no-files-found: error
+
+  microbenchmark-smoke:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Bootstrap microbenchmark environment
+        run: |
+          TMPDIR=/tmp UV_CACHE_DIR=/tmp/uv ./scripts/bootstrap-linux.sh .venv-linux
+
+      - name: Run microbenchmark smoke
+        run: |
+          mkdir -p .artifacts/microbenchmark-smoke
+          TMPDIR=/tmp cargo bench -p janiform-core --bench rust_microbenchmarks -- --list | tee .artifacts/microbenchmark-smoke/rust-bench-list.log
+          PYTHONPATH=python .venv-linux/bin/pytest --benchmark-disable tests/benchmarks/python_microbenchmarks.py -q | tee .artifacts/microbenchmark-smoke/python-microbench-smoke.log
+
+      - name: Publish microbenchmark smoke summary
+        if: always()
+        run: |
+          echo "## Microbenchmark Smoke" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Scope: Criterion bench discovery plus pytest-benchmark suite wiring" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Trigger policy: manual dispatch only" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Merge policy: informative smoke only, not a required timing gate" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload microbenchmark smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: microbenchmark-smoke-artifacts
+          path: .artifacts/microbenchmark-smoke
+          if-no-files-found: error

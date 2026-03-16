@@ -1,3 +1,9 @@
+from .microbench import (
+    RealDataSeededRuntimeMicrobenchmarkCase,
+    load_python_microbenchmark_fixture,
+    load_python_microbenchmark_fixture_document,
+    prepare_real_data_seeded_runtime_microbenchmark_case,
+)
 from .seeded_runtime import (
     REAL_DATA_SEEDED_RUNTIME_BASELINE_SCHEMA_VERSION,
     REAL_DATA_SEEDED_RUNTIME_BENCHMARK_FIXTURE_SCHEMA_VERSION,
@@ -30,6 +36,7 @@ __all__ = [
     "REAL_DATA_SEEDED_RUNTIME_BENCHMARK_POLICY_SCHEMA_VERSION",
     "REAL_DATA_SEEDED_RUNTIME_BENCHMARK_REPORT_SCHEMA_VERSION",
     "REAL_DATA_SEEDED_RUNTIME_COMPARISON_REPORT_SCHEMA_VERSION",
+    "RealDataSeededRuntimeMicrobenchmarkCase",
     "RealDataSeededRuntimeBenchmarkBaselineArtifact",
     "RealDataSeededRuntimeBenchmarkComparisonReport",
     "RealDataSeededRuntimeBenchmarkFixture",
@@ -39,9 +46,12 @@ __all__ = [
     "SeededRuntimeFailureClassification",
     "capture_real_data_seeded_runtime_baseline_artifact",
     "compare_real_data_seeded_runtime_benchmark_report_to_baseline",
+    "load_python_microbenchmark_fixture",
+    "load_python_microbenchmark_fixture_document",
     "load_real_data_seeded_runtime_baseline_from_json",
     "load_real_data_seeded_runtime_benchmark_fixture_document",
     "load_real_data_seeded_runtime_benchmark_policy_from_json",
+    "prepare_real_data_seeded_runtime_microbenchmark_case",
     "render_real_data_seeded_runtime_comparison_summary_markdown",
     "run_real_data_seeded_runtime_benchmark_fixture",
     "serialize_real_data_seeded_runtime_baseline_to_json",

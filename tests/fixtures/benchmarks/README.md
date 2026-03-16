@@ -3,6 +3,10 @@
 This directory stores versioned benchmark scenario workload profiles shared by coarse-time
 benchmark harnesses.
 
+The microbenchmark layer reuses these checked-in inputs. For benchmark taxonomy guidance and local
+Criterion plus `pytest-benchmark` commands, see
+`docs/development/guides/benchmark_taxonomy_and_microbenchmark_workflows.md`.
+
 ## File
 
 - `benchmark_scenario_catalog.json`
