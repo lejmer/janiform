@@ -88,7 +88,8 @@ def run_staged_calibration(
     *,
     calendar_registry: CalendarRegistry,
 ) -> StagedCalibrationResponse:
-    """Run staged calibration from the explicit execution contract.
+    """
+    Run staged calibration from the explicit execution contract.
 
     Example:
         response = run_staged_calibration(

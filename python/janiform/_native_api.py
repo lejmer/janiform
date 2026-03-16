@@ -12,6 +12,14 @@ def native_exception_matches(
     error: Exception,
     exception_name: str,
 ) -> bool:
+    """
+    Match native exceptions without binding `except native.SomeError` clauses.
+
+    Public Python wrappers use this helper because direct `except native.SomeError`
+    blocks require the extension module to expose every expected exception type at
+    handler setup time. If the native module is partially loaded or contract-drifted,
+    that lookup can raise `AttributeError` and mask the original runtime failure.
+    """
     native_exception_type = getattr(native, exception_name, None)
     return (
         isinstance(native_exception_type, type)

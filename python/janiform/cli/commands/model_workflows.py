@@ -105,6 +105,8 @@ from ...errors import (
     JaniformErrorDetails,
     JaniformExecutionError,
 )
+
+
 type CliCommandArguments = dict[str, Any]
 
 
