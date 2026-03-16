@@ -52,6 +52,11 @@ def test_benchmark_tier_workflow_has_schedule_trigger_and_artifact_hooks() -> No
     assert "--test performance_baseline_capture_and_storage" in workflow_text
     assert "--test regression_drift_attribution_reports" in workflow_text
     assert "scripts/ci/write_benchmark_artifact_index.py" in workflow_text
+    assert "real-data-seeded-runtime-benchmark:" in workflow_text
+    assert "Run real-data seeded runtime benchmark" in workflow_text
+    assert "scripts/ci/run_real_data_seeded_runtime_benchmark.py" in workflow_text
+    assert "real_data_seeded_runtime_benchmark_summary.md" in workflow_text
+    assert "real-data-seeded-runtime-benchmark-artifacts" in workflow_text
     assert "uses: actions/upload-artifact@v7" in workflow_text
 
 

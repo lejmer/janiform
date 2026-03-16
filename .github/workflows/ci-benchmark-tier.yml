@@ -64,3 +64,52 @@ jobs:
           name: benchmark-smoke-workload-artifacts
           path: .artifacts/benchmark-tier
           if-no-files-found: error
+
+  real-data-seeded-runtime-benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Bootstrap real-data seeded runtime benchmark environment
+        run: |
+          TMPDIR=/tmp UV_CACHE_DIR=/tmp/uv ./scripts/bootstrap-linux.sh .venv-linux
+
+      - name: Run real-data seeded runtime benchmark
+        run: |
+          mkdir -p .artifacts/real-data-seeded-runtime-benchmark
+          PYTHONPATH=python .venv-linux/bin/python scripts/ci/run_real_data_seeded_runtime_benchmark.py \
+            --fixture-path tests/fixtures/benchmarks/real_data_seeded_runtime_benchmark_fixture.json \
+            --policy-path tests/fixtures/benchmarks/real_data_seeded_runtime_benchmark_policy.json \
+            --baseline-path tests/fixtures/benchmarks/real_data_seeded_runtime_baseline_v1.json \
+            --output-dir .artifacts/real-data-seeded-runtime-benchmark
+
+      - name: Publish real-data seeded runtime benchmark summary
+        if: always()
+        run: |
+          cat .artifacts/real-data-seeded-runtime-benchmark/real_data_seeded_runtime_benchmark_summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Emit real-data seeded runtime benchmark failure context
+        if: failure()
+        run: |
+          echo "Real-data seeded runtime benchmark failed."
+          cat .artifacts/real-data-seeded-runtime-benchmark/real_data_seeded_runtime_benchmark_summary.md
+
+      - name: Upload real-data seeded runtime benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: real-data-seeded-runtime-benchmark-artifacts
+          path: .artifacts/real-data-seeded-runtime-benchmark
+          if-no-files-found: error

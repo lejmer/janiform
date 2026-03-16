@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, Protocol, cast
 
 import pyarrow as pyarrow
-from pyarrow import parquet as pyarrow_parquet
+from pyarrow import parquet
 
 from ._contracts import serialize_pretty_json
 from .calibration.fit.report import JaniformFitReport
@@ -558,12 +558,12 @@ class _ParquetSimulationSink:
     def __init__(self, *, output_path: Path, columns: tuple[str, ...]) -> None:
         self._output_path = output_path
         self._columns = columns
-        self._writer: Optional[pyarrow_parquet.ParquetWriter] = None
+        self._writer: Optional[parquet.ParquetWriter] = None
 
     def write_records(self, records: list[dict[str, Any]]) -> None:
         table = pyarrow.Table.from_pylist(records)
         if self._writer is None:
-            self._writer = pyarrow_parquet.ParquetWriter(self._output_path, table.schema)
+            self._writer = parquet.ParquetWriter(self._output_path, table.schema)
 
         self._writer.write_table(table)
 

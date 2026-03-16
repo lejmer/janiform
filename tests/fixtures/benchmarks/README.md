@@ -10,6 +10,9 @@ benchmark harnesses.
 - `coarse_fine_consistency_tolerance_policy.json`
 - `oracle_pricer_risk_performance_baseline_v1.json`
 - `oracle_pricer_risk_performance_baseline_v1_1.json`
+- `real_data_seeded_runtime_benchmark_fixture.json`
+- `real_data_seeded_runtime_benchmark_policy.json`
+- `real_data_seeded_runtime_baseline_v1.json`
 
 ## Contract
 
@@ -47,6 +50,29 @@ benchmark harnesses.
   - `profile_records`: per-profile component metrics (`mean_latency_seconds`,
     `throughput_operations_per_second`, `measured_operation_count`, and
     `interval_delta` metadata for profile-matrix comparability
+- Real-data seeded runtime benchmark fixture fields include:
+  - `schema_version`: `benchmark.real_data_seeded_runtime.fixture.v1`
+  - checked-in unsigned EUR/USD parquet slice controls:
+    `source_tick_data_path`, `source_tick_data_format`,
+    `source_tick_data_row_offset`, `source_tick_data_row_count`,
+    `source_timestamp_column`, `source_price_column`, and
+    `source_trade_sign_column`
+  - execution controls for the repaired high-level runtime path:
+    `market_profile`, `coarse_interval`, `coarse_horizon_interval_count`,
+    `seeded_horizon_interval_count`, and `simulation_seed`
+  - representative Python access patterns used to attribute boundary and
+    materialization cost through `materialization_access_patterns`
+- Real-data seeded runtime policy fields include:
+  - `schema_version`: `benchmark.real_data_seeded_runtime.threshold_policy.v1`
+  - explicit event-regime realism thresholds for coarse and seeded event-rate ratios
+  - runtime, Python materialization, boundary transport, and retained-memory
+    regression thresholds per fixture
+- Real-data seeded runtime baseline fields include:
+  - `schema_version`: `benchmark.real_data_seeded_runtime.baseline.v1`
+  - accepted event-count, runtime, materialization, transport, and retained-memory
+    values for each benchmark fixture
+  - `memory_metric_semantics` documents that `native_estimated_retained_bytes`
+    is an estimated retained-memory proxy and not true peak RSS
 - Regression drift attribution report fields include:
   - `schema_version`: `benchmark.regression_drift_attribution.report.v1`
   - `classification_policy`: explicit drift-category rules for numerical drift, performance drift,
@@ -77,6 +103,10 @@ the harness does not rely on undocumented hardcoded constants.
 `coarse_fine_consistency_tolerance_policy.json` centralizes versioned regression thresholds for
 engine-level coarse fine workflows and supports interval-grid bands so policy updates do not require
 harness code changes.
+
+`real_data_seeded_runtime_benchmark_policy.json` governs the real-data seeded runtime path
+separately from the engine-only benchmark suites so model-regime failures can be distinguished from
+boundary transport, Python materialization, and retained-memory regressions.
 
 ## Performance baseline ownership
 

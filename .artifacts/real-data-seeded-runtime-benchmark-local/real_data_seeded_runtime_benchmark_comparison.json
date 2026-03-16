@@ -1,0 +1,111 @@
+{
+  "baseline_id": "real_data_seeded_runtime_baseline",
+  "baseline_version": "1.0.0",
+  "comparison_policy": "candidate_vs_accepted_baseline_with_fixture_threshold_classification.v1",
+  "fixture_comparisons": [
+    {
+      "baseline_version": "1.0.0",
+      "failure_classifications": [],
+      "fixture_id": "synthetic_eurusd_parquet_slice_250000_8192row_v1",
+      "fixture_version": "1.0.0",
+      "primary_failure_classification": null,
+      "status": "pass",
+      "threshold_evaluations": [
+        {
+          "absolute_delta": null,
+          "candidate_value": 1.063223361984253,
+          "failure_classification": null,
+          "maximum_allowed_absolute_delta": null,
+          "maximum_allowed_relative_delta": null,
+          "maximum_allowed_value": 1.35,
+          "metric_id": "seeded_event_rate_ratio_vs_observed_open",
+          "reference_value": null,
+          "relative_delta": null,
+          "status": "pass",
+          "summary": "candidate value 1.063223 must be <= 1.350000"
+        },
+        {
+          "absolute_delta": null,
+          "candidate_value": 3.344819315709432,
+          "failure_classification": null,
+          "maximum_allowed_absolute_delta": null,
+          "maximum_allowed_relative_delta": null,
+          "maximum_allowed_value": 3.5,
+          "metric_id": "coarse_event_rate_ratio_vs_observed_open",
+          "reference_value": null,
+          "relative_delta": null,
+          "status": "pass",
+          "summary": "candidate value 3.344819 must be <= 3.500000"
+        },
+        {
+          "absolute_delta": null,
+          "candidate_value": 1.0632232255691199,
+          "failure_classification": null,
+          "maximum_allowed_absolute_delta": null,
+          "maximum_allowed_relative_delta": null,
+          "maximum_allowed_value": 1.35,
+          "metric_id": "seeded_event_rate_ratio_vs_calibrated_open",
+          "reference_value": null,
+          "relative_delta": null,
+          "status": "pass",
+          "summary": "candidate value 1.063223 must be <= 1.350000"
+        },
+        {
+          "absolute_delta": 0.0032800199987832457,
+          "candidate_value": 0.412979707994964,
+          "failure_classification": null,
+          "maximum_allowed_absolute_delta": 0.05,
+          "maximum_allowed_relative_delta": 1.0,
+          "maximum_allowed_value": null,
+          "metric_id": "native_runtime_seconds",
+          "reference_value": 0.40969968799618073,
+          "relative_delta": 0.008005912854914896,
+          "status": "pass",
+          "summary": "candidate regression must stay within both absolute and relative growth limits (baseline=0.409700, candidate=0.412980)"
+        },
+        {
+          "absolute_delta": -0.10909204042400233,
+          "candidate_value": 1.832787653314881,
+          "failure_classification": null,
+          "maximum_allowed_absolute_delta": 0.2,
+          "maximum_allowed_relative_delta": 1.0,
+          "maximum_allowed_value": null,
+          "metric_id": "python_materialization_seconds",
+          "reference_value": 1.9418796937388834,
+          "relative_delta": -0.05617857830005791,
+          "status": "pass",
+          "summary": "candidate regression must stay within both absolute and relative growth limits (baseline=1.941880, candidate=1.832788)"
+        },
+        {
+          "absolute_delta": 0.0,
+          "candidate_value": 99373875.0,
+          "failure_classification": null,
+          "maximum_allowed_absolute_delta": 524288.0,
+          "maximum_allowed_relative_delta": 0.15,
+          "maximum_allowed_value": null,
+          "metric_id": "boundary_transport_bytes",
+          "reference_value": 99373875.0,
+          "relative_delta": 0.0,
+          "status": "pass",
+          "summary": "candidate regression must stay within both absolute and relative growth limits (baseline=99373875.000000, candidate=99373875.000000)"
+        },
+        {
+          "absolute_delta": 0.0,
+          "candidate_value": 37748736.0,
+          "failure_classification": null,
+          "maximum_allowed_absolute_delta": 524288.0,
+          "maximum_allowed_relative_delta": 0.15,
+          "maximum_allowed_value": null,
+          "metric_id": "native_estimated_retained_bytes",
+          "reference_value": 37748736.0,
+          "relative_delta": 0.0,
+          "status": "pass",
+          "summary": "candidate regression must stay within both absolute and relative growth limits (baseline=37748736.000000, candidate=37748736.000000)"
+        }
+      ]
+    }
+  ],
+  "policy_id": "real_data_seeded_runtime_threshold_policy",
+  "policy_version": "1.0.0",
+  "schema_version": "benchmark.real_data_seeded_runtime.baseline_comparison.v1"
+}
