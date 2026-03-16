@@ -7,12 +7,14 @@ Realign `pybind` and the umbrella `janiform-core` facade after the internal crat
 - Define which internal crates `pybind` should reach through `janiform-core` and which, if any, it may depend on directly.
 - Keep the public Python and CLI-facing behavior stable while internal Rust crates move.
 - Update the `janiform-core` facade to re-export only the intended stable Rust workflow and domain surfaces.
+- Treat `janiform-core` as a facade for extracted crates, not as a hidden long-term implementation home. This issue should not preserve `crates/core` source ownership for domains already claimed by extracted internal crates through `#[path = "..."]` or similar indirection.
 - Prevent `pybind` from taking opportunistic direct dependencies on every new internal crate just because they exist.
 - Ensure boundary conversion and error-mapping code remains confined to `pybind`.
 
 ### Acceptance Criteria
 - `pybind` remains thin and does not become the place where the new internal crate graph is reassembled ad hoc.
 - `janiform-core` provides a deliberate umbrella facade over the extracted internal crates.
+- The umbrella facade does not reintroduce ambiguity about source ownership for already extracted Rust domains.
 - Public Python behavior remains stable while Rust internals are decomposed.
 - Internal crate extraction does not leak Python-specific concerns into pure Rust crates.
 

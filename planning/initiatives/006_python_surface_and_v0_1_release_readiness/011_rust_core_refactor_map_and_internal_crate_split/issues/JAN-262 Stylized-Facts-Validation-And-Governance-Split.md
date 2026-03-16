@@ -17,11 +17,13 @@ Separate stylized-fact analytics, engine-facing validation domains, and benchmar
   - performance baselines
   - deterministic regression orchestration
   - regression drift attribution
+- Physically move the extracted source trees, crate-local helpers, and unit tests into the target crates. Do not count `#[path = "..."]` indirection from `crates/core` or Cargo-only dependency changes as completing this split.
 - Ensure validation crates can depend on engines, but engines do not depend back on validation.
 - Ensure governance can consume validation and engine outputs without becoming a dependency of production runtime crates.
 
 ### Acceptance Criteria
 - Stylized-fact analytics, validation domains, and governance tooling are no longer co-owned inside one verification module tree.
+- The extracted analytics, validation, and governance crates become the physical implementation owners for the moved code and their unit tests.
 - Governance code has a dedicated internal home outside production engine crates.
 - Benchmark and regression helpers no longer grow foundational or engine crate surfaces unnecessarily.
 - Existing regression and governance behavior remains intact through the split.
