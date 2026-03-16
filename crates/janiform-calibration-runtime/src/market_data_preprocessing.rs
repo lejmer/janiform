@@ -778,7 +778,7 @@ fn build_return_components_candidate_generation_input(
 
     let median_abs_intraday_return = median_abs(intraday_return_values.as_slice());
 
-    let gap_tolerance = 0.0025f64.max(median_abs_intraday_return * 3.0);
+    let gap_tolerance = median_abs_intraday_return * 3.0;
     let material_close_open_gap_count = close_open_boundary_observations
         .iter()
         .filter(|observation| {
@@ -1056,23 +1056,18 @@ fn derive_intraday_jump_candidates(
         return Vec::new();
     }
 
-    let threshold = 0.005f64.max(
-        median_abs(
-            candidate_returns
-                .iter()
-                .map(|(_, jump_return)| *jump_return)
-                .collect::<Vec<_>>()
-                .as_slice(),
-        ) * 4.0,
-    );
+    let threshold = median_abs(
+        candidate_returns
+            .iter()
+            .map(|(_, jump_return)| *jump_return)
+            .collect::<Vec<_>>()
+            .as_slice(),
+    ) * 4.0;
     let material_candidates: Vec<(i64, f64)> = candidate_returns
         .iter()
         .copied()
         .filter(|(_, jump_return)| f64::abs(*jump_return) > threshold)
         .collect();
-    if material_candidates.len() < 2 {
-        return Vec::new();
-    }
 
     material_candidates
         .into_iter()

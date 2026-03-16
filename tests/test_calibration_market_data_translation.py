@@ -442,6 +442,55 @@ def test_translate_market_data_request_applies_hourly_nig_shape_mass_floor_for_d
     assert return_components_input.open_session_sell_share_proxy == pytest.approx(0.5)
 
 
+def test_translate_market_data_request_preserves_isolated_data_driven_intraday_jump_candidate(
+    tmp_path: Path,
+    calendar_registry_json: str,
+) -> None:
+    session_definition_path = _write_session_definition(tmp_path, calendar_registry_json)
+
+    tick_data_path = tmp_path / "isolated_jump_ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,1.085000,buy",
+                "2026-02-02T14:30:01Z,1.085001,sell",
+                "2026-02-02T14:30:02Z,1.085002,buy",
+                "2026-02-02T14:30:03Z,1.086500,sell",
+                "2026-02-02T14:30:04Z,1.086501,buy",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    request = _build_market_data_request(
+        session_definition_path=session_definition_path,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+        ),
+    )
+
+    translation = translate_market_data_request_to_staged_execution_input(request)
+    return_components_input = (
+        translation.execution_input.return_components_candidate_generation_input
+    )
+    assert return_components_input is not None
+
+    assert len(return_components_input.detected_intraday_jump_candidates) == 1
+    detected_jump_candidate = return_components_input.detected_intraday_jump_candidates[0]
+    assert detected_jump_candidate.jump_timestamp_utc_nanos == _utc_nanos("2026-02-02T14:30:03Z")
+    assert detected_jump_candidate.jump_return > 0.0
+
+
 def test_translate_market_data_request_infers_missing_trade_signs_from_price_direction(
     tmp_path: Path,
     calendar_registry_json: str,

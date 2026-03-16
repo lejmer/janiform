@@ -38,7 +38,7 @@ use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
 const RETURN_COMPONENTS_STAGE_CANDIDATE_GENERATION_POLICY: &str =
     "observed_open_session_returns_and_shock_evidence_to_nig_search_and_news_candidate_families.v1";
-const RETURN_COMPONENTS_STAGE_SIGNAL_PREPROCESSING_POLICY: &str = "timestamp_sorted_finite_signal_filtering_with_repeated_shock_and_continuous_return_partitioning.v1";
+const RETURN_COMPONENTS_STAGE_SIGNAL_PREPROCESSING_POLICY: &str = "timestamp_sorted_finite_signal_filtering_with_material_shock_and_continuous_return_partitioning.v1";
 const RETURN_COMPONENTS_STAGE_OBJECTIVE_METRIC_BUCKET_POLICY: &str =
     "continuous_distribution_jump_gap_activity_and_price_sanity_bucketed_weighted_terms.v1";
 const RETURN_COMPONENTS_STAGE_DETERMINISTIC_SEED_POLICY: &str =
@@ -2496,7 +2496,7 @@ fn summarize_candidate_generation_signals(
             .map(|observation| observation.log_return)
             .collect::<Vec<_>>()
             .as_slice(),
-        mean_continuous_business_time_scale,
+        continuous_fit_business_time_scales.as_slice(),
     );
     let observed_log_price_span = compute_observed_log_price_span(
         sorted_signals
@@ -2849,8 +2849,7 @@ fn build_candidate_provenance_template(
             "reject_non_finite_known_news_returns".to_string(),
             "reject_non_finite_observed_open_session_returns".to_string(),
             "exclude_known_news_windows_from_continuous_nig_fit".to_string(),
-            "exclude_repeated_and_isolated_material_shock_returns_from_continuous_nig_fit"
-                .to_string(),
+            "exclude_detected_material_shock_returns_from_continuous_nig_fit".to_string(),
             "reject_non_finite_intraday_jump_returns".to_string(),
             "reject_non_finite_and_non_positive_close_open_boundary_prices".to_string(),
             "enforce_non_negative_post_shock_activity_lift".to_string(),
@@ -3210,16 +3209,39 @@ fn fitted_mean_abs_jump_return(
 
 fn summarize_return_distribution(
     values: &[f64],
-    mean_business_time_scale: f64,
+    business_time_scales: &[f64],
 ) -> ReturnComponentsStageReturnDistributionSummary {
-    let normalized_business_time_scale = mean_business_time_scale.max(1.0e-8);
+    let normalized_mean_values: Vec<f64> = values
+        .iter()
+        .zip(business_time_scales.iter())
+        .filter_map(|(value, business_time_scale)| {
+            if !value.is_finite() || !business_time_scale.is_finite() || *business_time_scale <= 0.0
+            {
+                return None;
+            }
+
+            Some(*value / business_time_scale.max(1.0e-8))
+        })
+        .collect();
+    let normalized_variance_values: Vec<f64> = values
+        .iter()
+        .zip(business_time_scales.iter())
+        .filter_map(|(value, business_time_scale)| {
+            if !value.is_finite() || !business_time_scale.is_finite() || *business_time_scale <= 0.0
+            {
+                return None;
+            }
+
+            Some(*value / business_time_scale.max(1.0e-8).sqrt())
+        })
+        .collect();
+
     ReturnComponentsStageReturnDistributionSummary {
-        mean_return: arithmetic_mean_signed(values) / normalized_business_time_scale,
-        volatility: sample_standard_deviation(values) / normalized_business_time_scale.sqrt(),
-        skewness: sample_adjusted_skewness(values).unwrap_or(0.0)
-            * normalized_business_time_scale.sqrt(),
-        excess_kurtosis: sample_adjusted_excess_kurtosis(values).unwrap_or(0.0)
-            * normalized_business_time_scale,
+        mean_return: arithmetic_mean_signed(normalized_mean_values.as_slice()),
+        volatility: sample_standard_deviation(normalized_variance_values.as_slice()),
+        skewness: sample_adjusted_skewness(normalized_variance_values.as_slice()).unwrap_or(0.0),
+        excess_kurtosis: sample_adjusted_excess_kurtosis(normalized_variance_values.as_slice())
+            .unwrap_or(0.0),
     }
 }
 
@@ -4451,6 +4473,15 @@ mod tests {
         assert!(!nig_candidates.is_empty());
         assert!(nig_candidates.iter().all(|candidate| candidate.delta
             >= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER));
+    }
+
+    #[test]
+    fn return_distribution_summary_normalizes_each_return_by_business_time_scale() {
+        let summary = summarize_return_distribution(&[0.01, 0.04], &[1.0, 4.0]);
+
+        assert!((summary.mean_return - 0.01).abs() <= 1.0e-12);
+        assert!((summary.volatility - 0.007071067811865475).abs() <= 1.0e-12);
+        assert!(summary.volatility < sample_standard_deviation(&[0.01, 0.04]));
     }
 
     fn test_source_window() -> ReturnComponentsStageSignalSourceWindow {
