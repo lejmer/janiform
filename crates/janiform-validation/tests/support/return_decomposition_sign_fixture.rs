@@ -6,7 +6,7 @@ use std::fs;
 use janiform_foundations::complex_math::ComplexScalar;
 use serde::Deserialize;
 
-use crate::validation_fixture::fixtures_root_path;
+use crate::support::validation_fixture::fixtures_root_path;
 
 pub const RETURN_DECOMPOSITION_SIGN_ANALYTIC_FIXTURE_SCHEMA_VERSION: &str =
     "return.decomposition.sign_analytic_fixture.v1";

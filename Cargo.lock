@@ -499,10 +499,7 @@ name = "janiform-test-support"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "janiform-engine-pricing",
- "janiform-foundations",
  "janiform-market-time",
- "janiform-model-kernels",
  "janiform-validation",
  "serde",
  "serde_json",

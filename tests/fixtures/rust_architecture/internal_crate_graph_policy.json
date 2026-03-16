@@ -191,9 +191,6 @@
       "kind": "test_only",
       "layer": "test_support",
       "allowed_internal_dependencies": [
-        "janiform-foundations",
-        "janiform-model-kernels",
-        "janiform-engine-pricing",
         "janiform-market-time",
         "janiform-validation"
       ]
