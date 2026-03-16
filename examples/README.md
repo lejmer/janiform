@@ -4,6 +4,27 @@ These examples exercise the current public Python workflow contracts directly.
 They import only public Janiform modules and are designed to be small enough to
 read end to end.
 
+Internal fixture builders and documentation setup helpers live under
+`examples/support/` and are not part of the example list below.
+
+## Synthetic EUR/USD
+
+Run:
+
+```bash
+PYTHONPATH=python python3 -m examples.synthetic_eurusd
+```
+
+This a very short-and-to-the-point end-to-end example. It:
+- loads the checked-in synthetic EUR/USD parquet fixture
+- fits a `JaniformModel` with `JaniformEstimator`
+- runs both coarse-interval and seeded-tick simulations from the fitted model
+- opens a two-panel plot so you can inspect the simulated paths visually
+
+This example uses the bundled dataset at
+`data/Synthetic_EURUSD_Data_1M_ticks.parquet`, so you can run it without
+preparing any separate input files first.
+
 ## Simulation
 
 Run:
@@ -130,37 +151,6 @@ Expected summary shape:
   }
 }
 ```
-
-## EUR/USD End-To-End Manual Test
-
-Run:
-
-```bash
-PYTHONPATH=python python3 -m examples.eurusd_end_to_end_manual_test /path/to/eurusd_ticks.csv
-```
-
-Expected input columns:
-
-- `time`: tick timestamp
-- `close`: midprice at that tick
-- `sign`: `buy` or `sell`
-
-This example:
-- prepares market-data calibration directly from the user-facing CSV contract
-- runs staged calibration in `disk` mode so the fitted stage artifacts can be reused
-- builds a calibrated coarse simulation request from the persisted Hawkes and return-components artifacts
-- builds a seeded tick simulation request from the same calibrated hourly controls
-- times market-data preparation, staged calibration, coarse generation, and seeded-tick generation
-- compares:
-  - observed hourly returns against coarse-path returns
-  - observed hourly returns against seeded-path hourly returns aggregated from the priced fine path
-  - coarse-path returns against seeded-path hourly returns aggregated from the priced fine path
-
-Note:
-- the seeded tick simulator now emits a priced fine path with a derived event-tape projection
-- this example uses return stylized facts on a shared hourly grid rather than activity-only diagnostics
-- pass `--plot-path /tmp/eurusd-smoke.png` to save a quick visual of the observed tick path plus observed, coarse, and seeded return path and distribution
-- if you do not pass `--session-definition-json`, the example infers a reusable FX session definition from the workflow context and observed tick gaps
 
 ## Advanced Staged Calibration
 

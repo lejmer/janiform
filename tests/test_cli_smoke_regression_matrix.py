@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 import janiform.cli as cli_module
-from examples._shared import (
+from examples.support._shared import (
     build_stylized_fact_artifact_export_config,
     build_stylized_fact_horizon_comparison_request,
     build_stylized_fact_metric_catalog,

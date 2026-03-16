@@ -6,7 +6,7 @@ from janiform.pricing import (
     run_vanilla_option_pricing,
 )
 
-from ._shared import (
+from .support._shared import (
     build_pricing_interval_factors,
     build_pricing_optional_output_selection,
     build_pricing_request,

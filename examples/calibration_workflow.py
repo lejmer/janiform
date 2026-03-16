@@ -5,7 +5,7 @@ from typing import Any
 
 from janiform.calibration import CalibrationExecutionMode, run_staged_calibration
 
-from ._shared import build_calendar_registry, build_calibration_execution_input
+from .support._shared import build_calendar_registry, build_calibration_execution_input
 
 
 def run_example(*, disk_checkpoint_directory: Path) -> dict[str, Any]:

@@ -7,7 +7,7 @@ from janiform.simulation.seeded import (
     run_seeded_tick_event_simulation,
 )
 
-from ._shared import (
+from .support._shared import (
     SIMULATION_RANGE_END_UTC,
     SIMULATION_RANGE_START_UTC,
     build_calendar_registry,

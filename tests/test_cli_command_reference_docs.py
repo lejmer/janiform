@@ -5,7 +5,7 @@ import orjson
 import pytest
 
 import janiform.cli as cli_module
-from examples.cli_documentation_setup import write_cli_documentation_inputs
+from examples.support.cli_documentation_setup import write_cli_documentation_inputs
 from tests.test_cli_high_level_commands import _build_full_workflow_model
 from tests.cli_test_support import invoke_cli, normalize_help_output, render_help
 
