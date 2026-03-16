@@ -326,6 +326,7 @@ dependencies = [
  "janiform-foundations",
  "janiform-market-time",
  "janiform-model-kernels",
+ "janiform-test-support",
  "serde",
  "serde_json",
 ]
@@ -374,6 +375,7 @@ dependencies = [
  "janiform-governance-bench",
  "janiform-market-time",
  "janiform-model-kernels",
+ "janiform-test-support",
  "janiform-validation",
  "serde",
  "serde_json",
@@ -431,6 +433,7 @@ dependencies = [
  "janiform-governance-bench",
  "janiform-market-time",
  "janiform-model-kernels",
+ "janiform-test-support",
  "janiform-validation",
  "serde",
  "serde_json",
@@ -449,6 +452,7 @@ dependencies = [
  "janiform-foundations",
  "janiform-market-time",
  "janiform-model-kernels",
+ "janiform-test-support",
  "serde",
  "serde_json",
 ]
@@ -486,6 +490,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "janiform-test-support"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "janiform-market-time",
+ "janiform-validation",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "janiform-validation"
 version = "0.1.0"
 dependencies = [
@@ -500,6 +515,7 @@ dependencies = [
  "janiform-governance-bench",
  "janiform-market-time",
  "janiform-model-kernels",
+ "janiform-test-support",
  "serde",
  "serde_json",
 ]

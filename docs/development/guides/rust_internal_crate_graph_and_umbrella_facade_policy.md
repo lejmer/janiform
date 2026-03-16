@@ -105,6 +105,7 @@ The initial target internal workspace graph is the following:
 | `janiform-validation` | validation crate | regression harnesses, scale consistency, deterministic checks, validation contracts | `janiform-foundations`, `janiform-model-kernels`, `janiform-affine-oracle`, `janiform-market-time`, `janiform-engine-pricing`, `janiform-engine-risk`, `janiform-engine-simulation`, `janiform-calibration-artifacts`, `janiform-analytics-stylized-facts`, `janiform-governance-bench` |
 | `janiform-governance` | governance crate | regression drift attribution, acceptance governance, deterministic regression orchestration, performance baseline ownership | `janiform-foundations`, `janiform-model-kernels`, `janiform-market-time`, `janiform-engine-pricing`, `janiform-engine-risk`, `janiform-engine-simulation`, `janiform-calibration-artifacts`, `janiform-analytics-stylized-facts`, `janiform-validation`, `janiform-governance-bench` |
 | `janiform-governance-bench` | benchmark-only governance crate | benchmark catalogs, harnesses, policies, and microbenchmark fixture support shared by validation and governance workflows | `janiform-foundations`, `janiform-model-kernels`, `janiform-affine-oracle`, `janiform-market-time`, `janiform-engine-pricing`, `janiform-engine-risk`, `janiform-engine-simulation`, `janiform-calibration-artifacts` |
+| `janiform-test-support` | test-only support crate | shared regression-fixture readers and helper contracts used only by Rust tests | `janiform-market-time`, `janiform-validation` |
 | `janiform-core` | umbrella facade | curated public Rust surface during migration | all internal crates above except `janiform-pybind` |
 | `janiform-pybind` | Python boundary crate | PyO3 conversion and error mapping | `janiform-core` only |
 
@@ -115,6 +116,7 @@ The graph is intentionally directional:
 - calibration runtime may call into engines
 - validation may observe engines and calibration artifacts
 - governance may observe engines and validation outputs
+- shared Rust test-fixture readers should live in a test-only support crate instead of being copied across crate-local test trees
 - `janiform-core` stays on top as the curated Rust facade
 - `janiform-pybind` stays above the facade rather than reconstructing the graph directly
 
@@ -231,6 +233,13 @@ The following dependency directions are forbidden unless this policy is explicit
   engine, or calibration crates
 - new benchmark helpers should land in governance-bench or test-only code unless a production
   contract need is explicitly documented
+
+### Test-only support rules
+
+- shared Rust regression-fixture readers should move into `janiform-test-support` instead of
+  being copied into multiple crate-local `tests/support` directories
+- `janiform-test-support` may depend on internal crates only when a fixture contract genuinely
+  needs those types, and it must stay out of production dependency paths
 
 ### Pybind boundary rule
 

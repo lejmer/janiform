@@ -24,6 +24,7 @@ chrono = { workspace = true }
 criterion = "0.5.1"
 janiform-engine-simulation = { path = "../engine-simulation" }
 janiform-market-time = { path = "../market-time" }
+janiform-test-support = { path = "../test-support" }
 
 [[bench]]
 name = "rust_microbenchmarks"

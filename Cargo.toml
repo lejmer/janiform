@@ -14,6 +14,7 @@ members = [
     "crates/market-time",
     "crates/model-kernels",
     "crates/pybind",
+    "crates/test-support",
     "crates/validation",
 ]
 resolver = "2"

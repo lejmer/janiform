@@ -14,7 +14,7 @@ use janiform_validation::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::support::validation_fixture::{
+use crate::validation_fixture::{
     CONTENT_HASH_ALGORITHM_POLICY, LoadedFixturePayload, ValidationFixtureManifestDocument,
     ValidationFixtureManifestEntry, fixtures_root_path, load_manifest_entry_payload,
     load_validation_fixture_manifest_document,

@@ -24,3 +24,6 @@ janiform-market-time = { path = "../market-time" }
 janiform-model-kernels = { path = "../model-kernels" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+janiform-test-support = { path = "../test-support" }

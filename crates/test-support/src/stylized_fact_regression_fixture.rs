@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::support::validation_fixture::{
+use crate::validation_fixture::{
     LoadedFixturePayload, ValidationFixtureManifestDocument, ValidationFixtureManifestEntry,
     fixtures_root_path, load_manifest_entry_payload, load_validation_fixture_manifest_document,
 };
@@ -256,7 +256,7 @@ pub fn validate_stylized_fact_metric_regression_fixture_document(
     }
 
     if fixture_document.determinism_metadata.content_hash_algorithm
-        != crate::support::validation_fixture::CONTENT_HASH_ALGORITHM_POLICY
+        != crate::validation_fixture::CONTENT_HASH_ALGORITHM_POLICY
     {
         return Err(format!(
             "unexpected stylized fact regression content hash algorithm policy: {}",

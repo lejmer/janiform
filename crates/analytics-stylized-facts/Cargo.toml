@@ -21,3 +21,4 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 chrono = { workspace = true }
+janiform-test-support = { path = "../test-support" }

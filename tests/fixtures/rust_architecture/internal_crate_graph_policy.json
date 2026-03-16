@@ -127,7 +127,8 @@
         "janiform-model-kernels",
         "janiform-market-time",
         "janiform-engine-simulation",
-        "janiform-calibration-artifacts"
+        "janiform-calibration-artifacts",
+        "janiform-test-support"
       ]
     },
     "janiform-validation": {
@@ -144,7 +145,8 @@
         "janiform-engine-simulation",
         "janiform-calibration-artifacts",
         "janiform-analytics-stylized-facts",
-        "janiform-governance-bench"
+        "janiform-governance-bench",
+        "janiform-test-support"
       ]
     },
     "janiform-governance": {
@@ -161,7 +163,8 @@
         "janiform-calibration-artifacts",
         "janiform-analytics-stylized-facts",
         "janiform-validation",
-        "janiform-governance-bench"
+        "janiform-governance-bench",
+        "janiform-test-support"
       ]
     },
     "janiform-governance-bench": {
@@ -176,7 +179,17 @@
         "janiform-engine-pricing",
         "janiform-engine-risk",
         "janiform-engine-simulation",
-        "janiform-calibration-artifacts"
+        "janiform-calibration-artifacts",
+        "janiform-test-support"
+      ]
+    },
+    "janiform-test-support": {
+      "status": "existing",
+      "kind": "test_only",
+      "layer": "test_support",
+      "allowed_internal_dependencies": [
+        "janiform-market-time",
+        "janiform-validation"
       ]
     },
     "janiform-core": {
@@ -196,7 +209,8 @@
         "janiform-analytics-stylized-facts",
         "janiform-validation",
         "janiform-governance",
-        "janiform-governance-bench"
+        "janiform-governance-bench",
+        "janiform-test-support"
       ]
     },
     "janiform-pybind": {
