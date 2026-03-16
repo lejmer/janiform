@@ -22,7 +22,7 @@ from janiform.calibration.market_data import (
 )
 from janiform.calibration.staged import CalibrationExecutionMode
 
-from ._shared import write_market_data_fixture_files
+from .support._shared import write_market_data_fixture_files
 
 
 def run_example(*, working_directory: Path) -> dict[str, Any]:

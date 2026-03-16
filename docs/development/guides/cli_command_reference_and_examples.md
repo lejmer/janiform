@@ -31,7 +31,7 @@ The setup command below writes JSON requests, session definitions, known-news ca
 tick-data files, and option-surface files under `tmp/cli-docs`.
 
 ```bash
-PYTHONPATH=python python3 -m examples.cli_documentation_setup --output-dir tmp/cli-docs
+PYTHONPATH=python python3 -m examples.support.cli_documentation_setup --output-dir tmp/cli-docs
 ```
 
 The generated files include:
