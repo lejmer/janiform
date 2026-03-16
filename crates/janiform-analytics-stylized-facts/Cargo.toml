@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 description = "Stylized-fact analytics for Janiform."
+readme = "README.md"
 
 [lib]
 name = "janiform_analytics_stylized_facts"

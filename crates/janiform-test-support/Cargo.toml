@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 description = "Shared Rust test support for Janiform workspace fixtures."
+readme = "README.md"
 
 [lib]
 name = "janiform_test_support"
