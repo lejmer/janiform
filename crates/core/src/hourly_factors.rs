@@ -1,4 +1,4 @@
-//! Curated facade re-export for market-time hourly factor infrastructure.
+//! Top-level re-export for market-time hourly factor infrastructure.
 
 pub use janiform_market_time::hourly_factors::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_KNOWN_NEWS_CALENDAR_ANCHOR_POLICY,

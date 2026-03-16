@@ -1,4 +1,4 @@
-//! Curated facade re-export for the pricing runtime engine.
+//! Top-level re-export for the pricing runtime engine.
 
 pub use janiform_engine_pricing::{
     DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION,

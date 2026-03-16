@@ -1,4 +1,4 @@
-//! Curated facade re-export for the simulation runtime engine.
+//! Top-level re-export for the simulation runtime engine.
 
 pub use janiform_engine_simulation::{
     COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY, COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY,
