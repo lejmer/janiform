@@ -1,0 +1,105 @@
+{
+  "access_pattern_reports": [
+    {
+      "access_kind": "event_tape_head",
+      "boundary_transport_bytes": 19208,
+      "materialized_event_count": 256,
+      "materialized_transition_count": 0,
+      "pattern_id": "event_tape_first_chunk",
+      "python_materialization_seconds": 0.00028033999842591584
+    },
+    {
+      "access_kind": "full_seeded_export_to_pandas",
+      "boundary_transport_bytes": 6809031,
+      "materialized_event_count": 0,
+      "materialized_transition_count": 16585,
+      "pattern_id": "full_seeded_tick_export",
+      "python_materialization_seconds": 0.11784837898449041
+    }
+  ],
+  "boundary_transport_bytes": 6828239,
+  "calibrated_expected_event_count_over_observation_window": 4096.00005190521,
+  "calibrated_open_event_rate_per_hour": 170.54823018969327,
+  "coarse_generated_event_count": 16852,
+  "fixture_id": "synthetic_eurusd_unsigned_4096row_96h_v1",
+  "fixture_version": "1.0.0",
+  "materialized_event_count": 256,
+  "materialized_transition_count": 16585,
+  "native_estimated_retained_bytes": 4718592,
+  "native_runtime_seconds": 0.02505607300554402,
+  "observed_open_event_rate_per_hour": 170.54822802847704,
+  "observed_source_tick_count": 4096,
+  "output_schema_metadata": {
+    "required_access_pattern_fields": [
+      "pattern_id",
+      "access_kind",
+      "boundary_transport_bytes",
+      "python_materialization_seconds",
+      "materialized_transition_count",
+      "materialized_event_count"
+    ],
+    "required_provenance_fields": [
+      "dataset_generation_policy",
+      "unsigned_market_data_policy",
+      "dataset_row_count",
+      "dataset_duration_minutes",
+      "dataset_seed",
+      "dataset_start_time_utc",
+      "market_profile",
+      "execution_mode",
+      "simulation_seed",
+      "simulation_start_time_utc",
+      "coarse_interval",
+      "coarse_horizon_interval_count",
+      "seeded_horizon_interval_count",
+      "materialization_access_pattern_ids",
+      "memory_metric_semantics"
+    ],
+    "required_report_fields": [
+      "schema_version",
+      "fixture_id",
+      "fixture_version",
+      "output_schema_metadata",
+      "provenance",
+      "observed_source_tick_count",
+      "calibrated_expected_event_count_over_observation_window",
+      "coarse_generated_event_count",
+      "seeded_transition_count",
+      "seeded_event_count",
+      "native_runtime_seconds",
+      "python_response_construction_seconds",
+      "python_materialization_seconds",
+      "boundary_transport_bytes",
+      "native_estimated_retained_bytes",
+      "materialized_transition_count",
+      "materialized_event_count",
+      "access_pattern_reports"
+    ]
+  },
+  "provenance": {
+    "coarse_horizon_interval_count": 96,
+    "coarse_interval": "1h",
+    "dataset_duration_minutes": 1440.0,
+    "dataset_generation_policy": "synthetic_eurusd_irregular_unsigned_tick_generator.v1",
+    "dataset_row_count": 4096,
+    "dataset_seed": 17,
+    "dataset_start_time_utc": "2026-01-05T00:00:00+00:00",
+    "execution_mode": "memory",
+    "market_profile": "eurusd_spot",
+    "materialization_access_pattern_ids": [
+      "event_tape_first_chunk",
+      "full_seeded_tick_export"
+    ],
+    "memory_metric_semantics": "estimated_native_retained_bytes_proxy_not_peak_rss.v1",
+    "seeded_horizon_interval_count": 96,
+    "simulation_seed": 17,
+    "simulation_start_time_utc": "2026-01-05T00:00:00+00:00",
+    "unsigned_market_data_policy": "synthetic_fixture_omits_trade_sign_column_and_relies_on_unsigned_fit_path.v1"
+  },
+  "python_materialization_seconds": 0.11812871898291633,
+  "python_response_construction_seconds": 0.0014877220091875643,
+  "schema_version": "benchmark.real_data_seeded_runtime.report.v1",
+  "seeded_event_count": 16489,
+  "seeded_transition_count": 16585,
+  "source_open_session_duration_hours": 24.016667
+}

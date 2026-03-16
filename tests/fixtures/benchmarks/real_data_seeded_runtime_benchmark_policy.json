@@ -1,0 +1,23 @@
+{
+  "comparison_policy": "candidate_vs_accepted_baseline_with_fixture_threshold_classification.v1",
+  "fixture_thresholds": [
+    {
+      "fixture_id": "synthetic_eurusd_unsigned_4096row_96h_v1",
+      "maximum_boundary_transport_absolute_growth_bytes": 524288,
+      "maximum_boundary_transport_relative_growth": 0.15,
+      "maximum_coarse_event_rate_ratio_vs_observed_open": 1.35,
+      "maximum_native_runtime_absolute_regression_seconds": 0.05,
+      "maximum_native_runtime_relative_regression": 1.0,
+      "maximum_python_materialization_absolute_regression_seconds": 0.2,
+      "maximum_python_materialization_relative_regression": 1.0,
+      "maximum_retained_memory_absolute_growth_bytes": 524288,
+      "maximum_retained_memory_relative_growth": 0.15,
+      "maximum_seeded_event_rate_ratio_vs_calibrated_open": 1.35,
+      "maximum_seeded_event_rate_ratio_vs_observed_open": 1.35
+    }
+  ],
+  "memory_metric_semantics": "estimated_native_retained_bytes_proxy_not_peak_rss.v1",
+  "policy_id": "real_data_seeded_runtime_threshold_policy",
+  "policy_version": "1.0.0",
+  "schema_version": "benchmark.real_data_seeded_runtime.threshold_policy.v1"
+}

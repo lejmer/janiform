@@ -1,0 +1,41 @@
+{
+  "dataset_generation_policy": "synthetic_eurusd_irregular_unsigned_tick_generator.v1",
+  "fixture_loading_order_policy": "fixture_id_ascending.v1",
+  "fixture_set_id": "real_data_seeded_runtime_fixture_set_v1",
+  "fixtures": [
+    {
+      "coarse_horizon_interval_count": 96,
+      "coarse_interval": "1h",
+      "dataset_duration_minutes": 1440.0,
+      "dataset_row_count": 4096,
+      "dataset_seed": 17,
+      "dataset_start_time_utc": "2026-01-05T00:00:00+00:00",
+      "description": "Bounded synthetic EUR/USD-style unsigned tick slice used to benchmark the repaired real-data seeded runtime path.",
+      "execution_mode": "memory",
+      "fixture_id": "synthetic_eurusd_unsigned_4096row_96h_v1",
+      "fixture_version": "1.0.0",
+      "market_profile": "eurusd_spot",
+      "materialization_access_patterns": [
+        {
+          "access_kind": "event_tape_head",
+          "pattern_id": "event_tape_first_chunk",
+          "record_count": 256
+        },
+        {
+          "access_kind": "full_seeded_export_to_pandas",
+          "pattern_id": "full_seeded_tick_export"
+        }
+      ],
+      "seeded_horizon_interval_count": 96,
+      "simulation_seed": 17,
+      "simulation_start_time_utc": "2026-01-05T00:00:00+00:00",
+      "tags": [
+        "real_data_proxy",
+        "unsigned_market_data",
+        "seeded_runtime"
+      ]
+    }
+  ],
+  "schema_version": "benchmark.real_data_seeded_runtime.fixture.v1",
+  "unsigned_market_data_policy": "synthetic_fixture_omits_trade_sign_column_and_relies_on_unsigned_fit_path.v1"
+}
