@@ -17,6 +17,8 @@ def _load_workflow_text(path: Path) -> str:
 def test_fast_tier_workflow_has_required_triggers_fields_and_steps() -> None:
     workflow_path: Path = _project_root() / ".github" / "workflows" / "ci-fast-regression.yml"
     workflow_text: str = _load_workflow_text(workflow_path)
+    runner_script_path: Path = _project_root() / "scripts" / "ci" / "run_fast_tier.py"
+    runner_script_text: str = _load_workflow_text(runner_script_path)
 
     assert "name: ci-fast-regression" in workflow_text
     assert "on:" in workflow_text
@@ -28,6 +30,9 @@ def test_fast_tier_workflow_has_required_triggers_fields_and_steps() -> None:
     assert "scripts/ci/parse_fast_tier_output.py" in workflow_text
     assert "scripts/ci/write_benchmark_artifact_index.py" in workflow_text
     assert "uses: actions/upload-artifact@v7" in workflow_text
+    assert "deterministic_regression_harness" in runner_script_text
+    assert "coarse_fine_consistency_regression_harness" in runner_script_text
+    assert "pricing_benchmark_validation_regression" in runner_script_text
 
 
 def test_benchmark_tier_workflow_has_schedule_trigger_and_artifact_hooks() -> None:
@@ -42,8 +47,10 @@ def test_benchmark_tier_workflow_has_schedule_trigger_and_artifact_hooks() -> No
     assert "scheduled-benchmark-smoke-workloads:" in workflow_text
     assert "timeout-minutes: 60" in workflow_text
     assert "Run benchmark smoke workloads" in workflow_text
+    assert "--test benchmark_scenario_catalog" in workflow_text
     assert "--test oracle_pricer_risk_benchmark_harness" in workflow_text
     assert "--test performance_baseline_capture_and_storage" in workflow_text
+    assert "--test regression_drift_attribution_reports" in workflow_text
     assert "scripts/ci/write_benchmark_artifact_index.py" in workflow_text
     assert "uses: actions/upload-artifact@v7" in workflow_text
 

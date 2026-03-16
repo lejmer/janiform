@@ -14,6 +14,7 @@ This guide defines the regression and benchmark CI tiers for Initiative 004 Proj
 - Runs deterministic and tolerance regression checks:
   - `cargo test -p janiform-core --test deterministic_regression_harness`
   - `cargo test -p janiform-core --test coarse_fine_consistency_regression_harness`
+  - `cargo test -p janiform-core --test pricing_benchmark_validation_regression`
 - Runs CI workflow lint and smoke coverage:
   - `pytest ci/tests/test_ci_tiered_execution_strategy.py`
 - Emits machine-readable command results and parsed output:
@@ -23,8 +24,10 @@ This guide defines the regression and benchmark CI tiers for Initiative 004 Proj
 ## Benchmark smoke tier
 
 - Runs benchmark smoke tests for schema and artifact-hook stability:
+  - `cargo test -p janiform-core --test benchmark_scenario_catalog -- --nocapture`
   - `cargo test -p janiform-core --test oracle_pricer_risk_benchmark_harness -- --nocapture`
   - `cargo test -p janiform-core --test performance_baseline_capture_and_storage -- --nocapture`
+  - `cargo test -p janiform-core --test regression_drift_attribution_reports -- --nocapture`
 - Publishes benchmark logs and artifact index as uploaded workflow artifacts.
 
 The benchmark smoke tier does not claim production-grade performance representativeness by itself.
