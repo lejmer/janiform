@@ -6,6 +6,7 @@ from typing import cast, Any
 from zoneinfo import ZoneInfo
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+
 PYTHON_ROOT = REPOSITORY_ROOT / "python"
 if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
@@ -74,6 +75,7 @@ def main() -> None:
             )
         ),
     )
+
     (GENERATED_ROOT / "index.json").write_text(
         _serialize_pretty_json(index),
         encoding="utf-8",
@@ -290,6 +292,7 @@ def _write_category_artifacts(
                 artifact_path=artifact_relative_path,
             )
         )
+
     return tuple(entries)
 
 
@@ -328,6 +331,7 @@ def _require_non_empty_string(mapping: dict[str, Any], field_name: str) -> str:
 def _require_non_empty_string_value(raw_value: object) -> str:
     if not isinstance(raw_value, str) or not raw_value.strip():
         raise TypeError("expected a non-empty string value")
+
     return raw_value
 
 
