@@ -7,7 +7,6 @@ from .inputs import (
 )
 from .results import StagedCalibrationResponse, validate_staged_calibration_response
 from .._errors import (
-    CALIBRATION_ERROR_FACTORY,
     CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
     CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
     CalibrationValidationError,
