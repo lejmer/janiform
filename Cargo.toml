@@ -2,6 +2,9 @@
 members = [
     "crates/affine-oracle",
     "crates/core",
+    "crates/engine-pricing",
+    "crates/engine-risk",
+    "crates/engine-simulation",
     "crates/foundations",
     "crates/market-time",
     "crates/model-kernels",

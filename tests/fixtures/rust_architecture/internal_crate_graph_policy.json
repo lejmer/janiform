@@ -61,7 +61,7 @@
       ]
     },
     "janiform-engine-pricing": {
-      "status": "planned",
+      "status": "existing",
       "kind": "production",
       "layer": "engine",
       "allowed_internal_dependencies": [
@@ -72,7 +72,7 @@
       ]
     },
     "janiform-engine-risk": {
-      "status": "planned",
+      "status": "existing",
       "kind": "production",
       "layer": "engine",
       "allowed_internal_dependencies": [
@@ -83,7 +83,7 @@
       ]
     },
     "janiform-engine-simulation": {
-      "status": "planned",
+      "status": "existing",
       "kind": "production",
       "layer": "engine",
       "allowed_internal_dependencies": [
