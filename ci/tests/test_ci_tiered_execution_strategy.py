@@ -27,7 +27,7 @@ def test_fast_tier_workflow_has_required_triggers_fields_and_steps() -> None:
     assert "scripts/ci/run_fast_tier.py" in workflow_text
     assert "scripts/ci/parse_fast_tier_output.py" in workflow_text
     assert "scripts/ci/write_benchmark_artifact_index.py" in workflow_text
-    assert "uses: actions/upload-artifact@v4" in workflow_text
+    assert "uses: actions/upload-artifact@v7" in workflow_text
 
 
 def test_benchmark_tier_workflow_has_schedule_trigger_and_artifact_hooks() -> None:
@@ -45,7 +45,7 @@ def test_benchmark_tier_workflow_has_schedule_trigger_and_artifact_hooks() -> No
     assert "--test oracle_pricer_risk_benchmark_harness" in workflow_text
     assert "--test performance_baseline_capture_and_storage" in workflow_text
     assert "scripts/ci/write_benchmark_artifact_index.py" in workflow_text
-    assert "uses: actions/upload-artifact@v4" in workflow_text
+    assert "uses: actions/upload-artifact@v7" in workflow_text
 
 
 def test_fast_tier_runner_and_parser_smoke() -> None:
