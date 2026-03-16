@@ -1,6 +1,8 @@
 [workspace]
 members = [
     "crates/affine-oracle",
+    "crates/calibration-artifacts",
+    "crates/calibration-runtime",
     "crates/core",
     "crates/engine-pricing",
     "crates/engine-risk",

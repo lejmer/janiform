@@ -317,6 +317,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "janiform-calibration-artifacts"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "janiform-foundations",
+ "janiform-model-kernels",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "janiform-calibration-runtime"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "janiform-calibration-artifacts",
+ "janiform-engine-pricing",
+ "janiform-foundations",
+ "janiform-market-time",
+ "janiform-model-kernels",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "janiform-core"
 version = "0.1.0"
 dependencies = [
@@ -324,6 +350,8 @@ dependencies = [
  "chrono-tz",
  "criterion",
  "janiform-affine-oracle",
+ "janiform-calibration-artifacts",
+ "janiform-calibration-runtime",
  "janiform-engine-pricing",
  "janiform-engine-risk",
  "janiform-engine-simulation",
