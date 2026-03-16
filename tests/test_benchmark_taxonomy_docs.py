@@ -24,8 +24,11 @@ def test_benchmark_taxonomy_doc_contains_required_commands_and_terms() -> None:
     required_snippets = [
         "cargo bench -p janiform-core --bench rust_microbenchmarks -- --list",
         "tmpdir=/tmp cargo bench -p janiform-core --bench rust_microbenchmarks",
-        "pythonpath=python pytest tests/benchmarks/python_microbenchmarks.py --benchmark-only",
-        "pytest tests/benchmarks/python_microbenchmarks.py --benchmark-disable -q",
+        "pythonpath=python:. pytest benches/python/python_microbenchmarks.py --benchmark-only",
+        (
+            "pytest --benchmark-disable benches/python/test_microbenchmark_tooling.py "
+            "benches/python/python_microbenchmarks.py -q"
+        ),
         "microbenchmark",
         "component benchmark",
         "workflow acceptance benchmark",
@@ -44,7 +47,7 @@ def test_ci_tiered_execution_strategy_doc_mentions_manual_microbenchmark_smoke()
     assert "Microbenchmark smoke" in document
     assert "cargo bench -p janiform-core --bench rust_microbenchmarks -- --list" in document
     assert (
-        "PYTHONPATH=python .venv-linux/bin/pytest --benchmark-disable tests/benchmarks/python_microbenchmarks.py -q"
+        "PYTHONPATH=python:. .venv-linux/bin/pytest --benchmark-disable benches/python/test_microbenchmark_tooling.py benches/python/python_microbenchmarks.py -q"
         in document
     )
     assert "manual-only" in document

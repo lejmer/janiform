@@ -48,7 +48,8 @@ catalog and benchmark policy fixtures from `tests/fixtures/benchmarks/` through 
 ## Pytest Benchmark
 
 Use `pytest-benchmark` for narrow Python-facing paths under
-`tests/benchmarks/python_microbenchmarks.py`.
+`benches/python/python_microbenchmarks.py`, with shared benchmark-only support under
+`benches/python/support/`.
 
 The initial Python microbenchmark suite covers:
 
@@ -86,15 +87,15 @@ TMPDIR=/tmp cargo bench -p janiform-core --bench rust_microbenchmarks
 Python microbenchmark workflow:
 
 ```bash
-PYTHONPATH=python pytest tests/benchmarks/python_microbenchmarks.py --benchmark-only
-PYTHONPATH=python pytest tests/benchmarks/python_microbenchmarks.py --benchmark-disable -q
+PYTHONPATH=python:. pytest benches/python/python_microbenchmarks.py --benchmark-only
+PYTHONPATH=python:. pytest benches/python/test_microbenchmark_tooling.py benches/python/python_microbenchmarks.py --benchmark-disable -q
 ```
 
 Workflow acceptance and governance benchmarks:
 
 ```bash
 TMPDIR=/tmp cargo test -p janiform-core --test oracle_pricer_risk_benchmark_harness -- --nocapture
-PYTHONPATH=python python3 scripts/ci/run_real_data_seeded_runtime_benchmark.py \
+PYTHONPATH=python:. python3 scripts/ci/run_real_data_seeded_runtime_benchmark.py \
   --fixture-path tests/fixtures/benchmarks/real_data_seeded_runtime_benchmark_fixture.json \
   --policy-path tests/fixtures/benchmarks/real_data_seeded_runtime_benchmark_policy.json \
   --baseline-path tests/fixtures/benchmarks/real_data_seeded_runtime_baseline_v1.json \
@@ -109,8 +110,9 @@ merge gates on every commit.
 The repository keeps lightweight smoke wiring for them in `.github/workflows/ci-benchmark-tier.yml`:
 
 - `cargo bench ... -- --list` validates Criterion bench discovery
-- `pytest --benchmark-disable tests/benchmarks/python_microbenchmarks.py -q` validates the Python
-  microbenchmark suite is wired and runnable
+- `pytest --benchmark-disable benches/python/test_microbenchmark_tooling.py benches/python/python_microbenchmarks.py -q`
+  validates the Python microbenchmark suite is wired and runnable without pulling benchmark code
+  into the default `tests/` suite
 
 That smoke job is manual-only. Scheduled benchmark governance continues to live in the existing
 fixture-driven benchmark jobs.

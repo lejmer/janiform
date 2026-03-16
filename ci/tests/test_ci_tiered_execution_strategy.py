@@ -54,13 +54,16 @@ def test_benchmark_tier_workflow_has_schedule_trigger_and_artifact_hooks() -> No
     assert "scripts/ci/write_benchmark_artifact_index.py" in workflow_text
     assert "real-data-seeded-runtime-benchmark:" in workflow_text
     assert "Run real-data seeded runtime benchmark" in workflow_text
-    assert "scripts/ci/run_real_data_seeded_runtime_benchmark.py" in workflow_text
+    assert "PYTHONPATH=python:. .venv-linux/bin/python scripts/ci/run_real_data_seeded_runtime_benchmark.py" in workflow_text
     assert "real_data_seeded_runtime_benchmark_summary.md" in workflow_text
     assert "real-data-seeded-runtime-benchmark-artifacts" in workflow_text
     assert "microbenchmark-smoke:" in workflow_text
     assert "if: github.event_name == 'workflow_dispatch'" in workflow_text
     assert "--bench rust_microbenchmarks -- --list" in workflow_text
-    assert "--benchmark-disable tests/benchmarks/python_microbenchmarks.py -q" in workflow_text
+    assert (
+        "PYTHONPATH=python:. .venv-linux/bin/pytest --benchmark-disable benches/python/test_microbenchmark_tooling.py "
+        "benches/python/python_microbenchmarks.py -q"
+    ) in workflow_text
     assert "microbenchmark-smoke-artifacts" in workflow_text
     assert "uses: actions/upload-artifact@v7" in workflow_text
 

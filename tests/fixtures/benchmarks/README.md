@@ -17,6 +17,9 @@ Criterion plus `pytest-benchmark` commands, see
 - `real_data_seeded_runtime_benchmark_fixture.json`
 - `real_data_seeded_runtime_benchmark_policy.json`
 - `real_data_seeded_runtime_baseline_v1.json`
+- `real_data_seeded_runtime_smoke_fixture.json`
+- `real_data_seeded_runtime_smoke_policy.json`
+- `real_data_seeded_runtime_smoke_baseline_v1.json`
 
 ## Contract
 
@@ -77,6 +80,9 @@ Criterion plus `pytest-benchmark` commands, see
     values for each benchmark fixture
   - `memory_metric_semantics` documents that `native_estimated_retained_bytes`
     is an estimated retained-memory proxy and not true peak RSS
+- Real-data seeded runtime smoke artifacts mirror the same contracts with a much smaller
+  checked-in workload so the default Python test suite can validate report and artifact wiring
+  without rerunning the full representative benchmark workload.
 - Regression drift attribution report fields include:
   - `schema_version`: `benchmark.regression_drift_attribution.report.v1`
   - `classification_policy`: explicit drift-category rules for numerical drift, performance drift,

@@ -89,7 +89,7 @@ jobs:
       - name: Run real-data seeded runtime benchmark
         run: |
           mkdir -p .artifacts/real-data-seeded-runtime-benchmark
-          PYTHONPATH=python .venv-linux/bin/python scripts/ci/run_real_data_seeded_runtime_benchmark.py \
+          PYTHONPATH=python:. .venv-linux/bin/python scripts/ci/run_real_data_seeded_runtime_benchmark.py \
             --fixture-path tests/fixtures/benchmarks/real_data_seeded_runtime_benchmark_fixture.json \
             --policy-path tests/fixtures/benchmarks/real_data_seeded_runtime_benchmark_policy.json \
             --baseline-path tests/fixtures/benchmarks/real_data_seeded_runtime_baseline_v1.json \
@@ -140,7 +140,7 @@ jobs:
         run: |
           mkdir -p .artifacts/microbenchmark-smoke
           TMPDIR=/tmp cargo bench -p janiform-core --bench rust_microbenchmarks -- --list | tee .artifacts/microbenchmark-smoke/rust-bench-list.log
-          PYTHONPATH=python .venv-linux/bin/pytest --benchmark-disable tests/benchmarks/python_microbenchmarks.py -q | tee .artifacts/microbenchmark-smoke/python-microbench-smoke.log
+          PYTHONPATH=python:. .venv-linux/bin/pytest --benchmark-disable benches/python/test_microbenchmark_tooling.py benches/python/python_microbenchmarks.py -q | tee .artifacts/microbenchmark-smoke/python-microbench-smoke.log
 
       - name: Publish microbenchmark smoke summary
         if: always()

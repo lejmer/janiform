@@ -1,7 +1,13 @@
 import argparse
 from pathlib import Path
+import sys
 
-from janiform._benchmarking import (
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
+from benches.python.support import (
     compare_real_data_seeded_runtime_benchmark_report_to_baseline,
     load_real_data_seeded_runtime_baseline_from_json,
     load_real_data_seeded_runtime_benchmark_fixture_document,
