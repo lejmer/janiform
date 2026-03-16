@@ -10,6 +10,7 @@ from .contracts import (
     SEEDED_TICK_SIMULATION_NATIVE_CHUNK_RECORD_COUNT,
     SeededFinePathMetadata,
     SeededFinePathRecord,
+    SeededFinePathTransitionKind,
     SeededTickEventRecord,
     SeededTickEventTapeMetadata,
     SeededTickSimulationDiagnostics,
@@ -225,6 +226,83 @@ def _parse_seeded_fine_path_view_record(
         raw_record,
         field_path=f"seeded_tick_simulation_response.fine_path[{record_index}]",
     )
+
+
+def _is_public_seeded_fine_path_record(record: SeededFinePathRecord) -> bool:
+    return not (
+        record.transition_kind == SeededFinePathTransitionKind.EXOGENOUS_NEWS
+        and record.market_state.value == "closed"
+    )
+
+
+def _materialize_public_seeded_fine_path(
+    *,
+    native_result: Any,
+    transition_count: int,
+    chunk_record_count: int,
+    diagnostics: SeededTickSimulationDiagnostics,
+) -> tuple[SeededFinePathRecord, ...]:
+    filtered_records: list[SeededFinePathRecord] = []
+
+    for chunk_start in range(0, transition_count, chunk_record_count):
+        try:
+            chunk_json = native_result.get_fine_path_chunk_json(
+                chunk_start,
+                chunk_record_count,
+            )
+        except Exception as e:
+            raise _simulation_integration_error(
+                "native fine_path chunk projection failed",
+                entrypoint="run_seeded_tick_event_simulation",
+                error_id=SIMULATION_INTEGRATION_RESPONSE_ERROR_ID,
+                field_path="fine_path",
+                context={"chunk_start_index": chunk_start},
+            ) from e
+
+        if not isinstance(chunk_json, str):
+            raise _simulation_integration_error(
+                "native fine_path chunk payload was not a JSON string",
+                entrypoint="run_seeded_tick_event_simulation",
+                error_id=SIMULATION_INTEGRATION_RESPONSE_ERROR_ID,
+                field_path="fine_path",
+                context={"chunk_start_index": chunk_start},
+            )
+
+        parse_started = perf_counter()
+        try:
+            parsed_chunk = json.loads(chunk_json)
+        except json.JSONDecodeError as e:
+            raise _simulation_integration_error(
+                "native fine_path chunk payload was not valid JSON",
+                entrypoint="run_seeded_tick_event_simulation",
+                error_id=SIMULATION_INTEGRATION_RESPONSE_ERROR_ID,
+                field_path="fine_path",
+                context={"chunk_start_index": chunk_start},
+            ) from e
+
+        if not isinstance(parsed_chunk, list):
+            raise _simulation_integration_error(
+                "native fine_path chunk payload was not a list",
+                entrypoint="run_seeded_tick_event_simulation",
+                error_id=SIMULATION_INTEGRATION_RESPONSE_ERROR_ID,
+                field_path="fine_path",
+                context={"chunk_start_index": chunk_start},
+            )
+
+        parsed_records = tuple(
+            _parse_seeded_fine_path_view_record(raw_record, chunk_start + chunk_offset)
+            for chunk_offset, raw_record in enumerate(parsed_chunk)
+        )
+        diagnostics.boundary_transport_bytes += len(chunk_json.encode("utf-8"))
+        diagnostics.python_materialization_seconds += perf_counter() - parse_started
+
+        public_records = [
+            record for record in parsed_records if _is_public_seeded_fine_path_record(record)
+        ]
+        diagnostics.materialized_transition_count += len(public_records)
+        filtered_records.extend(public_records)
+
+    return tuple(filtered_records)
 
 
 def _parse_seeded_event_tape_view_record(
@@ -509,6 +587,13 @@ class SeededTickSimulationResponse(ContractModel):
             boundary_chunk_record_count=chunk_record_count,
         )
         tracker = _SeededTickSimulationMaterializationTracker(diagnostics)
+        fine_path_records = _materialize_public_seeded_fine_path(
+            native_result=native_result,
+            transition_count=transition_count,
+            chunk_record_count=chunk_record_count,
+            diagnostics=diagnostics,
+        )
+        diagnostics.transition_count = len(fine_path_records)
 
         metadata_payload = parse_json_object(
             _require_native_result_json_method(
@@ -540,11 +625,7 @@ class SeededTickSimulationResponse(ContractModel):
                 field_path="seeded_tick_simulation_response.event_tape_metadata",
             ),
             diagnostics=diagnostics,
-            fine_path=SeededFinePathView(
-                native_result=native_result,
-                chunk_record_count=chunk_record_count,
-                tracker=tracker,
-            ),
+            fine_path=SeededFinePathView(materialized_records=fine_path_records),
             event_tape=SeededTickEventTapeView(
                 native_result=native_result,
                 chunk_record_count=chunk_record_count,
