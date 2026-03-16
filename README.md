@@ -210,6 +210,14 @@ This tells the script to use the `.venv-linux` venv, and to pass on the `-v` com
 ./scripts/test-python-linux.sh .venv-linux -- -v
 ```
 
+## Generated Crate READMEs
+
+Workspace crate `README.md` files are checked in and generated from Cargo metadata. Regenerate them with:
+
+```bash
+python3 scripts/generate_crate_readmes.py
+```
+
 ## Project Layout
 
 - `crates/janiform/`: Umbrella Rust facade crate
