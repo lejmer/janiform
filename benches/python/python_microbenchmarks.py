@@ -2,7 +2,7 @@ from typing import Any, cast
 
 import pytest
 
-from janiform._benchmarking import (
+from benches.python.support import (
     RealDataSeededRuntimeMicrobenchmarkCase,
     load_python_microbenchmark_fixture,
     prepare_real_data_seeded_runtime_microbenchmark_case,

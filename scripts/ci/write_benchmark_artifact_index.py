@@ -88,6 +88,7 @@ def main() -> int:
         "\n".join(markdown_lines),
         encoding="utf-8",
     )
+
     return 0
 
 

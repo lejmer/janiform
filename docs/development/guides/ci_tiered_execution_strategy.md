@@ -30,7 +30,7 @@ This guide defines the regression and benchmark CI tiers for Initiative 004 Proj
   - `cargo test -p janiform-core --test performance_baseline_capture_and_storage -- --nocapture`
   - `cargo test -p janiform-core --test regression_drift_attribution_reports -- --nocapture`
 - Runs the scheduled real-data seeded runtime benchmark workload:
-  - `scripts/ci/run_real_data_seeded_runtime_benchmark.py`
+  - `PYTHONPATH=python:. .venv-linux/bin/python scripts/ci/run_real_data_seeded_runtime_benchmark.py`
   - fixture: `tests/fixtures/benchmarks/real_data_seeded_runtime_benchmark_fixture.json`
   - policy: `tests/fixtures/benchmarks/real_data_seeded_runtime_benchmark_policy.json`
   - baseline: `tests/fixtures/benchmarks/real_data_seeded_runtime_baseline_v1.json`
@@ -51,7 +51,7 @@ enforced as an estimated retained-memory proxy. It is not a portable peak-RSS me
 - Validates Criterion bench discovery without treating timings as a merge gate:
   - `cargo bench -p janiform-core --bench rust_microbenchmarks -- --list`
 - Validates the Python `pytest-benchmark` suite wiring without recording noisy timing artifacts:
-  - `PYTHONPATH=python .venv-linux/bin/pytest --benchmark-disable tests/benchmarks/python_microbenchmarks.py -q`
+  - `PYTHONPATH=python:. .venv-linux/bin/pytest --benchmark-disable benches/python/test_microbenchmark_tooling.py benches/python/python_microbenchmarks.py -q`
 
 This job is manual-only. It exists so contributors can verify the microbenchmark suites
 stay runnable in CI-like environments while keeping timing noise out of required pull-request

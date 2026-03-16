@@ -1,0 +1,47 @@
+{
+  "baseline_id": "real_data_seeded_runtime_smoke_baseline",
+  "baseline_version": "1.0.0",
+  "capture_policy": "capture_runtime_transport_materialization_and_event_regime_metrics_from_high_level_fit_and_seeded_run.v1",
+  "memory_metric_semantics": "estimated_native_retained_bytes_proxy_not_peak_rss.v1",
+  "records": [
+    {
+      "access_pattern_reports": [
+        {
+          "access_kind": "event_tape_head",
+          "boundary_transport_bytes": 19206,
+          "materialized_event_count": 256,
+          "materialized_transition_count": 0,
+          "pattern_id": "event_tape_first_chunk",
+          "python_materialization_seconds": 0.0002978770062327385
+        },
+        {
+          "access_kind": "full_seeded_export_to_pandas",
+          "boundary_transport_bytes": 11073040,
+          "materialized_event_count": 0,
+          "materialized_transition_count": 26954,
+          "pattern_id": "full_seeded_tick_export",
+          "python_materialization_seconds": 0.21207211789442226
+        }
+      ],
+      "boundary_transport_bytes": 11092246,
+      "calibrated_expected_event_count_over_observation_window": 512.0000001197054,
+      "calibrated_open_event_rate_per_hour": 2048.0000004788217,
+      "coarse_generated_event_count": 26133,
+      "fixture_id": "synthetic_eurusd_parquet_slice_250000_512row_smoke_v1",
+      "fixture_version": "1.0.0",
+      "materialized_event_count": 256,
+      "materialized_transition_count": 26954,
+      "native_estimated_retained_bytes": 4718592,
+      "native_runtime_seconds": 0.010231295018456876,
+      "observed_open_event_rate_per_hour": 2048.0,
+      "observed_source_tick_count": 512,
+      "python_materialization_seconds": 0.212369994900655,
+      "python_response_construction_seconds": 0.00012002498260699213,
+      "seeded_event_count": 26946,
+      "seeded_transition_count": 26954,
+      "source_open_session_duration_hours": 0.25
+    }
+  ],
+  "schema_version": "benchmark.real_data_seeded_runtime.baseline.v1",
+  "source_fixture_set_id": "real_data_seeded_runtime_fixture_set_v1"
+}

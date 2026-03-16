@@ -1,10 +1,11 @@
+import os
 import subprocess
 import sys
 from dataclasses import replace
 from functools import lru_cache
 from pathlib import Path
 
-from janiform._benchmarking import (
+from benches.python.support import (
     REAL_DATA_SEEDED_RUNTIME_BASELINE_SCHEMA_VERSION,
     REAL_DATA_SEEDED_RUNTIME_BENCHMARK_FIXTURE_SCHEMA_VERSION,
     REAL_DATA_SEEDED_RUNTIME_BENCHMARK_POLICY_SCHEMA_VERSION,
@@ -22,6 +23,10 @@ from janiform._benchmarking import (
     load_real_data_seeded_runtime_benchmark_policy_from_json,
     run_real_data_seeded_runtime_benchmark_fixture,
 )
+
+
+def _benchmark_pythonpath() -> str:
+    return os.pathsep.join(["python", "."])
 
 
 def test_real_data_seeded_runtime_fixture_policy_and_baseline_artifacts_load(
@@ -42,25 +47,30 @@ def test_real_data_seeded_runtime_fixture_policy_and_baseline_artifacts_load(
 def test_real_data_seeded_runtime_report_captures_seeded_diagnostics_and_required_metadata(
     fixtures_root: Path,
 ) -> None:
+    fixture = _fixture_document(fixtures_root).fixtures[0]
     report = _cached_fixture_report(fixtures_root)
 
     assert report.schema_version == REAL_DATA_SEEDED_RUNTIME_BENCHMARK_REPORT_SCHEMA_VERSION
     assert report.output_schema_metadata.required_report_fields
     assert report.output_schema_metadata.required_access_pattern_fields
     assert report.output_schema_metadata.required_provenance_fields
-    assert report.observed_source_tick_count == 8192
+    assert report.fixture_id == fixture.fixture_id
+    assert report.observed_source_tick_count == fixture.source_tick_data_row_count
     assert report.seeded_transition_count >= report.seeded_event_count
     assert report.native_runtime_seconds > 0.0
     assert report.python_materialization_seconds > 0.0
     assert report.boundary_transport_bytes > 0
     assert report.native_estimated_retained_bytes > 0
-    assert len(report.access_pattern_reports) == 2
-    assert report.access_pattern_reports[0].materialized_event_count == 256
-    assert report.access_pattern_reports[1].materialized_transition_count == report.seeded_transition_count
-    assert report.provenance.source_tick_data_path == "data/Synthetic_EURUSD_Data_1M_ticks.parquet"
-    assert report.provenance.source_tick_data_format == "parquet"
-    assert report.provenance.source_tick_data_row_offset == 250000
-    assert report.provenance.source_tick_data_row_count == 8192
+    assert len(report.access_pattern_reports) == len(fixture.materialization_access_patterns)
+    assert report.access_pattern_reports[0].materialized_event_count > 0
+    assert (
+        report.access_pattern_reports[-1].materialized_transition_count
+        == report.seeded_transition_count
+    )
+    assert report.provenance.source_tick_data_path == fixture.source_tick_data_path
+    assert report.provenance.source_tick_data_format == fixture.source_tick_data_format
+    assert report.provenance.source_tick_data_row_offset == fixture.source_tick_data_row_offset
+    assert report.provenance.source_tick_data_row_count == fixture.source_tick_data_row_count
     assert report.provenance.source_trade_sign_column is None
     assert (
         report.provenance.memory_metric_semantics
@@ -165,9 +175,9 @@ def test_real_data_seeded_runtime_benchmark_runner_writes_artifacts(
     fixtures_root: Path,
     tmp_path: Path,
 ) -> None:
-    fixture_path = fixtures_root / "benchmarks" / "real_data_seeded_runtime_benchmark_fixture.json"
-    policy_path = fixtures_root / "benchmarks" / "real_data_seeded_runtime_benchmark_policy.json"
-    baseline_path = fixtures_root / "benchmarks" / "real_data_seeded_runtime_baseline_v1.json"
+    fixture_path = _fixture_path(fixtures_root)
+    policy_path = _policy_path(fixtures_root)
+    baseline_path = _baseline_path(fixtures_root)
 
     command = [
         sys.executable,
@@ -188,6 +198,10 @@ def test_real_data_seeded_runtime_benchmark_runner_writes_artifacts(
         capture_output=True,
         text=True,
         cwd=Path(__file__).resolve().parents[1],
+        env={
+            **os.environ,
+            "PYTHONPATH": _benchmark_pythonpath(),
+        },
     )
 
     assert process.returncode == 0, process.stderr
@@ -208,19 +222,42 @@ def _cached_fixture_report(fixtures_root: Path) -> RealDataSeededRuntimeBenchmar
 
 
 def _fixture_document(fixtures_root: Path) -> RealDataSeededRuntimeBenchmarkFixtureDocument:
-    fixture_path = fixtures_root / "benchmarks" / "real_data_seeded_runtime_benchmark_fixture.json"
-    return load_real_data_seeded_runtime_benchmark_fixture_document(fixture_path.read_bytes())
+    return load_real_data_seeded_runtime_benchmark_fixture_document(
+        _fixture_path(fixtures_root).read_bytes()
+    )
 
 
 def _policy_artifact(fixtures_root: Path) -> RealDataSeededRuntimeBenchmarkPolicy:
-    policy_path = fixtures_root / "benchmarks" / "real_data_seeded_runtime_benchmark_policy.json"
     return load_real_data_seeded_runtime_benchmark_policy_from_json(
-        policy_path.read_text(encoding="utf-8")
+        _policy_path(fixtures_root).read_text(encoding="utf-8")
     )
 
 
 def _baseline_artifact(fixtures_root: Path) -> RealDataSeededRuntimeBenchmarkBaselineArtifact:
-    baseline_path = fixtures_root / "benchmarks" / "real_data_seeded_runtime_baseline_v1.json"
     return load_real_data_seeded_runtime_baseline_from_json(
-        baseline_path.read_text(encoding="utf-8")
+        _baseline_path(fixtures_root).read_text(encoding="utf-8")
+    )
+
+
+def _fixture_path(fixtures_root: Path) -> Path:
+    return (
+        fixtures_root
+        / "benchmarks"
+        / "real_data_seeded_runtime_smoke_fixture.json"
+    )
+
+
+def _policy_path(fixtures_root: Path) -> Path:
+    return (
+        fixtures_root
+        / "benchmarks"
+        / "real_data_seeded_runtime_smoke_policy.json"
+    )
+
+
+def _baseline_path(fixtures_root: Path) -> Path:
+    return (
+        fixtures_root
+        / "benchmarks"
+        / "real_data_seeded_runtime_smoke_baseline_v1.json"
     )

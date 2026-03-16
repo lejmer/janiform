@@ -4,14 +4,18 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 
-from janiform._benchmarking import (
+from benches.python.support import (
     RealDataSeededRuntimeMicrobenchmarkCase,
     load_python_microbenchmark_fixture,
     prepare_real_data_seeded_runtime_microbenchmark_case,
 )
 
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _benchmark_pythonpath() -> str:
+    return os.pathsep.join(["python", "."])
 
 
 def test_real_data_seeded_runtime_microbenchmark_case_reuses_checked_in_fixture() -> None:
@@ -69,7 +73,7 @@ def test_pytest_benchmark_suite_runs_with_disabled_timing() -> None:
             "-m",
             "pytest",
             "--benchmark-disable",
-            "tests/benchmarks/python_microbenchmarks.py",
+            "benches/python/python_microbenchmarks.py",
             "-q",
         ],
         check=False,
@@ -78,7 +82,7 @@ def test_pytest_benchmark_suite_runs_with_disabled_timing() -> None:
         cwd=REPOSITORY_ROOT,
         env={
             **os.environ,
-            "PYTHONPATH": "python",
+            "PYTHONPATH": _benchmark_pythonpath(),
         },
     )
 
