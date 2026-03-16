@@ -21,3 +21,7 @@ janiform-market-time = { path = "../janiform-market-time" }
 janiform-model-kernels = { path = "../janiform-model-kernels" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+janiform-affine-oracle = { path = "../janiform-affine-oracle" }
+janiform-engine-simulation = { path = "../janiform-engine-simulation" }

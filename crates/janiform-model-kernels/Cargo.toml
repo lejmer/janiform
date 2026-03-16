@@ -17,4 +17,5 @@ janiform-foundations = { path = "../janiform-foundations" }
 serde = { workspace = true }
 
 [dev-dependencies]
+janiform-test-support = { path = "../janiform-test-support" }
 serde_json = { workspace = true }

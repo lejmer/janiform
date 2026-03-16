@@ -8,8 +8,11 @@ pub(crate) use std::time::{SystemTime, UNIX_EPOCH};
 pub(crate) use chrono::{TimeZone, Utc};
 pub(crate) use janiform_calibration_artifacts::*;
 pub(crate) use janiform_calibration_runtime::*;
-pub(crate) use janiform_engine_pricing::VanillaOptionPricingCalibrationHooks;
+pub(crate) use janiform_engine_pricing::{
+    VanillaOptionPricingCalibrationHooks, VanillaOptionPricingMarketInputs,
+};
 pub(crate) use janiform_foundations::complex_math::ComplexScalar;
+pub(crate) use janiform_foundations::complex_math::complex_exponential;
 pub(crate) use janiform_market_time::calendar::{
     ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, TimestampEventInputRecord,
 };
@@ -35,6 +38,23 @@ pub(crate) fn build_data_inputs() -> CalibrationRunDataInputs {
         Some("dataset://synthetic/options/v1".to_string()),
     )
     .expect("data inputs should validate")
+}
+
+pub(crate) fn black_scholes_log_return_characteristic_function(
+    market_inputs: VanillaOptionPricingMarketInputs,
+    volatility: f64,
+    argument: ComplexScalar,
+) -> ComplexScalar {
+    let variance = volatility * volatility * market_inputs.maturity_interval;
+    let drift = (market_inputs.risk_free_rate
+        - market_inputs.dividend_yield
+        - 0.5 * volatility * volatility)
+        * market_inputs.maturity_interval;
+    let imaginary_unit_term = ComplexScalar::new(-argument.imaginary, argument.real);
+    let drift_term = imaginary_unit_term.scale(drift);
+    let variance_term = argument.square().scale(-0.5 * variance);
+
+    complex_exponential(drift_term.add(variance_term))
 }
 
 pub(crate) fn build_seed_settings() -> CalibrationRunSeedSettings {
