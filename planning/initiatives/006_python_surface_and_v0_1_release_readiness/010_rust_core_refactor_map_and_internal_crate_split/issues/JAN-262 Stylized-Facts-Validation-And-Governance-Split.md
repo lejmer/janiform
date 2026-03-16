@@ -17,7 +17,7 @@ Separate stylized-fact analytics, engine-facing validation domains, and benchmar
   - performance baselines
   - deterministic regression orchestration
   - regression drift attribution
-- Physically move the extracted source trees, crate-local helpers, and unit tests into the target crates. Do not count `#[path = "..."]` indirection from `crates/core` or Cargo-only dependency changes as completing this split.
+- Physically move the extracted source trees, crate-local helpers, and unit tests into the target crates. Do not count `#[path = "..."]` indirection from `crates/janiform` or Cargo-only dependency changes as completing this split.
 - Ensure validation crates can depend on engines, but engines do not depend back on validation.
 - Ensure governance can consume validation and engine outputs without becoming a dependency of production runtime crates.
 

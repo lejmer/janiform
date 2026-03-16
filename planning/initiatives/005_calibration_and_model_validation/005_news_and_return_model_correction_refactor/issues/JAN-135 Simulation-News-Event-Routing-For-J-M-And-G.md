@@ -4,7 +4,7 @@
 Refactor simulation-side news event handling so each news arrival can drive activity coupling and return routing through explicit open-window and closed-window channels.
 
 ### Implementation details
-- Refactor `crates/core/src/simulation.rs` exogenous news event payloads so each news arrival carries both activity-coupling mark inputs and return-jump mark inputs.
+- Refactor `crates/janiform/src/simulation.rs` exogenous news event payloads so each news arrival carries both activity-coupling mark inputs and return-jump mark inputs.
 - Extend interval scheduling to support known scheduled news arrivals plus surprise-news arrivals in one deterministic ordering pipeline.
 - Resolve market-state routing per news arrival and emit explicit open-window jump application versus closed-window gap carry behavior.
 - Update transition-trace contracts so news transition diagnostics include all routed components needed for debugging and regression checks.

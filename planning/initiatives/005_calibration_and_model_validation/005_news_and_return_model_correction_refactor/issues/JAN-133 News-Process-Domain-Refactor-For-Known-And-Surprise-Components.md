@@ -4,7 +4,7 @@
 Refactor the core news-process domain model so known scheduled news and surprise news are first-class components with explicit shared and component-level configuration.
 
 ### Implementation details
-- Refactor `crates/core/src/news.rs` contracts so the top-level process is componentized into known and surprise arrivals instead of one monolithic intensity block.
+- Refactor `crates/janiform/src/news.rs` contracts so the top-level process is componentized into known and surprise arrivals instead of one monolithic intensity block.
 - Replace the current closed-window-baseline-only intensity contract with component-aware contracts that support both scheduled known-news timing and surprise-news intensity.
 - Extend shared-news state and dispatch contracts from `J_t` plus `G_t` to `J_t` plus `M_t` plus `G_t`, with explicit per-event increments recorded for each channel.
 - Update dispatch record payloads to expose market-state-resolved routing for open-window direct return jumps and closed-window gap jumps.

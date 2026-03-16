@@ -43,7 +43,7 @@ def test_criterion_benchmark_targets_are_discoverable_via_cargo_bench_list() -> 
             "cargo",
             "bench",
             "-p",
-            "janiform-core",
+            "janiform",
             "--bench",
             "rust_microbenchmarks",
             "--",

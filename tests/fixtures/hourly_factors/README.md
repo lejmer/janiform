@@ -76,7 +76,7 @@ Validation fallback behavior for incomplete fixture coverage and triage expectat
    - `threshold_configuration.policy_version` and `threshold_configuration.change_log` with rationale when thresholds change
    - this README if tolerance policy or fixture schema changed
 4. Run verification:
-   - `cargo test -p janiform-core hourly_factor_regression`
+   - `cargo test -p janiform hourly_factor_regression`
    - `pytest tests/test_hourly_factor_regression_matrix.py`
    - `pytest tests/test_hourly_factors.py`
 

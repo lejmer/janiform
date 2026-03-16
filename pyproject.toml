@@ -33,7 +33,7 @@ janiform = "janiform.cli:main"
 
 [tool.maturin]
 bindings = "pyo3"
-manifest-path = "crates/pybind/Cargo.toml"
+manifest-path = "crates/janiform-pybind/Cargo.toml"
 module-name = "janiform._native"
 python-source = "python"
 

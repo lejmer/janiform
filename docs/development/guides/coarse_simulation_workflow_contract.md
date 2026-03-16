@@ -19,7 +19,7 @@ tests, while the coarse simulation workflow contract is the simulation-facing bo
 
 ## Rust Contract
 
-Canonical Rust types live in `janiform_core::simulation`:
+Canonical Rust types live in `janiform::simulation`:
 
 - `CoarseSimulationModelInputs`
 - `CoarseSimulationRunRequest`
@@ -167,7 +167,7 @@ Deterministic provenance includes:
 ## Relationship To The Sufficient-Statistics Risk Sampler
 
 The sufficient-statistics risk sampler contract remains available in
-`janiform_core::risk` for:
+`janiform::risk` for:
 
 - internal transform-slice execution
 - validation suites

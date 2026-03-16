@@ -4,7 +4,7 @@
 Define and implement the candidate-generation planning path for news-process parameters so return-components calibration uses data-derived known and surprise arrival, mark, and coupling candidates.
 
 ### Implementation details
-- Refactor `crates/core/src/calibration/stages/return_components.rs` candidate-generation planning contracts so known-news and surprise-news parameters are generated from observed signals instead of static candidate fixtures.
+- Refactor `crates/janiform/src/calibration/stages/return_components.rs` candidate-generation planning contracts so known-news and surprise-news parameters are generated from observed signals instead of static candidate fixtures.
 - Define one canonical input payload for candidate generation containing known-news calendars, realized known-news return samples, detected intraday jump candidates, and detected close-open gap candidates.
 - Add explicit candidate families for known-news arrival controls, surprise-news arrival controls, return-jump mark scale controls, and news-to-Hawkes activity-coupling controls.
 - Define deterministic preprocessing and binning rules for jump and gap extraction so repeated runs on identical inputs produce identical candidate sets.

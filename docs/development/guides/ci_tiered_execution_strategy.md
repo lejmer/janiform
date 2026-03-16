@@ -13,9 +13,9 @@ This guide defines the regression and benchmark CI tiers for Initiative 004 Proj
 ## Fast deterministic regression tier
 
 - Runs deterministic and tolerance regression checks:
-  - `cargo test -p janiform-core --test deterministic_regression_harness`
-  - `cargo test -p janiform-core --test coarse_fine_consistency_regression_harness`
-  - `cargo test -p janiform-core --test pricing_benchmark_validation_regression`
+  - `cargo test -p janiform --test deterministic_regression_harness`
+  - `cargo test -p janiform --test coarse_fine_consistency_regression_harness`
+  - `cargo test -p janiform --test pricing_benchmark_validation_regression`
 - Runs CI workflow lint and smoke coverage:
   - `pytest ci/tests/test_ci_tiered_execution_strategy.py`
 - Emits machine-readable command results and parsed output:
@@ -25,10 +25,10 @@ This guide defines the regression and benchmark CI tiers for Initiative 004 Proj
 ## Benchmark smoke tier
 
 - Runs benchmark smoke tests for schema and artifact-hook stability:
-  - `cargo test -p janiform-core --test benchmark_scenario_catalog -- --nocapture`
-  - `cargo test -p janiform-core --test oracle_pricer_risk_benchmark_harness -- --nocapture`
-  - `cargo test -p janiform-core --test performance_baseline_capture_and_storage -- --nocapture`
-  - `cargo test -p janiform-core --test regression_drift_attribution_reports -- --nocapture`
+  - `cargo test -p janiform --test benchmark_scenario_catalog -- --nocapture`
+  - `cargo test -p janiform --test oracle_pricer_risk_benchmark_harness -- --nocapture`
+  - `cargo test -p janiform --test performance_baseline_capture_and_storage -- --nocapture`
+  - `cargo test -p janiform --test regression_drift_attribution_reports -- --nocapture`
 - Runs the scheduled real-data seeded runtime benchmark workload:
   - `PYTHONPATH=python:. .venv-linux/bin/python scripts/ci/run_real_data_seeded_runtime_benchmark.py`
   - fixture: `tests/fixtures/benchmarks/real_data_seeded_runtime_benchmark_fixture.json`
@@ -49,7 +49,7 @@ enforced as an estimated retained-memory proxy. It is not a portable peak-RSS me
 ## Microbenchmark smoke
 
 - Validates Criterion bench discovery without treating timings as a merge gate:
-  - `cargo bench -p janiform-core --bench rust_microbenchmarks -- --list`
+  - `cargo bench -p janiform --bench rust_microbenchmarks -- --list`
 - Validates the Python `pytest-benchmark` suite wiring without recording noisy timing artifacts:
   - `PYTHONPATH=python:. .venv-linux/bin/pytest --benchmark-disable benches/python/test_microbenchmark_tooling.py benches/python/python_microbenchmarks.py -q`
 

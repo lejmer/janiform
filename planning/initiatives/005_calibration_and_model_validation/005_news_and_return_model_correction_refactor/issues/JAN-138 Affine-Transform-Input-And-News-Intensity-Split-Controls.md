@@ -4,8 +4,8 @@
 Extend affine-transform and sufficient-statistics planning contracts so news-intensity handling supports explicit known and surprise controls while preserving tractable activity-coupling computation.
 
 ### Implementation details
-- Refactor `crates/core/src/affine_oracle.rs` input-contract planning so known and surprise news intensities can be represented explicitly while preserving aggregate intensity usage in tractable terms where required.
-- Refactor `crates/core/src/risk.rs` sufficient-statistics transform-context planning contracts so component-aware news intensity inputs are available for diagnostics and calibration wiring.
+- Refactor `crates/janiform/src/affine_oracle.rs` input-contract planning so known and surprise news intensities can be represented explicitly while preserving aggregate intensity usage in tractable terms where required.
+- Refactor `crates/janiform/src/risk.rs` sufficient-statistics transform-context planning contracts so component-aware news intensity inputs are available for diagnostics and calibration wiring.
 - Keep one canonical transform-equation mapping policy while clarifying which terms consume total intensity and which preserve component visibility.
 - Update transform-input validation and metadata schemas for component-level controls.
 - Ensure solver telemetry contracts can carry component-aware diagnostics without breaking tractability constraints.

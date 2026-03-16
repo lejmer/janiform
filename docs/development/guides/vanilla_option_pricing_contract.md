@@ -35,7 +35,7 @@ require callers to collapse them into only one combined `nu_h`.
 
 ## Fourier Integration Stability Controls
 
-The Fourier engine in `janiform_core::pricing` now includes a structured integration stability policy:
+The Fourier engine in `janiform::pricing` now includes a structured integration stability policy:
 
 - `FourierInversionIntegrationStabilityControls`
   - `convergence_absolute_tolerance`
@@ -79,7 +79,7 @@ versions and required-field metadata.
 
 ## Rust contract
 
-The canonical Rust types are in `janiform_core::pricing`:
+The canonical Rust types are in `janiform::pricing`:
 
 - `VanillaOptionPayoffType`
 - `VanillaOptionPayoffConfiguration`
@@ -207,4 +207,4 @@ The fixture defines:
 
 Rust regression entrypoint:
 
-- `cargo test -p janiform-core --test pricing_benchmark_validation_regression`
+- `cargo test -p janiform --test pricing_benchmark_validation_regression`

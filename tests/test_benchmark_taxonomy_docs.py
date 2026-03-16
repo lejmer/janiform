@@ -22,8 +22,8 @@ def test_benchmark_taxonomy_doc_contains_required_commands_and_terms() -> None:
     document = _benchmark_taxonomy_document_text()
 
     required_snippets = [
-        "cargo bench -p janiform-core --bench rust_microbenchmarks -- --list",
-        "tmpdir=/tmp cargo bench -p janiform-core --bench rust_microbenchmarks",
+        "cargo bench -p janiform --bench rust_microbenchmarks -- --list",
+        "tmpdir=/tmp cargo bench -p janiform --bench rust_microbenchmarks",
         "pythonpath=python:. pytest benches/python/python_microbenchmarks.py --benchmark-only",
         (
             "pytest --benchmark-disable benches/python/test_microbenchmark_tooling.py "
@@ -45,7 +45,7 @@ def test_ci_tiered_execution_strategy_doc_mentions_manual_microbenchmark_smoke()
     document = _ci_tiered_execution_strategy_document_text()
 
     assert "Microbenchmark smoke" in document
-    assert "cargo bench -p janiform-core --bench rust_microbenchmarks -- --list" in document
+    assert "cargo bench -p janiform --bench rust_microbenchmarks -- --list" in document
     assert (
         "PYTHONPATH=python:. .venv-linux/bin/pytest --benchmark-disable benches/python/test_microbenchmark_tooling.py benches/python/python_microbenchmarks.py -q"
         in document

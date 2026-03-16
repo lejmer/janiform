@@ -21,7 +21,7 @@ implementation-specific solver workspace values.
 
 ## Rust contract
 
-Canonical Rust types live in `janiform_core::risk`:
+Canonical Rust types live in `janiform::risk`:
 
 - `SufficientStatisticsRiskIntervalFactors`
 - `SufficientStatisticsRiskModelInputs`

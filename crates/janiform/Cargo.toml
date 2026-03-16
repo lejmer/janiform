@@ -1,0 +1,32 @@
+[package]
+name = "janiform"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Umbrella Rust facade for Janiform."
+
+[lib]
+name = "janiform"
+path = "src/lib.rs"
+
+[dependencies]
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+janiform-analytics-stylized-facts = { path = "../janiform-analytics-stylized-facts" }
+janiform-affine-oracle = { path = "../janiform-affine-oracle" }
+janiform-calibration-artifacts = { path = "../janiform-calibration-artifacts" }
+janiform-calibration-runtime = { path = "../janiform-calibration-runtime" }
+janiform-engine-pricing = { path = "../janiform-engine-pricing" }
+janiform-engine-risk = { path = "../janiform-engine-risk" }
+janiform-engine-simulation = { path = "../janiform-engine-simulation" }
+janiform-foundations = { path = "../janiform-foundations" }
+janiform-governance = { path = "../janiform-governance" }
+janiform-governance-bench = { path = "../janiform-governance-bench" }
+janiform-market-time = { path = "../janiform-market-time" }
+janiform-model-kernels = { path = "../janiform-model-kernels" }
+janiform-validation = { path = "../janiform-validation" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+janiform-test-support = { path = "../janiform-test-support" }

@@ -49,8 +49,8 @@ When updating:
 4. Refresh the manifest content hash in
    `tests/fixtures/validation/validation_fixture_manifest.json`.
 5. Run verification:
-   - `cargo test -p janiform-core scale_consistency_regression_fixture`
-   - `cargo test -p janiform-core scale_consistency_reporting`
-   - `cargo test -p janiform-core scale_consistency_threshold_decisions`
+   - `cargo test -p janiform scale_consistency_regression_fixture`
+   - `cargo test -p janiform scale_consistency_reporting`
+   - `cargo test -p janiform scale_consistency_threshold_decisions`
    - `pytest tests/test_validation_fixtures.py -k scale_consistency`
    - `python3 -m py_compile python/janiform/*.py tests/conftest.py tests/test_validation_fixtures.py`

@@ -2,7 +2,7 @@
 
 This guide documents the canonical horizon-aware stylized-fact comparison contract implemented in:
 
-- `janiform_core::verification::run_stylized_fact_horizon_comparison_engine`
+- `janiform::verification::run_stylized_fact_horizon_comparison_engine`
 
 The comparison engine is independent from plotting and UI rendering.
 
@@ -116,7 +116,7 @@ For matched and sufficient metric pairs, the report includes:
 
 The canonical report bundle generator is implemented in:
 
-- `janiform_core::verification::run_stylized_fact_horizon_comparison_report_generator`
+- `janiform::verification::run_stylized_fact_horizon_comparison_report_generator`
 
 It composes one comparison report with deterministic table and plot-ready payloads and optional
 disk-mode artifact export.

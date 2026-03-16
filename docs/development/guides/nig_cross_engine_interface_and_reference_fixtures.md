@@ -60,6 +60,6 @@ When intentional model changes alter reference outputs:
 4. Update `canonical_regression_metadata` stable fixture id lists when cases are
    added or removed.
 5. Run:
-   - `cargo test -p janiform-core nig_cross_engine_reference_regression`
-   - `cargo test -p janiform-core`
+   - `cargo test -p janiform nig_cross_engine_reference_regression`
+   - `cargo test -p janiform`
 6. Review fixture README and this guide for any contract wording drift.

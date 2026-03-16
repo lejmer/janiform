@@ -1,10 +1,10 @@
 ## Split News Module Into Submodules
 
 ### Description
-Refactor `crates/core/src/news.rs` into `crates/core/src/news/mod.rs` with smaller submodules and preserve existing public paths.
+Refactor `crates/janiform/src/news.rs` into `crates/janiform/src/news/mod.rs` with smaller submodules and preserve existing public paths.
 
 ### Acceptance Criteria
-- Create a `crates/core/src/news/` module directory and split `news.rs` into logically grouped files.
+- Create a `crates/janiform/src/news/` module directory and split `news.rs` into logically grouped files.
 - Preserve current path stability for all exported news-related APIs.
 - Keep `mod.rs` as just the module entrypoint.
 - Maintain `pub mod news;` in `lib.rs` with no caller-facing path changes.

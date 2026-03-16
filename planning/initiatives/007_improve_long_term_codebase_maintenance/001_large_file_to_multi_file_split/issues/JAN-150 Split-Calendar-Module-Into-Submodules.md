@@ -1,13 +1,13 @@
 ## Split Calendar Module Into Submodules
 
 ### Description
-Refactor `crates/core/src/calendar.rs` into a folder-based module with `crates/core/src/calendar/mod.rs`, keeping external import paths stable.
+Refactor `crates/janiform/src/calendar.rs` into a folder-based module with `crates/janiform/src/calendar/mod.rs`, keeping external import paths stable.
 
 ### Acceptance Criteria
-- Move responsibilities from the top-level `calendar.rs` into `crates/core/src/calendar/` submodules.
+- Move responsibilities from the top-level `calendar.rs` into `crates/janiform/src/calendar/` submodules.
 - Preserve all public `janiform::calendar` API paths and behavior.
 - Keep `mod.rs` as just the module entrypoint.
-- Keep `pub mod calendar;` unchanged in `crates/core/src/lib.rs`.
+- Keep `pub mod calendar;` unchanged in `crates/janiform/src/lib.rs`.
 - Ensure callers do not need to update imports.
 
 ### Unit tests

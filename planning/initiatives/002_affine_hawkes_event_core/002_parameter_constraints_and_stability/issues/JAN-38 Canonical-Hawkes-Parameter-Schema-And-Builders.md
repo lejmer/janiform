@@ -14,5 +14,5 @@ Define a canonical schema for Hawkes kernel parameters and construction builders
 - Missing or malformed field handling
 
 ### Notes/Constraints
-- Keep schema in `crates/core` with no dependency on Python boundary types
+- Keep schema in `crates/janiform` with no dependency on Python boundary types
 - Avoid duplicate parameter structs across modules

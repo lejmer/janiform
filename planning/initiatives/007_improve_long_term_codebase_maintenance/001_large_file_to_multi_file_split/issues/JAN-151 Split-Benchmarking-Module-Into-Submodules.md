@@ -1,10 +1,10 @@
 ## Split Benchmarking Module Into Submodules
 
 ### Description
-Refactor `crates/core/src/benchmarking.rs` into `crates/core/src/benchmarking/` with `mod.rs`, preserving external imports and existing benchmark API entry points.
+Refactor `crates/janiform/src/benchmarking.rs` into `crates/janiform/src/benchmarking/` with `mod.rs`, preserving external imports and existing benchmark API entry points.
 
 ### Acceptance Criteria
-- Create `crates/core/src/benchmarking/mod.rs` and split the large single file into cohesive submodules.
+- Create `crates/janiform/src/benchmarking/mod.rs` and split the large single file into cohesive submodules.
 - Preserve all public contract paths from `janiform::benchmarking`.
 - Keep `mod.rs` as just the module entrypoint.
 - Keep module declaration in `lib.rs` unchanged.

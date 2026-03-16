@@ -6,9 +6,9 @@ validation workflows in Initiative 005 Project 002.
 ## Scope
 
 - Rust entrypoints:
-  - `janiform_core::verification::build_stylized_fact_metric_catalog`
-  - `janiform_core::verification::load_stylized_fact_metric_catalog_from_json`
-  - `janiform_core::verification::serialize_stylized_fact_metric_catalog_to_json`
+  - `janiform::verification::build_stylized_fact_metric_catalog`
+  - `janiform::verification::load_stylized_fact_metric_catalog_from_json`
+  - `janiform::verification::serialize_stylized_fact_metric_catalog_to_json`
 
 The catalog is independent from plotting and report-rendering layers.
 

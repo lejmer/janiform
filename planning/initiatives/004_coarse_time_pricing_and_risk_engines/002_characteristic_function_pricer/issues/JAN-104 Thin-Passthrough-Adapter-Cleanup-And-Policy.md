@@ -4,7 +4,7 @@
 Inventory and clean up consumer-specific adapter functions that add no behavior beyond forwarding to a shared function. The current pattern increases surface area and maintenance cost without adding validation, policy defaults, type conversion, telemetry, or boundary hardening.
 
 Identified zero-behavior passthrough targets:
-- `crates/core/src/pricing.rs`
+- `crates/janiform/src/pricing.rs`
   - `load_hourly_factor_contract_for_pricing`
   - `compose_nig_trading_time_exponent_for_pricing_with_edge_mode`
   - `compose_nig_trading_time_exponent_for_coarse_transform_integration_with_edge_mode`
@@ -13,7 +13,7 @@ Identified zero-behavior passthrough targets:
   - `compose_total_return_characteristic_function_from_oracle_output_for_pricing`
   - `compose_total_return_characteristic_function_from_oracle_output_for_coarse_transform_integration`
   - `evolve_hawkes_state_for_coarse_interval_step`
-- `crates/core/src/simulation.rs`
+- `crates/janiform/src/simulation.rs`
   - `load_hourly_factor_contract_for_simulation`
   - `sample_nig_trading_time_increment_for_simulation_with_edge_mode`
   - `evolve_hawkes_state_for_simulation_step`

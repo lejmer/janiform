@@ -2,7 +2,7 @@
 
 This guide defines the canonical return-decomposition contract shared by
 pricing, simulation, and sufficient-statistics risk generation in
-`janiform-core`.
+`janiform`.
 
 ## Domain model
 

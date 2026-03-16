@@ -6,9 +6,9 @@ Refactor seeded-simulation execution and data movement so realistic runs do not 
 The investigated run took many GB of RAM, while average CPU utilization stayed near `6` to `7` percent. The low CPU utilization is consistent with a mostly single-threaded path saturating roughly one core on a many-core machine, combined with heavy serialization and object-materialization overhead.
 
 The current boundary costs are concrete:
-- In `crates/core/src/simulation/runtime.rs`, seeded simulation allocates full `fine_path` and `event_path` vectors.
+- In `crates/janiform/src/simulation/runtime.rs`, seeded simulation allocates full `fine_path` and `event_path` vectors.
 - The hot event loop in the same module is single-threaded and processes every endogenous and exogenous update sequentially.
-- In `crates/pybind/src/bindings/simulation.rs`, `run_seeded_tick_event_simulation` serializes the full fine path to a single JSON string before returning to Python.
+- In `crates/janiform-pybind/src/bindings/simulation.rs`, `run_seeded_tick_event_simulation` serializes the full fine path to a single JSON string before returning to Python.
 - In `python/janiform/simulation/_seeded.py`, Python deserializes the full payload into a `fine_path` tuple of objects and then reconstructs an `event_tape` from `fine_path`, creating another near-full copy when most fine-path records carry an event side.
 - Before seeded simulation starts, the example and ingestion path already hold multiple full copies of the source ticks in memory by loading, normalizing, writing CSV, reloading CSV, and rebuilding normalized tuples.
 

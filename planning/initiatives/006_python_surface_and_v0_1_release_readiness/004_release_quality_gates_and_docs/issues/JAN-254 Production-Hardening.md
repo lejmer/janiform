@@ -50,7 +50,7 @@ Expected fixes:
 
 #### 2. PyO3 boundary hygiene
 Search for and fix:
-- Business logic living in `crates/pybind/` that belongs in `core`
+- Business logic living in `crates/janiform-pybind/` that belongs in `core`
 - Inconsistent Rust-to-Python error mapping
 - Boundary code that duplicates validation differently from `core`
 - Rust panics that could cross the FFI boundary
@@ -148,7 +148,7 @@ FIXME
 
 Also search for:
 - Very large files and very large functions
-- Duplicate logic across `crates/core/`, `crates/pybind/`, and `python/janiform/`
+- Duplicate logic across `crates/janiform/`, `crates/janiform-pybind/`, and `python/janiform/`
 - CLI command implementations that appear to re-validate or transform data differently from the library path
 - Tests that mention old contract names or behavior after we refactor an API
 

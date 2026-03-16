@@ -5,8 +5,8 @@ Replace the current heuristic Hawkes candidate seeding path with a real calibrat
 
 The current implementation is not performing a meaningful Hawkes calibration:
 - In `python/janiform/calibration/_market_data_translation.py`, `_build_hawkes_candidate_inputs` constructs exactly one candidate from observed data summaries such as open tick count, interarrival coefficient of variation, and known-news ratio.
-- In `crates/core/src/calibration/optimizer_adapter.rs`, `run_constrained_optimizer_adapter` only evaluates supplied candidates. It does not search a continuous parameter space or run a model-implied fit loop.
-- In `crates/core/src/calibration/objective.rs`, `compose_calibration_weighted_objective` sums `weight * observed_score`. For the Hawkes stage, those observed scores are the raw observed moments themselves, not errors between model-implied moments and observed moments.
+- In `crates/janiform/src/calibration/optimizer_adapter.rs`, `run_constrained_optimizer_adapter` only evaluates supplied candidates. It does not search a continuous parameter space or run a model-implied fit loop.
+- In `crates/janiform/src/calibration/objective.rs`, `compose_calibration_weighted_objective` sums `weight * observed_score`. For the Hawkes stage, those observed scores are the raw observed moments themselves, not errors between model-implied moments and observed moments.
 - In the investigated EUR/USD run, this led to a model that generated approximately `7.43` million buy events and approximately `8.60` million sell events in the coarse path over `96` simulated hours, despite only `664,465` observed input ticks over a much longer raw input window.
 
 That event-count blow-up is the strongest root cause behind the unrealistic seeded event volume, the slow simulation runtime, and much of the return-scale explosion. A real-data calibration workflow cannot continue to treat one heuristic seed as a fitted Hawkes model.

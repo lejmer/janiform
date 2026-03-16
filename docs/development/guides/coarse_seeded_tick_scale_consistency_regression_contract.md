@@ -1,7 +1,7 @@
 # Coarse Seeded Tick Scale Consistency Regression Contract
 
 This guide documents the seeded-tick aggregation and coarse-versus-fine regression helpers
-implemented in `janiform_core::verification`.
+implemented in `janiform::verification`.
 
 ## Scope
 
@@ -19,7 +19,7 @@ behavior.
 
 ## Rust Entry Points
 
-Canonical exported items live in `janiform_core::verification`:
+Canonical exported items live in `janiform::verification`:
 
 - `aggregate_seeded_tick_run_to_coarse_comparable_path`
 - `build_coarse_seeded_tick_consistency_report`

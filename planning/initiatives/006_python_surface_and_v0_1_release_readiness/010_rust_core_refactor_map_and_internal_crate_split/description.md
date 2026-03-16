@@ -1,11 +1,11 @@
 ## Project 010: Rust Core Refactor Map And Internal Crate Split Plan
 
-Define the refactor map and staged internal crate split for `crates/core` so the Rust implementation stops concentrating most domain, workflow, validation, and governance code inside one oversized crate.
+Define the refactor map and staged internal crate split for `crates/janiform` so the Rust implementation stops concentrating most domain, workflow, validation, and governance code inside one oversized crate.
 
 ### Context and requirements
-- `crates/core` is now large enough that ownership, dependency direction, and compile boundaries are no longer clear enough.
+- `crates/janiform` is now large enough that ownership, dependency direction, and compile boundaries are no longer clear enough.
 - The main hotspots are calibration, verification, and simulation, with foundational model code, engine code, validation logic, and governance tooling all living in the same crate.
-- The split should be internal-first. `janiform-core` should remain the umbrella facade while the implementation is decomposed behind it.
+- The split should be internal-first. `janiform` should remain the umbrella facade while the implementation is decomposed behind it.
 - The goal is not to hit a fixed number of crates. The goal is to split where separate ownership and dependency boundaries materially improve maintainability.
 - Benchmark and regression support should not keep growing the umbrella runtime crate unnecessarily.
 
@@ -15,11 +15,11 @@ Define the refactor map and staged internal crate split for `crates/core` so the
 - Extract pricing, risk, and simulation into explicit engine crates.
 - Split calibration into separate artifact and runtime ownership surfaces.
 - Split stylized-fact analytics, validation domains, and governance tooling into separate internal crates.
-- Keep `janiform-core` as a curated umbrella facade over the extracted crates.
+- Keep `janiform` as a curated umbrella facade over the extracted crates.
 
 ### Definition of Done
-- Planning documents the current `crates/core` problem clearly enough to justify the split.
-- Planning defines the intended internal crate decomposition and keeps `janiform-core` as the umbrella facade.
+- Planning documents the current `crates/janiform` problem clearly enough to justify the split.
+- Planning defines the intended internal crate decomposition and keeps `janiform` as the umbrella facade.
 - Planning defines the migration at the level of ownership boundaries and staged extraction, without requiring all splits to happen at once.
 - The detailed extraction order, dependency rules, and boundary enforcement work are tracked in the project issues rather than expanded inline here.
 
@@ -36,6 +36,6 @@ Define the refactor map and staged internal crate split for `crates/core` so the
 ### Planning artifacts
 - Policy guide: `docs/development/guides/rust_internal_crate_graph_and_umbrella_facade_policy.md`
 - Machine-readable graph fixture: `tests/fixtures/rust_architecture/internal_crate_graph_policy.json`
-- Temporary cargo metadata guard test: `crates/core/tests/internal_crate_graph_policy.rs`
-- Temporary facade surface guard test: `crates/core/tests/umbrella_facade_surface.rs`
+- Temporary cargo metadata guard test: `crates/janiform/tests/internal_crate_graph_policy.rs`
+- Temporary facade surface guard test: `crates/janiform/tests/umbrella_facade_surface.rs`
 - Removal of the temporary guard tests is part of `JAN-264` once permanent extracted-crate enforcement replaces the planning-phase scaffolding.

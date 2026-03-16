@@ -1,10 +1,10 @@
 ## Split Seasonality Module Into Submodules
 
 ### Description
-Refactor `crates/core/src/seasonality.rs` into `crates/core/src/seasonality/mod.rs` and split internal responsibilities by domain while keeping public usage unchanged.
+Refactor `crates/janiform/src/seasonality.rs` into `crates/janiform/src/seasonality/mod.rs` and split internal responsibilities by domain while keeping public usage unchanged.
 
 ### Acceptance Criteria
-- Create `crates/core/src/seasonality/` and decompose the large file into cohesive submodules.
+- Create `crates/janiform/src/seasonality/` and decompose the large file into cohesive submodules.
 - Preserve existing public imports and `janiform::seasonality` API for downstream users.
 - Keep `mod.rs` as just the module entrypoint.
 - Keep the `pub mod seasonality;` declaration in `lib.rs` unchanged.

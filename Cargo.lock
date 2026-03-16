@@ -307,6 +307,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 
 [[package]]
+name = "janiform"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "janiform-affine-oracle",
+ "janiform-analytics-stylized-facts",
+ "janiform-calibration-artifacts",
+ "janiform-calibration-runtime",
+ "janiform-engine-pricing",
+ "janiform-engine-risk",
+ "janiform-engine-simulation",
+ "janiform-foundations",
+ "janiform-governance",
+ "janiform-governance-bench",
+ "janiform-market-time",
+ "janiform-model-kernels",
+ "janiform-test-support",
+ "janiform-validation",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "janiform-affine-oracle"
 version = "0.1.0"
 dependencies = [
@@ -353,30 +377,6 @@ dependencies = [
  "janiform-foundations",
  "janiform-market-time",
  "janiform-model-kernels",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "janiform-core"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "chrono-tz",
- "janiform-affine-oracle",
- "janiform-analytics-stylized-facts",
- "janiform-calibration-artifacts",
- "janiform-calibration-runtime",
- "janiform-engine-pricing",
- "janiform-engine-risk",
- "janiform-engine-simulation",
- "janiform-foundations",
- "janiform-governance",
- "janiform-governance-bench",
- "janiform-market-time",
- "janiform-model-kernels",
- "janiform-test-support",
- "janiform-validation",
  "serde",
  "serde_json",
 ]
@@ -484,7 +484,7 @@ name = "janiform-pybind"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "janiform-core",
+ "janiform",
  "pyo3",
  "serde_json",
 ]

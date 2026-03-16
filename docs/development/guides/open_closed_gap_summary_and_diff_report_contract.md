@@ -7,7 +7,7 @@ emitted by the open and closed gap leakage regression harness.
 
 The contract applies to:
 
-- Rust entrypoint: `janiform_core::verification::run_open_closed_gap_leakage_regression_harness`
+- Rust entrypoint: `janiform::verification::run_open_closed_gap_leakage_regression_harness`
 - Python entrypoint: `janiform.validation.run_open_closed_gap_leakage_regression_harness`
 
 ## Top-level report schema
