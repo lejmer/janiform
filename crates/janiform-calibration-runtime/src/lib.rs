@@ -30,6 +30,7 @@ mod objective;
 mod optimizer_adapter;
 mod staged_runner;
 mod stages;
+mod temporal;
 
 pub use adapters::*;
 pub use checkpointing::*;

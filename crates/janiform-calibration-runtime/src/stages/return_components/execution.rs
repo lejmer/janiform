@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::{DateTime, Duration, Utc};
+use janiform_foundations::numeric::{arithmetic_mean_or_zero as arithmetic_mean, median_abs};
 
 use crate::calendar::{ExchangeCalendarRegistry, MarketState};
 use crate::optimizer_adapter::{
@@ -1031,11 +1032,8 @@ fn build_surprise_arrival_families(
         }];
     }
 
-    let mut surprise_intensity_candidates = deduplicate_sorted_f64_values(vec![
-        round_candidate_value(surprise_arrival_intensity_per_hour * 0.75),
-        round_candidate_value(surprise_arrival_intensity_per_hour),
-        round_candidate_value(surprise_arrival_intensity_per_hour * 1.25),
-    ]);
+    let mut surprise_intensity_candidates =
+        scale_candidates_from_target(surprise_arrival_intensity_per_hour, true);
     if surprise_intensity_candidates.is_empty() {
         surprise_intensity_candidates.push(0.0);
     }
@@ -1239,7 +1237,7 @@ fn rank_return_jump_mark_scale_family(
     zero_aware_relative_error(
         fitted_mean_abs_jump_return,
         summary_statistics.mean_abs_known_open_jump_return,
-        1.0e-6,
+        RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
     ) + zero_aware_relative_error(
         fitted_mean_abs_jump_return,
         if summary_statistics.intraday_jump_candidate_count
@@ -1249,7 +1247,7 @@ fn rank_return_jump_mark_scale_family(
         } else {
             summary_statistics.mean_abs_surprise_open_jump_return
         },
-        1.0e-6,
+        RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
     ) + zero_aware_relative_error(
         fitted_mean_abs_jump_return,
         if summary_statistics.close_open_gap_candidate_count
@@ -1259,11 +1257,11 @@ fn rank_return_jump_mark_scale_family(
         } else {
             summary_statistics.mean_abs_surprise_closed_gap_return
         },
-        1.0e-6,
+        RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
     ) + zero_aware_relative_error(
         fitted_mean_abs_jump_return,
         summary_statistics.mean_abs_known_closed_gap_return,
-        1.0e-6,
+        RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
     )
 }
 
@@ -1277,7 +1275,7 @@ fn rank_activity_coupling_family(
     zero_aware_relative_error(
         family.known_activity_coupling_scale,
         summary_statistics.mean_known_post_shock_activity_lift,
-        1.0e-6,
+        RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
     ) + zero_aware_relative_error(
         family.surprise_activity_coupling_scale,
         if surprise_evidence_count < RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT {
@@ -1285,7 +1283,7 @@ fn rank_activity_coupling_family(
         } else {
             summary_statistics.mean_surprise_post_shock_activity_lift
         },
-        1.0e-6,
+        RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
     )
 }
 
@@ -1294,16 +1292,17 @@ fn scale_candidates_from_target(target_value: f64, include_zero: bool) -> Vec<f6
         return vec![0.0];
     }
 
-    let mut values = deduplicate_sorted_f64_values(vec![
-        if include_zero {
-            0.0
-        } else {
-            target_value * 0.75
-        },
-        round_candidate_value(target_value * 0.75),
-        round_candidate_value(target_value),
-        round_candidate_value(target_value * 1.25),
-    ]);
+    const RELATIVE_MULTIPLIERS: [f64; 3] = [0.25, 1.0, 4.0];
+
+    let mut values =
+        Vec::with_capacity(RELATIVE_MULTIPLIERS.len() + if include_zero { 1 } else { 0 });
+    if include_zero {
+        values.push(0.0);
+    }
+    for multiplier in RELATIVE_MULTIPLIERS {
+        values.push(round_candidate_value(target_value * multiplier));
+    }
+    let mut values = deduplicate_sorted_f64_values(values);
     if values.is_empty() {
         values.push(round_candidate_value(target_value));
     }
@@ -1469,26 +1468,6 @@ fn is_within_known_news_exclusion_window(
     let lower_index = known_news_timestamps.partition_point(|timestamp| *timestamp < lower_bound);
 
     lower_index < known_news_timestamps.len() && known_news_timestamps[lower_index] <= upper_bound
-}
-
-fn median_abs(values: &[f64]) -> f64 {
-    let mut retained_values: Vec<f64> = values
-        .iter()
-        .copied()
-        .filter(|value| value.is_finite())
-        .map(f64::abs)
-        .collect();
-    if retained_values.is_empty() {
-        return 0.0;
-    }
-
-    retained_values.sort_by(f64::total_cmp);
-    let midpoint = retained_values.len() / 2;
-    if retained_values.len() % 2 == 0 {
-        (retained_values[midpoint - 1] + retained_values[midpoint]) / 2.0
-    } else {
-        retained_values[midpoint]
-    }
 }
 
 fn prepare_candidate_generation_input(
@@ -1840,21 +1819,21 @@ fn score_candidate_metric_buckets(
     ) + zero_aware_relative_error(
         jump_diagnostic.fitted_mean_abs_jump_return,
         jump_diagnostic.observed_mean_abs_jump_return,
-        1.0e-6,
+        RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
     );
     let closed_gap_fit = zero_aware_relative_error(
         gap_diagnostic.fitted_mean_abs_gap_return,
         gap_diagnostic.observed_mean_abs_gap_return,
-        1.0e-6,
+        RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
     );
     let activity_coupling_fit = zero_aware_relative_error(
         activity_coupling_diagnostic.fitted_known_activity_coupling_scale,
         activity_coupling_diagnostic.observed_known_post_shock_activity_lift,
-        1.0e-6,
+        RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
     ) + zero_aware_relative_error(
         activity_coupling_diagnostic.fitted_surprise_activity_coupling_scale,
         activity_coupling_diagnostic.observed_surprise_post_shock_activity_lift,
-        1.0e-6,
+        RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
     );
 
     ReturnComponentsStageObjectiveMetricBuckets {
@@ -1988,8 +1967,7 @@ fn build_price_range_sanity_diagnostic(
         + summary_statistics.close_open_gap_candidate_count as f64 * fitted_mean_abs_jump_return;
     let expansion_ratio =
         fitted_reference_log_price_span / summary_statistics.observed_log_price_span.max(1.0e-8);
-    let is_flagged = expansion_ratio > RETURN_COMPONENTS_STAGE_PRICE_RANGE_SANITY_THRESHOLD_RATIO
-        && fitted_reference_log_price_span > summary_statistics.observed_log_price_span + 0.05;
+    let is_flagged = expansion_ratio > RETURN_COMPONENTS_STAGE_PRICE_RANGE_SANITY_THRESHOLD_RATIO;
 
     ReturnComponentsStagePriceRangeSanityDiagnostic {
         is_flagged,
@@ -2243,28 +2221,18 @@ pub(super) fn round_signed_candidate_value(value: f64) -> f64 {
         return 0.0;
     }
 
-    (value * 1_000_000.0).round() / 1_000_000.0
+    (value * 1_000_000_000_000.0).round() / 1_000_000_000_000.0
 }
 
 pub(super) fn round_negative_candidate_value(value: f64) -> f64 {
     if !value.is_finite() {
-        return -0.05;
+        return -RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER;
     }
 
-    ((value.min(-1.0e-6)) * 1_000_000.0).round() / 1_000_000.0
-}
-
-pub(super) fn arithmetic_mean(values: &[f64]) -> f64 {
-    if values.is_empty() {
-        return 0.0;
-    }
-
-    let sum: f64 = values.iter().copied().sum();
-    if !sum.is_finite() {
-        return 0.0;
-    }
-
-    (sum / values.len() as f64).max(0.0)
+    ((value.min(-RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER))
+        * 1_000_000_000_000.0)
+        .round()
+        / 1_000_000_000_000.0
 }
 
 fn deterministic_quantile_bins(values: &[f64], quantiles: &[f64]) -> Vec<f64> {
@@ -2299,7 +2267,7 @@ fn round_candidate_value(value: f64) -> f64 {
         return 0.0;
     }
 
-    let rounded = (value * 1_000_000.0).round() / 1_000_000.0;
+    let rounded = (value * 1_000_000_000_000.0).round() / 1_000_000_000_000.0;
     if rounded < 0.0 { 0.0 } else { rounded }
 }
 

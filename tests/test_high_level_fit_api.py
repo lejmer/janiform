@@ -370,6 +370,8 @@ def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_metada
     assert loaded_model.summary() == model.summary()
     assert "execution_input" not in persisted_payload
     assert "stage_report_payloads" not in persisted_payload
+    assert "timestamp_utc_nanos" not in persisted_payload["parameters"]["seasonality"]
+    assert "normalized_combined_factor_by_event" not in persisted_payload["parameters"]["seasonality"]
     assert first_path.read_text(encoding="utf-8").startswith("{\n  ")
     assert first_path.read_text(encoding="utf-8") == second_path.read_text(encoding="utf-8")
 
@@ -390,9 +392,6 @@ def test_loaded_high_level_model_runtime_seasonality_prefers_compact_parameters(
     calendar_registry = CalendarRegistry(
         loaded_model.session_resolution.resolved_session_definition_json
     )
-
-    def _unexpected_materialized_builder(*args, **kwargs) -> NoReturn:
-        raise AssertionError("runtime seasonality should prefer structural compact parameters")
 
     class _FakeTimestampEventPreprocessingResult:
         exchange_local_minute_of_day = [540, 600]
@@ -424,11 +423,6 @@ def test_loaded_high_level_model_runtime_seasonality_prefers_compact_parameters(
 
     monkeypatch.setattr(
         fit_model_module,
-        "build_runtime_hourly_seasonality_source_from_calibration_payload",
-        _unexpected_materialized_builder,
-    )
-    monkeypatch.setattr(
-        fit_model_module,
         "preprocess_timestamp_events",
         _capture_preprocess_timestamp_events,
     )
@@ -445,75 +439,83 @@ def test_loaded_high_level_model_runtime_seasonality_prefers_compact_parameters(
     assert seasonality_source.hourly_factors == (1.0, 1.0)
 
 
-def test_loaded_high_level_model_runtime_seasonality_falls_back_to_stage_payload_when_structural_parameters_are_missing(
+def test_loaded_high_level_model_runtime_seasonality_infers_intraday_bin_width(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     model = _build_full_workflow_model(
         tmp_path,
         monkeypatch,
-        run_id="high-level-model-stage-payload-fallback",
+        run_id="high-level-model-infer-seasonality-bin-width",
     )
-    persisted_model_path = tmp_path / "fallback_model.json"
+    persisted_model_path = tmp_path / "model.json"
     model.save(persisted_model_path)
     loaded_model = JaniformModel.load(persisted_model_path)
     loaded_model.parameters["seasonality"] = {
-        "schema_version": loaded_model.parameters["seasonality"]["schema_version"],
-        "exchange_code": loaded_model.parameters["seasonality"]["exchange_code"],
-        "timestamp_utc_nanos": loaded_model.parameters["seasonality"]["timestamp_utc_nanos"],
-        "normalized_combined_factor_by_event": loaded_model.parameters["seasonality"][
-            "normalized_combined_factor_by_event"
-        ],
+        **loaded_model.parameters["seasonality"],
+        "intraday_minutes_per_bin": None,
     }
 
-    registry = CalendarRegistry(
+    calendar_registry = CalendarRegistry(
         loaded_model.session_resolution.resolved_session_definition_json
     )
-    captured_call: dict[str, Any] = {}
 
-    def _capture_build_runtime_hourly_seasonality_source_from_calibration_payload(
-        *,
-        calendar_registry: CalendarRegistry,
-        range_start_utc: datetime,
-        range_end_utc: datetime,
-        interval: str | timedelta,
-        seasonality_stage_payload: Mapping[str, Any],
-        mean_renormalize: bool = True,
-    ) -> fit_model_module.HourlySeasonalityProviderExplicitSource:
-        captured_call["calendar_registry"] = calendar_registry
-        captured_call["range_start_utc"] = range_start_utc
-        captured_call["range_end_utc"] = range_end_utc
-        captured_call["interval"] = interval
-        captured_call["seasonality_stage_payload"] = seasonality_stage_payload
-        captured_call["mean_renormalize"] = mean_renormalize
-
-        return fit_model_module.HourlySeasonalityProviderExplicitSource(
-            hourly_factors=(1.0, 1.0),
-            materialization_method="runtime_calibration_stage_payload_mean_renormalized.v1",
-        )
+    class _FakeTimestampEventPreprocessingResult:
+        exchange_local_minute_of_day = [540, 600]
+        exchange_local_day_of_week = bytes([1, 1])
+        exchange_local_day_of_year = [33, 33]
 
     monkeypatch.setattr(
         fit_model_module,
-        "build_runtime_hourly_seasonality_source_from_calibration_payload",
-        _capture_build_runtime_hourly_seasonality_source_from_calibration_payload,
+        "preprocess_timestamp_events",
+        lambda *args, **kwargs: _FakeTimestampEventPreprocessingResult(),
     )
 
     seasonality_source = fit_model_module._build_runtime_hourly_seasonality_source_from_model(
         loaded_model,
-        calendar_registry=registry,
+        calendar_registry=calendar_registry,
         exchange_code=loaded_model.session_resolution.exchange_code,
         range_start_utc=datetime(2026, 2, 2, 14, tzinfo=UTC),
         range_end_utc=datetime(2026, 2, 2, 16, tzinfo=UTC),
         interval="1h",
     )
 
-    assert captured_call["calendar_registry"] is registry
-    assert captured_call["range_start_utc"] == datetime(2026, 2, 2, 14, tzinfo=UTC)
-    assert captured_call["range_end_utc"] == datetime(2026, 2, 2, 16, tzinfo=UTC)
-    assert captured_call["interval"] == "1h"
-    assert captured_call["seasonality_stage_payload"] is loaded_model.parameters["seasonality"]
-    assert captured_call["mean_renormalize"] is True
     assert seasonality_source.hourly_factors == (1.0, 1.0)
+
+
+def test_loaded_high_level_model_runtime_seasonality_requires_structural_parameters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-structural-seasonality-required",
+    )
+    persisted_model_path = tmp_path / "missing-structural-seasonality-model.json"
+    model.save(persisted_model_path)
+    loaded_model = JaniformModel.load(persisted_model_path)
+    loaded_model.parameters["seasonality"] = {
+        "schema_version": loaded_model.parameters["seasonality"]["schema_version"],
+        "exchange_code": loaded_model.parameters["seasonality"]["exchange_code"],
+    }
+
+    registry = CalendarRegistry(
+        loaded_model.session_resolution.resolved_session_definition_json
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="JaniformModel does not contain structural seasonality parameters required for runtime materialization",
+    ):
+        fit_model_module._build_runtime_hourly_seasonality_source_from_model(
+            loaded_model,
+            calendar_registry=registry,
+            exchange_code=loaded_model.session_resolution.exchange_code,
+            range_start_utc=datetime(2026, 2, 2, 14, tzinfo=UTC),
+            range_end_utc=datetime(2026, 2, 2, 16, tzinfo=UTC),
+            interval="1h",
+        )
 
 
 def test_high_level_model_simulate_dispatches_by_interval_mode(
@@ -1192,7 +1194,7 @@ def test_high_level_fit_progress_splits_loading_and_translation_steps(
     ]
 
 
-def test_high_level_fit_report_returns_failure_details_without_model(
+def test_high_level_fit_report_returns_success_details_with_model(
     tmp_path: Path,
 ) -> None:
     tick_data_path = tmp_path / "ticks.csv"
@@ -1233,11 +1235,14 @@ def test_high_level_fit_report_returns_failure_details_without_model(
         report=True,
     )
 
-    assert model is None
-    assert fit_report.success is False
-    assert fit_report.staged_response.failure is not None
-    assert fit_report.staged_response.failure.stage is not None
-    assert fit_report.stage_report_payloads[-1]["stage_report_kind"] == "hawkes"
+    assert model is not None
+    assert fit_report.success is True
+    assert fit_report.staged_response.failure is None
+    assert [stage_payload["stage_report_kind"] for stage_payload in fit_report.stage_report_payloads] == [
+        "seasonality",
+        "hawkes",
+        "return_components",
+    ]
 
 
 def test_high_level_fit_rejects_missing_exchange_context_for_automatic_session_inference(

@@ -925,6 +925,23 @@ fn structured_rho_validation_accepts_configurable_self_dominance_policy() {
 }
 
 #[test]
+fn structured_rho_validation_accepts_zero_cross_loadings_under_self_dominance_policy() {
+    let structured_rho = HawkesStructuredRhoParameterization::new(0.5, 0.0, 0.2, 0.0);
+    let policy = HawkesStructuredRhoSelfDominancePolicy::new(1.0);
+
+    let validation_output =
+        HawkesKernelLoadings::validate_structured_rho(structured_rho, Some(policy))
+            .expect("zero cross loadings with positive self loadings should satisfy policy");
+
+    assert_eq!(
+        validation_output.applied_self_dominance_policy,
+        Some(policy)
+    );
+    assert_eq!(validation_output.target_plus_self_to_cross_ratio, f64::MAX);
+    assert_eq!(validation_output.target_minus_self_to_cross_ratio, f64::MAX);
+}
+
+#[test]
 fn structured_rho_validation_rejects_self_dominance_policy_violation() {
     let structured_rho = HawkesStructuredRhoParameterization::new(0.8, 0.5, 0.2, 0.3);
     let policy = HawkesStructuredRhoSelfDominancePolicy::new(1.3);

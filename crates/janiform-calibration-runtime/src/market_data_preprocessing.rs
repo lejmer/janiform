@@ -39,6 +39,12 @@ use crate::execution_bridge::{
     CalibrationSharedNewsMarkLawConfiguration, CalibrationTimestampEventRecord,
     CalibrationTimestampEventSessionFilter,
 };
+use crate::temporal::{count_timestamps_in_half_open_interval, datetime_from_nanos};
+use janiform_foundations::numeric::{
+    arithmetic_mean, clamp_to_open_unit_interval, clamp_to_unit_interval, coefficient_of_variation,
+    logistic, median_abs, normalized_pseudocount, round_positive_to_domain, round_to,
+    smallest_positive_value, strictly_positive_machine_value, unique_sorted_values,
+};
 
 const ACTIVITY_LIFT_WINDOW_MINUTES: i64 = 30;
 const KNOWN_NEWS_EXCLUSION_WINDOW_MINUTES: i64 = 15;
@@ -508,6 +514,7 @@ fn build_seasonality_stage_input(
             },
         )
         .collect();
+    let timestamp_event_count = timestamp_event_records.len();
 
     CalibrationSeasonalityStageExecutionInput {
         timestamp_event_records,
@@ -520,15 +527,15 @@ fn build_seasonality_stage_input(
                 smoothing_kernel: CalibrationIntradaySmoothingKernel::Gaussian,
                 smoothing_bandwidth_bins: 3.0,
                 minimum_bin_events: 1,
-                pseudocount: 1.0e-6,
+                pseudocount: normalized_pseudocount(timestamp_event_count),
             },
             day_of_week_settings: CalibrationDayOfWeekSeasonalityEstimatorSettings {
                 minimum_bucket_events: 1,
-                pseudocount: 1.0e-6,
+                pseudocount: normalized_pseudocount(timestamp_event_count),
             },
             day_of_year_settings: CalibrationDayOfYearSeasonalityEstimatorSettings {
                 minimum_bucket_events: 1,
-                pseudocount: 1.0e-6,
+                pseudocount: normalized_pseudocount(timestamp_event_count),
             },
         }),
         dataset_id_override: Some(trade_events_data_reference),
@@ -576,7 +583,10 @@ fn build_hawkes_candidate_inputs(
     let interarrival_coefficient_of_variation =
         coefficient_of_variation(open_interarrival_seconds.as_slice());
 
-    let short_gap_threshold_seconds = (mean_interarrival_seconds * 0.5).clamp(1.0, 300.0);
+    let short_gap_threshold_seconds = (mean_interarrival_seconds * 0.5).max(
+        smallest_positive_value(open_interarrival_seconds.as_slice())
+            .unwrap_or(strictly_positive_machine_value()),
+    );
     let short_gap_ratio = if open_interarrival_seconds.is_empty() {
         0.0
     } else {
@@ -606,7 +616,10 @@ fn build_hawkes_candidate_inputs(
         closed_session_tick_count: session_closed_tick_count,
         open_session_buy_tick_count,
         open_session_sell_tick_count,
-        open_session_mean_interarrival_seconds: round_to(mean_interarrival_seconds.max(1.0e-6), 6),
+        open_session_mean_interarrival_seconds: round_to(
+            mean_interarrival_seconds.max(strictly_positive_machine_value()),
+            6,
+        ),
         open_session_interarrival_coefficient_of_variation: round_to(
             interarrival_coefficient_of_variation,
             6,
@@ -617,44 +630,30 @@ fn build_hawkes_candidate_inputs(
         open_session_known_news_activity_share: round_to(open_known_news_activity_share, 6),
     };
 
-    let open_session_rate_per_hour =
-        session_open_tick_count as f64 / open_session_duration_hours.max(1.0e-9);
+    let open_session_rate_per_hour = session_open_tick_count as f64
+        / open_session_duration_hours.max(strictly_positive_machine_value());
     let open_session_rate_per_second = open_session_rate_per_hour / 3600.0;
     let poisson_short_gap_ratio =
         1.0 - f64::exp(-open_session_rate_per_second * short_gap_threshold_seconds);
     let clustering_excess = (short_gap_ratio - poisson_short_gap_ratio).max(0.0);
-    let clustering_center = clamp(
+    let clustering_center = clamp_to_open_unit_interval(
         0.15 + 0.45 * clustering_excess
             + 0.20 * (interarrival_coefficient_of_variation - 1.0).max(0.0),
-        0.05,
-        0.78,
     );
-    let beta_center = clamp(60.0 / mean_interarrival_seconds.max(1.0), 0.05, 6.0);
+    let beta_center = (60.0 / mean_interarrival_seconds.max(strictly_positive_machine_value()))
+        .max(strictly_positive_machine_value());
     let open_sell_share =
         open_session_sell_tick_count as f64 / session_open_tick_count.max(1) as f64;
-    let asymmetry_fraction = clamp((open_sell_share - 0.5).abs() * 1.6, 0.0, 0.35);
-    let news_rate_per_hour =
-        open_known_news_timestamps.len() as f64 / open_session_duration_hours.max(1.0e-9);
+    let asymmetry_fraction = clamp_to_unit_interval((open_sell_share - 0.5).abs() * 1.6);
+    let news_rate_per_hour = open_known_news_timestamps.len() as f64
+        / open_session_duration_hours.max(strictly_positive_machine_value());
 
-    let branching_values = unique_sorted_rounded(&[
-        0.08,
-        0.14,
-        0.20,
-        0.28,
-        clamp(clustering_center - 0.20, 0.05, 0.82),
-        clamp(clustering_center - 0.12, 0.05, 0.82),
-        clustering_center,
-        clamp(clustering_center + 0.12, 0.05, 0.82),
-    ]);
-    let beta_values = unique_sorted_rounded(&[
-        clamp(beta_center * 0.75, 0.05, 8.0),
-        beta_center,
-        clamp(beta_center * 1.35, 0.05, 8.0),
-    ]);
+    let branching_values = derive_branching_ratio_candidates(clustering_center);
+    let beta_values = derive_positive_scale_candidates(beta_center);
 
     let cross_shares = [0.10, 0.22];
-    let lambda_scales = [0.90, 1.00, 1.10];
-    let rho_scales = [0.50, 1.00, 1.50];
+    let lambda_scales = [0.5, 1.0, 2.0];
+    let rho_scales = [0.25, 1.0, 4.0];
 
     let mut candidate_inputs: Vec<CalibrationHawkesStageCandidateInput> = Vec::new();
     let mut candidate_index: usize = 0;
@@ -674,12 +673,15 @@ fn build_hawkes_candidate_inputs(
                 );
 
                 for lambda_scale in lambda_scales {
-                    let lambda_bar = (matched_lambda_bar * lambda_scale).max(1.0e-4);
+                    let lambda_bar =
+                        (matched_lambda_bar * lambda_scale).max(strictly_positive_machine_value());
                     for rho_scale in rho_scales {
                         let structured_rho = build_structured_rho_candidate(
                             beta,
-                            (cross_share + 0.04).min(0.35),
-                            (asymmetry_fraction + 0.05).min(0.40),
+                            clamp_to_open_unit_interval(cross_share * 1.4),
+                            clamp_to_open_unit_interval(
+                                asymmetry_fraction * 1.15 + strictly_positive_machine_value(),
+                            ),
                             open_session_rate_per_hour,
                             news_rate_per_hour,
                             open_known_news_activity_share,
@@ -688,8 +690,8 @@ fn build_hawkes_candidate_inputs(
 
                         candidate_inputs.push(CalibrationHawkesStageCandidateInput {
                             candidate_id: format!("market_data_fit_{candidate_index:03}"),
-                            lambda_bar: round_to(lambda_bar, 6),
-                            beta: round_to(beta, 6),
+                            lambda_bar: round_positive_to_domain(lambda_bar, 12),
+                            beta: round_positive_to_domain(beta, 12),
                             structured_alpha,
                             structured_rho,
                             self_dominance_policy: Some(HawkesStructuredRhoSelfDominancePolicy {
@@ -1115,7 +1117,7 @@ fn derive_shared_mark_law_template(
             .collect::<Vec<_>>()
             .as_slice(),
     )
-    .unwrap_or(0.01);
+    .unwrap_or(0.0);
 
     let mean_abs_gap_return = arithmetic_mean(
         close_open_boundary_observations
@@ -1125,11 +1127,22 @@ fn derive_shared_mark_law_template(
             .as_slice(),
     )
     .unwrap_or(mean_abs_open_return);
+    let positive_open_return_scale = smallest_positive_value(
+        intraday_return_values
+            .iter()
+            .map(|return_value| return_value.abs())
+            .collect::<Vec<_>>()
+            .as_slice(),
+    )
+    .unwrap_or(strictly_positive_machine_value());
 
     CalibrationSharedNewsMarkLawConfiguration {
         gamma_severity_marks: GammaSeverityMarkConfiguration {
             shape_k: 2.0,
-            scale_theta: round_to((mean_abs_open_return * 20.0).max(0.5), 6),
+            scale_theta: round_to(
+                (mean_abs_open_return * 20.0).max(positive_open_return_scale),
+                12,
+            ),
         },
         double_exponential_base_shock: DoubleExponentialBaseShockConfiguration {
             probability_positive: 0.45,
@@ -1137,7 +1150,7 @@ fn derive_shared_mark_law_template(
             eta_minus: 10.0,
         },
         coupled_gap_marks: CoupledGapMarkConfiguration {
-            sigma_g: round_to((mean_abs_gap_return * 10.0).max(0.1), 6),
+            sigma_g: round_to((mean_abs_gap_return * 10.0).max(0.0), 12),
         },
     }
 }
@@ -1224,12 +1237,12 @@ fn activity_lift(anchor_timestamp_utc_nanos: i64, open_price_tick_timestamps: &[
     let pre_window_start = anchor_timestamp_utc_nanos - window_nanos;
     let post_window_end = anchor_timestamp_utc_nanos + window_nanos;
 
-    let pre_event_count = count_in_half_open_interval(
+    let pre_event_count = count_timestamps_in_half_open_interval(
         open_price_tick_timestamps,
         pre_window_start,
         anchor_timestamp_utc_nanos,
     );
-    let post_event_count = count_in_half_open_interval(
+    let post_event_count = count_timestamps_in_half_open_interval(
         open_price_tick_timestamps,
         anchor_timestamp_utc_nanos,
         post_window_end,
@@ -1284,10 +1297,13 @@ fn build_structured_alpha_candidate(
     let buy_row_sum = (row_sum_center - asymmetry_mass / 2.0).max(row_sum_center * 0.45);
 
     HawkesStructuredAlphaParameterization {
-        a_self: round_to((buy_row_sum * (1.0 - cross_share)).max(1.0e-4), 6),
-        a_cross: round_to((buy_row_sum * cross_share).max(0.0), 6),
-        delta_self: round_to((asymmetry_mass * (1.0 - cross_share)).max(0.0), 6),
-        delta_cross: round_to((asymmetry_mass * cross_share).max(0.0), 6),
+        a_self: round_positive_to_domain(
+            (buy_row_sum * (1.0 - cross_share)).max(strictly_positive_machine_value()),
+            12,
+        ),
+        a_cross: round_to((buy_row_sum * cross_share).max(0.0), 12),
+        delta_self: round_to((asymmetry_mass * (1.0 - cross_share)).max(0.0), 12),
+        delta_cross: round_to((asymmetry_mass * cross_share).max(0.0), 12),
     }
 }
 
@@ -1301,22 +1317,25 @@ fn build_structured_rho_candidate(
     rho_scale: f64,
 ) -> HawkesStructuredRhoParameterization {
     let base_row_sum = if news_rate_per_hour <= 0.0 || known_news_activity_share <= 0.0 {
-        0.02 * rho_scale
+        0.0
     } else {
         let target_total_rho_mass =
             2.0 * beta * open_session_rate_per_hour * known_news_activity_share
-                / news_rate_per_hour.max(1.0e-9);
-        clamp(target_total_rho_mass / 2.0, 0.02, 2.50) * rho_scale
+                / news_rate_per_hour.max(strictly_positive_machine_value());
+        (target_total_rho_mass / 2.0).max(0.0) * rho_scale
     };
 
-    let asymmetry_mass = base_row_sum * asymmetry_fraction.min(0.5);
+    let asymmetry_mass = base_row_sum * clamp_to_unit_interval(asymmetry_fraction);
     let buy_row_sum = (base_row_sum - asymmetry_mass / 2.0).max(base_row_sum * 0.45);
 
     HawkesStructuredRhoParameterization {
-        r_self: round_to((buy_row_sum * (1.0 - cross_share)).max(1.0e-4), 6),
-        r_cross: round_to((buy_row_sum * cross_share).max(0.0), 6),
-        delta_self_r: round_to((asymmetry_mass * (1.0 - cross_share)).max(0.0), 6),
-        delta_cross_r: round_to((asymmetry_mass * cross_share).max(0.0), 6),
+        r_self: round_positive_to_domain(
+            (buy_row_sum * (1.0 - cross_share)).max(strictly_positive_machine_value()),
+            12,
+        ),
+        r_cross: round_to((buy_row_sum * cross_share).max(0.0), 12),
+        delta_self_r: round_to((asymmetry_mass * (1.0 - cross_share)).max(0.0), 12),
+        delta_cross_r: round_to((asymmetry_mass * cross_share).max(0.0), 12),
     }
 }
 
@@ -1337,8 +1356,8 @@ fn matched_lambda_bar_for_observed_open_rate(
 
     let determinant = (1.0 - scaled_plus_plus) * (1.0 - scaled_minus_minus)
         - scaled_plus_minus * scaled_minus_plus;
-    if determinant <= 1.0e-9 {
-        return (open_session_rate_per_hour / 2.0).max(1.0e-4);
+    if determinant <= strictly_positive_machine_value() {
+        return (open_session_rate_per_hour / 2.0).max(strictly_positive_machine_value());
     }
 
     let inverse_sum = ((1.0 - scaled_minus_minus)
@@ -1346,11 +1365,11 @@ fn matched_lambda_bar_for_observed_open_rate(
         + scaled_minus_plus
         + (1.0 - scaled_plus_plus))
         / determinant;
-    if inverse_sum <= 1.0e-9 {
-        return (open_session_rate_per_hour / 2.0).max(1.0e-4);
+    if inverse_sum <= strictly_positive_machine_value() {
+        return (open_session_rate_per_hour / 2.0).max(strictly_positive_machine_value());
     }
 
-    (open_session_rate_per_hour / inverse_sum).max(1.0e-4)
+    (open_session_rate_per_hour / inverse_sum).max(strictly_positive_machine_value())
 }
 
 fn required_definition_and_timezone<'a>(
@@ -1524,8 +1543,8 @@ mod tests {
     use chrono::{TimeZone, Utc};
 
     use super::{
-        OpenTickRecord, derive_close_open_boundary_observations,
-        resolve_market_state_and_session_window,
+        OpenTickRecord, build_structured_rho_candidate, derive_close_open_boundary_observations,
+        derive_positive_scale_candidates, resolve_market_state_and_session_window,
     };
     use crate::calendar::{
         CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarDefinition,
@@ -1747,6 +1766,31 @@ mod tests {
         assert_eq!(observations[0].open_price, 1.0113);
     }
 
+    #[test]
+    fn positive_scale_candidates_remain_strictly_positive_after_rounding() {
+        let candidate_values = derive_positive_scale_candidates(1.0e-15);
+
+        assert!(!candidate_values.is_empty());
+        assert!(
+            candidate_values.iter().all(|value| *value > 0.0),
+            "positive scale candidate generation must preserve strict positivity"
+        );
+    }
+
+    #[test]
+    fn structured_rho_candidate_preserves_positive_self_mass_without_news_activity_share() {
+        let structured_rho =
+            build_structured_rho_candidate(1.0e-15, 0.22, 0.4, 120.0, 0.0, 0.0, 1.0);
+
+        assert!(
+            structured_rho.r_self > 0.0,
+            "structured rho self-loading must stay inside the Hawkes domain"
+        );
+        assert!(structured_rho.r_cross >= 0.0);
+        assert!(structured_rho.delta_self_r >= 0.0);
+        assert!(structured_rho.delta_cross_r >= 0.0);
+    }
+
     fn fx_spot_weekend_definition() -> ExchangeCalendarDefinition {
         ExchangeCalendarDefinition::from_artifact(ExchangeCalendarArtifact {
             schema_version: "calendar.v1".to_string(),
@@ -1788,13 +1832,6 @@ mod tests {
         })
         .expect("fixture calendar should be valid")
     }
-}
-
-fn datetime_from_nanos<E>(timestamp_utc_nanos: i64, error: E) -> Result<DateTime<Utc>, E> {
-    let seconds = timestamp_utc_nanos.div_euclid(1_000_000_000);
-    let nanoseconds = timestamp_utc_nanos.rem_euclid(1_000_000_000) as u32;
-
-    DateTime::from_timestamp(seconds, nanoseconds).ok_or(error)
 }
 
 fn parse_trade_sign(
@@ -1840,76 +1877,35 @@ fn observation_window_hours(
     }
 }
 
-pub(crate) fn arithmetic_mean(values: &[f64]) -> Option<f64> {
-    if values.is_empty() {
-        return None;
-    }
+fn derive_branching_ratio_candidates(center: f64) -> Vec<f64> {
+    const LOGIT_OFFSETS: [f64; 5] = [-2.0, -1.0, 0.0, 1.0, 2.0];
 
-    Some(values.iter().sum::<f64>() / values.len() as f64)
+    let bounded_center = clamp_to_open_unit_interval(center);
+    let center_logit = (bounded_center / (1.0 - bounded_center)).ln();
+
+    unique_sorted_values(
+        LOGIT_OFFSETS
+            .iter()
+            .map(|offset| {
+                clamp_to_open_unit_interval(round_to(logistic(center_logit + offset), 12))
+            })
+            .collect::<Vec<_>>()
+            .as_slice(),
+    )
 }
 
-pub(crate) fn coefficient_of_variation(values: &[f64]) -> f64 {
-    let Some(mean_value) = arithmetic_mean(values) else {
-        return 0.0;
-    };
-    if mean_value <= 0.0 {
-        return 0.0;
-    }
+fn derive_positive_scale_candidates(center: f64) -> Vec<f64> {
+    const SCALE_MULTIPLIERS: [f64; 5] = [0.25, 0.5, 1.0, 2.0, 4.0];
 
-    let variance = values
-        .iter()
-        .map(|value| {
-            let centered = *value - mean_value;
-            centered * centered
-        })
-        .sum::<f64>()
-        / values.len() as f64;
+    let bounded_center = center.max(strictly_positive_machine_value());
 
-    variance.sqrt() / mean_value
-}
-
-fn median_abs(values: &[f64]) -> f64 {
-    if values.is_empty() {
-        return 0.0;
-    }
-
-    let mut sorted_values: Vec<f64> = values.iter().map(|value| value.abs()).collect();
-    sorted_values.sort_by(f64::total_cmp);
-
-    let midpoint = sorted_values.len() / 2;
-    if sorted_values.len() % 2 == 0 {
-        (sorted_values[midpoint - 1] + sorted_values[midpoint]) / 2.0
-    } else {
-        sorted_values[midpoint]
-    }
-}
-
-fn count_in_half_open_interval(
-    sorted_timestamps: &[i64],
-    start_inclusive: i64,
-    end_exclusive: i64,
-) -> usize {
-    let start_index = sorted_timestamps.partition_point(|timestamp| *timestamp < start_inclusive);
-    let end_index = sorted_timestamps.partition_point(|timestamp| *timestamp < end_exclusive);
-
-    end_index.saturating_sub(start_index)
-}
-
-fn unique_sorted_rounded(values: &[f64]) -> Vec<f64> {
-    let mut rounded_values: Vec<f64> = values.iter().map(|value| round_to(*value, 6)).collect();
-    rounded_values.sort_by(f64::total_cmp);
-    rounded_values.dedup_by(|left_value, right_value| *left_value == *right_value);
-
-    rounded_values
-}
-
-fn round_to(value: f64, digits: i32) -> f64 {
-    let scale = 10f64.powi(digits);
-    (value * scale).round() / scale
-}
-
-fn clamp(value: f64, lower_bound: f64, upper_bound: f64) -> f64 {
-    value.max(lower_bound).min(upper_bound)
+    unique_sorted_values(
+        SCALE_MULTIPLIERS
+            .iter()
+            .map(|multiplier| round_positive_to_domain(bounded_center * multiplier, 12))
+            .collect::<Vec<_>>()
+            .as_slice(),
+    )
 }
 
 trait PartitionPointIndex {

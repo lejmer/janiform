@@ -56,7 +56,6 @@ from ...hourly_factors import (
     HourlyNewsIntensityProviderMaterializedSource,
     HourlySeasonalityProviderExplicitSource,
     _parse_interval_duration_nanos,
-    build_runtime_hourly_seasonality_source_from_calibration_payload,
     materialize_hourly_news_intensity_factors,
 )
 from ...pricing import (
@@ -812,16 +811,6 @@ def _build_runtime_hourly_seasonality_source_from_model(
 ) -> HourlySeasonalityProviderExplicitSource:
     seasonality_parameters = _seasonality_parameters_payload(model)
     if not _contains_structural_seasonality_parameters(seasonality_parameters):
-        if _contains_materialized_seasonality_stage_payload(seasonality_parameters):
-            return build_runtime_hourly_seasonality_source_from_calibration_payload(
-                calendar_registry=calendar_registry,
-                range_start_utc=range_start_utc,
-                range_end_utc=range_end_utc,
-                interval=interval,
-                seasonality_stage_payload=seasonality_parameters,
-                mean_renormalize=True,
-            )
-
         raise RuntimeError(
             "JaniformModel does not contain structural seasonality parameters required for runtime materialization"
         )
@@ -921,39 +910,31 @@ def _seasonality_parameters_payload(model: JaniformModel) -> Mapping[str, Any]:
     return raw_seasonality
 
 
-def _contains_materialized_seasonality_stage_payload(
-    seasonality_parameters: Mapping[str, Any],
-) -> bool:
-    timestamp_utc_nanos = seasonality_parameters.get("timestamp_utc_nanos")
-    normalized_combined_factor_by_event = seasonality_parameters.get(
-        "normalized_combined_factor_by_event"
-    )
-
-    return (
-        isinstance(timestamp_utc_nanos, tuple | list)
-        and isinstance(normalized_combined_factor_by_event, tuple | list)
-        and len(timestamp_utc_nanos) > 0
-        and len(normalized_combined_factor_by_event) > 0
-    )
-
-
 def _contains_structural_seasonality_parameters(
     seasonality_parameters: Mapping[str, Any],
 ) -> bool:
-    intraday_minutes_per_bin = seasonality_parameters.get("intraday_minutes_per_bin")
     intraday_factor_by_bin = seasonality_parameters.get("intraday_factor_by_bin")
     day_of_week_factor = seasonality_parameters.get("day_of_week_factor")
     day_of_year_factor = seasonality_parameters.get("day_of_year_factor")
 
-    return (
-        isinstance(intraday_minutes_per_bin, int | float)
-        and isinstance(intraday_factor_by_bin, tuple | list)
+    has_structural_factor_sequences = (
+        isinstance(intraday_factor_by_bin, tuple | list)
         and isinstance(day_of_week_factor, tuple | list)
         and isinstance(day_of_year_factor, tuple | list)
         and len(intraday_factor_by_bin) > 0
         and len(day_of_week_factor) > 0
         and len(day_of_year_factor) > 0
     )
+
+    if not has_structural_factor_sequences:
+        return False
+
+    try:
+        _seasonality_intraday_minutes_per_bin(seasonality_parameters)
+    except RuntimeError:
+        return False
+
+    return True
 
 
 def _hawkes_fitted_parameters_payload(model: JaniformModel) -> Mapping[str, Any]:
@@ -1371,18 +1352,6 @@ def _extract_model_parameters(stage_report_payloads: tuple[dict[str, Any], ...])
                     parameters["seasonality"] = {
                         "schema_version": normalized_stage_payload.get("composition_schema_version"),
                         "exchange_code": normalized_stage_payload.get("exchange_code"),
-                        "timestamp_utc_nanos": tuple(
-                            cast(list[int], normalized_stage_payload.get("timestamp_utc_nanos", []))
-                        ),
-                        "normalized_combined_factor_by_event": tuple(
-                            cast(
-                                list[float],
-                                normalized_stage_payload.get(
-                                    "normalized_combined_factor_by_event",
-                                    [],
-                                ),
-                            )
-                        ),
                         "intraday_minutes_per_bin": normalized_stage_payload.get("intraday_minutes_per_bin"),
                         "intraday_factor_by_bin": tuple(
                             cast(list[float], normalized_stage_payload.get("intraday_factor_by_bin", []))
@@ -1622,8 +1591,6 @@ def _normalize_model_parameters(raw_parameters: Mapping[str, Any]) -> dict[str, 
     raw_seasonality = parameters.get("seasonality")
     if isinstance(raw_seasonality, dict):
         for field_name in (
-            "timestamp_utc_nanos",
-            "normalized_combined_factor_by_event",
             "intraday_factor_by_bin",
             "day_of_week_factor",
             "day_of_year_factor",

@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use janiform_calibration_artifacts::CalibrationOptimizerSettings;
+use janiform_foundations::numeric::arithmetic_mean_or_zero as arithmetic_mean;
 use janiform_foundations::randomness::{
     SimulationRandomnessStream, SplitMix64SimulationRandomnessStream,
 };
@@ -17,7 +18,7 @@ use super::contracts::{
     ReturnComponentsStageReturnDistributionDiagnostic,
 };
 use super::execution::{
-    ReturnComponentsStageSortedSignalInputs, arithmetic_mean, arithmetic_mean_signed,
+    ReturnComponentsStageSortedSignalInputs, arithmetic_mean_signed,
     round_negative_candidate_value, round_positive_candidate_value, round_signed_candidate_value,
     sample_adjusted_excess_kurtosis, sample_adjusted_skewness, sample_standard_deviation,
     theoretical_net_process_distribution_diagnostic, theoretical_net_process_moments,
@@ -27,7 +28,6 @@ const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MAX_SAMPLE_COUNT: usize = 2_048;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MIN_BROAD_CANDIDATE_COUNT: usize = 48;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_ELITE_COUNT: usize = 6;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_REFINEMENT_ROUNDS: usize = 2;
-const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_DOMAIN_MARGIN_RATIO: f64 = 0.01;
 
 #[derive(Debug, Clone)]
 pub(super) struct ReturnComponentsStageContinuousReturnCalibrationSample {
@@ -114,7 +114,8 @@ pub(super) fn build_nig_search_candidates(
     }
 
     for _ in 0..broad_candidate_count {
-        let candidate_point = sample_broad_search_point(&mut search_randomness_stream);
+        let candidate_point =
+            sample_broad_search_point(summary_statistics, &mut search_randomness_stream);
         if let Some(scored_candidate) = build_scored_candidate(
             summary_statistics,
             calibration_sample,
@@ -253,51 +254,70 @@ fn deterministically_subsample_aligned_returns(
 fn anchor_search_points(
     summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
 ) -> Vec<NigShapeSearchPoint> {
-    let alpha_center =
-        (2.0 + summary_statistics.continuous_return_excess_kurtosis.abs() * 0.5).clamp(1.05, 64.0);
-    let buy_beta_center = (-summary_statistics.continuous_return_skewness * 0.20
-        + (summary_statistics.open_session_sell_share_proxy - 0.5) * 0.30)
-        .clamp(-0.75, 0.75);
-    let sell_beta_center = (buy_beta_center
-        - (0.05
-            + summary_statistics.continuous_return_skewness.abs() * 0.10
-            + (summary_statistics.open_session_sell_share_proxy - 0.5).abs() * 0.20))
-        .clamp(-0.95, buy_beta_center - 0.01);
+    let alpha_center = inferred_alpha_center(summary_statistics);
+    let buy_beta_center = clamp_buy_beta_ratio(
+        -summary_statistics.continuous_return_skewness * 0.20
+            + (summary_statistics.open_session_sell_share_proxy - 0.5) * 0.30,
+    );
+    let sell_beta_center = clamp_sell_beta_ratio(
+        buy_beta_center
+            - (0.05
+                + summary_statistics.continuous_return_skewness.abs() * 0.10
+                + (summary_statistics.open_session_sell_share_proxy - 0.5).abs() * 0.20),
+        buy_beta_center,
+    );
 
     vec![
         NigShapeSearchPoint {
             log_alpha: alpha_center.ln(),
-            buy_beta_ratio: buy_beta_center.clamp(-0.90, 0.90),
-            sell_beta_ratio: sell_beta_center.clamp(-0.95, buy_beta_center - 0.01),
+            buy_beta_ratio: clamp_buy_beta_ratio(buy_beta_center),
+            sell_beta_ratio: clamp_sell_beta_ratio(sell_beta_center, buy_beta_center),
         },
         NigShapeSearchPoint {
-            log_alpha: 2.0_f64.ln(),
+            log_alpha: (alpha_center * 0.25)
+                .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER)
+                .ln(),
             buy_beta_ratio: 0.0,
-            sell_beta_ratio: -0.05,
+            sell_beta_ratio: clamp_sell_beta_ratio(-0.05, 0.0),
         },
         NigShapeSearchPoint {
-            log_alpha: 8.0_f64.ln(),
-            buy_beta_ratio: buy_beta_center.clamp(-0.90, 0.90),
-            sell_beta_ratio: sell_beta_center.clamp(-0.95, buy_beta_center - 0.01),
+            log_alpha: (alpha_center * 4.0)
+                .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER)
+                .ln(),
+            buy_beta_ratio: clamp_buy_beta_ratio(buy_beta_center),
+            sell_beta_ratio: clamp_sell_beta_ratio(sell_beta_center, buy_beta_center),
         },
     ]
 }
 
-fn sample_broad_search_point<R>(randomness_stream: &mut R) -> NigShapeSearchPoint
+fn sample_broad_search_point<R>(
+    summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
+    randomness_stream: &mut R,
+) -> NigShapeSearchPoint
 where
     R: SimulationRandomnessStream,
 {
-    let log_alpha = 1.05_f64.ln() + randomness_stream.next_unit_interval_f64() * 5.4;
-    let buy_beta_ratio = -0.90 + 1.80 * randomness_stream.next_unit_interval_f64();
-    let sell_upper = (buy_beta_ratio - 0.01).min(0.90);
-    let sell_lower = -0.95;
-    let sell_beta_ratio = sell_lower
-        + (sell_upper - sell_lower).max(0.01) * randomness_stream.next_unit_interval_f64();
+    let alpha_center = inferred_alpha_center(summary_statistics).ln();
+    let alpha_span = 4.0
+        + summary_statistics
+            .continuous_return_excess_kurtosis
+            .abs()
+            .ln_1p();
+    let log_alpha =
+        alpha_center + (randomness_stream.next_unit_interval_f64() - 0.5) * 2.0 * alpha_span;
+    let buy_lower_bound = minimum_buy_beta_ratio();
+    let buy_upper_bound = maximum_buy_beta_ratio();
+    let buy_beta_ratio = buy_lower_bound
+        + (buy_upper_bound - buy_lower_bound) * randomness_stream.next_unit_interval_f64();
+    let sell_lower = minimum_sell_beta_ratio();
+    let sell_upper = maximum_sell_beta_ratio(buy_beta_ratio);
+    let sell_beta_ratio =
+        sell_lower + (sell_upper - sell_lower) * randomness_stream.next_unit_interval_f64();
 
     NigShapeSearchPoint {
         log_alpha,
-        buy_beta_ratio,
-        sell_beta_ratio: sell_beta_ratio.min(buy_beta_ratio - 0.01),
+        buy_beta_ratio: clamp_buy_beta_ratio(buy_beta_ratio),
+        sell_beta_ratio: clamp_sell_beta_ratio(sell_beta_ratio, buy_beta_ratio),
     }
 }
 
@@ -317,8 +337,8 @@ where
     NigShapeSearchPoint {
         log_alpha: anchor.log_alpha
             + refinement_scale * sample_centered_perturbation(randomness_stream),
-        buy_beta_ratio: perturbed_buy_ratio.clamp(-0.90, 0.90),
-        sell_beta_ratio: perturbed_sell_ratio.min(perturbed_buy_ratio - 0.01),
+        buy_beta_ratio: clamp_buy_beta_ratio(perturbed_buy_ratio),
+        sell_beta_ratio: clamp_sell_beta_ratio(perturbed_sell_ratio, perturbed_buy_ratio),
     }
 }
 
@@ -358,12 +378,17 @@ fn elite_search_points(scored_candidates: &[ScoredNigCandidate]) -> Vec<NigShape
     ranked_candidates
         .into_iter()
         .map(|candidate| {
-            let alpha = candidate.configuration.alpha.max(1.05);
+            let alpha = candidate
+                .configuration
+                .alpha
+                .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
             NigShapeSearchPoint {
                 log_alpha: alpha.ln(),
-                buy_beta_ratio: (candidate.configuration.beta_0 / alpha).clamp(-0.90, 0.90),
-                sell_beta_ratio: (candidate.configuration.derived_sell_beta() / alpha)
-                    .clamp(-0.95, 0.90),
+                buy_beta_ratio: clamp_buy_beta_ratio(candidate.configuration.beta_0 / alpha),
+                sell_beta_ratio: clamp_sell_beta_ratio(
+                    candidate.configuration.derived_sell_beta() / alpha,
+                    candidate.configuration.beta_0 / alpha,
+                ),
             }
         })
         .collect()
@@ -421,12 +446,12 @@ fn configuration_from_shape_search_point(
     open_session_sell_share_proxy: f64,
     shape_search_point: NigShapeSearchPoint,
 ) -> Option<NigSharedPlusShiftConfiguration> {
-    let alpha = shape_search_point.log_alpha.exp().clamp(1.05, 256.0);
-    let buy_beta_ratio = shape_search_point.buy_beta_ratio.clamp(-0.90, 0.90);
-    let sell_beta_ratio = shape_search_point.sell_beta_ratio.clamp(
-        -0.95,
-        buy_beta_ratio - RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_DOMAIN_MARGIN_RATIO,
-    );
+    let alpha = shape_search_point.log_alpha.exp();
+    if !alpha.is_finite() || alpha <= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER {
+        return None;
+    }
+    let buy_beta_ratio = clamp_buy_beta_ratio(shape_search_point.buy_beta_ratio);
+    let sell_beta_ratio = clamp_sell_beta_ratio(shape_search_point.sell_beta_ratio, buy_beta_ratio);
     let beta_0 = alpha * buy_beta_ratio;
     let sell_beta = alpha * sell_beta_ratio;
     let delta_beta = sell_beta - beta_0;
@@ -446,21 +471,21 @@ fn configuration_from_shape_search_point(
         .continuous_return_volatility
         .powi(2)
         .max(1.0e-12);
-    let delta = (target_variance / variance_per_unit.max(1.0e-10)).clamp(
-        RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
-        1_000.0,
-    );
+    let variance_per_unit =
+        variance_per_unit.max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+    let delta = (target_variance / variance_per_unit)
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
     let buy_weight = 1.0 - open_session_sell_share_proxy.clamp(0.0, 1.0);
     let sell_weight = open_session_sell_share_proxy.clamp(0.0, 1.0);
     let mu_weight = buy_weight - sell_weight;
     let mu = if mu_weight.abs() >= 0.10 {
-        ((summary_statistics.continuous_return_mean - delta * mean_without_mu) / mu_weight).clamp(
-            -summary_statistics.continuous_return_volatility.max(1.0e-6) * 25.0,
-            summary_statistics.continuous_return_volatility.max(1.0e-6) * 25.0,
-        )
+        (summary_statistics.continuous_return_mean - delta * mean_without_mu) / mu_weight
     } else {
         0.0
     };
+    if !mu.is_finite() {
+        return None;
+    }
 
     NigSharedPlusShiftConfiguration::try_new(
         round_positive_candidate_value(alpha),
@@ -470,6 +495,42 @@ fn configuration_from_shape_search_point(
         round_negative_candidate_value(delta_beta),
     )
     .ok()
+}
+
+fn inferred_alpha_center(
+    summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
+) -> f64 {
+    (2.0 + summary_statistics.continuous_return_excess_kurtosis.abs() * 0.5)
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER)
+}
+
+fn clamp_buy_beta_ratio(value: f64) -> f64 {
+    value.clamp(minimum_buy_beta_ratio(), maximum_buy_beta_ratio())
+}
+
+fn clamp_sell_beta_ratio(value: f64, buy_beta_ratio: f64) -> f64 {
+    value.clamp(
+        minimum_sell_beta_ratio(),
+        maximum_sell_beta_ratio(clamp_buy_beta_ratio(buy_beta_ratio)),
+    )
+}
+
+fn minimum_buy_beta_ratio() -> f64 {
+    (-1.0f64).next_up().next_up()
+}
+
+fn maximum_buy_beta_ratio() -> f64 {
+    1.0f64.next_down()
+}
+
+fn minimum_sell_beta_ratio() -> f64 {
+    (-1.0f64).next_up()
+}
+
+fn maximum_sell_beta_ratio(buy_beta_ratio: f64) -> f64 {
+    clamp_buy_beta_ratio(buy_beta_ratio)
+        .next_down()
+        .max(minimum_sell_beta_ratio())
 }
 
 fn matched_scale_distribution_fit_score(
@@ -618,4 +679,29 @@ fn zero_aware_relative_error(observed: f64, target: f64, zero_floor: f64) -> f64
     };
 
     ((observed - target).abs() / denominator).max(0.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        clamp_buy_beta_ratio, clamp_sell_beta_ratio, maximum_sell_beta_ratio,
+        minimum_buy_beta_ratio, minimum_sell_beta_ratio,
+    };
+
+    #[test]
+    fn buy_beta_ratio_clamp_preserves_sell_side_headroom() {
+        let buy_beta_ratio = clamp_buy_beta_ratio(-1.0);
+
+        assert!(buy_beta_ratio > minimum_sell_beta_ratio());
+        assert!(maximum_sell_beta_ratio(buy_beta_ratio) < buy_beta_ratio);
+    }
+
+    #[test]
+    fn sell_beta_ratio_clamp_handles_boundary_adjacent_buy_ratio() {
+        let boundary_adjacent_buy_ratio = minimum_buy_beta_ratio();
+        let sell_beta_ratio = clamp_sell_beta_ratio(-1.0, boundary_adjacent_buy_ratio);
+
+        assert!(sell_beta_ratio >= minimum_sell_beta_ratio());
+        assert!(sell_beta_ratio < boundary_adjacent_buy_ratio);
+    }
 }

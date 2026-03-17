@@ -1228,7 +1228,7 @@ fn compute_spectral_radius_alpha_over_beta(alpha: HawkesKernelLoadings, beta: f6
 
 pub(crate) fn derive_self_to_cross_ratio(self_loading: f64, cross_loading: f64) -> f64 {
     if cross_loading == 0.0 {
-        return f64::INFINITY;
+        return if self_loading > 0.0 { f64::MAX } else { 0.0 };
     }
 
     self_loading / cross_loading

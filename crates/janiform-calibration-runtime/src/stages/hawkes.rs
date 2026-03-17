@@ -6,7 +6,6 @@ use chrono::{DateTime, Datelike, Timelike, Utc};
 use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 
-use super::super::market_data_preprocessing::{arithmetic_mean, coefficient_of_variation};
 use super::super::objective::CalibrationObjectiveTermInput;
 use super::super::optimizer_adapter::{
     CalibrationOptimizerAdapterCandidateInput, CalibrationOptimizerAdapterConfiguration,
@@ -25,6 +24,7 @@ use janiform_calibration_artifacts::{
     CalibrationStageHandoffTransport, CalibrationStageSeedSource, HawkesStageFittedParameters,
     resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
 };
+use janiform_foundations::numeric::{arithmetic_mean, coefficient_of_variation};
 use janiform_model_kernels::hawkes::{
     HawkesKernelParameterValidationReport, HawkesKernelParameters,
     HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
