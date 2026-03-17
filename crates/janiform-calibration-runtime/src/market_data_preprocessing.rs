@@ -16,10 +16,7 @@ use janiform_model_kernels::hawkes::{
     HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
     HawkesStructuredRhoSelfDominancePolicy,
 };
-use janiform_model_kernels::news::{
-    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
-    GammaSeverityMarkConfiguration,
-};
+use janiform_model_kernels::news::CoupledGapMarkConfiguration;
 
 use crate::execution_bridge::{
     CalibrationDayOfWeekSeasonalityEstimatorSettings,
@@ -39,11 +36,12 @@ use crate::execution_bridge::{
     CalibrationSharedNewsMarkLawConfiguration, CalibrationTimestampEventRecord,
     CalibrationTimestampEventSessionFilter,
 };
+use crate::shock_mark_fitting::fit_shared_news_mark_law_from_shock_samples;
 use crate::temporal::{count_timestamps_in_half_open_interval, datetime_from_nanos};
 use janiform_foundations::numeric::{
     arithmetic_mean, clamp_to_open_unit_interval, clamp_to_unit_interval, coefficient_of_variation,
-    logistic, median_abs, normalized_pseudocount, round_positive_to_domain, round_to,
-    smallest_positive_value, strictly_positive_machine_value, unique_sorted_values,
+    logistic, median_abs, median_abs_non_zero, normalized_pseudocount, round_positive_to_domain,
+    round_to, smallest_positive_value, strictly_positive_machine_value, unique_sorted_values,
 };
 
 const ACTIVITY_LIFT_WINDOW_MINUTES: i64 = 30;
@@ -787,6 +785,12 @@ fn build_return_components_candidate_generation_input(
             f64::abs(f64::ln(observation.open_price / observation.close_price)) > gap_tolerance
         })
         .count();
+    let shared_mark_law_template = derive_shared_mark_law_template(
+        known_news_return_samples.as_slice(),
+        intraday_jump_candidates.as_slice(),
+        close_open_boundary_observations.as_slice(),
+        intraday_return_values.as_slice(),
+    );
 
     let candidate_generation_input = CalibrationReturnComponentsStageCandidateGenerationInput {
         known_news_calendar: CalibrationReturnComponentsKnownNewsCalendarInput {
@@ -801,16 +805,13 @@ fn build_return_components_candidate_generation_input(
             material_gap_absolute_return_tolerance: round_to(gap_tolerance, 6),
         },
         open_session_sell_share_proxy: round_to(open_tick_sell_share, 6),
-        shared_mark_law_template: derive_shared_mark_law_template(
-            intraday_return_values.as_slice(),
-            close_open_boundary_observations.as_slice(),
-        ),
+        shared_mark_law_template,
         objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights {
             continuous_distribution_fit_weight: 1.0,
             jump_fit_weight: 1.0,
             gap_fit_weight: 1.0,
             activity_coupling_fit_weight: 1.0,
-            price_range_sanity_fit_weight: 1.0,
+            price_range_sanity_fit_weight: 0.1,
         },
     };
 
@@ -1058,13 +1059,13 @@ fn derive_intraday_jump_candidates(
         return Vec::new();
     }
 
-    let threshold = median_abs(
-        candidate_returns
-            .iter()
-            .map(|(_, jump_return)| *jump_return)
-            .collect::<Vec<_>>()
-            .as_slice(),
-    ) * 4.0;
+    let candidate_jump_returns: Vec<f64> = candidate_returns
+        .iter()
+        .map(|(_, jump_return)| *jump_return)
+        .collect();
+    let threshold = median_abs_non_zero(candidate_jump_returns.as_slice())
+        .unwrap_or_else(|| median_abs(candidate_jump_returns.as_slice()))
+        * 4.0;
     let material_candidates: Vec<(i64, f64)> = candidate_returns
         .iter()
         .copied()
@@ -1107,18 +1108,43 @@ fn same_session_open_returns(open_price_ticks: &[OpenTickRecord]) -> Vec<(i64, f
 }
 
 fn derive_shared_mark_law_template(
-    intraday_return_values: &[f64],
+    known_news_return_samples: &[CalibrationReturnComponentsKnownNewsReturnSample],
+    intraday_jump_candidates: &[CalibrationReturnComponentsDetectedIntradayJumpCandidate],
     close_open_boundary_observations: &[CalibrationReturnComponentsObservedCloseOpenBoundaryObservation],
+    intraday_return_values: &[f64],
 ) -> CalibrationSharedNewsMarkLawConfiguration {
-    let mean_abs_open_return = arithmetic_mean(
+    let open_shock_returns: Vec<f64> = known_news_return_samples
+        .iter()
+        .map(|sample| sample.open_window_jump_return)
+        .chain(
+            intraday_jump_candidates
+                .iter()
+                .map(|candidate| candidate.jump_return),
+        )
+        .collect();
+    let gap_returns: Vec<f64> = known_news_return_samples
+        .iter()
+        .map(|sample| sample.closed_window_gap_return)
+        .chain(
+            close_open_boundary_observations
+                .iter()
+                .map(|observation| f64::ln(observation.open_price / observation.close_price)),
+        )
+        .collect();
+    let fallback_absolute_returns: Vec<f64> =
         intraday_return_values
             .iter()
-            .map(|return_value| return_value.abs())
-            .collect::<Vec<_>>()
-            .as_slice(),
-    )
-    .unwrap_or(0.0);
-
+            .copied()
+            .map(f64::abs)
+            .chain(close_open_boundary_observations.iter().map(|observation| {
+                f64::abs(f64::ln(observation.open_price / observation.close_price))
+            }))
+            .collect();
+    let fitted_mark_law = fit_shared_news_mark_law_from_shock_samples(
+        open_shock_returns.as_slice(),
+        gap_returns.as_slice(),
+        fallback_absolute_returns.as_slice(),
+    );
     let mean_abs_gap_return = arithmetic_mean(
         close_open_boundary_observations
             .iter()
@@ -1126,31 +1152,16 @@ fn derive_shared_mark_law_template(
             .collect::<Vec<_>>()
             .as_slice(),
     )
-    .unwrap_or(mean_abs_open_return);
-    let positive_open_return_scale = smallest_positive_value(
-        intraday_return_values
-            .iter()
-            .map(|return_value| return_value.abs())
-            .collect::<Vec<_>>()
-            .as_slice(),
-    )
-    .unwrap_or(strictly_positive_machine_value());
+    .unwrap_or(fitted_mark_law.coupled_gap_marks.sigma_g);
 
     CalibrationSharedNewsMarkLawConfiguration {
-        gamma_severity_marks: GammaSeverityMarkConfiguration {
-            shape_k: 2.0,
-            scale_theta: round_to(
-                (mean_abs_open_return * 20.0).max(positive_open_return_scale),
-                12,
-            ),
-        },
-        double_exponential_base_shock: DoubleExponentialBaseShockConfiguration {
-            probability_positive: 0.45,
-            eta_plus: 8.0,
-            eta_minus: 10.0,
-        },
+        gamma_severity_marks: fitted_mark_law.gamma_severity_marks,
+        double_exponential_base_shock: fitted_mark_law.double_exponential_base_shock,
         coupled_gap_marks: CoupledGapMarkConfiguration {
-            sigma_g: round_to((mean_abs_gap_return * 10.0).max(0.0), 12),
+            sigma_g: fitted_mark_law
+                .coupled_gap_marks
+                .sigma_g
+                .max(round_to(mean_abs_gap_return.max(0.0), 12)),
         },
     }
 }
@@ -1544,7 +1555,8 @@ mod tests {
 
     use super::{
         OpenTickRecord, build_structured_rho_candidate, derive_close_open_boundary_observations,
-        derive_positive_scale_candidates, resolve_market_state_and_session_window,
+        derive_intraday_jump_candidates, derive_positive_scale_candidates,
+        resolve_market_state_and_session_window,
     };
     use crate::calendar::{
         CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarDefinition,
@@ -1789,6 +1801,48 @@ mod tests {
         assert!(structured_rho.r_cross >= 0.0);
         assert!(structured_rho.delta_self_r >= 0.0);
         assert!(structured_rho.delta_cross_r >= 0.0);
+    }
+
+    #[test]
+    fn zero_inflated_tick_returns_do_not_label_every_non_zero_move_as_a_jump() {
+        let open_price_tick_timestamps = vec![
+            utc_nanos(2026, 3, 2, 9, 0, 0),
+            utc_nanos(2026, 3, 2, 9, 0, 1),
+            utc_nanos(2026, 3, 2, 9, 0, 2),
+            utc_nanos(2026, 3, 2, 9, 0, 3),
+            utc_nanos(2026, 3, 2, 9, 0, 4),
+            utc_nanos(2026, 3, 2, 9, 0, 5),
+            utc_nanos(2026, 3, 2, 9, 0, 6),
+        ];
+        let same_session_returns = vec![
+            (open_price_tick_timestamps[1], 0.0),
+            (open_price_tick_timestamps[2], 0.0),
+            (open_price_tick_timestamps[3], 1.0e-4),
+            (open_price_tick_timestamps[4], -2.0e-4),
+            (open_price_tick_timestamps[5], 3.0e-4),
+            (open_price_tick_timestamps[6], 5.0e-3),
+        ];
+
+        let detected_candidates = derive_intraday_jump_candidates(
+            same_session_returns.as_slice(),
+            open_price_tick_timestamps.as_slice(),
+            &[],
+        );
+
+        assert_eq!(detected_candidates.len(), 1);
+        assert_eq!(
+            detected_candidates[0].jump_timestamp_utc_nanos,
+            open_price_tick_timestamps[6]
+        );
+        assert!((detected_candidates[0].jump_return - 5.0e-3).abs() <= 1.0e-12);
+    }
+
+    fn utc_nanos(year: i32, month: u32, day: u32, hour: u32, minute: u32, second: u32) -> i64 {
+        Utc.with_ymd_and_hms(year, month, day, hour, minute, second)
+            .single()
+            .expect("fixture timestamp should be valid")
+            .timestamp_nanos_opt()
+            .expect("fixture timestamp nanos should fit in i64")
     }
 
     fn fx_spot_weekend_definition() -> ExchangeCalendarDefinition {

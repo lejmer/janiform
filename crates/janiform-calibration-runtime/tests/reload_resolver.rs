@@ -299,9 +299,10 @@ fn assert_stage_artifact_reload_matches(
             reloaded_artifact.solver_settings,
             expected_artifact.solver_settings
         );
-        assert_eq!(
-            reloaded_artifact.optimizer_state,
-            expected_artifact.optimizer_state
+        assert_optimizer_state_matches(
+            &reloaded_artifact.optimizer_state,
+            &expected_artifact.optimizer_state,
+            &format!("stage={:?} optimizer_state", expected_artifact.stage),
         );
 
         match (

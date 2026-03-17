@@ -28,6 +28,7 @@ mod execution_bridge;
 mod market_data_preprocessing;
 mod objective;
 mod optimizer_adapter;
+mod shock_mark_fitting;
 mod staged_runner;
 mod stages;
 mod temporal;

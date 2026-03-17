@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use janiform_calibration_artifacts::CalibrationOptimizerSettings;
-use janiform_foundations::numeric::arithmetic_mean_or_zero as arithmetic_mean;
+use janiform_foundations::numeric::{arithmetic_mean_or_zero as arithmetic_mean, logistic};
 use janiform_foundations::randomness::{
     SimulationRandomnessStream, SplitMix64SimulationRandomnessStream,
 };
@@ -20,8 +20,8 @@ use super::contracts::{
 use super::execution::{
     ReturnComponentsStageSortedSignalInputs, arithmetic_mean_signed,
     round_negative_candidate_value, round_positive_candidate_value, round_signed_candidate_value,
-    sample_adjusted_excess_kurtosis, sample_adjusted_skewness, sample_standard_deviation,
-    theoretical_net_process_distribution_diagnostic, theoretical_net_process_moments,
+    sample_standard_deviation, theoretical_net_process_distribution_diagnostic,
+    theoretical_net_process_moments,
 };
 
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MAX_SAMPLE_COUNT: usize = 2_048;
@@ -46,19 +46,27 @@ pub(super) struct ContinuousReturnCandidateEvaluation {
 struct ContinuousReturnDistributionProfile {
     mean_return: f64,
     return_volatility: f64,
-    skewness: f64,
-    excess_kurtosis: f64,
+    median_return: f64,
+    lower_quartile_return: f64,
+    upper_quartile_return: f64,
+    lower_tail_return_q05: f64,
+    upper_tail_return_q95: f64,
+    extreme_left_tail_return_q01: f64,
+    extreme_right_tail_return_q99: f64,
     mean_abs_return: f64,
     median_abs_return: f64,
-    upper_decile_abs_return: f64,
-    upper_tail_abs_return: f64,
+    abs_quantile_ratio_q99_q95: f64,
+    bowley_skewness: f64,
+    l_moment_lambda2: f64,
+    l_moment_tau3: f64,
 }
 
 #[derive(Debug, Clone, Copy)]
 struct NigShapeSearchPoint {
     log_alpha: f64,
-    buy_beta_ratio: f64,
-    sell_beta_ratio: f64,
+    buy_skew_coordinate: f64,
+    sell_relative_coordinate: f64,
+    log_delta_offset: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -105,7 +113,7 @@ pub(super) fn build_nig_search_candidates(
         SplitMix64SimulationRandomnessStream::from_seed(stage_seed ^ 0xB5A2_AA90_63C6_1F0D);
     let mut scored_candidates: Vec<ScoredNigCandidate> = Vec::new();
 
-    for anchor in anchor_search_points(summary_statistics) {
+    for anchor in anchor_search_points(calibration_sample) {
         if let Some(scored_candidate) =
             build_scored_candidate(summary_statistics, calibration_sample, stage_seed, anchor)
         {
@@ -115,7 +123,7 @@ pub(super) fn build_nig_search_candidates(
 
     for _ in 0..broad_candidate_count {
         let candidate_point =
-            sample_broad_search_point(summary_statistics, &mut search_randomness_stream);
+            sample_broad_search_point(calibration_sample, &mut search_randomness_stream);
         if let Some(scored_candidate) = build_scored_candidate(
             summary_statistics,
             calibration_sample,
@@ -127,7 +135,11 @@ pub(super) fn build_nig_search_candidates(
     }
 
     for refinement_round in 0..RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_REFINEMENT_ROUNDS {
-        let elite_points = elite_search_points(scored_candidates.as_slice());
+        let elite_points = elite_search_points(
+            scored_candidates.as_slice(),
+            summary_statistics,
+            calibration_sample.open_session_sell_share_proxy,
+        );
         let refinement_scale = 0.28 / (refinement_round + 1) as f64;
 
         for elite_point in elite_points {
@@ -252,72 +264,65 @@ fn deterministically_subsample_aligned_returns(
 }
 
 fn anchor_search_points(
-    summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
 ) -> Vec<NigShapeSearchPoint> {
-    let alpha_center = inferred_alpha_center(summary_statistics);
-    let buy_beta_center = clamp_buy_beta_ratio(
-        -summary_statistics.continuous_return_skewness * 0.20
-            + (summary_statistics.open_session_sell_share_proxy - 0.5) * 0.30,
-    );
-    let sell_beta_center = clamp_sell_beta_ratio(
-        buy_beta_center
-            - (0.05
-                + summary_statistics.continuous_return_skewness.abs() * 0.10
-                + (summary_statistics.open_session_sell_share_proxy - 0.5).abs() * 0.20),
-        buy_beta_center,
+    let observed_profile = calibration_sample.observed_profile;
+    let log_alpha_anchor = inferred_log_alpha_anchor(observed_profile);
+    let buy_skew_coordinate_anchor = inferred_buy_skew_coordinate(
+        observed_profile,
+        calibration_sample.open_session_sell_share_proxy,
     );
 
     vec![
         NigShapeSearchPoint {
-            log_alpha: alpha_center.ln(),
-            buy_beta_ratio: clamp_buy_beta_ratio(buy_beta_center),
-            sell_beta_ratio: clamp_sell_beta_ratio(sell_beta_center, buy_beta_center),
+            log_alpha: log_alpha_anchor,
+            buy_skew_coordinate: buy_skew_coordinate_anchor,
+            sell_relative_coordinate: 0.0,
+            log_delta_offset: 0.0,
         },
         NigShapeSearchPoint {
-            log_alpha: (alpha_center * 0.25)
-                .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER)
-                .ln(),
-            buy_beta_ratio: 0.0,
-            sell_beta_ratio: clamp_sell_beta_ratio(-0.05, 0.0),
+            log_alpha: log_alpha_anchor - 1.25,
+            buy_skew_coordinate: 0.0,
+            sell_relative_coordinate: -0.5,
+            log_delta_offset: -0.5,
         },
         NigShapeSearchPoint {
-            log_alpha: (alpha_center * 4.0)
-                .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER)
-                .ln(),
-            buy_beta_ratio: clamp_buy_beta_ratio(buy_beta_center),
-            sell_beta_ratio: clamp_sell_beta_ratio(sell_beta_center, buy_beta_center),
+            log_alpha: log_alpha_anchor + 1.25,
+            buy_skew_coordinate: buy_skew_coordinate_anchor,
+            sell_relative_coordinate: 0.5,
+            log_delta_offset: 0.5,
         },
     ]
 }
 
 fn sample_broad_search_point<R>(
-    summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
     randomness_stream: &mut R,
 ) -> NigShapeSearchPoint
 where
     R: SimulationRandomnessStream,
 {
-    let alpha_center = inferred_alpha_center(summary_statistics).ln();
-    let alpha_span = 4.0
-        + summary_statistics
-            .continuous_return_excess_kurtosis
+    let observed_profile = calibration_sample.observed_profile;
+    let log_alpha_anchor = inferred_log_alpha_anchor(observed_profile);
+    let alpha_span = 1.75 + observed_profile.abs_quantile_ratio_q99_q95.ln_1p();
+    let skew_span = 1.25
+        + observed_profile
+            .bowley_skewness
             .abs()
-            .ln_1p();
-    let log_alpha =
-        alpha_center + (randomness_stream.next_unit_interval_f64() - 0.5) * 2.0 * alpha_span;
-    let buy_lower_bound = minimum_buy_beta_ratio();
-    let buy_upper_bound = maximum_buy_beta_ratio();
-    let buy_beta_ratio = buy_lower_bound
-        + (buy_upper_bound - buy_lower_bound) * randomness_stream.next_unit_interval_f64();
-    let sell_lower = minimum_sell_beta_ratio();
-    let sell_upper = maximum_sell_beta_ratio(buy_beta_ratio);
-    let sell_beta_ratio =
-        sell_lower + (sell_upper - sell_lower) * randomness_stream.next_unit_interval_f64();
+            .max(observed_profile.l_moment_tau3.abs());
+    let log_delta_span = 1.75 + observed_profile.abs_quantile_ratio_q99_q95.ln_1p();
 
     NigShapeSearchPoint {
-        log_alpha,
-        buy_beta_ratio: clamp_buy_beta_ratio(buy_beta_ratio),
-        sell_beta_ratio: clamp_sell_beta_ratio(sell_beta_ratio, buy_beta_ratio),
+        log_alpha: log_alpha_anchor
+            + (randomness_stream.next_unit_interval_f64() - 0.5) * 2.0 * alpha_span,
+        buy_skew_coordinate: inferred_buy_skew_coordinate(
+            observed_profile,
+            calibration_sample.open_session_sell_share_proxy,
+        ) + (randomness_stream.next_unit_interval_f64() - 0.5)
+            * 2.0
+            * skew_span,
+        sell_relative_coordinate: (randomness_stream.next_unit_interval_f64() - 0.5) * 6.0,
+        log_delta_offset: (randomness_stream.next_unit_interval_f64() - 0.5) * 2.0 * log_delta_span,
     }
 }
 
@@ -329,16 +334,15 @@ fn sample_local_search_point<R>(
 where
     R: SimulationRandomnessStream,
 {
-    let perturbed_buy_ratio =
-        anchor.buy_beta_ratio + refinement_scale * sample_centered_perturbation(randomness_stream);
-    let perturbed_sell_ratio =
-        anchor.sell_beta_ratio + refinement_scale * sample_centered_perturbation(randomness_stream);
-
     NigShapeSearchPoint {
         log_alpha: anchor.log_alpha
             + refinement_scale * sample_centered_perturbation(randomness_stream),
-        buy_beta_ratio: clamp_buy_beta_ratio(perturbed_buy_ratio),
-        sell_beta_ratio: clamp_sell_beta_ratio(perturbed_sell_ratio, perturbed_buy_ratio),
+        buy_skew_coordinate: anchor.buy_skew_coordinate
+            + refinement_scale * sample_centered_perturbation(randomness_stream),
+        sell_relative_coordinate: anchor.sell_relative_coordinate
+            + refinement_scale * sample_centered_perturbation(randomness_stream),
+        log_delta_offset: anchor.log_delta_offset
+            + refinement_scale * sample_centered_perturbation(randomness_stream),
     }
 }
 
@@ -352,7 +356,11 @@ where
         - 1.5
 }
 
-fn elite_search_points(scored_candidates: &[ScoredNigCandidate]) -> Vec<NigShapeSearchPoint> {
+fn elite_search_points(
+    scored_candidates: &[ScoredNigCandidate],
+    summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
+    open_session_sell_share_proxy: f64,
+) -> Vec<NigShapeSearchPoint> {
     let mut ranked_candidates = scored_candidates.to_vec();
     ranked_candidates.sort_by(|left, right| {
         left.objective_score
@@ -377,19 +385,30 @@ fn elite_search_points(scored_candidates: &[ScoredNigCandidate]) -> Vec<NigShape
 
     ranked_candidates
         .into_iter()
-        .map(|candidate| {
+        .filter_map(|candidate| {
             let alpha = candidate
                 .configuration
                 .alpha
                 .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
-            NigShapeSearchPoint {
+            let buy_beta_ratio = clamp_open_beta_ratio(candidate.configuration.beta_0 / alpha);
+            let sell_beta_ratio =
+                clamp_open_beta_ratio(candidate.configuration.derived_sell_beta() / alpha);
+            let sell_relative_share =
+                sell_relative_share_from_beta_ratios(buy_beta_ratio, sell_beta_ratio)?;
+            let delta_center = inferred_delta_center(
+                alpha,
+                candidate.configuration.beta_0,
+                candidate.configuration.delta_beta,
+                summary_statistics.continuous_return_volatility,
+                open_session_sell_share_proxy,
+            )?;
+
+            Some(NigShapeSearchPoint {
                 log_alpha: alpha.ln(),
-                buy_beta_ratio: clamp_buy_beta_ratio(candidate.configuration.beta_0 / alpha),
-                sell_beta_ratio: clamp_sell_beta_ratio(
-                    candidate.configuration.derived_sell_beta() / alpha,
-                    candidate.configuration.beta_0 / alpha,
-                ),
-            }
+                buy_skew_coordinate: ratio_to_coordinate(buy_beta_ratio),
+                sell_relative_coordinate: share_to_coordinate(sell_relative_share),
+                log_delta_offset: (candidate.configuration.delta / delta_center).ln(),
+            })
         })
         .collect()
 }
@@ -450,13 +469,39 @@ fn configuration_from_shape_search_point(
     if !alpha.is_finite() || alpha <= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER {
         return None;
     }
-    let buy_beta_ratio = clamp_buy_beta_ratio(shape_search_point.buy_beta_ratio);
-    let sell_beta_ratio = clamp_sell_beta_ratio(shape_search_point.sell_beta_ratio, buy_beta_ratio);
+    let buy_beta_ratio = coordinate_to_ratio(shape_search_point.buy_skew_coordinate);
+    let sell_relative_share = coordinate_to_share(shape_search_point.sell_relative_coordinate);
+    let sell_beta_ratio = sell_beta_ratio_from_relative_share(buy_beta_ratio, sell_relative_share);
     let beta_0 = alpha * buy_beta_ratio;
     let sell_beta = alpha * sell_beta_ratio;
     let delta_beta = sell_beta - beta_0;
+    let delta_center = inferred_delta_center(
+        alpha,
+        beta_0,
+        delta_beta,
+        summary_statistics.continuous_return_volatility,
+        open_session_sell_share_proxy,
+    )?;
+    let delta = delta_center * shape_search_point.log_delta_offset.exp();
 
-    let (mean_without_mu, variance_per_unit, _, _) = theoretical_net_process_moments(
+    NigSharedPlusShiftConfiguration::try_new(
+        round_positive_candidate_value(alpha),
+        round_signed_candidate_value(beta_0),
+        round_positive_candidate_value(delta),
+        0.0,
+        round_negative_candidate_value(delta_beta),
+    )
+    .ok()
+}
+
+fn inferred_delta_center(
+    alpha: f64,
+    beta_0: f64,
+    delta_beta: f64,
+    observed_return_volatility: f64,
+    open_session_sell_share_proxy: f64,
+) -> Option<f64> {
+    let (_, variance_per_unit, _, _) = theoretical_net_process_moments(
         NigSharedPlusShiftConfiguration {
             alpha,
             beta_0,
@@ -466,71 +511,82 @@ fn configuration_from_shape_search_point(
         },
         open_session_sell_share_proxy,
     )?;
-
-    let target_variance = summary_statistics
-        .continuous_return_volatility
+    let target_variance = observed_return_volatility
         .powi(2)
-        .max(1.0e-12);
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
     let variance_per_unit =
         variance_per_unit.max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
-    let delta = (target_variance / variance_per_unit)
-        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
-    let buy_weight = 1.0 - open_session_sell_share_proxy.clamp(0.0, 1.0);
-    let sell_weight = open_session_sell_share_proxy.clamp(0.0, 1.0);
-    let mu_weight = buy_weight - sell_weight;
-    let mu = if mu_weight.abs() >= 0.10 {
-        (summary_statistics.continuous_return_mean - delta * mean_without_mu) / mu_weight
-    } else {
-        0.0
-    };
-    if !mu.is_finite() {
+    Some(
+        (target_variance / variance_per_unit)
+            .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER),
+    )
+}
+
+fn inferred_log_alpha_anchor(observed_profile: ContinuousReturnDistributionProfile) -> f64 {
+    let tail_excess = (observed_profile.abs_quantile_ratio_q99_q95 - 1.0)
+        .abs()
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER.sqrt());
+    let asymmetry_scale =
+        1.0 + observed_profile.bowley_skewness.abs() + observed_profile.l_moment_tau3.abs();
+    (1.0 + 1.0 / (tail_excess * asymmetry_scale)).ln()
+}
+
+fn inferred_buy_skew_coordinate(
+    observed_profile: ContinuousReturnDistributionProfile,
+    open_session_sell_share_proxy: f64,
+) -> f64 {
+    let robust_skew_center = 0.5
+        * (observed_profile.bowley_skewness + observed_profile.l_moment_tau3)
+        + (open_session_sell_share_proxy - 0.5) * 0.25;
+    ratio_to_coordinate(clamp_open_beta_ratio(robust_skew_center * 0.60))
+}
+
+fn ratio_to_coordinate(ratio: f64) -> f64 {
+    let bounded_ratio = clamp_open_beta_ratio(ratio);
+    0.5 * ((1.0 + bounded_ratio) / (1.0 - bounded_ratio)).ln()
+}
+
+fn coordinate_to_ratio(coordinate: f64) -> f64 {
+    clamp_open_beta_ratio(coordinate.tanh())
+}
+
+fn share_to_coordinate(share: f64) -> f64 {
+    let bounded_share = share.clamp(0.0f64.next_up(), 1.0f64.next_down());
+    (bounded_share / (1.0 - bounded_share)).ln()
+}
+
+fn coordinate_to_share(coordinate: f64) -> f64 {
+    logistic(coordinate).clamp(0.0f64.next_up(), 1.0f64.next_down())
+}
+
+fn sell_beta_ratio_from_relative_share(buy_beta_ratio: f64, relative_share: f64) -> f64 {
+    let lower_bound = minimum_open_beta_ratio();
+    lower_bound + (buy_beta_ratio - lower_bound) * relative_share
+}
+
+fn sell_relative_share_from_beta_ratios(buy_beta_ratio: f64, sell_beta_ratio: f64) -> Option<f64> {
+    let lower_bound = minimum_open_beta_ratio();
+    let denominator = buy_beta_ratio - lower_bound;
+    if !denominator.is_finite() || denominator <= 0.0 {
         return None;
     }
 
-    NigSharedPlusShiftConfiguration::try_new(
-        round_positive_candidate_value(alpha),
-        round_signed_candidate_value(beta_0),
-        round_positive_candidate_value(delta),
-        round_signed_candidate_value(mu),
-        round_negative_candidate_value(delta_beta),
-    )
-    .ok()
+    let share = (sell_beta_ratio - lower_bound) / denominator;
+    share
+        .is_finite()
+        .then_some(share.clamp(0.0f64.next_up(), 1.0f64.next_down()))
 }
 
-fn inferred_alpha_center(
-    summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
-) -> f64 {
-    (2.0 + summary_statistics.continuous_return_excess_kurtosis.abs() * 0.5)
-        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER)
+fn clamp_open_beta_ratio(value: f64) -> f64 {
+    value.clamp(minimum_open_beta_ratio(), maximum_open_beta_ratio())
 }
 
-fn clamp_buy_beta_ratio(value: f64) -> f64 {
-    value.clamp(minimum_buy_beta_ratio(), maximum_buy_beta_ratio())
-}
-
-fn clamp_sell_beta_ratio(value: f64, buy_beta_ratio: f64) -> f64 {
-    value.clamp(
-        minimum_sell_beta_ratio(),
-        maximum_sell_beta_ratio(clamp_buy_beta_ratio(buy_beta_ratio)),
-    )
-}
-
-fn minimum_buy_beta_ratio() -> f64 {
-    (-1.0f64).next_up().next_up()
-}
-
-fn maximum_buy_beta_ratio() -> f64 {
-    1.0f64.next_down()
-}
-
-fn minimum_sell_beta_ratio() -> f64 {
+fn minimum_open_beta_ratio() -> f64 {
     (-1.0f64).next_up()
 }
 
-fn maximum_sell_beta_ratio(buy_beta_ratio: f64) -> f64 {
-    clamp_buy_beta_ratio(buy_beta_ratio)
-        .next_down()
-        .max(minimum_sell_beta_ratio())
+fn maximum_open_beta_ratio() -> f64 {
+    1.0f64.next_down()
 }
 
 fn matched_scale_distribution_fit_score(
@@ -546,48 +602,132 @@ fn matched_scale_distribution_fit_score(
 
     let fitted_profile = build_distribution_profile(synthetic_returns.as_slice());
     let observed_profile = calibration_sample.observed_profile;
+    let central_scale = (observed_profile.upper_quartile_return
+        - observed_profile.lower_quartile_return)
+        .abs()
+        .max(observed_profile.l_moment_lambda2.abs())
+        .max(1.0e-8);
+    let tail_scale = observed_profile
+        .extreme_right_tail_return_q99
+        .abs()
+        .max(observed_profile.extreme_left_tail_return_q01.abs())
+        .max(central_scale);
+    let shape_scale = 0.10;
+    let boundary_penalty = alpha_beta_boundary_penalty(configuration);
 
-    0.05 * zero_aware_relative_error(
+    0.03 * scale_aware_absolute_error(
         fitted_profile.mean_return,
         observed_profile.mean_return,
-        observed_profile.return_volatility * 0.10 + 1.0e-8,
-    ) + 0.25
-        * zero_aware_relative_error(
+        central_scale,
+    ) + 0.14
+        * scale_aware_absolute_error(
             fitted_profile.return_volatility,
             observed_profile.return_volatility,
             1.0e-8,
         )
-        + 0.15
-            * zero_aware_relative_error(
+        + 0.12
+            * scale_aware_absolute_error(
+                fitted_profile.median_return,
+                observed_profile.median_return,
+                central_scale,
+            )
+        + 0.08
+            * scale_aware_absolute_error(
+                fitted_profile.lower_quartile_return,
+                observed_profile.lower_quartile_return,
+                central_scale,
+            )
+        + 0.08
+            * scale_aware_absolute_error(
+                fitted_profile.upper_quartile_return,
+                observed_profile.upper_quartile_return,
+                central_scale,
+            )
+        + 0.08
+            * scale_aware_absolute_error(
+                fitted_profile.lower_tail_return_q05,
+                observed_profile.lower_tail_return_q05,
+                tail_scale,
+            )
+        + 0.08
+            * scale_aware_absolute_error(
+                fitted_profile.upper_tail_return_q95,
+                observed_profile.upper_tail_return_q95,
+                tail_scale,
+            )
+        + 0.07
+            * scale_aware_absolute_error(
+                fitted_profile.extreme_left_tail_return_q01,
+                observed_profile.extreme_left_tail_return_q01,
+                tail_scale,
+            )
+        + 0.07
+            * scale_aware_absolute_error(
+                fitted_profile.extreme_right_tail_return_q99,
+                observed_profile.extreme_right_tail_return_q99,
+                tail_scale,
+            )
+        + 0.08
+            * scale_aware_absolute_error(
                 fitted_profile.mean_abs_return,
                 observed_profile.mean_abs_return,
-                1.0e-8,
+                central_scale,
             )
-        + 0.15
-            * zero_aware_relative_error(
+        + 0.07
+            * scale_aware_absolute_error(
                 fitted_profile.median_abs_return,
                 observed_profile.median_abs_return,
-                1.0e-8,
+                central_scale,
             )
-        + 0.20
-            * zero_aware_relative_error(
-                fitted_profile.upper_decile_abs_return,
-                observed_profile.upper_decile_abs_return,
-                1.0e-8,
+        + 0.05
+            * scale_aware_absolute_error(
+                fitted_profile.abs_quantile_ratio_q99_q95,
+                observed_profile.abs_quantile_ratio_q99_q95,
+                0.10,
             )
-        + 0.15
-            * zero_aware_relative_error(
-                fitted_profile.upper_tail_abs_return,
-                observed_profile.upper_tail_abs_return,
-                1.0e-8,
+        + 0.04
+            * scale_aware_absolute_error(
+                fitted_profile.bowley_skewness,
+                observed_profile.bowley_skewness,
+                shape_scale,
             )
-        + 0.03 * zero_aware_relative_error(fitted_profile.skewness, observed_profile.skewness, 0.25)
-        + 0.02
-            * zero_aware_relative_error(
-                fitted_profile.excess_kurtosis,
-                observed_profile.excess_kurtosis,
-                1.0,
+        + 0.04
+            * scale_aware_absolute_error(
+                fitted_profile.l_moment_lambda2,
+                observed_profile.l_moment_lambda2,
+                central_scale,
             )
+        + 0.05
+            * scale_aware_absolute_error(
+                fitted_profile.l_moment_tau3,
+                observed_profile.l_moment_tau3,
+                shape_scale,
+            )
+        + boundary_penalty
+}
+
+fn alpha_beta_boundary_penalty(configuration: NigSharedPlusShiftConfiguration) -> f64 {
+    let buy_margin = configuration.alpha - configuration.beta_0.abs();
+    let sell_margin = configuration.alpha - configuration.derived_sell_beta().abs();
+    let minimum_margin_ratio = (buy_margin.min(sell_margin)
+        / configuration
+            .alpha
+            .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER))
+    .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+    let preferred_margin_ratio = 0.05;
+
+    if minimum_margin_ratio >= preferred_margin_ratio {
+        0.0
+    } else {
+        (preferred_margin_ratio / minimum_margin_ratio).ln_1p()
+    }
+}
+
+fn scale_aware_absolute_error(observed: f64, target: f64, scale_floor: f64) -> f64 {
+    let denominator = scale_floor
+        .abs()
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+    ((observed - target).abs() / denominator).max(0.0)
 }
 
 fn simulate_matched_scale_returns(
@@ -640,68 +780,206 @@ fn candidate_sampling_seed(stage_seed: u64, configuration: NigSharedPlusShiftCon
 
 fn build_distribution_profile(returns: &[f64]) -> ContinuousReturnDistributionProfile {
     let absolute_returns: Vec<f64> = returns.iter().map(|value| value.abs()).collect();
+    let sorted_returns = sorted_finite_values(returns);
+    let lower_quartile_return = sorted_quantile(sorted_returns.as_slice(), 0.25);
+    let median_return = sorted_quantile(sorted_returns.as_slice(), 0.50);
+    let upper_quartile_return = sorted_quantile(sorted_returns.as_slice(), 0.75);
+    let lower_tail_return_q05 = sorted_quantile(sorted_returns.as_slice(), 0.05);
+    let upper_tail_return_q95 = sorted_quantile(sorted_returns.as_slice(), 0.95);
+    let extreme_left_tail_return_q01 = sorted_quantile(sorted_returns.as_slice(), 0.01);
+    let extreme_right_tail_return_q99 = sorted_quantile(sorted_returns.as_slice(), 0.99);
+    let sorted_absolute_returns = sorted_finite_values(absolute_returns.as_slice());
+    let quantile_95_abs = sorted_quantile(sorted_absolute_returns.as_slice(), 0.95);
+    let quantile_99_abs = sorted_quantile(sorted_absolute_returns.as_slice(), 0.99);
 
     ContinuousReturnDistributionProfile {
         mean_return: arithmetic_mean_signed(returns),
         return_volatility: sample_standard_deviation(returns),
-        skewness: sample_adjusted_skewness(returns).unwrap_or(0.0),
-        excess_kurtosis: sample_adjusted_excess_kurtosis(returns).unwrap_or(0.0),
+        median_return,
+        lower_quartile_return,
+        upper_quartile_return,
+        lower_tail_return_q05,
+        upper_tail_return_q95,
+        extreme_left_tail_return_q01,
+        extreme_right_tail_return_q99,
         mean_abs_return: arithmetic_mean(absolute_returns.as_slice()),
-        median_abs_return: quantile(absolute_returns.as_slice(), 0.50),
-        upper_decile_abs_return: quantile(absolute_returns.as_slice(), 0.90),
-        upper_tail_abs_return: quantile(absolute_returns.as_slice(), 0.99),
+        median_abs_return: sorted_quantile(sorted_absolute_returns.as_slice(), 0.50),
+        abs_quantile_ratio_q99_q95: if quantile_95_abs.abs()
+            <= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER
+        {
+            1.0
+        } else {
+            quantile_99_abs / quantile_95_abs
+        },
+        bowley_skewness: compute_bowley_skewness_from_sorted(sorted_returns.as_slice())
+            .unwrap_or(0.0),
+        l_moment_lambda2: compute_l_moment_lambda2_from_sorted(sorted_returns.as_slice())
+            .unwrap_or(0.0),
+        l_moment_tau3: compute_l_moment_tau3_from_sorted(sorted_returns.as_slice()).unwrap_or(0.0),
     }
 }
 
-fn quantile(values: &[f64], quantile_level: f64) -> f64 {
+fn sorted_finite_values(values: &[f64]) -> Vec<f64> {
     let mut sorted_values: Vec<f64> = values
         .iter()
         .copied()
         .filter(|value| value.is_finite())
         .collect();
+    sorted_values.sort_by(f64::total_cmp);
+    sorted_values
+}
+
+fn sorted_quantile(sorted_values: &[f64], quantile_level: f64) -> f64 {
     if sorted_values.is_empty() {
         return 0.0;
     }
 
-    sorted_values.sort_by(f64::total_cmp);
-    let quantile_index = (quantile_level.clamp(0.0, 1.0)
-        * (sorted_values.len().saturating_sub(1)) as f64)
-        .round() as usize;
+    let quantile_position = quantile_level.clamp(0.0, 1.0) * (sorted_values.len() - 1) as f64;
+    let lower_position = quantile_position.floor() as usize;
+    let upper_position = quantile_position.ceil() as usize;
+    let interpolation_weight = quantile_position - lower_position as f64;
 
-    sorted_values[quantile_index]
+    if lower_position == upper_position {
+        sorted_values[lower_position]
+    } else {
+        sorted_values[lower_position] * (1.0 - interpolation_weight)
+            + sorted_values[upper_position] * interpolation_weight
+    }
 }
 
-fn zero_aware_relative_error(observed: f64, target: f64, zero_floor: f64) -> f64 {
-    let denominator = if target.abs() <= zero_floor {
-        zero_floor
-    } else {
-        target.abs()
-    };
+fn compute_bowley_skewness_from_sorted(sorted_returns: &[f64]) -> Option<f64> {
+    if sorted_returns.len() < 3 {
+        return None;
+    }
 
-    ((observed - target).abs() / denominator).max(0.0)
+    let lower_quartile = sorted_quantile(sorted_returns, 0.25);
+    let median = sorted_quantile(sorted_returns, 0.50);
+    let upper_quartile = sorted_quantile(sorted_returns, 0.75);
+    let denominator = (upper_quartile - lower_quartile).abs();
+    if denominator <= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER {
+        return None;
+    }
+
+    let value = (upper_quartile + lower_quartile - 2.0 * median) / denominator;
+    value.is_finite().then_some(value)
+}
+
+fn compute_l_moment_lambda2_from_sorted(sorted_returns: &[f64]) -> Option<f64> {
+    let probability_weighted_moment_0 = compute_probability_weighted_moment(sorted_returns, 0)?;
+    let probability_weighted_moment_1 = compute_probability_weighted_moment(sorted_returns, 1)?;
+    let lambda2 = 2.0 * probability_weighted_moment_1 - probability_weighted_moment_0;
+
+    lambda2.is_finite().then_some(lambda2)
+}
+
+fn compute_l_moment_tau3_from_sorted(sorted_returns: &[f64]) -> Option<f64> {
+    let probability_weighted_moment_0 = compute_probability_weighted_moment(sorted_returns, 0)?;
+    let probability_weighted_moment_1 = compute_probability_weighted_moment(sorted_returns, 1)?;
+    let probability_weighted_moment_2 = compute_probability_weighted_moment(sorted_returns, 2)?;
+
+    let lambda2 = 2.0 * probability_weighted_moment_1 - probability_weighted_moment_0;
+    if !lambda2.is_finite()
+        || lambda2.abs() <= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER
+    {
+        return None;
+    }
+
+    let lambda3 = 6.0 * probability_weighted_moment_2 - 6.0 * probability_weighted_moment_1
+        + probability_weighted_moment_0;
+    if !lambda3.is_finite() {
+        return None;
+    }
+
+    let tau3 = lambda3 / lambda2;
+    tau3.is_finite().then_some(tau3)
+}
+
+fn compute_probability_weighted_moment(sorted_returns: &[f64], order: usize) -> Option<f64> {
+    let sample_count = sorted_returns.len();
+    if sample_count <= order {
+        return None;
+    }
+
+    let denominator_index = sample_count - 1;
+
+    let mut weighted_sum = 0.0;
+    for (return_position, return_value) in sorted_returns.iter().enumerate() {
+        if return_position < order {
+            continue;
+        }
+
+        let weight = combination_ratio(return_position, denominator_index, order)?;
+        weighted_sum += weight * *return_value;
+    }
+
+    let probability_weighted_moment = weighted_sum / sample_count as f64;
+    probability_weighted_moment
+        .is_finite()
+        .then_some(probability_weighted_moment)
+}
+
+fn combination_ratio(
+    numerator_index: usize,
+    denominator_index: usize,
+    order: usize,
+) -> Option<f64> {
+    if order == 0 {
+        return Some(1.0);
+    }
+
+    if numerator_index < order || denominator_index < order {
+        return Some(0.0);
+    }
+
+    let mut ratio = 1.0;
+    for order_position in 0..order {
+        let numerator = numerator_index.saturating_sub(order_position) as f64;
+        let denominator = denominator_index.saturating_sub(order_position) as f64;
+        if denominator <= 0.0 {
+            return None;
+        }
+
+        ratio *= numerator / denominator;
+    }
+
+    ratio.is_finite().then_some(ratio)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        clamp_buy_beta_ratio, clamp_sell_beta_ratio, maximum_sell_beta_ratio,
-        minimum_buy_beta_ratio, minimum_sell_beta_ratio,
+        build_distribution_profile, coordinate_to_ratio, coordinate_to_share, ratio_to_coordinate,
+        sell_beta_ratio_from_relative_share, sell_relative_share_from_beta_ratios,
     };
 
     #[test]
-    fn buy_beta_ratio_clamp_preserves_sell_side_headroom() {
-        let buy_beta_ratio = clamp_buy_beta_ratio(-1.0);
+    fn skew_ratio_coordinate_round_trip_stays_inside_open_domain() {
+        let ratio = coordinate_to_ratio(ratio_to_coordinate(0.35));
 
-        assert!(buy_beta_ratio > minimum_sell_beta_ratio());
-        assert!(maximum_sell_beta_ratio(buy_beta_ratio) < buy_beta_ratio);
+        assert!(ratio.is_finite());
+        assert!(ratio > -1.0);
+        assert!(ratio < 1.0);
     }
 
     #[test]
-    fn sell_beta_ratio_clamp_handles_boundary_adjacent_buy_ratio() {
-        let boundary_adjacent_buy_ratio = minimum_buy_beta_ratio();
-        let sell_beta_ratio = clamp_sell_beta_ratio(-1.0, boundary_adjacent_buy_ratio);
+    fn sell_relative_coordinate_round_trip_preserves_ordering() {
+        let buy_ratio = 0.4;
+        let sell_ratio = sell_beta_ratio_from_relative_share(buy_ratio, coordinate_to_share(0.2));
+        let recovered_share = sell_relative_share_from_beta_ratios(buy_ratio, sell_ratio)
+            .expect("relative share should be recoverable");
 
-        assert!(sell_beta_ratio >= minimum_sell_beta_ratio());
-        assert!(sell_beta_ratio < boundary_adjacent_buy_ratio);
+        assert!(sell_ratio < buy_ratio);
+        assert!(recovered_share > 0.0);
+        assert!(recovered_share < 1.0);
+    }
+
+    #[test]
+    fn distribution_profile_reports_robust_quantile_and_l_moment_metrics() {
+        let profile = build_distribution_profile(&[-0.03, -0.01, 0.0, 0.02, 0.08]);
+
+        assert!(profile.abs_quantile_ratio_q99_q95 >= 1.0);
+        assert!(profile.l_moment_lambda2.is_finite());
+        assert!(profile.bowley_skewness.is_finite());
+        assert!(profile.l_moment_tau3.is_finite());
     }
 }

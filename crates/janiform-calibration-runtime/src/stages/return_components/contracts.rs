@@ -1050,7 +1050,9 @@ pub struct ReturnComponentsStageObservedSignalSummaryStatistics {
     pub observed_open_session_return_count: usize,
     pub continuous_fit_return_count: usize,
     pub intraday_jump_candidate_count: usize,
+    pub intraday_jump_episode_count: usize,
     pub close_open_gap_candidate_count: usize,
+    pub close_open_gap_episode_count: usize,
     pub open_session_sell_share_proxy: f64,
     pub mean_continuous_business_time_scale: f64,
     pub continuous_return_mean: f64,
@@ -1064,6 +1066,8 @@ pub struct ReturnComponentsStageObservedSignalSummaryStatistics {
     pub mean_abs_surprise_closed_gap_return: f64,
     pub mean_known_post_shock_activity_lift: f64,
     pub mean_surprise_post_shock_activity_lift: f64,
+    pub known_activity_coupling_target: f64,
+    pub surprise_activity_coupling_target: f64,
     pub known_news_coverage_ratio: f64,
     pub surprise_arrival_intensity_per_hour: f64,
 }
@@ -1137,6 +1141,8 @@ impl ReturnComponentsStageCandidateProvenance {
             summary_statistics.mean_abs_surprise_closed_gap_return,
             summary_statistics.mean_known_post_shock_activity_lift,
             summary_statistics.mean_surprise_post_shock_activity_lift,
+            summary_statistics.known_activity_coupling_target,
+            summary_statistics.surprise_activity_coupling_target,
             summary_statistics.known_news_coverage_ratio,
             summary_statistics.surprise_arrival_intensity_per_hour,
         ] {

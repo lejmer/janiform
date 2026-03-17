@@ -118,6 +118,28 @@ pub fn median_abs(values: &[f64]) -> f64 {
     }
 }
 
+/// Compute the median absolute value of strictly non-zero finite observations.
+pub fn median_abs_non_zero(values: &[f64]) -> Option<f64> {
+    let mut retained_values: Vec<f64> = values
+        .iter()
+        .copied()
+        .filter(|value| value.is_finite() && *value != 0.0)
+        .map(f64::abs)
+        .collect();
+    if retained_values.is_empty() {
+        return None;
+    }
+
+    retained_values.sort_by(f64::total_cmp);
+
+    let midpoint = retained_values.len() / 2;
+    Some(if retained_values.len() % 2 == 0 {
+        (retained_values[midpoint - 1] + retained_values[midpoint]) / 2.0
+    } else {
+        retained_values[midpoint]
+    })
+}
+
 /// Use a data-normalized smoothing pseudocount rather than a fixed constant.
 pub fn normalized_pseudocount(event_count: usize) -> f64 {
     1.0 / event_count.max(1) as f64
@@ -128,8 +150,8 @@ mod tests {
     use super::{
         arithmetic_mean, arithmetic_mean_or_zero, clamp_to_open_unit_interval,
         clamp_to_unit_interval, coefficient_of_variation, logistic, median_abs,
-        normalized_pseudocount, round_positive_to_domain, round_to, smallest_positive_value,
-        strictly_positive_machine_value, unique_sorted_values,
+        median_abs_non_zero, normalized_pseudocount, round_positive_to_domain, round_to,
+        smallest_positive_value, strictly_positive_machine_value, unique_sorted_values,
     };
 
     #[test]
@@ -155,6 +177,8 @@ mod tests {
         assert_eq!(arithmetic_mean_or_zero(&[]), 0.0);
         assert_eq!(coefficient_of_variation(&[2.0, 2.0, 2.0]), 0.0);
         assert_eq!(median_abs(&[-3.0, 1.0, 2.0]), 2.0);
+        assert_eq!(median_abs_non_zero(&[0.0, -3.0, 1.0, 2.0]), Some(2.0));
+        assert_eq!(median_abs_non_zero(&[0.0, 0.0]), None);
         assert_eq!(round_to(1.23456, 3), 1.235);
         assert_eq!(smallest_positive_value(&[-1.0, 2.0, 0.0, 1.0]), Some(1.0));
         assert_eq!(unique_sorted_values(&[2.0, 1.0, 2.0]), vec![1.0, 2.0]);

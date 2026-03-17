@@ -31,6 +31,76 @@ pub(crate) use janiform_model_kernels::risk_neutral::{
 };
 pub(crate) use serde_json::json;
 
+pub(crate) fn assert_optimizer_state_matches(
+    actual_optimizer_state: &Option<CalibrationStageParameterOptimizerState>,
+    expected_optimizer_state: &Option<CalibrationStageParameterOptimizerState>,
+    context: &str,
+) {
+    match (actual_optimizer_state, expected_optimizer_state) {
+        (None, None) => {}
+        (Some(actual_optimizer_state), Some(expected_optimizer_state)) => {
+            assert_eq!(
+                actual_optimizer_state.schema_version, expected_optimizer_state.schema_version,
+                "{context} schema_version drifted"
+            );
+            assert_eq!(
+                actual_optimizer_state.optimizer_adapter_metadata,
+                expected_optimizer_state.optimizer_adapter_metadata,
+                "{context} optimizer_adapter_metadata drifted"
+            );
+            assert_eq!(
+                actual_optimizer_state.input_candidate_count,
+                expected_optimizer_state.input_candidate_count,
+                "{context} input_candidate_count drifted"
+            );
+            assert_eq!(
+                actual_optimizer_state.valid_candidate_count,
+                expected_optimizer_state.valid_candidate_count,
+                "{context} valid_candidate_count drifted"
+            );
+            assert_f64_within_one_ulp(
+                actual_optimizer_state.selected_candidate_raw_objective,
+                expected_optimizer_state.selected_candidate_raw_objective,
+                &format!("{context} selected_candidate_raw_objective"),
+            );
+            assert_f64_within_one_ulp(
+                actual_optimizer_state.selected_candidate_penalized_objective,
+                expected_optimizer_state.selected_candidate_penalized_objective,
+                &format!("{context} selected_candidate_penalized_objective"),
+            );
+        }
+        _ => panic!(
+            "{context} optimizer_state presence drifted: actual={actual_optimizer_state:?} expected={expected_optimizer_state:?}"
+        ),
+    }
+}
+
+fn assert_f64_within_one_ulp(actual_value: f64, expected_value: f64, context: &str) {
+    if actual_value == expected_value {
+        return;
+    }
+
+    let actual_ordered_bits = ordered_f64_bits(actual_value);
+    let expected_ordered_bits = ordered_f64_bits(expected_value);
+    let bit_distance = actual_ordered_bits.abs_diff(expected_ordered_bits);
+
+    assert!(
+        bit_distance <= 1,
+        "{context} drifted: actual={actual_value:?} expected={expected_value:?} ulp_distance={bit_distance}"
+    );
+}
+
+fn ordered_f64_bits(value: f64) -> u64 {
+    let raw_bits = value.to_bits();
+    let sign_bit = 1_u64 << 63;
+
+    if raw_bits & sign_bit == 0 {
+        raw_bits | sign_bit
+    } else {
+        !raw_bits
+    }
+}
+
 pub(crate) fn build_data_inputs() -> CalibrationRunDataInputs {
     CalibrationRunDataInputs::try_new(
         "XNYS",

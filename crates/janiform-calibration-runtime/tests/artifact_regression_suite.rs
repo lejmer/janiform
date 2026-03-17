@@ -1044,10 +1044,13 @@ fn assert_stage_artifact_matches(
         "fixture_id={} stage={:?} solver settings drifted",
         fixture_id, expected_artifact.stage
     );
-    assert_eq!(
-        loaded_artifact.optimizer_state, expected_artifact.optimizer_state,
-        "fixture_id={} stage={:?} optimizer state drifted",
-        fixture_id, expected_artifact.stage
+    assert_optimizer_state_matches(
+        &loaded_artifact.optimizer_state,
+        &expected_artifact.optimizer_state,
+        &format!(
+            "fixture_id={} stage={:?} optimizer_state",
+            fixture_id, expected_artifact.stage
+        ),
     );
 
     match (

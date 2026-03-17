@@ -985,7 +985,7 @@ mod tests {
                         jump_fit_weight: 1.0,
                         gap_fit_weight: 1.0,
                         activity_coupling_fit_weight: 1.0,
-                        price_range_sanity_fit_weight: 1.0,
+                        price_range_sanity_fit_weight: 0.1,
                     },
                 },
             ),
