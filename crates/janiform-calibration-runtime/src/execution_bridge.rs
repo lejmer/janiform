@@ -334,6 +334,7 @@ pub struct CalibrationReturnComponentsCloseOpenGapDetectionPolicy {
 #[serde(deny_unknown_fields)]
 pub struct CalibrationReturnComponentsObjectiveMetricWeights {
     pub continuous_distribution_fit_weight: f64,
+    pub surprise_arrival_fit_weight: f64,
     pub jump_fit_weight: f64,
     pub gap_fit_weight: f64,
     pub activity_coupling_fit_weight: f64,
@@ -851,6 +852,7 @@ impl CalibrationReturnComponentsObjectiveMetricWeights {
     fn into_core(self) -> ReturnComponentsStageObjectiveMetricWeights {
         ReturnComponentsStageObjectiveMetricWeights::new(
             self.continuous_distribution_fit_weight,
+            self.surprise_arrival_fit_weight,
             self.jump_fit_weight,
             self.gap_fit_weight,
             self.activity_coupling_fit_weight,
@@ -1060,6 +1062,7 @@ mod tests {
                     },
                     objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights {
                         continuous_distribution_fit_weight: 1.0,
+                        surprise_arrival_fit_weight: 1.0,
                         jump_fit_weight: 1.0,
                         gap_fit_weight: 1.0,
                         activity_coupling_fit_weight: 1.0,

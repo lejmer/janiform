@@ -127,6 +127,45 @@ def test_janiform_estimator_supports_simple_zero_config_tick_fit_without_tempdir
     assert model.metadata["input_inference"]["tick_price_columns"]["trade_sign_column"] == "trade_sign"
 
 
+def test_prepare_model_runtime_factors_uses_fitted_surprise_intensity_profile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:00:00Z,100.0,buy",
+                "2026-02-02T14:30:00Z,100.1,sell",
+                "2026-02-02T15:00:00Z,100.2,buy",
+                "2026-02-02T15:30:00Z,100.3,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_staged_calibration_with_raw_payload",
+        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
+            execution_input.request.run_id
+        ),
+    )
+
+    estimator = JaniformEstimator(market_profile="us_equity_cash")
+    model = estimator.fit(tick_data_path=tick_data_path)
+    runtime_factors = fit_model_module._prepare_model_runtime_factors(
+        model,
+        start_time_utc=datetime(2026, 2, 2, 14, 0, tzinfo=UTC),
+        horizon_interval_count=2,
+        interval="1h",
+    )
+
+    assert runtime_factors.surprise_component_nu_h[0] == pytest.approx(0.04)
+    assert runtime_factors.surprise_component_nu_h[1] == pytest.approx(0.02)
+
+
 def test_janiform_estimator_preserves_duplicate_ticks_by_default(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1498,6 +1537,19 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "activity_coupling_scale": 1.0,
                                 "return_jump_scale": 1.0,
                             },
+                        },
+                        "surprise_deterministic_intensity_profile": {
+                            "weekly_hour_utc_multipliers": [
+                                2.0 if hour_index == 14 else 1.0 for hour_index in range(168)
+                            ],
+                            "profile_resolution_hours": 1,
+                            "fit_policy": (
+                                "selected_exogenous_surprise_episode_rate_per_utc_hour_of_week_"
+                                "with_baseline_shrinkage.v1"
+                            ),
+                            "normalization_policy": (
+                                "exposure_weighted_mean_one_over_source_window.v1"
+                            ),
                         },
                     },
                 },

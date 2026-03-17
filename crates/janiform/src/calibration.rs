@@ -2,6 +2,7 @@
 
 pub use janiform_calibration_artifacts::CalibrationStage;
 pub use janiform_calibration_artifacts::ReturnComponentsStageFittedParameters;
+pub use janiform_calibration_artifacts::SurpriseNewsDeterministicIntensityProfile;
 pub use janiform_calibration_runtime::{
     CalibrationMemoryCheckpointStore, CalibrationReturnComponentsActivityContextPayload,
     CalibrationReturnComponentsStageCandidateGenerationInput, CalibrationStagedExecutionInput,

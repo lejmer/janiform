@@ -29,6 +29,7 @@ use super::constants::{
     RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_CONTINUOUS_DISTRIBUTION_FIT,
     RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_OPEN_JUMP_FIT,
     RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_PRICE_RANGE_SANITY_FIT,
+    RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_SURPRISE_ARRIVAL_FIT,
 };
 
 /// One weighted objective term used by return-components-stage candidate evaluation.
@@ -413,6 +414,7 @@ impl ReturnComponentsCloseOpenGapDetectionPolicy {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ReturnComponentsStageObjectiveMetricWeights {
     pub continuous_distribution_fit_weight: f64,
+    pub surprise_arrival_fit_weight: f64,
     pub jump_fit_weight: f64,
     pub gap_fit_weight: f64,
     pub activity_coupling_fit_weight: f64,
@@ -422,6 +424,7 @@ pub struct ReturnComponentsStageObjectiveMetricWeights {
 impl ReturnComponentsStageObjectiveMetricWeights {
     pub const fn new(
         continuous_distribution_fit_weight: f64,
+        surprise_arrival_fit_weight: f64,
         jump_fit_weight: f64,
         gap_fit_weight: f64,
         activity_coupling_fit_weight: f64,
@@ -429,6 +432,7 @@ impl ReturnComponentsStageObjectiveMetricWeights {
     ) -> Self {
         Self {
             continuous_distribution_fit_weight,
+            surprise_arrival_fit_weight,
             jump_fit_weight,
             gap_fit_weight,
             activity_coupling_fit_weight,
@@ -443,6 +447,13 @@ impl ReturnComponentsStageObjectiveMetricWeights {
             return Err(
                 ReturnComponentsStageCandidateGenerationInputError::InvalidContinuousDistributionFitWeight {
                     value: self.continuous_distribution_fit_weight,
+                },
+            );
+        }
+        if !self.surprise_arrival_fit_weight.is_finite() || self.surprise_arrival_fit_weight < 0.0 {
+            return Err(
+                ReturnComponentsStageCandidateGenerationInputError::InvalidSurpriseArrivalFitWeight {
+                    value: self.surprise_arrival_fit_weight,
                 },
             );
         }
@@ -679,6 +690,9 @@ pub enum ReturnComponentsStageCandidateGenerationInputError {
     InvalidContinuousDistributionFitWeight {
         value: f64,
     },
+    InvalidSurpriseArrivalFitWeight {
+        value: f64,
+    },
     InvalidOpenJumpFitWeight {
         value: f64,
     },
@@ -911,6 +925,10 @@ impl Display for ReturnComponentsStageCandidateGenerationInputError {
                 formatter,
                 "continuous_distribution_fit_weight must be finite and non-negative, found {value}"
             ),
+            Self::InvalidSurpriseArrivalFitWeight { value } => write!(
+                formatter,
+                "surprise_arrival_fit_weight must be finite and non-negative, found {value}"
+            ),
             Self::InvalidOpenJumpFitWeight { value } => write!(
                 formatter,
                 "open_jump_fit_weight must be finite and non-negative, found {value}"
@@ -968,13 +986,15 @@ impl ReturnComponentsKnownNewsArrivalCandidateFamily {
 }
 
 /// Explicit surprise-news arrival control family generated from detected jumps and gaps.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ReturnComponentsSurpriseNewsArrivalCandidateFamily {
     pub baseline_intensity: f64,
+    pub weekly_hour_utc_multipliers: Vec<f64>,
+    pub profile_resolution_hours: usize,
 }
 
 impl ReturnComponentsSurpriseNewsArrivalCandidateFamily {
-    pub(super) fn validate(self) -> Result<(), ReturnComponentsStageCandidateInputError> {
+    pub(super) fn validate(&self) -> Result<(), ReturnComponentsStageCandidateInputError> {
         SurpriseNewsArrivalConfiguration {
             baseline_intensity: self.baseline_intensity,
         }
@@ -983,7 +1003,40 @@ impl ReturnComponentsSurpriseNewsArrivalCandidateFamily {
             ReturnComponentsStageCandidateInputError::InvalidSurpriseArrivalFamily {
                 error_message: source.to_string(),
             }
-        })
+        })?;
+
+        if self.profile_resolution_hours != 1 {
+            return Err(
+                ReturnComponentsStageCandidateInputError::InvalidSurpriseArrivalFamily {
+                    error_message: "surprise arrival weekly profile resolution must equal one hour"
+                        .to_string(),
+                },
+            );
+        }
+        if self.weekly_hour_utc_multipliers.len() != 168 {
+            return Err(
+                ReturnComponentsStageCandidateInputError::InvalidSurpriseArrivalFamily {
+                    error_message:
+                        "surprise arrival weekly profile must contain exactly 168 hourly multipliers"
+                            .to_string(),
+                },
+            );
+        }
+        if self
+            .weekly_hour_utc_multipliers
+            .iter()
+            .any(|multiplier| !multiplier.is_finite() || *multiplier <= 0.0)
+        {
+            return Err(
+                ReturnComponentsStageCandidateInputError::InvalidSurpriseArrivalFamily {
+                    error_message:
+                        "surprise arrival weekly profile multipliers must be finite and strictly positive"
+                            .to_string(),
+                },
+            );
+        }
+
+        Ok(())
     }
 }
 
@@ -1183,6 +1236,7 @@ impl ReturnComponentsStageCandidateProvenance {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct ReturnComponentsStageObjectiveMetricBuckets {
     pub continuous_distribution_fit: f64,
+    pub surprise_arrival_fit: f64,
     pub open_jump_fit: f64,
     pub closed_gap_fit: f64,
     pub activity_coupling_fit: f64,
@@ -1193,6 +1247,7 @@ impl ReturnComponentsStageObjectiveMetricBuckets {
     pub(super) fn validate(self) -> Result<(), ReturnComponentsStageCandidateInputError> {
         for metric_value in [
             self.continuous_distribution_fit,
+            self.surprise_arrival_fit,
             self.open_jump_fit,
             self.closed_gap_fit,
             self.activity_coupling_fit,
@@ -1228,11 +1283,18 @@ pub struct ReturnComponentsStageReturnDistributionDiagnostic {
 pub struct ReturnComponentsStageJumpDiagnostic {
     pub evidence_state: String,
     pub observed_jump_count: usize,
-    pub observed_jump_frequency_per_hour: f64,
     pub observed_mean_abs_jump_return: f64,
     pub fitted_mean_abs_jump_return: f64,
     pub fitted_sigma_g: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStageSurpriseArrivalDiagnostic {
+    pub evidence_state: String,
+    pub observed_jump_count: usize,
+    pub observed_jump_frequency_per_hour: f64,
     pub fitted_surprise_arrival_intensity_per_hour: f64,
+    pub surprise_arrival_profile_fit_error: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -1313,6 +1375,7 @@ pub struct ReturnComponentsStageCandidateInput {
     pub news_process_configuration: NewsProcessConfiguration,
     pub objective_metric_buckets: ReturnComponentsStageObjectiveMetricBuckets,
     pub return_distribution_diagnostic: ReturnComponentsStageReturnDistributionDiagnostic,
+    pub surprise_arrival_diagnostic: ReturnComponentsStageSurpriseArrivalDiagnostic,
     pub jump_diagnostic: ReturnComponentsStageJumpDiagnostic,
     pub gap_diagnostic: ReturnComponentsStageGapDiagnostic,
     pub activity_coupling_diagnostic: ReturnComponentsStageActivityCouplingDiagnostic,
@@ -1470,6 +1533,7 @@ impl ReturnComponentsStageCandidateInput {
         self.objective_metric_buckets.validate()?;
 
         let mut has_continuous_distribution_term = false;
+        let mut has_surprise_arrival_term = false;
         let mut has_open_jump_term = false;
         let mut has_closed_gap_term = false;
         let mut has_activity_coupling_term = false;
@@ -1487,6 +1551,10 @@ impl ReturnComponentsStageCandidateInput {
                 == RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_CONTINUOUS_DISTRIBUTION_FIT
             {
                 has_continuous_distribution_term = true;
+            }
+            if objective_term.term_id == RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_SURPRISE_ARRIVAL_FIT
+            {
+                has_surprise_arrival_term = true;
             }
             if objective_term.term_id == RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_OPEN_JUMP_FIT {
                 has_open_jump_term = true;
@@ -1517,6 +1585,13 @@ impl ReturnComponentsStageCandidateInput {
             return Err(
                 ReturnComponentsStageCandidateInputError::MissingObjectiveMetricBucketTerm {
                     term_id: RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_OPEN_JUMP_FIT,
+                },
+            );
+        }
+        if !has_surprise_arrival_term {
+            return Err(
+                ReturnComponentsStageCandidateInputError::MissingObjectiveMetricBucketTerm {
+                    term_id: RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_SURPRISE_ARRIVAL_FIT,
                 },
             );
         }
@@ -1660,6 +1735,7 @@ pub struct ReturnComponentsStageExactCandidateEvaluation {
     pub continuous_return_sample_diagnostic: ReturnComponentsStageContinuousReturnSampleDiagnostic,
     pub continuous_distribution_fit_breakdown:
         ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic,
+    pub surprise_arrival_diagnostic: ReturnComponentsStageSurpriseArrivalDiagnostic,
     pub jump_diagnostic: ReturnComponentsStageJumpDiagnostic,
     pub gap_diagnostic: ReturnComponentsStageGapDiagnostic,
     pub activity_coupling_diagnostic: ReturnComponentsStageActivityCouplingDiagnostic,
@@ -1709,6 +1785,7 @@ pub struct ReturnComponentsStageCandidateDiagnostic {
     pub candidate_families: ReturnComponentsStageCandidateFamilies,
     pub candidate_provenance: ReturnComponentsStageCandidateProvenance,
     pub return_distribution_diagnostic: ReturnComponentsStageReturnDistributionDiagnostic,
+    pub surprise_arrival_diagnostic: ReturnComponentsStageSurpriseArrivalDiagnostic,
     pub jump_diagnostic: ReturnComponentsStageJumpDiagnostic,
     pub gap_diagnostic: ReturnComponentsStageGapDiagnostic,
     pub activity_coupling_diagnostic: ReturnComponentsStageActivityCouplingDiagnostic,

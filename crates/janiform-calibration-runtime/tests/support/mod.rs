@@ -1102,7 +1102,7 @@ pub(crate) fn return_components_stage_candidate_generation_fixture()
             coupled_gap_marks: CoupledGapMarkConfiguration::new(0.22),
         },
         objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights::new(
-            1.0, 1.0, 1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
         ),
     }
 }

@@ -246,6 +246,7 @@ def build_valid_execution_input_model(
             ),
             objective_metric_weights=CalibrationReturnComponentsObjectiveMetricWeights(
                 continuous_distribution_fit_weight=1.0,
+                surprise_arrival_fit_weight=1.0,
                 jump_fit_weight=1.0,
                 gap_fit_weight=1.0,
                 activity_coupling_fit_weight=1.0,

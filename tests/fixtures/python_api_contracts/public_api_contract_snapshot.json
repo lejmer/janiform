@@ -3497,13 +3497,14 @@
         "CalibrationReturnComponentsObjectiveMetricWeights": {
           "field_names": [
             "continuous_distribution_fit_weight",
+            "surprise_arrival_fit_weight",
             "jump_fit_weight",
             "gap_fit_weight",
             "activity_coupling_fit_weight",
             "price_range_sanity_fit_weight"
           ],
           "kind": "contract_model",
-          "signature": "(continuous_distribution_fit_weight: 'float', jump_fit_weight: 'float', gap_fit_weight: 'float', activity_coupling_fit_weight: 'float', price_range_sanity_fit_weight: 'float') -> 'None'"
+          "signature": "(continuous_distribution_fit_weight: 'float', surprise_arrival_fit_weight: 'float', jump_fit_weight: 'float', gap_fit_weight: 'float', activity_coupling_fit_weight: 'float', price_range_sanity_fit_weight: 'float') -> 'None'"
         },
         "CalibrationReturnComponentsObservedCloseOpenBoundaryObservation": {
           "field_names": [
@@ -4238,13 +4239,14 @@
         "CalibrationReturnComponentsObjectiveMetricWeights": {
           "field_names": [
             "continuous_distribution_fit_weight",
+            "surprise_arrival_fit_weight",
             "jump_fit_weight",
             "gap_fit_weight",
             "activity_coupling_fit_weight",
             "price_range_sanity_fit_weight"
           ],
           "kind": "contract_model",
-          "signature": "(continuous_distribution_fit_weight: 'float', jump_fit_weight: 'float', gap_fit_weight: 'float', activity_coupling_fit_weight: 'float', price_range_sanity_fit_weight: 'float') -> 'None'"
+          "signature": "(continuous_distribution_fit_weight: 'float', surprise_arrival_fit_weight: 'float', jump_fit_weight: 'float', gap_fit_weight: 'float', activity_coupling_fit_weight: 'float', price_range_sanity_fit_weight: 'float') -> 'None'"
         },
         "CalibrationReturnComponentsObservedCloseOpenBoundaryObservation": {
           "field_names": [

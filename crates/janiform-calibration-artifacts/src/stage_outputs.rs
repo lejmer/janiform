@@ -30,7 +30,16 @@ pub struct HawkesStageFittedParameters {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SurpriseNewsDeterministicIntensityProfile {
+    pub weekly_hour_utc_multipliers: Vec<f64>,
+    pub profile_resolution_hours: usize,
+    pub fit_policy: String,
+    pub normalization_policy: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReturnComponentsStageFittedParameters {
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     pub news_process_configuration: NewsProcessConfiguration,
+    pub surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile,
 }

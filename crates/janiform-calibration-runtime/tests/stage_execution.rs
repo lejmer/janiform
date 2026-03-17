@@ -698,7 +698,7 @@ fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_hando
     );
     assert_eq!(
         memory_payload.objective_metric_bucket_policy,
-        "continuous_distribution_jump_gap_activity_and_price_sanity_bucketed_weighted_terms.v1"
+        "continuous_distribution_surprise_arrival_jump_gap_activity_and_price_sanity_bucketed_weighted_terms.v1"
     );
     assert_eq!(
         memory_payload.candidate_generation_policy,
@@ -712,6 +712,7 @@ fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_hando
             .map(|objective_term| objective_term.term_id.as_str())
             .collect::<Vec<_>>();
         assert!(term_ids.contains(&"continuous_distribution_fit"));
+        assert!(term_ids.contains(&"surprise_arrival_fit"));
         assert!(term_ids.contains(&"open_jump_fit"));
         assert!(term_ids.contains(&"closed_gap_fit"));
         assert!(term_ids.contains(&"activity_coupling_fit"));
@@ -732,6 +733,12 @@ fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_hando
             candidate_diagnostic
                 .objective_metric_buckets
                 .continuous_distribution_fit
+                .is_finite()
+        );
+        assert!(
+            candidate_diagnostic
+                .objective_metric_buckets
+                .surprise_arrival_fit
                 .is_finite()
         );
         assert!(

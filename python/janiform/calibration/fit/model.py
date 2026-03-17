@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Any, NoReturn, Optional, cast
 
 from ..market_data.contracts import CalibrationMarketDataWorkflowScope
 from ..market_data.workflow import (
@@ -598,6 +598,14 @@ def _prepare_model_simulation_inputs(
                     news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
                         known_scheduled_event_timestamps_utc=_resolved_known_news_event_timestamps(model),
                         surprise_baseline_intensity=_surprise_baseline_intensity(model),
+                        surprise_deterministic_time_multiplier_by_interval_index=(
+                            _surprise_deterministic_time_multiplier_by_interval_index(
+                                model,
+                                range_start_utc=start_time_utc,
+                                range_end_utc=runtime_factors.range_end_utc,
+                                interval_duration_nanos=_parse_interval_duration_nanos(interval),
+                            )
+                        ),
                     ),
                 ),
                 debug_trace_enabled=debug_trace_enabled,
@@ -718,6 +726,14 @@ def _prepare_model_runtime_factors(
         settings=HourlyNewsIntensityMaterializationSettings(
             known_scheduled_event_timestamps_utc=_resolved_known_news_event_timestamps(model),
             surprise_baseline_intensity=_surprise_baseline_intensity(model),
+            surprise_deterministic_time_multiplier_by_interval_index=(
+                _surprise_deterministic_time_multiplier_by_interval_index(
+                    model,
+                    range_start_utc=start_time_utc,
+                    range_end_utc=range_end_utc,
+                    interval_duration_nanos=interval_duration_nanos,
+                )
+            ),
         ),
     )
     hawkes_fitted_parameters = _hawkes_fitted_parameters_payload(model)
@@ -993,6 +1009,137 @@ def _surprise_baseline_intensity(model: JaniformModel) -> float:
         )
 
     return float(baseline_intensity)
+
+
+def _surprise_deterministic_time_multiplier_by_interval_index(
+    model: JaniformModel,
+    *,
+    range_start_utc: datetime,
+    range_end_utc: datetime,
+    interval_duration_nanos: int,
+) -> dict[int, float]:
+    weekly_hour_utc_multipliers = _surprise_weekly_hour_utc_multipliers(model)
+    normalized_range_start_utc = _normalize_runtime_utc_timestamp(
+        range_start_utc,
+        field_name="range_start_utc",
+    )
+    normalized_range_end_utc = _normalize_runtime_utc_timestamp(
+        range_end_utc,
+        field_name="range_end_utc",
+    )
+    if normalized_range_end_utc <= normalized_range_start_utc:
+        return {}
+
+    interval_duration = timedelta(seconds=interval_duration_nanos / 1_000_000_000)
+    interval_count = int(
+        (normalized_range_end_utc - normalized_range_start_utc).total_seconds()
+        / interval_duration.total_seconds()
+    )
+    deterministic_time_multiplier_by_interval_index: dict[int, float] = {}
+
+    for interval_index in range(interval_count):
+        interval_start_utc = normalized_range_start_utc + interval_duration * interval_index
+        interval_end_utc = min(interval_start_utc + interval_duration, normalized_range_end_utc)
+
+        interval_multiplier = _average_weekly_hour_multiplier_over_interval(
+            interval_start_utc=interval_start_utc,
+            interval_end_utc=interval_end_utc,
+            weekly_hour_utc_multipliers=weekly_hour_utc_multipliers,
+        )
+        if abs(interval_multiplier - 1.0) > 1.0e-12:
+            deterministic_time_multiplier_by_interval_index[interval_index] = interval_multiplier
+
+    return deterministic_time_multiplier_by_interval_index
+
+
+def _surprise_weekly_hour_utc_multipliers(model: JaniformModel) -> tuple[float, ...]:
+    fitted_parameters = _return_components_fitted_parameters_payload(model)
+
+    profile = _require_payload_mapping(
+        fitted_parameters,
+        "surprise_deterministic_intensity_profile",
+        "return_components.fitted_parameters.surprise_deterministic_intensity_profile",
+    )
+
+    raw_weekly_hour_utc_multipliers = profile.get("weekly_hour_utc_multipliers")
+    if not isinstance(raw_weekly_hour_utc_multipliers, list):
+        raise RuntimeError(
+            "JaniformModel is missing weekly surprise intensity multipliers in the fitted model payload"
+        )
+
+    weekly_hour_utc_multipliers = tuple(
+        float(raw_multiplier)
+        if isinstance(raw_multiplier, int | float) and not isinstance(raw_multiplier, bool)
+        else _raise_invalid_weekly_surprise_multiplier(bucket_index)
+        for bucket_index, raw_multiplier in enumerate(raw_weekly_hour_utc_multipliers)
+    )
+    if len(weekly_hour_utc_multipliers) != 168:
+        raise RuntimeError(
+            "JaniformModel weekly surprise intensity profile must contain exactly 168 hourly multipliers"
+        )
+
+    return weekly_hour_utc_multipliers
+
+
+def _average_weekly_hour_multiplier_over_interval(
+    *,
+    interval_start_utc: datetime,
+    interval_end_utc: datetime,
+    weekly_hour_utc_multipliers: tuple[float, ...],
+) -> float:
+    if interval_end_utc <= interval_start_utc:
+        return 1.0
+
+    weighted_multiplier_sum = 0.0
+    weighted_duration_seconds = 0.0
+
+    current = interval_start_utc
+    while current < interval_end_utc:
+        hour_start_utc = current.replace(minute=0, second=0, microsecond=0)
+        next_hour_boundary_utc = (
+            current + timedelta(hours=1)
+            if current == hour_start_utc
+            else hour_start_utc + timedelta(hours=1)
+        )
+        segment_end_utc = min(next_hour_boundary_utc, interval_end_utc)
+        segment_duration_seconds = (segment_end_utc - current).total_seconds()
+
+        weighted_multiplier_sum += (
+            weekly_hour_utc_multipliers[_weekly_hour_bucket_index(current)]
+            * segment_duration_seconds
+        )
+        weighted_duration_seconds += segment_duration_seconds
+
+        current = segment_end_utc
+
+    if weighted_duration_seconds <= 0.0:
+        return 1.0
+
+    return weighted_multiplier_sum / weighted_duration_seconds
+
+
+def _weekly_hour_bucket_index(timestamp_utc: datetime) -> int:
+    normalized_timestamp_utc = _normalize_runtime_utc_timestamp(
+        timestamp_utc,
+        field_name="timestamp_utc",
+    )
+
+    return normalized_timestamp_utc.weekday() * 24 + normalized_timestamp_utc.hour
+
+
+def _raise_invalid_weekly_surprise_multiplier(bucket_index: int) -> NoReturn:
+    raise RuntimeError(
+        "JaniformModel payload field "
+        "`return_components.fitted_parameters.surprise_deterministic_intensity_profile."
+        f"weekly_hour_utc_multipliers[{bucket_index}]` must be numeric"
+    )
+
+
+def _normalize_runtime_utc_timestamp(timestamp_utc: datetime, *, field_name: str) -> datetime:
+    if timestamp_utc.tzinfo is None:
+        raise _calibration_error(field_name, "must be timezone-aware")
+
+    return timestamp_utc.astimezone(UTC)
 
 
 def _require_payload_mapping(
