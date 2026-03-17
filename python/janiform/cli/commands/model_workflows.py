@@ -469,6 +469,11 @@ def _configure_cli_fit_command(
         exchange_code=cast(Optional[str], command_arguments.get("exchange_code")),
         session_timezone=cast(Optional[str], command_arguments.get("session_timezone")),
         registry=registry,
+        cpu_count=_cpu_count_from_arguments(
+            command_arguments,
+            entrypoint=entrypoint,
+            error_id=error_id,
+        ),
         silent=bool(command_arguments.get("silent")),
     )
     input_inference = infer_high_level_fit_inputs(
@@ -494,6 +499,11 @@ def _configure_cli_fit_command(
         exchange_code=cast(Optional[str], command_arguments.get("exchange_code")),
         session_timezone=cast(Optional[str], command_arguments.get("session_timezone")),
         registry=registry,
+        cpu_count=_cpu_count_from_arguments(
+            command_arguments,
+            entrypoint=entrypoint,
+            error_id=error_id,
+        ),
         silent=bool(command_arguments.get("silent")),
     )
 
@@ -546,6 +556,24 @@ def _optional_tick_data_format_from_arguments(
 
 def _tick_data_provenance_label_from_arguments(command_arguments: CliCommandArguments) -> str:
     return cast(str, command_arguments.get("tick_data_provenance_label", "tick_data"))
+
+
+def _cpu_count_from_arguments(
+    command_arguments: CliCommandArguments,
+    *,
+    entrypoint: str,
+    error_id: str,
+) -> Optional[int]:
+    raw_cpu_count = cast(Optional[int], command_arguments.get("cpu_count"))
+    if raw_cpu_count is None:
+        return None
+
+    return _require_positive_integer_cli_argument(
+        raw_cpu_count,
+        field_path="cpu_count",
+        error_id=error_id,
+        entrypoint=entrypoint,
+    )
 
 
 def _build_high_level_tick_data_column_overrides_from_arguments(
@@ -1421,6 +1449,14 @@ def _model_workflow_fit_options(
             "--silent",
             help_text="Suppress successful command output and silence non-error stdout from the high-level fit path.",
             is_flag=True,
+        ),
+        command_option(
+            "--cpu-count",
+            help_text=(
+                "CPU cores to use when evaluating calibration candidates. "
+                "Default: all available logical CPUs."
+            ),
+            value_type=int,
         ),
         *(
             [

@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::calendar::MarketState;
 use crate::objective::{
@@ -166,6 +166,7 @@ pub struct ReturnComponentsObservedOpenSessionReturn {
     pub return_timestamp_utc_nanos: i64,
     pub log_return: f64,
     pub post_shock_activity_lift: f64,
+    pub sell_share_proxy: f64,
 }
 
 impl ReturnComponentsObservedOpenSessionReturn {
@@ -197,6 +198,14 @@ impl ReturnComponentsObservedOpenSessionReturn {
                 ReturnComponentsStageCandidateGenerationInputError::InvalidObservedOpenSessionActivityLift {
                     return_timestamp_utc_nanos: self.return_timestamp_utc_nanos,
                     value: self.post_shock_activity_lift,
+                },
+            );
+        }
+        if !self.sell_share_proxy.is_finite() || !(0.0..=1.0).contains(&self.sell_share_proxy) {
+            return Err(
+                ReturnComponentsStageCandidateGenerationInputError::InvalidObservedOpenSessionSellShareProxy {
+                    return_timestamp_utc_nanos: self.return_timestamp_utc_nanos,
+                    value: self.sell_share_proxy,
                 },
             );
         }
@@ -581,6 +590,10 @@ pub enum ReturnComponentsStageCandidateGenerationInputError {
         return_timestamp_utc_nanos: i64,
         value: f64,
     },
+    InvalidObservedOpenSessionSellShareProxy {
+        return_timestamp_utc_nanos: i64,
+        value: f64,
+    },
     IntradayJumpOutsideSourceWindow {
         jump_timestamp_utc_nanos: i64,
         window_start_utc_nanos: i64,
@@ -756,6 +769,13 @@ impl Display for ReturnComponentsStageCandidateGenerationInputError {
             } => write!(
                 formatter,
                 "observed open-session return activity lift at {return_timestamp_utc_nanos} must be finite and non-negative, found {value}"
+            ),
+            Self::InvalidObservedOpenSessionSellShareProxy {
+                return_timestamp_utc_nanos,
+                value,
+            } => write!(
+                formatter,
+                "observed open-session return sell-share proxy at {return_timestamp_utc_nanos} must be finite and within [0, 1], found {value}"
             ),
             Self::IntradayJumpOutsideSourceWindow {
                 jump_timestamp_utc_nanos,
@@ -1042,7 +1062,7 @@ impl ReturnComponentsStageCandidateFamilies {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ReturnComponentsStageObservedSignalSummaryStatistics {
     pub known_calendar_event_count: usize,
     pub known_realized_sample_count: usize,
@@ -1051,6 +1071,7 @@ pub struct ReturnComponentsStageObservedSignalSummaryStatistics {
     pub continuous_fit_return_count: usize,
     pub intraday_jump_candidate_count: usize,
     pub intraday_jump_episode_count: usize,
+    pub selected_surprise_jump_episode_count: usize,
     pub close_open_gap_candidate_count: usize,
     pub close_open_gap_episode_count: usize,
     pub open_session_sell_share_proxy: f64,
@@ -1238,8 +1259,41 @@ pub struct ReturnComponentsStagePriceRangeSanityDiagnostic {
     pub is_flagged: bool,
     pub observed_log_price_span: f64,
     pub fitted_reference_log_price_span: f64,
+    pub continuous_reference_log_price_span: f64,
+    pub effective_continuous_sample_count: usize,
+    pub effective_mean_business_time_scale: f64,
+    pub fitted_mean_abs_jump_return: f64,
     pub expansion_ratio: f64,
     pub threshold_ratio: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStageContinuousReturnSampleDiagnostic {
+    pub observed_returns: Vec<f64>,
+    pub fitted_returns: Vec<f64>,
+    pub business_time_scales: Vec<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
+    pub global_fit_score: f64,
+    pub conditional_fit_score: f64,
+    pub boundary_penalty: f64,
+    pub mean_return_fit: f64,
+    pub volatility_fit: f64,
+    pub median_return_fit: f64,
+    pub lower_quartile_fit: f64,
+    pub upper_quartile_fit: f64,
+    pub lower_tail_q05_fit: f64,
+    pub upper_tail_q95_fit: f64,
+    pub extreme_left_tail_q01_fit: f64,
+    pub extreme_right_tail_q99_fit: f64,
+    pub mean_abs_return_fit: f64,
+    pub median_abs_return_fit: f64,
+    pub abs_quantile_ratio_fit: f64,
+    pub bowley_skewness_fit: f64,
+    pub l_moment_lambda2_fit: f64,
+    pub l_moment_tau3_fit: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -1591,6 +1645,56 @@ pub struct ReturnComponentsStageConstraintViolationDiagnostic {
     pub field: String,
     pub message: String,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ReturnComponentsStageActivityCalibrationContextSnapshot {
+    pub modeled_open_event_rate_per_hour: f64,
+    pub representative_interarrival_hours: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStageExactCandidateEvaluation {
+    pub raw_objective_value: f64,
+    pub objective_metric_buckets: ReturnComponentsStageObjectiveMetricBuckets,
+    pub return_distribution_diagnostic: ReturnComponentsStageReturnDistributionDiagnostic,
+    pub continuous_return_sample_diagnostic: ReturnComponentsStageContinuousReturnSampleDiagnostic,
+    pub continuous_distribution_fit_breakdown:
+        ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic,
+    pub jump_diagnostic: ReturnComponentsStageJumpDiagnostic,
+    pub gap_diagnostic: ReturnComponentsStageGapDiagnostic,
+    pub activity_coupling_diagnostic: ReturnComponentsStageActivityCouplingDiagnostic,
+    pub price_range_sanity_diagnostic: ReturnComponentsStagePriceRangeSanityDiagnostic,
+    pub constraint_violation_count: usize,
+    pub constraint_violations: Vec<ReturnComponentsStageConstraintViolationDiagnostic>,
+    pub dominant_scale_driver: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ReturnComponentsStageExactCandidateEvaluationError {
+    InvalidCandidateGenerationInput { error_message: String },
+    InvalidFittedParameters { error_message: String },
+}
+
+impl Display for ReturnComponentsStageExactCandidateEvaluationError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidCandidateGenerationInput { error_message } => {
+                write!(
+                    formatter,
+                    "invalid return-components candidate generation input: {error_message}"
+                )
+            }
+            Self::InvalidFittedParameters { error_message } => {
+                write!(
+                    formatter,
+                    "invalid return-components fitted parameters: {error_message}"
+                )
+            }
+        }
+    }
+}
+
+impl Error for ReturnComponentsStageExactCandidateEvaluationError {}
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ReturnComponentsStageCandidateDiagnostic {

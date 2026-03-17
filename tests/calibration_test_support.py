@@ -197,16 +197,19 @@ def build_valid_execution_input_model(
                     return_timestamp_utc_nanos=1770046200000000000,
                     log_return=0.004,
                     post_shock_activity_lift=1.00,
+                    sell_share_proxy=0.48,
                 ),
                 CalibrationReturnComponentsObservedOpenSessionReturn(
                     return_timestamp_utc_nanos=1770048300000000000,
                     log_return=0.018,
                     post_shock_activity_lift=1.35,
+                    sell_share_proxy=0.62,
                 ),
                 CalibrationReturnComponentsObservedOpenSessionReturn(
                     return_timestamp_utc_nanos=1770123600000000000,
                     log_return=-0.006,
                     post_shock_activity_lift=0.95,
+                    sell_share_proxy=0.57,
                 ),
             ),
             detected_intraday_jump_candidates=(
@@ -269,6 +272,7 @@ def _solver_settings(stage: CalibrationStage) -> CalibrationStageSolverSettings:
         optimizer_settings=CalibrationOptimizerSettings(
             solver_name="lbfgs",
             max_iterations=250,
+            cpu_count=1,
             absolute_tolerance=1e-8,
             relative_tolerance=1e-6,
             constraint_penalty_weight=10.0,

@@ -1,3 +1,5 @@
+import os
+
 from contextlib import AbstractContextManager, nullcontext, redirect_stdout
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -114,6 +116,7 @@ class JaniformEstimator:
         exchange_code: Optional[str] = None,
         session_timezone: Optional[str] = None,
         registry: Optional[PresetRegistry] = None,
+        cpu_count: Optional[int] = None,
         silent: bool = False,
     ) -> None:
         if exchange_code is not None and not exchange_code.strip():
@@ -123,6 +126,8 @@ class JaniformEstimator:
                 "session_timezone",
                 "must be a non-empty string when provided",
             )
+        if cpu_count is not None and cpu_count <= 0:
+            raise _calibration_error("cpu_count", "must be strictly positive when provided")
 
         self._workflow_scope: CalibrationMarketDataWorkflowScope = workflow_scope
         self._tick_data_column_mapping: Optional[CalibrationTickDataColumnMapping] = (
@@ -140,6 +145,7 @@ class JaniformEstimator:
             else output_preferences
         )
         self._registry: PresetRegistry = PresetRegistry() if registry is None else registry
+        self._cpu_count: int = max(1, os.cpu_count() or 1) if cpu_count is None else cpu_count
         self._exchange_code: Optional[str] = exchange_code
         self._session_timezone: Optional[str] = session_timezone
         self._silent: bool = silent
@@ -454,6 +460,7 @@ class JaniformEstimator:
             translation_result = _translate_loaded_market_data_request_to_staged_execution_input(
                 normalized_request=request,
                 loaded_inputs_result=loaded_inputs_result,
+                cpu_count=self._cpu_count,
             )
             prepared = _prepare_market_data_calibration_from_translation_result(
                 request=request,

@@ -46,7 +46,7 @@ pub(crate) fn build_seed_settings() -> CalibrationRunSeedSettings {
 }
 
 pub(crate) fn build_solver_settings() -> CalibrationOptimizerSettings {
-    CalibrationOptimizerSettings::try_new("lbfgs", 250, 1e-8, 1e-6, 10.0)
+    CalibrationOptimizerSettings::try_new("lbfgs", 250, 1, 1e-8, 1e-6, 10.0)
         .expect("solver settings should validate")
 }
 

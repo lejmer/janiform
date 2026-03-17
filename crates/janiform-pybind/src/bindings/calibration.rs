@@ -1,6 +1,10 @@
 use janiform::calibration::{
-    CalibrationStagedExecutionInput, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
+    CalibrationReturnComponentsActivityContextPayload,
+    CalibrationReturnComponentsStageCandidateGenerationInput, CalibrationStagedExecutionInput,
+    CalibrationStagedRunReport, CalibrationStagedRunStageReport,
     MarketDataTranslationPreprocessingOutput, MarketDataTranslationPreprocessingRequest,
+    ReturnComponentsStageFittedParameters, ReturnComponentsStageObservedSignalSummaryStatistics,
+    evaluate_return_components_exact_candidate_from_bridge,
     preprocess_market_data_translation_request as preprocess_market_data_translation_request_native,
     run_staged_calibration_from_execution_input,
 };
@@ -85,6 +89,70 @@ fn run_staged_calibration(
     python_staged_calibration_report_to_py_object(py, &report)
 }
 
+#[pyfunction]
+#[pyo3(signature = (candidate_generation_input, observed_summary_statistics, fitted_parameters, stage_seed, hawkes_payload = None))]
+fn evaluate_return_components_candidate(
+    py: Python<'_>,
+    candidate_generation_input: &Bound<'_, PyAny>,
+    observed_summary_statistics: &Bound<'_, PyAny>,
+    fitted_parameters: &Bound<'_, PyAny>,
+    stage_seed: u64,
+    hawkes_payload: Option<&Bound<'_, PyAny>>,
+) -> PyResult<Py<PyAny>> {
+    let candidate_generation_input: CalibrationReturnComponentsStageCandidateGenerationInput =
+        serde_json::from_value(py_any_to_json_value(candidate_generation_input)?).map_err(
+            |source| {
+                CalibrationExecutionError::new_err(format!(
+                    "failed to deserialize return-components candidate generation input: {source}"
+                ))
+            },
+        )?;
+    let observed_summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics =
+        serde_json::from_value(py_any_to_json_value(observed_summary_statistics)?).map_err(
+            |source| {
+                CalibrationExecutionError::new_err(format!(
+                    "failed to deserialize return-components observed summary statistics: {source}"
+                ))
+            },
+        )?;
+    let fitted_parameters: ReturnComponentsStageFittedParameters =
+        serde_json::from_value(py_any_to_json_value(fitted_parameters)?).map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize return-components fitted parameters: {source}"
+            ))
+        })?;
+    let activity_context_payload: Option<CalibrationReturnComponentsActivityContextPayload> =
+        hawkes_payload
+            .map(py_any_to_json_value)
+            .transpose()?
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|source| {
+                CalibrationExecutionError::new_err(format!(
+                    "failed to deserialize Hawkes activity context payload: {source}"
+                ))
+            })?;
+
+    let evaluation = py
+        .allow_threads(|| {
+            evaluate_return_components_exact_candidate_from_bridge(
+                candidate_generation_input,
+                activity_context_payload,
+                observed_summary_statistics,
+                fitted_parameters,
+                stage_seed,
+            )
+        })
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    let raw_value = serde_json::to_value(evaluation).map_err(|source| {
+        CalibrationExecutionError::new_err(format!(
+            "failed to serialize return-components exact candidate evaluation: {source}"
+        ))
+    })?;
+    json_value_to_py_object(py, &raw_value)
+}
+
 fn python_staged_calibration_report_to_py_object(
     py: Python<'_>,
     report: &CalibrationStagedRunReport,
@@ -157,5 +225,9 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
         module
     )?)?;
     module.add_function(wrap_pyfunction!(run_staged_calibration, module)?)?;
+    module.add_function(wrap_pyfunction!(
+        evaluate_return_components_candidate,
+        module
+    )?)?;
     Ok(())
 }

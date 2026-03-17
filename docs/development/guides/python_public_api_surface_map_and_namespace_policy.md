@@ -170,6 +170,8 @@ from janiform.simulation.shared import HawkesKernelParameters
   - Simulation policy: `JaniformModel.simulate(...)` returns `JaniformSimulationResult`, which keeps workflow metadata and diagnostics attached while exposing `to_pandas()`, `to_numpy()`, and `to_parquet(path)`
 - `janiform.calibration.fit.estimator`
   - Ownership: estimator construction and high-level fit orchestration
+  - Public tuning policy: workflow-level execution controls such as `cpu_count` belong here when
+    they map directly onto the canonical staged optimizer settings
 - `janiform.calibration.fit.model`
   - Ownership: fitted model runtime, persistence, pricing, and simulation helpers
 - `janiform.calibration.fit.report`
@@ -192,6 +194,8 @@ from janiform.simulation.shared import HawkesKernelParameters
   - Root coexistence policy: the root keeps the main staged runner and request boundary as convenience imports, while `janiform.calibration.staged` is the ownership path for advanced orchestration contracts
 - `janiform.calibration.staged.contracts`
   - Ownership: shared staged execution contracts and stage-selection settings
+  - Optimizer-setting policy: stage solver settings are the explicit low-level boundary for shared
+    execution controls such as candidate-search CPU count
 - `janiform.calibration.staged.inputs`
   - Ownership: staged execution input contracts and stage-specific input payload models
 - `janiform.calibration.staged.request`

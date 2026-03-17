@@ -104,7 +104,7 @@ fn objective_composition_reports_weighted_sum_and_per_term_diagnostics() {
 
 #[test]
 fn constrained_optimizer_adapter_configuration_and_failure_paths_are_validated() {
-    let solver_settings = CalibrationOptimizerSettings::try_new("lbfgs", 25, 1e-8, 1e-6, 10.0)
+    let solver_settings = CalibrationOptimizerSettings::try_new("lbfgs", 25, 1, 1e-8, 1e-6, 10.0)
         .expect("solver settings should validate");
     let duplicate_bounds = vec![
         CalibrationOptimizerParameterBound::try_new("lambda_bar", 0.0, 10.0)
@@ -162,7 +162,7 @@ fn constrained_optimizer_adapter_is_deterministic_for_fixed_seed() {
     let configuration = CalibrationOptimizerAdapterConfiguration::try_new(
         "candidate_enumeration.v1",
         991,
-        CalibrationOptimizerSettings::try_new("lbfgs", 50, 1e-8, 1e-6, 2.0)
+        CalibrationOptimizerSettings::try_new("lbfgs", 50, 1, 1e-8, 1e-6, 2.0)
             .expect("solver settings should validate"),
         vec![
             CalibrationOptimizerParameterBound::try_new("beta", 0.0, 10.0)

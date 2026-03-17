@@ -1,7 +1,9 @@
+import os
+
 from dataclasses import dataclass
 from datetime import datetime
 from types import ModuleType
-from typing import Optional, Any
+from typing import Any, Optional
 
 from .contracts import (
     CalibrationMarketDataNormalizationPolicy,
@@ -150,6 +152,7 @@ def _translate_loaded_market_data_request_to_staged_execution_input(
     *,
     normalized_request: MarketDataCalibrationRequest,
     loaded_inputs_result: _LoadedMarketDataCalibrationInputsResult,
+    cpu_count: int | None = None,
 ) -> MarketDataTranslationResult:
     selected_stages = _selected_stages_for_scope(normalized_request.workflow_scope)
     loaded_inputs = loaded_inputs_result.inputs
@@ -208,7 +211,8 @@ def _translate_loaded_market_data_request_to_staged_execution_input(
                 global_seed=_stable_seed_from_run_id(normalized_request.run_id),
             ),
             optimizer_settings_by_stage=tuple(
-                _default_solver_settings(stage) for stage in selected_stages
+                _default_solver_settings(stage, cpu_count=cpu_count)
+                for stage in selected_stages
             ),
         ),
         seasonality_stage_input=(
@@ -622,7 +626,15 @@ def _stable_seed_from_run_id(run_id: str) -> int:
     return seed
 
 
-def _default_solver_settings(stage: CalibrationStage) -> CalibrationStageSolverSettings:
+def _default_cpu_count() -> int:
+    return max(1, os.cpu_count() or 1)
+
+
+def _default_solver_settings(
+    stage: CalibrationStage,
+    *,
+    cpu_count: int | None = None,
+) -> CalibrationStageSolverSettings:
     max_iterations: int = 150 if stage == CalibrationStage.SEASONALITY else 250
 
     return CalibrationStageSolverSettings(
@@ -630,6 +642,7 @@ def _default_solver_settings(stage: CalibrationStage) -> CalibrationStageSolverS
         optimizer_settings=CalibrationOptimizerSettings(
             solver_name="lbfgs",
             max_iterations=max_iterations,
+            cpu_count=_default_cpu_count() if cpu_count is None else cpu_count,
             absolute_tolerance=1e-8,
             relative_tolerance=1e-6,
             constraint_penalty_weight=10.0,

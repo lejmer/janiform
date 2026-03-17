@@ -228,6 +228,7 @@ struct ResolvedTickRecord {
 struct OpenTickRecord {
     timestamp_utc_nanos: i64,
     price: f64,
+    trade_sign: Option<TradeSign>,
     session_open_utc_nanos: i64,
     session_close_utc_nanos: i64,
 }
@@ -410,6 +411,7 @@ fn preprocess_tick_records(
                     open_price_ticks.push(OpenTickRecord {
                         timestamp_utc_nanos: tick_record.timestamp_utc_nanos,
                         price,
+                        trade_sign,
                         session_open_utc_nanos: session_window.open_utc_nanos,
                         session_close_utc_nanos: session_window.close_utc_nanos,
                     });
@@ -737,7 +739,7 @@ fn build_return_components_candidate_generation_input(
         .collect();
     let same_session_returns = same_session_open_returns(open_price_ticks);
     let observed_open_session_returns = derive_observed_open_session_returns(
-        same_session_returns.as_slice(),
+        open_price_ticks,
         open_price_tick_timestamps.as_slice(),
     );
     let close_open_boundary_observations = derive_close_open_boundary_observations(
@@ -1022,22 +1024,36 @@ fn derive_known_news_return_samples(
 }
 
 fn derive_observed_open_session_returns(
-    same_session_returns: &[(i64, f64)],
+    open_price_ticks: &[OpenTickRecord],
     open_price_tick_timestamps: &[i64],
 ) -> Vec<CalibrationReturnComponentsObservedOpenSessionReturn> {
-    same_session_returns
+    open_price_ticks
         .iter()
-        .map(|(return_timestamp_utc_nanos, log_return)| {
-            CalibrationReturnComponentsObservedOpenSessionReturn {
-                return_timestamp_utc_nanos: *return_timestamp_utc_nanos,
-                log_return: *log_return,
+        .zip(open_price_ticks.iter().skip(1))
+        .filter(|(previous_tick, current_tick)| {
+            previous_tick.session_open_utc_nanos == current_tick.session_open_utc_nanos
+                && previous_tick.session_close_utc_nanos == current_tick.session_close_utc_nanos
+        })
+        .map(
+            |(previous_tick, current_tick)| CalibrationReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: current_tick.timestamp_utc_nanos,
+                log_return: f64::ln(current_tick.price / previous_tick.price),
                 post_shock_activity_lift: activity_lift(
-                    *return_timestamp_utc_nanos,
+                    current_tick.timestamp_utc_nanos,
                     open_price_tick_timestamps,
                 ),
-            }
-        })
+                sell_share_proxy: sell_share_proxy_for_open_return(current_tick.trade_sign),
+            },
+        )
         .collect()
+}
+
+fn sell_share_proxy_for_open_return(trade_sign: Option<TradeSign>) -> f64 {
+    match trade_sign {
+        Some(TradeSign::Buy) => 0.0,
+        Some(TradeSign::Sell) => 1.0,
+        None => 0.5,
+    }
 }
 
 fn derive_intraday_jump_candidates(
@@ -1629,6 +1645,7 @@ mod tests {
                     .timestamp_nanos_opt()
                     .expect("fixture timestamp should fit in nanos"),
                 price: 1.08,
+                trade_sign: None,
                 session_open_utc_nanos: chrono_tz::UTC
                     .with_ymd_and_hms(2026, 2, 3, 0, 0, 0)
                     .single()
@@ -1653,6 +1670,7 @@ mod tests {
                     .timestamp_nanos_opt()
                     .expect("fixture timestamp should fit in nanos"),
                 price: 1.081,
+                trade_sign: None,
                 session_open_utc_nanos: chrono_tz::UTC
                     .with_ymd_and_hms(2026, 2, 4, 0, 0, 0)
                     .single()
@@ -1701,6 +1719,7 @@ mod tests {
                     .timestamp_nanos_opt()
                     .expect("fixture timestamp should fit in nanos"),
                 price: 1.01268,
+                trade_sign: None,
                 session_open_utc_nanos: chrono_tz::UTC
                     .with_ymd_and_hms(2026, 3, 20, 0, 0, 0)
                     .single()
@@ -1725,6 +1744,7 @@ mod tests {
                     .timestamp_nanos_opt()
                     .expect("fixture timestamp should fit in nanos"),
                 price: 1.0113,
+                trade_sign: None,
                 session_open_utc_nanos: chrono_tz::UTC
                     .with_ymd_and_hms(2026, 3, 23, 0, 0, 0)
                     .single()

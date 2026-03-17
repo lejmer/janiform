@@ -317,6 +317,7 @@ def _valid_request_model() -> StagedCalibrationRequest:
                 optimizer_settings=CalibrationOptimizerSettings(
                     solver_name="lbfgs",
                     max_iterations=250,
+                    cpu_count=1,
                     absolute_tolerance=1e-8,
                     relative_tolerance=1e-6,
                     constraint_penalty_weight=10.0,
@@ -327,6 +328,7 @@ def _valid_request_model() -> StagedCalibrationRequest:
                 optimizer_settings=CalibrationOptimizerSettings(
                     solver_name="lbfgs",
                     max_iterations=250,
+                    cpu_count=1,
                     absolute_tolerance=1e-8,
                     relative_tolerance=1e-6,
                     constraint_penalty_weight=10.0,
@@ -439,6 +441,7 @@ def _solver_settings(stage: CalibrationStage) -> CalibrationStageSolverSettings:
         optimizer_settings=CalibrationOptimizerSettings(
             solver_name="lbfgs",
             max_iterations=250,
+            cpu_count=1,
             absolute_tolerance=1e-8,
             relative_tolerance=1e-6,
             constraint_penalty_weight=10.0,

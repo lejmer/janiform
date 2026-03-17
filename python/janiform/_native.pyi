@@ -776,6 +776,15 @@ def run_staged_calibration(
 ) -> object: ...
 
 
+def evaluate_return_components_candidate(
+    candidate_generation_input: object,
+    observed_summary_statistics: object,
+    fitted_parameters: object,
+    stage_seed: int,
+    hawkes_payload: Optional[object] = None,
+) -> object: ...
+
+
 def preprocess_market_data_translation_request(
     preprocessing_request: object,
     calendar_registry: CalendarRegistry,
