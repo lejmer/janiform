@@ -75,6 +75,31 @@ pub fn arithmetic_mean_or_zero(values: &[f64]) -> f64 {
     arithmetic_mean(values).unwrap_or(0.0)
 }
 
+/// Compute a probability-weighted moment for a sorted sample.
+pub fn compute_probability_weighted_moment(sorted_values: &[f64], order: usize) -> Option<f64> {
+    let sample_count = sorted_values.len();
+    if sample_count <= order {
+        return None;
+    }
+
+    let denominator_index = sample_count - 1;
+
+    let mut weighted_sum = 0.0;
+    for (value_position, value) in sorted_values.iter().enumerate() {
+        if value_position < order {
+            continue;
+        }
+
+        let weight = combination_ratio(value_position, denominator_index, order)?;
+        weighted_sum += weight * *value;
+    }
+
+    let probability_weighted_moment = weighted_sum / sample_count as f64;
+    probability_weighted_moment
+        .is_finite()
+        .then_some(probability_weighted_moment)
+}
+
 /// Compute the coefficient of variation for a non-negative sample.
 pub fn coefficient_of_variation(values: &[f64]) -> f64 {
     let Some(mean_value) = arithmetic_mean(values) else {
@@ -145,13 +170,41 @@ pub fn normalized_pseudocount(event_count: usize) -> f64 {
     1.0 / event_count.max(1) as f64
 }
 
+fn combination_ratio(
+    numerator_index: usize,
+    denominator_index: usize,
+    order: usize,
+) -> Option<f64> {
+    if order == 0 {
+        return Some(1.0);
+    }
+
+    if numerator_index < order || denominator_index < order {
+        return Some(0.0);
+    }
+
+    let mut ratio = 1.0;
+    for order_position in 0..order {
+        let numerator = numerator_index.saturating_sub(order_position) as f64;
+        let denominator = denominator_index.saturating_sub(order_position) as f64;
+        if denominator <= 0.0 {
+            return None;
+        }
+
+        ratio *= numerator / denominator;
+    }
+
+    ratio.is_finite().then_some(ratio)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         arithmetic_mean, arithmetic_mean_or_zero, clamp_to_open_unit_interval,
-        clamp_to_unit_interval, coefficient_of_variation, logistic, median_abs,
-        median_abs_non_zero, normalized_pseudocount, round_positive_to_domain, round_to,
-        smallest_positive_value, strictly_positive_machine_value, unique_sorted_values,
+        clamp_to_unit_interval, coefficient_of_variation, compute_probability_weighted_moment,
+        logistic, median_abs, median_abs_non_zero, normalized_pseudocount,
+        round_positive_to_domain, round_to, smallest_positive_value,
+        strictly_positive_machine_value, unique_sorted_values,
     };
 
     #[test]
@@ -184,5 +237,26 @@ mod tests {
         assert_eq!(unique_sorted_values(&[2.0, 1.0, 2.0]), vec![1.0, 2.0]);
         assert_eq!(normalized_pseudocount(4), 0.25);
         assert_eq!(logistic(0.0), 0.5);
+    }
+
+    #[test]
+    fn probability_weighted_moment_matches_expected_orders() {
+        let sorted_values = [1.0, 2.0, 3.0, 4.0];
+
+        let beta0 = compute_probability_weighted_moment(&sorted_values, 0)
+            .expect("order zero should exist");
+        let beta1 =
+            compute_probability_weighted_moment(&sorted_values, 1).expect("order one should exist");
+        let beta2 =
+            compute_probability_weighted_moment(&sorted_values, 2).expect("order two should exist");
+
+        assert!((beta0 - 2.5).abs() < 1.0e-12);
+        assert!((beta1 - (5.0 / 3.0)).abs() < 1.0e-12);
+        assert!((beta2 - 1.25).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn probability_weighted_moment_requires_sample_larger_than_order() {
+        assert_eq!(compute_probability_weighted_moment(&[1.0, 2.0], 2), None);
     }
 }

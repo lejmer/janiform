@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use janiform_foundations::numeric::compute_probability_weighted_moment;
 use serde::Serialize;
 
 use super::diagnostics_shared::{
@@ -1344,57 +1345,6 @@ fn compute_l_moment_tau3_from_sorted(sorted_returns: &[f64]) -> Option<f64> {
 
     let tau3 = lambda3 / lambda2;
     tau3.is_finite().then_some(tau3)
-}
-
-fn compute_probability_weighted_moment(sorted_returns: &[f64], order: usize) -> Option<f64> {
-    let sample_count = sorted_returns.len();
-    if sample_count <= order {
-        return None;
-    }
-
-    let denominator_index = sample_count - 1;
-
-    let mut weighted_sum = 0.0;
-    for (return_position, return_value) in sorted_returns.iter().enumerate() {
-        if return_position < order {
-            continue;
-        }
-
-        let weight = combination_ratio(return_position, denominator_index, order)?;
-        weighted_sum += weight * *return_value;
-    }
-
-    let probability_weighted_moment = weighted_sum / sample_count as f64;
-    probability_weighted_moment
-        .is_finite()
-        .then_some(probability_weighted_moment)
-}
-
-fn combination_ratio(
-    numerator_index: usize,
-    denominator_index: usize,
-    order: usize,
-) -> Option<f64> {
-    if order == 0 {
-        return Some(1.0);
-    }
-
-    if numerator_index < order || denominator_index < order {
-        return Some(0.0);
-    }
-
-    let mut ratio = 1.0;
-    for order_position in 0..order {
-        let numerator = numerator_index.saturating_sub(order_position) as f64;
-        let denominator = denominator_index.saturating_sub(order_position) as f64;
-        if denominator <= 0.0 {
-            return None;
-        }
-
-        ratio *= numerator / denominator;
-    }
-
-    ratio.is_finite().then_some(ratio)
 }
 
 fn compute_sample_variance(interval_returns: &[f64]) -> Option<f64> {

@@ -1,10 +1,13 @@
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, f64::consts::PI};
 
 use janiform_calibration_artifacts::CalibrationOptimizerSettings;
-use janiform_foundations::numeric::{arithmetic_mean_or_zero as arithmetic_mean, logistic};
+use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
+use janiform_foundations::numeric::{
+    arithmetic_mean_or_zero as arithmetic_mean, compute_probability_weighted_moment, logistic,
+};
 use janiform_foundations::randomness::SplitMix64SimulationRandomnessStream;
 use janiform_foundations::splitmix64_output_mixer;
-use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use janiform_model_kernels::nig::{NigBuySellDriverParameters, NigSharedPlusShiftConfiguration};
 use rayon::prelude::*;
 
 use super::constants::{
@@ -25,10 +28,29 @@ use super::execution::{
 };
 
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MAX_SAMPLE_COUNT: usize = 2_048;
+const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_SEARCH_SAMPLE_COUNT: usize = 256;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MIN_BROAD_CANDIDATE_COUNT: usize = 48;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_ELITE_COUNT: usize = 6;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_REFINEMENT_ROUNDS: usize = 2;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_REGIME_COUNT: usize = 7;
+const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_SEARCH_INTEGRATION_STEP_COUNT: usize = 192;
+const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_FINAL_INTEGRATION_STEP_COUNT: usize = 512;
+const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_STANDARDIZED_INTEGRATION_UPPER_BOUND: f64 = 64.0;
+
+#[derive(Debug, Clone, Copy)]
+enum ContinuousLikelihoodEvaluationMode {
+    Search,
+    Full,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ContinuousLikelihoodObjective {
+    shifted_objective_score: f64,
+    global_negative_log_likelihood: f64,
+    conditional_negative_log_likelihood: f64,
+    boundary_penalty: f64,
+    log_likelihood_shift: f64,
+}
 
 #[derive(Debug, Clone)]
 pub(super) struct ReturnComponentsStageContinuousReturnCalibrationSample {
@@ -70,7 +92,6 @@ struct ContinuousReturnDistributionProfile {
 #[derive(Debug, Clone)]
 struct ContinuousReturnScaleBucketProfile {
     member_indices: Vec<usize>,
-    observed_profile: ContinuousReturnDistributionProfile,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -156,7 +177,7 @@ pub(super) fn mean_continuous_return_calibration_business_time_scale(
 pub(super) fn build_nig_search_candidates(
     summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
-    stage_seed: u64,
+    _stage_seed: u64,
     solver_settings: &CalibrationOptimizerSettings,
 ) -> Vec<NigSharedPlusShiftConfiguration> {
     let broad_candidate_count = solver_settings
@@ -166,7 +187,6 @@ pub(super) fn build_nig_search_candidates(
     let mut scored_candidates = score_search_points(
         summary_statistics,
         calibration_sample,
-        stage_seed,
         build_broad_search_points(calibration_sample, broad_candidate_count).as_slice(),
         solver_settings.cpu_count,
     );
@@ -186,7 +206,6 @@ pub(super) fn build_nig_search_candidates(
         scored_candidates.extend(score_search_points(
             summary_statistics,
             calibration_sample,
-            stage_seed,
             local_points.as_slice(),
             solver_settings.cpu_count,
         ));
@@ -232,8 +251,16 @@ pub(super) fn evaluate_continuous_nig_candidate(
     summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
     stage_seed: u64,
 ) -> ContinuousReturnCandidateEvaluation {
-    let (objective_score, fitted_returns, fit_breakdown) =
-        matched_scale_distribution_fit_score(configuration, calibration_sample, stage_seed);
+    let likelihood_objective = continuous_block_likelihood_objective(
+        configuration,
+        calibration_sample,
+        ContinuousLikelihoodEvaluationMode::Full,
+    );
+    let fitted_returns =
+        simulate_matched_scale_returns(configuration, calibration_sample, stage_seed);
+    let fitted_profile = build_distribution_profile(fitted_returns.as_slice());
+    let profile_fit_breakdown =
+        distribution_profile_fit_breakdown(fitted_profile, calibration_sample.observed_profile);
     let fitted_mean_return = arithmetic_mean_signed(fitted_returns.as_slice());
     let fitted_return_volatility = sample_standard_deviation(fitted_returns.as_slice());
     let fitted_skewness = sample_adjusted_skewness(fitted_returns.as_slice()).unwrap_or(0.0);
@@ -241,7 +268,7 @@ pub(super) fn evaluate_continuous_nig_candidate(
         sample_adjusted_excess_kurtosis(fitted_returns.as_slice()).unwrap_or(0.0);
 
     ContinuousReturnCandidateEvaluation {
-        objective_score,
+        objective_score: likelihood_objective.shifted_objective_score,
         diagnostic: ReturnComponentsStageReturnDistributionDiagnostic {
             sample_count: summary_statistics.continuous_fit_return_count,
             observed_mean_return: summary_statistics.continuous_return_mean,
@@ -254,7 +281,14 @@ pub(super) fn evaluate_continuous_nig_candidate(
             fitted_excess_kurtosis,
         },
         fitted_returns,
-        fit_breakdown,
+        fit_breakdown: ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
+            global_fit_score: likelihood_objective.global_negative_log_likelihood,
+            conditional_fit_score: likelihood_objective.conditional_negative_log_likelihood,
+            boundary_penalty: likelihood_objective.boundary_penalty,
+            profile_fit_score: profile_fit_breakdown.global_fit_score,
+            log_likelihood_shift: likelihood_objective.log_likelihood_shift,
+            ..profile_fit_breakdown
+        },
     }
 }
 
@@ -635,7 +669,6 @@ fn van_der_corput(mut index: u64, base: u64) -> f64 {
 fn score_search_points(
     summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
-    stage_seed: u64,
     search_points: &[NigShapeSearchPoint],
     cpu_count: usize,
 ) -> Vec<ScoredNigCandidate> {
@@ -647,12 +680,7 @@ fn score_search_points(
         search_points
             .par_iter()
             .filter_map(|search_point| {
-                build_scored_candidate(
-                    summary_statistics,
-                    calibration_sample,
-                    stage_seed,
-                    *search_point,
-                )
+                build_scored_candidate(summary_statistics, calibration_sample, *search_point)
             })
             .collect::<Vec<_>>()
     };
@@ -661,12 +689,7 @@ fn score_search_points(
         return search_points
             .iter()
             .filter_map(|search_point| {
-                build_scored_candidate(
-                    summary_statistics,
-                    calibration_sample,
-                    stage_seed,
-                    *search_point,
-                )
+                build_scored_candidate(summary_statistics, calibration_sample, *search_point)
             })
             .collect();
     }
@@ -679,12 +702,7 @@ fn score_search_points(
         Err(_) => search_points
             .iter()
             .filter_map(|search_point| {
-                build_scored_candidate(
-                    summary_statistics,
-                    calibration_sample,
-                    stage_seed,
-                    *search_point,
-                )
+                build_scored_candidate(summary_statistics, calibration_sample, *search_point)
             })
             .collect(),
     }
@@ -773,7 +791,6 @@ fn deduplicate_scored_candidates(
 fn build_scored_candidate(
     summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
-    stage_seed: u64,
     shape_search_point: NigShapeSearchPoint,
 ) -> Option<ScoredNigCandidate> {
     let configuration = configuration_from_shape_search_point(
@@ -781,8 +798,12 @@ fn build_scored_candidate(
         calibration_sample.open_session_sell_share_proxy,
         shape_search_point,
     )?;
-    let (objective_score, _, _) =
-        matched_scale_distribution_fit_score(configuration, calibration_sample, stage_seed);
+    let objective_score = continuous_block_likelihood_objective(
+        configuration,
+        calibration_sample,
+        ContinuousLikelihoodEvaluationMode::Search,
+    )
+    .shifted_objective_score;
 
     if !objective_score.is_finite() {
         return None;
@@ -923,88 +944,232 @@ fn maximum_open_beta_ratio() -> f64 {
     1.0f64.next_down()
 }
 
-fn matched_scale_distribution_fit_score(
+fn continuous_block_likelihood_objective(
     configuration: NigSharedPlusShiftConfiguration,
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
-    stage_seed: u64,
-) -> (
-    f64,
-    Vec<f64>,
-    ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic,
-) {
-    let synthetic_returns =
-        simulate_matched_scale_returns(configuration, calibration_sample, stage_seed);
-    if synthetic_returns.is_empty() {
-        return (
-            f64::INFINITY,
-            Vec::new(),
-            ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
-                global_fit_score: f64::INFINITY,
-                conditional_fit_score: f64::INFINITY,
-                boundary_penalty: f64::INFINITY,
-                mean_return_fit: f64::INFINITY,
-                volatility_fit: f64::INFINITY,
-                median_return_fit: f64::INFINITY,
-                lower_quartile_fit: f64::INFINITY,
-                upper_quartile_fit: f64::INFINITY,
-                lower_tail_q05_fit: f64::INFINITY,
-                upper_tail_q95_fit: f64::INFINITY,
-                extreme_left_tail_q01_fit: f64::INFINITY,
-                extreme_right_tail_q99_fit: f64::INFINITY,
-                mean_abs_return_fit: f64::INFINITY,
-                median_abs_return_fit: f64::INFINITY,
-                abs_quantile_ratio_fit: f64::INFINITY,
-                bowley_skewness_fit: f64::INFINITY,
-                l_moment_lambda2_fit: f64::INFINITY,
-                l_moment_tau3_fit: f64::INFINITY,
-            },
-        );
-    }
-
-    let fitted_profile = build_distribution_profile(synthetic_returns.as_slice());
-    let observed_profile = calibration_sample.observed_profile;
+    evaluation_mode: ContinuousLikelihoodEvaluationMode,
+) -> ContinuousLikelihoodObjective {
     let boundary_penalty = alpha_beta_boundary_penalty(configuration);
-    let global_fit_breakdown = distribution_profile_fit_breakdown(fitted_profile, observed_profile);
-    let global_fit_score = global_fit_breakdown.global_fit_score;
-    let conditional_fit_score = if calibration_sample.scale_bucket_profiles.is_empty() {
-        global_fit_score
+    let integration_step_count = match evaluation_mode {
+        ContinuousLikelihoodEvaluationMode::Search => {
+            RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_SEARCH_INTEGRATION_STEP_COUNT
+        }
+        ContinuousLikelihoodEvaluationMode::Full => {
+            RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_FINAL_INTEGRATION_STEP_COUNT
+        }
+    };
+    let selected_member_indices = likelihood_member_indices(calibration_sample, evaluation_mode);
+    let global_negative_log_likelihood = average_negative_log_likelihood(
+        configuration,
+        calibration_sample,
+        selected_member_indices.as_slice(),
+        integration_step_count,
+    )
+    .unwrap_or(f64::INFINITY);
+    let conditional_negative_log_likelihood = if calibration_sample.scale_bucket_profiles.is_empty()
+    {
+        global_negative_log_likelihood
     } else {
         arithmetic_mean(
             calibration_sample
                 .scale_bucket_profiles
                 .iter()
                 .filter_map(|scale_bucket_profile| {
-                    let fitted_bucket_returns: Vec<f64> = scale_bucket_profile
+                    let bucket_member_indices: Vec<usize> = scale_bucket_profile
                         .member_indices
                         .iter()
-                        .filter_map(|member_index| synthetic_returns.get(*member_index).copied())
+                        .copied()
+                        .filter(|member_index| {
+                            selected_member_indices.binary_search(member_index).is_ok()
+                        })
                         .collect();
-                    if fitted_bucket_returns.len() < 24 {
+                    if bucket_member_indices.len() < 24 {
                         return None;
                     }
 
-                    Some(
-                        distribution_profile_fit_breakdown(
-                            build_distribution_profile(fitted_bucket_returns.as_slice()),
-                            scale_bucket_profile.observed_profile,
-                        )
-                        .global_fit_score,
+                    average_negative_log_likelihood(
+                        configuration,
+                        calibration_sample,
+                        bucket_member_indices.as_slice(),
+                        integration_step_count,
                     )
                 })
                 .collect::<Vec<_>>()
                 .as_slice(),
         )
     };
+    let log_likelihood_shift =
+        log_likelihood_shift_from_observed_profile(calibration_sample.observed_profile);
 
-    let objective_score = 0.45 * global_fit_score + 0.55 * conditional_fit_score + boundary_penalty;
-    let fit_breakdown = ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
-        global_fit_score,
-        conditional_fit_score,
+    ContinuousLikelihoodObjective {
+        shifted_objective_score: log_likelihood_shift
+            + 0.45 * global_negative_log_likelihood
+            + 0.55 * conditional_negative_log_likelihood
+            + boundary_penalty,
+        global_negative_log_likelihood,
+        conditional_negative_log_likelihood,
         boundary_penalty,
-        ..global_fit_breakdown
-    };
+        log_likelihood_shift,
+    }
+}
 
-    (objective_score, synthetic_returns, fit_breakdown)
+fn likelihood_member_indices(
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    evaluation_mode: ContinuousLikelihoodEvaluationMode,
+) -> Vec<usize> {
+    let total_count = calibration_sample.observed_returns.len();
+    let target_count = match evaluation_mode {
+        ContinuousLikelihoodEvaluationMode::Search => {
+            RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_SEARCH_SAMPLE_COUNT
+        }
+        ContinuousLikelihoodEvaluationMode::Full => total_count,
+    };
+    if total_count <= target_count {
+        return (0..total_count).collect();
+    }
+
+    let mut retained_indices = BTreeSet::new();
+    for retained_position in 0..target_count {
+        let scaled_index = if target_count <= 1 {
+            0
+        } else {
+            (retained_position * (total_count - 1)) / (target_count - 1)
+        };
+        retained_indices.insert(scaled_index);
+    }
+
+    retained_indices.into_iter().collect()
+}
+
+fn average_negative_log_likelihood(
+    configuration: NigSharedPlusShiftConfiguration,
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    member_indices: &[usize],
+    integration_step_count: usize,
+) -> Option<f64> {
+    let driver_parameters = configuration.derive_driver_parameters().ok()?;
+    let mut log_likelihood_sum = 0.0;
+    let mut evaluated_count = 0usize;
+
+    for member_index in member_indices {
+        let observed_return = *calibration_sample.observed_returns.get(*member_index)?;
+        let business_time_scale = *calibration_sample.business_time_scales.get(*member_index)?;
+        let sell_share_proxy = *calibration_sample.sell_share_proxies.get(*member_index)?;
+        let block_log_density = log_density_net_trading_time_return(
+            driver_parameters,
+            configuration,
+            observed_return,
+            business_time_scale,
+            sell_share_proxy,
+            integration_step_count,
+        )?;
+
+        log_likelihood_sum += block_log_density;
+        evaluated_count += 1;
+    }
+
+    if evaluated_count == 0 {
+        return None;
+    }
+
+    Some(-log_likelihood_sum / evaluated_count as f64)
+}
+
+fn log_density_net_trading_time_return(
+    driver_parameters: NigBuySellDriverParameters,
+    configuration: NigSharedPlusShiftConfiguration,
+    observed_return: f64,
+    business_time_scale: f64,
+    sell_share_proxy: f64,
+    integration_step_count: usize,
+) -> Option<f64> {
+    if !observed_return.is_finite()
+        || !business_time_scale.is_finite()
+        || business_time_scale <= 0.0
+        || integration_step_count == 0
+    {
+        return None;
+    }
+
+    let sell_weight = sell_share_proxy.clamp(0.0, 1.0);
+    let buy_weight = 1.0 - sell_weight;
+    let integrated_buy_intensity = (business_time_scale * buy_weight)
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+    let integrated_sell_intensity = (business_time_scale * sell_weight)
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+    let block_standard_deviation =
+        block_return_standard_deviation(configuration, business_time_scale, sell_share_proxy)?;
+    let standardized_return = observed_return / block_standard_deviation;
+    let integration_upper_bound = standardized_integration_upper_bound(standardized_return.abs());
+    let integration_step_width = integration_upper_bound / integration_step_count as f64;
+    if !integration_step_width.is_finite() || integration_step_width <= 0.0 {
+        return None;
+    }
+
+    let mut integral_estimate = 0.0;
+    for integration_index in 0..integration_step_count {
+        let standardized_frequency = (integration_index as f64 + 0.5) * integration_step_width;
+        let actual_frequency = standardized_frequency / block_standard_deviation;
+        let characteristic_exponent = driver_parameters
+            .compose_trading_time_weighted_characteristic_exponent(
+                ComplexScalar::new(actual_frequency, 0.0),
+                integrated_buy_intensity,
+                integrated_sell_intensity,
+            )
+            .combined_weighted_exponent;
+        if !characteristic_exponent.is_finite() {
+            return None;
+        }
+
+        let characteristic_function = complex_exponential(characteristic_exponent);
+        if !characteristic_function.is_finite() {
+            return None;
+        }
+
+        let oscillation = complex_exponential(ComplexScalar::new(
+            0.0,
+            -standardized_return * standardized_frequency,
+        ));
+        let integrand = complex_multiply(characteristic_function, oscillation).real;
+        if !integrand.is_finite() {
+            return None;
+        }
+
+        integral_estimate += integrand;
+    }
+
+    let density = integration_step_width * integral_estimate / (PI * block_standard_deviation);
+    if !density.is_finite() {
+        return None;
+    }
+
+    // Truncation and finite-resolution inversion can push a valid density estimate slightly
+    // below zero. Clamp to the smallest positive floor so likelihood evaluation stays defined.
+    Some(density.max(f64::MIN_POSITIVE).ln())
+}
+
+fn block_return_standard_deviation(
+    configuration: NigSharedPlusShiftConfiguration,
+    business_time_scale: f64,
+    sell_share_proxy: f64,
+) -> Option<f64> {
+    let (_, variance_per_unit, _, _) =
+        theoretical_net_process_moments(configuration, sell_share_proxy)?;
+    let variance = (variance_per_unit * business_time_scale)
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+    let standard_deviation = variance.sqrt();
+    standard_deviation.is_finite().then_some(standard_deviation)
+}
+
+fn standardized_integration_upper_bound(absolute_standardized_return: f64) -> f64 {
+    RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_STANDARDIZED_INTEGRATION_UPPER_BOUND
+        + 8.0 * absolute_standardized_return.min(4.0)
+}
+
+fn log_likelihood_shift_from_observed_profile(
+    observed_profile: ContinuousReturnDistributionProfile,
+) -> f64 {
+    (-observed_profile.return_volatility.max(1.0e-8).ln()).max(1.0) + 4.0
 }
 
 fn distribution_profile_fit_breakdown(
@@ -1138,6 +1303,8 @@ fn distribution_profile_fit_breakdown(
         global_fit_score,
         conditional_fit_score: 0.0,
         boundary_penalty: 0.0,
+        profile_fit_score: global_fit_score,
+        log_likelihood_shift: 0.0,
         mean_return_fit,
         volatility_fit,
         median_return_fit,
@@ -1279,10 +1446,9 @@ fn build_scale_bucket_profiles(
                 .iter()
                 .filter_map(|member_index| observed_returns.get(*member_index).copied())
                 .collect();
-            Some(ContinuousReturnScaleBucketProfile {
-                member_indices,
-                observed_profile: build_distribution_profile(bucket_returns.as_slice()),
-            })
+            let _bucket_profile = build_distribution_profile(bucket_returns.as_slice());
+
+            Some(ContinuousReturnScaleBucketProfile { member_indices })
         })
         .collect()
 }
@@ -1418,65 +1584,18 @@ fn compute_l_moment_tau3_from_sorted(sorted_returns: &[f64]) -> Option<f64> {
     tau3.is_finite().then_some(tau3)
 }
 
-fn compute_probability_weighted_moment(sorted_returns: &[f64], order: usize) -> Option<f64> {
-    let sample_count = sorted_returns.len();
-    if sample_count <= order {
-        return None;
-    }
-
-    let denominator_index = sample_count - 1;
-
-    let mut weighted_sum = 0.0;
-    for (return_position, return_value) in sorted_returns.iter().enumerate() {
-        if return_position < order {
-            continue;
-        }
-
-        let weight = combination_ratio(return_position, denominator_index, order)?;
-        weighted_sum += weight * *return_value;
-    }
-
-    let probability_weighted_moment = weighted_sum / sample_count as f64;
-    probability_weighted_moment
-        .is_finite()
-        .then_some(probability_weighted_moment)
-}
-
-fn combination_ratio(
-    numerator_index: usize,
-    denominator_index: usize,
-    order: usize,
-) -> Option<f64> {
-    if order == 0 {
-        return Some(1.0);
-    }
-
-    if numerator_index < order || denominator_index < order {
-        return Some(0.0);
-    }
-
-    let mut ratio = 1.0;
-    for order_position in 0..order {
-        let numerator = numerator_index.saturating_sub(order_position) as f64;
-        let denominator = denominator_index.saturating_sub(order_position) as f64;
-        if denominator <= 0.0 {
-            return None;
-        }
-
-        ratio *= numerator / denominator;
-    }
-
-    ratio.is_finite().then_some(ratio)
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
+        ReturnComponentsStageContinuousReturnCalibrationSample, average_negative_log_likelihood,
         build_distribution_profile, build_equal_business_time_blocks, build_scale_bucket_profiles,
-        coordinate_to_ratio, coordinate_to_share, ratio_to_coordinate,
-        sell_beta_ratio_from_relative_share, sell_relative_share_from_beta_ratios,
+        coordinate_to_ratio, coordinate_to_share, log_density_net_trading_time_return,
+        ratio_to_coordinate, sell_beta_ratio_from_relative_share,
+        sell_relative_share_from_beta_ratios,
     };
     use crate::stages::return_components::contracts::ReturnComponentsObservedOpenSessionReturn;
+    use janiform_foundations::randomness::SplitMix64SimulationRandomnessStream;
+    use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
     #[test]
     fn skew_ratio_coordinate_round_trip_stays_inside_open_domain() {
@@ -1576,5 +1695,94 @@ mod tests {
         assert!((aggregated_blocks[1].1 - 2.0).abs() <= 1.0e-12);
         assert!((aggregated_blocks[0].0.sell_share_proxy - 0.5).abs() <= 1.0e-12);
         assert!((aggregated_blocks[1].0.sell_share_proxy - 0.5).abs() <= 1.0e-12);
+    }
+
+    #[test]
+    fn block_log_density_is_finite_for_representative_configuration() {
+        let configuration =
+            NigSharedPlusShiftConfiguration::try_new(80.0, -12.0, 2.0e-4, 0.0, -8.0)
+                .expect("configuration should validate");
+        let driver_parameters = configuration
+            .derive_driver_parameters()
+            .expect("driver parameters should derive");
+
+        let log_density = log_density_net_trading_time_return(
+            driver_parameters,
+            configuration,
+            1.5e-4,
+            1.2,
+            0.55,
+            128,
+        )
+        .expect("log density should evaluate");
+
+        assert!(log_density.is_finite());
+    }
+
+    #[test]
+    fn likelihood_objective_prefers_the_data_generating_configuration() {
+        let true_configuration =
+            NigSharedPlusShiftConfiguration::try_new(80.0, -12.0, 2.0e-4, 0.0, -8.0)
+                .expect("configuration should validate");
+        let challenger_configuration =
+            NigSharedPlusShiftConfiguration::try_new(9.0, -6.0, 8.0e-5, 0.0, -1.5)
+                .expect("challenger configuration should validate");
+        let driver_parameters = true_configuration
+            .derive_driver_parameters()
+            .expect("driver parameters should derive");
+        let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(41);
+        let business_time_scales: Vec<f64> = (0..128)
+            .map(|sample_index| 0.6 + sample_index as f64 / 96.0)
+            .collect();
+        let sell_share_proxies: Vec<f64> = (0..128)
+            .map(|sample_index| 0.35 + 0.30 * ((sample_index % 9) as f64 / 8.0))
+            .collect();
+        let observed_returns: Vec<f64> = business_time_scales
+            .iter()
+            .zip(sell_share_proxies.iter())
+            .map(|(business_time_scale, sell_share_proxy)| {
+                let sell_weight = sell_share_proxy.clamp(0.0, 1.0);
+                let buy_weight = 1.0 - sell_weight;
+                driver_parameters
+                    .sample_trading_time_return_increment(
+                        business_time_scale * buy_weight,
+                        business_time_scale * sell_weight,
+                        &mut randomness_stream,
+                    )
+                    .expect("synthetic increment should sample")
+                    .combined_increment
+            })
+            .collect();
+        let calibration_sample = ReturnComponentsStageContinuousReturnCalibrationSample {
+            observed_returns: observed_returns.clone(),
+            business_time_scales: business_time_scales.clone(),
+            sell_share_proxies: sell_share_proxies.clone(),
+            observed_profile: build_distribution_profile(observed_returns.as_slice()),
+            scale_bucket_profiles: build_scale_bucket_profiles(
+                observed_returns.as_slice(),
+                business_time_scales.as_slice(),
+            ),
+            open_session_sell_share_proxy: 0.5,
+        };
+
+        let true_objective = average_negative_log_likelihood(
+            true_configuration,
+            &calibration_sample,
+            &(0..observed_returns.len()).collect::<Vec<_>>(),
+            128,
+        )
+        .expect("true likelihood should evaluate");
+        let challenger_objective = average_negative_log_likelihood(
+            challenger_configuration,
+            &calibration_sample,
+            &(0..observed_returns.len()).collect::<Vec<_>>(),
+            128,
+        )
+        .expect("challenger likelihood should evaluate");
+
+        assert!(
+            true_objective < challenger_objective,
+            "likelihood objective should prefer the data-generating configuration"
+        );
     }
 }

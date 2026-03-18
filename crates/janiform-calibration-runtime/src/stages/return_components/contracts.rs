@@ -1585,6 +1585,8 @@ pub struct ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
     pub global_fit_score: f64,
     pub conditional_fit_score: f64,
     pub boundary_penalty: f64,
+    pub profile_fit_score: f64,
+    pub log_likelihood_shift: f64,
     pub mean_return_fit: f64,
     pub volatility_fit: f64,
     pub median_return_fit: f64,
