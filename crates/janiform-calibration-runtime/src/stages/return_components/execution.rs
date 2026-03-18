@@ -2638,16 +2638,16 @@ mod tests {
             CalibrationOptimizerSettings::try_new("adaptive_search", 32, 1, 1.0e-8, 1.0e-8, 1.0)
                 .expect("solver settings should validate");
 
-        let nig_candidates = continuous_fit::build_nig_search_candidates(
-            summary_statistics,
-            &calibration_sample,
-            17,
-            &solver_settings,
-        );
+        let nig_candidates =
+            continuous_fit::build_nig_search_candidates(&calibration_sample, 17, &solver_settings);
 
         assert!(!nig_candidates.is_empty());
-        assert!(nig_candidates.iter().all(|candidate| candidate.delta
-            >= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER));
+        assert!(
+            nig_candidates
+                .iter()
+                .all(|candidate| candidate.configuration.delta
+                    >= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER)
+        );
     }
 
     #[test]

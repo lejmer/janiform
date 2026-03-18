@@ -1,4 +1,8 @@
-use std::{collections::BTreeSet, f64::consts::PI};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    f64::consts::PI,
+    sync::{Arc, Mutex},
+};
 
 use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
@@ -7,13 +11,13 @@ use janiform_foundations::numeric::{
 };
 use janiform_foundations::randomness::SplitMix64SimulationRandomnessStream;
 use janiform_foundations::splitmix64_output_mixer;
+use janiform_foundations::vector_math::{
+    normalize_vector4, vector4_add, vector4_scale, vector4_subtract,
+};
 use janiform_model_kernels::nig::{NigBuySellDriverParameters, NigSharedPlusShiftConfiguration};
 use rayon::prelude::*;
 
-use super::constants::{
-    RETURN_COMPONENTS_STAGE_MAX_NIG_CANDIDATES,
-    RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
-};
+use super::constants::RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER;
 use super::contracts::{
     ReturnComponentsObservedOpenSessionReturn,
     ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic,
@@ -28,18 +32,24 @@ use super::execution::{
 };
 
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MAX_SAMPLE_COUNT: usize = 2_048;
-const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_SEARCH_SAMPLE_COUNT: usize = 256;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MIN_BROAD_CANDIDATE_COUNT: usize = 48;
+const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MAX_BROAD_CANDIDATE_COUNT: usize = 384;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_ELITE_COUNT: usize = 6;
-const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_REFINEMENT_ROUNDS: usize = 2;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_REGIME_COUNT: usize = 7;
-const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_SEARCH_INTEGRATION_STEP_COUNT: usize = 192;
+const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_SEED_SAMPLE_COUNT: usize = 64;
+const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_LOCAL_SAMPLE_COUNT: usize = 256;
+const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_SEED_INTEGRATION_STEP_COUNT: usize = 96;
+const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_LOCAL_INTEGRATION_STEP_COUNT: usize = 192;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_FINAL_INTEGRATION_STEP_COUNT: usize = 512;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_STANDARDIZED_INTEGRATION_UPPER_BOUND: f64 = 64.0;
+const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_BOUND_EXPANSION_RATIO: f64 = 0.25;
+const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_LINE_SEARCH_EVALUATION_CAP: usize = 8;
+const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MAX_POWELL_CYCLES: usize = 12;
 
-#[derive(Debug, Clone, Copy)]
-enum ContinuousLikelihoodEvaluationMode {
-    Search,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum ContinuousLikelihoodFidelityTier {
+    Seed,
+    Local,
     Full,
 }
 
@@ -50,6 +60,15 @@ struct ContinuousLikelihoodObjective {
     conditional_negative_log_likelihood: f64,
     boundary_penalty: f64,
     log_likelihood_shift: f64,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct ContinuousReturnOptimizerDiagnostic {
+    pub seed_objective_score: f64,
+    pub local_objective_score: f64,
+    pub final_objective_score: f64,
+    pub local_evaluation_count: usize,
+    pub stop_reason: &'static str,
 }
 
 #[derive(Debug, Clone)]
@@ -68,6 +87,7 @@ pub(super) struct ContinuousReturnCandidateEvaluation {
     pub diagnostic: ReturnComponentsStageReturnDistributionDiagnostic,
     pub fitted_returns: Vec<f64>,
     pub fit_breakdown: ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic,
+    pub optimizer_diagnostic: ContinuousReturnOptimizerDiagnostic,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -116,8 +136,68 @@ struct NigSearchRegime {
 
 #[derive(Debug, Clone)]
 struct ScoredNigCandidate {
+    search_point: NigShapeSearchPoint,
     configuration: NigSharedPlusShiftConfiguration,
     objective_score: f64,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct OptimizedNigCandidate {
+    pub configuration: NigSharedPlusShiftConfiguration,
+    pub optimizer_diagnostic: ContinuousReturnOptimizerDiagnostic,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct ContinuousLikelihoodObjectiveCacheKey {
+    fidelity_tier: ContinuousLikelihoodFidelityTier,
+    log_alpha_bits: u64,
+    buy_skew_coordinate_bits: u64,
+    sell_relative_coordinate_bits: u64,
+    log_delta_offset_bits: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CachedSearchPointObjectiveEvaluation {
+    configuration: NigSharedPlusShiftConfiguration,
+    objective: ContinuousLikelihoodObjective,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct NigShapeSearchBounds {
+    lower_bounds: [f64; 4],
+    upper_bounds: [f64; 4],
+}
+
+#[derive(Debug, Clone)]
+struct ContinuousReturnOptimizerContext {
+    observed_returns: Vec<f64>,
+    business_time_scales: Vec<f64>,
+    sell_share_proxies: Vec<f64>,
+    integrated_buy_intensities: Vec<f64>,
+    integrated_sell_intensities: Vec<f64>,
+    scale_bucket_profiles: Vec<ContinuousReturnScaleBucketProfile>,
+    observed_return_volatility: f64,
+    log_likelihood_shift: f64,
+    open_session_sell_share_proxy: f64,
+    seed_member_indices: Vec<usize>,
+    local_member_indices: Vec<usize>,
+    full_member_indices: Vec<usize>,
+    cache: Arc<
+        Mutex<
+            BTreeMap<
+                ContinuousLikelihoodObjectiveCacheKey,
+                Option<CachedSearchPointObjectiveEvaluation>,
+            >,
+        >,
+    >,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PowellOptimizationOutcome {
+    best_point: NigShapeSearchPoint,
+    local_objective_score: f64,
+    local_evaluation_count: usize,
+    stop_reason: &'static str,
 }
 
 pub(super) fn build_continuous_return_calibration_sample(
@@ -174,75 +254,116 @@ pub(super) fn mean_continuous_return_calibration_business_time_scale(
     arithmetic_mean(calibration_sample.business_time_scales.as_slice())
 }
 
+fn build_continuous_return_optimizer_context(
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+) -> ContinuousReturnOptimizerContext {
+    let integrated_buy_intensities: Vec<f64> = calibration_sample
+        .business_time_scales
+        .iter()
+        .zip(calibration_sample.sell_share_proxies.iter())
+        .map(|(business_time_scale, sell_share_proxy)| {
+            business_time_scale * (1.0 - sell_share_proxy.clamp(0.0, 1.0))
+        })
+        .collect();
+    let integrated_sell_intensities: Vec<f64> = calibration_sample
+        .business_time_scales
+        .iter()
+        .zip(calibration_sample.sell_share_proxies.iter())
+        .map(|(business_time_scale, sell_share_proxy)| {
+            business_time_scale * sell_share_proxy.clamp(0.0, 1.0)
+        })
+        .collect();
+
+    ContinuousReturnOptimizerContext {
+        observed_returns: calibration_sample.observed_returns.clone(),
+        business_time_scales: calibration_sample.business_time_scales.clone(),
+        sell_share_proxies: calibration_sample.sell_share_proxies.clone(),
+        integrated_buy_intensities,
+        integrated_sell_intensities,
+        scale_bucket_profiles: calibration_sample.scale_bucket_profiles.clone(),
+        observed_return_volatility: calibration_sample.observed_profile.return_volatility,
+        log_likelihood_shift: log_likelihood_shift_from_observed_profile(
+            calibration_sample.observed_profile,
+        ),
+        open_session_sell_share_proxy: calibration_sample.open_session_sell_share_proxy,
+        seed_member_indices: deterministic_member_indices(
+            calibration_sample.observed_returns.len(),
+            RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_SEED_SAMPLE_COUNT,
+        ),
+        local_member_indices: deterministic_member_indices(
+            calibration_sample.observed_returns.len(),
+            RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_LOCAL_SAMPLE_COUNT,
+        ),
+        full_member_indices: deterministic_member_indices(
+            calibration_sample.observed_returns.len(),
+            calibration_sample.observed_returns.len(),
+        ),
+        cache: Arc::new(Mutex::new(BTreeMap::new())),
+    }
+}
+
 pub(super) fn build_nig_search_candidates(
-    summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
     _stage_seed: u64,
     solver_settings: &CalibrationOptimizerSettings,
-) -> Vec<NigSharedPlusShiftConfiguration> {
-    let broad_candidate_count = solver_settings
-        .max_iterations
-        .max(RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MIN_BROAD_CANDIDATE_COUNT);
-    let local_candidate_count = (broad_candidate_count / 2).max(24);
-    let mut scored_candidates = score_search_points(
-        summary_statistics,
-        calibration_sample,
-        build_broad_search_points(calibration_sample, broad_candidate_count).as_slice(),
-        solver_settings.cpu_count,
+) -> Vec<OptimizedNigCandidate> {
+    let optimizer_context = build_continuous_return_optimizer_context(calibration_sample);
+    let broad_candidate_count = solver_settings.max_iterations.clamp(
+        RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MIN_BROAD_CANDIDATE_COUNT,
+        RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MAX_BROAD_CANDIDATE_COUNT,
     );
+    let broad_search_points = build_broad_search_points(calibration_sample, broad_candidate_count);
+    let broad_search_regimes = build_search_regimes_from_sample(calibration_sample);
 
-    for refinement_round in 0..RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_REFINEMENT_ROUNDS {
-        let elite_points = elite_search_points(
-            scored_candidates.as_slice(),
-            summary_statistics,
-            calibration_sample.open_session_sell_share_proxy,
+    let search_bounds = search_bounds_from_regimes(broad_search_regimes.as_slice());
+
+    with_continuous_fit_thread_pool(solver_settings.cpu_count, || {
+        let broad_scored_candidates = score_search_points(
+            &optimizer_context,
+            broad_search_points.as_slice(),
+            ContinuousLikelihoodFidelityTier::Seed,
         );
-        let refinement_scale = 0.28 / (refinement_round + 1) as f64;
-        let local_points = build_local_search_points(
-            elite_points.as_slice(),
-            local_candidate_count,
-            refinement_scale,
+
+        let seed_candidates =
+            top_unique_seed_candidates(broad_scored_candidates.as_slice(), broad_search_regimes);
+
+        let mut optimized_candidates = optimize_seed_candidates(
+            &optimizer_context,
+            seed_candidates.as_slice(),
+            search_bounds,
+            solver_settings,
         );
-        scored_candidates.extend(score_search_points(
-            summary_statistics,
-            calibration_sample,
-            local_points.as_slice(),
-            solver_settings.cpu_count,
-        ));
-    }
+        optimized_candidates.sort_by(|left, right| {
+            left.optimizer_diagnostic
+                .final_objective_score
+                .total_cmp(&right.optimizer_diagnostic.final_objective_score)
+                .then_with(|| {
+                    left.configuration
+                        .alpha
+                        .total_cmp(&right.configuration.alpha)
+                })
+                .then_with(|| {
+                    left.configuration
+                        .beta_0
+                        .total_cmp(&right.configuration.beta_0)
+                })
+                .then_with(|| {
+                    left.configuration
+                        .delta
+                        .total_cmp(&right.configuration.delta)
+                })
+                .then_with(|| left.configuration.mu.total_cmp(&right.configuration.mu))
+                .then_with(|| {
+                    left.configuration
+                        .delta_beta
+                        .total_cmp(&right.configuration.delta_beta)
+                })
+        });
 
-    let mut ranked_candidates = deduplicate_scored_candidates(scored_candidates);
-    ranked_candidates.sort_by(|left, right| {
-        left.objective_score
-            .total_cmp(&right.objective_score)
-            .then_with(|| {
-                left.configuration
-                    .alpha
-                    .total_cmp(&right.configuration.alpha)
-            })
-            .then_with(|| {
-                left.configuration
-                    .beta_0
-                    .total_cmp(&right.configuration.beta_0)
-            })
-            .then_with(|| {
-                left.configuration
-                    .delta
-                    .total_cmp(&right.configuration.delta)
-            })
-            .then_with(|| left.configuration.mu.total_cmp(&right.configuration.mu))
-            .then_with(|| {
-                left.configuration
-                    .delta_beta
-                    .total_cmp(&right.configuration.delta_beta)
-            })
-    });
-    ranked_candidates.truncate(RETURN_COMPONENTS_STAGE_MAX_NIG_CANDIDATES);
-
-    ranked_candidates
-        .into_iter()
-        .map(|candidate| candidate.configuration)
-        .collect()
+        deduplicate_candidates_by_key(optimized_candidates, |candidate| {
+            candidate_configuration_key(candidate.configuration)
+        })
+    })
 }
 
 pub(super) fn evaluate_continuous_nig_candidate(
@@ -251,16 +372,31 @@ pub(super) fn evaluate_continuous_nig_candidate(
     summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
     stage_seed: u64,
 ) -> ContinuousReturnCandidateEvaluation {
+    let optimizer_context = build_continuous_return_optimizer_context(calibration_sample);
+
+    let seed_objective = continuous_block_likelihood_objective(
+        configuration,
+        &optimizer_context,
+        ContinuousLikelihoodFidelityTier::Seed,
+    );
+    let local_objective = continuous_block_likelihood_objective(
+        configuration,
+        &optimizer_context,
+        ContinuousLikelihoodFidelityTier::Local,
+    );
     let likelihood_objective = continuous_block_likelihood_objective(
         configuration,
-        calibration_sample,
-        ContinuousLikelihoodEvaluationMode::Full,
+        &optimizer_context,
+        ContinuousLikelihoodFidelityTier::Full,
     );
+
     let fitted_returns =
         simulate_matched_scale_returns(configuration, calibration_sample, stage_seed);
     let fitted_profile = build_distribution_profile(fitted_returns.as_slice());
+
     let profile_fit_breakdown =
         distribution_profile_fit_breakdown(fitted_profile, calibration_sample.observed_profile);
+
     let fitted_mean_return = arithmetic_mean_signed(fitted_returns.as_slice());
     let fitted_return_volatility = sample_standard_deviation(fitted_returns.as_slice());
     let fitted_skewness = sample_adjusted_skewness(fitted_returns.as_slice()).unwrap_or(0.0);
@@ -287,7 +423,19 @@ pub(super) fn evaluate_continuous_nig_candidate(
             boundary_penalty: likelihood_objective.boundary_penalty,
             profile_fit_score: profile_fit_breakdown.global_fit_score,
             log_likelihood_shift: likelihood_objective.log_likelihood_shift,
+            optimizer_seed_objective: seed_objective.shifted_objective_score,
+            optimizer_local_objective: local_objective.shifted_objective_score,
+            optimizer_final_objective: likelihood_objective.shifted_objective_score,
+            optimizer_local_evaluation_count: 0,
+            optimizer_stop_reason: "not_optimized".to_string(),
             ..profile_fit_breakdown
+        },
+        optimizer_diagnostic: ContinuousReturnOptimizerDiagnostic {
+            seed_objective_score: seed_objective.shifted_objective_score,
+            local_objective_score: local_objective.shifted_objective_score,
+            final_objective_score: likelihood_objective.shifted_objective_score,
+            local_evaluation_count: 0,
+            stop_reason: "not_optimized",
         },
     }
 }
@@ -332,6 +480,7 @@ fn build_equal_business_time_blocks(
             .iter()
             .map(|(observation, _)| observation.log_return)
             .sum::<f64>();
+
         let weighted_activity_lift = weighted_average(
             aligned_pairs
                 .iter()
@@ -350,10 +499,12 @@ fn build_equal_business_time_blocks(
                 .collect::<Vec<_>>()
                 .as_slice(),
         );
+
         let last_observation = aligned_pairs
             .last()
             .map(|(observation, _)| *observation)
             .unwrap_or(continuous_fit_returns[0]);
+
         return vec![(
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: last_observation.return_timestamp_utc_nanos,
@@ -382,6 +533,7 @@ fn build_equal_business_time_blocks(
             } else {
                 0.0
             };
+
         running_log_return += observation.log_return;
         running_business_time += positive_business_time;
         running_weighted_activity_lift +=
@@ -397,11 +549,13 @@ fn build_equal_business_time_blocks(
             || cumulative_business_time
                 >= total_business_time * (emitted_block_count + 1) as f64
                     / target_block_count as f64;
+
         if !should_emit {
             continue;
         }
 
         let weight_denominator = running_weight_sum.max(1.0);
+
         aggregated_blocks.push((
             ReturnComponentsObservedOpenSessionReturn {
                 return_timestamp_utc_nanos: observation.return_timestamp_utc_nanos,
@@ -412,7 +566,9 @@ fn build_equal_business_time_blocks(
             },
             running_business_time.max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER),
         ));
+
         emitted_block_count += 1;
+
         running_log_return = 0.0;
         running_business_time = 0.0;
         running_weighted_activity_lift = 0.0;
@@ -462,26 +618,7 @@ fn build_broad_search_points(
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
     broad_candidate_count: usize,
 ) -> Vec<NigShapeSearchPoint> {
-    let observed_profile = calibration_sample.observed_profile;
-    let log_alpha_anchor = inferred_log_alpha_anchor(observed_profile);
-    let buy_skew_coordinate_anchor = inferred_buy_skew_coordinate(
-        observed_profile,
-        calibration_sample.open_session_sell_share_proxy,
-    );
-    let alpha_span = 1.75 + observed_profile.abs_quantile_ratio_q99_q95.ln_1p();
-    let skew_span = 1.25
-        + observed_profile
-            .bowley_skewness
-            .abs()
-            .max(observed_profile.l_moment_tau3.abs());
-    let log_delta_span = 1.75 + observed_profile.abs_quantile_ratio_q99_q95.ln_1p();
-    let regimes = build_search_regimes(
-        log_alpha_anchor,
-        buy_skew_coordinate_anchor,
-        alpha_span,
-        skew_span,
-        log_delta_span,
-    );
+    let regimes = build_search_regimes_from_sample(calibration_sample);
     let mut search_points: Vec<NigShapeSearchPoint> = regimes
         .iter()
         .map(|regime| NigShapeSearchPoint {
@@ -504,6 +641,32 @@ fn build_broad_search_points(
     }
 
     search_points
+}
+
+fn build_search_regimes_from_sample(
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+) -> [NigSearchRegime; RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_REGIME_COUNT] {
+    let observed_profile = calibration_sample.observed_profile;
+    let log_alpha_anchor = inferred_log_alpha_anchor(observed_profile);
+    let buy_skew_coordinate_anchor = inferred_buy_skew_coordinate(
+        observed_profile,
+        calibration_sample.open_session_sell_share_proxy,
+    );
+    let alpha_span = 1.75 + observed_profile.abs_quantile_ratio_q99_q95.ln_1p();
+    let skew_span = 1.25
+        + observed_profile
+            .bowley_skewness
+            .abs()
+            .max(observed_profile.l_moment_tau3.abs());
+    let log_delta_span = 1.75 + observed_profile.abs_quantile_ratio_q99_q95.ln_1p();
+
+    build_search_regimes(
+        log_alpha_anchor,
+        buy_skew_coordinate_anchor,
+        alpha_span,
+        skew_span,
+        log_delta_span,
+    )
 }
 
 fn build_search_regimes(
@@ -610,37 +773,6 @@ fn sample_regime_search_point(
     }
 }
 
-fn build_local_search_points(
-    elite_points: &[NigShapeSearchPoint],
-    points_per_elite: usize,
-    refinement_scale: f64,
-) -> Vec<NigShapeSearchPoint> {
-    let mut local_points = Vec::new();
-
-    for (elite_index, elite_point) in elite_points.iter().enumerate() {
-        local_points.push(*elite_point);
-        for local_index in 0..points_per_elite {
-            let sequence_index = elite_index * points_per_elite + local_index + 1;
-            local_points.push(NigShapeSearchPoint {
-                log_alpha: elite_point.log_alpha
-                    + refinement_scale
-                        * centered_low_discrepancy_perturbation(sequence_index, 2, 3, 5),
-                buy_skew_coordinate: elite_point.buy_skew_coordinate
-                    + refinement_scale
-                        * centered_low_discrepancy_perturbation(sequence_index + 11, 7, 11, 13),
-                sell_relative_coordinate: elite_point.sell_relative_coordinate
-                    + refinement_scale
-                        * centered_low_discrepancy_perturbation(sequence_index + 23, 17, 19, 23),
-                log_delta_offset: elite_point.log_delta_offset
-                    + refinement_scale
-                        * centered_low_discrepancy_perturbation(sequence_index + 41, 29, 31, 37),
-            });
-        }
-    }
-
-    local_points
-}
-
 fn centered_low_discrepancy_perturbation(
     sequence_index: usize,
     base_a: u64,
@@ -667,52 +799,28 @@ fn van_der_corput(mut index: u64, base: u64) -> f64 {
 }
 
 fn score_search_points(
-    summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
-    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    optimizer_context: &ContinuousReturnOptimizerContext,
     search_points: &[NigShapeSearchPoint],
-    cpu_count: usize,
+    fidelity_tier: ContinuousLikelihoodFidelityTier,
 ) -> Vec<ScoredNigCandidate> {
-    if search_points.is_empty() {
-        return Vec::new();
-    }
-
-    let score_points = || {
-        search_points
-            .par_iter()
-            .filter_map(|search_point| {
-                build_scored_candidate(summary_statistics, calibration_sample, *search_point)
-            })
-            .collect::<Vec<_>>()
-    };
-
-    if cpu_count <= 1 {
-        return search_points
-            .iter()
-            .filter_map(|search_point| {
-                build_scored_candidate(summary_statistics, calibration_sample, *search_point)
-            })
-            .collect();
-    }
-
-    match rayon::ThreadPoolBuilder::new()
-        .num_threads(cpu_count)
-        .build()
-    {
-        Ok(thread_pool) => thread_pool.install(score_points),
-        Err(_) => search_points
-            .iter()
-            .filter_map(|search_point| {
-                build_scored_candidate(summary_statistics, calibration_sample, *search_point)
-            })
-            .collect(),
-    }
+    search_points
+        .par_iter()
+        .filter_map(|search_point| {
+            evaluate_cached_search_point(optimizer_context, *search_point, fidelity_tier).map(
+                |cached_evaluation| ScoredNigCandidate {
+                    search_point: *search_point,
+                    configuration: cached_evaluation.configuration,
+                    objective_score: cached_evaluation.objective.shifted_objective_score,
+                },
+            )
+        })
+        .collect()
 }
 
-fn elite_search_points(
+fn top_unique_seed_candidates(
     scored_candidates: &[ScoredNigCandidate],
-    summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
-    open_session_sell_share_proxy: f64,
-) -> Vec<NigShapeSearchPoint> {
+    broad_search_regimes: [NigSearchRegime; RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_REGIME_COUNT],
+) -> Vec<ScoredNigCandidate> {
     let mut ranked_candidates = scored_candidates.to_vec();
     ranked_candidates.sort_by(|left, right| {
         left.objective_score
@@ -733,91 +841,101 @@ fn elite_search_points(
                     .total_cmp(&right.configuration.delta_beta)
             })
     });
-    ranked_candidates.truncate(RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_ELITE_COUNT);
 
-    ranked_candidates
-        .into_iter()
-        .filter_map(|candidate| {
-            let alpha = candidate
-                .configuration
-                .alpha
-                .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
-            let buy_beta_ratio = clamp_open_beta_ratio(candidate.configuration.beta_0 / alpha);
-            let sell_beta_ratio =
-                clamp_open_beta_ratio(candidate.configuration.derived_sell_beta() / alpha);
-            let sell_relative_share =
-                sell_relative_share_from_beta_ratios(buy_beta_ratio, sell_beta_ratio)?;
-            let delta_center = inferred_delta_center(
-                alpha,
-                candidate.configuration.beta_0,
-                candidate.configuration.delta_beta,
-                summary_statistics.continuous_return_volatility,
-                open_session_sell_share_proxy,
-            )?;
+    let deduplicated_candidates = deduplicate_candidates_by_key(ranked_candidates, |candidate| {
+        candidate_configuration_key(candidate.configuration)
+    });
 
-            Some(NigShapeSearchPoint {
-                log_alpha: alpha.ln(),
-                buy_skew_coordinate: ratio_to_coordinate(buy_beta_ratio),
-                sell_relative_coordinate: share_to_coordinate(sell_relative_share),
-                log_delta_offset: (candidate.configuration.delta / delta_center).ln(),
-            })
-        })
-        .collect()
+    let mut retained_candidates = Vec::new();
+    let mut retained_regimes = BTreeSet::new();
+
+    for scored_candidate in deduplicated_candidates {
+        let regime_index =
+            nearest_search_regime_index(scored_candidate.search_point, &broad_search_regimes);
+        if retained_regimes.insert(regime_index)
+            || retained_candidates.len() < RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_ELITE_COUNT
+        {
+            retained_candidates.push(scored_candidate);
+        }
+        if retained_candidates.len() >= RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_ELITE_COUNT {
+            break;
+        }
+    }
+
+    retained_candidates
 }
 
-fn deduplicate_scored_candidates(
-    scored_candidates: Vec<ScoredNigCandidate>,
-) -> Vec<ScoredNigCandidate> {
+fn deduplicate_candidates_by_key<T>(
+    candidates: Vec<T>,
+    key_builder: impl Fn(&T) -> String,
+) -> Vec<T> {
     let mut retained = Vec::new();
     let mut seen = BTreeSet::new();
 
-    for scored_candidate in scored_candidates {
-        let candidate_key = format!(
-            "{:.6}|{:.6}|{:.12}|{:.6}|{:.6}",
-            scored_candidate.configuration.alpha,
-            scored_candidate.configuration.beta_0,
-            scored_candidate.configuration.delta,
-            scored_candidate.configuration.mu,
-            scored_candidate.configuration.delta_beta,
-        );
+    for candidate in candidates {
+        let candidate_key = key_builder(&candidate);
         if seen.insert(candidate_key) {
-            retained.push(scored_candidate);
+            retained.push(candidate);
         }
     }
 
     retained
 }
 
-fn build_scored_candidate(
-    summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
-    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
-    shape_search_point: NigShapeSearchPoint,
-) -> Option<ScoredNigCandidate> {
-    let configuration = configuration_from_shape_search_point(
-        summary_statistics,
-        calibration_sample.open_session_sell_share_proxy,
-        shape_search_point,
-    )?;
-    let objective_score = continuous_block_likelihood_objective(
-        configuration,
-        calibration_sample,
-        ContinuousLikelihoodEvaluationMode::Search,
+fn candidate_configuration_key(configuration: NigSharedPlusShiftConfiguration) -> String {
+    format!(
+        "{:.6}|{:.6}|{:.12}|{:.6}|{:.6}",
+        configuration.alpha,
+        configuration.beta_0,
+        configuration.delta,
+        configuration.mu,
+        configuration.delta_beta,
     )
-    .shifted_objective_score;
+}
 
-    if !objective_score.is_finite() {
-        return None;
+fn evaluate_cached_search_point(
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    shape_search_point: NigShapeSearchPoint,
+    fidelity_tier: ContinuousLikelihoodFidelityTier,
+) -> Option<CachedSearchPointObjectiveEvaluation> {
+    let cache_key = ContinuousLikelihoodObjectiveCacheKey {
+        fidelity_tier,
+        log_alpha_bits: shape_search_point.log_alpha.to_bits(),
+        buy_skew_coordinate_bits: shape_search_point.buy_skew_coordinate.to_bits(),
+        sell_relative_coordinate_bits: shape_search_point.sell_relative_coordinate.to_bits(),
+        log_delta_offset_bits: shape_search_point.log_delta_offset.to_bits(),
+    };
+    if let Ok(cache_guard) = optimizer_context.cache.lock() {
+        if let Some(cached_value) = cache_guard.get(&cache_key) {
+            return *cached_value;
+        }
     }
 
-    Some(ScoredNigCandidate {
-        configuration,
-        objective_score,
-    })
+    let cached_value = configuration_from_shape_search_point(optimizer_context, shape_search_point)
+        .map(|configuration| CachedSearchPointObjectiveEvaluation {
+            configuration,
+            objective: continuous_block_likelihood_objective(
+                configuration,
+                optimizer_context,
+                fidelity_tier,
+            ),
+        })
+        .filter(|cached_evaluation| {
+            cached_evaluation
+                .objective
+                .shifted_objective_score
+                .is_finite()
+        });
+
+    if let Ok(mut cache_guard) = optimizer_context.cache.lock() {
+        cache_guard.insert(cache_key, cached_value);
+    }
+
+    cached_value
 }
 
 fn configuration_from_shape_search_point(
-    summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
-    open_session_sell_share_proxy: f64,
+    optimizer_context: &ContinuousReturnOptimizerContext,
     shape_search_point: NigShapeSearchPoint,
 ) -> Option<NigSharedPlusShiftConfiguration> {
     let alpha = shape_search_point.log_alpha.exp();
@@ -830,13 +948,7 @@ fn configuration_from_shape_search_point(
     let beta_0 = alpha * buy_beta_ratio;
     let sell_beta = alpha * sell_beta_ratio;
     let delta_beta = sell_beta - beta_0;
-    let delta_center = inferred_delta_center(
-        alpha,
-        beta_0,
-        delta_beta,
-        summary_statistics.continuous_return_volatility,
-        open_session_sell_share_proxy,
-    )?;
+    let delta_center = inferred_delta_center(optimizer_context, alpha, beta_0, delta_beta)?;
     let delta = delta_center * shape_search_point.log_delta_offset.exp();
 
     NigSharedPlusShiftConfiguration::try_new(
@@ -850,11 +962,10 @@ fn configuration_from_shape_search_point(
 }
 
 fn inferred_delta_center(
+    optimizer_context: &ContinuousReturnOptimizerContext,
     alpha: f64,
     beta_0: f64,
     delta_beta: f64,
-    observed_return_volatility: f64,
-    open_session_sell_share_proxy: f64,
 ) -> Option<f64> {
     let (_, variance_per_unit, _, _) = theoretical_net_process_moments(
         NigSharedPlusShiftConfiguration {
@@ -864,13 +975,16 @@ fn inferred_delta_center(
             mu: 0.0,
             delta_beta,
         },
-        open_session_sell_share_proxy,
+        optimizer_context.open_session_sell_share_proxy,
     )?;
-    let target_variance = observed_return_volatility
+
+    let target_variance = optimizer_context
+        .observed_return_volatility
         .powi(2)
         .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
     let variance_per_unit =
         variance_per_unit.max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+
     Some(
         (target_variance / variance_per_unit)
             .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER),
@@ -883,6 +997,7 @@ fn inferred_log_alpha_anchor(observed_profile: ContinuousReturnDistributionProfi
         .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER.sqrt());
     let asymmetry_scale =
         1.0 + observed_profile.bowley_skewness.abs() + observed_profile.l_moment_tau3.abs();
+
     (1.0 + 1.0 / (tail_excess * asymmetry_scale)).ln()
 }
 
@@ -893,6 +1008,7 @@ fn inferred_buy_skew_coordinate(
     let robust_skew_center = 0.5
         * (observed_profile.bowley_skewness + observed_profile.l_moment_tau3)
         + (open_session_sell_share_proxy - 0.5) * 0.25;
+
     ratio_to_coordinate(clamp_open_beta_ratio(robust_skew_center * 0.60))
 }
 
@@ -905,11 +1021,6 @@ fn coordinate_to_ratio(coordinate: f64) -> f64 {
     clamp_open_beta_ratio(coordinate.tanh())
 }
 
-fn share_to_coordinate(share: f64) -> f64 {
-    let bounded_share = share.clamp(0.0f64.next_up(), 1.0f64.next_down());
-    (bounded_share / (1.0 - bounded_share)).ln()
-}
-
 fn coordinate_to_share(coordinate: f64) -> f64 {
     logistic(coordinate).clamp(0.0f64.next_up(), 1.0f64.next_down())
 }
@@ -919,6 +1030,7 @@ fn sell_beta_ratio_from_relative_share(buy_beta_ratio: f64, relative_share: f64)
     lower_bound + (buy_beta_ratio - lower_bound) * relative_share
 }
 
+#[cfg(test)]
 fn sell_relative_share_from_beta_ratios(buy_beta_ratio: f64, sell_beta_ratio: f64) -> Option<f64> {
     let lower_bound = minimum_open_beta_ratio();
     let denominator = buy_beta_ratio - lower_bound;
@@ -946,32 +1058,30 @@ fn maximum_open_beta_ratio() -> f64 {
 
 fn continuous_block_likelihood_objective(
     configuration: NigSharedPlusShiftConfiguration,
-    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
-    evaluation_mode: ContinuousLikelihoodEvaluationMode,
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    fidelity_tier: ContinuousLikelihoodFidelityTier,
 ) -> ContinuousLikelihoodObjective {
     let boundary_penalty = alpha_beta_boundary_penalty(configuration);
-    let integration_step_count = match evaluation_mode {
-        ContinuousLikelihoodEvaluationMode::Search => {
-            RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_SEARCH_INTEGRATION_STEP_COUNT
-        }
-        ContinuousLikelihoodEvaluationMode::Full => {
-            RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_FINAL_INTEGRATION_STEP_COUNT
-        }
-    };
-    let selected_member_indices = likelihood_member_indices(calibration_sample, evaluation_mode);
+
+    let integration_step_count = integration_step_count_for_fidelity_tier(fidelity_tier);
+
+    let selected_member_indices =
+        member_indices_for_fidelity_tier(optimizer_context, fidelity_tier);
+
     let global_negative_log_likelihood = average_negative_log_likelihood(
         configuration,
-        calibration_sample,
-        selected_member_indices.as_slice(),
+        optimizer_context,
+        selected_member_indices,
         integration_step_count,
     )
     .unwrap_or(f64::INFINITY);
-    let conditional_negative_log_likelihood = if calibration_sample.scale_bucket_profiles.is_empty()
+
+    let conditional_negative_log_likelihood = if optimizer_context.scale_bucket_profiles.is_empty()
     {
         global_negative_log_likelihood
     } else {
         arithmetic_mean(
-            calibration_sample
+            optimizer_context
                 .scale_bucket_profiles
                 .iter()
                 .filter_map(|scale_bucket_profile| {
@@ -989,7 +1099,7 @@ fn continuous_block_likelihood_objective(
 
                     average_negative_log_likelihood(
                         configuration,
-                        calibration_sample,
+                        optimizer_context,
                         bucket_member_indices.as_slice(),
                         integration_step_count,
                     )
@@ -998,8 +1108,8 @@ fn continuous_block_likelihood_objective(
                 .as_slice(),
         )
     };
-    let log_likelihood_shift =
-        log_likelihood_shift_from_observed_profile(calibration_sample.observed_profile);
+
+    let log_likelihood_shift = optimizer_context.log_likelihood_shift;
 
     ContinuousLikelihoodObjective {
         shifted_objective_score: log_likelihood_shift
@@ -1013,37 +1123,38 @@ fn continuous_block_likelihood_objective(
     }
 }
 
-fn likelihood_member_indices(
-    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
-    evaluation_mode: ContinuousLikelihoodEvaluationMode,
-) -> Vec<usize> {
-    let total_count = calibration_sample.observed_returns.len();
-    let target_count = match evaluation_mode {
-        ContinuousLikelihoodEvaluationMode::Search => {
-            RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_SEARCH_SAMPLE_COUNT
+fn member_indices_for_fidelity_tier(
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    fidelity_tier: ContinuousLikelihoodFidelityTier,
+) -> &[usize] {
+    match fidelity_tier {
+        ContinuousLikelihoodFidelityTier::Seed => optimizer_context.seed_member_indices.as_slice(),
+        ContinuousLikelihoodFidelityTier::Local => {
+            optimizer_context.local_member_indices.as_slice()
         }
-        ContinuousLikelihoodEvaluationMode::Full => total_count,
-    };
-    if total_count <= target_count {
-        return (0..total_count).collect();
+        ContinuousLikelihoodFidelityTier::Full => optimizer_context.full_member_indices.as_slice(),
     }
+}
 
-    let mut retained_indices = BTreeSet::new();
-    for retained_position in 0..target_count {
-        let scaled_index = if target_count <= 1 {
-            0
-        } else {
-            (retained_position * (total_count - 1)) / (target_count - 1)
-        };
-        retained_indices.insert(scaled_index);
+fn integration_step_count_for_fidelity_tier(
+    fidelity_tier: ContinuousLikelihoodFidelityTier,
+) -> usize {
+    match fidelity_tier {
+        ContinuousLikelihoodFidelityTier::Seed => {
+            RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_SEED_INTEGRATION_STEP_COUNT
+        }
+        ContinuousLikelihoodFidelityTier::Local => {
+            RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_LOCAL_INTEGRATION_STEP_COUNT
+        }
+        ContinuousLikelihoodFidelityTier::Full => {
+            RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_FINAL_INTEGRATION_STEP_COUNT
+        }
     }
-
-    retained_indices.into_iter().collect()
 }
 
 fn average_negative_log_likelihood(
     configuration: NigSharedPlusShiftConfiguration,
-    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    optimizer_context: &ContinuousReturnOptimizerContext,
     member_indices: &[usize],
     integration_step_count: usize,
 ) -> Option<f64> {
@@ -1052,15 +1163,24 @@ fn average_negative_log_likelihood(
     let mut evaluated_count = 0usize;
 
     for member_index in member_indices {
-        let observed_return = *calibration_sample.observed_returns.get(*member_index)?;
-        let business_time_scale = *calibration_sample.business_time_scales.get(*member_index)?;
-        let sell_share_proxy = *calibration_sample.sell_share_proxies.get(*member_index)?;
+        let observed_return = *optimizer_context.observed_returns.get(*member_index)?;
+        let business_time_scale = *optimizer_context.business_time_scales.get(*member_index)?;
+        let sell_share_proxy = *optimizer_context.sell_share_proxies.get(*member_index)?;
+        let integrated_buy_intensity = *optimizer_context
+            .integrated_buy_intensities
+            .get(*member_index)?;
+        let integrated_sell_intensity = *optimizer_context
+            .integrated_sell_intensities
+            .get(*member_index)?;
+
         let block_log_density = log_density_net_trading_time_return(
             driver_parameters,
             configuration,
             observed_return,
             business_time_scale,
             sell_share_proxy,
+            integrated_buy_intensity,
+            integrated_sell_intensity,
             integration_step_count,
         )?;
 
@@ -1081,26 +1201,29 @@ fn log_density_net_trading_time_return(
     observed_return: f64,
     business_time_scale: f64,
     sell_share_proxy: f64,
+    integrated_buy_intensity: f64,
+    integrated_sell_intensity: f64,
     integration_step_count: usize,
 ) -> Option<f64> {
     if !observed_return.is_finite()
         || !business_time_scale.is_finite()
         || business_time_scale <= 0.0
+        || !integrated_buy_intensity.is_finite()
+        || !integrated_sell_intensity.is_finite()
+        || integrated_buy_intensity < 0.0
+        || integrated_sell_intensity < 0.0
         || integration_step_count == 0
     {
         return None;
     }
 
-    let sell_weight = sell_share_proxy.clamp(0.0, 1.0);
-    let buy_weight = 1.0 - sell_weight;
-    let integrated_buy_intensity = (business_time_scale * buy_weight)
-        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
-    let integrated_sell_intensity = (business_time_scale * sell_weight)
-        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
     let block_standard_deviation =
         block_return_standard_deviation(configuration, business_time_scale, sell_share_proxy)?;
+
     let standardized_return = observed_return / block_standard_deviation;
+
     let integration_upper_bound = standardized_integration_upper_bound(standardized_return.abs());
+
     let integration_step_width = integration_upper_bound / integration_step_count as f64;
     if !integration_step_width.is_finite() || integration_step_width <= 0.0 {
         return None;
@@ -1110,6 +1233,7 @@ fn log_density_net_trading_time_return(
     for integration_index in 0..integration_step_count {
         let standardized_frequency = (integration_index as f64 + 0.5) * integration_step_width;
         let actual_frequency = standardized_frequency / block_standard_deviation;
+
         let characteristic_exponent = driver_parameters
             .compose_trading_time_weighted_characteristic_exponent(
                 ComplexScalar::new(actual_frequency, 0.0),
@@ -1155,9 +1279,11 @@ fn block_return_standard_deviation(
 ) -> Option<f64> {
     let (_, variance_per_unit, _, _) =
         theoretical_net_process_moments(configuration, sell_share_proxy)?;
+
     let variance = (variance_per_unit * business_time_scale)
         .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
     let standard_deviation = variance.sqrt();
+
     standard_deviation.is_finite().then_some(standard_deviation)
 }
 
@@ -1170,6 +1296,566 @@ fn log_likelihood_shift_from_observed_profile(
     observed_profile: ContinuousReturnDistributionProfile,
 ) -> f64 {
     (-observed_profile.return_volatility.max(1.0e-8).ln()).max(1.0) + 4.0
+}
+
+fn deterministic_member_indices(total_count: usize, target_count: usize) -> Vec<usize> {
+    if total_count <= target_count {
+        return (0..total_count).collect();
+    }
+
+    let mut retained_indices = BTreeSet::new();
+    for retained_position in 0..target_count {
+        let scaled_index = if target_count <= 1 {
+            0
+        } else {
+            (retained_position * (total_count - 1)) / (target_count - 1)
+        };
+        retained_indices.insert(scaled_index);
+    }
+
+    retained_indices.into_iter().collect()
+}
+
+fn search_bounds_from_regimes(search_regimes: &[NigSearchRegime]) -> NigShapeSearchBounds {
+    let mut lower_bounds = [f64::INFINITY; 4];
+    let mut upper_bounds = [f64::NEG_INFINITY; 4];
+
+    for search_regime in search_regimes {
+        let regime_lower_bounds = [
+            search_regime.log_alpha_center - search_regime.log_alpha_half_span,
+            search_regime.buy_skew_center - search_regime.buy_skew_half_span,
+            search_regime.sell_relative_center - search_regime.sell_relative_half_span,
+            search_regime.log_delta_center - search_regime.log_delta_half_span,
+        ];
+        let regime_upper_bounds = [
+            search_regime.log_alpha_center + search_regime.log_alpha_half_span,
+            search_regime.buy_skew_center + search_regime.buy_skew_half_span,
+            search_regime.sell_relative_center + search_regime.sell_relative_half_span,
+            search_regime.log_delta_center + search_regime.log_delta_half_span,
+        ];
+
+        for coordinate_index in 0..4 {
+            lower_bounds[coordinate_index] =
+                lower_bounds[coordinate_index].min(regime_lower_bounds[coordinate_index]);
+            upper_bounds[coordinate_index] =
+                upper_bounds[coordinate_index].max(regime_upper_bounds[coordinate_index]);
+        }
+    }
+
+    for coordinate_index in 0..4 {
+        let span = (upper_bounds[coordinate_index] - lower_bounds[coordinate_index]).max(1.0e-6);
+        lower_bounds[coordinate_index] -=
+            RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_BOUND_EXPANSION_RATIO * span;
+        upper_bounds[coordinate_index] +=
+            RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_BOUND_EXPANSION_RATIO * span;
+    }
+
+    NigShapeSearchBounds {
+        lower_bounds,
+        upper_bounds,
+    }
+}
+
+fn nearest_search_regime_index(
+    search_point: NigShapeSearchPoint,
+    search_regimes: &[NigSearchRegime],
+) -> usize {
+    let search_point_vector = search_point_to_vector(search_point);
+    let mut nearest_regime_index = 0usize;
+    let mut nearest_distance = f64::INFINITY;
+
+    for (regime_index, search_regime) in search_regimes.iter().enumerate() {
+        let regime_center = [
+            search_regime.log_alpha_center,
+            search_regime.buy_skew_center,
+            search_regime.sell_relative_center,
+            search_regime.log_delta_center,
+        ];
+
+        let distance = search_point_vector
+            .iter()
+            .zip(regime_center.iter())
+            .map(|(coordinate, center)| (coordinate - center).powi(2))
+            .sum::<f64>();
+
+        if distance < nearest_distance {
+            nearest_distance = distance;
+            nearest_regime_index = regime_index;
+        }
+    }
+
+    nearest_regime_index
+}
+
+fn optimize_seed_candidates(
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    seed_candidates: &[ScoredNigCandidate],
+    search_bounds: NigShapeSearchBounds,
+    solver_settings: &CalibrationOptimizerSettings,
+) -> Vec<OptimizedNigCandidate> {
+    seed_candidates
+        .par_iter()
+        .filter_map(|seed_candidate| {
+            let local_outcome = optimize_powell_search_point(
+                optimizer_context,
+                seed_candidate.search_point,
+                search_bounds,
+                solver_settings,
+            )?;
+
+            let final_evaluation = evaluate_cached_search_point(
+                optimizer_context,
+                local_outcome.best_point,
+                ContinuousLikelihoodFidelityTier::Full,
+            )?;
+
+            Some(OptimizedNigCandidate {
+                configuration: final_evaluation.configuration,
+                optimizer_diagnostic: ContinuousReturnOptimizerDiagnostic {
+                    seed_objective_score: seed_candidate.objective_score,
+                    local_objective_score: local_outcome.local_objective_score,
+                    final_objective_score: final_evaluation.objective.shifted_objective_score,
+                    local_evaluation_count: local_outcome.local_evaluation_count,
+                    stop_reason: local_outcome.stop_reason,
+                },
+            })
+        })
+        .collect()
+}
+
+fn optimize_powell_search_point(
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    seed_search_point: NigShapeSearchPoint,
+    search_bounds: NigShapeSearchBounds,
+    solver_settings: &CalibrationOptimizerSettings,
+) -> Option<PowellOptimizationOutcome> {
+    let mut current_vector =
+        clamp_search_point_vector(search_point_to_vector(seed_search_point), search_bounds);
+
+    let mut current_evaluation = evaluate_cached_search_point(
+        optimizer_context,
+        vector_to_search_point(current_vector),
+        ContinuousLikelihoodFidelityTier::Local,
+    )?;
+
+    let mut best_vector = current_vector;
+    let mut best_evaluation = current_evaluation;
+    let mut local_evaluation_count = 1usize;
+
+    let local_evaluation_budget = solver_settings.max_iterations.clamp(
+        RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MIN_BROAD_CANDIDATE_COUNT,
+        RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MAX_BROAD_CANDIDATE_COUNT,
+    );
+
+    let mut directions = [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ];
+
+    for _ in 0..RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MAX_POWELL_CYCLES {
+        let cycle_start_vector = current_vector;
+        let cycle_start_objective = current_evaluation.objective.shifted_objective_score;
+
+        let mut largest_direction_improvement = 0.0;
+        let mut replaced_direction_index = 0usize;
+
+        for (direction_index, direction) in directions.iter().enumerate() {
+            let line_search_outcome = minimize_along_direction(
+                optimizer_context,
+                current_vector,
+                *direction,
+                search_bounds,
+                solver_settings,
+            );
+
+            local_evaluation_count += line_search_outcome.evaluation_count;
+            if local_evaluation_count >= local_evaluation_budget {
+                return Some(PowellOptimizationOutcome {
+                    best_point: vector_to_search_point(best_vector),
+                    local_objective_score: best_evaluation.objective.shifted_objective_score,
+                    local_evaluation_count,
+                    stop_reason: "budget",
+                });
+            }
+
+            if let Some(best_line_evaluation) = line_search_outcome.best_evaluation {
+                let direction_improvement = current_evaluation.objective.shifted_objective_score
+                    - best_line_evaluation.objective.shifted_objective_score;
+                if direction_improvement > largest_direction_improvement {
+                    largest_direction_improvement = direction_improvement;
+                    replaced_direction_index = direction_index;
+                }
+
+                current_vector = line_search_outcome.best_vector;
+
+                current_evaluation = best_line_evaluation;
+                if current_evaluation.objective.shifted_objective_score
+                    < best_evaluation.objective.shifted_objective_score
+                {
+                    best_vector = current_vector;
+                    best_evaluation = current_evaluation;
+                }
+            }
+        }
+
+        let cycle_displacement = vector4_subtract(current_vector, cycle_start_vector);
+        let maximum_coordinate_displacement = cycle_displacement
+            .iter()
+            .map(|coordinate| coordinate.abs())
+            .fold(0.0, f64::max);
+        let cycle_improvement =
+            cycle_start_objective - current_evaluation.objective.shifted_objective_score;
+        let objective_tolerance = solver_settings
+            .absolute_tolerance
+            .max(solver_settings.relative_tolerance * cycle_start_objective.abs().max(1.0));
+        if cycle_improvement <= objective_tolerance
+            || maximum_coordinate_displacement <= solver_settings.absolute_tolerance
+        {
+            return Some(PowellOptimizationOutcome {
+                best_point: vector_to_search_point(best_vector),
+                local_objective_score: best_evaluation.objective.shifted_objective_score,
+                local_evaluation_count,
+                stop_reason: "tolerance",
+            });
+        }
+
+        if maximum_coordinate_displacement
+            <= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER
+        {
+            return Some(PowellOptimizationOutcome {
+                best_point: vector_to_search_point(best_vector),
+                local_objective_score: best_evaluation.objective.shifted_objective_score,
+                local_evaluation_count,
+                stop_reason: "invalid_step",
+            });
+        }
+
+        let composite_direction = cycle_displacement;
+        let composite_line_search_outcome = minimize_along_direction(
+            optimizer_context,
+            current_vector,
+            composite_direction,
+            search_bounds,
+            solver_settings,
+        );
+
+        local_evaluation_count += composite_line_search_outcome.evaluation_count;
+
+        if local_evaluation_count >= local_evaluation_budget {
+            return Some(PowellOptimizationOutcome {
+                best_point: vector_to_search_point(best_vector),
+                local_objective_score: best_evaluation.objective.shifted_objective_score,
+                local_evaluation_count,
+                stop_reason: "budget",
+            });
+        }
+
+        if let Some(composite_evaluation) = composite_line_search_outcome.best_evaluation {
+            if composite_evaluation.objective.shifted_objective_score
+                < current_evaluation.objective.shifted_objective_score
+            {
+                current_vector = composite_line_search_outcome.best_vector;
+                current_evaluation = composite_evaluation;
+                if current_evaluation.objective.shifted_objective_score
+                    < best_evaluation.objective.shifted_objective_score
+                {
+                    best_vector = current_vector;
+                    best_evaluation = current_evaluation;
+                }
+            }
+
+            let composite_improvement =
+                cycle_start_objective - composite_evaluation.objective.shifted_objective_score;
+            if composite_improvement > largest_direction_improvement {
+                directions[replaced_direction_index] = normalize_vector4(
+                    composite_direction,
+                    RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
+                );
+            }
+        }
+    }
+
+    Some(PowellOptimizationOutcome {
+        best_point: vector_to_search_point(best_vector),
+        local_objective_score: best_evaluation.objective.shifted_objective_score,
+        local_evaluation_count,
+        stop_reason: "budget",
+    })
+}
+
+#[derive(Debug, Clone, Copy)]
+struct LineSearchOutcome {
+    best_vector: [f64; 4],
+    best_evaluation: Option<CachedSearchPointObjectiveEvaluation>,
+    evaluation_count: usize,
+}
+
+fn minimize_along_direction(
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    current_vector: [f64; 4],
+    direction: [f64; 4],
+    search_bounds: NigShapeSearchBounds,
+    solver_settings: &CalibrationOptimizerSettings,
+) -> LineSearchOutcome {
+    let Some((lower_step, upper_step)) =
+        bounded_step_interval(current_vector, direction, search_bounds)
+    else {
+        return LineSearchOutcome {
+            best_vector: current_vector,
+            best_evaluation: evaluate_cached_search_point(
+                optimizer_context,
+                vector_to_search_point(current_vector),
+                ContinuousLikelihoodFidelityTier::Local,
+            ),
+            evaluation_count: 0,
+        };
+    };
+
+    if (upper_step - lower_step).abs() <= solver_settings.absolute_tolerance {
+        return LineSearchOutcome {
+            best_vector: current_vector,
+            best_evaluation: evaluate_cached_search_point(
+                optimizer_context,
+                vector_to_search_point(current_vector),
+                ContinuousLikelihoodFidelityTier::Local,
+            ),
+            evaluation_count: 0,
+        };
+    }
+
+    let mut best_vector = current_vector;
+    let mut best_evaluation = evaluate_cached_search_point(
+        optimizer_context,
+        vector_to_search_point(current_vector),
+        ContinuousLikelihoodFidelityTier::Local,
+    );
+
+    let mut evaluation_count = 0usize;
+
+    let golden_ratio = (5.0_f64.sqrt() - 1.0) * 0.5;
+
+    let mut left = lower_step;
+    let mut right = upper_step;
+
+    let mut left_inner = right - golden_ratio * (right - left);
+    let mut right_inner = left + golden_ratio * (right - left);
+
+    let mut left_inner_evaluation = evaluate_line_search_step(
+        optimizer_context,
+        current_vector,
+        direction,
+        left_inner,
+        search_bounds,
+    );
+    let mut right_inner_evaluation = evaluate_line_search_step(
+        optimizer_context,
+        current_vector,
+        direction,
+        right_inner,
+        search_bounds,
+    );
+
+    evaluation_count += 2;
+
+    update_best_line_search_evaluation(
+        left_inner_evaluation,
+        &mut best_vector,
+        &mut best_evaluation,
+    );
+    update_best_line_search_evaluation(
+        right_inner_evaluation,
+        &mut best_vector,
+        &mut best_evaluation,
+    );
+
+    while evaluation_count < RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_LINE_SEARCH_EVALUATION_CAP {
+        let left_inner_objective = left_inner_evaluation
+            .map(|evaluation| evaluation.1.objective.shifted_objective_score)
+            .unwrap_or(f64::INFINITY);
+        let right_inner_objective = right_inner_evaluation
+            .map(|evaluation| evaluation.1.objective.shifted_objective_score)
+            .unwrap_or(f64::INFINITY);
+
+        if left_inner_objective <= right_inner_objective {
+            right = right_inner;
+            right_inner = left_inner;
+            right_inner_evaluation = left_inner_evaluation;
+
+            left_inner = right - golden_ratio * (right - left);
+            left_inner_evaluation = evaluate_line_search_step(
+                optimizer_context,
+                current_vector,
+                direction,
+                left_inner,
+                search_bounds,
+            );
+
+            evaluation_count += 1;
+
+            update_best_line_search_evaluation(
+                left_inner_evaluation,
+                &mut best_vector,
+                &mut best_evaluation,
+            );
+        } else {
+            left = left_inner;
+            left_inner = right_inner;
+            left_inner_evaluation = right_inner_evaluation;
+
+            right_inner = left + golden_ratio * (right - left);
+            right_inner_evaluation = evaluate_line_search_step(
+                optimizer_context,
+                current_vector,
+                direction,
+                right_inner,
+                search_bounds,
+            );
+
+            evaluation_count += 1;
+
+            update_best_line_search_evaluation(
+                right_inner_evaluation,
+                &mut best_vector,
+                &mut best_evaluation,
+            );
+        }
+
+        if (right - left).abs() <= solver_settings.absolute_tolerance {
+            break;
+        }
+    }
+
+    LineSearchOutcome {
+        best_vector,
+        best_evaluation,
+        evaluation_count,
+    }
+}
+
+fn update_best_line_search_evaluation(
+    evaluated_step: Option<([f64; 4], CachedSearchPointObjectiveEvaluation)>,
+    best_vector: &mut [f64; 4],
+    best_evaluation: &mut Option<CachedSearchPointObjectiveEvaluation>,
+) {
+    let Some((candidate_vector, candidate_evaluation)) = evaluated_step else {
+        return;
+    };
+
+    let should_replace = best_evaluation
+        .map(|current_best| {
+            candidate_evaluation.objective.shifted_objective_score
+                < current_best.objective.shifted_objective_score
+        })
+        .unwrap_or(true);
+    if should_replace {
+        *best_vector = candidate_vector;
+        *best_evaluation = Some(candidate_evaluation);
+    }
+}
+
+fn evaluate_line_search_step(
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    current_vector: [f64; 4],
+    direction: [f64; 4],
+    step: f64,
+    search_bounds: NigShapeSearchBounds,
+) -> Option<([f64; 4], CachedSearchPointObjectiveEvaluation)> {
+    let candidate_vector = clamp_search_point_vector(
+        vector4_add(current_vector, vector4_scale(direction, step)),
+        search_bounds,
+    );
+
+    let candidate_evaluation = evaluate_cached_search_point(
+        optimizer_context,
+        vector_to_search_point(candidate_vector),
+        ContinuousLikelihoodFidelityTier::Local,
+    )?;
+
+    Some((candidate_vector, candidate_evaluation))
+}
+
+fn bounded_step_interval(
+    current_vector: [f64; 4],
+    direction: [f64; 4],
+    search_bounds: NigShapeSearchBounds,
+) -> Option<(f64, f64)> {
+    let mut lower_step = f64::NEG_INFINITY;
+    let mut upper_step = f64::INFINITY;
+
+    for coordinate_index in 0..4 {
+        let direction_component = direction[coordinate_index];
+        if direction_component.abs() <= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER
+        {
+            continue;
+        }
+
+        let lower_candidate = (search_bounds.lower_bounds[coordinate_index]
+            - current_vector[coordinate_index])
+            / direction_component;
+        let upper_candidate = (search_bounds.upper_bounds[coordinate_index]
+            - current_vector[coordinate_index])
+            / direction_component;
+
+        lower_step = lower_step.max(lower_candidate.min(upper_candidate));
+        upper_step = upper_step.min(lower_candidate.max(upper_candidate));
+    }
+
+    if !lower_step.is_finite() || !upper_step.is_finite() || lower_step > upper_step {
+        return None;
+    }
+
+    Some((lower_step, upper_step))
+}
+
+fn clamp_search_point_vector(
+    mut search_point_vector: [f64; 4],
+    search_bounds: NigShapeSearchBounds,
+) -> [f64; 4] {
+    for coordinate_index in 0..4 {
+        search_point_vector[coordinate_index] = search_point_vector[coordinate_index].clamp(
+            search_bounds.lower_bounds[coordinate_index],
+            search_bounds.upper_bounds[coordinate_index],
+        );
+    }
+
+    search_point_vector
+}
+
+fn search_point_to_vector(search_point: NigShapeSearchPoint) -> [f64; 4] {
+    [
+        search_point.log_alpha,
+        search_point.buy_skew_coordinate,
+        search_point.sell_relative_coordinate,
+        search_point.log_delta_offset,
+    ]
+}
+
+fn vector_to_search_point(search_point_vector: [f64; 4]) -> NigShapeSearchPoint {
+    NigShapeSearchPoint {
+        log_alpha: search_point_vector[0],
+        buy_skew_coordinate: search_point_vector[1],
+        sell_relative_coordinate: search_point_vector[2],
+        log_delta_offset: search_point_vector[3],
+    }
+}
+
+fn with_continuous_fit_thread_pool<T: Send>(
+    cpu_count: usize,
+    body: impl FnOnce() -> T + Send,
+) -> T {
+    if cpu_count <= 1 {
+        return body();
+    }
+
+    match rayon::ThreadPoolBuilder::new()
+        .num_threads(cpu_count)
+        .build()
+    {
+        Ok(thread_pool) => thread_pool.install(body),
+        Err(_) => body(),
+    }
 }
 
 fn distribution_profile_fit_breakdown(
@@ -1305,6 +1991,11 @@ fn distribution_profile_fit_breakdown(
         boundary_penalty: 0.0,
         profile_fit_score: global_fit_score,
         log_likelihood_shift: 0.0,
+        optimizer_seed_objective: 0.0,
+        optimizer_local_objective: 0.0,
+        optimizer_final_objective: 0.0,
+        optimizer_local_evaluation_count: 0,
+        optimizer_stop_reason: "not_optimized".to_string(),
         mean_return_fit,
         volatility_fit,
         median_return_fit,
@@ -1587,13 +2278,15 @@ fn compute_l_moment_tau3_from_sorted(sorted_returns: &[f64]) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ReturnComponentsStageContinuousReturnCalibrationSample, average_negative_log_likelihood,
-        build_distribution_profile, build_equal_business_time_blocks, build_scale_bucket_profiles,
-        coordinate_to_ratio, coordinate_to_share, log_density_net_trading_time_return,
-        ratio_to_coordinate, sell_beta_ratio_from_relative_share,
-        sell_relative_share_from_beta_ratios,
+        ContinuousLikelihoodFidelityTier, ReturnComponentsStageContinuousReturnCalibrationSample,
+        average_negative_log_likelihood, build_continuous_return_optimizer_context,
+        build_distribution_profile, build_equal_business_time_blocks, build_nig_search_candidates,
+        build_scale_bucket_profiles, continuous_block_likelihood_objective, coordinate_to_ratio,
+        coordinate_to_share, log_density_net_trading_time_return, ratio_to_coordinate,
+        sell_beta_ratio_from_relative_share, sell_relative_share_from_beta_ratios,
     };
     use crate::stages::return_components::contracts::ReturnComponentsObservedOpenSessionReturn;
+    use janiform_calibration_artifacts::CalibrationOptimizerSettings;
     use janiform_foundations::randomness::SplitMix64SimulationRandomnessStream;
     use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
@@ -1712,6 +2405,8 @@ mod tests {
             1.5e-4,
             1.2,
             0.55,
+            0.54,
+            0.66,
             128,
         )
         .expect("log density should evaluate");
@@ -1764,17 +2459,18 @@ mod tests {
             ),
             open_session_sell_share_proxy: 0.5,
         };
+        let optimizer_context = build_continuous_return_optimizer_context(&calibration_sample);
 
         let true_objective = average_negative_log_likelihood(
             true_configuration,
-            &calibration_sample,
+            &optimizer_context,
             &(0..observed_returns.len()).collect::<Vec<_>>(),
             128,
         )
         .expect("true likelihood should evaluate");
         let challenger_objective = average_negative_log_likelihood(
             challenger_configuration,
-            &calibration_sample,
+            &optimizer_context,
             &(0..observed_returns.len()).collect::<Vec<_>>(),
             128,
         )
@@ -1784,5 +2480,168 @@ mod tests {
             true_objective < challenger_objective,
             "likelihood objective should prefer the data-generating configuration"
         );
+    }
+
+    #[test]
+    fn broad_search_is_deterministic_across_parallel_cpu_counts() {
+        let calibration_sample = test_optimizer_calibration_sample();
+        let single_thread_solver_settings =
+            CalibrationOptimizerSettings::try_new("adaptive_search", 64, 1, 1.0e-8, 1.0e-6, 1.0)
+                .expect("solver settings should validate");
+        let multi_thread_solver_settings =
+            CalibrationOptimizerSettings::try_new("adaptive_search", 64, 4, 1.0e-8, 1.0e-6, 1.0)
+                .expect("solver settings should validate");
+
+        let single_thread_candidates =
+            build_nig_search_candidates(&calibration_sample, 17, &single_thread_solver_settings);
+        let multi_thread_candidates =
+            build_nig_search_candidates(&calibration_sample, 17, &multi_thread_solver_settings);
+
+        assert_eq!(
+            single_thread_candidates[0].configuration,
+            multi_thread_candidates[0].configuration
+        );
+        assert_eq!(
+            single_thread_candidates[0]
+                .optimizer_diagnostic
+                .final_objective_score
+                .to_bits(),
+            multi_thread_candidates[0]
+                .optimizer_diagnostic
+                .final_objective_score
+                .to_bits()
+        );
+    }
+
+    #[test]
+    fn optimized_candidate_is_no_worse_than_best_broad_seed() {
+        let calibration_sample = test_optimizer_calibration_sample();
+        let optimizer_context = build_continuous_return_optimizer_context(&calibration_sample);
+        let solver_settings =
+            CalibrationOptimizerSettings::try_new("adaptive_search", 64, 1, 1.0e-8, 1.0e-6, 1.0)
+                .expect("solver settings should validate");
+
+        let broad_search_points = super::build_broad_search_points(&calibration_sample, 64);
+        let broad_seed_candidates = super::score_search_points(
+            &optimizer_context,
+            broad_search_points.as_slice(),
+            ContinuousLikelihoodFidelityTier::Seed,
+        );
+        let best_broad_seed = broad_seed_candidates
+            .iter()
+            .map(|candidate| {
+                continuous_block_likelihood_objective(
+                    candidate.configuration,
+                    &optimizer_context,
+                    ContinuousLikelihoodFidelityTier::Full,
+                )
+                .shifted_objective_score
+            })
+            .fold(f64::INFINITY, f64::min);
+        let optimized_candidates =
+            build_nig_search_candidates(&calibration_sample, 17, &solver_settings);
+
+        assert!(
+            optimized_candidates[0]
+                .optimizer_diagnostic
+                .final_objective_score
+                <= best_broad_seed + 1.0e-10
+        );
+    }
+
+    #[test]
+    fn optimizer_stop_reason_can_report_tolerance_and_budget() {
+        let calibration_sample = test_optimizer_calibration_sample();
+        let tolerance_solver_settings =
+            CalibrationOptimizerSettings::try_new("adaptive_search", 64, 1, 1.0, 1.0, 1.0)
+                .expect("solver settings should validate");
+        let budget_solver_settings =
+            CalibrationOptimizerSettings::try_new("adaptive_search", 64, 1, 1.0e-12, 1.0e-12, 1.0)
+                .expect("solver settings should validate");
+
+        let tolerance_candidates =
+            build_nig_search_candidates(&calibration_sample, 17, &tolerance_solver_settings);
+        let budget_candidates =
+            build_nig_search_candidates(&calibration_sample, 17, &budget_solver_settings);
+
+        assert_eq!(
+            tolerance_candidates[0].optimizer_diagnostic.stop_reason,
+            "tolerance"
+        );
+        assert_eq!(
+            budget_candidates[0].optimizer_diagnostic.stop_reason,
+            "budget"
+        );
+    }
+
+    #[test]
+    fn repeated_builds_keep_objective_cache_observable_results_stable() {
+        let calibration_sample = test_optimizer_calibration_sample();
+        let solver_settings =
+            CalibrationOptimizerSettings::try_new("adaptive_search", 64, 2, 1.0e-8, 1.0e-6, 1.0)
+                .expect("solver settings should validate");
+
+        let first_candidates =
+            build_nig_search_candidates(&calibration_sample, 17, &solver_settings);
+        let second_candidates =
+            build_nig_search_candidates(&calibration_sample, 17, &solver_settings);
+
+        assert_eq!(
+            first_candidates[0].configuration,
+            second_candidates[0].configuration
+        );
+        assert_eq!(
+            first_candidates[0]
+                .optimizer_diagnostic
+                .local_evaluation_count,
+            second_candidates[0]
+                .optimizer_diagnostic
+                .local_evaluation_count
+        );
+    }
+
+    fn test_optimizer_calibration_sample() -> ReturnComponentsStageContinuousReturnCalibrationSample
+    {
+        let configuration =
+            NigSharedPlusShiftConfiguration::try_new(120.0, -24.0, 2.5e-4, 0.0, -10.0)
+                .expect("configuration should validate");
+        let driver_parameters = configuration
+            .derive_driver_parameters()
+            .expect("driver parameters should derive");
+        let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(91);
+        let business_time_scales: Vec<f64> = (0..320)
+            .map(|sample_index| 0.8 + sample_index as f64 / 80.0)
+            .collect();
+        let sell_share_proxies: Vec<f64> = (0..320)
+            .map(|sample_index| 0.25 + 0.50 * ((sample_index % 13) as f64 / 12.0))
+            .collect();
+        let observed_returns: Vec<f64> = business_time_scales
+            .iter()
+            .zip(sell_share_proxies.iter())
+            .map(|(business_time_scale, sell_share_proxy)| {
+                let sell_weight = sell_share_proxy.clamp(0.0, 1.0);
+                let buy_weight = 1.0 - sell_weight;
+                driver_parameters
+                    .sample_trading_time_return_increment(
+                        business_time_scale * buy_weight,
+                        business_time_scale * sell_weight,
+                        &mut randomness_stream,
+                    )
+                    .expect("synthetic increment should sample")
+                    .combined_increment
+            })
+            .collect();
+
+        ReturnComponentsStageContinuousReturnCalibrationSample {
+            observed_returns: observed_returns.clone(),
+            business_time_scales: business_time_scales.clone(),
+            sell_share_proxies: sell_share_proxies.clone(),
+            observed_profile: build_distribution_profile(observed_returns.as_slice()),
+            scale_bucket_profiles: build_scale_bucket_profiles(
+                observed_returns.as_slice(),
+                business_time_scales.as_slice(),
+            ),
+            open_session_sell_share_proxy: super::arithmetic_mean(sell_share_proxies.as_slice()),
+        }
     }
 }

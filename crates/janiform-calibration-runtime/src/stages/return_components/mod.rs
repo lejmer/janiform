@@ -13,6 +13,8 @@ mod quantile_binning_fit;
 mod signal_partition_fit;
 mod surprise_episode_selection_fit;
 mod surprise_intensity_fit;
+#[cfg(test)]
+mod test_support;
 
 pub use contracts::*;
 pub use execution::*;

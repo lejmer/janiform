@@ -6,6 +6,7 @@ pub mod complex_math;
 pub mod market_state;
 pub mod numeric;
 pub mod randomness;
+pub mod vector_math;
 
 pub const fn splitmix64_output_mixer(mut value: u64) -> u64 {
     value ^= value >> 30;
