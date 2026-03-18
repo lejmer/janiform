@@ -260,6 +260,14 @@ impl ReturnComponentsDetectedIntradayJumpCandidate {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ReturnComponentsSurpriseJumpEpisode {
+    pub(crate) member_jump_timestamps_utc_nanos: Vec<i64>,
+    pub(crate) terminal_timestamp_utc_nanos: i64,
+    pub(crate) cumulative_jump_return: f64,
+    pub(crate) post_shock_activity_lift: f64,
+}
+
 /// Detected close-open gap candidate from observed close-open boundaries.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ReturnComponentsDetectedCloseOpenGapCandidate {
@@ -1166,8 +1174,11 @@ pub struct ReturnComponentsStageCandidateProvenance {
     pub source_windows: Vec<ReturnComponentsStageCandidateSourceWindow>,
     pub preprocessing_filter_policy: &'static str,
     pub preprocessing_filters: Vec<String>,
-    pub jump_abs_return_bin_edges: Vec<f64>,
-    pub gap_abs_return_bin_edges: Vec<f64>,
+    pub surprise_episode_selection_policy: ReturnComponentsStageSurpriseEpisodeSelectionPolicy,
+    pub quantile_binning_policy: ReturnComponentsStageQuantileBinningPolicy,
+    pub diagnostic_policy: ReturnComponentsStageDiagnosticPolicy,
+    pub objective_scoring_policy: ReturnComponentsStageObjectiveScoringPolicy,
+    pub price_range_sanity_policy: ReturnComponentsStagePriceRangeSanityPolicy,
     pub summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
     pub deterministic_seed_metadata: ReturnComponentsStageDeterministicSeedMetadata,
 }
@@ -1180,29 +1191,38 @@ impl ReturnComponentsStageCandidateProvenance {
         if self.preprocessing_filters.is_empty() {
             return Err(ReturnComponentsStageCandidateInputError::MissingPreprocessingFilters);
         }
-        if self.jump_abs_return_bin_edges.is_empty() {
-            return Err(ReturnComponentsStageCandidateInputError::MissingJumpBinEdges);
-        }
-        if self.gap_abs_return_bin_edges.is_empty() {
-            return Err(ReturnComponentsStageCandidateInputError::MissingGapBinEdges);
-        }
 
-        for &bin_edge in &self.jump_abs_return_bin_edges {
-            if !bin_edge.is_finite() || bin_edge < 0.0 {
-                return Err(
-                    ReturnComponentsStageCandidateInputError::InvalidJumpBinEdge {
-                        value: bin_edge,
-                    },
-                );
-            }
-        }
-        for &bin_edge in &self.gap_abs_return_bin_edges {
-            if !bin_edge.is_finite() || bin_edge < 0.0 {
-                return Err(
-                    ReturnComponentsStageCandidateInputError::InvalidGapBinEdge { value: bin_edge },
-                );
-            }
-        }
+        self.surprise_episode_selection_policy
+            .validate()
+            .map_err(|error_message| {
+                ReturnComponentsStageCandidateInputError::InvalidSurpriseEpisodeSelectionPolicy {
+                    error_message,
+                }
+            })?;
+        self.quantile_binning_policy
+            .validate()
+            .map_err(|error_message| {
+                ReturnComponentsStageCandidateInputError::InvalidQuantileBinningPolicy {
+                    error_message,
+                }
+            })?;
+        self.diagnostic_policy.validate().map_err(|error_message| {
+            ReturnComponentsStageCandidateInputError::InvalidDiagnosticPolicy { error_message }
+        })?;
+        self.objective_scoring_policy
+            .validate()
+            .map_err(|error_message| {
+                ReturnComponentsStageCandidateInputError::InvalidObjectiveScoringPolicy {
+                    error_message,
+                }
+            })?;
+        self.price_range_sanity_policy
+            .validate()
+            .map_err(|error_message| {
+                ReturnComponentsStageCandidateInputError::InvalidPriceRangeSanityPolicy {
+                    error_message,
+                }
+            })?;
 
         let summary_statistics = self.summary_statistics;
         for metric_value in [
@@ -1226,6 +1246,230 @@ impl ReturnComponentsStageCandidateProvenance {
                         value: metric_value,
                     },
                 );
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStageDiagnosticPolicy {
+    pub fit_policy: &'static str,
+    pub shock_evidence_min_count: usize,
+    pub insufficient_evidence_state: &'static str,
+    pub identified_component_state: &'static str,
+}
+
+impl ReturnComponentsStageDiagnosticPolicy {
+    fn validate(&self) -> Result<(), String> {
+        if self.fit_policy.trim().is_empty() {
+            return Err("fit_policy must be non-empty".to_string());
+        }
+        if self.shock_evidence_min_count == 0 {
+            return Err("shock_evidence_min_count must be strictly positive".to_string());
+        }
+        if self.insufficient_evidence_state.trim().is_empty() {
+            return Err("insufficient_evidence_state must be non-empty".to_string());
+        }
+        if self.identified_component_state.trim().is_empty() {
+            return Err("identified_component_state must be non-empty".to_string());
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStageObjectiveScoringPolicy {
+    pub fit_policy: &'static str,
+    pub arrival_frequency_zero_floor: f64,
+    pub positive_metric_zero_floor: f64,
+    pub price_range_threshold_floor: f64,
+    pub price_range_excess_transform: &'static str,
+    pub dominant_scale_driver_order: Vec<String>,
+}
+
+impl ReturnComponentsStageObjectiveScoringPolicy {
+    fn validate(&self) -> Result<(), String> {
+        if self.fit_policy.trim().is_empty() {
+            return Err("fit_policy must be non-empty".to_string());
+        }
+        if self.price_range_excess_transform.trim().is_empty() {
+            return Err("price_range_excess_transform must be non-empty".to_string());
+        }
+        if self.dominant_scale_driver_order.is_empty() {
+            return Err("dominant_scale_driver_order must be non-empty".to_string());
+        }
+        for (field_name, value) in [
+            (
+                "arrival_frequency_zero_floor",
+                self.arrival_frequency_zero_floor,
+            ),
+            (
+                "positive_metric_zero_floor",
+                self.positive_metric_zero_floor,
+            ),
+            (
+                "price_range_threshold_floor",
+                self.price_range_threshold_floor,
+            ),
+        ] {
+            if !value.is_finite() || value <= 0.0 {
+                return Err(format!("{field_name} must be finite and strictly positive"));
+            }
+        }
+        if self
+            .dominant_scale_driver_order
+            .iter()
+            .any(|value| value.trim().is_empty())
+        {
+            return Err("dominant_scale_driver_order entries must be non-empty".to_string());
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStageSurpriseEpisodeSelectionPolicy {
+    pub fit_policy: &'static str,
+    pub merge_gap_quantile: f64,
+    pub merge_gap_threshold_nanos: i64,
+    pub normalized_magnitude_quantile: f64,
+    pub normalized_magnitude_threshold: f64,
+    pub positive_activity_excess_quantile: f64,
+    pub positive_activity_excess_threshold: f64,
+    pub composite_score_quantile: f64,
+    pub composite_score_threshold: f64,
+}
+
+impl ReturnComponentsStageSurpriseEpisodeSelectionPolicy {
+    fn validate(&self) -> Result<(), String> {
+        if self.fit_policy.trim().is_empty() {
+            return Err("fit_policy must be non-empty".to_string());
+        }
+
+        for (field_name, value) in [
+            ("merge_gap_quantile", self.merge_gap_quantile),
+            (
+                "normalized_magnitude_quantile",
+                self.normalized_magnitude_quantile,
+            ),
+            (
+                "positive_activity_excess_quantile",
+                self.positive_activity_excess_quantile,
+            ),
+            ("composite_score_quantile", self.composite_score_quantile),
+        ] {
+            if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                return Err(format!("{field_name} must be finite and within [0, 1]"));
+            }
+        }
+
+        if self.merge_gap_threshold_nanos < 0 {
+            return Err("merge_gap_threshold_nanos must be non-negative".to_string());
+        }
+
+        for (field_name, value) in [
+            (
+                "normalized_magnitude_threshold",
+                self.normalized_magnitude_threshold,
+            ),
+            (
+                "positive_activity_excess_threshold",
+                self.positive_activity_excess_threshold,
+            ),
+            ("composite_score_threshold", self.composite_score_threshold),
+        ] {
+            if !value.is_finite() || value < 0.0 {
+                return Err(format!("{field_name} must be finite and non-negative"));
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStageQuantileBinningPolicy {
+    pub fit_policy: &'static str,
+    pub jump_bin_quantiles: Vec<f64>,
+    pub gap_bin_quantiles: Vec<f64>,
+    pub jump_abs_return_bin_edges: Vec<f64>,
+    pub gap_abs_return_bin_edges: Vec<f64>,
+}
+
+impl ReturnComponentsStageQuantileBinningPolicy {
+    fn validate(&self) -> Result<(), String> {
+        if self.fit_policy.trim().is_empty() {
+            return Err("fit_policy must be non-empty".to_string());
+        }
+        if self.jump_abs_return_bin_edges.is_empty() {
+            return Err("jump_abs_return_bin_edges must be non-empty".to_string());
+        }
+        if self.gap_abs_return_bin_edges.is_empty() {
+            return Err("gap_abs_return_bin_edges must be non-empty".to_string());
+        }
+
+        for (field_name, quantiles) in [
+            ("jump_bin_quantiles", self.jump_bin_quantiles.as_slice()),
+            ("gap_bin_quantiles", self.gap_bin_quantiles.as_slice()),
+        ] {
+            for &quantile in quantiles {
+                if !quantile.is_finite() || !(0.0..=1.0).contains(&quantile) {
+                    return Err(format!(
+                        "{field_name} values must be finite and within [0, 1]"
+                    ));
+                }
+            }
+        }
+
+        for (field_name, bin_edges) in [
+            (
+                "jump_abs_return_bin_edges",
+                self.jump_abs_return_bin_edges.as_slice(),
+            ),
+            (
+                "gap_abs_return_bin_edges",
+                self.gap_abs_return_bin_edges.as_slice(),
+            ),
+        ] {
+            for &bin_edge in bin_edges {
+                if !bin_edge.is_finite() || bin_edge < 0.0 {
+                    return Err(format!(
+                        "{field_name} values must be finite and non-negative"
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStagePriceRangeSanityPolicy {
+    pub fit_policy: &'static str,
+    pub threshold_ratio: f64,
+    pub continuous_reference_span_multiplier: f64,
+}
+
+impl ReturnComponentsStagePriceRangeSanityPolicy {
+    fn validate(&self) -> Result<(), String> {
+        if self.fit_policy.trim().is_empty() {
+            return Err("fit_policy must be non-empty".to_string());
+        }
+
+        for (field_name, value) in [
+            ("threshold_ratio", self.threshold_ratio),
+            (
+                "continuous_reference_span_multiplier",
+                self.continuous_reference_span_multiplier,
+            ),
+        ] {
+            if !value.is_finite() || value <= 0.0 {
+                return Err(format!("{field_name} must be finite and strictly positive"));
             }
         }
 
@@ -1318,6 +1562,7 @@ pub struct ReturnComponentsStageActivityCouplingDiagnostic {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ReturnComponentsStagePriceRangeSanityDiagnostic {
+    pub policy: ReturnComponentsStagePriceRangeSanityPolicy,
     pub is_flagged: bool,
     pub observed_log_price_span: f64,
     pub fitted_reference_log_price_span: f64,
@@ -1326,7 +1571,6 @@ pub struct ReturnComponentsStagePriceRangeSanityDiagnostic {
     pub effective_mean_business_time_scale: f64,
     pub fitted_mean_abs_jump_return: f64,
     pub expansion_ratio: f64,
-    pub threshold_ratio: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -1410,13 +1654,20 @@ pub enum ReturnComponentsStageCandidateInputError {
     },
     MissingCandidateSourceWindows,
     MissingPreprocessingFilters,
-    MissingJumpBinEdges,
-    MissingGapBinEdges,
-    InvalidJumpBinEdge {
-        value: f64,
+    InvalidSurpriseEpisodeSelectionPolicy {
+        error_message: String,
     },
-    InvalidGapBinEdge {
-        value: f64,
+    InvalidQuantileBinningPolicy {
+        error_message: String,
+    },
+    InvalidDiagnosticPolicy {
+        error_message: String,
+    },
+    InvalidObjectiveScoringPolicy {
+        error_message: String,
+    },
+    InvalidPriceRangeSanityPolicy {
+        error_message: String,
     },
     InvalidSummaryStatistic {
         value: f64,
@@ -1475,21 +1726,25 @@ impl Display for ReturnComponentsStageCandidateInputError {
                 formatter,
                 "candidate provenance must include at least one preprocessing filter"
             ),
-            Self::MissingJumpBinEdges => write!(
+            Self::InvalidSurpriseEpisodeSelectionPolicy { error_message } => write!(
                 formatter,
-                "candidate provenance must include jump_abs_return_bin_edges"
+                "candidate provenance surprise-episode selection policy is invalid: {error_message}"
             ),
-            Self::MissingGapBinEdges => write!(
+            Self::InvalidQuantileBinningPolicy { error_message } => write!(
                 formatter,
-                "candidate provenance must include gap_abs_return_bin_edges"
+                "candidate provenance quantile-binning policy is invalid: {error_message}"
             ),
-            Self::InvalidJumpBinEdge { value } => write!(
+            Self::InvalidDiagnosticPolicy { error_message } => write!(
                 formatter,
-                "jump_abs_return_bin_edges values must be finite and non-negative, found {value}"
+                "candidate provenance diagnostic policy is invalid: {error_message}"
             ),
-            Self::InvalidGapBinEdge { value } => write!(
+            Self::InvalidObjectiveScoringPolicy { error_message } => write!(
                 formatter,
-                "gap_abs_return_bin_edges values must be finite and non-negative, found {value}"
+                "candidate provenance objective-scoring policy is invalid: {error_message}"
+            ),
+            Self::InvalidPriceRangeSanityPolicy { error_message } => write!(
+                formatter,
+                "candidate provenance price-range sanity policy is invalid: {error_message}"
             ),
             Self::InvalidSummaryStatistic { value } => write!(
                 formatter,

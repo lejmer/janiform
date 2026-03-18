@@ -269,11 +269,11 @@ fn hawkes_stage_execution_succeeds_for_memory_and_disk_mode_handoffs() {
 
     assert_eq!(
         memory_payload.selected_candidate_id,
-        "candidate_stable_low_loss"
-    );
-    assert_eq!(
-        memory_payload.selected_candidate_id,
         disk_payload.selected_candidate_id
+    );
+    assert!(
+        memory_payload.selected_candidate_id.contains("_refined_"),
+        "hawkes stage should be able to refine beyond the coarse seed set"
     );
     assert_eq!(
         memory_payload.fitted_parameters.kernel_parameters,
@@ -416,7 +416,10 @@ fn hawkes_stage_objective_terms_change_with_candidate_implied_metrics() {
         .as_ref()
         .expect("hawkes report should include payload")
         .candidate_diagnostics;
-    assert_eq!(candidate_diagnostics.len(), 2);
+    assert!(
+        candidate_diagnostics.len() > 2,
+        "hawkes stage should evaluate refined candidates beyond the coarse seeds"
+    );
 
     let high_loss = candidate_diagnostics
         .iter()
@@ -702,7 +705,7 @@ fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_hando
     );
     assert_eq!(
         memory_payload.candidate_generation_policy,
-        "observed_open_session_returns_and_shock_evidence_to_nig_search_and_news_candidate_families.v1"
+        "observed_open_session_returns_and_shock_evidence_to_explicit_fitted_return_component_sublayers.v1"
     );
 
     for candidate_diagnostic in &memory_payload.candidate_diagnostics {
