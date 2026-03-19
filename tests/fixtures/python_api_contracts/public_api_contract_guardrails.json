@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "bcc26d41606d421b120394924dbea78ca0f6c0da5d171926e8445de3681c1e57",
+  "approved_snapshot_sha256": "211e4e39849eb407e4ba4f13def5b0854ef27196fedc5d06434418185778f9ad",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -417,6 +417,16 @@
       "rationale": "The staged return-components objective contract now separates surprise-arrival fit quality from jump-magnitude fit, so the approved Python snapshot must include the new public surprise_arrival_fit_weight field in the staged objective-weight model.",
       "snapshot_sha256": "bcc26d41606d421b120394924dbea78ca0f6c0da5d171926e8445de3681c1e57",
       "summary": "Approve staged surprise-arrival objective weighting as a distinct public contract field."
+    },
+    {
+      "approved_on": "2026-03-19",
+      "docs_updated": [
+        "README.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "The default full staged calibration workflow now includes a public joint-refinement final stage, so the approved Python snapshot must expose the extra CalibrationStage enum member used by the high-level estimator, market-data preparation diagnostics, and staged request contract.",
+      "snapshot_sha256": "211e4e39849eb407e4ba4f13def5b0854ef27196fedc5d06434418185778f9ad",
+      "summary": "Approve the public joint_refinement staged calibration enum member."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_2",

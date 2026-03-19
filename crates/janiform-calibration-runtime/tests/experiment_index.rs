@@ -1,5 +1,5 @@
 mod support;
-use support::*;
+use support::shared::*;
 
 #[test]
 fn experiment_index_commit_flow_creates_and_updates_run_records() {
@@ -314,11 +314,18 @@ fn commit_indexed_run(
         &CalibrationStagedRunStageReport::ReturnComponents(return_components_report),
     )
     .expect("return-components artifact should build");
+    let joint_refinement_report = build_joint_refinement_stage_success_report();
+    let joint_refinement_artifact = build_calibration_stage_parameter_artifact(
+        &run_contract,
+        &CalibrationStagedRunStageReport::JointRefinement(joint_refinement_report),
+    )
+    .expect("joint-refinement artifact should build");
 
     let stage_parameter_artifacts = vec![
         seasonality_artifact,
         hawkes_artifact,
         return_components_artifact,
+        joint_refinement_artifact,
     ];
 
     let dataset_snapshot = build_calibration_dataset_snapshot_artifact(&run_contract)

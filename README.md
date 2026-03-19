@@ -78,6 +78,8 @@ pandas_frame = simulation.to_pandas()
 
 Set `JaniformEstimator(cpu_count=...)` or `janiform fit --cpu-count ...` when you want to
 control how many CPU cores staged calibration uses while evaluating candidate parameter sets.
+The default full calibration workflow now runs four stages in order:
+`seasonality`, `hawkes`, `return_components`, and `joint_refinement`.
 
 ## Developer Environment Setup
 

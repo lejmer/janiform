@@ -10,8 +10,9 @@ use super::super::contracts::{
     CalibrationStageSeedSource,
 };
 use super::super::{
-    HawkesStageFittedParameters, ReturnComponentsStageFittedParameters,
-    SeasonalityStageNormalizationMetadata,
+    HawkesStageFittedParameters, JointRefinementStageFittedParameters,
+    JointRefinementStageObjectiveBreakdown, JointRefinementStageOptimizerDiagnostics,
+    ReturnComponentsStageFittedParameters, SeasonalityStageNormalizationMetadata,
 };
 use super::dataset_snapshot::CALIBRATION_DATASET_SNAPSHOT_FORWARD_EXTENSION_POLICY;
 use super::shared::{
@@ -160,11 +161,23 @@ pub struct ReturnComponentsStageParameterPayload {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct JointRefinementStageParameterPayload {
+    pub selected_candidate_id: String,
+    pub fitted_parameters: JointRefinementStageFittedParameters,
+    pub baseline_hawkes_fitted_parameters: HawkesStageFittedParameters,
+    pub baseline_return_components_fitted_parameters: ReturnComponentsStageFittedParameters,
+    pub objective_breakdown: JointRefinementStageObjectiveBreakdown,
+    pub optimizer_diagnostics: JointRefinementStageOptimizerDiagnostics,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "payload_kind", content = "payload", rename_all = "snake_case")]
 pub enum CalibrationStageParameterPayload {
     Seasonality(SeasonalityStageParameterPayload),
     Hawkes(HawkesStageParameterPayload),
     ReturnComponents(ReturnComponentsStageParameterPayload),
+    JointRefinement(JointRefinementStageParameterPayload),
 }
 
 impl CalibrationStageParameterPayload {
@@ -173,6 +186,7 @@ impl CalibrationStageParameterPayload {
             Self::Seasonality(_) => CalibrationStage::Seasonality,
             Self::Hawkes(_) => CalibrationStage::Hawkes,
             Self::ReturnComponents(_) => CalibrationStage::ReturnComponents,
+            Self::JointRefinement(_) => CalibrationStage::JointRefinement,
         }
     }
 }
@@ -398,6 +412,16 @@ impl CalibrationStageParameterArtifact {
                 validate_return_components_stage_parameter_boundary(payload)?;
                 validate_optimizer_state_presence(self.stage, self.optimizer_state.as_ref())?;
             }
+            CalibrationStageParameterPayload::JointRefinement(payload) => {
+                validate_non_empty_artifact_value(
+                    payload.selected_candidate_id.as_str(),
+                    CalibrationStageParameterArtifactValidationError::EmptyStageParameterField {
+                        stage: self.stage,
+                        field: "stage_parameters.joint_refinement.selected_candidate_id",
+                    },
+                )?;
+                validate_optimizer_state_presence(self.stage, self.optimizer_state.as_ref())?;
+            }
         }
 
         if let Some(optimizer_state) = &self.optimizer_state {
@@ -568,10 +592,23 @@ pub struct ReturnComponentsStageParameterArtifactInput {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct JointRefinementStageParameterArtifactInput {
+    pub metadata: CalibrationStageParameterBuildMetadata,
+    pub optimizer_state: CalibrationStageParameterOptimizerStateInput,
+    pub selected_candidate_id: String,
+    pub fitted_parameters: JointRefinementStageFittedParameters,
+    pub baseline_hawkes_fitted_parameters: HawkesStageFittedParameters,
+    pub baseline_return_components_fitted_parameters: ReturnComponentsStageFittedParameters,
+    pub objective_breakdown: JointRefinementStageObjectiveBreakdown,
+    pub optimizer_diagnostics: JointRefinementStageOptimizerDiagnostics,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum CalibrationStageParameterArtifactInput {
     Seasonality(SeasonalityStageParameterArtifactInput),
     Hawkes(HawkesStageParameterArtifactInput),
     ReturnComponents(ReturnComponentsStageParameterArtifactInput),
+    JointRefinement(JointRefinementStageParameterArtifactInput),
 }
 
 pub fn build_calibration_stage_parameter_artifact(
@@ -592,6 +629,9 @@ pub fn build_calibration_stage_parameter_artifact(
         CalibrationStageParameterArtifactInput::Hawkes(_) => CalibrationStage::Hawkes,
         CalibrationStageParameterArtifactInput::ReturnComponents(_) => {
             CalibrationStage::ReturnComponents
+        }
+        CalibrationStageParameterArtifactInput::JointRefinement(_) => {
+            CalibrationStage::JointRefinement
         }
     };
     let artifact_reference =
@@ -616,6 +656,14 @@ pub fn build_calibration_stage_parameter_artifact(
         }
         CalibrationStageParameterArtifactInput::ReturnComponents(input) => {
             build_return_components_stage_parameter_artifact(
+                run_contract.run_spec.run_id.as_str(),
+                run_contract.run_spec.execution_mode,
+                input,
+                artifact_reference,
+            )
+        }
+        CalibrationStageParameterArtifactInput::JointRefinement(input) => {
+            build_joint_refinement_stage_parameter_artifact(
                 run_contract.run_spec.run_id.as_str(),
                 run_contract.run_spec.execution_mode,
                 input,
@@ -1079,6 +1127,48 @@ fn build_return_components_stage_parameter_artifact(
                 activity_input_transport: input.activity_input_transport,
                 activity_selected_hawkes_candidate_id: input.activity_selected_hawkes_candidate_id,
                 activity_artifact_reference: input.activity_artifact_reference,
+            },
+        ),
+    })
+}
+
+fn build_joint_refinement_stage_parameter_artifact(
+    run_id: &str,
+    execution_mode: CalibrationExecutionMode,
+    input: JointRefinementStageParameterArtifactInput,
+    artifact_reference: String,
+) -> Result<CalibrationStageParameterArtifact, CalibrationStageParameterArtifactBuildError> {
+    Ok(CalibrationStageParameterArtifact {
+        schema_version: CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_VERSION.to_string(),
+        run_id: run_id.to_string(),
+        execution_mode,
+        stage: CalibrationStage::JointRefinement,
+        artifact_reference,
+        schema_metadata: CalibrationStageParameterSchemaMetadata {
+            schema_family: CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_FAMILY.to_string(),
+            schema_generation: CALIBRATION_STAGE_PARAMETER_ARTIFACT_SCHEMA_GENERATION.to_string(),
+            forward_extension_policy: CALIBRATION_DATASET_SNAPSHOT_FORWARD_EXTENSION_POLICY
+                .to_string(),
+        },
+        output_schema_metadata: build_stage_parameter_output_schema_metadata(),
+        stage_output_schema_version: input.metadata.stage_output_schema_version,
+        seed_metadata: build_stage_parameter_seed_metadata(
+            input.metadata.run_global_seed,
+            input.metadata.stage_seed,
+            input.metadata.stage_seed_source,
+            input.metadata.stage_seed_derivation_policy.as_str(),
+        ),
+        solver_settings: input.metadata.solver_settings,
+        optimizer_state: Some(build_optimizer_state(input.optimizer_state)),
+        stage_parameters: CalibrationStageParameterPayload::JointRefinement(
+            JointRefinementStageParameterPayload {
+                selected_candidate_id: input.selected_candidate_id,
+                fitted_parameters: input.fitted_parameters,
+                baseline_hawkes_fitted_parameters: input.baseline_hawkes_fitted_parameters,
+                baseline_return_components_fitted_parameters: input
+                    .baseline_return_components_fitted_parameters,
+                objective_breakdown: input.objective_breakdown,
+                optimizer_diagnostics: input.optimizer_diagnostics,
             },
         ),
     })

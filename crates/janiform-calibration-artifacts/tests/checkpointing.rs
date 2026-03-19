@@ -1,5 +1,5 @@
 mod support;
-use support::*;
+use support::shared::*;
 
 #[test]
 fn stage_checkpoint_persist_and_load_round_trip_preserves_compatibility_metadata() {

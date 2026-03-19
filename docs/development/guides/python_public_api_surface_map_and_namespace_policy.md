@@ -254,6 +254,13 @@ The advanced staged-calibration entrypoint is:
 
 - `run_staged_calibration`
 
+The default full staged calibration path now executes:
+
+- `seasonality`
+- `hawkes`
+- `return_components`
+- `joint_refinement`
+
 The supported calibration ownership modules are:
 
 - `janiform.calibration.fit`

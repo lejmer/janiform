@@ -51,6 +51,7 @@ const fn calibration_stage_seed_derivation_nonce(stage: CalibrationStage) -> u64
         CalibrationStage::Seasonality => 0x5E45_0A3D_B51F_4E91,
         CalibrationStage::Hawkes => 0xA67B_3D2C_17F8_94E0,
         CalibrationStage::ReturnComponents => 0x3CF2_D8A1_6B94_C705,
+        CalibrationStage::JointRefinement => 0x9B5D_3F41_7A2C_E811,
     }
 }
 

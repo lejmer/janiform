@@ -41,5 +41,6 @@ pub use objective::*;
 pub use optimizer_adapter::*;
 pub use staged_runner::*;
 pub use stages::hawkes::*;
+pub use stages::joint_refinement::*;
 pub use stages::return_components::*;
 pub use stages::seasonality::*;

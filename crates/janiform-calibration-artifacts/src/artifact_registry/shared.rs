@@ -78,6 +78,7 @@ pub fn calibration_stage_token(stage: CalibrationStage) -> &'static str {
         CalibrationStage::Seasonality => "seasonality",
         CalibrationStage::Hawkes => "hawkes",
         CalibrationStage::ReturnComponents => "return_components",
+        CalibrationStage::JointRefinement => "joint_refinement",
     }
 }
 

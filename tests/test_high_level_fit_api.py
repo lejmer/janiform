@@ -384,6 +384,7 @@ def test_high_level_model_summary_exposes_fitted_parameters_and_provenance(
     assert summary["fitted_parameter_summary"]["selected_candidate_ids"] == {
         "hawkes": "candidate_stable_low_loss",
         "return_components": "return_candidate_balanced",
+        "joint_refinement": "joint_refinement_baseline",
     }
 
 
@@ -1235,6 +1236,7 @@ def test_high_level_fit_progress_splits_loading_and_translation_steps(
 
 def test_high_level_fit_report_returns_success_details_with_model(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tick_data_path = tmp_path / "ticks.csv"
     tick_data_path.write_text(
@@ -1266,6 +1268,13 @@ def test_high_level_fit_report_returns_success_details_with_model(
         ),
         market_profile="us_equity_cash",
     )
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_staged_calibration_with_raw_payload",
+        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
+            execution_input.request.run_id
+        ),
+    )
 
     model, fit_report = estimator.fit(
         run_id="high-level-fit-failure",
@@ -1281,6 +1290,7 @@ def test_high_level_fit_report_returns_success_details_with_model(
         "seasonality",
         "hawkes",
         "return_components",
+        "joint_refinement",
     ]
 
 
@@ -1551,6 +1561,213 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "exposure_weighted_mean_one_over_source_window.v1"
                             ),
                         },
+                    },
+                },
+            },
+            {
+                "stage_report_kind": "joint_refinement",
+                "stage": "joint_refinement",
+                "status": "success",
+                "run_id": run_id,
+                "execution_mode": "memory",
+                "handoff_policy": "explicit_run_spec_handoffs_mode_aware_transport.v1",
+                "fitted_stage_payload": {
+                    "schema_version": "calibration.stage_output.joint_refinement.v1",
+                    "selected_candidate_id": "joint_refinement_baseline",
+                    "fitted_parameters": {
+                        "hawkes_fitted_parameters": {
+                            "kernel_parameters": {
+                                "lambda_bar": 0.8,
+                                "beta": 1.6,
+                                "alpha": {
+                                    "plus_plus": 0.2,
+                                    "plus_minus": 0.1,
+                                    "minus_plus": 0.1,
+                                    "minus_minus": 0.25,
+                                },
+                                "rho": {
+                                    "plus_plus": 0.08,
+                                    "plus_minus": 0.04,
+                                    "minus_plus": 0.05,
+                                    "minus_minus": 0.1,
+                                },
+                            },
+                            "structured_alpha": {
+                                "a_self": 0.35,
+                                "a_cross": 0.06,
+                                "delta_self": 0.07,
+                                "delta_cross": 0.04,
+                            },
+                            "structured_rho": {
+                                "r_self": 0.3,
+                                "r_cross": 0.08,
+                                "delta_self_r": 0.04,
+                                "delta_cross_r": 0.05,
+                            },
+                            "self_dominance_policy": {
+                                "minimum_self_to_cross_ratio": 1.0,
+                            },
+                            "stability_numeric_tolerance": 0.0,
+                        },
+                        "return_components_fitted_parameters": {
+                            "nig_shared_plus_shift_configuration": {
+                                "alpha": 2.3,
+                                "beta_0": -0.8,
+                                "delta": 0.7,
+                                "mu": 0.1,
+                                "delta_beta": -0.2,
+                            },
+                            "news_process_configuration": {
+                                "schema_version": "news.process.configuration.v1",
+                                "arrivals": {
+                                    "known": {
+                                        "scheduled_event_timestamps_utc_nanos": [],
+                                    },
+                                    "surprise": {
+                                        "baseline_intensity": 0.02,
+                                    },
+                                },
+                                "shared_mark_law": {
+                                    "gamma_severity_marks": {
+                                        "shape_k": 1.4,
+                                        "scale_theta": 0.6,
+                                    },
+                                    "double_exponential_base_shock": {
+                                        "probability_positive": 0.35,
+                                        "eta_plus": 2.1,
+                                        "eta_minus": 3.0,
+                                    },
+                                    "coupled_gap_marks": {
+                                        "sigma_g": 0.8,
+                                    },
+                                },
+                                "known_component_mark_scales": {
+                                    "activity_coupling_scale": 1.0,
+                                    "return_jump_scale": 1.0,
+                                },
+                                "surprise_component_mark_scales": {
+                                    "activity_coupling_scale": 1.0,
+                                    "return_jump_scale": 1.0,
+                                },
+                            },
+                            "surprise_deterministic_intensity_profile": {
+                                "weekly_hour_utc_multipliers": [
+                                    2.0 if hour_index == 14 else 1.0 for hour_index in range(168)
+                                ],
+                                "profile_resolution_hours": 1,
+                                "fit_policy": (
+                                    "selected_exogenous_surprise_episode_rate_per_utc_hour_of_week_"
+                                    "with_baseline_shrinkage.v1"
+                                ),
+                                "normalization_policy": (
+                                    "exposure_weighted_mean_one_over_source_window.v1"
+                                ),
+                            },
+                        },
+                    },
+                    "baseline_hawkes_fitted_parameters": {
+                        "kernel_parameters": {
+                            "lambda_bar": 0.8,
+                            "beta": 1.6,
+                            "alpha": {
+                                "plus_plus": 0.2,
+                                "plus_minus": 0.1,
+                                "minus_plus": 0.1,
+                                "minus_minus": 0.25,
+                            },
+                            "rho": {
+                                "plus_plus": 0.08,
+                                "plus_minus": 0.04,
+                                "minus_plus": 0.05,
+                                "minus_minus": 0.1,
+                            },
+                        },
+                        "structured_alpha": {
+                            "a_self": 0.35,
+                            "a_cross": 0.06,
+                            "delta_self": 0.07,
+                            "delta_cross": 0.04,
+                        },
+                        "structured_rho": {
+                            "r_self": 0.3,
+                            "r_cross": 0.08,
+                            "delta_self_r": 0.04,
+                            "delta_cross_r": 0.05,
+                        },
+                        "self_dominance_policy": {
+                            "minimum_self_to_cross_ratio": 1.0,
+                        },
+                        "stability_numeric_tolerance": 0.0,
+                    },
+                    "baseline_return_components_fitted_parameters": {
+                        "nig_shared_plus_shift_configuration": {
+                            "alpha": 2.3,
+                            "beta_0": -0.8,
+                            "delta": 0.7,
+                            "mu": 0.1,
+                            "delta_beta": -0.2,
+                        },
+                        "news_process_configuration": {
+                            "schema_version": "news.process.configuration.v1",
+                            "arrivals": {
+                                "known": {
+                                    "scheduled_event_timestamps_utc_nanos": [],
+                                },
+                                "surprise": {
+                                    "baseline_intensity": 0.02,
+                                },
+                            },
+                            "shared_mark_law": {
+                                "gamma_severity_marks": {
+                                    "shape_k": 1.4,
+                                    "scale_theta": 0.6,
+                                },
+                                "double_exponential_base_shock": {
+                                    "probability_positive": 0.35,
+                                    "eta_plus": 2.1,
+                                    "eta_minus": 3.0,
+                                },
+                                "coupled_gap_marks": {
+                                    "sigma_g": 0.8,
+                                },
+                            },
+                            "known_component_mark_scales": {
+                                "activity_coupling_scale": 1.0,
+                                "return_jump_scale": 1.0,
+                            },
+                            "surprise_component_mark_scales": {
+                                "activity_coupling_scale": 1.0,
+                                "return_jump_scale": 1.0,
+                            },
+                        },
+                        "surprise_deterministic_intensity_profile": {
+                            "weekly_hour_utc_multipliers": [
+                                2.0 if hour_index == 14 else 1.0 for hour_index in range(168)
+                            ],
+                            "profile_resolution_hours": 1,
+                            "fit_policy": (
+                                "selected_exogenous_surprise_episode_rate_per_utc_hour_of_week_"
+                                "with_baseline_shrinkage.v1"
+                            ),
+                            "normalization_policy": (
+                                "exposure_weighted_mean_one_over_source_window.v1"
+                            ),
+                        },
+                    },
+                    "objective_breakdown": {
+                        "aggregated_likelihood_fit": 1.0,
+                        "aggregated_shape_fit": 1.0,
+                        "rv_activity_coupling_fit": 1.0,
+                        "price_span_sanity_fit": 1.0,
+                        "weighted_objective": 1.0,
+                        "hard_constraint_penalty": 0.0,
+                    },
+                    "optimizer_diagnostics": {
+                        "local_objective": 1.0,
+                        "final_objective": 1.0,
+                        "local_evaluation_count": 0,
+                        "final_simulation_seeds": [17],
+                        "stop_reason": "baseline_seed",
                     },
                 },
             },

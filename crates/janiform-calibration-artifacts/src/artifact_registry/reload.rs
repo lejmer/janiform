@@ -568,6 +568,7 @@ fn collect_stage_output_references(
         CalibrationStage::Seasonality,
         CalibrationStage::Hawkes,
         CalibrationStage::ReturnComponents,
+        CalibrationStage::JointRefinement,
     ] {
         if let Some(artifact_reference) = maybe_unique_manifest_reference(
             manifest_path,

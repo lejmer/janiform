@@ -1,0 +1,382 @@
+use chrono::{DateTime, Utc};
+
+use crate::calendar::{ExchangeCalendarRegistry, MarketState};
+use crate::stages::return_components::{
+    ReturnComponentsObservedOpenSessionReturn,
+    ReturnComponentsStageContinuousReturnCalibrationSample,
+    ReturnComponentsStageSignalSourceWindow,
+    build_continuous_return_calibration_sample_from_components,
+};
+use janiform_engine_simulation::{SeededFinePathRecord, SeededFinePathTransitionKind};
+
+pub(crate) const JOINT_REFINEMENT_ROLLING_ACTIVITY_WINDOW_INTERVAL_COUNT: usize = 96;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct JointRefinementRollingVarianceActivityMetric {
+    pub(crate) correlation: f64,
+    pub(crate) standardized_path_distance: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct JointRefinementAggregatedIntervalObservation {
+    pub(crate) interval_start_utc_nanos: i64,
+    pub(crate) interval_end_utc_nanos: i64,
+    pub(crate) log_return: f64,
+    pub(crate) tick_count: usize,
+    pub(crate) sell_share_proxy: f64,
+}
+
+pub(crate) fn build_observed_open_session_interval_observations(
+    calendar_registry: &ExchangeCalendarRegistry,
+    exchange_code: &str,
+    source_window: ReturnComponentsStageSignalSourceWindow,
+    observed_open_session_returns: &[ReturnComponentsObservedOpenSessionReturn],
+    interval_duration_nanos: i64,
+) -> Vec<JointRefinementAggregatedIntervalObservation> {
+    let mut intervals = build_open_session_interval_template(
+        calendar_registry,
+        exchange_code,
+        source_window,
+        interval_duration_nanos,
+    );
+    if intervals.is_empty() {
+        return intervals;
+    }
+
+    let aligned_window_start = intervals
+        .first()
+        .map(|interval| interval.interval_start_utc_nanos)
+        .unwrap_or(source_window.window_start_utc_nanos);
+
+    for observation in observed_open_session_returns {
+        if observation.return_timestamp_utc_nanos < source_window.window_start_utc_nanos
+            || observation.return_timestamp_utc_nanos >= source_window.window_end_utc_nanos
+        {
+            continue;
+        }
+        let interval_index = ((observation.return_timestamp_utc_nanos - aligned_window_start)
+            .div_euclid(interval_duration_nanos)) as usize;
+        let Some(interval) = intervals.get_mut(interval_index) else {
+            continue;
+        };
+        interval.log_return += observation.log_return;
+        interval.tick_count += 1;
+        interval.sell_share_proxy += observation.sell_share_proxy;
+    }
+
+    finalize_sell_share_proxies(&mut intervals, 0.5);
+    intervals
+}
+
+pub(crate) fn build_simulated_open_session_interval_observations(
+    calendar_registry: &ExchangeCalendarRegistry,
+    exchange_code: &str,
+    source_window: ReturnComponentsStageSignalSourceWindow,
+    fine_path: &[SeededFinePathRecord],
+    interval_duration_nanos: i64,
+) -> Vec<JointRefinementAggregatedIntervalObservation> {
+    let mut intervals = build_open_session_interval_template(
+        calendar_registry,
+        exchange_code,
+        source_window,
+        interval_duration_nanos,
+    );
+    if intervals.is_empty() {
+        return intervals;
+    }
+
+    let aligned_window_start = intervals
+        .first()
+        .map(|interval| interval.interval_start_utc_nanos)
+        .unwrap_or(source_window.window_start_utc_nanos);
+
+    for record in fine_path {
+        if record.timestamp_utc_nanos < source_window.window_start_utc_nanos
+            || record.timestamp_utc_nanos >= source_window.window_end_utc_nanos
+        {
+            continue;
+        }
+        let interval_index = ((record.timestamp_utc_nanos - aligned_window_start)
+            .div_euclid(interval_duration_nanos)) as usize;
+        let Some(interval) = intervals.get_mut(interval_index) else {
+            continue;
+        };
+        interval.log_return += record.return_components.total_return;
+        if matches!(
+            record.transition_kind,
+            SeededFinePathTransitionKind::BuyTrade | SeededFinePathTransitionKind::SellTrade
+        ) {
+            interval.tick_count += 1;
+            interval.sell_share_proxy += match record.transition_kind {
+                SeededFinePathTransitionKind::BuyTrade => 0.0,
+                SeededFinePathTransitionKind::SellTrade => 1.0,
+                _ => 0.5,
+            };
+        }
+    }
+
+    finalize_sell_share_proxies(&mut intervals, 0.5);
+    intervals
+}
+
+pub(crate) fn build_continuous_calibration_sample_from_aggregated_intervals(
+    intervals: &[JointRefinementAggregatedIntervalObservation],
+    modeled_open_event_rate_per_hour: f64,
+    observed_open_event_rate_per_hour: f64,
+    fallback_sell_share_proxy: f64,
+) -> ReturnComponentsStageContinuousReturnCalibrationSample {
+    let observed_rate_floor = observed_open_event_rate_per_hour.max(1.0e-8);
+    let scale_ratio = modeled_open_event_rate_per_hour.max(1.0e-8) / observed_rate_floor;
+    let observed_returns = intervals
+        .iter()
+        .map(|interval| interval.log_return)
+        .collect();
+    let business_time_scales = intervals
+        .iter()
+        .map(|interval| ((interval.tick_count as f64).max(1.0e-8)) * scale_ratio)
+        .collect();
+    let sell_share_proxies = intervals
+        .iter()
+        .map(|interval| {
+            if interval.tick_count == 0 {
+                fallback_sell_share_proxy
+            } else {
+                interval.sell_share_proxy
+            }
+        })
+        .collect();
+
+    build_continuous_return_calibration_sample_from_components(
+        observed_returns,
+        business_time_scales,
+        sell_share_proxies,
+        fallback_sell_share_proxy,
+    )
+}
+
+pub(crate) fn rolling_variance_activity_metric(
+    intervals: &[JointRefinementAggregatedIntervalObservation],
+) -> JointRefinementRollingVarianceActivityMetric {
+    if intervals.is_empty() {
+        return JointRefinementRollingVarianceActivityMetric {
+            correlation: f64::NAN,
+            standardized_path_distance: f64::INFINITY,
+        };
+    }
+
+    let tick_counts: Vec<f64> = intervals
+        .iter()
+        .map(|interval| interval.tick_count as f64)
+        .collect();
+    let squared_returns: Vec<f64> = intervals
+        .iter()
+        .map(|interval| interval.log_return * interval.log_return)
+        .collect();
+    let rolling_activity = rolling_sum(
+        tick_counts.as_slice(),
+        JOINT_REFINEMENT_ROLLING_ACTIVITY_WINDOW_INTERVAL_COUNT,
+    );
+    let rolling_realized_variance = rolling_sum(
+        squared_returns.as_slice(),
+        JOINT_REFINEMENT_ROLLING_ACTIVITY_WINDOW_INTERVAL_COUNT,
+    );
+
+    let correlation = pearson_correlation(
+        rolling_activity.as_slice(),
+        rolling_realized_variance.as_slice(),
+    );
+    let standardized_path_distance = standardized_path_distance(
+        rolling_activity.as_slice(),
+        rolling_realized_variance.as_slice(),
+    );
+
+    JointRefinementRollingVarianceActivityMetric {
+        correlation,
+        standardized_path_distance,
+    }
+}
+
+pub(crate) fn zero_aware_normalized_bucket_value(
+    candidate_value: f64,
+    baseline_value: f64,
+    floor: f64,
+) -> f64 {
+    let denominator = baseline_value.abs().max(floor);
+    candidate_value / denominator
+}
+
+fn build_open_session_interval_template(
+    calendar_registry: &ExchangeCalendarRegistry,
+    exchange_code: &str,
+    source_window: ReturnComponentsStageSignalSourceWindow,
+    interval_duration_nanos: i64,
+) -> Vec<JointRefinementAggregatedIntervalObservation> {
+    if interval_duration_nanos <= 0 {
+        return Vec::new();
+    }
+
+    let aligned_start = source_window
+        .window_start_utc_nanos
+        .div_euclid(interval_duration_nanos)
+        * interval_duration_nanos;
+    let aligned_end = ceil_to_interval(source_window.window_end_utc_nanos, interval_duration_nanos);
+    let mut intervals = Vec::new();
+    let mut interval_start_utc_nanos = aligned_start;
+    while interval_start_utc_nanos < aligned_end {
+        let interval_end_utc_nanos =
+            interval_start_utc_nanos.saturating_add(interval_duration_nanos);
+        let midpoint_utc_nanos =
+            interval_start_utc_nanos.saturating_add(interval_duration_nanos / 2);
+        if resolve_market_state(calendar_registry, exchange_code, midpoint_utc_nanos)
+            == Some(MarketState::Open)
+        {
+            intervals.push(JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos,
+                interval_end_utc_nanos,
+                log_return: 0.0,
+                tick_count: 0,
+                sell_share_proxy: 0.0,
+            });
+        }
+        interval_start_utc_nanos = interval_end_utc_nanos;
+    }
+    intervals
+}
+
+fn finalize_sell_share_proxies(
+    intervals: &mut [JointRefinementAggregatedIntervalObservation],
+    fallback_sell_share_proxy: f64,
+) {
+    for interval in intervals {
+        interval.sell_share_proxy = if interval.tick_count == 0 {
+            fallback_sell_share_proxy
+        } else {
+            (interval.sell_share_proxy / interval.tick_count as f64).clamp(0.0, 1.0)
+        };
+    }
+}
+
+fn resolve_market_state(
+    calendar_registry: &ExchangeCalendarRegistry,
+    exchange_code: &str,
+    timestamp_utc_nanos: i64,
+) -> Option<MarketState> {
+    let timestamp_utc = DateTime::<Utc>::from_timestamp_nanos(timestamp_utc_nanos);
+    calendar_registry
+        .resolve_market_state_at_utc(exchange_code, timestamp_utc)
+        .ok()
+}
+
+fn ceil_to_interval(timestamp_utc_nanos: i64, interval_duration_nanos: i64) -> i64 {
+    let remainder = timestamp_utc_nanos.rem_euclid(interval_duration_nanos);
+    if remainder == 0 {
+        timestamp_utc_nanos
+    } else {
+        timestamp_utc_nanos.saturating_add(interval_duration_nanos - remainder)
+    }
+}
+
+fn rolling_sum(values: &[f64], window: usize) -> Vec<f64> {
+    let mut output = Vec::with_capacity(values.len());
+    let mut running_sum = 0.0;
+
+    for (position, value) in values.iter().enumerate() {
+        running_sum += *value;
+        if position >= window {
+            running_sum -= values[position - window];
+        }
+        output.push(running_sum);
+    }
+
+    output
+}
+
+fn pearson_correlation(left: &[f64], right: &[f64]) -> f64 {
+    if left.len() != right.len() || left.len() < 2 {
+        return f64::NAN;
+    }
+
+    let left_mean = left.iter().sum::<f64>() / left.len() as f64;
+    let right_mean = right.iter().sum::<f64>() / right.len() as f64;
+    let mut covariance = 0.0;
+    let mut left_variance = 0.0;
+    let mut right_variance = 0.0;
+    for (left_value, right_value) in left.iter().zip(right.iter()) {
+        let left_centered = left_value - left_mean;
+        let right_centered = right_value - right_mean;
+        covariance += left_centered * right_centered;
+        left_variance += left_centered * left_centered;
+        right_variance += right_centered * right_centered;
+    }
+
+    let denominator = (left_variance * right_variance).sqrt();
+    if denominator <= f64::EPSILON {
+        return 0.0;
+    }
+
+    covariance / denominator
+}
+
+fn standardized_path_distance(left: &[f64], right: &[f64]) -> f64 {
+    if left.len() != right.len() || left.is_empty() {
+        return f64::INFINITY;
+    }
+
+    let left_standardized = z_score(left);
+    let right_standardized = z_score(right);
+    left_standardized
+        .iter()
+        .zip(right_standardized.iter())
+        .map(|(left_value, right_value)| (left_value - right_value).abs())
+        .sum::<f64>()
+        / left_standardized.len() as f64
+}
+
+fn z_score(values: &[f64]) -> Vec<f64> {
+    let mean = values.iter().sum::<f64>() / values.len().max(1) as f64;
+    let variance = values
+        .iter()
+        .map(|value| {
+            let centered = value - mean;
+            centered * centered
+        })
+        .sum::<f64>()
+        / values.len().max(1) as f64;
+    let standard_deviation = variance.sqrt();
+    if !standard_deviation.is_finite() || standard_deviation <= f64::EPSILON {
+        return vec![0.0; values.len()];
+    }
+
+    values
+        .iter()
+        .map(|value| (value - mean) / standard_deviation)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        JOINT_REFINEMENT_ROLLING_ACTIVITY_WINDOW_INTERVAL_COUNT,
+        JointRefinementAggregatedIntervalObservation, rolling_variance_activity_metric,
+    };
+
+    #[test]
+    fn rolling_variance_activity_metric_matches_reference_series_definition() {
+        let interval_count = JOINT_REFINEMENT_ROLLING_ACTIVITY_WINDOW_INTERVAL_COUNT + 4;
+        let intervals: Vec<JointRefinementAggregatedIntervalObservation> = (0..interval_count)
+            .map(|position| JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: position as i64,
+                interval_end_utc_nanos: position as i64 + 1,
+                log_return: position as f64 * 0.01,
+                tick_count: position + 1,
+                sell_share_proxy: 0.5,
+            })
+            .collect();
+
+        let metric = rolling_variance_activity_metric(intervals.as_slice());
+
+        assert!(metric.correlation.is_finite());
+        assert!(metric.standardized_path_distance.is_finite());
+        assert!(metric.correlation > 0.0);
+    }
+}

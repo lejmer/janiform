@@ -154,6 +154,7 @@ def test_translate_market_data_request_derives_boundaries_known_news_and_diagnos
         CalibrationStage.SEASONALITY,
         CalibrationStage.HAWKES,
         CalibrationStage.RETURN_COMPONENTS,
+        CalibrationStage.JOINT_REFINEMENT,
     )
     assert first_translation.diagnostics.known_news_event_count == 2
     assert first_translation.diagnostics.known_news_events_outside_source_window_count == 1
@@ -335,6 +336,7 @@ def test_translate_market_data_request_without_known_news_runs_staged_calibratio
         "seasonality",
         "hawkes",
         "return_components",
+        "joint_refinement",
     ]
     assert response.stage_reports[0].status.value == "success"
     assert response.stage_reports[1].status.value == "success"
@@ -681,6 +683,7 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
         CalibrationStage.SEASONALITY,
         CalibrationStage.HAWKES,
         CalibrationStage.RETURN_COMPONENTS,
+        CalibrationStage.JOINT_REFINEMENT,
     )
     assert prepared.diagnostics.executed_preprocessing_steps == (
         "source_loading",
@@ -747,7 +750,7 @@ def test_run_market_data_calibration_executes_market_data_first_workflow(
 
     assert response.execution_mode == CalibrationExecutionMode.MEMORY
     assert response.status.value == "success"
-    assert len(response.stage_reports) == 3
+    assert len(response.stage_reports) == 4
     assert response.stage_reports[0].stage == CalibrationStage.SEASONALITY
     assert response.stage_reports[0].status.value == "success"
     assert response.stage_reports[1].stage == CalibrationStage.HAWKES
@@ -756,6 +759,9 @@ def test_run_market_data_calibration_executes_market_data_first_workflow(
     assert response.stage_reports[2].stage == CalibrationStage.RETURN_COMPONENTS
     assert response.stage_reports[2].status.value == "success"
     assert response.stage_reports[2].failure is None
+    assert response.stage_reports[3].stage == CalibrationStage.JOINT_REFINEMENT
+    assert response.stage_reports[3].status.value == "success"
+    assert response.stage_reports[3].failure is None
 
 
 def test_translate_market_data_request_full_with_option_surface_sets_option_reference(

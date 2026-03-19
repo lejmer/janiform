@@ -1581,6 +1581,31 @@ pub struct ReturnComponentsStageContinuousReturnSampleDiagnostic {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStageContinuousOptimizerBasinDiagnostic {
+    pub family_label: String,
+    pub seed_objective: f64,
+    pub local_objective: f64,
+    pub final_objective: f64,
+    pub local_evaluation_count: usize,
+    pub stop_reason: String,
+    pub seed_log_alpha: f64,
+    pub seed_buy_skew_coordinate: f64,
+    pub seed_sell_relative_coordinate: f64,
+    pub seed_log_delta_offset: f64,
+    pub final_log_alpha: f64,
+    pub final_buy_skew_coordinate: f64,
+    pub final_sell_relative_coordinate: f64,
+    pub final_log_delta_offset: f64,
+    pub final_alpha: f64,
+    pub final_beta_0: f64,
+    pub final_delta: f64,
+    pub final_delta_beta: f64,
+    pub profile_fit_score: f64,
+    pub fitted_return_volatility: f64,
+    pub fitted_skewness: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
     pub global_fit_score: f64,
     pub conditional_fit_score: f64,
@@ -1592,6 +1617,7 @@ pub struct ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
     pub optimizer_final_objective: f64,
     pub optimizer_local_evaluation_count: usize,
     pub optimizer_stop_reason: String,
+    pub optimizer_basin_diagnostics: Vec<ReturnComponentsStageContinuousOptimizerBasinDiagnostic>,
     pub mean_return_fit: f64,
     pub volatility_fit: f64,
     pub median_return_fit: f64,
@@ -1626,6 +1652,8 @@ pub struct ReturnComponentsStageCandidateInput {
     pub news_process_configuration: NewsProcessConfiguration,
     pub objective_metric_buckets: ReturnComponentsStageObjectiveMetricBuckets,
     pub return_distribution_diagnostic: ReturnComponentsStageReturnDistributionDiagnostic,
+    pub continuous_distribution_fit_breakdown:
+        ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic,
     pub surprise_arrival_diagnostic: ReturnComponentsStageSurpriseArrivalDiagnostic,
     pub jump_diagnostic: ReturnComponentsStageJumpDiagnostic,
     pub gap_diagnostic: ReturnComponentsStageGapDiagnostic,
@@ -2047,6 +2075,8 @@ pub struct ReturnComponentsStageCandidateDiagnostic {
     pub candidate_families: ReturnComponentsStageCandidateFamilies,
     pub candidate_provenance: ReturnComponentsStageCandidateProvenance,
     pub return_distribution_diagnostic: ReturnComponentsStageReturnDistributionDiagnostic,
+    pub continuous_distribution_fit_breakdown:
+        ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic,
     pub surprise_arrival_diagnostic: ReturnComponentsStageSurpriseArrivalDiagnostic,
     pub jump_diagnostic: ReturnComponentsStageJumpDiagnostic,
     pub gap_diagnostic: ReturnComponentsStageGapDiagnostic,

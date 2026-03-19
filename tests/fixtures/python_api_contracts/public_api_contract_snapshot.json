@@ -3625,6 +3625,10 @@
             {
               "name": "RETURN_COMPONENTS",
               "value": "return_components"
+            },
+            {
+              "name": "JOINT_REFINEMENT",
+              "value": "joint_refinement"
             }
           ]
         },
@@ -3957,6 +3961,10 @@
             {
               "name": "RETURN_COMPONENTS",
               "value": "return_components"
+            },
+            {
+              "name": "JOINT_REFINEMENT",
+              "value": "joint_refinement"
             }
           ]
         },

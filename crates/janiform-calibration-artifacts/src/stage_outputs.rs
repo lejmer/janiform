@@ -43,3 +43,28 @@ pub struct ReturnComponentsStageFittedParameters {
     pub news_process_configuration: NewsProcessConfiguration,
     pub surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageObjectiveBreakdown {
+    pub aggregated_likelihood_fit: f64,
+    pub aggregated_shape_fit: f64,
+    pub rv_activity_coupling_fit: f64,
+    pub price_span_sanity_fit: f64,
+    pub weighted_objective: f64,
+    pub hard_constraint_penalty: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageOptimizerDiagnostics {
+    pub local_objective: f64,
+    pub final_objective: f64,
+    pub local_evaluation_count: usize,
+    pub final_simulation_seeds: Vec<u64>,
+    pub stop_reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageFittedParameters {
+    pub hawkes_fitted_parameters: HawkesStageFittedParameters,
+    pub return_components_fitted_parameters: ReturnComponentsStageFittedParameters,
+}

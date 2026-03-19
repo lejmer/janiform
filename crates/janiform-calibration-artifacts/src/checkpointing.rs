@@ -664,6 +664,7 @@ fn calibration_stage_token(stage: CalibrationStage) -> &'static str {
         CalibrationStage::Seasonality => "seasonality",
         CalibrationStage::Hawkes => "hawkes",
         CalibrationStage::ReturnComponents => "return_components",
+        CalibrationStage::JointRefinement => "joint_refinement",
     }
 }
 
@@ -672,6 +673,7 @@ pub(crate) fn calibration_stage_from_token(token: &str) -> Option<CalibrationSta
         "seasonality" => Some(CalibrationStage::Seasonality),
         "hawkes" => Some(CalibrationStage::Hawkes),
         "return_components" => Some(CalibrationStage::ReturnComponents),
+        "joint_refinement" => Some(CalibrationStage::JointRefinement),
         _ => None,
     }
 }

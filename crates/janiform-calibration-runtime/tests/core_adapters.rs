@@ -1,5 +1,5 @@
 mod support;
-use support::*;
+use support::shared::*;
 
 #[test]
 fn calibration_domain_precheck_report_shape_is_compatible_with_optimizer_consumers() {

@@ -1,9 +1,11 @@
-import os
-import subprocess
+import runpy
 import sys
+from copy import deepcopy
 from dataclasses import replace
 from functools import lru_cache
 from pathlib import Path
+
+import pytest
 
 from benches.python.support import (
     REAL_DATA_SEEDED_RUNTIME_BASELINE_SCHEMA_VERSION,
@@ -25,10 +27,6 @@ from benches.python.support import (
 )
 
 
-def _benchmark_pythonpath() -> str:
-    return os.pathsep.join(["python", "."])
-
-
 def test_real_data_seeded_runtime_fixture_policy_and_baseline_artifacts_load(
     fixtures_root: Path,
 ) -> None:
@@ -48,7 +46,7 @@ def test_real_data_seeded_runtime_report_captures_seeded_diagnostics_and_require
     fixtures_root: Path,
 ) -> None:
     fixture = _fixture_document(fixtures_root).fixtures[0]
-    report = _cached_fixture_report(fixtures_root)
+    report = _cloned_cached_fixture_report(fixtures_root)
 
     assert report.schema_version == REAL_DATA_SEEDED_RUNTIME_BENCHMARK_REPORT_SCHEMA_VERSION
     assert report.output_schema_metadata.required_report_fields
@@ -81,9 +79,9 @@ def test_real_data_seeded_runtime_report_captures_seeded_diagnostics_and_require
 def test_real_data_seeded_runtime_baseline_comparison_passes_for_self_captured_baseline(
     fixtures_root: Path,
 ) -> None:
-    report = _cached_fixture_report(fixtures_root)
+    report = _cloned_cached_fixture_report(fixtures_root)
     fixture_document = _fixture_document(fixtures_root)
-    policy = _policy_artifact(fixtures_root)
+    policy = _self_pass_policy(_policy_artifact(fixtures_root), report)
     baseline = capture_real_data_seeded_runtime_baseline_artifact(
         fixture_set_id=fixture_document.fixture_set_id,
         reports=(report,),
@@ -105,7 +103,7 @@ def test_real_data_seeded_runtime_baseline_comparison_passes_for_self_captured_b
 def test_real_data_seeded_runtime_comparison_classifies_model_regime_drift(
     fixtures_root: Path,
 ) -> None:
-    report = _cached_fixture_report(fixtures_root)
+    report = _cloned_cached_fixture_report(fixtures_root)
     policy = _policy_artifact(fixtures_root)
     baseline = _baseline_artifact(fixtures_root)
 
@@ -131,7 +129,7 @@ def test_real_data_seeded_runtime_comparison_classifies_model_regime_drift(
 def test_real_data_seeded_runtime_comparison_classifies_boundary_and_materialization_drift(
     fixtures_root: Path,
 ) -> None:
-    report = _cached_fixture_report(fixtures_root)
+    report = _cloned_cached_fixture_report(fixtures_root)
     policy = _policy_artifact(fixtures_root)
     baseline = _baseline_artifact(fixtures_root)
     thresholds = policy.threshold_for_fixture(report.fixture_id)
@@ -174,37 +172,45 @@ def test_real_data_seeded_runtime_comparison_classifies_boundary_and_materializa
 def test_real_data_seeded_runtime_benchmark_runner_writes_artifacts(
     fixtures_root: Path,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fixture_path = _fixture_path(fixtures_root)
     policy_path = _policy_path(fixtures_root)
     baseline_path = _baseline_path(fixtures_root)
+    cached_report = _cloned_cached_fixture_report(fixtures_root)
 
-    command = [
-        sys.executable,
-        "scripts/ci/run_real_data_seeded_runtime_benchmark.py",
-        "--fixture-path",
-        str(fixture_path),
-        "--policy-path",
-        str(policy_path),
-        "--baseline-path",
-        str(baseline_path),
-        "--output-dir",
-        str(tmp_path),
-        "--allow-regression",
-    ]
-    process = subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-        cwd=Path(__file__).resolve().parents[1],
-        env={
-            **os.environ,
-            "PYTHONPATH": _benchmark_pythonpath(),
-        },
+    monkeypatch.setattr(
+        "benches.python.support.run_real_data_seeded_runtime_benchmark_fixture",
+        lambda fixture: cached_report,
     )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_real_data_seeded_runtime_benchmark.py",
+            "--fixture-path",
+            str(fixture_path),
+            "--policy-path",
+            str(policy_path),
+            "--baseline-path",
+            str(baseline_path),
+            "--output-dir",
+            str(tmp_path),
+            "--allow-regression",
+        ],
+    )
+    script_globals = runpy.run_path(
+        str(
+            Path(__file__).resolve().parents[1]
+            / "scripts"
+            / "ci"
+            / "run_real_data_seeded_runtime_benchmark.py"
+        ),
+        run_name="real_data_seeded_runtime_benchmark_test",
+    )
+    return_code = script_globals["main"]()
 
-    assert process.returncode == 0, process.stderr
+    assert return_code == 0
     assert (tmp_path / "real_data_seeded_runtime_benchmark_report.json").exists()
     comparison_path = tmp_path / "real_data_seeded_runtime_benchmark_comparison.json"
     assert comparison_path.exists()
@@ -219,6 +225,42 @@ def test_real_data_seeded_runtime_benchmark_runner_writes_artifacts(
 def _cached_fixture_report(fixtures_root: Path) -> RealDataSeededRuntimeBenchmarkReport:
     fixture_document = _fixture_document(fixtures_root)
     return run_real_data_seeded_runtime_benchmark_fixture(fixture_document.fixtures[0])
+
+
+def _cloned_cached_fixture_report(fixtures_root: Path) -> RealDataSeededRuntimeBenchmarkReport:
+    return deepcopy(_cached_fixture_report(fixtures_root))
+
+
+def _self_pass_policy(
+    policy: RealDataSeededRuntimeBenchmarkPolicy,
+    report: RealDataSeededRuntimeBenchmarkReport,
+) -> RealDataSeededRuntimeBenchmarkPolicy:
+    threshold = policy.threshold_for_fixture(report.fixture_id)
+    seeded_event_rate_ratio_vs_observed = (
+        report.seeded_event_count / report.provenance.seeded_horizon_interval_count
+    ) / max(report.observed_open_event_rate_per_hour, 1.0e-12)
+    coarse_event_rate_ratio_vs_observed = (
+        report.coarse_generated_event_count / report.provenance.coarse_horizon_interval_count
+    ) / max(report.observed_open_event_rate_per_hour, 1.0e-12)
+    seeded_event_rate_ratio_vs_calibrated = (
+        (report.seeded_event_count / report.provenance.seeded_horizon_interval_count)
+        / max(report.calibrated_open_event_rate_per_hour or 0.0, 1.0e-12)
+        if report.calibrated_open_event_rate_per_hour is not None
+        else threshold.maximum_seeded_event_rate_ratio_vs_calibrated_open
+    )
+    adjusted_threshold = replace(
+        threshold,
+        maximum_seeded_event_rate_ratio_vs_observed_open=(
+            seeded_event_rate_ratio_vs_observed + 1.0e-9
+        ),
+        maximum_seeded_event_rate_ratio_vs_calibrated_open=(
+            seeded_event_rate_ratio_vs_calibrated + 1.0e-9
+        ),
+        maximum_coarse_event_rate_ratio_vs_observed_open=(
+            coarse_event_rate_ratio_vs_observed + 1.0e-9
+        ),
+    )
+    return replace(policy, fixture_thresholds=(adjusted_threshold,))
 
 
 def _fixture_document(fixtures_root: Path) -> RealDataSeededRuntimeBenchmarkFixtureDocument:

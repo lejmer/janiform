@@ -593,12 +593,14 @@ def _selected_stages_for_scope(
                 CalibrationStage.SEASONALITY,
                 CalibrationStage.HAWKES,
                 CalibrationStage.RETURN_COMPONENTS,
+                CalibrationStage.JOINT_REFINEMENT,
             )
         case CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE:
             return (
                 CalibrationStage.SEASONALITY,
                 CalibrationStage.HAWKES,
                 CalibrationStage.RETURN_COMPONENTS,
+                CalibrationStage.JOINT_REFINEMENT,
             )
 
 

@@ -45,6 +45,8 @@ pub(crate) fn fit_continuous_return_layer(
     evaluation.fit_breakdown.optimizer_local_evaluation_count =
         optimizer_diagnostic.local_evaluation_count;
     evaluation.fit_breakdown.optimizer_stop_reason = optimizer_diagnostic.stop_reason.to_string();
+    evaluation.fit_breakdown.optimizer_basin_diagnostics =
+        optimizer_diagnostic.basin_diagnostics.clone();
     evaluation.optimizer_diagnostic = optimizer_diagnostic;
 
     FittedContinuousReturnLayer {

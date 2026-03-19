@@ -1,5 +1,5 @@
 mod support;
-use support::*;
+use support::shared::*;
 
 #[test]
 fn seasonality_stage_execution_succeeds_for_memory_and_disk_mode_handoffs() {
@@ -220,6 +220,99 @@ fn seasonality_stage_execution_neutralizes_under_supported_calendar_components()
 
     assert!(payload.day_of_week_factor.iter().all(|value| *value == 1.0));
     assert!(payload.day_of_year_factor.iter().all(|value| *value == 1.0));
+}
+
+#[test]
+fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs() {
+    let calendar_registry = calibration_stage_test_registry();
+    let seasonality_payload = build_seasonality_stage_success_payload();
+    let hawkes_payload = build_hawkes_stage_success_payload();
+    let memory_run_spec = build_run_contract_with_mode_and_resume(
+        "run-joint-stage-memory",
+        CalibrationExecutionMode::Memory,
+        None,
+    )
+    .run_spec;
+    let disk_run_spec = build_run_contract_with_mode_and_resume(
+        "run-joint-stage-disk",
+        CalibrationExecutionMode::Disk,
+        None,
+    )
+    .run_spec;
+    let return_components_report = run_return_components_calibration_stage(
+        &memory_run_spec,
+        &calendar_registry,
+        ReturnComponentsStageExecutionInput {
+            activity_input: ReturnComponentsStageActivityInput::InMemoryOutput {
+                payload: hawkes_payload.clone(),
+            },
+            candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+        },
+    );
+    let return_components_payload = return_components_report
+        .fitted_stage_payload
+        .expect("return-components stage fixture should produce fitted payload");
+
+    let memory_report = run_joint_refinement_calibration_stage(
+        &memory_run_spec,
+        &calendar_registry,
+        JointRefinementStageExecutionInput {
+            seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
+                intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
+                intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin.clone(),
+                day_of_week_factor: seasonality_payload.day_of_week_factor.clone(),
+                day_of_year_factor: seasonality_payload.day_of_year_factor.clone(),
+                timestamp_utc_nanos: seasonality_payload.timestamp_utc_nanos.clone(),
+                normalized_combined_factor_by_event: seasonality_payload
+                    .normalized_combined_factor_by_event
+                    .clone(),
+            },
+            hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
+                payload: hawkes_payload.clone(),
+            },
+            return_components_input: JointRefinementStageReturnComponentsInput::InMemoryOutput {
+                payload: return_components_payload.clone(),
+            },
+            candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+        },
+    );
+    let disk_report = run_joint_refinement_calibration_stage(
+        &disk_run_spec,
+        &calendar_registry,
+        JointRefinementStageExecutionInput {
+            seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
+                intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
+                intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
+                day_of_week_factor: seasonality_payload.day_of_week_factor,
+                day_of_year_factor: seasonality_payload.day_of_year_factor,
+                timestamp_utc_nanos: seasonality_payload.timestamp_utc_nanos,
+                normalized_combined_factor_by_event: seasonality_payload
+                    .normalized_combined_factor_by_event,
+            },
+            hawkes_input: JointRefinementStageHawkesInput::PersistedArtifactReference {
+                artifact_reference: "artifact://hawkes/run-joint-stage-disk".to_string(),
+                payload: Some(hawkes_payload),
+            },
+            return_components_input:
+                JointRefinementStageReturnComponentsInput::PersistedArtifactReference {
+                    artifact_reference: "artifact://return-components/run-joint-stage-disk"
+                        .to_string(),
+                    payload: Some(return_components_payload),
+                },
+            candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+        },
+    );
+
+    assert_eq!(
+        memory_report.status,
+        CalibrationStageExecutionStatus::Success,
+        "{memory_report:#?}"
+    );
+    assert_eq!(
+        disk_report.status,
+        CalibrationStageExecutionStatus::Success,
+        "{disk_report:#?}"
+    );
 }
 
 #[test]

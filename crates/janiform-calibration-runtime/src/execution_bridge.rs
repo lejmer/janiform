@@ -524,10 +524,12 @@ impl CalibrationStagedExecutionInput {
         let disk_checkpoint_directory =
             resolve_disk_checkpoint_directory(request.execution_mode, self.runtime_resources)?;
 
-        let run_contract = CalibrationRunContract::try_new(request, canonical_stage_graph())
-            .map_err(
-                |source| CalibrationStagedExecutionBridgeError::InvalidRunContract { source },
-            )?;
+        let stage_graph =
+            canonical_stage_graph_for_selected_stages(request.selected_stages.as_slice());
+        let run_contract =
+            CalibrationRunContract::try_new(request, stage_graph).map_err(|source| {
+                CalibrationStagedExecutionBridgeError::InvalidRunContract { source }
+            })?;
 
         let staged_run_inputs = CalibrationStagedRunInputs {
             seasonality_stage_input: self
@@ -588,8 +590,12 @@ pub fn evaluate_return_components_exact_candidate_from_bridge(
     )
 }
 
-fn canonical_stage_graph() -> CalibrationStageGraph {
-    CalibrationStageGraph::new(vec![
+fn canonical_stage_graph_for_selected_stages(
+    selected_stages: &[CalibrationStage],
+) -> CalibrationStageGraph {
+    let selected_stage_set: std::collections::BTreeSet<CalibrationStage> =
+        selected_stages.iter().copied().collect();
+    let dependencies = vec![
         CalibrationStageDependency {
             stage: CalibrationStage::Hawkes,
             depends_on: CalibrationStage::Seasonality,
@@ -598,7 +604,22 @@ fn canonical_stage_graph() -> CalibrationStageGraph {
             stage: CalibrationStage::ReturnComponents,
             depends_on: CalibrationStage::Hawkes,
         },
-    ])
+        CalibrationStageDependency {
+            stage: CalibrationStage::JointRefinement,
+            depends_on: CalibrationStage::Hawkes,
+        },
+        CalibrationStageDependency {
+            stage: CalibrationStage::JointRefinement,
+            depends_on: CalibrationStage::ReturnComponents,
+        },
+    ];
+
+    CalibrationStageGraph::new(
+        dependencies
+            .into_iter()
+            .filter(|dependency| selected_stage_set.contains(&dependency.stage))
+            .collect(),
+    )
 }
 
 fn resolve_disk_checkpoint_directory(

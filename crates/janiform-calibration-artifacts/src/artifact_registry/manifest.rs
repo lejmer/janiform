@@ -476,6 +476,9 @@ fn build_manifest_index_metadata(
             return_components_stage_output_schema_version: stage_artifacts_by_stage
                 .get(&CalibrationStage::ReturnComponents)
                 .map(|artifact| artifact.stage_output_schema_version.clone()),
+            joint_refinement_stage_output_schema_version: stage_artifacts_by_stage
+                .get(&CalibrationStage::JointRefinement)
+                .map(|artifact| artifact.stage_output_schema_version.clone()),
             seasonality_estimator_version,
         },
         validation_metric_summaries,

@@ -21,6 +21,7 @@ use super::constants::RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMET
 use super::contracts::{
     ReturnComponentsObservedOpenSessionReturn,
     ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic,
+    ReturnComponentsStageContinuousOptimizerBasinDiagnostic,
     ReturnComponentsStageObservedSignalSummaryStatistics,
     ReturnComponentsStageReturnDistributionDiagnostic,
 };
@@ -36,30 +37,37 @@ const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MIN_BROAD_CANDIDATE_COUNT: usize = 
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MAX_BROAD_CANDIDATE_COUNT: usize = 384;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_ELITE_COUNT: usize = 6;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_REGIME_COUNT: usize = 7;
+const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MIN_MOMENT_SEED_CANDIDATE_COUNT: usize = 96;
+const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MOMENT_SEED_CANDIDATE_MULTIPLIER: usize = 3;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_SEED_SAMPLE_COUNT: usize = 64;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_LOCAL_SAMPLE_COUNT: usize = 256;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_SEED_INTEGRATION_STEP_COUNT: usize = 96;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_LOCAL_INTEGRATION_STEP_COUNT: usize = 192;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_FINAL_INTEGRATION_STEP_COUNT: usize = 512;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_STANDARDIZED_INTEGRATION_UPPER_BOUND: f64 = 64.0;
-const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_BOUND_EXPANSION_RATIO: f64 = 0.25;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_LINE_SEARCH_EVALUATION_CAP: usize = 8;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MAX_POWELL_CYCLES: usize = 12;
+const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_SCAN_STEP_COUNT: usize = 12;
+const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_BISECTION_STEP_COUNT: usize = 8;
+const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_CONFIDENCE_Z_SCORE: f64 =
+    1.959_963_984_540_054;
+const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_LIKELIHOOD_CHI_SQUARE_95: f64 =
+    3.841_458_820_694_124;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum ContinuousLikelihoodFidelityTier {
+pub(crate) enum ContinuousLikelihoodFidelityTier {
     Seed,
     Local,
     Full,
 }
 
 #[derive(Debug, Clone, Copy)]
-struct ContinuousLikelihoodObjective {
-    shifted_objective_score: f64,
-    global_negative_log_likelihood: f64,
-    conditional_negative_log_likelihood: f64,
-    boundary_penalty: f64,
-    log_likelihood_shift: f64,
+pub(crate) struct ContinuousLikelihoodObjective {
+    pub(crate) shifted_objective_score: f64,
+    pub(crate) global_negative_log_likelihood: f64,
+    pub(crate) conditional_negative_log_likelihood: f64,
+    pub(crate) boundary_penalty: f64,
+    pub(crate) log_likelihood_shift: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -69,10 +77,11 @@ pub(super) struct ContinuousReturnOptimizerDiagnostic {
     pub final_objective_score: f64,
     pub local_evaluation_count: usize,
     pub stop_reason: &'static str,
+    pub basin_diagnostics: Vec<ReturnComponentsStageContinuousOptimizerBasinDiagnostic>,
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct ReturnComponentsStageContinuousReturnCalibrationSample {
+pub(crate) struct ReturnComponentsStageContinuousReturnCalibrationSample {
     pub(super) observed_returns: Vec<f64>,
     pub(super) business_time_scales: Vec<f64>,
     sell_share_proxies: Vec<f64>,
@@ -92,8 +101,11 @@ pub(super) struct ContinuousReturnCandidateEvaluation {
 
 #[derive(Debug, Clone, Copy)]
 struct ContinuousReturnDistributionProfile {
+    sample_count: usize,
     mean_return: f64,
     return_volatility: f64,
+    adjusted_skewness: f64,
+    adjusted_excess_kurtosis: f64,
     median_return: f64,
     lower_quartile_return: f64,
     upper_quartile_return: f64,
@@ -115,11 +127,11 @@ struct ContinuousReturnScaleBucketProfile {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct NigShapeSearchPoint {
-    log_alpha: f64,
-    buy_skew_coordinate: f64,
-    sell_relative_coordinate: f64,
-    log_delta_offset: f64,
+pub(crate) struct NigShapeSearchPoint {
+    pub(crate) log_alpha: f64,
+    pub(crate) buy_skew_coordinate: f64,
+    pub(crate) sell_relative_coordinate: f64,
+    pub(crate) log_delta_offset: f64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -134,6 +146,41 @@ struct NigSearchRegime {
     log_delta_half_span: f64,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ContinuousMomentTargets {
+    sample_count: usize,
+    mean_return: f64,
+    return_volatility: f64,
+    adjusted_skewness: f64,
+    adjusted_excess_kurtosis: f64,
+    skewness_standard_error: f64,
+    excess_kurtosis_standard_error: f64,
+}
+
+impl ContinuousReturnDistributionProfile {
+    fn skewness_standard_error(self) -> f64 {
+        (6.0 / self.sample_count.max(3) as f64).sqrt().max(0.10)
+    }
+
+    fn excess_kurtosis_standard_error(self) -> f64 {
+        (24.0 / self.sample_count.max(4) as f64).sqrt().max(0.20)
+    }
+}
+
+impl ContinuousMomentTargets {
+    fn from_profile(observed_profile: ContinuousReturnDistributionProfile) -> Self {
+        Self {
+            sample_count: observed_profile.sample_count,
+            mean_return: observed_profile.mean_return,
+            return_volatility: observed_profile.return_volatility,
+            adjusted_skewness: observed_profile.adjusted_skewness,
+            adjusted_excess_kurtosis: observed_profile.adjusted_excess_kurtosis.max(0.0),
+            skewness_standard_error: observed_profile.skewness_standard_error(),
+            excess_kurtosis_standard_error: observed_profile.excess_kurtosis_standard_error(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct ScoredNigCandidate {
     search_point: NigShapeSearchPoint,
@@ -141,10 +188,52 @@ struct ScoredNigCandidate {
     objective_score: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum BasinSeedFamily {
+    Overall,
+    HighAlphaLowDelta,
+    MediumAlphaMediumDelta,
+    LowAlphaHighDelta,
+    SkewLight,
+    SkewHeavy,
+    SymmetricLike,
+    AsymmetricLike,
+}
+
+impl BasinSeedFamily {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Overall => "overall",
+            Self::HighAlphaLowDelta => "high_alpha_low_delta",
+            Self::MediumAlphaMediumDelta => "medium_alpha_medium_delta",
+            Self::LowAlphaHighDelta => "low_alpha_high_delta",
+            Self::SkewLight => "skew_light",
+            Self::SkewHeavy => "skew_heavy",
+            Self::SymmetricLike => "symmetric_like",
+            Self::AsymmetricLike => "asymmetric_like",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SeededNigCandidate {
+    family: BasinSeedFamily,
+    scored_candidate: ScoredNigCandidate,
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct OptimizedNigCandidate {
     pub configuration: NigSharedPlusShiftConfiguration,
     pub optimizer_diagnostic: ContinuousReturnOptimizerDiagnostic,
+}
+
+#[derive(Debug, Clone)]
+struct OptimizedNigSearchCandidate {
+    configuration: NigSharedPlusShiftConfiguration,
+    family: BasinSeedFamily,
+    seed_search_point: NigShapeSearchPoint,
+    final_search_point: NigShapeSearchPoint,
+    optimizer_diagnostic: ContinuousReturnOptimizerDiagnostic,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -198,6 +287,19 @@ struct PowellOptimizationOutcome {
     local_objective_score: f64,
     local_evaluation_count: usize,
     stop_reason: &'static str,
+}
+
+#[derive(Debug, Clone)]
+struct LineSearchOutcome {
+    best_vector: [f64; 4],
+    best_evaluation: Option<CachedSearchPointObjectiveEvaluation>,
+    evaluation_count: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ScanDirection {
+    Lower,
+    Upper,
 }
 
 pub(super) fn build_continuous_return_calibration_sample(
@@ -254,6 +356,87 @@ pub(super) fn mean_continuous_return_calibration_business_time_scale(
     arithmetic_mean(calibration_sample.business_time_scales.as_slice())
 }
 
+pub(crate) fn build_continuous_return_calibration_sample_from_components(
+    observed_returns: Vec<f64>,
+    business_time_scales: Vec<f64>,
+    sell_share_proxies: Vec<f64>,
+    open_session_sell_share_proxy: f64,
+) -> ReturnComponentsStageContinuousReturnCalibrationSample {
+    let observed_profile = build_distribution_profile(observed_returns.as_slice());
+    let scale_bucket_profiles =
+        build_scale_bucket_profiles(observed_returns.as_slice(), business_time_scales.as_slice());
+
+    ReturnComponentsStageContinuousReturnCalibrationSample {
+        observed_returns,
+        business_time_scales,
+        sell_share_proxies,
+        observed_profile,
+        scale_bucket_profiles,
+        open_session_sell_share_proxy,
+    }
+}
+
+pub(crate) fn evaluate_configuration_likelihood_objective(
+    configuration: NigSharedPlusShiftConfiguration,
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    fidelity_tier: ContinuousLikelihoodFidelityTier,
+) -> ContinuousLikelihoodObjective {
+    let optimizer_context = build_continuous_return_optimizer_context(calibration_sample);
+    continuous_block_likelihood_objective(configuration, &optimizer_context, fidelity_tier)
+}
+
+pub(crate) fn distribution_profile_fit_score(
+    fitted_returns: &[f64],
+    observed_returns: &[f64],
+) -> ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
+    distribution_profile_fit_breakdown(
+        build_distribution_profile(fitted_returns),
+        build_distribution_profile(observed_returns),
+    )
+}
+
+pub(crate) fn nig_search_point_from_configuration(
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    configuration: NigSharedPlusShiftConfiguration,
+) -> Option<NigShapeSearchPoint> {
+    let optimizer_context = build_continuous_return_optimizer_context(calibration_sample);
+    let alpha = configuration.alpha;
+    if !alpha.is_finite() || alpha <= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER {
+        return None;
+    }
+
+    let buy_beta_ratio = configuration.beta_0 / alpha;
+    let sell_beta_ratio = (configuration.beta_0 + configuration.delta_beta) / alpha;
+    let relative_share = relative_share_from_beta_ratios(buy_beta_ratio, sell_beta_ratio)?;
+    let delta_center = inferred_delta_center(
+        &optimizer_context,
+        configuration.alpha,
+        configuration.beta_0,
+        configuration.delta_beta,
+    )?;
+    let delta_offset = configuration.delta / delta_center;
+    if !delta_offset.is_finite()
+        || delta_offset <= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER
+    {
+        return None;
+    }
+
+    Some(NigShapeSearchPoint {
+        log_alpha: configuration.alpha.ln(),
+        buy_skew_coordinate: ratio_to_coordinate(buy_beta_ratio),
+        sell_relative_coordinate: share_to_coordinate(relative_share),
+        log_delta_offset: delta_offset.ln(),
+    })
+}
+
+pub(crate) fn nig_configuration_from_search_point(
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    search_point: NigShapeSearchPoint,
+) -> Option<NigSharedPlusShiftConfiguration> {
+    let optimizer_context = build_continuous_return_optimizer_context(calibration_sample);
+    configuration_from_shape_search_point(&optimizer_context, search_point)
+}
+
 fn build_continuous_return_optimizer_context(
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
 ) -> ContinuousReturnOptimizerContext {
@@ -304,7 +487,7 @@ fn build_continuous_return_optimizer_context(
 
 pub(super) fn build_nig_search_candidates(
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
-    _stage_seed: u64,
+    stage_seed: u64,
     solver_settings: &CalibrationOptimizerSettings,
 ) -> Vec<OptimizedNigCandidate> {
     let optimizer_context = build_continuous_return_optimizer_context(calibration_sample);
@@ -312,27 +495,65 @@ pub(super) fn build_nig_search_candidates(
         RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MIN_BROAD_CANDIDATE_COUNT,
         RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MAX_BROAD_CANDIDATE_COUNT,
     );
-    let broad_search_points = build_broad_search_points(calibration_sample, broad_candidate_count);
-    let broad_search_regimes = build_search_regimes_from_sample(calibration_sample);
-
-    let search_bounds = search_bounds_from_regimes(broad_search_regimes.as_slice());
 
     with_continuous_fit_thread_pool(solver_settings.cpu_count, || {
+        let moment_candidate_count = broad_candidate_count
+            .saturating_mul(RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MOMENT_SEED_CANDIDATE_MULTIPLIER)
+            .max(RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MIN_MOMENT_SEED_CANDIDATE_COUNT);
+        let theoretical_search_bounds =
+            theoretical_search_bounds(calibration_sample.observed_profile, moment_candidate_count);
+        let moment_seed_candidates = build_moment_seed_candidates(
+            &optimizer_context,
+            calibration_sample,
+            theoretical_search_bounds,
+            moment_candidate_count,
+        );
+        let broad_search_regimes = build_search_regimes_from_moment_seeds(
+            &optimizer_context,
+            moment_seed_candidates.as_slice(),
+            theoretical_search_bounds,
+        );
+        let search_bounds = search_bounds_from_regimes(broad_search_regimes.as_slice());
+        let broad_search_points =
+            build_broad_search_points(broad_search_regimes.as_slice(), broad_candidate_count);
         let broad_scored_candidates = score_search_points(
             &optimizer_context,
             broad_search_points.as_slice(),
             ContinuousLikelihoodFidelityTier::Seed,
         );
 
-        let seed_candidates =
-            top_unique_seed_candidates(broad_scored_candidates.as_slice(), broad_search_regimes);
+        let seed_candidates = build_basin_seed_candidates(
+            broad_scored_candidates.as_slice(),
+            broad_search_regimes.as_slice(),
+        );
 
-        let mut optimized_candidates = optimize_seed_candidates(
+        let optimized_seed_candidates = optimize_seed_candidates(
             &optimizer_context,
             seed_candidates.as_slice(),
             search_bounds,
             solver_settings,
         );
+        let retained_basin_candidates = retain_distinct_basin_candidates(
+            optimized_seed_candidates,
+            search_bounds,
+            RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_ELITE_COUNT,
+        );
+        let basin_diagnostics = build_optimizer_basin_diagnostics(
+            retained_basin_candidates.as_slice(),
+            calibration_sample,
+            stage_seed,
+        );
+
+        let mut optimized_candidates: Vec<OptimizedNigCandidate> = retained_basin_candidates
+            .into_iter()
+            .map(|candidate| OptimizedNigCandidate {
+                configuration: candidate.configuration,
+                optimizer_diagnostic: ContinuousReturnOptimizerDiagnostic {
+                    basin_diagnostics: basin_diagnostics.clone(),
+                    ..candidate.optimizer_diagnostic
+                },
+            })
+            .collect();
         optimized_candidates.sort_by(|left, right| {
             left.optimizer_diagnostic
                 .final_objective_score
@@ -436,6 +657,7 @@ pub(super) fn evaluate_continuous_nig_candidate(
             final_objective_score: likelihood_objective.shifted_objective_score,
             local_evaluation_count: 0,
             stop_reason: "not_optimized",
+            basin_diagnostics: Vec::new(),
         },
     }
 }
@@ -615,10 +837,13 @@ fn weighted_average(values_and_weights: &[(f64, f64)]) -> f64 {
 }
 
 fn build_broad_search_points(
-    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    regimes: &[NigSearchRegime],
     broad_candidate_count: usize,
 ) -> Vec<NigShapeSearchPoint> {
-    let regimes = build_search_regimes_from_sample(calibration_sample);
+    if regimes.is_empty() {
+        return Vec::new();
+    }
+
     let mut search_points: Vec<NigShapeSearchPoint> = regimes
         .iter()
         .map(|regime| NigShapeSearchPoint {
@@ -643,111 +868,441 @@ fn build_broad_search_points(
     search_points
 }
 
-fn build_search_regimes_from_sample(
-    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
-) -> [NigSearchRegime; RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_REGIME_COUNT] {
-    let observed_profile = calibration_sample.observed_profile;
-    let log_alpha_anchor = inferred_log_alpha_anchor(observed_profile);
-    let buy_skew_coordinate_anchor = inferred_buy_skew_coordinate(
-        observed_profile,
-        calibration_sample.open_session_sell_share_proxy,
-    );
-    let alpha_span = 1.75 + observed_profile.abs_quantile_ratio_q99_q95.ln_1p();
-    let skew_span = 1.25
-        + observed_profile
-            .bowley_skewness
-            .abs()
-            .max(observed_profile.l_moment_tau3.abs());
-    let log_delta_span = 1.75 + observed_profile.abs_quantile_ratio_q99_q95.ln_1p();
+fn build_search_regimes_from_moment_seeds(
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    moment_seed_candidates: &[ScoredNigCandidate],
+    theoretical_search_bounds: NigShapeSearchBounds,
+) -> Vec<NigSearchRegime> {
+    let mut profiled_search_regimes: Vec<NigSearchRegime> = moment_seed_candidates
+        .par_iter()
+        .filter_map(|moment_seed_candidate| {
+            build_profiled_search_regime(
+                optimizer_context,
+                moment_seed_candidate.search_point,
+                theoretical_search_bounds,
+            )
+        })
+        .collect();
+    profiled_search_regimes.sort_by(|left, right| {
+        left.log_alpha_center
+            .total_cmp(&right.log_alpha_center)
+            .then_with(|| left.buy_skew_center.total_cmp(&right.buy_skew_center))
+            .then_with(|| {
+                left.sell_relative_center
+                    .total_cmp(&right.sell_relative_center)
+            })
+            .then_with(|| left.log_delta_center.total_cmp(&right.log_delta_center))
+    });
 
-    build_search_regimes(
-        log_alpha_anchor,
-        buy_skew_coordinate_anchor,
-        alpha_span,
-        skew_span,
-        log_delta_span,
-    )
+    profiled_search_regimes
 }
 
-fn build_search_regimes(
-    log_alpha_anchor: f64,
-    buy_skew_coordinate_anchor: f64,
-    alpha_span: f64,
-    skew_span: f64,
-    log_delta_span: f64,
-) -> [NigSearchRegime; RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_REGIME_COUNT] {
-    [
-        NigSearchRegime {
-            log_alpha_center: log_alpha_anchor,
-            buy_skew_center: buy_skew_coordinate_anchor,
-            sell_relative_center: 0.0,
-            log_delta_center: 0.0,
-            log_alpha_half_span: 0.50 * alpha_span,
-            buy_skew_half_span: 0.50 * skew_span,
-            sell_relative_half_span: 1.25,
-            log_delta_half_span: 0.50 * log_delta_span,
-        },
-        NigSearchRegime {
-            log_alpha_center: log_alpha_anchor + 1.15 * alpha_span,
-            buy_skew_center: 0.0,
-            sell_relative_center: 0.0,
-            log_delta_center: 0.45 * log_delta_span,
-            log_alpha_half_span: 0.45 * alpha_span,
-            buy_skew_half_span: 0.60 * skew_span,
-            sell_relative_half_span: 1.00,
-            log_delta_half_span: 0.55 * log_delta_span,
-        },
-        NigSearchRegime {
-            log_alpha_center: log_alpha_anchor - 1.10 * alpha_span,
-            buy_skew_center: 0.0,
-            sell_relative_center: 0.0,
-            log_delta_center: 0.25 * log_delta_span,
-            log_alpha_half_span: 0.60 * alpha_span,
-            buy_skew_half_span: 0.85 * skew_span,
-            sell_relative_half_span: 1.25,
-            log_delta_half_span: 0.75 * log_delta_span,
-        },
-        NigSearchRegime {
-            log_alpha_center: log_alpha_anchor - 0.45 * alpha_span,
-            buy_skew_center: buy_skew_coordinate_anchor,
-            sell_relative_center: 0.0,
-            log_delta_center: 0.90 * log_delta_span,
-            log_alpha_half_span: 0.50 * alpha_span,
-            buy_skew_half_span: 0.70 * skew_span,
-            sell_relative_half_span: 1.10,
-            log_delta_half_span: 0.60 * log_delta_span,
-        },
-        NigSearchRegime {
-            log_alpha_center: log_alpha_anchor + 0.30 * alpha_span,
-            buy_skew_center: buy_skew_coordinate_anchor + 0.70 * skew_span,
-            sell_relative_center: 1.50,
-            log_delta_center: 0.10 * log_delta_span,
-            log_alpha_half_span: 0.45 * alpha_span,
-            buy_skew_half_span: 0.55 * skew_span,
-            sell_relative_half_span: 0.90,
-            log_delta_half_span: 0.50 * log_delta_span,
-        },
-        NigSearchRegime {
-            log_alpha_center: log_alpha_anchor + 0.30 * alpha_span,
-            buy_skew_center: buy_skew_coordinate_anchor - 0.70 * skew_span,
-            sell_relative_center: -1.50,
-            log_delta_center: 0.10 * log_delta_span,
-            log_alpha_half_span: 0.45 * alpha_span,
-            buy_skew_half_span: 0.55 * skew_span,
-            sell_relative_half_span: 0.90,
-            log_delta_half_span: 0.50 * log_delta_span,
-        },
-        NigSearchRegime {
-            log_alpha_center: log_alpha_anchor + 1.50 * alpha_span,
-            buy_skew_center: 0.0,
-            sell_relative_center: 0.0,
-            log_delta_center: -0.30 * log_delta_span,
-            log_alpha_half_span: 0.40 * alpha_span,
-            buy_skew_half_span: 0.45 * skew_span,
-            sell_relative_half_span: 0.85,
-            log_delta_half_span: 0.50 * log_delta_span,
-        },
-    ]
+fn build_profiled_search_regime(
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    seed_search_point: NigShapeSearchPoint,
+    theoretical_search_bounds: NigShapeSearchBounds,
+) -> Option<NigSearchRegime> {
+    let seed_evaluation = evaluate_cached_search_point(
+        optimizer_context,
+        seed_search_point,
+        ContinuousLikelihoodFidelityTier::Local,
+    )?;
+
+    let seed_profile_score = profile_likelihood_score(seed_evaluation.objective);
+
+    let profile_score_threshold = seed_profile_score
+        + profile_likelihood_score_threshold(optimizer_context.local_member_indices.len());
+
+    let seed_vector = search_point_to_vector(seed_search_point);
+
+    let mut lower_bounds = [0.0; 4];
+    let mut upper_bounds = [0.0; 4];
+
+    for coordinate_index in 0..4 {
+        lower_bounds[coordinate_index] = profiled_coordinate_bound(
+            optimizer_context,
+            seed_vector,
+            coordinate_index,
+            theoretical_search_bounds.lower_bounds[coordinate_index],
+            profile_score_threshold,
+            ScanDirection::Lower,
+        )?;
+
+        upper_bounds[coordinate_index] = profiled_coordinate_bound(
+            optimizer_context,
+            seed_vector,
+            coordinate_index,
+            theoretical_search_bounds.upper_bounds[coordinate_index],
+            profile_score_threshold,
+            ScanDirection::Upper,
+        )?;
+    }
+
+    Some(NigSearchRegime {
+        log_alpha_center: seed_search_point.log_alpha,
+        buy_skew_center: seed_search_point.buy_skew_coordinate,
+        sell_relative_center: seed_search_point.sell_relative_coordinate,
+        log_delta_center: seed_search_point.log_delta_offset,
+        log_alpha_half_span: 0.5 * (upper_bounds[0] - lower_bounds[0]).max(1.0e-6),
+        buy_skew_half_span: 0.5 * (upper_bounds[1] - lower_bounds[1]).max(1.0e-6),
+        sell_relative_half_span: 0.5 * (upper_bounds[2] - lower_bounds[2]).max(1.0e-6),
+        log_delta_half_span: 0.5 * (upper_bounds[3] - lower_bounds[3]).max(1.0e-6),
+    })
+}
+
+fn theoretical_search_bounds(
+    observed_profile: ContinuousReturnDistributionProfile,
+    moment_candidate_count: usize,
+) -> NigShapeSearchBounds {
+    let (alpha_lower_bound, alpha_upper_bound) = theoretical_alpha_bounds(observed_profile);
+
+    let relative_share_lower_bound = minimum_profiled_relative_share(moment_candidate_count);
+    let relative_share_upper_bound = 1.0 - relative_share_lower_bound;
+
+    NigShapeSearchBounds {
+        lower_bounds: [
+            alpha_lower_bound.ln(),
+            ratio_to_coordinate(-maximum_profiled_open_beta_ratio()),
+            share_to_coordinate(relative_share_lower_bound),
+            theoretical_log_delta_offset_bounds(observed_profile).0,
+        ],
+        upper_bounds: [
+            alpha_upper_bound.ln(),
+            ratio_to_coordinate(maximum_profiled_open_beta_ratio()),
+            share_to_coordinate(relative_share_upper_bound),
+            theoretical_log_delta_offset_bounds(observed_profile).1,
+        ],
+    }
+}
+
+fn theoretical_alpha_bounds(observed_profile: ContinuousReturnDistributionProfile) -> (f64, f64) {
+    let observed_variance = observed_profile
+        .return_volatility
+        .powi(2)
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+
+    let excess_kurtosis_standard_error = observed_profile.excess_kurtosis_standard_error();
+    let observed_excess_kurtosis = observed_profile.adjusted_excess_kurtosis.max(0.0);
+
+    let lower_plausible_excess_kurtosis = (observed_excess_kurtosis
+        - RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_CONFIDENCE_Z_SCORE
+            * excess_kurtosis_standard_error)
+        .max(0.5 * excess_kurtosis_standard_error)
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+    let upper_plausible_excess_kurtosis = (observed_excess_kurtosis
+        + RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_CONFIDENCE_Z_SCORE
+            * excess_kurtosis_standard_error)
+        .max(lower_plausible_excess_kurtosis * 1.25);
+
+    let lower_alpha_bound = (3.0 / (observed_variance * upper_plausible_excess_kurtosis))
+        .sqrt()
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+    let upper_alpha_bound = (3.0 / (observed_variance * lower_plausible_excess_kurtosis))
+        .sqrt()
+        .max(lower_alpha_bound * 1.5);
+
+    (lower_alpha_bound, upper_alpha_bound)
+}
+
+fn theoretical_log_delta_offset_bounds(
+    observed_profile: ContinuousReturnDistributionProfile,
+) -> (f64, f64) {
+    let sample_count = observed_profile.sample_count.max(3) as f64;
+
+    let degrees_of_freedom = (sample_count - 1.0).max(1.0);
+
+    let lower_tail_quantile = approximate_chi_square_quantile(degrees_of_freedom, 0.025);
+    let upper_tail_quantile = approximate_chi_square_quantile(degrees_of_freedom, 0.975);
+
+    let lower_variance_ratio = (degrees_of_freedom / upper_tail_quantile)
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+    let upper_variance_ratio =
+        (degrees_of_freedom / lower_tail_quantile).max(lower_variance_ratio * 1.5);
+
+    (lower_variance_ratio.ln(), upper_variance_ratio.ln())
+}
+
+fn minimum_profiled_relative_share(moment_candidate_count: usize) -> f64 {
+    let denominator = (moment_candidate_count.max(2) + 1) as f64;
+
+    (1.0 / denominator).clamp(0.0f64.next_up(), 0.5)
+}
+
+fn build_moment_seed_candidates(
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    theoretical_search_bounds: NigShapeSearchBounds,
+    moment_candidate_count: usize,
+) -> Vec<ScoredNigCandidate> {
+    let moment_targets = ContinuousMomentTargets::from_profile(calibration_sample.observed_profile);
+
+    let alpha_interval = theoretical_alpha_bounds(calibration_sample.observed_profile);
+
+    let relative_share_lower_bound = coordinate_to_share(theoretical_search_bounds.lower_bounds[2]);
+    let relative_share_upper_bound = coordinate_to_share(theoretical_search_bounds.upper_bounds[2]);
+
+    let beta_ratio_lower_bound = coordinate_to_ratio(theoretical_search_bounds.lower_bounds[1]);
+    let beta_ratio_upper_bound = coordinate_to_ratio(theoretical_search_bounds.upper_bounds[1]);
+
+    let mut ranked_candidates: Vec<ScoredNigCandidate> = (0..moment_candidate_count)
+        .into_par_iter()
+        .filter_map(|candidate_index| {
+            let alpha_quantile =
+                van_der_corput(candidate_index as u64 + 1, 2).clamp(0.0f64.next_up(), 1.0);
+
+            let buy_ratio_quantile =
+                van_der_corput(candidate_index as u64 + 1, 3).clamp(0.0f64.next_up(), 1.0);
+            let sell_ratio_quantile = van_der_corput(candidate_index as u64 + 1, 5)
+                .clamp(relative_share_lower_bound, relative_share_upper_bound);
+
+            let alpha =
+                alpha_interval.0 * (alpha_interval.1 / alpha_interval.0).powf(alpha_quantile);
+
+            let buy_beta_ratio = beta_ratio_lower_bound
+                + (beta_ratio_upper_bound - beta_ratio_lower_bound) * buy_ratio_quantile;
+            let sell_beta_ratio = beta_ratio_lower_bound
+                + (buy_beta_ratio - beta_ratio_lower_bound) * sell_ratio_quantile;
+
+            let search_point = NigShapeSearchPoint {
+                log_alpha: alpha.ln(),
+                buy_skew_coordinate: ratio_to_coordinate(buy_beta_ratio),
+                sell_relative_coordinate: share_to_coordinate(relative_share_from_beta_ratios(
+                    buy_beta_ratio,
+                    sell_beta_ratio,
+                )?),
+                log_delta_offset: 0.0,
+            };
+
+            let configuration =
+                configuration_from_shape_search_point(optimizer_context, search_point)?;
+
+            let objective_score =
+                moment_seed_objective_score(configuration, optimizer_context, moment_targets)?;
+
+            Some(ScoredNigCandidate {
+                search_point,
+                configuration,
+                objective_score,
+            })
+        })
+        .collect();
+
+    ranked_candidates.sort_by(|left, right| {
+        left.objective_score
+            .total_cmp(&right.objective_score)
+            .then_with(|| {
+                left.configuration
+                    .alpha
+                    .total_cmp(&right.configuration.alpha)
+            })
+            .then_with(|| {
+                left.configuration
+                    .beta_0
+                    .total_cmp(&right.configuration.beta_0)
+            })
+            .then_with(|| {
+                left.configuration
+                    .delta
+                    .total_cmp(&right.configuration.delta)
+            })
+            .then_with(|| {
+                left.configuration
+                    .delta_beta
+                    .total_cmp(&right.configuration.delta_beta)
+            })
+    });
+
+    let deduplicated_candidates = deduplicate_candidates_by_key(ranked_candidates, |candidate| {
+        candidate_configuration_key(candidate.configuration)
+    });
+    if deduplicated_candidates.is_empty() {
+        let midpoint_search_point = NigShapeSearchPoint {
+            log_alpha: 0.5
+                * (theoretical_search_bounds.lower_bounds[0]
+                    + theoretical_search_bounds.upper_bounds[0]),
+            buy_skew_coordinate: 0.5
+                * (theoretical_search_bounds.lower_bounds[1]
+                    + theoretical_search_bounds.upper_bounds[1]),
+            sell_relative_coordinate: 0.5
+                * (theoretical_search_bounds.lower_bounds[2]
+                    + theoretical_search_bounds.upper_bounds[2]),
+            log_delta_offset: 0.0,
+        };
+
+        let Some(configuration) =
+            configuration_from_shape_search_point(optimizer_context, midpoint_search_point)
+        else {
+            return Vec::new();
+        };
+
+        let Some(objective_score) =
+            moment_seed_objective_score(configuration, optimizer_context, moment_targets)
+        else {
+            return Vec::new();
+        };
+
+        return vec![ScoredNigCandidate {
+            search_point: midpoint_search_point,
+            configuration,
+            objective_score,
+        }];
+    }
+
+    deduplicated_candidates
+        .into_iter()
+        .take(RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_REGIME_COUNT)
+        .collect()
+}
+
+fn moment_seed_objective_score(
+    configuration: NigSharedPlusShiftConfiguration,
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    moment_targets: ContinuousMomentTargets,
+) -> Option<f64> {
+    let (fitted_mean_return, fitted_variance, fitted_skewness, fitted_excess_kurtosis) =
+        theoretical_net_process_moments(
+            configuration,
+            optimizer_context.open_session_sell_share_proxy,
+        )?;
+
+    let mean_scale = (moment_targets.return_volatility
+        / (moment_targets.sample_count.max(2) as f64).sqrt())
+    .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER.sqrt());
+
+    let variance_scale = moment_targets
+        .return_volatility
+        .powi(2)
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+
+    let mean_fit =
+        scale_aware_absolute_error(fitted_mean_return, moment_targets.mean_return, mean_scale);
+    let variance_fit = scale_aware_absolute_error(fitted_variance, variance_scale, variance_scale);
+    let skewness_fit = scale_aware_absolute_error(
+        fitted_skewness,
+        moment_targets.adjusted_skewness,
+        moment_targets.skewness_standard_error,
+    );
+    let excess_kurtosis_fit = scale_aware_absolute_error(
+        fitted_excess_kurtosis,
+        moment_targets.adjusted_excess_kurtosis,
+        moment_targets.excess_kurtosis_standard_error,
+    );
+
+    Some(0.15 * mean_fit + 0.10 * variance_fit + 0.35 * skewness_fit + 0.40 * excess_kurtosis_fit)
+}
+
+fn profile_likelihood_score(objective: ContinuousLikelihoodObjective) -> f64 {
+    0.45 * objective.global_negative_log_likelihood
+        + 0.55 * objective.conditional_negative_log_likelihood
+        + objective.boundary_penalty
+}
+
+fn profile_likelihood_score_threshold(local_sample_count: usize) -> f64 {
+    RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_LIKELIHOOD_CHI_SQUARE_95
+        / (2.0 * local_sample_count.max(1) as f64)
+}
+
+fn profiled_coordinate_bound(
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    seed_vector: [f64; 4],
+    coordinate_index: usize,
+    coordinate_bound: f64,
+    profile_score_threshold: f64,
+    scan_direction: ScanDirection,
+) -> Option<f64> {
+    let seed_evaluation = evaluate_cached_search_point(
+        optimizer_context,
+        vector_to_search_point(seed_vector),
+        ContinuousLikelihoodFidelityTier::Local,
+    )?;
+
+    let seed_profile_score = profile_likelihood_score(seed_evaluation.objective);
+
+    let mut accepted_coordinate = seed_vector[coordinate_index];
+    let mut rejected_coordinate: Option<f64> = None;
+
+    for scan_step_index in 1..=RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_SCAN_STEP_COUNT {
+        let scan_fraction = scan_step_index as f64
+            / RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_SCAN_STEP_COUNT as f64;
+
+        let candidate_coordinate = match scan_direction {
+            ScanDirection::Lower => {
+                seed_vector[coordinate_index]
+                    + (coordinate_bound - seed_vector[coordinate_index]) * scan_fraction
+            }
+            ScanDirection::Upper => {
+                seed_vector[coordinate_index]
+                    + (coordinate_bound - seed_vector[coordinate_index]) * scan_fraction
+            }
+        };
+
+        let mut candidate_vector = seed_vector;
+        candidate_vector[coordinate_index] = candidate_coordinate;
+
+        let candidate_evaluation = evaluate_cached_search_point(
+            optimizer_context,
+            vector_to_search_point(candidate_vector),
+            ContinuousLikelihoodFidelityTier::Local,
+        );
+
+        let candidate_profile_score = candidate_evaluation
+            .map(|evaluation| profile_likelihood_score(evaluation.objective))
+            .unwrap_or(f64::INFINITY);
+        if candidate_profile_score <= seed_profile_score + profile_score_threshold {
+            accepted_coordinate = candidate_coordinate;
+            continue;
+        }
+
+        rejected_coordinate = Some(candidate_coordinate);
+
+        break;
+    }
+
+    let Some(mut rejected_coordinate) = rejected_coordinate else {
+        return Some(coordinate_bound);
+    };
+    let mut accepted_coordinate = accepted_coordinate;
+
+    for _ in 0..RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_BISECTION_STEP_COUNT {
+        let midpoint_coordinate = 0.5 * (accepted_coordinate + rejected_coordinate);
+
+        let mut candidate_vector = seed_vector;
+        candidate_vector[coordinate_index] = midpoint_coordinate;
+
+        let candidate_evaluation = evaluate_cached_search_point(
+            optimizer_context,
+            vector_to_search_point(candidate_vector),
+            ContinuousLikelihoodFidelityTier::Local,
+        );
+
+        let candidate_profile_score = candidate_evaluation
+            .map(|evaluation| profile_likelihood_score(evaluation.objective))
+            .unwrap_or(f64::INFINITY);
+        if candidate_profile_score <= seed_profile_score + profile_score_threshold {
+            accepted_coordinate = midpoint_coordinate;
+        } else {
+            rejected_coordinate = midpoint_coordinate;
+        }
+    }
+
+    Some(accepted_coordinate)
+}
+
+fn approximate_chi_square_quantile(degrees_of_freedom: f64, probability_level: f64) -> f64 {
+    let standardized_quantile = standard_normal_quantile(probability_level);
+    let wilson_hilferty_term = 1.0 - 2.0 / (9.0 * degrees_of_freedom)
+        + standardized_quantile * (2.0 / (9.0 * degrees_of_freedom)).sqrt();
+
+    (degrees_of_freedom * wilson_hilferty_term.powi(3))
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER)
+}
+
+fn standard_normal_quantile(probability_level: f64) -> f64 {
+    if probability_level <= 0.025 {
+        -RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_CONFIDENCE_Z_SCORE
+    } else {
+        RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_CONFIDENCE_Z_SCORE
+    }
 }
 
 fn sample_regime_search_point(
@@ -817,10 +1372,10 @@ fn score_search_points(
         .collect()
 }
 
-fn top_unique_seed_candidates(
+fn build_basin_seed_candidates(
     scored_candidates: &[ScoredNigCandidate],
-    broad_search_regimes: [NigSearchRegime; RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_REGIME_COUNT],
-) -> Vec<ScoredNigCandidate> {
+    broad_search_regimes: &[NigSearchRegime],
+) -> Vec<SeededNigCandidate> {
     let mut ranked_candidates = scored_candidates.to_vec();
     ranked_candidates.sort_by(|left, right| {
         left.objective_score
@@ -846,23 +1401,175 @@ fn top_unique_seed_candidates(
         candidate_configuration_key(candidate.configuration)
     });
 
-    let mut retained_candidates = Vec::new();
-    let mut retained_regimes = BTreeSet::new();
+    let Some(feature_thresholds) =
+        BroadSeedFeatureThresholds::from_candidates(deduplicated_candidates.as_slice())
+    else {
+        return Vec::new();
+    };
 
-    for scored_candidate in deduplicated_candidates {
-        let regime_index =
-            nearest_search_regime_index(scored_candidate.search_point, &broad_search_regimes);
-        if retained_regimes.insert(regime_index)
-            || retained_candidates.len() < RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_ELITE_COUNT
-        {
-            retained_candidates.push(scored_candidate);
+    let mut retained_candidates: Vec<SeededNigCandidate> = Vec::new();
+    let mut seen_seed_keys = BTreeSet::new();
+
+    for family in [
+        BasinSeedFamily::Overall,
+        BasinSeedFamily::HighAlphaLowDelta,
+        BasinSeedFamily::MediumAlphaMediumDelta,
+        BasinSeedFamily::LowAlphaHighDelta,
+        BasinSeedFamily::SkewLight,
+        BasinSeedFamily::SkewHeavy,
+        BasinSeedFamily::SymmetricLike,
+        BasinSeedFamily::AsymmetricLike,
+    ] {
+        let Some(seed_candidate) = select_family_seed_candidate(
+            deduplicated_candidates.as_slice(),
+            feature_thresholds,
+            family,
+        ) else {
+            continue;
+        };
+
+        let seed_key = search_point_bits_key(seed_candidate.search_point);
+        if seen_seed_keys.insert(seed_key) {
+            retained_candidates.push(SeededNigCandidate {
+                family,
+                scored_candidate: seed_candidate.clone(),
+            });
         }
+    }
+
+    let mut retained_regimes = BTreeSet::new();
+    for scored_candidate in deduplicated_candidates {
         if retained_candidates.len() >= RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_ELITE_COUNT {
             break;
+        }
+        let regime_index =
+            nearest_search_regime_index(scored_candidate.search_point, broad_search_regimes);
+        if !retained_regimes.insert(regime_index) {
+            continue;
+        }
+
+        let seed_key = search_point_bits_key(scored_candidate.search_point);
+        if seen_seed_keys.insert(seed_key) {
+            retained_candidates.push(SeededNigCandidate {
+                family: BasinSeedFamily::Overall,
+                scored_candidate,
+            });
         }
     }
 
     retained_candidates
+}
+
+#[derive(Debug, Clone, Copy)]
+struct BroadSeedFeatureThresholds {
+    low_alpha: f64,
+    high_alpha: f64,
+    low_delta: f64,
+    high_delta: f64,
+    low_skew_magnitude: f64,
+    high_skew_magnitude: f64,
+    low_skew_asymmetry: f64,
+    high_skew_asymmetry: f64,
+}
+
+impl BroadSeedFeatureThresholds {
+    fn from_candidates(candidates: &[ScoredNigCandidate]) -> Option<Self> {
+        if candidates.is_empty() {
+            return None;
+        }
+
+        let mut log_alpha_values: Vec<f64> = candidates
+            .iter()
+            .map(|candidate| candidate.search_point.log_alpha)
+            .collect();
+        let mut log_delta_values: Vec<f64> = candidates
+            .iter()
+            .map(|candidate| candidate.search_point.log_delta_offset)
+            .collect();
+
+        let mut skew_magnitudes: Vec<f64> = candidates
+            .iter()
+            .filter_map(|candidate| {
+                basin_candidate_features(candidate.search_point).map(|(_, value)| value)
+            })
+            .collect();
+        let mut skew_asymmetries: Vec<f64> = candidates
+            .iter()
+            .filter_map(|candidate| {
+                basin_candidate_features(candidate.search_point).map(|(value, _)| value)
+            })
+            .collect();
+
+        log_alpha_values.sort_by(|left, right| left.total_cmp(right));
+        log_delta_values.sort_by(|left, right| left.total_cmp(right));
+
+        skew_magnitudes.sort_by(|left, right| left.total_cmp(right));
+        skew_asymmetries.sort_by(|left, right| left.total_cmp(right));
+
+        Some(Self {
+            low_alpha: sorted_quantile(log_alpha_values.as_slice(), 1.0 / 3.0),
+            high_alpha: sorted_quantile(log_alpha_values.as_slice(), 2.0 / 3.0),
+            low_delta: sorted_quantile(log_delta_values.as_slice(), 1.0 / 3.0),
+            high_delta: sorted_quantile(log_delta_values.as_slice(), 2.0 / 3.0),
+            low_skew_magnitude: sorted_quantile(skew_magnitudes.as_slice(), 1.0 / 3.0),
+            high_skew_magnitude: sorted_quantile(skew_magnitudes.as_slice(), 2.0 / 3.0),
+            low_skew_asymmetry: sorted_quantile(skew_asymmetries.as_slice(), 1.0 / 3.0),
+            high_skew_asymmetry: sorted_quantile(skew_asymmetries.as_slice(), 2.0 / 3.0),
+        })
+    }
+}
+
+fn select_family_seed_candidate(
+    candidates: &[ScoredNigCandidate],
+    thresholds: BroadSeedFeatureThresholds,
+    family: BasinSeedFamily,
+) -> Option<&ScoredNigCandidate> {
+    candidates
+        .iter()
+        .find(|candidate| family_accepts_candidate(candidate.search_point, thresholds, family))
+}
+
+fn family_accepts_candidate(
+    search_point: NigShapeSearchPoint,
+    thresholds: BroadSeedFeatureThresholds,
+    family: BasinSeedFamily,
+) -> bool {
+    let Some((skew_asymmetry, skew_magnitude)) = basin_candidate_features(search_point) else {
+        return false;
+    };
+
+    match family {
+        BasinSeedFamily::Overall => true,
+        BasinSeedFamily::HighAlphaLowDelta => {
+            search_point.log_alpha >= thresholds.high_alpha
+                && search_point.log_delta_offset <= thresholds.low_delta
+        }
+        BasinSeedFamily::MediumAlphaMediumDelta => {
+            search_point.log_alpha >= thresholds.low_alpha
+                && search_point.log_alpha <= thresholds.high_alpha
+                && search_point.log_delta_offset >= thresholds.low_delta
+                && search_point.log_delta_offset <= thresholds.high_delta
+        }
+        BasinSeedFamily::LowAlphaHighDelta => {
+            search_point.log_alpha <= thresholds.low_alpha
+                && search_point.log_delta_offset >= thresholds.high_delta
+        }
+        BasinSeedFamily::SkewLight => skew_magnitude <= thresholds.low_skew_magnitude,
+        BasinSeedFamily::SkewHeavy => skew_magnitude >= thresholds.high_skew_magnitude,
+        BasinSeedFamily::SymmetricLike => skew_asymmetry <= thresholds.low_skew_asymmetry,
+        BasinSeedFamily::AsymmetricLike => skew_asymmetry >= thresholds.high_skew_asymmetry,
+    }
+}
+
+fn basin_candidate_features(search_point: NigShapeSearchPoint) -> Option<(f64, f64)> {
+    let buy_beta_ratio = coordinate_to_ratio(search_point.buy_skew_coordinate);
+    let relative_share = coordinate_to_share(search_point.sell_relative_coordinate);
+    let sell_beta_ratio: f64 = sell_beta_ratio_from_relative_share(buy_beta_ratio, relative_share);
+
+    Some((
+        (buy_beta_ratio - sell_beta_ratio).abs(),
+        0.5 * (buy_beta_ratio.abs() + sell_beta_ratio.abs()),
+    ))
 }
 
 fn deduplicate_candidates_by_key<T>(
@@ -890,6 +1597,16 @@ fn candidate_configuration_key(configuration: NigSharedPlusShiftConfiguration) -
         configuration.delta,
         configuration.mu,
         configuration.delta_beta,
+    )
+}
+
+fn search_point_bits_key(search_point: NigShapeSearchPoint) -> String {
+    format!(
+        "{}|{}|{}|{}",
+        search_point.log_alpha.to_bits(),
+        search_point.buy_skew_coordinate.to_bits(),
+        search_point.sell_relative_coordinate.to_bits(),
+        search_point.log_delta_offset.to_bits(),
     )
 }
 
@@ -991,30 +1708,14 @@ fn inferred_delta_center(
     )
 }
 
-fn inferred_log_alpha_anchor(observed_profile: ContinuousReturnDistributionProfile) -> f64 {
-    let tail_excess = (observed_profile.abs_quantile_ratio_q99_q95 - 1.0)
-        .abs()
-        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER.sqrt());
-    let asymmetry_scale =
-        1.0 + observed_profile.bowley_skewness.abs() + observed_profile.l_moment_tau3.abs();
-
-    (1.0 + 1.0 / (tail_excess * asymmetry_scale)).ln()
-}
-
-fn inferred_buy_skew_coordinate(
-    observed_profile: ContinuousReturnDistributionProfile,
-    open_session_sell_share_proxy: f64,
-) -> f64 {
-    let robust_skew_center = 0.5
-        * (observed_profile.bowley_skewness + observed_profile.l_moment_tau3)
-        + (open_session_sell_share_proxy - 0.5) * 0.25;
-
-    ratio_to_coordinate(clamp_open_beta_ratio(robust_skew_center * 0.60))
-}
-
 fn ratio_to_coordinate(ratio: f64) -> f64 {
     let bounded_ratio = clamp_open_beta_ratio(ratio);
     0.5 * ((1.0 + bounded_ratio) / (1.0 - bounded_ratio)).ln()
+}
+
+fn share_to_coordinate(share: f64) -> f64 {
+    let bounded_share = share.clamp(0.0f64.next_up(), 1.0f64.next_down());
+    (bounded_share / (1.0 - bounded_share)).ln()
 }
 
 fn coordinate_to_ratio(coordinate: f64) -> f64 {
@@ -1030,8 +1731,7 @@ fn sell_beta_ratio_from_relative_share(buy_beta_ratio: f64, relative_share: f64)
     lower_bound + (buy_beta_ratio - lower_bound) * relative_share
 }
 
-#[cfg(test)]
-fn sell_relative_share_from_beta_ratios(buy_beta_ratio: f64, sell_beta_ratio: f64) -> Option<f64> {
+fn relative_share_from_beta_ratios(buy_beta_ratio: f64, sell_beta_ratio: f64) -> Option<f64> {
     let lower_bound = minimum_open_beta_ratio();
     let denominator = buy_beta_ratio - lower_bound;
     if !denominator.is_finite() || denominator <= 0.0 {
@@ -1046,6 +1746,10 @@ fn sell_relative_share_from_beta_ratios(buy_beta_ratio: f64, sell_beta_ratio: f6
 
 fn clamp_open_beta_ratio(value: f64) -> f64 {
     value.clamp(minimum_open_beta_ratio(), maximum_open_beta_ratio())
+}
+
+fn maximum_profiled_open_beta_ratio() -> f64 {
+    1.0 - preferred_alpha_beta_margin_ratio()
 }
 
 fn minimum_open_beta_ratio() -> f64 {
@@ -1342,14 +2046,6 @@ fn search_bounds_from_regimes(search_regimes: &[NigSearchRegime]) -> NigShapeSea
         }
     }
 
-    for coordinate_index in 0..4 {
-        let span = (upper_bounds[coordinate_index] - lower_bounds[coordinate_index]).max(1.0e-6);
-        lower_bounds[coordinate_index] -=
-            RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_BOUND_EXPANSION_RATIO * span;
-        upper_bounds[coordinate_index] +=
-            RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_BOUND_EXPANSION_RATIO * span;
-    }
-
     NigShapeSearchBounds {
         lower_bounds,
         upper_bounds,
@@ -1389,16 +2085,16 @@ fn nearest_search_regime_index(
 
 fn optimize_seed_candidates(
     optimizer_context: &ContinuousReturnOptimizerContext,
-    seed_candidates: &[ScoredNigCandidate],
+    seed_candidates: &[SeededNigCandidate],
     search_bounds: NigShapeSearchBounds,
     solver_settings: &CalibrationOptimizerSettings,
-) -> Vec<OptimizedNigCandidate> {
+) -> Vec<OptimizedNigSearchCandidate> {
     seed_candidates
         .par_iter()
         .filter_map(|seed_candidate| {
             let local_outcome = optimize_powell_search_point(
                 optimizer_context,
-                seed_candidate.search_point,
+                seed_candidate.scored_candidate.search_point,
                 search_bounds,
                 solver_settings,
             )?;
@@ -1409,18 +2105,146 @@ fn optimize_seed_candidates(
                 ContinuousLikelihoodFidelityTier::Full,
             )?;
 
-            Some(OptimizedNigCandidate {
+            Some(OptimizedNigSearchCandidate {
                 configuration: final_evaluation.configuration,
+                family: seed_candidate.family,
+                seed_search_point: seed_candidate.scored_candidate.search_point,
+                final_search_point: local_outcome.best_point,
                 optimizer_diagnostic: ContinuousReturnOptimizerDiagnostic {
-                    seed_objective_score: seed_candidate.objective_score,
+                    seed_objective_score: seed_candidate.scored_candidate.objective_score,
                     local_objective_score: local_outcome.local_objective_score,
                     final_objective_score: final_evaluation.objective.shifted_objective_score,
                     local_evaluation_count: local_outcome.local_evaluation_count,
                     stop_reason: local_outcome.stop_reason,
+                    basin_diagnostics: Vec::new(),
                 },
             })
         })
         .collect()
+}
+
+fn retain_distinct_basin_candidates(
+    mut optimized_candidates: Vec<OptimizedNigSearchCandidate>,
+    search_bounds: NigShapeSearchBounds,
+    maximum_basin_count: usize,
+) -> Vec<OptimizedNigSearchCandidate> {
+    optimized_candidates.sort_by(|left, right| {
+        left.optimizer_diagnostic
+            .final_objective_score
+            .total_cmp(&right.optimizer_diagnostic.final_objective_score)
+            .then_with(|| {
+                left.final_search_point
+                    .log_alpha
+                    .total_cmp(&right.final_search_point.log_alpha)
+            })
+            .then_with(|| {
+                left.final_search_point
+                    .buy_skew_coordinate
+                    .total_cmp(&right.final_search_point.buy_skew_coordinate)
+            })
+            .then_with(|| {
+                left.final_search_point
+                    .sell_relative_coordinate
+                    .total_cmp(&right.final_search_point.sell_relative_coordinate)
+            })
+            .then_with(|| {
+                left.final_search_point
+                    .log_delta_offset
+                    .total_cmp(&right.final_search_point.log_delta_offset)
+            })
+    });
+
+    let mut retained_candidates: Vec<OptimizedNigSearchCandidate> = Vec::new();
+    for optimized_candidate in optimized_candidates {
+        if retained_candidates.iter().any(|retained_candidate| {
+            basin_search_points_overlap(
+                optimized_candidate.final_search_point,
+                retained_candidate.final_search_point,
+                search_bounds,
+            )
+        }) {
+            continue;
+        }
+        retained_candidates.push(optimized_candidate);
+        if retained_candidates.len() >= maximum_basin_count {
+            break;
+        }
+    }
+
+    retained_candidates
+}
+
+fn build_optimizer_basin_diagnostics(
+    optimized_candidates: &[OptimizedNigSearchCandidate],
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    stage_seed: u64,
+) -> Vec<ReturnComponentsStageContinuousOptimizerBasinDiagnostic> {
+    optimized_candidates
+        .iter()
+        .map(|candidate| {
+            let fitted_returns = simulate_matched_scale_returns(
+                candidate.configuration,
+                calibration_sample,
+                stage_seed,
+            );
+            let fitted_profile = build_distribution_profile(fitted_returns.as_slice());
+            let profile_fit_breakdown = distribution_profile_fit_breakdown(
+                fitted_profile,
+                calibration_sample.observed_profile,
+            );
+
+            ReturnComponentsStageContinuousOptimizerBasinDiagnostic {
+                family_label: candidate.family.label().to_string(),
+                seed_objective: candidate.optimizer_diagnostic.seed_objective_score,
+                local_objective: candidate.optimizer_diagnostic.local_objective_score,
+                final_objective: candidate.optimizer_diagnostic.final_objective_score,
+                local_evaluation_count: candidate.optimizer_diagnostic.local_evaluation_count,
+                stop_reason: candidate.optimizer_diagnostic.stop_reason.to_string(),
+                seed_log_alpha: candidate.seed_search_point.log_alpha,
+                seed_buy_skew_coordinate: candidate.seed_search_point.buy_skew_coordinate,
+                seed_sell_relative_coordinate: candidate.seed_search_point.sell_relative_coordinate,
+                seed_log_delta_offset: candidate.seed_search_point.log_delta_offset,
+                final_log_alpha: candidate.final_search_point.log_alpha,
+                final_buy_skew_coordinate: candidate.final_search_point.buy_skew_coordinate,
+                final_sell_relative_coordinate: candidate
+                    .final_search_point
+                    .sell_relative_coordinate,
+                final_log_delta_offset: candidate.final_search_point.log_delta_offset,
+                final_alpha: candidate.configuration.alpha,
+                final_beta_0: candidate.configuration.beta_0,
+                final_delta: candidate.configuration.delta,
+                final_delta_beta: candidate.configuration.delta_beta,
+                profile_fit_score: profile_fit_breakdown.global_fit_score,
+                fitted_return_volatility: sample_standard_deviation(fitted_returns.as_slice()),
+                fitted_skewness: sample_adjusted_skewness(fitted_returns.as_slice()).unwrap_or(0.0),
+            }
+        })
+        .collect()
+}
+
+fn basin_search_points_overlap(
+    left: NigShapeSearchPoint,
+    right: NigShapeSearchPoint,
+    search_bounds: NigShapeSearchBounds,
+) -> bool {
+    let left_vector = search_point_to_vector(left);
+    let right_vector = search_point_to_vector(right);
+
+    let mut maximum_normalized_distance: f64 = 0.0;
+
+    for coordinate_index in 0..4 {
+        let coordinate_range = (search_bounds.upper_bounds[coordinate_index]
+            - search_bounds.lower_bounds[coordinate_index])
+            .abs()
+            .max(1.0);
+
+        let normalized_distance = (left_vector[coordinate_index] - right_vector[coordinate_index])
+            .abs()
+            / coordinate_range;
+        maximum_normalized_distance = maximum_normalized_distance.max(normalized_distance);
+    }
+
+    maximum_normalized_distance <= 0.05
 }
 
 fn optimize_powell_search_point(
@@ -1583,13 +2407,6 @@ fn optimize_powell_search_point(
         local_evaluation_count,
         stop_reason: "budget",
     })
-}
-
-#[derive(Debug, Clone, Copy)]
-struct LineSearchOutcome {
-    best_vector: [f64; 4],
-    best_evaluation: Option<CachedSearchPointObjectiveEvaluation>,
-    evaluation_count: usize,
 }
 
 fn minimize_along_direction(
@@ -1996,6 +2813,7 @@ fn distribution_profile_fit_breakdown(
         optimizer_final_objective: 0.0,
         optimizer_local_evaluation_count: 0,
         optimizer_stop_reason: "not_optimized".to_string(),
+        optimizer_basin_diagnostics: Vec::new(),
         mean_return_fit,
         volatility_fit,
         median_return_fit,
@@ -2022,7 +2840,7 @@ fn alpha_beta_boundary_penalty(configuration: NigSharedPlusShiftConfiguration) -
             .alpha
             .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER))
     .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
-    let preferred_margin_ratio = 0.05;
+    let preferred_margin_ratio = preferred_alpha_beta_margin_ratio();
 
     if minimum_margin_ratio >= preferred_margin_ratio {
         0.0
@@ -2031,10 +2849,15 @@ fn alpha_beta_boundary_penalty(configuration: NigSharedPlusShiftConfiguration) -
     }
 }
 
+fn preferred_alpha_beta_margin_ratio() -> f64 {
+    0.05
+}
+
 fn scale_aware_absolute_error(observed: f64, target: f64, scale_floor: f64) -> f64 {
     let denominator = scale_floor
         .abs()
         .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+
     ((observed - target).abs() / denominator).max(0.0)
 }
 
@@ -2046,9 +2869,11 @@ fn simulate_matched_scale_returns(
     let Ok(driver_parameters) = configuration.derive_driver_parameters() else {
         return Vec::new();
     };
+
     let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(
         candidate_sampling_seed(stage_seed, configuration),
     );
+
     let mut synthetic_returns = Vec::with_capacity(calibration_sample.business_time_scales.len());
 
     for (business_time_scale, sell_share_proxy) in calibration_sample
@@ -2058,8 +2883,10 @@ fn simulate_matched_scale_returns(
     {
         let sell_weight = sell_share_proxy.clamp(0.0, 1.0);
         let buy_weight = 1.0 - sell_weight;
+
         let buy_business_time_scale = (business_time_scale * buy_weight).max(0.0);
         let sell_business_time_scale = (business_time_scale * sell_weight).max(0.0);
+
         let Ok(sampled_increment) = driver_parameters.sample_trading_time_return_increment(
             buy_business_time_scale,
             sell_business_time_scale,
@@ -2067,6 +2894,7 @@ fn simulate_matched_scale_returns(
         ) else {
             return Vec::new();
         };
+
         synthetic_returns.push(sampled_increment.combined_increment);
     }
 
@@ -2106,6 +2934,7 @@ fn build_scale_bucket_profiles(
             0.75,
         ),
     ];
+
     let mut bucket_member_indices = vec![Vec::new(), Vec::new(), Vec::new(), Vec::new()];
 
     for aligned_index in 0..aligned_count {
@@ -2174,8 +3003,11 @@ fn build_distribution_profile(returns: &[f64]) -> ContinuousReturnDistributionPr
     let quantile_99_abs = sorted_quantile(sorted_absolute_returns.as_slice(), 0.99);
 
     ContinuousReturnDistributionProfile {
+        sample_count: returns.iter().filter(|value| value.is_finite()).count(),
         mean_return: arithmetic_mean_signed(returns),
         return_volatility: sample_standard_deviation(returns),
+        adjusted_skewness: sample_adjusted_skewness(returns).unwrap_or(0.0),
+        adjusted_excess_kurtosis: sample_adjusted_excess_kurtosis(returns).unwrap_or(0.0),
         median_return,
         lower_quartile_return,
         upper_quartile_return,
@@ -2236,6 +3068,7 @@ fn compute_bowley_skewness_from_sorted(sorted_returns: &[f64]) -> Option<f64> {
     let lower_quartile = sorted_quantile(sorted_returns, 0.25);
     let median = sorted_quantile(sorted_returns, 0.50);
     let upper_quartile = sorted_quantile(sorted_returns, 0.75);
+
     let denominator = (upper_quartile - lower_quartile).abs();
     if denominator <= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER {
         return None;
@@ -2277,13 +3110,18 @@ fn compute_l_moment_tau3_from_sorted(sorted_returns: &[f64]) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::{
-        ContinuousLikelihoodFidelityTier, ReturnComponentsStageContinuousReturnCalibrationSample,
-        average_negative_log_likelihood, build_continuous_return_optimizer_context,
-        build_distribution_profile, build_equal_business_time_blocks, build_nig_search_candidates,
-        build_scale_bucket_profiles, continuous_block_likelihood_objective, coordinate_to_ratio,
-        coordinate_to_share, log_density_net_trading_time_return, ratio_to_coordinate,
-        sell_beta_ratio_from_relative_share, sell_relative_share_from_beta_ratios,
+        ContinuousLikelihoodFidelityTier, RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_ELITE_COUNT,
+        ReturnComponentsStageContinuousReturnCalibrationSample, average_negative_log_likelihood,
+        build_broad_search_points, build_continuous_return_optimizer_context,
+        build_distribution_profile, build_equal_business_time_blocks, build_moment_seed_candidates,
+        build_nig_search_candidates, build_scale_bucket_profiles,
+        build_search_regimes_from_moment_seeds, continuous_block_likelihood_objective,
+        coordinate_to_ratio, coordinate_to_share, log_density_net_trading_time_return,
+        ratio_to_coordinate, relative_share_from_beta_ratios, sell_beta_ratio_from_relative_share,
+        theoretical_search_bounds,
     };
     use crate::stages::return_components::contracts::ReturnComponentsObservedOpenSessionReturn;
     use janiform_calibration_artifacts::CalibrationOptimizerSettings;
@@ -2303,7 +3141,7 @@ mod tests {
     fn sell_relative_coordinate_round_trip_preserves_ordering() {
         let buy_ratio = 0.4;
         let sell_ratio = sell_beta_ratio_from_relative_share(buy_ratio, coordinate_to_share(0.2));
-        let recovered_share = sell_relative_share_from_beta_ratios(buy_ratio, sell_ratio)
+        let recovered_share = relative_share_from_beta_ratios(buy_ratio, sell_ratio)
             .expect("relative share should be recoverable");
 
         assert!(sell_ratio < buy_ratio);
@@ -2520,8 +3358,20 @@ mod tests {
         let solver_settings =
             CalibrationOptimizerSettings::try_new("adaptive_search", 64, 1, 1.0e-8, 1.0e-6, 1.0)
                 .expect("solver settings should validate");
+        let theoretical_bounds = theoretical_search_bounds(calibration_sample.observed_profile, 96);
+        let moment_seed_candidates = build_moment_seed_candidates(
+            &optimizer_context,
+            &calibration_sample,
+            theoretical_bounds,
+            96,
+        );
+        let broad_search_regimes = build_search_regimes_from_moment_seeds(
+            &optimizer_context,
+            moment_seed_candidates.as_slice(),
+            theoretical_bounds,
+        );
 
-        let broad_search_points = super::build_broad_search_points(&calibration_sample, 64);
+        let broad_search_points = build_broad_search_points(broad_search_regimes.as_slice(), 64);
         let broad_seed_candidates = super::score_search_points(
             &optimizer_context,
             broad_search_points.as_slice(),
@@ -2546,6 +3396,34 @@ mod tests {
                 .optimizer_diagnostic
                 .final_objective_score
                 <= best_broad_seed + 1.0e-10
+        );
+    }
+
+    #[test]
+    fn optimized_candidates_surface_distinct_basin_diagnostics() {
+        let calibration_sample = test_optimizer_calibration_sample();
+        let solver_settings =
+            CalibrationOptimizerSettings::try_new("adaptive_search", 64, 4, 1.0e-8, 1.0e-6, 1.0)
+                .expect("solver settings should validate");
+
+        let optimized_candidates =
+            build_nig_search_candidates(&calibration_sample, 17, &solver_settings);
+        let basin_diagnostics = &optimized_candidates[0]
+            .optimizer_diagnostic
+            .basin_diagnostics;
+
+        assert!(!basin_diagnostics.is_empty());
+        assert!(basin_diagnostics.len() <= RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_ELITE_COUNT);
+
+        let family_labels: BTreeSet<String> = basin_diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.family_label.clone())
+            .collect();
+        assert_eq!(family_labels.len(), basin_diagnostics.len());
+        assert!(
+            basin_diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.final_objective.is_finite())
         );
     }
 

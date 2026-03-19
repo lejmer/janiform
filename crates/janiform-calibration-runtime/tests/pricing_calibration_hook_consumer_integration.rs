@@ -16,7 +16,7 @@ use janiform_model_kernels::hawkes::{
 };
 use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
-use support::black_scholes_log_return_characteristic_function;
+use support::shared::black_scholes_log_return_characteristic_function;
 
 #[test]
 fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {

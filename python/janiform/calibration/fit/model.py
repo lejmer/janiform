@@ -954,10 +954,26 @@ def _contains_structural_seasonality_parameters(
 
 
 def _hawkes_fitted_parameters_payload(model: JaniformModel) -> Mapping[str, Any]:
+    joint_refinement_parameters = model.parameters.get("joint_refinement")
+    if isinstance(joint_refinement_parameters, Mapping):
+        fitted_parameters = joint_refinement_parameters.get("fitted_parameters")
+        if isinstance(fitted_parameters, Mapping):
+            refined_parameters = fitted_parameters.get("hawkes_fitted_parameters")
+            if isinstance(refined_parameters, Mapping):
+                return refined_parameters
+
     return _fitted_parameters_from_model_parameters(model, stage_kind="hawkes")
 
 
 def _return_components_fitted_parameters_payload(model: JaniformModel) -> Mapping[str, Any]:
+    joint_refinement_parameters = model.parameters.get("joint_refinement")
+    if isinstance(joint_refinement_parameters, Mapping):
+        fitted_parameters = joint_refinement_parameters.get("fitted_parameters")
+        if isinstance(fitted_parameters, Mapping):
+            refined_parameters = fitted_parameters.get("return_components_fitted_parameters")
+            if isinstance(refined_parameters, Mapping):
+                return refined_parameters
+
     return _fitted_parameters_from_model_parameters(model, stage_kind="return_components")
 
 
@@ -1528,6 +1544,46 @@ def _extract_model_parameters(stage_report_payloads: tuple[dict[str, Any], ...])
                         "selected_candidate_id": fitted_stage_payload.get("selected_candidate_id"),
                         "fitted_parameters": deepcopy(
                             cast(dict[str, Any], fitted_stage_payload.get("fitted_parameters", {}))
+                        ),
+                    }
+            case "joint_refinement":
+                fitted_stage_payload = stage_report.get("fitted_stage_payload")
+                if isinstance(fitted_stage_payload, Mapping):
+                    parameters["joint_refinement"] = {
+                        "schema_version": fitted_stage_payload.get("schema_version"),
+                        "selected_candidate_id": fitted_stage_payload.get("selected_candidate_id"),
+                        "fitted_parameters": deepcopy(
+                            cast(dict[str, Any], fitted_stage_payload.get("fitted_parameters", {}))
+                        ),
+                        "baseline_hawkes_fitted_parameters": deepcopy(
+                            cast(
+                                dict[str, Any],
+                                fitted_stage_payload.get(
+                                    "baseline_hawkes_fitted_parameters",
+                                    {},
+                                ),
+                            )
+                        ),
+                        "baseline_return_components_fitted_parameters": deepcopy(
+                            cast(
+                                dict[str, Any],
+                                fitted_stage_payload.get(
+                                    "baseline_return_components_fitted_parameters",
+                                    {},
+                                ),
+                            )
+                        ),
+                        "objective_breakdown": deepcopy(
+                            cast(
+                                dict[str, Any],
+                                fitted_stage_payload.get("objective_breakdown", {}),
+                            )
+                        ),
+                        "optimizer_diagnostics": deepcopy(
+                            cast(
+                                dict[str, Any],
+                                fitted_stage_payload.get("optimizer_diagnostics", {}),
+                            )
                         ),
                     }
             case _:

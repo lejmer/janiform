@@ -16,5 +16,12 @@ mod surprise_intensity_fit;
 #[cfg(test)]
 mod test_support;
 
+pub(crate) use continuous_fit::{
+    ContinuousLikelihoodFidelityTier, NigShapeSearchPoint,
+    ReturnComponentsStageContinuousReturnCalibrationSample,
+    build_continuous_return_calibration_sample_from_components, distribution_profile_fit_score,
+    evaluate_configuration_likelihood_objective, nig_configuration_from_search_point,
+    nig_search_point_from_configuration,
+};
 pub use contracts::*;
 pub use execution::*;

@@ -362,6 +362,9 @@ pub fn run_return_components_calibration_stage(
             candidate_families: candidate_input.candidate_families.clone(),
             candidate_provenance: candidate_input.candidate_provenance.clone(),
             return_distribution_diagnostic: candidate_input.return_distribution_diagnostic,
+            continuous_distribution_fit_breakdown: candidate_input
+                .continuous_distribution_fit_breakdown
+                .clone(),
             surprise_arrival_diagnostic: candidate_input.surprise_arrival_diagnostic.clone(),
             jump_diagnostic: candidate_input.jump_diagnostic.clone(),
             gap_diagnostic: candidate_input.gap_diagnostic.clone(),
@@ -553,6 +556,48 @@ pub fn run_return_components_calibration_stage(
         }),
         failure: None,
     }
+}
+
+pub(crate) fn prepare_observed_signal_inputs_for_joint_refinement(
+    exchange_code: &str,
+    calendar_registry: &ExchangeCalendarRegistry,
+    candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
+    activity_calibration_context: Option<ReturnComponentsStageActivityCalibrationContext>,
+) -> Result<(), ReturnComponentsStageCandidateGenerationInputError> {
+    let prepared_candidate_generation_input = prepare_candidate_generation_input(
+        exchange_code,
+        calendar_registry,
+        candidate_generation_input,
+    )?;
+    let fitted_signal_partition_layer = signal_partition_fit::fit_signal_partition_layer(
+        prepared_candidate_generation_input
+            .candidate_generation_input
+            .observed_open_session_returns
+            .as_slice(),
+    );
+    let fitted_surprise_episode_selection_layer =
+        surprise_episode_selection_fit::fit_surprise_episode_selection_layer(
+            prepared_candidate_generation_input
+                .candidate_generation_input
+                .detected_intraday_jump_candidates
+                .as_slice(),
+            fitted_signal_partition_layer.continuous_return_filter_threshold,
+        );
+    let sorted_signals = sort_candidate_generation_signals(
+        &prepared_candidate_generation_input.candidate_generation_input,
+        prepared_candidate_generation_input
+            .derived_close_open_gap_candidates
+            .as_slice(),
+        fitted_signal_partition_layer,
+        &fitted_surprise_episode_selection_layer,
+    );
+    let _ = summarize_candidate_generation_signals(
+        &prepared_candidate_generation_input.candidate_generation_input,
+        &sorted_signals,
+        activity_calibration_context,
+    );
+
+    Ok(())
 }
 
 pub fn evaluate_return_components_exact_candidate(
@@ -870,7 +915,7 @@ fn generate_return_components_stage_candidate_inputs(
     })
 }
 
-fn resolve_activity_calibration_context(
+pub(crate) fn resolve_activity_calibration_context(
     activity_input: &ReturnComponentsStageActivityInput,
 ) -> Option<ReturnComponentsStageActivityCalibrationContext> {
     let hawkes_payload = activity_input.hawkes_payload()?;
@@ -915,16 +960,17 @@ pub(super) struct ReturnComponentsStageSortedSignalInputs {
 }
 
 #[derive(Debug, Clone)]
-struct ReturnComponentsStagePreparedCandidateGenerationInput {
-    candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
-    derived_close_open_gap_candidates: Vec<ReturnComponentsDetectedCloseOpenGapCandidate>,
-    close_open_gap_detection_filter: String,
+pub(crate) struct ReturnComponentsStagePreparedCandidateGenerationInput {
+    pub(crate) candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
+    pub(crate) derived_close_open_gap_candidates:
+        Vec<ReturnComponentsDetectedCloseOpenGapCandidate>,
+    pub(crate) close_open_gap_detection_filter: String,
 }
 
 #[derive(Debug, Clone, Copy)]
-struct ReturnComponentsStageActivityCalibrationContext {
-    modeled_open_event_rate_per_hour: f64,
-    representative_interarrival_hours: f64,
+pub(crate) struct ReturnComponentsStageActivityCalibrationContext {
+    pub(crate) modeled_open_event_rate_per_hour: f64,
+    pub(crate) representative_interarrival_hours: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -1522,7 +1568,7 @@ fn is_within_known_news_exclusion_window(
     lower_index < known_news_timestamps.len() && known_news_timestamps[lower_index] <= upper_bound
 }
 
-fn prepare_candidate_generation_input(
+pub(crate) fn prepare_candidate_generation_input(
     exchange_code: &str,
     calendar_registry: &ExchangeCalendarRegistry,
     mut candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
@@ -1806,6 +1852,7 @@ fn enumerate_candidate_inputs(
         news_process_configuration,
         objective_metric_buckets,
         return_distribution_diagnostic,
+        continuous_distribution_fit_breakdown: continuous_return_evaluation.fit_breakdown.clone(),
         surprise_arrival_diagnostic,
         jump_diagnostic,
         gap_diagnostic,
