@@ -24,7 +24,8 @@ pub(crate) use janiform_model_kernels::hawkes::{
 };
 pub(crate) use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
-    GammaSeverityMarkConfiguration, SharedNewsMarkLawConfiguration,
+    GammaSeverityMarkConfiguration, NewsArrivalConfiguration, NewsComponentMarkScaleConfiguration,
+    NewsProcessConfiguration, SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
 };
 pub(crate) use janiform_model_kernels::nig::{NigParameters, NigSharedPlusShiftConfiguration};
 pub(crate) use janiform_model_kernels::risk_neutral::{
@@ -139,10 +140,10 @@ pub(crate) fn assert_joint_refinement_fitted_parameters_match(
         &expected_parameters.hawkes_fitted_parameters,
         &format!("{context} hawkes_fitted_parameters"),
     );
-    assert_eq!(
-        actual_parameters.return_components_fitted_parameters,
-        expected_parameters.return_components_fitted_parameters,
-        "{context} return_components_fitted_parameters drifted"
+    assert_return_components_fitted_parameters_match(
+        &actual_parameters.return_components_fitted_parameters,
+        &expected_parameters.return_components_fitted_parameters,
+        &format!("{context} return_components_fitted_parameters"),
     );
 }
 
@@ -229,6 +230,240 @@ fn assert_hawkes_kernel_parameters_match(
         &actual_parameters.rho,
         &expected_parameters.rho,
         &format!("{context} rho"),
+    );
+}
+
+fn assert_return_components_fitted_parameters_match(
+    actual_parameters: &ReturnComponentsStageFittedParameters,
+    expected_parameters: &ReturnComponentsStageFittedParameters,
+    context: &str,
+) {
+    assert_nig_shared_plus_shift_configuration_match(
+        actual_parameters.nig_shared_plus_shift_configuration,
+        expected_parameters.nig_shared_plus_shift_configuration,
+        &format!("{context} nig_shared_plus_shift_configuration"),
+    );
+    assert_news_process_configuration_match(
+        &actual_parameters.news_process_configuration,
+        &expected_parameters.news_process_configuration,
+        &format!("{context} news_process_configuration"),
+    );
+    assert_eq!(
+        actual_parameters
+            .surprise_deterministic_intensity_profile
+            .profile_resolution_hours,
+        expected_parameters
+            .surprise_deterministic_intensity_profile
+            .profile_resolution_hours,
+        "{context} surprise_deterministic_intensity_profile.profile_resolution_hours drifted"
+    );
+    assert_eq!(
+        actual_parameters
+            .surprise_deterministic_intensity_profile
+            .fit_policy,
+        expected_parameters
+            .surprise_deterministic_intensity_profile
+            .fit_policy,
+        "{context} surprise_deterministic_intensity_profile.fit_policy drifted"
+    );
+    assert_eq!(
+        actual_parameters
+            .surprise_deterministic_intensity_profile
+            .normalization_policy,
+        expected_parameters
+            .surprise_deterministic_intensity_profile
+            .normalization_policy,
+        "{context} surprise_deterministic_intensity_profile.normalization_policy drifted"
+    );
+    assert_eq!(
+        actual_parameters
+            .surprise_deterministic_intensity_profile
+            .weekly_hour_utc_multipliers
+            .len(),
+        expected_parameters
+            .surprise_deterministic_intensity_profile
+            .weekly_hour_utc_multipliers
+            .len(),
+        "{context} surprise_deterministic_intensity_profile.weekly_hour_utc_multipliers length drifted"
+    );
+
+    for (position, (actual_multiplier, expected_multiplier)) in actual_parameters
+        .surprise_deterministic_intensity_profile
+        .weekly_hour_utc_multipliers
+        .iter()
+        .zip(
+            expected_parameters
+                .surprise_deterministic_intensity_profile
+                .weekly_hour_utc_multipliers
+                .iter(),
+        )
+        .enumerate()
+    {
+        assert_f64_within_one_ulp(
+            *actual_multiplier,
+            *expected_multiplier,
+            &format!(
+                "{context} surprise_deterministic_intensity_profile.weekly_hour_utc_multipliers[{position}]"
+            ),
+        );
+    }
+}
+
+fn assert_nig_shared_plus_shift_configuration_match(
+    actual_configuration: NigSharedPlusShiftConfiguration,
+    expected_configuration: NigSharedPlusShiftConfiguration,
+    context: &str,
+) {
+    assert_f64_within_one_ulp(
+        actual_configuration.alpha,
+        expected_configuration.alpha,
+        &format!("{context} alpha"),
+    );
+    assert_f64_within_one_ulp(
+        actual_configuration.beta_0,
+        expected_configuration.beta_0,
+        &format!("{context} beta_0"),
+    );
+    assert_f64_within_one_ulp(
+        actual_configuration.delta,
+        expected_configuration.delta,
+        &format!("{context} delta"),
+    );
+    assert_f64_within_one_ulp(
+        actual_configuration.mu,
+        expected_configuration.mu,
+        &format!("{context} mu"),
+    );
+    assert_f64_within_one_ulp(
+        actual_configuration.delta_beta,
+        expected_configuration.delta_beta,
+        &format!("{context} delta_beta"),
+    );
+}
+
+fn assert_news_process_configuration_match(
+    actual_configuration: &NewsProcessConfiguration,
+    expected_configuration: &NewsProcessConfiguration,
+    context: &str,
+) {
+    assert_eq!(
+        actual_configuration.schema_version, expected_configuration.schema_version,
+        "{context} schema_version drifted"
+    );
+    assert_news_arrival_configuration_match(
+        &actual_configuration.arrivals,
+        &expected_configuration.arrivals,
+        &format!("{context} arrivals"),
+    );
+    assert_shared_news_mark_law_configuration_match(
+        actual_configuration.shared_mark_law,
+        expected_configuration.shared_mark_law,
+        &format!("{context} shared_mark_law"),
+    );
+    assert_news_component_mark_scale_configuration_match(
+        actual_configuration.known_component_mark_scales,
+        expected_configuration.known_component_mark_scales,
+        &format!("{context} known_component_mark_scales"),
+    );
+    assert_news_component_mark_scale_configuration_match(
+        actual_configuration.surprise_component_mark_scales,
+        expected_configuration.surprise_component_mark_scales,
+        &format!("{context} surprise_component_mark_scales"),
+    );
+}
+
+fn assert_news_arrival_configuration_match(
+    actual_configuration: &NewsArrivalConfiguration,
+    expected_configuration: &NewsArrivalConfiguration,
+    context: &str,
+) {
+    assert_eq!(
+        actual_configuration
+            .known
+            .scheduled_event_timestamps_utc_nanos,
+        expected_configuration
+            .known
+            .scheduled_event_timestamps_utc_nanos,
+        "{context} known.scheduled_event_timestamps_utc_nanos drifted"
+    );
+    assert_surprise_news_arrival_configuration_match(
+        actual_configuration.surprise,
+        expected_configuration.surprise,
+        &format!("{context} surprise"),
+    );
+}
+
+fn assert_surprise_news_arrival_configuration_match(
+    actual_configuration: SurpriseNewsArrivalConfiguration,
+    expected_configuration: SurpriseNewsArrivalConfiguration,
+    context: &str,
+) {
+    assert_f64_within_one_ulp(
+        actual_configuration.baseline_intensity,
+        expected_configuration.baseline_intensity,
+        &format!("{context} baseline_intensity"),
+    );
+}
+
+fn assert_shared_news_mark_law_configuration_match(
+    actual_configuration: SharedNewsMarkLawConfiguration,
+    expected_configuration: SharedNewsMarkLawConfiguration,
+    context: &str,
+) {
+    assert_f64_within_one_ulp(
+        actual_configuration.gamma_severity_marks.shape_k,
+        expected_configuration.gamma_severity_marks.shape_k,
+        &format!("{context} gamma_severity_marks.shape_k"),
+    );
+    assert_f64_within_one_ulp(
+        actual_configuration.gamma_severity_marks.scale_theta,
+        expected_configuration.gamma_severity_marks.scale_theta,
+        &format!("{context} gamma_severity_marks.scale_theta"),
+    );
+    assert_f64_within_one_ulp(
+        actual_configuration
+            .double_exponential_base_shock
+            .probability_positive,
+        expected_configuration
+            .double_exponential_base_shock
+            .probability_positive,
+        &format!("{context} double_exponential_base_shock.probability_positive"),
+    );
+    assert_f64_within_one_ulp(
+        actual_configuration.double_exponential_base_shock.eta_plus,
+        expected_configuration
+            .double_exponential_base_shock
+            .eta_plus,
+        &format!("{context} double_exponential_base_shock.eta_plus"),
+    );
+    assert_f64_within_one_ulp(
+        actual_configuration.double_exponential_base_shock.eta_minus,
+        expected_configuration
+            .double_exponential_base_shock
+            .eta_minus,
+        &format!("{context} double_exponential_base_shock.eta_minus"),
+    );
+    assert_f64_within_one_ulp(
+        actual_configuration.coupled_gap_marks.sigma_g,
+        expected_configuration.coupled_gap_marks.sigma_g,
+        &format!("{context} coupled_gap_marks.sigma_g"),
+    );
+}
+
+fn assert_news_component_mark_scale_configuration_match(
+    actual_configuration: NewsComponentMarkScaleConfiguration,
+    expected_configuration: NewsComponentMarkScaleConfiguration,
+    context: &str,
+) {
+    assert_f64_within_one_ulp(
+        actual_configuration.activity_coupling_scale,
+        expected_configuration.activity_coupling_scale,
+        &format!("{context} activity_coupling_scale"),
+    );
+    assert_f64_within_one_ulp(
+        actual_configuration.return_jump_scale,
+        expected_configuration.return_jump_scale,
+        &format!("{context} return_jump_scale"),
     );
 }
 
@@ -1219,10 +1454,8 @@ pub(crate) fn build_return_components_stage_standalone_run_spec(
 }
 
 pub(crate) fn build_seasonality_stage_success_payload()
--> janiform_calibration_runtime::SeasonalityStageNormalizedPayload {
-    static STAGE_SUCCESS_PAYLOAD: LazyLock<
-        janiform_calibration_runtime::SeasonalityStageNormalizedPayload,
-    > = LazyLock::new(|| {
+-> SeasonalityStageNormalizedPayload {
+    static STAGE_SUCCESS_PAYLOAD: LazyLock<SeasonalityStageNormalizedPayload> = LazyLock::new(|| {
         let calendar_registry = calibration_stage_test_registry();
         let report = run_seasonality_calibration_stage(
             &build_seasonality_stage_run_spec(CalibrationExecutionMode::Memory),
@@ -1240,9 +1473,8 @@ pub(crate) fn build_seasonality_stage_success_payload()
     STAGE_SUCCESS_PAYLOAD.clone()
 }
 
-pub(crate) fn build_hawkes_stage_success_payload()
--> janiform_calibration_runtime::HawkesStageFittedPayload {
-    static STAGE_SUCCESS_PAYLOAD: LazyLock<janiform_calibration_runtime::HawkesStageFittedPayload> =
+pub(crate) fn build_hawkes_stage_success_payload() -> HawkesStageFittedPayload {
+    static STAGE_SUCCESS_PAYLOAD: LazyLock<HawkesStageFittedPayload> =
         LazyLock::new(|| {
             let seasonality_payload = build_seasonality_stage_success_payload();
             let calendar_registry = calibration_stage_test_registry();
@@ -1264,10 +1496,8 @@ pub(crate) fn build_hawkes_stage_success_payload()
 }
 
 pub(crate) fn build_return_components_stage_success_payload()
--> janiform_calibration_runtime::ReturnComponentsStageFittedPayload {
-    static STAGE_SUCCESS_PAYLOAD: LazyLock<
-        janiform_calibration_runtime::ReturnComponentsStageFittedPayload,
-    > = LazyLock::new(|| {
+-> ReturnComponentsStageFittedPayload {
+    static STAGE_SUCCESS_PAYLOAD: LazyLock<ReturnComponentsStageFittedPayload> = LazyLock::new(|| {
         let calendar_registry = calibration_stage_test_registry();
         let report = run_return_components_calibration_stage(
             &build_return_components_stage_pipeline_run_spec(CalibrationExecutionMode::Memory),
@@ -1286,18 +1516,14 @@ pub(crate) fn build_return_components_stage_success_payload()
     STAGE_SUCCESS_PAYLOAD.clone()
 }
 
-pub(crate) fn build_joint_refinement_stage_success_payload()
--> janiform_calibration_runtime::JointRefinementStageFittedPayload {
+pub(crate) fn build_joint_refinement_stage_success_payload() -> JointRefinementStageFittedPayload {
     build_joint_refinement_stage_success_report()
         .fitted_stage_payload
         .expect("joint-refinement stage fixture should produce fitted payload")
 }
 
-pub(crate) fn build_joint_refinement_stage_success_report()
--> janiform_calibration_runtime::JointRefinementStageExecutionReport {
-    static STAGE_SUCCESS_REPORT: LazyLock<
-        janiform_calibration_runtime::JointRefinementStageExecutionReport,
-    > = LazyLock::new(|| {
+pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementStageExecutionReport {
+    static STAGE_SUCCESS_REPORT: LazyLock<JointRefinementStageExecutionReport> = LazyLock::new(|| {
         let calendar_registry = calibration_stage_test_registry();
         let seasonality_payload = build_seasonality_stage_success_payload();
         run_joint_refinement_calibration_stage(

@@ -6,6 +6,7 @@ use std::{
 
 use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
+use janiform_foundations::low_discrepancy::van_der_corput;
 use janiform_foundations::numeric::{
     arithmetic_mean_or_zero as arithmetic_mean, compute_probability_weighted_moment, logistic,
 };
@@ -1338,19 +1339,6 @@ fn centered_low_discrepancy_perturbation(
         + van_der_corput(sequence_index as u64 + 1, base_b)
         + van_der_corput(sequence_index as u64 + 1, base_c)
         - 1.5
-}
-
-fn van_der_corput(mut index: u64, base: u64) -> f64 {
-    let mut fraction = 1.0 / base as f64;
-    let mut value = 0.0;
-
-    while index > 0 {
-        value += fraction * (index % base) as f64;
-        index /= base;
-        fraction /= base as f64;
-    }
-
-    value
 }
 
 fn score_search_points(

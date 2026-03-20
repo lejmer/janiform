@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 pub mod complex_math;
+pub mod low_discrepancy;
 pub mod market_state;
 pub mod numeric;
 pub mod randomness;

@@ -68,55 +68,66 @@ pub(crate) fn build_observed_open_session_interval_observations(
     intervals
 }
 
-pub(crate) fn build_simulated_open_session_interval_observations(
-    calendar_registry: &ExchangeCalendarRegistry,
-    exchange_code: &str,
-    source_window: ReturnComponentsStageSignalSourceWindow,
-    fine_path: &[SeededFinePathRecord],
-    interval_duration_nanos: i64,
+pub(crate) fn zeroed_interval_observation_template(
+    intervals: &[JointRefinementAggregatedIntervalObservation],
 ) -> Vec<JointRefinementAggregatedIntervalObservation> {
-    let mut intervals = build_open_session_interval_template(
-        calendar_registry,
-        exchange_code,
-        source_window,
-        interval_duration_nanos,
-    );
-    if intervals.is_empty() {
-        return intervals;
+    intervals
+        .iter()
+        .map(|interval| JointRefinementAggregatedIntervalObservation {
+            interval_start_utc_nanos: interval.interval_start_utc_nanos,
+            interval_end_utc_nanos: interval.interval_end_utc_nanos,
+            log_return: 0.0,
+            tick_count: 0,
+            sell_share_proxy: 0.0,
+        })
+        .collect()
+}
+
+pub(crate) fn aggregate_simulated_path_to_interval_templates(
+    fine_path: &[SeededFinePathRecord],
+    five_minute_template: &[JointRefinementAggregatedIntervalObservation],
+    fifteen_minute_template: &[JointRefinementAggregatedIntervalObservation],
+    five_minute_interval_duration_nanos: i64,
+    fifteen_minute_interval_duration_nanos: i64,
+) -> (
+    Vec<JointRefinementAggregatedIntervalObservation>,
+    Vec<JointRefinementAggregatedIntervalObservation>,
+) {
+    let mut five_minute_intervals = five_minute_template.to_vec();
+    let mut fifteen_minute_intervals = fifteen_minute_template.to_vec();
+
+    if five_minute_intervals.is_empty() && fifteen_minute_intervals.is_empty() {
+        return (five_minute_intervals, fifteen_minute_intervals);
     }
 
-    let aligned_window_start = intervals
+    let five_minute_aligned_start = five_minute_intervals
         .first()
         .map(|interval| interval.interval_start_utc_nanos)
-        .unwrap_or(source_window.window_start_utc_nanos);
+        .unwrap_or(0);
+    let fifteen_minute_aligned_start = fifteen_minute_intervals
+        .first()
+        .map(|interval| interval.interval_start_utc_nanos)
+        .unwrap_or(0);
 
     for record in fine_path {
-        if record.timestamp_utc_nanos < source_window.window_start_utc_nanos
-            || record.timestamp_utc_nanos >= source_window.window_end_utc_nanos
-        {
-            continue;
-        }
-        let interval_index = ((record.timestamp_utc_nanos - aligned_window_start)
-            .div_euclid(interval_duration_nanos)) as usize;
-        let Some(interval) = intervals.get_mut(interval_index) else {
-            continue;
-        };
-        interval.log_return += record.return_components.total_return;
-        if matches!(
-            record.transition_kind,
-            SeededFinePathTransitionKind::BuyTrade | SeededFinePathTransitionKind::SellTrade
-        ) {
-            interval.tick_count += 1;
-            interval.sell_share_proxy += match record.transition_kind {
-                SeededFinePathTransitionKind::BuyTrade => 0.0,
-                SeededFinePathTransitionKind::SellTrade => 1.0,
-                _ => 0.5,
-            };
-        }
+        accumulate_fine_path_record_into_intervals(
+            record,
+            five_minute_intervals.as_mut_slice(),
+            five_minute_aligned_start,
+            five_minute_interval_duration_nanos,
+        );
+        accumulate_fine_path_record_into_intervals(
+            record,
+            fifteen_minute_intervals.as_mut_slice(),
+            fifteen_minute_aligned_start,
+            fifteen_minute_interval_duration_nanos,
+        );
     }
 
-    finalize_sell_share_proxies(&mut intervals, 0.5);
-    intervals
+    finalize_sell_share_proxies(&mut five_minute_intervals, 0.5);
+    finalize_sell_share_proxies(&mut fifteen_minute_intervals, 0.5);
+
+    (five_minute_intervals, fifteen_minute_intervals)
 }
 
 pub(crate) fn build_continuous_calibration_sample_from_aggregated_intervals(
@@ -256,6 +267,49 @@ fn finalize_sell_share_proxies(
     }
 }
 
+fn accumulate_fine_path_record_into_intervals(
+    record: &SeededFinePathRecord,
+    intervals: &mut [JointRefinementAggregatedIntervalObservation],
+    aligned_window_start: i64,
+    interval_duration_nanos: i64,
+) {
+    if intervals.is_empty() || interval_duration_nanos <= 0 {
+        return;
+    }
+
+    let Some(last_interval_end_utc_nanos) = intervals
+        .last()
+        .map(|interval| interval.interval_end_utc_nanos)
+    else {
+        return;
+    };
+    if record.timestamp_utc_nanos < aligned_window_start
+        || record.timestamp_utc_nanos >= last_interval_end_utc_nanos
+    {
+        return;
+    }
+
+    let interval_index = ((record.timestamp_utc_nanos - aligned_window_start)
+        .div_euclid(interval_duration_nanos)) as usize;
+    let Some(interval) = intervals.get_mut(interval_index) else {
+        return;
+    };
+
+    interval.log_return += record.return_components.total_return;
+
+    if matches!(
+        record.transition_kind,
+        SeededFinePathTransitionKind::BuyTrade | SeededFinePathTransitionKind::SellTrade
+    ) {
+        interval.tick_count += 1;
+        interval.sell_share_proxy += match record.transition_kind {
+            SeededFinePathTransitionKind::BuyTrade => 0.0,
+            SeededFinePathTransitionKind::SellTrade => 1.0,
+            _ => 0.5,
+        };
+    }
+}
+
 fn resolve_market_state(
     calendar_registry: &ExchangeCalendarRegistry,
     exchange_code: &str,
@@ -324,6 +378,7 @@ fn standardized_path_distance(left: &[f64], right: &[f64]) -> f64 {
 
     let left_standardized = z_score(left);
     let right_standardized = z_score(right);
+
     left_standardized
         .iter()
         .zip(right_standardized.iter())
@@ -357,7 +412,14 @@ fn z_score(values: &[f64]) -> Vec<f64> {
 mod tests {
     use super::{
         JOINT_REFINEMENT_ROLLING_ACTIVITY_WINDOW_INTERVAL_COUNT,
-        JointRefinementAggregatedIntervalObservation, rolling_variance_activity_metric,
+        JointRefinementAggregatedIntervalObservation,
+        aggregate_simulated_path_to_interval_templates, rolling_variance_activity_metric,
+        zeroed_interval_observation_template,
+    };
+    use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsRiskReturnComponents;
+    use janiform_engine_simulation::{
+        SeededFinePathRecord, SeededFinePathTransitionKind, SeededTickEventSide,
+        SeededTickSimulationNewsEventMarketState,
     };
 
     #[test]
@@ -378,5 +440,95 @@ mod tests {
         assert!(metric.correlation.is_finite());
         assert!(metric.standardized_path_distance.is_finite());
         assert!(metric.correlation > 0.0);
+    }
+
+    #[test]
+    fn single_path_multi_horizon_aggregation_matches_expected_template_fill() {
+        let five_minute_template = zeroed_interval_observation_template(&[
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 0,
+                interval_end_utc_nanos: 300,
+                log_return: 1.0,
+                tick_count: 1,
+                sell_share_proxy: 1.0,
+            },
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 300,
+                interval_end_utc_nanos: 600,
+                log_return: 1.0,
+                tick_count: 1,
+                sell_share_proxy: 1.0,
+            },
+        ]);
+
+        let fifteen_minute_template =
+            zeroed_interval_observation_template(&[JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 0,
+                interval_end_utc_nanos: 900,
+                log_return: 1.0,
+                tick_count: 1,
+                sell_share_proxy: 1.0,
+            }]);
+
+        let fine_path = vec![
+            SeededFinePathRecord {
+                transition_index: 0,
+                timestamp_utc_nanos: 120,
+                transition_kind: SeededFinePathTransitionKind::BuyTrade,
+                side: Some(SeededTickEventSide::Buy),
+                news_arrival_component: None,
+                market_state: SeededTickSimulationNewsEventMarketState::Open,
+                return_components: SufficientStatisticsRiskReturnComponents {
+                    buy_side_return: 0.01,
+                    sell_side_return: 0.0,
+                    trading_time_return: 0.01,
+                    open_jump_return: 0.0,
+                    closed_gap_return: 0.0,
+                    total_return: 0.01,
+                },
+                cumulative_log_return: 0.01,
+                state_snapshot: None,
+            },
+            SeededFinePathRecord {
+                transition_index: 1,
+                timestamp_utc_nanos: 420,
+                transition_kind: SeededFinePathTransitionKind::SellTrade,
+                side: Some(SeededTickEventSide::Sell),
+                news_arrival_component: None,
+                market_state: SeededTickSimulationNewsEventMarketState::Open,
+                return_components: SufficientStatisticsRiskReturnComponents {
+                    buy_side_return: 0.0,
+                    sell_side_return: -0.02,
+                    trading_time_return: -0.02,
+                    open_jump_return: 0.0,
+                    closed_gap_return: 0.0,
+                    total_return: -0.02,
+                },
+                cumulative_log_return: -0.01,
+                state_snapshot: None,
+            },
+        ];
+
+        let (five_minute_intervals, fifteen_minute_intervals) =
+            aggregate_simulated_path_to_interval_templates(
+                fine_path.as_slice(),
+                five_minute_template.as_slice(),
+                fifteen_minute_template.as_slice(),
+                300,
+                900,
+            );
+
+        assert_eq!(five_minute_intervals.len(), 2);
+        assert_eq!(five_minute_intervals[0].tick_count, 1);
+        assert_eq!(five_minute_intervals[1].tick_count, 1);
+        assert_eq!(five_minute_intervals[0].log_return, 0.01);
+        assert_eq!(five_minute_intervals[1].log_return, -0.02);
+        assert_eq!(five_minute_intervals[0].sell_share_proxy, 0.0);
+        assert_eq!(five_minute_intervals[1].sell_share_proxy, 1.0);
+
+        assert_eq!(fifteen_minute_intervals.len(), 1);
+        assert_eq!(fifteen_minute_intervals[0].tick_count, 2);
+        assert_eq!(fifteen_minute_intervals[0].log_return, -0.01);
+        assert_eq!(fifteen_minute_intervals[0].sell_share_proxy, 0.5);
     }
 }

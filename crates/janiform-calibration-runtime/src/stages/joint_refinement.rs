@@ -11,20 +11,19 @@ use crate::optimizer_adapter::CalibrationOptimizerAdapterRunMetadata;
 use crate::stages::hawkes::{HawkesStageFittedPayload, stationary_open_event_rate_per_hour};
 use crate::stages::joint_metrics::{
     JointRefinementAggregatedIntervalObservation, JointRefinementRollingVarianceActivityMetric,
+    aggregate_simulated_path_to_interval_templates,
     build_continuous_calibration_sample_from_aggregated_intervals,
-    build_observed_open_session_interval_observations,
-    build_simulated_open_session_interval_observations, rolling_variance_activity_metric,
-    zero_aware_normalized_bucket_value,
+    build_observed_open_session_interval_observations, rolling_variance_activity_metric,
+    zero_aware_normalized_bucket_value, zeroed_interval_observation_template,
 };
 use crate::stages::optimization::{PowellOptimizerSettings, optimize_bounded_powell};
 use crate::stages::return_components::{
     ContinuousLikelihoodFidelityTier, NigShapeSearchPoint,
     ReturnComponentsStageCandidateGenerationInput,
     ReturnComponentsStageContinuousReturnCalibrationSample, ReturnComponentsStageFittedPayload,
-    ReturnComponentsStageSignalSourceWindow, distribution_profile_fit_score,
-    evaluate_configuration_likelihood_objective, nig_configuration_from_search_point,
-    nig_search_point_from_configuration, prepare_observed_signal_inputs_for_joint_refinement,
-    resolve_activity_calibration_context,
+    distribution_profile_fit_score, evaluate_configuration_likelihood_objective,
+    nig_configuration_from_search_point, nig_search_point_from_configuration,
+    prepare_observed_signal_inputs_for_joint_refinement, resolve_activity_calibration_context,
 };
 use crate::stages::seasonality::{
     CalibrationStageExecutionStatus, build_runtime_hourly_seasonality_factors_from_components,
@@ -45,6 +44,7 @@ use janiform_engine_simulation::{
     SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
     run_seeded_tick_event_simulation,
 };
+use janiform_foundations::low_discrepancy::van_der_corput;
 use janiform_foundations::splitmix64_output_mixer;
 use janiform_market_time::hourly_factors::{
     HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
@@ -63,7 +63,7 @@ const JOINT_REFINEMENT_NIG_LOG_ALPHA_HALF_SPAN: f64 = 1.5;
 const JOINT_REFINEMENT_NIG_SKEW_HALF_SPAN: f64 = 1.25;
 const JOINT_REFINEMENT_NIG_LOG_DELTA_HALF_SPAN: f64 = 1.5;
 const JOINT_REFINEMENT_MAX_OUTER_CYCLE_COUNT: usize = 3;
-const JOINT_REFINEMENT_MAX_RESTART_COUNT: usize = 3;
+const JOINT_REFINEMENT_MAX_RESTART_COUNT: usize = 24;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum JointRefinementFidelityTier {
@@ -75,6 +75,12 @@ enum JointRefinementFidelityTier {
 struct JointRefinementObjectiveCacheKey {
     fidelity_tier: JointRefinementFidelityTier,
     parameter_bits: Vec<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct JointRefinementSeedSummaryCacheKey {
+    parameter_bits: Vec<u64>,
+    simulation_seed: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -93,16 +99,20 @@ struct JointRefinementActiveParameterLayout {
 
 #[derive(Debug, Clone)]
 struct JointRefinementObservedData {
-    source_window: ReturnComponentsStageSignalSourceWindow,
     observed_open_event_rate_per_hour: f64,
     fallback_sell_share_proxy: f64,
     observed_5m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
     observed_15m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+    observed_5m_log_returns: Vec<f64>,
+    observed_15m_log_returns: Vec<f64>,
     observed_15m_rv_activity_metric: JointRefinementRollingVarianceActivityMetric,
     observed_log_price_span: f64,
     hourly_simulation_start_utc: DateTime<Utc>,
+    hourly_simulation_end_utc: DateTime<Utc>,
     hourly_simulation_interval_count: usize,
     surprise_multiplier_by_hour_index: Vec<(u64, f64)>,
+    simulated_5m_interval_template: Vec<JointRefinementAggregatedIntervalObservation>,
+    simulated_15m_interval_template: Vec<JointRefinementAggregatedIntervalObservation>,
 }
 
 #[derive(Debug, Clone)]
@@ -115,6 +125,7 @@ struct JointRefinementBaselineBuckets {
 
 #[derive(Debug, Clone)]
 struct JointRefinementContext {
+    stage_thread_pool: Option<Arc<rayon::ThreadPool>>,
     calendar_registry: ExchangeCalendarRegistry,
     exchange_code: String,
     runtime_hourly_seasonality_factors: Vec<f64>,
@@ -129,8 +140,11 @@ struct JointRefinementContext {
     final_simulation_seeds: Vec<u64>,
     local_baseline_buckets: JointRefinementBaselineBuckets,
     final_baseline_buckets: JointRefinementBaselineBuckets,
-    cache:
+    objective_cache:
         Arc<Mutex<BTreeMap<JointRefinementObjectiveCacheKey, JointRefinementCandidateEvaluation>>>,
+    seed_summary_cache: Arc<
+        Mutex<BTreeMap<JointRefinementSeedSummaryCacheKey, Option<JointRefinementSeedSummary>>>,
+    >,
 }
 
 #[derive(Debug, Clone)]
@@ -142,11 +156,20 @@ struct JointRefinementCandidateEvaluation {
 
 #[derive(Debug, Clone)]
 struct JointRefinementRestartOutcome {
-    restart_id: &'static str,
+    restart_id: String,
     local_evaluation: JointRefinementCandidateEvaluation,
     final_evaluation: JointRefinementCandidateEvaluation,
     local_evaluation_count: usize,
     stop_reason: &'static str,
+}
+
+#[derive(Debug, Clone)]
+struct JointRefinementSeedSummary {
+    simulated_5m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+    simulated_15m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+    simulated_5m_log_returns: Vec<f64>,
+    simulated_15m_log_returns: Vec<f64>,
+    simulated_15m_rv_activity_metric: JointRefinementRollingVarianceActivityMetric,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -398,6 +421,11 @@ pub fn run_joint_refinement_calibration_stage(
         .into_iter()
         .take(final_simulation_seed_count)
         .collect::<Vec<_>>();
+    let stage_thread_pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(stage_solver_settings.cpu_count.max(1))
+        .build()
+        .ok()
+        .map(Arc::new);
 
     let observed_data = build_observed_data(
         calendar_registry,
@@ -425,22 +453,6 @@ pub fn run_joint_refinement_calibration_stage(
         &active_parameter_layout,
         baseline_parameter_vector.as_slice(),
     );
-    let runtime_hourly_seasonality_range_end_utc = observed_data
-        .hourly_simulation_start_utc
-        .checked_add_signed(Duration::hours(
-            observed_data.hourly_simulation_interval_count as i64,
-        ));
-    let Some(runtime_hourly_seasonality_range_end_utc) = runtime_hourly_seasonality_range_end_utc
-    else {
-        return build_joint_refinement_stage_failure_report(
-            run_spec,
-            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
-                error_message:
-                    "joint refinement runtime seasonality range overflowed its hourly horizon"
-                        .to_string(),
-            },
-        );
-    };
     let Some(runtime_hourly_seasonality_range_start_utc_nanos) = observed_data
         .hourly_simulation_start_utc
         .timestamp_nanos_opt()
@@ -454,8 +466,9 @@ pub fn run_joint_refinement_calibration_stage(
             },
         );
     };
-    let Some(runtime_hourly_seasonality_range_end_utc_nanos) =
-        runtime_hourly_seasonality_range_end_utc.timestamp_nanos_opt()
+    let Some(runtime_hourly_seasonality_range_end_utc_nanos) = observed_data
+        .hourly_simulation_end_utc
+        .timestamp_nanos_opt()
     else {
         return build_joint_refinement_stage_failure_report(
             run_spec,
@@ -502,6 +515,7 @@ pub fn run_joint_refinement_calibration_stage(
         };
 
     let mut bootstrap_context = JointRefinementContext {
+        stage_thread_pool,
         calendar_registry: calendar_registry.clone(),
         exchange_code: run_spec.data_inputs.exchange_code.clone(),
         max_runtime_hourly_seasonality_factor: runtime_hourly_seasonality_factors
@@ -531,7 +545,8 @@ pub fn run_joint_refinement_calibration_stage(
             rv_activity_coupling_fit: 1.0,
             price_span_sanity_fit: 1.0,
         },
-        cache: Arc::new(Mutex::new(BTreeMap::new())),
+        objective_cache: Arc::new(Mutex::new(BTreeMap::new())),
+        seed_summary_cache: Arc::new(Mutex::new(BTreeMap::new())),
     };
 
     let baseline_fitted_parameters = JointRefinementStageFittedParameters {
@@ -550,6 +565,7 @@ pub fn run_joint_refinement_calibration_stage(
         JointRefinementFidelityTier::Final,
         &stage_solver_settings,
     );
+
     if baseline_local_evaluation.invalid_reason.is_some()
         || baseline_final_evaluation.invalid_reason.is_some()
     {
@@ -568,6 +584,7 @@ pub fn run_joint_refinement_calibration_stage(
             },
         );
     }
+
     bootstrap_context.local_baseline_buckets = JointRefinementBaselineBuckets {
         aggregated_likelihood_fit: raw_bucket_value_from_normalized(
             baseline_local_evaluation
@@ -584,6 +601,7 @@ pub fn run_joint_refinement_calibration_stage(
             baseline_local_evaluation.breakdown.price_span_sanity_fit,
         ),
     };
+
     bootstrap_context.final_baseline_buckets = JointRefinementBaselineBuckets {
         aggregated_likelihood_fit: raw_bucket_value_from_normalized(
             baseline_final_evaluation
@@ -600,7 +618,11 @@ pub fn run_joint_refinement_calibration_stage(
             baseline_final_evaluation.breakdown.price_span_sanity_fit,
         ),
     };
-    if let Ok(mut cache_guard) = bootstrap_context.cache.lock() {
+
+    if let Ok(mut cache_guard) = bootstrap_context.objective_cache.lock() {
+        cache_guard.clear();
+    }
+    if let Ok(mut cache_guard) = bootstrap_context.seed_summary_cache.lock() {
         cache_guard.clear();
     }
 
@@ -609,7 +631,7 @@ pub fn run_joint_refinement_calibration_stage(
         &bootstrap_context.active_parameter_layout,
         bootstrap_context.lower_bounds.as_slice(),
         bootstrap_context.upper_bounds.as_slice(),
-        joint_refinement_restart_count(&stage_solver_settings),
+        joint_refinement_budget_schedule(&stage_solver_settings).restart_count,
     );
     let restart_outcomes = optimize_restart_seeds(
         restart_seeds.as_slice(),
@@ -636,10 +658,10 @@ pub fn run_joint_refinement_calibration_stage(
                 .weighted_objective
                 .partial_cmp(&right.final_evaluation.breakdown.weighted_objective)
                 .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| left.restart_id.cmp(right.restart_id))
+                .then_with(|| left.restart_id.cmp(&right.restart_id))
         })
         .unwrap_or_else(|| JointRefinementRestartOutcome {
-            restart_id: "baseline",
+            restart_id: "baseline".to_string(),
             local_evaluation: baseline_local_evaluation.clone(),
             final_evaluation: baseline_final_evaluation.clone(),
             local_evaluation_count: 0,
@@ -705,44 +727,153 @@ pub fn run_joint_refinement_calibration_stage(
 }
 
 fn optimize_restart_seeds(
-    restart_seeds: &[(&'static str, Vec<f64>)],
+    restart_seeds: &[(String, Vec<f64>)],
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
 ) -> Vec<JointRefinementRestartOutcome> {
-    let thread_pool_builder = rayon::ThreadPoolBuilder::new()
-        .num_threads(solver_settings.cpu_count.max(1))
-        .build();
-
-    match thread_pool_builder {
-        Ok(thread_pool) => thread_pool.install(|| {
-            restart_seeds
-                .par_iter()
-                .map(|(restart_id, seed_vector)| {
-                    optimize_single_restart(
-                        *restart_id,
-                        seed_vector.as_slice(),
-                        context,
-                        solver_settings,
-                    )
-                })
-                .collect()
-        }),
-        Err(_) => restart_seeds
-            .iter()
+    with_joint_refinement_thread_pool(context, || {
+        restart_seeds
+            .par_iter()
             .map(|(restart_id, seed_vector)| {
                 optimize_single_restart(
-                    *restart_id,
+                    restart_id.as_str(),
                     seed_vector.as_slice(),
                     context,
                     solver_settings,
                 )
             })
-            .collect(),
+            .collect()
+    })
+}
+
+fn with_joint_refinement_thread_pool<T, F>(context: &JointRefinementContext, operation: F) -> T
+where
+    T: Send,
+    F: FnOnce() -> T + Send,
+{
+    match context.stage_thread_pool.as_ref() {
+        Some(thread_pool) => thread_pool.install(operation),
+        None => operation(),
     }
 }
 
+fn ordered_parameter_bits(parameter_vector: &[f64]) -> Vec<u64> {
+    parameter_vector
+        .iter()
+        .map(|value| value.to_bits())
+        .collect::<Vec<_>>()
+}
+
+fn deduplicate_restart_seed_candidates(
+    restart_candidates: Vec<(String, Vec<f64>)>,
+) -> Vec<(String, Vec<f64>)> {
+    let mut deduplicated_candidates = Vec::new();
+    let mut seen_parameter_bits = Vec::new();
+
+    for (restart_id, candidate_vector) in restart_candidates {
+        let parameter_bits = ordered_parameter_bits(candidate_vector.as_slice());
+        if seen_parameter_bits
+            .iter()
+            .any(|seen_bits: &Vec<u64>| seen_bits == &parameter_bits)
+        {
+            continue;
+        }
+
+        seen_parameter_bits.push(parameter_bits);
+        deduplicated_candidates.push((restart_id, candidate_vector));
+    }
+
+    deduplicated_candidates
+}
+
+fn halton_parameter_vector(
+    halton_index: u64,
+    lower_bounds: &[f64],
+    upper_bounds: &[f64],
+) -> Vec<f64> {
+    const HALTON_BASES: [u64; 16] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53];
+
+    lower_bounds
+        .iter()
+        .zip(upper_bounds.iter())
+        .enumerate()
+        .map(|(dimension_index, (lower_bound, upper_bound))| {
+            let halton_coordinate = van_der_corput(
+                halton_index,
+                HALTON_BASES[dimension_index % HALTON_BASES.len()],
+            );
+            lower_bound + (upper_bound - lower_bound) * halton_coordinate
+        })
+        .collect()
+}
+
+fn build_halton_restart_id(position: usize) -> String {
+    format!("halton_{position:02}")
+}
+
+#[derive(Debug, Clone, Copy)]
+struct JointRefinementBudgetSchedule {
+    restart_count: usize,
+    outer_cycle_count: usize,
+    powell_settings: PowellOptimizerSettings,
+}
+
+fn joint_refinement_budget_schedule(
+    solver_settings: &CalibrationOptimizerSettings,
+) -> JointRefinementBudgetSchedule {
+    let restart_count = solver_settings
+        .cpu_count
+        .max(1)
+        .min(JOINT_REFINEMENT_MAX_RESTART_COUNT);
+    let (base_outer_cycle_count, base_powell_settings) =
+        joint_refinement_base_schedule_components(solver_settings);
+    let total_block_eval_budget =
+        3usize * base_outer_cycle_count * base_powell_settings.evaluation_budget;
+    let outer_cycle_count = ((3usize * base_outer_cycle_count) / restart_count.max(1)).max(1);
+    let evaluation_budget =
+        (total_block_eval_budget / (restart_count.max(1) * outer_cycle_count.max(1))).max(16);
+    let line_search_evaluation_cap = (evaluation_budget / 4).clamp(4, 8);
+
+    JointRefinementBudgetSchedule {
+        restart_count,
+        outer_cycle_count,
+        powell_settings: PowellOptimizerSettings {
+            absolute_tolerance: solver_settings.absolute_tolerance,
+            relative_tolerance: solver_settings.relative_tolerance,
+            min_step_norm: solver_settings.absolute_tolerance,
+            max_cycle_count: base_powell_settings.max_cycle_count,
+            line_search_evaluation_cap,
+            evaluation_budget,
+        },
+    }
+}
+
+fn joint_refinement_base_schedule_components(
+    solver_settings: &CalibrationOptimizerSettings,
+) -> (usize, PowellOptimizerSettings) {
+    let (outer_cycle_count, max_cycle_count, line_search_evaluation_cap, minimum_evaluation_budget) =
+        match solver_settings.max_iterations {
+            0..=32 => (1, 2, 4, 8),
+            33..=96 => (2, 4, 6, 16),
+            _ => (JOINT_REFINEMENT_MAX_OUTER_CYCLE_COUNT, 8, 8, 24),
+        };
+
+    let powell_settings = PowellOptimizerSettings {
+        absolute_tolerance: solver_settings.absolute_tolerance,
+        relative_tolerance: solver_settings.relative_tolerance,
+        min_step_norm: solver_settings.absolute_tolerance,
+        max_cycle_count,
+        line_search_evaluation_cap,
+        evaluation_budget: solver_settings
+            .max_iterations
+            .clamp(minimum_evaluation_budget, 256),
+    };
+
+    (outer_cycle_count, powell_settings)
+}
+
 fn optimize_single_restart(
-    restart_id: &'static str,
+    restart_id: &str,
     seed_vector: &[f64],
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
@@ -750,7 +881,9 @@ fn optimize_single_restart(
     let mut current_vector = seed_vector.to_vec();
     let mut evaluation_count = 0usize;
     let mut stop_reason = "tolerance";
-    let outer_cycle_count = joint_refinement_outer_cycle_count(solver_settings);
+
+    let budget_schedule = joint_refinement_budget_schedule(solver_settings);
+    let outer_cycle_count = budget_schedule.outer_cycle_count;
 
     for _ in 0..outer_cycle_count {
         let (updated_hawkes_vector, hawkes_stop_reason, hawkes_evaluations) =
@@ -758,8 +891,10 @@ fn optimize_single_restart(
                 current_vector.as_slice(),
                 context.active_parameter_layout.hawkes_block.as_slice(),
                 context,
+                budget_schedule.powell_settings,
                 solver_settings,
             );
+
         current_vector = updated_hawkes_vector;
         evaluation_count += hawkes_evaluations;
 
@@ -767,8 +902,10 @@ fn optimize_single_restart(
             current_vector.as_slice(),
             context.active_parameter_layout.nig_block.as_slice(),
             context,
+            budget_schedule.powell_settings,
             solver_settings,
         );
+
         current_vector = updated_nig_vector;
         evaluation_count += nig_evaluations;
 
@@ -777,13 +914,15 @@ fn optimize_single_restart(
                 current_vector.as_slice(),
                 context.active_parameter_layout.coupling_block.as_slice(),
                 context,
+                budget_schedule.powell_settings,
                 solver_settings,
             );
+
         current_vector = updated_coupling_vector;
         evaluation_count += coupling_evaluations;
+
         stop_reason =
             select_restart_stop_reason(hawkes_stop_reason, nig_stop_reason, coupling_stop_reason);
-
         if stop_reason != "tolerance" {
             break;
         }
@@ -803,7 +942,7 @@ fn optimize_single_restart(
     );
 
     JointRefinementRestartOutcome {
-        restart_id,
+        restart_id: restart_id.to_string(),
         local_evaluation,
         final_evaluation,
         local_evaluation_count: evaluation_count,
@@ -826,6 +965,7 @@ fn optimize_parameter_block(
     current_vector: &[f64],
     block_indices: &[usize],
     context: &JointRefinementContext,
+    optimizer_settings: PowellOptimizerSettings,
     solver_settings: &CalibrationOptimizerSettings,
 ) -> (Vec<f64>, &'static str, usize) {
     if block_indices.is_empty() {
@@ -844,6 +984,7 @@ fn optimize_parameter_block(
         .iter()
         .map(|index| context.upper_bounds[*index])
         .collect();
+
     let mut evaluate_block = |block_vector: &[f64]| -> Option<f64> {
         let full_vector = substitute_block(current_vector, block_indices, block_vector);
         Some(
@@ -857,7 +998,6 @@ fn optimize_parameter_block(
             .weighted_objective,
         )
     };
-    let optimizer_settings = joint_refinement_powell_settings(solver_settings);
 
     let optimizer_result = optimize_bounded_powell(
         initial_point.as_slice(),
@@ -885,12 +1025,9 @@ fn evaluate_joint_candidate(
 ) -> JointRefinementCandidateEvaluation {
     let cache_key = JointRefinementObjectiveCacheKey {
         fidelity_tier,
-        parameter_bits: parameter_vector
-            .iter()
-            .map(|value| value.to_bits())
-            .collect(),
+        parameter_bits: ordered_parameter_bits(parameter_vector),
     };
-    if let Ok(cache_guard) = context.cache.lock()
+    if let Ok(cache_guard) = context.objective_cache.lock()
         && let Some(cached_value) = cache_guard.get(&cache_key)
     {
         return cached_value.clone();
@@ -899,7 +1036,7 @@ fn evaluate_joint_candidate(
     let candidate_evaluation =
         build_joint_candidate_evaluation(parameter_vector, context, fidelity_tier, solver_settings);
 
-    if let Ok(mut cache_guard) = context.cache.lock() {
+    if let Ok(mut cache_guard) = context.objective_cache.lock() {
         cache_guard.insert(cache_key, candidate_evaluation.clone());
     }
 
@@ -914,6 +1051,7 @@ fn evaluate_joint_fitted_parameters(
 ) -> JointRefinementCandidateEvaluation {
     build_joint_candidate_evaluation_for_fitted_parameters(
         fitted_parameters,
+        None,
         context,
         fidelity_tier,
         solver_settings,
@@ -926,6 +1064,7 @@ fn build_joint_candidate_evaluation(
     fidelity_tier: JointRefinementFidelityTier,
     solver_settings: &CalibrationOptimizerSettings,
 ) -> JointRefinementCandidateEvaluation {
+    let parameter_bits = ordered_parameter_bits(parameter_vector);
     let Some(fitted_parameters) = parameter_vector_to_fitted_parameters(parameter_vector, context)
     else {
         return invalid_candidate_evaluation(
@@ -938,6 +1077,7 @@ fn build_joint_candidate_evaluation(
 
     build_joint_candidate_evaluation_for_fitted_parameters(
         fitted_parameters,
+        Some(parameter_bits.as_slice()),
         context,
         fidelity_tier,
         solver_settings,
@@ -946,6 +1086,7 @@ fn build_joint_candidate_evaluation(
 
 fn build_joint_candidate_evaluation_for_fitted_parameters(
     fitted_parameters: JointRefinementStageFittedParameters,
+    parameter_bits: Option<&[u64]>,
     context: &JointRefinementContext,
     fidelity_tier: JointRefinementFidelityTier,
     solver_settings: &CalibrationOptimizerSettings,
@@ -997,83 +1138,73 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         JointRefinementFidelityTier::Local => vec![context.local_simulation_seed],
         JointRefinementFidelityTier::Final => context.final_simulation_seeds.clone(),
     };
-    let mut aggregated_shape_scores = Vec::new();
-    let mut rv_activity_scores = Vec::new();
-    let mut price_span_scores = Vec::new();
-    for simulation_seed in simulation_seeds {
-        let Some(simulated_5m_intervals) = simulate_aggregated_intervals(
-            &context.calendar_registry,
-            context,
-            &fitted_parameters,
-            simulation_seed,
-            JOINT_REFINEMENT_FIVE_MINUTES_NANOS,
-        ) else {
-            return invalid_candidate_evaluation(
-                &context.baseline_hawkes_fitted_parameters,
-                &context.baseline_return_components_fitted_parameters,
-                solver_settings.constraint_penalty_weight,
-                "simulate_aggregated_intervals_failed_5m",
-            );
-        };
-        let Some(simulated_15m_intervals) = simulate_aggregated_intervals(
-            &context.calendar_registry,
-            context,
-            &fitted_parameters,
-            simulation_seed,
-            JOINT_REFINEMENT_FIFTEEN_MINUTES_NANOS,
-        ) else {
-            return invalid_candidate_evaluation(
-                &context.baseline_hawkes_fitted_parameters,
-                &context.baseline_return_components_fitted_parameters,
-                solver_settings.constraint_penalty_weight,
-                "simulate_aggregated_intervals_failed_15m",
-            );
-        };
+
+    let seed_summaries = with_joint_refinement_thread_pool(context, || {
+        simulation_seeds
+            .par_iter()
+            .map(|simulation_seed| {
+                cached_seed_summary_for_candidate_seed(
+                    parameter_bits,
+                    &fitted_parameters,
+                    context,
+                    *simulation_seed,
+                )
+            })
+            .collect::<Vec<_>>()
+    });
+    if seed_summaries.iter().any(Option::is_none) {
+        return invalid_candidate_evaluation(
+            &context.baseline_hawkes_fitted_parameters,
+            &context.baseline_return_components_fitted_parameters,
+            solver_settings.constraint_penalty_weight,
+            "simulate_seed_summary_failed",
+        );
+    }
+
+    let mut aggregated_shape_scores = Vec::with_capacity(seed_summaries.len());
+    let mut rv_activity_scores = Vec::with_capacity(seed_summaries.len());
+    let mut price_span_scores = Vec::with_capacity(seed_summaries.len());
+
+    for seed_summary in seed_summaries.into_iter().flatten() {
+        debug_assert_eq!(
+            seed_summary.simulated_5m_intervals.len(),
+            seed_summary.simulated_5m_log_returns.len()
+        );
+        debug_assert_eq!(
+            seed_summary.simulated_15m_intervals.len(),
+            seed_summary.simulated_15m_log_returns.len()
+        );
 
         let shape_5m = distribution_profile_fit_score(
-            &simulated_5m_intervals
-                .iter()
-                .map(|interval| interval.log_return)
-                .collect::<Vec<_>>(),
-            &context
-                .observed_data
-                .observed_5m_intervals
-                .iter()
-                .map(|interval| interval.log_return)
-                .collect::<Vec<_>>(),
+            seed_summary.simulated_5m_log_returns.as_slice(),
+            context.observed_data.observed_5m_log_returns.as_slice(),
         )
         .profile_fit_score;
         let shape_15m = distribution_profile_fit_score(
-            &simulated_15m_intervals
-                .iter()
-                .map(|interval| interval.log_return)
-                .collect::<Vec<_>>(),
-            &context
-                .observed_data
-                .observed_15m_intervals
-                .iter()
-                .map(|interval| interval.log_return)
-                .collect::<Vec<_>>(),
+            seed_summary.simulated_15m_log_returns.as_slice(),
+            context.observed_data.observed_15m_log_returns.as_slice(),
         )
         .profile_fit_score;
+
         aggregated_shape_scores.push(0.4 * shape_5m + 0.6 * shape_15m);
 
-        let simulated_rv_metric =
-            rolling_variance_activity_metric(simulated_15m_intervals.as_slice());
         rv_activity_scores.push(
-            0.7 * (simulated_rv_metric.correlation
+            0.7 * (seed_summary.simulated_15m_rv_activity_metric.correlation
                 - context
                     .observed_data
                     .observed_15m_rv_activity_metric
                     .correlation)
                 .abs()
-                + 0.3 * simulated_rv_metric.standardized_path_distance,
+                + 0.3
+                    * seed_summary
+                        .simulated_15m_rv_activity_metric
+                        .standardized_path_distance,
         );
 
-        let simulated_log_price_span =
-            compute_cumulative_log_price_span(simulated_15m_intervals.as_slice());
         price_span_scores.push(
-            (simulated_log_price_span - context.observed_data.observed_log_price_span).abs()
+            (compute_cumulative_log_price_span(seed_summary.simulated_15m_intervals.as_slice())
+                - context.observed_data.observed_log_price_span)
+                .abs()
                 / context.observed_data.observed_log_price_span.max(1.0e-8),
         );
     }
@@ -1109,6 +1240,7 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         baseline_buckets.price_span_sanity_fit,
         JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR,
     );
+
     let hard_constraint_penalty = 0.0;
     let weighted_objective = 0.40 * normalized_aggregated_likelihood_fit
         + 0.25 * normalized_aggregated_shape_fit
@@ -1359,6 +1491,14 @@ fn build_observed_data(
         rolling_variance_activity_metric(observed_15m_intervals.as_slice());
     let observed_log_price_span =
         compute_cumulative_log_price_span(observed_15m_intervals.as_slice());
+    let observed_5m_log_returns = observed_5m_intervals
+        .iter()
+        .map(|interval| interval.log_return)
+        .collect::<Vec<_>>();
+    let observed_15m_log_returns = observed_15m_intervals
+        .iter()
+        .map(|interval| interval.log_return)
+        .collect::<Vec<_>>();
     let hourly_simulation_start_utc =
         DateTime::<Utc>::from_timestamp_nanos(floor_to_hour(source_window.window_start_utc_nanos));
     let hourly_simulation_end_utc =
@@ -1376,18 +1516,26 @@ fn build_observed_data(
         hourly_simulation_interval_count,
         return_components_fitted_parameters,
     );
+    let simulated_5m_interval_template =
+        zeroed_interval_observation_template(observed_5m_intervals.as_slice());
+    let simulated_15m_interval_template =
+        zeroed_interval_observation_template(observed_15m_intervals.as_slice());
 
     JointRefinementObservedData {
-        source_window,
         observed_open_event_rate_per_hour,
         fallback_sell_share_proxy: candidate_generation_input.open_session_sell_share_proxy,
         observed_5m_intervals,
         observed_15m_intervals,
+        observed_5m_log_returns,
+        observed_15m_log_returns,
         observed_15m_rv_activity_metric,
         observed_log_price_span,
         hourly_simulation_start_utc,
+        hourly_simulation_end_utc,
         hourly_simulation_interval_count,
         surprise_multiplier_by_hour_index,
+        simulated_5m_interval_template,
+        simulated_15m_interval_template,
     }
 }
 
@@ -1440,6 +1588,7 @@ fn build_active_parameter_layout(
     next_index += 1;
     let log_cross_excitation_scale_index = next_index;
     next_index += 1;
+
     let hawkes_block = vec![
         log_lambda_scale_index,
         log_beta_scale_index,
@@ -1459,6 +1608,7 @@ fn build_active_parameter_layout(
     if known_activity_scale_index.is_some() {
         next_index += 1;
     }
+
     let surprise_activity_scale_index = (return_components_fitted_parameters
         .news_process_configuration
         .surprise_component_mark_scales
@@ -1468,6 +1618,7 @@ fn build_active_parameter_layout(
     if surprise_activity_scale_index.is_some() {
         next_index += 1;
     }
+
     let surprise_baseline_scale_index = (return_components_fitted_parameters
         .news_process_configuration
         .arrivals
@@ -1475,6 +1626,7 @@ fn build_active_parameter_layout(
         .baseline_intensity
         > 0.0)
         .then_some(next_index);
+
     let mut coupling_block = Vec::new();
     if let Some(index) = known_activity_scale_index {
         coupling_block.push(index);
@@ -1563,7 +1715,7 @@ fn build_restart_seeds(
     lower_bounds: &[f64],
     upper_bounds: &[f64],
     restart_count: usize,
-) -> Vec<(&'static str, Vec<f64>)> {
+) -> Vec<(String, Vec<f64>)> {
     let mut baseline = baseline_parameter_vector.to_vec();
     clamp_in_place(baseline.as_mut_slice(), lower_bounds, upper_bounds);
 
@@ -1572,12 +1724,14 @@ fn build_restart_seeds(
     higher_activity[active_parameter_layout.log_beta_scale_index] -= 0.20;
     higher_activity[active_parameter_layout.log_self_excitation_scale_index] += 0.20;
     higher_activity[active_parameter_layout.log_cross_excitation_scale_index] += 0.20;
+
     if let Some(index) = active_parameter_layout.known_activity_scale_index {
         higher_activity[index] += 0.15;
     }
     if let Some(index) = active_parameter_layout.surprise_activity_scale_index {
         higher_activity[index] += 0.15;
     }
+
     clamp_in_place(higher_activity.as_mut_slice(), lower_bounds, upper_bounds);
 
     let mut lower_activity_stronger_move = baseline_parameter_vector.to_vec();
@@ -1586,37 +1740,47 @@ fn build_restart_seeds(
     lower_activity_stronger_move[active_parameter_layout.log_cross_excitation_scale_index] -= 0.20;
     lower_activity_stronger_move[active_parameter_layout.nig_block[0]] -= 0.35;
     lower_activity_stronger_move[active_parameter_layout.nig_block[3]] += 0.35;
+
     clamp_in_place(
         lower_activity_stronger_move.as_mut_slice(),
         lower_bounds,
         upper_bounds,
     );
 
-    let restart_seeds = vec![
-        ("baseline", baseline),
-        ("higher_activity", higher_activity),
-        ("lower_activity_stronger_move", lower_activity_stronger_move),
+    let mut restart_candidates = vec![
+        ("baseline".to_string(), baseline),
+        ("higher_activity".to_string(), higher_activity),
+        (
+            "lower_activity_stronger_move".to_string(),
+            lower_activity_stronger_move,
+        ),
     ];
-    restart_seeds
+
+    let target_restart_count = restart_count.max(1).min(JOINT_REFINEMENT_MAX_RESTART_COUNT);
+    let mut halton_index = 1u64;
+    let mut halton_position = 1usize;
+    while restart_candidates.len() < target_restart_count {
+        let mut halton_seed = halton_parameter_vector(halton_index, lower_bounds, upper_bounds);
+        if halton_seed.len() >= baseline_parameter_vector.len() {
+            halton_seed[active_parameter_layout.log_lambda_scale_index] =
+                halton_seed[active_parameter_layout.log_lambda_scale_index].clamp(
+                    lower_bounds[active_parameter_layout.log_lambda_scale_index],
+                    upper_bounds[active_parameter_layout.log_lambda_scale_index],
+                );
+        }
+
+        clamp_in_place(halton_seed.as_mut_slice(), lower_bounds, upper_bounds);
+
+        restart_candidates.push((build_halton_restart_id(halton_position), halton_seed));
+
+        halton_index += 1;
+        halton_position += 1;
+    }
+
+    deduplicate_restart_seed_candidates(restart_candidates)
         .into_iter()
-        .take(restart_count.max(1).min(JOINT_REFINEMENT_MAX_RESTART_COUNT))
+        .take(target_restart_count)
         .collect()
-}
-
-fn joint_refinement_restart_count(solver_settings: &CalibrationOptimizerSettings) -> usize {
-    match solver_settings.max_iterations {
-        0..=32 => 1,
-        33..=96 => 2,
-        _ => JOINT_REFINEMENT_MAX_RESTART_COUNT,
-    }
-}
-
-fn joint_refinement_outer_cycle_count(solver_settings: &CalibrationOptimizerSettings) -> usize {
-    match solver_settings.max_iterations {
-        0..=32 => 1,
-        33..=96 => 2,
-        _ => JOINT_REFINEMENT_MAX_OUTER_CYCLE_COUNT,
-    }
 }
 
 fn joint_refinement_final_simulation_seed_count(
@@ -1629,46 +1793,50 @@ fn joint_refinement_final_simulation_seed_count(
     }
 }
 
-fn joint_refinement_powell_settings(
-    solver_settings: &CalibrationOptimizerSettings,
-) -> PowellOptimizerSettings {
-    let (max_cycle_count, line_search_evaluation_cap, minimum_evaluation_budget) =
-        match solver_settings.max_iterations {
-            0..=32 => (2, 4, 8),
-            33..=96 => (4, 6, 16),
-            _ => (8, 8, 24),
-        };
-
-    PowellOptimizerSettings {
-        absolute_tolerance: solver_settings.absolute_tolerance,
-        relative_tolerance: solver_settings.relative_tolerance,
-        min_step_norm: solver_settings.absolute_tolerance,
-        max_cycle_count,
-        line_search_evaluation_cap,
-        evaluation_budget: solver_settings
-            .max_iterations
-            .clamp(minimum_evaluation_budget, 256),
+fn cached_seed_summary_for_candidate_seed(
+    parameter_bits: Option<&[u64]>,
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    context: &JointRefinementContext,
+    simulation_seed: u64,
+) -> Option<JointRefinementSeedSummary> {
+    let cache_key = parameter_bits.map(|bits| JointRefinementSeedSummaryCacheKey {
+        parameter_bits: bits.to_vec(),
+        simulation_seed,
+    });
+    if let Some(seed_cache_key) = cache_key.as_ref()
+        && let Ok(cache_guard) = context.seed_summary_cache.lock()
+        && let Some(cached_summary) = cache_guard.get(seed_cache_key)
+    {
+        return cached_summary.clone();
     }
+
+    let seed_summary = build_seed_summary_for_candidate_seed(
+        &context.calendar_registry,
+        context,
+        fitted_parameters,
+        simulation_seed,
+    );
+    if let Some(seed_cache_key) = cache_key
+        && let Ok(mut cache_guard) = context.seed_summary_cache.lock()
+    {
+        cache_guard.insert(seed_cache_key, seed_summary.clone());
+    }
+
+    seed_summary
 }
 
-fn simulate_aggregated_intervals(
+fn build_seed_summary_for_candidate_seed(
     calendar_registry: &ExchangeCalendarRegistry,
     context: &JointRefinementContext,
     fitted_parameters: &JointRefinementStageFittedParameters,
     simulation_seed: u64,
-    interval_duration_nanos: i64,
-) -> Option<Vec<JointRefinementAggregatedIntervalObservation>> {
+) -> Option<JointRefinementSeedSummary> {
     let hourly_factor_contract = load_hourly_factor_contract_for_calibration(
         calendar_registry,
         HourlyFactorProviderRequest {
             exchange_code: context.exchange_code.as_str(),
             range_start_utc: context.observed_data.hourly_simulation_start_utc,
-            range_end_utc: context
-                .observed_data
-                .hourly_simulation_start_utc
-                .checked_add_signed(Duration::hours(
-                    context.observed_data.hourly_simulation_interval_count as i64,
-                ))?,
+            range_end_utc: context.observed_data.hourly_simulation_end_utc,
             interval_duration_nanos: JOINT_REFINEMENT_ONE_HOUR_NANOS,
             seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
                 hourly_factors: context.runtime_hourly_seasonality_factors.as_slice(),
@@ -1731,13 +1899,40 @@ fn simulate_aggregated_intervals(
     )
     .ok()?;
 
-    Some(build_simulated_open_session_interval_observations(
-        calendar_registry,
-        context.exchange_code.as_str(),
-        context.observed_data.source_window,
-        simulation_result.fine_path.as_slice(),
-        interval_duration_nanos,
-    ))
+    let (simulated_5m_intervals, simulated_15m_intervals) =
+        aggregate_simulated_path_to_interval_templates(
+            simulation_result.fine_path.as_slice(),
+            context
+                .observed_data
+                .simulated_5m_interval_template
+                .as_slice(),
+            context
+                .observed_data
+                .simulated_15m_interval_template
+                .as_slice(),
+            JOINT_REFINEMENT_FIVE_MINUTES_NANOS,
+            JOINT_REFINEMENT_FIFTEEN_MINUTES_NANOS,
+        );
+
+    let simulated_5m_log_returns = simulated_5m_intervals
+        .iter()
+        .map(|interval| interval.log_return)
+        .collect::<Vec<_>>();
+    let simulated_15m_log_returns = simulated_15m_intervals
+        .iter()
+        .map(|interval| interval.log_return)
+        .collect::<Vec<_>>();
+
+    let simulated_15m_rv_activity_metric =
+        rolling_variance_activity_metric(simulated_15m_intervals.as_slice());
+
+    Some(JointRefinementSeedSummary {
+        simulated_5m_intervals,
+        simulated_15m_intervals,
+        simulated_5m_log_returns,
+        simulated_15m_log_returns,
+        simulated_15m_rv_activity_metric,
+    })
 }
 
 fn selected_hawkes_observed_open_event_rate_per_hour(
@@ -1779,6 +1974,7 @@ fn substitute_block(
     for (block_position, parameter_index) in block_indices.iter().enumerate() {
         updated[*parameter_index] = block_vector[block_position];
     }
+
     updated
 }
 
@@ -1820,6 +2016,7 @@ fn build_surprise_multipliers_by_hour_index(
             let interval_start = hourly_simulation_start_utc
                 .checked_add_signed(Duration::hours(interval_index as i64))
                 .unwrap_or(hourly_simulation_start_utc);
+
             let weekday_index = interval_start.weekday().num_days_from_monday() as usize;
             let hour_index = interval_start.hour() as usize;
             let bucket_index = weekday_index * 24 + hour_index;
@@ -1865,5 +2062,75 @@ fn build_joint_refinement_stage_failure_report(
         fitted_stage_payload: None,
         metadata: None,
         failure: Some(failure),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        JointRefinementActiveParameterLayout, build_restart_seeds, joint_refinement_budget_schedule,
+    };
+    use janiform_calibration_artifacts::CalibrationOptimizerSettings;
+
+    fn build_test_solver_settings(cpu_count: usize) -> CalibrationOptimizerSettings {
+        CalibrationOptimizerSettings::try_new("joint-test", 256, cpu_count, 1.0e-6, 1.0e-6, 10.0)
+            .expect("test optimizer settings should be valid")
+    }
+
+    fn build_test_active_parameter_layout() -> JointRefinementActiveParameterLayout {
+        JointRefinementActiveParameterLayout {
+            hawkes_block: vec![0, 1, 2, 3],
+            nig_block: vec![4, 5, 6, 7],
+            coupling_block: vec![8, 9, 10],
+            log_lambda_scale_index: 0,
+            log_beta_scale_index: 1,
+            log_self_excitation_scale_index: 2,
+            log_cross_excitation_scale_index: 3,
+            known_activity_scale_index: Some(8),
+            surprise_activity_scale_index: Some(9),
+            surprise_baseline_scale_index: Some(10),
+        }
+    }
+
+    #[test]
+    fn joint_refinement_restart_count_scales_with_cpu_count_and_caps_at_24() {
+        let single_core_schedule = joint_refinement_budget_schedule(&build_test_solver_settings(1));
+        let eight_core_schedule = joint_refinement_budget_schedule(&build_test_solver_settings(8));
+        let high_core_schedule = joint_refinement_budget_schedule(&build_test_solver_settings(64));
+
+        assert_eq!(single_core_schedule.restart_count, 1);
+        assert_eq!(eight_core_schedule.restart_count, 8);
+        assert_eq!(high_core_schedule.restart_count, 24);
+    }
+
+    #[test]
+    fn joint_refinement_restart_seed_generation_is_deterministic() {
+        let active_parameter_layout = build_test_active_parameter_layout();
+        let baseline_parameter_vector = vec![0.0; active_parameter_layout.vector_length()];
+
+        let lower_bounds = vec![-1.0; baseline_parameter_vector.len()];
+        let upper_bounds = vec![1.0; baseline_parameter_vector.len()];
+
+        let first_restart_seeds = build_restart_seeds(
+            baseline_parameter_vector.as_slice(),
+            &active_parameter_layout,
+            lower_bounds.as_slice(),
+            upper_bounds.as_slice(),
+            8,
+        );
+        let second_restart_seeds = build_restart_seeds(
+            baseline_parameter_vector.as_slice(),
+            &active_parameter_layout,
+            lower_bounds.as_slice(),
+            upper_bounds.as_slice(),
+            8,
+        );
+
+        assert_eq!(first_restart_seeds, second_restart_seeds);
+        assert_eq!(first_restart_seeds.len(), 8);
+        assert_eq!(first_restart_seeds[0].0, "baseline");
+        assert_eq!(first_restart_seeds[1].0, "higher_activity");
+        assert_eq!(first_restart_seeds[2].0, "lower_activity_stronger_move");
+        assert_eq!(first_restart_seeds[3].0, "halton_01");
     }
 }
