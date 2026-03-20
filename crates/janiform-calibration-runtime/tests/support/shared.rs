@@ -54,6 +54,16 @@ pub(crate) fn assert_joint_refinement_objective_breakdown_matches(
         &format!("{context} aggregated_return_scale_fit"),
     );
     assert_f64_within_one_ulp(
+        actual_breakdown.business_time_return_scale_fit,
+        expected_breakdown.business_time_return_scale_fit,
+        &format!("{context} business_time_return_scale_fit"),
+    );
+    assert_f64_within_one_ulp(
+        actual_breakdown.intraday_return_level_fit,
+        expected_breakdown.intraday_return_level_fit,
+        &format!("{context} intraday_return_level_fit"),
+    );
+    assert_f64_within_one_ulp(
         actual_breakdown.activity_shape_fit,
         expected_breakdown.activity_shape_fit,
         &format!("{context} activity_shape_fit"),

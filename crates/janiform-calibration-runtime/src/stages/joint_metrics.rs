@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Timelike, Utc};
 
 use crate::calendar::{ExchangeCalendarRegistry, MarketState};
 use crate::stages::return_components::{
@@ -16,6 +16,14 @@ use janiform_foundations::numeric::{
 pub(crate) const JOINT_REFINEMENT_ROLLING_ACTIVITY_WINDOW_INTERVAL_COUNT: usize = 96;
 const JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR: f64 = 1.0e-8;
 const JOINT_REFINEMENT_RETURN_SCALE_QUANTILE_Q90: f64 = 0.90;
+const JOINT_REFINEMENT_BUSINESS_TIME_BUCKET_COUNT: usize = 4;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct JointRefinementBusinessTimeBucketThresholds {
+    pub(crate) lower_quartile_cutoff: f64,
+    pub(crate) median_cutoff: f64,
+    pub(crate) upper_quartile_cutoff: f64,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct JointRefinementRollingVarianceActivityMetric {
@@ -28,6 +36,12 @@ pub(crate) struct JointRefinementReturnScaleSummary {
     pub(crate) mean_absolute_return: f64,
     pub(crate) realized_variance: f64,
     pub(crate) absolute_return_quantile_q90: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct JointRefinementBusinessTimeBucketReturnScaleSummaries {
+    pub(crate) bucket_summaries:
+        [Option<JointRefinementReturnScaleSummary>; JOINT_REFINEMENT_BUSINESS_TIME_BUCKET_COUNT],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -246,12 +260,105 @@ pub(crate) fn return_scale_summary(
     }
 }
 
+pub(crate) fn business_time_bucket_thresholds(
+    intervals: &[JointRefinementAggregatedIntervalObservation],
+) -> Option<JointRefinementBusinessTimeBucketThresholds> {
+    let business_time_scales: Vec<f64> = intervals
+        .iter()
+        .map(|interval| interval.tick_count as f64)
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .collect();
+    if business_time_scales.is_empty() {
+        return None;
+    }
+
+    Some(JointRefinementBusinessTimeBucketThresholds {
+        lower_quartile_cutoff: compute_finite_quantile_or_zero(
+            business_time_scales.as_slice(),
+            0.25,
+        ),
+        median_cutoff: compute_finite_quantile_or_zero(business_time_scales.as_slice(), 0.50),
+        upper_quartile_cutoff: compute_finite_quantile_or_zero(
+            business_time_scales.as_slice(),
+            0.75,
+        ),
+    })
+}
+
+pub(crate) fn return_scale_summaries_by_business_time_bucket(
+    intervals: &[JointRefinementAggregatedIntervalObservation],
+    thresholds: JointRefinementBusinessTimeBucketThresholds,
+) -> JointRefinementBusinessTimeBucketReturnScaleSummaries {
+    let mut bucket_absolute_returns: [Vec<f64>; JOINT_REFINEMENT_BUSINESS_TIME_BUCKET_COUNT] =
+        std::array::from_fn(|_| Vec::new());
+    let mut bucket_realized_variance = [0.0; JOINT_REFINEMENT_BUSINESS_TIME_BUCKET_COUNT];
+
+    for interval in intervals {
+        if !interval.log_return.is_finite() {
+            continue;
+        }
+
+        let bucket_index = business_time_bucket_index(interval.tick_count as f64, thresholds);
+        let absolute_return = interval.log_return.abs();
+
+        bucket_absolute_returns[bucket_index].push(absolute_return);
+        bucket_realized_variance[bucket_index] += interval.log_return * interval.log_return;
+    }
+
+    JointRefinementBusinessTimeBucketReturnScaleSummaries {
+        bucket_summaries: std::array::from_fn(|bucket_index| {
+            let absolute_returns = bucket_absolute_returns[bucket_index].as_slice();
+            if absolute_returns.is_empty() {
+                return None;
+            }
+
+            Some(JointRefinementReturnScaleSummary {
+                mean_absolute_return: arithmetic_mean_or_zero(absolute_returns),
+                realized_variance: bucket_realized_variance[bucket_index],
+                absolute_return_quantile_q90: compute_finite_quantile_or_zero(
+                    absolute_returns,
+                    JOINT_REFINEMENT_RETURN_SCALE_QUANTILE_Q90,
+                ),
+            })
+        }),
+    }
+}
+
 pub(crate) fn tick_count_series(
     intervals: &[JointRefinementAggregatedIntervalObservation],
 ) -> Vec<f64> {
     intervals
         .iter()
         .map(|interval| interval.tick_count as f64)
+        .collect()
+}
+
+pub(crate) fn mean_absolute_return_by_utc_hour(
+    intervals: &[JointRefinementAggregatedIntervalObservation],
+) -> Vec<f64> {
+    let mut absolute_return_sum_by_hour = [0.0; 24];
+    let mut interval_count_by_hour = [0usize; 24];
+
+    for interval in intervals {
+        if !interval.log_return.is_finite() {
+            continue;
+        }
+
+        let hour_index = DateTime::<Utc>::from_timestamp_nanos(interval.interval_start_utc_nanos)
+            .hour() as usize;
+
+        absolute_return_sum_by_hour[hour_index] += interval.log_return.abs();
+        interval_count_by_hour[hour_index] += 1;
+    }
+
+    (0..24)
+        .map(|hour_index| {
+            if interval_count_by_hour[hour_index] == 0 {
+                0.0
+            } else {
+                absolute_return_sum_by_hour[hour_index] / interval_count_by_hour[hour_index] as f64
+            }
+        })
         .collect()
 }
 
@@ -336,6 +443,21 @@ pub(crate) fn zero_aware_normalized_bucket_value(
 ) -> f64 {
     let denominator = baseline_value.abs().max(floor);
     candidate_value / denominator
+}
+
+fn business_time_bucket_index(
+    business_time_scale: f64,
+    thresholds: JointRefinementBusinessTimeBucketThresholds,
+) -> usize {
+    if !business_time_scale.is_finite() || business_time_scale <= thresholds.lower_quartile_cutoff {
+        0
+    } else if business_time_scale <= thresholds.median_cutoff {
+        1
+    } else if business_time_scale <= thresholds.upper_quartile_cutoff {
+        2
+    } else {
+        3
+    }
 }
 
 fn build_open_session_interval_template(
@@ -473,8 +595,9 @@ mod tests {
         JOINT_REFINEMENT_ROLLING_ACTIVITY_WINDOW_INTERVAL_COUNT,
         JointRefinementAggregatedIntervalObservation,
         aggregate_simulated_path_to_interval_template,
-        aggregate_simulated_path_to_interval_templates, log_ratio_distance,
-        normalized_profile_distance, relative_rmse, return_scale_summary,
+        aggregate_simulated_path_to_interval_templates, business_time_bucket_thresholds,
+        log_ratio_distance, mean_absolute_return_by_utc_hour, normalized_profile_distance,
+        relative_rmse, return_scale_summaries_by_business_time_bucket, return_scale_summary,
         rolling_variance_activity_metric, scale_normalized_returns,
         zeroed_interval_observation_template,
     };
@@ -681,5 +804,66 @@ mod tests {
         assert!(scale_summary.mean_absolute_return > 0.0);
         assert!(scale_summary.realized_variance > 0.0);
         assert!(scale_summary.absolute_return_quantile_q90 >= 0.1);
+    }
+
+    #[test]
+    fn business_time_bucket_return_scale_summaries_group_by_tick_count_regime() {
+        let intervals: Vec<JointRefinementAggregatedIntervalObservation> = (0..8)
+            .map(|index| JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: index,
+                interval_end_utc_nanos: index + 1,
+                log_return: 0.001 * (index as f64 + 1.0),
+                tick_count: (index + 1) as usize,
+                sell_share_proxy: 0.5,
+            })
+            .collect();
+
+        let thresholds = business_time_bucket_thresholds(intervals.as_slice())
+            .expect("bucket thresholds should exist");
+        let summaries =
+            return_scale_summaries_by_business_time_bucket(intervals.as_slice(), thresholds);
+
+        assert_eq!(summaries.bucket_summaries.len(), 4);
+        assert!(summaries.bucket_summaries.iter().all(Option::is_some));
+        assert!(
+            summaries.bucket_summaries[3]
+                .expect("upper bucket summary should exist")
+                .mean_absolute_return
+                > summaries.bucket_summaries[0]
+                    .expect("lower bucket summary should exist")
+                    .mean_absolute_return
+        );
+    }
+
+    #[test]
+    fn mean_absolute_return_by_utc_hour_aggregates_per_hour_level() {
+        let hourly_profile = mean_absolute_return_by_utc_hour(&[
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 0,
+                interval_end_utc_nanos: 1,
+                log_return: 0.10,
+                tick_count: 1,
+                sell_share_proxy: 0.5,
+            },
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 30 * 60 * 1_000_000_000,
+                interval_end_utc_nanos: 30 * 60 * 1_000_000_000 + 1,
+                log_return: -0.30,
+                tick_count: 1,
+                sell_share_proxy: 0.5,
+            },
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 60 * 60 * 1_000_000_000,
+                interval_end_utc_nanos: 60 * 60 * 1_000_000_000 + 1,
+                log_return: 0.20,
+                tick_count: 1,
+                sell_share_proxy: 0.5,
+            },
+        ]);
+
+        assert_eq!(hourly_profile.len(), 24);
+        assert_eq!(hourly_profile[0], 0.20);
+        assert_eq!(hourly_profile[1], 0.20);
+        assert_eq!(hourly_profile[2], 0.0);
     }
 }

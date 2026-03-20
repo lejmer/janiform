@@ -49,6 +49,8 @@ pub struct JointRefinementStageObjectiveBreakdown {
     pub aggregated_likelihood_fit: f64,
     pub aggregated_return_shape_fit: f64,
     pub aggregated_return_scale_fit: f64,
+    pub business_time_return_scale_fit: f64,
+    pub intraday_return_level_fit: f64,
     pub activity_shape_fit: f64,
     pub activity_level_fit: f64,
     pub rv_activity_coupling_fit: f64,

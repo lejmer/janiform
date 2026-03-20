@@ -1,3 +1,4 @@
+import math
 import runpy
 import sys
 from copy import deepcopy
@@ -106,13 +107,7 @@ def test_real_data_seeded_runtime_comparison_classifies_model_regime_drift(
     report = _cloned_cached_fixture_report(fixtures_root)
     policy = _policy_artifact(fixtures_root)
     baseline = _baseline_artifact(fixtures_root)
-
-    candidate = replace(
-        report,
-        coarse_generated_event_count=report.coarse_generated_event_count * 5,
-        seeded_event_count=report.seeded_event_count * 5,
-        seeded_transition_count=report.seeded_transition_count * 5,
-    )
+    candidate = _model_regime_drift_candidate(report, policy)
 
     comparison = compare_real_data_seeded_runtime_benchmark_report_to_baseline(
         candidate_reports=(candidate,),
@@ -261,6 +256,60 @@ def _self_pass_policy(
         ),
     )
     return replace(policy, fixture_thresholds=(adjusted_threshold,))
+
+
+def _model_regime_drift_candidate(
+    report: RealDataSeededRuntimeBenchmarkReport,
+    policy: RealDataSeededRuntimeBenchmarkPolicy,
+) -> RealDataSeededRuntimeBenchmarkReport:
+    thresholds = policy.threshold_for_fixture(report.fixture_id)
+    seeded_interval_count = report.provenance.seeded_horizon_interval_count
+    coarse_interval_count = report.provenance.coarse_horizon_interval_count
+    observed_open_event_rate_per_hour = report.observed_open_event_rate_per_hour
+    calibrated_open_event_rate_per_hour = report.calibrated_open_event_rate_per_hour
+
+    target_seeded_event_count = max(
+        report.seeded_event_count + 1,
+        math.ceil(
+            thresholds.maximum_seeded_event_rate_ratio_vs_observed_open
+            * observed_open_event_rate_per_hour
+            * seeded_interval_count
+        )
+        + 1,
+    )
+    if calibrated_open_event_rate_per_hour is not None:
+        target_seeded_event_count = max(
+            target_seeded_event_count,
+            math.ceil(
+                thresholds.maximum_seeded_event_rate_ratio_vs_calibrated_open
+                * calibrated_open_event_rate_per_hour
+                * seeded_interval_count
+            )
+            + 1,
+        )
+
+    target_coarse_generated_event_count = max(
+        report.coarse_generated_event_count + 1,
+        math.ceil(
+            thresholds.maximum_coarse_event_rate_ratio_vs_observed_open
+            * observed_open_event_rate_per_hour
+            * coarse_interval_count
+        )
+        + 1,
+    )
+    target_seeded_transition_count = max(
+        target_seeded_event_count,
+        report.seeded_transition_count
+        - report.seeded_event_count
+        + target_seeded_event_count,
+    )
+
+    return replace(
+        report,
+        coarse_generated_event_count=target_coarse_generated_event_count,
+        seeded_event_count=target_seeded_event_count,
+        seeded_transition_count=target_seeded_transition_count,
+    )
 
 
 def _fixture_document(fixtures_root: Path) -> RealDataSeededRuntimeBenchmarkFixtureDocument:
