@@ -246,8 +246,10 @@ impl Default for SeededTickSimulationNewsRoutingTotals {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct SeededTickSimulationNativeDiagnostics {
     pub transition_count: usize,
+    pub public_transition_count: usize,
     pub event_count: usize,
     pub estimated_fine_path_bytes: usize,
+    pub estimated_public_projection_index_bytes: usize,
     pub estimated_event_projection_index_bytes: usize,
     pub estimated_debug_trace_bytes: usize,
     pub estimated_total_retained_bytes: usize,
@@ -267,6 +269,7 @@ pub struct SeededTickSimulationRunResult {
     pub simulated_interval_count: usize,
     pub fine_path_metadata: SeededFinePathMetadata,
     pub fine_path: Vec<SeededFinePathRecord>,
+    pub public_transition_positions: Vec<usize>,
     pub event_tape_metadata: SeededTickEventTapeMetadata,
     pub event_transition_positions: Vec<usize>,
     pub final_excitation_state: HawkesExcitationState,
@@ -280,6 +283,11 @@ impl SeededTickSimulationRunResult {
     /// Number of canonical fine-path transitions retained by the run result.
     pub fn transition_count(&self) -> usize {
         self.fine_path.len()
+    }
+
+    /// Number of public fine-path transitions exposed through the Python surface.
+    pub fn public_transition_count(&self) -> usize {
+        self.public_transition_positions.len()
     }
 
     /// Number of endogenous event projections derivable from the canonical fine path.
@@ -302,6 +310,29 @@ impl SeededTickSimulationRunResult {
             .min(self.fine_path.len());
 
         &self.fine_path[start_index..end_index]
+    }
+
+    /// Project one contiguous public fine-path chunk from the canonical fine path.
+    pub fn public_fine_path_chunk(
+        &self,
+        start_index: usize,
+        max_records: usize,
+    ) -> Vec<SeededFinePathRecord> {
+        if max_records == 0 || start_index >= self.public_transition_positions.len() {
+            return Vec::new();
+        }
+
+        let end_index = start_index
+            .saturating_add(max_records)
+            .min(self.public_transition_positions.len());
+        let mut public_records: Vec<SeededFinePathRecord> =
+            Vec::with_capacity(end_index - start_index);
+        for public_index in start_index..end_index {
+            let transition_position = self.public_transition_positions[public_index];
+            public_records.push(self.fine_path[transition_position].clone());
+        }
+
+        public_records
     }
 
     /// Project one endogenous event record from the canonical fine path.
@@ -353,6 +384,10 @@ impl SeededTickSimulationRunResult {
             .fine_path
             .capacity()
             .saturating_mul(size_of::<SeededFinePathRecord>());
+        let estimated_public_projection_index_bytes = self
+            .public_transition_positions
+            .capacity()
+            .saturating_mul(size_of::<usize>());
         let estimated_event_projection_index_bytes = self
             .event_transition_positions
             .capacity()
@@ -376,11 +411,14 @@ impl SeededTickSimulationRunResult {
 
         SeededTickSimulationNativeDiagnostics {
             transition_count: self.transition_count(),
+            public_transition_count: self.public_transition_count(),
             event_count: self.event_count(),
             estimated_fine_path_bytes,
+            estimated_public_projection_index_bytes,
             estimated_event_projection_index_bytes,
             estimated_debug_trace_bytes,
             estimated_total_retained_bytes: estimated_fine_path_bytes
+                .saturating_add(estimated_public_projection_index_bytes)
                 .saturating_add(estimated_event_projection_index_bytes)
                 .saturating_add(estimated_debug_trace_bytes),
         }

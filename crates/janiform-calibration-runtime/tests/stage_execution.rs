@@ -443,7 +443,7 @@ fn hawkes_stage_execution_reports_constraint_violations_for_invalid_candidates()
 }
 
 #[test]
-fn hawkes_stage_rejects_seasonality_scaled_supercritical_candidates() {
+fn hawkes_stage_refines_seasonality_scaled_supercritical_candidates_to_stable_outputs() {
     let calendar_registry = calibration_stage_test_registry();
     let mut seasonality_payload = build_seasonality_stage_success_payload();
     seasonality_payload.intraday_factor_by_bin.fill(2.0);
@@ -466,35 +466,112 @@ fn hawkes_stage_rejects_seasonality_scaled_supercritical_candidates() {
         ),
     );
 
-    assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);
-    match report
-        .failure
+    assert_eq!(report.status, CalibrationStageExecutionStatus::Success);
+    let fitted_stage_payload = report
+        .fitted_stage_payload
         .as_ref()
-        .expect("failure report should be populated")
-    {
-        HawkesStageExecutionFailure::ConstraintViolationsForAllCandidates {
-            candidate_diagnostics,
-        } => {
-            assert_eq!(candidate_diagnostics.len(), 1);
-            assert_eq!(
-                candidate_diagnostics[0].candidate_id,
-                "candidate_supercritical_under_seasonality"
-            );
-            assert!(candidate_diagnostics[0].constraint_violation_count > 0);
-            assert!(
-                candidate_diagnostics[0]
-                    .warnings
-                    .iter()
-                    .any(|warning| { warning.contains("effective branching ratio") })
-            );
-        }
-        _ => panic!("expected seasonality-scaled stationarity failure"),
-    }
+        .expect("success report should include fitted payload");
+    let original_candidate = fitted_stage_payload
+        .candidate_diagnostics
+        .iter()
+        .find(|candidate| candidate.candidate_id == "candidate_supercritical_under_seasonality")
+        .expect("candidate diagnostics should retain the coarse supercritical seed");
+    let selected_candidate = fitted_stage_payload
+        .candidate_diagnostics
+        .iter()
+        .find(|candidate| candidate.candidate_id == fitted_stage_payload.selected_candidate_id)
+        .expect("selected candidate should be present in diagnostics");
+
+    assert!(fitted_stage_payload.selected_candidate_id.contains("_refined_"));
+    assert!(original_candidate.constraint_violation_count > 0);
+    assert!(
+        original_candidate
+            .warnings
+            .iter()
+            .any(|warning| { warning.contains("effective branching ratio") })
+    );
+    assert_eq!(selected_candidate.constraint_violation_count, 0);
+    assert!(
+        selected_candidate
+            .implied_metrics
+            .max_runtime_effective_branching_ratio
+            < 1.0
+    );
+}
+
+#[test]
+fn hawkes_stage_refines_supercritical_candidates_under_unobserved_runtime_envelope() {
+    let calendar_registry = calibration_stage_test_registry();
+
+    let mut seasonality_payload = build_seasonality_stage_success_payload();
+    seasonality_payload.intraday_factor_by_bin.fill(1.0);
+    seasonality_payload.day_of_week_factor.fill(1.0);
+    seasonality_payload.day_of_year_factor.fill(1.0);
+    seasonality_payload.day_of_year_factor[199] = 3.0;
+
+    let mut candidate = hawkes_stage_candidate_fixture()
+        .into_iter()
+        .next()
+        .expect("fixture should provide a candidate");
+    candidate.candidate_id = "candidate_supercritical_under_unobserved_runtime_envelope".to_string();
+    candidate.beta = 1.0;
+    candidate.structured_alpha =
+        HawkesStructuredAlphaParameterization::new(0.41, 0.0, 0.0, 0.0);
+
+    let report = run_hawkes_calibration_stage(
+        &build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory),
+        &calendar_registry,
+        HawkesStageExecutionInput::from_in_memory_seasonality_output(
+            seasonality_payload,
+            vec![candidate],
+        ),
+    );
+
+    assert_eq!(report.status, CalibrationStageExecutionStatus::Success);
+    let fitted_stage_payload = report
+        .fitted_stage_payload
+        .as_ref()
+        .expect("success report should include fitted payload");
+    let original_candidate = fitted_stage_payload
+        .candidate_diagnostics
+        .iter()
+        .find(|candidate| {
+            candidate.candidate_id == "candidate_supercritical_under_unobserved_runtime_envelope"
+        })
+        .expect("candidate diagnostics should retain the coarse supercritical seed");
+    let selected_candidate = fitted_stage_payload
+        .candidate_diagnostics
+        .iter()
+        .find(|candidate| candidate.candidate_id == fitted_stage_payload.selected_candidate_id)
+        .expect("selected candidate should be present in diagnostics");
+
+    assert!(fitted_stage_payload.selected_candidate_id.contains("_refined_"));
+    assert!(original_candidate.constraint_violation_count > 0);
+    assert_eq!(
+        original_candidate
+            .implied_metrics
+            .max_runtime_hourly_seasonality_factor,
+        3.0
+    );
+    assert!(
+        original_candidate
+            .warnings
+            .iter()
+            .any(|warning| { warning.contains("effective branching ratio") })
+    );
+    assert_eq!(selected_candidate.constraint_violation_count, 0);
+    assert!(
+        selected_candidate
+            .implied_metrics
+            .max_runtime_effective_branching_ratio
+            < 1.0
+    );
 }
 
 #[test]
 fn hawkes_stage_objective_terms_change_with_candidate_implied_metrics() {
     let calendar_registry = calibration_stage_test_registry();
+
     let report = run_hawkes_calibration_stage(
         &build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory),
         &calendar_registry,
@@ -584,6 +661,7 @@ fn hawkes_stage_objective_terms_change_with_candidate_implied_metrics() {
 #[test]
 fn hawkes_stage_surfaces_unrealistic_implied_event_volume_warnings() {
     let calendar_registry = calibration_stage_test_registry();
+
     let mut explosive_candidate = hawkes_stage_candidate_fixture()
         .into_iter()
         .next()
@@ -600,11 +678,20 @@ fn hawkes_stage_surfaces_unrealistic_implied_event_volume_warnings() {
         ),
     );
 
-    let candidate = &report
-        .fitted_stage_payload
-        .as_ref()
-        .expect("single explosive candidate should still emit diagnostics")
-        .candidate_diagnostics[0];
+    let candidate = match (
+        report.fitted_stage_payload.as_ref(),
+        report.failure.as_ref(),
+    ) {
+        (Some(payload), _) => &payload.candidate_diagnostics[0],
+        (
+            None,
+            Some(HawkesStageExecutionFailure::ConstraintViolationsForAllCandidates {
+                candidate_diagnostics,
+            }),
+        ) => &candidate_diagnostics[0],
+        _ => panic!("single explosive candidate should still emit diagnostics"),
+    };
+
     assert!(
         candidate
             .warnings
@@ -622,6 +709,7 @@ fn hawkes_stage_surfaces_unrealistic_implied_event_volume_warnings() {
 #[test]
 fn hawkes_stage_execution_is_deterministic_under_fixed_seed_and_solver_settings() {
     let calendar_registry = calibration_stage_test_registry();
+
     let seasonality_payload = build_seasonality_stage_success_payload();
     let memory_run_spec = build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory);
     let disk_run_spec = build_hawkes_stage_run_spec(CalibrationExecutionMode::Disk);
@@ -726,6 +814,7 @@ fn hawkes_stage_execution_is_deterministic_under_fixed_seed_and_solver_settings(
 fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_handoffs() {
     let hawkes_payload = build_hawkes_stage_success_payload();
     let calendar_registry = calibration_stage_test_registry();
+
     let memory_run_spec =
         build_return_components_stage_pipeline_run_spec(CalibrationExecutionMode::Memory);
     let disk_run_spec =
@@ -739,6 +828,7 @@ fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_hando
             return_components_stage_candidate_generation_fixture(),
         ),
     );
+
     let disk_report = run_return_components_calibration_stage(
         &disk_run_spec,
         &calendar_registry,
@@ -876,6 +966,7 @@ fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_hando
 fn return_components_stage_execution_supports_standalone_runs_in_memory_and_disk_modes() {
     let hawkes_payload = build_hawkes_stage_success_payload();
     let calendar_registry = calibration_stage_test_registry();
+
     let memory_run_spec =
         build_return_components_stage_standalone_run_spec(CalibrationExecutionMode::Memory);
     let disk_run_spec =
@@ -889,6 +980,7 @@ fn return_components_stage_execution_supports_standalone_runs_in_memory_and_disk
             return_components_stage_candidate_generation_fixture(),
         ),
     );
+
     let disk_report = run_return_components_calibration_stage(
         &disk_run_spec,
         &calendar_registry,
@@ -913,6 +1005,7 @@ fn return_components_stage_execution_supports_standalone_runs_in_memory_and_disk
 fn return_components_stage_execution_rejects_incomplete_candidate_generation_inputs() {
     let hawkes_payload = build_hawkes_stage_success_payload();
     let calendar_registry = calibration_stage_test_registry();
+
     let run_spec =
         build_return_components_stage_pipeline_run_spec(CalibrationExecutionMode::Memory);
 
@@ -985,6 +1078,7 @@ fn return_components_stage_execution_reports_missing_dependency_stage_outputs() 
 fn return_components_stage_execution_is_deterministic_under_fixed_settings() {
     let hawkes_payload = build_hawkes_stage_success_payload();
     let calendar_registry = calibration_stage_test_registry();
+
     let memory_run_spec =
         build_return_components_stage_pipeline_run_spec(CalibrationExecutionMode::Memory);
     let disk_run_spec =

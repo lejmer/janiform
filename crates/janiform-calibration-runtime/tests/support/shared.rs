@@ -1578,8 +1578,8 @@ pub(crate) fn hawkes_stage_candidate_fixture() -> Vec<HawkesStageCandidateInput>
         HawkesStageCandidateInput {
             candidate_id: "candidate_stable_low_loss".to_string(),
             lambda_bar: 9.40,
-            beta: 1.35,
-            structured_alpha: HawkesStructuredAlphaParameterization::new(0.18, 0.05, 0.03, 0.02),
+            beta: 20.0,
+            structured_alpha: HawkesStructuredAlphaParameterization::new(0.01, 0.002, 0.001, 0.0005),
             structured_rho: HawkesStructuredRhoParameterization::new(0.08, 0.02, 0.01, 0.01),
             self_dominance_policy: Some(HawkesStructuredRhoSelfDominancePolicy::new(1.0)),
             stability_numeric_tolerance: 0.0,

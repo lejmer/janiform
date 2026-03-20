@@ -27,6 +27,7 @@ use crate::stages::return_components::{
 };
 use crate::stages::seasonality::{
     CalibrationStageExecutionStatus, build_runtime_hourly_seasonality_factors_from_components,
+    maximum_realizable_runtime_hourly_seasonality_factor_from_components,
 };
 use janiform_calibration_artifacts::{
     CALIBRATION_JOINT_REFINEMENT_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
@@ -514,14 +515,42 @@ pub fn run_joint_refinement_calibration_stage(
             }
         };
 
+    let max_runtime_hourly_seasonality_factor =
+        match maximum_realizable_runtime_hourly_seasonality_factor_from_components(
+            stage_input
+                .seasonality_factors_input
+                .intraday_minutes_per_bin,
+            stage_input
+                .seasonality_factors_input
+                .intraday_factor_by_bin
+                .as_slice(),
+            stage_input
+                .seasonality_factors_input
+                .day_of_week_factor
+                .as_slice(),
+            stage_input
+                .seasonality_factors_input
+                .day_of_year_factor
+                .as_slice(),
+        ) {
+            Ok(value) => value,
+            Err(error_message) => {
+                return build_joint_refinement_stage_failure_report(
+                    run_spec,
+                    JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+                        error_message: format!(
+                            "joint refinement runtime seasonality upper-bound estimation failed: {error_message}"
+                        ),
+                    },
+                );
+            }
+        };
+
     let mut bootstrap_context = JointRefinementContext {
         stage_thread_pool,
         calendar_registry: calendar_registry.clone(),
         exchange_code: run_spec.data_inputs.exchange_code.clone(),
-        max_runtime_hourly_seasonality_factor: runtime_hourly_seasonality_factors
-            .iter()
-            .copied()
-            .fold(1.0, f64::max),
+        max_runtime_hourly_seasonality_factor,
         runtime_hourly_seasonality_factors,
         observed_data,
         baseline_hawkes_fitted_parameters: hawkes_payload.fitted_parameters.clone(),

@@ -123,12 +123,12 @@ def build_valid_execution_input_model(
             CalibrationHawkesStageCandidateInput(
                 candidate_id="candidate_stable_low_loss",
                 lambda_bar=0.80,
-                beta=1.60,
+                beta=20.0,
                 structured_alpha=CalibrationHawkesStructuredAlphaParameterization(
-                    a_self=0.35,
-                    a_cross=0.06,
-                    delta_self=0.07,
-                    delta_cross=0.04,
+                    a_self=0.01,
+                    a_cross=0.002,
+                    delta_self=0.001,
+                    delta_cross=0.0005,
                 ),
                 structured_rho=CalibrationHawkesStructuredRhoParameterization(
                     r_self=0.30,

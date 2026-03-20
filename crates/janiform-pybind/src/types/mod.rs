@@ -18,7 +18,10 @@ pub(crate) use seasonality::{
     PyDeterministicSeasonalityCompositionResult, PyIntradaySeasonalityEstimateResult,
     PyTimestampEventPreprocessingResult,
 };
-pub(crate) use simulation::PySeededTickSimulationNativeResult;
+pub(crate) use simulation::{
+    PySeededFinePathChunkColumns, PySeededTickEventTapeChunkColumns,
+    PySeededTickSimulationNativeResult,
+};
 
 pub(crate) fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyCalibrationMemoryCheckpointStore>()?;
@@ -31,6 +34,8 @@ pub(crate) fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyHourlyFactorContractResult>()?;
     module.add_class::<PyHourlySeasonalityMaterializationResult>()?;
     module.add_class::<PyHourlyNewsIntensityMaterializationResult>()?;
+    module.add_class::<PySeededFinePathChunkColumns>()?;
+    module.add_class::<PySeededTickEventTapeChunkColumns>()?;
     module.add_class::<PySeededTickSimulationNativeResult>()?;
     Ok(())
 }

@@ -836,7 +836,7 @@ class SeededFinePathRecord(ContractModel):
 
 
 SEEDED_TICK_SIMULATION_DIAGNOSTICS_SCHEMA_VERSION: str = "simulation.seeded_tick.path_diagnostics.v1"
-SEEDED_TICK_SIMULATION_BOUNDARY_TRANSPORT_POLICY: str = "native_handle_chunked_json_projection.v1"
+SEEDED_TICK_SIMULATION_BOUNDARY_TRANSPORT_POLICY: str = "native_handle_typed_column_chunk_projection.v1"
 SEEDED_TICK_SIMULATION_PAYLOAD_TRANSPORT_POLICY: str = "materialized_payload_projection.v1"
 SEEDED_TICK_SIMULATION_NATIVE_CHUNK_RECORD_COUNT: int = 256
 

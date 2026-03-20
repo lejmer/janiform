@@ -7758,7 +7758,7 @@
         },
         "SEEDED_TICK_SIMULATION_BOUNDARY_TRANSPORT_POLICY": {
           "kind": "constant",
-          "value": "native_handle_chunked_json_projection.v1"
+          "value": "native_handle_typed_column_chunk_projection.v1"
         },
         "SEEDED_TICK_SIMULATION_DIAGNOSTICS_SCHEMA_VERSION": {
           "kind": "constant",

@@ -30,6 +30,7 @@ use janiform_foundations::numeric::{
 };
 use janiform_model_kernels::hawkes::{
     HawkesKernelLoadings, HawkesKernelParameterValidationReport, HawkesKernelParameters,
+    HawkesKernelValidationStatus,
     HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
     HawkesStructuredRhoSelfDominancePolicy,
 };
@@ -1332,32 +1333,27 @@ fn generate_refined_hawkes_candidate_inputs(
     const MAX_REFINEMENT_SEEDS: usize = 3;
     const LAMBDA_SCALES: [f64; 3] = [0.7, 1.0, 1.4];
     const BETA_SCALES: [f64; 3] = [0.7, 1.0, 1.4];
-    const ALPHA_SCALES: [f64; 3] = [0.8, 1.0, 1.2];
     const RHO_SCALES: [f64; 3] = [0.6, 1.0, 1.6];
 
-    let mut ranked_seed_indices: Vec<(usize, f64)> = candidate_diagnostics
-        .iter()
-        .enumerate()
-        .filter(|(_, candidate)| candidate.constraint_violation_count == 0)
-        .map(|(candidate_index, candidate)| (candidate_index, candidate.penalized_objective_value))
-        .collect();
-    ranked_seed_indices.sort_by(|left, right| left.1.total_cmp(&right.1));
+    let ranked_seed_indices =
+        ranked_refinement_seed_indices(prepared_candidates, candidate_diagnostics);
 
     let mut refinement_candidates = Vec::new();
     let mut seen_ids = BTreeSet::new();
-    for (seed_rank, (candidate_index, _)) in ranked_seed_indices
+    for (seed_rank, candidate_index) in ranked_seed_indices
         .into_iter()
         .take(MAX_REFINEMENT_SEEDS)
         .enumerate()
     {
         let seed_candidate = &prepared_candidates[candidate_index].adjusted_candidate_input;
+        let alpha_scales = refinement_alpha_scales(&candidate_diagnostics[candidate_index]);
         for lambda_scale in LAMBDA_SCALES {
             for beta_scale in BETA_SCALES {
-                for alpha_scale in ALPHA_SCALES {
+                for alpha_scale in &alpha_scales {
                     for rho_scale in RHO_SCALES {
                         if lambda_scale == 1.0
                             && beta_scale == 1.0
-                            && alpha_scale == 1.0
+                            && *alpha_scale == 1.0
                             && rho_scale == 1.0
                         {
                             continue;
@@ -1381,7 +1377,7 @@ fn generate_refined_hawkes_candidate_inputs(
                             beta: round_positive_to_domain(seed_candidate.beta * beta_scale, 12),
                             structured_alpha: scale_structured_alpha(
                                 seed_candidate.structured_alpha,
-                                alpha_scale,
+                                *alpha_scale,
                             ),
                             structured_rho: scale_structured_rho(
                                 seed_candidate.structured_rho,
@@ -1401,6 +1397,103 @@ fn generate_refined_hawkes_candidate_inputs(
     }
 
     refinement_candidates
+}
+
+fn ranked_refinement_seed_indices(
+    prepared_candidates: &[HawkesPreparedCandidate],
+    candidate_diagnostics: &[HawkesStageCandidateDiagnostic],
+) -> Vec<usize> {
+    let eligible_seed_indices: Vec<usize> = prepared_candidates
+        .iter()
+        .enumerate()
+        .filter_map(|(candidate_index, candidate)| {
+            (candidate.validation_report.status == HawkesKernelValidationStatus::Pass)
+                .then_some(candidate_index)
+        })
+        .collect();
+    if eligible_seed_indices.is_empty() {
+        return Vec::new();
+    }
+
+    let has_valid_candidate = candidate_diagnostics
+        .iter()
+        .enumerate()
+        .any(|(candidate_index, candidate)| {
+            eligible_seed_indices.contains(&candidate_index)
+                && candidate.constraint_violation_count == 0
+        });
+    let minimum_violation_count = eligible_seed_indices
+        .iter()
+        .map(|candidate_index| candidate_diagnostics[*candidate_index].constraint_violation_count)
+        .min()
+        .unwrap_or(0);
+
+    let mut ranked_seed_indices: Vec<(usize, usize, f64, f64, &str)> = candidate_diagnostics
+        .iter()
+        .enumerate()
+        .filter_map(|(candidate_index, candidate)| {
+            if !eligible_seed_indices.contains(&candidate_index) {
+                return None;
+            }
+            let is_selected = if has_valid_candidate {
+                candidate.constraint_violation_count == 0
+            } else {
+                candidate.constraint_violation_count == minimum_violation_count
+            };
+            if !is_selected {
+                return None;
+            }
+
+            Some((
+                candidate_index,
+                candidate.constraint_violation_count,
+                candidate.penalized_objective_value,
+                candidate.raw_objective_value,
+                candidate.candidate_id.as_str(),
+            ))
+        })
+        .collect();
+    ranked_seed_indices.sort_by(|left, right| {
+        left.1
+            .cmp(&right.1)
+            .then_with(|| left.2.total_cmp(&right.2))
+            .then_with(|| left.3.total_cmp(&right.3))
+            .then_with(|| left.4.cmp(right.4))
+    });
+
+    ranked_seed_indices
+        .into_iter()
+        .map(|(candidate_index, _, _, _, _)| candidate_index)
+        .collect()
+}
+
+fn refinement_alpha_scales(
+    candidate_diagnostic: &HawkesStageCandidateDiagnostic,
+) -> Vec<f64> {
+    const BASE_ALPHA_SCALES: [f64; 7] = [0.05, 0.1, 0.2, 0.4, 0.8, 1.0, 1.2];
+    const TARGET_STABILITY_MARGIN: f64 = 0.95;
+    const MINIMUM_ALPHA_SCALE: f64 = 0.01;
+
+    let mut alpha_scales = BASE_ALPHA_SCALES.to_vec();
+    let effective_branching_ratio = candidate_diagnostic
+        .implied_metrics
+        .max_runtime_effective_branching_ratio;
+    if effective_branching_ratio.is_finite() && effective_branching_ratio > 0.0 {
+        let targeted_scale = round_to(
+            (TARGET_STABILITY_MARGIN / effective_branching_ratio)
+                .clamp(MINIMUM_ALPHA_SCALE, 1.0),
+            12,
+        );
+        alpha_scales.push(targeted_scale);
+        alpha_scales.push(round_to(
+            (targeted_scale * 0.5).clamp(MINIMUM_ALPHA_SCALE, 1.0),
+            12,
+        ));
+    }
+
+    alpha_scales.sort_by(|left, right| left.total_cmp(right));
+    alpha_scales.dedup_by(|left, right| left.total_cmp(right).is_eq());
+    alpha_scales
 }
 
 fn scale_structured_alpha(
@@ -1887,5 +1980,191 @@ fn build_hawkes_stage_failure_report(
         fitted_stage_payload: None,
         metadata: None,
         failure: Some(failure),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ranked_refinement_seed_indices_fall_back_to_least_violating_candidates() {
+        let candidate_diagnostics = vec![
+            test_candidate_diagnostic("candidate_a", 2, 1.0, 1.0),
+            test_candidate_diagnostic("candidate_b", 1, 2.0, 2.0),
+            test_candidate_diagnostic("candidate_c", 1, 0.5, 0.5),
+        ];
+        let prepared_candidates = vec![
+            test_prepared_candidate("candidate_a"),
+            test_prepared_candidate("candidate_b"),
+            test_prepared_candidate("candidate_c"),
+        ];
+
+        let ranked_seed_indices =
+            ranked_refinement_seed_indices(&prepared_candidates, &candidate_diagnostics);
+
+        assert_eq!(ranked_seed_indices, vec![2, 1]);
+    }
+
+    #[test]
+    fn refinement_alpha_scales_include_targeted_stability_reduction() {
+        let candidate_diagnostic = test_candidate_diagnostic(
+            "candidate_supercritical",
+            1,
+            1.0,
+            1.0,
+        );
+
+        let alpha_scales = refinement_alpha_scales(&candidate_diagnostic);
+
+        assert!(alpha_scales.contains(&0.095));
+        assert!(alpha_scales.contains(&0.19));
+        assert!(alpha_scales.iter().any(|scale| *scale < 0.2));
+    }
+
+    fn test_candidate_diagnostic(
+        candidate_id: &str,
+        constraint_violation_count: usize,
+        raw_objective_value: f64,
+        penalized_objective_value: f64,
+    ) -> HawkesStageCandidateDiagnostic {
+        HawkesStageCandidateDiagnostic {
+            candidate_id: candidate_id.to_string(),
+            raw_objective_value,
+            constraint_penalty: 10.0,
+            penalized_objective_value,
+            constraint_violation_count,
+            objective_terms: Vec::new(),
+            source_regime: test_source_regime(),
+            directional_label_diagnostics: test_directional_label_diagnostics(),
+            implied_metrics: HawkesStageImpliedMetricsDiagnostic {
+                baseline_buy_intensity_per_hour: 1.0,
+                baseline_sell_intensity_per_hour: 1.0,
+                observed_open_event_rate_per_hour: 1.0,
+                deseasonalized_open_event_rate_per_hour_target: 1.0,
+                lambda_bar_scaling_ratio_applied: 1.0,
+                max_runtime_hourly_seasonality_factor: 10.0,
+                max_runtime_effective_branching_ratio: 5.0,
+                runtime_effective_branching_margin: 0.0,
+                model_implied_open_event_rate_per_hour: 1.0,
+                model_implied_open_buy_share: 0.5,
+                model_implied_open_sell_share: 0.5,
+                model_implied_interarrival_coefficient_of_variation: 1.0,
+                model_implied_short_gap_ratio: 0.5,
+                model_implied_known_news_activity_share: 0.0,
+                model_implied_expected_event_count_over_observation_window: 1.0,
+                endogenous_branching_ratio: 0.5,
+                self_excitation_ratio: 0.5,
+                cross_excitation_ratio: 0.0,
+                exogenous_self_loading_ratio: 0.0,
+                exogenous_cross_loading_ratio: 0.0,
+                stability_margin: 0.5,
+                event_volume_ratio_vs_total_observed: 1.0,
+            },
+            warnings: Vec::new(),
+            validation_report: precheck_structured_hawkes_kernel_parameter_domain(
+                1.0,
+                10.0,
+                HawkesStructuredAlphaParameterization {
+                    a_self: 0.1,
+                    a_cross: 0.0,
+                    delta_self: 0.0,
+                    delta_cross: 0.0,
+                },
+                HawkesStructuredRhoParameterization {
+                    r_self: 1.0e-12,
+                    r_cross: 0.0,
+                    delta_self_r: 0.0,
+                    delta_cross_r: 0.0,
+                },
+                Some(HawkesStructuredRhoSelfDominancePolicy {
+                    minimum_self_to_cross_ratio: 1.0,
+                }),
+                0.0,
+            ),
+        }
+    }
+
+    fn test_prepared_candidate(candidate_id: &str) -> HawkesPreparedCandidate {
+        HawkesPreparedCandidate {
+            adjusted_candidate_input: HawkesStageCandidateInput {
+                candidate_id: candidate_id.to_string(),
+                lambda_bar: 1.0,
+                beta: 10.0,
+                structured_alpha: HawkesStructuredAlphaParameterization {
+                    a_self: 0.1,
+                    a_cross: 0.0,
+                    delta_self: 0.0,
+                    delta_cross: 0.0,
+                },
+                structured_rho: HawkesStructuredRhoParameterization {
+                    r_self: 1.0e-12,
+                    r_cross: 0.0,
+                    delta_self_r: 0.0,
+                    delta_cross_r: 0.0,
+                },
+                self_dominance_policy: Some(HawkesStructuredRhoSelfDominancePolicy {
+                    minimum_self_to_cross_ratio: 1.0,
+                }),
+                stability_numeric_tolerance: 0.0,
+                source_regime: test_source_regime(),
+                directional_label_diagnostics: test_directional_label_diagnostics(),
+            },
+            validation_report: precheck_structured_hawkes_kernel_parameter_domain(
+                1.0,
+                10.0,
+                HawkesStructuredAlphaParameterization {
+                    a_self: 0.1,
+                    a_cross: 0.0,
+                    delta_self: 0.0,
+                    delta_cross: 0.0,
+                },
+                HawkesStructuredRhoParameterization {
+                    r_self: 1.0e-12,
+                    r_cross: 0.0,
+                    delta_self_r: 0.0,
+                    delta_cross_r: 0.0,
+                },
+                Some(HawkesStructuredRhoSelfDominancePolicy {
+                    minimum_self_to_cross_ratio: 1.0,
+                }),
+                0.0,
+            ),
+            objective_terms: Vec::new(),
+            objective_term_diagnostics: Vec::new(),
+            implied_metrics: test_candidate_diagnostic(candidate_id, 0, 0.0, 0.0).implied_metrics,
+            warnings: Vec::new(),
+            external_constraint_violation_count: 0,
+        }
+    }
+
+    fn test_source_regime() -> HawkesStageObservedSourceRegime {
+        HawkesStageObservedSourceRegime {
+            observation_duration_hours: 1.0,
+            open_session_duration_hours: 1.0,
+            total_tick_count: 10,
+            open_session_tick_count: 10,
+            closed_session_tick_count: 0,
+            open_session_buy_tick_count: 5,
+            open_session_sell_tick_count: 5,
+            open_session_mean_interarrival_seconds: 1.0,
+            open_session_interarrival_coefficient_of_variation: 1.0,
+            open_session_short_gap_threshold_seconds: 0.5,
+            open_session_short_gap_ratio: 0.5,
+            known_news_open_event_count: 0,
+            open_session_known_news_activity_share: 0.0,
+        }
+    }
+
+    fn test_directional_label_diagnostics() -> HawkesStageDirectionalLabelDiagnostics {
+        HawkesStageDirectionalLabelDiagnostics {
+            policy_id: "policy".to_string(),
+            first_inferred_trade_sign: "buy".to_string(),
+            provided_label_count: 0,
+            inferred_label_count: 0,
+            flat_move_carry_count: 0,
+            price_up_inference_count: 0,
+            price_down_inference_count: 0,
+        }
     }
 }
