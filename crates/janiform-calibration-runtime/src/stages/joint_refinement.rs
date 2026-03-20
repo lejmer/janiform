@@ -10,10 +10,13 @@ use crate::calendar::ExchangeCalendarRegistry;
 use crate::optimizer_adapter::CalibrationOptimizerAdapterRunMetadata;
 use crate::stages::hawkes::{HawkesStageFittedPayload, stationary_open_event_rate_per_hour};
 use crate::stages::joint_metrics::{
-    JointRefinementAggregatedIntervalObservation, JointRefinementRollingVarianceActivityMetric,
+    JointRefinementAggregatedIntervalObservation, JointRefinementReturnScaleSummary,
+    JointRefinementRollingVarianceActivityMetric, aggregate_simulated_path_to_interval_template,
     aggregate_simulated_path_to_interval_templates,
     build_continuous_calibration_sample_from_aggregated_intervals,
-    build_observed_open_session_interval_observations, rolling_variance_activity_metric,
+    build_observed_open_session_interval_observations, log_ratio_distance,
+    normalized_profile_distance, relative_rmse, return_scale_summary,
+    rolling_variance_activity_metric, scale_normalized_returns, tick_count_series,
     zero_aware_normalized_bucket_value, zeroed_interval_observation_template,
 };
 use crate::stages::optimization::{PowellOptimizerSettings, optimize_bounded_powell};
@@ -46,6 +49,7 @@ use janiform_engine_simulation::{
     run_seeded_tick_event_simulation,
 };
 use janiform_foundations::low_discrepancy::van_der_corput;
+use janiform_foundations::numeric::standardized_path_distance;
 use janiform_foundations::splitmix64_output_mixer;
 use janiform_market_time::hourly_factors::{
     HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
@@ -65,6 +69,14 @@ const JOINT_REFINEMENT_NIG_SKEW_HALF_SPAN: f64 = 1.25;
 const JOINT_REFINEMENT_NIG_LOG_DELTA_HALF_SPAN: f64 = 1.5;
 const JOINT_REFINEMENT_MAX_OUTER_CYCLE_COUNT: usize = 3;
 const JOINT_REFINEMENT_MAX_RESTART_COUNT: usize = 24;
+const JOINT_REFINEMENT_WEIGHT_AGGREGATED_LIKELIHOOD_FIT: f64 = 0.22;
+const JOINT_REFINEMENT_WEIGHT_AGGREGATED_RETURN_SHAPE_FIT: f64 = 0.12;
+const JOINT_REFINEMENT_WEIGHT_AGGREGATED_RETURN_SCALE_FIT: f64 = 0.23;
+const JOINT_REFINEMENT_WEIGHT_ACTIVITY_SHAPE_FIT: f64 = 0.12;
+const JOINT_REFINEMENT_WEIGHT_ACTIVITY_LEVEL_FIT: f64 = 0.16;
+const JOINT_REFINEMENT_WEIGHT_RV_ACTIVITY_COUPLING_FIT: f64 = 0.10;
+const JOINT_REFINEMENT_WEIGHT_PRICE_SPAN_SANITY_FIT: f64 = 0.05;
+const JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR: f64 = 1.0e-8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum JointRefinementFidelityTier {
@@ -104,8 +116,11 @@ struct JointRefinementObservedData {
     fallback_sell_share_proxy: f64,
     observed_5m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
     observed_15m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
-    observed_5m_log_returns: Vec<f64>,
-    observed_15m_log_returns: Vec<f64>,
+    observed_5m_shape_returns: Vec<f64>,
+    observed_15m_shape_returns: Vec<f64>,
+    observed_5m_return_scale_summary: JointRefinementReturnScaleSummary,
+    observed_15m_return_scale_summary: JointRefinementReturnScaleSummary,
+    observed_hourly_tick_counts: Vec<f64>,
     observed_15m_rv_activity_metric: JointRefinementRollingVarianceActivityMetric,
     observed_log_price_span: f64,
     hourly_simulation_start_utc: DateTime<Utc>,
@@ -114,12 +129,16 @@ struct JointRefinementObservedData {
     surprise_multiplier_by_hour_index: Vec<(u64, f64)>,
     simulated_5m_interval_template: Vec<JointRefinementAggregatedIntervalObservation>,
     simulated_15m_interval_template: Vec<JointRefinementAggregatedIntervalObservation>,
+    simulated_hourly_interval_template: Vec<JointRefinementAggregatedIntervalObservation>,
 }
 
 #[derive(Debug, Clone)]
 struct JointRefinementBaselineBuckets {
     aggregated_likelihood_fit: f64,
-    aggregated_shape_fit: f64,
+    aggregated_return_shape_fit: f64,
+    aggregated_return_scale_fit: f64,
+    activity_shape_fit: f64,
+    activity_level_fit: f64,
     rv_activity_coupling_fit: f64,
     price_span_sanity_fit: f64,
 }
@@ -168,8 +187,11 @@ struct JointRefinementRestartOutcome {
 struct JointRefinementSeedSummary {
     simulated_5m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
     simulated_15m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
-    simulated_5m_log_returns: Vec<f64>,
-    simulated_15m_log_returns: Vec<f64>,
+    simulated_5m_shape_returns: Vec<f64>,
+    simulated_15m_shape_returns: Vec<f64>,
+    simulated_5m_return_scale_summary: JointRefinementReturnScaleSummary,
+    simulated_15m_return_scale_summary: JointRefinementReturnScaleSummary,
+    simulated_hourly_tick_counts: Vec<f64>,
     simulated_15m_rv_activity_metric: JointRefinementRollingVarianceActivityMetric,
 }
 
@@ -564,13 +586,19 @@ pub fn run_joint_refinement_calibration_stage(
         final_simulation_seeds,
         local_baseline_buckets: JointRefinementBaselineBuckets {
             aggregated_likelihood_fit: 1.0,
-            aggregated_shape_fit: 1.0,
+            aggregated_return_shape_fit: 1.0,
+            aggregated_return_scale_fit: 1.0,
+            activity_shape_fit: 1.0,
+            activity_level_fit: 1.0,
             rv_activity_coupling_fit: 1.0,
             price_span_sanity_fit: 1.0,
         },
         final_baseline_buckets: JointRefinementBaselineBuckets {
             aggregated_likelihood_fit: 1.0,
-            aggregated_shape_fit: 1.0,
+            aggregated_return_shape_fit: 1.0,
+            aggregated_return_scale_fit: 1.0,
+            activity_shape_fit: 1.0,
+            activity_level_fit: 1.0,
             rv_activity_coupling_fit: 1.0,
             price_span_sanity_fit: 1.0,
         },
@@ -620,8 +648,21 @@ pub fn run_joint_refinement_calibration_stage(
                 .breakdown
                 .aggregated_likelihood_fit,
         ),
-        aggregated_shape_fit: raw_bucket_value_from_normalized(
-            baseline_local_evaluation.breakdown.aggregated_shape_fit,
+        aggregated_return_shape_fit: raw_bucket_value_from_normalized(
+            baseline_local_evaluation
+                .breakdown
+                .aggregated_return_shape_fit,
+        ),
+        aggregated_return_scale_fit: raw_bucket_value_from_normalized(
+            baseline_local_evaluation
+                .breakdown
+                .aggregated_return_scale_fit,
+        ),
+        activity_shape_fit: raw_bucket_value_from_normalized(
+            baseline_local_evaluation.breakdown.activity_shape_fit,
+        ),
+        activity_level_fit: raw_bucket_value_from_normalized(
+            baseline_local_evaluation.breakdown.activity_level_fit,
         ),
         rv_activity_coupling_fit: raw_bucket_value_from_normalized(
             baseline_local_evaluation.breakdown.rv_activity_coupling_fit,
@@ -637,8 +678,21 @@ pub fn run_joint_refinement_calibration_stage(
                 .breakdown
                 .aggregated_likelihood_fit,
         ),
-        aggregated_shape_fit: raw_bucket_value_from_normalized(
-            baseline_final_evaluation.breakdown.aggregated_shape_fit,
+        aggregated_return_shape_fit: raw_bucket_value_from_normalized(
+            baseline_final_evaluation
+                .breakdown
+                .aggregated_return_shape_fit,
+        ),
+        aggregated_return_scale_fit: raw_bucket_value_from_normalized(
+            baseline_final_evaluation
+                .breakdown
+                .aggregated_return_scale_fit,
+        ),
+        activity_shape_fit: raw_bucket_value_from_normalized(
+            baseline_final_evaluation.breakdown.activity_shape_fit,
+        ),
+        activity_level_fit: raw_bucket_value_from_normalized(
+            baseline_final_evaluation.breakdown.activity_level_fit,
         ),
         rv_activity_coupling_fit: raw_bucket_value_from_normalized(
             baseline_final_evaluation.breakdown.rv_activity_coupling_fit,
@@ -1190,45 +1244,37 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         );
     }
 
-    let mut aggregated_shape_scores = Vec::with_capacity(seed_summaries.len());
+    let mut aggregated_return_shape_scores = Vec::with_capacity(seed_summaries.len());
+    let mut aggregated_return_scale_scores = Vec::with_capacity(seed_summaries.len());
+    let mut activity_shape_scores = Vec::with_capacity(seed_summaries.len());
+    let mut activity_level_scores = Vec::with_capacity(seed_summaries.len());
     let mut rv_activity_scores = Vec::with_capacity(seed_summaries.len());
     let mut price_span_scores = Vec::with_capacity(seed_summaries.len());
 
     for seed_summary in seed_summaries.into_iter().flatten() {
         debug_assert_eq!(
             seed_summary.simulated_5m_intervals.len(),
-            seed_summary.simulated_5m_log_returns.len()
+            seed_summary.simulated_5m_shape_returns.len()
         );
         debug_assert_eq!(
             seed_summary.simulated_15m_intervals.len(),
-            seed_summary.simulated_15m_log_returns.len()
+            seed_summary.simulated_15m_shape_returns.len()
         );
 
-        let shape_5m = distribution_profile_fit_score(
-            seed_summary.simulated_5m_log_returns.as_slice(),
-            context.observed_data.observed_5m_log_returns.as_slice(),
-        )
-        .profile_fit_score;
-        let shape_15m = distribution_profile_fit_score(
-            seed_summary.simulated_15m_log_returns.as_slice(),
-            context.observed_data.observed_15m_log_returns.as_slice(),
-        )
-        .profile_fit_score;
-
-        aggregated_shape_scores.push(0.4 * shape_5m + 0.6 * shape_15m);
-
-        rv_activity_scores.push(
-            0.7 * (seed_summary.simulated_15m_rv_activity_metric.correlation
-                - context
-                    .observed_data
-                    .observed_15m_rv_activity_metric
-                    .correlation)
-                .abs()
-                + 0.3
-                    * seed_summary
-                        .simulated_15m_rv_activity_metric
-                        .standardized_path_distance,
-        );
+        aggregated_return_shape_scores.push(aggregated_return_shape_fit(
+            &seed_summary,
+            &context.observed_data,
+        ));
+        aggregated_return_scale_scores.push(aggregated_return_scale_fit(
+            &seed_summary,
+            &context.observed_data,
+        ));
+        activity_shape_scores.push(activity_shape_fit(&seed_summary, &context.observed_data));
+        activity_level_scores.push(activity_level_fit(&seed_summary, &context.observed_data));
+        rv_activity_scores.push(rv_activity_coupling_fit(
+            seed_summary.simulated_15m_rv_activity_metric,
+            context.observed_data.observed_15m_rv_activity_metric,
+        ));
 
         price_span_scores.push(
             (compute_cumulative_log_price_span(seed_summary.simulated_15m_intervals.as_slice())
@@ -1238,8 +1284,14 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         );
     }
 
-    let raw_aggregated_shape_fit =
-        aggregated_shape_scores.iter().sum::<f64>() / aggregated_shape_scores.len().max(1) as f64;
+    let raw_aggregated_return_shape_fit = aggregated_return_shape_scores.iter().sum::<f64>()
+        / aggregated_return_shape_scores.len().max(1) as f64;
+    let raw_aggregated_return_scale_fit = aggregated_return_scale_scores.iter().sum::<f64>()
+        / aggregated_return_scale_scores.len().max(1) as f64;
+    let raw_activity_shape_fit =
+        activity_shape_scores.iter().sum::<f64>() / activity_shape_scores.len().max(1) as f64;
+    let raw_activity_level_fit =
+        activity_level_scores.iter().sum::<f64>() / activity_level_scores.len().max(1) as f64;
     let raw_rv_activity_coupling_fit =
         rv_activity_scores.iter().sum::<f64>() / rv_activity_scores.len().max(1) as f64;
     let raw_price_span_sanity_fit =
@@ -1254,9 +1306,24 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         baseline_buckets.aggregated_likelihood_fit,
         JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR,
     );
-    let normalized_aggregated_shape_fit = zero_aware_normalized_bucket_value(
-        raw_aggregated_shape_fit,
-        baseline_buckets.aggregated_shape_fit,
+    let normalized_aggregated_return_shape_fit = zero_aware_normalized_bucket_value(
+        raw_aggregated_return_shape_fit,
+        baseline_buckets.aggregated_return_shape_fit,
+        JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR,
+    );
+    let normalized_aggregated_return_scale_fit = zero_aware_normalized_bucket_value(
+        raw_aggregated_return_scale_fit,
+        baseline_buckets.aggregated_return_scale_fit,
+        JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR,
+    );
+    let normalized_activity_shape_fit = zero_aware_normalized_bucket_value(
+        raw_activity_shape_fit,
+        baseline_buckets.activity_shape_fit,
+        JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR,
+    );
+    let normalized_activity_level_fit = zero_aware_normalized_bucket_value(
+        raw_activity_level_fit,
+        baseline_buckets.activity_level_fit,
         JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR,
     );
     let normalized_rv_activity_coupling_fit = zero_aware_normalized_bucket_value(
@@ -1271,47 +1338,53 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
     );
 
     let hard_constraint_penalty = 0.0;
-    let weighted_objective = 0.40 * normalized_aggregated_likelihood_fit
-        + 0.25 * normalized_aggregated_shape_fit
-        + 0.25 * normalized_rv_activity_coupling_fit
-        + 0.10 * normalized_price_span_sanity_fit
+    let weighted_objective = JOINT_REFINEMENT_WEIGHT_AGGREGATED_LIKELIHOOD_FIT
+        * normalized_aggregated_likelihood_fit
+        + JOINT_REFINEMENT_WEIGHT_AGGREGATED_RETURN_SHAPE_FIT
+            * normalized_aggregated_return_shape_fit
+        + JOINT_REFINEMENT_WEIGHT_AGGREGATED_RETURN_SCALE_FIT
+            * normalized_aggregated_return_scale_fit
+        + JOINT_REFINEMENT_WEIGHT_ACTIVITY_SHAPE_FIT * normalized_activity_shape_fit
+        + JOINT_REFINEMENT_WEIGHT_ACTIVITY_LEVEL_FIT * normalized_activity_level_fit
+        + JOINT_REFINEMENT_WEIGHT_RV_ACTIVITY_COUPLING_FIT * normalized_rv_activity_coupling_fit
+        + JOINT_REFINEMENT_WEIGHT_PRICE_SPAN_SANITY_FIT * normalized_price_span_sanity_fit
         + hard_constraint_penalty;
+    let use_raw_bucket_values = baseline_bucket_values_are_unity(baseline_buckets);
 
     JointRefinementCandidateEvaluation {
         fitted_parameters,
         breakdown: JointRefinementStageObjectiveBreakdown {
-            aggregated_likelihood_fit: if baseline_buckets.aggregated_likelihood_fit == 1.0
-                && baseline_buckets.aggregated_shape_fit == 1.0
-                && baseline_buckets.rv_activity_coupling_fit == 1.0
-                && baseline_buckets.price_span_sanity_fit == 1.0
-            {
+            aggregated_likelihood_fit: if use_raw_bucket_values {
                 raw_aggregated_likelihood_fit
             } else {
                 normalized_aggregated_likelihood_fit
             },
-            aggregated_shape_fit: if baseline_buckets.aggregated_likelihood_fit == 1.0
-                && baseline_buckets.aggregated_shape_fit == 1.0
-                && baseline_buckets.rv_activity_coupling_fit == 1.0
-                && baseline_buckets.price_span_sanity_fit == 1.0
-            {
-                raw_aggregated_shape_fit
+            aggregated_return_shape_fit: if use_raw_bucket_values {
+                raw_aggregated_return_shape_fit
             } else {
-                normalized_aggregated_shape_fit
+                normalized_aggregated_return_shape_fit
             },
-            rv_activity_coupling_fit: if baseline_buckets.aggregated_likelihood_fit == 1.0
-                && baseline_buckets.aggregated_shape_fit == 1.0
-                && baseline_buckets.rv_activity_coupling_fit == 1.0
-                && baseline_buckets.price_span_sanity_fit == 1.0
-            {
+            aggregated_return_scale_fit: if use_raw_bucket_values {
+                raw_aggregated_return_scale_fit
+            } else {
+                normalized_aggregated_return_scale_fit
+            },
+            activity_shape_fit: if use_raw_bucket_values {
+                raw_activity_shape_fit
+            } else {
+                normalized_activity_shape_fit
+            },
+            activity_level_fit: if use_raw_bucket_values {
+                raw_activity_level_fit
+            } else {
+                normalized_activity_level_fit
+            },
+            rv_activity_coupling_fit: if use_raw_bucket_values {
                 raw_rv_activity_coupling_fit
             } else {
                 normalized_rv_activity_coupling_fit
             },
-            price_span_sanity_fit: if baseline_buckets.aggregated_likelihood_fit == 1.0
-                && baseline_buckets.aggregated_shape_fit == 1.0
-                && baseline_buckets.rv_activity_coupling_fit == 1.0
-                && baseline_buckets.price_span_sanity_fit == 1.0
-            {
+            price_span_sanity_fit: if use_raw_bucket_values {
                 raw_price_span_sanity_fit
             } else {
                 normalized_price_span_sanity_fit
@@ -1337,7 +1410,10 @@ fn invalid_candidate_evaluation(
         },
         breakdown: JointRefinementStageObjectiveBreakdown {
             aggregated_likelihood_fit: 100.0,
-            aggregated_shape_fit: 100.0,
+            aggregated_return_shape_fit: 100.0,
+            aggregated_return_scale_fit: 100.0,
+            activity_shape_fit: 100.0,
+            activity_level_fit: 100.0,
             rv_activity_coupling_fit: 100.0,
             price_span_sanity_fit: 100.0,
             weighted_objective: 100.0 + constraint_penalty_weight,
@@ -1345,6 +1421,138 @@ fn invalid_candidate_evaluation(
         },
         invalid_reason: Some(reason.to_string()),
     }
+}
+
+fn baseline_bucket_values_are_unity(baseline_buckets: &JointRefinementBaselineBuckets) -> bool {
+    baseline_buckets.aggregated_likelihood_fit == 1.0
+        && baseline_buckets.aggregated_return_shape_fit == 1.0
+        && baseline_buckets.aggregated_return_scale_fit == 1.0
+        && baseline_buckets.activity_shape_fit == 1.0
+        && baseline_buckets.activity_level_fit == 1.0
+        && baseline_buckets.rv_activity_coupling_fit == 1.0
+        && baseline_buckets.price_span_sanity_fit == 1.0
+}
+
+fn aggregated_return_shape_fit(
+    seed_summary: &JointRefinementSeedSummary,
+    observed_data: &JointRefinementObservedData,
+) -> f64 {
+    let shape_5m = distribution_profile_fit_score(
+        seed_summary.simulated_5m_shape_returns.as_slice(),
+        observed_data.observed_5m_shape_returns.as_slice(),
+    )
+    .profile_fit_score;
+    let shape_15m = distribution_profile_fit_score(
+        seed_summary.simulated_15m_shape_returns.as_slice(),
+        observed_data.observed_15m_shape_returns.as_slice(),
+    )
+    .profile_fit_score;
+
+    0.4 * shape_5m + 0.6 * shape_15m
+}
+
+fn aggregated_return_scale_fit(
+    seed_summary: &JointRefinementSeedSummary,
+    observed_data: &JointRefinementObservedData,
+) -> f64 {
+    let fit_15m = return_scale_horizon_fit(
+        seed_summary.simulated_15m_return_scale_summary,
+        observed_data.observed_15m_return_scale_summary,
+    );
+    let fit_5m = return_scale_horizon_fit(
+        seed_summary.simulated_5m_return_scale_summary,
+        observed_data.observed_5m_return_scale_summary,
+    );
+
+    0.75 * fit_15m + 0.25 * fit_5m
+}
+
+fn return_scale_horizon_fit(
+    candidate_summary: JointRefinementReturnScaleSummary,
+    observed_summary: JointRefinementReturnScaleSummary,
+) -> f64 {
+    let mean_abs_fit = log_ratio_distance(
+        candidate_summary.mean_absolute_return,
+        observed_summary.mean_absolute_return,
+        JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
+    );
+    let realized_variance_fit = log_ratio_distance(
+        candidate_summary.realized_variance,
+        observed_summary.realized_variance,
+        JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
+    );
+    let tail_fit = log_ratio_distance(
+        candidate_summary.absolute_return_quantile_q90,
+        observed_summary.absolute_return_quantile_q90,
+        JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
+    );
+
+    (mean_abs_fit + realized_variance_fit + tail_fit) / 3.0
+}
+
+fn activity_shape_fit(
+    seed_summary: &JointRefinementSeedSummary,
+    observed_data: &JointRefinementObservedData,
+) -> f64 {
+    let profile_fit = normalized_profile_distance(
+        seed_summary.simulated_hourly_tick_counts.as_slice(),
+        observed_data.observed_hourly_tick_counts.as_slice(),
+    );
+    let path_fit = standardized_path_distance(
+        seed_summary.simulated_hourly_tick_counts.as_slice(),
+        observed_data.observed_hourly_tick_counts.as_slice(),
+    );
+
+    0.7 * profile_fit + 0.3 * path_fit
+}
+
+fn activity_level_fit(
+    seed_summary: &JointRefinementSeedSummary,
+    observed_data: &JointRefinementObservedData,
+) -> f64 {
+    let candidate_counts = seed_summary.simulated_hourly_tick_counts.as_slice();
+    let observed_counts = observed_data.observed_hourly_tick_counts.as_slice();
+
+    let candidate_total = candidate_counts.iter().sum::<f64>();
+    let observed_total = observed_counts.iter().sum::<f64>();
+    let candidate_mean = candidate_total / candidate_counts.len().max(1) as f64;
+    let observed_mean = observed_total / observed_counts.len().max(1) as f64;
+    let candidate_peak = candidate_counts.iter().copied().fold(0.0, f64::max);
+    let observed_peak = observed_counts.iter().copied().fold(0.0, f64::max);
+
+    let total_fit = log_ratio_distance(
+        candidate_total,
+        observed_total,
+        JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
+    );
+    let mean_fit = log_ratio_distance(
+        candidate_mean,
+        observed_mean,
+        JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
+    );
+    let peak_fit = log_ratio_distance(
+        candidate_peak,
+        observed_peak,
+        JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
+    );
+    let path_fit = relative_rmse(
+        candidate_counts,
+        observed_counts,
+        observed_mean.max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR),
+    );
+
+    0.30 * total_fit + 0.20 * mean_fit + 0.20 * peak_fit + 0.30 * path_fit
+}
+
+fn rv_activity_coupling_fit(
+    candidate_metric: JointRefinementRollingVarianceActivityMetric,
+    observed_metric: JointRefinementRollingVarianceActivityMetric,
+) -> f64 {
+    0.6 * (candidate_metric.correlation - observed_metric.correlation).abs()
+        + 0.4
+            * (candidate_metric.standardized_path_distance
+                - observed_metric.standardized_path_distance)
+                .abs()
 }
 
 fn violates_runtime_seasonality_scaled_stationarity(
@@ -1516,6 +1724,15 @@ fn build_observed_data(
             .as_slice(),
         JOINT_REFINEMENT_FIFTEEN_MINUTES_NANOS,
     );
+    let observed_hourly_intervals = build_observed_open_session_interval_observations(
+        calendar_registry,
+        exchange_code,
+        source_window,
+        candidate_generation_input
+            .observed_open_session_returns
+            .as_slice(),
+        JOINT_REFINEMENT_ONE_HOUR_NANOS,
+    );
     let observed_15m_rv_activity_metric =
         rolling_variance_activity_metric(observed_15m_intervals.as_slice());
     let observed_log_price_span =
@@ -1528,6 +1745,11 @@ fn build_observed_data(
         .iter()
         .map(|interval| interval.log_return)
         .collect::<Vec<_>>();
+    let observed_5m_shape_returns = scale_normalized_returns(observed_5m_log_returns.as_slice());
+    let observed_15m_shape_returns = scale_normalized_returns(observed_15m_log_returns.as_slice());
+    let observed_5m_return_scale_summary = return_scale_summary(observed_5m_intervals.as_slice());
+    let observed_15m_return_scale_summary = return_scale_summary(observed_15m_intervals.as_slice());
+    let observed_hourly_tick_counts = tick_count_series(observed_hourly_intervals.as_slice());
     let hourly_simulation_start_utc =
         DateTime::<Utc>::from_timestamp_nanos(floor_to_hour(source_window.window_start_utc_nanos));
     let hourly_simulation_end_utc =
@@ -1549,14 +1771,19 @@ fn build_observed_data(
         zeroed_interval_observation_template(observed_5m_intervals.as_slice());
     let simulated_15m_interval_template =
         zeroed_interval_observation_template(observed_15m_intervals.as_slice());
+    let simulated_hourly_interval_template =
+        zeroed_interval_observation_template(observed_hourly_intervals.as_slice());
 
     JointRefinementObservedData {
         observed_open_event_rate_per_hour,
         fallback_sell_share_proxy: candidate_generation_input.open_session_sell_share_proxy,
         observed_5m_intervals,
         observed_15m_intervals,
-        observed_5m_log_returns,
-        observed_15m_log_returns,
+        observed_5m_shape_returns,
+        observed_15m_shape_returns,
+        observed_5m_return_scale_summary,
+        observed_15m_return_scale_summary,
+        observed_hourly_tick_counts,
         observed_15m_rv_activity_metric,
         observed_log_price_span,
         hourly_simulation_start_utc,
@@ -1565,6 +1792,7 @@ fn build_observed_data(
         surprise_multiplier_by_hour_index,
         simulated_5m_interval_template,
         simulated_15m_interval_template,
+        simulated_hourly_interval_template,
     }
 }
 
@@ -1942,6 +2170,14 @@ fn build_seed_summary_for_candidate_seed(
             JOINT_REFINEMENT_FIVE_MINUTES_NANOS,
             JOINT_REFINEMENT_FIFTEEN_MINUTES_NANOS,
         );
+    let simulated_hourly_intervals = aggregate_simulated_path_to_interval_template(
+        simulation_result.fine_path.as_slice(),
+        context
+            .observed_data
+            .simulated_hourly_interval_template
+            .as_slice(),
+        JOINT_REFINEMENT_ONE_HOUR_NANOS,
+    );
 
     let simulated_5m_log_returns = simulated_5m_intervals
         .iter()
@@ -1951,6 +2187,13 @@ fn build_seed_summary_for_candidate_seed(
         .iter()
         .map(|interval| interval.log_return)
         .collect::<Vec<_>>();
+    let simulated_5m_shape_returns = scale_normalized_returns(simulated_5m_log_returns.as_slice());
+    let simulated_15m_shape_returns =
+        scale_normalized_returns(simulated_15m_log_returns.as_slice());
+    let simulated_5m_return_scale_summary = return_scale_summary(simulated_5m_intervals.as_slice());
+    let simulated_15m_return_scale_summary =
+        return_scale_summary(simulated_15m_intervals.as_slice());
+    let simulated_hourly_tick_counts = tick_count_series(simulated_hourly_intervals.as_slice());
 
     let simulated_15m_rv_activity_metric =
         rolling_variance_activity_metric(simulated_15m_intervals.as_slice());
@@ -1958,8 +2201,11 @@ fn build_seed_summary_for_candidate_seed(
     Some(JointRefinementSeedSummary {
         simulated_5m_intervals,
         simulated_15m_intervals,
-        simulated_5m_log_returns,
-        simulated_15m_log_returns,
+        simulated_5m_shape_returns,
+        simulated_15m_shape_returns,
+        simulated_5m_return_scale_summary,
+        simulated_15m_return_scale_summary,
+        simulated_hourly_tick_counts,
         simulated_15m_rv_activity_metric,
     })
 }

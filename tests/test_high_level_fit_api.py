@@ -1756,7 +1756,10 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                     },
                     "objective_breakdown": {
                         "aggregated_likelihood_fit": 1.0,
-                        "aggregated_shape_fit": 1.0,
+                        "aggregated_return_shape_fit": 1.0,
+                        "aggregated_return_scale_fit": 1.0,
+                        "activity_shape_fit": 1.0,
+                        "activity_level_fit": 1.0,
                         "rv_activity_coupling_fit": 1.0,
                         "price_span_sanity_fit": 1.0,
                         "weighted_objective": 1.0,

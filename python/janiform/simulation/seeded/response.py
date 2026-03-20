@@ -181,9 +181,18 @@ class _NativeBackedSequenceView[T](Sequence[T]):
                 context={"chunk_start_index": start_index},
             ) from e
 
-        parse_started = perf_counter()
-        chunk_records = self._native_chunk_parser(chunk_payload, start_index)
-        parse_seconds = perf_counter() - parse_started
+        try:
+            parse_started = perf_counter()
+            chunk_records = self._native_chunk_parser(chunk_payload, start_index)
+            parse_seconds = perf_counter() - parse_started
+        except Exception as e:
+            raise _simulation_integration_error(
+                f"native {self._field_path} chunk materialization failed",
+                entrypoint="run_seeded_tick_event_simulation",
+                error_id=SIMULATION_INTEGRATION_RESPONSE_ERROR_ID,
+                field_path=self._field_path,
+                context={"chunk_start_index": start_index},
+            ) from e
 
         if self._chunk_tracker is not None:
             self._chunk_tracker(

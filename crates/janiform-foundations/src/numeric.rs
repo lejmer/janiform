@@ -75,6 +75,47 @@ pub fn arithmetic_mean_or_zero(values: &[f64]) -> f64 {
     arithmetic_mean(values).unwrap_or(0.0)
 }
 
+/// Compute an interpolated quantile from an already sorted sample.
+pub fn compute_sorted_quantile(sorted_values: &[f64], quantile_level: f64) -> f64 {
+    if sorted_values.is_empty() {
+        return f64::NAN;
+    }
+    if sorted_values.len() == 1 {
+        return sorted_values[0];
+    }
+
+    let clamped_quantile = quantile_level.clamp(0.0, 1.0);
+    let quantile_position = clamped_quantile * (sorted_values.len() - 1) as f64;
+    let lower_position = quantile_position.floor() as usize;
+    let upper_position = quantile_position.ceil() as usize;
+    let interpolation_weight = quantile_position - lower_position as f64;
+    let lower_value = sorted_values[lower_position];
+    let upper_value = sorted_values[upper_position];
+
+    lower_value + interpolation_weight * (upper_value - lower_value)
+}
+
+/// Compute an interpolated quantile from an already sorted sample and use zero for empty input.
+pub fn compute_sorted_quantile_or_zero(sorted_values: &[f64], quantile_level: f64) -> f64 {
+    let quantile = compute_sorted_quantile(sorted_values, quantile_level);
+    if quantile.is_nan() { 0.0 } else { quantile }
+}
+
+/// Compute an interpolated quantile after filtering non-finite values and sorting the sample.
+pub fn compute_finite_quantile_or_zero(values: &[f64], quantile_level: f64) -> f64 {
+    let mut finite_values: Vec<f64> = values
+        .iter()
+        .copied()
+        .filter(|value| value.is_finite())
+        .collect();
+    if finite_values.is_empty() {
+        return 0.0;
+    }
+
+    finite_values.sort_by(f64::total_cmp);
+    compute_sorted_quantile_or_zero(finite_values.as_slice(), quantile_level)
+}
+
 /// Compute a probability-weighted moment for a sorted sample.
 pub fn compute_probability_weighted_moment(sorted_values: &[f64], order: usize) -> Option<f64> {
     let sample_count = sorted_values.len();
@@ -119,6 +160,72 @@ pub fn coefficient_of_variation(values: &[f64]) -> f64 {
         / values.len() as f64;
 
     variance.sqrt() / mean_value
+}
+
+/// Compute Pearson correlation for two aligned series.
+pub fn pearson_correlation(left: &[f64], right: &[f64]) -> f64 {
+    if left.len() != right.len() || left.len() < 2 {
+        return f64::NAN;
+    }
+
+    let left_mean = arithmetic_mean_or_zero(left);
+    let right_mean = arithmetic_mean_or_zero(right);
+    let mut covariance = 0.0;
+    let mut left_variance = 0.0;
+    let mut right_variance = 0.0;
+    for (left_value, right_value) in left.iter().zip(right.iter()) {
+        let left_centered = left_value - left_mean;
+        let right_centered = right_value - right_mean;
+        covariance += left_centered * right_centered;
+        left_variance += left_centered * left_centered;
+        right_variance += right_centered * right_centered;
+    }
+
+    let denominator = (left_variance * right_variance).sqrt();
+    if denominator <= f64::EPSILON {
+        return 0.0;
+    }
+
+    covariance / denominator
+}
+
+/// Compute z-scores for one series, returning zeros when the scale collapses.
+pub fn z_score(values: &[f64]) -> Vec<f64> {
+    let mean_value = arithmetic_mean_or_zero(values);
+    let variance = values
+        .iter()
+        .map(|value| {
+            let centered = value - mean_value;
+            centered * centered
+        })
+        .sum::<f64>()
+        / values.len().max(1) as f64;
+    let standard_deviation = variance.sqrt();
+    if !standard_deviation.is_finite() || standard_deviation <= f64::EPSILON {
+        return vec![0.0; values.len()];
+    }
+
+    values
+        .iter()
+        .map(|value| (value - mean_value) / standard_deviation)
+        .collect()
+}
+
+/// Compute mean absolute z-score path error between two aligned series.
+pub fn standardized_path_distance(left: &[f64], right: &[f64]) -> f64 {
+    if left.len() != right.len() || left.is_empty() {
+        return f64::INFINITY;
+    }
+
+    let left_standardized = z_score(left);
+    let right_standardized = z_score(right);
+
+    left_standardized
+        .iter()
+        .zip(right_standardized.iter())
+        .map(|(left_value, right_value)| (left_value - right_value).abs())
+        .sum::<f64>()
+        / left_standardized.len() as f64
 }
 
 /// Compute the median absolute value of a finite sample.
@@ -201,10 +308,12 @@ fn combination_ratio(
 mod tests {
     use super::{
         arithmetic_mean, arithmetic_mean_or_zero, clamp_to_open_unit_interval,
-        clamp_to_unit_interval, coefficient_of_variation, compute_probability_weighted_moment,
-        logistic, median_abs, median_abs_non_zero, normalized_pseudocount,
-        round_positive_to_domain, round_to, smallest_positive_value,
-        strictly_positive_machine_value, unique_sorted_values,
+        clamp_to_unit_interval, coefficient_of_variation, compute_finite_quantile_or_zero,
+        compute_probability_weighted_moment, compute_sorted_quantile,
+        compute_sorted_quantile_or_zero, logistic, median_abs, median_abs_non_zero,
+        normalized_pseudocount, pearson_correlation, round_positive_to_domain, round_to,
+        smallest_positive_value, standardized_path_distance, strictly_positive_machine_value,
+        unique_sorted_values, z_score,
     };
 
     #[test]
@@ -237,6 +346,18 @@ mod tests {
         assert_eq!(unique_sorted_values(&[2.0, 1.0, 2.0]), vec![1.0, 2.0]);
         assert_eq!(normalized_pseudocount(4), 0.25);
         assert_eq!(logistic(0.0), 0.5);
+        assert_eq!(compute_sorted_quantile(&[1.0, 2.0, 4.0], 0.5), 2.0);
+        assert_eq!(compute_sorted_quantile_or_zero(&[], 0.5), 0.0);
+        assert_eq!(
+            compute_finite_quantile_or_zero(&[1.0, f64::NAN, 3.0], 0.5),
+            2.0
+        );
+        assert_eq!(pearson_correlation(&[1.0, 2.0], &[2.0, 4.0]), 1.0);
+        assert_eq!(z_score(&[2.0, 2.0]), vec![0.0, 0.0]);
+        assert_eq!(
+            standardized_path_distance(&[1.0, 2.0, 3.0], &[2.0, 4.0, 6.0]),
+            0.0
+        );
     }
 
     #[test]

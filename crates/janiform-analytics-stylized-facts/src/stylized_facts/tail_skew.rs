@@ -4,13 +4,12 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use janiform_foundations::numeric::compute_probability_weighted_moment;
+use janiform_foundations::numeric::{compute_probability_weighted_moment, compute_sorted_quantile};
 use serde::Serialize;
 
 use super::diagnostics_shared::{
-    BlockBootstrapConfiguration, compute_block_bootstrap_confidence_interval,
-    compute_sorted_quantile, coverage_ratio, derive_metric_bootstrap_seed,
-    validate_block_bootstrap_configuration,
+    BlockBootstrapConfiguration, compute_block_bootstrap_confidence_interval, coverage_ratio,
+    derive_metric_bootstrap_seed, validate_block_bootstrap_configuration,
 };
 use super::metric_catalog::STYLIZED_FACT_METRIC_CATALOG_INSUFFICIENT_DATA_STATUS_CODE;
 use super::time_buckets::{

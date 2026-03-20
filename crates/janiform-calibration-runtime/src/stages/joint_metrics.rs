@@ -8,13 +8,26 @@ use crate::stages::return_components::{
     build_continuous_return_calibration_sample_from_components,
 };
 use janiform_engine_simulation::{SeededFinePathRecord, SeededFinePathTransitionKind};
+use janiform_foundations::numeric::{
+    arithmetic_mean_or_zero, compute_finite_quantile_or_zero, pearson_correlation,
+    standardized_path_distance,
+};
 
 pub(crate) const JOINT_REFINEMENT_ROLLING_ACTIVITY_WINDOW_INTERVAL_COUNT: usize = 96;
+const JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR: f64 = 1.0e-8;
+const JOINT_REFINEMENT_RETURN_SCALE_QUANTILE_Q90: f64 = 0.90;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct JointRefinementRollingVarianceActivityMetric {
     pub(crate) correlation: f64,
     pub(crate) standardized_path_distance: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct JointRefinementReturnScaleSummary {
+    pub(crate) mean_absolute_return: f64,
+    pub(crate) realized_variance: f64,
+    pub(crate) absolute_return_quantile_q90: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -93,41 +106,45 @@ pub(crate) fn aggregate_simulated_path_to_interval_templates(
     Vec<JointRefinementAggregatedIntervalObservation>,
     Vec<JointRefinementAggregatedIntervalObservation>,
 ) {
-    let mut five_minute_intervals = five_minute_template.to_vec();
-    let mut fifteen_minute_intervals = fifteen_minute_template.to_vec();
+    (
+        aggregate_simulated_path_to_interval_template(
+            fine_path,
+            five_minute_template,
+            five_minute_interval_duration_nanos,
+        ),
+        aggregate_simulated_path_to_interval_template(
+            fine_path,
+            fifteen_minute_template,
+            fifteen_minute_interval_duration_nanos,
+        ),
+    )
+}
 
-    if five_minute_intervals.is_empty() && fifteen_minute_intervals.is_empty() {
-        return (five_minute_intervals, fifteen_minute_intervals);
+pub(crate) fn aggregate_simulated_path_to_interval_template(
+    fine_path: &[SeededFinePathRecord],
+    template: &[JointRefinementAggregatedIntervalObservation],
+    interval_duration_nanos: i64,
+) -> Vec<JointRefinementAggregatedIntervalObservation> {
+    let mut intervals = template.to_vec();
+    if intervals.is_empty() {
+        return intervals;
     }
 
-    let five_minute_aligned_start = five_minute_intervals
+    let aligned_start = intervals
         .first()
         .map(|interval| interval.interval_start_utc_nanos)
         .unwrap_or(0);
-    let fifteen_minute_aligned_start = fifteen_minute_intervals
-        .first()
-        .map(|interval| interval.interval_start_utc_nanos)
-        .unwrap_or(0);
-
     for record in fine_path {
         accumulate_fine_path_record_into_intervals(
             record,
-            five_minute_intervals.as_mut_slice(),
-            five_minute_aligned_start,
-            five_minute_interval_duration_nanos,
-        );
-        accumulate_fine_path_record_into_intervals(
-            record,
-            fifteen_minute_intervals.as_mut_slice(),
-            fifteen_minute_aligned_start,
-            fifteen_minute_interval_duration_nanos,
+            intervals.as_mut_slice(),
+            aligned_start,
+            interval_duration_nanos,
         );
     }
 
-    finalize_sell_share_proxies(&mut five_minute_intervals, 0.5);
-    finalize_sell_share_proxies(&mut fifteen_minute_intervals, 0.5);
-
-    (five_minute_intervals, fifteen_minute_intervals)
+    finalize_sell_share_proxies(&mut intervals, 0.5);
+    intervals
 }
 
 pub(crate) fn build_continuous_calibration_sample_from_aggregated_intervals(
@@ -205,6 +222,111 @@ pub(crate) fn rolling_variance_activity_metric(
         correlation,
         standardized_path_distance,
     }
+}
+
+pub(crate) fn return_scale_summary(
+    intervals: &[JointRefinementAggregatedIntervalObservation],
+) -> JointRefinementReturnScaleSummary {
+    let absolute_returns: Vec<f64> = intervals
+        .iter()
+        .map(|interval| interval.log_return.abs())
+        .collect();
+    let realized_variance = intervals
+        .iter()
+        .map(|interval| interval.log_return * interval.log_return)
+        .sum::<f64>();
+
+    JointRefinementReturnScaleSummary {
+        mean_absolute_return: arithmetic_mean_or_zero(absolute_returns.as_slice()),
+        realized_variance,
+        absolute_return_quantile_q90: compute_finite_quantile_or_zero(
+            absolute_returns.as_slice(),
+            JOINT_REFINEMENT_RETURN_SCALE_QUANTILE_Q90,
+        ),
+    }
+}
+
+pub(crate) fn tick_count_series(
+    intervals: &[JointRefinementAggregatedIntervalObservation],
+) -> Vec<f64> {
+    intervals
+        .iter()
+        .map(|interval| interval.tick_count as f64)
+        .collect()
+}
+
+pub(crate) fn scale_normalized_returns(returns: &[f64]) -> Vec<f64> {
+    let absolute_returns: Vec<f64> = returns
+        .iter()
+        .copied()
+        .filter(|value| value.is_finite())
+        .map(f64::abs)
+        .collect();
+    let scale = arithmetic_mean_or_zero(absolute_returns.as_slice())
+        .max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR);
+
+    returns
+        .iter()
+        .map(|value| {
+            if value.is_finite() {
+                *value / scale
+            } else {
+                0.0
+            }
+        })
+        .collect()
+}
+
+pub(crate) fn normalized_profile_distance(left: &[f64], right: &[f64]) -> f64 {
+    if left.len() != right.len() || left.is_empty() {
+        return f64::INFINITY;
+    }
+
+    let left_sum = left
+        .iter()
+        .sum::<f64>()
+        .abs()
+        .max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR);
+    let right_sum = right
+        .iter()
+        .sum::<f64>()
+        .abs()
+        .max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR);
+
+    left.iter()
+        .zip(right.iter())
+        .map(|(left_value, right_value)| {
+            ((*left_value / left_sum) - (*right_value / right_sum)).abs()
+        })
+        .sum::<f64>()
+        / left.len() as f64
+}
+
+pub(crate) fn relative_rmse(left: &[f64], right: &[f64], floor: f64) -> f64 {
+    if left.len() != right.len() || left.is_empty() {
+        return f64::INFINITY;
+    }
+
+    let squared_error_sum = left
+        .iter()
+        .zip(right.iter())
+        .map(|(left_value, right_value)| {
+            let error = left_value - right_value;
+            error * error
+        })
+        .sum::<f64>();
+    let rmse = (squared_error_sum / left.len() as f64).sqrt();
+    let scale = arithmetic_mean_or_zero(right).abs().max(floor);
+
+    rmse / scale
+}
+
+pub(crate) fn log_ratio_distance(candidate_value: f64, observed_value: f64, floor: f64) -> f64 {
+    let safe_floor = floor.abs().max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR);
+    let candidate = candidate_value.abs().max(safe_floor);
+    let observed = observed_value.abs().max(safe_floor);
+
+    (candidate / observed).ln().abs()
 }
 
 pub(crate) fn zero_aware_normalized_bucket_value(
@@ -345,75 +467,15 @@ fn rolling_sum(values: &[f64], window: usize) -> Vec<f64> {
     output
 }
 
-fn pearson_correlation(left: &[f64], right: &[f64]) -> f64 {
-    if left.len() != right.len() || left.len() < 2 {
-        return f64::NAN;
-    }
-
-    let left_mean = left.iter().sum::<f64>() / left.len() as f64;
-    let right_mean = right.iter().sum::<f64>() / right.len() as f64;
-    let mut covariance = 0.0;
-    let mut left_variance = 0.0;
-    let mut right_variance = 0.0;
-    for (left_value, right_value) in left.iter().zip(right.iter()) {
-        let left_centered = left_value - left_mean;
-        let right_centered = right_value - right_mean;
-        covariance += left_centered * right_centered;
-        left_variance += left_centered * left_centered;
-        right_variance += right_centered * right_centered;
-    }
-
-    let denominator = (left_variance * right_variance).sqrt();
-    if denominator <= f64::EPSILON {
-        return 0.0;
-    }
-
-    covariance / denominator
-}
-
-fn standardized_path_distance(left: &[f64], right: &[f64]) -> f64 {
-    if left.len() != right.len() || left.is_empty() {
-        return f64::INFINITY;
-    }
-
-    let left_standardized = z_score(left);
-    let right_standardized = z_score(right);
-
-    left_standardized
-        .iter()
-        .zip(right_standardized.iter())
-        .map(|(left_value, right_value)| (left_value - right_value).abs())
-        .sum::<f64>()
-        / left_standardized.len() as f64
-}
-
-fn z_score(values: &[f64]) -> Vec<f64> {
-    let mean = values.iter().sum::<f64>() / values.len().max(1) as f64;
-    let variance = values
-        .iter()
-        .map(|value| {
-            let centered = value - mean;
-            centered * centered
-        })
-        .sum::<f64>()
-        / values.len().max(1) as f64;
-    let standard_deviation = variance.sqrt();
-    if !standard_deviation.is_finite() || standard_deviation <= f64::EPSILON {
-        return vec![0.0; values.len()];
-    }
-
-    values
-        .iter()
-        .map(|value| (value - mean) / standard_deviation)
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         JOINT_REFINEMENT_ROLLING_ACTIVITY_WINDOW_INTERVAL_COUNT,
         JointRefinementAggregatedIntervalObservation,
-        aggregate_simulated_path_to_interval_templates, rolling_variance_activity_metric,
+        aggregate_simulated_path_to_interval_template,
+        aggregate_simulated_path_to_interval_templates, log_ratio_distance,
+        normalized_profile_distance, relative_rmse, return_scale_summary,
+        rolling_variance_activity_metric, scale_normalized_returns,
         zeroed_interval_observation_template,
     };
     use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsRiskReturnComponents;
@@ -421,6 +483,7 @@ mod tests {
         SeededFinePathRecord, SeededFinePathTransitionKind, SeededTickEventSide,
         SeededTickSimulationNewsEventMarketState,
     };
+    use janiform_foundations::numeric::standardized_path_distance;
 
     #[test]
     fn rolling_variance_activity_metric_matches_reference_series_definition() {
@@ -530,5 +593,93 @@ mod tests {
         assert_eq!(fifteen_minute_intervals[0].tick_count, 2);
         assert_eq!(fifteen_minute_intervals[0].log_return, -0.01);
         assert_eq!(fifteen_minute_intervals[0].sell_share_proxy, 0.5);
+    }
+
+    #[test]
+    fn single_template_aggregation_matches_multi_horizon_helper() {
+        let template = zeroed_interval_observation_template(&[
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 0,
+                interval_end_utc_nanos: 300,
+                log_return: 0.0,
+                tick_count: 0,
+                sell_share_proxy: 0.0,
+            },
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 300,
+                interval_end_utc_nanos: 600,
+                log_return: 0.0,
+                tick_count: 0,
+                sell_share_proxy: 0.0,
+            },
+        ]);
+        let fine_path = vec![SeededFinePathRecord {
+            transition_index: 0,
+            timestamp_utc_nanos: 120,
+            transition_kind: SeededFinePathTransitionKind::BuyTrade,
+            side: Some(SeededTickEventSide::Buy),
+            news_arrival_component: None,
+            market_state: SeededTickSimulationNewsEventMarketState::Open,
+            return_components: SufficientStatisticsRiskReturnComponents {
+                buy_side_return: 0.01,
+                sell_side_return: 0.0,
+                trading_time_return: 0.01,
+                open_jump_return: 0.0,
+                closed_gap_return: 0.0,
+                total_return: 0.01,
+            },
+            cumulative_log_return: 0.01,
+            state_snapshot: None,
+        }];
+
+        let aggregated = aggregate_simulated_path_to_interval_template(
+            fine_path.as_slice(),
+            template.as_slice(),
+            300,
+        );
+
+        assert_eq!(aggregated[0].tick_count, 1);
+        assert_eq!(aggregated[0].log_return, 0.01);
+        assert_eq!(aggregated[1].tick_count, 0);
+    }
+
+    #[test]
+    fn scale_and_activity_helpers_are_level_and_shape_aware() {
+        let normalized_returns = scale_normalized_returns(&[1.0, -2.0, 1.0]);
+        assert_eq!(normalized_returns.len(), 3);
+        assert!(normalized_returns[1].abs() > normalized_returns[0].abs());
+
+        let profile_distance = normalized_profile_distance(&[2.0, 4.0], &[1.0, 2.0]);
+        assert_eq!(profile_distance, 0.0);
+
+        let path_distance = standardized_path_distance(&[1.0, 2.0, 3.0], &[2.0, 4.0, 6.0]);
+        assert_eq!(path_distance, 0.0);
+
+        let rmse = relative_rmse(&[2.0, 4.0], &[1.0, 3.0], 1.0e-8);
+        assert!(rmse.is_finite());
+        assert!(rmse > 0.0);
+
+        let ratio_distance = log_ratio_distance(4.0, 2.0, 1.0e-8);
+        assert!(ratio_distance > 0.0);
+
+        let scale_summary = return_scale_summary(&[
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 0,
+                interval_end_utc_nanos: 1,
+                log_return: 0.1,
+                tick_count: 1,
+                sell_share_proxy: 0.5,
+            },
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 1,
+                interval_end_utc_nanos: 2,
+                log_return: -0.2,
+                tick_count: 1,
+                sell_share_proxy: 0.5,
+            },
+        ]);
+        assert!(scale_summary.mean_absolute_return > 0.0);
+        assert!(scale_summary.realized_variance > 0.0);
+        assert!(scale_summary.absolute_return_quantile_q90 >= 0.1);
     }
 }

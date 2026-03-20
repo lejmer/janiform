@@ -1151,7 +1151,7 @@ fn build_wasserstein_check(
 fn calculate_wasserstein_distance(left: &[f64], right: &[f64]) -> f64 {
     let mut ordered_left = left.to_vec();
     let mut ordered_right = right.to_vec();
-    
+
     ordered_left.sort_by(f64::total_cmp);
     ordered_right.sort_by(f64::total_cmp);
 

@@ -5,10 +5,12 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use janiform_foundations::numeric::compute_sorted_quantile;
+
 use super::diagnostics_shared::{
     BlockBootstrapConfiguration, build_delta_uncertainty_context,
-    compute_block_bootstrap_confidence_interval, compute_sorted_quantile, coverage_ratio,
-    derive_metric_bootstrap_seed, validate_block_bootstrap_configuration,
+    compute_block_bootstrap_confidence_interval, coverage_ratio, derive_metric_bootstrap_seed,
+    validate_block_bootstrap_configuration,
 };
 use super::metric_catalog::{
     STYLIZED_FACT_METRIC_CATALOG_INSUFFICIENT_DATA_STATUS_CODE, StylizedFactMetricDomain,

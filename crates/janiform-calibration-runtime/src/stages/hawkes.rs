@@ -30,9 +30,8 @@ use janiform_foundations::numeric::{
 };
 use janiform_model_kernels::hawkes::{
     HawkesKernelLoadings, HawkesKernelParameterValidationReport, HawkesKernelParameters,
-    HawkesKernelValidationStatus,
-    HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
-    HawkesStructuredRhoSelfDominancePolicy,
+    HawkesKernelValidationStatus, HawkesStructuredAlphaParameterization,
+    HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
 };
 /// Candidate parameterization and objective inputs for Hawkes stage fitting.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1415,13 +1414,14 @@ fn ranked_refinement_seed_indices(
         return Vec::new();
     }
 
-    let has_valid_candidate = candidate_diagnostics
-        .iter()
-        .enumerate()
-        .any(|(candidate_index, candidate)| {
-            eligible_seed_indices.contains(&candidate_index)
-                && candidate.constraint_violation_count == 0
-        });
+    let has_valid_candidate =
+        candidate_diagnostics
+            .iter()
+            .enumerate()
+            .any(|(candidate_index, candidate)| {
+                eligible_seed_indices.contains(&candidate_index)
+                    && candidate.constraint_violation_count == 0
+            });
     let minimum_violation_count = eligible_seed_indices
         .iter()
         .map(|candidate_index| candidate_diagnostics[*candidate_index].constraint_violation_count)
@@ -1467,9 +1467,7 @@ fn ranked_refinement_seed_indices(
         .collect()
 }
 
-fn refinement_alpha_scales(
-    candidate_diagnostic: &HawkesStageCandidateDiagnostic,
-) -> Vec<f64> {
+fn refinement_alpha_scales(candidate_diagnostic: &HawkesStageCandidateDiagnostic) -> Vec<f64> {
     const BASE_ALPHA_SCALES: [f64; 7] = [0.05, 0.1, 0.2, 0.4, 0.8, 1.0, 1.2];
     const TARGET_STABILITY_MARGIN: f64 = 0.95;
     const MINIMUM_ALPHA_SCALE: f64 = 0.01;
@@ -1480,8 +1478,7 @@ fn refinement_alpha_scales(
         .max_runtime_effective_branching_ratio;
     if effective_branching_ratio.is_finite() && effective_branching_ratio > 0.0 {
         let targeted_scale = round_to(
-            (TARGET_STABILITY_MARGIN / effective_branching_ratio)
-                .clamp(MINIMUM_ALPHA_SCALE, 1.0),
+            (TARGET_STABILITY_MARGIN / effective_branching_ratio).clamp(MINIMUM_ALPHA_SCALE, 1.0),
             12,
         );
         alpha_scales.push(targeted_scale);
@@ -2008,12 +2005,8 @@ mod tests {
 
     #[test]
     fn refinement_alpha_scales_include_targeted_stability_reduction() {
-        let candidate_diagnostic = test_candidate_diagnostic(
-            "candidate_supercritical",
-            1,
-            1.0,
-            1.0,
-        );
+        let candidate_diagnostic =
+            test_candidate_diagnostic("candidate_supercritical", 1, 1.0, 1.0);
 
         let alpha_scales = refinement_alpha_scales(&candidate_diagnostic);
 

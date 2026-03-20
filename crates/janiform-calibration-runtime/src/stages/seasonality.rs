@@ -306,8 +306,10 @@ pub(crate) fn maximum_realizable_runtime_hourly_seasonality_factor_from_componen
         .copied()
         .filter(|value| value.is_finite())
         .fold(1.0, f64::max);
-    let weekday_day_of_year_max =
-        maximum_realizable_weekday_day_of_year_factor_product(day_of_week_factor, day_of_year_factor)?;
+    let weekday_day_of_year_max = maximum_realizable_weekday_day_of_year_factor_product(
+        day_of_week_factor,
+        day_of_year_factor,
+    )?;
 
     Ok(intraday_max * weekday_day_of_year_max)
 }
@@ -335,7 +337,8 @@ fn maximum_realizable_weekday_day_of_year_factor_product(
                 ));
             };
 
-            let Some(day_of_year_factor_value) = day_of_year_factor.get(day_of_year_index).copied() else {
+            let Some(day_of_year_factor_value) = day_of_year_factor.get(day_of_year_index).copied()
+            else {
                 return Err(format!(
                     "runtime seasonality realizability scan day-of-year index {day_of_year_index} is out of range for {} factors",
                     day_of_year_factor.len()

@@ -8,7 +8,8 @@ use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
 use janiform_foundations::low_discrepancy::van_der_corput;
 use janiform_foundations::numeric::{
-    arithmetic_mean_or_zero as arithmetic_mean, compute_probability_weighted_moment, logistic,
+    arithmetic_mean_or_zero as arithmetic_mean, compute_probability_weighted_moment,
+    compute_sorted_quantile_or_zero as sorted_quantile, logistic,
 };
 use janiform_foundations::randomness::SplitMix64SimulationRandomnessStream;
 use janiform_foundations::splitmix64_output_mixer;
@@ -3028,24 +3029,6 @@ fn sorted_finite_values(values: &[f64]) -> Vec<f64> {
         .collect();
     sorted_values.sort_by(f64::total_cmp);
     sorted_values
-}
-
-fn sorted_quantile(sorted_values: &[f64], quantile_level: f64) -> f64 {
-    if sorted_values.is_empty() {
-        return 0.0;
-    }
-
-    let quantile_position = quantile_level.clamp(0.0, 1.0) * (sorted_values.len() - 1) as f64;
-    let lower_position = quantile_position.floor() as usize;
-    let upper_position = quantile_position.ceil() as usize;
-    let interpolation_weight = quantile_position - lower_position as f64;
-
-    if lower_position == upper_position {
-        sorted_values[lower_position]
-    } else {
-        sorted_values[lower_position] * (1.0 - interpolation_weight)
-            + sorted_values[upper_position] * interpolation_weight
-    }
 }
 
 fn compute_bowley_skewness_from_sorted(sorted_returns: &[f64]) -> Option<f64> {

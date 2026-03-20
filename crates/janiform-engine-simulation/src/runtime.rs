@@ -17,8 +17,8 @@ use janiform_model_kernels::hawkes::{
 };
 use janiform_model_kernels::news::{
     NewsArrivalComponent, NewsComponentMarkScaleConfiguration, NewsReturnJumpRoutingTarget,
-    SharedNewsEventMarketStateResolutionError, SharedNewsEventMarketStateResolver,
-    SharedNewsAccumulatorState, SharedNewsEventTimestampedInput,
+    SharedNewsAccumulatorState, SharedNewsEventMarketStateResolutionError,
+    SharedNewsEventMarketStateResolver, SharedNewsEventTimestampedInput,
     dispatch_shared_news_events_with_resolved_market_states,
 };
 use janiform_model_kernels::return_decomposition::ReturnDecompositionValidationError;
@@ -188,10 +188,8 @@ where
                 previous_timestamp_utc_nanos,
                 interval_update.timestamp_utc_nanos(),
             );
-            let current_market_state =
-                market_state_resolver.resolve_market_state_at_nanos(
-                    interval_update.timestamp_utc_nanos(),
-                )?;
+            let current_market_state = market_state_resolver
+                .resolve_market_state_at_nanos(interval_update.timestamp_utc_nanos())?;
             let open_jump_return = if current_market_state == MarketState::Open {
                 let realized = pending_open_jump_return;
                 pending_open_jump_return = 0.0;
@@ -928,9 +926,7 @@ fn is_public_seeded_fine_path_record(record: &SeededFinePathRecord) -> bool {
     )
 }
 
-fn estimate_seeded_result_capacities(
-    run_config: &SeededTickSimulationRunConfig,
-) -> (usize, usize) {
+fn estimate_seeded_result_capacities(run_config: &SeededTickSimulationRunConfig) -> (usize, usize) {
     let known_news_count = run_config
         .model_inputs
         .news_process_configuration
@@ -955,20 +951,20 @@ fn estimate_seeded_result_capacities(
             (interval_end_utc_nanos - interval_start_utc_nanos) as f64 / ONE_HOUR_NANOS as f64;
 
         let seasonality_factor = run_config.model_inputs.hourly_factor_contract.s_h[interval_index];
-        let interval_news_intensity = run_config
-            .model_inputs
-            .hourly_factor_contract
-            .nu_h[interval_index]
-            .max(0.0);
+        let interval_news_intensity =
+            run_config.model_inputs.hourly_factor_contract.nu_h[interval_index].max(0.0);
 
         let endogenous_baseline = (2.0
-            * run_config.model_inputs.kernel_parameters.lambda_bar.max(0.0)
+            * run_config
+                .model_inputs
+                .kernel_parameters
+                .lambda_bar
+                .max(0.0)
             * seasonality_factor.max(0.0)
             * interval_duration_in_hours.max(0.0))
         .ceil();
         estimated_endogenous_event_count = estimated_endogenous_event_count.saturating_add(
-            endogenous_baseline
-                .min(MAX_STOCHASTIC_UPDATES_PER_INTERVAL as f64) as usize,
+            endogenous_baseline.min(MAX_STOCHASTIC_UPDATES_PER_INTERVAL as f64) as usize,
         );
 
         let surprise_expected_count = interval_news_intensity * interval_duration_in_hours.max(0.0);
@@ -984,7 +980,10 @@ fn estimate_seeded_result_capacities(
         .saturating_add(estimated_surprise_news_count)
         .saturating_add(estimated_endogenous_event_count);
 
-    (estimated_transition_capacity, estimated_endogenous_event_count)
+    (
+        estimated_transition_capacity,
+        estimated_endogenous_event_count,
+    )
 }
 
 fn merge_ordered_interval_updates(
@@ -997,7 +996,8 @@ fn merge_ordered_interval_updates(
     let mut next_endogenous = endogenous_iterator.next();
     let mut next_exogenous = exogenous_iterator.next();
     let mut merged_updates: Vec<IntervalStochasticUpdate> = Vec::with_capacity(
-        endogenous_iterator.len()
+        endogenous_iterator
+            .len()
             .saturating_add(exogenous_iterator.len())
             .saturating_add(next_endogenous.is_some() as usize)
             .saturating_add(next_exogenous.is_some() as usize),
@@ -1049,8 +1049,11 @@ impl<'a> SeededSimulationMarketStateResolver<'a> {
         calendar_registry: &'a ExchangeCalendarRegistry,
         exchange_code: &'a str,
     ) -> Result<Self, SeededTickSimulationRunError> {
-        let definition = calendar_registry.get_required(exchange_code).map_err(|source| {
-            SeededTickSimulationRunError::NewsMarketStateResolutionFailed {
+        let definition =
+            calendar_registry
+                .get_required(exchange_code)
+                .map_err(|source| {
+                    SeededTickSimulationRunError::NewsMarketStateResolutionFailed {
                 exchange_code: exchange_code.to_string(),
                 timestamp_utc_nanos: 0,
                 source: match source {
@@ -1061,7 +1064,7 @@ impl<'a> SeededSimulationMarketStateResolver<'a> {
                     },
                 },
             }
-        })?;
+                })?;
 
         let timezone = Tz::from_str(definition.timezone_name()).map_err(|_| {
             SeededTickSimulationRunError::NewsMarketStateResolutionFailed {
@@ -1104,8 +1107,10 @@ impl SharedNewsEventMarketStateResolver for SeededSimulationMarketStateResolver<
         &self,
         exchange_code: &str,
         event_timestamp_utc: DateTime<Utc>,
-    ) -> Result<janiform_foundations::market_state::MarketState, SharedNewsEventMarketStateResolutionError>
-    {
+    ) -> Result<
+        janiform_foundations::market_state::MarketState,
+        SharedNewsEventMarketStateResolutionError,
+    > {
         if exchange_code != self.exchange_code {
             return Err(SharedNewsEventMarketStateResolutionError {
                 reason: format!(
@@ -1174,19 +1179,18 @@ where
     let _ = endogenous_auxiliary_stream.next_unit_interval_f64();
 
     let interval_end_utc_nanos = interval_start_utc_nanos + interval_duration_nanos;
-    let endogenous_interval_updates =
-        schedule_endogenous_interval_events_with_event_time_feedback(
-            interval_start_state,
-            kernel_parameters,
-            interval_seasonality_factor,
-            interval_start_utc_nanos,
-            interval_end_utc_nanos,
-            &exogenous_interval_updates,
-            market_state_resolver,
-            &mut endogenous_wait_stream,
-            &mut endogenous_acceptance_stream,
-            &mut endogenous_side_stream,
-        )?;
+    let endogenous_interval_updates = schedule_endogenous_interval_events_with_event_time_feedback(
+        interval_start_state,
+        kernel_parameters,
+        interval_seasonality_factor,
+        interval_start_utc_nanos,
+        interval_end_utc_nanos,
+        &exogenous_interval_updates,
+        market_state_resolver,
+        &mut endogenous_wait_stream,
+        &mut endogenous_acceptance_stream,
+        &mut endogenous_side_stream,
+    )?;
 
     Ok(merge_ordered_interval_updates(
         endogenous_interval_updates,
@@ -1465,10 +1469,8 @@ where
             )
             .map_err(map_transition_error_to_seeded_simulation_run_error)?;
 
-            let candidate_market_state =
-                market_state_resolver.resolve_market_state_at_nanos(
-                    candidate_timestamp_utc_nanos,
-                )?;
+            let candidate_market_state = market_state_resolver
+                .resolve_market_state_at_nanos(candidate_timestamp_utc_nanos)?;
             if candidate_market_state != MarketState::Open {
                 simulated_state = candidate_state;
                 simulated_timestamp_utc_nanos = candidate_timestamp_utc_nanos;

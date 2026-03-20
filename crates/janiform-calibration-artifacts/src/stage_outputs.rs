@@ -47,7 +47,10 @@ pub struct ReturnComponentsStageFittedParameters {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JointRefinementStageObjectiveBreakdown {
     pub aggregated_likelihood_fit: f64,
-    pub aggregated_shape_fit: f64,
+    pub aggregated_return_shape_fit: f64,
+    pub aggregated_return_scale_fit: f64,
+    pub activity_shape_fit: f64,
+    pub activity_level_fit: f64,
     pub rv_activity_coupling_fit: f64,
     pub price_span_sanity_fit: f64,
     pub weighted_objective: f64,

@@ -1,6 +1,6 @@
-use janiform_analytics_stylized_facts::stylized_facts::diagnostics_shared::compute_sorted_quantile;
 use janiform_analytics_stylized_facts::stylized_facts::return_series_shared::compute_lag_autocorrelation;
 use janiform_engine_risk::SufficientStatisticsRiskPath;
+use janiform_foundations::numeric::compute_sorted_quantile;
 
 use super::contracts::{
     ScaleConsistencyMetricComputationFailure, ScaleConsistencyMetricDatasetRole,

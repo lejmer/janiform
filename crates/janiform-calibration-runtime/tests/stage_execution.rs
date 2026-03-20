@@ -482,7 +482,11 @@ fn hawkes_stage_refines_seasonality_scaled_supercritical_candidates_to_stable_ou
         .find(|candidate| candidate.candidate_id == fitted_stage_payload.selected_candidate_id)
         .expect("selected candidate should be present in diagnostics");
 
-    assert!(fitted_stage_payload.selected_candidate_id.contains("_refined_"));
+    assert!(
+        fitted_stage_payload
+            .selected_candidate_id
+            .contains("_refined_")
+    );
     assert!(original_candidate.constraint_violation_count > 0);
     assert!(
         original_candidate
@@ -513,10 +517,10 @@ fn hawkes_stage_refines_supercritical_candidates_under_unobserved_runtime_envelo
         .into_iter()
         .next()
         .expect("fixture should provide a candidate");
-    candidate.candidate_id = "candidate_supercritical_under_unobserved_runtime_envelope".to_string();
+    candidate.candidate_id =
+        "candidate_supercritical_under_unobserved_runtime_envelope".to_string();
     candidate.beta = 1.0;
-    candidate.structured_alpha =
-        HawkesStructuredAlphaParameterization::new(0.41, 0.0, 0.0, 0.0);
+    candidate.structured_alpha = HawkesStructuredAlphaParameterization::new(0.41, 0.0, 0.0, 0.0);
 
     let report = run_hawkes_calibration_stage(
         &build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory),
@@ -545,7 +549,11 @@ fn hawkes_stage_refines_supercritical_candidates_under_unobserved_runtime_envelo
         .find(|candidate| candidate.candidate_id == fitted_stage_payload.selected_candidate_id)
         .expect("selected candidate should be present in diagnostics");
 
-    assert!(fitted_stage_payload.selected_candidate_id.contains("_refined_"));
+    assert!(
+        fitted_stage_payload
+            .selected_candidate_id
+            .contains("_refined_")
+    );
     assert!(original_candidate.constraint_violation_count > 0);
     assert_eq!(
         original_candidate

@@ -14,6 +14,7 @@ use pyo3::types::{PyAny, PyMapping, PyModule};
 use super::calendar::parse_timestamp_utc;
 use crate::SeasonalityInputValidationError;
 use crate::SimulationExecutionError;
+use crate::panic_boundary::panic_to_pyresult;
 use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
 use crate::types::{PyHourlyFactorContractResult, PySeededTickSimulationNativeResult};
 
@@ -25,9 +26,14 @@ fn run_coarse_simulation(py: Python<'_>, run_request: &Bound<'_, PyAny>) -> PyRe
                 "failed to deserialize coarse simulation run request: {source}"
             ))
         })?;
-    let coarse_path = py
-        .allow_threads(|| run_coarse_simulation_core(run_request))
-        .map_err(|source| SimulationExecutionError::new_err(source.to_string()))?;
+    let coarse_path = panic_to_pyresult(
+        "running coarse simulation",
+        SimulationExecutionError::new_err,
+        || {
+            py.allow_threads(|| run_coarse_simulation_core(run_request))
+                .map_err(|source| SimulationExecutionError::new_err(source.to_string()))
+        },
+    )?;
 
     let serialized_coarse_path = serde_json::to_value(&coarse_path).map_err(|source| {
         SimulationExecutionError::new_err(format!(
@@ -99,9 +105,14 @@ fn run_seeded_tick_event_simulation(
     )
     .map_err(map_seeded_tick_simulation_run_error)?;
 
-    let run_result = py
-        .allow_threads(|| run_seeded_tick_event_simulation_core(run_config))
-        .map_err(map_seeded_tick_simulation_run_error)?;
+    let run_result = panic_to_pyresult(
+        "running seeded tick-event simulation",
+        SimulationExecutionError::new_err,
+        || {
+            py.allow_threads(|| run_seeded_tick_event_simulation_core(run_config))
+                .map_err(map_seeded_tick_simulation_run_error)
+        },
+    )?;
 
     Ok(PySeededTickSimulationNativeResult { output: run_result })
 }

@@ -44,9 +44,24 @@ pub(crate) fn assert_joint_refinement_objective_breakdown_matches(
         &format!("{context} aggregated_likelihood_fit"),
     );
     assert_f64_within_one_ulp(
-        actual_breakdown.aggregated_shape_fit,
-        expected_breakdown.aggregated_shape_fit,
-        &format!("{context} aggregated_shape_fit"),
+        actual_breakdown.aggregated_return_shape_fit,
+        expected_breakdown.aggregated_return_shape_fit,
+        &format!("{context} aggregated_return_shape_fit"),
+    );
+    assert_f64_within_one_ulp(
+        actual_breakdown.aggregated_return_scale_fit,
+        expected_breakdown.aggregated_return_scale_fit,
+        &format!("{context} aggregated_return_scale_fit"),
+    );
+    assert_f64_within_one_ulp(
+        actual_breakdown.activity_shape_fit,
+        expected_breakdown.activity_shape_fit,
+        &format!("{context} activity_shape_fit"),
+    );
+    assert_f64_within_one_ulp(
+        actual_breakdown.activity_level_fit,
+        expected_breakdown.activity_level_fit,
+        &format!("{context} activity_level_fit"),
     );
     assert_f64_within_one_ulp(
         actual_breakdown.rv_activity_coupling_fit,
@@ -1453,65 +1468,65 @@ pub(crate) fn build_return_components_stage_standalone_run_spec(
     .expect("standalone return-components run spec should validate")
 }
 
-pub(crate) fn build_seasonality_stage_success_payload()
--> SeasonalityStageNormalizedPayload {
-    static STAGE_SUCCESS_PAYLOAD: LazyLock<SeasonalityStageNormalizedPayload> = LazyLock::new(|| {
-        let calendar_registry = calibration_stage_test_registry();
-        let report = run_seasonality_calibration_stage(
-            &build_seasonality_stage_run_spec(CalibrationExecutionMode::Memory),
-            &calendar_registry,
-            SeasonalityStageExecutionInput::from_timestamp_event_records(
-                calibration_stage_timestamp_fixture(),
-            ),
-        );
-
-        report
-            .normalized_stage_payload
-            .expect("seasonality stage fixture should produce normalized payload")
-    });
-
-    STAGE_SUCCESS_PAYLOAD.clone()
-}
-
-pub(crate) fn build_hawkes_stage_success_payload() -> HawkesStageFittedPayload {
-    static STAGE_SUCCESS_PAYLOAD: LazyLock<HawkesStageFittedPayload> =
+pub(crate) fn build_seasonality_stage_success_payload() -> SeasonalityStageNormalizedPayload {
+    static STAGE_SUCCESS_PAYLOAD: LazyLock<SeasonalityStageNormalizedPayload> =
         LazyLock::new(|| {
-            let seasonality_payload = build_seasonality_stage_success_payload();
             let calendar_registry = calibration_stage_test_registry();
-            let report = run_hawkes_calibration_stage(
-                &build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory),
+            let report = run_seasonality_calibration_stage(
+                &build_seasonality_stage_run_spec(CalibrationExecutionMode::Memory),
                 &calendar_registry,
-                HawkesStageExecutionInput::from_in_memory_seasonality_output(
-                    seasonality_payload,
-                    hawkes_stage_candidate_fixture(),
+                SeasonalityStageExecutionInput::from_timestamp_event_records(
+                    calibration_stage_timestamp_fixture(),
                 ),
             );
 
             report
-                .fitted_stage_payload
-                .expect("hawkes stage fixture should produce fitted payload")
+                .normalized_stage_payload
+                .expect("seasonality stage fixture should produce normalized payload")
         });
 
     STAGE_SUCCESS_PAYLOAD.clone()
 }
 
-pub(crate) fn build_return_components_stage_success_payload()
--> ReturnComponentsStageFittedPayload {
-    static STAGE_SUCCESS_PAYLOAD: LazyLock<ReturnComponentsStageFittedPayload> = LazyLock::new(|| {
+pub(crate) fn build_hawkes_stage_success_payload() -> HawkesStageFittedPayload {
+    static STAGE_SUCCESS_PAYLOAD: LazyLock<HawkesStageFittedPayload> = LazyLock::new(|| {
+        let seasonality_payload = build_seasonality_stage_success_payload();
         let calendar_registry = calibration_stage_test_registry();
-        let report = run_return_components_calibration_stage(
-            &build_return_components_stage_pipeline_run_spec(CalibrationExecutionMode::Memory),
+        let report = run_hawkes_calibration_stage(
+            &build_hawkes_stage_run_spec(CalibrationExecutionMode::Memory),
             &calendar_registry,
-            ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
-                build_hawkes_stage_success_payload(),
-                return_components_stage_candidate_generation_fixture(),
+            HawkesStageExecutionInput::from_in_memory_seasonality_output(
+                seasonality_payload,
+                hawkes_stage_candidate_fixture(),
             ),
         );
 
         report
             .fitted_stage_payload
-            .expect("return-components stage fixture should produce fitted payload")
+            .expect("hawkes stage fixture should produce fitted payload")
     });
+
+    STAGE_SUCCESS_PAYLOAD.clone()
+}
+
+pub(crate) fn build_return_components_stage_success_payload() -> ReturnComponentsStageFittedPayload
+{
+    static STAGE_SUCCESS_PAYLOAD: LazyLock<ReturnComponentsStageFittedPayload> =
+        LazyLock::new(|| {
+            let calendar_registry = calibration_stage_test_registry();
+            let report = run_return_components_calibration_stage(
+                &build_return_components_stage_pipeline_run_spec(CalibrationExecutionMode::Memory),
+                &calendar_registry,
+                ReturnComponentsStageExecutionInput::from_in_memory_activity_output(
+                    build_hawkes_stage_success_payload(),
+                    return_components_stage_candidate_generation_fixture(),
+                ),
+            );
+
+            report
+                .fitted_stage_payload
+                .expect("return-components stage fixture should produce fitted payload")
+        });
 
     STAGE_SUCCESS_PAYLOAD.clone()
 }
@@ -1523,38 +1538,40 @@ pub(crate) fn build_joint_refinement_stage_success_payload() -> JointRefinementS
 }
 
 pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementStageExecutionReport {
-    static STAGE_SUCCESS_REPORT: LazyLock<JointRefinementStageExecutionReport> = LazyLock::new(|| {
-        let calendar_registry = calibration_stage_test_registry();
-        let seasonality_payload = build_seasonality_stage_success_payload();
-        run_joint_refinement_calibration_stage(
-            &build_run_contract_with_mode_and_resume(
-                "run-joint-stage-success",
-                CalibrationExecutionMode::Memory,
-                None,
-            )
-            .run_spec,
-            &calendar_registry,
-            JointRefinementStageExecutionInput {
-                seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
-                    intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
-                    intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
-                    day_of_week_factor: seasonality_payload.day_of_week_factor,
-                    day_of_year_factor: seasonality_payload.day_of_year_factor,
-                    timestamp_utc_nanos: seasonality_payload.timestamp_utc_nanos,
-                    normalized_combined_factor_by_event: seasonality_payload
-                        .normalized_combined_factor_by_event,
-                },
-                hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
-                    payload: build_hawkes_stage_success_payload(),
-                },
-                return_components_input:
-                    JointRefinementStageReturnComponentsInput::InMemoryOutput {
-                        payload: build_return_components_stage_success_payload(),
+    static STAGE_SUCCESS_REPORT: LazyLock<JointRefinementStageExecutionReport> =
+        LazyLock::new(|| {
+            let calendar_registry = calibration_stage_test_registry();
+            let seasonality_payload = build_seasonality_stage_success_payload();
+            run_joint_refinement_calibration_stage(
+                &build_run_contract_with_mode_and_resume(
+                    "run-joint-stage-success",
+                    CalibrationExecutionMode::Memory,
+                    None,
+                )
+                .run_spec,
+                &calendar_registry,
+                JointRefinementStageExecutionInput {
+                    seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
+                        intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
+                        intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
+                        day_of_week_factor: seasonality_payload.day_of_week_factor,
+                        day_of_year_factor: seasonality_payload.day_of_year_factor,
+                        timestamp_utc_nanos: seasonality_payload.timestamp_utc_nanos,
+                        normalized_combined_factor_by_event: seasonality_payload
+                            .normalized_combined_factor_by_event,
                     },
-                candidate_generation_input: return_components_stage_candidate_generation_fixture(),
-            },
-        )
-    });
+                    hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
+                        payload: build_hawkes_stage_success_payload(),
+                    },
+                    return_components_input:
+                        JointRefinementStageReturnComponentsInput::InMemoryOutput {
+                            payload: build_return_components_stage_success_payload(),
+                        },
+                    candidate_generation_input:
+                        return_components_stage_candidate_generation_fixture(),
+                },
+            )
+        });
 
     STAGE_SUCCESS_REPORT.clone()
 }
@@ -1579,7 +1596,9 @@ pub(crate) fn hawkes_stage_candidate_fixture() -> Vec<HawkesStageCandidateInput>
             candidate_id: "candidate_stable_low_loss".to_string(),
             lambda_bar: 9.40,
             beta: 20.0,
-            structured_alpha: HawkesStructuredAlphaParameterization::new(0.01, 0.002, 0.001, 0.0005),
+            structured_alpha: HawkesStructuredAlphaParameterization::new(
+                0.01, 0.002, 0.001, 0.0005,
+            ),
             structured_rho: HawkesStructuredRhoParameterization::new(0.08, 0.02, 0.01, 0.01),
             self_dominance_policy: Some(HawkesStructuredRhoSelfDominancePolicy::new(1.0)),
             stability_numeric_tolerance: 0.0,
