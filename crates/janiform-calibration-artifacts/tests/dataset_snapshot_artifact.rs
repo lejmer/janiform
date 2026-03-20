@@ -1,5 +1,5 @@
 mod support;
-use support::*;
+use support::shared::*;
 
 #[test]
 fn calibration_dataset_snapshot_artifact_round_trip_serialization_preserves_provenance_metadata() {

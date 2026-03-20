@@ -4,9 +4,6 @@ use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformSolverSettings,
     solve_exponential_affine_transform_with_optional_settings,
 };
-use janiform_foundations::complex_math::ComplexScalar;
-use janiform_model_kernels::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
-use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 use janiform_engine_pricing::{
     DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType, VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
@@ -17,6 +14,11 @@ use janiform_engine_risk::{
     solve_exponential_affine_transform_for_risk_sampling,
     solve_exponential_affine_transform_for_risk_sampling_with_settings,
 };
+use janiform_foundations::complex_math::ComplexScalar;
+use janiform_model_kernels::hawkes::{
+    HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
+};
+use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 
 #[test]
 fn solver_api_contract_is_compatible_across_pricing_and_risk_consumers() {
@@ -234,8 +236,10 @@ fn build_pricing_request(interval_delta: f64) -> VanillaOptionPricingRequest {
         .expect("pricing fixture hawkes kernel parameters should construct"),
         GammaSeverityMarkConfiguration::try_new(1.8, 0.9)
             .expect("pricing fixture gamma mark configuration should construct"),
-        janiform_model_kernels::nig::NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
-            .expect("pricing fixture NIG configuration should construct"),
+        janiform_model_kernels::nig::NigSharedPlusShiftConfiguration::try_new(
+            2.3, -0.8, 0.7, 0.1, -0.2,
+        )
+        .expect("pricing fixture NIG configuration should construct"),
     )
     .expect("pricing fixture model parameters should construct");
 

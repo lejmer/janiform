@@ -167,6 +167,14 @@ impl ExchangeCalendarDefinition {
         &self.timezone_name
     }
 
+    pub fn resolve_market_state_at_utc_with_timezone(
+        &self,
+        timezone: Tz,
+        timestamp_utc: DateTime<Utc>,
+    ) -> MarketState {
+        resolve_market_state_for_definition_at_utc(self, timezone, timestamp_utc)
+    }
+
     pub fn rule_metadata(&self) -> &CalendarRuleMetadata {
         &self.rule_metadata
     }

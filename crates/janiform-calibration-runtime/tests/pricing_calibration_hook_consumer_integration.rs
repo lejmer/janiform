@@ -2,10 +2,6 @@ mod support;
 
 use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
 use janiform_calibration_runtime::build_option_surface_calibration_observation_from_pricing_hooks;
-use janiform_foundations::complex_math::ComplexScalar;
-use janiform_model_kernels::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
-use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
-use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_engine_pricing::{
     FourierInversionEngineSettings, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
     VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
@@ -14,7 +10,13 @@ use janiform_engine_pricing::{
     build_vanilla_option_pricing_run_result, price_vanilla_option_via_fourier_inversion,
     solve_exponential_affine_transform,
 };
-use support::black_scholes_log_return_characteristic_function;
+use janiform_foundations::complex_math::ComplexScalar;
+use janiform_model_kernels::hawkes::{
+    HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
+};
+use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
+use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use support::shared::black_scholes_log_return_characteristic_function;
 
 #[test]
 fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {

@@ -400,7 +400,7 @@
         },
         "JaniformEstimator": {
           "base_classes": [],
-          "constructor_signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope' = <CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE: 'full_without_option_surface'>, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, silent: 'bool' = False) -> 'None'",
+          "constructor_signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope' = <CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE: 'full_without_option_surface'>, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
           "kind": "class",
           "origin_module": "janiform.calibration.fit.estimator",
           "qualname": "JaniformEstimator"
@@ -705,7 +705,7 @@
       "symbols": {
         "JaniformEstimator": {
           "base_classes": [],
-          "constructor_signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope' = <CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE: 'full_without_option_surface'>, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, silent: 'bool' = False) -> 'None'",
+          "constructor_signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope' = <CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE: 'full_without_option_surface'>, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
           "kind": "class",
           "origin_module": "janiform.calibration.fit.estimator",
           "qualname": "JaniformEstimator"
@@ -760,7 +760,7 @@
       "symbols": {
         "JaniformEstimator": {
           "base_classes": [],
-          "constructor_signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope' = <CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE: 'full_without_option_surface'>, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, silent: 'bool' = False) -> 'None'",
+          "constructor_signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope' = <CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE: 'full_without_option_surface'>, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
           "kind": "class",
           "origin_module": "janiform.calibration.fit.estimator",
           "public_methods": {
@@ -3430,12 +3430,13 @@
           "field_names": [
             "solver_name",
             "max_iterations",
+            "cpu_count",
             "absolute_tolerance",
             "relative_tolerance",
             "constraint_penalty_weight"
           ],
           "kind": "contract_model",
-          "signature": "(solver_name: 'str', max_iterations: 'int', absolute_tolerance: 'float', relative_tolerance: 'float', constraint_penalty_weight: 'float') -> 'None'"
+          "signature": "(solver_name: 'str', max_iterations: 'int', cpu_count: 'int', absolute_tolerance: 'float', relative_tolerance: 'float', constraint_penalty_weight: 'float') -> 'None'"
         },
         "CalibrationResumeSettings": {
           "field_names": [
@@ -3496,13 +3497,14 @@
         "CalibrationReturnComponentsObjectiveMetricWeights": {
           "field_names": [
             "continuous_distribution_fit_weight",
+            "surprise_arrival_fit_weight",
             "jump_fit_weight",
             "gap_fit_weight",
             "activity_coupling_fit_weight",
             "price_range_sanity_fit_weight"
           ],
           "kind": "contract_model",
-          "signature": "(continuous_distribution_fit_weight: 'float', jump_fit_weight: 'float', gap_fit_weight: 'float', activity_coupling_fit_weight: 'float', price_range_sanity_fit_weight: 'float') -> 'None'"
+          "signature": "(continuous_distribution_fit_weight: 'float', surprise_arrival_fit_weight: 'float', jump_fit_weight: 'float', gap_fit_weight: 'float', activity_coupling_fit_weight: 'float', price_range_sanity_fit_weight: 'float') -> 'None'"
         },
         "CalibrationReturnComponentsObservedCloseOpenBoundaryObservation": {
           "field_names": [
@@ -3519,10 +3521,11 @@
           "field_names": [
             "return_timestamp_utc_nanos",
             "log_return",
-            "post_shock_activity_lift"
+            "post_shock_activity_lift",
+            "sell_share_proxy"
           ],
           "kind": "contract_model",
-          "signature": "(return_timestamp_utc_nanos: 'int', log_return: 'float', post_shock_activity_lift: 'float') -> 'None'"
+          "signature": "(return_timestamp_utc_nanos: 'int', log_return: 'float', post_shock_activity_lift: 'float', sell_share_proxy: 'float') -> 'None'"
         },
         "CalibrationReturnComponentsSignalSourceWindow": {
           "field_names": [
@@ -3622,6 +3625,10 @@
             {
               "name": "RETURN_COMPONENTS",
               "value": "return_components"
+            },
+            {
+              "name": "JOINT_REFINEMENT",
+              "value": "joint_refinement"
             }
           ]
         },
@@ -3893,12 +3900,13 @@
           "field_names": [
             "solver_name",
             "max_iterations",
+            "cpu_count",
             "absolute_tolerance",
             "relative_tolerance",
             "constraint_penalty_weight"
           ],
           "kind": "contract_model",
-          "signature": "(solver_name: 'str', max_iterations: 'int', absolute_tolerance: 'float', relative_tolerance: 'float', constraint_penalty_weight: 'float') -> 'None'"
+          "signature": "(solver_name: 'str', max_iterations: 'int', cpu_count: 'int', absolute_tolerance: 'float', relative_tolerance: 'float', constraint_penalty_weight: 'float') -> 'None'"
         },
         "CalibrationResumeSettings": {
           "field_names": [
@@ -3953,6 +3961,10 @@
             {
               "name": "RETURN_COMPONENTS",
               "value": "return_components"
+            },
+            {
+              "name": "JOINT_REFINEMENT",
+              "value": "joint_refinement"
             }
           ]
         },
@@ -4235,13 +4247,14 @@
         "CalibrationReturnComponentsObjectiveMetricWeights": {
           "field_names": [
             "continuous_distribution_fit_weight",
+            "surprise_arrival_fit_weight",
             "jump_fit_weight",
             "gap_fit_weight",
             "activity_coupling_fit_weight",
             "price_range_sanity_fit_weight"
           ],
           "kind": "contract_model",
-          "signature": "(continuous_distribution_fit_weight: 'float', jump_fit_weight: 'float', gap_fit_weight: 'float', activity_coupling_fit_weight: 'float', price_range_sanity_fit_weight: 'float') -> 'None'"
+          "signature": "(continuous_distribution_fit_weight: 'float', surprise_arrival_fit_weight: 'float', jump_fit_weight: 'float', gap_fit_weight: 'float', activity_coupling_fit_weight: 'float', price_range_sanity_fit_weight: 'float') -> 'None'"
         },
         "CalibrationReturnComponentsObservedCloseOpenBoundaryObservation": {
           "field_names": [
@@ -4258,10 +4271,11 @@
           "field_names": [
             "return_timestamp_utc_nanos",
             "log_return",
-            "post_shock_activity_lift"
+            "post_shock_activity_lift",
+            "sell_share_proxy"
           ],
           "kind": "contract_model",
-          "signature": "(return_timestamp_utc_nanos: 'int', log_return: 'float', post_shock_activity_lift: 'float') -> 'None'"
+          "signature": "(return_timestamp_utc_nanos: 'int', log_return: 'float', post_shock_activity_lift: 'float', sell_share_proxy: 'float') -> 'None'"
         },
         "CalibrationReturnComponentsSignalSourceWindow": {
           "field_names": [
@@ -7744,7 +7758,7 @@
         },
         "SEEDED_TICK_SIMULATION_BOUNDARY_TRANSPORT_POLICY": {
           "kind": "constant",
-          "value": "native_handle_chunked_json_projection.v1"
+          "value": "native_handle_typed_column_chunk_projection.v1"
         },
         "SEEDED_TICK_SIMULATION_DIAGNOSTICS_SCHEMA_VERSION": {
           "kind": "constant",

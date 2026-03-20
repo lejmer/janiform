@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "40a6336c4222bda9a7489d5ff25493904b5539d098143d3add4840d7428e5a3b",
+  "approved_snapshot_sha256": "0a7661a37d9a753ef106fa9e8d79eb31acb40ca87402c2766db833447c23bdce",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -388,6 +388,54 @@
       "rationale": "Duplicate tick rows are now preserved by default and the human-facing workflow commands render structured errors while still exposing the same public modules, so the approved snapshot must record the removed duplicate-record error enum member, the optional normalization policy field, and the updated CLI error helper signature.",
       "snapshot_sha256": "40a6336c4222bda9a7489d5ff25493904b5539d098143d3add4840d7428e5a3b",
       "summary": "Approve duplicate-preserving tick normalization defaults and structured human CLI error rendering."
+    },
+    {
+      "approved_on": "2026-03-17",
+      "docs_updated": [
+        "README.md"
+      ],
+      "rationale": "The staged return-components observed return contract now carries a per-return sell-share proxy so continuous-return calibration can fit the same side-mixed trading-time object that runtime simulates instead of collapsing everything onto one global sell-share.",
+      "snapshot_sha256": "99e5f6e1ea5ef674063d6a68830f4c98a73e4b595039dc1883b38d8b49516812",
+      "summary": "Approve per-return sell-share proxies in the public staged return-components contract."
+    },
+    {
+      "approved_on": "2026-03-17",
+      "docs_updated": [
+        "README.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "Calibration candidate search now exposes CPU-count control consistently through the high-level estimator and the staged optimizer settings contract so callers can tune parallel candidate evaluation without dropping into private implementation hooks.",
+      "snapshot_sha256": "4d7e2b9c7c3e259ce121825c58f92a902b58783d309904a9b51eefe96653d881",
+      "summary": "Approve public CPU-count controls for high-level and staged calibration."
+    },
+    {
+      "approved_on": "2026-03-17",
+      "docs_updated": [
+        "README.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "The staged return-components objective contract now separates surprise-arrival fit quality from jump-magnitude fit, so the approved Python snapshot must include the new public surprise_arrival_fit_weight field in the staged objective-weight model.",
+      "snapshot_sha256": "bcc26d41606d421b120394924dbea78ca0f6c0da5d171926e8445de3681c1e57",
+      "summary": "Approve staged surprise-arrival objective weighting as a distinct public contract field."
+    },
+    {
+      "approved_on": "2026-03-19",
+      "docs_updated": [
+        "README.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "The default full staged calibration workflow now includes a public joint-refinement final stage, so the approved Python snapshot must expose the extra CalibrationStage enum member used by the high-level estimator, market-data preparation diagnostics, and staged request contract.",
+      "snapshot_sha256": "211e4e39849eb407e4ba4f13def5b0854ef27196fedc5d06434418185778f9ad",
+      "summary": "Approve the public joint_refinement staged calibration enum member."
+    },
+    {
+      "approved_on": "2026-03-20",
+      "docs_updated": [
+        "docs/development/guides/seeded_tick_event_tape_schema.md"
+      ],
+      "rationale": "Seeded simulation now moves its lazy Python boundary over typed native chunk columns instead of chunked JSON while preserving the same public response values, so the approved snapshot must record the renamed seeded boundary transport policy constant.",
+      "snapshot_sha256": "0a7661a37d9a753ef106fa9e8d79eb31acb40ca87402c2766db833447c23bdce",
+      "summary": "Approve the typed-column seeded simulation boundary transport policy."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_2",

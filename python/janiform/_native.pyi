@@ -559,6 +559,100 @@ class HourlyNewsIntensityMaterializationResult:
     def arrival_intensity_policy(self) -> str: ...
 
 
+class SeededFinePathChunkColumns:
+    @property
+    def estimated_transport_bytes(self) -> int: ...
+
+    @property
+    def transition_index(self) -> list[int]: ...
+
+    @property
+    def timestamp_utc_nanos(self) -> list[int]: ...
+
+    @property
+    def transition_kind(self) -> list[str]: ...
+
+    @property
+    def side(self) -> list[str | None]: ...
+
+    @property
+    def news_arrival_component(self) -> list[str | None]: ...
+
+    @property
+    def market_state(self) -> list[str]: ...
+
+    @property
+    def buy_side_return(self) -> list[float]: ...
+
+    @property
+    def sell_side_return(self) -> list[float]: ...
+
+    @property
+    def trading_time_return(self) -> list[float]: ...
+
+    @property
+    def open_jump_return(self) -> list[float]: ...
+
+    @property
+    def closed_gap_return(self) -> list[float]: ...
+
+    @property
+    def total_return(self) -> list[float]: ...
+
+    @property
+    def cumulative_log_return(self) -> list[float]: ...
+
+    @property
+    def state_snapshot_y_plus_plus(self) -> list[float | None]: ...
+
+    @property
+    def state_snapshot_y_plus_minus(self) -> list[float | None]: ...
+
+    @property
+    def state_snapshot_y_minus_plus(self) -> list[float | None]: ...
+
+    @property
+    def state_snapshot_y_minus_minus(self) -> list[float | None]: ...
+
+    @property
+    def state_snapshot_deseasonalized_lambda_plus(self) -> list[float | None]: ...
+
+    @property
+    def state_snapshot_deseasonalized_lambda_minus(self) -> list[float | None]: ...
+
+
+class SeededTickEventTapeChunkColumns:
+    @property
+    def estimated_transport_bytes(self) -> int: ...
+
+    @property
+    def event_index(self) -> list[int]: ...
+
+    @property
+    def timestamp_utc_nanos(self) -> list[int]: ...
+
+    @property
+    def side(self) -> list[str]: ...
+
+    @property
+    def state_snapshot_y_plus_plus(self) -> list[float | None]: ...
+
+    @property
+    def state_snapshot_y_plus_minus(self) -> list[float | None]: ...
+
+    @property
+    def state_snapshot_y_minus_plus(self) -> list[float | None]: ...
+
+    @property
+    def state_snapshot_y_minus_minus(self) -> list[float | None]: ...
+
+    @property
+    def state_snapshot_deseasonalized_lambda_plus(self) -> list[float | None]: ...
+
+    @property
+    def state_snapshot_deseasonalized_lambda_minus(self) -> list[float | None]: ...
+
+
 class SeededTickSimulationNativeResult:
     @property
     def schema_version(self) -> str: ...
@@ -576,9 +670,17 @@ class SeededTickSimulationNativeResult:
 
     def event_tape_metadata_json(self) -> str: ...
 
-    def get_fine_path_chunk_json(self, start_index: int, max_records: int) -> str: ...
+    def get_fine_path_chunk_columns(
+        self,
+        start_index: int,
+        max_records: int,
+    ) -> SeededFinePathChunkColumns: ...
 
-    def get_event_tape_chunk_json(self, start_index: int, max_records: int) -> str: ...
+    def get_event_tape_chunk_columns(
+        self,
+        start_index: int,
+        max_records: int,
+    ) -> SeededTickEventTapeChunkColumns: ...
 
     @property
     def known_news_calendar_anchor_policy(self) -> str: ...
@@ -773,6 +875,15 @@ def run_staged_calibration(
     execution_input: object,
     calendar_registry: CalendarRegistry,
     memory_checkpoint_store: Optional[CalibrationMemoryCheckpointStore] = None,
+) -> object: ...
+
+
+def evaluate_return_components_candidate(
+    candidate_generation_input: object,
+    observed_summary_statistics: object,
+    fitted_parameters: object,
+    stage_seed: int,
+    hawkes_payload: Optional[object] = None,
 ) -> object: ...
 
 

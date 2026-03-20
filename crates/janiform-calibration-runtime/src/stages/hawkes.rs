@@ -2,11 +2,8 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use chrono::{DateTime, Datelike, Timelike, Utc};
-use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 
-use super::super::market_data_preprocessing::{arithmetic_mean, coefficient_of_variation};
 use super::super::objective::CalibrationObjectiveTermInput;
 use super::super::optimizer_adapter::{
     CalibrationOptimizerAdapterCandidateInput, CalibrationOptimizerAdapterConfiguration,
@@ -14,7 +11,10 @@ use super::super::optimizer_adapter::{
     CalibrationOptimizerCandidateParameterValue, CalibrationOptimizerParameterBound,
     run_constrained_optimizer_adapter,
 };
-use super::seasonality::{CalibrationStageExecutionStatus, SeasonalityStageNormalizedPayload};
+use super::seasonality::{
+    CalibrationStageExecutionStatus, SeasonalityStageNormalizedPayload,
+    maximum_runtime_hourly_seasonality_factor_from_payload,
+};
 use crate::adapters::precheck_structured_hawkes_kernel_parameter_domain;
 use crate::calendar::ExchangeCalendarRegistry;
 use janiform_calibration_artifacts::{
@@ -25,10 +25,13 @@ use janiform_calibration_artifacts::{
     CalibrationStageHandoffTransport, CalibrationStageSeedSource, HawkesStageFittedParameters,
     resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
 };
+use janiform_foundations::numeric::{
+    arithmetic_mean, coefficient_of_variation, round_positive_to_domain, round_to,
+};
 use janiform_model_kernels::hawkes::{
-    HawkesKernelParameterValidationReport, HawkesKernelParameters,
-    HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
-    HawkesStructuredRhoSelfDominancePolicy,
+    HawkesKernelLoadings, HawkesKernelParameterValidationReport, HawkesKernelParameters,
+    HawkesKernelValidationStatus, HawkesStructuredAlphaParameterization,
+    HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
 };
 /// Candidate parameterization and objective inputs for Hawkes stage fitting.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -515,6 +518,17 @@ struct SeasonalityScaledStationarityCheck {
     effective_branching_ratio: f64,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct HawkesPreparedCandidate {
+    adjusted_candidate_input: HawkesStageCandidateInput,
+    validation_report: HawkesKernelParameterValidationReport,
+    objective_terms: Vec<CalibrationObjectiveTermInput>,
+    objective_term_diagnostics: Vec<HawkesStageObjectiveTermDiagnostic>,
+    implied_metrics: HawkesStageImpliedMetricsDiagnostic,
+    warnings: Vec<String>,
+    external_constraint_violation_count: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct HawkesStageObjectiveTermDiagnostic {
     pub term_id: String,
@@ -787,16 +801,12 @@ pub fn run_hawkes_calibration_stage(
         }
     };
 
-    let mut seen_candidate_ids = BTreeSet::new();
-    let mut validation_reports = Vec::with_capacity(stage_input.candidate_inputs.len());
-    let mut objective_term_diagnostics = Vec::with_capacity(stage_input.candidate_inputs.len());
-    let mut implied_metrics_diagnostics = Vec::with_capacity(stage_input.candidate_inputs.len());
-    let mut warning_diagnostics = Vec::with_capacity(stage_input.candidate_inputs.len());
-    let mut adapter_candidate_inputs = Vec::with_capacity(stage_input.candidate_inputs.len());
-    let mut adjusted_candidate_inputs = Vec::with_capacity(stage_input.candidate_inputs.len());
     let seasonality_payload = stage_input.seasonality_input.payload();
     let max_runtime_hourly_seasonality_factor =
-        match compute_runtime_hourly_seasonality_factor(calendar_registry, seasonality_payload) {
+        match maximum_runtime_hourly_seasonality_factor_from_payload(
+            calendar_registry,
+            seasonality_payload,
+        ) {
             Ok(value) => value,
             Err(error_message) => {
                 return build_hawkes_stage_failure_report(
@@ -809,179 +819,56 @@ pub fn run_hawkes_calibration_stage(
             }
         };
 
-    for candidate_input in &stage_input.candidate_inputs {
-        if !seen_candidate_ids.insert(candidate_input.candidate_id.clone()) {
-            return build_hawkes_stage_failure_report(
-                run_spec,
-                HawkesStageExecutionFailure::DuplicateCandidateId {
-                    candidate_id: candidate_input.candidate_id.clone(),
-                },
-            );
-        }
-
-        if let Err(source) = candidate_input.validate() {
-            return build_hawkes_stage_failure_report(
-                run_spec,
-                HawkesStageExecutionFailure::InvalidCandidateInput {
-                    candidate_id: candidate_input.candidate_id.clone(),
-                    error_message: source.to_string(),
-                },
-            );
-        }
-
-        let observed_activity_targets = derive_observed_activity_targets(
-            candidate_input.source_regime.clone(),
-            seasonality_payload,
-        );
-        let (adjusted_candidate_input, lambda_bar_scaling_ratio_applied) =
-            adjust_candidate_for_deseasonalized_activity(
-                candidate_input,
-                observed_activity_targets,
-            );
-        let validation_report = precheck_structured_hawkes_kernel_parameter_domain(
-            adjusted_candidate_input.lambda_bar,
-            adjusted_candidate_input.beta,
-            adjusted_candidate_input.structured_alpha,
-            adjusted_candidate_input.structured_rho,
-            adjusted_candidate_input.self_dominance_policy,
-            adjusted_candidate_input.stability_numeric_tolerance,
-        );
-
-        let mut external_constraint_violation_count = validation_report.summary.failed_check_count;
-        let (objective_terms, term_diagnostics, implied_metrics, mut warnings) =
-            build_candidate_objective_terms(
-                &adjusted_candidate_input,
-                observed_activity_targets,
-                lambda_bar_scaling_ratio_applied,
-                max_runtime_hourly_seasonality_factor,
-                validation_report.derived_alpha,
-                validation_report.derived_rho,
-            );
-
-        if let Some(stationarity_check) =
-            validation_report.derived_alpha.and_then(|derived_alpha| {
-                check_seasonality_scaled_stationarity(
-                    max_runtime_hourly_seasonality_factor,
-                    derived_alpha,
-                    adjusted_candidate_input.beta,
-                )
-            })
-        {
-            external_constraint_violation_count =
-                external_constraint_violation_count.saturating_add(1);
-            warnings.push(format!(
-                "seasonality-scaled effective branching ratio {:.6} reaches or exceeds 1.0 with max seasonality factor {:.6}",
-                stationarity_check.effective_branching_ratio,
-                stationarity_check.max_seasonality_factor,
-            ));
-        }
-
-        adjusted_candidate_inputs.push(adjusted_candidate_input.clone());
-        validation_reports.push(validation_report);
-        objective_term_diagnostics.push(term_diagnostics);
-        implied_metrics_diagnostics.push(implied_metrics);
-        warning_diagnostics.push(warnings);
-        adapter_candidate_inputs.push(CalibrationOptimizerAdapterCandidateInput {
-            candidate_id: adjusted_candidate_input.candidate_id.clone(),
-            objective_terms,
-            parameter_values: vec![
-                CalibrationOptimizerCandidateParameterValue {
-                    parameter_name: "lambda_bar".to_string(),
-                    value: adjusted_candidate_input.lambda_bar,
-                },
-                CalibrationOptimizerCandidateParameterValue {
-                    parameter_name: "beta".to_string(),
-                    value: adjusted_candidate_input.beta,
-                },
-                CalibrationOptimizerCandidateParameterValue {
-                    parameter_name: "stability_numeric_tolerance".to_string(),
-                    value: adjusted_candidate_input.stability_numeric_tolerance,
-                },
-            ],
-            external_constraint_violation_count,
-        });
-    }
-
-    let optimizer_adapter_output = match run_constrained_optimizer_adapter(
-        &optimizer_adapter_configuration,
-        &adapter_candidate_inputs,
+    let initial_prepared_candidates = match prepare_hawkes_candidates(
+        run_spec,
+        stage_input.candidate_inputs.as_slice(),
+        seasonality_payload,
+        max_runtime_hourly_seasonality_factor,
     ) {
-        Ok(output) => output,
-
-        Err(CalibrationOptimizerAdapterError::InvalidCandidateInput {
-            candidate_id,
-            source,
-        }) => {
-            return build_hawkes_stage_failure_report(
-                run_spec,
-                HawkesStageExecutionFailure::InvalidCandidateInput {
-                    candidate_id,
-                    error_message: source.to_string(),
-                },
-            );
-        }
-
-        Err(CalibrationOptimizerAdapterError::InvalidObjectiveComposition {
-            candidate_id,
-            source,
-        }) => {
-            return build_hawkes_stage_failure_report(
-                run_spec,
-                HawkesStageExecutionFailure::InvalidCandidateInput {
-                    candidate_id,
-                    error_message: source.to_string(),
-                },
-            );
-        }
-
-        Err(CalibrationOptimizerAdapterError::DuplicateCandidateId { candidate_id }) => {
-            return build_hawkes_stage_failure_report(
-                run_spec,
-                HawkesStageExecutionFailure::DuplicateCandidateId { candidate_id },
-            );
-        }
-
-        Err(source) => {
-            return build_hawkes_stage_failure_report(
-                run_spec,
-                HawkesStageExecutionFailure::CandidateConstructionFailed {
-                    candidate_id: "optimizer_adapter".to_string(),
-                    error_message: source.to_string(),
-                },
-            );
-        }
+        Ok(prepared_candidates) => prepared_candidates,
+        Err(report) => return report,
     };
+    let (initial_candidate_diagnostics, initial_optimizer_output) =
+        match evaluate_prepared_hawkes_candidates(
+            run_spec,
+            &optimizer_adapter_configuration,
+            initial_prepared_candidates.as_slice(),
+        ) {
+            Ok(result) => result,
+            Err(report) => return report,
+        };
 
-    let mut candidate_diagnostics: Vec<HawkesStageCandidateDiagnostic> =
-        Vec::with_capacity(stage_input.candidate_inputs.len());
-    for (
-        (
-            (((candidate_input, validation_report), optimizer_diagnostic), objective_terms),
-            implied_metrics,
-        ),
-        warnings,
-    ) in adjusted_candidate_inputs
-        .iter()
-        .zip(validation_reports.into_iter())
-        .zip(optimizer_adapter_output.candidate_diagnostics.iter())
-        .zip(objective_term_diagnostics.into_iter())
-        .zip(implied_metrics_diagnostics.into_iter())
-        .zip(warning_diagnostics.into_iter())
-    {
-        candidate_diagnostics.push(HawkesStageCandidateDiagnostic {
-            candidate_id: candidate_input.candidate_id.clone(),
-            raw_objective_value: optimizer_diagnostic.raw_objective_value,
-            constraint_penalty: optimizer_diagnostic.constraint_penalty,
-            penalized_objective_value: optimizer_diagnostic.penalized_objective_value,
-            constraint_violation_count: optimizer_diagnostic.total_constraint_violation_count,
-            objective_terms,
-            source_regime: candidate_input.source_regime.clone(),
-            directional_label_diagnostics: candidate_input.directional_label_diagnostics.clone(),
-            implied_metrics,
-            warnings,
-            validation_report,
-        });
+    let refined_candidate_inputs = generate_refined_hawkes_candidate_inputs(
+        initial_prepared_candidates.as_slice(),
+        initial_candidate_diagnostics.as_slice(),
+    );
+    let mut all_prepared_candidates = initial_prepared_candidates.clone();
+    if !refined_candidate_inputs.is_empty() {
+        let refined_prepared_candidates = match prepare_hawkes_candidates(
+            run_spec,
+            refined_candidate_inputs.as_slice(),
+            seasonality_payload,
+            max_runtime_hourly_seasonality_factor,
+        ) {
+            Ok(prepared_candidates) => prepared_candidates,
+            Err(report) => return report,
+        };
+        all_prepared_candidates.extend(refined_prepared_candidates);
     }
+
+    let (candidate_diagnostics, optimizer_adapter_output) =
+        if all_prepared_candidates.len() == initial_prepared_candidates.len() {
+            (initial_candidate_diagnostics, initial_optimizer_output)
+        } else {
+            match evaluate_prepared_hawkes_candidates(
+                run_spec,
+                &optimizer_adapter_configuration,
+                all_prepared_candidates.as_slice(),
+            ) {
+                Ok(result) => result,
+                Err(report) => return report,
+            }
+        };
 
     let Some(selected_candidate_id) = optimizer_adapter_output.selected_candidate_id.as_ref()
     else {
@@ -993,23 +880,21 @@ pub fn run_hawkes_calibration_stage(
         );
     };
 
-    let Some(selected_candidate_position) = stage_input
-        .candidate_inputs
-        .iter()
-        .position(|candidate| candidate.candidate_id == *selected_candidate_id)
-    else {
+    let Some(selected_candidate_position) = all_prepared_candidates.iter().position(|candidate| {
+        candidate.adjusted_candidate_input.candidate_id == *selected_candidate_id
+    }) else {
         return build_hawkes_stage_failure_report(
             run_spec,
             HawkesStageExecutionFailure::CandidateConstructionFailed {
                 candidate_id: "optimizer_adapter_selection".to_string(),
-                error_message:
-                    "selected candidate id was not found in stage_input.candidate_inputs"
-                        .to_string(),
+                error_message: "selected candidate id was not found in evaluated hawkes candidates"
+                    .to_string(),
             },
         );
     };
 
-    let selected_candidate_input = &adjusted_candidate_inputs[selected_candidate_position];
+    let selected_candidate_input =
+        &all_prepared_candidates[selected_candidate_position].adjusted_candidate_input;
     let selected_candidate_diagnostic = &candidate_diagnostics[selected_candidate_position];
 
     let Some(derived_alpha) = selected_candidate_diagnostic
@@ -1108,7 +993,7 @@ pub fn run_hawkes_calibration_stage(
             stage_seed_derivation_policy: CALIBRATION_STAGE_SEED_DERIVATION_POLICY,
             solver_settings: stage_solver_settings,
             optimizer_adapter_metadata: optimizer_adapter_output.metadata.clone(),
-            input_candidate_count: stage_input.candidate_inputs.len(),
+            input_candidate_count: all_prepared_candidates.len(),
             valid_candidate_count,
             selected_candidate_raw_objective,
             selected_candidate_penalized_objective,
@@ -1237,6 +1122,399 @@ fn build_candidate_objective_terms(
     }
 
     (objective_terms, term_diagnostics, implied_metrics, warnings)
+}
+
+fn prepare_hawkes_candidates(
+    run_spec: &CalibrationRunSpec,
+    candidate_inputs: &[HawkesStageCandidateInput],
+    seasonality_payload: &SeasonalityStageNormalizedPayload,
+    max_runtime_hourly_seasonality_factor: f64,
+) -> Result<Vec<HawkesPreparedCandidate>, HawkesStageExecutionReport> {
+    let mut seen_candidate_ids = BTreeSet::new();
+    let mut prepared_candidates = Vec::with_capacity(candidate_inputs.len());
+
+    for candidate_input in candidate_inputs {
+        if !seen_candidate_ids.insert(candidate_input.candidate_id.clone()) {
+            return Err(build_hawkes_stage_failure_report(
+                run_spec,
+                HawkesStageExecutionFailure::DuplicateCandidateId {
+                    candidate_id: candidate_input.candidate_id.clone(),
+                },
+            ));
+        }
+
+        if let Err(source) = candidate_input.validate() {
+            return Err(build_hawkes_stage_failure_report(
+                run_spec,
+                HawkesStageExecutionFailure::InvalidCandidateInput {
+                    candidate_id: candidate_input.candidate_id.clone(),
+                    error_message: source.to_string(),
+                },
+            ));
+        }
+
+        let observed_activity_targets = derive_observed_activity_targets(
+            candidate_input.source_regime.clone(),
+            seasonality_payload,
+        );
+        let (adjusted_candidate_input, lambda_bar_scaling_ratio_applied) =
+            adjust_candidate_for_deseasonalized_activity(
+                candidate_input,
+                observed_activity_targets,
+            );
+        let validation_report = precheck_structured_hawkes_kernel_parameter_domain(
+            adjusted_candidate_input.lambda_bar,
+            adjusted_candidate_input.beta,
+            adjusted_candidate_input.structured_alpha,
+            adjusted_candidate_input.structured_rho,
+            adjusted_candidate_input.self_dominance_policy,
+            adjusted_candidate_input.stability_numeric_tolerance,
+        );
+
+        let mut external_constraint_violation_count = validation_report.summary.failed_check_count;
+        let (objective_terms, objective_term_diagnostics, implied_metrics, mut warnings) =
+            build_candidate_objective_terms(
+                &adjusted_candidate_input,
+                observed_activity_targets,
+                lambda_bar_scaling_ratio_applied,
+                max_runtime_hourly_seasonality_factor,
+                validation_report.derived_alpha,
+                validation_report.derived_rho,
+            );
+
+        if let Some(stationarity_check) =
+            validation_report.derived_alpha.and_then(|derived_alpha| {
+                check_seasonality_scaled_stationarity(
+                    max_runtime_hourly_seasonality_factor,
+                    derived_alpha,
+                    adjusted_candidate_input.beta,
+                )
+            })
+        {
+            external_constraint_violation_count =
+                external_constraint_violation_count.saturating_add(1);
+            warnings.push(format!(
+                "seasonality-scaled effective branching ratio {:.6} reaches or exceeds 1.0 with max seasonality factor {:.6}",
+                stationarity_check.effective_branching_ratio,
+                stationarity_check.max_seasonality_factor,
+            ));
+        }
+
+        prepared_candidates.push(HawkesPreparedCandidate {
+            adjusted_candidate_input,
+            validation_report,
+            objective_terms,
+            objective_term_diagnostics,
+            implied_metrics,
+            warnings,
+            external_constraint_violation_count,
+        });
+    }
+
+    Ok(prepared_candidates)
+}
+
+fn evaluate_prepared_hawkes_candidates(
+    run_spec: &CalibrationRunSpec,
+    optimizer_adapter_configuration: &CalibrationOptimizerAdapterConfiguration,
+    prepared_candidates: &[HawkesPreparedCandidate],
+) -> Result<
+    (
+        Vec<HawkesStageCandidateDiagnostic>,
+        super::super::optimizer_adapter::CalibrationOptimizerAdapterRunOutput,
+    ),
+    HawkesStageExecutionReport,
+> {
+    let adapter_candidate_inputs: Vec<CalibrationOptimizerAdapterCandidateInput> =
+        prepared_candidates
+            .iter()
+            .map(|candidate| CalibrationOptimizerAdapterCandidateInput {
+                candidate_id: candidate.adjusted_candidate_input.candidate_id.clone(),
+                objective_terms: candidate.objective_terms.clone(),
+                parameter_values: vec![
+                    CalibrationOptimizerCandidateParameterValue {
+                        parameter_name: "lambda_bar".to_string(),
+                        value: candidate.adjusted_candidate_input.lambda_bar,
+                    },
+                    CalibrationOptimizerCandidateParameterValue {
+                        parameter_name: "beta".to_string(),
+                        value: candidate.adjusted_candidate_input.beta,
+                    },
+                    CalibrationOptimizerCandidateParameterValue {
+                        parameter_name: "stability_numeric_tolerance".to_string(),
+                        value: candidate
+                            .adjusted_candidate_input
+                            .stability_numeric_tolerance,
+                    },
+                ],
+                external_constraint_violation_count: candidate.external_constraint_violation_count,
+            })
+            .collect();
+
+    let optimizer_adapter_output = match run_constrained_optimizer_adapter(
+        optimizer_adapter_configuration,
+        adapter_candidate_inputs.as_slice(),
+    ) {
+        Ok(output) => output,
+        Err(CalibrationOptimizerAdapterError::InvalidCandidateInput {
+            candidate_id,
+            source,
+        }) => {
+            return Err(build_hawkes_stage_failure_report(
+                run_spec,
+                HawkesStageExecutionFailure::InvalidCandidateInput {
+                    candidate_id,
+                    error_message: source.to_string(),
+                },
+            ));
+        }
+        Err(CalibrationOptimizerAdapterError::InvalidObjectiveComposition {
+            candidate_id,
+            source,
+        }) => {
+            return Err(build_hawkes_stage_failure_report(
+                run_spec,
+                HawkesStageExecutionFailure::InvalidCandidateInput {
+                    candidate_id,
+                    error_message: source.to_string(),
+                },
+            ));
+        }
+        Err(CalibrationOptimizerAdapterError::DuplicateCandidateId { candidate_id }) => {
+            return Err(build_hawkes_stage_failure_report(
+                run_spec,
+                HawkesStageExecutionFailure::DuplicateCandidateId { candidate_id },
+            ));
+        }
+        Err(source) => {
+            return Err(build_hawkes_stage_failure_report(
+                run_spec,
+                HawkesStageExecutionFailure::CandidateConstructionFailed {
+                    candidate_id: "optimizer_adapter".to_string(),
+                    error_message: source.to_string(),
+                },
+            ));
+        }
+    };
+
+    let candidate_diagnostics = prepared_candidates
+        .iter()
+        .zip(optimizer_adapter_output.candidate_diagnostics.iter())
+        .map(
+            |(candidate, optimizer_diagnostic)| HawkesStageCandidateDiagnostic {
+                candidate_id: candidate.adjusted_candidate_input.candidate_id.clone(),
+                raw_objective_value: optimizer_diagnostic.raw_objective_value,
+                constraint_penalty: optimizer_diagnostic.constraint_penalty,
+                penalized_objective_value: optimizer_diagnostic.penalized_objective_value,
+                constraint_violation_count: optimizer_diagnostic.total_constraint_violation_count,
+                objective_terms: candidate.objective_term_diagnostics.clone(),
+                source_regime: candidate.adjusted_candidate_input.source_regime.clone(),
+                directional_label_diagnostics: candidate
+                    .adjusted_candidate_input
+                    .directional_label_diagnostics
+                    .clone(),
+                // Intentional clone into the persisted stage diagnostics payload.
+                implied_metrics: candidate.implied_metrics.clone(),
+                warnings: candidate.warnings.clone(),
+                // Intentional clone into the persisted stage diagnostics payload.
+                validation_report: candidate.validation_report.clone(),
+            },
+        )
+        .collect();
+
+    Ok((candidate_diagnostics, optimizer_adapter_output))
+}
+
+fn generate_refined_hawkes_candidate_inputs(
+    prepared_candidates: &[HawkesPreparedCandidate],
+    candidate_diagnostics: &[HawkesStageCandidateDiagnostic],
+) -> Vec<HawkesStageCandidateInput> {
+    const MAX_REFINEMENT_SEEDS: usize = 3;
+    const LAMBDA_SCALES: [f64; 3] = [0.7, 1.0, 1.4];
+    const BETA_SCALES: [f64; 3] = [0.7, 1.0, 1.4];
+    const RHO_SCALES: [f64; 3] = [0.6, 1.0, 1.6];
+
+    let ranked_seed_indices =
+        ranked_refinement_seed_indices(prepared_candidates, candidate_diagnostics);
+
+    let mut refinement_candidates = Vec::new();
+    let mut seen_ids = BTreeSet::new();
+    for (seed_rank, candidate_index) in ranked_seed_indices
+        .into_iter()
+        .take(MAX_REFINEMENT_SEEDS)
+        .enumerate()
+    {
+        let seed_candidate = &prepared_candidates[candidate_index].adjusted_candidate_input;
+        let alpha_scales = refinement_alpha_scales(&candidate_diagnostics[candidate_index]);
+        for lambda_scale in LAMBDA_SCALES {
+            for beta_scale in BETA_SCALES {
+                for alpha_scale in &alpha_scales {
+                    for rho_scale in RHO_SCALES {
+                        if lambda_scale == 1.0
+                            && beta_scale == 1.0
+                            && *alpha_scale == 1.0
+                            && rho_scale == 1.0
+                        {
+                            continue;
+                        }
+
+                        let candidate_id = format!(
+                            "{}_refined_{seed_rank}_{:03}",
+                            seed_candidate.candidate_id,
+                            refinement_candidates.len()
+                        );
+                        if !seen_ids.insert(candidate_id.clone()) {
+                            continue;
+                        }
+
+                        refinement_candidates.push(HawkesStageCandidateInput {
+                            candidate_id,
+                            lambda_bar: round_positive_to_domain(
+                                seed_candidate.lambda_bar * lambda_scale,
+                                12,
+                            ),
+                            beta: round_positive_to_domain(seed_candidate.beta * beta_scale, 12),
+                            structured_alpha: scale_structured_alpha(
+                                seed_candidate.structured_alpha,
+                                *alpha_scale,
+                            ),
+                            structured_rho: scale_structured_rho(
+                                seed_candidate.structured_rho,
+                                rho_scale,
+                            ),
+                            self_dominance_policy: seed_candidate.self_dominance_policy,
+                            stability_numeric_tolerance: seed_candidate.stability_numeric_tolerance,
+                            source_regime: seed_candidate.source_regime.clone(),
+                            directional_label_diagnostics: seed_candidate
+                                .directional_label_diagnostics
+                                .clone(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    refinement_candidates
+}
+
+fn ranked_refinement_seed_indices(
+    prepared_candidates: &[HawkesPreparedCandidate],
+    candidate_diagnostics: &[HawkesStageCandidateDiagnostic],
+) -> Vec<usize> {
+    let eligible_seed_indices: Vec<usize> = prepared_candidates
+        .iter()
+        .enumerate()
+        .filter_map(|(candidate_index, candidate)| {
+            (candidate.validation_report.status == HawkesKernelValidationStatus::Pass)
+                .then_some(candidate_index)
+        })
+        .collect();
+    if eligible_seed_indices.is_empty() {
+        return Vec::new();
+    }
+
+    let has_valid_candidate =
+        candidate_diagnostics
+            .iter()
+            .enumerate()
+            .any(|(candidate_index, candidate)| {
+                eligible_seed_indices.contains(&candidate_index)
+                    && candidate.constraint_violation_count == 0
+            });
+    let minimum_violation_count = eligible_seed_indices
+        .iter()
+        .map(|candidate_index| candidate_diagnostics[*candidate_index].constraint_violation_count)
+        .min()
+        .unwrap_or(0);
+
+    let mut ranked_seed_indices: Vec<(usize, usize, f64, f64, &str)> = candidate_diagnostics
+        .iter()
+        .enumerate()
+        .filter_map(|(candidate_index, candidate)| {
+            if !eligible_seed_indices.contains(&candidate_index) {
+                return None;
+            }
+            let is_selected = if has_valid_candidate {
+                candidate.constraint_violation_count == 0
+            } else {
+                candidate.constraint_violation_count == minimum_violation_count
+            };
+            if !is_selected {
+                return None;
+            }
+
+            Some((
+                candidate_index,
+                candidate.constraint_violation_count,
+                candidate.penalized_objective_value,
+                candidate.raw_objective_value,
+                candidate.candidate_id.as_str(),
+            ))
+        })
+        .collect();
+    ranked_seed_indices.sort_by(|left, right| {
+        left.1
+            .cmp(&right.1)
+            .then_with(|| left.2.total_cmp(&right.2))
+            .then_with(|| left.3.total_cmp(&right.3))
+            .then_with(|| left.4.cmp(right.4))
+    });
+
+    ranked_seed_indices
+        .into_iter()
+        .map(|(candidate_index, _, _, _, _)| candidate_index)
+        .collect()
+}
+
+fn refinement_alpha_scales(candidate_diagnostic: &HawkesStageCandidateDiagnostic) -> Vec<f64> {
+    const BASE_ALPHA_SCALES: [f64; 7] = [0.05, 0.1, 0.2, 0.4, 0.8, 1.0, 1.2];
+    const TARGET_STABILITY_MARGIN: f64 = 0.95;
+    const MINIMUM_ALPHA_SCALE: f64 = 0.01;
+
+    let mut alpha_scales = BASE_ALPHA_SCALES.to_vec();
+    let effective_branching_ratio = candidate_diagnostic
+        .implied_metrics
+        .max_runtime_effective_branching_ratio;
+    if effective_branching_ratio.is_finite() && effective_branching_ratio > 0.0 {
+        let targeted_scale = round_to(
+            (TARGET_STABILITY_MARGIN / effective_branching_ratio).clamp(MINIMUM_ALPHA_SCALE, 1.0),
+            12,
+        );
+        alpha_scales.push(targeted_scale);
+        alpha_scales.push(round_to(
+            (targeted_scale * 0.5).clamp(MINIMUM_ALPHA_SCALE, 1.0),
+            12,
+        ));
+    }
+
+    alpha_scales.sort_by(|left, right| left.total_cmp(right));
+    alpha_scales.dedup_by(|left, right| left.total_cmp(right).is_eq());
+    alpha_scales
+}
+
+fn scale_structured_alpha(
+    structured_alpha: HawkesStructuredAlphaParameterization,
+    scale: f64,
+) -> HawkesStructuredAlphaParameterization {
+    HawkesStructuredAlphaParameterization {
+        a_self: round_positive_to_domain(structured_alpha.a_self * scale, 12),
+        a_cross: round_to((structured_alpha.a_cross * scale).max(0.0), 12),
+        delta_self: round_to((structured_alpha.delta_self * scale).max(0.0), 12),
+        delta_cross: round_to((structured_alpha.delta_cross * scale).max(0.0), 12),
+    }
+}
+
+fn scale_structured_rho(
+    structured_rho: HawkesStructuredRhoParameterization,
+    scale: f64,
+) -> HawkesStructuredRhoParameterization {
+    HawkesStructuredRhoParameterization {
+        r_self: round_positive_to_domain(structured_rho.r_self * scale, 12),
+        r_cross: round_to((structured_rho.r_cross * scale).max(0.0), 12),
+        delta_self_r: round_to((structured_rho.delta_self_r * scale).max(0.0), 12),
+        delta_cross_r: round_to((structured_rho.delta_cross_r * scale).max(0.0), 12),
+    }
 }
 
 fn invalid_candidate_objective_bundle(
@@ -1397,123 +1675,6 @@ fn derive_observed_activity_targets(
         deseasonalized_short_gap_threshold_seconds,
         deseasonalized_short_gap_ratio,
         deseasonalized_known_news_rate_per_hour,
-    }
-}
-
-fn compute_runtime_hourly_seasonality_factor(
-    calendar_registry: &ExchangeCalendarRegistry,
-    seasonality_payload: &SeasonalityStageNormalizedPayload,
-) -> Result<f64, String> {
-    const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
-
-    let Some(first_timestamp_utc_nanos) = seasonality_payload.timestamp_utc_nanos.first().copied()
-    else {
-        return Ok(1.0);
-    };
-    let Some(last_timestamp_utc_nanos) = seasonality_payload.timestamp_utc_nanos.last().copied()
-    else {
-        return Ok(1.0);
-    };
-
-    let timezone_name = calendar_registry
-        .get_required(seasonality_payload.exchange_code.as_str())
-        .map_err(|error| error.to_string())?
-        .timezone_name()
-        .to_string();
-    let timezone: Tz = timezone_name.parse().map_err(|_| {
-        format!(
-            "exchange `{}` has invalid timezone name `{timezone_name}`",
-            seasonality_payload.exchange_code
-        )
-    })?;
-
-    let aligned_range_start_utc_nanos = ceil_to_hour_utc_nanos(first_timestamp_utc_nanos);
-    let aligned_range_end_utc_nanos = floor_to_hour_utc_nanos(last_timestamp_utc_nanos);
-
-    if aligned_range_end_utc_nanos <= aligned_range_start_utc_nanos {
-        return Ok(seasonality_payload
-            .normalized_combined_factor_by_event
-            .iter()
-            .copied()
-            .reduce(f64::max)
-            .unwrap_or(1.0)
-            .max(1.0));
-    }
-
-    let mut maximum_hourly_factor: f64 = 1.0;
-    let mut interval_start_utc_nanos = aligned_range_start_utc_nanos;
-    while interval_start_utc_nanos < aligned_range_end_utc_nanos {
-        maximum_hourly_factor = maximum_hourly_factor.max(structural_seasonality_factor_at_hour(
-            seasonality_payload,
-            timezone,
-            interval_start_utc_nanos,
-        )?);
-        interval_start_utc_nanos += ONE_HOUR_NANOS;
-    }
-
-    Ok(maximum_hourly_factor)
-}
-
-fn structural_seasonality_factor_at_hour(
-    seasonality_payload: &SeasonalityStageNormalizedPayload,
-    timezone: Tz,
-    timestamp_utc_nanos: i64,
-) -> Result<f64, String> {
-    let timestamp_utc = DateTime::<Utc>::from_timestamp_nanos(timestamp_utc_nanos);
-    let exchange_local_timestamp = timestamp_utc.with_timezone(&timezone);
-    let minute_of_day =
-        exchange_local_timestamp.hour() as usize * 60 + exchange_local_timestamp.minute() as usize;
-    let intraday_bin_index =
-        minute_of_day / seasonality_payload.intraday_minutes_per_bin.max(1) as usize;
-    let weekday_index = exchange_local_timestamp.weekday().number_from_monday() as usize - 1;
-    let day_of_year_index = exchange_local_timestamp.ordinal0() as usize;
-
-    let intraday_factor = seasonality_payload
-        .intraday_factor_by_bin
-        .get(intraday_bin_index)
-        .copied()
-        .ok_or_else(|| {
-            format!(
-                "intraday factor bin index {intraday_bin_index} is out of range for payload with {} bins",
-                seasonality_payload.intraday_factor_by_bin.len()
-            )
-        })?;
-    let day_of_week_factor = seasonality_payload
-        .day_of_week_factor
-        .get(weekday_index)
-        .copied()
-        .ok_or_else(|| {
-            format!(
-                "day_of_week factor index {weekday_index} is out of range for payload with {} buckets",
-                seasonality_payload.day_of_week_factor.len()
-            )
-        })?;
-    let day_of_year_factor = seasonality_payload
-        .day_of_year_factor
-        .get(day_of_year_index)
-        .copied()
-        .ok_or_else(|| {
-            format!(
-                "day_of_year factor index {day_of_year_index} is out of range for payload with {} buckets",
-                seasonality_payload.day_of_year_factor.len()
-            )
-        })?;
-
-    Ok((intraday_factor * day_of_week_factor * day_of_year_factor).max(1.0e-9))
-}
-
-const fn floor_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> i64 {
-    const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
-    timestamp_utc_nanos.div_euclid(ONE_HOUR_NANOS) * ONE_HOUR_NANOS
-}
-
-fn ceil_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> i64 {
-    const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
-    let floored_timestamp_utc_nanos = floor_to_hour_utc_nanos(timestamp_utc_nanos);
-    if floored_timestamp_utc_nanos == timestamp_utc_nanos {
-        timestamp_utc_nanos
-    } else {
-        floored_timestamp_utc_nanos + ONE_HOUR_NANOS
     }
 }
 
@@ -1723,6 +1884,36 @@ fn spectral_radius_alpha_over_beta(
     0.5 * (trace + discriminant)
 }
 
+pub(crate) fn stationary_open_event_rate_per_hour(
+    fitted_parameters: &HawkesStageFittedParameters,
+) -> Option<f64> {
+    let derived_alpha =
+        HawkesKernelLoadings::try_from_structured_alpha(fitted_parameters.structured_alpha).ok()?;
+    let beta = fitted_parameters.kernel_parameters.beta;
+    if !beta.is_finite() || beta <= 0.0 {
+        return None;
+    }
+
+    let scaled_plus_plus = derived_alpha.plus_plus / beta;
+    let scaled_plus_minus = derived_alpha.plus_minus / beta;
+    let scaled_minus_plus = derived_alpha.minus_plus / beta;
+    let scaled_minus_minus = derived_alpha.minus_minus / beta;
+
+    let determinant = (1.0 - scaled_plus_plus) * (1.0 - scaled_minus_minus)
+        - scaled_plus_minus * scaled_minus_plus;
+    if !determinant.is_finite() || determinant.abs() <= f64::EPSILON {
+        return None;
+    }
+
+    let stationary_buy_multiplier = ((1.0 - scaled_minus_minus) + scaled_plus_minus) / determinant;
+    let stationary_sell_multiplier = (scaled_minus_plus + (1.0 - scaled_plus_plus)) / determinant;
+
+    Some(
+        fitted_parameters.kernel_parameters.lambda_bar
+            * (stationary_buy_multiplier.max(0.0) + stationary_sell_multiplier.max(0.0)),
+    )
+}
+
 fn hawkes_stage_optimizer_bounds() -> Vec<CalibrationOptimizerParameterBound> {
     vec![
         CalibrationOptimizerParameterBound {
@@ -1786,5 +1977,187 @@ fn build_hawkes_stage_failure_report(
         fitted_stage_payload: None,
         metadata: None,
         failure: Some(failure),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ranked_refinement_seed_indices_fall_back_to_least_violating_candidates() {
+        let candidate_diagnostics = vec![
+            test_candidate_diagnostic("candidate_a", 2, 1.0, 1.0),
+            test_candidate_diagnostic("candidate_b", 1, 2.0, 2.0),
+            test_candidate_diagnostic("candidate_c", 1, 0.5, 0.5),
+        ];
+        let prepared_candidates = vec![
+            test_prepared_candidate("candidate_a"),
+            test_prepared_candidate("candidate_b"),
+            test_prepared_candidate("candidate_c"),
+        ];
+
+        let ranked_seed_indices =
+            ranked_refinement_seed_indices(&prepared_candidates, &candidate_diagnostics);
+
+        assert_eq!(ranked_seed_indices, vec![2, 1]);
+    }
+
+    #[test]
+    fn refinement_alpha_scales_include_targeted_stability_reduction() {
+        let candidate_diagnostic =
+            test_candidate_diagnostic("candidate_supercritical", 1, 1.0, 1.0);
+
+        let alpha_scales = refinement_alpha_scales(&candidate_diagnostic);
+
+        assert!(alpha_scales.contains(&0.095));
+        assert!(alpha_scales.contains(&0.19));
+        assert!(alpha_scales.iter().any(|scale| *scale < 0.2));
+    }
+
+    fn test_candidate_diagnostic(
+        candidate_id: &str,
+        constraint_violation_count: usize,
+        raw_objective_value: f64,
+        penalized_objective_value: f64,
+    ) -> HawkesStageCandidateDiagnostic {
+        HawkesStageCandidateDiagnostic {
+            candidate_id: candidate_id.to_string(),
+            raw_objective_value,
+            constraint_penalty: 10.0,
+            penalized_objective_value,
+            constraint_violation_count,
+            objective_terms: Vec::new(),
+            source_regime: test_source_regime(),
+            directional_label_diagnostics: test_directional_label_diagnostics(),
+            implied_metrics: HawkesStageImpliedMetricsDiagnostic {
+                baseline_buy_intensity_per_hour: 1.0,
+                baseline_sell_intensity_per_hour: 1.0,
+                observed_open_event_rate_per_hour: 1.0,
+                deseasonalized_open_event_rate_per_hour_target: 1.0,
+                lambda_bar_scaling_ratio_applied: 1.0,
+                max_runtime_hourly_seasonality_factor: 10.0,
+                max_runtime_effective_branching_ratio: 5.0,
+                runtime_effective_branching_margin: 0.0,
+                model_implied_open_event_rate_per_hour: 1.0,
+                model_implied_open_buy_share: 0.5,
+                model_implied_open_sell_share: 0.5,
+                model_implied_interarrival_coefficient_of_variation: 1.0,
+                model_implied_short_gap_ratio: 0.5,
+                model_implied_known_news_activity_share: 0.0,
+                model_implied_expected_event_count_over_observation_window: 1.0,
+                endogenous_branching_ratio: 0.5,
+                self_excitation_ratio: 0.5,
+                cross_excitation_ratio: 0.0,
+                exogenous_self_loading_ratio: 0.0,
+                exogenous_cross_loading_ratio: 0.0,
+                stability_margin: 0.5,
+                event_volume_ratio_vs_total_observed: 1.0,
+            },
+            warnings: Vec::new(),
+            validation_report: precheck_structured_hawkes_kernel_parameter_domain(
+                1.0,
+                10.0,
+                HawkesStructuredAlphaParameterization {
+                    a_self: 0.1,
+                    a_cross: 0.0,
+                    delta_self: 0.0,
+                    delta_cross: 0.0,
+                },
+                HawkesStructuredRhoParameterization {
+                    r_self: 1.0e-12,
+                    r_cross: 0.0,
+                    delta_self_r: 0.0,
+                    delta_cross_r: 0.0,
+                },
+                Some(HawkesStructuredRhoSelfDominancePolicy {
+                    minimum_self_to_cross_ratio: 1.0,
+                }),
+                0.0,
+            ),
+        }
+    }
+
+    fn test_prepared_candidate(candidate_id: &str) -> HawkesPreparedCandidate {
+        HawkesPreparedCandidate {
+            adjusted_candidate_input: HawkesStageCandidateInput {
+                candidate_id: candidate_id.to_string(),
+                lambda_bar: 1.0,
+                beta: 10.0,
+                structured_alpha: HawkesStructuredAlphaParameterization {
+                    a_self: 0.1,
+                    a_cross: 0.0,
+                    delta_self: 0.0,
+                    delta_cross: 0.0,
+                },
+                structured_rho: HawkesStructuredRhoParameterization {
+                    r_self: 1.0e-12,
+                    r_cross: 0.0,
+                    delta_self_r: 0.0,
+                    delta_cross_r: 0.0,
+                },
+                self_dominance_policy: Some(HawkesStructuredRhoSelfDominancePolicy {
+                    minimum_self_to_cross_ratio: 1.0,
+                }),
+                stability_numeric_tolerance: 0.0,
+                source_regime: test_source_regime(),
+                directional_label_diagnostics: test_directional_label_diagnostics(),
+            },
+            validation_report: precheck_structured_hawkes_kernel_parameter_domain(
+                1.0,
+                10.0,
+                HawkesStructuredAlphaParameterization {
+                    a_self: 0.1,
+                    a_cross: 0.0,
+                    delta_self: 0.0,
+                    delta_cross: 0.0,
+                },
+                HawkesStructuredRhoParameterization {
+                    r_self: 1.0e-12,
+                    r_cross: 0.0,
+                    delta_self_r: 0.0,
+                    delta_cross_r: 0.0,
+                },
+                Some(HawkesStructuredRhoSelfDominancePolicy {
+                    minimum_self_to_cross_ratio: 1.0,
+                }),
+                0.0,
+            ),
+            objective_terms: Vec::new(),
+            objective_term_diagnostics: Vec::new(),
+            implied_metrics: test_candidate_diagnostic(candidate_id, 0, 0.0, 0.0).implied_metrics,
+            warnings: Vec::new(),
+            external_constraint_violation_count: 0,
+        }
+    }
+
+    fn test_source_regime() -> HawkesStageObservedSourceRegime {
+        HawkesStageObservedSourceRegime {
+            observation_duration_hours: 1.0,
+            open_session_duration_hours: 1.0,
+            total_tick_count: 10,
+            open_session_tick_count: 10,
+            closed_session_tick_count: 0,
+            open_session_buy_tick_count: 5,
+            open_session_sell_tick_count: 5,
+            open_session_mean_interarrival_seconds: 1.0,
+            open_session_interarrival_coefficient_of_variation: 1.0,
+            open_session_short_gap_threshold_seconds: 0.5,
+            open_session_short_gap_ratio: 0.5,
+            known_news_open_event_count: 0,
+            open_session_known_news_activity_share: 0.0,
+        }
+    }
+
+    fn test_directional_label_diagnostics() -> HawkesStageDirectionalLabelDiagnostics {
+        HawkesStageDirectionalLabelDiagnostics {
+            policy_id: "policy".to_string(),
+            first_inferred_trade_sign: "buy".to_string(),
+            provided_label_count: 0,
+            inferred_label_count: 0,
+            flat_move_carry_count: 0,
+            price_up_inference_count: 0,
+            price_down_inference_count: 0,
+        }
     }
 }

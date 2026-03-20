@@ -30,7 +30,46 @@ pub struct HawkesStageFittedParameters {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SurpriseNewsDeterministicIntensityProfile {
+    pub weekly_hour_utc_multipliers: Vec<f64>,
+    pub profile_resolution_hours: usize,
+    pub fit_policy: String,
+    pub normalization_policy: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReturnComponentsStageFittedParameters {
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     pub news_process_configuration: NewsProcessConfiguration,
+    pub surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageObjectiveBreakdown {
+    pub aggregated_likelihood_fit: f64,
+    pub aggregated_return_shape_fit: f64,
+    pub aggregated_return_scale_fit: f64,
+    pub business_time_return_scale_fit: f64,
+    pub intraday_return_level_fit: f64,
+    pub activity_shape_fit: f64,
+    pub activity_level_fit: f64,
+    pub rv_activity_coupling_fit: f64,
+    pub price_span_sanity_fit: f64,
+    pub weighted_objective: f64,
+    pub hard_constraint_penalty: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageOptimizerDiagnostics {
+    pub local_objective: f64,
+    pub final_objective: f64,
+    pub local_evaluation_count: usize,
+    pub final_simulation_seeds: Vec<u64>,
+    pub stop_reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageFittedParameters {
+    pub hawkes_fitted_parameters: HawkesStageFittedParameters,
+    pub return_components_fitted_parameters: ReturnComponentsStageFittedParameters,
 }

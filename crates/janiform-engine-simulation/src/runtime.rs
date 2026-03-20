@@ -1,8 +1,11 @@
 //! Seeded simulation runtime and transition scheduling.
 
 use chrono::{DateTime, Utc};
+use chrono_tz::Tz;
+use std::cmp::Ordering;
+use std::str::FromStr;
 
-use crate::calendar::{ExchangeCalendarRegistry, MarketState};
+use crate::calendar::{ExchangeCalendarDefinition, ExchangeCalendarRegistry, MarketState};
 use crate::risk::SufficientStatisticsRiskReturnComponents;
 use janiform_foundations::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
@@ -14,10 +17,11 @@ use janiform_model_kernels::hawkes::{
 };
 use janiform_model_kernels::news::{
     NewsArrivalComponent, NewsComponentMarkScaleConfiguration, NewsReturnJumpRoutingTarget,
-    SharedNewsAccumulatorState, SharedNewsEventTimestampedInput,
+    SharedNewsAccumulatorState, SharedNewsEventMarketStateResolutionError,
+    SharedNewsEventMarketStateResolver, SharedNewsEventTimestampedInput,
     dispatch_shared_news_events_with_resolved_market_states,
 };
-use janiform_model_kernels::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
+use janiform_model_kernels::return_decomposition::ReturnDecompositionValidationError;
 
 use super::artifacts::{
     SeededFinePathMetadata, SeededFinePathRecord, SeededFinePathTransitionKind,
@@ -86,8 +90,22 @@ where
     let fine_path_metadata = build_seeded_fine_path_metadata(state_snapshot_capture);
     let event_tape_metadata = build_seeded_tick_event_tape_metadata(state_snapshot_capture);
 
-    let mut fine_path: Vec<SeededFinePathRecord> = Vec::new();
-    let mut event_transition_positions: Vec<usize> = Vec::new();
+    let market_state_resolver = SeededSimulationMarketStateResolver::new(
+        &run_config.model_inputs.calendar_registry,
+        run_config
+            .model_inputs
+            .hourly_factor_contract
+            .exchange_code
+            .as_str(),
+    )?;
+    let (estimated_transition_capacity, estimated_event_capacity) =
+        estimate_seeded_result_capacities(&run_config);
+
+    let mut fine_path: Vec<SeededFinePathRecord> =
+        Vec::with_capacity(estimated_transition_capacity);
+    let mut public_transition_positions: Vec<usize> =
+        Vec::with_capacity(estimated_transition_capacity);
+    let mut event_transition_positions: Vec<usize> = Vec::with_capacity(estimated_event_capacity);
 
     let mut next_event_index: u64 = 0;
     let mut next_transition_index: u64 = 0;
@@ -160,6 +178,7 @@ where
             run_config.model_inputs.kernel_parameters,
             interval_seasonality_factor,
             interval_news_intensity,
+            &market_state_resolver,
             randomness_factory,
         )?;
 
@@ -169,15 +188,8 @@ where
                 previous_timestamp_utc_nanos,
                 interval_update.timestamp_utc_nanos(),
             );
-            let current_market_state = resolve_news_event_market_state(
-                &run_config.model_inputs.calendar_registry,
-                run_config
-                    .model_inputs
-                    .hourly_factor_contract
-                    .exchange_code
-                    .as_str(),
-                interval_update.timestamp_utc_nanos(),
-            )?;
+            let current_market_state = market_state_resolver
+                .resolve_market_state_at_nanos(interval_update.timestamp_utc_nanos())?;
             let open_jump_return = if current_market_state == MarketState::Open {
                 let realized = pending_open_jump_return;
                 pending_open_jump_return = 0.0;
@@ -298,7 +310,7 @@ where
                 }
             };
 
-            fine_path.push(SeededFinePathRecord {
+            let fine_path_record = SeededFinePathRecord {
                 transition_index: next_transition_index - 1,
                 timestamp_utc_nanos: interval_update.timestamp_utc_nanos(),
                 transition_kind,
@@ -310,21 +322,21 @@ where
                 return_components,
                 cumulative_log_return,
                 state_snapshot,
-            });
+            };
+            if is_public_seeded_fine_path_record(&fine_path_record) {
+                public_transition_positions.push(fine_path.len());
+            }
+
+            fine_path.push(fine_path_record);
         }
 
         let elapsed_hours_to_interval_end =
             derive_elapsed_hours(previous_timestamp_utc_nanos, interval_end_utc_nanos);
+
         let previous_state = next_state;
-        let boundary_market_state = resolve_news_event_market_state(
-            &run_config.model_inputs.calendar_registry,
-            run_config
-                .model_inputs
-                .hourly_factor_contract
-                .exchange_code
-                .as_str(),
-            interval_end_utc_nanos,
-        )?;
+        let boundary_market_state =
+            market_state_resolver.resolve_market_state_at_nanos(interval_end_utc_nanos)?;
+
         let open_jump_return = if boundary_market_state == MarketState::Open {
             let realized = pending_open_jump_return;
             pending_open_jump_return = 0.0;
@@ -332,6 +344,7 @@ where
         } else {
             0.0
         };
+
         let closed_gap_return = if boundary_market_state == MarketState::Open {
             let realized = pending_closed_gap_return;
             pending_closed_gap_return = 0.0;
@@ -339,6 +352,7 @@ where
         } else {
             0.0
         };
+
         let trading_time_return = sample_transition_trading_time_return(
             driver_parameters,
             previous_state,
@@ -353,8 +367,10 @@ where
                 next_transition_index,
             ),
         )?;
+
         let total_return =
             trading_time_return.trading_time_return + open_jump_return + closed_gap_return;
+
         let return_components = SufficientStatisticsRiskReturnComponents::try_new(
             trading_time_return.buy_side_return,
             trading_time_return.sell_side_return,
@@ -369,6 +385,7 @@ where
                 source,
             },
         )?;
+
         cumulative_log_return += total_return;
 
         next_state = evolve_hawkes_state(
@@ -397,7 +414,7 @@ where
             });
         }
 
-        fine_path.push(SeededFinePathRecord {
+        let fine_path_record = SeededFinePathRecord {
             transition_index: next_transition_index,
             timestamp_utc_nanos: interval_end_utc_nanos,
             transition_kind: SeededFinePathTransitionKind::IntervalBoundaryDrift,
@@ -413,7 +430,9 @@ where
                 lambda_bar,
                 state_snapshot_capture,
             ),
-        });
+        };
+        public_transition_positions.push(fine_path.len());
+        fine_path.push(fine_path_record);
 
         next_transition_index = next_transition_index.saturating_add(1);
     }
@@ -436,6 +455,7 @@ where
         simulated_interval_count: run_config.horizon_interval_count,
         fine_path_metadata,
         fine_path,
+        public_transition_positions,
         event_tape_metadata,
         event_transition_positions,
         final_excitation_state: next_state,
@@ -466,35 +486,32 @@ fn sample_transition_trading_time_return<R>(
 where
     R: SimulationRandomnessStream,
 {
-    let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
-        a_plus: integrate_side_intensity(
-            state,
-            lambda_bar,
-            beta,
-            seasonality_factor,
-            elapsed_hours,
-            true,
-        ),
-        a_minus: integrate_side_intensity(
-            state,
-            lambda_bar,
-            beta,
-            seasonality_factor,
-            elapsed_hours,
-            false,
-        ),
-        open_jump: 0.0,
-        closed_gap: 0.0,
-    })
-    .map_err(
-        |source| SeededTickSimulationRunError::InvalidReturnDecomposition {
-            interval_index,
-            source,
-        },
-    )?;
+    let integrated_buy_intensity = integrate_side_intensity(
+        state,
+        lambda_bar,
+        beta,
+        seasonality_factor,
+        elapsed_hours,
+        true,
+    );
+    let integrated_sell_intensity = integrate_side_intensity(
+        state,
+        lambda_bar,
+        beta,
+        seasonality_factor,
+        elapsed_hours,
+        false,
+    );
 
-    let trading_time_contributions = return_decomposition
-        .sample_nig_trading_time_increment(driver_parameters, &mut randomness_stream)
+    validate_integrated_intensity("a_plus", integrated_buy_intensity, interval_index)?;
+    validate_integrated_intensity("a_minus", integrated_sell_intensity, interval_index)?;
+
+    let trading_time_contributions = driver_parameters
+        .sample_trading_time_return_increment(
+            integrated_buy_intensity,
+            integrated_sell_intensity,
+            &mut randomness_stream,
+        )
         .map_err(
             |source| SeededTickSimulationRunError::TradingTimeSamplingFailure {
                 interval_index,
@@ -507,6 +524,26 @@ where
         sell_side_return: -trading_time_contributions.sell_side_increment,
         trading_time_return: trading_time_contributions.combined_increment,
     })
+}
+
+fn validate_integrated_intensity(
+    field: &'static str,
+    value: f64,
+    interval_index: usize,
+) -> Result<(), SeededTickSimulationRunError> {
+    if !value.is_finite() || value < 0.0 {
+        return Err(SeededTickSimulationRunError::InvalidReturnDecomposition {
+            interval_index,
+            source: ReturnDecompositionValidationError::DomainViolation {
+                field,
+                constraint:
+                    janiform_model_kernels::return_decomposition::ReturnDecompositionConstraint::FiniteAndNonNegative,
+                value,
+            },
+        });
+    }
+
+    Ok(())
 }
 
 fn integrate_side_intensity(
@@ -526,6 +563,7 @@ fn integrate_side_intensity(
     } else {
         elapsed_hours
     };
+
     let deseasonalized_baseline = lambda_bar * elapsed_hours;
     let endogenous_component = if plus_side {
         (state.y_plus_plus + state.y_plus_minus) * integrated_decay_weight
@@ -544,7 +582,7 @@ fn map_side_to_transition_kind(side: SeededTickEventSide) -> SeededFinePathTrans
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum IntervalStochasticUpdate {
+pub(crate) enum IntervalStochasticUpdate {
     EndogenousEvent {
         timestamp_utc_nanos: i64,
         side: SeededTickEventSide,
@@ -878,6 +916,216 @@ impl SeededTickEventDebugTraceCollector {
     }
 }
 
+fn is_public_seeded_fine_path_record(record: &SeededFinePathRecord) -> bool {
+    !matches!(
+        (record.transition_kind, record.market_state),
+        (
+            SeededFinePathTransitionKind::ExogenousNews,
+            SeededTickSimulationNewsEventMarketState::Closed,
+        )
+    )
+}
+
+fn estimate_seeded_result_capacities(run_config: &SeededTickSimulationRunConfig) -> (usize, usize) {
+    let known_news_count = run_config
+        .model_inputs
+        .news_process_configuration
+        .arrivals
+        .known
+        .scheduled_event_timestamps_utc_nanos
+        .len();
+    let base_transition_count = run_config.horizon_interval_count;
+    let mut estimated_endogenous_event_count = 0_usize;
+    let mut estimated_surprise_news_count = 0_usize;
+
+    for interval_index in 0..run_config.horizon_interval_count {
+        let interval_start_utc_nanos = run_config
+            .model_inputs
+            .hourly_factor_contract
+            .interval_start_utc_nanos[interval_index];
+        let interval_end_utc_nanos = run_config
+            .model_inputs
+            .hourly_factor_contract
+            .interval_end_utc_nanos[interval_index];
+        let interval_duration_in_hours =
+            (interval_end_utc_nanos - interval_start_utc_nanos) as f64 / ONE_HOUR_NANOS as f64;
+
+        let seasonality_factor = run_config.model_inputs.hourly_factor_contract.s_h[interval_index];
+        let interval_news_intensity =
+            run_config.model_inputs.hourly_factor_contract.nu_h[interval_index].max(0.0);
+
+        let endogenous_baseline = (2.0
+            * run_config
+                .model_inputs
+                .kernel_parameters
+                .lambda_bar
+                .max(0.0)
+            * seasonality_factor.max(0.0)
+            * interval_duration_in_hours.max(0.0))
+        .ceil();
+        estimated_endogenous_event_count = estimated_endogenous_event_count.saturating_add(
+            endogenous_baseline.min(MAX_STOCHASTIC_UPDATES_PER_INTERVAL as f64) as usize,
+        );
+
+        let surprise_expected_count = interval_news_intensity * interval_duration_in_hours.max(0.0);
+        estimated_surprise_news_count = estimated_surprise_news_count.saturating_add(
+            surprise_expected_count
+                .ceil()
+                .min(MAX_STOCHASTIC_UPDATES_PER_INTERVAL as f64) as usize,
+        );
+    }
+
+    let estimated_transition_capacity = base_transition_count
+        .saturating_add(known_news_count)
+        .saturating_add(estimated_surprise_news_count)
+        .saturating_add(estimated_endogenous_event_count);
+
+    (
+        estimated_transition_capacity,
+        estimated_endogenous_event_count,
+    )
+}
+
+fn merge_ordered_interval_updates(
+    endogenous_interval_updates: Vec<IntervalStochasticUpdate>,
+    exogenous_interval_updates: Vec<IntervalStochasticUpdate>,
+) -> Vec<IntervalStochasticUpdate> {
+    let mut endogenous_iterator = endogenous_interval_updates.into_iter();
+    let mut exogenous_iterator = exogenous_interval_updates.into_iter();
+
+    let mut next_endogenous = endogenous_iterator.next();
+    let mut next_exogenous = exogenous_iterator.next();
+    let mut merged_updates: Vec<IntervalStochasticUpdate> = Vec::with_capacity(
+        endogenous_iterator
+            .len()
+            .saturating_add(exogenous_iterator.len())
+            .saturating_add(next_endogenous.is_some() as usize)
+            .saturating_add(next_exogenous.is_some() as usize),
+    );
+
+    loop {
+        match (&next_endogenous, &next_exogenous) {
+            (Some(endogenous_update), Some(exogenous_update)) => {
+                if compare_interval_updates(endogenous_update, exogenous_update)
+                    != Ordering::Greater
+                {
+                    merged_updates.push(next_endogenous.take().expect("endogenous update exists"));
+                    next_endogenous = endogenous_iterator.next();
+                } else {
+                    merged_updates.push(next_exogenous.take().expect("exogenous update exists"));
+                    next_exogenous = exogenous_iterator.next();
+                }
+            }
+            (Some(_), None) => {
+                merged_updates.push(next_endogenous.take().expect("endogenous update exists"));
+                merged_updates.extend(endogenous_iterator);
+                return merged_updates;
+            }
+            (None, Some(_)) => {
+                merged_updates.push(next_exogenous.take().expect("exogenous update exists"));
+                merged_updates.extend(exogenous_iterator);
+                return merged_updates;
+            }
+            (None, None) => return merged_updates,
+        }
+    }
+}
+
+fn compare_interval_updates(
+    left: &IntervalStochasticUpdate,
+    right: &IntervalStochasticUpdate,
+) -> Ordering {
+    left.ordering_key().cmp(&right.ordering_key())
+}
+
+struct SeededSimulationMarketStateResolver<'a> {
+    definition: &'a ExchangeCalendarDefinition,
+    exchange_code: &'a str,
+    timezone: Tz,
+}
+
+impl<'a> SeededSimulationMarketStateResolver<'a> {
+    fn new(
+        calendar_registry: &'a ExchangeCalendarRegistry,
+        exchange_code: &'a str,
+    ) -> Result<Self, SeededTickSimulationRunError> {
+        let definition =
+            calendar_registry
+                .get_required(exchange_code)
+                .map_err(|source| {
+                    SeededTickSimulationRunError::NewsMarketStateResolutionFailed {
+                exchange_code: exchange_code.to_string(),
+                timestamp_utc_nanos: 0,
+                source: match source {
+                    crate::calendar::ExchangeCalendarRegistryLookupError::MissingExchangeId {
+                        exchange_code,
+                    } => crate::calendar::ExchangeCalendarResolveError::MissingExchangeId {
+                        exchange_code,
+                    },
+                },
+            }
+                })?;
+
+        let timezone = Tz::from_str(definition.timezone_name()).map_err(|_| {
+            SeededTickSimulationRunError::NewsMarketStateResolutionFailed {
+                exchange_code: exchange_code.to_string(),
+                timestamp_utc_nanos: 0,
+                source: crate::calendar::ExchangeCalendarResolveError::InvalidTimezoneName {
+                    exchange_code: exchange_code.to_string(),
+                    timezone_name: definition.timezone_name().to_string(),
+                },
+            }
+        })?;
+
+        Ok(Self {
+            definition,
+            exchange_code,
+            timezone,
+        })
+    }
+
+    fn resolve_market_state_at_nanos(
+        &self,
+        timestamp_utc_nanos: i64,
+    ) -> Result<MarketState, SeededTickSimulationRunError> {
+        let seconds = timestamp_utc_nanos.div_euclid(ONE_SECOND_NANOS);
+        let nanoseconds = timestamp_utc_nanos.rem_euclid(ONE_SECOND_NANOS) as u32;
+        let timestamp_utc = DateTime::<Utc>::from_timestamp(seconds, nanoseconds).ok_or(
+            SeededTickSimulationRunError::InvalidKnownScheduledNewsTimestampUtcNanos {
+                value: timestamp_utc_nanos,
+            },
+        )?;
+
+        Ok(self
+            .definition
+            .resolve_market_state_at_utc_with_timezone(self.timezone, timestamp_utc))
+    }
+}
+
+impl SharedNewsEventMarketStateResolver for SeededSimulationMarketStateResolver<'_> {
+    fn resolve_market_state_at_utc(
+        &self,
+        exchange_code: &str,
+        event_timestamp_utc: DateTime<Utc>,
+    ) -> Result<
+        janiform_foundations::market_state::MarketState,
+        SharedNewsEventMarketStateResolutionError,
+    > {
+        if exchange_code != self.exchange_code {
+            return Err(SharedNewsEventMarketStateResolutionError {
+                reason: format!(
+                    "cached seeded market-state resolver is bound to exchange `{}` but received `{exchange_code}`",
+                    self.exchange_code
+                ),
+            });
+        }
+
+        Ok(self
+            .definition
+            .resolve_market_state_at_utc_with_timezone(self.timezone, event_timestamp_utc))
+    }
+}
+
 fn schedule_interval_stochastic_updates<F>(
     interval_index: usize,
     interval_start_utc_nanos: i64,
@@ -889,6 +1137,7 @@ fn schedule_interval_stochastic_updates<F>(
     kernel_parameters: HawkesKernelParameters,
     interval_seasonality_factor: f64,
     interval_news_intensity: f64,
+    market_state_resolver: &SeededSimulationMarketStateResolver<'_>,
     randomness_factory: &F,
 ) -> Result<Vec<IntervalStochasticUpdate>, SeededTickSimulationRunError>
 where
@@ -914,6 +1163,111 @@ where
         SimulationRandomnessSubstreamDomain::EndogenousSellEventTimestamp,
         interval_index as u64,
     );
+
+    let exogenous_interval_updates = schedule_exogenous_interval_news_updates(
+        interval_index,
+        interval_start_utc_nanos,
+        interval_duration_nanos,
+        interval_duration_in_hours,
+        interval_news_intensity,
+        run_config,
+        interval_known_news_event_timestamps_utc_nanos,
+        market_state_resolver,
+        randomness_factory,
+    )?;
+
+    let _ = endogenous_auxiliary_stream.next_unit_interval_f64();
+
+    let interval_end_utc_nanos = interval_start_utc_nanos + interval_duration_nanos;
+    let endogenous_interval_updates = schedule_endogenous_interval_events_with_event_time_feedback(
+        interval_start_state,
+        kernel_parameters,
+        interval_seasonality_factor,
+        interval_start_utc_nanos,
+        interval_end_utc_nanos,
+        &exogenous_interval_updates,
+        market_state_resolver,
+        &mut endogenous_wait_stream,
+        &mut endogenous_acceptance_stream,
+        &mut endogenous_side_stream,
+    )?;
+
+    Ok(merge_ordered_interval_updates(
+        endogenous_interval_updates,
+        exogenous_interval_updates,
+    ))
+}
+
+fn schedule_exogenous_interval_news_updates<F>(
+    interval_index: usize,
+    interval_start_utc_nanos: i64,
+    interval_duration_nanos: i64,
+    interval_duration_in_hours: f64,
+    interval_news_intensity: f64,
+    run_config: &SeededTickSimulationRunConfig,
+    interval_known_news_event_timestamps_utc_nanos: &[i64],
+    market_state_resolver: &SeededSimulationMarketStateResolver<'_>,
+    randomness_factory: &F,
+) -> Result<Vec<IntervalStochasticUpdate>, SeededTickSimulationRunError>
+where
+    F: SimulationRandomnessFactory,
+{
+    let event_inputs = build_interval_news_event_inputs(
+        interval_index,
+        interval_start_utc_nanos,
+        interval_duration_nanos,
+        interval_duration_in_hours,
+        interval_news_intensity,
+        run_config,
+        interval_known_news_event_timestamps_utc_nanos,
+        randomness_factory,
+    )?;
+    let dispatch_output = dispatch_shared_news_events_with_resolved_market_states(
+        market_state_resolver,
+        market_state_resolver.exchange_code,
+        SharedNewsAccumulatorState::new(0.0, 0.0, 0.0),
+        event_inputs.as_slice(),
+    )
+    .map_err(
+        |source| SeededTickSimulationRunError::SharedNewsDispatchFailure {
+            interval_index,
+            source,
+        },
+    )?;
+
+    let mut exogenous_interval_updates = Vec::with_capacity(dispatch_output.records.len());
+    for dispatch_record in dispatch_output.records {
+        exogenous_interval_updates.push(IntervalStochasticUpdate::ExogenousNews {
+            timestamp_utc_nanos: dispatch_record.event_timestamp_utc_nanos,
+            news_arrival_component: dispatch_record.news_arrival_component,
+            activity_coupling_mark: dispatch_record.j_t_increment,
+            return_jump_mark: dispatch_record.coupled_return_jump_mark,
+            market_state: dispatch_record.market_state,
+            return_jump_routing_target: dispatch_record.return_jump_routing_target,
+            open_window_return_jump_increment: dispatch_record.m_t_increment,
+            closed_window_gap_increment: dispatch_record.g_t_increment,
+            generation_order: dispatch_record.event_generation_order,
+        });
+    }
+
+    exogenous_interval_updates.sort_by_key(IntervalStochasticUpdate::ordering_key);
+
+    Ok(exogenous_interval_updates)
+}
+
+pub(crate) fn build_interval_news_event_inputs<F>(
+    interval_index: usize,
+    interval_start_utc_nanos: i64,
+    interval_duration_nanos: i64,
+    interval_duration_in_hours: f64,
+    interval_news_intensity: f64,
+    run_config: &SeededTickSimulationRunConfig,
+    interval_known_news_event_timestamps_utc_nanos: &[i64],
+    randomness_factory: &F,
+) -> Result<Vec<SharedNewsEventTimestampedInput>, SeededTickSimulationRunError>
+where
+    F: SimulationRandomnessFactory,
+{
     let mut news_count_stream = randomness_factory.create_substream(
         run_config.seed,
         SimulationRandomnessSubstreamDomain::ExogenousNewsCount,
@@ -929,6 +1283,7 @@ where
         SimulationRandomnessSubstreamDomain::ExogenousNewsMarks,
         interval_index as u64,
     );
+
     let interval_known_news_event_count =
         u64::try_from(interval_known_news_event_timestamps_utc_nanos.len()).unwrap_or(u64::MAX);
     let interval_news_arrival_decomposition = derive_interval_news_arrival_decomposition(
@@ -936,10 +1291,6 @@ where
         interval_duration_in_hours,
         interval_known_news_event_count,
     );
-    // Keep component assumptions explicit
-    // - known arrivals are fixed UTC anchors from the provided calendar slice
-    // - surprise arrivals are sampled independently from a Poisson count using nu_surprise
-    // - nu_news follows the documented superposition nu_known + nu_surprise
     let interval_surprise_news_expected_count = interval_news_arrival_decomposition
         .surprise_component_intensity
         * interval_duration_in_hours;
@@ -947,13 +1298,16 @@ where
         interval_surprise_news_expected_count,
         &mut news_count_stream,
     );
+
     let mut event_inputs: Vec<SharedNewsEventTimestampedInput> = Vec::with_capacity(
         (interval_known_news_event_count + interval_surprise_news_count) as usize,
     );
+
     let mark_pipeline = run_config
         .model_inputs
         .news_process_configuration
         .default_mark_pipeline();
+
     let mut next_generation_order = 0_u64;
 
     for &known_news_timestamp_utc_nanos in interval_known_news_event_timestamps_utc_nanos {
@@ -988,19 +1342,6 @@ where
             &mut news_timestamp_stream,
         );
 
-        if resolve_news_event_market_state(
-            &run_config.model_inputs.calendar_registry,
-            run_config
-                .model_inputs
-                .hourly_factor_contract
-                .exchange_code
-                .as_str(),
-            timestamp_utc_nanos,
-        )? != MarketState::Open
-        {
-            continue;
-        }
-
         event_inputs.push(
             build_timestamped_news_event_input(
                 &mark_pipeline,
@@ -1025,73 +1366,7 @@ where
         next_generation_order = next_generation_order.saturating_add(1);
     }
 
-    let dispatch_output = dispatch_shared_news_events_with_resolved_market_states(
-        &run_config.model_inputs.calendar_registry,
-        run_config
-            .model_inputs
-            .hourly_factor_contract
-            .exchange_code
-            .as_str(),
-        SharedNewsAccumulatorState::new(0.0, 0.0, 0.0),
-        event_inputs.as_slice(),
-    )
-    .map_err(
-        |source| SeededTickSimulationRunError::SharedNewsDispatchFailure {
-            interval_index,
-            source,
-        },
-    )?;
-
-    let mut exogenous_interval_updates: Vec<IntervalStochasticUpdate> =
-        Vec::with_capacity(dispatch_output.records.len());
-    for dispatch_record in dispatch_output.records {
-        exogenous_interval_updates.push(IntervalStochasticUpdate::ExogenousNews {
-            timestamp_utc_nanos: dispatch_record.event_timestamp_utc_nanos,
-            news_arrival_component: dispatch_record.news_arrival_component,
-            activity_coupling_mark: dispatch_record.j_t_increment,
-            return_jump_mark: dispatch_record.coupled_return_jump_mark,
-            market_state: dispatch_record.market_state,
-            return_jump_routing_target: dispatch_record.return_jump_routing_target,
-            open_window_return_jump_increment: dispatch_record.m_t_increment,
-            closed_window_gap_increment: dispatch_record.g_t_increment,
-            generation_order: dispatch_record.event_generation_order,
-        });
-    }
-
-    exogenous_interval_updates.sort_by_key(IntervalStochasticUpdate::ordering_key);
-
-    let _ = endogenous_auxiliary_stream.next_unit_interval_f64();
-
-    let interval_end_utc_nanos = interval_start_utc_nanos + interval_duration_nanos;
-    let mut endogenous_interval_updates =
-        schedule_endogenous_interval_events_with_event_time_feedback(
-            interval_start_state,
-            kernel_parameters,
-            interval_seasonality_factor,
-            interval_start_utc_nanos,
-            interval_end_utc_nanos,
-            &exogenous_interval_updates,
-            &run_config.model_inputs.calendar_registry,
-            run_config
-                .model_inputs
-                .hourly_factor_contract
-                .exchange_code
-                .as_str(),
-            &mut endogenous_wait_stream,
-            &mut endogenous_acceptance_stream,
-            &mut endogenous_side_stream,
-        )?;
-
-    let mut interval_updates: Vec<IntervalStochasticUpdate> = Vec::with_capacity(
-        endogenous_interval_updates
-            .len()
-            .saturating_add(exogenous_interval_updates.len()),
-    );
-    interval_updates.append(&mut endogenous_interval_updates);
-    interval_updates.extend(exogenous_interval_updates);
-    interval_updates.sort_by_key(IntervalStochasticUpdate::ordering_key);
-
-    Ok(interval_updates)
+    Ok(event_inputs)
 }
 
 fn schedule_endogenous_interval_events_with_event_time_feedback<
@@ -1105,8 +1380,7 @@ fn schedule_endogenous_interval_events_with_event_time_feedback<
     interval_start_utc_nanos: i64,
     interval_end_utc_nanos: i64,
     exogenous_interval_updates: &[IntervalStochasticUpdate],
-    calendar_registry: &ExchangeCalendarRegistry,
-    exchange_code: &str,
+    market_state_resolver: &SeededSimulationMarketStateResolver<'_>,
     endogenous_wait_stream: &mut WaitStream,
     endogenous_acceptance_stream: &mut AcceptanceStream,
     endogenous_side_stream: &mut SideStream,
@@ -1120,6 +1394,7 @@ where
     let mut simulated_state = interval_start_state;
     let mut simulated_timestamp_utc_nanos = interval_start_utc_nanos;
     let mut next_exogenous_update_position = 0_usize;
+
     let baseline_total_intensity =
         (2.0 * interval_seasonality_factor * kernel_parameters.lambda_bar).max(0.0);
 
@@ -1153,10 +1428,12 @@ where
 
             let proposal_upper_bound_total_intensity =
                 current_total_intensity.max(baseline_total_intensity);
+
             let waiting_time_hours = sample_exponential_wait_time_hours(
                 proposal_upper_bound_total_intensity,
                 endogenous_wait_stream,
             );
+
             let waiting_time_nanos = convert_wait_time_hours_to_positive_nanos(waiting_time_hours);
             if waiting_time_nanos == i64::MAX {
                 simulated_state = apply_hawkes_drift(
@@ -1191,16 +1468,15 @@ where
                 candidate_timestamp_utc_nanos,
             )
             .map_err(map_transition_error_to_seeded_simulation_run_error)?;
-            let candidate_market_state = resolve_news_event_market_state(
-                calendar_registry,
-                exchange_code,
-                candidate_timestamp_utc_nanos,
-            )?;
+
+            let candidate_market_state = market_state_resolver
+                .resolve_market_state_at_nanos(candidate_timestamp_utc_nanos)?;
             if candidate_market_state != MarketState::Open {
                 simulated_state = candidate_state;
                 simulated_timestamp_utc_nanos = candidate_timestamp_utc_nanos;
                 continue;
             }
+
             let (candidate_lambda_plus, candidate_lambda_minus, candidate_total_intensity) =
                 project_non_negative_intensities(
                     candidate_state,
@@ -1213,6 +1489,7 @@ where
             } else {
                 0.0
             };
+
             let acceptance_draw = endogenous_acceptance_stream.next_unit_interval_f64();
             if acceptance_draw <= acceptance_probability {
                 let side_draw = endogenous_side_stream.next_unit_interval_f64();
@@ -1221,6 +1498,7 @@ where
                     candidate_lambda_minus,
                     side_draw,
                 );
+
                 let state_after_event = evolve_hawkes_state(
                     candidate_state,
                     kernel_parameters,
@@ -1313,6 +1591,7 @@ fn project_non_negative_intensities(
 
     let lambda_plus = projected_intensities.lambda_plus.max(0.0);
     let lambda_minus = projected_intensities.lambda_minus.max(0.0);
+
     let lambda_plus = if lambda_plus.is_finite() {
         lambda_plus
     } else {
@@ -1508,30 +1787,6 @@ fn derive_elapsed_hours(previous_timestamp_utc_nanos: i64, timestamp_utc_nanos: 
     (timestamp_utc_nanos - previous_timestamp_utc_nanos) as f64 / ONE_HOUR_NANOS as f64
 }
 
-fn resolve_news_event_market_state(
-    calendar_registry: &ExchangeCalendarRegistry,
-    exchange_code: &str,
-    timestamp_utc_nanos: i64,
-) -> Result<MarketState, SeededTickSimulationRunError> {
-    let seconds = timestamp_utc_nanos.div_euclid(ONE_SECOND_NANOS);
-    let nanoseconds = timestamp_utc_nanos.rem_euclid(ONE_SECOND_NANOS) as u32;
-    let timestamp_utc = DateTime::<Utc>::from_timestamp(seconds, nanoseconds).ok_or(
-        SeededTickSimulationRunError::InvalidKnownScheduledNewsTimestampUtcNanos {
-            value: timestamp_utc_nanos,
-        },
-    )?;
-
-    calendar_registry
-        .resolve_market_state_at_utc(exchange_code, timestamp_utc)
-        .map_err(
-            |source| SeededTickSimulationRunError::NewsMarketStateResolutionFailed {
-                exchange_code: exchange_code.to_string(),
-                timestamp_utc_nanos,
-                source,
-            },
-        )
-}
-
 pub(crate) fn derive_known_news_interval_slice_bounds(
     known_scheduled_news_event_timestamps_utc_nanos: &[i64],
     known_scheduled_news_start_position: usize,
@@ -1689,6 +1944,7 @@ fn accumulate_news_routing_totals(
             },
         );
     }
+
     if !next_totals
         .cumulative_open_window_return_jump_m_t_increment
         .is_finite()
@@ -1700,6 +1956,7 @@ fn accumulate_news_routing_totals(
             },
         );
     }
+
     if !next_totals
         .cumulative_closed_window_gap_g_t_increment
         .is_finite()

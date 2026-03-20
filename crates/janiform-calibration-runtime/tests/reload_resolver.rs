@@ -3,7 +3,7 @@ use std::path::Path;
 use serde_json::Value;
 
 mod support;
-use support::*;
+use support::shared::*;
 
 #[test]
 fn reload_resolver_loads_complete_runs_and_stage_specific_subsets() {
@@ -179,6 +179,7 @@ fn persist_reload_fixture(run_id: &str) -> PersistedReloadFixture {
             return_components_stage_candidate_generation_fixture(),
         ),
     );
+    let joint_refinement_report = build_joint_refinement_stage_success_report();
 
     let seasonality_artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
@@ -195,10 +196,16 @@ fn persist_reload_fixture(run_id: &str) -> PersistedReloadFixture {
         &CalibrationStagedRunStageReport::ReturnComponents(return_components_report),
     )
     .expect("return-components artifact should build");
+    let joint_refinement_artifact = build_calibration_stage_parameter_artifact(
+        &run_contract,
+        &CalibrationStagedRunStageReport::JointRefinement(joint_refinement_report),
+    )
+    .expect("joint-refinement artifact should build");
     let stage_parameter_artifacts = vec![
         seasonality_artifact,
         hawkes_artifact,
         return_components_artifact,
+        joint_refinement_artifact,
     ];
 
     let dataset_snapshot = build_calibration_dataset_snapshot_artifact(&run_contract)
@@ -299,9 +306,10 @@ fn assert_stage_artifact_reload_matches(
             reloaded_artifact.solver_settings,
             expected_artifact.solver_settings
         );
-        assert_eq!(
-            reloaded_artifact.optimizer_state,
-            expected_artifact.optimizer_state
+        assert_optimizer_state_matches(
+            &reloaded_artifact.optimizer_state,
+            &expected_artifact.optimizer_state,
+            &format!("stage={:?} optimizer_state", expected_artifact.stage),
         );
 
         match (
@@ -398,6 +406,39 @@ fn assert_stage_artifact_reload_matches(
                 assert_eq!(
                     reloaded_payload.activity_artifact_reference,
                     expected_payload.activity_artifact_reference
+                );
+            }
+            (
+                CalibrationStageParameterPayload::JointRefinement(reloaded_payload),
+                CalibrationStageParameterPayload::JointRefinement(expected_payload),
+            ) => {
+                assert_eq!(
+                    reloaded_payload.selected_candidate_id,
+                    expected_payload.selected_candidate_id
+                );
+                assert_joint_refinement_fitted_parameters_match(
+                    &reloaded_payload.fitted_parameters,
+                    &expected_payload.fitted_parameters,
+                    "joint refinement fitted_parameters",
+                );
+                assert_hawkes_fitted_parameters_match(
+                    &reloaded_payload.baseline_hawkes_fitted_parameters,
+                    &expected_payload.baseline_hawkes_fitted_parameters,
+                    "joint refinement baseline_hawkes_fitted_parameters",
+                );
+                assert_eq!(
+                    reloaded_payload.baseline_return_components_fitted_parameters,
+                    expected_payload.baseline_return_components_fitted_parameters
+                );
+                assert_joint_refinement_objective_breakdown_matches(
+                    &reloaded_payload.objective_breakdown,
+                    &expected_payload.objective_breakdown,
+                    "joint refinement objective_breakdown",
+                );
+                assert_joint_refinement_optimizer_diagnostics_matches(
+                    &reloaded_payload.optimizer_diagnostics,
+                    &expected_payload.optimizer_diagnostics,
+                    "joint refinement optimizer_diagnostics",
                 );
             }
             _ => panic!("reloaded stage payload kind did not match expected payload kind"),

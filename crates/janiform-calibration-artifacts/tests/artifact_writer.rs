@@ -1,5 +1,5 @@
 mod support;
-use support::*;
+use support::shared::*;
 
 #[test]
 fn calibration_artifact_storage_layout_paths_are_deterministic() {

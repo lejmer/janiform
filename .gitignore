@@ -234,3 +234,6 @@ pull_requests/
 
 # Janiform exports
 .janiform/
+
+# Scratch files
+scratch/

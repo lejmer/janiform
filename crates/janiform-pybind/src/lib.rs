@@ -1,4 +1,5 @@
 mod bindings;
+mod panic_boundary;
 mod python_value;
 mod types;
 

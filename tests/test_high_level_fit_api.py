@@ -1,6 +1,7 @@
 import json
 import math
-from datetime import UTC, datetime
+from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, NoReturn, Self
@@ -124,6 +125,45 @@ def test_janiform_estimator_supports_simple_zero_config_tick_fit_without_tempdir
     assert model.metadata["input_inference"]["tick_price_input_policy"] == "explicit_price_column"
     assert model.metadata["input_inference"]["tick_price_columns"]["price_column"] == "trade_price"
     assert model.metadata["input_inference"]["tick_price_columns"]["trade_sign_column"] == "trade_sign"
+
+
+def test_prepare_model_runtime_factors_uses_fitted_surprise_intensity_profile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:00:00Z,100.0,buy",
+                "2026-02-02T14:30:00Z,100.1,sell",
+                "2026-02-02T15:00:00Z,100.2,buy",
+                "2026-02-02T15:30:00Z,100.3,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_staged_calibration_with_raw_payload",
+        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
+            execution_input.request.run_id
+        ),
+    )
+
+    estimator = JaniformEstimator(market_profile="us_equity_cash")
+    model = estimator.fit(tick_data_path=tick_data_path)
+    runtime_factors = fit_model_module._prepare_model_runtime_factors(
+        model,
+        start_time_utc=datetime(2026, 2, 2, 14, 0, tzinfo=UTC),
+        horizon_interval_count=2,
+        interval="1h",
+    )
+
+    assert runtime_factors.surprise_component_nu_h[0] == pytest.approx(0.04)
+    assert runtime_factors.surprise_component_nu_h[1] == pytest.approx(0.02)
 
 
 def test_janiform_estimator_preserves_duplicate_ticks_by_default(
@@ -344,6 +384,7 @@ def test_high_level_model_summary_exposes_fitted_parameters_and_provenance(
     assert summary["fitted_parameter_summary"]["selected_candidate_ids"] == {
         "hawkes": "candidate_stable_low_loss",
         "return_components": "return_candidate_balanced",
+        "joint_refinement": "joint_refinement_baseline",
     }
 
 
@@ -369,11 +410,13 @@ def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_metada
     assert loaded_model.summary() == model.summary()
     assert "execution_input" not in persisted_payload
     assert "stage_report_payloads" not in persisted_payload
+    assert "timestamp_utc_nanos" not in persisted_payload["parameters"]["seasonality"]
+    assert "normalized_combined_factor_by_event" not in persisted_payload["parameters"]["seasonality"]
     assert first_path.read_text(encoding="utf-8").startswith("{\n  ")
     assert first_path.read_text(encoding="utf-8") == second_path.read_text(encoding="utf-8")
 
 
-def test_loaded_high_level_model_runtime_seasonality_uses_native_timestamp_preprocessing(
+def test_loaded_high_level_model_runtime_seasonality_prefers_compact_parameters(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -389,10 +432,9 @@ def test_loaded_high_level_model_runtime_seasonality_uses_native_timestamp_prepr
     calendar_registry = CalendarRegistry(
         loaded_model.session_resolution.resolved_session_definition_json
     )
-    captured_call: dict[str, Any] = {}
 
     class _FakeTimestampEventPreprocessingResult:
-        exchange_local_minute_of_day = [570, 630]
+        exchange_local_minute_of_day = [540, 600]
         exchange_local_day_of_week = bytes([1, 1])
         exchange_local_day_of_year = [33, 33]
 
@@ -405,13 +447,19 @@ def test_loaded_high_level_model_runtime_seasonality_uses_native_timestamp_prepr
         session_filter: fit_model_module.SessionFilter = fit_model_module.SessionFilter.OPEN_ONLY,
         sparse_hour_event_threshold: int = 1,
     ) -> _FakeTimestampEventPreprocessingResult:
-        captured_call["event_records"] = event_records
-        captured_call["exchange_code"] = exchange_code
-        captured_call["calendar_registry"] = calendar_registry
-        captured_call["timestamp_field_name"] = timestamp_field_name
-        captured_call["session_filter"] = session_filter
-        captured_call["sparse_hour_event_threshold"] = sparse_hour_event_threshold
+        assert exchange_code == loaded_model.session_resolution.exchange_code
+        assert calendar_registry is calendar_registry_instance
+        assert timestamp_field_name == "timestamp"
+        assert session_filter == fit_model_module.SessionFilter.ALL
+        assert sparse_hour_event_threshold == 1
+        assert event_records == [
+            {"timestamp": datetime(2026, 2, 2, 14, tzinfo=UTC)},
+            {"timestamp": datetime(2026, 2, 2, 15, tzinfo=UTC)},
+        ]
+
         return _FakeTimestampEventPreprocessingResult()
+
+    calendar_registry_instance = calendar_registry
 
     monkeypatch.setattr(
         fit_model_module,
@@ -428,16 +476,86 @@ def test_loaded_high_level_model_runtime_seasonality_uses_native_timestamp_prepr
         interval="1h",
     )
 
-    assert captured_call["exchange_code"] == loaded_model.session_resolution.exchange_code
-    assert captured_call["calendar_registry"] is calendar_registry
-    assert captured_call["timestamp_field_name"] == "timestamp"
-    assert captured_call["session_filter"] == fit_model_module.SessionFilter.ALL
-    assert captured_call["sparse_hour_event_threshold"] == 1
-    assert captured_call["event_records"] == [
-        {"timestamp": datetime(2026, 2, 2, 14, tzinfo=UTC)},
-        {"timestamp": datetime(2026, 2, 2, 15, tzinfo=UTC)},
-    ]
     assert seasonality_source.hourly_factors == (1.0, 1.0)
+
+
+def test_loaded_high_level_model_runtime_seasonality_infers_intraday_bin_width(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-infer-seasonality-bin-width",
+    )
+    persisted_model_path = tmp_path / "model.json"
+    model.save(persisted_model_path)
+    loaded_model = JaniformModel.load(persisted_model_path)
+    loaded_model.parameters["seasonality"] = {
+        **loaded_model.parameters["seasonality"],
+        "intraday_minutes_per_bin": None,
+    }
+
+    calendar_registry = CalendarRegistry(
+        loaded_model.session_resolution.resolved_session_definition_json
+    )
+
+    class _FakeTimestampEventPreprocessingResult:
+        exchange_local_minute_of_day = [540, 600]
+        exchange_local_day_of_week = bytes([1, 1])
+        exchange_local_day_of_year = [33, 33]
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "preprocess_timestamp_events",
+        lambda *args, **kwargs: _FakeTimestampEventPreprocessingResult(),
+    )
+
+    seasonality_source = fit_model_module._build_runtime_hourly_seasonality_source_from_model(
+        loaded_model,
+        calendar_registry=calendar_registry,
+        exchange_code=loaded_model.session_resolution.exchange_code,
+        range_start_utc=datetime(2026, 2, 2, 14, tzinfo=UTC),
+        range_end_utc=datetime(2026, 2, 2, 16, tzinfo=UTC),
+        interval="1h",
+    )
+
+    assert seasonality_source.hourly_factors == (1.0, 1.0)
+
+
+def test_loaded_high_level_model_runtime_seasonality_requires_structural_parameters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-structural-seasonality-required",
+    )
+    persisted_model_path = tmp_path / "missing-structural-seasonality-model.json"
+    model.save(persisted_model_path)
+    loaded_model = JaniformModel.load(persisted_model_path)
+    loaded_model.parameters["seasonality"] = {
+        "schema_version": loaded_model.parameters["seasonality"]["schema_version"],
+        "exchange_code": loaded_model.parameters["seasonality"]["exchange_code"],
+    }
+
+    registry = CalendarRegistry(
+        loaded_model.session_resolution.resolved_session_definition_json
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="JaniformModel does not contain structural seasonality parameters required for runtime materialization",
+    ):
+        fit_model_module._build_runtime_hourly_seasonality_source_from_model(
+            loaded_model,
+            calendar_registry=registry,
+            exchange_code=loaded_model.session_resolution.exchange_code,
+            range_start_utc=datetime(2026, 2, 2, 14, tzinfo=UTC),
+            range_end_utc=datetime(2026, 2, 2, 16, tzinfo=UTC),
+            interval="1h",
+        )
 
 
 def test_high_level_model_simulate_dispatches_by_interval_mode(
@@ -1116,8 +1234,9 @@ def test_high_level_fit_progress_splits_loading_and_translation_steps(
     ]
 
 
-def test_high_level_fit_report_returns_failure_details_without_model(
+def test_high_level_fit_report_returns_success_details_with_model(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tick_data_path = tmp_path / "ticks.csv"
     tick_data_path.write_text(
@@ -1149,6 +1268,13 @@ def test_high_level_fit_report_returns_failure_details_without_model(
         ),
         market_profile="us_equity_cash",
     )
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_staged_calibration_with_raw_payload",
+        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
+            execution_input.request.run_id
+        ),
+    )
 
     model, fit_report = estimator.fit(
         run_id="high-level-fit-failure",
@@ -1157,11 +1283,15 @@ def test_high_level_fit_report_returns_failure_details_without_model(
         report=True,
     )
 
-    assert model is None
-    assert fit_report.success is False
-    assert fit_report.staged_response.failure is not None
-    assert fit_report.staged_response.failure.stage is not None
-    assert fit_report.stage_report_payloads[-1]["stage_report_kind"] == "hawkes"
+    assert model is not None
+    assert fit_report.success is True
+    assert fit_report.staged_response.failure is None
+    assert [stage_payload["stage_report_kind"] for stage_payload in fit_report.stage_report_payloads] == [
+        "seasonality",
+        "hawkes",
+        "return_components",
+        "joint_refinement",
+    ]
 
 
 def test_high_level_fit_rejects_missing_exchange_context_for_automatic_session_inference(
@@ -1278,6 +1408,7 @@ def _successful_staged_runner_payload(run_id: str) -> tuple[StagedCalibrationRes
                 "normalized_stage_payload": {
                     "composition_schema_version": "seasonality.deterministic.composition.v1",
                     "exchange_code": "XNYS",
+                    "intraday_minutes_per_bin": 480,
                     "intraday_factor_by_bin": [1.0] * 3,
                     "day_of_week_factor": [1.0] * 7,
                     "day_of_year_factor": [1.0] * 366,
@@ -1314,6 +1445,7 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                         1770129000000000000,
                     ],
                     "normalized_combined_factor_by_event": [0.95, 1.05, 1.0],
+                    "intraday_minutes_per_bin": 480,
                     "intraday_factor_by_bin": [1.0] * 3,
                     "day_of_week_factor": [1.0] * 7,
                     "day_of_year_factor": [1.0] * 366,
@@ -1416,6 +1548,231 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "return_jump_scale": 1.0,
                             },
                         },
+                        "surprise_deterministic_intensity_profile": {
+                            "weekly_hour_utc_multipliers": [
+                                2.0 if hour_index == 14 else 1.0 for hour_index in range(168)
+                            ],
+                            "profile_resolution_hours": 1,
+                            "fit_policy": (
+                                "selected_exogenous_surprise_episode_rate_per_utc_hour_of_week_"
+                                "with_baseline_shrinkage.v1"
+                            ),
+                            "normalization_policy": (
+                                "exposure_weighted_mean_one_over_source_window.v1"
+                            ),
+                        },
+                    },
+                },
+            },
+            {
+                "stage_report_kind": "joint_refinement",
+                "stage": "joint_refinement",
+                "status": "success",
+                "run_id": run_id,
+                "execution_mode": "memory",
+                "handoff_policy": "explicit_run_spec_handoffs_mode_aware_transport.v1",
+                "fitted_stage_payload": {
+                    "schema_version": "calibration.stage_output.joint_refinement.v1",
+                    "selected_candidate_id": "joint_refinement_baseline",
+                    "fitted_parameters": {
+                        "hawkes_fitted_parameters": {
+                            "kernel_parameters": {
+                                "lambda_bar": 0.8,
+                                "beta": 1.6,
+                                "alpha": {
+                                    "plus_plus": 0.2,
+                                    "plus_minus": 0.1,
+                                    "minus_plus": 0.1,
+                                    "minus_minus": 0.25,
+                                },
+                                "rho": {
+                                    "plus_plus": 0.08,
+                                    "plus_minus": 0.04,
+                                    "minus_plus": 0.05,
+                                    "minus_minus": 0.1,
+                                },
+                            },
+                            "structured_alpha": {
+                                "a_self": 0.35,
+                                "a_cross": 0.06,
+                                "delta_self": 0.07,
+                                "delta_cross": 0.04,
+                            },
+                            "structured_rho": {
+                                "r_self": 0.3,
+                                "r_cross": 0.08,
+                                "delta_self_r": 0.04,
+                                "delta_cross_r": 0.05,
+                            },
+                            "self_dominance_policy": {
+                                "minimum_self_to_cross_ratio": 1.0,
+                            },
+                            "stability_numeric_tolerance": 0.0,
+                        },
+                        "return_components_fitted_parameters": {
+                            "nig_shared_plus_shift_configuration": {
+                                "alpha": 2.3,
+                                "beta_0": -0.8,
+                                "delta": 0.7,
+                                "mu": 0.1,
+                                "delta_beta": -0.2,
+                            },
+                            "news_process_configuration": {
+                                "schema_version": "news.process.configuration.v1",
+                                "arrivals": {
+                                    "known": {
+                                        "scheduled_event_timestamps_utc_nanos": [],
+                                    },
+                                    "surprise": {
+                                        "baseline_intensity": 0.02,
+                                    },
+                                },
+                                "shared_mark_law": {
+                                    "gamma_severity_marks": {
+                                        "shape_k": 1.4,
+                                        "scale_theta": 0.6,
+                                    },
+                                    "double_exponential_base_shock": {
+                                        "probability_positive": 0.35,
+                                        "eta_plus": 2.1,
+                                        "eta_minus": 3.0,
+                                    },
+                                    "coupled_gap_marks": {
+                                        "sigma_g": 0.8,
+                                    },
+                                },
+                                "known_component_mark_scales": {
+                                    "activity_coupling_scale": 1.0,
+                                    "return_jump_scale": 1.0,
+                                },
+                                "surprise_component_mark_scales": {
+                                    "activity_coupling_scale": 1.0,
+                                    "return_jump_scale": 1.0,
+                                },
+                            },
+                            "surprise_deterministic_intensity_profile": {
+                                "weekly_hour_utc_multipliers": [
+                                    2.0 if hour_index == 14 else 1.0 for hour_index in range(168)
+                                ],
+                                "profile_resolution_hours": 1,
+                                "fit_policy": (
+                                    "selected_exogenous_surprise_episode_rate_per_utc_hour_of_week_"
+                                    "with_baseline_shrinkage.v1"
+                                ),
+                                "normalization_policy": (
+                                    "exposure_weighted_mean_one_over_source_window.v1"
+                                ),
+                            },
+                        },
+                    },
+                    "baseline_hawkes_fitted_parameters": {
+                        "kernel_parameters": {
+                            "lambda_bar": 0.8,
+                            "beta": 1.6,
+                            "alpha": {
+                                "plus_plus": 0.2,
+                                "plus_minus": 0.1,
+                                "minus_plus": 0.1,
+                                "minus_minus": 0.25,
+                            },
+                            "rho": {
+                                "plus_plus": 0.08,
+                                "plus_minus": 0.04,
+                                "minus_plus": 0.05,
+                                "minus_minus": 0.1,
+                            },
+                        },
+                        "structured_alpha": {
+                            "a_self": 0.35,
+                            "a_cross": 0.06,
+                            "delta_self": 0.07,
+                            "delta_cross": 0.04,
+                        },
+                        "structured_rho": {
+                            "r_self": 0.3,
+                            "r_cross": 0.08,
+                            "delta_self_r": 0.04,
+                            "delta_cross_r": 0.05,
+                        },
+                        "self_dominance_policy": {
+                            "minimum_self_to_cross_ratio": 1.0,
+                        },
+                        "stability_numeric_tolerance": 0.0,
+                    },
+                    "baseline_return_components_fitted_parameters": {
+                        "nig_shared_plus_shift_configuration": {
+                            "alpha": 2.3,
+                            "beta_0": -0.8,
+                            "delta": 0.7,
+                            "mu": 0.1,
+                            "delta_beta": -0.2,
+                        },
+                        "news_process_configuration": {
+                            "schema_version": "news.process.configuration.v1",
+                            "arrivals": {
+                                "known": {
+                                    "scheduled_event_timestamps_utc_nanos": [],
+                                },
+                                "surprise": {
+                                    "baseline_intensity": 0.02,
+                                },
+                            },
+                            "shared_mark_law": {
+                                "gamma_severity_marks": {
+                                    "shape_k": 1.4,
+                                    "scale_theta": 0.6,
+                                },
+                                "double_exponential_base_shock": {
+                                    "probability_positive": 0.35,
+                                    "eta_plus": 2.1,
+                                    "eta_minus": 3.0,
+                                },
+                                "coupled_gap_marks": {
+                                    "sigma_g": 0.8,
+                                },
+                            },
+                            "known_component_mark_scales": {
+                                "activity_coupling_scale": 1.0,
+                                "return_jump_scale": 1.0,
+                            },
+                            "surprise_component_mark_scales": {
+                                "activity_coupling_scale": 1.0,
+                                "return_jump_scale": 1.0,
+                            },
+                        },
+                        "surprise_deterministic_intensity_profile": {
+                            "weekly_hour_utc_multipliers": [
+                                2.0 if hour_index == 14 else 1.0 for hour_index in range(168)
+                            ],
+                            "profile_resolution_hours": 1,
+                            "fit_policy": (
+                                "selected_exogenous_surprise_episode_rate_per_utc_hour_of_week_"
+                                "with_baseline_shrinkage.v1"
+                            ),
+                            "normalization_policy": (
+                                "exposure_weighted_mean_one_over_source_window.v1"
+                            ),
+                        },
+                    },
+                    "objective_breakdown": {
+                        "aggregated_likelihood_fit": 1.0,
+                        "aggregated_return_shape_fit": 1.0,
+                        "aggregated_return_scale_fit": 1.0,
+                        "business_time_return_scale_fit": 1.0,
+                        "intraday_return_level_fit": 1.0,
+                        "activity_shape_fit": 1.0,
+                        "activity_level_fit": 1.0,
+                        "rv_activity_coupling_fit": 1.0,
+                        "price_span_sanity_fit": 1.0,
+                        "weighted_objective": 1.0,
+                        "hard_constraint_penalty": 0.0,
+                    },
+                    "optimizer_diagnostics": {
+                        "local_objective": 1.0,
+                        "final_objective": 1.0,
+                        "local_evaluation_count": 0,
+                        "final_simulation_seeds": [17],
+                        "stop_reason": "baseline_seed",
                     },
                 },
             },

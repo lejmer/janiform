@@ -220,6 +220,145 @@ def test_simulation_run_maps_invalid_native_response_to_integration_error(
     assert captured_error.value.context == {"source_error_id": "simulation.validation.contract"}
 
 
+def test_simulation_run_maps_native_chunk_projection_failure_to_integration_error(
+    calendar_registry: CalendarRegistry,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeNativeChunkResult:
+        schema_version = "simulation.seeded_tick_event.path.v1"
+        transition_count = 1
+        event_count = 0
+        estimated_native_retained_bytes = 0
+
+        @staticmethod
+        def fine_path_metadata_json() -> str:
+            return (
+                '{"schema_version":"simulation.seeded_tick_event.fine_path_metadata.v1",'
+                '"path_record_schema_version":"simulation.seeded_tick_event.path_record.v1",'
+                '"event_projection_record_schema_version":"simulation.seeded_tick_event.event_record.v1",'
+                '"transition_ordering_policy":"canonical",'
+                '"timestamp_representation_policy":"utc_nanos",'
+                '"side_encoding_policy":"snake_case",'
+                '"state_snapshot_capture":"disabled"}'
+            )
+
+        @staticmethod
+        def event_tape_metadata_json() -> str:
+            return (
+                '{"schema_version":"simulation.seeded_tick_event.event_tape_metadata.v1",'
+                '"event_record_schema_version":"simulation.seeded_tick_event.event_record.v1",'
+                '"state_snapshot_schema_version":"simulation.seeded_tick_event.state_snapshot.v1",'
+                '"event_ordering_policy":"canonical",'
+                '"timestamp_representation_policy":"utc_nanos",'
+                '"side_encoding_policy":"snake_case",'
+                '"state_snapshot_capture":"disabled"}'
+            )
+
+        @staticmethod
+        def get_fine_path_chunk_columns(start_index: int, max_records: int) -> NoReturn:
+            del start_index
+            del max_records
+            raise RuntimeError("native chunk projection failed")
+
+        @staticmethod
+        def get_event_tape_chunk_columns(start_index: int, max_records: int) -> NoReturn:
+            del start_index
+            del max_records
+            raise RuntimeError("native event-tape chunk projection failed")
+
+    class FakeNative:
+        @staticmethod
+        def run_seeded_tick_event_simulation(*args, **kwargs) -> FakeNativeChunkResult:
+            del args
+            del kwargs
+            return FakeNativeChunkResult()
+
+    monkeypatch.setattr(simulation_seeded_runtime_module, "native_module", lambda: FakeNative())
+
+    response = run_seeded_tick_event_simulation(_valid_simulation_request(calendar_registry))
+
+    with pytest.raises(JaniformIntegrationError) as captured_error:
+        response.to_payload()
+
+    assert captured_error.value.error_id == "simulation.integration.invalid_native_response"
+    assert captured_error.value.workflow == "simulation"
+    assert captured_error.value.entrypoint == "run_seeded_tick_event_simulation"
+    assert captured_error.value.field_path == "fine_path"
+    assert captured_error.value.context == {"chunk_start_index": 0}
+
+
+def test_simulation_run_maps_native_chunk_field_failure_to_integration_error(
+    calendar_registry: CalendarRegistry,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeBrokenChunkColumns:
+        @property
+        def transition_index(self) -> NoReturn:
+            raise RuntimeError("native chunk field access failed")
+
+    class FakeNativeChunkResult:
+        schema_version = "simulation.seeded_tick_event.path.v1"
+        transition_count = 1
+        event_count = 0
+        estimated_native_retained_bytes = 0
+
+        @staticmethod
+        def fine_path_metadata_json() -> str:
+            return (
+                '{"schema_version":"simulation.seeded_tick_event.fine_path_metadata.v1",'
+                '"path_record_schema_version":"simulation.seeded_tick_event.path_record.v1",'
+                '"event_projection_record_schema_version":"simulation.seeded_tick_event.event_record.v1",'
+                '"transition_ordering_policy":"canonical",'
+                '"timestamp_representation_policy":"utc_nanos",'
+                '"side_encoding_policy":"snake_case",'
+                '"state_snapshot_capture":"disabled"}'
+            )
+
+        @staticmethod
+        def event_tape_metadata_json() -> str:
+            return (
+                '{"schema_version":"simulation.seeded_tick_event.event_tape_metadata.v1",'
+                '"event_record_schema_version":"simulation.seeded_tick_event.event_record.v1",'
+                '"state_snapshot_schema_version":"simulation.seeded_tick_event.state_snapshot.v1",'
+                '"event_ordering_policy":"canonical",'
+                '"timestamp_representation_policy":"utc_nanos",'
+                '"side_encoding_policy":"snake_case",'
+                '"state_snapshot_capture":"disabled"}'
+            )
+
+        @staticmethod
+        def get_fine_path_chunk_columns(start_index: int, max_records: int) -> FakeBrokenChunkColumns:
+            del start_index
+            del max_records
+            return FakeBrokenChunkColumns()
+
+        @staticmethod
+        def get_event_tape_chunk_columns(start_index: int, max_records: int) -> NoReturn:
+            del start_index
+            del max_records
+            raise RuntimeError("native event-tape chunk projection failed")
+
+    class FakeNative:
+        @staticmethod
+        def run_seeded_tick_event_simulation(*args, **kwargs) -> FakeNativeChunkResult:
+            del args
+            del kwargs
+            return FakeNativeChunkResult()
+
+    monkeypatch.setattr(simulation_seeded_runtime_module, "native_module", lambda: FakeNative())
+
+    response = run_seeded_tick_event_simulation(_valid_simulation_request(calendar_registry))
+
+    with pytest.raises(JaniformIntegrationError) as captured_error:
+        response.to_payload()
+
+    assert captured_error.value.error_id == "simulation.integration.invalid_native_response"
+    assert captured_error.value.workflow == "simulation"
+    assert captured_error.value.entrypoint == "run_seeded_tick_event_simulation"
+    assert captured_error.value.field_path == "fine_path"
+    assert captured_error.value.context == {"chunk_start_index": 0}
+
+
 def test_pricing_run_maps_missing_native_module_to_integration_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -1,7 +1,9 @@
+import os
+
 from dataclasses import dataclass
 from datetime import datetime
 from types import ModuleType
-from typing import Optional, Any
+from typing import Any, Optional
 
 from .contracts import (
     CalibrationMarketDataNormalizationPolicy,
@@ -150,6 +152,7 @@ def _translate_loaded_market_data_request_to_staged_execution_input(
     *,
     normalized_request: MarketDataCalibrationRequest,
     loaded_inputs_result: _LoadedMarketDataCalibrationInputsResult,
+    cpu_count: int | None = None,
 ) -> MarketDataTranslationResult:
     selected_stages = _selected_stages_for_scope(normalized_request.workflow_scope)
     loaded_inputs = loaded_inputs_result.inputs
@@ -208,7 +211,8 @@ def _translate_loaded_market_data_request_to_staged_execution_input(
                 global_seed=_stable_seed_from_run_id(normalized_request.run_id),
             ),
             optimizer_settings_by_stage=tuple(
-                _default_solver_settings(stage) for stage in selected_stages
+                _default_solver_settings(stage, cpu_count=cpu_count)
+                for stage in selected_stages
             ),
         ),
         seasonality_stage_input=(
@@ -313,7 +317,7 @@ def _translate_loaded_market_data_request_to_staged_execution_input(
                 "known_news_overlays_are_point_anchors_with_zero_log_adjustment.v1",
                 "unsigned_trade_direction_labels_follow_tick_price_change_with_flat_move_carryover.v1",
                 "hawkes_search_family_uses_unsigned_open_session_activity_targets_and_model_implied_fit_terms.v1",
-                "surprise_jump_candidates_require_repeated_material_open_session_returns_outside_known_news_windows.v1",
+                "surprise_jump_candidates_use_data_driven_material_open_session_return_thresholds_outside_known_news_windows.v1",
                 "close_open_boundaries_are_resolved_from_calendar_state_transitions.v1",
                 "continuous_nig_fit_uses_filtered_observed_open_session_returns_and_stage_search.v1",
             ),
@@ -326,8 +330,8 @@ def _translate_loaded_market_data_request_to_staged_execution_input(
                 "seasonality.day_of_week.minimum_bucket_events=1",
                 "seasonality.day_of_year.minimum_bucket_events=1",
                 "known_news_overlay.log_adjustment=0.0",
-                "close_open_gap_detection_policy.material_gap_absolute_return_tolerance=max(0.0025,3x_median_abs_intraday_return)",
-                "intraday_jump_detection.material_threshold=max(0.0050,4x_median_abs_open_return)",
+                "close_open_gap_detection_policy.material_gap_absolute_return_tolerance=3x_median_abs_intraday_return",
+                "intraday_jump_detection.material_threshold=4x_median_abs_open_return",
             ),
         ),
     )
@@ -589,12 +593,14 @@ def _selected_stages_for_scope(
                 CalibrationStage.SEASONALITY,
                 CalibrationStage.HAWKES,
                 CalibrationStage.RETURN_COMPONENTS,
+                CalibrationStage.JOINT_REFINEMENT,
             )
         case CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE:
             return (
                 CalibrationStage.SEASONALITY,
                 CalibrationStage.HAWKES,
                 CalibrationStage.RETURN_COMPONENTS,
+                CalibrationStage.JOINT_REFINEMENT,
             )
 
 
@@ -622,7 +628,15 @@ def _stable_seed_from_run_id(run_id: str) -> int:
     return seed
 
 
-def _default_solver_settings(stage: CalibrationStage) -> CalibrationStageSolverSettings:
+def _default_cpu_count() -> int:
+    return max(1, os.cpu_count() or 1)
+
+
+def _default_solver_settings(
+    stage: CalibrationStage,
+    *,
+    cpu_count: int | None = None,
+) -> CalibrationStageSolverSettings:
     max_iterations: int = 150 if stage == CalibrationStage.SEASONALITY else 250
 
     return CalibrationStageSolverSettings(
@@ -630,6 +644,7 @@ def _default_solver_settings(stage: CalibrationStage) -> CalibrationStageSolverS
         optimizer_settings=CalibrationOptimizerSettings(
             solver_name="lbfgs",
             max_iterations=max_iterations,
+            cpu_count=_default_cpu_count() if cpu_count is None else cpu_count,
             absolute_tolerance=1e-8,
             relative_tolerance=1e-6,
             constraint_penalty_weight=10.0,

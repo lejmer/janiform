@@ -28,8 +28,10 @@ mod execution_bridge;
 mod market_data_preprocessing;
 mod objective;
 mod optimizer_adapter;
+mod shock_mark_fitting;
 mod staged_runner;
 mod stages;
+mod temporal;
 
 pub use adapters::*;
 pub use checkpointing::*;
@@ -39,5 +41,6 @@ pub use objective::*;
 pub use optimizer_adapter::*;
 pub use staged_runner::*;
 pub use stages::hawkes::*;
+pub use stages::joint_refinement::*;
 pub use stages::return_components::*;
 pub use stages::seasonality::*;

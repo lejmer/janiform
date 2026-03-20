@@ -76,6 +76,11 @@ simulation = model.simulate(
 pandas_frame = simulation.to_pandas()
 ```
 
+Set `JaniformEstimator(cpu_count=...)` or `janiform fit --cpu-count ...` when you want to
+control how many CPU cores staged calibration uses while evaluating candidate parameter sets.
+The default full calibration workflow now runs four stages in order:
+`seasonality`, `hawkes`, `return_components`, and `joint_refinement`.
+
 ## Developer Environment Setup
 
 ### Linux
@@ -238,7 +243,7 @@ python3 scripts/generate_crate_readmes.py
   - Seeded responses still expose lazy `fine_path` and `event_tape` views plus `diagnostics`, so normal runs avoid a full fine-path JSON round-trip and only materialize chunks on demand.
 - Vanilla option pricing example: `examples/pricing_workflow.py`
 - Primary market-data calibration example with tick-data `csv`, tick-data `parquet`, explicit known-news inputs, and optional option-surface files: `examples/market_data_calibration_workflow.py`
-- Advanced staged calibration example with default `memory` mode, explicit `disk` override, raw observed open-session return evidence for return-components fitting, and internal close-open gap detection from raw boundary observations: `examples/calibration_workflow.py`
+- Advanced staged calibration example with default `memory` mode, explicit `disk` override, raw observed open-session return evidence including local sell-share proxies for return-components fitting, and internal close-open gap detection from raw boundary observations: `examples/calibration_workflow.py`
 - Default high-level fitting now lives under `janiform.calibration` through `JaniformEstimator.fit(...)`, which returns a lean `JaniformModel` and can optionally surface a separate `JaniformFitReport`
 - Runtime hourly seasonality reconstructed from calibration output should use `janiform.hourly_factors.build_runtime_hourly_seasonality_source_from_calibration_payload(...)` rather than manual component recomposition in consumers
 - Workflow package roots remain curated convenience surfaces, and natural public domain modules such as `janiform.simulation.seeded` and `janiform.calibration.staged.inputs` are also supported when they make ownership clearer

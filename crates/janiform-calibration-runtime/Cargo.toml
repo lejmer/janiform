@@ -16,9 +16,11 @@ chrono = { workspace = true }
 chrono-tz = { workspace = true }
 janiform-calibration-artifacts = { path = "../janiform-calibration-artifacts" }
 janiform-engine-pricing = { path = "../janiform-engine-pricing" }
+janiform-engine-simulation = { path = "../janiform-engine-simulation" }
 janiform-foundations = { path = "../janiform-foundations" }
 janiform-market-time = { path = "../janiform-market-time" }
 janiform-model-kernels = { path = "../janiform-model-kernels" }
+rayon = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

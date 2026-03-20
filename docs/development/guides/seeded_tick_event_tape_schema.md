@@ -25,6 +25,19 @@ The canonical serialized payload contains:
 
 The Python surface also exposes a derived `event_tape` projection for event-only consumers.
 
+## Python boundary materialization
+
+The Rust runtime keeps one canonical priced fine path and records the transition positions needed
+to project the public fine path and derived event tape lazily.
+
+- The PyO3 boundary exposes seeded fine-path and event-tape chunks as typed primitive columns.
+- Python materialization consumes those typed columns directly instead of decoding chunked JSON
+  records.
+- `fine_path`, `event_tape`, `to_pandas()`, and `to_numpy()` preserve the same observable payload
+  values for a given seed and input set even though the internal transport format changed.
+- The diagnostics boundary transport policy string for this path is
+  `native_handle_typed_column_chunk_projection.v1`.
+
 ## Metadata fields
 
 - `event_ordering_policy`: deterministic ordering policy for tied timestamps

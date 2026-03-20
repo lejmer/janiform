@@ -33,6 +33,7 @@ class CalibrationStage(StrEnum):
     SEASONALITY = "seasonality"
     HAWKES = "hawkes"
     RETURN_COMPONENTS = "return_components"
+    JOINT_REFINEMENT = "joint_refinement"
 
 
 class CalibrationStageExecutionStatus(StrEnum):
@@ -114,7 +115,7 @@ class CalibrationStageSeedOverride(ContractModel):
         except ValueError as e:
             raise _calibration_error(
                 f"{field_path}.stage",
-                "must be one of: seasonality, hawkes, return_components",
+                "must be one of: seasonality, hawkes, return_components, joint_refinement",
             ) from e
 
         return CalibrationStageSeedOverride(
@@ -176,6 +177,7 @@ class CalibrationRunSeedSettings(ContractModel):
 class CalibrationOptimizerSettings(ContractModel):
     solver_name: str
     max_iterations: int
+    cpu_count: int
     absolute_tolerance: float
     relative_tolerance: float
     constraint_penalty_weight: float
@@ -185,6 +187,8 @@ class CalibrationOptimizerSettings(ContractModel):
             raise _calibration_error("solver_name", "must be a non-empty string")
         if self.max_iterations <= 0:
             raise _calibration_error("max_iterations", "must be strictly positive")
+        if self.cpu_count <= 0:
+            raise _calibration_error("cpu_count", "must be strictly positive")
         if self.absolute_tolerance <= 0.0:
             raise _calibration_error("absolute_tolerance", "must be strictly positive")
         if self.relative_tolerance <= 0.0:
@@ -208,6 +212,12 @@ class CalibrationOptimizerSettings(ContractModel):
                 raw_payload,
                 "max_iterations",
                 f"{field_path}.max_iterations",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            cpu_count=require_positive_integer(
+                raw_payload,
+                "cpu_count",
+                f"{field_path}.cpu_count",
                 CALIBRATION_ERROR_FACTORY,
             ),
             absolute_tolerance=require_positive_finite_number(

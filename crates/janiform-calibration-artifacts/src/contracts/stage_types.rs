@@ -6,6 +6,7 @@ pub enum CalibrationStage {
     Seasonality,
     Hawkes,
     ReturnComponents,
+    JointRefinement,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -15,6 +15,7 @@ use crate::seasonality::{
 use janiform_calibration_artifacts::{
     CalibrationExecutionMode, CalibrationRunContract, CalibrationRunContractError,
     CalibrationRunSpec, CalibrationStage, CalibrationStageDependency, CalibrationStageGraph,
+    ReturnComponentsStageFittedParameters,
 };
 use janiform_model_kernels::hawkes::{
     HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
@@ -35,8 +36,12 @@ use super::stages::return_components::{
     ReturnComponentsCloseOpenGapDetectionPolicy, ReturnComponentsDetectedIntradayJumpCandidate,
     ReturnComponentsKnownNewsCalendarInput, ReturnComponentsObservedCloseOpenBoundaryObservation,
     ReturnComponentsObservedOpenSessionReturn, ReturnComponentsRealizedKnownNewsReturnSample,
-    ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageObjectiveMetricWeights,
-    ReturnComponentsStageSignalSourceWindow,
+    ReturnComponentsStageActivityCalibrationContextSnapshot,
+    ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageExactCandidateEvaluation,
+    ReturnComponentsStageExactCandidateEvaluationError,
+    ReturnComponentsStageObjectiveMetricWeights,
+    ReturnComponentsStageObservedSignalSummaryStatistics, ReturnComponentsStageSignalSourceWindow,
+    evaluate_return_components_exact_candidate,
 };
 use super::stages::seasonality::{
     SeasonalityStageExecutionInput, SeasonalityStageExecutionSettings,
@@ -306,6 +311,7 @@ pub struct CalibrationReturnComponentsObservedOpenSessionReturn {
     pub return_timestamp_utc_nanos: i64,
     pub log_return: f64,
     pub post_shock_activity_lift: f64,
+    pub sell_share_proxy: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -328,6 +334,7 @@ pub struct CalibrationReturnComponentsCloseOpenGapDetectionPolicy {
 #[serde(deny_unknown_fields)]
 pub struct CalibrationReturnComponentsObjectiveMetricWeights {
     pub continuous_distribution_fit_weight: f64,
+    pub surprise_arrival_fit_weight: f64,
     pub jump_fit_weight: f64,
     pub gap_fit_weight: f64,
     pub activity_coupling_fit_weight: f64,
@@ -356,6 +363,27 @@ pub struct CalibrationReturnComponentsStageCandidateGenerationInput {
     pub open_session_sell_share_proxy: f64,
     pub shared_mark_law_template: CalibrationSharedNewsMarkLawConfiguration,
     pub objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CalibrationReturnComponentsActivityContextImpliedMetrics {
+    pub model_implied_open_event_rate_per_hour: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CalibrationReturnComponentsActivityContextCandidateDiagnostic {
+    pub candidate_id: String,
+    pub source_regime: CalibrationHawkesObservedSourceRegime,
+    pub implied_metrics: CalibrationReturnComponentsActivityContextImpliedMetrics,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CalibrationReturnComponentsActivityContextPayload {
+    pub selected_candidate_id: String,
+    pub candidate_diagnostics: Vec<CalibrationReturnComponentsActivityContextCandidateDiagnostic>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -496,10 +524,12 @@ impl CalibrationStagedExecutionInput {
         let disk_checkpoint_directory =
             resolve_disk_checkpoint_directory(request.execution_mode, self.runtime_resources)?;
 
-        let run_contract = CalibrationRunContract::try_new(request, canonical_stage_graph())
-            .map_err(
-                |source| CalibrationStagedExecutionBridgeError::InvalidRunContract { source },
-            )?;
+        let stage_graph =
+            canonical_stage_graph_for_selected_stages(request.selected_stages.as_slice());
+        let run_contract =
+            CalibrationRunContract::try_new(request, stage_graph).map_err(|source| {
+                CalibrationStagedExecutionBridgeError::InvalidRunContract { source }
+            })?;
 
         let staged_run_inputs = CalibrationStagedRunInputs {
             seasonality_stage_input: self
@@ -540,8 +570,32 @@ pub fn run_staged_calibration_from_execution_input(
     ))
 }
 
-fn canonical_stage_graph() -> CalibrationStageGraph {
-    CalibrationStageGraph::new(vec![
+pub fn evaluate_return_components_exact_candidate_from_bridge(
+    candidate_generation_input: CalibrationReturnComponentsStageCandidateGenerationInput,
+    activity_context_payload: Option<CalibrationReturnComponentsActivityContextPayload>,
+    observed_summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
+    fitted_parameters: ReturnComponentsStageFittedParameters,
+    stage_seed: u64,
+) -> Result<
+    ReturnComponentsStageExactCandidateEvaluation,
+    ReturnComponentsStageExactCandidateEvaluationError,
+> {
+    evaluate_return_components_exact_candidate(
+        candidate_generation_input.into_core(),
+        activity_context_payload
+            .and_then(CalibrationReturnComponentsActivityContextPayload::into_core_snapshot),
+        observed_summary_statistics,
+        fitted_parameters,
+        stage_seed,
+    )
+}
+
+fn canonical_stage_graph_for_selected_stages(
+    selected_stages: &[CalibrationStage],
+) -> CalibrationStageGraph {
+    let selected_stage_set: std::collections::BTreeSet<CalibrationStage> =
+        selected_stages.iter().copied().collect();
+    let dependencies = vec![
         CalibrationStageDependency {
             stage: CalibrationStage::Hawkes,
             depends_on: CalibrationStage::Seasonality,
@@ -550,7 +604,22 @@ fn canonical_stage_graph() -> CalibrationStageGraph {
             stage: CalibrationStage::ReturnComponents,
             depends_on: CalibrationStage::Hawkes,
         },
-    ])
+        CalibrationStageDependency {
+            stage: CalibrationStage::JointRefinement,
+            depends_on: CalibrationStage::Hawkes,
+        },
+        CalibrationStageDependency {
+            stage: CalibrationStage::JointRefinement,
+            depends_on: CalibrationStage::ReturnComponents,
+        },
+    ];
+
+    CalibrationStageGraph::new(
+        dependencies
+            .into_iter()
+            .filter(|dependency| selected_stage_set.contains(&dependency.stage))
+            .collect(),
+    )
 }
 
 fn resolve_disk_checkpoint_directory(
@@ -765,6 +834,7 @@ impl CalibrationReturnComponentsObservedOpenSessionReturn {
             return_timestamp_utc_nanos: self.return_timestamp_utc_nanos,
             log_return: self.log_return,
             post_shock_activity_lift: self.post_shock_activity_lift,
+            sell_share_proxy: self.sell_share_proxy,
         }
     }
 }
@@ -803,11 +873,40 @@ impl CalibrationReturnComponentsObjectiveMetricWeights {
     fn into_core(self) -> ReturnComponentsStageObjectiveMetricWeights {
         ReturnComponentsStageObjectiveMetricWeights::new(
             self.continuous_distribution_fit_weight,
+            self.surprise_arrival_fit_weight,
             self.jump_fit_weight,
             self.gap_fit_weight,
             self.activity_coupling_fit_weight,
             self.price_range_sanity_fit_weight,
         )
+    }
+}
+
+impl CalibrationReturnComponentsActivityContextPayload {
+    fn into_core_snapshot(self) -> Option<ReturnComponentsStageActivityCalibrationContextSnapshot> {
+        let selected_candidate = self
+            .candidate_diagnostics
+            .into_iter()
+            .find(|candidate| candidate.candidate_id == self.selected_candidate_id)?;
+        let modeled_open_event_rate_per_hour = selected_candidate
+            .implied_metrics
+            .model_implied_open_event_rate_per_hour;
+        let representative_interarrival_hours = selected_candidate
+            .source_regime
+            .open_session_mean_interarrival_seconds
+            / 3_600.0;
+        if !modeled_open_event_rate_per_hour.is_finite()
+            || modeled_open_event_rate_per_hour <= 0.0
+            || !representative_interarrival_hours.is_finite()
+            || representative_interarrival_hours <= 0.0
+        {
+            return None;
+        }
+
+        Some(ReturnComponentsStageActivityCalibrationContextSnapshot {
+            modeled_open_event_rate_per_hour,
+            representative_interarrival_hours,
+        })
     }
 }
 
@@ -856,7 +955,7 @@ mod tests {
         CalibrationStageSolverSettings {
             stage,
             optimizer_settings: CalibrationOptimizerSettings::try_new(
-                "lbfgs", 250, 1e-8, 1e-6, 10.0,
+                "lbfgs", 250, 1, 1e-8, 1e-6, 10.0,
             )
             .expect("optimizer settings should validate"),
         }
@@ -944,11 +1043,13 @@ mod tests {
                             return_timestamp_utc_nanos: 1_770_046_200_000_000_000,
                             log_return: 0.004,
                             post_shock_activity_lift: 1.00,
+                            sell_share_proxy: 0.50,
                         },
                         CalibrationReturnComponentsObservedOpenSessionReturn {
                             return_timestamp_utc_nanos: 1_770_048_300_000_000_000,
                             log_return: 0.018,
                             post_shock_activity_lift: 1.35,
+                            sell_share_proxy: 0.50,
                         },
                     ],
                     detected_intraday_jump_candidates: vec![
@@ -982,10 +1083,11 @@ mod tests {
                     },
                     objective_metric_weights: CalibrationReturnComponentsObjectiveMetricWeights {
                         continuous_distribution_fit_weight: 1.0,
+                        surprise_arrival_fit_weight: 1.0,
                         jump_fit_weight: 1.0,
                         gap_fit_weight: 1.0,
                         activity_coupling_fit_weight: 1.0,
-                        price_range_sanity_fit_weight: 1.0,
+                        price_range_sanity_fit_weight: 0.1,
                     },
                 },
             ),

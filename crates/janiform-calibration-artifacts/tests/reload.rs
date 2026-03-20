@@ -1,5 +1,5 @@
 mod support;
-use support::*;
+use support::shared::*;
 
 #[test]
 fn reload_calibration_artifact_run_from_disk_restores_committed_artifacts() {

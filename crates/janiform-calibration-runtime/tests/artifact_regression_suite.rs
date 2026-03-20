@@ -5,7 +5,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 mod support;
-use support::*;
+use support::shared::*;
 
 const CALIBRATION_ARTIFACT_REGRESSION_FIXTURE_SCHEMA_VERSION: &str =
     "calibration.artifact_regression.fixture.v1";
@@ -627,6 +627,7 @@ fn commit_persisted_artifact_regression_fixture(
             return_components_stage_candidate_generation_fixture(),
         ),
     );
+    let joint_refinement_report = build_joint_refinement_stage_success_report();
 
     let stage_parameter_artifacts = vec![
         build_calibration_stage_parameter_artifact(
@@ -644,6 +645,11 @@ fn commit_persisted_artifact_regression_fixture(
             &CalibrationStagedRunStageReport::ReturnComponents(return_components_report),
         )
         .expect("return-components stage artifact should build"),
+        build_calibration_stage_parameter_artifact(
+            &run_contract,
+            &CalibrationStagedRunStageReport::JointRefinement(joint_refinement_report),
+        )
+        .expect("joint-refinement stage artifact should build"),
     ];
     let dataset_snapshot = build_calibration_dataset_snapshot_artifact(&run_contract)
         .expect("dataset snapshot should build");
@@ -1044,10 +1050,13 @@ fn assert_stage_artifact_matches(
         "fixture_id={} stage={:?} solver settings drifted",
         fixture_id, expected_artifact.stage
     );
-    assert_eq!(
-        loaded_artifact.optimizer_state, expected_artifact.optimizer_state,
-        "fixture_id={} stage={:?} optimizer state drifted",
-        fixture_id, expected_artifact.stage
+    assert_optimizer_state_matches(
+        &loaded_artifact.optimizer_state,
+        &expected_artifact.optimizer_state,
+        &format!(
+            "fixture_id={} stage={:?} optimizer_state",
+            fixture_id, expected_artifact.stage
+        ),
     );
 
     match (
@@ -1125,6 +1134,38 @@ fn assert_stage_artifact_matches(
             assert_eq!(
                 loaded_payload.fitted_parameters, expected_payload.fitted_parameters,
                 "fixture_id={} return-components fitted_parameters drifted",
+                fixture_id
+            );
+        }
+        (
+            CalibrationStageParameterPayload::JointRefinement(loaded_payload),
+            CalibrationStageParameterPayload::JointRefinement(expected_payload),
+        ) => {
+            assert_eq!(
+                loaded_payload.selected_candidate_id, expected_payload.selected_candidate_id,
+                "fixture_id={} joint-refinement selected_candidate_id drifted",
+                fixture_id
+            );
+            assert_joint_refinement_fitted_parameters_match(
+                &loaded_payload.fitted_parameters,
+                &expected_payload.fitted_parameters,
+                &format!(
+                    "fixture_id={} joint-refinement fitted_parameters",
+                    fixture_id
+                ),
+            );
+            assert_hawkes_fitted_parameters_match(
+                &loaded_payload.baseline_hawkes_fitted_parameters,
+                &expected_payload.baseline_hawkes_fitted_parameters,
+                &format!(
+                    "fixture_id={} joint-refinement baseline_hawkes_fitted_parameters",
+                    fixture_id
+                ),
+            );
+            assert_eq!(
+                loaded_payload.baseline_return_components_fitted_parameters,
+                expected_payload.baseline_return_components_fitted_parameters,
+                "fixture_id={} joint-refinement baseline_return_components_fitted_parameters drifted",
                 fixture_id
             );
         }

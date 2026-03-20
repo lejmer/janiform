@@ -1,5 +1,5 @@
 mod support;
-use support::*;
+use support::shared::*;
 
 #[test]
 fn calibration_artifact_manifest_round_trip_serialization_preserves_required_fields() {

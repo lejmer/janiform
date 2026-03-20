@@ -365,14 +365,14 @@ fn load_hawkes_invariant_catalog_fixture_as_value() -> Value {
 fn test_suite_source_path(file_name: &str) -> PathBuf {
     match file_name {
         "seeded_tick_behavior_validation.rs"
-        | "hawkes_cluster_signature_statistical_regression.rs" => Path::new(env!(
-            "CARGO_MANIFEST_DIR"
-        ))
-        .parent()
-        .expect("crate directory should live under crates/")
-        .join("janiform-validation")
-        .join("tests")
-        .join(file_name),
+        | "hawkes_cluster_signature_statistical_regression.rs" => {
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .expect("crate directory should live under crates/")
+                .join("janiform-validation")
+                .join("tests")
+                .join(file_name)
+        }
         _ => Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests")
             .join(file_name),

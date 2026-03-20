@@ -9,6 +9,7 @@ use super::CalibrationStage;
 pub struct CalibrationOptimizerSettings {
     pub solver_name: String,
     pub max_iterations: usize,
+    pub cpu_count: usize,
     pub absolute_tolerance: f64,
     pub relative_tolerance: f64,
     pub constraint_penalty_weight: f64,
@@ -18,6 +19,7 @@ impl CalibrationOptimizerSettings {
     pub fn try_new(
         solver_name: impl Into<String>,
         max_iterations: usize,
+        cpu_count: usize,
         absolute_tolerance: f64,
         relative_tolerance: f64,
         constraint_penalty_weight: f64,
@@ -25,6 +27,7 @@ impl CalibrationOptimizerSettings {
         let optimizer_settings = Self {
             solver_name: solver_name.into(),
             max_iterations,
+            cpu_count,
             absolute_tolerance,
             relative_tolerance,
             constraint_penalty_weight,
@@ -40,6 +43,11 @@ impl CalibrationOptimizerSettings {
         if self.max_iterations == 0 {
             return Err(CalibrationOptimizerSettingsError::InvalidMaxIterations {
                 value: self.max_iterations,
+            });
+        }
+        if self.cpu_count == 0 {
+            return Err(CalibrationOptimizerSettingsError::InvalidCpuCount {
+                value: self.cpu_count,
             });
         }
         if !self.absolute_tolerance.is_finite() || self.absolute_tolerance <= 0.0 {
@@ -72,6 +80,7 @@ impl CalibrationOptimizerSettings {
 pub enum CalibrationOptimizerSettingsError {
     MissingSolverName,
     InvalidMaxIterations { value: usize },
+    InvalidCpuCount { value: usize },
     InvalidAbsoluteTolerance { value: f64 },
     InvalidRelativeTolerance { value: f64 },
     InvalidConstraintPenaltyWeight { value: f64 },
@@ -87,6 +96,12 @@ impl Display for CalibrationOptimizerSettingsError {
                 formatter,
                 "max_iterations must be strictly positive, found {value}"
             ),
+            Self::InvalidCpuCount { value } => {
+                write!(
+                    formatter,
+                    "cpu_count must be strictly positive, found {value}"
+                )
+            }
             Self::InvalidAbsoluteTolerance { value } => write!(
                 formatter,
                 "absolute_tolerance must be finite and strictly positive, found {value}"

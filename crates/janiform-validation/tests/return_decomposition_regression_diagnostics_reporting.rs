@@ -1,11 +1,11 @@
 mod support;
 
-use janiform_foundations::complex_math::ComplexScalar;
-use janiform_model_kernels::nig::{NigBuySellDriverParameters, NigSharedPlusShiftConfiguration};
 use janiform_engine_pricing::{
     compose_nig_trading_time_exponent_with_edge_mode,
     compose_total_return_characteristic_function_with_edge_mode,
 };
+use janiform_foundations::complex_math::ComplexScalar;
+use janiform_model_kernels::nig::{NigBuySellDriverParameters, NigSharedPlusShiftConfiguration};
 use janiform_model_kernels::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionInput,
 };

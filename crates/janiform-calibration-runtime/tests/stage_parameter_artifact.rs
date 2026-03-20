@@ -1,5 +1,5 @@
 mod support;
-use support::*;
+use support::shared::*;
 
 #[test]
 fn calibration_stage_parameter_artifacts_round_trip_per_stage_preserve_stage_payloads() {

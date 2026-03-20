@@ -1,5 +1,6 @@
 //! Shared helpers for stylized-fact diagnostics modules.
 
+use janiform_foundations::numeric::compute_sorted_quantile;
 use janiform_foundations::randomness::{
     SimulationRandomnessStream, SplitMix64SimulationRandomnessStream,
 };
@@ -82,25 +83,6 @@ where
         compute_sorted_quantile(&bootstrap_replication_values, upper_tail_probability);
 
     (lower_bound, upper_bound)
-}
-
-pub fn compute_sorted_quantile(sorted_values: &[f64], quantile_level: f64) -> f64 {
-    if sorted_values.is_empty() {
-        return f64::NAN;
-    }
-    if sorted_values.len() == 1 {
-        return sorted_values[0];
-    }
-
-    let clamped_quantile = quantile_level.clamp(0.0, 1.0);
-    let quantile_position = clamped_quantile * (sorted_values.len() - 1) as f64;
-    let lower_position = quantile_position.floor() as usize;
-    let upper_position = quantile_position.ceil() as usize;
-    let interpolation_weight = quantile_position - lower_position as f64;
-    let lower_value = sorted_values[lower_position];
-    let upper_value = sorted_values[upper_position];
-
-    lower_value + interpolation_weight * (upper_value - lower_value)
 }
 
 pub(crate) fn coverage_ratio(covered_interval_count: usize, horizon_interval_count: usize) -> f64 {

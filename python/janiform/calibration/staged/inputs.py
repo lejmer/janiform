@@ -1195,11 +1195,14 @@ class CalibrationReturnComponentsObservedOpenSessionReturn(ContractModel):
     return_timestamp_utc_nanos: int
     log_return: float
     post_shock_activity_lift: float
+    sell_share_proxy: float
 
     def __post_init__(self) -> None:
         require_finite_number({"log_return": self.log_return}, "log_return", "log_return", CALIBRATION_ERROR_FACTORY)
         if self.post_shock_activity_lift < 0.0:
             raise _calibration_error("post_shock_activity_lift", "must be non-negative")
+        if self.sell_share_proxy < 0.0 or self.sell_share_proxy > 1.0:
+            raise _calibration_error("sell_share_proxy", "must be between 0 and 1")
 
     @staticmethod
     def from_mapping(
@@ -1226,6 +1229,12 @@ class CalibrationReturnComponentsObservedOpenSessionReturn(ContractModel):
                 raw_payload,
                 "post_shock_activity_lift",
                 f"{field_path}.post_shock_activity_lift",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            sell_share_proxy=require_non_negative_finite_number(
+                raw_payload,
+                "sell_share_proxy",
+                f"{field_path}.sell_share_proxy",
                 CALIBRATION_ERROR_FACTORY,
             ),
         )
@@ -1319,6 +1328,7 @@ class CalibrationReturnComponentsCloseOpenGapDetectionPolicy(ContractModel):
 @dataclass(frozen=True, slots=True)
 class CalibrationReturnComponentsObjectiveMetricWeights(ContractModel):
     continuous_distribution_fit_weight: float
+    surprise_arrival_fit_weight: float
     jump_fit_weight: float
     gap_fit_weight: float
     activity_coupling_fit_weight: float
@@ -1327,6 +1337,8 @@ class CalibrationReturnComponentsObjectiveMetricWeights(ContractModel):
     def __post_init__(self) -> None:
         if self.continuous_distribution_fit_weight < 0.0:
             raise _calibration_error("continuous_distribution_fit_weight", "must be non-negative")
+        if self.surprise_arrival_fit_weight < 0.0:
+            raise _calibration_error("surprise_arrival_fit_weight", "must be non-negative")
         if self.jump_fit_weight < 0.0:
             raise _calibration_error("jump_fit_weight", "must be non-negative")
         if self.gap_fit_weight < 0.0:
@@ -1350,6 +1362,12 @@ class CalibrationReturnComponentsObjectiveMetricWeights(ContractModel):
                 raw_payload,
                 "continuous_distribution_fit_weight",
                 f"{field_path}.continuous_distribution_fit_weight",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            surprise_arrival_fit_weight=require_non_negative_finite_number(
+                raw_payload,
+                "surprise_arrival_fit_weight",
+                f"{field_path}.surprise_arrival_fit_weight",
                 CALIBRATION_ERROR_FACTORY,
             ),
             jump_fit_weight=require_non_negative_finite_number(

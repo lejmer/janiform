@@ -7,8 +7,6 @@
 - Do not introduce global state; use existing services and registries.
 - Implementations are Rust first for most things (unless specified otherwise or obvious from context): Python is just a thin wrapper and the user-facing API.
 
----
-
 ## Contract Evolution Policy (Mandatory)
 
 This codebase is pre-v0.1 and has no external users.
@@ -19,18 +17,6 @@ This codebase is pre-v0.1 and has no external users.
 - Do **not** bump schema versions during refactors or when introducing breaking changes. Keep schema identifiers at `v1`.
 - Replace old contracts directly, then migrate all in-repo call sites/tests/docs to the new contract in the same PR.
 - If you believe compatibility is required, **stop and ask** before implementing anything.
-
----
-
-## Repo Orientation
-- `crates/janiform/`: The umbrella Rust facade of the library
-- `crates/janiform-pybind/`: Depends on `janiform` and translates
-- `python/janiform/`: Python package and CLI
-- `tests/`: Python unit and integration tests, shared fixtures, and validation harnesses
-- `crates/janiform/tests/`: Rust unit and integration tests for the facade crate
-- `docs/`: Design docs, development guides, planning
-
----
 
 ## Available Tooling
 - `./scripts/bootstrap-linux.sh .venv-linux` for Linux/WSL-based bootstrapping (if no venv exists)
@@ -46,10 +32,11 @@ This codebase is pre-v0.1 and has no external users.
 
 When running `cargo test`, do so with `TMPDIR=/tmp` so that verification stays inside the sandbox.
 
----
-
 ## Agent Heuristics and Checklist
 ### 1. General
+- When writing a helper function, if it is a general enough helper, look for it elsewhere because it likely already exists.
+  - If it does exist, that means it should be moved to a shared location. Move it! Then import! Don't write a local copy.
+  - If it does not exist, write it in a shared location anyway, so that if we ever need it somewhere else in the future, we can easily find it.
 - Before adding new functions or classes, look through the repo to see if something similar already exists (except for enums and dataclasses that have context-dependent names):
   - If it does exist, use that instead of writing something new.
   - If it does exist, but slightly different, if it makes sense, extend it to do what you require it to do.
@@ -200,8 +187,6 @@ Read and follow `docs/development/guides/python_style_guide.md`. Agents must adh
 - You update README.md with an updated project structure, if there are big enough changes to it.
 - All code compiles.
 - All tests succeed.
-
----
 
 ## Comments
 Comments should only explain what the code doesn't clearly state, or help us understand the structure when the code is complex or is made up of many steps.

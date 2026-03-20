@@ -884,6 +884,17 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "return_jump_scale": 1.2,
                             },
                         },
+                        "surprise_deterministic_intensity_profile": {
+                            "weekly_hour_utc_multipliers": [1.0] * 168,
+                            "profile_resolution_hours": 1,
+                            "fit_policy": (
+                                "selected_exogenous_surprise_episode_rate_per_utc_hour_of_week_"
+                                "with_baseline_shrinkage.v1"
+                            ),
+                            "normalization_policy": (
+                                "exposure_weighted_mean_one_over_source_window.v1"
+                            ),
+                        },
                     },
                 },
             },

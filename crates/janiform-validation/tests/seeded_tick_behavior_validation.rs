@@ -1,8 +1,17 @@
 mod support;
 
 use chrono::{DateTime, Utc};
+use janiform_engine_simulation::{
+    SEEDED_TICK_EVENT_ORDERING_POLICY, SeededTickEventDebugTraceRecord,
+    SeededTickEventDebugTraceTransitionKind, SeededTickEventRecord, SeededTickEventSide,
+    SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
+    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions, SeededTickSimulationRunResult,
+    run_seeded_tick_event_simulation, run_seeded_tick_event_simulation_with_randomness_factory,
+};
+use janiform_foundations::randomness::{
+    SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
+};
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
-use janiform_model_kernels::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
 use janiform_market_time::hourly_factors::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
     HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION, HOURLY_FACTOR_FALL_BACK_POLICY,
@@ -11,6 +20,9 @@ use janiform_market_time::hourly_factors::{
     HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
     HourlyFactorMaterializationMetadata,
 };
+use janiform_model_kernels::hawkes::{
+    HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
+};
 use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
@@ -18,16 +30,6 @@ use janiform_model_kernels::news::{
     SurpriseNewsArrivalConfiguration,
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
-use janiform_foundations::randomness::{
-    SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
-};
-use janiform_engine_simulation::{
-    SEEDED_TICK_EVENT_ORDERING_POLICY, SeededTickEventDebugTraceRecord,
-    SeededTickEventDebugTraceTransitionKind, SeededTickEventRecord, SeededTickEventSide,
-    SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
-    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions, SeededTickSimulationRunResult,
-    run_seeded_tick_event_simulation, run_seeded_tick_event_simulation_with_randomness_factory,
-};
 use support::hawkes_invariant_catalog::{
     HawkesInvariantCheckClass, assert_hawkes_invariant_catalog_ids_have_check_class,
 };

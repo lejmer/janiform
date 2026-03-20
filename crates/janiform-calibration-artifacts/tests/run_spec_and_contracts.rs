@@ -1,5 +1,5 @@
 mod support;
-use support::*;
+use support::shared::*;
 
 #[test]
 fn calibration_run_spec_round_trip_serialization_preserves_contract_fields() {
@@ -86,7 +86,7 @@ fn calibration_stage_seed_derivation_is_deterministic_and_honors_overrides() {
         ],
         CalibrationRunSeedSettings::try_new(17, Vec::new())
             .expect("seed settings without overrides should validate"),
-        build_solver_settings_for_all_stages(),
+        build_solver_settings_for_pre_joint_pipeline(),
     )
     .expect("run spec should validate");
 
@@ -340,7 +340,7 @@ fn calibration_stage_graph_validation_resolves_explicit_execution_order() {
             CalibrationStage::Hawkes,
         ],
         build_seed_settings(),
-        build_solver_settings_for_all_stages(),
+        build_solver_settings_for_pre_joint_pipeline(),
     )
     .expect("run spec should validate");
 
@@ -421,7 +421,7 @@ fn calibration_stage_graph_rejects_cycles() {
             CalibrationStage::ReturnComponents,
         ],
         build_seed_settings(),
-        build_solver_settings_for_all_stages(),
+        build_solver_settings_for_pre_joint_pipeline(),
     )
     .expect("run spec should validate");
 
@@ -462,6 +462,14 @@ fn calibration_run_contract_captures_solver_settings_for_auditability() {
             stage: CalibrationStage::ReturnComponents,
             depends_on: CalibrationStage::Hawkes,
         },
+        CalibrationStageDependency {
+            stage: CalibrationStage::JointRefinement,
+            depends_on: CalibrationStage::Hawkes,
+        },
+        CalibrationStageDependency {
+            stage: CalibrationStage::JointRefinement,
+            depends_on: CalibrationStage::ReturnComponents,
+        },
     ]);
 
     let run_contract = CalibrationRunContract::try_new(run_spec.clone(), stage_graph)
@@ -483,7 +491,8 @@ fn calibration_run_contract_captures_solver_settings_for_auditability() {
         vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
-            CalibrationStage::ReturnComponents
+            CalibrationStage::ReturnComponents,
+            CalibrationStage::JointRefinement,
         ]
     );
 
@@ -492,7 +501,7 @@ fn calibration_run_contract_captures_solver_settings_for_auditability() {
         serialized["stage_solver_settings"]
             .as_array()
             .map(|v| v.len()),
-        Some(3)
+        Some(4)
     );
     assert_eq!(
         serialized["stage_solver_settings"][0]["optimizer_settings"]["solver_name"],

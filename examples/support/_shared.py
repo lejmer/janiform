@@ -914,12 +914,12 @@ def build_calibration_execution_input(
             CalibrationHawkesStageCandidateInput(
                 candidate_id="candidate_stable_low_loss",
                 lambda_bar=0.80,
-                beta=1.60,
+                beta=20.0,
                 structured_alpha=CalibrationHawkesStructuredAlphaParameterization(
-                    a_self=0.35,
-                    a_cross=0.06,
-                    delta_self=0.07,
-                    delta_cross=0.04,
+                    a_self=0.01,
+                    a_cross=0.002,
+                    delta_self=0.001,
+                    delta_cross=0.0005,
                 ),
                 structured_rho=CalibrationHawkesStructuredRhoParameterization(
                     r_self=0.30,
@@ -988,16 +988,19 @@ def build_calibration_execution_input(
                     return_timestamp_utc_nanos=1770046200000000000,
                     log_return=0.004,
                     post_shock_activity_lift=1.00,
+                    sell_share_proxy=0.48,
                 ),
                 CalibrationReturnComponentsObservedOpenSessionReturn(
                     return_timestamp_utc_nanos=1770048300000000000,
                     log_return=0.018,
                     post_shock_activity_lift=1.35,
+                    sell_share_proxy=0.62,
                 ),
                 CalibrationReturnComponentsObservedOpenSessionReturn(
                     return_timestamp_utc_nanos=1770123600000000000,
                     log_return=-0.006,
                     post_shock_activity_lift=0.95,
+                    sell_share_proxy=0.57,
                 ),
             ),
             detected_intraday_jump_candidates=(
@@ -1034,6 +1037,7 @@ def build_calibration_execution_input(
             ),
             objective_metric_weights=CalibrationReturnComponentsObjectiveMetricWeights(
                 continuous_distribution_fit_weight=1.0,
+                surprise_arrival_fit_weight=1.0,
                 jump_fit_weight=1.0,
                 gap_fit_weight=1.0,
                 activity_coupling_fit_weight=1.0,
@@ -1050,6 +1054,7 @@ def build_calibration_solver_settings(stage: CalibrationStage) -> CalibrationSta
         optimizer_settings=CalibrationOptimizerSettings(
             solver_name="lbfgs",
             max_iterations=250,
+            cpu_count=1,
             absolute_tolerance=1e-8,
             relative_tolerance=1e-6,
             constraint_penalty_weight=10.0,
