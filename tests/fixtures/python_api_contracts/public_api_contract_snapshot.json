@@ -659,13 +659,15 @@
             "status",
             "stage_reports",
             "emitted_checkpoints",
+            "diagnostic_artifact_references",
+            "diagnostic_artifact_bundle",
             "resumed_from_checkpoint_reference",
             "resumed_from_last_successful_stage",
             "started_from_stage",
             "failure"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', failure_triage_policy: 'str', run_id: 'str', execution_mode: 'CalibrationExecutionMode', status: 'CalibrationStageExecutionStatus', stage_reports: 'tuple[CalibrationStageReport, ...]', emitted_checkpoints: 'tuple[CalibrationCheckpointMetadata, ...]', resumed_from_checkpoint_reference: 'Optional[str]' = None, resumed_from_last_successful_stage: 'Optional[CalibrationStage]' = None, started_from_stage: 'Optional[CalibrationStage]' = None, failure: 'Optional[CalibrationFailureDetails]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', failure_triage_policy: 'str', run_id: 'str', execution_mode: 'CalibrationExecutionMode', status: 'CalibrationStageExecutionStatus', stage_reports: 'tuple[CalibrationStageReport, ...]', emitted_checkpoints: 'tuple[CalibrationCheckpointMetadata, ...]', diagnostic_artifact_references: 'tuple[dict[str, Any], ...]' = (), diagnostic_artifact_bundle: 'Optional[dict[str, Any]]' = None, resumed_from_checkpoint_reference: 'Optional[str]' = None, resumed_from_last_successful_stage: 'Optional[CalibrationStage]' = None, started_from_stage: 'Optional[CalibrationStage]' = None, failure: 'Optional[CalibrationFailureDetails]' = None) -> 'None'"
         },
         "prepare_market_data_calibration": {
           "kind": "function",
@@ -1610,17 +1612,18 @@
           "field_names": [
             "calendar_registry",
             "session_resolution",
-            "loaded_inputs",
             "execution_input",
             "diagnostics",
-            "provenance"
+            "provenance",
+            "fit_warning",
+            "reference_price"
           ],
           "kind": "contract_model",
-          "signature": "(calendar_registry: 'CalendarRegistry', session_resolution: 'MarketDataSessionResolution', loaded_inputs: 'LoadedMarketDataCalibrationInputs', execution_input: 'StagedCalibrationExecutionInput', diagnostics: 'MarketDataTranslationDiagnostics', provenance: 'MarketDataTranslationProvenance') -> 'None'"
+          "signature": "(calendar_registry: 'CalendarRegistry', session_resolution: 'MarketDataSessionResolution', execution_input: 'StagedCalibrationExecutionInput', diagnostics: 'MarketDataTranslationDiagnostics', provenance: 'MarketDataTranslationProvenance', fit_warning: 'Optional[str]', reference_price: 'Optional[float]') -> 'None'"
         },
         "translate_market_data_request_to_staged_execution_input": {
           "kind": "function",
-          "signature": "(request: 'MarketDataCalibrationRequest') -> 'MarketDataTranslationResult'"
+          "signature": "(request: 'MarketDataCalibrationRequest', *, cpu_count: 'int | None' = None) -> 'MarketDataTranslationResult'"
         }
       }
     },
@@ -3764,13 +3767,15 @@
             "status",
             "stage_reports",
             "emitted_checkpoints",
+            "diagnostic_artifact_references",
+            "diagnostic_artifact_bundle",
             "resumed_from_checkpoint_reference",
             "resumed_from_last_successful_stage",
             "started_from_stage",
             "failure"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', failure_triage_policy: 'str', run_id: 'str', execution_mode: 'CalibrationExecutionMode', status: 'CalibrationStageExecutionStatus', stage_reports: 'tuple[CalibrationStageReport, ...]', emitted_checkpoints: 'tuple[CalibrationCheckpointMetadata, ...]', resumed_from_checkpoint_reference: 'Optional[str]' = None, resumed_from_last_successful_stage: 'Optional[CalibrationStage]' = None, started_from_stage: 'Optional[CalibrationStage]' = None, failure: 'Optional[CalibrationFailureDetails]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', failure_triage_policy: 'str', run_id: 'str', execution_mode: 'CalibrationExecutionMode', status: 'CalibrationStageExecutionStatus', stage_reports: 'tuple[CalibrationStageReport, ...]', emitted_checkpoints: 'tuple[CalibrationCheckpointMetadata, ...]', diagnostic_artifact_references: 'tuple[dict[str, Any], ...]' = (), diagnostic_artifact_bundle: 'Optional[dict[str, Any]]' = None, resumed_from_checkpoint_reference: 'Optional[str]' = None, resumed_from_last_successful_stage: 'Optional[CalibrationStage]' = None, started_from_stage: 'Optional[CalibrationStage]' = None, failure: 'Optional[CalibrationFailureDetails]' = None) -> 'None'"
         },
         "deserialize_staged_calibration_execution_input": {
           "kind": "function",
@@ -4508,13 +4513,15 @@
             "status",
             "stage_reports",
             "emitted_checkpoints",
+            "diagnostic_artifact_references",
+            "diagnostic_artifact_bundle",
             "resumed_from_checkpoint_reference",
             "resumed_from_last_successful_stage",
             "started_from_stage",
             "failure"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', failure_triage_policy: 'str', run_id: 'str', execution_mode: 'CalibrationExecutionMode', status: 'CalibrationStageExecutionStatus', stage_reports: 'tuple[CalibrationStageReport, ...]', emitted_checkpoints: 'tuple[CalibrationCheckpointMetadata, ...]', resumed_from_checkpoint_reference: 'Optional[str]' = None, resumed_from_last_successful_stage: 'Optional[CalibrationStage]' = None, started_from_stage: 'Optional[CalibrationStage]' = None, failure: 'Optional[CalibrationFailureDetails]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', failure_triage_policy: 'str', run_id: 'str', execution_mode: 'CalibrationExecutionMode', status: 'CalibrationStageExecutionStatus', stage_reports: 'tuple[CalibrationStageReport, ...]', emitted_checkpoints: 'tuple[CalibrationCheckpointMetadata, ...]', diagnostic_artifact_references: 'tuple[dict[str, Any], ...]' = (), diagnostic_artifact_bundle: 'Optional[dict[str, Any]]' = None, resumed_from_checkpoint_reference: 'Optional[str]' = None, resumed_from_last_successful_stage: 'Optional[CalibrationStage]' = None, started_from_stage: 'Optional[CalibrationStage]' = None, failure: 'Optional[CalibrationFailureDetails]' = None) -> 'None'"
         },
         "deserialize_staged_calibration_response": {
           "kind": "function",

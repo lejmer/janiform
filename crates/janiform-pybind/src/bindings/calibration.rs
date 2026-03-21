@@ -3,8 +3,10 @@ use janiform::calibration::{
     CalibrationReturnComponentsStageCandidateGenerationInput, CalibrationStagedExecutionInput,
     CalibrationStagedRunReport, CalibrationStagedRunStageReport,
     MarketDataTranslationPreprocessingOutput, MarketDataTranslationPreprocessingRequest,
+    MarketDataLoadingOutput, MarketDataLoadingRequest,
     ReturnComponentsStageFittedParameters, ReturnComponentsStageObservedSignalSummaryStatistics,
     evaluate_return_components_exact_candidate_from_bridge,
+    load_and_preprocess_market_data_translation_request as load_and_preprocess_market_data_translation_request_native,
     preprocess_market_data_translation_request as preprocess_market_data_translation_request_native,
     run_staged_calibration_from_execution_input,
 };
@@ -47,6 +49,48 @@ fn preprocess_market_data_translation_request(
             ))
         },
     )
+}
+
+#[pyfunction]
+#[pyo3(signature = (loading_request, calendar_registry))]
+fn load_and_preprocess_market_data_translation_request(
+    py: Python<'_>,
+    loading_request: &Bound<'_, PyAny>,
+    calendar_registry: &PyCalendarRegistry,
+) -> PyResult<Py<PyAny>> {
+    let loading_request: MarketDataLoadingRequest =
+        serde_json::from_value(py_any_to_json_value(loading_request)?).map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize market-data loading request: {source}"
+            ))
+        })?;
+
+    let loading_output = py
+        .allow_threads(|| {
+            load_and_preprocess_market_data_translation_request_native(
+                loading_request,
+                &calendar_registry.registry,
+            )
+        })
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    market_data_loading_output_to_py_object(py, &loading_output).map_err(|source| {
+        CalibrationExecutionError::new_err(format!(
+            "failed to materialize market-data loading output: {source}"
+        ))
+    })
+}
+
+fn market_data_loading_output_to_py_object(
+    py: Python<'_>,
+    loading_output: &MarketDataLoadingOutput,
+) -> PyResult<Py<PyAny>> {
+    let raw_value = serde_json::to_value(loading_output).map_err(|source| {
+        CalibrationExecutionError::new_err(format!(
+            "failed to serialize market-data loading output: {source}"
+        ))
+    })?;
+    json_value_to_py_object(py, &raw_value)
 }
 
 fn market_data_translation_preprocessing_output_to_py_object(
@@ -225,6 +269,10 @@ fn flatten_stage_report_for_python(
 pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(
         preprocess_market_data_translation_request,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        load_and_preprocess_market_data_translation_request,
         module
     )?)?;
     module.add_function(wrap_pyfunction!(run_staged_calibration, module)?)?;

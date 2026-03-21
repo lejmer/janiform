@@ -893,6 +893,12 @@ def preprocess_market_data_translation_request(
 ) -> object: ...
 
 
+def load_and_preprocess_market_data_translation_request(
+    loading_request: object,
+    calendar_registry: CalendarRegistry,
+) -> object: ...
+
+
 def run_coarse_simulation(
     run_request: object,
 ) -> object: ...

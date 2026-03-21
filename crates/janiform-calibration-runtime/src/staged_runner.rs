@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::time::Instant;
 
 use chrono::Utc;
 use serde::Serialize;
@@ -6,6 +7,13 @@ use serde::Serialize;
 use super::checkpointing::{
     CalibrationInMemoryStagePayloadState, CalibrationMemoryCheckpointStore,
     LoadedInMemoryCheckpointState,
+};
+use super::diagnostics::artifacts::{
+    build_diagnostic_artifact_bundle, persist_diagnostic_artifact_bundle,
+};
+use super::diagnostics::types::{
+    CalibrationDiagnosticArtifactBundle, CalibrationDiagnosticArtifactReference,
+    CalibrationDiagnosticRuntimeProfileEntry,
 };
 use super::stages::hawkes::{
     HawkesStageCandidateInput, HawkesStageExecutionInput, HawkesStageExecutionMetadata,
@@ -37,7 +45,8 @@ use janiform_calibration_artifacts::{
     CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION, CALIBRATION_RUN_SPEC_SCHEMA_VERSION,
     CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY, CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION,
     CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION, CalibrationArtifactRunPreparationMode,
-    CalibrationArtifactRunWriter, CalibrationDiskCheckpointError, CalibrationExecutionMode,
+    CalibrationArtifactKind, CalibrationArtifactReference, CalibrationArtifactRunWriter,
+    CalibrationDiskCheckpointError, CalibrationExecutionMode,
     CalibrationOptimizerSettings, CalibrationResumeSource, CalibrationRunContract,
     CalibrationRunSpec, CalibrationStage, CalibrationStageCheckpointMetadata,
     CalibrationStageHandoffTransport, CalibrationStageParameterArtifact,
@@ -309,6 +318,10 @@ pub struct CalibrationStagedRunReport {
     pub status: CalibrationStageExecutionStatus,
     pub stage_reports: Vec<CalibrationStagedRunStageReport>,
     pub emitted_checkpoints: Vec<CalibrationStageCheckpointMetadata>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub diagnostic_artifact_references: Vec<CalibrationDiagnosticArtifactReference>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostic_artifact_bundle: Option<CalibrationDiagnosticArtifactBundle>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resumed_from_checkpoint_reference: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -372,6 +385,7 @@ pub fn run_staged_calibration_with_checkpointing(
     let mut emitted_checkpoints = Vec::new();
     let mut persisted_stage_parameter_artifacts = Vec::<CalibrationStageParameterArtifact>::new();
     let mut payload_state = CalibrationInMemoryStagePayloadState::default();
+    let mut stage_runtime_entries = Vec::new();
     let mut resumed_from_checkpoint_reference = None;
     let mut resumed_from_last_successful_stage = None;
     let mut start_position = 0usize;
@@ -658,6 +672,8 @@ pub fn run_staged_calibration_with_checkpointing(
             status: CalibrationStageExecutionStatus::Success,
             stage_reports,
             emitted_checkpoints,
+            diagnostic_artifact_references: Vec::new(),
+            diagnostic_artifact_bundle: None,
             resumed_from_checkpoint_reference,
             resumed_from_last_successful_stage,
             started_from_stage: None,
@@ -672,6 +688,7 @@ pub fn run_staged_calibration_with_checkpointing(
         .enumerate()
         .skip(start_position)
     {
+        let stage_start_time = Instant::now();
         let stage_report = match run_stage_for_staged_execution(
             run_spec,
             calendar_registry,
@@ -692,6 +709,10 @@ pub fn run_staged_calibration_with_checkpointing(
                 );
             }
         };
+        stage_runtime_entries.push(diagnostic_runtime_profile_entry_for_stage_report(
+            &stage_report,
+            stage_start_time.elapsed().as_secs_f64(),
+        ));
 
         let stage_status = stage_report.status();
         stage_reports.push(stage_report.clone());
@@ -837,6 +858,11 @@ pub fn run_staged_calibration_with_checkpointing(
         emitted_checkpoints.push(checkpoint_metadata);
     }
 
+    let diagnostic_artifact_bundle =
+        build_diagnostic_artifact_bundle(stage_reports.as_slice(), stage_runtime_entries.clone());
+    let mut diagnostic_artifact_references = Vec::new();
+    let mut diagnostic_manifest_artifact_references = Vec::new();
+
     if run_spec.execution_mode == CalibrationExecutionMode::Disk {
         let artifact_run_writer = artifact_run_writer
             .expect("disk-mode execution should have prepared an artifact run writer");
@@ -864,13 +890,47 @@ pub fn run_staged_calibration_with_checkpointing(
             );
         }
 
+        if let Some(diagnostic_bundle) = diagnostic_artifact_bundle.as_ref() {
+            diagnostic_artifact_references = match persist_diagnostic_artifact_bundle(
+                artifact_run_writer.pending_run_directory(),
+                diagnostic_bundle,
+            ) {
+                Ok(references) => references,
+                Err(error_message) => {
+                    return build_staged_run_failure_report(
+                        run_contract,
+                        stage_reports,
+                        emitted_checkpoints,
+                        resumed_from_checkpoint_reference,
+                        resumed_from_last_successful_stage,
+                        started_from_stage,
+                        CalibrationStagedRunFailure::ArtifactManifestPersistFailed {
+                            error_message,
+                        },
+                    );
+                }
+            };
+            diagnostic_manifest_artifact_references = diagnostic_artifact_references
+                .iter()
+                .map(|reference| CalibrationArtifactReference {
+                    artifact_id: format!("diagnostics_{}", reference.artifact_family),
+                    artifact_kind: CalibrationArtifactKind::Diagnostics,
+                    artifact_reference: format!(
+                        "artifact://diagnostics/{}/{}",
+                        run_spec.run_id, reference.artifact_family
+                    ),
+                    stage: None,
+                })
+                .collect();
+        }
+
         let manifest = match build_calibration_artifact_manifest(
             run_contract,
             dataset_snapshot_artifact,
             persisted_stage_parameter_artifacts.as_slice(),
             emitted_checkpoints.as_slice(),
             &[],
-            &[],
+            diagnostic_manifest_artifact_references.as_slice(),
             Utc::now(),
         ) {
             Ok(manifest) => manifest,
@@ -929,6 +989,12 @@ pub fn run_staged_calibration_with_checkpointing(
         status: CalibrationStageExecutionStatus::Success,
         stage_reports,
         emitted_checkpoints,
+        diagnostic_artifact_references,
+        diagnostic_artifact_bundle: (
+            run_spec.execution_mode == CalibrationExecutionMode::Memory
+        )
+            .then_some(diagnostic_artifact_bundle)
+            .flatten(),
         resumed_from_checkpoint_reference,
         resumed_from_last_successful_stage,
         started_from_stage,
@@ -1605,6 +1671,9 @@ fn restore_in_memory_payload_state_from_stage_parameter_artifact(
                         .clone(),
                     objective_breakdown: payload.objective_breakdown.clone(),
                     optimizer_diagnostics: payload.optimizer_diagnostics.clone(),
+                    candidate_frontier: Vec::new(),
+                    simulation_summaries: Vec::new(),
+                    coarse_tick_consistency: Vec::new(),
                 });
         }
     }
@@ -1691,9 +1760,63 @@ fn build_staged_run_failure_report(
         status: CalibrationStageExecutionStatus::Failure,
         stage_reports,
         emitted_checkpoints,
+        diagnostic_artifact_references: Vec::new(),
+        diagnostic_artifact_bundle: None,
         resumed_from_checkpoint_reference,
         resumed_from_last_successful_stage,
         started_from_stage,
         failure: Some(failure),
+    }
+}
+
+fn diagnostic_runtime_profile_entry_for_stage_report(
+    stage_report: &CalibrationStagedRunStageReport,
+    elapsed_seconds: f64,
+) -> CalibrationDiagnosticRuntimeProfileEntry {
+    match stage_report {
+        CalibrationStagedRunStageReport::Seasonality(report) => {
+            CalibrationDiagnosticRuntimeProfileEntry {
+                component_id: "stage.seasonality".to_string(),
+                elapsed_seconds,
+                evaluation_count: report
+                    .metadata
+                    .as_ref()
+                    .map(|metadata| metadata.accepted_record_count)
+                    .unwrap_or(0),
+            }
+        }
+        CalibrationStagedRunStageReport::Hawkes(report) => {
+            CalibrationDiagnosticRuntimeProfileEntry {
+                component_id: "stage.hawkes".to_string(),
+                elapsed_seconds,
+                evaluation_count: report
+                    .metadata
+                    .as_ref()
+                    .map(|metadata| metadata.input_candidate_count)
+                    .unwrap_or(0),
+            }
+        }
+        CalibrationStagedRunStageReport::ReturnComponents(report) => {
+            CalibrationDiagnosticRuntimeProfileEntry {
+                component_id: "stage.return_components".to_string(),
+                elapsed_seconds,
+                evaluation_count: report
+                    .metadata
+                    .as_ref()
+                    .map(|metadata| metadata.input_candidate_count)
+                    .unwrap_or(0),
+            }
+        }
+        CalibrationStagedRunStageReport::JointRefinement(report) => {
+            CalibrationDiagnosticRuntimeProfileEntry {
+                component_id: "stage.joint_refinement".to_string(),
+                elapsed_seconds,
+                evaluation_count: report
+                    .metadata
+                    .as_ref()
+                    .map(|metadata| metadata.input_candidate_count)
+                    .unwrap_or(0),
+            }
+        }
     }
 }

@@ -162,7 +162,7 @@ def test_translate_market_data_request_derives_boundaries_known_news_and_diagnos
     assert first_translation.diagnostics.close_open_boundary_observation_count == 1
     assert first_translation.diagnostics.material_close_open_gap_count == 1
     assert (
-        "native_market_data_translation_preprocessing.rust.v1"
+        "market_data_loading_and_translation.rust.v1"
         in first_translation.provenance.derivation_policies
     )
 
@@ -590,17 +590,6 @@ def test_translate_market_data_request_preserves_provided_trade_sign_diagnostics
 
     translation = translate_market_data_request_to_staged_execution_input(request)
 
-    assert [
-        record.trade_sign
-        for record in translation.loaded_inputs.tick_data.records
-    ] == [
-        CalibrationTradeSign.BUY,
-        CalibrationTradeSign.BUY,
-        CalibrationTradeSign.SELL,
-        CalibrationTradeSign.SELL,
-        CalibrationTradeSign.BUY,
-    ]
-
     hawkes_candidates = translation.execution_input.hawkes_candidate_inputs
     assert hawkes_candidates is not None
 
@@ -610,6 +599,8 @@ def test_translate_market_data_request_preserves_provided_trade_sign_diagnostics
     assert label_diagnostics.price_up_inference_count == 2
     assert label_diagnostics.price_down_inference_count == 1
     assert label_diagnostics.flat_move_carry_count == 0
+    assert hawkes_candidates[0].source_regime.open_session_buy_tick_count == 3
+    assert hawkes_candidates[0].source_regime.open_session_sell_tick_count == 2
 
 
 def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenance(

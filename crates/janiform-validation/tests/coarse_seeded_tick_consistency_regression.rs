@@ -189,6 +189,50 @@ fn coarse_seeded_tick_regression_report_passes_for_hourly_and_non_hourly_referen
 }
 
 #[test]
+fn coarse_seeded_tick_regression_report_retains_statistical_agreement_with_surprise_intensity() {
+    let thresholds = CoarseSeededTickConsistencyThresholds {
+        schema_version: COARSE_SEEDED_TICK_CONSISTENCY_THRESHOLDS_SCHEMA_VERSION,
+        threshold_policy:
+            "exact_gate_checks_plus_absolute_mean_and_wasserstein_distance_tolerances.v1",
+        mean_cumulative_a_plus_absolute_tolerance: 4.0,
+        mean_cumulative_a_minus_absolute_tolerance: 4.0,
+        mean_cumulative_n_plus_absolute_tolerance: 6.0,
+        mean_cumulative_n_minus_absolute_tolerance: 6.0,
+        mean_cumulative_trading_time_return_absolute_tolerance: 3.0,
+        open_jump_wasserstein_distance_tolerance: 3.0,
+        closed_gap_wasserstein_distance_tolerance: 3.0,
+        total_return_wasserstein_distance_tolerance: 4.0,
+        terminal_state_l1_mean_tolerance: 4.0,
+    };
+    let paired_paths = [151_u64, 157, 163, 167, 173, 179]
+        .into_iter()
+        .map(|seed| build_paired_path(seed, 1.0, 0.25, 4, 0.25))
+        .collect::<Vec<_>>();
+
+    let report = build_coarse_seeded_tick_consistency_report(
+        &[CoarseSeededTickConsistencyScenarioInput {
+            scenario_id: "hourly_surprise_reference".to_string(),
+            interval_grid_label: "hourly_grid".to_string(),
+            paired_paths,
+        }],
+        thresholds,
+    )
+    .expect("cross-scale report should build for surprise-intensity scenarios");
+
+    assert_eq!(report.summary.total_scenario_count, 1, "{report:#?}");
+    assert_eq!(report.summary.statistical_failed_check_count, 0, "{report:#?}");
+    assert_eq!(
+        report.scenario_reports[0].statistical_failed_check_count,
+        0,
+        "{report:#?}"
+    );
+    assert!(
+        report.scenario_reports[0].deterministic_failed_check_count <= 1,
+        "{report:#?}"
+    );
+}
+
+#[test]
 fn coarse_seeded_tick_regression_report_is_machine_readable_stable_and_diagnostic() {
     let thresholds = CoarseSeededTickConsistencyThresholds::default();
     let paired_path = build_paired_path(211, 1.0, 0.25, 4, 0.0);

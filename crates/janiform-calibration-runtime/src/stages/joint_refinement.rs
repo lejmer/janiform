@@ -2,6 +2,16 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Datelike, Duration, Timelike, Utc};
+use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
+use janiform_affine_oracle::sufficient_statistics::{
+    SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskModelInputs,
+};
+use janiform_engine_simulation::{
+    CoarseSimulationModelInputs, CoarseSimulationRunRequest,
+    SeededTickEventStateSnapshotCapture, SeededTickSimulationModelInputs,
+    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions, run_coarse_simulation,
+    run_seeded_tick_event_simulation,
+};
 use rayon::prelude::*;
 use serde::Serialize;
 
@@ -46,14 +56,13 @@ use janiform_calibration_artifacts::{
     JointRefinementStageOptimizerDiagnostics, ReturnComponentsStageFittedParameters,
     resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
 };
-use janiform_engine_simulation::{
-    SeededTickEventStateSnapshotCapture, SeededTickSimulationModelInputs,
-    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
-    run_seeded_tick_event_simulation,
-};
 use janiform_foundations::low_discrepancy::van_der_corput;
 use janiform_foundations::numeric::standardized_path_distance;
 use janiform_foundations::splitmix64_output_mixer;
+use janiform_market_time::calendar::{
+    CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarRegistryArtifact,
+    RegularSessionArtifact, SessionWindowArtifact,
+};
 use janiform_market_time::hourly_factors::{
     HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
 };
@@ -83,6 +92,7 @@ const JOINT_REFINEMENT_WEIGHT_RV_ACTIVITY_COUPLING_FIT: f64 = 0.03;
 const JOINT_REFINEMENT_WEIGHT_PRICE_SPAN_SANITY_FIT: f64 = 0.05;
 const JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR: f64 = 1.0e-8;
 const JOINT_REFINEMENT_MISSING_BUSINESS_TIME_BUCKET_PENALTY: f64 = 5.0;
+const JOINT_REFINEMENT_ADMISSIBILITY_SCALE_MULTIPLIER: f64 = 3.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum JointRefinementFidelityTier {
@@ -140,7 +150,7 @@ struct JointRefinementObservedData {
     hourly_simulation_start_utc: DateTime<Utc>,
     hourly_simulation_end_utc: DateTime<Utc>,
     hourly_simulation_interval_count: usize,
-    surprise_multiplier_by_hour_index: Vec<(u64, f64)>,
+    surprise_weekly_hour_utc_multipliers: Vec<f64>,
     simulated_5m_interval_template: Vec<JointRefinementAggregatedIntervalObservation>,
     simulated_15m_interval_template: Vec<JointRefinementAggregatedIntervalObservation>,
     simulated_hourly_interval_template: Vec<JointRefinementAggregatedIntervalObservation>,
@@ -193,6 +203,7 @@ struct JointRefinementCandidateEvaluation {
 #[derive(Debug, Clone)]
 struct JointRefinementRestartOutcome {
     restart_id: String,
+    parameter_vector: Vec<f64>,
     local_evaluation: JointRefinementCandidateEvaluation,
     final_evaluation: JointRefinementCandidateEvaluation,
     local_evaluation_count: usize,
@@ -322,6 +333,45 @@ pub struct JointRefinementStageFittedPayload {
         janiform_calibration_artifacts::ReturnComponentsStageFittedParameters,
     pub objective_breakdown: JointRefinementStageObjectiveBreakdown,
     pub optimizer_diagnostics: JointRefinementStageOptimizerDiagnostics,
+    pub candidate_frontier: Vec<JointRefinementStageCandidateDiagnostic>,
+    pub simulation_summaries: Vec<JointRefinementStageSimulationSummary>,
+    pub coarse_tick_consistency: Vec<JointRefinementStageCoarseTickConsistencyMetric>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct JointRefinementStageCandidateDiagnostic {
+    pub candidate_id: String,
+    pub valid: bool,
+    pub admissible: bool,
+    pub pareto_rank: usize,
+    pub lexicographic_rank: usize,
+    pub scalar_tie_break: f64,
+    pub local_evaluation_count: usize,
+    pub stop_reason: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub invalid_reason: Option<String>,
+    pub objective_breakdown: JointRefinementStageObjectiveBreakdown,
+    pub canonical_coordinates: Vec<(String, f64)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct JointRefinementStageSimulationSummary {
+    pub simulation_seed: u64,
+    pub horizon_label: String,
+    pub event_count: usize,
+    pub realized_variance: f64,
+    pub mean_absolute_return: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct JointRefinementStageCoarseTickConsistencyMetric {
+    pub simulation_seed: u64,
+    pub horizon_label: String,
+    pub metric_id: String,
+    pub coarse_value: f64,
+    pub tick_value: f64,
+    pub absolute_delta: f64,
+    pub normalized_delta: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -775,27 +825,39 @@ pub fn run_joint_refinement_calibration_stage(
         })
         .count();
 
-    let best_restart = restart_outcomes
-        .into_iter()
-        .filter(|restart_outcome| {
-            restart_outcome.local_evaluation.invalid_reason.is_none()
-                && restart_outcome.final_evaluation.invalid_reason.is_none()
-        })
-        .min_by(|left, right| {
-            left.final_evaluation
-                .breakdown
-                .weighted_objective
-                .partial_cmp(&right.final_evaluation.breakdown.weighted_objective)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| left.restart_id.cmp(&right.restart_id))
-        })
+    let best_restart = select_best_restart_outcome(
+        restart_outcomes
+            .iter()
+            .filter(|restart_outcome| {
+                restart_outcome.local_evaluation.invalid_reason.is_none()
+                    && restart_outcome.final_evaluation.invalid_reason.is_none()
+            })
+            .collect::<Vec<_>>()
+            .as_slice(),
+        &bootstrap_context,
+    )
+        .cloned()
         .unwrap_or_else(|| JointRefinementRestartOutcome {
             restart_id: "baseline".to_string(),
+            parameter_vector: baseline_parameter_vector.clone(),
             local_evaluation: baseline_local_evaluation.clone(),
             final_evaluation: baseline_final_evaluation.clone(),
             local_evaluation_count: 0,
             stop_reason: "baseline_seed",
         });
+    let candidate_frontier =
+        build_joint_candidate_frontier_diagnostics(restart_outcomes.as_slice(), &bootstrap_context);
+    let finalist_seed_summaries = build_joint_finalist_seed_summaries(
+        &bootstrap_context,
+        &best_restart.final_evaluation.fitted_parameters,
+    );
+    let simulation_summaries =
+        build_joint_simulation_summaries(finalist_seed_summaries.as_slice());
+    let coarse_tick_consistency = build_joint_coarse_tick_consistency_metrics(
+        &bootstrap_context,
+        &best_restart.final_evaluation.fitted_parameters,
+        finalist_seed_summaries.as_slice(),
+    );
 
     let fitted_stage_payload = JointRefinementStageFittedPayload {
         schema_version: CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION,
@@ -813,6 +875,9 @@ pub fn run_joint_refinement_calibration_stage(
             final_simulation_seeds: bootstrap_context.final_simulation_seeds.clone(),
             stop_reason: best_restart.stop_reason.to_string(),
         },
+        candidate_frontier,
+        simulation_summaries,
+        coarse_tick_consistency,
     };
 
     JointRefinementStageExecutionReport {
@@ -832,10 +897,10 @@ pub fn run_joint_refinement_calibration_stage(
             solver_settings: stage_solver_settings.clone(),
             optimizer_adapter_metadata: CalibrationOptimizerAdapterRunMetadata {
                 schema_version: "calibration.optimizer.adapter_run.v1",
-                backend_id: "joint_refinement.block_coordinate_powell.v1".to_string(),
+                backend_id: "joint_refinement.block_coordinate_reconciliation.v1".to_string(),
                 random_seed: resolved_stage_seed.stage_seed,
-                selection_policy: "multi_restart_final_fidelity_rerank.v1",
-                penalty_policy: "hard_constraints_added_to_weighted_joint_objective.v1",
+                selection_policy: "validity_then_admissibility_then_pareto_then_lexicographic_tie_break.v1",
+                penalty_policy: "invalid_candidates_are_screened_before_lexicographic_frontier_selection.v1",
                 bounds_policy: "bounded_joint_block_coordinate_refinement.v1",
                 solver_settings: stage_solver_settings.clone(),
             },
@@ -853,6 +918,794 @@ pub fn run_joint_refinement_calibration_stage(
         }),
         failure: None,
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct JointRefinementAdmissibilityThresholds {
+    aggregated_likelihood_fit: f64,
+    aggregated_return_shape_fit: f64,
+    aggregated_return_scale_fit: f64,
+    business_time_return_scale_fit: f64,
+    intraday_return_level_fit: f64,
+    activity_shape_fit: f64,
+    activity_level_fit: f64,
+    rv_activity_coupling_fit: f64,
+    price_span_sanity_fit: f64,
+}
+
+fn select_best_restart_outcome<'a>(
+    restart_outcomes: &'a [&'a JointRefinementRestartOutcome],
+    context: &JointRefinementContext,
+) -> Option<&'a JointRefinementRestartOutcome> {
+    if restart_outcomes.is_empty() {
+        return None;
+    }
+
+    let thresholds = joint_refinement_admissibility_thresholds(context);
+    let pareto_ranks: Vec<usize> = restart_outcomes
+        .iter()
+        .map(|candidate| {
+            1 + restart_outcomes
+                .iter()
+                .filter(|other| {
+                    candidate.restart_id != other.restart_id
+                        && joint_restart_outcome_dominates(other, candidate)
+                })
+                .count()
+        })
+        .collect();
+
+    let mut ranked_candidates: Vec<(usize, &JointRefinementRestartOutcome)> = restart_outcomes
+        .iter()
+        .enumerate()
+        .map(|(position, outcome)| (pareto_ranks[position], *outcome))
+        .collect();
+    ranked_candidates.sort_by(|left, right| {
+        let left_admissible = joint_restart_outcome_is_admissible(left.1, thresholds);
+        let right_admissible = joint_restart_outcome_is_admissible(right.1, thresholds);
+        (!left_admissible)
+            .cmp(&!right_admissible)
+            .then_with(|| left.0.cmp(&right.0))
+            .then_with(|| {
+                joint_restart_outcome_max_primary_metric(left.1)
+                    .total_cmp(&joint_restart_outcome_max_primary_metric(right.1))
+            })
+            .then_with(|| {
+                joint_restart_outcome_primary_metric_sum(left.1)
+                    .total_cmp(&joint_restart_outcome_primary_metric_sum(right.1))
+            })
+            .then_with(|| {
+                left.1
+                    .final_evaluation
+                    .breakdown
+                    .price_span_sanity_fit
+                    .total_cmp(&right.1.final_evaluation.breakdown.price_span_sanity_fit)
+            })
+            .then_with(|| {
+                left.1
+                    .final_evaluation
+                    .breakdown
+                    .weighted_objective
+                    .total_cmp(&right.1.final_evaluation.breakdown.weighted_objective)
+            })
+            .then_with(|| left.1.restart_id.cmp(&right.1.restart_id))
+    });
+
+    ranked_candidates.first().map(|(_, outcome)| *outcome)
+}
+
+fn joint_refinement_admissibility_thresholds(
+    context: &JointRefinementContext,
+) -> JointRefinementAdmissibilityThresholds {
+    let fifteen_minute_sample_count = context.observed_data.observed_15m_intervals.len();
+    let hourly_sample_count = context.observed_data.observed_hourly_tick_counts.len();
+    let rv_sample_count = context.observed_data.observed_15m_intervals.len();
+
+    JointRefinementAdmissibilityThresholds {
+        aggregated_likelihood_fit: admissibility_threshold_from_sample_count(
+            fifteen_minute_sample_count,
+        ),
+        aggregated_return_shape_fit: admissibility_threshold_from_sample_count(
+            fifteen_minute_sample_count,
+        ),
+        aggregated_return_scale_fit: admissibility_threshold_from_sample_count(
+            fifteen_minute_sample_count,
+        ),
+        business_time_return_scale_fit: admissibility_threshold_from_sample_count(
+            fifteen_minute_sample_count / 4,
+        ),
+        intraday_return_level_fit: admissibility_threshold_from_sample_count(hourly_sample_count),
+        activity_shape_fit: admissibility_threshold_from_sample_count(hourly_sample_count),
+        activity_level_fit: admissibility_threshold_from_sample_count(hourly_sample_count),
+        rv_activity_coupling_fit: admissibility_threshold_from_sample_count(rv_sample_count),
+        price_span_sanity_fit: admissibility_threshold_from_sample_count(
+            fifteen_minute_sample_count / 8,
+        ),
+    }
+}
+
+fn admissibility_threshold_from_sample_count(sample_count: usize) -> f64 {
+    1.0 + JOINT_REFINEMENT_ADMISSIBILITY_SCALE_MULTIPLIER / (sample_count.max(1) as f64).sqrt()
+}
+
+fn joint_restart_outcome_is_admissible(
+    restart_outcome: &JointRefinementRestartOutcome,
+    thresholds: JointRefinementAdmissibilityThresholds,
+) -> bool {
+    let breakdown = &restart_outcome.final_evaluation.breakdown;
+    breakdown.aggregated_likelihood_fit <= thresholds.aggregated_likelihood_fit
+        && breakdown.aggregated_return_shape_fit <= thresholds.aggregated_return_shape_fit
+        && breakdown.aggregated_return_scale_fit <= thresholds.aggregated_return_scale_fit
+        && breakdown.business_time_return_scale_fit <= thresholds.business_time_return_scale_fit
+        && breakdown.intraday_return_level_fit <= thresholds.intraday_return_level_fit
+        && breakdown.activity_shape_fit <= thresholds.activity_shape_fit
+        && breakdown.activity_level_fit <= thresholds.activity_level_fit
+        && breakdown.rv_activity_coupling_fit <= thresholds.rv_activity_coupling_fit
+        && breakdown.price_span_sanity_fit <= thresholds.price_span_sanity_fit
+}
+
+fn joint_restart_outcome_dominates(
+    left: &JointRefinementRestartOutcome,
+    right: &JointRefinementRestartOutcome,
+) -> bool {
+    let left_metrics = joint_restart_outcome_primary_metrics(left);
+    let right_metrics = joint_restart_outcome_primary_metrics(right);
+
+    let all_not_worse = left_metrics
+        .iter()
+        .zip(right_metrics.iter())
+        .all(|(left_value, right_value)| left_value <= right_value);
+    let any_strictly_better = left_metrics
+        .iter()
+        .zip(right_metrics.iter())
+        .any(|(left_value, right_value)| left_value < right_value);
+
+    all_not_worse && any_strictly_better
+}
+
+fn joint_restart_outcome_primary_metrics(
+    restart_outcome: &JointRefinementRestartOutcome,
+) -> [f64; 8] {
+    let breakdown = &restart_outcome.final_evaluation.breakdown;
+    [
+        breakdown.aggregated_likelihood_fit,
+        breakdown.aggregated_return_shape_fit,
+        breakdown.aggregated_return_scale_fit,
+        breakdown.business_time_return_scale_fit,
+        breakdown.intraday_return_level_fit,
+        breakdown.activity_shape_fit,
+        breakdown.activity_level_fit,
+        breakdown.rv_activity_coupling_fit,
+    ]
+}
+
+fn joint_restart_outcome_primary_metric_sum(
+    restart_outcome: &JointRefinementRestartOutcome,
+) -> f64 {
+    joint_restart_outcome_primary_metrics(restart_outcome)
+        .into_iter()
+        .sum()
+}
+
+fn joint_restart_outcome_max_primary_metric(
+    restart_outcome: &JointRefinementRestartOutcome,
+) -> f64 {
+    joint_restart_outcome_primary_metrics(restart_outcome)
+        .into_iter()
+        .fold(f64::NEG_INFINITY, f64::max)
+}
+
+fn build_joint_candidate_frontier_diagnostics(
+    restart_outcomes: &[JointRefinementRestartOutcome],
+    context: &JointRefinementContext,
+) -> Vec<JointRefinementStageCandidateDiagnostic> {
+    if restart_outcomes.is_empty() {
+        return Vec::new();
+    }
+
+    let thresholds = joint_refinement_admissibility_thresholds(context);
+    let pareto_ranks: Vec<usize> = restart_outcomes
+        .iter()
+        .map(|candidate| {
+            1 + restart_outcomes
+                .iter()
+                .filter(|other| joint_restart_outcome_dominates(other, candidate))
+                .count()
+        })
+        .collect();
+
+    let mut ranked_candidates: Vec<(usize, &JointRefinementRestartOutcome)> = restart_outcomes
+        .iter()
+        .enumerate()
+        .map(|(position, outcome)| (pareto_ranks[position], outcome))
+        .collect();
+    ranked_candidates.sort_by(|left, right| {
+        let left_admissible = joint_restart_outcome_is_admissible(left.1, thresholds);
+        let right_admissible = joint_restart_outcome_is_admissible(right.1, thresholds);
+        (!left_admissible)
+            .cmp(&!right_admissible)
+            .then_with(|| left.0.cmp(&right.0))
+            .then_with(|| {
+                joint_restart_outcome_max_primary_metric(left.1)
+                    .total_cmp(&joint_restart_outcome_max_primary_metric(right.1))
+            })
+            .then_with(|| {
+                joint_restart_outcome_primary_metric_sum(left.1)
+                    .total_cmp(&joint_restart_outcome_primary_metric_sum(right.1))
+            })
+            .then_with(|| {
+                left.1
+                    .final_evaluation
+                    .breakdown
+                    .price_span_sanity_fit
+                    .total_cmp(&right.1.final_evaluation.breakdown.price_span_sanity_fit)
+            })
+            .then_with(|| {
+                left.1
+                    .final_evaluation
+                    .breakdown
+                    .weighted_objective
+                    .total_cmp(&right.1.final_evaluation.breakdown.weighted_objective)
+            })
+            .then_with(|| left.1.restart_id.cmp(&right.1.restart_id))
+    });
+
+    let lexicographic_rank_by_restart_id: BTreeMap<&str, usize> = ranked_candidates
+        .iter()
+        .enumerate()
+        .map(|(position, (_, outcome))| (outcome.restart_id.as_str(), position + 1))
+        .collect();
+
+    restart_outcomes
+        .iter()
+        .enumerate()
+        .map(|(position, outcome)| {
+            let valid = outcome.local_evaluation.invalid_reason.is_none()
+                && outcome.final_evaluation.invalid_reason.is_none();
+            let invalid_reason = outcome
+                .final_evaluation
+                .invalid_reason
+                .clone()
+                .or_else(|| outcome.local_evaluation.invalid_reason.clone());
+
+            JointRefinementStageCandidateDiagnostic {
+                candidate_id: format!("joint_refinement_{}", outcome.restart_id),
+                valid,
+                admissible: valid && joint_restart_outcome_is_admissible(outcome, thresholds),
+                pareto_rank: pareto_ranks[position],
+                lexicographic_rank: *lexicographic_rank_by_restart_id
+                    .get(outcome.restart_id.as_str())
+                    .unwrap_or(&(restart_outcomes.len() + 1)),
+                scalar_tie_break: outcome.final_evaluation.breakdown.weighted_objective,
+                local_evaluation_count: outcome.local_evaluation_count,
+                stop_reason: outcome.stop_reason.to_string(),
+                invalid_reason,
+                objective_breakdown: outcome.final_evaluation.breakdown.clone(),
+                canonical_coordinates: named_joint_parameter_coordinates(
+                    outcome.parameter_vector.as_slice(),
+                    &context.active_parameter_layout,
+                ),
+            }
+        })
+        .collect()
+}
+
+fn named_joint_parameter_coordinates(
+    parameter_vector: &[f64],
+    active_parameter_layout: &JointRefinementActiveParameterLayout,
+) -> Vec<(String, f64)> {
+    let mut coordinates = vec![
+        (
+            active_parameter_layout.log_lambda_scale_index,
+            "log_lambda_scale".to_string(),
+        ),
+        (
+            active_parameter_layout.log_beta_scale_index,
+            "log_beta_scale".to_string(),
+        ),
+        (
+            active_parameter_layout.log_self_excitation_scale_index,
+            "log_self_excitation_scale".to_string(),
+        ),
+        (
+            active_parameter_layout.log_cross_excitation_scale_index,
+            "log_cross_excitation_scale".to_string(),
+        ),
+        (
+            active_parameter_layout.nig_block[0],
+            "nig.log_alpha".to_string(),
+        ),
+        (
+            active_parameter_layout.nig_block[1],
+            "nig.buy_skew_coordinate".to_string(),
+        ),
+        (
+            active_parameter_layout.nig_block[2],
+            "nig.sell_relative_coordinate".to_string(),
+        ),
+        (
+            active_parameter_layout.nig_block[3],
+            "nig.log_delta_offset".to_string(),
+        ),
+    ];
+
+    if let Some(index) = active_parameter_layout.known_activity_scale_index {
+        coordinates.push((index, "known_activity_scale".to_string()));
+    }
+    if let Some(index) = active_parameter_layout.surprise_activity_scale_index {
+        coordinates.push((index, "surprise_activity_scale".to_string()));
+    }
+    if let Some(index) = active_parameter_layout.surprise_baseline_scale_index {
+        coordinates.push((index, "surprise_baseline_scale".to_string()));
+    }
+
+    coordinates.sort_by_key(|(index, _)| *index);
+    coordinates
+        .into_iter()
+        .filter_map(|(index, label)| parameter_vector.get(index).copied().map(|value| (label, value)))
+        .collect()
+}
+
+fn build_joint_finalist_seed_summaries(
+    context: &JointRefinementContext,
+    fitted_parameters: &JointRefinementStageFittedParameters,
+) -> Vec<(u64, JointRefinementSeedSummary)> {
+    context
+        .final_simulation_seeds
+        .iter()
+        .filter_map(|simulation_seed| {
+            cached_seed_summary_for_candidate_seed(
+                None,
+                fitted_parameters,
+                context,
+                *simulation_seed,
+            )
+            .map(|summary| (*simulation_seed, summary))
+        })
+        .collect()
+}
+
+fn build_joint_simulation_summaries(
+    seed_summaries: &[(u64, JointRefinementSeedSummary)],
+) -> Vec<JointRefinementStageSimulationSummary> {
+    let mut summaries = Vec::with_capacity(seed_summaries.len() * 2);
+    for (simulation_seed, seed_summary) in seed_summaries {
+        summaries.push(JointRefinementStageSimulationSummary {
+            simulation_seed: *simulation_seed,
+            horizon_label: "5m".to_string(),
+            event_count: seed_summary
+                .simulated_5m_intervals
+                .iter()
+                .map(|interval| interval.tick_count)
+                .sum(),
+            realized_variance: seed_summary.simulated_5m_return_scale_summary.realized_variance,
+            mean_absolute_return: seed_summary
+                .simulated_5m_return_scale_summary
+                .mean_absolute_return,
+        });
+        summaries.push(JointRefinementStageSimulationSummary {
+            simulation_seed: *simulation_seed,
+            horizon_label: "15m".to_string(),
+            event_count: seed_summary
+                .simulated_15m_intervals
+                .iter()
+                .map(|interval| interval.tick_count)
+                .sum(),
+            realized_variance: seed_summary.simulated_15m_return_scale_summary.realized_variance,
+            mean_absolute_return: seed_summary
+                .simulated_15m_return_scale_summary
+                .mean_absolute_return,
+        });
+    }
+
+    summaries
+}
+
+fn build_joint_coarse_tick_consistency_metrics(
+    context: &JointRefinementContext,
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    tick_seed_summaries: &[(u64, JointRefinementSeedSummary)],
+) -> Vec<JointRefinementStageCoarseTickConsistencyMetric> {
+    let mut metrics = Vec::new();
+
+    for (simulation_seed, tick_summary) in tick_seed_summaries {
+        if let Some(coarse_5m_intervals) = build_joint_coarse_interval_observations(
+            context,
+            fitted_parameters,
+            *simulation_seed,
+            JOINT_REFINEMENT_FIVE_MINUTES_NANOS,
+            context.observed_data.simulated_5m_interval_template.as_slice(),
+        ) {
+            let coarse_15m_intervals = aggregate_coarse_intervals_to_template(
+                coarse_5m_intervals.as_slice(),
+                context.observed_data.simulated_15m_interval_template.as_slice(),
+            );
+            metrics.extend(joint_coarse_tick_metrics_for_horizon(
+                *simulation_seed,
+                "5m",
+                sum_interval_tick_count(coarse_5m_intervals.as_slice()) as f64,
+                return_scale_summary(coarse_5m_intervals.as_slice()),
+                tick_summary
+                    .simulated_5m_intervals
+                    .iter()
+                    .map(|interval| interval.tick_count)
+                    .sum::<usize>() as f64,
+                tick_summary.simulated_5m_return_scale_summary,
+            ));
+            metrics.extend(joint_coarse_tick_metrics_for_horizon(
+                *simulation_seed,
+                "15m",
+                sum_interval_tick_count(coarse_15m_intervals.as_slice()) as f64,
+                return_scale_summary(coarse_15m_intervals.as_slice()),
+                tick_summary
+                    .simulated_15m_intervals
+                    .iter()
+                    .map(|interval| interval.tick_count)
+                    .sum::<usize>() as f64,
+                tick_summary.simulated_15m_return_scale_summary,
+            ));
+        }
+    }
+
+    metrics
+}
+
+fn joint_coarse_tick_metrics_for_horizon(
+    simulation_seed: u64,
+    horizon_label: &str,
+    coarse_event_count: f64,
+    coarse_summary: JointRefinementReturnScaleSummary,
+    tick_event_count: f64,
+    tick_summary: JointRefinementReturnScaleSummary,
+) -> Vec<JointRefinementStageCoarseTickConsistencyMetric> {
+    [
+        ("event_count", coarse_event_count, tick_event_count),
+        (
+            "mean_absolute_return",
+            coarse_summary.mean_absolute_return,
+            tick_summary.mean_absolute_return,
+        ),
+        (
+            "realized_variance",
+            coarse_summary.realized_variance,
+            tick_summary.realized_variance,
+        ),
+        (
+            "absolute_return_quantile_q90",
+            coarse_summary.absolute_return_quantile_q90,
+            tick_summary.absolute_return_quantile_q90,
+        ),
+    ]
+    .into_iter()
+    .map(|(metric_id, coarse_value, tick_value)| {
+        let absolute_delta = (coarse_value - tick_value).abs();
+        let normalized_delta = absolute_delta / tick_value.abs().max(1.0e-8);
+        JointRefinementStageCoarseTickConsistencyMetric {
+            simulation_seed,
+            horizon_label: horizon_label.to_string(),
+            metric_id: metric_id.to_string(),
+            coarse_value,
+            tick_value,
+            absolute_delta,
+            normalized_delta,
+        }
+    })
+    .collect()
+}
+
+fn build_joint_coarse_interval_observations(
+    context: &JointRefinementContext,
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    simulation_seed: u64,
+    interval_duration_nanos: i64,
+    template: &[JointRefinementAggregatedIntervalObservation],
+) -> Option<Vec<JointRefinementAggregatedIntervalObservation>> {
+    if template.is_empty() {
+        return None;
+    }
+    let interval_count = ((context.observed_data.hourly_simulation_end_utc.timestamp_nanos_opt()?
+        - context
+            .observed_data
+            .hourly_simulation_start_utc
+            .timestamp_nanos_opt()?)
+    .div_euclid(interval_duration_nanos)) as usize;
+    let surprise_deterministic_time_multiplier_by_interval_index =
+        build_surprise_multipliers_for_interval_grid(
+            context.observed_data.hourly_simulation_start_utc,
+            interval_count,
+            interval_duration_nanos,
+            context
+                .observed_data
+                .surprise_weekly_hour_utc_multipliers
+                .as_slice(),
+        );
+    let hourly_factor_contract = load_hourly_factor_contract_for_calibration(
+        &context.calendar_registry,
+        HourlyFactorProviderRequest {
+            exchange_code: context.exchange_code.as_str(),
+            range_start_utc: context.observed_data.hourly_simulation_start_utc,
+            range_end_utc: context.observed_data.hourly_simulation_end_utc,
+            interval_duration_nanos,
+            seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
+                hourly_factors: context.runtime_hourly_seasonality_factors.as_slice(),
+                materialization_method:
+                    "runtime_compact_seasonality_parameters_mean_renormalized.v1",
+            }),
+            news_intensity_source: Some(HourlyNewsIntensityFactorSource::Materialized {
+                known_scheduled_event_timestamps_utc_nanos: fitted_parameters
+                    .return_components_fitted_parameters
+                    .news_process_configuration
+                    .arrivals
+                    .known
+                    .scheduled_event_timestamps_utc_nanos
+                    .as_slice(),
+                surprise_baseline_intensity: fitted_parameters
+                    .return_components_fitted_parameters
+                    .news_process_configuration
+                    .arrivals
+                    .surprise
+                    .baseline_intensity,
+                surprise_deterministic_time_multiplier_by_interval_index:
+                    surprise_deterministic_time_multiplier_by_interval_index.as_slice(),
+            }),
+        },
+    )
+    .ok()?;
+
+    let interval_delta = interval_duration_nanos as f64 / JOINT_REFINEMENT_ONE_HOUR_NANOS as f64;
+    let interval_factors = build_coarse_interval_factors_from_hourly_contract(
+        &hourly_factor_contract,
+        fitted_parameters
+            .return_components_fitted_parameters
+            .news_process_configuration
+            .arrivals
+            .known
+            .scheduled_event_timestamps_utc_nanos
+            .as_slice(),
+        interval_delta,
+    )?;
+    let model_inputs = build_joint_coarse_model_inputs(context, fitted_parameters)?;
+    let coarse_path = run_coarse_simulation(
+        CoarseSimulationRunRequest::try_new(
+            simulation_seed,
+            hourly_factor_contract.request_start_utc_nanos,
+            hourly_factor_contract.interval_indices.len(),
+            interval_delta,
+            model_inputs,
+            interval_factors,
+        )
+        .ok()?,
+    )
+    .ok()?;
+
+    let mut intervals = zeroed_interval_observation_template(template);
+    let interval_index_by_bounds: BTreeMap<(i64, i64), usize> = intervals
+        .iter()
+        .enumerate()
+        .map(|(index, interval)| {
+            (
+                (
+                    interval.interval_start_utc_nanos,
+                    interval.interval_end_utc_nanos,
+                ),
+                index,
+            )
+        })
+        .collect();
+
+    for record in coarse_path.records {
+        if let Some(interval_index) = interval_index_by_bounds.get(&(
+            record.interval_start_utc_nanos,
+            record.interval_end_utc_nanos,
+        )) {
+            let Some(interval) = intervals.get_mut(*interval_index) else {
+                continue;
+            };
+            interval.log_return += record.return_components.total_return;
+            interval.tick_count +=
+                (record.sufficient_statistics.n_plus + record.sufficient_statistics.n_minus)
+                    as usize;
+            interval.sell_share_proxy += record.sufficient_statistics.n_minus as f64;
+        }
+    }
+
+    finalize_coarse_sell_share_proxies(intervals.as_mut_slice(), 0.5);
+
+    Some(intervals)
+}
+
+fn aggregate_coarse_intervals_to_template(
+    source_intervals: &[JointRefinementAggregatedIntervalObservation],
+    template: &[JointRefinementAggregatedIntervalObservation],
+) -> Vec<JointRefinementAggregatedIntervalObservation> {
+    let mut aggregated_intervals = zeroed_interval_observation_template(template);
+    if aggregated_intervals.is_empty() {
+        return aggregated_intervals;
+    }
+
+    let mut target_index = 0usize;
+    for source_interval in source_intervals {
+        while target_index < aggregated_intervals.len()
+            && source_interval.interval_start_utc_nanos
+                >= aggregated_intervals[target_index].interval_end_utc_nanos
+        {
+            target_index += 1;
+        }
+        if target_index >= aggregated_intervals.len() {
+            break;
+        }
+
+        let target_interval = &mut aggregated_intervals[target_index];
+        if source_interval.interval_start_utc_nanos < target_interval.interval_start_utc_nanos
+            || source_interval.interval_end_utc_nanos > target_interval.interval_end_utc_nanos
+        {
+            continue;
+        }
+
+        target_interval.log_return += source_interval.log_return;
+        target_interval.tick_count += source_interval.tick_count;
+        target_interval.sell_share_proxy +=
+            source_interval.sell_share_proxy * source_interval.tick_count as f64;
+    }
+
+    finalize_coarse_sell_share_proxies(aggregated_intervals.as_mut_slice(), 0.5);
+    aggregated_intervals
+}
+
+fn finalize_coarse_sell_share_proxies(
+    intervals: &mut [JointRefinementAggregatedIntervalObservation],
+    fallback_sell_share_proxy: f64,
+) {
+    for interval in intervals {
+        interval.sell_share_proxy = if interval.tick_count == 0 {
+            fallback_sell_share_proxy
+        } else {
+            (interval.sell_share_proxy / interval.tick_count as f64).clamp(0.0, 1.0)
+        };
+    }
+}
+
+fn sum_interval_tick_count(
+    intervals: &[JointRefinementAggregatedIntervalObservation],
+) -> usize {
+    intervals.iter().map(|interval| interval.tick_count).sum()
+}
+
+fn build_coarse_interval_factors_from_hourly_contract(
+    hourly_factor_contract: &janiform_market_time::hourly_factors::HourlyFactorContractOutput,
+    known_news_timestamps_utc_nanos: &[i64],
+    interval_delta: f64,
+) -> Option<SufficientStatisticsRiskIntervalFactors> {
+    let nu_h_known = hourly_factor_contract
+        .interval_start_utc_nanos
+        .iter()
+        .zip(hourly_factor_contract.interval_end_utc_nanos.iter())
+        .map(|(interval_start_utc_nanos, interval_end_utc_nanos)| {
+            count_known_news_events(
+                known_news_timestamps_utc_nanos,
+                *interval_start_utc_nanos,
+                *interval_end_utc_nanos,
+            ) as f64
+                / interval_delta
+        })
+        .collect::<Vec<_>>();
+    let nu_h_surprise = hourly_factor_contract
+        .nu_h
+        .iter()
+        .zip(nu_h_known.iter())
+        .map(|(combined_intensity, known_intensity)| {
+            (combined_intensity - known_intensity).max(0.0)
+        })
+        .collect::<Vec<_>>();
+
+    SufficientStatisticsRiskIntervalFactors::try_new(
+        hourly_factor_contract.s_h.clone(),
+        nu_h_known,
+        nu_h_surprise,
+        Some(interval_delta),
+    )
+    .ok()
+}
+
+fn count_known_news_events(
+    known_news_timestamps_utc_nanos: &[i64],
+    interval_start_utc_nanos: i64,
+    interval_end_utc_nanos: i64,
+) -> usize {
+    known_news_timestamps_utc_nanos
+        .iter()
+        .filter(|timestamp_utc_nanos| {
+            **timestamp_utc_nanos >= interval_start_utc_nanos
+                && **timestamp_utc_nanos < interval_end_utc_nanos
+        })
+        .count()
+}
+
+fn build_joint_coarse_model_inputs(
+    context: &JointRefinementContext,
+    fitted_parameters: &JointRefinementStageFittedParameters,
+) -> Option<CoarseSimulationModelInputs> {
+    let risk_model_inputs = SufficientStatisticsRiskModelInputs::try_new(
+        ExponentialAffineTransformEquationSpecification::try_new(
+            fitted_parameters.hawkes_fitted_parameters.kernel_parameters,
+            fitted_parameters
+                .return_components_fitted_parameters
+                .news_process_configuration
+                .shared_mark_law
+                .gamma_severity_marks,
+        )
+        .ok()?,
+        fitted_parameters
+            .return_components_fitted_parameters
+            .nig_shared_plus_shift_configuration,
+        HawkesExcitationState {
+            y_plus_plus: 0.0,
+            y_plus_minus: 0.0,
+            y_minus_plus: 0.0,
+            y_minus_minus: 0.0,
+        },
+    )
+    .ok()?;
+
+    CoarseSimulationModelInputs::try_new(
+        risk_model_inputs,
+        fitted_parameters
+            .return_components_fitted_parameters
+            .news_process_configuration
+            .clone(),
+        build_exchange_calendar_registry_artifact(
+            &context.calendar_registry,
+            context.exchange_code.as_str(),
+            context.observed_data.hourly_simulation_start_utc,
+        )?,
+        context.exchange_code.clone(),
+    )
+    .ok()
+}
+
+fn build_exchange_calendar_registry_artifact(
+    calendar_registry: &ExchangeCalendarRegistry,
+    exchange_code: &str,
+    artifact_anchor_time_utc: DateTime<Utc>,
+) -> Option<ExchangeCalendarRegistryArtifact> {
+    let definition = calendar_registry.get_required(exchange_code).ok()?;
+    let regular_sessions = definition
+        .regular_sessions()
+        .iter()
+        .map(|regular_session| RegularSessionArtifact {
+            weekday: regular_session.weekday(),
+            windows: regular_session
+                .windows()
+                .iter()
+                .map(|window| SessionWindowArtifact {
+                    label: window.label().to_string(),
+                    open_time: window.open_time().to_string(),
+                    close_time: window.close_time().to_string(),
+                })
+                .collect(),
+        })
+        .collect();
+
+    Some(ExchangeCalendarRegistryArtifact {
+        schema_version: "calendar.registry.v1".to_string(),
+        artifact_date: artifact_anchor_time_utc.date_naive().to_string(),
+        exchanges: vec![ExchangeCalendarArtifact {
+            schema_version: definition.schema_version().to_string(),
+            exchange_code: definition.exchange_metadata().exchange_code().to_string(),
+            exchange_name: definition.exchange_metadata().exchange_name().to_string(),
+            timezone_name: Some(definition.timezone_name().to_string()),
+            rule_metadata: CalendarRuleMetadataArtifact {
+                holiday_calendar_code: definition.rule_metadata().holiday_calendar_code().to_string(),
+                early_close_rule_set: definition
+                    .rule_metadata()
+                    .early_close_rule_set()
+                    .map(str::to_string),
+            },
+            regular_sessions,
+            holiday_dates: Vec::new(),
+            early_close_sessions: Vec::new(),
+        }],
+    })
 }
 
 fn optimize_restart_seeds(
@@ -1072,6 +1925,7 @@ fn optimize_single_restart(
 
     JointRefinementRestartOutcome {
         restart_id: restart_id.to_string(),
+        parameter_vector: current_vector,
         local_evaluation,
         final_evaluation,
         local_evaluation_count: evaluation_count,
@@ -2016,7 +2870,10 @@ fn build_observed_data(
         hourly_simulation_start_utc,
         hourly_simulation_end_utc,
         hourly_simulation_interval_count,
-        surprise_multiplier_by_hour_index,
+        surprise_weekly_hour_utc_multipliers: surprise_multiplier_by_hour_index
+            .into_iter()
+            .map(|(_, multiplier)| multiplier)
+            .collect(),
         simulated_5m_interval_template,
         simulated_15m_interval_template,
         simulated_hourly_interval_template,
@@ -2315,6 +3172,16 @@ fn build_seed_summary_for_candidate_seed(
     fitted_parameters: &JointRefinementStageFittedParameters,
     simulation_seed: u64,
 ) -> Option<JointRefinementSeedSummary> {
+    let surprise_deterministic_time_multiplier_by_interval_index =
+        build_surprise_multipliers_for_interval_grid(
+            context.observed_data.hourly_simulation_start_utc,
+            context.observed_data.hourly_simulation_interval_count,
+            JOINT_REFINEMENT_ONE_HOUR_NANOS,
+            context
+                .observed_data
+                .surprise_weekly_hour_utc_multipliers
+                .as_slice(),
+        );
     let hourly_factor_contract = load_hourly_factor_contract_for_calibration(
         calendar_registry,
         HourlyFactorProviderRequest {
@@ -2341,10 +3208,8 @@ fn build_seed_summary_for_candidate_seed(
                     .arrivals
                     .surprise
                     .baseline_intensity,
-                surprise_deterministic_time_multiplier_by_interval_index: context
-                    .observed_data
-                    .surprise_multiplier_by_hour_index
-                    .as_slice(),
+                surprise_deterministic_time_multiplier_by_interval_index:
+                    surprise_deterministic_time_multiplier_by_interval_index.as_slice(),
             }),
         },
     )
@@ -2538,14 +3403,30 @@ fn build_surprise_multipliers_by_hour_index(
     hourly_simulation_interval_count: usize,
     return_components_fitted_parameters: &ReturnComponentsStageFittedParameters,
 ) -> Vec<(u64, f64)> {
-    let weekly_hour_utc_multipliers = &return_components_fitted_parameters
-        .surprise_deterministic_intensity_profile
-        .weekly_hour_utc_multipliers;
-    (0..hourly_simulation_interval_count)
+    build_surprise_multipliers_for_interval_grid(
+        hourly_simulation_start_utc,
+        hourly_simulation_interval_count,
+        JOINT_REFINEMENT_ONE_HOUR_NANOS,
+        return_components_fitted_parameters
+            .surprise_deterministic_intensity_profile
+            .weekly_hour_utc_multipliers
+            .as_slice(),
+    )
+}
+
+fn build_surprise_multipliers_for_interval_grid(
+    simulation_start_utc: DateTime<Utc>,
+    interval_count: usize,
+    interval_duration_nanos: i64,
+    weekly_hour_utc_multipliers: &[f64],
+) -> Vec<(u64, f64)> {
+    (0..interval_count)
         .map(|interval_index| {
-            let interval_start = hourly_simulation_start_utc
-                .checked_add_signed(Duration::hours(interval_index as i64))
-                .unwrap_or(hourly_simulation_start_utc);
+            let interval_start = simulation_start_utc
+                .checked_add_signed(Duration::nanoseconds(
+                    interval_duration_nanos.saturating_mul(interval_index as i64),
+                ))
+                .unwrap_or(simulation_start_utc);
 
             let weekday_index = interval_start.weekday().num_days_from_monday() as usize;
             let hour_index = interval_start.hour() as usize;

@@ -160,6 +160,51 @@ def load_market_data_calibration_inputs(
     ).inputs
 
 
+def _load_source_columns(
+    file_reference: CalibrationInputFileReference,
+    *,
+    field_path: str,
+) -> tuple[str, ...]:
+    try:
+        match file_reference.file_format:
+            case CalibrationInputFileFormat.CSV:
+                return _load_csv_source_columns(
+                    file_reference,
+                    field_path=field_path,
+                )
+            case CalibrationInputFileFormat.PARQUET:
+                schema = parquet.read_schema(file_reference.path)
+            case _:
+                raise _market_data_ingestion_error(
+                    f"{field_path}.file_format",
+                    f"must be one of: csv, parquet, received '{file_reference.file_format.value}'",
+                    normalization_step="source_loading",
+                )
+    except FileNotFoundError as e:
+        raise _market_data_ingestion_error(
+            f"{field_path}.path",
+            "does not exist",
+            context={"path": file_reference.path},
+            normalization_step="source_loading",
+        ) from e
+    except OSError as e:
+        raise _market_data_ingestion_error(
+            f"{field_path}.path",
+            f"could not be read: {e}",
+            context={"path": file_reference.path},
+            normalization_step="source_loading",
+        ) from e
+    except pyarrow.ArrowInvalid as e:
+        raise _market_data_ingestion_error(
+            f"{field_path}.path",
+            f"could not be parsed as {file_reference.file_format.value}: {e}",
+            context={"path": file_reference.path},
+            normalization_step="source_loading",
+        ) from e
+
+    return tuple(str(column_name) for column_name in schema.names)
+
+
 def _load_market_data_calibration_inputs(
     request: MarketDataCalibrationRequest,
     *,
@@ -168,6 +213,10 @@ def _load_market_data_calibration_inputs(
     tick_source_rows = _load_source_rows(
         request.tick_data_source,
         field_path="tick_data_source",
+        selected_columns=_required_tick_source_columns(
+            request.column_mapping.tick_data,
+            normalization_policy=request.normalization_policy,
+        ),
     )
     tick_data_result = _normalize_tick_data(
         source_rows=tick_source_rows,
@@ -182,6 +231,10 @@ def _load_market_data_calibration_inputs(
         option_source_rows = _load_source_rows(
             request.option_surface_source,
             field_path="option_surface_source",
+            selected_columns=_required_option_surface_source_columns(
+                request.column_mapping.option_surface,
+                normalization_policy=request.normalization_policy,
+            ),
         )
         option_surface = _normalize_option_surface(
             source_rows=option_source_rows,
@@ -205,6 +258,9 @@ def _load_market_data_calibration_inputs(
             known_news_source_rows = _load_source_rows(
                 request.known_news_inputs.calendar_source,
                 field_path="known_news_inputs.calendar_source",
+                selected_columns=_required_known_news_source_columns(
+                    request.column_mapping.known_news,
+                ),
             )
             known_news = _normalize_known_news(
                 source_rows=known_news_source_rows,
@@ -246,6 +302,7 @@ def _load_source_rows(
     file_reference: CalibrationInputFileReference,
     *,
     field_path: str,
+    selected_columns: Optional[Sequence[str]] = None,
 ) -> _LoadedSourceRows:
     try:
         match file_reference.file_format:
@@ -255,7 +312,18 @@ def _load_source_rows(
                     field_path=field_path,
                 )
             case CalibrationInputFileFormat.PARQUET:
-                table = parquet.read_table(file_reference.path)
+                available_columns = _load_source_columns(
+                    file_reference,
+                    field_path=field_path,
+                )
+                parquet_columns = _resolve_selected_source_columns(
+                    available_columns=available_columns,
+                    selected_columns=selected_columns,
+                )
+                table = parquet.read_table(
+                    file_reference.path,
+                    columns=None if parquet_columns is None else list(parquet_columns),
+                )
             case _:
                 raise _market_data_ingestion_error(
                     f"{field_path}.file_format",
@@ -288,8 +356,73 @@ def _load_source_rows(
 
     return _LoadedSourceRows(
         rows=tuple(table.to_pylist()),
-        available_columns=tuple(str(column_name) for column_name in table.column_names),
+        available_columns=(
+            available_columns
+            if file_reference.file_format == CalibrationInputFileFormat.PARQUET
+            else tuple(str(column_name) for column_name in table.column_names)
+        ),
     )
+
+
+def _resolve_selected_source_columns(
+    *,
+    available_columns: Sequence[str],
+    selected_columns: Optional[Sequence[str]],
+) -> Optional[tuple[str, ...]]:
+    if selected_columns is None:
+        return None
+
+    available_column_set = set(available_columns)
+    resolved_columns: list[str] = []
+    for column_name in selected_columns:
+        if column_name not in available_column_set:
+            continue
+        if column_name in resolved_columns:
+            continue
+        resolved_columns.append(column_name)
+
+    return tuple(resolved_columns)
+
+
+def _load_csv_source_columns(
+    file_reference: CalibrationInputFileReference,
+    *,
+    field_path: str,
+) -> tuple[str, ...]:
+    try:
+        with open(file_reference.path, encoding="utf-8", newline="") as input_file:
+            reader = csv.reader(input_file)
+            field_names = next(reader, None)
+            if field_names is None or len(field_names) == 0:
+                raise _market_data_ingestion_error(
+                    f"{field_path}.path",
+                    "could not be parsed as csv: missing header row",
+                    context={"path": file_reference.path},
+                    normalization_step="source_loading",
+                )
+    except FileNotFoundError as e:
+        raise _market_data_ingestion_error(
+            f"{field_path}.path",
+            "does not exist",
+            context={"path": file_reference.path},
+            normalization_step="source_loading",
+        ) from e
+    except OSError as e:
+        raise _market_data_ingestion_error(
+            f"{field_path}.path",
+            f"could not be read: {e}",
+            context={"path": file_reference.path},
+            normalization_step="source_loading",
+        ) from e
+    except csv.Error as e:
+        raise _market_data_ingestion_error(
+            f"{field_path}.path",
+            f"could not be parsed as csv: {e}",
+            context={"path": file_reference.path},
+            normalization_step="source_loading",
+        ) from e
+
+    return tuple(field_names)
 
 
 def _load_csv_source_rows(
@@ -674,6 +807,16 @@ def _normalize_tick_row(
     source_path: str,
 ) -> _NormalizedTickRow:
     row_field_path = f"tick_data_source.rows[{source_row_number}]"
+    raw_explicit_price = (
+        source_row.get(column_mapping.price_column)
+        if column_mapping.price_column is not None
+        else None
+    )
+    explicit_price_field_path = (
+        f"{row_field_path}.{column_mapping.price_column}"
+        if column_mapping.price_column is not None
+        else row_field_path
+    )
     timestamp = _normalize_timestamp_value(
         source_row.get(column_mapping.timestamp_column),
         field_path=f"{row_field_path}.{column_mapping.timestamp_column}",
@@ -681,10 +824,8 @@ def _normalize_tick_row(
         source_path=source_path,
     )
     trade_price = _normalize_optional_numeric_value(
-        source_row.get(column_mapping.price_column) if column_mapping.price_column is not None else None,
-        field_path=f"{row_field_path}.{column_mapping.price_column}"
-        if column_mapping.price_column is not None
-        else row_field_path,
+        raw_explicit_price,
+        field_path=explicit_price_field_path,
         source_path=source_path,
         allow_zero=True,
         allow_negative=False,
@@ -712,21 +853,13 @@ def _normalize_tick_row(
         allow_negative=False,
     )
     close_price = _normalize_optional_numeric_value(
-        source_row.get(column_mapping.price_column) if column_mapping.price_column is not None else None,
-        field_path=f"{row_field_path}.{column_mapping.price_column}"
-        if column_mapping.price_column is not None
-        else row_field_path,
+        raw_explicit_price,
+        field_path=explicit_price_field_path,
         source_path=source_path,
         allow_zero=True,
         allow_negative=False,
     )
-    explicit_price = _normalize_optional_numeric_value(
-        source_row.get(column_mapping.price_column) if column_mapping.price_column is not None else None,
-        field_path=f"{row_field_path}.{column_mapping.price_column}" if column_mapping.price_column is not None else row_field_path,
-        source_path=source_path,
-        allow_zero=True,
-        allow_negative=False,
-    )
+    explicit_price = trade_price
 
     match normalization_policy.tick_price_input_policy:
         case CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN:
@@ -767,6 +900,70 @@ def _normalize_tick_row(
         close_price=close_price,
         source_row_number=source_row_number,
     )
+
+
+def _required_tick_source_columns(
+    column_mapping: CalibrationTickDataColumnMapping,
+    *,
+    normalization_policy: CalibrationMarketDataNormalizationPolicy,
+) -> tuple[str, ...]:
+    required_columns: list[str] = [column_mapping.timestamp_column]
+
+    if column_mapping.price_column is not None:
+        required_columns.append(column_mapping.price_column)
+    if column_mapping.trade_sign_column is not None:
+        required_columns.append(column_mapping.trade_sign_column)
+
+    match normalization_policy.tick_price_input_policy:
+        case CalibrationTickPriceInputPolicy.BID_ASK_MIDPOINT:
+            if column_mapping.bid_column is not None:
+                required_columns.append(column_mapping.bid_column)
+            if column_mapping.ask_column is not None:
+                required_columns.append(column_mapping.ask_column)
+        case CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN | None:
+            pass
+
+    return tuple(dict.fromkeys(required_columns))
+
+
+def _required_option_surface_source_columns(
+    column_mapping: CalibrationOptionSurfaceColumnMapping,
+    *,
+    normalization_policy: CalibrationMarketDataNormalizationPolicy,
+) -> tuple[str, ...]:
+    required_columns: list[str] = [
+        column_mapping.quote_timestamp_column,
+        column_mapping.expiry_timestamp_column,
+        column_mapping.strike_column,
+        column_mapping.option_type_column,
+    ]
+
+    match normalization_policy.option_quote_input_policy:
+        case CalibrationOptionQuoteInputPolicy.MID_PRICE_COLUMN:
+            if column_mapping.mid_price_column is not None:
+                required_columns.append(column_mapping.mid_price_column)
+        case CalibrationOptionQuoteInputPolicy.BID_ASK_MIDPOINT:
+            if column_mapping.bid_column is not None:
+                required_columns.append(column_mapping.bid_column)
+            if column_mapping.ask_column is not None:
+                required_columns.append(column_mapping.ask_column)
+        case CalibrationOptionQuoteInputPolicy.IMPLIED_VOLATILITY_COLUMN:
+            if column_mapping.implied_volatility_column is not None:
+                required_columns.append(column_mapping.implied_volatility_column)
+        case None:
+            pass
+
+    return tuple(dict.fromkeys(required_columns))
+
+
+def _required_known_news_source_columns(
+    column_mapping: CalibrationKnownNewsColumnMapping,
+) -> tuple[str, ...]:
+    required_columns: list[str] = [column_mapping.event_timestamp_column]
+    if column_mapping.event_identifier_column is not None:
+        required_columns.append(column_mapping.event_identifier_column)
+
+    return tuple(dict.fromkeys(required_columns))
 
 
 def _finalize_tick_data_records(

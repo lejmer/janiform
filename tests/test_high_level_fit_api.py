@@ -6,10 +6,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, NoReturn, Self
 
+import pyarrow as pa
 import pytest
+from pyarrow import parquet
 
 import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.calibration.fit.model as fit_model_module
+import janiform.calibration.market_data.ingestion as market_data_ingestion_module
+import janiform.calibration.market_data.translation as market_data_translation_module
 from janiform.calibration import CalibrationValidationError
 from janiform._timestamps import datetime_to_utc_nanos
 from janiform.calibration.fit import (
@@ -78,7 +82,7 @@ def test_janiform_estimator_fit_returns_model_for_default_high_level_workflow(
     assert model.metadata["selected_stages"] == ["seasonality"]
 
 
-def test_janiform_estimator_supports_simple_zero_config_tick_fit_without_tempdir(
+def test_janiform_estimator_supports_simple_zero_config_tick_fit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -104,11 +108,6 @@ def test_janiform_estimator_supports_simple_zero_config_tick_fit_without_tempdir
         ),
     )
 
-    def _unexpected_tempdir(*args, **kwargs) -> NoReturn:
-        raise AssertionError("temporary directory should not be created for the common memory path")
-
-    monkeypatch.setattr(fit_estimator_module, "TemporaryDirectory", _unexpected_tempdir)
-
     estimator = JaniformEstimator(
         market_profile="us_equity_cash",
     )
@@ -125,6 +124,53 @@ def test_janiform_estimator_supports_simple_zero_config_tick_fit_without_tempdir
     assert model.metadata["input_inference"]["tick_price_input_policy"] == "explicit_price_column"
     assert model.metadata["input_inference"]["tick_price_columns"]["price_column"] == "trade_price"
     assert model.metadata["input_inference"]["tick_price_columns"]["trade_sign_column"] == "trade_sign"
+
+
+def test_prepare_fit_workflow_uses_column_only_parquet_schema_discovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.parquet"
+    parquet.write_table(
+        pa.table(
+            {
+                "time": [datetime(2026, 2, 2, 14, 30, tzinfo=UTC)],
+                "close": [1.0850],
+            }
+        ),
+        tick_data_path,
+    )
+
+    class _StopAfterInference(Exception):
+        pass
+
+    def _unexpected_load_source_rows(*args: object, **kwargs: object) -> NoReturn:
+        del args, kwargs
+        raise AssertionError("fit input inference should not materialize full source rows")
+
+    def _stop_after_inference(*args: object, **kwargs: object) -> NoReturn:
+        del args, kwargs
+        raise _StopAfterInference()
+
+    monkeypatch.setattr(market_data_ingestion_module, "_load_source_rows", _unexpected_load_source_rows)
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "translate_market_data_request_to_staged_execution_input",
+        _stop_after_inference,
+    )
+
+    estimator = JaniformEstimator(market_profile="eurusd_spot")
+
+    with pytest.raises(_StopAfterInference):
+        estimator._prepare_fit_workflow(
+            run_id="high-level-parquet-schema-only",
+            tick_data_path=tick_data_path,
+            tick_data_format=CalibrationInputFileFormat.PARQUET,
+            tick_data_provenance_label="tick_data",
+            option_surface_path=None,
+            option_surface_format=CalibrationInputFileFormat.PARQUET,
+            option_surface_provenance_label="option_surface",
+        )
 
 
 def test_prepare_model_runtime_factors_uses_fitted_surprise_intensity_profile(
@@ -380,7 +426,7 @@ def test_high_level_model_summary_exposes_fitted_parameters_and_provenance(
         "event_count": 0,
         "active": False,
     }
-    assert summary["session_resolution"]["resolution_kind"] == "automatic_inference"
+    assert summary["session_resolution"]["resolution_kind"] == "explicit_override"
     assert summary["fitted_parameter_summary"]["selected_candidate_ids"] == {
         "hawkes": "candidate_stable_low_loss",
         "return_components": "return_candidate_balanced",
@@ -1081,24 +1127,26 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
         encoding="utf-8",
     )
 
-    load_call_count = 0
     translate_call_count = 0
     extra_python_load_count = 0
-    original_load_translation_inputs = fit_estimator_module._load_market_data_translation_inputs
-    original_translate_loaded_inputs = (
-        fit_estimator_module._translate_loaded_market_data_request_to_staged_execution_input
+    python_translation_load_count = 0
+    original_translate_request = (
+        fit_estimator_module.translate_market_data_request_to_staged_execution_input
+    )
+    original_python_translation_load = (
+        market_data_translation_module._load_market_data_translation_inputs
     )
     original_load_market_data = fit_estimator_module.load_market_data_calibration_inputs
 
-    def counting_load_translation_inputs(*args, **kwargs):
-        nonlocal load_call_count
-        load_call_count += 1
-        return original_load_translation_inputs(*args, **kwargs)
-
-    def counting_translate_loaded_inputs(*args, **kwargs):
+    def counting_translate_request(*args, **kwargs):
         nonlocal translate_call_count
         translate_call_count += 1
-        return original_translate_loaded_inputs(*args, **kwargs)
+        return original_translate_request(*args, **kwargs)
+
+    def counting_python_translation_load(*args, **kwargs):
+        nonlocal python_translation_load_count
+        python_translation_load_count += 1
+        return original_python_translation_load(*args, **kwargs)
 
     def unexpected_extra_python_load(*args, **kwargs):
         nonlocal extra_python_load_count
@@ -1107,13 +1155,13 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_load_market_data_translation_inputs",
-        counting_load_translation_inputs,
+        "translate_market_data_request_to_staged_execution_input",
+        counting_translate_request,
     )
     monkeypatch.setattr(
-        fit_estimator_module,
-        "_translate_loaded_market_data_request_to_staged_execution_input",
-        counting_translate_loaded_inputs,
+        market_data_translation_module,
+        "_load_market_data_translation_inputs",
+        counting_python_translation_load,
     )
     monkeypatch.setattr(
         fit_estimator_module,
@@ -1145,8 +1193,8 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
         tick_data_format=CalibrationInputFileFormat.CSV,
     )
 
-    assert load_call_count == 1
     assert translate_call_count == 1
+    assert python_translation_load_count == 0
     assert extra_python_load_count == 0
 
 

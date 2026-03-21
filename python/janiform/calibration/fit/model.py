@@ -1695,6 +1695,13 @@ def _build_model_metadata(
         "simulation_output_preferences": {
             "reference_price": reference_price,
         },
+        "diagnostic_artifacts": {
+            "artifact_bundle_available": staged_response.diagnostic_artifact_bundle is not None,
+            "artifact_families": [
+                reference.artifact_family
+                for reference in staged_response.diagnostic_artifact_references
+            ],
+        },
         "input_inference": input_inference,
         "diagnostics": [
             {

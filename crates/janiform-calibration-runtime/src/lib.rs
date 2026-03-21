@@ -25,6 +25,7 @@ mod seasonality {
 mod adapters;
 mod checkpointing;
 mod execution_bridge;
+mod market_data_loading;
 mod market_data_preprocessing;
 mod objective;
 mod optimizer_adapter;
@@ -32,10 +33,12 @@ mod shock_mark_fitting;
 mod staged_runner;
 mod stages;
 mod temporal;
+mod diagnostics;
 
 pub use adapters::*;
 pub use checkpointing::*;
 pub use execution_bridge::*;
+pub use market_data_loading::*;
 pub use market_data_preprocessing::*;
 pub use objective::*;
 pub use optimizer_adapter::*;

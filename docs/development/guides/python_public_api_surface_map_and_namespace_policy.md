@@ -187,6 +187,7 @@ from janiform.simulation.shared import HawkesKernelParameters
   - Ownership: source-loading and normalized market-data records
 - `janiform.calibration.market_data.translation`
   - Ownership: translation from market-data requests into staged execution inputs
+  - Boundary rule: translation results may expose execution input, diagnostics, provenance, and fit-level summaries, but must not expose a Python-owned full-dataset IR of loaded market-data rows
 - `janiform.calibration.market_data.workflow`
   - Ownership: prepared market-data calibration artifacts and workflow entrypoints
 - `janiform.calibration.staged`
@@ -253,6 +254,8 @@ The default high-level path is:
 The advanced staged-calibration entrypoint is:
 
 - `run_staged_calibration`
+- `StagedCalibrationResponse` carries `diagnostic_artifact_bundle` for successful in-memory runs
+  and `diagnostic_artifact_references` for successful disk-mode runs
 
 The default full staged calibration path now executes:
 

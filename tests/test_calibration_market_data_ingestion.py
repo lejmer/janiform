@@ -7,6 +7,7 @@ import pyarrow as pa
 import pytest
 from pyarrow import parquet
 
+import janiform.calibration.market_data.ingestion as market_data_ingestion_module
 from janiform.calibration.market_data.ingestion import load_market_data_calibration_inputs
 from janiform.calibration import CalibrationValidationError
 from janiform.calibration.market_data import (
@@ -28,6 +29,37 @@ from janiform.calibration.market_data import (
     MarketDataCalibrationRequest,
 )
 from janiform.calibration.staged import CalibrationExecutionMode
+
+
+def test_load_market_data_source_columns_reads_parquet_schema_without_materializing_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    file_reference = CalibrationInputFileReference(
+        path="/tmp/schema-only.parquet",
+        file_format=CalibrationInputFileFormat.PARQUET,
+        provenance_label="ticks-primary",
+    )
+
+    def _unexpected_read_table(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise AssertionError("column discovery should not read the full parquet table")
+
+    monkeypatch.setattr(market_data_ingestion_module.parquet, "read_table", _unexpected_read_table)
+    monkeypatch.setattr(
+        market_data_ingestion_module.parquet,
+        "read_schema",
+        lambda path: pa.schema(
+            [
+                ("time", pa.timestamp("us", tz="UTC")),
+                ("close", pa.float64()),
+            ]
+        ),
+    )
+
+    assert market_data_ingestion_module._load_source_columns(
+        file_reference,
+        field_path="tick_data_source",
+    ) == ("time", "close")
 
 
 def test_load_market_data_calibration_inputs_normalizes_csv_tick_midpoints_and_provenance(

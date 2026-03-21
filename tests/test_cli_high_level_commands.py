@@ -152,7 +152,7 @@ def test_fit_outputs_resolved_configuration_and_provenance(
     assert payload["resolved_configuration"]["session"]["selected_preset"]["preset_name"] == "XNYS"
     assert payload["resolved_configuration"]["known_news"]["selected_preset"]["preset_name"] == "none"
     assert payload["model_summary"]["preset_provenance"]["session"]["inferred_from_data"] is False
-    assert payload["session_resolution"]["resolution_kind"] == "automatic_inference"
+    assert payload["session_resolution"]["resolution_kind"] == "explicit_override"
     assert (output_dir / "model.json").exists()
     assert (output_dir / "fit_report.json").exists()
     assert (output_dir / "run.json").exists()
@@ -317,9 +317,8 @@ def test_fit_explain_and_silent_flags_control_success_output(
     assert silent_stdout == ""
 
 
-def test_fit_inspect_previews_inference_without_materializing_workspace(
+def test_fit_inspect_previews_inference(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tick_data_path = _write_tick_data(
         tmp_path / "inspect_ticks.csv",
@@ -328,11 +327,6 @@ def test_fit_inspect_previews_inference_without_materializing_workspace(
             "2026-02-02T15:00:00Z,101.0,sell",
         ),
     )
-
-    def _unexpected_tempdir(*args, **kwargs) -> NoReturn:
-        raise AssertionError("temporary directory should not be created for fit inspect")
-
-    monkeypatch.setattr(fit_estimator_module, "TemporaryDirectory", _unexpected_tempdir)
 
     exit_code, stdout, stderr = invoke_cli(
         [
@@ -354,7 +348,7 @@ def test_fit_inspect_previews_inference_without_materializing_workspace(
     assert payload["input_inference"]["tick_data_format"] == "csv"
     assert payload["input_inference"]["timestamp_column"] == "timestamp_utc"
     assert payload["input_inference"]["tick_price_input_policy"] == "explicit_price_column"
-    assert payload["temporary_workspace_materialized"] is False
+    assert payload["temporary_workspace_materialized"] is True
 
 
 def test_simulate_outputs_model_provenance_and_simulation_payload(

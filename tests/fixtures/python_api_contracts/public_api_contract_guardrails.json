@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "0a7661a37d9a753ef106fa9e8d79eb31acb40ca87402c2766db833447c23bdce",
+  "approved_snapshot_sha256": "c6ad7cdd7f8f77b9d2bffe7fc43aa890369f634b34bbd453431ee083a501a823",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -436,6 +436,25 @@
       "rationale": "Seeded simulation now moves its lazy Python boundary over typed native chunk columns instead of chunked JSON while preserving the same public response values, so the approved snapshot must record the renamed seeded boundary transport policy constant.",
       "snapshot_sha256": "0a7661a37d9a753ef106fa9e8d79eb31acb40ca87402c2766db833447c23bdce",
       "summary": "Approve the typed-column seeded simulation boundary transport policy."
+    },
+    {
+      "approved_on": "2026-03-21",
+      "docs_updated": [
+        "README.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "Staged calibration responses now expose diagnostic artifact bundles in memory mode and diagnostic artifact references in disk mode, so the approved Python contract snapshot must record the extra staged response fields instead of preserving the older report shape without calibration diagnostics.",
+      "snapshot_sha256": "3d21e7073fd4d51e5367321fb7a53967e48aed1616b878d406455994e2bf2c8c",
+      "summary": "Approve staged calibration diagnostic artifact fields in the public Python response contract."
+    },
+    {
+      "approved_on": "2026-03-21",
+      "docs_updated": [
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "Market-data translation now keeps the full dataset boundary inside Rust and exposes only execution-ready artifacts, diagnostics, provenance, and fit-level summaries to Python, so the approved snapshot must drop raw loaded-input records from the public translation result and record the new summary fields and keyword cpu_count override.",
+      "snapshot_sha256": "c6ad7cdd7f8f77b9d2bffe7fc43aa890369f634b34bbd453431ee083a501a823",
+      "summary": "Approve the Rust-owned market-data translation result boundary."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_2",

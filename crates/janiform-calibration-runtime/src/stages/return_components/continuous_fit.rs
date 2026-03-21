@@ -14,7 +14,7 @@ use janiform_foundations::numeric::{
 use janiform_foundations::randomness::SplitMix64SimulationRandomnessStream;
 use janiform_foundations::splitmix64_output_mixer;
 use janiform_foundations::vector_math::{
-    normalize_vector4, vector4_add, vector4_scale, vector4_subtract,
+    vector4_subtract,
 };
 use janiform_model_kernels::nig::{NigBuySellDriverParameters, NigSharedPlusShiftConfiguration};
 use rayon::prelude::*;
@@ -47,8 +47,6 @@ const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_SEED_INTEGRATION_STEP_COUNT: usize 
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_LOCAL_INTEGRATION_STEP_COUNT: usize = 192;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_FINAL_INTEGRATION_STEP_COUNT: usize = 512;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_STANDARDIZED_INTEGRATION_UPPER_BOUND: f64 = 64.0;
-const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_LINE_SEARCH_EVALUATION_CAP: usize = 8;
-const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MAX_POWELL_CYCLES: usize = 12;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_SCAN_STEP_COUNT: usize = 12;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_BISECTION_STEP_COUNT: usize = 8;
 const RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_CONFIDENCE_Z_SCORE: f64 =
@@ -284,18 +282,11 @@ struct ContinuousReturnOptimizerContext {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct PowellOptimizationOutcome {
+struct LocalSearchOptimizationOutcome {
     best_point: NigShapeSearchPoint,
     local_objective_score: f64,
     local_evaluation_count: usize,
     stop_reason: &'static str,
-}
-
-#[derive(Debug, Clone)]
-struct LineSearchOutcome {
-    best_vector: [f64; 4],
-    best_evaluation: Option<CachedSearchPointObjectiveEvaluation>,
-    evaluation_count: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -2081,7 +2072,7 @@ fn optimize_seed_candidates(
     seed_candidates
         .par_iter()
         .filter_map(|seed_candidate| {
-            let local_outcome = optimize_powell_search_point(
+            let local_outcome = optimize_local_search_point(
                 optimizer_context,
                 seed_candidate.scored_candidate.search_point,
                 search_bounds,
@@ -2236,15 +2227,14 @@ fn basin_search_points_overlap(
     maximum_normalized_distance <= 0.05
 }
 
-fn optimize_powell_search_point(
+fn optimize_local_search_point(
     optimizer_context: &ContinuousReturnOptimizerContext,
     seed_search_point: NigShapeSearchPoint,
     search_bounds: NigShapeSearchBounds,
     solver_settings: &CalibrationOptimizerSettings,
-) -> Option<PowellOptimizationOutcome> {
+) -> Option<LocalSearchOptimizationOutcome> {
     let mut current_vector =
         clamp_search_point_vector(search_point_to_vector(seed_search_point), search_bounds);
-
     let mut current_evaluation = evaluate_cached_search_point(
         optimizer_context,
         vector_to_search_point(current_vector),
@@ -2254,79 +2244,69 @@ fn optimize_powell_search_point(
     let mut best_vector = current_vector;
     let mut best_evaluation = current_evaluation;
     let mut local_evaluation_count = 1usize;
-
     let local_evaluation_budget = solver_settings.max_iterations.clamp(
         RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MIN_BROAD_CANDIDATE_COUNT,
         RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MAX_BROAD_CANDIDATE_COUNT,
     );
 
-    let mut directions = [
+    let coordinate_spans: [f64; 4] = std::array::from_fn(|coordinate_index| {
+        (search_bounds.upper_bounds[coordinate_index] - search_bounds.lower_bounds[coordinate_index])
+            .abs()
+            .max(solver_settings.absolute_tolerance)
+    });
+    let step_floor = solver_settings
+        .absolute_tolerance
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+    let mut step_radii: [f64; 4] =
+        coordinate_spans.map(|span| (span * 0.18).max(step_floor));
+    let search_directions: [[f64; 4]; 10] = [
         [1.0, 0.0, 0.0, 0.0],
         [0.0, 1.0, 0.0, 0.0],
         [0.0, 0.0, 1.0, 0.0],
         [0.0, 0.0, 0.0, 1.0],
+        [1.0, 0.0, 0.0, 1.0],
+        [1.0, 0.0, 0.0, -1.0],
+        [0.0, 1.0, 1.0, 0.0],
+        [0.0, 1.0, -1.0, 0.0],
+        [1.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 1.0],
     ];
 
-    for _ in 0..RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MAX_POWELL_CYCLES {
-        let cycle_start_vector = current_vector;
-        let cycle_start_objective = current_evaluation.objective.shifted_objective_score;
-
-        let mut largest_direction_improvement = 0.0;
-        let mut replaced_direction_index = 0usize;
-
-        for (direction_index, direction) in directions.iter().enumerate() {
-            let line_search_outcome = minimize_along_direction(
-                optimizer_context,
-                current_vector,
-                *direction,
-                search_bounds,
-                solver_settings,
-            );
-
-            local_evaluation_count += line_search_outcome.evaluation_count;
-            if local_evaluation_count >= local_evaluation_budget {
-                return Some(PowellOptimizationOutcome {
-                    best_point: vector_to_search_point(best_vector),
-                    local_objective_score: best_evaluation.objective.shifted_objective_score,
-                    local_evaluation_count,
-                    stop_reason: "budget",
-                });
-            }
-
-            if let Some(best_line_evaluation) = line_search_outcome.best_evaluation {
-                let direction_improvement = current_evaluation.objective.shifted_objective_score
-                    - best_line_evaluation.objective.shifted_objective_score;
-                if direction_improvement > largest_direction_improvement {
-                    largest_direction_improvement = direction_improvement;
-                    replaced_direction_index = direction_index;
-                }
-
-                current_vector = line_search_outcome.best_vector;
-
-                current_evaluation = best_line_evaluation;
-                if current_evaluation.objective.shifted_objective_score
-                    < best_evaluation.objective.shifted_objective_score
-                {
-                    best_vector = current_vector;
-                    best_evaluation = current_evaluation;
-                }
-            }
-        }
-
-        let cycle_displacement = vector4_subtract(current_vector, cycle_start_vector);
-        let maximum_coordinate_displacement = cycle_displacement
+    let mut shrink_only_cycle_count = 0usize;
+    while local_evaluation_count < local_evaluation_budget {
+        let candidate_vectors: Vec<[f64; 4]> = search_directions
             .iter()
-            .map(|coordinate| coordinate.abs())
-            .fold(0.0, f64::max);
-        let cycle_improvement =
-            cycle_start_objective - current_evaluation.objective.shifted_objective_score;
-        let objective_tolerance = solver_settings
-            .absolute_tolerance
-            .max(solver_settings.relative_tolerance * cycle_start_objective.abs().max(1.0));
-        if cycle_improvement <= objective_tolerance
-            || maximum_coordinate_displacement <= solver_settings.absolute_tolerance
-        {
-            return Some(PowellOptimizationOutcome {
+            .flat_map(|direction| [-1.0, 1.0].into_iter().map(move |sign| (*direction, sign)))
+            .filter_map(|(direction, sign)| {
+                let mut displaced_vector = current_vector;
+                let mut any_displacement = false;
+                for coordinate_index in 0..4 {
+                    let direction_component = direction[coordinate_index];
+                    if direction_component.abs()
+                        <= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER
+                    {
+                        continue;
+                    }
+
+                    displaced_vector[coordinate_index] +=
+                        sign * direction_component * step_radii[coordinate_index];
+                    any_displacement = true;
+                }
+
+                any_displacement.then_some(clamp_search_point_vector(displaced_vector, search_bounds))
+            })
+            .filter(|candidate_vector| {
+                !candidate_vector
+                    .iter()
+                    .zip(current_vector.iter())
+                    .all(|(candidate_value, current_value)| {
+                        (candidate_value - current_value).abs() <= step_floor
+                    })
+            })
+            .collect();
+
+        if candidate_vectors.is_empty() {
+            return Some(LocalSearchOptimizationOutcome {
                 best_point: vector_to_search_point(best_vector),
                 local_objective_score: best_evaluation.objective.shifted_objective_score,
                 local_evaluation_count,
@@ -2334,285 +2314,81 @@ fn optimize_powell_search_point(
             });
         }
 
-        if maximum_coordinate_displacement
-            <= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER
-        {
-            return Some(PowellOptimizationOutcome {
-                best_point: vector_to_search_point(best_vector),
-                local_objective_score: best_evaluation.objective.shifted_objective_score,
-                local_evaluation_count,
-                stop_reason: "invalid_step",
-            });
-        }
+        let candidate_evaluations: Vec<([f64; 4], CachedSearchPointObjectiveEvaluation)> =
+            candidate_vectors
+                .into_par_iter()
+                .filter_map(|candidate_vector| {
+                    evaluate_cached_search_point(
+                        optimizer_context,
+                        vector_to_search_point(candidate_vector),
+                        ContinuousLikelihoodFidelityTier::Local,
+                    )
+                    .map(|evaluation| (candidate_vector, evaluation))
+                })
+                .collect();
+        local_evaluation_count += candidate_evaluations.len();
 
-        let composite_direction = cycle_displacement;
-        let composite_line_search_outcome = minimize_along_direction(
-            optimizer_context,
-            current_vector,
-            composite_direction,
-            search_bounds,
-            solver_settings,
+        let best_neighbor = candidate_evaluations.into_iter().min_by(|left, right| {
+            left.1
+                .objective
+                .shifted_objective_score
+                .total_cmp(&right.1.objective.shifted_objective_score)
+        });
+        let objective_tolerance = solver_settings.absolute_tolerance.max(
+            solver_settings.relative_tolerance
+                * current_evaluation.objective.shifted_objective_score.abs().max(1.0),
         );
 
-        local_evaluation_count += composite_line_search_outcome.evaluation_count;
-
-        if local_evaluation_count >= local_evaluation_budget {
-            return Some(PowellOptimizationOutcome {
-                best_point: vector_to_search_point(best_vector),
-                local_objective_score: best_evaluation.objective.shifted_objective_score,
-                local_evaluation_count,
-                stop_reason: "budget",
-            });
-        }
-
-        if let Some(composite_evaluation) = composite_line_search_outcome.best_evaluation {
-            if composite_evaluation.objective.shifted_objective_score
-                < current_evaluation.objective.shifted_objective_score
-            {
-                current_vector = composite_line_search_outcome.best_vector;
-                current_evaluation = composite_evaluation;
+        if let Some((neighbor_vector, neighbor_evaluation)) = best_neighbor {
+            let improvement = current_evaluation.objective.shifted_objective_score
+                - neighbor_evaluation.objective.shifted_objective_score;
+            if improvement > objective_tolerance {
+                let displacement = vector4_subtract(neighbor_vector, current_vector);
+                current_vector = neighbor_vector;
+                current_evaluation = neighbor_evaluation;
                 if current_evaluation.objective.shifted_objective_score
                     < best_evaluation.objective.shifted_objective_score
                 {
                     best_vector = current_vector;
                     best_evaluation = current_evaluation;
                 }
-            }
 
-            let composite_improvement =
-                cycle_start_objective - composite_evaluation.objective.shifted_objective_score;
-            if composite_improvement > largest_direction_improvement {
-                directions[replaced_direction_index] = normalize_vector4(
-                    composite_direction,
-                    RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
-                );
+                for coordinate_index in 0..4 {
+                    if displacement[coordinate_index].abs() > step_floor {
+                        step_radii[coordinate_index] = (step_radii[coordinate_index] * 1.15)
+                            .min(coordinate_spans[coordinate_index] * 0.5);
+                    } else {
+                        step_radii[coordinate_index] =
+                            (step_radii[coordinate_index] * 0.92).max(step_floor);
+                    }
+                }
+                shrink_only_cycle_count = 0;
+                continue;
             }
+        }
+
+        for coordinate_index in 0..4 {
+            step_radii[coordinate_index] = (step_radii[coordinate_index] * 0.5).max(step_floor);
+        }
+        shrink_only_cycle_count += 1;
+
+        let maximum_radius = step_radii.iter().copied().fold(0.0, f64::max);
+        if maximum_radius <= step_floor || shrink_only_cycle_count >= 3 {
+            return Some(LocalSearchOptimizationOutcome {
+                best_point: vector_to_search_point(best_vector),
+                local_objective_score: best_evaluation.objective.shifted_objective_score,
+                local_evaluation_count,
+                stop_reason: "tolerance",
+            });
         }
     }
 
-    Some(PowellOptimizationOutcome {
+    Some(LocalSearchOptimizationOutcome {
         best_point: vector_to_search_point(best_vector),
         local_objective_score: best_evaluation.objective.shifted_objective_score,
         local_evaluation_count,
         stop_reason: "budget",
     })
-}
-
-fn minimize_along_direction(
-    optimizer_context: &ContinuousReturnOptimizerContext,
-    current_vector: [f64; 4],
-    direction: [f64; 4],
-    search_bounds: NigShapeSearchBounds,
-    solver_settings: &CalibrationOptimizerSettings,
-) -> LineSearchOutcome {
-    let Some((lower_step, upper_step)) =
-        bounded_step_interval(current_vector, direction, search_bounds)
-    else {
-        return LineSearchOutcome {
-            best_vector: current_vector,
-            best_evaluation: evaluate_cached_search_point(
-                optimizer_context,
-                vector_to_search_point(current_vector),
-                ContinuousLikelihoodFidelityTier::Local,
-            ),
-            evaluation_count: 0,
-        };
-    };
-
-    if (upper_step - lower_step).abs() <= solver_settings.absolute_tolerance {
-        return LineSearchOutcome {
-            best_vector: current_vector,
-            best_evaluation: evaluate_cached_search_point(
-                optimizer_context,
-                vector_to_search_point(current_vector),
-                ContinuousLikelihoodFidelityTier::Local,
-            ),
-            evaluation_count: 0,
-        };
-    }
-
-    let mut best_vector = current_vector;
-    let mut best_evaluation = evaluate_cached_search_point(
-        optimizer_context,
-        vector_to_search_point(current_vector),
-        ContinuousLikelihoodFidelityTier::Local,
-    );
-
-    let mut evaluation_count = 0usize;
-
-    let golden_ratio = (5.0_f64.sqrt() - 1.0) * 0.5;
-
-    let mut left = lower_step;
-    let mut right = upper_step;
-
-    let mut left_inner = right - golden_ratio * (right - left);
-    let mut right_inner = left + golden_ratio * (right - left);
-
-    let mut left_inner_evaluation = evaluate_line_search_step(
-        optimizer_context,
-        current_vector,
-        direction,
-        left_inner,
-        search_bounds,
-    );
-    let mut right_inner_evaluation = evaluate_line_search_step(
-        optimizer_context,
-        current_vector,
-        direction,
-        right_inner,
-        search_bounds,
-    );
-
-    evaluation_count += 2;
-
-    update_best_line_search_evaluation(
-        left_inner_evaluation,
-        &mut best_vector,
-        &mut best_evaluation,
-    );
-    update_best_line_search_evaluation(
-        right_inner_evaluation,
-        &mut best_vector,
-        &mut best_evaluation,
-    );
-
-    while evaluation_count < RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_LINE_SEARCH_EVALUATION_CAP {
-        let left_inner_objective = left_inner_evaluation
-            .map(|evaluation| evaluation.1.objective.shifted_objective_score)
-            .unwrap_or(f64::INFINITY);
-        let right_inner_objective = right_inner_evaluation
-            .map(|evaluation| evaluation.1.objective.shifted_objective_score)
-            .unwrap_or(f64::INFINITY);
-
-        if left_inner_objective <= right_inner_objective {
-            right = right_inner;
-            right_inner = left_inner;
-            right_inner_evaluation = left_inner_evaluation;
-
-            left_inner = right - golden_ratio * (right - left);
-            left_inner_evaluation = evaluate_line_search_step(
-                optimizer_context,
-                current_vector,
-                direction,
-                left_inner,
-                search_bounds,
-            );
-
-            evaluation_count += 1;
-
-            update_best_line_search_evaluation(
-                left_inner_evaluation,
-                &mut best_vector,
-                &mut best_evaluation,
-            );
-        } else {
-            left = left_inner;
-            left_inner = right_inner;
-            left_inner_evaluation = right_inner_evaluation;
-
-            right_inner = left + golden_ratio * (right - left);
-            right_inner_evaluation = evaluate_line_search_step(
-                optimizer_context,
-                current_vector,
-                direction,
-                right_inner,
-                search_bounds,
-            );
-
-            evaluation_count += 1;
-
-            update_best_line_search_evaluation(
-                right_inner_evaluation,
-                &mut best_vector,
-                &mut best_evaluation,
-            );
-        }
-
-        if (right - left).abs() <= solver_settings.absolute_tolerance {
-            break;
-        }
-    }
-
-    LineSearchOutcome {
-        best_vector,
-        best_evaluation,
-        evaluation_count,
-    }
-}
-
-fn update_best_line_search_evaluation(
-    evaluated_step: Option<([f64; 4], CachedSearchPointObjectiveEvaluation)>,
-    best_vector: &mut [f64; 4],
-    best_evaluation: &mut Option<CachedSearchPointObjectiveEvaluation>,
-) {
-    let Some((candidate_vector, candidate_evaluation)) = evaluated_step else {
-        return;
-    };
-
-    let should_replace = best_evaluation
-        .map(|current_best| {
-            candidate_evaluation.objective.shifted_objective_score
-                < current_best.objective.shifted_objective_score
-        })
-        .unwrap_or(true);
-    if should_replace {
-        *best_vector = candidate_vector;
-        *best_evaluation = Some(candidate_evaluation);
-    }
-}
-
-fn evaluate_line_search_step(
-    optimizer_context: &ContinuousReturnOptimizerContext,
-    current_vector: [f64; 4],
-    direction: [f64; 4],
-    step: f64,
-    search_bounds: NigShapeSearchBounds,
-) -> Option<([f64; 4], CachedSearchPointObjectiveEvaluation)> {
-    let candidate_vector = clamp_search_point_vector(
-        vector4_add(current_vector, vector4_scale(direction, step)),
-        search_bounds,
-    );
-
-    let candidate_evaluation = evaluate_cached_search_point(
-        optimizer_context,
-        vector_to_search_point(candidate_vector),
-        ContinuousLikelihoodFidelityTier::Local,
-    )?;
-
-    Some((candidate_vector, candidate_evaluation))
-}
-
-fn bounded_step_interval(
-    current_vector: [f64; 4],
-    direction: [f64; 4],
-    search_bounds: NigShapeSearchBounds,
-) -> Option<(f64, f64)> {
-    let mut lower_step = f64::NEG_INFINITY;
-    let mut upper_step = f64::INFINITY;
-
-    for coordinate_index in 0..4 {
-        let direction_component = direction[coordinate_index];
-        if direction_component.abs() <= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER
-        {
-            continue;
-        }
-
-        let lower_candidate = (search_bounds.lower_bounds[coordinate_index]
-            - current_vector[coordinate_index])
-            / direction_component;
-        let upper_candidate = (search_bounds.upper_bounds[coordinate_index]
-            - current_vector[coordinate_index])
-            / direction_component;
-
-        lower_step = lower_step.max(lower_candidate.min(upper_candidate));
-        upper_step = upper_step.min(lower_candidate.max(upper_candidate));
-    }
-
-    if !lower_step.is_finite() || !upper_step.is_finite() || lower_step > upper_step {
-        return None;
-    }
-
-    Some((lower_step, upper_step))
 }
 
 fn clamp_search_point_vector(

@@ -14,7 +14,7 @@ from ..market_data.contracts import (
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
 )
-from ..market_data.ingestion import _load_source_rows
+from ..market_data.ingestion import _load_source_columns
 from ..presets.references import MarketProfileColumnAliasHint, MarketProfileExplicitConfiguration
 
 
@@ -24,6 +24,9 @@ _GENERIC_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "timestamp_utc",
         "event_timestamp_utc",
         "event_timestamp",
+        "timestamp_microseconds",
+        "time_microseconds",
+        "ts_microseconds",
         "ts_utc",
         "ts",
         "trade_timestamp",
@@ -167,10 +170,10 @@ def infer_high_level_fit_inputs(
         provenance_label=tick_data_provenance_label,
     )
 
-    available_columns = _load_source_rows(
+    available_columns = _load_source_columns(
         tick_data_source,
         field_path="tick_data_source",
-    ).available_columns
+    )
 
     alias_map = _alias_map_for_market_profile(market_profile_configuration)
 
