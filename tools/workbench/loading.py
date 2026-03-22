@@ -1,6 +1,11 @@
+from __future__ import annotations
+
+from concurrent.futures import ProcessPoolExecutor
 from collections.abc import Callable
 from dataclasses import dataclass
+import multiprocessing
 from pathlib import Path
+from threading import Event
 from typing import Any, Optional
 
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -8,9 +13,9 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from matplotlib.figure import Figure
 
 from .artifacts import WorkbenchArtifacts, load_workbench_artifacts
-from .fit_context import build_observed_simulation_comparison
 from .plot_manifest import workbench_plot_manifest
-from .plots import create_message_figure
+from .process_pool import await_future_result, terminate_process_pool
+from .rendering import render_plot_png_bytes
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +77,10 @@ def workbench_plot_definitions() -> tuple[WorkbenchPlotDefinition, ...]:
     return _PLOT_DEFINITIONS
 
 
+def _load_artifacts_in_subprocess(input_path: Path) -> WorkbenchArtifacts:
+    return load_workbench_artifacts(input_path)
+
+
 class WorkbenchLoadWorker(QObject):
     activity_changed = pyqtSignal(str, str)
     task_state_changed = pyqtSignal(str, str, int, int)
@@ -82,12 +91,23 @@ class WorkbenchLoadWorker(QObject):
 
     def __init__(self, input_path: Path) -> None:
         super().__init__()
+
         self._input_path: Path = input_path
+        self._cancel_requested: Event = Event()
+        self._executor: Optional[ProcessPoolExecutor] = None
 
     def run(self) -> None:
         total_task_count = len(workbench_startup_tasks())
+        spawn_context = multiprocessing.get_context("spawn")
+        executor: Optional[ProcessPoolExecutor] = None
 
         try:
+            executor = ProcessPoolExecutor(
+                max_workers=1,
+                mp_context=spawn_context,
+            )
+            self._executor = executor
+
             self._emit_activity(
                 task_title=_LOAD_ARTIFACTS_TASK.title,
                 detail=_LOAD_ARTIFACTS_TASK.detail,
@@ -100,7 +120,14 @@ class WorkbenchLoadWorker(QObject):
                 total_task_count,
             )
 
-            artifacts = load_workbench_artifacts(self._input_path)
+            artifacts = self._await_future_result(
+                executor.submit(
+                    _load_artifacts_in_subprocess,
+                    self._input_path,
+                )
+            )
+            if artifacts is None:
+                return
 
             self.task_state_changed.emit(
                 _LOAD_ARTIFACTS_TASK.task_id,
@@ -131,8 +158,10 @@ class WorkbenchLoadWorker(QObject):
             )
 
             completed_task_count = 2
-            observed_simulation_comparison: Optional[Any] = None
             for plot_definition in _PLOT_DEFINITIONS:
+                if self._cancel_requested.is_set():
+                    return
+
                 self._emit_activity(
                     task_title=f"Generate {plot_definition.tab_title}",
                     detail=plot_definition.detail,
@@ -145,35 +174,23 @@ class WorkbenchLoadWorker(QObject):
                     total_task_count,
                 )
 
-                try:
-                    if plot_definition.uses_observed_simulation_comparison:
-                        if observed_simulation_comparison is None:
-                            observed_simulation_comparison = build_observed_simulation_comparison(
-                                artifacts
-                            )
-
-                        figure = plot_definition.builder(
-                            artifacts,
-                            observed_simulation_comparison,
-                        )
-                    else:
-                        figure = plot_definition.builder(artifacts)
-
-                    task_state = "completed"
-                except Exception as error:
-                    figure = create_message_figure(
-                        f"{plot_definition.tab_title} Failed",
-                        str(error),
+                image_bytes = self._await_future_result(
+                    executor.submit(
+                        render_plot_png_bytes,
+                        artifacts,
+                        plot_definition.task_id,
                     )
-                    task_state = "failed"
+                )
+                if image_bytes is None:
+                    return
 
-                self.plot_ready.emit(plot_definition.task_id, figure)
+                self.plot_ready.emit(plot_definition.task_id, image_bytes)
 
                 completed_task_count += 1
 
                 self.task_state_changed.emit(
                     plot_definition.task_id,
-                    task_state,
+                    "completed",
                     completed_task_count,
                     total_task_count,
                 )
@@ -183,9 +200,33 @@ class WorkbenchLoadWorker(QObject):
                 detail="The workbench finished loading diagnostics and plots.",
             )
         except Exception as error:
-            self.error_raised.emit(str(error))
+            if not self._cancel_requested.is_set():
+                self.error_raised.emit(str(error))
         finally:
+            if executor is not None:
+                if self._cancel_requested.is_set():
+                    terminate_process_pool(executor)
+                else:
+                    executor.shutdown(wait=True, cancel_futures=True)
+
+            self._executor = None
             self.finished.emit()
+
+    def cancel(self) -> None:
+        self._cancel_requested.set()
+
+        executor = self._executor
+        if executor is not None:
+            terminate_process_pool(executor)
+
+    def _await_future_result(
+        self,
+        future: Any,
+    ) -> Optional[Any]:
+        return await_future_result(
+            future,
+            cancel_requested=self._cancel_requested,
+        )
 
     def _emit_activity(self, *, task_title: str, detail: str) -> None:
         self.activity_changed.emit(task_title, detail)

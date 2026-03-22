@@ -44,17 +44,16 @@ use janiform_calibration_artifacts::{
     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION, CALIBRATION_RUN_SPEC_SCHEMA_VERSION,
     CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY, CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION,
-    CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION, CalibrationArtifactRunPreparationMode,
-    CalibrationArtifactKind, CalibrationArtifactReference, CalibrationArtifactRunWriter,
-    CalibrationDiskCheckpointError, CalibrationExecutionMode,
-    CalibrationOptimizerSettings, CalibrationResumeSource, CalibrationRunContract,
-    CalibrationRunSpec, CalibrationStage, CalibrationStageCheckpointMetadata,
-    CalibrationStageHandoffTransport, CalibrationStageParameterArtifact,
-    CalibrationStageParameterArtifactInput, CalibrationStageParameterBuildMetadata,
-    CalibrationStageParameterOptimizerStateInput, CalibrationStageParameterPayload,
-    CalibrationStageSeedSource, build_calibration_artifact_manifest,
-    build_calibration_dataset_snapshot_artifact, build_calibration_stage_parameter_artifact,
-    calibration_dataset_snapshot_artifact_reference,
+    CALIBRATION_STAGE_GRAPH_SCHEMA_VERSION, CalibrationArtifactKind, CalibrationArtifactReference,
+    CalibrationArtifactRunPreparationMode, CalibrationArtifactRunWriter,
+    CalibrationDiskCheckpointError, CalibrationExecutionMode, CalibrationOptimizerSettings,
+    CalibrationResumeSource, CalibrationRunContract, CalibrationRunSpec, CalibrationStage,
+    CalibrationStageCheckpointMetadata, CalibrationStageHandoffTransport,
+    CalibrationStageParameterArtifact, CalibrationStageParameterArtifactInput,
+    CalibrationStageParameterBuildMetadata, CalibrationStageParameterOptimizerStateInput,
+    CalibrationStageParameterPayload, CalibrationStageSeedSource,
+    build_calibration_artifact_manifest, build_calibration_dataset_snapshot_artifact,
+    build_calibration_stage_parameter_artifact, calibration_dataset_snapshot_artifact_reference,
     calibration_stage_parameter_artifact_path_in_run_directory,
     load_calibration_stage_parameter_artifact_from_disk, load_stage_checkpoint_from_disk,
     persist_calibration_artifact_manifest_to_run_directory,
@@ -1141,9 +1140,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
         stage_reports,
         emitted_checkpoints,
         diagnostic_artifact_references,
-        diagnostic_artifact_bundle: (
-            run_spec.execution_mode == CalibrationExecutionMode::Memory
-        )
+        diagnostic_artifact_bundle: (run_spec.execution_mode == CalibrationExecutionMode::Memory)
             .then_some(diagnostic_artifact_bundle)
             .flatten(),
         resumed_from_checkpoint_reference,

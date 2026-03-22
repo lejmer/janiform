@@ -273,9 +273,6 @@ def persist_seeded_tick_simulation(
     try:
         record_batch: list[dict[str, Any]] = []
         for record in simulation_result.fine_path:
-            if record.side is None:
-                continue
-
             timestamp_value = _convert_timestamp_for_output(
                 record.timestamp_utc_nanos,
                 timezone_name=preferences.timestamp_timezone,
@@ -285,7 +282,7 @@ def persist_seeded_tick_simulation(
                 timestamp_value=timestamp_value,
                 timestamp_column=preferences.timestamp_column,
                 price_value=preferences.reference_price * math.exp(record.cumulative_log_return),
-                side_value=record.side.value,
+                side_value=None if record.side is None else record.side.value,
                 preferences=preferences,
             )
 
@@ -422,7 +419,7 @@ def _resolve_run_directory(
     if output_dir is None:
         return Path.cwd() / ".janiform" / run_id
 
-    return Path(output_dir)
+    return Path(output_dir) / run_id
 
 
 def _resolve_output_path(

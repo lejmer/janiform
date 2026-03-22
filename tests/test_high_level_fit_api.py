@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any, NoReturn, Self
 
 import pyarrow as pa
+import pandas
 import pytest
 from pyarrow import parquet
 
@@ -31,6 +32,7 @@ from janiform.calibration.market_data import (
 )
 from janiform.calibration.staged import StagedCalibrationResponse, validate_staged_calibration_response
 from janiform.calendar import CalendarRegistry, MarketState
+from janiform.simulation import SeededTickEventSide
 
 
 def test_janiform_estimator_fit_returns_model_for_default_high_level_workflow(
@@ -603,6 +605,54 @@ def test_loaded_high_level_model_runtime_seasonality_requires_structural_paramet
         )
 
 
+def test_high_level_runtime_seasonality_zeroes_closed_intervals_for_coarse_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-closed-seasonality-gating",
+    )
+
+    runtime_factors = fit_model_module._prepare_model_runtime_factors(
+        model,
+        start_time_utc=datetime(2026, 2, 2, 14, 0, tzinfo=UTC),
+        horizon_interval_count=4,
+        interval="15min",
+    )
+
+    assert runtime_factors.seasonality_hourly_factors == pytest.approx(
+        (0.0, 0.0, 1.0, 1.0)
+    )
+
+
+def test_runtime_coarse_news_intensity_components_scale_known_news_to_per_hour_units() -> None:
+    known_news_timestamp_utc = datetime(2026, 2, 2, 14, 5, tzinfo=UTC)
+    news_materialization = SimpleNamespace(
+        interval_start_utc_nanos=(
+            datetime_to_utc_nanos(datetime(2026, 2, 2, 14, 0, tzinfo=UTC)),
+            datetime_to_utc_nanos(datetime(2026, 2, 2, 14, 15, tzinfo=UTC)),
+        ),
+        interval_end_utc_nanos=(
+            datetime_to_utc_nanos(datetime(2026, 2, 2, 14, 15, tzinfo=UTC)),
+            datetime_to_utc_nanos(datetime(2026, 2, 2, 14, 30, tzinfo=UTC)),
+        ),
+        surprise_component_nu_h=(0.2, 0.3),
+    )
+
+    known_component_nu_h, surprise_component_nu_h = (
+        fit_model_module._normalize_runtime_coarse_news_intensity_components(
+            news_materialization=news_materialization,
+            known_news_event_timestamps_utc=(known_news_timestamp_utc,),
+            interval_delta=0.25,
+        )
+    )
+
+    assert known_component_nu_h == pytest.approx((4.0, 0.0))
+    assert surprise_component_nu_h == pytest.approx((0.2, 0.3))
+
+
 def test_high_level_model_simulate_dispatches_by_interval_mode(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -926,6 +976,69 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
     )
 
 
+def test_persist_seeded_tick_simulation_preserves_non_trade_fine_path_rows() -> None:
+    import janiform._workflow_outputs as workflow_outputs_module
+
+    class _CapturingSink:
+        def __init__(self) -> None:
+            self.rows: list[dict[str, Any]] = []
+
+        def write_records(self, records: list[dict[str, Any]]) -> None:
+            self.rows.extend(records)
+
+        def close(self) -> None:
+            return None
+
+    sink = _CapturingSink()
+    preferences = workflow_outputs_module.SimulationOutputPreferences(
+        file_format="parquet",
+        timestamp_column="timestamp_utc",
+        timestamp_timezone="UTC",
+        tick_price_input_policy="explicit_price_column",
+        price_column="trade_price",
+        trade_sign_column="trade_sign",
+        bid_column=None,
+        ask_column=None,
+        reference_price=100.0,
+    )
+    simulation_result = SimpleNamespace(
+        fine_path=(
+            SimpleNamespace(
+                timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
+                cumulative_log_return=0.10,
+                side=SeededTickEventSide.BUY,
+            ),
+            SimpleNamespace(
+                timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 15, tzinfo=UTC)),
+                cumulative_log_return=0.12,
+                side=None,
+            ),
+        )
+    )
+
+    workflow_outputs_module.persist_seeded_tick_simulation(
+        simulation_result=simulation_result,
+        output_path=Path("simulation.parquet"),
+        preferences=preferences,
+        sink=sink,
+    )
+
+    assert [row["timestamp_utc"] for row in sink.rows] == [
+        datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+        datetime(2026, 2, 2, 15, 15, tzinfo=UTC),
+    ]
+    assert [row["trade_price"] for row in sink.rows] == pytest.approx(
+        [
+            100.0 * math.exp(0.10),
+            100.0 * math.exp(0.12),
+        ]
+    )
+    assert [row["trade_sign"] for row in sink.rows] == [
+        SeededTickEventSide.BUY.value,
+        None,
+    ]
+
+
 def test_high_level_seeded_simulation_result_preserves_empty_tabular_schema(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1018,6 +1131,72 @@ def test_high_level_simulation_result_materializes_datetime_timestamps_in_memory
 
     assert pandas_frame.iloc[0]["timestamp_utc"] == datetime(2026, 2, 2, 15, tzinfo=UTC)
     assert captured_output_paths == [Path("simulation.parquet")]
+
+
+def test_high_level_seeded_simulation_result_exports_full_fine_path_to_tabular_surfaces(
+    tmp_path: Path,
+) -> None:
+    result = JaniformSimulationResult(
+        simulation_kind="seeded_tick",
+        metadata={},
+        provenance={},
+        diagnostics={},
+        raw_result=SimpleNamespace(
+            fine_path=(
+                SimpleNamespace(
+                    timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
+                    cumulative_log_return=0.10,
+                    side=SeededTickEventSide.BUY,
+                ),
+                SimpleNamespace(
+                    timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 15, tzinfo=UTC)),
+                    cumulative_log_return=0.12,
+                    side=None,
+                ),
+            )
+        ),
+        _preferences=SimpleNamespace(
+            timestamp_column="timestamp_utc",
+            timestamp_timezone="UTC",
+            tick_price_input_policy="explicit_price_column",
+            price_column="trade_price",
+            trade_sign_column="trade_sign",
+            reference_price=100.0,
+        ),
+    )
+
+    pandas_frame = result.to_pandas()
+    numpy_array = result.to_numpy()
+    parquet_path = tmp_path / "seeded-simulation.parquet"
+    result.to_parquet(parquet_path)
+    parquet_rows = parquet.read_table(parquet_path).to_pylist()
+
+    assert list(pandas_frame["timestamp_utc"]) == [
+        datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+        datetime(2026, 2, 2, 15, 15, tzinfo=UTC),
+    ]
+    assert list(pandas_frame["trade_price"]) == pytest.approx(
+        [
+            100.0 * math.exp(0.10),
+            100.0 * math.exp(0.12),
+        ]
+    )
+    assert pandas_frame.iloc[0]["trade_sign"] == "buy"
+    assert pandas.isna(pandas_frame.iloc[1]["trade_sign"])
+    assert numpy_array.shape == (2, 3)
+    assert list(numpy_array[:, 2]) == ["buy", None]
+    assert parquet_rows == [
+        {
+            "timestamp_utc": datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+            "trade_price": pytest.approx(100.0 * math.exp(0.10)),
+            "trade_sign": "buy",
+        },
+        {
+            "timestamp_utc": datetime(2026, 2, 2, 15, 15, tzinfo=UTC),
+            "trade_price": pytest.approx(100.0 * math.exp(0.12)),
+            "trade_sign": None,
+        },
+    ]
 
 
 def test_high_level_model_price_option_dispatches_through_canonical_pricing_runner(

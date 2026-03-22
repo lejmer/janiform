@@ -39,18 +39,28 @@ pub(crate) fn build_diagnostic_artifact_bundle(
     stage_reports: &[CalibrationStagedRunStageReport],
     runtime_entries: Vec<CalibrationDiagnosticRuntimeProfileEntry>,
 ) -> Option<CalibrationDiagnosticArtifactBundle> {
-    let hawkes_payload = stage_reports.iter().find_map(|stage_report| match stage_report {
-        CalibrationStagedRunStageReport::Hawkes(report) => report.fitted_stage_payload.as_ref(),
-        _ => None,
-    })?;
-    let return_payload = stage_reports.iter().find_map(|stage_report| match stage_report {
-        CalibrationStagedRunStageReport::ReturnComponents(report) => report.fitted_stage_payload.as_ref(),
-        _ => None,
-    })?;
-    let joint_payload = stage_reports.iter().find_map(|stage_report| match stage_report {
-        CalibrationStagedRunStageReport::JointRefinement(report) => report.fitted_stage_payload.as_ref(),
-        _ => None,
-    })?;
+    let hawkes_payload = stage_reports
+        .iter()
+        .find_map(|stage_report| match stage_report {
+            CalibrationStagedRunStageReport::Hawkes(report) => report.fitted_stage_payload.as_ref(),
+            _ => None,
+        })?;
+    let return_payload = stage_reports
+        .iter()
+        .find_map(|stage_report| match stage_report {
+            CalibrationStagedRunStageReport::ReturnComponents(report) => {
+                report.fitted_stage_payload.as_ref()
+            }
+            _ => None,
+        })?;
+    let joint_payload = stage_reports
+        .iter()
+        .find_map(|stage_report| match stage_report {
+            CalibrationStagedRunStageReport::JointRefinement(report) => {
+                report.fitted_stage_payload.as_ref()
+            }
+            _ => None,
+        })?;
 
     let observed_targets = build_observed_targets_artifact(hawkes_payload, return_payload);
     let candidate_frontier =
@@ -58,7 +68,8 @@ pub(crate) fn build_diagnostic_artifact_bundle(
     let coarse_tick_consistency = build_coarse_tick_consistency_artifact(joint_payload);
     let selection_rationale = build_selection_rationale_artifact(joint_payload);
     let simulation_summary = build_simulation_summary_artifact(joint_payload);
-    let search_surface_manifest = build_search_surface_manifest_artifact(return_payload, joint_payload);
+    let search_surface_manifest =
+        build_search_surface_manifest_artifact(return_payload, joint_payload);
 
     let runtime_profile = CalibrationDiagnosticRuntimeProfileArtifact {
         schema_version: "calibration.diagnostics.runtime_profile.v1",
@@ -107,9 +118,12 @@ pub(crate) fn persist_diagnostic_artifact_bundle(
     ];
 
     let mut references = Vec::with_capacity(families.len());
-    for ((artifact_family, file_name), payload_result) in families.into_iter().zip(payloads.into_iter()) {
-        let payload = payload_result
-            .map_err(|source| format!("failed to serialize {artifact_family} diagnostics: {source}"))?;
+    for ((artifact_family, file_name), payload_result) in
+        families.into_iter().zip(payloads.into_iter())
+    {
+        let payload = payload_result.map_err(|source| {
+            format!("failed to serialize {artifact_family} diagnostics: {source}")
+        })?;
         let artifact_path = artifacts_directory.join(file_name);
 
         fs::write(&artifact_path, payload)
@@ -140,7 +154,9 @@ fn build_observed_targets_artifact(
                 target_family: classify_metric_family(objective_term.term_id.as_str()).to_string(),
                 definition: format!("Observed Hawkes target `{}`", objective_term.term_id),
                 estimation_method: "deterministic_open_session_activity_summary.v1".to_string(),
-                effective_sample_size: selected_hawkes_candidate.source_regime.open_session_tick_count as f64,
+                effective_sample_size: selected_hawkes_candidate
+                    .source_regime
+                    .open_session_tick_count as f64,
                 uncertainty_scale: objective_term.scale.abs().max(1.0e-8),
                 stability_score: 1.0,
                 evaluation_eligibility: CalibrationDiagnosticMetricEligibility::ExactEligible,
@@ -159,7 +175,9 @@ fn build_observed_targets_artifact(
         .iter()
         .find(|candidate| candidate.candidate_id == return_payload.selected_candidate_id)
     {
-        let summary_statistics = &selected_return_candidate.candidate_provenance.summary_statistics;
+        let summary_statistics = &selected_return_candidate
+            .candidate_provenance
+            .summary_statistics;
         let return_distribution = &selected_return_candidate.return_distribution_diagnostic;
         let surprise_arrival = &selected_return_candidate.surprise_arrival_diagnostic;
         let jump = &selected_return_candidate.jump_diagnostic;
@@ -187,7 +205,10 @@ fn build_observed_targets_artifact(
                 "Observed open-session return volatility",
                 "deterministic_open_session_return_summary.v1",
                 return_distribution.sample_count as f64,
-                return_distribution.observed_return_volatility.abs().max(1.0e-8),
+                return_distribution
+                    .observed_return_volatility
+                    .abs()
+                    .max(1.0e-8),
                 CalibrationDiagnosticMetricEligibility::ExactEligible,
                 CalibrationDiagnosticMetricRole::Admissibility,
                 CalibrationDiagnosticMetricRole::Ranking,
@@ -226,7 +247,10 @@ fn build_observed_targets_artifact(
                 "Observed surprise jump arrival intensity per hour",
                 "surprise_episode_detection_summary.v1",
                 summary_statistics.selected_surprise_jump_episode_count as f64,
-                surprise_arrival.observed_jump_frequency_per_hour.abs().max(1.0e-8),
+                surprise_arrival
+                    .observed_jump_frequency_per_hour
+                    .abs()
+                    .max(1.0e-8),
                 CalibrationDiagnosticMetricEligibility::ExactEligible,
                 CalibrationDiagnosticMetricRole::Ranking,
                 CalibrationDiagnosticMetricRole::Ranking,
@@ -265,7 +289,10 @@ fn build_observed_targets_artifact(
                 "Observed known-news post-shock activity lift",
                 "event_conditioned_activity_summary.v1",
                 summary_statistics.known_realized_sample_count as f64,
-                activity_coupling.observed_known_post_shock_activity_lift.abs().max(1.0e-8),
+                activity_coupling
+                    .observed_known_post_shock_activity_lift
+                    .abs()
+                    .max(1.0e-8),
                 CalibrationDiagnosticMetricEligibility::ExactEligible,
                 CalibrationDiagnosticMetricRole::Ranking,
                 CalibrationDiagnosticMetricRole::Ranking,
@@ -317,7 +344,10 @@ fn build_candidate_frontier_artifact(
     joint_payload: &JointRefinementStageFittedPayload,
 ) -> CalibrationDiagnosticCandidateFrontierArtifact {
     let mut frontier_entries = Vec::new();
-    let mut hawkes_candidates = hawkes_payload.candidate_diagnostics.iter().collect::<Vec<_>>();
+    let mut hawkes_candidates = hawkes_payload
+        .candidate_diagnostics
+        .iter()
+        .collect::<Vec<_>>();
 
     hawkes_candidates.sort_by(|left, right| {
         left.penalized_objective_value
@@ -337,8 +367,7 @@ fn build_candidate_frontier_artifact(
             pareto_rank: position + 1,
             lexicographic_rank: position + 1,
             scalar_tie_break: candidate.penalized_objective_value,
-            rejection_reason: (!admissible)
-                .then_some("constraint_violation".to_string()),
+            rejection_reason: (!admissible).then_some("constraint_violation".to_string()),
             family_metrics: candidate
                 .objective_terms
                 .iter()
@@ -358,7 +387,10 @@ fn build_candidate_frontier_artifact(
         });
     }
 
-    let mut return_candidates = return_payload.candidate_diagnostics.iter().collect::<Vec<_>>();
+    let mut return_candidates = return_payload
+        .candidate_diagnostics
+        .iter()
+        .collect::<Vec<_>>();
 
     return_candidates.sort_by(|left, right| {
         left.penalized_objective_value
@@ -367,7 +399,10 @@ fn build_candidate_frontier_artifact(
     });
 
     for (position, candidate) in return_candidates.into_iter().enumerate() {
-        frontier_entries.push(build_return_candidate_frontier_entry(candidate, position + 1));
+        frontier_entries.push(build_return_candidate_frontier_entry(
+            candidate,
+            position + 1,
+        ));
     }
 
     frontier_entries.extend(
@@ -387,7 +422,8 @@ fn build_return_candidate_frontier_entry(
     candidate: &ReturnComponentsStageCandidateDiagnostic,
     rank: usize,
 ) -> CalibrationDiagnosticCandidateFrontierEntry {
-    let admissible = candidate.constraint_violation_count == 0 && !candidate.price_range_sanity_diagnostic.is_flagged;
+    let admissible = candidate.constraint_violation_count == 0
+        && !candidate.price_range_sanity_diagnostic.is_flagged;
 
     CalibrationDiagnosticCandidateFrontierEntry {
         candidate_id: candidate.candidate_id.clone(),
@@ -398,17 +434,24 @@ fn build_return_candidate_frontier_entry(
         pareto_rank: rank,
         lexicographic_rank: rank,
         scalar_tie_break: candidate.penalized_objective_value,
-        rejection_reason: (!admissible).then_some("constraint_or_admissibility_failure".to_string()),
+        rejection_reason: (!admissible)
+            .then_some("constraint_or_admissibility_failure".to_string()),
         family_metrics: vec![
             CalibrationDiagnosticFamilyMetric {
                 metric_id: "continuous_distribution_fit".to_string(),
                 target_id: "return_components.return_volatility".to_string(),
                 target_family: "return_scale".to_string(),
                 evaluation_tier: CalibrationDiagnosticEvaluationTier::ExactBlock,
-                normalized_distance: candidate.objective_metric_buckets.continuous_distribution_fit,
+                normalized_distance: candidate
+                    .objective_metric_buckets
+                    .continuous_distribution_fit,
                 admissible,
-                simulated_value: candidate.return_distribution_diagnostic.fitted_return_volatility,
-                observed_value: candidate.return_distribution_diagnostic.observed_return_volatility,
+                simulated_value: candidate
+                    .return_distribution_diagnostic
+                    .fitted_return_volatility,
+                observed_value: candidate
+                    .return_distribution_diagnostic
+                    .observed_return_volatility,
                 uncertainty_scale: candidate
                     .return_distribution_diagnostic
                     .observed_return_volatility
@@ -425,7 +468,9 @@ fn build_return_candidate_frontier_entry(
                     .mean_return_fit,
                 admissible,
                 simulated_value: candidate.return_distribution_diagnostic.fitted_mean_return,
-                observed_value: candidate.return_distribution_diagnostic.observed_mean_return,
+                observed_value: candidate
+                    .return_distribution_diagnostic
+                    .observed_mean_return,
                 uncertainty_scale: candidate
                     .return_distribution_diagnostic
                     .observed_mean_return
@@ -454,8 +499,12 @@ fn build_return_candidate_frontier_entry(
                     .continuous_distribution_fit_breakdown
                     .l_moment_tau3_fit,
                 admissible,
-                simulated_value: candidate.return_distribution_diagnostic.fitted_excess_kurtosis,
-                observed_value: candidate.return_distribution_diagnostic.observed_excess_kurtosis,
+                simulated_value: candidate
+                    .return_distribution_diagnostic
+                    .fitted_excess_kurtosis,
+                observed_value: candidate
+                    .return_distribution_diagnostic
+                    .observed_excess_kurtosis,
                 uncertainty_scale: 0.25,
             },
             CalibrationDiagnosticFamilyMetric {
@@ -536,7 +585,9 @@ fn build_return_candidate_frontier_entry(
                 simulated_value: candidate
                     .price_range_sanity_diagnostic
                     .fitted_reference_log_price_span,
-                observed_value: candidate.price_range_sanity_diagnostic.observed_log_price_span,
+                observed_value: candidate
+                    .price_range_sanity_diagnostic
+                    .observed_log_price_span,
                 uncertainty_scale: candidate
                     .price_range_sanity_diagnostic
                     .observed_log_price_span
@@ -562,11 +613,36 @@ fn build_joint_candidate_frontier_entry(
         scalar_tie_break: candidate.scalar_tie_break,
         rejection_reason: candidate.invalid_reason.clone(),
         family_metrics: vec![
-            build_joint_family_metric("activity_level", "joint.activity_level", candidate.objective_breakdown.activity_level_fit, candidate.admissible),
-            build_joint_family_metric("activity_shape", "joint.activity_shape", candidate.objective_breakdown.activity_shape_fit, candidate.admissible),
-            build_joint_family_metric("return_scale", "joint.return_scale", candidate.objective_breakdown.aggregated_return_scale_fit, candidate.admissible),
-            build_joint_family_metric("return_asymmetry", "joint.return_shape", candidate.objective_breakdown.aggregated_return_shape_fit, candidate.admissible),
-            build_joint_family_metric("activity_vs_volatility_coupling", "joint.rv_activity_coupling", candidate.objective_breakdown.rv_activity_coupling_fit, candidate.admissible),
+            build_joint_family_metric(
+                "activity_level",
+                "joint.activity_level",
+                candidate.objective_breakdown.activity_level_fit,
+                candidate.admissible,
+            ),
+            build_joint_family_metric(
+                "activity_shape",
+                "joint.activity_shape",
+                candidate.objective_breakdown.activity_shape_fit,
+                candidate.admissible,
+            ),
+            build_joint_family_metric(
+                "return_scale",
+                "joint.return_scale",
+                candidate.objective_breakdown.aggregated_return_scale_fit,
+                candidate.admissible,
+            ),
+            build_joint_family_metric(
+                "return_asymmetry",
+                "joint.return_shape",
+                candidate.objective_breakdown.aggregated_return_shape_fit,
+                candidate.admissible,
+            ),
+            build_joint_family_metric(
+                "activity_vs_volatility_coupling",
+                "joint.rv_activity_coupling",
+                candidate.objective_breakdown.rv_activity_coupling_fit,
+                candidate.admissible,
+            ),
         ],
         canonical_coordinates: candidate.canonical_coordinates.clone(),
     }
@@ -691,25 +767,33 @@ fn build_search_surface_manifest_artifact(
         .iter()
         .find(|candidate| candidate.candidate_id == return_payload.selected_candidate_id)
     {
-        surfaces.extend(selected_return_candidate.continuous_distribution_fit_breakdown.optimizer_basin_diagnostics.iter().map(|basin| CalibrationDiagnosticSearchSurfacePoint {
-            surface_id: "return_components.nig.log_alpha_vs_log_delta_offset".to_string(),
-            x_label: "log_alpha".to_string(),
-            x_value: basin.final_log_alpha,
-            y_label: Some("log_delta_offset".to_string()),
-            y_value: Some(basin.final_log_delta_offset),
-            objective_value: basin.final_objective,
-            admissible: true,
-        }));
+        surfaces.extend(
+            selected_return_candidate
+                .continuous_distribution_fit_breakdown
+                .optimizer_basin_diagnostics
+                .iter()
+                .map(|basin| CalibrationDiagnosticSearchSurfacePoint {
+                    surface_id: "return_components.nig.log_alpha_vs_log_delta_offset".to_string(),
+                    x_label: "log_alpha".to_string(),
+                    x_value: basin.final_log_alpha,
+                    y_label: Some("log_delta_offset".to_string()),
+                    y_value: Some(basin.final_log_delta_offset),
+                    objective_value: basin.final_objective,
+                    admissible: true,
+                }),
+        );
     }
 
-    surfaces.extend(joint_payload.candidate_frontier.iter().map(|candidate| CalibrationDiagnosticSearchSurfacePoint {
-        surface_id: "joint_refinement.frontier.weighted_objective".to_string(),
-        x_label: "lexicographic_rank".to_string(),
-        x_value: candidate.lexicographic_rank as f64,
-        y_label: None,
-        y_value: None,
-        objective_value: candidate.objective_breakdown.weighted_objective,
-        admissible: candidate.admissible,
+    surfaces.extend(joint_payload.candidate_frontier.iter().map(|candidate| {
+        CalibrationDiagnosticSearchSurfacePoint {
+            surface_id: "joint_refinement.frontier.weighted_objective".to_string(),
+            x_label: "lexicographic_rank".to_string(),
+            x_value: candidate.lexicographic_rank as f64,
+            y_label: None,
+            y_value: None,
+            objective_value: candidate.objective_breakdown.weighted_objective,
+            admissible: candidate.admissible,
+        }
     }));
 
     CalibrationDiagnosticSearchSurfaceManifestArtifact {

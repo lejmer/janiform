@@ -19,10 +19,18 @@ def test_candidate_store_enriches_selected_stage_parameters(tmp_path: Path) -> N
 
     assert candidate_store.selected_candidate_id == "candidate-001"
     assert len(candidate_store.candidates) == 2
+
     selected_candidate = candidate_store.by_id["candidate-001"]
     rejected_candidate = candidate_store.by_id["candidate-002"]
+
     assert "selected_stage_parameters" in selected_candidate.parameter_snapshot
     assert selected_candidate.parameter_snapshot["selected_stage_parameters"]["stage"] == "joint_refinement"
+    assert selected_candidate.candidate_family == "joint_refinement"
+    assert selected_candidate.candidate_source == "artifact_frontier"
+    assert selected_candidate.admissibility_state == "admissible"
+    assert selected_candidate.validity_state == "valid"
+    assert selected_candidate.objective_summary["objective_value"] == 0.1
+    assert selected_candidate.lineage["originating_stage"] == "joint_refinement"
     assert rejected_candidate.parameter_snapshot == {"theta": 0.6}
 
 
@@ -116,6 +124,8 @@ def test_candidate_store_builds_live_snapshots_from_stage_reports() -> None:
     assert len(candidate_store.candidates) == 3
     assert candidate_store.by_id["hawkes-001"].family_metrics[0].family_id == "branching_ratio"
     assert candidate_store.by_id["hawkes-002"].rejection_reason == "constraint_violation"
+    assert candidate_store.by_id["hawkes-002"].candidate_source == "stage_report"
+    assert candidate_store.by_id["joint-001"].objective_summary["objective_value"] == 0.12
     assert candidate_store.by_id["joint-001"].canonical_coordinates == {"theta": 0.25}
 
 

@@ -13,9 +13,7 @@ use janiform_foundations::numeric::{
 };
 use janiform_foundations::randomness::SplitMix64SimulationRandomnessStream;
 use janiform_foundations::splitmix64_output_mixer;
-use janiform_foundations::vector_math::{
-    vector4_subtract,
-};
+use janiform_foundations::vector_math::vector4_subtract;
 use janiform_model_kernels::nig::{NigBuySellDriverParameters, NigSharedPlusShiftConfiguration};
 use rayon::prelude::*;
 
@@ -2250,15 +2248,15 @@ fn optimize_local_search_point(
     );
 
     let coordinate_spans: [f64; 4] = std::array::from_fn(|coordinate_index| {
-        (search_bounds.upper_bounds[coordinate_index] - search_bounds.lower_bounds[coordinate_index])
+        (search_bounds.upper_bounds[coordinate_index]
+            - search_bounds.lower_bounds[coordinate_index])
             .abs()
             .max(solver_settings.absolute_tolerance)
     });
     let step_floor = solver_settings
         .absolute_tolerance
         .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
-    let mut step_radii: [f64; 4] =
-        coordinate_spans.map(|span| (span * 0.18).max(step_floor));
+    let mut step_radii: [f64; 4] = coordinate_spans.map(|span| (span * 0.18).max(step_floor));
     let search_directions: [[f64; 4]; 10] = [
         [1.0, 0.0, 0.0, 0.0],
         [0.0, 1.0, 0.0, 0.0],
@@ -2293,15 +2291,15 @@ fn optimize_local_search_point(
                     any_displacement = true;
                 }
 
-                any_displacement.then_some(clamp_search_point_vector(displaced_vector, search_bounds))
+                any_displacement
+                    .then_some(clamp_search_point_vector(displaced_vector, search_bounds))
             })
             .filter(|candidate_vector| {
-                !candidate_vector
-                    .iter()
-                    .zip(current_vector.iter())
-                    .all(|(candidate_value, current_value)| {
+                !candidate_vector.iter().zip(current_vector.iter()).all(
+                    |(candidate_value, current_value)| {
                         (candidate_value - current_value).abs() <= step_floor
-                    })
+                    },
+                )
             })
             .collect();
 
@@ -2336,7 +2334,11 @@ fn optimize_local_search_point(
         });
         let objective_tolerance = solver_settings.absolute_tolerance.max(
             solver_settings.relative_tolerance
-                * current_evaluation.objective.shifted_objective_score.abs().max(1.0),
+                * current_evaluation
+                    .objective
+                    .shifted_objective_score
+                    .abs()
+                    .max(1.0),
         );
 
         if let Some((neighbor_vector, neighbor_evaluation)) = best_neighbor {

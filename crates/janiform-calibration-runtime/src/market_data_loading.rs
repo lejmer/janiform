@@ -1,14 +1,14 @@
-use std::collections::{BTreeMap, HashSet};
-use std::error::Error;
-use std::fmt::{Display, Formatter};
-use std::fs::File;
-use std::hash::Hash;
 use chrono::{DateTime, Datelike, Duration, LocalResult, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
 use csv::StringRecord;
 use parquet::file::reader::{FileReader, SerializedFileReader};
 use parquet::record::Field;
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashSet};
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+use std::fs::File;
+use std::hash::Hash;
 
 use crate::calendar::ExchangeCalendarRegistry;
 use crate::calendar::{
@@ -457,9 +457,8 @@ pub fn load_and_preprocess_market_data_translation_request(
             .as_ref()
             .map(|output| output.option_surface_quote_values.clone())
             .unwrap_or_default(),
-        directional_label_diagnostics: tick_output
-            .directional_label_diagnostics
-            .map(|diagnostics| CalibrationHawkesDirectionalLabelDiagnostics {
+        directional_label_diagnostics: tick_output.directional_label_diagnostics.map(
+            |diagnostics| CalibrationHawkesDirectionalLabelDiagnostics {
                 policy_id: diagnostics.policy_id,
                 first_inferred_trade_sign: diagnostics.first_inferred_trade_sign,
                 provided_label_count: diagnostics.provided_label_count,
@@ -467,16 +466,16 @@ pub fn load_and_preprocess_market_data_translation_request(
                 flat_move_carry_count: diagnostics.flat_move_carry_count,
                 price_up_inference_count: diagnostics.price_up_inference_count,
                 price_down_inference_count: diagnostics.price_down_inference_count,
-            }),
+            },
+        ),
         require_hawkes: request.require_hawkes,
         require_return_components: request.require_return_components,
     };
-    let preprocessing_output =
-        preprocess_market_data_translation_request(
-            preprocessing_request,
-            &resolved_session.calendar_registry,
-        )
-        .map_err(MarketDataLoadingError::Preprocessing)?;
+    let preprocessing_output = preprocess_market_data_translation_request(
+        preprocessing_request,
+        &resolved_session.calendar_registry,
+    )
+    .map_err(MarketDataLoadingError::Preprocessing)?;
 
     Ok(MarketDataLoadingOutput {
         session_resolution: resolved_session.session_resolution,
@@ -592,36 +591,40 @@ fn resolve_explicit_session_definition(
         });
     }
 
-    let calendar_registry_json = std::fs::read_to_string(&session_source.path).map_err(|error| {
-        let field_path = "session_configuration.session_definition_source.path".to_string();
-        match error.kind() {
-            std::io::ErrorKind::NotFound => MarketDataLoadingError::Io {
-                field_path,
-                message: "does not exist".to_string(),
-            },
-            _ => MarketDataLoadingError::Io {
-                field_path,
-                message: format!("could not be read: {error}"),
-            },
-        }
-    })?;
+    let calendar_registry_json =
+        std::fs::read_to_string(&session_source.path).map_err(|error| {
+            let field_path = "session_configuration.session_definition_source.path".to_string();
+            match error.kind() {
+                std::io::ErrorKind::NotFound => MarketDataLoadingError::Io {
+                    field_path,
+                    message: "does not exist".to_string(),
+                },
+                _ => MarketDataLoadingError::Io {
+                    field_path,
+                    message: format!("could not be read: {error}"),
+                },
+            }
+        })?;
 
-    let calendar_registry =
-        ExchangeCalendarRegistryLoader::load_from_json(calendar_registry_json.as_str()).map_err(
-            |error| MarketDataLoadingError::InvalidValue {
-                field_path: "session_configuration.session_definition_source.path".to_string(),
-                message: format!("does not contain a valid calendar registry: {error}"),
-            },
-        )?;
-    let definition = calendar_registry
-        .get_required(exchange_code)
-        .map_err(|_| MarketDataLoadingError::InvalidValue {
+    let calendar_registry = ExchangeCalendarRegistryLoader::load_from_json(
+        calendar_registry_json.as_str(),
+    )
+    .map_err(|error| MarketDataLoadingError::InvalidValue {
+        field_path: "session_configuration.session_definition_source.path".to_string(),
+        message: format!("does not contain a valid calendar registry: {error}"),
+    })?;
+    let definition = calendar_registry.get_required(exchange_code).map_err(|_| {
+        MarketDataLoadingError::InvalidValue {
             field_path: "session_configuration.exchange_code".to_string(),
             message: "must exist in the resolved calendar registry".to_string(),
-        })?;
+        }
+    })?;
     let resolved_timezone_name = definition.timezone_name().to_string();
     let exchange_name = definition.exchange_metadata().exchange_name().to_string();
-    let holiday_calendar_code = definition.rule_metadata().holiday_calendar_code().to_string();
+    let holiday_calendar_code = definition
+        .rule_metadata()
+        .holiday_calendar_code()
+        .to_string();
     let early_close_rule_set = definition
         .rule_metadata()
         .early_close_rule_set()
@@ -738,12 +741,42 @@ fn infer_session_template(
                 holiday_calendar_code: "FX_24_5".to_string(),
                 early_close_rule_set: None,
                 regular_session_windows: vec![
-                    MarketDataSessionRegularWindowPayload { weekday: "Monday".to_string(), label: "spot".to_string(), open_time: "00:00".to_string(), close_time: "24:00".to_string() },
-                    MarketDataSessionRegularWindowPayload { weekday: "Tuesday".to_string(), label: "spot".to_string(), open_time: "00:00".to_string(), close_time: "24:00".to_string() },
-                    MarketDataSessionRegularWindowPayload { weekday: "Wednesday".to_string(), label: "spot".to_string(), open_time: "00:00".to_string(), close_time: "24:00".to_string() },
-                    MarketDataSessionRegularWindowPayload { weekday: "Thursday".to_string(), label: "spot".to_string(), open_time: "00:00".to_string(), close_time: "24:00".to_string() },
-                    MarketDataSessionRegularWindowPayload { weekday: "Friday".to_string(), label: "spot".to_string(), open_time: "00:00".to_string(), close_time: "19:00".to_string() },
-                    MarketDataSessionRegularWindowPayload { weekday: "Sunday".to_string(), label: "spot".to_string(), open_time: "21:00".to_string(), close_time: "24:00".to_string() },
+                    MarketDataSessionRegularWindowPayload {
+                        weekday: "Monday".to_string(),
+                        label: "spot".to_string(),
+                        open_time: "00:00".to_string(),
+                        close_time: "24:00".to_string(),
+                    },
+                    MarketDataSessionRegularWindowPayload {
+                        weekday: "Tuesday".to_string(),
+                        label: "spot".to_string(),
+                        open_time: "00:00".to_string(),
+                        close_time: "24:00".to_string(),
+                    },
+                    MarketDataSessionRegularWindowPayload {
+                        weekday: "Wednesday".to_string(),
+                        label: "spot".to_string(),
+                        open_time: "00:00".to_string(),
+                        close_time: "24:00".to_string(),
+                    },
+                    MarketDataSessionRegularWindowPayload {
+                        weekday: "Thursday".to_string(),
+                        label: "spot".to_string(),
+                        open_time: "00:00".to_string(),
+                        close_time: "24:00".to_string(),
+                    },
+                    MarketDataSessionRegularWindowPayload {
+                        weekday: "Friday".to_string(),
+                        label: "spot".to_string(),
+                        open_time: "00:00".to_string(),
+                        close_time: "19:00".to_string(),
+                    },
+                    MarketDataSessionRegularWindowPayload {
+                        weekday: "Sunday".to_string(),
+                        label: "spot".to_string(),
+                        open_time: "21:00".to_string(),
+                        close_time: "24:00".to_string(),
+                    },
                 ],
                 continuous_weekday_template: false,
             });
@@ -849,7 +882,11 @@ fn validate_generic_24_5_inference(
 
     for pair in tick_records.windows(2) {
         let gap_nanos = pair[1].timestamp_utc_nanos - pair[0].timestamp_utc_nanos;
-        if gap_nanos < Duration::hours(LONG_GAP_THRESHOLD_HOURS).num_nanoseconds().unwrap_or(0) {
+        if gap_nanos
+            < Duration::hours(LONG_GAP_THRESHOLD_HOURS)
+                .num_nanoseconds()
+                .unwrap_or(0)
+        {
             continue;
         }
         long_gap_count += 1;
@@ -888,9 +925,12 @@ fn load_option_surface_records(
     option_surface_input: &MarketDataOptionSurfaceLoadingInput,
     normalization_policy: &MarketDataNormalizationPolicy,
 ) -> Result<OptionSurfaceLoadOutput, MarketDataLoadingError> {
-    let required_columns =
-        required_option_surface_source_columns(&option_surface_input.column_mapping, normalization_policy);
-    let available_columns = load_source_columns(&option_surface_input.source, "option_surface_source")?;
+    let required_columns = required_option_surface_source_columns(
+        &option_surface_input.column_mapping,
+        normalization_policy,
+    );
+    let available_columns =
+        load_source_columns(&option_surface_input.source, "option_surface_source")?;
     validate_columns_exist(
         &available_columns,
         &required_columns,
@@ -985,8 +1025,10 @@ fn load_tick_records(
         )?);
     }
 
-    let (mut deduplicated_rows, dropped_duplicate_row_count) =
-        deduplicate_tick_rows(normalized_rows, normalization_policy.duplicate_record_policy);
+    let (mut deduplicated_rows, dropped_duplicate_row_count) = deduplicate_tick_rows(
+        normalized_rows,
+        normalization_policy.duplicate_record_policy,
+    );
     if normalization_policy.sort_records_by_timestamp {
         deduplicated_rows.sort_by_key(|row| (row.timestamp_utc_nanos, row.source_row_number));
     }
@@ -1125,16 +1167,17 @@ fn load_source_columns(
             Ok(headers.iter().map(ToOwned::to_owned).collect())
         }
         MarketDataInputFileFormat::Parquet => {
-            let file = File::open(&file_reference.path)
-                .map_err(|error| MarketDataLoadingError::Io {
+            let file =
+                File::open(&file_reference.path).map_err(|error| MarketDataLoadingError::Io {
                     field_path: format!("{field_path}.path"),
                     message: error.to_string(),
                 })?;
-            let reader = SerializedFileReader::new(file)
-                .map_err(|error| MarketDataLoadingError::Parquet {
+            let reader = SerializedFileReader::new(file).map_err(|error| {
+                MarketDataLoadingError::Parquet {
                     field_path: format!("{field_path}.path"),
                     message: error.to_string(),
-                })?;
+                }
+            })?;
 
             let schema = reader.metadata().file_metadata().schema_descr();
 
@@ -1209,13 +1252,12 @@ fn load_parquet_rows(
     file_reference: &MarketDataInputFileReference,
     field_path: &str,
 ) -> Result<Vec<RawRow>, MarketDataLoadingError> {
-    let file = File::open(&file_reference.path)
-        .map_err(|error| MarketDataLoadingError::Io {
-            field_path: format!("{field_path}.path"),
-            message: error.to_string(),
-        })?;
-    let reader = SerializedFileReader::new(file)
-        .map_err(|error| MarketDataLoadingError::Parquet {
+    let file = File::open(&file_reference.path).map_err(|error| MarketDataLoadingError::Io {
+        field_path: format!("{field_path}.path"),
+        message: error.to_string(),
+    })?;
+    let reader =
+        SerializedFileReader::new(file).map_err(|error| MarketDataLoadingError::Parquet {
             field_path: format!("{field_path}.path"),
             message: error.to_string(),
         })?;
@@ -1300,7 +1342,10 @@ fn normalize_tick_row(
 ) -> Result<LoadedTickRecord, MarketDataLoadingError> {
     let timestamp = normalize_timestamp_value(
         raw_row.get(&column_mapping.timestamp_column),
-        &format!("tick_data_source.rows[{source_row_number}].{}", column_mapping.timestamp_column),
+        &format!(
+            "tick_data_source.rows[{source_row_number}].{}",
+            column_mapping.timestamp_column
+        ),
         Some(normalization_policy.timestamp_timezone.as_str()),
         source_path,
     )?;
@@ -1348,12 +1393,12 @@ fn normalize_tick_row(
         Some(MarketDataTickPriceInputPolicy::ExplicitPriceColumn) => explicit_price,
         Some(MarketDataTickPriceInputPolicy::BidAskMidpoint) => match (bid_price, ask_price) {
             (Some(bid), Some(ask)) if ask >= bid => Some((bid + ask) / 2.0),
-            _ => {
-                return Err(MarketDataLoadingError::InvalidValue {
-                    field_path: format!("tick_data_source.rows[{source_row_number}]"),
-                    message: "bid_column and ask_column must both contain values to derive bid_ask_midpoint".to_string(),
-                })
-            }
+            _ => return Err(MarketDataLoadingError::InvalidValue {
+                field_path: format!("tick_data_source.rows[{source_row_number}]"),
+                message:
+                    "bid_column and ask_column must both contain values to derive bid_ask_midpoint"
+                        .to_string(),
+            }),
         },
         None => None,
     };
@@ -1385,7 +1430,11 @@ fn normalize_known_news_row(
         known_news_input.calendar_timezone.as_deref(),
         source_path,
     )?;
-    let event_identifier = match known_news_input.column_mapping.event_identifier_column.as_ref() {
+    let event_identifier = match known_news_input
+        .column_mapping
+        .event_identifier_column
+        .as_ref()
+    {
         Some(column_name) => normalize_optional_text_value(
             raw_row.get(column_name),
             &format!("known_news_inputs.calendar_source.rows[{source_row_number}].{column_name}"),
@@ -1417,16 +1466,20 @@ fn normalize_timestamp_value(
             return Err(MarketDataLoadingError::InvalidValue {
                 field_path: field_path.to_string(),
                 message: format!("is required and cannot be null. source_path={source_path}"),
-            })
+            });
         }
-        RawValue::Text(value) => parse_timestamp_text(value, field_path, source_timezone, source_path)?,
+        RawValue::Text(value) => {
+            parse_timestamp_text(value, field_path, source_timezone, source_path)?
+        }
         RawValue::Integer(value) => parse_unix_epoch_value(*value as f64),
         RawValue::Float(value) => parse_unix_epoch_value(*value),
         RawValue::Boolean => {
             return Err(MarketDataLoadingError::InvalidValue {
                 field_path: field_path.to_string(),
-                message: format!("must be a supported timestamp string, Unix epoch value, or a parquet timestamp column. source_path={source_path}"),
-            })
+                message: format!(
+                    "must be a supported timestamp string, Unix epoch value, or a parquet timestamp column. source_path={source_path}"
+                ),
+            });
         }
     };
 
@@ -1451,9 +1504,7 @@ fn parse_timestamp_text(
         return Ok(parsed_numeric);
     }
 
-    let normalized_value = stripped
-        .replace(" UTC", "+00:00")
-        .replace(" GMT", "+00:00");
+    let normalized_value = stripped.replace(" UTC", "+00:00").replace(" GMT", "+00:00");
     let rfc3339_candidate = if normalized_value.ends_with('Z') {
         format!("{}+00:00", &normalized_value[..normalized_value.len() - 1])
     } else {
@@ -1478,7 +1529,9 @@ fn parse_timestamp_text(
 
     Err(MarketDataLoadingError::InvalidValue {
         field_path: field_path.to_string(),
-        message: format!("must be a supported timestamp string, Unix epoch value, or a parquet timestamp column. source_path={source_path}"),
+        message: format!(
+            "must be a supported timestamp string, Unix epoch value, or a parquet timestamp column. source_path={source_path}"
+        ),
     })
 }
 
@@ -1490,17 +1543,27 @@ fn localize_naive_datetime(
 ) -> Result<i64, MarketDataLoadingError> {
     let timezone = resolve_source_timezone(source_timezone, field_path, source_path)?;
     match timezone.from_local_datetime(&parsed_value) {
-        LocalResult::Single(value) => value.timestamp_nanos_opt().ok_or_else(|| MarketDataLoadingError::InvalidValue {
-            field_path: field_path.to_string(),
-            message: format!("timestamp value is outside the supported range. source_path={source_path}"),
-        }),
+        LocalResult::Single(value) => {
+            value
+                .timestamp_nanos_opt()
+                .ok_or_else(|| MarketDataLoadingError::InvalidValue {
+                    field_path: field_path.to_string(),
+                    message: format!(
+                        "timestamp value is outside the supported range. source_path={source_path}"
+                    ),
+                })
+        }
         LocalResult::Ambiguous(_, _) => Err(MarketDataLoadingError::InvalidValue {
             field_path: field_path.to_string(),
-            message: format!("is ambiguous in the configured source timezone due to a daylight-saving transition. Provide explicit UTC offsets in the file. source_path={source_path}"),
+            message: format!(
+                "is ambiguous in the configured source timezone due to a daylight-saving transition. Provide explicit UTC offsets in the file. source_path={source_path}"
+            ),
         }),
         LocalResult::None => Err(MarketDataLoadingError::InvalidValue {
             field_path: field_path.to_string(),
-            message: format!("falls into a nonexistent local-time gap. Provide explicit UTC offsets or normalize the source file. source_path={source_path}"),
+            message: format!(
+                "falls into a nonexistent local-time gap. Provide explicit UTC offsets or normalize the source file. source_path={source_path}"
+            ),
         }),
     }
 }
@@ -1511,14 +1574,21 @@ fn resolve_source_timezone(
     source_path: &str,
 ) -> Result<Tz, MarketDataLoadingError> {
     let normalized = source_timezone.trim();
-    if matches!(normalized.to_ascii_uppercase().as_str(), "UTC" | "Z" | "GMT" | "UT") {
+    if matches!(
+        normalized.to_ascii_uppercase().as_str(),
+        "UTC" | "Z" | "GMT" | "UT"
+    ) {
         return Ok(chrono_tz::UTC);
     }
 
-    normalized.parse::<Tz>().map_err(|_| MarketDataLoadingError::InvalidValue {
-        field_path: field_path.to_string(),
-        message: format!("references unknown timezone '{source_timezone}'. source_path={source_path}"),
-    })
+    normalized
+        .parse::<Tz>()
+        .map_err(|_| MarketDataLoadingError::InvalidValue {
+            field_path: field_path.to_string(),
+            message: format!(
+                "references unknown timezone '{source_timezone}'. source_path={source_path}"
+            ),
+        })
 }
 
 fn try_parse_numeric_timestamp_text(raw_value: &str) -> Option<i64> {
@@ -1573,25 +1643,33 @@ fn normalize_optional_numeric_value(
             if stripped.is_empty() {
                 return Ok(None);
             }
-            stripped.parse::<f64>().map_err(|_| MarketDataLoadingError::InvalidValue {
-                field_path: field_path.to_string(),
-                message: format!("must be a finite numeric value when provided. source_path={source_path}"),
-            })?
+            stripped
+                .parse::<f64>()
+                .map_err(|_| MarketDataLoadingError::InvalidValue {
+                    field_path: field_path.to_string(),
+                    message: format!(
+                        "must be a finite numeric value when provided. source_path={source_path}"
+                    ),
+                })?
         }
         RawValue::Integer(value) => *value as f64,
         RawValue::Float(value) => *value,
         RawValue::Boolean => {
             return Err(MarketDataLoadingError::InvalidValue {
                 field_path: field_path.to_string(),
-                message: format!("must be a finite numeric value when provided. source_path={source_path}"),
-            })
+                message: format!(
+                    "must be a finite numeric value when provided. source_path={source_path}"
+                ),
+            });
         }
     };
 
     if !numeric_value.is_finite() {
         return Err(MarketDataLoadingError::InvalidValue {
             field_path: field_path.to_string(),
-            message: format!("must be a finite numeric value when provided. source_path={source_path}"),
+            message: format!(
+                "must be a finite numeric value when provided. source_path={source_path}"
+            ),
         });
     }
     if !allow_negative && numeric_value < 0.0 {
@@ -1650,7 +1728,9 @@ fn normalize_optional_trade_sign_value(
         "sell" => Ok(Some(TradeSign::Sell)),
         _ => Err(MarketDataLoadingError::InvalidValue {
             field_path: field_path.to_string(),
-            message: format!("must be either 'buy' or 'sell' when provided. source_path={source_path}"),
+            message: format!(
+                "must be either 'buy' or 'sell' when provided. source_path={source_path}"
+            ),
         }),
     }
 }
@@ -1830,7 +1910,8 @@ fn detect_interval_data_warning(rows: &[LoadedTickRecord]) -> Option<String> {
 
     let mut deltas_in_seconds = Vec::new();
     for pair in rows.windows(2) {
-        let delta_seconds = (pair[1].timestamp_utc_nanos - pair[0].timestamp_utc_nanos) / 1_000_000_000;
+        let delta_seconds =
+            (pair[1].timestamp_utc_nanos - pair[0].timestamp_utc_nanos) / 1_000_000_000;
         if delta_seconds > 0 {
             deltas_in_seconds.push(delta_seconds);
         }
@@ -1839,7 +1920,10 @@ fn detect_interval_data_warning(rows: &[LoadedTickRecord]) -> Option<String> {
         return None;
     }
 
-    let aligned_to_minute_count = deltas_in_seconds.iter().filter(|delta| **delta % 60 == 0).count();
+    let aligned_to_minute_count = deltas_in_seconds
+        .iter()
+        .filter(|delta| **delta % 60 == 0)
+        .count();
     let mut counts = BTreeMap::new();
     for delta in &deltas_in_seconds {
         *counts.entry(*delta).or_insert(0_usize) += 1;
@@ -1906,7 +1990,9 @@ fn required_tick_source_columns(
     dedup_vec(columns)
 }
 
-fn required_known_news_source_columns(column_mapping: &MarketDataKnownNewsColumnMapping) -> Vec<String> {
+fn required_known_news_source_columns(
+    column_mapping: &MarketDataKnownNewsColumnMapping,
+) -> Vec<String> {
     let mut columns = vec![column_mapping.event_timestamp_column.clone()];
     if let Some(column) = &column_mapping.event_identifier_column {
         columns.push(column.clone());
@@ -2036,8 +2122,8 @@ fn normalize_option_type(
     field_path: &str,
     source_path: &str,
 ) -> Result<String, MarketDataLoadingError> {
-    let text_value = normalize_required_text_value(raw_value, field_path, source_path)?
-        .to_ascii_lowercase();
+    let text_value =
+        normalize_required_text_value(raw_value, field_path, source_path)?.to_ascii_lowercase();
     match text_value.as_str() {
         "call" | "c" => Ok("call".to_string()),
         "put" | "p" => Ok("put".to_string()),
@@ -2064,7 +2150,11 @@ fn normalize_option_surface_row(
     )?;
     let expiry_timestamp = normalize_timestamp_value(
         raw_row.get(&column_mapping.expiry_timestamp_column),
-        format!("{row_field_path}.{}", column_mapping.expiry_timestamp_column).as_str(),
+        format!(
+            "{row_field_path}.{}",
+            column_mapping.expiry_timestamp_column
+        )
+        .as_str(),
         Some(normalization_policy.timestamp_timezone.as_str()),
         source_path,
     )?;
@@ -2251,9 +2341,9 @@ fn looks_like_continuous_weekday_template(
         return false;
     }
 
-    regular_session_windows.iter().all(|window| {
-        window.open_time == "00:00" && window.close_time == "24:00"
-    })
+    regular_session_windows
+        .iter()
+        .all(|window| window.open_time == "00:00" && window.close_time == "24:00")
 }
 
 fn build_recurring_closed_windows(
@@ -2275,8 +2365,10 @@ fn build_recurring_closed_windows(
         .iter()
         .map(|window| {
             (
-                weekday_start_minute(window.weekday.as_str()) + clock_minutes(window.open_time.as_str()),
-                weekday_start_minute(window.weekday.as_str()) + clock_minutes(window.close_time.as_str()),
+                weekday_start_minute(window.weekday.as_str())
+                    + clock_minutes(window.open_time.as_str()),
+                weekday_start_minute(window.weekday.as_str())
+                    + clock_minutes(window.close_time.as_str()),
             )
         })
         .collect::<Vec<_>>();
@@ -2297,13 +2389,16 @@ fn build_recurring_closed_windows(
 
     closed_intervals
         .into_iter()
-        .map(|(start_minute, end_minute)| MarketDataSessionRecurringClosedWindowPayload {
-            start_weekday: weekday_name_for_minute(start_minute).to_string(),
-            start_time: clock_time_for_minute(start_minute),
-            end_weekday: weekday_name_for_minute(end_minute % week_minutes).to_string(),
-            end_time: clock_time_for_minute(end_minute % week_minutes),
-            reason: "recurring closure derived from the resolved weekly session pattern".to_string(),
-        })
+        .map(
+            |(start_minute, end_minute)| MarketDataSessionRecurringClosedWindowPayload {
+                start_weekday: weekday_name_for_minute(start_minute).to_string(),
+                start_time: clock_time_for_minute(start_minute),
+                end_weekday: weekday_name_for_minute(end_minute % week_minutes).to_string(),
+                end_time: clock_time_for_minute(end_minute % week_minutes),
+                reason: "recurring closure derived from the resolved weekly session pattern"
+                    .to_string(),
+            },
+        )
         .collect()
 }
 
@@ -2315,7 +2410,9 @@ fn compute_open_session_duration_hours_per_week(session_template: &SessionTempla
     let open_minutes = session_template
         .regular_session_windows
         .iter()
-        .map(|window| clock_minutes(window.close_time.as_str()) - clock_minutes(window.open_time.as_str()))
+        .map(|window| {
+            clock_minutes(window.close_time.as_str()) - clock_minutes(window.open_time.as_str())
+        })
         .sum::<i32>();
     f64::from(open_minutes) / 60.0
 }
@@ -2425,10 +2522,10 @@ fn weekly_intervals_for_recurring_closed_window(
     closed_window: &MarketDataSessionRecurringClosedWindowPayload,
 ) -> Vec<(i32, i32)> {
     let week_minutes = 7 * 24 * 60;
-    let start_minute =
-        weekday_start_minute(closed_window.start_weekday.as_str()) + clock_minutes(closed_window.start_time.as_str());
-    let end_minute =
-        weekday_start_minute(closed_window.end_weekday.as_str()) + clock_minutes(closed_window.end_time.as_str());
+    let start_minute = weekday_start_minute(closed_window.start_weekday.as_str())
+        + clock_minutes(closed_window.start_time.as_str());
+    let end_minute = weekday_start_minute(closed_window.end_weekday.as_str())
+        + clock_minutes(closed_window.end_time.as_str());
 
     if start_minute < end_minute {
         vec![(start_minute, end_minute)]
@@ -2502,11 +2599,20 @@ fn evaluate_gap_alignment(
     let mut unexpected_gap_count = 0;
     for pair in tick_records.windows(2) {
         let gap_nanos = pair[1].timestamp_utc_nanos - pair[0].timestamp_utc_nanos;
-        if gap_nanos < Duration::hours(LONG_GAP_THRESHOLD_HOURS).num_nanoseconds().unwrap_or(0) {
+        if gap_nanos
+            < Duration::hours(LONG_GAP_THRESHOLD_HOURS)
+                .num_nanoseconds()
+                .unwrap_or(0)
+        {
             continue;
         }
         long_gap_count += 1;
-        if gap_contains_closed_period(calendar_registry, exchange_code, pair[0].timestamp_utc_nanos, pair[1].timestamp_utc_nanos)? {
+        if gap_contains_closed_period(
+            calendar_registry,
+            exchange_code,
+            pair[0].timestamp_utc_nanos,
+            pair[1].timestamp_utc_nanos,
+        )? {
             aligned_gap_count += 1;
         } else {
             unexpected_gap_count += 1;

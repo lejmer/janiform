@@ -978,6 +978,31 @@ fn transform_slice_sampler_is_seed_deterministic_for_repeated_sampling() {
 }
 
 #[test]
+fn transform_slice_sampler_uses_slice_implied_integrated_intensity_means_directly() {
+    let equation_specification = build_equation_specification();
+    let context = build_transform_slice_context(2, 1.15, 0.18, 0.25);
+    let settings = SufficientStatisticsTransformSliceSettings::default();
+    let slices =
+        solve_sufficient_statistics_transform_slices(equation_specification, context, settings)
+            .expect("transform slices should solve");
+
+    let baseline_transform = slices.baseline_transform.real;
+    let expected_a_plus = (baseline_transform - slices.a_plus_transform.real) / settings.a_plus_u;
+    let expected_a_minus =
+        (baseline_transform - slices.a_minus_transform.real) / settings.a_minus_u;
+
+    let first_sample = sample_interval_statistics_from_transform_slices(11, slices)
+        .expect("first sampling run should succeed");
+    let second_sample = sample_interval_statistics_from_transform_slices(29, slices)
+        .expect("second sampling run should succeed");
+
+    assert!((first_sample.a_plus - expected_a_plus).abs() <= 1.0e-12);
+    assert!((first_sample.a_minus - expected_a_minus).abs() <= 1.0e-12);
+    assert_eq!(first_sample.a_plus, second_sample.a_plus);
+    assert_eq!(first_sample.a_minus, second_sample.a_minus);
+}
+
+#[test]
 fn transform_slice_batch_sampler_is_seed_deterministic_for_repeated_sampling() {
     let equation_specification = build_equation_specification();
     let settings = SufficientStatisticsTransformSliceSettings::default();

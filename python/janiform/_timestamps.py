@@ -49,6 +49,17 @@ def datetime_to_utc_nanos(value: datetime) -> int:
     )
 
 
+def datetime_to_utc_microseconds(value: datetime) -> int:
+    return datetime_to_utc_nanos(value) // 1_000
+
+
+def utc_microseconds_to_datetime(value: int) -> datetime:
+    whole_seconds, microseconds = divmod(value, 1_000_000)
+    return datetime.fromtimestamp(whole_seconds, tz=UTC) + timedelta(
+        microseconds=microseconds,
+    )
+
+
 def parse_timestamp_value(raw_value: object) -> datetime:
     if isinstance(raw_value, datetime):
         return raw_value

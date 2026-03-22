@@ -7,10 +7,9 @@ use janiform_affine_oracle::sufficient_statistics::{
     SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskModelInputs,
 };
 use janiform_engine_simulation::{
-    CoarseSimulationModelInputs, CoarseSimulationRunRequest,
-    SeededTickEventStateSnapshotCapture, SeededTickSimulationModelInputs,
-    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions, run_coarse_simulation,
-    run_seeded_tick_event_simulation,
+    CoarseSimulationModelInputs, CoarseSimulationRunRequest, SeededTickEventStateSnapshotCapture,
+    SeededTickSimulationModelInputs, SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
+    run_coarse_simulation, run_seeded_tick_event_simulation,
 };
 use rayon::prelude::*;
 use serde::Serialize;
@@ -836,23 +835,22 @@ pub fn run_joint_refinement_calibration_stage(
             .as_slice(),
         &bootstrap_context,
     )
-        .cloned()
-        .unwrap_or_else(|| JointRefinementRestartOutcome {
-            restart_id: "baseline".to_string(),
-            parameter_vector: baseline_parameter_vector.clone(),
-            local_evaluation: baseline_local_evaluation.clone(),
-            final_evaluation: baseline_final_evaluation.clone(),
-            local_evaluation_count: 0,
-            stop_reason: "baseline_seed",
-        });
+    .cloned()
+    .unwrap_or_else(|| JointRefinementRestartOutcome {
+        restart_id: "baseline".to_string(),
+        parameter_vector: baseline_parameter_vector.clone(),
+        local_evaluation: baseline_local_evaluation.clone(),
+        final_evaluation: baseline_final_evaluation.clone(),
+        local_evaluation_count: 0,
+        stop_reason: "baseline_seed",
+    });
     let candidate_frontier =
         build_joint_candidate_frontier_diagnostics(restart_outcomes.as_slice(), &bootstrap_context);
     let finalist_seed_summaries = build_joint_finalist_seed_summaries(
         &bootstrap_context,
         &best_restart.final_evaluation.fitted_parameters,
     );
-    let simulation_summaries =
-        build_joint_simulation_summaries(finalist_seed_summaries.as_slice());
+    let simulation_summaries = build_joint_simulation_summaries(finalist_seed_summaries.as_slice());
     let coarse_tick_consistency = build_joint_coarse_tick_consistency_metrics(
         &bootstrap_context,
         &best_restart.final_evaluation.fitted_parameters,
@@ -1242,7 +1240,12 @@ fn named_joint_parameter_coordinates(
     coordinates.sort_by_key(|(index, _)| *index);
     coordinates
         .into_iter()
-        .filter_map(|(index, label)| parameter_vector.get(index).copied().map(|value| (label, value)))
+        .filter_map(|(index, label)| {
+            parameter_vector
+                .get(index)
+                .copied()
+                .map(|value| (label, value))
+        })
         .collect()
 }
 
@@ -1278,7 +1281,9 @@ fn build_joint_simulation_summaries(
                 .iter()
                 .map(|interval| interval.tick_count)
                 .sum(),
-            realized_variance: seed_summary.simulated_5m_return_scale_summary.realized_variance,
+            realized_variance: seed_summary
+                .simulated_5m_return_scale_summary
+                .realized_variance,
             mean_absolute_return: seed_summary
                 .simulated_5m_return_scale_summary
                 .mean_absolute_return,
@@ -1291,7 +1296,9 @@ fn build_joint_simulation_summaries(
                 .iter()
                 .map(|interval| interval.tick_count)
                 .sum(),
-            realized_variance: seed_summary.simulated_15m_return_scale_summary.realized_variance,
+            realized_variance: seed_summary
+                .simulated_15m_return_scale_summary
+                .realized_variance,
             mean_absolute_return: seed_summary
                 .simulated_15m_return_scale_summary
                 .mean_absolute_return,
@@ -1314,11 +1321,17 @@ fn build_joint_coarse_tick_consistency_metrics(
             fitted_parameters,
             *simulation_seed,
             JOINT_REFINEMENT_FIVE_MINUTES_NANOS,
-            context.observed_data.simulated_5m_interval_template.as_slice(),
+            context
+                .observed_data
+                .simulated_5m_interval_template
+                .as_slice(),
         ) {
             let coarse_15m_intervals = aggregate_coarse_intervals_to_template(
                 coarse_5m_intervals.as_slice(),
-                context.observed_data.simulated_15m_interval_template.as_slice(),
+                context
+                    .observed_data
+                    .simulated_15m_interval_template
+                    .as_slice(),
             );
             metrics.extend(joint_coarse_tick_metrics_for_horizon(
                 *simulation_seed,
@@ -1403,7 +1416,10 @@ fn build_joint_coarse_interval_observations(
     if template.is_empty() {
         return None;
     }
-    let interval_count = ((context.observed_data.hourly_simulation_end_utc.timestamp_nanos_opt()?
+    let interval_count = ((context
+        .observed_data
+        .hourly_simulation_end_utc
+        .timestamp_nanos_opt()?
         - context
             .observed_data
             .hourly_simulation_start_utc
@@ -1502,9 +1518,8 @@ fn build_joint_coarse_interval_observations(
                 continue;
             };
             interval.log_return += record.return_components.total_return;
-            interval.tick_count +=
-                (record.sufficient_statistics.n_plus + record.sufficient_statistics.n_minus)
-                    as usize;
+            interval.tick_count += (record.sufficient_statistics.n_plus
+                + record.sufficient_statistics.n_minus) as usize;
             interval.sell_share_proxy += record.sufficient_statistics.n_minus as f64;
         }
     }
@@ -1565,9 +1580,7 @@ fn finalize_coarse_sell_share_proxies(
     }
 }
 
-fn sum_interval_tick_count(
-    intervals: &[JointRefinementAggregatedIntervalObservation],
-) -> usize {
+fn sum_interval_tick_count(intervals: &[JointRefinementAggregatedIntervalObservation]) -> usize {
     intervals.iter().map(|interval| interval.tick_count).sum()
 }
 
@@ -1695,7 +1708,10 @@ fn build_exchange_calendar_registry_artifact(
             exchange_name: definition.exchange_metadata().exchange_name().to_string(),
             timezone_name: Some(definition.timezone_name().to_string()),
             rule_metadata: CalendarRuleMetadataArtifact {
-                holiday_calendar_code: definition.rule_metadata().holiday_calendar_code().to_string(),
+                holiday_calendar_code: definition
+                    .rule_metadata()
+                    .holiday_calendar_code()
+                    .to_string(),
                 early_close_rule_set: definition
                     .rule_metadata()
                     .early_close_rule_set()

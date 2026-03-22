@@ -35,6 +35,9 @@ to project the public fine path and derived event tape lazily.
   records.
 - `fine_path`, `event_tape`, `to_pandas()`, and `to_numpy()` preserve the same observable payload
   values for a given seed and input set even though the internal transport format changed.
+- High-level tabular exports preserve every fine-path transition. When the configured output
+  schema includes a trade-sign column, non-trade transitions materialize that column as null
+  instead of being dropped from the path.
 - The diagnostics boundary transport policy string for this path is
   `native_handle_typed_column_chunk_projection.v1`.
 

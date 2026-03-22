@@ -28,8 +28,8 @@ use janiform_model_kernels::news::{
 
 use super::checkpointing::CalibrationMemoryCheckpointStore;
 use super::staged_runner::{
-    CalibrationStagedRunInputs, CalibrationStagedRunObserverEvent,
-    CalibrationStagedRunReport, run_staged_calibration_with_checkpointing,
+    CalibrationStagedRunInputs, CalibrationStagedRunObserverEvent, CalibrationStagedRunReport,
+    run_staged_calibration_with_checkpointing,
     run_staged_calibration_with_checkpointing_and_observer,
 };
 use super::stages::hawkes::HawkesStageCandidateInput;

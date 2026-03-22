@@ -16,15 +16,25 @@ class WorkbenchCandidateSnapshot:
     candidate_id: str
     stage: str
     evaluation_tier: str
+    candidate_family: str
+    candidate_source: str
     admissible: bool
     valid: bool
+    admissibility_state: str
+    validity_state: str
     pareto_rank: Optional[int]
     lexicographic_rank: Optional[int]
     scalar_tie_break: Optional[float]
     rejection_reason: Optional[str]
+    objective_summary: dict[str, Any]
     canonical_coordinates: dict[str, float]
     family_metrics: tuple[WorkbenchFamilyMetricSummary, ...]
     parameter_snapshot: dict[str, Any]
+    simulation_summary: dict[str, Any]
+    consistency_summary: dict[str, Any]
+    lineage: dict[str, Any]
+    runtime_summary: dict[str, Any]
+    created_at_utc: Optional[str]
     is_selected: bool
     raw_payload: dict[str, Any]
 
@@ -71,15 +81,25 @@ def candidate_store_from_artifacts(artifacts: WorkbenchArtifacts) -> WorkbenchCa
                 candidate_id=candidate_id,
                 stage=stage,
                 evaluation_tier=evaluation_tier,
+                candidate_family=_candidate_family(stage, entry),
+                candidate_source="artifact_frontier",
                 admissible=bool(entry.get("admissible")),
                 valid=bool(entry.get("valid")),
+                admissibility_state=_admissibility_state(bool(entry.get("admissible"))),
+                validity_state=_validity_state(bool(entry.get("valid"))),
                 pareto_rank=_coerce_optional_int(entry.get("pareto_rank")),
                 lexicographic_rank=_coerce_optional_int(entry.get("lexicographic_rank")),
                 scalar_tie_break=_coerce_optional_float(entry.get("scalar_tie_break")),
                 rejection_reason=_coerce_optional_string(entry.get("rejection_reason")),
+                objective_summary=_objective_summary_from_candidate_payload(entry),
                 canonical_coordinates=_coerce_float_mapping(entry.get("canonical_coordinates")),
                 family_metrics=_family_metric_summaries(entry.get("family_metrics")),
                 parameter_snapshot=parameter_snapshot,
+                simulation_summary=_simulation_summary_from_payload(entry),
+                consistency_summary=_consistency_summary_from_payload(entry),
+                lineage=_lineage_summary_from_payload(entry, stage=stage),
+                runtime_summary=_runtime_summary_from_payload(entry),
+                created_at_utc=_created_at_utc_from_payload(entry),
                 is_selected=candidate_id == selected_candidate_id,
                 raw_payload=dict(entry),
             )
@@ -260,12 +280,17 @@ def _hawkes_candidate_snapshots(
                 candidate_id=candidate_id,
                 stage="hawkes",
                 evaluation_tier="exact_block",
+                candidate_family="hawkes",
+                candidate_source="stage_report",
                 admissible=admissible,
                 valid=admissible,
+                admissibility_state=_admissibility_state(admissible),
+                validity_state=_validity_state(admissible),
                 pareto_rank=rank,
                 lexicographic_rank=rank,
                 scalar_tie_break=_coerce_optional_float(raw_candidate.get("penalized_objective_value")),
                 rejection_reason=None if admissible else "constraint_violation",
+                objective_summary=_objective_summary_from_candidate_payload(raw_candidate),
                 canonical_coordinates={},
                 family_metrics=_metric_summaries_from_objective_terms(objective_terms),
                 parameter_snapshot=_parameter_snapshot_for_candidate(
@@ -273,6 +298,11 @@ def _hawkes_candidate_snapshots(
                     selected_stage_parameters,
                     default_payload=dict(raw_candidate),
                 ),
+                simulation_summary=_simulation_summary_from_payload(raw_candidate),
+                consistency_summary=_consistency_summary_from_payload(raw_candidate),
+                lineage=_lineage_summary_from_payload(raw_candidate, stage="hawkes"),
+                runtime_summary=_runtime_summary_from_payload(raw_candidate),
+                created_at_utc=_created_at_utc_from_payload(raw_candidate),
                 is_selected=candidate_id == selected_candidate_id,
                 raw_payload=dict(raw_candidate),
             )
@@ -323,12 +353,17 @@ def _return_components_candidate_snapshots(
                 candidate_id=candidate_id,
                 stage="return_components",
                 evaluation_tier="exact_block",
+                candidate_family="return_components",
+                candidate_source="stage_report",
                 admissible=admissible,
                 valid=valid,
+                admissibility_state=_admissibility_state(admissible),
+                validity_state=_validity_state(valid),
                 pareto_rank=rank,
                 lexicographic_rank=rank,
                 scalar_tie_break=_coerce_optional_float(raw_candidate.get("penalized_objective_value")),
                 rejection_reason=None if admissible else "constraint_or_admissibility_failure",
+                objective_summary=_objective_summary_from_candidate_payload(raw_candidate),
                 canonical_coordinates={},
                 family_metrics=_metric_summaries_from_objective_terms(
                     raw_candidate.get("objective_terms")
@@ -338,6 +373,11 @@ def _return_components_candidate_snapshots(
                     selected_stage_parameters,
                     default_payload=dict(raw_candidate),
                 ),
+                simulation_summary=_simulation_summary_from_payload(raw_candidate),
+                consistency_summary=_consistency_summary_from_payload(raw_candidate),
+                lineage=_lineage_summary_from_payload(raw_candidate, stage="return_components"),
+                runtime_summary=_runtime_summary_from_payload(raw_candidate),
+                created_at_utc=_created_at_utc_from_payload(raw_candidate),
                 is_selected=candidate_id == selected_candidate_id,
                 raw_payload=dict(raw_candidate),
             )
@@ -375,12 +415,17 @@ def _joint_candidate_snapshots(
                 candidate_id=candidate_id,
                 stage="joint_refinement",
                 evaluation_tier="tick_joint",
+                candidate_family="joint_refinement",
+                candidate_source="stage_report",
                 admissible=bool(raw_candidate.get("admissible")),
                 valid=bool(raw_candidate.get("valid")),
+                admissibility_state=_admissibility_state(bool(raw_candidate.get("admissible"))),
+                validity_state=_validity_state(bool(raw_candidate.get("valid"))),
                 pareto_rank=_coerce_optional_int(raw_candidate.get("pareto_rank")),
                 lexicographic_rank=_coerce_optional_int(raw_candidate.get("lexicographic_rank")),
                 scalar_tie_break=_coerce_optional_float(raw_candidate.get("scalar_tie_break")),
                 rejection_reason=_coerce_optional_string(raw_candidate.get("invalid_reason")),
+                objective_summary=_objective_summary_from_candidate_payload(raw_candidate),
                 canonical_coordinates=canonical_coordinates,
                 family_metrics=_metric_summaries_from_objective_breakdown(objective_breakdown),
                 parameter_snapshot=_parameter_snapshot_for_candidate(
@@ -391,6 +436,11 @@ def _joint_candidate_snapshots(
                         "objective_breakdown": objective_breakdown,
                     },
                 ),
+                simulation_summary=_simulation_summary_from_payload(raw_candidate),
+                consistency_summary=_consistency_summary_from_payload(raw_candidate),
+                lineage=_lineage_summary_from_payload(raw_candidate, stage="joint_refinement"),
+                runtime_summary=_runtime_summary_from_payload(raw_candidate),
+                created_at_utc=_created_at_utc_from_payload(raw_candidate),
                 is_selected=candidate_id == selected_candidate_id,
                 raw_payload=dict(raw_candidate),
             )
@@ -529,6 +579,101 @@ def _coerce_optional_int(value: Any) -> Optional[int]:
 def _coerce_optional_string(value: Any) -> Optional[str]:
     if isinstance(value, str):
         return value
+
+    return None
+
+
+def _candidate_family(stage: str, raw_payload: dict[str, Any]) -> str:
+    candidate_family = _coerce_optional_string(raw_payload.get("candidate_family"))
+    if candidate_family is not None:
+        return candidate_family
+
+    return stage
+
+
+def _admissibility_state(admissible: bool) -> str:
+    return "admissible" if admissible else "rejected"
+
+
+def _validity_state(valid: bool) -> str:
+    return "valid" if valid else "invalid"
+
+
+def _objective_summary_from_candidate_payload(raw_payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "objective_value": _coerce_optional_float(
+            raw_payload.get("scalar_tie_break")
+            if raw_payload.get("scalar_tie_break") is not None
+            else raw_payload.get("penalized_objective_value")
+        ),
+        "pareto_rank": _coerce_optional_int(raw_payload.get("pareto_rank")),
+        "lexicographic_rank": _coerce_optional_int(raw_payload.get("lexicographic_rank")),
+        "scalar_tie_break": _coerce_optional_float(raw_payload.get("scalar_tie_break")),
+    }
+
+
+def _simulation_summary_from_payload(raw_payload: dict[str, Any]) -> dict[str, Any]:
+    simulation_summary = raw_payload.get("simulation_summary")
+    if isinstance(simulation_summary, dict):
+        return dict(simulation_summary)
+
+    extracted_summary: dict[str, Any] = {}
+    for field_name in ("event_count", "mean_absolute_return", "realized_variance"):
+        field_value = raw_payload.get(field_name)
+        if isinstance(field_value, int | float):
+            extracted_summary[field_name] = float(field_value)
+
+    return extracted_summary
+
+
+def _consistency_summary_from_payload(raw_payload: dict[str, Any]) -> dict[str, Any]:
+    consistency_summary = raw_payload.get("consistency_summary")
+    if isinstance(consistency_summary, dict):
+        return dict(consistency_summary)
+
+    extracted_summary: dict[str, Any] = {}
+    for field_name in ("coarse_objective_value", "tick_objective_value", "normalized_delta"):
+        field_value = raw_payload.get(field_name)
+        if isinstance(field_value, int | float):
+            extracted_summary[field_name] = float(field_value)
+
+    return extracted_summary
+
+
+def _lineage_summary_from_payload(raw_payload: dict[str, Any], *, stage: str) -> dict[str, Any]:
+    lineage: dict[str, Any] = {"originating_stage": stage}
+
+    for field_name in (
+        "parent_candidate_id",
+        "proposal_method",
+        "refinement_round",
+        "candidate_family",
+        "candidate_source",
+        "batch_label",
+        "neighborhood_label",
+    ):
+        field_value = raw_payload.get(field_name)
+        if isinstance(field_value, str | int | float | bool):
+            lineage[field_name] = field_value
+
+    return lineage
+
+
+def _runtime_summary_from_payload(raw_payload: dict[str, Any]) -> dict[str, Any]:
+    runtime_summary: dict[str, Any] = {}
+    for field_name in ("runtime_seconds", "elapsed_seconds", "candidate_index"):
+        field_value = raw_payload.get(field_name)
+        if isinstance(field_value, int | float):
+            runtime_summary[field_name] = float(field_value)
+
+    return runtime_summary
+
+
+def _created_at_utc_from_payload(raw_payload: dict[str, Any]) -> Optional[str]:
+    for field_name in ("created_at_utc", "evaluated_at_utc", "occurred_at_utc"):
+        field_value = raw_payload.get(field_name)
+        if isinstance(field_value, str):
+            return field_value
 
     return None
 

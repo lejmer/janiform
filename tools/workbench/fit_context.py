@@ -1,20 +1,42 @@
 import csv
+import json
 import math
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, tzinfo
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional, cast
 from zoneinfo import ZoneInfo
 
-from pyarrow import parquet
+import numpy as np
+from numpy.typing import NDArray
 
-from janiform._timestamps import parse_timestamp_value
+from pyarrow import RecordBatch, parquet
+from pyarrow import csv as pyarrow_csv
+
+from janiform._timestamps import (
+    datetime_to_utc_microseconds,
+    parse_timestamp_value,
+    utc_microseconds_to_datetime,
+)
+from janiform.calendar import CalendarRegistry, MarketState
 from janiform.calibration.fit import JaniformModel
 
 from .artifacts import WorkbenchArtifacts
 
 
 _DEFAULT_COMPARISON_SIMULATION_SEED = 1
+_PARQUET_BATCH_SIZE = 65_536
+_CSV_BLOCK_SIZE_BYTES = 1 << 20
+_EMPTY_FLOAT64_ARRAY = np.asarray([], dtype=np.float64)
+_EMPTY_INT64_ARRAY = np.asarray([], dtype=np.int64)
+
+
+@dataclass(frozen=True, slots=True)
+class WorkbenchPriceSeries:
+    timestamp_microseconds_utc: NDArray[np.int64]
+    prices: NDArray[np.float64]
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,7 +44,7 @@ class WorkbenchSourceTable:
     source_path: Path
     file_format: str
     column_names: tuple[str, ...]
-    rows: tuple[dict[str, Any], ...]
+    source_row_count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,7 +52,7 @@ class WorkbenchFitContext:
     model: JaniformModel
     fit_report_path: Path
     tick_data_source: WorkbenchSourceTable
-    observed_tick_rows: tuple[dict[str, Any], ...]
+    observed_tick_series: WorkbenchPriceSeries
     observed_range_start_utc: datetime
     observed_range_end_utc: datetime
     option_surface_source: Optional[WorkbenchSourceTable] = None
@@ -41,9 +63,10 @@ class WorkbenchFitContext:
 class WorkbenchObservedSimulationComparison:
     fit_context: WorkbenchFitContext
     simulation_seed: int
-    observed_rows: tuple[dict[str, Any], ...]
-    simulated_rows: tuple[dict[str, Any], ...]
-    simulated_coarse_rows_15m: tuple[dict[str, Any], ...]
+    observed_series: WorkbenchPriceSeries
+    simulated_series: WorkbenchPriceSeries
+    simulated_seeded_series_15m: WorkbenchPriceSeries
+    simulated_coarse_series_15m: WorkbenchPriceSeries
 
 
 def load_fit_context(artifacts: WorkbenchArtifacts) -> Optional[WorkbenchFitContext]:
@@ -54,6 +77,38 @@ def load_fit_context(artifacts: WorkbenchArtifacts) -> Optional[WorkbenchFitCont
     model_path, fit_report_path = resolved_paths
     if not model_path.is_file() or not fit_report_path.is_file():
         return None
+
+    model_cache_path, model_cache_timestamp, model_cache_size = _path_cache_identity(model_path)
+    fit_report_cache_path, fit_report_cache_timestamp, fit_report_cache_size = _path_cache_identity(
+        fit_report_path
+    )
+
+    return _load_fit_context_cached(
+        model_cache_path,
+        model_cache_timestamp,
+        model_cache_size,
+        fit_report_cache_path,
+        fit_report_cache_timestamp,
+        fit_report_cache_size,
+    )
+
+
+@lru_cache(maxsize=8)
+def _load_fit_context_cached(
+    model_path_text: str,
+    model_path_timestamp_nanoseconds: int,
+    model_path_size_bytes: int,
+    fit_report_path_text: str,
+    fit_report_path_timestamp_nanoseconds: int,
+    fit_report_path_size_bytes: int,
+) -> Optional[WorkbenchFitContext]:
+    _ = model_path_timestamp_nanoseconds
+    _ = model_path_size_bytes
+    _ = fit_report_path_timestamp_nanoseconds
+    _ = fit_report_path_size_bytes
+
+    model_path = Path(model_path_text)
+    fit_report_path = Path(fit_report_path_text)
 
     report_payload = _load_json_object(fit_report_path)
     preparation_provenance = report_payload.get("preparation_provenance")
@@ -67,17 +122,16 @@ def load_fit_context(artifacts: WorkbenchArtifacts) -> Optional[WorkbenchFitCont
     model = JaniformModel.load(model_path)
     tick_data_source = _load_source_table(raw_tick_summary)
 
-    observed_tick_rows = _normalize_tick_rows(
-        raw_rows=tick_data_source.rows,
+    observed_tick_series = _normalize_tick_series(
+        source_table=tick_data_source,
         model=model,
         preparation_provenance=preparation_provenance,
     )
-    if len(observed_tick_rows) == 0:
+    if observed_tick_series.timestamp_microseconds_utc.size == 0:
         return None
 
     observed_range_start_utc, observed_range_end_utc = _observed_utc_range(
-        observed_tick_rows,
-        timestamp_column=cast(str, model.metadata["input_inference"]["timestamp_column"]),
+        observed_tick_series
     )
 
     raw_option_surface_summary = preparation_provenance.get("option_surface_summary")
@@ -87,7 +141,7 @@ def load_fit_context(artifacts: WorkbenchArtifacts) -> Optional[WorkbenchFitCont
         model=model,
         fit_report_path=fit_report_path,
         tick_data_source=tick_data_source,
-        observed_tick_rows=observed_tick_rows,
+        observed_tick_series=observed_tick_series,
         observed_range_start_utc=observed_range_start_utc,
         observed_range_end_utc=observed_range_end_utc,
         option_surface_source=(
@@ -112,33 +166,36 @@ def build_observed_simulation_comparison(
     if fit_context is None:
         return None
 
+    return build_observed_simulation_comparison_for_fit_context(
+        fit_context,
+        model=fit_context.model,
+        seed=seed,
+    )
+
+
+def build_observed_simulation_comparison_for_fit_context(
+    fit_context: WorkbenchFitContext,
+    *,
+    model: JaniformModel,
+    seed: int = _DEFAULT_COMPARISON_SIMULATION_SEED,
+) -> Optional[WorkbenchObservedSimulationComparison]:
     simulation_start_utc, horizon_interval_count = _simulation_request_window_for_observed_range(
         observed_range_start_utc=fit_context.observed_range_start_utc,
         observed_range_end_utc=fit_context.observed_range_end_utc,
     )
 
-    simulation_result = fit_context.model.simulate(
+    simulation_result = model.simulate(
         seed=seed,
         start_time_utc=simulation_start_utc,
         horizon_interval_count=horizon_interval_count,
         silent=True,
     )
 
-    simulated_rows = _filter_rows_to_timestamp_window(
-        rows=tuple(
-            cast(list[dict[str, Any]], simulation_result.to_pandas().to_dict(orient="records"))
-        ),
+    simulated_series = _series_from_simulation_result(
+        simulation_result=simulation_result,
+        model=model,
         range_start_utc=fit_context.observed_range_start_utc,
         range_end_utc=fit_context.observed_range_end_utc,
-    )
-
-    canonical_observed_rows = _canonicalize_comparison_rows(
-        rows=fit_context.observed_tick_rows,
-        model=fit_context.model,
-    )
-    canonical_simulated_rows = _canonicalize_comparison_rows(
-        rows=simulated_rows,
-        model=fit_context.model,
     )
 
     coarse_simulation_start_utc, coarse_horizon_interval_count = (
@@ -149,7 +206,7 @@ def build_observed_simulation_comparison(
         )
     )
 
-    coarse_simulation_result = fit_context.model.simulate(
+    coarse_simulation_result = model.simulate(
         seed=seed,
         start_time_utc=coarse_simulation_start_utc,
         horizon_interval_count=coarse_horizon_interval_count,
@@ -157,25 +214,52 @@ def build_observed_simulation_comparison(
         silent=True,
     )
 
-    coarse_simulated_rows = _filter_rows_to_timestamp_window(
-        rows=tuple(
-            cast(list[dict[str, Any]], coarse_simulation_result.to_pandas().to_dict(orient="records"))
-        ),
-        range_start_utc=fit_context.observed_range_start_utc,
-        range_end_utc=fit_context.observed_range_end_utc,
-    )
+    session_resolution = getattr(model, "session_resolution", None)
+    if session_resolution is not None:
+        calendar_registry = CalendarRegistry(session_resolution.resolved_session_definition_json)
+        exchange_code = session_resolution.exchange_code
+        reference_price = _simulation_reference_price(model)
 
-    canonical_coarse_simulated_rows = _canonicalize_comparison_rows(
-        rows=coarse_simulated_rows,
-        model=fit_context.model,
-    )
+        seeded_simulated_series_15m = _series_from_seeded_raw_result(
+            simulation_result=simulation_result,
+            reference_price=reference_price,
+            calendar_registry=calendar_registry,
+            exchange_code=exchange_code,
+            interval_start_utc=coarse_simulation_start_utc,
+            horizon_interval_count=coarse_horizon_interval_count,
+            interval=timedelta(minutes=15),
+            range_start_utc=fit_context.observed_range_start_utc,
+            range_end_utc=fit_context.observed_range_end_utc,
+        )
+        coarse_simulated_series = _series_from_coarse_raw_result(
+            simulation_result=coarse_simulation_result,
+            reference_price=reference_price,
+            calendar_registry=calendar_registry,
+            exchange_code=exchange_code,
+            range_start_utc=fit_context.observed_range_start_utc,
+            range_end_utc=fit_context.observed_range_end_utc,
+        )
+    else:
+        seeded_simulated_series_15m = _series_from_simulation_result(
+            simulation_result=simulation_result,
+            model=model,
+            range_start_utc=fit_context.observed_range_start_utc,
+            range_end_utc=fit_context.observed_range_end_utc,
+        )
+        coarse_simulated_series = _series_from_simulation_result(
+            simulation_result=coarse_simulation_result,
+            model=model,
+            range_start_utc=fit_context.observed_range_start_utc,
+            range_end_utc=fit_context.observed_range_end_utc,
+        )
 
     return WorkbenchObservedSimulationComparison(
         fit_context=fit_context,
         simulation_seed=seed,
-        observed_rows=canonical_observed_rows,
-        simulated_rows=canonical_simulated_rows,
-        simulated_coarse_rows_15m=canonical_coarse_simulated_rows,
+        observed_series=fit_context.observed_tick_series,
+        simulated_series=simulated_series,
+        simulated_seeded_series_15m=seeded_simulated_series_15m,
+        simulated_coarse_series_15m=coarse_simulated_series,
     )
 
 
@@ -225,142 +309,6 @@ def _simulation_request_window_for_interval(
     return simulation_start_utc, horizon_interval_count
 
 
-def _filter_rows_to_timestamp_window(
-    *,
-    rows: tuple[dict[str, Any], ...],
-    range_start_utc: datetime,
-    range_end_utc: datetime,
-) -> tuple[dict[str, Any], ...]:
-    if len(rows) == 0:
-        return ()
-
-    timestamp_column = _find_timestamp_column(rows[0])
-    if timestamp_column is None:
-        return rows
-
-    filtered_rows: list[dict[str, Any]] = []
-    for row in rows:
-        timestamp_value = row.get(timestamp_column)
-        if timestamp_value is None:
-            continue
-
-        normalized_timestamp = parse_timestamp_value(timestamp_value).astimezone(UTC)
-        if range_start_utc <= normalized_timestamp <= range_end_utc:
-            filtered_rows.append(row)
-
-    return tuple(filtered_rows)
-
-
-def _canonicalize_comparison_rows(
-    *,
-    rows: tuple[dict[str, Any], ...],
-    model: JaniformModel,
-) -> tuple[dict[str, Any], ...]:
-    if len(rows) == 0:
-        return ()
-
-    input_inference = cast(dict[str, Any], model.metadata["input_inference"])
-    price_columns = cast(dict[str, Any], input_inference["tick_price_columns"])
-    timestamp_column = cast(str, input_inference["timestamp_column"])
-    tick_price_input_policy = cast(Optional[str], input_inference["tick_price_input_policy"])
-
-    canonical_rows: list[dict[str, Any]] = []
-    for row in rows:
-        canonical_row = dict(row)
-
-        timestamp_value = _resolve_timestamp_value(row, timestamp_column=timestamp_column)
-        if timestamp_value is not None:
-            canonical_row["timestamp_utc"] = parse_timestamp_value(timestamp_value).astimezone(UTC)
-
-        price_value = _resolve_price_value(
-            row,
-            price_column=cast(Optional[str], price_columns["price_column"]),
-            bid_column=cast(Optional[str], price_columns["bid_column"]),
-            ask_column=cast(Optional[str], price_columns["ask_column"]),
-            tick_price_input_policy=tick_price_input_policy,
-        )
-        if price_value is not None:
-            canonical_row["price"] = price_value
-
-        canonical_rows.append(canonical_row)
-
-    return tuple(canonical_rows)
-
-
-def _resolve_timestamp_value(
-    row: dict[str, Any],
-    *,
-    timestamp_column: str,
-) -> Any:
-    if "timestamp_utc" in row:
-        return row["timestamp_utc"]
-    if timestamp_column in row:
-        return row[timestamp_column]
-    if "time" in row:
-        return row["time"]
-    if "time_microseconds" in row:
-        return row["time_microseconds"]
-
-    return None
-
-
-def _resolve_price_value(
-    row: dict[str, Any],
-    *,
-    price_column: Optional[str],
-    bid_column: Optional[str],
-    ask_column: Optional[str],
-    tick_price_input_policy: Optional[str],
-) -> Optional[float]:
-    match tick_price_input_policy:
-        case "explicit_price_column":
-            effective_price_column = price_column or "price"
-            raw_value = row.get(effective_price_column)
-            if isinstance(raw_value, int | float):
-                return float(raw_value)
-        case "bid_ask_midpoint":
-            if bid_column is None or ask_column is None:
-                return None
-
-            bid_value = row.get(bid_column)
-            ask_value = row.get(ask_column)
-
-            if isinstance(bid_value, int | float) and isinstance(ask_value, int | float):
-                return (float(bid_value) + float(ask_value)) / 2.0
-        case _:
-            if isinstance(row.get("price"), int | float):
-                return float(cast(float, row["price"]))
-            if isinstance(price_column, str) and isinstance(row.get(price_column), int | float):
-                return float(cast(float, row[price_column]))
-
-    for candidate_key in ("price", "mid_price", "close", "trade_price"):
-        candidate_value = row.get(candidate_key)
-        if isinstance(candidate_value, int | float):
-            return float(candidate_value)
-
-    return None
-
-
-def _find_timestamp_column(row: dict[str, Any]) -> Optional[str]:
-    return next(
-        (
-            key
-            for key in row
-            if "timestamp" in key
-        ),
-        None,
-    )
-
-
-def _floor_to_hour_utc(timestamp_utc: datetime) -> datetime:
-    normalized_timestamp_utc = timestamp_utc.astimezone(UTC)
-    return normalized_timestamp_utc.replace(minute=0, second=0, microsecond=0)
-
-
-def _end_of_hour_covering_timestamp_utc(timestamp_utc: datetime) -> datetime:
-    return _floor_to_hour_utc(timestamp_utc) + timedelta(hours=1)
-
-
 def _resolve_fit_artifact_paths(source_path: Path) -> Optional[tuple[Path, Path]]:
     candidate_directories: list[Path] = []
     if source_path.is_dir():
@@ -391,8 +339,6 @@ def _resolve_fit_artifact_paths(source_path: Path) -> Optional[tuple[Path, Path]
 
 
 def _load_json_object(path: Path) -> dict[str, Any]:
-    import json
-
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"expected JSON object at `{path}`")
@@ -404,37 +350,65 @@ def _load_source_table(raw_summary: dict[str, Any]) -> WorkbenchSourceTable:
     source_path = Path(cast(str, raw_summary["path"])).expanduser().resolve()
     file_format = cast(str, raw_summary["file_format"])
 
-    rows = _load_source_rows(source_path=source_path, file_format=file_format)
-
-    column_names = tuple(rows[0].keys()) if len(rows) > 0 else ()
-
     return WorkbenchSourceTable(
         source_path=source_path,
         file_format=file_format,
-        column_names=column_names,
-        rows=tuple(rows),
+        column_names=_load_source_column_names(source_path=source_path, file_format=file_format),
+        source_row_count=_load_source_row_count(
+            source_path=source_path,
+            file_format=file_format,
+            raw_summary=raw_summary,
+        ),
     )
 
 
-def _load_source_rows(*, source_path: Path, file_format: str) -> list[dict[str, Any]]:
+def _load_source_column_names(*, source_path: Path, file_format: str) -> tuple[str, ...]:
     match file_format:
         case "csv":
             with source_path.open(encoding="utf-8", newline="") as input_file:
-                return [dict(row) for row in csv.DictReader(input_file)]
+                header_row = next(csv.reader(input_file), [])
+
+            return tuple(header_row)
         case "parquet":
-            return cast(list[dict[str, Any]], parquet.read_table(source_path).to_pylist())
+            return tuple(parquet.ParquetFile(source_path).schema_arrow.names)
         case _:
             raise ValueError(
                 f"unsupported workbench source file format `{file_format}` for `{source_path}`"
             )
 
 
-def _normalize_tick_rows(
+def _load_source_row_count(
     *,
-    raw_rows: tuple[dict[str, Any], ...],
+    source_path: Path,
+    file_format: str,
+    raw_summary: dict[str, Any],
+) -> int:
+    summary_row_count = raw_summary.get("source_row_count")
+    if isinstance(summary_row_count, int):
+        return summary_row_count
+
+    match file_format:
+        case "csv":
+            reader = pyarrow_csv.open_csv(
+                source_path,
+                read_options=pyarrow_csv.ReadOptions(block_size=_CSV_BLOCK_SIZE_BYTES),
+            )
+            return sum(batch.num_rows for batch in reader)
+        case "parquet":
+            metadata = parquet.ParquetFile(source_path).metadata
+            return 0 if metadata is None else metadata.num_rows
+        case _:
+            raise ValueError(
+                f"unsupported workbench source file format `{file_format}` for `{source_path}`"
+            )
+
+
+def _normalize_tick_series(
+    *,
+    source_table: WorkbenchSourceTable,
     model: JaniformModel,
     preparation_provenance: dict[str, Any],
-) -> tuple[dict[str, Any], ...]:
+) -> WorkbenchPriceSeries:
     input_inference = cast(dict[str, Any], model.metadata["input_inference"])
     price_columns = cast(dict[str, Any], input_inference["tick_price_columns"])
 
@@ -452,82 +426,501 @@ def _normalize_tick_rows(
     sort_records_by_timestamp = bool(normalization_policy.get("sort_records_by_timestamp", True))
 
     normalized_timezone = _resolve_timezone(timezone_name)
+    required_columns = _required_tick_columns(
+        timestamp_column=timestamp_column,
+        tick_price_input_policy=tick_price_input_policy,
+        price_column=price_column,
+        bid_column=cast(Optional[str], price_columns["bid_column"]),
+        ask_column=cast(Optional[str], price_columns["ask_column"]),
+        trade_sign_column=trade_sign_column,
+    )
+    available_columns = tuple(
+        column_name
+        for column_name in required_columns
+        if column_name in source_table.column_names
+    )
+    if timestamp_column not in available_columns:
+        return _empty_price_series()
 
-    normalized_entries: list[tuple[datetime, int, dict[str, Any]]] = []
-    for row_index, raw_row in enumerate(raw_rows):
-        if timestamp_column not in raw_row:
+    timestamp_chunks: list[NDArray[np.int64]] = []
+    price_chunks: list[NDArray[np.float64]] = []
+    source_row_index_chunks: list[NDArray[np.int64]] = []
+    source_row_offset = 0
+
+    for batch in _iter_source_batches(
+        source_path=source_table.source_path,
+        file_format=source_table.file_format,
+        included_columns=available_columns,
+    ):
+        batch_columns = _batch_columns_to_numpy(batch)
+        batch_row_count = batch.num_rows
+
+        timestamp_microseconds_utc = _parse_timestamp_column(
+            batch_columns[timestamp_column],
+            normalized_timezone=normalized_timezone,
+        )
+        price_values, valid_price_mask = _resolve_price_values(
+            batch_columns,
+            price_column=price_column,
+            bid_column=cast(Optional[str], price_columns["bid_column"]),
+            ask_column=cast(Optional[str], price_columns["ask_column"]),
+            tick_price_input_policy=tick_price_input_policy,
+        )
+
+        valid_row_mask = valid_price_mask
+        if not np.any(valid_row_mask):
+            source_row_offset += batch_row_count
             continue
 
-        parsed_timestamp = parse_timestamp_value(raw_row[timestamp_column])
-        if parsed_timestamp.tzinfo is None:
-            parsed_timestamp = parsed_timestamp.replace(tzinfo=normalized_timezone)
+        source_row_indexes = source_row_offset + np.arange(batch_row_count, dtype=np.int64)
+        timestamp_chunks.append(timestamp_microseconds_utc[valid_row_mask])
+        price_chunks.append(price_values[valid_row_mask])
+        source_row_index_chunks.append(source_row_indexes[valid_row_mask])
+        source_row_offset += batch_row_count
 
-        timestamp_utc = parsed_timestamp.astimezone(UTC)
-        output_row: dict[str, Any] = {
-            "timestamp_utc": timestamp_utc,
-            timestamp_column: parsed_timestamp.astimezone(normalized_timezone),
-        }
+    if len(timestamp_chunks) == 0:
+        return _empty_price_series()
 
-        match tick_price_input_policy:
-            case "explicit_price_column":
-                effective_price_column = price_column or "price"
+    timestamp_microseconds_utc = np.concatenate(timestamp_chunks)
+    prices = np.concatenate(price_chunks)
+    source_row_indexes = np.concatenate(source_row_index_chunks)
 
-                price_value = raw_row.get(effective_price_column)
-                if price_value in (None, ""):
-                    continue
-
-                output_row[effective_price_column] = float(price_value)
-                if trade_sign_column is not None:
-                    output_row[trade_sign_column] = raw_row.get(trade_sign_column)
-            case "bid_ask_midpoint":
-                bid_column = cast(Optional[str], price_columns["bid_column"])
-                ask_column = cast(Optional[str], price_columns["ask_column"])
-                if bid_column is None or ask_column is None:
-                    continue
-
-                bid_price = raw_row.get(bid_column)
-                ask_price = raw_row.get(ask_column)
-                if bid_price in (None, "") or ask_price in (None, ""):
-                    continue
-
-                output_row["mid_price"] = (float(bid_price) + float(ask_price)) / 2.0
-            case _:
-                effective_price_column = price_column or "price"
-                price_value = raw_row.get(effective_price_column)
-                if price_value in (None, ""):
-                    continue
-
-                output_row[effective_price_column] = float(price_value)
-
-        normalized_entries.append((timestamp_utc, row_index, output_row))
-
-    if sort_records_by_timestamp:
-        normalized_entries.sort(key=lambda entry: (entry[0], entry[1]))
+    if sort_records_by_timestamp or duplicate_record_policy in {"keep_first", "keep_last"}:
+        sort_order = np.lexsort((source_row_indexes, timestamp_microseconds_utc))
+        timestamp_microseconds_utc = timestamp_microseconds_utc[sort_order]
+        prices = prices[sort_order]
 
     if duplicate_record_policy in {"keep_first", "keep_last"}:
-        deduplicated_entries: dict[datetime, tuple[datetime, int, dict[str, Any]]] = {}
-        for entry in normalized_entries:
-            if duplicate_record_policy == "keep_first":
-                deduplicated_entries.setdefault(entry[0], entry)
+        deduplication_mask = np.ones(timestamp_microseconds_utc.size, dtype=bool)
+        if duplicate_record_policy == "keep_first":
+            deduplication_mask[1:] = (
+                timestamp_microseconds_utc[1:] != timestamp_microseconds_utc[:-1]
+            )
+        else:
+            deduplication_mask[:-1] = (
+                timestamp_microseconds_utc[:-1] != timestamp_microseconds_utc[1:]
+            )
+
+        timestamp_microseconds_utc = timestamp_microseconds_utc[deduplication_mask]
+        prices = prices[deduplication_mask]
+
+    return WorkbenchPriceSeries(
+        timestamp_microseconds_utc=timestamp_microseconds_utc,
+        prices=prices,
+    )
+
+
+def _required_tick_columns(
+    *,
+    timestamp_column: str,
+    tick_price_input_policy: Optional[str],
+    price_column: Optional[str],
+    bid_column: Optional[str],
+    ask_column: Optional[str],
+    trade_sign_column: Optional[str],
+) -> tuple[str, ...]:
+    columns: list[str] = [timestamp_column]
+
+    match tick_price_input_policy:
+        case "explicit_price_column":
+            if price_column is not None:
+                columns.append(price_column)
             else:
-                deduplicated_entries[entry[0]] = entry
+                columns.append("price")
+        case "bid_ask_midpoint":
+            if bid_column is not None:
+                columns.append(bid_column)
+            if ask_column is not None:
+                columns.append(ask_column)
+        case _:
+            columns.extend(
+                [
+                    value
+                    for value in (
+                        price_column,
+                        "price",
+                        "mid_price",
+                        "close",
+                        "trade_price",
+                    )
+                    if value is not None
+                ]
+            )
 
-        normalized_entries = list(deduplicated_entries.values())
+    if trade_sign_column is not None:
+        columns.append(trade_sign_column)
 
-    return tuple(entry[2] for entry in normalized_entries)
+    return tuple(dict.fromkeys(columns))
+
+
+def _iter_source_batches(
+    *,
+    source_path: Path,
+    file_format: str,
+    included_columns: tuple[str, ...],
+) -> Iterator[RecordBatch]:
+    match file_format:
+        case "csv":
+            reader = pyarrow_csv.open_csv(
+                source_path,
+                read_options=pyarrow_csv.ReadOptions(block_size=_CSV_BLOCK_SIZE_BYTES),
+                convert_options=pyarrow_csv.ConvertOptions(
+                    include_columns=list(included_columns),
+                ),
+            )
+            yield from reader
+        case "parquet":
+            parquet_file = parquet.ParquetFile(source_path)
+            for batch in parquet_file.iter_batches(
+                batch_size=_PARQUET_BATCH_SIZE,
+                columns=list(included_columns),
+            ):
+                yield batch
+        case _:
+            raise ValueError(
+                f"unsupported workbench source file format `{file_format}` for `{source_path}`"
+            )
+
+
+def _batch_columns_to_numpy(batch: RecordBatch) -> dict[str, NDArray[Any]]:
+    return {
+        column_name: cast(
+            NDArray[Any],
+            batch.column(column_index).to_numpy(zero_copy_only=False),
+        )
+        for column_index, column_name in enumerate(batch.schema.names)
+    }
+
+
+def _series_from_simulation_result(
+    *,
+    simulation_result: Any,
+    model: JaniformModel,
+    range_start_utc: datetime,
+    range_end_utc: datetime,
+) -> WorkbenchPriceSeries:
+    frame = simulation_result.to_pandas()
+    if len(frame.index) == 0:
+        return _empty_price_series()
+
+    input_inference = cast(dict[str, Any], model.metadata["input_inference"])
+    price_columns = cast(dict[str, Any], input_inference["tick_price_columns"])
+    tick_price_input_policy = cast(Optional[str], input_inference["tick_price_input_policy"])
+
+    timestamp_values = _timestamp_values_from_simulation_frame(
+        frame=frame,
+        timestamp_column=cast(str, input_inference["timestamp_column"]),
+    )
+    price_values = _price_values_from_simulation_frame(
+        frame=frame,
+        price_column=cast(Optional[str], price_columns["price_column"]),
+        bid_column=cast(Optional[str], price_columns["bid_column"]),
+        ask_column=cast(Optional[str], price_columns["ask_column"]),
+        tick_price_input_policy=tick_price_input_policy,
+    )
+
+    if timestamp_values is None or price_values is None:
+        return _empty_price_series()
+
+    normalized_prices, valid_price_mask = price_values
+
+    timestamp_microseconds_utc = _parse_timestamp_column(
+        timestamp_values,
+        normalized_timezone=UTC,
+    )
+
+    range_start_microseconds_utc = datetime_to_utc_microseconds(range_start_utc)
+    range_end_microseconds_utc = datetime_to_utc_microseconds(range_end_utc)
+
+    in_range_mask = (
+        (timestamp_microseconds_utc >= range_start_microseconds_utc)
+        & (timestamp_microseconds_utc <= range_end_microseconds_utc)
+        & valid_price_mask
+    )
+
+    return WorkbenchPriceSeries(
+        timestamp_microseconds_utc=timestamp_microseconds_utc[in_range_mask],
+        prices=normalized_prices[in_range_mask],
+    )
+
+
+def _series_from_seeded_raw_result(
+    *,
+    simulation_result: Any,
+    reference_price: float,
+    calendar_registry: CalendarRegistry,
+    exchange_code: str,
+    interval_start_utc: datetime,
+    horizon_interval_count: int,
+    interval: timedelta,
+    range_start_utc: datetime,
+    range_end_utc: datetime,
+) -> WorkbenchPriceSeries:
+    raw_result = getattr(simulation_result, "raw_result", None)
+    fine_path = getattr(raw_result, "fine_path", None)
+    if fine_path is None:
+        return _empty_price_series()
+
+    fine_path_records = list(fine_path)
+    if len(fine_path_records) == 0:
+        return _empty_price_series()
+
+    interval_microseconds = int(interval.total_seconds() * 1_000_000)
+    next_record_index = 0
+    latest_cumulative_log_return = 0.0
+    timestamp_microseconds_utc: list[int] = []
+    prices: list[float] = []
+
+    for interval_index in range(horizon_interval_count):
+        current_interval_start_utc = interval_start_utc + interval * interval_index
+        current_interval_end_utc = current_interval_start_utc + interval
+        current_interval_end_utc_nanos = _datetime_to_utc_nanos(current_interval_end_utc)
+
+        while next_record_index < len(fine_path_records):
+            record = fine_path_records[next_record_index]
+            if int(record.timestamp_utc_nanos) > current_interval_end_utc_nanos:
+                break
+
+            latest_cumulative_log_return = float(record.cumulative_log_return)
+            next_record_index += 1
+
+        if not _interval_is_open(
+            calendar_registry=calendar_registry,
+            exchange_code=exchange_code,
+            interval_start_utc=current_interval_start_utc,
+        ):
+            continue
+
+        interval_end_microseconds_utc = datetime_to_utc_microseconds(current_interval_end_utc)
+        if (
+            interval_end_microseconds_utc < datetime_to_utc_microseconds(range_start_utc)
+            or interval_end_microseconds_utc > datetime_to_utc_microseconds(range_end_utc)
+        ):
+            continue
+
+        timestamp_microseconds_utc.append(interval_end_microseconds_utc)
+        prices.append(reference_price * math.exp(latest_cumulative_log_return))
+
+    if len(timestamp_microseconds_utc) == 0:
+        return _empty_price_series()
+
+    return WorkbenchPriceSeries(
+        timestamp_microseconds_utc=np.asarray(timestamp_microseconds_utc, dtype=np.int64),
+        prices=np.asarray(prices, dtype=np.float64),
+    )
+
+
+def _series_from_coarse_raw_result(
+    *,
+    simulation_result: Any,
+    reference_price: float,
+    calendar_registry: CalendarRegistry,
+    exchange_code: str,
+    range_start_utc: datetime,
+    range_end_utc: datetime,
+) -> WorkbenchPriceSeries:
+    raw_result = getattr(simulation_result, "raw_result", None)
+    records = getattr(raw_result, "records", None)
+    if records is None:
+        return _empty_price_series()
+
+    range_start_microseconds_utc = datetime_to_utc_microseconds(range_start_utc)
+    range_end_microseconds_utc = datetime_to_utc_microseconds(range_end_utc)
+    cumulative_log_return = 0.0
+    timestamp_microseconds_utc: list[int] = []
+    prices: list[float] = []
+
+    for record in records:
+        cumulative_log_return += float(record.return_components.total_return)
+        interval_start_utc = utc_microseconds_to_datetime(int(record.interval_start_utc_nanos // 1_000))
+        if not _interval_is_open(
+            calendar_registry=calendar_registry,
+            exchange_code=exchange_code,
+            interval_start_utc=interval_start_utc,
+        ):
+            continue
+
+        interval_end_microseconds_utc = int(record.interval_end_utc_nanos // 1_000)
+        if (
+            interval_end_microseconds_utc < range_start_microseconds_utc
+            or interval_end_microseconds_utc > range_end_microseconds_utc
+        ):
+            continue
+
+        timestamp_microseconds_utc.append(interval_end_microseconds_utc)
+        prices.append(reference_price * math.exp(cumulative_log_return))
+
+    if len(timestamp_microseconds_utc) == 0:
+        return _empty_price_series()
+
+    return WorkbenchPriceSeries(
+        timestamp_microseconds_utc=np.asarray(timestamp_microseconds_utc, dtype=np.int64),
+        prices=np.asarray(prices, dtype=np.float64),
+    )
+
+
+def _timestamp_values_from_simulation_frame(
+    *,
+    frame: Any,
+    timestamp_column: str,
+) -> Optional[NDArray[Any]]:
+    for candidate_column in ("timestamp_utc", timestamp_column, "time", "time_microseconds"):
+        if candidate_column in frame.columns:
+            return cast(
+                NDArray[Any],
+                frame[candidate_column].to_numpy(dtype=object, copy=False),
+            )
+
+    return None
+
+
+def _price_values_from_simulation_frame(
+    *,
+    frame: Any,
+    price_column: Optional[str],
+    bid_column: Optional[str],
+    ask_column: Optional[str],
+    tick_price_input_policy: Optional[str],
+) -> Optional[tuple[NDArray[np.float64], NDArray[np.bool_]]]:
+    match tick_price_input_policy:
+        case "explicit_price_column":
+            effective_price_column = price_column or "price"
+            if effective_price_column not in frame.columns:
+                return None
+
+            return _parse_numeric_column(
+                cast(
+                    NDArray[Any],
+                    frame[effective_price_column].to_numpy(dtype=object, copy=False),
+                )
+            )
+        case "bid_ask_midpoint":
+            if bid_column is None or ask_column is None:
+                return None
+            if bid_column not in frame.columns or ask_column not in frame.columns:
+                return None
+
+            bid_values, valid_bid_mask = _parse_numeric_column(
+                cast(
+                    NDArray[Any],
+                    frame[bid_column].to_numpy(dtype=object, copy=False),
+                )
+            )
+            ask_values, valid_ask_mask = _parse_numeric_column(
+                cast(
+                    NDArray[Any],
+                    frame[ask_column].to_numpy(dtype=object, copy=False),
+                )
+            )
+
+            valid_price_mask = valid_bid_mask & valid_ask_mask
+            midpoint_values = np.full(valid_price_mask.size, np.nan, dtype=np.float64)
+            midpoint_values[valid_price_mask] = (
+                bid_values[valid_price_mask] + ask_values[valid_price_mask]
+            ) / 2.0
+
+            return midpoint_values, valid_price_mask
+        case _:
+            for candidate_column in (
+                "price",
+                price_column,
+                "mid_price",
+                "close",
+                "trade_price",
+            ):
+                if candidate_column is not None and candidate_column in frame.columns:
+                    return _parse_numeric_column(
+                        cast(
+                            NDArray[Any],
+                            frame[candidate_column].to_numpy(dtype=object, copy=False),
+                        )
+                    )
+
+    return None
+
+
+def _resolve_price_values(
+    columns: dict[str, NDArray[Any]],
+    *,
+    price_column: Optional[str],
+    bid_column: Optional[str],
+    ask_column: Optional[str],
+    tick_price_input_policy: Optional[str],
+) -> tuple[NDArray[np.float64], NDArray[np.bool_]]:
+    row_count = len(next(iter(columns.values()))) if columns else 0
+
+    match tick_price_input_policy:
+        case "explicit_price_column":
+            effective_price_column = price_column or "price"
+            if effective_price_column not in columns:
+                return _empty_numeric_resolution(row_count)
+            return _parse_numeric_column(columns[effective_price_column])
+        case "bid_ask_midpoint":
+            if bid_column is None or ask_column is None:
+                return _empty_numeric_resolution(row_count)
+            if bid_column not in columns or ask_column not in columns:
+                return _empty_numeric_resolution(row_count)
+
+            bid_values, valid_bid_mask = _parse_numeric_column(columns[bid_column])
+            ask_values, valid_ask_mask = _parse_numeric_column(columns[ask_column])
+
+            valid_mask = valid_bid_mask & valid_ask_mask
+
+            midpoint_values = np.full(row_count, np.nan, dtype=np.float64)
+            midpoint_values[valid_mask] = (bid_values[valid_mask] + ask_values[valid_mask]) / 2.0
+
+            return midpoint_values, valid_mask
+        case _:
+            resolved_values = np.full(row_count, np.nan, dtype=np.float64)
+            resolved_mask = np.zeros(row_count, dtype=bool)
+
+            for candidate_key in dict.fromkeys(
+                value
+                for value in ("price", price_column, "mid_price", "close", "trade_price")
+                if value is not None
+            ):
+                if candidate_key not in columns:
+                    continue
+
+                candidate_values, candidate_mask = _parse_numeric_column(columns[candidate_key])
+                fill_mask = candidate_mask & ~resolved_mask
+
+                resolved_values[fill_mask] = candidate_values[fill_mask]
+                resolved_mask[fill_mask] = True
+
+            return resolved_values, resolved_mask
+
+
+def _simulation_reference_price(model: JaniformModel) -> float:
+    raw_preferences = cast(dict[str, Any], model.metadata.get("simulation_output_preferences", {}))
+    raw_reference_price = raw_preferences.get("reference_price")
+    if isinstance(raw_reference_price, int | float) and not isinstance(raw_reference_price, bool):
+        return float(raw_reference_price)
+
+    return 1.0
+
+
+def _interval_is_open(
+    *,
+    calendar_registry: CalendarRegistry,
+    exchange_code: str,
+    interval_start_utc: datetime,
+) -> bool:
+    return calendar_registry.resolve_market_state(exchange_code, interval_start_utc) == MarketState.OPEN
+
+
+def _datetime_to_utc_nanos(value: datetime) -> int:
+    normalized_value = value.astimezone(UTC)
+    return int(normalized_value.timestamp() * 1_000_000_000)
 
 
 def _observed_utc_range(
-    observed_tick_rows: tuple[dict[str, Any], ...],
-    *,
-    timestamp_column: str,
+    observed_tick_series: WorkbenchPriceSeries,
 ) -> tuple[datetime, datetime]:
-    observed_timestamps_utc = [
-        cast(datetime, row[timestamp_column]).astimezone(UTC)
-        for row in observed_tick_rows
-    ]
-
-    return min(observed_timestamps_utc), max(observed_timestamps_utc)
+    return (
+        utc_microseconds_to_datetime(int(observed_tick_series.timestamp_microseconds_utc[0])),
+        utc_microseconds_to_datetime(int(observed_tick_series.timestamp_microseconds_utc[-1])),
+    )
 
 
 def _resolve_timezone(timezone_name: str) -> tzinfo:
@@ -536,3 +929,68 @@ def _resolve_timezone(timezone_name: str) -> tzinfo:
         return UTC
 
     return ZoneInfo(normalized_timezone_name)
+
+
+def _path_cache_identity(path: Path) -> tuple[str, int, int]:
+    path_stat = path.stat()
+    return str(path), path_stat.st_mtime_ns, path_stat.st_size
+
+
+def _empty_price_series() -> WorkbenchPriceSeries:
+    return WorkbenchPriceSeries(
+        timestamp_microseconds_utc=_EMPTY_INT64_ARRAY.copy(),
+        prices=_EMPTY_FLOAT64_ARRAY.copy(),
+    )
+
+
+def _empty_numeric_resolution(row_count: int) -> tuple[NDArray[np.float64], NDArray[np.bool_]]:
+    return (
+        np.full(row_count, np.nan, dtype=np.float64),
+        np.zeros(row_count, dtype=bool),
+    )
+
+
+def _parse_timestamp_column(
+    raw_values: NDArray[Any],
+    *,
+    normalized_timezone: tzinfo,
+) -> NDArray[np.int64]:
+    timestamp_microseconds_utc = np.empty(len(raw_values), dtype=np.int64)
+    for row_index, raw_value in enumerate(raw_values):
+        if isinstance(raw_value, np.generic):
+            raw_value = raw_value.item()
+
+        parsed_timestamp = parse_timestamp_value(raw_value)
+        if parsed_timestamp.tzinfo is None:
+            parsed_timestamp = parsed_timestamp.replace(tzinfo=normalized_timezone)
+
+        timestamp_microseconds_utc[row_index] = datetime_to_utc_microseconds(
+            parsed_timestamp.astimezone(UTC)
+        )
+
+    return timestamp_microseconds_utc
+
+
+def _parse_numeric_column(
+    raw_values: NDArray[Any],
+) -> tuple[NDArray[np.float64], NDArray[np.bool_]]:
+    numeric_values = np.full(len(raw_values), np.nan, dtype=np.float64)
+    valid_mask = np.zeros(len(raw_values), dtype=bool)
+    for row_index, raw_value in enumerate(raw_values):
+        parsed_value = _parse_numeric_value(raw_value)
+        if parsed_value is None:
+            continue
+
+        numeric_values[row_index] = parsed_value
+        valid_mask[row_index] = True
+
+    return numeric_values, valid_mask
+
+
+def _parse_numeric_value(raw_value: Any) -> Optional[float]:
+    if isinstance(raw_value, (int, float, np.integer, np.floating)):
+        return float(raw_value)
+    if isinstance(raw_value, str) and raw_value != "":
+        return float(raw_value)
+
+    return None

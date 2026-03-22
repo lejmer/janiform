@@ -3,18 +3,16 @@ use std::sync::{Arc, Mutex};
 use janiform::calibration::{
     CalibrationReturnComponentsActivityContextPayload,
     CalibrationReturnComponentsStageCandidateGenerationInput, CalibrationStagedExecutionInput,
-    CalibrationStagedRunObserverEvent, CalibrationStagedRunReport,
-    CalibrationStagedRunStageReport,
-    MarketDataLoadingOutput, MarketDataLoadingRequest,
-    MarketDataSessionConfiguration, MarketDataSessionResolutionPayload,
-    MarketDataTickDataColumnMapping, MarketDataTranslationPreprocessingOutput,
-    MarketDataTranslationPreprocessingRequest, MarketDataInputFileReference,
-    MarketDataNormalizationPolicy,
+    CalibrationStagedRunObserverEvent, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
+    MarketDataInputFileReference, MarketDataLoadingOutput, MarketDataLoadingRequest,
+    MarketDataNormalizationPolicy, MarketDataSessionConfiguration,
+    MarketDataSessionResolutionPayload, MarketDataTickDataColumnMapping,
+    MarketDataTranslationPreprocessingOutput, MarketDataTranslationPreprocessingRequest,
     ReturnComponentsStageFittedParameters, ReturnComponentsStageObservedSignalSummaryStatistics,
     evaluate_return_components_exact_candidate_from_bridge,
     load_and_preprocess_market_data_translation_request as load_and_preprocess_market_data_translation_request_native,
-    resolve_market_data_session_configuration_from_source_file as resolve_market_data_session_configuration_from_source_file_native,
     preprocess_market_data_translation_request as preprocess_market_data_translation_request_native,
+    resolve_market_data_session_configuration_from_source_file as resolve_market_data_session_configuration_from_source_file_native,
     run_staged_calibration_from_execution_input,
     run_staged_calibration_from_execution_input_with_observer,
 };
@@ -73,7 +71,9 @@ fn load_and_preprocess_market_data_translation_request(
         })?;
 
     let loading_output = py
-        .allow_threads(|| load_and_preprocess_market_data_translation_request_native(loading_request))
+        .allow_threads(|| {
+            load_and_preprocess_market_data_translation_request_native(loading_request)
+        })
         .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
 
     market_data_loading_output_to_py_object(py, &loading_output).map_err(|source| {
@@ -104,12 +104,14 @@ fn resolve_market_data_session_configuration_from_source_file(
                 "failed to deserialize tick-data source reference: {source}"
             ))
         })?;
-    let tick_data_column_mapping: MarketDataTickDataColumnMapping =
-        serde_json::from_value(py_any_to_json_value(tick_data_column_mapping)?).map_err(|source| {
-            CalibrationExecutionError::new_err(format!(
-                "failed to deserialize tick-data column mapping: {source}"
-            ))
-        })?;
+    let tick_data_column_mapping: MarketDataTickDataColumnMapping = serde_json::from_value(
+        py_any_to_json_value(tick_data_column_mapping)?,
+    )
+    .map_err(|source| {
+        CalibrationExecutionError::new_err(format!(
+            "failed to deserialize tick-data column mapping: {source}"
+        ))
+    })?;
     let normalization_policy: MarketDataNormalizationPolicy =
         serde_json::from_value(py_any_to_json_value(normalization_policy)?).map_err(|source| {
             CalibrationExecutionError::new_err(format!(
