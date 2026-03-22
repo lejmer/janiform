@@ -2,11 +2,15 @@ use janiform::calibration::{
     CalibrationReturnComponentsActivityContextPayload,
     CalibrationReturnComponentsStageCandidateGenerationInput, CalibrationStagedExecutionInput,
     CalibrationStagedRunReport, CalibrationStagedRunStageReport,
-    MarketDataTranslationPreprocessingOutput, MarketDataTranslationPreprocessingRequest,
     MarketDataLoadingOutput, MarketDataLoadingRequest,
+    MarketDataSessionConfiguration, MarketDataSessionResolutionPayload,
+    MarketDataTickDataColumnMapping, MarketDataTranslationPreprocessingOutput,
+    MarketDataTranslationPreprocessingRequest, MarketDataInputFileReference,
+    MarketDataNormalizationPolicy,
     ReturnComponentsStageFittedParameters, ReturnComponentsStageObservedSignalSummaryStatistics,
     evaluate_return_components_exact_candidate_from_bridge,
     load_and_preprocess_market_data_translation_request as load_and_preprocess_market_data_translation_request_native,
+    resolve_market_data_session_configuration_from_source_file as resolve_market_data_session_configuration_from_source_file_native,
     preprocess_market_data_translation_request as preprocess_market_data_translation_request_native,
     run_staged_calibration_from_execution_input,
 };
@@ -52,11 +56,10 @@ fn preprocess_market_data_translation_request(
 }
 
 #[pyfunction]
-#[pyo3(signature = (loading_request, calendar_registry))]
+#[pyo3(signature = (loading_request))]
 fn load_and_preprocess_market_data_translation_request(
     py: Python<'_>,
     loading_request: &Bound<'_, PyAny>,
-    calendar_registry: &PyCalendarRegistry,
 ) -> PyResult<Py<PyAny>> {
     let loading_request: MarketDataLoadingRequest =
         serde_json::from_value(py_any_to_json_value(loading_request)?).map_err(|source| {
@@ -66,17 +69,64 @@ fn load_and_preprocess_market_data_translation_request(
         })?;
 
     let loading_output = py
-        .allow_threads(|| {
-            load_and_preprocess_market_data_translation_request_native(
-                loading_request,
-                &calendar_registry.registry,
-            )
-        })
+        .allow_threads(|| load_and_preprocess_market_data_translation_request_native(loading_request))
         .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
 
     market_data_loading_output_to_py_object(py, &loading_output).map_err(|source| {
         CalibrationExecutionError::new_err(format!(
             "failed to materialize market-data loading output: {source}"
+        ))
+    })
+}
+
+#[pyfunction]
+#[pyo3(signature = (session_configuration, tick_data_source, tick_data_column_mapping, normalization_policy))]
+fn resolve_market_data_session_configuration_from_source_file(
+    py: Python<'_>,
+    session_configuration: &Bound<'_, PyAny>,
+    tick_data_source: &Bound<'_, PyAny>,
+    tick_data_column_mapping: &Bound<'_, PyAny>,
+    normalization_policy: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let session_configuration: MarketDataSessionConfiguration =
+        serde_json::from_value(py_any_to_json_value(session_configuration)?).map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize market-data session configuration: {source}"
+            ))
+        })?;
+    let tick_data_source: MarketDataInputFileReference =
+        serde_json::from_value(py_any_to_json_value(tick_data_source)?).map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize tick-data source reference: {source}"
+            ))
+        })?;
+    let tick_data_column_mapping: MarketDataTickDataColumnMapping =
+        serde_json::from_value(py_any_to_json_value(tick_data_column_mapping)?).map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize tick-data column mapping: {source}"
+            ))
+        })?;
+    let normalization_policy: MarketDataNormalizationPolicy =
+        serde_json::from_value(py_any_to_json_value(normalization_policy)?).map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize market-data normalization policy: {source}"
+            ))
+        })?;
+
+    let session_resolution = py
+        .allow_threads(|| {
+            resolve_market_data_session_configuration_from_source_file_native(
+                session_configuration,
+                tick_data_source,
+                tick_data_column_mapping,
+                normalization_policy,
+            )
+        })
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    market_data_session_resolution_to_py_object(py, &session_resolution).map_err(|source| {
+        CalibrationExecutionError::new_err(format!(
+            "failed to materialize market-data session resolution: {source}"
         ))
     })
 }
@@ -88,6 +138,18 @@ fn market_data_loading_output_to_py_object(
     let raw_value = serde_json::to_value(loading_output).map_err(|source| {
         CalibrationExecutionError::new_err(format!(
             "failed to serialize market-data loading output: {source}"
+        ))
+    })?;
+    json_value_to_py_object(py, &raw_value)
+}
+
+fn market_data_session_resolution_to_py_object(
+    py: Python<'_>,
+    session_resolution: &MarketDataSessionResolutionPayload,
+) -> PyResult<Py<PyAny>> {
+    let raw_value = serde_json::to_value(session_resolution).map_err(|source| {
+        CalibrationExecutionError::new_err(format!(
+            "failed to serialize market-data session resolution: {source}"
         ))
     })?;
     json_value_to_py_object(py, &raw_value)
@@ -273,6 +335,10 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     module.add_function(wrap_pyfunction!(
         load_and_preprocess_market_data_translation_request,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        resolve_market_data_session_configuration_from_source_file,
         module
     )?)?;
     module.add_function(wrap_pyfunction!(run_staged_calibration, module)?)?;

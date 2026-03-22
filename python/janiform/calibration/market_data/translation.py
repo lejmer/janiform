@@ -10,14 +10,7 @@ from .contracts import (
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataWorkflowScope,
 )
-from .ingestion import (
-    LoadedMarketDataCalibrationInputs,
-    LoadedMarketDataSourceSummary,
-    LoadedTickDataSource,
-    _LoadedMarketDataCalibrationInputsResult,
-    _TradeSignResolutionDiagnostics,
-    _load_market_data_calibration_inputs,
-)
+from .ingestion import LoadedMarketDataSourceSummary
 from .request import MarketDataCalibrationRequest
 from .._errors import (
     CALIBRATION_ERROR_FACTORY,
@@ -27,10 +20,10 @@ from .._errors import (
     _calibration_error,
     _calibration_integration_error,
 )
-from ..sessions.contracts import MarketDataSessionResolution
-from ..sessions.resolution import (
-    _resolve_explicit_session_definition,
-    resolve_market_data_session_configuration,
+from ..sessions.contracts import (
+    MarketDataSessionRecurringClosedWindow,
+    MarketDataSessionRegularWindow,
+    MarketDataSessionResolution,
 )
 from ..staged.contracts import (
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
@@ -51,7 +44,6 @@ from ..staged.inputs import (
 from ..staged.request import StagedCalibrationRequest
 from ..._contracts import serialize_deterministic_json
 from ..._native_api import native_exception_matches, native_module
-from ..._timestamps import datetime_to_utc_nanos
 from ...calendar import CalendarRegistry
 
 
@@ -123,24 +115,12 @@ class _MarketDataPreprocessingOutput:
 
 
 @dataclass(frozen=True, slots=True)
-class _MarketDataSourceSummary:
-    path: str
-    file_format: str
-    provenance_label: str
-    source_row_count: int
-    retained_row_count: int
-    dropped_duplicate_row_count: int
-    sort_records_by_timestamp: bool
-    applied_timestamp_timezone: Optional[str]
-    canonical_value_field: Optional[str]
-    value_mapping_policy: Optional[str]
-
-
-@dataclass(frozen=True, slots=True)
 class _MarketDataLoadingOutput:
+    session_resolution: MarketDataSessionResolution
     preprocessing_output: _MarketDataPreprocessingOutput
-    tick_data_summary: _MarketDataSourceSummary
-    known_news_summary: Optional[_MarketDataSourceSummary]
+    tick_data_summary: LoadedMarketDataSourceSummary
+    option_surface_summary: Optional[LoadedMarketDataSourceSummary]
+    known_news_summary: Optional[LoadedMarketDataSourceSummary]
     fit_warning: Optional[str]
     reference_price: Optional[float]
 
@@ -157,219 +137,9 @@ def translate_market_data_request_to_staged_execution_input(
         )
 
     normalized_request = MarketDataCalibrationRequest.from_mapping(request.to_payload())
-    if _can_load_market_data_from_source_files(normalized_request):
-        return _translate_market_data_request_from_source_files(
-            normalized_request=normalized_request,
-            cpu_count=cpu_count,
-        )
-
-    loaded_inputs_result = _load_market_data_translation_inputs(normalized_request)
-
-    return _translate_loaded_market_data_request_to_staged_execution_input(
+    return _translate_market_data_request_from_source_files(
         normalized_request=normalized_request,
-        loaded_inputs_result=loaded_inputs_result,
         cpu_count=cpu_count,
-    )
-
-
-def _load_market_data_translation_inputs(
-    normalized_request: MarketDataCalibrationRequest,
-) -> _LoadedMarketDataCalibrationInputsResult:
-    selected_stages = _selected_stages_for_scope(normalized_request.workflow_scope)
-
-    return _load_market_data_calibration_inputs(
-        normalized_request,
-        resolve_unsigned_trade_signs=CalibrationStage.HAWKES in selected_stages,
-    )
-
-
-def _translate_loaded_market_data_request_to_staged_execution_input(
-    *,
-    normalized_request: MarketDataCalibrationRequest,
-    loaded_inputs_result: _LoadedMarketDataCalibrationInputsResult,
-    cpu_count: int | None = None,
-) -> MarketDataTranslationResult:
-    selected_stages = _selected_stages_for_scope(normalized_request.workflow_scope)
-    loaded_inputs = loaded_inputs_result.inputs
-
-    _validate_tick_records_present(loaded_inputs.tick_data)
-    _validate_tick_record_order(
-        loaded_inputs.tick_data,
-        normalization_policy=normalized_request.normalization_policy,
-    )
-
-    resolved_session = resolve_market_data_session_configuration(
-        normalized_request,
-        loaded_inputs.tick_data,
-    )
-    calendar_registry = resolved_session.calendar_registry
-
-    trade_events_data_reference = _build_dataset_reference(
-        normalized_request.run_id,
-        "ticks",
-        loaded_inputs.tick_data.summary.provenance_label,
-    )
-
-    native_preprocessing_output = _preprocess_market_data_translation_inputs(
-        loaded_inputs=loaded_inputs,
-        exchange_code=normalized_request.session_configuration.exchange_code,
-        trade_events_data_reference=trade_events_data_reference,
-        selected_stages=selected_stages,
-        directional_label_diagnostics=(
-            loaded_inputs_result.trade_sign_resolution_diagnostics
-        ),
-        calendar_registry=calendar_registry,
-    )
-
-    option_surface_data_reference = (
-        _build_dataset_reference(
-            normalized_request.run_id,
-            "options",
-            loaded_inputs.option_surface.summary.provenance_label,
-        )
-        if loaded_inputs.option_surface is not None
-        else None
-    )
-
-    execution_input = StagedCalibrationExecutionInput(
-        schema_version=CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
-        request=StagedCalibrationRequest(
-            run_id=normalized_request.run_id,
-            data_inputs=CalibrationRunDataInputs(
-                exchange_code=normalized_request.session_configuration.exchange_code,
-                trade_events_data_reference=trade_events_data_reference,
-                option_surface_data_reference=option_surface_data_reference,
-            ),
-            execution_mode=normalized_request.output_preferences.execution_mode,
-            selected_stages=selected_stages,
-            seed_settings=CalibrationRunSeedSettings(
-                global_seed=_stable_seed_from_run_id(normalized_request.run_id),
-            ),
-            optimizer_settings_by_stage=tuple(
-                _default_solver_settings(stage, cpu_count=cpu_count)
-                for stage in selected_stages
-            ),
-        ),
-        seasonality_stage_input=(
-            native_preprocessing_output.seasonality_stage_input
-            if CalibrationStage.SEASONALITY in selected_stages
-            else None
-        ),
-        hawkes_candidate_inputs=native_preprocessing_output.hawkes_candidate_inputs,
-        return_components_candidate_generation_input=(
-            native_preprocessing_output.return_components_candidate_generation_input
-        ),
-        runtime_resources=_runtime_resources_from_request(normalized_request),
-    )
-
-    return MarketDataTranslationResult(
-        calendar_registry=calendar_registry,
-        session_resolution=resolved_session.session_resolution,
-        execution_input=execution_input,
-        diagnostics=MarketDataTranslationDiagnostics(
-            workflow_scope=normalized_request.workflow_scope,
-            selected_stages=selected_stages,
-            executed_preprocessing_steps=_executed_preprocessing_steps(
-                workflow_scope=normalized_request.workflow_scope,
-                option_surface_present=loaded_inputs.option_surface is not None,
-                known_news_present=loaded_inputs.known_news is not None,
-            ),
-            tick_record_count=len(loaded_inputs.tick_data.records),
-            option_surface_record_count=(
-                len(loaded_inputs.option_surface.records)
-                if loaded_inputs.option_surface is not None
-                else 0
-            ),
-            known_news_event_count=native_preprocessing_output.known_news_event_count,
-            known_news_events_outside_source_window_count=(
-                native_preprocessing_output.known_news_events_outside_source_window_count
-            ),
-            session_open_tick_count=native_preprocessing_output.session_open_tick_count,
-            session_closed_tick_count=native_preprocessing_output.session_closed_tick_count,
-            known_news_open_event_count=(
-                native_preprocessing_output.known_news_open_event_count
-            ),
-            known_news_closed_event_count=(
-                native_preprocessing_output.known_news_closed_event_count
-            ),
-            seasonality_overlay_count=len(
-                native_preprocessing_output.seasonality_stage_input.scheduled_event_overlays
-            ),
-            hawkes_candidate_count=len(
-                native_preprocessing_output.hawkes_candidate_inputs or ()
-            ),
-            known_news_return_sample_count=(
-                len(
-                    native_preprocessing_output.return_components_candidate_generation_input.realized_known_news_return_samples
-                )
-                if native_preprocessing_output.return_components_candidate_generation_input
-                is not None
-                else 0
-            ),
-            intraday_jump_candidate_count=(
-                len(
-                    native_preprocessing_output.return_components_candidate_generation_input.detected_intraday_jump_candidates
-                )
-                if native_preprocessing_output.return_components_candidate_generation_input
-                is not None
-                else 0
-            ),
-            close_open_boundary_observation_count=(
-                len(
-                    native_preprocessing_output.return_components_candidate_generation_input.observed_close_open_boundary_observations
-                )
-                if native_preprocessing_output.return_components_candidate_generation_input
-                is not None
-                else 0
-            ),
-            material_close_open_gap_count=(
-                native_preprocessing_output.material_close_open_gap_count
-            ),
-        ),
-        provenance=MarketDataTranslationProvenance(
-            tick_data_summary=loaded_inputs.tick_data.summary,
-            option_surface_summary=(
-                loaded_inputs.option_surface.summary
-                if loaded_inputs.option_surface is not None
-                else None
-            ),
-            known_news_summary=(
-                loaded_inputs.known_news.summary
-                if loaded_inputs.known_news is not None
-                else None
-            ),
-            normalization_policy=normalized_request.normalization_policy,
-            workflow_scope=normalized_request.workflow_scope,
-            selected_stages=selected_stages,
-            session_definition_path=resolved_session.session_definition_path,
-            derived_trade_events_data_reference=trade_events_data_reference,
-            derived_option_surface_data_reference=option_surface_data_reference,
-            derivation_policies=(
-                resolved_session.session_resolution.selected_policy_id,
-                "native_market_data_translation_preprocessing.rust.v1",
-                "known_news_outside_tick_window_are_filtered.v1",
-                "known_news_overlays_are_point_anchors_with_zero_log_adjustment.v1",
-                "unsigned_trade_direction_labels_follow_tick_price_change_with_flat_move_carryover.v1",
-                "hawkes_search_family_uses_unsigned_open_session_activity_targets_and_model_implied_fit_terms.v1",
-                "surprise_jump_candidates_use_data_driven_material_open_session_return_thresholds_outside_known_news_windows.v1",
-                "close_open_boundaries_are_resolved_from_calendar_state_transitions.v1",
-                "continuous_nig_fit_uses_filtered_observed_open_session_returns_and_stage_search.v1",
-            ),
-            deterministic_defaults_applied=(
-                "seasonality.session_filter=open_only",
-                "seasonality.sparse_hour_event_threshold=1",
-                "seasonality.intraday.minutes_per_bin=1",
-                "seasonality.intraday.smoothing_kernel=gaussian",
-                "seasonality.intraday.smoothing_bandwidth_bins=3.0",
-                "seasonality.day_of_week.minimum_bucket_events=1",
-                "seasonality.day_of_year.minimum_bucket_events=1",
-                "known_news_overlay.log_adjustment=0.0",
-                "close_open_gap_detection_policy.material_gap_absolute_return_tolerance=3x_median_abs_intraday_return",
-                "intraday_jump_detection.material_threshold=4x_median_abs_open_return",
-            ),
-        ),
-        fit_warning=_detect_interval_data_warning(loaded_inputs.tick_data.records),
-        reference_price=_extract_reference_price(loaded_inputs.tick_data.records),
     )
 
 
@@ -422,56 +192,33 @@ def _translation_error(
     )
 
 
-def _can_load_market_data_from_source_files(request: MarketDataCalibrationRequest) -> bool:
-    if request.workflow_scope == CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE:
-        return False
-    if request.option_surface_source is not None or request.column_mapping.option_surface is not None:
-        return False
-    if request.session_configuration.session_definition_source is None:
-        return False
-    if request.tick_data_source.file_format not in (
-        CalibrationInputFileFormat.CSV,
-        CalibrationInputFileFormat.PARQUET,
-    ):
-        return False
-    if request.known_news_inputs is None:
-        return True
-
-    return (
-        request.known_news_inputs.calendar_source.file_format
-        in (CalibrationInputFileFormat.CSV, CalibrationInputFileFormat.PARQUET)
-        and request.column_mapping.known_news is not None
-    )
-
-
 def _translate_market_data_request_from_source_files(
     *,
     normalized_request: MarketDataCalibrationRequest,
     cpu_count: int | None = None,
 ) -> MarketDataTranslationResult:
     selected_stages = _selected_stages_for_scope(normalized_request.workflow_scope)
-    session_source = normalized_request.session_configuration.session_definition_source
-    if session_source is None:
-        raise _translation_error(
-            "session_configuration.session_definition_source",
-            "is required for the market-data loading path",
-        )
-
-    resolved_session = _resolve_explicit_session_definition(
-        exchange_code=normalized_request.session_configuration.exchange_code,
-        session_source=session_source,
-        configured_session_timezone=normalized_request.session_configuration.session_timezone,
-    )
     trade_events_data_reference = _build_dataset_reference(
         normalized_request.run_id,
         "ticks",
         normalized_request.tick_data_source.provenance_label,
     )
+    option_surface_data_reference = (
+        _build_dataset_reference(
+            normalized_request.run_id,
+            "options",
+            normalized_request.option_surface_source.provenance_label,
+        )
+        if normalized_request.option_surface_source is not None
+        else None
+    )
     native_loading_output = _load_market_data_translation_inputs_from_source_files(
         normalized_request=normalized_request,
         selected_stages=selected_stages,
         trade_events_data_reference=trade_events_data_reference,
-        calendar_registry=resolved_session.calendar_registry,
+    )
+    calendar_registry = CalendarRegistry(
+        native_loading_output.session_resolution.resolved_session_definition_json
     )
     execution_input = StagedCalibrationExecutionInput(
         schema_version=CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
@@ -480,7 +227,7 @@ def _translate_market_data_request_from_source_files(
             data_inputs=CalibrationRunDataInputs(
                 exchange_code=normalized_request.session_configuration.exchange_code,
                 trade_events_data_reference=trade_events_data_reference,
-                option_surface_data_reference=None,
+                option_surface_data_reference=option_surface_data_reference,
             ),
             execution_mode=normalized_request.output_preferences.execution_mode,
             selected_stages=selected_stages,
@@ -505,19 +252,23 @@ def _translate_market_data_request_from_source_files(
     )
 
     return MarketDataTranslationResult(
-        calendar_registry=resolved_session.calendar_registry,
-        session_resolution=resolved_session.session_resolution,
+        calendar_registry=calendar_registry,
+        session_resolution=native_loading_output.session_resolution,
         execution_input=execution_input,
         diagnostics=MarketDataTranslationDiagnostics(
             workflow_scope=normalized_request.workflow_scope,
             selected_stages=selected_stages,
             executed_preprocessing_steps=_executed_preprocessing_steps(
                 workflow_scope=normalized_request.workflow_scope,
-                option_surface_present=False,
+                option_surface_present=native_loading_output.option_surface_summary is not None,
                 known_news_present=native_loading_output.known_news_summary is not None,
             ),
             tick_record_count=native_loading_output.tick_data_summary.retained_row_count,
-            option_surface_record_count=0,
+            option_surface_record_count=(
+                native_loading_output.option_surface_summary.retained_row_count
+                if native_loading_output.option_surface_summary is not None
+                else 0
+            ),
             known_news_event_count=native_loading_output.preprocessing_output.known_news_event_count,
             known_news_events_outside_source_window_count=(
                 native_loading_output.preprocessing_output.known_news_events_outside_source_window_count
@@ -565,23 +316,22 @@ def _translate_market_data_request_from_source_files(
             ),
         ),
         provenance=MarketDataTranslationProvenance(
-            tick_data_summary=_loaded_source_summary_from_payload(
-                native_loading_output.tick_data_summary,
-            ),
-            option_surface_summary=None,
-            known_news_summary=(
-                _loaded_source_summary_from_payload(native_loading_output.known_news_summary)
-                if native_loading_output.known_news_summary is not None
-                else None
-            ),
+            tick_data_summary=native_loading_output.tick_data_summary,
+            option_surface_summary=native_loading_output.option_surface_summary,
+            known_news_summary=native_loading_output.known_news_summary,
             normalization_policy=normalized_request.normalization_policy,
             workflow_scope=normalized_request.workflow_scope,
             selected_stages=selected_stages,
-            session_definition_path=resolved_session.session_definition_path,
+            session_definition_path=(
+                normalized_request.session_configuration.session_definition_source.path
+                if native_loading_output.session_resolution.manual_override_applied
+                and normalized_request.session_configuration.session_definition_source is not None
+                else None
+            ),
             derived_trade_events_data_reference=trade_events_data_reference,
-            derived_option_surface_data_reference=None,
+            derived_option_surface_data_reference=option_surface_data_reference,
             derivation_policies=(
-                resolved_session.session_resolution.selected_policy_id,
+                native_loading_output.session_resolution.selected_policy_id,
                 "market_data_loading_and_translation.rust.v1",
                 "known_news_outside_tick_window_are_filtered.v1",
                 "known_news_overlays_are_point_anchors_with_zero_log_adjustment.v1",
@@ -614,7 +364,6 @@ def _load_market_data_translation_inputs_from_source_files(
     normalized_request: MarketDataCalibrationRequest,
     selected_stages: tuple[CalibrationStage, ...],
     trade_events_data_reference: str,
-    calendar_registry: CalendarRegistry,
 ) -> _MarketDataLoadingOutput:
     try:
         native: ModuleType = native_module()
@@ -627,7 +376,18 @@ def _load_market_data_translation_inputs_from_source_files(
         ) from e
 
     loading_request: dict[str, Any] = {
-        "exchange_code": normalized_request.session_configuration.exchange_code,
+        "session_configuration": {
+            "exchange_code": normalized_request.session_configuration.exchange_code,
+            "session_definition_source": (
+                _input_file_reference_payload(
+                    normalized_request.session_configuration.session_definition_source
+                )
+                if normalized_request.session_configuration.session_definition_source
+                is not None
+                else None
+            ),
+            "session_timezone": normalized_request.session_configuration.session_timezone,
+        },
         "trade_events_data_reference": trade_events_data_reference,
         "tick_data_source": _input_file_reference_payload(normalized_request.tick_data_source),
         "tick_data_column_mapping": {
@@ -650,7 +410,33 @@ def _load_market_data_translation_inputs_from_source_files(
                 if normalized_request.normalization_policy.tick_price_input_policy is not None
                 else None
             ),
+            "option_quote_input_policy": (
+                normalized_request.normalization_policy.option_quote_input_policy.value
+                if normalized_request.normalization_policy.option_quote_input_policy
+                is not None
+                else None
+            ),
         },
+        "option_surface_input": (
+            {
+                "source": _input_file_reference_payload(
+                    normalized_request.option_surface_source
+                ),
+                "column_mapping": {
+                    "quote_timestamp_column": normalized_request.column_mapping.option_surface.quote_timestamp_column,
+                    "expiry_timestamp_column": normalized_request.column_mapping.option_surface.expiry_timestamp_column,
+                    "strike_column": normalized_request.column_mapping.option_surface.strike_column,
+                    "option_type_column": normalized_request.column_mapping.option_surface.option_type_column,
+                    "mid_price_column": normalized_request.column_mapping.option_surface.mid_price_column,
+                    "bid_column": normalized_request.column_mapping.option_surface.bid_column,
+                    "ask_column": normalized_request.column_mapping.option_surface.ask_column,
+                    "implied_volatility_column": normalized_request.column_mapping.option_surface.implied_volatility_column,
+                },
+            }
+            if normalized_request.option_surface_source is not None
+            and normalized_request.column_mapping.option_surface is not None
+            else None
+        ),
         "known_news_input": (
             {
                 "calendar_source": _input_file_reference_payload(
@@ -675,10 +461,7 @@ def _load_market_data_translation_inputs_from_source_files(
     }
 
     try:
-        raw_payload = native.load_and_preprocess_market_data_translation_request(
-            loading_request,
-            calendar_registry._native_registry,
-        )
+        raw_payload = native.load_and_preprocess_market_data_translation_request(loading_request)
     except Exception as e:
         if native_exception_matches(native, e, "CalibrationExecutionError"):
             parsed_native_error = _parse_market_data_loading_validation_error(str(e))
@@ -728,6 +511,61 @@ def _load_market_data_translation_inputs_from_source_files(
         ) from e
 
 
+def resolve_market_data_session_configuration_from_source_file(
+    *,
+    session_configuration: Any,
+    tick_data_source: Any,
+    tick_data_column_mapping: Any,
+    normalization_policy: Any,
+) -> MarketDataSessionResolution:
+    try:
+        native: ModuleType = native_module()
+    except ModuleNotFoundError as e:
+        raise _calibration_integration_error(
+            "market-data session-resolution module is unavailable",
+            entrypoint=CALIBRATION_MARKET_DATA_TRANSLATION_ENTRYPOINT,
+            error_id=CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
+            context={"module_name": "janiform._native"},
+        ) from e
+
+    try:
+        raw_payload = native.resolve_market_data_session_configuration_from_source_file(
+            session_configuration.to_payload(),
+            tick_data_source.to_payload(),
+            tick_data_column_mapping.to_payload(),
+            normalization_policy.to_payload(),
+        )
+    except Exception as e:
+        if native_exception_matches(native, e, "CalibrationExecutionError"):
+            parsed_native_error = _parse_market_data_loading_validation_error(str(e))
+            if parsed_native_error is not None:
+                field_path, message = parsed_native_error
+                raise _translation_error(
+                    field_path,
+                    message,
+                    context={
+                        "translation_step": "native_session_resolution",
+                        "source_path": tick_data_source.path,
+                    },
+                ) from e
+
+        raise _translation_error(
+            "session_configuration",
+            f"market-data session resolution failed: {e}",
+            context={"translation_step": "native_session_resolution"},
+        ) from e
+
+    if not isinstance(raw_payload, dict):
+        raise _calibration_integration_error(
+            "market-data session resolution returned an invalid response payload",
+            entrypoint=CALIBRATION_MARKET_DATA_TRANSLATION_ENTRYPOINT,
+            error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
+            context={"returned_type": type(raw_payload).__name__},
+        )
+
+    return _market_data_session_resolution_from_payload(raw_payload)
+
+
 def _input_file_reference_payload(file_reference: Any) -> dict[str, Any]:
     return {
         "path": file_reference.path,
@@ -740,15 +578,26 @@ def _market_data_loading_output_from_payload(
     raw_payload: dict[str, Any],
 ) -> _MarketDataLoadingOutput:
     return _MarketDataLoadingOutput(
+        session_resolution=_market_data_session_resolution_from_payload(
+            raw_payload["session_resolution"],
+        ),
         preprocessing_output=_market_data_preprocessing_output_from_payload(
             raw_payload["preprocessing_output"]
         ),
-        tick_data_summary=_source_summary_payload_from_mapping(
+        tick_data_summary=_source_summary_from_payload(
             raw_payload["tick_data_summary"],
             field_path="tick_data_summary",
         ),
+        option_surface_summary=(
+            _source_summary_from_payload(
+                raw_payload["option_surface_summary"],
+                field_path="option_surface_summary",
+            )
+            if raw_payload.get("option_surface_summary") is not None
+            else None
+        ),
         known_news_summary=(
-            _source_summary_payload_from_mapping(
+            _source_summary_from_payload(
                 raw_payload["known_news_summary"],
                 field_path="known_news_summary",
             )
@@ -768,14 +617,14 @@ def _market_data_loading_output_from_payload(
     )
 
 
-def _source_summary_payload_from_mapping(
+def _source_summary_from_payload(
     raw_payload: dict[str, Any],
     *,
     field_path: str,
-) -> _MarketDataSourceSummary:
-    return _MarketDataSourceSummary(
+) -> LoadedMarketDataSourceSummary:
+    return LoadedMarketDataSourceSummary(
         path=str(raw_payload["path"]),
-        file_format=str(raw_payload["file_format"]),
+        file_format=CalibrationInputFileFormat(str(raw_payload["file_format"])),
         provenance_label=str(raw_payload["provenance_label"]),
         source_row_count=int(raw_payload["source_row_count"]),
         retained_row_count=int(raw_payload["retained_row_count"]),
@@ -799,20 +648,47 @@ def _source_summary_payload_from_mapping(
     )
 
 
-def _loaded_source_summary_from_payload(
-    source_summary: _MarketDataSourceSummary,
-) -> LoadedMarketDataSourceSummary:
-    return LoadedMarketDataSourceSummary(
-        path=source_summary.path,
-        file_format=CalibrationInputFileFormat(source_summary.file_format),
-        provenance_label=source_summary.provenance_label,
-        source_row_count=source_summary.source_row_count,
-        retained_row_count=source_summary.retained_row_count,
-        dropped_duplicate_row_count=source_summary.dropped_duplicate_row_count,
-        sort_records_by_timestamp=source_summary.sort_records_by_timestamp,
-        applied_timestamp_timezone=source_summary.applied_timestamp_timezone,
-        canonical_value_field=source_summary.canonical_value_field,
-        value_mapping_policy=source_summary.value_mapping_policy,
+def _market_data_session_resolution_from_payload(
+    raw_payload: dict[str, Any],
+) -> MarketDataSessionResolution:
+    return MarketDataSessionResolution(
+        schema_version=str(raw_payload["schema_version"]),
+        resolution_kind=str(raw_payload["resolution_kind"]),
+        selected_policy_id=str(raw_payload["selected_policy_id"]),
+        manual_override_applied=bool(raw_payload["manual_override_applied"]),
+        exchange_code=str(raw_payload["exchange_code"]),
+        exchange_name=str(raw_payload["exchange_name"]),
+        resolved_timezone_name=str(raw_payload["resolved_timezone_name"]),
+        timezone_source=str(raw_payload["timezone_source"]),
+        open_session_duration_hours_per_week=float(
+            raw_payload["open_session_duration_hours_per_week"]
+        ),
+        confidence_score=float(raw_payload["confidence_score"]),
+        confidence_label=str(raw_payload["confidence_label"]),
+        regular_session_windows=tuple(
+            MarketDataSessionRegularWindow.from_mapping(
+                raw_window,
+                field_path=f"session_resolution.regular_session_windows[{index}]",
+            )
+            for index, raw_window in enumerate(raw_payload["regular_session_windows"])
+        ),
+        recurring_closed_windows=tuple(
+            MarketDataSessionRecurringClosedWindow.from_mapping(
+                raw_window,
+                field_path=f"session_resolution.recurring_closed_windows[{index}]",
+            )
+            for index, raw_window in enumerate(raw_payload["recurring_closed_windows"])
+        ),
+        reasons=tuple(str(value) for value in raw_payload["reasons"]),
+        ambiguity_warnings=tuple(
+            str(value) for value in raw_payload["ambiguity_warnings"]
+        ),
+        metadata_discrepancies=tuple(
+            str(value) for value in raw_payload["metadata_discrepancies"]
+        ),
+        resolved_session_definition_json=str(
+            raw_payload["resolved_session_definition_json"]
+        ),
     )
 
 
@@ -822,7 +698,7 @@ def _parse_market_data_loading_validation_error(
     field_path, separator, detail = message.partition(": ")
     if not separator:
         return None
-    if "." not in field_path and "[" not in field_path:
+    if " " in field_path or not field_path.strip():
         return None
 
     return field_path, detail
@@ -890,123 +766,6 @@ def _normalization_step_for_market_data_loading_error(field_path: str) -> Option
     return None
 
 
-def _preprocess_market_data_translation_inputs(
-    *,
-    loaded_inputs: LoadedMarketDataCalibrationInputs,
-    exchange_code: str,
-    trade_events_data_reference: str,
-    selected_stages: tuple[CalibrationStage, ...],
-    directional_label_diagnostics: Optional[_TradeSignResolutionDiagnostics],
-    calendar_registry: CalendarRegistry,
-) -> _MarketDataPreprocessingOutput:
-    try:
-        native: ModuleType = native_module()
-    except ModuleNotFoundError as e:
-        raise _calibration_integration_error(
-            "native market-data preprocessing module is unavailable",
-            entrypoint=CALIBRATION_MARKET_DATA_TRANSLATION_ENTRYPOINT,
-            error_id=CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
-            context={"module_name": "janiform._native"},
-        ) from e
-
-    preprocessing_request: dict[str, Any] = {
-        "exchange_code": exchange_code,
-        "trade_events_data_reference": trade_events_data_reference,
-        "tick_records": [
-            {
-                "timestamp_utc_nanos": datetime_to_utc_nanos(record.timestamp),
-                "price": record.price,
-                "trade_sign": (
-                    record.trade_sign.value if record.trade_sign is not None else None
-                ),
-                "source_row_number": record.source_row_number,
-            }
-            for record in loaded_inputs.tick_data.records
-        ],
-        "known_news_records": (
-            [
-                {
-                    "event_timestamp_utc_nanos": datetime_to_utc_nanos(
-                        record.event_timestamp
-                    ),
-                    "event_identifier": record.event_identifier,
-                }
-                for record in loaded_inputs.known_news.records
-            ]
-            if loaded_inputs.known_news is not None
-            else []
-        ),
-        "option_surface_quote_values": (
-            [record.quote_value for record in loaded_inputs.option_surface.records]
-            if loaded_inputs.option_surface is not None
-            else []
-        ),
-        "directional_label_diagnostics": (
-            {
-                "policy_id": directional_label_diagnostics.policy_id,
-                "first_inferred_trade_sign": (
-                    directional_label_diagnostics.first_inferred_trade_sign.value
-                ),
-                "provided_label_count": directional_label_diagnostics.provided_label_count,
-                "inferred_label_count": directional_label_diagnostics.inferred_label_count,
-                "flat_move_carry_count": directional_label_diagnostics.flat_move_carry_count,
-                "price_up_inference_count": (
-                    directional_label_diagnostics.price_up_inference_count
-                ),
-                "price_down_inference_count": (
-                    directional_label_diagnostics.price_down_inference_count
-                ),
-            }
-            if directional_label_diagnostics is not None
-            else None
-        ),
-        "require_hawkes": CalibrationStage.HAWKES in selected_stages,
-        "require_return_components": (
-            CalibrationStage.RETURN_COMPONENTS in selected_stages
-        ),
-    }
-
-    try:
-        raw_payload = native.preprocess_market_data_translation_request(
-            preprocessing_request,
-            calendar_registry._native_registry,
-        )
-    except Exception as e:
-        if native_exception_matches(native, e, "CalibrationExecutionError"):
-            raise _translation_error(
-                "tick_data_source",
-                f"native market-data preprocessing failed: {e}",
-                context={"translation_step": "native_preprocessing"},
-            ) from e
-
-        raise _translation_error(
-            "tick_data_source",
-            f"native market-data preprocessing failed: {e}",
-            context={
-                "translation_step": "native_preprocessing",
-                "source_exception_type": type(e).__name__,
-            },
-        ) from e
-
-    if not isinstance(raw_payload, dict):
-        raise _calibration_integration_error(
-            "native market-data preprocessing returned an invalid response payload",
-            entrypoint=CALIBRATION_MARKET_DATA_TRANSLATION_ENTRYPOINT,
-            error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
-            context={"returned_type": type(raw_payload).__name__},
-        )
-
-    try:
-        return _market_data_preprocessing_output_from_payload(raw_payload)
-    except CalibrationValidationError as e:
-        raise _calibration_integration_error(
-            "native market-data preprocessing returned an invalid response payload",
-            entrypoint=CALIBRATION_MARKET_DATA_TRANSLATION_ENTRYPOINT,
-            error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
-            context={"source_error_id": e.error_id},
-        ) from e
-
-
 def _market_data_preprocessing_output_from_payload(
     raw_payload: dict[str, Any],
 ) -> _MarketDataPreprocessingOutput:
@@ -1062,34 +821,6 @@ def _market_data_preprocessing_output_from_payload(
             raw_payload["material_close_open_gap_count"]
         ),
     )
-
-
-def _validate_tick_records_present(tick_data: LoadedTickDataSource) -> None:
-    if len(tick_data.records) == 0:
-        raise _translation_error(
-            "tick_data_source",
-            "must contain at least one normalized tick record for staged translation",
-        )
-
-
-def _validate_tick_record_order(
-    tick_data: LoadedTickDataSource,
-    *,
-    normalization_policy: CalibrationMarketDataNormalizationPolicy,
-) -> None:
-    if normalization_policy.sort_records_by_timestamp:
-        return
-
-    previous_timestamp: Optional[datetime] = None
-    for record in tick_data.records:
-        if previous_timestamp is not None and record.timestamp < previous_timestamp:
-            raise _translation_error(
-                "normalization_policy.sort_records_by_timestamp",
-                "cannot be false when tick records are not already sorted by timestamp",
-                context={"source_row_number": record.source_row_number},
-            )
-
-        previous_timestamp = record.timestamp
 
 
 def _selected_stages_for_scope(
@@ -1171,61 +902,6 @@ def _runtime_resources_from_request(
     return CalibrationStagedExecutionRuntimeResources(
         disk_checkpoint_directory=request.output_preferences.disk_checkpoint_directory,
     )
-
-
-def _extract_reference_price(normalized_records: tuple[Any, ...]) -> Optional[float]:
-    if len(normalized_records) == 0:
-        return None
-
-    last_record = normalized_records[-1]
-    return float(last_record.price) if last_record.price is not None else None
-
-
-def _detect_interval_data_warning(normalized_records: tuple[Any, ...]) -> Optional[str]:
-    if len(normalized_records) < 4:
-        return None
-
-    deltas_in_seconds: list[int] = []
-    for previous_record, current_record in zip(normalized_records, normalized_records[1:]):
-        previous_timestamp = previous_record.timestamp
-        current_timestamp = current_record.timestamp
-        delta_seconds = int((current_timestamp - previous_timestamp).total_seconds())
-        if delta_seconds > 0:
-            deltas_in_seconds.append(delta_seconds)
-
-    if len(deltas_in_seconds) < 3:
-        return None
-
-    aligned_to_minute_count = sum(delta_seconds % 60 == 0 for delta_seconds in deltas_in_seconds)
-    dominant_delta_seconds = max(
-        set(deltas_in_seconds),
-        key=deltas_in_seconds.count,
-    )
-    dominant_delta_share = deltas_in_seconds.count(dominant_delta_seconds) / len(deltas_in_seconds)
-
-    if dominant_delta_seconds < 60:
-        return None
-    if aligned_to_minute_count / len(deltas_in_seconds) < 0.8:
-        return None
-    if dominant_delta_share < 0.6:
-        return None
-
-    return (
-        "The supplied fit input appears to be interval data rather than tick data. "
-        f"Janiform detected a dominant spacing of {_format_interval_warning_delta(dominant_delta_seconds)}, "
-        "so fitting the model on this data will likely produce an invalid fit."
-    )
-
-
-def _format_interval_warning_delta(delta_seconds: int) -> str:
-    if delta_seconds % 86_400 == 0:
-        return f"{delta_seconds // 86_400}D"
-    if delta_seconds % 3_600 == 0:
-        return f"{delta_seconds // 3_600}h"
-    if delta_seconds % 60 == 0:
-        return f"{delta_seconds // 60}min"
-
-    return f"{delta_seconds}s"
 
 
 __all__ = [

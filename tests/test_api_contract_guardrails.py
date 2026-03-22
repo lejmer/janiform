@@ -133,8 +133,7 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
                 "validate_market_data_calibration_request",
             ],
             "janiform.calibration.market_data.ingestion": [
-                "LoadedMarketDataCalibrationInputs",
-                "load_market_data_calibration_inputs",
+                "LoadedMarketDataSourceSummary",
             ],
             "janiform.calibration.market_data.translation": [
                 "MarketDataTranslationResult",
@@ -162,15 +161,12 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
             ],
             "janiform.calibration.sessions": [
                 "MarketDataSessionResolution",
-                "resolve_market_data_session_configuration",
             ],
             "janiform.calibration.sessions.contracts": [
                 "MarketDataSessionRegularWindow",
                 "MarketDataSessionResolution",
             ],
             "janiform.calibration.sessions.resolution": [
-                "ResolvedMarketDataSession",
-                "resolve_market_data_session_configuration",
             ],
             "janiform.calibration.staged": [
                 "StagedCalibrationExecutionInput",

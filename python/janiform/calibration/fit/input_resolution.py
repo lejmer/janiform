@@ -24,6 +24,7 @@ _GENERIC_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "timestamp_utc",
         "event_timestamp_utc",
         "event_timestamp",
+        "time",
         "timestamp_microseconds",
         "time_microseconds",
         "ts_microseconds",
@@ -33,7 +34,6 @@ _GENERIC_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "trade_time",
         "exchange_timestamp",
         "datetime",
-        "time",
     ),
     "price": (
         "price",

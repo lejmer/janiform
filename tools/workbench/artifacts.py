@@ -21,6 +21,8 @@ class WorkbenchArtifacts:
     source_path: Path
     source_kind: str
     metadata: dict[str, Any]
+    fit_report_payload: dict[str, Any] | None
+    model_payload: dict[str, Any] | None
     observed_targets: dict[str, Any]
     candidate_frontier: dict[str, Any]
     coarse_tick_consistency: dict[str, Any]
@@ -102,6 +104,28 @@ def build_summary_payload(artifacts: WorkbenchArtifacts) -> dict[str, Any]:
 
 
 def _load_from_run_directory(run_directory: Path) -> WorkbenchArtifacts:
+    fit_report_path = run_directory / "fit_report.json"
+    model_path = run_directory / "model.json"
+    model_payload = _load_json_file(model_path) if model_path.is_file() else None
+    if fit_report_path.is_file():
+        payload = _load_json_file(fit_report_path)
+        bundle = _extract_diagnostic_bundle(payload)
+        if bundle is None:
+            raise ValueError(
+                "fit_report.json does not contain a diagnostic_artifact_bundle for workbench loading"
+            )
+
+        metadata = _extract_metadata_from_document(payload)
+        metadata["run_directory"] = str(run_directory)
+        return _build_workbench_artifacts(
+            source_path=run_directory,
+            source_kind="run_directory",
+            metadata=metadata,
+            fit_report_payload=payload,
+            model_payload=model_payload,
+            bundle=bundle,
+        )
+
     diagnostics_directory = (
         run_directory / "diagnostics"
         if (run_directory / "diagnostics").is_dir()
@@ -116,6 +140,8 @@ def _load_from_run_directory(run_directory: Path) -> WorkbenchArtifacts:
         source_path=run_directory,
         source_kind="run_directory",
         metadata={"run_directory": str(run_directory)},
+        fit_report_payload=None,
+        model_payload=model_payload,
         bundle=bundle,
     )
 
@@ -128,6 +154,8 @@ def _load_from_document(document_path: Path) -> WorkbenchArtifacts:
             source_path=document_path,
             source_kind="json_document",
             metadata=_extract_metadata_from_document(payload),
+            fit_report_payload=payload,
+            model_payload=None,
             bundle=bundle,
         )
 
@@ -150,12 +178,16 @@ def _build_workbench_artifacts(
     source_path: Path,
     source_kind: str,
     metadata: dict[str, Any],
+    fit_report_payload: dict[str, Any] | None,
+    model_payload: dict[str, Any] | None,
     bundle: dict[str, Any],
 ) -> WorkbenchArtifacts:
     return WorkbenchArtifacts(
         source_path=source_path,
         source_kind=source_kind,
         metadata=metadata,
+        fit_report_payload=fit_report_payload,
+        model_payload=model_payload,
         observed_targets=_require_artifact_mapping(bundle, "observed_targets"),
         candidate_frontier=_require_artifact_mapping(bundle, "candidate_frontier"),
         coarse_tick_consistency=_require_artifact_mapping(bundle, "coarse_tick_consistency"),

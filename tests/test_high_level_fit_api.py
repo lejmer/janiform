@@ -13,7 +13,6 @@ from pyarrow import parquet
 import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.calibration.fit.model as fit_model_module
 import janiform.calibration.market_data.ingestion as market_data_ingestion_module
-import janiform.calibration.market_data.translation as market_data_translation_module
 from janiform.calibration import CalibrationValidationError
 from janiform._timestamps import datetime_to_utc_nanos
 from janiform.calibration.fit import (
@@ -144,15 +143,15 @@ def test_prepare_fit_workflow_uses_column_only_parquet_schema_discovery(
     class _StopAfterInference(Exception):
         pass
 
-    def _unexpected_load_source_rows(*args: object, **kwargs: object) -> NoReturn:
+    def _unexpected_read_table(*args: object, **kwargs: object) -> NoReturn:
         del args, kwargs
-        raise AssertionError("fit input inference should not materialize full source rows")
+        raise AssertionError("fit input inference should not materialize a parquet table")
 
     def _stop_after_inference(*args: object, **kwargs: object) -> NoReturn:
         del args, kwargs
         raise _StopAfterInference()
 
-    monkeypatch.setattr(market_data_ingestion_module, "_load_source_rows", _unexpected_load_source_rows)
+    monkeypatch.setattr(market_data_ingestion_module.parquet, "read_table", _unexpected_read_table)
     monkeypatch.setattr(
         fit_estimator_module,
         "translate_market_data_request_to_staged_execution_input",
@@ -1128,30 +1127,23 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
     )
 
     translate_call_count = 0
-    extra_python_load_count = 0
-    python_translation_load_count = 0
+    session_resolution_load_count = 0
     original_translate_request = (
         fit_estimator_module.translate_market_data_request_to_staged_execution_input
     )
-    original_python_translation_load = (
-        market_data_translation_module._load_market_data_translation_inputs
+    original_session_resolution = (
+        fit_estimator_module.resolve_market_data_session_configuration_from_source_file
     )
-    original_load_market_data = fit_estimator_module.load_market_data_calibration_inputs
 
     def counting_translate_request(*args, **kwargs):
         nonlocal translate_call_count
         translate_call_count += 1
         return original_translate_request(*args, **kwargs)
 
-    def counting_python_translation_load(*args, **kwargs):
-        nonlocal python_translation_load_count
-        python_translation_load_count += 1
-        return original_python_translation_load(*args, **kwargs)
-
-    def unexpected_extra_python_load(*args, **kwargs):
-        nonlocal extra_python_load_count
-        extra_python_load_count += 1
-        return original_load_market_data(*args, **kwargs)
+    def counting_session_resolution(*args, **kwargs):
+        nonlocal session_resolution_load_count
+        session_resolution_load_count += 1
+        return original_session_resolution(*args, **kwargs)
 
     monkeypatch.setattr(
         fit_estimator_module,
@@ -1159,14 +1151,9 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
         counting_translate_request,
     )
     monkeypatch.setattr(
-        market_data_translation_module,
-        "_load_market_data_translation_inputs",
-        counting_python_translation_load,
-    )
-    monkeypatch.setattr(
         fit_estimator_module,
-        "load_market_data_calibration_inputs",
-        unexpected_extra_python_load,
+        "resolve_market_data_session_configuration_from_source_file",
+        counting_session_resolution,
     )
     monkeypatch.setattr(
         fit_estimator_module,
@@ -1194,8 +1181,7 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
     )
 
     assert translate_call_count == 1
-    assert python_translation_load_count == 0
-    assert extra_python_load_count == 0
+    assert session_resolution_load_count == 0
 
 
 def test_high_level_fit_progress_splits_loading_and_translation_steps(

@@ -163,5 +163,73 @@ def test_workbench_loader_reads_fit_report_bundle(tmp_path: Path) -> None:
     assert artifacts.selected_candidate_id == "candidate-002"
 
 
+def test_workbench_loader_reads_fit_artifact_directory(tmp_path: Path) -> None:
+    report_path = tmp_path / "fit_report.json"
+    _write_json(
+        report_path,
+        {
+            "run_id": "run-003",
+            "staged_response": {
+                "run_id": "run-003",
+                "status": "success",
+                "execution_mode": "memory",
+                "diagnostic_artifact_bundle": {
+                    "observed_targets": {
+                        "schema_version": "calibration.diagnostics.observed_targets.v1",
+                        "target_builder_version": "test",
+                        "targets": [],
+                    },
+                    "candidate_frontier": {
+                        "schema_version": "calibration.diagnostics.candidate_frontier.v1",
+                        "frontier_entries": [],
+                    },
+                    "coarse_tick_consistency": {
+                        "schema_version": "calibration.diagnostics.coarse_tick_consistency.v1",
+                        "metrics": [],
+                    },
+                    "selection_rationale": {
+                        "schema_version": "calibration.diagnostics.selection_rationale.v1",
+                        "decision": {
+                            "selection_stage": "joint_refinement",
+                            "selected_candidate_id": "candidate-003",
+                            "selection_policy": "test",
+                            "validity_screened_candidate_count": 0,
+                            "admissible_candidate_count": 0,
+                            "pareto_frontier_count": 0,
+                            "tie_break_candidate_count": 0,
+                            "decisive_metric_ids": [],
+                            "rationale": "test",
+                        },
+                    },
+                    "simulation_summary": {
+                        "schema_version": "calibration.diagnostics.simulation_summary.v1",
+                        "summaries": [],
+                    },
+                    "search_surface_manifest": {
+                        "schema_version": "calibration.diagnostics.search_surface_manifest.v1",
+                        "surfaces": [],
+                    },
+                    "runtime_profile": {
+                        "schema_version": "calibration.diagnostics.runtime_profile.v1",
+                        "cpu_count": 24,
+                        "entries": [],
+                    },
+                },
+            },
+        },
+    )
+    (tmp_path / "model.json").write_text("{}", encoding="utf-8")
+
+    artifacts = load_workbench_artifacts(tmp_path)
+
+    assert artifacts.source_path == tmp_path
+    assert artifacts.source_kind == "run_directory"
+    assert artifacts.fit_report_payload is not None
+    assert artifacts.model_payload == {}
+    assert artifacts.metadata["run_id"] == "run-003"
+    assert artifacts.metadata["run_directory"] == str(tmp_path)
+    assert artifacts.selected_candidate_id == "candidate-003"
+
+
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")

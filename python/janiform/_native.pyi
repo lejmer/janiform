@@ -895,7 +895,14 @@ def preprocess_market_data_translation_request(
 
 def load_and_preprocess_market_data_translation_request(
     loading_request: object,
-    calendar_registry: CalendarRegistry,
+) -> object: ...
+
+
+def resolve_market_data_session_configuration_from_source_file(
+    session_configuration: object,
+    tick_data_source: object,
+    tick_data_column_mapping: object,
+    normalization_policy: object,
 ) -> object: ...
 
 

@@ -37,9 +37,9 @@ from ..market_data.contracts import (
     CalibrationSessionConfigurationInput,
     CalibrationTickDataColumnMapping,
 )
-from ..market_data.ingestion import load_market_data_calibration_inputs
 from ..market_data.request import MarketDataCalibrationRequest
 from ..market_data.translation import (
+    resolve_market_data_session_configuration_from_source_file,
     translate_market_data_request_to_staged_execution_input,
 )
 from ..market_data.workflow import (
@@ -69,7 +69,6 @@ from ..sessions.resolution import (
     _build_recurring_closed_windows,
     _looks_like_continuous_weekday_template,
     _regular_session_windows_from_exchange_artifact,
-    resolve_market_data_session_configuration,
 )
 from ..staged.contracts import CalibrationStageExecutionStatus
 from ..staged.runtime import _run_staged_calibration_with_raw_payload
@@ -519,15 +518,13 @@ class JaniformEstimator:
             normalization_policy=normalization_policy,
             output_preferences=self._output_preferences,
         )
-        progress.update(detail="loading tick data for session inference")
-        loaded_inputs = load_market_data_calibration_inputs(request)
-        progress.update(detail="resolving inferred session")
-        resolved_session = resolve_market_data_session_configuration(
-            request,
-            loaded_inputs.tick_data,
+        progress.update(detail="resolving session from market data")
+        return resolve_market_data_session_configuration_from_source_file(
+            session_configuration=request.session_configuration,
+            tick_data_source=request.tick_data_source,
+            tick_data_column_mapping=request.column_mapping.tick_data,
+            normalization_policy=request.normalization_policy,
         )
-
-        return resolved_session.session_resolution
 
     def _requires_session_inference(self) -> bool:
         if self._session_reference is not None:

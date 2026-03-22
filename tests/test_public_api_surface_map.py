@@ -545,15 +545,7 @@ def test_calibration_market_data_public_ownership_submodules_are_supported_domai
         "validate_market_data_calibration_request",
     }
     assert set(calibration_market_data_ingestion_module.__all__) == {
-        "LoadedKnownNewsSource",
-        "LoadedMarketDataCalibrationInputs",
         "LoadedMarketDataSourceSummary",
-        "LoadedOptionSurfaceSource",
-        "LoadedTickDataSource",
-        "NormalizedKnownNewsRecord",
-        "NormalizedOptionSurfaceRecord",
-        "NormalizedTickDataRecord",
-        "load_market_data_calibration_inputs",
     }
     assert set(calibration_market_data_translation_module.__all__) == {
         "MarketDataTranslationDiagnostics",
@@ -686,7 +678,6 @@ def test_calibration_sessions_public_submodule_is_supported_domain_import() -> N
         "MarketDataSessionRecurringClosedWindow",
         "MarketDataSessionRegularWindow",
         "MarketDataSessionResolution",
-        "resolve_market_data_session_configuration",
     }
 
     assert set(calibration_sessions_module.__all__) == expected_exports
@@ -705,10 +696,7 @@ def test_calibration_sessions_public_ownership_submodules_are_supported_domain_i
         "MarketDataSessionRegularWindow",
         "MarketDataSessionResolution",
     }
-    assert set(calibration_sessions_resolution_module.__all__) == {
-        "ResolvedMarketDataSession",
-        "resolve_market_data_session_configuration",
-    }
+    assert set(calibration_sessions_resolution_module.__all__) == set()
 
 
 def test_calibration_root_and_public_submodules_share_supported_symbols() -> None:

@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "c6ad7cdd7f8f77b9d2bffe7fc43aa890369f634b34bbd453431ee083a501a823",
+  "approved_snapshot_sha256": "44b419c87d30e911e1c27fbca77ea28b5423936494b81d74473caa8145befb86",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -455,6 +455,24 @@
       "rationale": "Market-data translation now keeps the full dataset boundary inside Rust and exposes only execution-ready artifacts, diagnostics, provenance, and fit-level summaries to Python, so the approved snapshot must drop raw loaded-input records from the public translation result and record the new summary fields and keyword cpu_count override.",
       "snapshot_sha256": "c6ad7cdd7f8f77b9d2bffe7fc43aa890369f634b34bbd453431ee083a501a823",
       "summary": "Approve the Rust-owned market-data translation result boundary."
+    },
+    {
+      "approved_on": "2026-03-21",
+      "docs_updated": [
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "The old Python-owned full-dataset ingestion and session-resolution APIs are no longer part of the supported public surface now that source loading, session inference, and preprocessing live on the Rust boundary, so the approved snapshot must stop exporting those record-heavy contracts and workflow helpers.",
+      "snapshot_sha256": "f61dd3f3afaed5b79d84a224fd2f8ccbd1cc7c6289f1f6f814d8d7c8ee4e2de6",
+      "summary": "Remove the deprecated Python full-dataset ingestion and session-resolution workflow exports."
+    },
+    {
+      "approved_on": "2026-03-21",
+      "docs_updated": [
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "The remaining Python cleanup leaves janiform.calibration.sessions.resolution as a helper-only module with no schema-owning workflow boundary, so the approved snapshot must stop recording stale private schema metadata there and match the trimmed source-loading and session-helper implementation.",
+      "snapshot_sha256": "44b419c87d30e911e1c27fbca77ea28b5423936494b81d74473caa8145befb86",
+      "summary": "Approve the helper-only cleanup for Python session-resolution and source-loading modules."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_2",

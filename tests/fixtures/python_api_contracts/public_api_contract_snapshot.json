@@ -1399,36 +1399,11 @@
     },
     "janiform.calibration.market_data.ingestion": {
       "exports": [
-        "LoadedKnownNewsSource",
-        "LoadedMarketDataCalibrationInputs",
-        "LoadedMarketDataSourceSummary",
-        "LoadedOptionSurfaceSource",
-        "LoadedTickDataSource",
-        "NormalizedKnownNewsRecord",
-        "NormalizedOptionSurfaceRecord",
-        "NormalizedTickDataRecord",
-        "load_market_data_calibration_inputs"
+        "LoadedMarketDataSourceSummary"
       ],
       "module_name": "janiform.calibration.market_data.ingestion",
       "schema_identifiers": [],
       "symbols": {
-        "LoadedKnownNewsSource": {
-          "field_names": [
-            "records",
-            "summary"
-          ],
-          "kind": "contract_model",
-          "signature": "(records: 'tuple[NormalizedKnownNewsRecord, ...]', summary: 'LoadedMarketDataSourceSummary') -> 'None'"
-        },
-        "LoadedMarketDataCalibrationInputs": {
-          "field_names": [
-            "tick_data",
-            "option_surface",
-            "known_news"
-          ],
-          "kind": "contract_model",
-          "signature": "(tick_data: 'LoadedTickDataSource', option_surface: 'Optional[LoadedOptionSurfaceSource]' = None, known_news: 'Optional[LoadedKnownNewsSource]' = None) -> 'None'"
-        },
         "LoadedMarketDataSourceSummary": {
           "field_names": [
             "path",
@@ -1444,65 +1419,6 @@
           ],
           "kind": "contract_model",
           "signature": "(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', source_row_count: 'int', retained_row_count: 'int', dropped_duplicate_row_count: 'int', sort_records_by_timestamp: 'bool', applied_timestamp_timezone: 'Optional[str]', canonical_value_field: 'Optional[str]' = None, value_mapping_policy: 'Optional[str]' = None) -> 'None'"
-        },
-        "LoadedOptionSurfaceSource": {
-          "field_names": [
-            "records",
-            "summary"
-          ],
-          "kind": "contract_model",
-          "signature": "(records: 'tuple[NormalizedOptionSurfaceRecord, ...]', summary: 'LoadedMarketDataSourceSummary') -> 'None'"
-        },
-        "LoadedTickDataSource": {
-          "field_names": [
-            "records",
-            "summary"
-          ],
-          "kind": "contract_model",
-          "signature": "(records: 'tuple[NormalizedTickDataRecord, ...]', summary: 'LoadedMarketDataSourceSummary') -> 'None'"
-        },
-        "NormalizedKnownNewsRecord": {
-          "field_names": [
-            "event_timestamp",
-            "event_identifier",
-            "source_row_number"
-          ],
-          "kind": "contract_model",
-          "signature": "(event_timestamp: 'datetime', event_identifier: 'Optional[str]', source_row_number: 'int') -> 'None'"
-        },
-        "NormalizedOptionSurfaceRecord": {
-          "field_names": [
-            "quote_timestamp",
-            "expiry_timestamp",
-            "strike",
-            "option_type",
-            "quote_value",
-            "mid_price",
-            "bid_price",
-            "ask_price",
-            "implied_volatility",
-            "source_row_number"
-          ],
-          "kind": "contract_model",
-          "signature": "(quote_timestamp: 'datetime', expiry_timestamp: 'datetime', strike: 'float', option_type: 'str', quote_value: 'float', mid_price: 'Optional[float]', bid_price: 'Optional[float]', ask_price: 'Optional[float]', implied_volatility: 'Optional[float]', source_row_number: 'int') -> 'None'"
-        },
-        "NormalizedTickDataRecord": {
-          "field_names": [
-            "timestamp",
-            "price",
-            "trade_price",
-            "trade_sign",
-            "bid_price",
-            "ask_price",
-            "close_price",
-            "source_row_number"
-          ],
-          "kind": "contract_model",
-          "signature": "(timestamp: 'datetime', price: 'Optional[float]', trade_price: 'Optional[float]', trade_sign: 'Optional[CalibrationTradeSign]', bid_price: 'Optional[float]', ask_price: 'Optional[float]', close_price: 'Optional[float]', source_row_number: 'int') -> 'None'"
-        },
-        "load_market_data_calibration_inputs": {
-          "kind": "function",
-          "signature": "(request: 'MarketDataCalibrationRequest') -> 'LoadedMarketDataCalibrationInputs'"
         }
       }
     },
@@ -2963,8 +2879,7 @@
         "CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_SCHEMA_VERSION",
         "MarketDataSessionRecurringClosedWindow",
         "MarketDataSessionRegularWindow",
-        "MarketDataSessionResolution",
-        "resolve_market_data_session_configuration"
+        "MarketDataSessionResolution"
       ],
       "module_name": "janiform.calibration.sessions",
       "schema_identifiers": [
@@ -3030,10 +2945,6 @@
           ],
           "kind": "contract_model",
           "signature": "(schema_version: 'str', resolution_kind: 'str', selected_policy_id: 'str', manual_override_applied: 'bool', exchange_code: 'str', exchange_name: 'str', resolved_timezone_name: 'str', timezone_source: 'str', open_session_duration_hours_per_week: 'float', confidence_score: 'float', confidence_label: 'str', regular_session_windows: 'tuple[MarketDataSessionRegularWindow, ...]', recurring_closed_windows: 'tuple[MarketDataSessionRecurringClosedWindow, ...]', reasons: 'tuple[str, ...]', ambiguity_warnings: 'tuple[str, ...]', metadata_discrepancies: 'tuple[str, ...]', resolved_session_definition_json: 'str') -> 'None'"
-        },
-        "resolve_market_data_session_configuration": {
-          "kind": "function",
-          "signature": "(request: 'MarketDataCalibrationRequest', tick_data: 'LoadedTickDataSource') -> 'ResolvedMarketDataSession'"
         }
       }
     },
@@ -3114,33 +3025,10 @@
       }
     },
     "janiform.calibration.sessions.resolution": {
-      "exports": [
-        "ResolvedMarketDataSession",
-        "resolve_market_data_session_configuration"
-      ],
+      "exports": [],
       "module_name": "janiform.calibration.sessions.resolution",
-      "schema_identifiers": [
-        {
-          "name": "CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_SCHEMA_VERSION",
-          "public_exported": false,
-          "value": "calibration.market_data.session_resolution.v1"
-        }
-      ],
-      "symbols": {
-        "ResolvedMarketDataSession": {
-          "field_names": [
-            "calendar_registry",
-            "session_resolution",
-            "session_definition_path"
-          ],
-          "kind": "contract_model",
-          "signature": "(calendar_registry: 'CalendarRegistry', session_resolution: 'MarketDataSessionResolution', session_definition_path: 'Optional[str]') -> 'None'"
-        },
-        "resolve_market_data_session_configuration": {
-          "kind": "function",
-          "signature": "(request: 'MarketDataCalibrationRequest', tick_data: 'LoadedTickDataSource') -> 'ResolvedMarketDataSession'"
-        }
-      }
+      "schema_identifiers": [],
+      "symbols": {}
     },
     "janiform.calibration.staged": {
       "exports": [

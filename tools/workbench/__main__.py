@@ -9,6 +9,7 @@ def main() -> int:
     )
     argument_parser.add_argument(
         "input",
+        nargs="?",
         help="Path to a run directory, fit report JSON, staged response JSON, or diagnostics JSON file.",
     )
     arguments = argument_parser.parse_args()

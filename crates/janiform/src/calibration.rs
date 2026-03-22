@@ -4,7 +4,9 @@ pub use janiform_calibration_artifacts::CalibrationStage;
 pub use janiform_calibration_artifacts::ReturnComponentsStageFittedParameters;
 pub use janiform_calibration_artifacts::SurpriseNewsDeterministicIntensityProfile;
 pub use janiform_calibration_runtime::{
-    MarketDataLoadingOutput, MarketDataLoadingRequest,
+    MarketDataInputFileReference, MarketDataLoadingOutput, MarketDataLoadingRequest,
+    MarketDataNormalizationPolicy, MarketDataSessionConfiguration,
+    MarketDataSessionResolutionPayload, MarketDataTickDataColumnMapping,
     CalibrationMemoryCheckpointStore, CalibrationReturnComponentsActivityContextPayload,
     CalibrationReturnComponentsStageCandidateGenerationInput, CalibrationStagedExecutionInput,
     CalibrationStagedRunReport, CalibrationStagedRunStageReport,
@@ -15,6 +17,7 @@ pub use janiform_calibration_runtime::{
     evaluate_return_components_exact_candidate_from_bridge,
     evolve_hawkes_state_for_calibration_step, load_hourly_factor_contract_for_calibration,
     load_and_preprocess_market_data_translation_request,
+    resolve_market_data_session_configuration_from_source_file,
     preprocess_market_data_translation_request,
     project_hawkes_intensities_for_calibration_interval,
     run_staged_calibration_from_execution_input,
