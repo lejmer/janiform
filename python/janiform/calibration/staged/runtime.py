@@ -1,5 +1,8 @@
+from __future__ import annotations
+
+from collections.abc import Callable
 from types import ModuleType
-from typing import Any
+from typing import Any, Optional
 
 from .inputs import (
     StagedCalibrationExecutionInput,
@@ -23,6 +26,19 @@ def _run_staged_calibration_with_raw_payload(
     *,
     calendar_registry: CalendarRegistry,
 ) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
+    return _run_staged_calibration_with_raw_payload_and_events(
+        execution_input,
+        calendar_registry=calendar_registry,
+        event_callback=None,
+    )
+
+
+def _run_staged_calibration_with_raw_payload_and_events(
+    execution_input: StagedCalibrationExecutionInput,
+    *,
+    calendar_registry: CalendarRegistry,
+    event_callback: Optional[Callable[[dict[str, Any]], None]],
+) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
     if not isinstance(execution_input, StagedCalibrationExecutionInput):
         raise _calibration_error("execution_input", "must be a StagedCalibrationExecutionInput")
     if not isinstance(calendar_registry, CalendarRegistry):
@@ -43,10 +59,17 @@ def _run_staged_calibration_with_raw_payload(
         ) from e
 
     try:
-        raw_response_payload = native.run_staged_calibration(
-            normalized_execution_input.to_payload(),
-            calendar_registry._native_registry,
-        )
+        if event_callback is None:
+            raw_response_payload = native.run_staged_calibration(
+                normalized_execution_input.to_payload(),
+                calendar_registry._native_registry,
+            )
+        else:
+            raw_response_payload = native.run_staged_calibration_with_events(
+                normalized_execution_input.to_payload(),
+                calendar_registry._native_registry,
+                event_callback,
+            )
     except Exception as e:
         if native_exception_matches(native, e, "CalibrationExecutionError"):
             raise _calibration_execution_error(

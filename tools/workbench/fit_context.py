@@ -1,5 +1,5 @@
 import csv
-
+import math
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
@@ -43,6 +43,7 @@ class WorkbenchObservedSimulationComparison:
     simulation_seed: int
     observed_rows: tuple[dict[str, Any], ...]
     simulated_rows: tuple[dict[str, Any], ...]
+    simulated_coarse_rows_15m: tuple[dict[str, Any], ...]
 
 
 def load_fit_context(artifacts: WorkbenchArtifacts) -> Optional[WorkbenchFitContext]:
@@ -65,6 +66,7 @@ def load_fit_context(artifacts: WorkbenchArtifacts) -> Optional[WorkbenchFitCont
 
     model = JaniformModel.load(model_path)
     tick_data_source = _load_source_table(raw_tick_summary)
+
     observed_tick_rows = _normalize_tick_rows(
         raw_rows=tick_data_source.rows,
         model=model,
@@ -114,12 +116,14 @@ def build_observed_simulation_comparison(
         observed_range_start_utc=fit_context.observed_range_start_utc,
         observed_range_end_utc=fit_context.observed_range_end_utc,
     )
+
     simulation_result = fit_context.model.simulate(
         seed=seed,
         start_time_utc=simulation_start_utc,
         horizon_interval_count=horizon_interval_count,
         silent=True,
     )
+
     simulated_rows = _filter_rows_to_timestamp_window(
         rows=tuple(
             cast(list[dict[str, Any]], simulation_result.to_pandas().to_dict(orient="records"))
@@ -127,6 +131,7 @@ def build_observed_simulation_comparison(
         range_start_utc=fit_context.observed_range_start_utc,
         range_end_utc=fit_context.observed_range_end_utc,
     )
+
     canonical_observed_rows = _canonicalize_comparison_rows(
         rows=fit_context.observed_tick_rows,
         model=fit_context.model,
@@ -136,11 +141,41 @@ def build_observed_simulation_comparison(
         model=fit_context.model,
     )
 
+    coarse_simulation_start_utc, coarse_horizon_interval_count = (
+        _simulation_request_window_for_interval(
+            observed_range_start_utc=fit_context.observed_range_start_utc,
+            observed_range_end_utc=fit_context.observed_range_end_utc,
+            interval=timedelta(minutes=15),
+        )
+    )
+
+    coarse_simulation_result = fit_context.model.simulate(
+        seed=seed,
+        start_time_utc=coarse_simulation_start_utc,
+        horizon_interval_count=coarse_horizon_interval_count,
+        interval="15m",
+        silent=True,
+    )
+
+    coarse_simulated_rows = _filter_rows_to_timestamp_window(
+        rows=tuple(
+            cast(list[dict[str, Any]], coarse_simulation_result.to_pandas().to_dict(orient="records"))
+        ),
+        range_start_utc=fit_context.observed_range_start_utc,
+        range_end_utc=fit_context.observed_range_end_utc,
+    )
+
+    canonical_coarse_simulated_rows = _canonicalize_comparison_rows(
+        rows=coarse_simulated_rows,
+        model=fit_context.model,
+    )
+
     return WorkbenchObservedSimulationComparison(
         fit_context=fit_context,
         simulation_seed=seed,
         observed_rows=canonical_observed_rows,
         simulated_rows=canonical_simulated_rows,
+        simulated_coarse_rows_15m=canonical_coarse_simulated_rows,
     )
 
 
@@ -149,12 +184,44 @@ def _simulation_request_window_for_observed_range(
     observed_range_start_utc: datetime,
     observed_range_end_utc: datetime,
 ) -> tuple[datetime, int]:
-    simulation_start_utc = _floor_to_hour_utc(observed_range_start_utc)
-    simulation_end_utc = _end_of_hour_covering_timestamp_utc(observed_range_end_utc)
+    return _simulation_request_window_for_interval(
+        observed_range_start_utc=observed_range_start_utc,
+        observed_range_end_utc=observed_range_end_utc,
+        interval=timedelta(hours=1),
+    )
+
+
+def _simulation_request_window_for_interval(
+    *,
+    observed_range_start_utc: datetime,
+    observed_range_end_utc: datetime,
+    interval: timedelta,
+) -> tuple[datetime, int]:
+    normalized_start_utc = observed_range_start_utc.astimezone(UTC)
+    normalized_end_utc = observed_range_end_utc.astimezone(UTC)
+
+    interval_seconds = interval.total_seconds()
+    start_seconds = normalized_start_utc.timestamp()
+    end_seconds = normalized_end_utc.timestamp()
+
+    simulation_start_utc = datetime.fromtimestamp(
+        math.floor(start_seconds / interval_seconds) * interval_seconds,
+        tz=UTC,
+    )
+    simulation_end_utc = datetime.fromtimestamp(
+        (
+            math.ceil(end_seconds / interval_seconds) * interval_seconds
+            if (end_seconds % interval_seconds) != 0.0
+            else end_seconds + interval_seconds
+        ),
+        tz=UTC,
+    )
+
     horizon_interval_count = max(
         1,
-        int((simulation_end_utc - simulation_start_utc) / timedelta(hours=1)),
+        int((simulation_end_utc - simulation_start_utc) / interval),
     )
+
     return simulation_start_utc, horizon_interval_count
 
 
@@ -200,6 +267,7 @@ def _canonicalize_comparison_rows(
     canonical_rows: list[dict[str, Any]] = []
     for row in rows:
         canonical_row = dict(row)
+
         timestamp_value = _resolve_timestamp_value(row, timestamp_column=timestamp_column)
         if timestamp_value is not None:
             canonical_row["timestamp_utc"] = parse_timestamp_value(timestamp_value).astimezone(UTC)
@@ -253,8 +321,10 @@ def _resolve_price_value(
         case "bid_ask_midpoint":
             if bid_column is None or ask_column is None:
                 return None
+
             bid_value = row.get(bid_column)
             ask_value = row.get(ask_column)
+
             if isinstance(bid_value, int | float) and isinstance(ask_value, int | float):
                 return (float(bid_value) + float(ask_value)) / 2.0
         case _:
@@ -303,6 +373,7 @@ def _resolve_fit_artifact_paths(source_path: Path) -> Optional[tuple[Path, Path]
     for candidate_directory in candidate_directories:
         model_path = candidate_directory / "model.json"
         fit_report_path = candidate_directory / "fit_report.json"
+
         if model_path.is_file() and fit_report_path.is_file():
             return model_path, fit_report_path
 
@@ -310,6 +381,7 @@ def _resolve_fit_artifact_paths(source_path: Path) -> Optional[tuple[Path, Path]
         model_path = source_path.with_name("model.json")
         if model_path.is_file():
             return model_path, source_path
+
     if source_path.is_file() and source_path.name == "model.json":
         fit_report_path = source_path.with_name("fit_report.json")
         if fit_report_path.is_file():
@@ -331,7 +403,9 @@ def _load_json_object(path: Path) -> dict[str, Any]:
 def _load_source_table(raw_summary: dict[str, Any]) -> WorkbenchSourceTable:
     source_path = Path(cast(str, raw_summary["path"])).expanduser().resolve()
     file_format = cast(str, raw_summary["file_format"])
+
     rows = _load_source_rows(source_path=source_path, file_format=file_format)
+
     column_names = tuple(rows[0].keys()) if len(rows) > 0 else ()
 
     return WorkbenchSourceTable(
@@ -363,10 +437,12 @@ def _normalize_tick_rows(
 ) -> tuple[dict[str, Any], ...]:
     input_inference = cast(dict[str, Any], model.metadata["input_inference"])
     price_columns = cast(dict[str, Any], input_inference["tick_price_columns"])
+
     normalization_policy = cast(
         dict[str, Any],
         preparation_provenance["normalization_policy"],
     )
+
     timestamp_column = cast(str, input_inference["timestamp_column"])
     timezone_name = cast(str, input_inference["timestamp_timezone"])
     tick_price_input_policy = cast(Optional[str], input_inference["tick_price_input_policy"])
@@ -374,6 +450,7 @@ def _normalize_tick_rows(
     trade_sign_column = cast(Optional[str], price_columns["trade_sign_column"])
     duplicate_record_policy = cast(Optional[str], normalization_policy.get("duplicate_record_policy"))
     sort_records_by_timestamp = bool(normalization_policy.get("sort_records_by_timestamp", True))
+
     normalized_timezone = _resolve_timezone(timezone_name)
 
     normalized_entries: list[tuple[datetime, int, dict[str, Any]]] = []
@@ -394,9 +471,11 @@ def _normalize_tick_rows(
         match tick_price_input_policy:
             case "explicit_price_column":
                 effective_price_column = price_column or "price"
+
                 price_value = raw_row.get(effective_price_column)
                 if price_value in (None, ""):
                     continue
+
                 output_row[effective_price_column] = float(price_value)
                 if trade_sign_column is not None:
                     output_row[trade_sign_column] = raw_row.get(trade_sign_column)
@@ -405,16 +484,19 @@ def _normalize_tick_rows(
                 ask_column = cast(Optional[str], price_columns["ask_column"])
                 if bid_column is None or ask_column is None:
                     continue
+
                 bid_price = raw_row.get(bid_column)
                 ask_price = raw_row.get(ask_column)
                 if bid_price in (None, "") or ask_price in (None, ""):
                     continue
+
                 output_row["mid_price"] = (float(bid_price) + float(ask_price)) / 2.0
             case _:
                 effective_price_column = price_column or "price"
                 price_value = raw_row.get(effective_price_column)
                 if price_value in (None, ""):
                     continue
+
                 output_row[effective_price_column] = float(price_value)
 
         normalized_entries.append((timestamp_utc, row_index, output_row))
@@ -429,6 +511,7 @@ def _normalize_tick_rows(
                 deduplicated_entries.setdefault(entry[0], entry)
             else:
                 deduplicated_entries[entry[0]] = entry
+
         normalized_entries = list(deduplicated_entries.values())
 
     return tuple(entry[2] for entry in normalized_entries)
@@ -443,6 +526,7 @@ def _observed_utc_range(
         cast(datetime, row[timestamp_column]).astimezone(UTC)
         for row in observed_tick_rows
     ]
+
     return min(observed_timestamps_utc), max(observed_timestamps_utc)
 
 

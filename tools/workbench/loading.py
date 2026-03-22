@@ -1,12 +1,14 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Optional
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from matplotlib.figure import Figure
 
 from .artifacts import WorkbenchArtifacts, load_workbench_artifacts
+from .fit_context import build_observed_simulation_comparison
 from .plot_manifest import workbench_plot_manifest
 from .plots import create_message_figure
 
@@ -23,7 +25,8 @@ class WorkbenchPlotDefinition:
     task_id: str
     tab_title: str
     detail: str
-    builder: Callable[[WorkbenchArtifacts], Figure]
+    builder: Callable[..., Figure]
+    uses_observed_simulation_comparison: bool = False
 
 
 _LOAD_ARTIFACTS_TASK = WorkbenchTaskDefinition(
@@ -31,17 +34,20 @@ _LOAD_ARTIFACTS_TASK = WorkbenchTaskDefinition(
     title="Load diagnostics bundle",
     detail="Reading the calibration run and resolving its artifact bundle.",
 )
+
 _BUILD_SUMMARY_TASK = WorkbenchTaskDefinition(
     task_id="build_summary",
     title="Build dashboard",
     detail="Preparing summary and inspection tabs.",
 )
+
 _PLOT_DEFINITIONS: tuple[WorkbenchPlotDefinition, ...] = tuple(
     WorkbenchPlotDefinition(
         task_id=manifest_entry.task_id,
         tab_title=manifest_entry.tab_title,
         detail=manifest_entry.description,
         builder=manifest_entry.builder,
+        uses_observed_simulation_comparison=manifest_entry.uses_observed_simulation_comparison,
     )
     for manifest_entry in workbench_plot_manifest()
 )
@@ -76,7 +82,7 @@ class WorkbenchLoadWorker(QObject):
 
     def __init__(self, input_path: Path) -> None:
         super().__init__()
-        self._input_path = input_path
+        self._input_path: Path = input_path
 
     def run(self) -> None:
         total_task_count = len(workbench_startup_tasks())
@@ -86,31 +92,37 @@ class WorkbenchLoadWorker(QObject):
                 task_title=_LOAD_ARTIFACTS_TASK.title,
                 detail=_LOAD_ARTIFACTS_TASK.detail,
             )
+
             self.task_state_changed.emit(
                 _LOAD_ARTIFACTS_TASK.task_id,
                 "running",
                 0,
                 total_task_count,
             )
+
             artifacts = load_workbench_artifacts(self._input_path)
+
             self.task_state_changed.emit(
                 _LOAD_ARTIFACTS_TASK.task_id,
                 "completed",
                 1,
                 total_task_count,
             )
+
             self.artifacts_ready.emit(artifacts)
 
             self._emit_activity(
                 task_title=_BUILD_SUMMARY_TASK.title,
                 detail=_BUILD_SUMMARY_TASK.detail,
             )
+
             self.task_state_changed.emit(
                 _BUILD_SUMMARY_TASK.task_id,
                 "running",
                 1,
                 total_task_count,
             )
+
             self.task_state_changed.emit(
                 _BUILD_SUMMARY_TASK.task_id,
                 "completed",
@@ -119,19 +131,34 @@ class WorkbenchLoadWorker(QObject):
             )
 
             completed_task_count = 2
+            observed_simulation_comparison: Optional[Any] = None
             for plot_definition in _PLOT_DEFINITIONS:
                 self._emit_activity(
                     task_title=f"Generate {plot_definition.tab_title}",
                     detail=plot_definition.detail,
                 )
+
                 self.task_state_changed.emit(
                     plot_definition.task_id,
                     "running",
                     completed_task_count,
                     total_task_count,
                 )
+
                 try:
-                    figure = plot_definition.builder(artifacts)
+                    if plot_definition.uses_observed_simulation_comparison:
+                        if observed_simulation_comparison is None:
+                            observed_simulation_comparison = build_observed_simulation_comparison(
+                                artifacts
+                            )
+
+                        figure = plot_definition.builder(
+                            artifacts,
+                            observed_simulation_comparison,
+                        )
+                    else:
+                        figure = plot_definition.builder(artifacts)
+
                     task_state = "completed"
                 except Exception as error:
                     figure = create_message_figure(
@@ -139,8 +166,11 @@ class WorkbenchLoadWorker(QObject):
                         str(error),
                     )
                     task_state = "failed"
+
                 self.plot_ready.emit(plot_definition.task_id, figure)
+
                 completed_task_count += 1
+
                 self.task_state_changed.emit(
                     plot_definition.task_id,
                     task_state,

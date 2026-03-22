@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Optional
 from uuid import uuid4
 
 
@@ -25,9 +25,9 @@ class WorkbenchEvent:
     occurred_at_utc: str
     run_id: str
     sequence_number: int
-    stage: str | None
-    subtask: str | None
-    evaluation_tier: str | None
+    stage: Optional[str]
+    subtask: Optional[str]
+    evaluation_tier: Optional[str]
     payload: dict[str, Any]
 
 
@@ -37,9 +37,9 @@ def build_workbench_event(
     run_id: str,
     sequence_number: int,
     payload: dict[str, Any],
-    stage: str | None = None,
-    subtask: str | None = None,
-    evaluation_tier: str | None = None,
+    stage: Optional[str] = None,
+    subtask: Optional[str] = None,
+    evaluation_tier: Optional[str] = None,
 ) -> WorkbenchEvent:
     return WorkbenchEvent(
         event_id=f"workbench_event_{uuid4().hex}",

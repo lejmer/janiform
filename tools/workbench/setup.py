@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
@@ -14,7 +15,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from janiform.calibration.fit.input_resolution import infer_high_level_fit_inputs
+from janiform.calibration.fit.input_resolution import (
+    HighLevelFitInference,
+    infer_high_level_fit_inputs,
+)
 from janiform.calibration.market_data.contracts import (
     CalibrationInputFileFormat,
     CalibrationMarketDataWorkflowScope,
@@ -30,7 +34,7 @@ class WorkbenchSetupWidget(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
-        self._latest_inference = None
+        self._latest_inference: Optional[HighLevelFitInference] = None
         self._dataset_path_edit = QLineEdit()
         self._exchange_code_edit = QLineEdit("FXSPOT")
         self._output_directory_edit = QLineEdit(str((Path.cwd() / ".janiform").resolve()))
@@ -239,7 +243,7 @@ class WorkbenchSetupWidget(QWidget):
         self,
         combo_box: QComboBox,
         columns: tuple[str, ...],
-        selected_value: str | None,
+        selected_value: Optional[str],
     ) -> None:
         combo_box.clear()
         combo_box.addItem("", None)
@@ -255,7 +259,7 @@ class WorkbenchSetupWidget(QWidget):
 
         combo_box.setCurrentIndex(0)
 
-    def _selected_combo_value(self, combo_box: QComboBox) -> str | None:
+    def _selected_combo_value(self, combo_box: QComboBox) -> Optional[str]:
         selected_value = combo_box.currentData()
         if isinstance(selected_value, str) and selected_value:
             return selected_value

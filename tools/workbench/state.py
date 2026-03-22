@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from janiform.calibration.market_data.contracts import (
     CalibrationInputFileFormat,
@@ -12,8 +12,8 @@ from janiform.calibration.market_data.contracts import (
 @dataclass(frozen=True, slots=True)
 class WorkbenchProgressModel:
     label: str
-    completed_units: int | None = None
-    total_units: int | None = None
+    completed_units: Optional[int] = None
+    total_units: Optional[int] = None
     detail: str = ""
     is_indeterminate: bool = True
 
@@ -24,29 +24,29 @@ class WorkbenchRunSetup:
     exchange_code: str
     workflow_scope: CalibrationMarketDataWorkflowScope
     output_directory: Path
-    file_format: CalibrationInputFileFormat | None = None
-    timestamp_column: str | None = None
-    tick_price_input_policy: CalibrationTickPriceInputPolicy | None = None
-    price_column: str | None = None
-    bid_column: str | None = None
-    ask_column: str | None = None
+    file_format: Optional[CalibrationInputFileFormat] = None
+    timestamp_column: Optional[str] = None
+    tick_price_input_policy: Optional[CalibrationTickPriceInputPolicy] = None
+    price_column: Optional[str] = None
+    bid_column: Optional[str] = None
+    ask_column: Optional[str] = None
     timestamp_timezone: str = "UTC"
-    run_id: str | None = None
+    run_id: Optional[str] = None
 
 
 @dataclass(slots=True)
 class WorkbenchSessionState:
     workspace_root: Path
-    opened_input_path: Path | None = None
-    opened_run_id: str | None = None
+    opened_input_path: Optional[Path] = None
+    opened_run_id: Optional[str] = None
     mode: str = "setup"
     status_message: str = ""
-    last_error_message: str | None = None
+    last_error_message: Optional[str] = None
 
 
 @dataclass(slots=True)
 class WorkbenchSetupState:
-    run_setup: WorkbenchRunSetup | None = None
+    run_setup: Optional[WorkbenchRunSetup] = None
     available_columns: tuple[str, ...] = ()
     inference_summary: dict[str, Any] = field(default_factory=dict)
     warnings: tuple[str, ...] = ()
@@ -55,17 +55,17 @@ class WorkbenchSetupState:
 
 @dataclass(slots=True)
 class WorkbenchRunState:
-    run_id: str | None = None
+    run_id: Optional[str] = None
     status: str = "idle"
-    started_at_utc: str | None = None
-    finished_at_utc: str | None = None
+    started_at_utc: Optional[str] = None
+    finished_at_utc: Optional[str] = None
     elapsed_seconds: float = 0.0
-    estimated_remaining_seconds: float | None = None
-    current_stage: str | None = None
-    current_subtask: str | None = None
-    current_evaluation_tier: str | None = None
-    current_candidate_family: str | None = None
-    current_batch_label: str | None = None
+    estimated_remaining_seconds: Optional[float] = None
+    current_stage: Optional[str] = None
+    current_subtask: Optional[str] = None
+    current_evaluation_tier: Optional[str] = None
+    current_candidate_family: Optional[str] = None
+    current_batch_label: Optional[str] = None
     overall_progress: WorkbenchProgressModel = field(
         default_factory=lambda: WorkbenchProgressModel(label="Run")
     )
@@ -81,33 +81,33 @@ class WorkbenchRunState:
 
 @dataclass(slots=True)
 class WorkbenchCandidateState:
-    best_candidate_id: str | None = None
-    selected_candidate_id: str | None = None
+    best_candidate_id: Optional[str] = None
+    selected_candidate_id: Optional[str] = None
     candidate_count: int = 0
 
 
 @dataclass(slots=True)
 class WorkbenchPlotState:
-    selected_plot_family: str | None = None
+    selected_plot_family: Optional[str] = None
     live_update_enabled: bool = True
 
 
 @dataclass(slots=True)
 class WorkbenchCompareState:
-    left_candidate_id: str | None = None
-    right_candidate_id: str | None = None
+    left_candidate_id: Optional[str] = None
+    right_candidate_id: Optional[str] = None
     compare_mode: str = "candidate_vs_candidate"
 
 
 @dataclass(slots=True)
 class WorkbenchLabState:
-    source_candidate_id: str | None = None
+    source_candidate_id: Optional[str] = None
     reevaluation_status: str = "idle"
 
 
 @dataclass(slots=True)
 class WorkbenchExportState:
-    last_export_directory: Path | None = None
+    last_export_directory: Optional[Path] = None
     last_export_manifest: dict[str, Any] = field(default_factory=dict)
 
 

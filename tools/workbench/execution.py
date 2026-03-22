@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event, Thread
 from time import monotonic, sleep
-from typing import Any
+from typing import Any, Optional, Protocol
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
@@ -25,7 +27,9 @@ from janiform.calibration.market_data.contracts import (
     CalibrationTickDataColumnMapping,
 )
 from janiform.calibration.staged.contracts import CalibrationStageExecutionStatus
-from janiform.calibration.staged.runtime import _run_staged_calibration_with_raw_payload
+from janiform.calibration.staged.runtime import (
+    _run_staged_calibration_with_raw_payload_and_events,
+)
 from janiform._workflow_outputs import write_fit_artifacts
 from janiform.calendar import CalendarRegistry
 
@@ -42,11 +46,23 @@ class WorkbenchExecutionResult:
     artifacts: Any
 
 
-class _WorkbenchProgressAdapter:
-    def __init__(self, worker: "WorkbenchExecutionWorker") -> None:
-        self._worker = worker
+class _WorkbenchEventEmitter(Protocol):
+    def _emit_event(
+        self,
+        event_type: WorkbenchEventType,
+        *,
+        payload: dict[str, Any],
+        stage: Optional[str] = None,
+        subtask: Optional[str] = None,
+        evaluation_tier: Optional[str] = None,
+    ) -> None: ...
 
-    def update(self, *, detail: str | None = None) -> None:
+
+class _WorkbenchProgressAdapter:
+    def __init__(self, worker: _WorkbenchEventEmitter) -> None:
+        self._worker: _WorkbenchEventEmitter = worker
+
+    def update(self, *, detail: Optional[str] = None) -> None:
         if detail is None:
             return
 
@@ -60,6 +76,7 @@ class _WorkbenchProgressAdapter:
         _ = exc_type
         _ = exc_value
         _ = traceback
+
         return None
 
 
@@ -71,13 +88,14 @@ class WorkbenchExecutionWorker(QObject):
 
     def __init__(self, run_setup: WorkbenchRunSetup) -> None:
         super().__init__()
-        self._run_setup = run_setup
-        self._event_sequence_number = 0
-        self._run_id = run_setup.run_id or "workbench_pending"
-        self._heartbeat_stop = Event()
+
+        self._run_setup: WorkbenchRunSetup = run_setup
+        self._event_sequence_number: int = 0
+        self._run_id: str = run_setup.run_id or "workbench_pending"
+        self._heartbeat_stop: Event = Event()
 
     def run(self) -> None:
-        heartbeat_thread: Thread | None = None
+        heartbeat_thread: Optional[Thread] = None
         prepared_workflow: Any = None
 
         try:
@@ -88,6 +106,7 @@ class WorkbenchExecutionWorker(QObject):
                 exchange_code=self._run_setup.exchange_code,
                 silent=True,
             )
+
             initial_inference = infer_high_level_fit_inputs(
                 tick_data_path=self._run_setup.dataset_path,
                 tick_data_format=self._run_setup.file_format,
@@ -98,7 +117,9 @@ class WorkbenchExecutionWorker(QObject):
                 normalization_overrides=_normalization_overrides_from_setup(self._run_setup),
                 market_profile_configuration=estimator._resolve_market_profile_configuration(),
             )
+
             self._run_id = initial_inference.run_id
+
             self._emit_event(
                 WorkbenchEventType.RUN_STARTED,
                 payload={
@@ -119,7 +140,9 @@ class WorkbenchExecutionWorker(QObject):
                     ),
                 },
             )
+
             progress = _WorkbenchProgressAdapter(self)
+
             prepared_workflow = estimator._prepare_fit_workflow(
                 run_id=self._run_id,
                 tick_data_path=self._run_setup.dataset_path,
@@ -130,6 +153,7 @@ class WorkbenchExecutionWorker(QObject):
                 option_surface_provenance_label="option_surface",
                 progress=progress,
             )
+
             if prepared_workflow.fit_warning is not None:
                 self._emit_event(
                     WorkbenchEventType.ALERT_EMITTED,
@@ -141,23 +165,25 @@ class WorkbenchExecutionWorker(QObject):
                 )
 
             self._emit_event(
-                WorkbenchEventType.STAGE_STARTED,
-                payload={
-                    "stage_index": 1,
-                    "stage_count": 1,
-                    "stage_label": "staged_calibration",
-                    "detail": "Running staged calibration",
-                },
-                stage="staged_calibration",
+                WorkbenchEventType.SUBTASK_STARTED,
+                payload={"detail": "Running staged calibration"},
+                subtask="staged_calibration",
             )
+
             heartbeat_thread = self._start_heartbeat()
-            staged_response, raw_response_payload = _run_staged_calibration_with_raw_payload(
-                prepared_workflow.prepared.execution_input,
-                calendar_registry=CalendarRegistry(
-                    prepared_workflow.prepared.session_resolution.resolved_session_definition_json
-                ),
+
+            staged_response, raw_response_payload = (
+                _run_staged_calibration_with_raw_payload_and_events(
+                    prepared_workflow.prepared.execution_input,
+                    calendar_registry=CalendarRegistry(
+                        prepared_workflow.prepared.session_resolution.resolved_session_definition_json
+                    ),
+                    event_callback=self._forward_native_event,
+                )
             )
+
             self._heartbeat_stop.set()
+
             if heartbeat_thread.is_alive():
                 heartbeat_thread.join(timeout=1.0)
 
@@ -173,17 +199,6 @@ class WorkbenchExecutionWorker(QObject):
                 staged_response=staged_response,
                 stage_report_payloads=_raw_stage_report_payloads(raw_response_payload),
             )
-            for stage_index, stage_report in enumerate(staged_response.stage_reports, start=1):
-                self._emit_event(
-                    WorkbenchEventType.STAGE_COMPLETED,
-                    payload={
-                        "stage_index": stage_index,
-                        "stage_count": len(staged_response.stage_reports),
-                        "stage_label": stage_report.stage.value,
-                        "detail": f"{stage_report.stage.value} {stage_report.status.value}",
-                    },
-                    stage=stage_report.stage.value,
-                )
 
             if staged_response.status != CalibrationStageExecutionStatus.SUCCESS:
                 failure_kind = (
@@ -191,6 +206,7 @@ class WorkbenchExecutionWorker(QObject):
                     if staged_response.failure is not None
                     else "fit_failed"
                 )
+
                 raise RuntimeError(
                     f"Janiform fit failed for run_id `{prepared_workflow.run_id}` with failure_kind `{failure_kind}`"
                 )
@@ -238,11 +254,13 @@ class WorkbenchExecutionWorker(QObject):
                 _execution_input=prepared_workflow.prepared.execution_input,
                 _stage_report_payloads=fit_report.stage_report_payloads,
             )
+
             artifact_paths = write_fit_artifacts(
                 model=model,
                 fit_report=fit_report,
                 output_dir=self._run_setup.output_directory,
             )
+
             self._emit_event(
                 WorkbenchEventType.ARTIFACT_RECORDED,
                 payload={
@@ -251,7 +269,9 @@ class WorkbenchExecutionWorker(QObject):
                     "artifact_label": "Fit artifacts written",
                 },
             )
+
             artifacts = load_workbench_artifacts(artifact_paths.run_directory)
+
             self.execution_completed.emit(
                 WorkbenchExecutionResult(
                     run_directory=artifact_paths.run_directory,
@@ -260,20 +280,24 @@ class WorkbenchExecutionWorker(QObject):
                     artifacts=artifacts,
                 )
             )
+
             self._emit_event(
                 WorkbenchEventType.RUN_COMPLETED,
                 payload={"detail": "Calibration completed"},
             )
         except Exception as error:
             self._heartbeat_stop.set()
+
             self._emit_event(
                 WorkbenchEventType.RUN_FAILED,
                 payload={"message": str(error)},
             )
+
             self.error_raised.emit(str(error))
         finally:
             if prepared_workflow is not None and prepared_workflow.temporary_directory is not None:
                 prepared_workflow.temporary_directory.cleanup()
+
             self.finished.emit()
 
     def _start_heartbeat(self) -> Thread:
@@ -289,10 +313,12 @@ class WorkbenchExecutionWorker(QObject):
                         "worker_count": 1,
                     },
                 )
+
                 sleep(1.0)
 
         thread = Thread(target=emit_heartbeat, daemon=True)
         thread.start()
+
         return thread
 
     def _emit_event(
@@ -300,11 +326,12 @@ class WorkbenchExecutionWorker(QObject):
         event_type: WorkbenchEventType,
         *,
         payload: dict[str, Any],
-        stage: str | None = None,
-        subtask: str | None = None,
-        evaluation_tier: str | None = None,
+        stage: Optional[str] = None,
+        subtask: Optional[str] = None,
+        evaluation_tier: Optional[str] = None,
     ) -> None:
         self._event_sequence_number += 1
+
         self.event_emitted.emit(
             build_workbench_event(
                 event_type=event_type,
@@ -317,8 +344,78 @@ class WorkbenchExecutionWorker(QObject):
             )
         )
 
+    def _forward_native_event(self, raw_event: Any) -> None:
+        if not isinstance(raw_event, dict):
+            return
 
-def _column_mapping_from_setup(run_setup: WorkbenchRunSetup) -> CalibrationTickDataColumnMapping | None:
+        event_kind = raw_event.get("event_kind")
+        if not isinstance(event_kind, str):
+            return
+
+        match event_kind:
+            case "run_started":
+                self._emit_event(
+                    WorkbenchEventType.RUN_STARTED,
+                    payload={
+                        "detail": "Running staged calibration",
+                        "stage_count": raw_event.get("stage_count"),
+                        "execution_mode": raw_event.get("execution_mode"),
+                    },
+                )
+            case "stage_started":
+                stage = _coerce_optional_string(raw_event.get("stage"))
+
+                self._emit_event(
+                    WorkbenchEventType.STAGE_STARTED,
+                    payload={
+                        "stage_index": raw_event.get("stage_index"),
+                        "stage_count": raw_event.get("stage_count"),
+                        "stage_label": stage or "stage",
+                        "detail": f"Running {stage or 'stage'}",
+                    },
+                    stage=stage,
+                    evaluation_tier=_evaluation_tier_for_stage(stage),
+                )
+            case "stage_completed":
+                stage = _coerce_optional_string(raw_event.get("stage"))
+                stage_report = _coerce_optional_payload_dict(raw_event.get("stage_report"))
+
+                self._emit_event(
+                    WorkbenchEventType.STAGE_COMPLETED,
+                    payload={
+                        "stage_index": raw_event.get("stage_index"),
+                        "stage_count": raw_event.get("stage_count"),
+                        "stage_label": stage or "stage",
+                        "detail": _detail_for_stage_completed_event(stage, stage_report),
+                        "runtime_seconds": raw_event.get("runtime_seconds"),
+                        "stage_report": stage_report,
+                    },
+                    stage=stage,
+                    evaluation_tier=_evaluation_tier_for_stage(stage),
+                )
+            case "run_failed":
+                failure_payload = raw_event.get("failure")
+
+                self._emit_event(
+                    WorkbenchEventType.RUN_FAILED,
+                    payload={
+                        "message": _detail_for_failed_native_run(failure_payload),
+                        "failure": failure_payload,
+                    },
+                )
+            case "run_completed":
+                self._emit_event(
+                    WorkbenchEventType.SUBTASK_COMPLETED,
+                    payload={"detail": "Native calibration completed, writing artifacts"},
+                    subtask="artifact_write",
+                )
+            case _:
+                return
+
+
+def _column_mapping_from_setup(
+    run_setup: WorkbenchRunSetup,
+) -> Optional[CalibrationTickDataColumnMapping]:
     if (
         run_setup.timestamp_column is None
         and run_setup.price_column is None
@@ -337,7 +434,7 @@ def _column_mapping_from_setup(run_setup: WorkbenchRunSetup) -> CalibrationTickD
 
 def _normalization_policy_from_setup(
     run_setup: WorkbenchRunSetup,
-) -> CalibrationMarketDataNormalizationPolicy | None:
+) -> Optional[CalibrationMarketDataNormalizationPolicy]:
     if run_setup.tick_price_input_policy is None and run_setup.timestamp_timezone == "UTC":
         return None
 
@@ -365,6 +462,53 @@ def _normalization_overrides_from_setup(
         sort_records_by_timestamp=True,
         tick_price_input_policy=run_setup.tick_price_input_policy,
     )
+
+
+def _coerce_optional_string(value: Any) -> Optional[str]:
+    if isinstance(value, str):
+        return value
+
+    return None
+
+
+def _coerce_optional_payload_dict(value: Any) -> Optional[dict[str, Any]]:
+    if isinstance(value, dict):
+        return value
+
+    return None
+
+
+def _evaluation_tier_for_stage(stage: Optional[str]) -> Optional[str]:
+    match stage:
+        case "hawkes" | "return_components":
+            return "exact_block"
+        case "joint_refinement":
+            return "tick_joint"
+        case _:
+            return None
+
+
+def _detail_for_stage_completed_event(
+    stage: Optional[str],
+    stage_report: Optional[dict[str, Any]],
+) -> str:
+    if stage_report is not None:
+        status = _coerce_optional_string(stage_report.get("status"))
+        if status is not None and stage is not None:
+            return f"{stage} {status}"
+        if status is not None:
+            return status
+
+    return f"{stage or 'stage'} completed"
+
+
+def _detail_for_failed_native_run(failure_payload: Any) -> str:
+    if isinstance(failure_payload, dict):
+        failure_kind = _coerce_optional_string(failure_payload.get("failure_kind"))
+        if failure_kind is not None:
+            return f"Calibration failed with {failure_kind}"
+
+    return "Calibration failed"
 
 
 __all__ = [

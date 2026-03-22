@@ -332,12 +332,66 @@ pub struct CalibrationStagedRunReport {
     pub failure: Option<CalibrationStagedRunFailure>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "event_kind", rename_all = "snake_case")]
+pub enum CalibrationStagedRunObserverEvent {
+    RunStarted {
+        run_id: String,
+        execution_mode: CalibrationExecutionMode,
+        stage_count: usize,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        resumed_from_checkpoint_reference: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        resumed_from_last_successful_stage: Option<CalibrationStage>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        started_from_stage: Option<CalibrationStage>,
+    },
+    StageStarted {
+        run_id: String,
+        stage: CalibrationStage,
+        stage_index: usize,
+        stage_count: usize,
+    },
+    StageCompleted {
+        run_id: String,
+        stage: CalibrationStage,
+        stage_index: usize,
+        stage_count: usize,
+        runtime_seconds: f64,
+        stage_report: CalibrationStagedRunStageReport,
+    },
+    RunCompleted {
+        run_id: String,
+        execution_mode: CalibrationExecutionMode,
+        total_runtime_seconds: f64,
+        stage_report_count: usize,
+    },
+    RunFailed {
+        run_id: String,
+        execution_mode: CalibrationExecutionMode,
+        total_runtime_seconds: f64,
+        completed_stage_count: usize,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        failed_stage: Option<CalibrationStage>,
+        failure: CalibrationStagedRunFailure,
+    },
+}
+
 pub fn calibration_checkpoint_reference_for_stage(run_id: &str, stage: CalibrationStage) -> String {
     format!("checkpoint://{run_id}/{}", calibration_stage_token(stage))
 }
 
 pub fn calibration_last_success_checkpoint_reference(run_id: &str) -> String {
     format!("checkpoint://{run_id}/last-success")
+}
+
+fn emit_observer_event(
+    observer: &mut Option<&mut dyn FnMut(CalibrationStagedRunObserverEvent)>,
+    event: CalibrationStagedRunObserverEvent,
+) {
+    if let Some(observer) = observer.as_deref_mut() {
+        observer(event);
+    }
 }
 
 /// Execute staged calibration with deterministic checkpoint emission after each successful stage.
@@ -348,9 +402,27 @@ pub fn calibration_last_success_checkpoint_reference(run_id: &str) -> String {
 pub fn run_staged_calibration_with_checkpointing(
     run_contract: &CalibrationRunContract,
     calendar_registry: &ExchangeCalendarRegistry,
+    staged_run_inputs: CalibrationStagedRunInputs,
+    memory_checkpoint_store: Option<&mut CalibrationMemoryCheckpointStore>,
+    disk_checkpoint_directory: Option<&Path>,
+) -> CalibrationStagedRunReport {
+    run_staged_calibration_with_checkpointing_and_observer(
+        run_contract,
+        calendar_registry,
+        staged_run_inputs,
+        memory_checkpoint_store,
+        disk_checkpoint_directory,
+        None,
+    )
+}
+
+pub fn run_staged_calibration_with_checkpointing_and_observer(
+    run_contract: &CalibrationRunContract,
+    calendar_registry: &ExchangeCalendarRegistry,
     mut staged_run_inputs: CalibrationStagedRunInputs,
     mut memory_checkpoint_store: Option<&mut CalibrationMemoryCheckpointStore>,
     disk_checkpoint_directory: Option<&Path>,
+    mut observer: Option<&mut dyn FnMut(CalibrationStagedRunObserverEvent)>,
 ) -> CalibrationStagedRunReport {
     if let Err(error_message) = validate_run_contract_for_staged_execution(run_contract) {
         return build_staged_run_failure_report(
@@ -663,8 +735,23 @@ pub fn run_staged_calibration_with_checkpointing(
         }
     }
 
+    let run_start_time = Instant::now();
+    let started_from_stage = execution_stage_order.get(start_position).copied();
+
+    emit_observer_event(
+        &mut observer,
+        CalibrationStagedRunObserverEvent::RunStarted {
+            run_id: run_spec.run_id.clone(),
+            execution_mode: run_spec.execution_mode,
+            stage_count: execution_stage_order.len(),
+            resumed_from_checkpoint_reference: resumed_from_checkpoint_reference.clone(),
+            resumed_from_last_successful_stage,
+            started_from_stage,
+        },
+    );
+
     if start_position >= execution_stage_order.len() {
-        return CalibrationStagedRunReport {
+        let report = CalibrationStagedRunReport {
             schema_version: CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,
             failure_triage_policy: CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY,
             run_id: run_spec.run_id.clone(),
@@ -679,15 +766,36 @@ pub fn run_staged_calibration_with_checkpointing(
             started_from_stage: None,
             failure: None,
         };
+
+        emit_observer_event(
+            &mut observer,
+            CalibrationStagedRunObserverEvent::RunCompleted {
+                run_id: report.run_id.clone(),
+                execution_mode: report.execution_mode,
+                total_runtime_seconds: run_start_time.elapsed().as_secs_f64(),
+                stage_report_count: report.stage_reports.len(),
+            },
+        );
+
+        return report;
     }
 
-    let started_from_stage = execution_stage_order.get(start_position).copied();
     for (stage_position, stage) in execution_stage_order
         .iter()
         .copied()
         .enumerate()
         .skip(start_position)
     {
+        emit_observer_event(
+            &mut observer,
+            CalibrationStagedRunObserverEvent::StageStarted {
+                run_id: run_spec.run_id.clone(),
+                stage,
+                stage_index: stage_position + 1,
+                stage_count: execution_stage_order.len(),
+            },
+        );
+
         let stage_start_time = Instant::now();
         let stage_report = match run_stage_for_staged_execution(
             run_spec,
@@ -698,35 +806,78 @@ pub fn run_staged_calibration_with_checkpointing(
         ) {
             Ok(stage_report) => stage_report,
             Err(failure) => {
-                return build_staged_run_failure_report(
+                let failure_report = build_staged_run_failure_report(
                     run_contract,
                     stage_reports,
                     emitted_checkpoints,
                     resumed_from_checkpoint_reference,
                     resumed_from_last_successful_stage,
                     started_from_stage,
-                    failure,
+                    failure.clone(),
                 );
+
+                emit_observer_event(
+                    &mut observer,
+                    CalibrationStagedRunObserverEvent::RunFailed {
+                        run_id: run_spec.run_id.clone(),
+                        execution_mode: run_spec.execution_mode,
+                        total_runtime_seconds: run_start_time.elapsed().as_secs_f64(),
+                        completed_stage_count: failure_report.stage_reports.len(),
+                        failed_stage: Some(stage),
+                        failure,
+                    },
+                );
+
+                return failure_report;
             }
         };
+
+        let stage_runtime_seconds = stage_start_time.elapsed().as_secs_f64();
         stage_runtime_entries.push(diagnostic_runtime_profile_entry_for_stage_report(
             &stage_report,
-            stage_start_time.elapsed().as_secs_f64(),
+            stage_runtime_seconds,
         ));
+
+        emit_observer_event(
+            &mut observer,
+            CalibrationStagedRunObserverEvent::StageCompleted {
+                run_id: run_spec.run_id.clone(),
+                stage,
+                stage_index: stage_position + 1,
+                stage_count: execution_stage_order.len(),
+                runtime_seconds: stage_runtime_seconds,
+                stage_report: stage_report.clone(),
+            },
+        );
 
         let stage_status = stage_report.status();
         stage_reports.push(stage_report.clone());
 
         if stage_status == CalibrationStageExecutionStatus::Failure {
-            return build_staged_run_failure_report(
+            let failure = CalibrationStagedRunFailure::StageExecutionFailed { stage };
+            let failure_report = build_staged_run_failure_report(
                 run_contract,
                 stage_reports,
                 emitted_checkpoints,
                 resumed_from_checkpoint_reference,
                 resumed_from_last_successful_stage,
                 started_from_stage,
-                CalibrationStagedRunFailure::StageExecutionFailed { stage },
+                failure.clone(),
             );
+
+            emit_observer_event(
+                &mut observer,
+                CalibrationStagedRunObserverEvent::RunFailed {
+                    run_id: run_spec.run_id.clone(),
+                    execution_mode: run_spec.execution_mode,
+                    total_runtime_seconds: run_start_time.elapsed().as_secs_f64(),
+                    completed_stage_count: failure_report.stage_reports.len(),
+                    failed_stage: Some(stage),
+                    failure,
+                },
+            );
+
+            return failure_report;
         }
 
         update_in_memory_payload_state(&mut payload_state, &stage_report);
@@ -981,7 +1132,7 @@ pub fn run_staged_calibration_with_checkpointing(
         }
     }
 
-    CalibrationStagedRunReport {
+    let report = CalibrationStagedRunReport {
         schema_version: CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,
         failure_triage_policy: CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY,
         run_id: run_spec.run_id.clone(),
@@ -999,7 +1150,19 @@ pub fn run_staged_calibration_with_checkpointing(
         resumed_from_last_successful_stage,
         started_from_stage,
         failure: None,
-    }
+    };
+
+    emit_observer_event(
+        &mut observer,
+        CalibrationStagedRunObserverEvent::RunCompleted {
+            run_id: report.run_id.clone(),
+            execution_mode: report.execution_mode,
+            total_runtime_seconds: run_start_time.elapsed().as_secs_f64(),
+            stage_report_count: report.stage_reports.len(),
+        },
+    );
+
+    report
 }
 
 fn validate_run_contract_for_staged_execution(

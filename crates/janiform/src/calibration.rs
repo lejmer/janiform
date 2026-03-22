@@ -9,7 +9,8 @@ pub use janiform_calibration_runtime::{
     MarketDataSessionResolutionPayload, MarketDataTickDataColumnMapping,
     CalibrationMemoryCheckpointStore, CalibrationReturnComponentsActivityContextPayload,
     CalibrationReturnComponentsStageCandidateGenerationInput, CalibrationStagedExecutionInput,
-    CalibrationStagedRunReport, CalibrationStagedRunStageReport,
+    CalibrationStagedRunObserverEvent, CalibrationStagedRunReport,
+    CalibrationStagedRunStageReport,
     MarketDataTranslationPreprocessingError, MarketDataTranslationPreprocessingOutput,
     MarketDataTranslationPreprocessingRequest, ReturnComponentsStageExactCandidateEvaluation,
     ReturnComponentsStageObservedSignalSummaryStatistics,
@@ -21,4 +22,5 @@ pub use janiform_calibration_runtime::{
     preprocess_market_data_translation_request,
     project_hawkes_intensities_for_calibration_interval,
     run_staged_calibration_from_execution_input,
+    run_staged_calibration_from_execution_input_with_observer,
 };

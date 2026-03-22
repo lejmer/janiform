@@ -1,9 +1,8 @@
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from matplotlib.figure import Figure
 
-from .artifacts import WorkbenchArtifacts
 from .plots import (
     create_consistency_figure,
     create_frontier_figure,
@@ -13,6 +12,10 @@ from .plots import (
     create_search_surface_figure,
     create_selected_candidate_diagnostics_figure,
     create_simulation_summary_figure,
+    create_td_sd_autocorrelation_figure,
+    create_td_sd_hourly_profile_figure,
+    create_td_sd_return_distribution_figure,
+    create_td_sd_summary_statistics_figure,
 )
 
 
@@ -23,7 +26,8 @@ class WorkbenchPlotManifestEntry:
     family_id: str
     tab_title: str
     description: str
-    builder: Callable[[WorkbenchArtifacts], Figure]
+    builder: Callable[..., Figure]
+    uses_observed_simulation_comparison: bool = False
 
 
 def workbench_plot_manifest() -> tuple[WorkbenchPlotManifestEntry, ...]:
@@ -91,6 +95,43 @@ def workbench_plot_manifest() -> tuple[WorkbenchPlotManifestEntry, ...]:
             tab_title="Observed/Simulated",
             description="Rendering training-data versus simulated path and activity comparisons.",
             builder=create_observed_simulated_figure,
+            uses_observed_simulation_comparison=True,
+        ),
+        WorkbenchPlotManifestEntry(
+            plot_id="td_sd_return_distributions",
+            task_id="plot_td_sd_return_distributions",
+            family_id="td_sd_returns",
+            tab_title="TD/SD Returns",
+            description="Rendering TD and SD tick, aggregated 15-minute, and coarse 15-minute return histograms.",
+            builder=create_td_sd_return_distribution_figure,
+            uses_observed_simulation_comparison=True,
+        ),
+        WorkbenchPlotManifestEntry(
+            plot_id="td_sd_hourly_profiles",
+            task_id="plot_td_sd_hourly_profiles",
+            family_id="td_sd_activity",
+            tab_title="TD/SD Hourly",
+            description="Rendering hourly activity, hourly absolute-return profiles, and rolling volatility-versus-activity diagnostics.",
+            builder=create_td_sd_hourly_profile_figure,
+            uses_observed_simulation_comparison=True,
+        ),
+        WorkbenchPlotManifestEntry(
+            plot_id="td_sd_autocorrelation",
+            task_id="plot_td_sd_autocorrelation",
+            family_id="td_sd_returns",
+            tab_title="TD/SD Autocorr",
+            description="Rendering 50-lag squared-return autocorrelograms for TD, SD tick, and SD coarse 15-minute returns.",
+            builder=create_td_sd_autocorrelation_figure,
+            uses_observed_simulation_comparison=True,
+        ),
+        WorkbenchPlotManifestEntry(
+            plot_id="td_sd_summary_statistics",
+            task_id="plot_td_sd_summary_statistics",
+            family_id="td_sd_profiles",
+            tab_title="TD/SD Stats",
+            description="Rendering summary statistics across TD ticks, TD 15-minute returns, SD ticks, SD tick 15-minute returns, and SD coarse 15-minute returns.",
+            builder=create_td_sd_summary_statistics_figure,
+            uses_observed_simulation_comparison=True,
         ),
     )
 

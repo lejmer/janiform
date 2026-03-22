@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 from .artifacts import WorkbenchArtifacts
 
@@ -7,7 +7,7 @@ from .artifacts import WorkbenchArtifacts
 @dataclass(frozen=True, slots=True)
 class WorkbenchFamilyMetricSummary:
     family_id: str
-    normalized_distance: float | None
+    normalized_distance: Optional[float]
     raw_payload: dict[str, Any]
 
 
@@ -18,10 +18,10 @@ class WorkbenchCandidateSnapshot:
     evaluation_tier: str
     admissible: bool
     valid: bool
-    pareto_rank: int | None
-    lexicographic_rank: int | None
-    scalar_tie_break: float | None
-    rejection_reason: str | None
+    pareto_rank: Optional[int]
+    lexicographic_rank: Optional[int]
+    scalar_tie_break: Optional[float]
+    rejection_reason: Optional[str]
     canonical_coordinates: dict[str, float]
     family_metrics: tuple[WorkbenchFamilyMetricSummary, ...]
     parameter_snapshot: dict[str, Any]
@@ -32,7 +32,7 @@ class WorkbenchCandidateSnapshot:
 @dataclass(frozen=True, slots=True)
 class WorkbenchCandidateStore:
     candidates: tuple[WorkbenchCandidateSnapshot, ...]
-    selected_candidate_id: str | None
+    selected_candidate_id: Optional[str]
 
     @property
     def by_id(self) -> dict[str, WorkbenchCandidateSnapshot]:
@@ -42,6 +42,7 @@ class WorkbenchCandidateStore:
 def candidate_store_from_artifacts(artifacts: WorkbenchArtifacts) -> WorkbenchCandidateStore:
     selected_stage_parameters = _selected_stage_parameter_snapshots(artifacts.model_payload)
     selected_candidate_id = artifacts.selected_candidate_id
+
     entries = artifacts.candidate_frontier.get("frontier_entries", [])
     if not isinstance(entries, list):
         return WorkbenchCandidateStore(candidates=(), selected_candidate_id=selected_candidate_id)
@@ -92,13 +93,75 @@ def candidate_store_from_artifacts(artifacts: WorkbenchArtifacts) -> WorkbenchCa
             candidate.candidate_id,
         )
     )
+
     return WorkbenchCandidateStore(
         candidates=tuple(candidates),
         selected_candidate_id=selected_candidate_id,
     )
 
 
-def _selected_stage_parameter_snapshots(model_payload: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+def candidate_store_from_stage_report_payloads(
+    stage_report_payloads: tuple[dict[str, Any], ...],
+) -> WorkbenchCandidateStore:
+    selected_stage_parameters = _selected_stage_parameter_snapshots_from_stage_reports(
+        stage_report_payloads
+    )
+    selected_candidate_id = _selected_candidate_id_from_stage_reports(stage_report_payloads)
+
+    candidates: list[WorkbenchCandidateSnapshot] = []
+
+    for stage_report_payload in stage_report_payloads:
+        stage_kind = _coerce_optional_string(stage_report_payload.get("stage_report_kind"))
+        fitted_stage_payload = stage_report_payload.get("fitted_stage_payload")
+        if stage_kind is None or not isinstance(fitted_stage_payload, dict):
+            continue
+
+        match stage_kind:
+            case "hawkes":
+                candidates.extend(
+                    _hawkes_candidate_snapshots(
+                        fitted_stage_payload,
+                        selected_stage_parameters,
+                        selected_candidate_id,
+                    )
+                )
+            case "return_components":
+                candidates.extend(
+                    _return_components_candidate_snapshots(
+                        fitted_stage_payload,
+                        selected_stage_parameters,
+                        selected_candidate_id,
+                    )
+                )
+            case "joint_refinement":
+                candidates.extend(
+                    _joint_candidate_snapshots(
+                        fitted_stage_payload,
+                        selected_stage_parameters,
+                        selected_candidate_id,
+                    )
+                )
+            case _:
+                continue
+
+    candidates.sort(
+        key=lambda candidate: (
+            candidate.lexicographic_rank if candidate.lexicographic_rank is not None else 10**9,
+            candidate.pareto_rank if candidate.pareto_rank is not None else 10**9,
+            candidate.scalar_tie_break if candidate.scalar_tie_break is not None else float("inf"),
+            candidate.candidate_id,
+        )
+    )
+
+    return WorkbenchCandidateStore(
+        candidates=tuple(candidates),
+        selected_candidate_id=selected_candidate_id,
+    )
+
+
+def _selected_stage_parameter_snapshots(
+    model_payload: Optional[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
     if not isinstance(model_payload, dict):
         return {}
 
@@ -121,6 +184,219 @@ def _selected_stage_parameter_snapshots(model_payload: dict[str, Any] | None) ->
         }
 
     return snapshots
+
+
+def _selected_stage_parameter_snapshots_from_stage_reports(
+    stage_report_payloads: tuple[dict[str, Any], ...],
+) -> dict[str, dict[str, Any]]:
+    snapshots: dict[str, dict[str, Any]] = {}
+    for stage_report_payload in stage_report_payloads:
+        stage_kind = _coerce_optional_string(stage_report_payload.get("stage_report_kind"))
+        fitted_stage_payload = stage_report_payload.get("fitted_stage_payload")
+        if stage_kind is None or not isinstance(fitted_stage_payload, dict):
+            continue
+
+        candidate_id = _coerce_optional_string(fitted_stage_payload.get("selected_candidate_id"))
+        if candidate_id is None:
+            continue
+
+        snapshots[candidate_id] = {
+            "stage": stage_kind,
+            "payload": dict(fitted_stage_payload),
+        }
+
+    return snapshots
+
+
+def _selected_candidate_id_from_stage_reports(
+    stage_report_payloads: tuple[dict[str, Any], ...],
+) -> Optional[str]:
+    selected_candidate_id: Optional[str] = None
+    for stage_report_payload in stage_report_payloads:
+        fitted_stage_payload = stage_report_payload.get("fitted_stage_payload")
+        if not isinstance(fitted_stage_payload, dict):
+            continue
+
+        candidate_id = _coerce_optional_string(fitted_stage_payload.get("selected_candidate_id"))
+        if candidate_id is not None:
+            selected_candidate_id = candidate_id
+
+    return selected_candidate_id
+
+
+def _hawkes_candidate_snapshots(
+    fitted_stage_payload: dict[str, Any],
+    selected_stage_parameters: dict[str, dict[str, Any]],
+    selected_candidate_id: Optional[str],
+) -> tuple[WorkbenchCandidateSnapshot, ...]:
+    raw_candidates = fitted_stage_payload.get("candidate_diagnostics")
+    if not isinstance(raw_candidates, list):
+        return ()
+
+    sortable_candidates = [
+        raw_candidate
+        for raw_candidate in raw_candidates
+        if isinstance(raw_candidate, dict)
+        and isinstance(raw_candidate.get("candidate_id"), str)
+    ]
+    sortable_candidates.sort(
+        key=lambda raw_candidate: (
+            _coerce_optional_float(raw_candidate.get("penalized_objective_value"))
+            or float("inf"),
+            str(raw_candidate.get("candidate_id")),
+        )
+    )
+
+    snapshots: list[WorkbenchCandidateSnapshot] = []
+    for rank, raw_candidate in enumerate(sortable_candidates, start=1):
+        candidate_id = str(raw_candidate["candidate_id"])
+
+        admissible = _coerce_optional_int(raw_candidate.get("constraint_violation_count")) == 0
+
+        objective_terms = raw_candidate.get("objective_terms")
+
+        snapshots.append(
+            WorkbenchCandidateSnapshot(
+                candidate_id=candidate_id,
+                stage="hawkes",
+                evaluation_tier="exact_block",
+                admissible=admissible,
+                valid=admissible,
+                pareto_rank=rank,
+                lexicographic_rank=rank,
+                scalar_tie_break=_coerce_optional_float(raw_candidate.get("penalized_objective_value")),
+                rejection_reason=None if admissible else "constraint_violation",
+                canonical_coordinates={},
+                family_metrics=_metric_summaries_from_objective_terms(objective_terms),
+                parameter_snapshot=_parameter_snapshot_for_candidate(
+                    candidate_id,
+                    selected_stage_parameters,
+                    default_payload=dict(raw_candidate),
+                ),
+                is_selected=candidate_id == selected_candidate_id,
+                raw_payload=dict(raw_candidate),
+            )
+        )
+
+    return tuple(snapshots)
+
+
+def _return_components_candidate_snapshots(
+    fitted_stage_payload: dict[str, Any],
+    selected_stage_parameters: dict[str, dict[str, Any]],
+    selected_candidate_id: Optional[str],
+) -> tuple[WorkbenchCandidateSnapshot, ...]:
+    raw_candidates = fitted_stage_payload.get("candidate_diagnostics")
+    if not isinstance(raw_candidates, list):
+        return ()
+
+    sortable_candidates = [
+        raw_candidate
+        for raw_candidate in raw_candidates
+        if isinstance(raw_candidate, dict)
+        and isinstance(raw_candidate.get("candidate_id"), str)
+    ]
+    sortable_candidates.sort(
+        key=lambda raw_candidate: (
+            _coerce_optional_float(raw_candidate.get("penalized_objective_value"))
+            or float("inf"),
+            str(raw_candidate.get("candidate_id")),
+        )
+    )
+
+    snapshots: list[WorkbenchCandidateSnapshot] = []
+    for rank, raw_candidate in enumerate(sortable_candidates, start=1):
+        candidate_id = str(raw_candidate["candidate_id"])
+
+        valid = _coerce_optional_int(raw_candidate.get("constraint_violation_count")) == 0
+
+        price_range_sanity_diagnostic = raw_candidate.get("price_range_sanity_diagnostic")
+        price_range_flagged = (
+            isinstance(price_range_sanity_diagnostic, dict)
+            and bool(price_range_sanity_diagnostic.get("is_flagged"))
+        )
+
+        admissible = valid and not price_range_flagged
+
+        snapshots.append(
+            WorkbenchCandidateSnapshot(
+                candidate_id=candidate_id,
+                stage="return_components",
+                evaluation_tier="exact_block",
+                admissible=admissible,
+                valid=valid,
+                pareto_rank=rank,
+                lexicographic_rank=rank,
+                scalar_tie_break=_coerce_optional_float(raw_candidate.get("penalized_objective_value")),
+                rejection_reason=None if admissible else "constraint_or_admissibility_failure",
+                canonical_coordinates={},
+                family_metrics=_metric_summaries_from_objective_terms(
+                    raw_candidate.get("objective_terms")
+                ),
+                parameter_snapshot=_parameter_snapshot_for_candidate(
+                    candidate_id,
+                    selected_stage_parameters,
+                    default_payload=dict(raw_candidate),
+                ),
+                is_selected=candidate_id == selected_candidate_id,
+                raw_payload=dict(raw_candidate),
+            )
+        )
+
+    return tuple(snapshots)
+
+
+def _joint_candidate_snapshots(
+    fitted_stage_payload: dict[str, Any],
+    selected_stage_parameters: dict[str, dict[str, Any]],
+    selected_candidate_id: Optional[str],
+) -> tuple[WorkbenchCandidateSnapshot, ...]:
+    raw_candidates = fitted_stage_payload.get("candidate_frontier")
+    if not isinstance(raw_candidates, list):
+        return ()
+
+    snapshots: list[WorkbenchCandidateSnapshot] = []
+    for raw_candidate in raw_candidates:
+        if not isinstance(raw_candidate, dict):
+            continue
+
+        candidate_id = _coerce_optional_string(raw_candidate.get("candidate_id"))
+        if candidate_id is None:
+            continue
+
+        objective_breakdown = raw_candidate.get("objective_breakdown")
+
+        canonical_coordinates = _coerce_float_mapping(
+            _mapping_from_coordinate_pairs(raw_candidate.get("canonical_coordinates"))
+        )
+
+        snapshots.append(
+            WorkbenchCandidateSnapshot(
+                candidate_id=candidate_id,
+                stage="joint_refinement",
+                evaluation_tier="tick_joint",
+                admissible=bool(raw_candidate.get("admissible")),
+                valid=bool(raw_candidate.get("valid")),
+                pareto_rank=_coerce_optional_int(raw_candidate.get("pareto_rank")),
+                lexicographic_rank=_coerce_optional_int(raw_candidate.get("lexicographic_rank")),
+                scalar_tie_break=_coerce_optional_float(raw_candidate.get("scalar_tie_break")),
+                rejection_reason=_coerce_optional_string(raw_candidate.get("invalid_reason")),
+                canonical_coordinates=canonical_coordinates,
+                family_metrics=_metric_summaries_from_objective_breakdown(objective_breakdown),
+                parameter_snapshot=_parameter_snapshot_for_candidate(
+                    candidate_id,
+                    selected_stage_parameters,
+                    default_payload={
+                        "canonical_coordinates": canonical_coordinates,
+                        "objective_breakdown": objective_breakdown,
+                    },
+                ),
+                is_selected=candidate_id == selected_candidate_id,
+                raw_payload=dict(raw_candidate),
+            )
+        )
+
+    return tuple(snapshots)
 
 
 def _family_metric_summaries(raw_metrics: Any) -> tuple[WorkbenchFamilyMetricSummary, ...]:
@@ -147,6 +423,83 @@ def _family_metric_summaries(raw_metrics: Any) -> tuple[WorkbenchFamilyMetricSum
     return tuple(metrics)
 
 
+def _metric_summaries_from_objective_terms(
+    raw_terms: Any,
+) -> tuple[WorkbenchFamilyMetricSummary, ...]:
+    if not isinstance(raw_terms, list):
+        return ()
+
+    metrics: list[WorkbenchFamilyMetricSummary] = []
+    for raw_term in raw_terms:
+        if not isinstance(raw_term, dict):
+            continue
+
+        metric_id = _coerce_optional_string(raw_term.get("term_id")) or "unknown"
+
+        metrics.append(
+            WorkbenchFamilyMetricSummary(
+                family_id=metric_id,
+                normalized_distance=_coerce_optional_float(raw_term.get("normalized_error")),
+                raw_payload=dict(raw_term),
+            )
+        )
+
+    return tuple(metrics)
+
+
+def _metric_summaries_from_objective_breakdown(
+    raw_breakdown: Any,
+) -> tuple[WorkbenchFamilyMetricSummary, ...]:
+    if not isinstance(raw_breakdown, dict):
+        return ()
+
+    metrics: list[WorkbenchFamilyMetricSummary] = []
+    for key, value in raw_breakdown.items():
+        if not isinstance(key, str) or not isinstance(value, int | float):
+            continue
+
+        metrics.append(
+            WorkbenchFamilyMetricSummary(
+                family_id=key,
+                normalized_distance=float(value),
+                raw_payload={key: float(value)},
+            )
+        )
+
+    return tuple(metrics)
+
+
+def _parameter_snapshot_for_candidate(
+    candidate_id: str,
+    selected_stage_parameters: dict[str, dict[str, Any]],
+    *,
+    default_payload: dict[str, Any],
+) -> dict[str, Any]:
+    selected_parameters = selected_stage_parameters.get(candidate_id)
+    if selected_parameters is not None:
+        return selected_parameters
+
+    return default_payload
+
+
+def _mapping_from_coordinate_pairs(raw_coordinates: Any) -> dict[str, Any]:
+    if isinstance(raw_coordinates, dict):
+        return dict(raw_coordinates)
+    if not isinstance(raw_coordinates, list):
+        return {}
+
+    mapping: dict[str, Any] = {}
+    for raw_entry in raw_coordinates:
+        if (
+            isinstance(raw_entry, list | tuple)
+            and len(raw_entry) == 2
+            and isinstance(raw_entry[0], str)
+        ):
+            mapping[raw_entry[0]] = raw_entry[1]
+
+    return mapping
+
+
 def _coerce_float_mapping(raw_mapping: Any) -> dict[str, float]:
     if not isinstance(raw_mapping, dict):
         return {}
@@ -159,21 +512,21 @@ def _coerce_float_mapping(raw_mapping: Any) -> dict[str, float]:
     return coerced
 
 
-def _coerce_optional_float(value: Any) -> float | None:
+def _coerce_optional_float(value: Any) -> Optional[float]:
     if isinstance(value, int | float):
         return float(value)
 
     return None
 
 
-def _coerce_optional_int(value: Any) -> int | None:
+def _coerce_optional_int(value: Any) -> Optional[int]:
     if isinstance(value, int):
         return value
 
     return None
 
 
-def _coerce_optional_string(value: Any) -> str | None:
+def _coerce_optional_string(value: Any) -> Optional[str]:
     if isinstance(value, str):
         return value
 
@@ -185,4 +538,5 @@ __all__ = [
     "WorkbenchCandidateStore",
     "WorkbenchFamilyMetricSummary",
     "candidate_store_from_artifacts",
+    "candidate_store_from_stage_report_payloads",
 ]

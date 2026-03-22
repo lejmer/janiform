@@ -1,7 +1,10 @@
+use std::sync::{Arc, Mutex};
+
 use janiform::calibration::{
     CalibrationReturnComponentsActivityContextPayload,
     CalibrationReturnComponentsStageCandidateGenerationInput, CalibrationStagedExecutionInput,
-    CalibrationStagedRunReport, CalibrationStagedRunStageReport,
+    CalibrationStagedRunObserverEvent, CalibrationStagedRunReport,
+    CalibrationStagedRunStageReport,
     MarketDataLoadingOutput, MarketDataLoadingRequest,
     MarketDataSessionConfiguration, MarketDataSessionResolutionPayload,
     MarketDataTickDataColumnMapping, MarketDataTranslationPreprocessingOutput,
@@ -13,6 +16,7 @@ use janiform::calibration::{
     resolve_market_data_session_configuration_from_source_file as resolve_market_data_session_configuration_from_source_file_native,
     preprocess_market_data_translation_request as preprocess_market_data_translation_request_native,
     run_staged_calibration_from_execution_input,
+    run_staged_calibration_from_execution_input_with_observer,
 };
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
@@ -196,6 +200,70 @@ fn run_staged_calibration(
 }
 
 #[pyfunction]
+#[pyo3(signature = (execution_input, calendar_registry, event_callback, memory_checkpoint_store = None))]
+fn run_staged_calibration_with_events(
+    py: Python<'_>,
+    execution_input: &Bound<'_, PyAny>,
+    calendar_registry: &PyCalendarRegistry,
+    event_callback: &Bound<'_, PyAny>,
+    memory_checkpoint_store: Option<&mut PyCalibrationMemoryCheckpointStore>,
+) -> PyResult<Py<PyAny>> {
+    let execution_input: CalibrationStagedExecutionInput =
+        serde_json::from_value(py_any_to_json_value(execution_input)?).map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize staged calibration execution input: {source}"
+            ))
+        })?;
+    let event_callback = event_callback.clone().unbind();
+    let callback_error_message = Arc::new(Mutex::new(None::<String>));
+    let callback_error_message_for_observer = Arc::clone(&callback_error_message);
+
+    let report = py
+        .allow_threads(move || {
+            let mut observer = |event: CalibrationStagedRunObserverEvent| {
+                if callback_error_message_for_observer
+                    .lock()
+                    .ok()
+                    .and_then(|guard| guard.clone())
+                    .is_some()
+                {
+                    return;
+                }
+
+                Python::with_gil(|py| {
+                    let callback_result = python_staged_calibration_event_to_py_object(py, &event)
+                        .and_then(|payload| event_callback.call1(py, (payload,)).map(|_| ()));
+                    if let Err(source) = callback_result {
+                        if let Ok(mut guard) = callback_error_message_for_observer.lock() {
+                            if guard.is_none() {
+                                *guard = Some(source.to_string());
+                            }
+                        }
+                    }
+                });
+            };
+
+            run_staged_calibration_from_execution_input_with_observer(
+                execution_input,
+                &calendar_registry.registry,
+                memory_checkpoint_store.map(|store| &mut store.store),
+                &mut observer,
+            )
+        })
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    if let Ok(guard) = callback_error_message.lock() {
+        if let Some(error_message) = guard.as_ref() {
+            return Err(CalibrationExecutionError::new_err(format!(
+                "staged calibration event callback failed: {error_message}"
+            )));
+        }
+    }
+
+    python_staged_calibration_report_to_py_object(py, &report)
+}
+
+#[pyfunction]
 #[pyo3(signature = (candidate_generation_input, observed_summary_statistics, fitted_parameters, stage_seed, hawkes_payload = None))]
 fn evaluate_return_components_candidate(
     py: Python<'_>,
@@ -294,6 +362,42 @@ fn python_staged_calibration_report_to_py_object(
     json_value_to_py_object(py, &Value::Object(serialized_report))
 }
 
+fn python_staged_calibration_event_to_py_object(
+    py: Python<'_>,
+    event: &CalibrationStagedRunObserverEvent,
+) -> PyResult<Py<PyAny>> {
+    let mut serialized_event = match serde_json::to_value(event).map_err(|source| {
+        CalibrationExecutionError::new_err(format!(
+            "failed to serialize staged calibration observer event: {source}"
+        ))
+    })? {
+        Value::Object(object) => object,
+        _ => {
+            return Err(CalibrationExecutionError::new_err(
+                "failed to serialize staged calibration observer event: expected a JSON object",
+            ));
+        }
+    };
+
+    if let Some(stage_report) = serialized_event.get("stage_report") {
+        let flattened_stage_report = match event {
+            CalibrationStagedRunObserverEvent::StageCompleted { stage_report, .. } => {
+                flatten_stage_report_for_python(stage_report)
+            }
+            _ => unreachable!("stage_report field is only emitted for stage_completed events"),
+        }
+        .map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to flatten staged calibration observer event stage report: {source}"
+            ))
+        })?;
+        let _ = stage_report;
+        serialized_event.insert("stage_report".to_string(), flattened_stage_report);
+    }
+
+    json_value_to_py_object(py, &Value::Object(serialized_event))
+}
+
 fn flatten_stage_report_for_python(
     report: &CalibrationStagedRunStageReport,
 ) -> Result<Value, serde_json::Error> {
@@ -320,6 +424,7 @@ fn flatten_stage_report_for_python(
             )));
         }
     };
+
     flattened_report.insert(
         "stage_report_kind".to_string(),
         Value::String(stage_report_kind.to_string()),
@@ -342,6 +447,10 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
         module
     )?)?;
     module.add_function(wrap_pyfunction!(run_staged_calibration, module)?)?;
+    module.add_function(wrap_pyfunction!(
+        run_staged_calibration_with_events,
+        module
+    )?)?;
     module.add_function(wrap_pyfunction!(
         evaluate_return_components_candidate,
         module

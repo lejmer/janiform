@@ -878,6 +878,14 @@ def run_staged_calibration(
 ) -> object: ...
 
 
+def run_staged_calibration_with_events(
+    execution_input: object,
+    calendar_registry: CalendarRegistry,
+    event_callback: object,
+    memory_checkpoint_store: Optional[CalibrationMemoryCheckpointStore] = None,
+) -> object: ...
+
+
 def evaluate_return_components_candidate(
     candidate_generation_input: object,
     observed_summary_statistics: object,

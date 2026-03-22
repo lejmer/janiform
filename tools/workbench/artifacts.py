@@ -2,7 +2,7 @@ import json
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 
 ARTIFACT_FILE_NAMES: dict[str, str] = {
@@ -21,8 +21,8 @@ class WorkbenchArtifacts:
     source_path: Path
     source_kind: str
     metadata: dict[str, Any]
-    fit_report_payload: dict[str, Any] | None
-    model_payload: dict[str, Any] | None
+    fit_report_payload: Optional[dict[str, Any]]
+    model_payload: Optional[dict[str, Any]]
     observed_targets: dict[str, Any]
     candidate_frontier: dict[str, Any]
     coarse_tick_consistency: dict[str, Any]
@@ -32,7 +32,7 @@ class WorkbenchArtifacts:
     runtime_profile: dict[str, Any]
 
     @property
-    def selected_candidate_id(self) -> str | None:
+    def selected_candidate_id(self) -> Optional[str]:
         decision = self.selection_rationale.get("decision")
         if isinstance(decision, dict):
             selected_candidate_id = decision.get("selected_candidate_id")
@@ -178,8 +178,8 @@ def _build_workbench_artifacts(
     source_path: Path,
     source_kind: str,
     metadata: dict[str, Any],
-    fit_report_payload: dict[str, Any] | None,
-    model_payload: dict[str, Any] | None,
+    fit_report_payload: Optional[dict[str, Any]],
+    model_payload: Optional[dict[str, Any]],
     bundle: dict[str, Any],
 ) -> WorkbenchArtifacts:
     return WorkbenchArtifacts(
@@ -198,7 +198,7 @@ def _build_workbench_artifacts(
     )
 
 
-def _extract_diagnostic_bundle(payload: dict[str, Any]) -> dict[str, Any] | None:
+def _extract_diagnostic_bundle(payload: dict[str, Any]) -> Optional[dict[str, Any]]:
     if all(artifact_family in payload for artifact_family in ARTIFACT_FILE_NAMES):
         return payload
 
@@ -252,7 +252,7 @@ def _candidate_counts_by_stage(frontier_entries: list[dict[str, Any]]) -> dict[s
 
 
 def _selected_candidate_family_metrics(
-    candidate_entry: dict[str, Any] | None,
+    candidate_entry: Optional[dict[str, Any]],
 ) -> dict[str, float]:
     if candidate_entry is None:
         return {}

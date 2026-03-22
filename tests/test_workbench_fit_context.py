@@ -34,7 +34,7 @@ def test_workbench_comparison_reloads_training_ticks_and_simulates_training_wind
     )
     (tmp_path / "model.json").write_text("{}", encoding="utf-8")
 
-    captured_simulation: dict[str, Any] = {}
+    captured_simulations: list[dict[str, Any]] = []
 
     class _FakeSimulationResult:
         def to_pandas(self) -> Any:
@@ -88,12 +88,19 @@ def test_workbench_comparison_reloads_training_ticks_and_simulates_training_wind
             seed: int,
             start_time_utc: datetime,
             horizon_interval_count: int,
+            interval: str | None = None,
             silent: bool,
         ) -> _FakeSimulationResult:
-            captured_simulation["seed"] = seed
-            captured_simulation["start_time_utc"] = start_time_utc
-            captured_simulation["horizon_interval_count"] = horizon_interval_count
-            captured_simulation["silent"] = silent
+            captured_simulations.append(
+                {
+                    "seed": seed,
+                    "start_time_utc": start_time_utc,
+                    "horizon_interval_count": horizon_interval_count,
+                    "interval": interval,
+                    "silent": silent,
+                }
+            )
+
             return _FakeSimulationResult()
 
     monkeypatch.setattr(
@@ -133,12 +140,22 @@ def test_workbench_comparison_reloads_training_ticks_and_simulates_training_wind
             "price": 100.5,
         },
     )
-    assert captured_simulation == {
-        "seed": 7,
-        "start_time_utc": datetime(2026, 2, 2, 14, 0, tzinfo=UTC),
-        "horizon_interval_count": 2,
-        "silent": True,
-    }
+    assert captured_simulations == [
+        {
+            "seed": 7,
+            "start_time_utc": datetime(2026, 2, 2, 14, 0, tzinfo=UTC),
+            "horizon_interval_count": 2,
+            "interval": None,
+            "silent": True,
+        },
+        {
+            "seed": 7,
+            "start_time_utc": datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
+            "horizon_interval_count": 6,
+            "interval": "15m",
+            "silent": True,
+        },
+    ]
 
 
 def test_workbench_comparison_replays_exact_hour_endpoints_over_covering_hours(
@@ -164,7 +181,7 @@ def test_workbench_comparison_replays_exact_hour_endpoints_over_covering_hours(
     )
     (tmp_path / "model.json").write_text("{}", encoding="utf-8")
 
-    captured_simulation: dict[str, Any] = {}
+    captured_simulations: list[dict[str, Any]] = []
 
     class _FakeSimulationResult:
         def to_pandas(self) -> Any:
@@ -210,12 +227,19 @@ def test_workbench_comparison_replays_exact_hour_endpoints_over_covering_hours(
             seed: int,
             start_time_utc: datetime,
             horizon_interval_count: int,
+            interval: str | None = None,
             silent: bool,
         ) -> _FakeSimulationResult:
-            captured_simulation["seed"] = seed
-            captured_simulation["start_time_utc"] = start_time_utc
-            captured_simulation["horizon_interval_count"] = horizon_interval_count
-            captured_simulation["silent"] = silent
+            captured_simulations.append(
+                {
+                    "seed": seed,
+                    "start_time_utc": start_time_utc,
+                    "horizon_interval_count": horizon_interval_count,
+                    "interval": interval,
+                    "silent": silent,
+                }
+            )
+
             return _FakeSimulationResult()
 
     monkeypatch.setattr(
@@ -244,12 +268,23 @@ def test_workbench_comparison_replays_exact_hour_endpoints_over_covering_hours(
             "price": 101.1,
         },
     )
-    assert captured_simulation == {
-        "seed": 3,
-        "start_time_utc": datetime(2026, 2, 2, 14, 0, tzinfo=UTC),
-        "horizon_interval_count": 3,
-        "silent": True,
-    }
+
+    assert captured_simulations == [
+        {
+            "seed": 3,
+            "start_time_utc": datetime(2026, 2, 2, 14, 0, tzinfo=UTC),
+            "horizon_interval_count": 3,
+            "interval": None,
+            "silent": True,
+        },
+        {
+            "seed": 3,
+            "start_time_utc": datetime(2026, 2, 2, 14, 0, tzinfo=UTC),
+            "horizon_interval_count": 9,
+            "interval": "15m",
+            "silent": True,
+        },
+    ]
 
 
 def test_workbench_plot_export_includes_observed_simulated_comparison(
@@ -267,12 +302,14 @@ def test_workbench_plot_export_includes_observed_simulated_comparison(
         ),
         encoding="utf-8",
     )
+
     _write_fit_report(
         tmp_path / "fit_report.json",
         tick_data_path=tick_data_path,
         run_id="fit-context-plots",
         duplicate_record_policy=None,
     )
+
     (tmp_path / "model.json").write_text("{}", encoding="utf-8")
 
     class _FakeSimulationResult:
@@ -324,6 +361,7 @@ def test_workbench_plot_export_includes_observed_simulated_comparison(
     assert "observed_targets" in figure_paths
     assert "observed_simulated_comparison" in figure_paths
     assert "simulation_summary" in figure_paths
+
     assert Path(figure_paths["observed_simulated_comparison"]).is_file()
 
 
@@ -342,12 +380,14 @@ def test_workbench_plot_export_accepts_time_as_timestamp_key(
         ),
         encoding="utf-8",
     )
+
     _write_fit_report(
         tmp_path / "fit_report.json",
         tick_data_path=tick_data_path,
         run_id="fit-context-time-key",
         duplicate_record_policy=None,
     )
+
     (tmp_path / "model.json").write_text("{}", encoding="utf-8")
 
     class _FakeSimulationResult:
@@ -413,12 +453,14 @@ def test_workbench_plot_export_accepts_time_microseconds_timestamp_key(
         ),
         encoding="utf-8",
     )
+
     _write_fit_report(
         tmp_path / "fit_report.json",
         tick_data_path=tick_data_path,
         run_id="fit-context-time-microseconds-key",
         duplicate_record_policy=None,
     )
+
     (tmp_path / "model.json").write_text("{}", encoding="utf-8")
 
     class _FakeSimulationResult:
@@ -557,4 +599,5 @@ def _write_fit_report(
             },
         },
     }
+
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")

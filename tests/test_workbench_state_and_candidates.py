@@ -1,9 +1,11 @@
 import json
-
 from pathlib import Path
 
 from tools.workbench.artifacts import load_workbench_artifacts
-from tools.workbench.candidate_store import candidate_store_from_artifacts
+from tools.workbench.candidate_store import (
+    candidate_store_from_artifacts,
+    candidate_store_from_stage_report_payloads,
+)
 from tools.workbench.events import WorkbenchEventType, build_workbench_event
 from tools.workbench.reducers import apply_workbench_event
 from tools.workbench.state import build_initial_workbench_state
@@ -26,12 +28,14 @@ def test_candidate_store_enriches_selected_stage_parameters(tmp_path: Path) -> N
 
 def test_workbench_reducer_tracks_live_run_status() -> None:
     state = build_initial_workbench_state(workspace_root=Path.cwd())
+
     run_started_event = build_workbench_event(
         event_type=WorkbenchEventType.RUN_STARTED,
         run_id="run-001",
         sequence_number=1,
         payload={"detail": "Starting calibration"},
     )
+
     resource_event = build_workbench_event(
         event_type=WorkbenchEventType.RESOURCE_SNAPSHOT_RECORDED,
         run_id="run-001",
@@ -40,6 +44,7 @@ def test_workbench_reducer_tracks_live_run_status() -> None:
         stage="staged_calibration",
         subtask="running calibration",
     )
+
     run_completed_event = build_workbench_event(
         event_type=WorkbenchEventType.RUN_COMPLETED,
         run_id="run-001",
@@ -57,6 +62,61 @@ def test_workbench_reducer_tracks_live_run_status() -> None:
     assert state.run.elapsed_seconds == 12.5
     assert state.run.current_stage == "staged_calibration"
     assert state.run.current_subtask == "running calibration"
+
+
+def test_candidate_store_builds_live_snapshots_from_stage_reports() -> None:
+    candidate_store = candidate_store_from_stage_report_payloads(
+        (
+            {
+                "stage_report_kind": "hawkes",
+                "fitted_stage_payload": {
+                    "selected_candidate_id": "hawkes-001",
+                    "fitted_parameters": {"alpha": 0.1},
+                    "candidate_diagnostics": [
+                        {
+                            "candidate_id": "hawkes-001",
+                            "penalized_objective_value": 0.4,
+                            "constraint_violation_count": 0,
+                            "objective_terms": [
+                                {"term_id": "branching_ratio", "normalized_error": 0.2}
+                            ],
+                        },
+                        {
+                            "candidate_id": "hawkes-002",
+                            "penalized_objective_value": 0.8,
+                            "constraint_violation_count": 2,
+                            "objective_terms": [],
+                        },
+                    ],
+                },
+            },
+            {
+                "stage_report_kind": "joint_refinement",
+                "fitted_stage_payload": {
+                    "selected_candidate_id": "joint-001",
+                    "fitted_parameters": {"theta": 0.25},
+                    "candidate_frontier": [
+                        {
+                            "candidate_id": "joint-001",
+                            "valid": True,
+                            "admissible": True,
+                            "pareto_rank": 1,
+                            "lexicographic_rank": 1,
+                            "scalar_tie_break": 0.12,
+                            "objective_breakdown": {"activity_level_fit": 0.1},
+                            "canonical_coordinates": [["theta", 0.25]],
+                        }
+                    ],
+                },
+            },
+        )
+    )
+
+    assert candidate_store.selected_candidate_id == "joint-001"
+    assert len(candidate_store.candidates) == 3
+    assert candidate_store.by_id["hawkes-001"].family_metrics[0].family_id == "branching_ratio"
+    assert candidate_store.by_id["hawkes-002"].rejection_reason == "constraint_violation"
+    assert candidate_store.by_id["joint-001"].canonical_coordinates == {"theta": 0.25}
 
 
 def _write_run_bundle(run_directory: Path) -> None:
@@ -143,6 +203,7 @@ def _write_run_bundle(run_directory: Path) -> None:
         ),
         encoding="utf-8",
     )
+
     (run_directory / "model.json").write_text(
         json.dumps(
             {
