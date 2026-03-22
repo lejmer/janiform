@@ -50,9 +50,8 @@ Build a calibrator that:
    diagnostics.
 
 7. No monolith modules.
-   The calibrator core and the workbench must be split into focused modules with clear
-   responsibilities. A single giant file that mixes targets, solvers, rendering, and interaction is
-   unacceptable.
+   The calibrator core must be split into focused modules with clear responsibilities. A single giant
+   file that mixes targets, solvers, rendering, and interaction is unacceptable.
 
 8. Shared helpers belong in shared locations.
    Any helper that is general enough to be reused must live in a shared module or existing shared
@@ -97,7 +96,6 @@ The v2 design must preserve the first group and remove the second.
 - make good use of high-core-count machines
 - separate target construction, geometry construction, solving, evaluation, and selection
 - make every calibration run reproducible, inspectable, and explainable
-- provide a workbench UX that keeps the user continuously informed during long-running operations
 
 ### Product goals
 
@@ -601,10 +599,7 @@ the same simulated intervals.
 
 The calibrator core is incomplete unless it emits a serious structured diagnostic artifact surface.
 
-The interactive workbench is specified separately in
-[calibration_workbench_spec.md](/mnt/c/Users/anton/source/repos/janiform/docs/design/calibration_workbench_spec.md).
-This section defines what the calibrator core must produce for that workbench and for automated
-inspection.
+This section defines what the calibrator core must produce for automated inspection.
 
 ### Artifact goals
 
@@ -807,8 +802,7 @@ Not preferred:
 
 ## 11. What V2 Must Explain After Every Run
 
-After a calibration completes, the artifact bundle and the derived workbench views must be able to
-answer:
+After a calibration completes, the artifact bundle must be able to answer:
 
 - what targets were estimated from the data
 - which candidates were generated and why
@@ -833,8 +827,6 @@ The rewrite is considered incomplete unless all of the following are present tog
 - constrained evaluation and selection policy
 - deterministic parallel runtime design
 - structured diagnostic artifact bundle
-- visualization-capable evaluation workbench as specified in
-  [calibration_workbench_spec.md](/mnt/c/Users/anton/source/repos/janiform/docs/design/calibration_workbench_spec.md)
 
 This is one design, not a core design plus optional debugging extras.
 
