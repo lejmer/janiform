@@ -132,6 +132,9 @@ def create_selected_candidate_diagnostics_figure(artifacts: WorkbenchArtifacts) 
     decisive_points_y: list[float] = []
 
     for metric in family_metrics:
+        if not _metric_has_comparable_observed_simulated_values(metric):
+            continue
+
         observed_value = metric.get("observed_value")
         simulated_value = metric.get("simulated_value")
         metric_id = metric.get("metric_id")
@@ -177,9 +180,36 @@ def create_selected_candidate_diagnostics_figure(artifacts: WorkbenchArtifacts) 
             linewidth=1.0,
         )
 
-        if _all_positive(observed_values) and _all_positive(simulated_values):
-            scatter_axis.set_xscale("log")
-            scatter_axis.set_yscale("log")
+        _configure_metric_scatter_axis_scaling(
+            scatter_axis,
+            observed_values,
+            simulated_values,
+        )
+    else:
+        message = (
+            "This selected stage exposes family-distance scores rather than direct "
+            "observed-versus-simulated value pairs."
+        )
+        if _selected_candidate_entry_uses_legacy_joint_distance_only_metrics(
+            selected_candidate_entry
+        ):
+            message = (
+                "This run stores legacy joint-refinement family-distance scores only. "
+                "Re-run calibration with the updated diagnostics contract to see "
+                "observed-versus-simulated pairs."
+            )
+
+        scatter_axis.text(
+            0.5,
+            0.5,
+            message,
+            ha="center",
+            va="center",
+            wrap=True,
+            transform=scatter_axis.transAxes,
+        )
+        scatter_axis.set_xticks([])
+        scatter_axis.set_yticks([])
 
     scatter_axis.set_title("Observed Versus Simulated Metrics")
     scatter_axis.set_xlabel("Observed")
@@ -954,29 +984,47 @@ def create_parameter_objective_figure_with_columns(
         points = parameter_points[parameter_name]
         admissible_points = [point for point in points if point["admissible"]]
         rejected_points = [point for point in points if not point["admissible"]]
+        y_focus_limits = _parameter_objective_focus_limits(
+            [float(point["objective"]) for point in points]
+        )
 
         if admissible_points:
-            axis.scatter(
-                [point["value"] for point in admissible_points],
-                [point["objective"] for point in admissible_points],
+            _render_parameter_objective_points(
+                axis,
+                admissible_points,
                 color="#1d4ed8",
-                alpha=0.75,
                 label="admissible",
+                y_focus_limits=y_focus_limits,
             )
 
         if rejected_points:
-            axis.scatter(
-                [point["value"] for point in rejected_points],
-                [point["objective"] for point in rejected_points],
+            _render_parameter_objective_points(
+                axis,
+                rejected_points,
                 color="#dc2626",
-                alpha=0.55,
                 label="rejected",
+                y_focus_limits=y_focus_limits,
             )
 
         axis.set_title(f"{parameter_name} vs objective")
         axis.set_xlabel(parameter_name)
         axis.set_ylabel("Objective")
         axis.grid(alpha=0.3)
+
+        if y_focus_limits is not None:
+            focus_lower_bound, focus_upper_bound = y_focus_limits
+            axis.set_ylim(
+                _expanded_axis_bound(
+                    focus_lower_bound,
+                    focus_upper_bound,
+                    prefer_upper=False,
+                ),
+                _expanded_axis_bound(
+                    focus_lower_bound,
+                    focus_upper_bound,
+                    prefer_upper=True,
+                ),
+            )
 
         if admissible_points or rejected_points:
             axis.legend(loc="best", fontsize="small")
@@ -985,6 +1033,132 @@ def create_parameter_objective_figure_with_columns(
         axis.set_axis_off()
 
     return figure
+
+
+def _render_parameter_objective_points(
+    axis: Any,
+    points: list[dict[str, float | bool]],
+    *,
+    color: str,
+    label: str,
+    y_focus_limits: Optional[tuple[float, float]],
+) -> None:
+    in_range_points = points
+    lower_outlier_count = 0
+    upper_outlier_count = 0
+
+    if y_focus_limits is not None:
+        focus_lower_bound, focus_upper_bound = y_focus_limits
+        in_range_points = [
+            point
+            for point in points
+            if focus_lower_bound <= float(point["objective"]) <= focus_upper_bound
+        ]
+        lower_outlier_points = [
+            point for point in points if float(point["objective"]) < focus_lower_bound
+        ]
+        upper_outlier_points = [
+            point for point in points if float(point["objective"]) > focus_upper_bound
+        ]
+        lower_outlier_count = len(lower_outlier_points)
+        upper_outlier_count = len(upper_outlier_points)
+
+        if lower_outlier_points:
+            axis.scatter(
+                [float(point["value"]) for point in lower_outlier_points],
+                [focus_lower_bound for _ in lower_outlier_points],
+                color=color,
+                alpha=0.8,
+                marker="v",
+            )
+
+        if upper_outlier_points:
+            axis.scatter(
+                [float(point["value"]) for point in upper_outlier_points],
+                [focus_upper_bound for _ in upper_outlier_points],
+                color=color,
+                alpha=0.8,
+                marker="^",
+            )
+
+    if in_range_points:
+        axis.scatter(
+            [float(point["value"]) for point in in_range_points],
+            [float(point["objective"]) for point in in_range_points],
+            color=color,
+            alpha=0.75 if label == "admissible" else 0.55,
+            label=label,
+        )
+
+    if lower_outlier_count > 0 or upper_outlier_count > 0:
+        clipped_parts: list[str] = []
+        if upper_outlier_count > 0:
+            clipped_parts.append(f"{upper_outlier_count} high")
+        if lower_outlier_count > 0:
+            clipped_parts.append(f"{lower_outlier_count} low")
+
+        axis.text(
+            0.99,
+            0.02 if label == "admissible" else 0.10,
+            f"{label} clipped: {', '.join(clipped_parts)}",
+            ha="right",
+            va="bottom",
+            color=color,
+            fontsize="x-small",
+            transform=axis.transAxes,
+        )
+
+
+def _parameter_objective_focus_limits(
+    objective_values: list[float],
+) -> Optional[tuple[float, float]]:
+    if len(objective_values) < 4:
+        return None
+
+    objective_array = np.asarray(sorted(objective_values), dtype=np.float64)
+    lower_bound = float(objective_array[0])
+    upper_bound = float(objective_array[-1])
+    if not math.isfinite(lower_bound) or not math.isfinite(upper_bound):
+        return None
+    if lower_bound == upper_bound:
+        return None
+
+    focus_values = objective_array.copy()
+    removed_outlier_count = 0
+    while focus_values.size >= 4:
+        first_quartile, third_quartile = np.quantile(
+            focus_values,
+            np.asarray([0.25, 0.75], dtype=np.float64),
+        )
+        interquartile_range = float(third_quartile - first_quartile)
+        if interquartile_range <= 0.0:
+            break
+
+        focus_upper_bound = float(third_quartile + 1.5 * interquartile_range)
+        if float(focus_values[-1]) <= focus_upper_bound:
+            break
+
+        focus_values = focus_values[:-1]
+        removed_outlier_count += 1
+
+    if removed_outlier_count == 0 or focus_values.size == 0:
+        return None
+
+    return lower_bound, float(focus_values[-1])
+
+
+def _expanded_axis_bound(
+    lower_bound: float,
+    upper_bound: float,
+    *,
+    prefer_upper: bool,
+) -> float:
+    span = upper_bound - lower_bound
+    padding = max(span * 0.08, 0.05)
+    if prefer_upper:
+        return upper_bound + padding
+
+    return lower_bound - padding
 
 
 def create_parameter_search_figure(
@@ -2779,9 +2953,7 @@ def _render_event_count_distribution(
 
     for interval_minutes in horizon_minutes:
         observed_counts = analysis.observed.bucket_series_by_horizon[interval_minutes].event_counts
-        simulated_counts = analysis.simulated_seeded_15m.bucket_series_by_horizon[
-            interval_minutes
-        ].event_counts
+        simulated_counts = analysis.simulated.bucket_series_by_horizon[interval_minutes].event_counts
 
         if observed_counts.size > 0:
             data.append(observed_counts.tolist())
@@ -2856,7 +3028,7 @@ def _selected_candidate_entry(artifacts: WorkbenchArtifacts) -> Optional[dict[st
     if selected_candidate_id is None:
         return None
 
-    return next(
+    selected_candidate_entry = next(
         (
             entry
             for entry in _artifact_list(artifacts.candidate_frontier, "frontier_entries")
@@ -2864,6 +3036,152 @@ def _selected_candidate_entry(artifacts: WorkbenchArtifacts) -> Optional[dict[st
         ),
         None,
     )
+    if not isinstance(selected_candidate_entry, dict):
+        return None
+
+    return _selected_candidate_entry_with_stage_report_fallback(
+        artifacts,
+        selected_candidate_entry,
+        selected_candidate_id,
+    )
+
+
+def _selected_candidate_entry_with_stage_report_fallback(
+    artifacts: WorkbenchArtifacts,
+    selected_candidate_entry: dict[str, Any],
+    selected_candidate_id: str,
+) -> dict[str, Any]:
+    if selected_candidate_entry.get("stage") != "joint_refinement":
+        return selected_candidate_entry
+
+    family_metrics = selected_candidate_entry.get("family_metrics")
+    if not isinstance(family_metrics, list):
+        family_metrics = []
+
+    if any(
+        isinstance(metric, dict) and _metric_has_comparable_observed_simulated_values(metric)
+        for metric in family_metrics
+    ):
+        return selected_candidate_entry
+
+    stage_report_candidate = _selected_joint_stage_report_candidate(
+        artifacts,
+        selected_candidate_id,
+    )
+    if stage_report_candidate is None:
+        return selected_candidate_entry
+
+    objective_terms = stage_report_candidate.get("objective_terms")
+    stage_report_family_metrics = _family_metrics_from_objective_terms(
+        objective_terms,
+        admissible=bool(stage_report_candidate.get("admissible")),
+    )
+    if not any(
+        _metric_has_comparable_observed_simulated_values(metric)
+        for metric in stage_report_family_metrics
+    ):
+        return selected_candidate_entry
+
+    enriched_entry = dict(selected_candidate_entry)
+    enriched_entry["family_metrics"] = stage_report_family_metrics
+    return enriched_entry
+
+
+def _selected_joint_stage_report_candidate(
+    artifacts: WorkbenchArtifacts,
+    selected_candidate_id: str,
+) -> Optional[dict[str, Any]]:
+    stage_reports = _stage_report_payloads(artifacts)
+    for stage_report in stage_reports:
+        if stage_report.get("stage_report_kind") != "joint_refinement":
+            continue
+
+        fitted_stage_payload = stage_report.get("fitted_stage_payload")
+        if not isinstance(fitted_stage_payload, dict):
+            continue
+
+        candidate_frontier = fitted_stage_payload.get("candidate_frontier")
+        if not isinstance(candidate_frontier, list):
+            continue
+
+        for candidate in candidate_frontier:
+            if (
+                isinstance(candidate, dict)
+                and candidate.get("candidate_id") == selected_candidate_id
+            ):
+                return candidate
+
+    return None
+
+
+def _stage_report_payloads(artifacts: WorkbenchArtifacts) -> list[dict[str, Any]]:
+    fit_report_payload = artifacts.fit_report_payload
+    if not isinstance(fit_report_payload, dict):
+        return []
+
+    stage_reports = fit_report_payload.get("stage_reports")
+    if isinstance(stage_reports, list):
+        return [payload for payload in stage_reports if isinstance(payload, dict)]
+
+    staged_response = fit_report_payload.get("staged_response")
+    if not isinstance(staged_response, dict):
+        return []
+
+    nested_stage_reports = staged_response.get("stage_reports")
+    if not isinstance(nested_stage_reports, list):
+        return []
+
+    return [payload for payload in nested_stage_reports if isinstance(payload, dict)]
+
+
+def _family_metrics_from_objective_terms(
+    raw_terms: Any,
+    *,
+    admissible: bool,
+) -> list[dict[str, Any]]:
+    if not isinstance(raw_terms, list):
+        return []
+
+    family_metrics: list[dict[str, Any]] = []
+    for raw_term in raw_terms:
+        if not isinstance(raw_term, dict):
+            continue
+
+        metric_id = raw_term.get("metric_id")
+        target_id = raw_term.get("target_id", metric_id)
+        target_family = raw_term.get("target_family")
+        normalized_distance = raw_term.get("normalized_error")
+        observed_value = raw_term.get("observed_value")
+        simulated_value = raw_term.get("simulated_value")
+        uncertainty_scale = raw_term.get("uncertainty_scale")
+
+        if not isinstance(metric_id, str) or not isinstance(target_id, str):
+            continue
+        if not isinstance(target_family, str):
+            target_family = "diagnostic"
+        if not isinstance(normalized_distance, int | float):
+            continue
+        if not isinstance(observed_value, int | float) or not isinstance(
+            simulated_value, int | float
+        ):
+            continue
+        if not isinstance(uncertainty_scale, int | float):
+            continue
+
+        family_metrics.append(
+            {
+                "metric_id": metric_id,
+                "target_id": target_id,
+                "target_family": target_family,
+                "normalized_distance": float(normalized_distance),
+                "admissible": admissible,
+                "simulated_value": float(simulated_value),
+                "observed_value": float(observed_value),
+                "uncertainty_scale": float(uncertainty_scale),
+            }
+        )
+
+    return family_metrics
 
 
 def _decisive_metric_ids(artifacts: WorkbenchArtifacts) -> tuple[str, ...]:
@@ -2891,6 +3209,90 @@ def _aggregate_family_distances(family_metrics: list[dict[str, Any]]) -> dict[st
         for family_name, values in grouped_values.items()
         if values
     }
+
+
+def _metric_has_comparable_observed_simulated_values(metric: dict[str, Any]) -> bool:
+    observed_value = metric.get("observed_value")
+    simulated_value = metric.get("simulated_value")
+    if not isinstance(observed_value, int | float) or not isinstance(simulated_value, int | float):
+        return False
+
+    if _is_legacy_joint_distance_only_metric(metric):
+        return False
+
+    return True
+
+
+def _configure_metric_scatter_axis_scaling(
+    scatter_axis: Any,
+    observed_values: list[float],
+    simulated_values: list[float],
+) -> None:
+    if _all_positive(observed_values) and _all_positive(simulated_values):
+        scatter_axis.set_xscale("log")
+        scatter_axis.set_yscale("log")
+        return
+
+    positive_absolute_values = [
+        abs(value)
+        for value in [*observed_values, *simulated_values]
+        if math.isfinite(value) and not math.isclose(value, 0.0, abs_tol=1.0e-12)
+    ]
+    if len(positive_absolute_values) < 2:
+        return
+
+    smallest_positive_value = min(positive_absolute_values)
+    largest_positive_value = max(positive_absolute_values)
+    if largest_positive_value / smallest_positive_value < 1.0e3:
+        return
+
+    linear_threshold = max(
+        float(np.median(np.asarray(positive_absolute_values))),
+        smallest_positive_value * 10.0,
+        1.0e-6,
+    )
+    scatter_axis.set_xscale("symlog", linthresh=linear_threshold)
+    scatter_axis.set_yscale("symlog", linthresh=linear_threshold)
+
+
+def _selected_candidate_entry_uses_legacy_joint_distance_only_metrics(
+    selected_candidate_entry: dict[str, Any],
+) -> bool:
+    family_metrics = selected_candidate_entry.get("family_metrics")
+    if not isinstance(family_metrics, list):
+        return False
+
+    legacy_joint_metric_count = sum(
+        1
+        for metric in family_metrics
+        if isinstance(metric, dict) and _is_legacy_joint_distance_only_metric(metric)
+    )
+    return legacy_joint_metric_count > 0 and legacy_joint_metric_count == len(family_metrics)
+
+
+def _is_legacy_joint_distance_only_metric(metric: dict[str, Any]) -> bool:
+    target_id = metric.get("target_id")
+    normalized_distance = metric.get("normalized_distance")
+    uncertainty_scale = metric.get("uncertainty_scale")
+    observed_value = metric.get("observed_value")
+    simulated_value = metric.get("simulated_value")
+
+    return (
+        isinstance(target_id, str)
+        and target_id.startswith("joint.")
+        and isinstance(normalized_distance, int | float)
+        and isinstance(uncertainty_scale, int | float)
+        and isinstance(observed_value, int | float)
+        and isinstance(simulated_value, int | float)
+        and math.isclose(float(observed_value), 0.0, abs_tol=1.0e-12)
+        and math.isclose(
+            float(simulated_value),
+            float(normalized_distance),
+            rel_tol=1.0e-12,
+            abs_tol=1.0e-12,
+        )
+        and math.isclose(float(uncertainty_scale), 1.0, rel_tol=1.0e-12, abs_tol=1.0e-12)
+    )
 
 
 def _render_simulation_summary_metric(

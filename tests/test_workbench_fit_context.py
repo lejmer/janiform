@@ -13,7 +13,10 @@ from pyarrow import parquet
 from janiform._timestamps import datetime_to_utc_microseconds
 from tools.workbench import plots as workbench_plots
 from tools.workbench import load_workbench_artifacts
+from tools.workbench.artifacts import WorkbenchArtifacts
 from tools.workbench.fit_context import (
+    WorkbenchObservedSimulationComparison,
+    WorkbenchPriceSeries,
     build_observed_simulation_comparison,
     load_fit_context,
 )
@@ -275,6 +278,353 @@ def test_workbench_comparison_replays_exact_hour_endpoints_over_covering_hours(
             "silent": True,
         },
     ]
+
+
+def test_horizon_event_count_distribution_uses_raw_simulated_tick_counts() -> None:
+    observed_series = _price_series_from_records(
+        (
+            ("2026-02-02T14:00:00Z", 100.0),
+            ("2026-02-02T14:10:00Z", 100.1),
+            ("2026-02-02T14:20:00Z", 100.2),
+            ("2026-02-02T14:30:00Z", 100.3),
+            ("2026-02-02T14:40:00Z", 100.4),
+            ("2026-02-02T14:50:00Z", 100.5),
+        )
+    )
+    simulated_tick_series = _price_series_from_records(
+        (
+            ("2026-02-02T14:00:00Z", 100.0),
+            ("2026-02-02T14:01:00Z", 100.1),
+            ("2026-02-02T14:02:00Z", 100.2),
+            ("2026-02-02T14:15:00Z", 100.3),
+            ("2026-02-02T14:16:00Z", 100.4),
+            ("2026-02-02T14:30:00Z", 100.5),
+            ("2026-02-02T14:31:00Z", 100.6),
+            ("2026-02-02T14:32:00Z", 100.7),
+            ("2026-02-02T14:45:00Z", 100.8),
+        )
+    )
+    simulated_seeded_15m_series = _price_series_from_records(
+        (
+            ("2026-02-02T14:15:00Z", 100.2),
+            ("2026-02-02T14:30:00Z", 100.4),
+            ("2026-02-02T14:45:00Z", 100.7),
+            ("2026-02-02T15:00:00Z", 100.8),
+        )
+    )
+
+    comparison = WorkbenchObservedSimulationComparison(
+        fit_context=SimpleNamespace(),
+        simulation_seed=7,
+        observed_series=observed_series,
+        simulated_series=simulated_tick_series,
+        simulated_seeded_series_15m=simulated_seeded_15m_series,
+        simulated_coarse_series_15m=simulated_seeded_15m_series,
+    )
+    analysis = workbench_plots._analysis_for_observed_simulation_comparison(comparison)
+    axis = _FakeAxis()
+
+    workbench_plots._render_event_count_distribution(
+        axis,
+        analysis,
+        horizon_minutes=(15,),
+    )
+
+    assert axis.boxplot_data == [[2, 1, 2, 1], [3, 2, 3, 1]]
+    assert axis.xtick_labels == ["Observed 15m", "Simulated 15m"]
+
+
+def test_parameter_objective_figure_clips_extreme_objective_outliers() -> None:
+    artifacts = WorkbenchArtifacts(
+        source_path=Path("/tmp/parameter-objective-test"),
+        source_kind="run_directory",
+        metadata={},
+        fit_report_payload=None,
+        model_payload=None,
+        observed_targets={},
+        candidate_frontier={
+            "frontier_entries": [
+                {
+                    "candidate_id": "candidate-001",
+                    "stage": "hawkes",
+                    "admissible": True,
+                    "scalar_tie_break": 0.4,
+                    "canonical_coordinates": {"theta": 0.0},
+                },
+                {
+                    "candidate_id": "candidate-002",
+                    "stage": "hawkes",
+                    "admissible": True,
+                    "scalar_tie_break": 0.8,
+                    "canonical_coordinates": {"theta": 0.2},
+                },
+                {
+                    "candidate_id": "candidate-003",
+                    "stage": "hawkes",
+                    "admissible": False,
+                    "scalar_tie_break": 1.0,
+                    "canonical_coordinates": {"theta": 0.4},
+                },
+                {
+                    "candidate_id": "candidate-004",
+                    "stage": "hawkes",
+                    "admissible": False,
+                    "scalar_tie_break": 120.0,
+                    "canonical_coordinates": {"theta": 0.6},
+                },
+            ]
+        },
+        coarse_tick_consistency={},
+        selection_rationale={},
+        simulation_summary={},
+        search_surface_manifest={},
+        runtime_profile={},
+    )
+
+    figure = workbench_plots.create_parameter_objective_figure_with_columns(
+        artifacts,
+        column_count=1,
+    )
+    axis = figure.axes[0]
+
+    assert axis.get_ylim()[1] < 10.0
+    assert any("rejected clipped: 1 high" == text.get_text() for text in axis.texts)
+
+
+def test_selected_candidate_diagnostics_omits_joint_distance_only_scatter_pairs() -> None:
+    artifacts = WorkbenchArtifacts(
+        source_path=Path("/tmp/selected-candidate-diagnostics-test"),
+        source_kind="run_directory",
+        metadata={},
+        fit_report_payload=None,
+        model_payload=None,
+        observed_targets={},
+        candidate_frontier={
+            "frontier_entries": [
+                {
+                    "candidate_id": "candidate-001",
+                    "stage": "joint_refinement",
+                    "evaluation_tier": "tick_joint",
+                    "admissible": True,
+                    "valid": True,
+                    "pareto_rank": 1,
+                    "lexicographic_rank": 1,
+                    "scalar_tie_break": 0.1,
+                    "family_metrics": [
+                        {
+                            "metric_id": "joint.activity_level",
+                            "target_id": "joint.activity_level",
+                            "target_family": "activity_level",
+                            "normalized_distance": 0.34,
+                            "admissible": True,
+                            "simulated_value": 0.34,
+                            "observed_value": 0.0,
+                            "uncertainty_scale": 1.0,
+                        },
+                        {
+                            "metric_id": "joint.return_scale",
+                            "target_id": "joint.return_scale",
+                            "target_family": "return_scale",
+                            "normalized_distance": 0.52,
+                            "admissible": True,
+                            "simulated_value": 0.52,
+                            "observed_value": 0.0,
+                            "uncertainty_scale": 1.0,
+                        },
+                    ],
+                    "canonical_coordinates": {"theta": 0.25},
+                }
+            ]
+        },
+        coarse_tick_consistency={},
+        selection_rationale={
+            "decision": {
+                "selected_candidate_id": "candidate-001",
+                "decisive_metric_ids": [],
+            }
+        },
+        simulation_summary={},
+        search_surface_manifest={},
+        runtime_profile={},
+    )
+
+    figure = workbench_plots.create_selected_candidate_diagnostics_figure(artifacts)
+    scatter_axis = figure.axes[1]
+
+    assert len(scatter_axis.collections) == 0
+    assert any(
+        "legacy joint-refinement family-distance scores only"
+        in text.get_text()
+        for text in scatter_axis.texts
+    )
+
+
+def test_selected_candidate_diagnostics_recovers_joint_pairs_from_stage_report_payload() -> None:
+    artifacts = WorkbenchArtifacts(
+        source_path=Path("/tmp/selected-candidate-stage-report-fallback"),
+        source_kind="run_directory",
+        metadata={},
+        fit_report_payload={
+            "staged_response": {
+                "stage_reports": [
+                    {
+                        "stage_report_kind": "joint_refinement",
+                        "fitted_stage_payload": {
+                            "selected_candidate_id": "candidate-001",
+                            "candidate_frontier": [
+                                {
+                                    "candidate_id": "candidate-001",
+                                    "admissible": True,
+                                    "objective_terms": [
+                                        {
+                                            "metric_id": "joint.activity_level",
+                                            "target_id": "joint.activity_level",
+                                            "target_family": "activity_level",
+                                            "observed_value": 120.0,
+                                            "simulated_value": 118.0,
+                                            "uncertainty_scale": 120.0,
+                                            "normalized_error": 0.0168,
+                                        },
+                                        {
+                                            "metric_id": "joint.return_scale",
+                                            "target_id": "joint.return_scale",
+                                            "target_family": "return_scale",
+                                            "observed_value": 0.0015,
+                                            "simulated_value": 0.0017,
+                                            "uncertainty_scale": 0.0015,
+                                            "normalized_error": 0.1251,
+                                        },
+                                    ],
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+        },
+        model_payload=None,
+        observed_targets={},
+        candidate_frontier={
+            "frontier_entries": [
+                {
+                    "candidate_id": "candidate-001",
+                    "stage": "joint_refinement",
+                    "evaluation_tier": "tick_joint",
+                    "admissible": True,
+                    "valid": True,
+                    "pareto_rank": 1,
+                    "lexicographic_rank": 1,
+                    "scalar_tie_break": 0.1,
+                    "family_metrics": [
+                        {
+                            "metric_id": "joint.activity_level",
+                            "target_id": "joint.activity_level",
+                            "target_family": "activity_level",
+                            "normalized_distance": 0.34,
+                            "admissible": True,
+                            "simulated_value": 0.34,
+                            "observed_value": 0.0,
+                            "uncertainty_scale": 1.0,
+                        }
+                    ],
+                    "canonical_coordinates": {"theta": 0.25},
+                }
+            ]
+        },
+        coarse_tick_consistency={},
+        selection_rationale={
+            "decision": {
+                "selected_candidate_id": "candidate-001",
+                "decisive_metric_ids": [],
+            }
+        },
+        simulation_summary={},
+        search_surface_manifest={},
+        runtime_profile={},
+    )
+
+    figure = workbench_plots.create_selected_candidate_diagnostics_figure(artifacts)
+    scatter_axis = figure.axes[1]
+
+    assert len(scatter_axis.collections) == 1
+    assert len(scatter_axis.collections[0].get_offsets()) == 2
+    assert not any(
+        "family-distance scores" in text.get_text() for text in scatter_axis.texts
+    )
+
+
+def test_selected_candidate_diagnostics_uses_symlog_for_mixed_scale_metrics() -> None:
+    artifacts = WorkbenchArtifacts(
+        source_path=Path("/tmp/selected-candidate-mixed-scale-metrics"),
+        source_kind="run_directory",
+        metadata={},
+        fit_report_payload=None,
+        model_payload=None,
+        observed_targets={},
+        candidate_frontier={
+            "frontier_entries": [
+                {
+                    "candidate_id": "candidate-001",
+                    "stage": "joint_refinement",
+                    "evaluation_tier": "tick_joint",
+                    "admissible": True,
+                    "valid": True,
+                    "pareto_rank": 1,
+                    "lexicographic_rank": 1,
+                    "scalar_tie_break": 0.1,
+                    "family_metrics": [
+                        {
+                            "metric_id": "joint.activity_level",
+                            "target_id": "joint.activity_level",
+                            "target_family": "activity_level",
+                            "normalized_distance": 0.03,
+                            "admissible": True,
+                            "simulated_value": 510000.0,
+                            "observed_value": 500000.0,
+                            "uncertainty_scale": 500000.0,
+                        },
+                        {
+                            "metric_id": "joint.return_scale",
+                            "target_id": "joint.return_scale",
+                            "target_family": "return_scale",
+                            "normalized_distance": 0.12,
+                            "admissible": True,
+                            "simulated_value": 0.0017,
+                            "observed_value": 0.0015,
+                            "uncertainty_scale": 0.0015,
+                        },
+                        {
+                            "metric_id": "joint.return_shape",
+                            "target_id": "joint.return_shape",
+                            "target_family": "return_asymmetry",
+                            "normalized_distance": 0.50,
+                            "admissible": True,
+                            "simulated_value": 0.05,
+                            "observed_value": 0.0,
+                            "uncertainty_scale": 0.1,
+                        },
+                    ],
+                    "canonical_coordinates": {"theta": 0.25},
+                }
+            ]
+        },
+        coarse_tick_consistency={},
+        selection_rationale={
+            "decision": {
+                "selected_candidate_id": "candidate-001",
+                "decisive_metric_ids": [],
+            }
+        },
+        simulation_summary={},
+        search_surface_manifest={},
+        runtime_profile={},
+    )
+
+    figure = workbench_plots.create_selected_candidate_diagnostics_figure(artifacts)
+    scatter_axis = figure.axes[1]
+
+    assert scatter_axis.get_xscale() == "symlog"
+    assert scatter_axis.get_yscale() == "symlog"
 
 
 def test_workbench_comparison_builds_seeded_15m_series_from_raw_path(
@@ -1091,6 +1441,55 @@ def _assert_price_series(
         ),
     )
     assert np.array_equal(series.prices, np.asarray(prices, dtype=np.float64))
+
+
+def _price_series_from_records(
+    records: tuple[tuple[str, float], ...],
+) -> WorkbenchPriceSeries:
+    return WorkbenchPriceSeries(
+        timestamp_microseconds_utc=np.asarray(
+            [
+                datetime_to_utc_microseconds(datetime.fromisoformat(timestamp_text.replace("Z", "+00:00")))
+                for timestamp_text, _ in records
+            ],
+            dtype=np.int64,
+        ),
+        prices=np.asarray([price for _, price in records], dtype=np.float64),
+    )
+
+
+class _FakeAxis:
+    def __init__(self) -> None:
+        self.boxplot_data: list[list[int]] = []
+        self.xtick_labels: list[str] = []
+        self.transAxes = object()
+
+    def boxplot(self, data: list[list[int]], **_: Any) -> None:
+        self.boxplot_data = data
+
+    def set_xticks(self, ticks: list[float]) -> None:
+        del ticks
+
+    def set_xticklabels(self, labels: list[str], rotation: int = 0) -> None:
+        del rotation
+        self.xtick_labels = labels
+
+    def set_title(self, title: str) -> None:
+        del title
+
+    def set_ylabel(self, y_label: str) -> None:
+        del y_label
+
+    def grid(self, *args: Any, **kwargs: Any) -> None:
+        del args
+        del kwargs
+
+    def text(self, *args: Any, **kwargs: Any) -> None:
+        del args
+        del kwargs
+
+    def set_yticks(self, ticks: list[float]) -> None:
+        del ticks
 
 
 def _patch_save_all_figures_for_fast_orchestration(

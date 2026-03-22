@@ -111,6 +111,17 @@ def test_candidate_store_builds_live_snapshots_from_stage_reports() -> None:
                             "pareto_rank": 1,
                             "lexicographic_rank": 1,
                             "scalar_tie_break": 0.12,
+                            "objective_terms": [
+                                {
+                                    "metric_id": "joint.activity_level",
+                                    "target_id": "joint.activity_level",
+                                    "target_family": "activity_level",
+                                    "observed_value": 120.0,
+                                    "simulated_value": 118.0,
+                                    "uncertainty_scale": 120.0,
+                                    "normalized_error": 0.0168,
+                                }
+                            ],
                             "objective_breakdown": {"activity_level_fit": 0.1},
                             "canonical_coordinates": [["theta", 0.25]],
                         }
@@ -127,6 +138,7 @@ def test_candidate_store_builds_live_snapshots_from_stage_reports() -> None:
     assert candidate_store.by_id["hawkes-002"].candidate_source == "stage_report"
     assert candidate_store.by_id["joint-001"].objective_summary["objective_value"] == 0.12
     assert candidate_store.by_id["joint-001"].canonical_coordinates == {"theta": 0.25}
+    assert candidate_store.by_id["joint-001"].family_metrics[0].family_id == "activity_level"
 
 
 def _write_run_bundle(run_directory: Path) -> None:

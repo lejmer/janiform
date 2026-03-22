@@ -1,11 +1,17 @@
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 import pandas
 import pytest
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication
 
 from tools.workbench.artifacts import load_workbench_artifacts
+from tools.workbench.app import WorkbenchWindow
 from tools.workbench.fit_context import load_fit_context
 from tools.workbench.lab import apply_reevaluation_request
 from tools.workbench.parameters import (
@@ -158,6 +164,104 @@ def test_apply_reevaluation_request_updates_loaded_model_parameters(
     )
 
     assert updated_parameters["hawkes"]["fitted_parameters"]["beta"] == 12.0
+
+
+def test_lab_tab_populates_editable_parameter_rows_when_opened(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price",
+                "2026-02-02T14:30:00Z,100.0",
+                "2026-02-02T15:30:00Z,101.0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    _write_fit_report(tmp_path / "fit_report.json", tick_data_path=tick_data_path)
+    _write_model(tmp_path / "model.json")
+
+    class _FakeModel:
+        run_id = "lab-run"
+        workflow_scope = "full_without_option_surface"
+        resolved_configuration = {}
+        session_resolution = {}
+        _execution_input = None
+        _stage_report_payloads = ()
+        metadata = {
+            "input_inference": {
+                "tick_data_format": "csv",
+                "timestamp_column": "timestamp_utc",
+                "timestamp_timezone": "UTC",
+                "tick_price_input_policy": "explicit_price_column",
+                "tick_price_columns": {
+                    "price_column": "trade_price",
+                    "trade_sign_column": None,
+                    "bid_column": None,
+                    "ask_column": None,
+                },
+            },
+        }
+
+        @property
+        def fitted_parameters(self) -> dict[str, Any]:
+            return {
+                "hawkes": {
+                    "fitted_parameters": {
+                        "beta": 42.0,
+                    }
+                }
+            }
+
+    monkeypatch.setattr(
+        "tools.workbench.fit_context.JaniformModel.load",
+        lambda path: _FakeModel(),
+    )
+
+    artifacts = load_workbench_artifacts(tmp_path)
+    application = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+
+    try:
+        window._apply_artifacts(artifacts)
+
+        lab_tab_index = next(
+            tab_index
+            for tab_index in range(window._root_tabs.count())
+            if window._root_tabs.widget(tab_index) is window._lab_container
+        )
+        window._root_tabs.setCurrentIndex(lab_tab_index)
+        application.processEvents()
+
+        assert window._lab_parameter_table.rowCount() == 1
+
+        path_item = window._lab_parameter_table.item(0, 0)
+        block_item = window._lab_parameter_table.item(0, 1)
+        baseline_item = window._lab_parameter_table.item(0, 2)
+        edited_item = window._lab_parameter_table.item(0, 3)
+
+        assert path_item is not None
+        assert block_item is not None
+        assert baseline_item is not None
+        assert edited_item is not None
+        assert path_item.text() == "hawkes.fitted_parameters.beta"
+        assert block_item.text() == "hawkes"
+        assert baseline_item.text() == "42.0"
+        assert edited_item.text() == "42.0"
+        assert not bool(path_item.flags() & Qt.ItemFlag.ItemIsEditable)
+        assert not bool(block_item.flags() & Qt.ItemFlag.ItemIsEditable)
+        assert not bool(baseline_item.flags() & Qt.ItemFlag.ItemIsEditable)
+        assert bool(edited_item.flags() & Qt.ItemFlag.ItemIsEditable)
+        assert window._lab_parameter_table.columnWidth(1) == 120
+        assert window._lab_parameter_table.columnWidth(2) == 140
+        assert window._lab_parameter_table.columnWidth(3) == 180
+    finally:
+        window.close()
+        application.processEvents()
 
 
 def _write_fit_report(path: Path, *, tick_data_path: Path) -> None:

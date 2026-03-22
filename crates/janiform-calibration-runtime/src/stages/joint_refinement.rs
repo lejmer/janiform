@@ -196,6 +196,7 @@ struct JointRefinementContext {
 struct JointRefinementCandidateEvaluation {
     fitted_parameters: JointRefinementStageFittedParameters,
     breakdown: JointRefinementStageObjectiveBreakdown,
+    objective_terms: Vec<JointRefinementStageObjectiveTermDiagnostic>,
     invalid_reason: Option<String>,
 }
 
@@ -349,8 +350,20 @@ pub struct JointRefinementStageCandidateDiagnostic {
     pub stop_reason: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub invalid_reason: Option<String>,
+    pub objective_terms: Vec<JointRefinementStageObjectiveTermDiagnostic>,
     pub objective_breakdown: JointRefinementStageObjectiveBreakdown,
     pub canonical_coordinates: Vec<(String, f64)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct JointRefinementStageObjectiveTermDiagnostic {
+    pub metric_id: String,
+    pub target_id: String,
+    pub target_family: String,
+    pub observed_value: f64,
+    pub simulated_value: f64,
+    pub uncertainty_scale: f64,
+    pub normalized_error: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -1178,6 +1191,7 @@ fn build_joint_candidate_frontier_diagnostics(
                 local_evaluation_count: outcome.local_evaluation_count,
                 stop_reason: outcome.stop_reason.to_string(),
                 invalid_reason,
+                objective_terms: outcome.final_evaluation.objective_terms.clone(),
                 objective_breakdown: outcome.final_evaluation.breakdown.clone(),
                 canonical_coordinates: named_joint_parameter_coordinates(
                     outcome.parameter_vector.as_slice(),
@@ -2160,16 +2174,18 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         );
     }
 
-    let mut aggregated_return_shape_scores = Vec::with_capacity(seed_summaries.len());
-    let mut aggregated_return_scale_scores = Vec::with_capacity(seed_summaries.len());
-    let mut business_time_return_scale_scores = Vec::with_capacity(seed_summaries.len());
-    let mut intraday_return_level_scores = Vec::with_capacity(seed_summaries.len());
-    let mut activity_shape_scores = Vec::with_capacity(seed_summaries.len());
-    let mut activity_level_scores = Vec::with_capacity(seed_summaries.len());
-    let mut rv_activity_scores = Vec::with_capacity(seed_summaries.len());
-    let mut price_span_scores = Vec::with_capacity(seed_summaries.len());
+    let resolved_seed_summaries = seed_summaries.into_iter().flatten().collect::<Vec<_>>();
 
-    for seed_summary in seed_summaries.into_iter().flatten() {
+    let mut aggregated_return_shape_scores = Vec::with_capacity(resolved_seed_summaries.len());
+    let mut aggregated_return_scale_scores = Vec::with_capacity(resolved_seed_summaries.len());
+    let mut business_time_return_scale_scores = Vec::with_capacity(resolved_seed_summaries.len());
+    let mut intraday_return_level_scores = Vec::with_capacity(resolved_seed_summaries.len());
+    let mut activity_shape_scores = Vec::with_capacity(resolved_seed_summaries.len());
+    let mut activity_level_scores = Vec::with_capacity(resolved_seed_summaries.len());
+    let mut rv_activity_scores = Vec::with_capacity(resolved_seed_summaries.len());
+    let mut price_span_scores = Vec::with_capacity(resolved_seed_summaries.len());
+
+    for seed_summary in &resolved_seed_summaries {
         debug_assert_eq!(
             seed_summary.simulated_5m_intervals.len(),
             seed_summary.simulated_5m_shape_returns.len()
@@ -2296,6 +2312,10 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
 
     JointRefinementCandidateEvaluation {
         fitted_parameters,
+        objective_terms: build_joint_objective_term_diagnostics(
+            resolved_seed_summaries.as_slice(),
+            &context.observed_data,
+        ),
         breakdown: JointRefinementStageObjectiveBreakdown {
             aggregated_likelihood_fit: if use_raw_bucket_values {
                 raw_aggregated_likelihood_fit
@@ -2361,6 +2381,7 @@ fn invalid_candidate_evaluation(
             return_components_fitted_parameters: baseline_return_components_fitted_parameters
                 .clone(),
         },
+        objective_terms: Vec::new(),
         breakdown: JointRefinementStageObjectiveBreakdown {
             aggregated_likelihood_fit: 100.0,
             aggregated_return_shape_fit: 100.0,
@@ -2598,6 +2619,258 @@ fn rv_activity_coupling_fit(
             * (candidate_metric.standardized_path_distance
                 - observed_metric.standardized_path_distance)
                 .abs()
+}
+
+fn build_joint_objective_term_diagnostics(
+    seed_summaries: &[JointRefinementSeedSummary],
+    observed_data: &JointRefinementObservedData,
+) -> Vec<JointRefinementStageObjectiveTermDiagnostic> {
+    if seed_summaries.is_empty() {
+        return Vec::new();
+    }
+
+    let observed_total_hourly_tick_count = observed_data
+        .observed_hourly_tick_counts
+        .iter()
+        .sum::<f64>();
+    let observed_mean_hourly_tick_count = observed_total_hourly_tick_count
+        / observed_data.observed_hourly_tick_counts.len().max(1) as f64;
+    let observed_peak_hourly_tick_count = observed_data
+        .observed_hourly_tick_counts
+        .iter()
+        .copied()
+        .fold(0.0, f64::max);
+    let observed_peak_hourly_tick_share = observed_peak_hourly_tick_count
+        / observed_total_hourly_tick_count.max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR);
+    let observed_return_scale_summary = observed_data.observed_15m_return_scale_summary;
+    let observed_return_shape_skewness =
+        skewness_or_zero(observed_data.observed_15m_shape_returns.as_slice());
+    let observed_rv_activity_metric = observed_data.observed_15m_rv_activity_metric;
+    let observed_log_price_span = observed_data.observed_log_price_span;
+
+    let simulated_total_hourly_tick_count =
+        average_value(seed_summaries.iter().map(|seed_summary| {
+            seed_summary
+                .simulated_hourly_tick_counts
+                .iter()
+                .sum::<f64>()
+        }));
+    let simulated_mean_hourly_tick_count =
+        average_value(seed_summaries.iter().map(|seed_summary| {
+            let total_hourly_tick_count = seed_summary
+                .simulated_hourly_tick_counts
+                .iter()
+                .sum::<f64>();
+            total_hourly_tick_count / seed_summary.simulated_hourly_tick_counts.len().max(1) as f64
+        }));
+    let simulated_peak_hourly_tick_share =
+        average_value(seed_summaries.iter().map(|seed_summary| {
+            let total_hourly_tick_count = seed_summary
+                .simulated_hourly_tick_counts
+                .iter()
+                .sum::<f64>();
+            let peak_hourly_tick_count = seed_summary
+                .simulated_hourly_tick_counts
+                .iter()
+                .copied()
+                .fold(0.0, f64::max);
+            peak_hourly_tick_count
+                / total_hourly_tick_count.max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR)
+        }));
+    let simulated_realized_variance_15m =
+        average_value(seed_summaries.iter().map(|seed_summary| {
+            seed_summary
+                .simulated_15m_return_scale_summary
+                .realized_variance
+        }));
+    let simulated_mean_absolute_return_15m =
+        average_value(seed_summaries.iter().map(|seed_summary| {
+            seed_summary
+                .simulated_15m_return_scale_summary
+                .mean_absolute_return
+        }));
+    let simulated_return_shape_skewness =
+        average_value(seed_summaries.iter().map(|seed_summary| {
+            skewness_or_zero(seed_summary.simulated_15m_shape_returns.as_slice())
+        }));
+    let simulated_rv_activity_correlation = average_value(
+        seed_summaries
+            .iter()
+            .map(|seed_summary| seed_summary.simulated_15m_rv_activity_metric.correlation),
+    );
+    let simulated_rv_activity_path_distance =
+        average_value(seed_summaries.iter().map(|seed_summary| {
+            seed_summary
+                .simulated_15m_rv_activity_metric
+                .standardized_path_distance
+        }));
+    let simulated_log_price_span = average_value(seed_summaries.iter().map(|seed_summary| {
+        compute_cumulative_log_price_span(seed_summary.simulated_15m_intervals.as_slice())
+    }));
+
+    vec![
+        build_positive_joint_objective_term(
+            "joint.activity_level",
+            "joint.activity_level",
+            "activity_level",
+            observed_total_hourly_tick_count,
+            simulated_total_hourly_tick_count,
+        ),
+        build_positive_joint_objective_term(
+            "joint.activity_level.mean_hourly_tick_count",
+            "joint.activity_level.mean_hourly_tick_count",
+            "activity_level",
+            observed_mean_hourly_tick_count,
+            simulated_mean_hourly_tick_count,
+        ),
+        build_positive_joint_objective_term(
+            "joint.activity_shape",
+            "joint.activity_shape",
+            "activity_shape",
+            observed_peak_hourly_tick_share,
+            simulated_peak_hourly_tick_share,
+        ),
+        build_positive_joint_objective_term(
+            "joint.return_scale",
+            "joint.return_scale",
+            "return_scale",
+            observed_return_scale_summary.realized_variance,
+            simulated_realized_variance_15m,
+        ),
+        build_positive_joint_objective_term(
+            "joint.return_scale.mean_absolute_return_15m",
+            "joint.return_scale.mean_absolute_return_15m",
+            "return_scale",
+            observed_return_scale_summary.mean_absolute_return,
+            simulated_mean_absolute_return_15m,
+        ),
+        build_signed_joint_objective_term(
+            "joint.return_shape",
+            "joint.return_shape",
+            "return_asymmetry",
+            observed_return_shape_skewness,
+            simulated_return_shape_skewness,
+            0.1,
+        ),
+        build_signed_joint_objective_term(
+            "joint.rv_activity_coupling",
+            "joint.rv_activity_coupling",
+            "activity_vs_volatility_coupling",
+            observed_rv_activity_metric.correlation,
+            simulated_rv_activity_correlation,
+            0.1,
+        ),
+        build_signed_joint_objective_term(
+            "joint.rv_activity_coupling.path_distance",
+            "joint.rv_activity_coupling.path_distance",
+            "activity_vs_volatility_coupling",
+            observed_rv_activity_metric.standardized_path_distance,
+            simulated_rv_activity_path_distance,
+            0.1,
+        ),
+        build_positive_joint_objective_term(
+            "joint.price_span_sanity",
+            "joint.price_span_sanity",
+            "diagnostic",
+            observed_log_price_span,
+            simulated_log_price_span,
+        ),
+    ]
+}
+
+fn build_positive_joint_objective_term(
+    metric_id: &str,
+    target_id: &str,
+    target_family: &str,
+    observed_value: f64,
+    simulated_value: f64,
+) -> JointRefinementStageObjectiveTermDiagnostic {
+    let uncertainty_scale = observed_value
+        .abs()
+        .max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR);
+
+    JointRefinementStageObjectiveTermDiagnostic {
+        metric_id: metric_id.to_string(),
+        target_id: target_id.to_string(),
+        target_family: target_family.to_string(),
+        observed_value,
+        simulated_value,
+        uncertainty_scale,
+        normalized_error: log_ratio_distance(
+            simulated_value,
+            observed_value,
+            JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
+        ),
+    }
+}
+
+fn build_signed_joint_objective_term(
+    metric_id: &str,
+    target_id: &str,
+    target_family: &str,
+    observed_value: f64,
+    simulated_value: f64,
+    minimum_scale: f64,
+) -> JointRefinementStageObjectiveTermDiagnostic {
+    let uncertainty_scale = observed_value.abs().max(minimum_scale);
+
+    JointRefinementStageObjectiveTermDiagnostic {
+        metric_id: metric_id.to_string(),
+        target_id: target_id.to_string(),
+        target_family: target_family.to_string(),
+        observed_value,
+        simulated_value,
+        uncertainty_scale,
+        normalized_error: (simulated_value - observed_value).abs() / uncertainty_scale,
+    }
+}
+
+fn average_value(values: impl Iterator<Item = f64>) -> f64 {
+    let mut total = 0.0;
+    let mut count = 0usize;
+
+    for value in values {
+        total += value;
+        count += 1;
+    }
+
+    if count == 0 {
+        0.0
+    } else {
+        total / count as f64
+    }
+}
+
+fn skewness_or_zero(values: &[f64]) -> f64 {
+    let finite_values = values
+        .iter()
+        .copied()
+        .filter(|value| value.is_finite())
+        .collect::<Vec<_>>();
+    if finite_values.len() < 2 {
+        return 0.0;
+    }
+
+    let mean = finite_values.iter().sum::<f64>() / finite_values.len() as f64;
+    let centered_values = finite_values
+        .iter()
+        .map(|value| *value - mean)
+        .collect::<Vec<_>>();
+    let variance = centered_values
+        .iter()
+        .map(|value| value * value)
+        .sum::<f64>()
+        / centered_values.len() as f64;
+    let standard_deviation = variance.sqrt();
+    if standard_deviation <= JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR {
+        return 0.0;
+    }
+
+    centered_values
+        .iter()
+        .map(|value| (value / standard_deviation).powi(3))
+        .sum::<f64>()
+        / centered_values.len() as f64
 }
 
 fn violates_runtime_seasonality_scaled_stationarity(

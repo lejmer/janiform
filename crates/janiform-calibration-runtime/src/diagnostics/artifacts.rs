@@ -612,58 +612,22 @@ fn build_joint_candidate_frontier_entry(
         lexicographic_rank: candidate.lexicographic_rank,
         scalar_tie_break: candidate.scalar_tie_break,
         rejection_reason: candidate.invalid_reason.clone(),
-        family_metrics: vec![
-            build_joint_family_metric(
-                "activity_level",
-                "joint.activity_level",
-                candidate.objective_breakdown.activity_level_fit,
-                candidate.admissible,
-            ),
-            build_joint_family_metric(
-                "activity_shape",
-                "joint.activity_shape",
-                candidate.objective_breakdown.activity_shape_fit,
-                candidate.admissible,
-            ),
-            build_joint_family_metric(
-                "return_scale",
-                "joint.return_scale",
-                candidate.objective_breakdown.aggregated_return_scale_fit,
-                candidate.admissible,
-            ),
-            build_joint_family_metric(
-                "return_asymmetry",
-                "joint.return_shape",
-                candidate.objective_breakdown.aggregated_return_shape_fit,
-                candidate.admissible,
-            ),
-            build_joint_family_metric(
-                "activity_vs_volatility_coupling",
-                "joint.rv_activity_coupling",
-                candidate.objective_breakdown.rv_activity_coupling_fit,
-                candidate.admissible,
-            ),
-        ],
+        family_metrics: candidate
+            .objective_terms
+            .iter()
+            .map(|term| CalibrationDiagnosticFamilyMetric {
+                metric_id: term.metric_id.clone(),
+                target_id: term.target_id.clone(),
+                target_family: term.target_family.clone(),
+                evaluation_tier: CalibrationDiagnosticEvaluationTier::TickJoint,
+                normalized_distance: term.normalized_error,
+                admissible: candidate.admissible,
+                simulated_value: term.simulated_value,
+                observed_value: term.observed_value,
+                uncertainty_scale: term.uncertainty_scale,
+            })
+            .collect(),
         canonical_coordinates: candidate.canonical_coordinates.clone(),
-    }
-}
-
-fn build_joint_family_metric(
-    target_family: &str,
-    target_id: &str,
-    normalized_distance: f64,
-    admissible: bool,
-) -> CalibrationDiagnosticFamilyMetric {
-    CalibrationDiagnosticFamilyMetric {
-        metric_id: target_id.to_string(),
-        target_id: target_id.to_string(),
-        target_family: target_family.to_string(),
-        evaluation_tier: CalibrationDiagnosticEvaluationTier::TickJoint,
-        normalized_distance,
-        admissible,
-        simulated_value: normalized_distance,
-        observed_value: 0.0,
-        uncertainty_scale: 1.0,
     }
 }
 

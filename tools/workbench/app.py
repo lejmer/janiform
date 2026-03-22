@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFileDialog,
+    QHeaderView,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -409,6 +410,7 @@ class WorkbenchWindow(QMainWindow):
         self._lab_parameter_table.setHorizontalHeaderLabels(
             ["Path", "Block", "Baseline", "Edited value"]
         )
+        self._configure_lab_parameter_table_columns()
 
         self._lab_plot_tabs.clear()
         self._lab_plot_tabs.addTab(
@@ -416,16 +418,14 @@ class WorkbenchWindow(QMainWindow):
             "Edited vs Observed",
         )
 
-        container = QWidget()
-
-        layout = QVBoxLayout(container)
+        layout = QVBoxLayout(self._lab_container)
         layout.addWidget(self._lab_status_label)
         layout.addWidget(selector_row)
         layout.addWidget(self._lab_parameter_table)
         layout.addWidget(self._lab_result_summary_view)
         layout.addWidget(self._lab_plot_tabs)
 
-        return container
+        return self._lab_container
 
     def _build_candidate_inspector_panel(self) -> QWidget:
         self._candidate_table.setColumnCount(10)
@@ -1189,8 +1189,13 @@ class WorkbenchWindow(QMainWindow):
         parameter_leaves = flatten_parameter_tree(fit_context.model.fitted_parameters)
         self._lab_parameter_table.setRowCount(len(parameter_leaves))
         for row_index, parameter_leaf in enumerate(parameter_leaves):
-            self._lab_parameter_table.setItem(row_index, 0, QTableWidgetItem(parameter_leaf.path))
-            self._lab_parameter_table.setItem(row_index, 1, QTableWidgetItem(parameter_leaf.block_id))
+            path_item = QTableWidgetItem(parameter_leaf.path)
+            path_item.setFlags(path_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self._lab_parameter_table.setItem(row_index, 0, path_item)
+
+            block_item = QTableWidgetItem(parameter_leaf.block_id)
+            block_item.setFlags(block_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self._lab_parameter_table.setItem(row_index, 1, block_item)
 
             baseline_item = QTableWidgetItem(str(parameter_leaf.value))
             baseline_item.setFlags(baseline_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
@@ -1198,10 +1203,22 @@ class WorkbenchWindow(QMainWindow):
             self._lab_parameter_table.setItem(row_index, 2, baseline_item)
             self._lab_parameter_table.setItem(row_index, 3, QTableWidgetItem(str(parameter_leaf.value)))
 
-        self._lab_parameter_table.resizeColumnsToContents()
+        self._configure_lab_parameter_table_columns()
         self._lab_status_label.setText(
             "Edit scalar fitted-model parameters and run reevaluation against observed data."
         )
+
+    def _configure_lab_parameter_table_columns(self) -> None:
+        header = self._lab_parameter_table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+
+        self._lab_parameter_table.setColumnWidth(1, 120)
+        self._lab_parameter_table.setColumnWidth(2, 140)
+        self._lab_parameter_table.setColumnWidth(3, 180)
 
     def _reset_lab_edits(self) -> None:
         for row_index in range(self._lab_parameter_table.rowCount()):
@@ -2007,13 +2024,7 @@ def _choose_output_path(
 
 
 def _figure_canvas(figure: Any) -> QWidget:
-    canvas = FigureCanvasQTAgg(figure)
-    widget = QWidget()
-
-    layout = QVBoxLayout(widget)
-    layout.addWidget(canvas)
-
-    return widget
+    return _ResponsiveFigureCanvas(figure)
 
 
 class _WidthScaledImageView(QScrollArea):
@@ -2109,6 +2120,57 @@ class _ResponsiveFigurePanel(QWidget):
         figure = self._figure_builder(layout_key)
 
         _replace_widget_contents(self, _figure_canvas(figure))
+
+
+class _ResponsiveFigureCanvas(QWidget):
+    def __init__(self, figure: Figure) -> None:
+        super().__init__()
+
+        self._figure: Figure = figure
+        self._canvas = FigureCanvasQTAgg(figure)
+        self._last_canvas_size: Optional[tuple[int, int]] = None
+        self._rerender_timer = QTimer(self)
+        self._rerender_timer.setSingleShot(True)
+        self._rerender_timer.timeout.connect(self._resize_figure_to_viewport)
+
+        self._canvas.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._canvas)
+
+    @override
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        self._schedule_resize()
+
+    @override
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._schedule_resize()
+
+    def _schedule_resize(self) -> None:
+        self._rerender_timer.start(0)
+
+    def _resize_figure_to_viewport(self) -> None:
+        canvas_width = max(1, self._canvas.width())
+        canvas_height = max(1, self._canvas.height())
+        canvas_size = (canvas_width, canvas_height)
+        if self._last_canvas_size == canvas_size:
+            return
+
+        self._last_canvas_size = canvas_size
+
+        dpi = max(float(self._figure.get_dpi()), 1.0)
+        self._figure.set_size_inches(
+            canvas_width / dpi,
+            canvas_height / dpi,
+            forward=False,
+        )
+        self._canvas.draw_idle()
 
 
 def _replace_widget_contents(container: QWidget, child: QWidget) -> None:

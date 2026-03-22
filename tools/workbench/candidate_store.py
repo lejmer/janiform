@@ -427,7 +427,9 @@ def _joint_candidate_snapshots(
                 rejection_reason=_coerce_optional_string(raw_candidate.get("invalid_reason")),
                 objective_summary=_objective_summary_from_candidate_payload(raw_candidate),
                 canonical_coordinates=canonical_coordinates,
-                family_metrics=_metric_summaries_from_objective_breakdown(objective_breakdown),
+                family_metrics=_metric_summaries_from_objective_terms(
+                    raw_candidate.get("objective_terms")
+                ),
                 parameter_snapshot=_parameter_snapshot_for_candidate(
                     candidate_id,
                     selected_stage_parameters,
@@ -484,35 +486,21 @@ def _metric_summaries_from_objective_terms(
         if not isinstance(raw_term, dict):
             continue
 
-        metric_id = _coerce_optional_string(raw_term.get("term_id")) or "unknown"
+        family_id = _coerce_optional_string(raw_term.get("target_family"))
+        if family_id is None:
+            family_id = _coerce_optional_string(raw_term.get("term_id"))
+        if family_id is None:
+            family_id = _coerce_optional_string(raw_term.get("metric_id")) or "unknown"
 
         metrics.append(
             WorkbenchFamilyMetricSummary(
-                family_id=metric_id,
-                normalized_distance=_coerce_optional_float(raw_term.get("normalized_error")),
+                family_id=family_id,
+                normalized_distance=(
+                    _coerce_optional_float(raw_term.get("normalized_error"))
+                    if raw_term.get("normalized_error") is not None
+                    else _coerce_optional_float(raw_term.get("normalized_distance"))
+                ),
                 raw_payload=dict(raw_term),
-            )
-        )
-
-    return tuple(metrics)
-
-
-def _metric_summaries_from_objective_breakdown(
-    raw_breakdown: Any,
-) -> tuple[WorkbenchFamilyMetricSummary, ...]:
-    if not isinstance(raw_breakdown, dict):
-        return ()
-
-    metrics: list[WorkbenchFamilyMetricSummary] = []
-    for key, value in raw_breakdown.items():
-        if not isinstance(key, str) or not isinstance(value, int | float):
-            continue
-
-        metrics.append(
-            WorkbenchFamilyMetricSummary(
-                family_id=key,
-                normalized_distance=float(value),
-                raw_payload={key: float(value)},
             )
         )
 
