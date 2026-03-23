@@ -1,13 +1,10 @@
 pub(super) use std::collections::BTreeMap;
-pub(super) use std::error::Error;
-pub(super) use std::fmt::{Display, Formatter};
 pub(super) use std::str::FromStr;
 
 pub(super) use chrono::{
     DateTime, Datelike, Duration, LocalResult, NaiveDate, TimeZone, Timelike, Utc,
 };
 pub(super) use chrono_tz::Tz;
-pub(super) use serde::{Deserialize, Serialize};
 
 pub(super) use crate::calendar::{
     CalendarDate, ExchangeCalendarDefinition, ExchangeCalendarRegistry,
