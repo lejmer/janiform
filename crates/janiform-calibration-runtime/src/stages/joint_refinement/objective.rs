@@ -29,6 +29,8 @@ use super::setup::{
     parameter_vector_to_fitted_parameters,
 };
 
+pub(super) use janiform_foundations::numeric::root_mean_square_or_infinity as root_mean_square;
+
 pub(super) fn evaluate_joint_candidate(
     parameter_vector: &[f64],
     context: &JointRefinementContext,
@@ -576,20 +578,6 @@ pub(super) fn return_asymmetry_horizon_fit(
         ]
         .as_slice(),
     )
-}
-
-pub(super) fn root_mean_square(values: &[f64]) -> f64 {
-    let finite_values: Vec<f64> = values
-        .iter()
-        .copied()
-        .filter(|value| value.is_finite())
-        .collect();
-    if finite_values.is_empty() {
-        return f64::INFINITY;
-    }
-
-    (finite_values.iter().map(|value| value * value).sum::<f64>() / finite_values.len() as f64)
-        .sqrt()
 }
 
 fn normalize_bucket(raw_value: f64, baseline_bucket: f64) -> f64 {

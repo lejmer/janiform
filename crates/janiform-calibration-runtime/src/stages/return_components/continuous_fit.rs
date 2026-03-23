@@ -4,12 +4,13 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsTransformSliceSettings;
 use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
 use janiform_foundations::low_discrepancy::van_der_corput;
 use janiform_foundations::numeric::{
     arithmetic_mean_or_zero as arithmetic_mean, compute_probability_weighted_moment,
-    compute_sorted_quantile_or_zero as sorted_quantile, logistic,
+    compute_sorted_quantile_or_zero as sorted_quantile, logistic, root_mean_square_or_infinity,
 };
 use janiform_foundations::randomness::SplitMix64SimulationRandomnessStream;
 use janiform_foundations::splitmix64_output_mixer;
@@ -157,11 +158,11 @@ struct ContinuousMomentTargets {
 
 impl ContinuousReturnDistributionProfile {
     fn skewness_standard_error(self) -> f64 {
-        (6.0 / self.sample_count.max(3) as f64).sqrt().max(0.10)
+        (6.0 / self.sample_count.max(3) as f64).sqrt()
     }
 
     fn excess_kurtosis_standard_error(self) -> f64 {
-        (24.0 / self.sample_count.max(4) as f64).sqrt().max(0.20)
+        (24.0 / self.sample_count.max(4) as f64).sqrt()
     }
 }
 
@@ -986,6 +987,7 @@ fn theoretical_search_bounds(
     moment_candidate_count: usize,
 ) -> NigShapeSearchBounds {
     let (alpha_lower_bound, alpha_upper_bound) = theoretical_alpha_bounds(observed_profile);
+    let maximum_profiled_beta_ratio = maximum_profiled_open_beta_ratio(alpha_lower_bound);
 
     let relative_share_lower_bound = minimum_profiled_relative_share(moment_candidate_count);
     let relative_share_upper_bound = 1.0 - relative_share_lower_bound;
@@ -993,13 +995,13 @@ fn theoretical_search_bounds(
     NigShapeSearchBounds {
         lower_bounds: [
             alpha_lower_bound.ln(),
-            ratio_to_coordinate(-maximum_profiled_open_beta_ratio()),
+            ratio_to_coordinate(-maximum_profiled_beta_ratio),
             share_to_coordinate(relative_share_lower_bound),
             theoretical_log_delta_offset_bounds(observed_profile).0,
         ],
         upper_bounds: [
             alpha_upper_bound.ln(),
-            ratio_to_coordinate(maximum_profiled_open_beta_ratio()),
+            ratio_to_coordinate(maximum_profiled_beta_ratio),
             share_to_coordinate(relative_share_upper_bound),
             theoretical_log_delta_offset_bounds(observed_profile).1,
         ],
@@ -1014,23 +1016,29 @@ fn theoretical_alpha_bounds(observed_profile: ContinuousReturnDistributionProfil
 
     let excess_kurtosis_standard_error = observed_profile.excess_kurtosis_standard_error();
     let observed_excess_kurtosis = observed_profile.adjusted_excess_kurtosis.max(0.0);
+    let excess_kurtosis_confidence_half_width =
+        RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_CONFIDENCE_Z_SCORE
+            * excess_kurtosis_standard_error;
+    let distinguishable_positive_excess_kurtosis = excess_kurtosis_confidence_half_width
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
 
-    let lower_plausible_excess_kurtosis = (observed_excess_kurtosis
-        - RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_CONFIDENCE_Z_SCORE
-            * excess_kurtosis_standard_error)
-        .max(0.5 * excess_kurtosis_standard_error)
+    let lower_plausible_excess_kurtosis =
+        if observed_excess_kurtosis > excess_kurtosis_confidence_half_width {
+            observed_excess_kurtosis - excess_kurtosis_confidence_half_width
+        } else {
+            distinguishable_positive_excess_kurtosis
+        }
         .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
     let upper_plausible_excess_kurtosis = (observed_excess_kurtosis
-        + RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_CONFIDENCE_Z_SCORE
-            * excess_kurtosis_standard_error)
-        .max(lower_plausible_excess_kurtosis * 1.25);
+        + excess_kurtosis_confidence_half_width)
+        .max(lower_plausible_excess_kurtosis);
 
     let lower_alpha_bound = (3.0 / (observed_variance * upper_plausible_excess_kurtosis))
         .sqrt()
         .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
     let upper_alpha_bound = (3.0 / (observed_variance * lower_plausible_excess_kurtosis))
         .sqrt()
-        .max(lower_alpha_bound * 1.5);
+        .max(lower_alpha_bound);
 
     (lower_alpha_bound, upper_alpha_bound)
 }
@@ -1047,8 +1055,7 @@ fn theoretical_log_delta_offset_bounds(
 
     let lower_variance_ratio = (degrees_of_freedom / upper_tail_quantile)
         .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
-    let upper_variance_ratio =
-        (degrees_of_freedom / lower_tail_quantile).max(lower_variance_ratio * 1.5);
+    let upper_variance_ratio = (degrees_of_freedom / lower_tail_quantile).max(lower_variance_ratio);
 
     (lower_variance_ratio.ln(), upper_variance_ratio.ln())
 }
@@ -1219,13 +1226,19 @@ fn moment_seed_objective_score(
         moment_targets.excess_kurtosis_standard_error,
     );
 
-    Some(0.15 * mean_fit + 0.10 * variance_fit + 0.35 * skewness_fit + 0.40 * excess_kurtosis_fit)
+    Some(root_mean_square_or_infinity(
+        [mean_fit, variance_fit, skewness_fit, excess_kurtosis_fit].as_slice(),
+    ))
 }
 
 fn profile_likelihood_score(objective: ContinuousLikelihoodObjective) -> f64 {
-    0.45 * objective.global_negative_log_likelihood
-        + 0.55 * objective.conditional_negative_log_likelihood
-        + objective.boundary_penalty
+    arithmetic_mean(
+        [
+            objective.global_negative_log_likelihood,
+            objective.conditional_negative_log_likelihood,
+        ]
+        .as_slice(),
+    ) + objective.boundary_penalty
 }
 
 fn profile_likelihood_score_threshold(local_sample_count: usize) -> f64 {
@@ -1769,8 +1782,15 @@ fn clamp_open_beta_ratio(value: f64) -> f64 {
     value.clamp(minimum_open_beta_ratio(), maximum_open_beta_ratio())
 }
 
-fn maximum_profiled_open_beta_ratio() -> f64 {
-    1.0 - preferred_alpha_beta_margin_ratio()
+fn maximum_profiled_open_beta_ratio(alpha: f64) -> f64 {
+    let probe_gamma_floor = coarse_transform_probe_gamma_floor();
+    if !alpha.is_finite() || alpha <= probe_gamma_floor {
+        return 0.0;
+    }
+
+    (1.0 - (probe_gamma_floor / alpha).powi(2))
+        .sqrt()
+        .clamp(0.0, maximum_open_beta_ratio())
 }
 
 fn minimum_open_beta_ratio() -> f64 {
@@ -1835,11 +1855,17 @@ fn continuous_block_likelihood_objective(
     };
 
     let log_likelihood_shift = optimizer_context.log_likelihood_shift;
+    let blended_negative_log_likelihood = arithmetic_mean(
+        [
+            global_negative_log_likelihood,
+            conditional_negative_log_likelihood,
+        ]
+        .as_slice(),
+    );
 
     ContinuousLikelihoodObjective {
         shifted_objective_score: log_likelihood_shift
-            + 0.45 * global_negative_log_likelihood
-            + 0.55 * conditional_negative_log_likelihood
+            + blended_negative_log_likelihood
             + boundary_penalty,
         global_negative_log_likelihood,
         conditional_negative_log_likelihood,
@@ -2509,124 +2535,129 @@ fn distribution_profile_fit_breakdown(
         - observed_profile.lower_quartile_return)
         .abs()
         .max(observed_profile.l_moment_lambda2.abs())
-        .max(1.0e-8);
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
     let tail_scale = observed_profile
         .extreme_right_tail_return_q99
         .abs()
         .max(observed_profile.extreme_left_tail_return_q01.abs())
         .max(central_scale);
-    let shape_scale = 0.10;
+    let skew_shape_scale = observed_profile
+        .skewness_standard_error()
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+    let abs_quantile_ratio_scale = observed_profile.abs_quantile_ratio_q99_q95.abs().max(1.0);
 
-    let mean_return_fit = 0.04
-        * scale_aware_absolute_error(
-            fitted_profile.mean_return,
-            observed_profile.mean_return,
-            central_scale,
-        );
+    let mean_return_fit = scale_aware_absolute_error(
+        fitted_profile.mean_return,
+        observed_profile.mean_return,
+        central_scale,
+    );
     let volatility_scale = observed_profile
         .return_volatility
         .abs()
         .max(central_scale)
-        .max(1.0e-8);
-    let volatility_fit = 0.16
-        * scale_aware_absolute_error(
-            fitted_profile.return_volatility,
-            observed_profile.return_volatility,
-            volatility_scale,
-        );
-    let median_return_fit = 0.10
-        * scale_aware_absolute_error(
-            fitted_profile.median_return,
-            observed_profile.median_return,
-            central_scale,
-        );
-    let lower_quartile_fit = 0.06
-        * scale_aware_absolute_error(
-            fitted_profile.lower_quartile_return,
-            observed_profile.lower_quartile_return,
-            central_scale,
-        );
-    let upper_quartile_fit = 0.06
-        * scale_aware_absolute_error(
-            fitted_profile.upper_quartile_return,
-            observed_profile.upper_quartile_return,
-            central_scale,
-        );
-    let lower_tail_q05_fit = 0.08
-        * scale_aware_absolute_error(
-            fitted_profile.lower_tail_return_q05,
-            observed_profile.lower_tail_return_q05,
-            tail_scale,
-        );
-    let upper_tail_q95_fit = 0.08
-        * scale_aware_absolute_error(
-            fitted_profile.upper_tail_return_q95,
-            observed_profile.upper_tail_return_q95,
-            tail_scale,
-        );
-    let extreme_left_tail_q01_fit = 0.08
-        * scale_aware_absolute_error(
-            fitted_profile.extreme_left_tail_return_q01,
-            observed_profile.extreme_left_tail_return_q01,
-            tail_scale,
-        );
-    let extreme_right_tail_q99_fit = 0.08
-        * scale_aware_absolute_error(
-            fitted_profile.extreme_right_tail_return_q99,
-            observed_profile.extreme_right_tail_return_q99,
-            tail_scale,
-        );
-    let mean_abs_return_fit = 0.10
-        * scale_aware_absolute_error(
-            fitted_profile.mean_abs_return,
-            observed_profile.mean_abs_return,
-            central_scale,
-        );
-    let median_abs_return_fit = 0.08
-        * scale_aware_absolute_error(
-            fitted_profile.median_abs_return,
-            observed_profile.median_abs_return,
-            central_scale,
-        );
-    let abs_quantile_ratio_fit = 0.03
-        * scale_aware_absolute_error(
-            fitted_profile.abs_quantile_ratio_q99_q95,
-            observed_profile.abs_quantile_ratio_q99_q95,
-            0.10,
-        );
-    let bowley_skewness_fit = 0.025
-        * scale_aware_absolute_error(
-            fitted_profile.bowley_skewness,
-            observed_profile.bowley_skewness,
-            shape_scale,
-        );
-    let l_moment_lambda2_fit = 0.025
-        * scale_aware_absolute_error(
-            fitted_profile.l_moment_lambda2,
-            observed_profile.l_moment_lambda2,
-            central_scale,
-        );
-    let l_moment_tau3_fit = 0.025
-        * scale_aware_absolute_error(
-            fitted_profile.l_moment_tau3,
-            observed_profile.l_moment_tau3,
-            shape_scale,
-        );
-    let global_fit_score = mean_return_fit
-        + volatility_fit
-        + median_return_fit
-        + lower_quartile_fit
-        + upper_quartile_fit
-        + lower_tail_q05_fit
-        + upper_tail_q95_fit
-        + extreme_left_tail_q01_fit
-        + extreme_right_tail_q99_fit
-        + mean_abs_return_fit
-        + median_abs_return_fit
-        + abs_quantile_ratio_fit
-        + bowley_skewness_fit
-        + l_moment_lambda2_fit
-        + l_moment_tau3_fit;
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+    let volatility_fit = scale_aware_absolute_error(
+        fitted_profile.return_volatility,
+        observed_profile.return_volatility,
+        volatility_scale,
+    );
+    let median_return_fit = scale_aware_absolute_error(
+        fitted_profile.median_return,
+        observed_profile.median_return,
+        central_scale,
+    );
+    let lower_quartile_fit = scale_aware_absolute_error(
+        fitted_profile.lower_quartile_return,
+        observed_profile.lower_quartile_return,
+        central_scale,
+    );
+    let upper_quartile_fit = scale_aware_absolute_error(
+        fitted_profile.upper_quartile_return,
+        observed_profile.upper_quartile_return,
+        central_scale,
+    );
+    let lower_tail_q05_fit = scale_aware_absolute_error(
+        fitted_profile.lower_tail_return_q05,
+        observed_profile.lower_tail_return_q05,
+        tail_scale,
+    );
+    let upper_tail_q95_fit = scale_aware_absolute_error(
+        fitted_profile.upper_tail_return_q95,
+        observed_profile.upper_tail_return_q95,
+        tail_scale,
+    );
+    let extreme_left_tail_q01_fit = scale_aware_absolute_error(
+        fitted_profile.extreme_left_tail_return_q01,
+        observed_profile.extreme_left_tail_return_q01,
+        tail_scale,
+    );
+    let extreme_right_tail_q99_fit = scale_aware_absolute_error(
+        fitted_profile.extreme_right_tail_return_q99,
+        observed_profile.extreme_right_tail_return_q99,
+        tail_scale,
+    );
+    let mean_abs_return_fit = scale_aware_absolute_error(
+        fitted_profile.mean_abs_return,
+        observed_profile.mean_abs_return,
+        central_scale,
+    );
+    let median_abs_return_fit = scale_aware_absolute_error(
+        fitted_profile.median_abs_return,
+        observed_profile.median_abs_return,
+        central_scale,
+    );
+    let abs_quantile_ratio_fit = scale_aware_absolute_error(
+        fitted_profile.abs_quantile_ratio_q99_q95,
+        observed_profile.abs_quantile_ratio_q99_q95,
+        abs_quantile_ratio_scale,
+    );
+    let bowley_skewness_fit = scale_aware_absolute_error(
+        fitted_profile.bowley_skewness,
+        observed_profile.bowley_skewness,
+        skew_shape_scale,
+    );
+    let l_moment_lambda2_fit = scale_aware_absolute_error(
+        fitted_profile.l_moment_lambda2,
+        observed_profile.l_moment_lambda2,
+        central_scale,
+    );
+    let l_moment_tau3_fit = scale_aware_absolute_error(
+        fitted_profile.l_moment_tau3,
+        observed_profile.l_moment_tau3,
+        skew_shape_scale,
+    );
+    let location_fit = root_mean_square_or_infinity(
+        [
+            mean_return_fit,
+            median_return_fit,
+            lower_quartile_fit,
+            upper_quartile_fit,
+        ]
+        .as_slice(),
+    );
+    let scale_fit = root_mean_square_or_infinity(
+        [
+            volatility_fit,
+            mean_abs_return_fit,
+            median_abs_return_fit,
+            l_moment_lambda2_fit,
+        ]
+        .as_slice(),
+    );
+    let tail_fit = root_mean_square_or_infinity(
+        [
+            lower_tail_q05_fit,
+            upper_tail_q95_fit,
+            extreme_left_tail_q01_fit,
+            extreme_right_tail_q99_fit,
+            abs_quantile_ratio_fit,
+        ]
+        .as_slice(),
+    );
+    let asymmetry_fit =
+        root_mean_square_or_infinity([bowley_skewness_fit, l_moment_tau3_fit].as_slice());
+    let global_fit_score =
+        root_mean_square_or_infinity([location_fit, scale_fit, tail_fit, asymmetry_fit].as_slice());
 
     ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
         global_fit_score,
@@ -2661,22 +2692,27 @@ fn distribution_profile_fit_breakdown(
 fn alpha_beta_boundary_penalty(configuration: NigSharedPlusShiftConfiguration) -> f64 {
     let buy_margin = configuration.alpha - configuration.beta_0.abs();
     let sell_margin = configuration.alpha - configuration.derived_sell_beta().abs();
-    let minimum_margin_ratio = (buy_margin.min(sell_margin)
-        / configuration
-            .alpha
-            .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER))
-    .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
-    let preferred_margin_ratio = preferred_alpha_beta_margin_ratio();
-
-    if minimum_margin_ratio >= preferred_margin_ratio {
-        0.0
-    } else {
-        (preferred_margin_ratio / minimum_margin_ratio).ln_1p()
+    if !buy_margin.is_finite() || !sell_margin.is_finite() {
+        return f64::INFINITY;
     }
-}
 
-fn preferred_alpha_beta_margin_ratio() -> f64 {
-    0.05
+    if buy_margin <= 0.0 || sell_margin <= 0.0 {
+        return f64::INFINITY;
+    }
+
+    let probe_gamma_floor = coarse_transform_probe_gamma_floor();
+    let minimum_gamma = boundary_distance_gamma(configuration.alpha, configuration.beta_0).min(
+        boundary_distance_gamma(configuration.alpha, configuration.derived_sell_beta()),
+    );
+    if !minimum_gamma.is_finite() || minimum_gamma <= 0.0 {
+        return f64::INFINITY;
+    }
+
+    if minimum_gamma >= probe_gamma_floor {
+        return 0.0;
+    }
+
+    (probe_gamma_floor / minimum_gamma).ln()
 }
 
 fn scale_aware_absolute_error(observed: f64, target: f64, scale_floor: f64) -> f64 {
@@ -2685,6 +2721,24 @@ fn scale_aware_absolute_error(observed: f64, target: f64, scale_floor: f64) -> f
         .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
 
     ((observed - target).abs() / denominator).max(0.0)
+}
+
+fn boundary_distance_gamma(alpha: f64, beta: f64) -> f64 {
+    let alpha_minus_abs_beta = alpha - beta.abs();
+    let alpha_plus_abs_beta = alpha + beta.abs();
+    if !alpha_minus_abs_beta.is_finite()
+        || !alpha_plus_abs_beta.is_finite()
+        || alpha_minus_abs_beta <= 0.0
+        || alpha_plus_abs_beta <= 0.0
+    {
+        return f64::NAN;
+    }
+
+    (alpha_minus_abs_beta * alpha_plus_abs_beta).sqrt()
+}
+
+fn coarse_transform_probe_gamma_floor() -> f64 {
+    SufficientStatisticsTransformSliceSettings::default().a_plus_u
 }
 
 fn simulate_matched_scale_returns(
@@ -2921,16 +2975,19 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::{
-        ContinuousLikelihoodFidelityTier, RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_ELITE_COUNT,
-        ReturnComponentsStageContinuousReturnCalibrationSample, average_negative_log_likelihood,
-        build_broad_search_points, build_continuous_return_optimizer_context,
-        build_distribution_profile, build_equal_business_time_blocks, build_moment_seed_candidates,
+        ContinuousLikelihoodFidelityTier, ContinuousLikelihoodObjective,
+        RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_ELITE_COUNT,
+        ReturnComponentsStageContinuousReturnCalibrationSample, alpha_beta_boundary_penalty,
+        average_negative_log_likelihood, build_broad_search_points,
+        build_continuous_return_optimizer_context, build_distribution_profile,
+        build_equal_business_time_blocks, build_moment_seed_candidates,
         build_nig_search_candidates, build_scale_bucket_profiles,
         build_search_regimes_from_moment_seeds, continuous_block_likelihood_objective,
-        coordinate_to_ratio, coordinate_to_share, log_density_net_trading_time_return,
+        coordinate_to_ratio, coordinate_to_share, distribution_profile_fit_score,
+        log_density_net_trading_time_return, maximum_profiled_open_beta_ratio,
         nig_configuration_from_search_point, nig_search_point_from_configuration,
-        ratio_to_coordinate, relative_share_from_beta_ratios, sell_beta_ratio_from_relative_share,
-        theoretical_search_bounds,
+        profile_likelihood_score, ratio_to_coordinate, relative_share_from_beta_ratios,
+        sell_beta_ratio_from_relative_share, theoretical_alpha_bounds, theoretical_search_bounds,
     };
     use crate::stages::return_components::contracts::ReturnComponentsObservedOpenSessionReturn;
     use janiform_calibration_artifacts::CalibrationOptimizerSettings;
@@ -3182,6 +3239,76 @@ mod tests {
             true_objective < challenger_objective,
             "likelihood objective should prefer the data-generating configuration"
         );
+    }
+
+    #[test]
+    fn profile_likelihood_score_symmetrically_averages_global_and_conditional_terms() {
+        let objective = ContinuousLikelihoodObjective {
+            shifted_objective_score: 0.0,
+            global_negative_log_likelihood: 2.0,
+            conditional_negative_log_likelihood: 4.0,
+            boundary_penalty: 1.5,
+            log_likelihood_shift: 0.0,
+        };
+
+        assert!((profile_likelihood_score(objective) - 4.5).abs() <= 1.0e-12);
+    }
+
+    #[test]
+    fn theoretical_alpha_bounds_remain_finite_for_nearly_gaussian_profiles() {
+        let observed_returns: Vec<f64> = (0..512)
+            .map(|sample_index| {
+                let centered_index = sample_index as f64 - 255.5;
+                centered_index / 1_000_000.0
+            })
+            .collect();
+        let observed_profile = build_distribution_profile(observed_returns.as_slice());
+
+        let (lower_alpha_bound, upper_alpha_bound) = theoretical_alpha_bounds(observed_profile);
+
+        assert!(lower_alpha_bound.is_finite());
+        assert!(upper_alpha_bound.is_finite());
+        assert!(lower_alpha_bound > 0.0);
+        assert!(upper_alpha_bound >= lower_alpha_bound);
+    }
+
+    #[test]
+    fn distribution_profile_fit_score_is_zero_for_identical_samples() {
+        let observed_returns = [-0.002, -0.001, -0.0002, 0.0, 0.0003, 0.0015, 0.0028];
+
+        let fit_breakdown = distribution_profile_fit_score(
+            observed_returns.as_slice(),
+            observed_returns.as_slice(),
+        );
+
+        assert!(fit_breakdown.global_fit_score.abs() <= 1.0e-12);
+        assert!(fit_breakdown.profile_fit_score.abs() <= 1.0e-12);
+    }
+
+    #[test]
+    fn profiled_beta_ratio_reserves_coarse_probe_stability_margin() {
+        let maximum_ratio = maximum_profiled_open_beta_ratio(0.02);
+
+        assert!(maximum_ratio.is_finite());
+        assert!(maximum_ratio > 0.0);
+        assert!(maximum_ratio < 1.0);
+    }
+
+    #[test]
+    fn alpha_beta_boundary_penalty_increases_for_probe_unstable_configuration() {
+        let stable_configuration =
+            NigSharedPlusShiftConfiguration::try_new(2.0, -0.6, 0.3, 0.0, -0.2)
+                .expect("stable configuration should validate");
+        let unstable_configuration =
+            NigSharedPlusShiftConfiguration::try_new(0.02, -0.01999, 0.3, 0.0, -0.000001)
+                .expect("near-boundary configuration should still validate");
+
+        let stable_penalty = alpha_beta_boundary_penalty(stable_configuration);
+        let unstable_penalty = alpha_beta_boundary_penalty(unstable_configuration);
+
+        assert_eq!(stable_penalty, 0.0);
+        assert!(unstable_penalty.is_finite());
+        assert!(unstable_penalty > stable_penalty);
     }
 
     #[test]

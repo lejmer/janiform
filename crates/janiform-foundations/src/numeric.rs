@@ -75,6 +75,25 @@ pub fn arithmetic_mean_or_zero(values: &[f64]) -> f64 {
     arithmetic_mean(values).unwrap_or(0.0)
 }
 
+/// Compute the root mean square over finite values and return infinity when none are finite.
+pub fn root_mean_square_or_infinity(values: &[f64]) -> f64 {
+    let mut squared_sum = 0.0;
+    let mut finite_value_count = 0usize;
+    for value in values {
+        if !value.is_finite() {
+            continue;
+        }
+
+        squared_sum += value * value;
+        finite_value_count += 1;
+    }
+    if finite_value_count == 0 {
+        return f64::INFINITY;
+    }
+
+    (squared_sum / finite_value_count as f64).sqrt()
+}
+
 /// Compute an interpolated quantile from an already sorted sample.
 pub fn compute_sorted_quantile(sorted_values: &[f64], quantile_level: f64) -> f64 {
     if sorted_values.is_empty() {
@@ -311,9 +330,9 @@ mod tests {
         clamp_to_unit_interval, coefficient_of_variation, compute_finite_quantile_or_zero,
         compute_probability_weighted_moment, compute_sorted_quantile,
         compute_sorted_quantile_or_zero, logistic, median_abs, median_abs_non_zero,
-        normalized_pseudocount, pearson_correlation, round_positive_to_domain, round_to,
-        smallest_positive_value, standardized_path_distance, strictly_positive_machine_value,
-        unique_sorted_values, z_score,
+        normalized_pseudocount, pearson_correlation, root_mean_square_or_infinity,
+        round_positive_to_domain, round_to, smallest_positive_value, standardized_path_distance,
+        strictly_positive_machine_value, unique_sorted_values, z_score,
     };
 
     #[test]
@@ -353,6 +372,7 @@ mod tests {
             2.0
         );
         assert_eq!(pearson_correlation(&[1.0, 2.0], &[2.0, 4.0]), 1.0);
+        assert!((root_mean_square_or_infinity(&[3.0, 4.0]) - (12.5f64).sqrt()).abs() <= 1.0e-12);
         assert_eq!(z_score(&[2.0, 2.0]), vec![0.0, 0.0]);
         assert_eq!(
             standardized_path_distance(&[1.0, 2.0, 3.0], &[2.0, 4.0, 6.0]),
