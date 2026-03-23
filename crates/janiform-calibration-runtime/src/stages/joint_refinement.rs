@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
@@ -26,19 +27,27 @@ use crate::stages::joint_metrics::{
     aggregate_simulated_path_to_interval_templates,
     build_continuous_calibration_sample_from_aggregated_intervals,
     build_observed_open_session_interval_observations, business_time_bucket_thresholds,
-    log_ratio_distance, mean_absolute_return_by_utc_hour, normalized_profile_distance,
-    relative_rmse, return_scale_summaries_by_business_time_bucket, return_scale_summary,
-    rolling_variance_activity_metric, scale_normalized_returns, tick_count_series,
+    log_ratio_distance, mean_absolute_observed_return_by_utc_hour,
+    mean_absolute_return_by_utc_hour, mean_absolute_trade_return_by_utc_hour,
+    normalized_profile_distance, relative_rmse, return_scale_summaries_by_business_time_bucket,
+    return_scale_summary, return_scale_summary_from_returns, rolling_variance_activity_metric,
+    sampled_return_values, sampled_trade_returns, scale_normalized_returns, tick_count_series,
     zero_aware_normalized_bucket_value, zeroed_interval_observation_template,
 };
 use crate::stages::optimization::{PowellOptimizerSettings, optimize_bounded_powell};
 use crate::stages::return_components::{
     ContinuousLikelihoodFidelityTier, NigShapeSearchPoint,
+    ReturnComponentsObservedOpenSessionReturn, ReturnComponentsStageCandidateDiagnostic,
     ReturnComponentsStageCandidateGenerationInput,
+    ReturnComponentsStageContinuousOptimizerBasinDiagnostic,
     ReturnComponentsStageContinuousReturnCalibrationSample, ReturnComponentsStageFittedPayload,
-    distribution_profile_fit_score, evaluate_configuration_likelihood_objective,
-    nig_configuration_from_search_point, nig_search_point_from_configuration,
-    prepare_observed_signal_inputs_for_joint_refinement, resolve_activity_calibration_context,
+    ReturnComponentsStageJointRefinementObservedSignalPreparation,
+    continuous_return_calibration_sample_observed_returns, distribution_profile_fit_score,
+    evaluate_configuration_likelihood_objective, nig_configuration_from_search_point,
+    nig_search_bounds_for_calibration_sample, nig_search_point_from_configuration,
+    prepare_observed_signal_inputs_for_joint_refinement,
+    rescale_continuous_return_calibration_sample_business_time_scales,
+    resolve_activity_calibration_context,
 };
 use crate::stages::seasonality::{
     CalibrationStageExecutionStatus, build_runtime_hourly_seasonality_factors_from_components,
@@ -56,7 +65,7 @@ use janiform_calibration_artifacts::{
     resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
 };
 use janiform_foundations::low_discrepancy::van_der_corput;
-use janiform_foundations::numeric::standardized_path_distance;
+use janiform_foundations::numeric::{compute_finite_quantile_or_zero, standardized_path_distance};
 use janiform_foundations::splitmix64_output_mixer;
 use janiform_market_time::calendar::{
     CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarRegistryArtifact,
@@ -69,20 +78,21 @@ use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
 use janiform_model_kernels::news::SurpriseNewsArrivalConfiguration;
+use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
 const JOINT_REFINEMENT_FIVE_MINUTES_NANOS: i64 = 5 * 60 * 1_000_000_000;
 const JOINT_REFINEMENT_FIFTEEN_MINUTES_NANOS: i64 = 15 * 60 * 1_000_000_000;
 const JOINT_REFINEMENT_ONE_HOUR_NANOS: i64 = 60 * 60 * 1_000_000_000;
 const JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR: f64 = 1.0e-8;
 const JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND: f64 = 1.386_294_361_119_890_6;
-const JOINT_REFINEMENT_NIG_LOG_ALPHA_HALF_SPAN: f64 = 1.5;
-const JOINT_REFINEMENT_NIG_SKEW_HALF_SPAN: f64 = 1.25;
-const JOINT_REFINEMENT_NIG_LOG_DELTA_HALF_SPAN: f64 = 1.5;
 const JOINT_REFINEMENT_MAX_OUTER_CYCLE_COUNT: usize = 3;
 const JOINT_REFINEMENT_MAX_RESTART_COUNT: usize = 24;
 const JOINT_REFINEMENT_WEIGHT_AGGREGATED_LIKELIHOOD_FIT: f64 = 0.18;
-const JOINT_REFINEMENT_WEIGHT_AGGREGATED_RETURN_SHAPE_FIT: f64 = 0.06;
-const JOINT_REFINEMENT_WEIGHT_AGGREGATED_RETURN_SCALE_FIT: f64 = 0.16;
+const JOINT_REFINEMENT_WEIGHT_AGGREGATED_RETURN_SHAPE_FIT: f64 = 0.03;
+const JOINT_REFINEMENT_WEIGHT_RETURN_ASYMMETRY_FIT: f64 = 0.015;
+const JOINT_REFINEMENT_WEIGHT_TICK_RETURN_ASYMMETRY_FIT: f64 = 0.015;
+const JOINT_REFINEMENT_WEIGHT_AGGREGATED_RETURN_SCALE_FIT: f64 = 0.08;
+const JOINT_REFINEMENT_WEIGHT_TICK_RETURN_SCALE_FIT: f64 = 0.08;
 const JOINT_REFINEMENT_WEIGHT_BUSINESS_TIME_RETURN_SCALE_FIT: f64 = 0.17;
 const JOINT_REFINEMENT_WEIGHT_INTRADAY_RETURN_LEVEL_FIT: f64 = 0.15;
 const JOINT_REFINEMENT_WEIGHT_ACTIVITY_SHAPE_FIT: f64 = 0.07;
@@ -129,10 +139,15 @@ struct JointRefinementActiveParameterLayout {
 struct JointRefinementObservedData {
     observed_open_event_rate_per_hour: f64,
     fallback_sell_share_proxy: f64,
+    observed_tick_continuous_return_calibration_sample:
+        ReturnComponentsStageContinuousReturnCalibrationSample,
     observed_5m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
     observed_15m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+    observed_tick_intraday_mean_absolute_returns: Vec<f64>,
+    observed_tick_shape_returns: Vec<f64>,
     observed_5m_shape_returns: Vec<f64>,
     observed_15m_shape_returns: Vec<f64>,
+    observed_tick_return_scale_summary: JointRefinementReturnScaleSummary,
     observed_5m_return_scale_summary: JointRefinementReturnScaleSummary,
     observed_15m_return_scale_summary: JointRefinementReturnScaleSummary,
     observed_5m_business_time_bucket_thresholds: JointRefinementBusinessTimeBucketThresholds,
@@ -159,7 +174,10 @@ struct JointRefinementObservedData {
 struct JointRefinementBaselineBuckets {
     aggregated_likelihood_fit: f64,
     aggregated_return_shape_fit: f64,
+    return_asymmetry_fit: f64,
+    tick_return_asymmetry_fit: f64,
     aggregated_return_scale_fit: f64,
+    tick_return_scale_fit: f64,
     business_time_return_scale_fit: f64,
     intraday_return_level_fit: f64,
     activity_shape_fit: f64,
@@ -176,6 +194,7 @@ struct JointRefinementContext {
     runtime_hourly_seasonality_factors: Vec<f64>,
     max_runtime_hourly_seasonality_factor: f64,
     observed_data: JointRefinementObservedData,
+    baseline_modeled_open_event_rate_per_hour: f64,
     baseline_hawkes_fitted_parameters: HawkesStageFittedParameters,
     baseline_return_components_fitted_parameters: ReturnComponentsStageFittedParameters,
     active_parameter_layout: JointRefinementActiveParameterLayout,
@@ -214,14 +233,17 @@ struct JointRefinementRestartOutcome {
 struct JointRefinementSeedSummary {
     simulated_5m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
     simulated_15m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+    simulated_tick_shape_returns: Vec<f64>,
     simulated_5m_shape_returns: Vec<f64>,
     simulated_15m_shape_returns: Vec<f64>,
+    simulated_tick_return_scale_summary: JointRefinementReturnScaleSummary,
     simulated_5m_return_scale_summary: JointRefinementReturnScaleSummary,
     simulated_15m_return_scale_summary: JointRefinementReturnScaleSummary,
     simulated_5m_business_time_return_scale_summaries:
         JointRefinementBusinessTimeBucketReturnScaleSummaries,
     simulated_15m_business_time_return_scale_summaries:
         JointRefinementBusinessTimeBucketReturnScaleSummaries,
+    simulated_tick_intraday_mean_absolute_returns: Vec<f64>,
     simulated_5m_intraday_mean_absolute_returns: Vec<f64>,
     simulated_15m_intraday_mean_absolute_returns: Vec<f64>,
     simulated_hourly_tick_counts: Vec<f64>,
@@ -482,7 +504,7 @@ pub fn run_joint_refinement_calibration_stage(
     let activity_context = resolve_activity_calibration_context(&stage_input_to_activity_input(
         &stage_input.hawkes_input,
     ));
-    let _observed_signal_preparation = match prepare_observed_signal_inputs_for_joint_refinement(
+    let observed_signal_preparation = match prepare_observed_signal_inputs_for_joint_refinement(
         run_spec.data_inputs.exchange_code.as_str(),
         calendar_registry,
         stage_input.candidate_generation_input.clone(),
@@ -538,6 +560,7 @@ pub fn run_joint_refinement_calibration_stage(
         calendar_registry,
         run_spec.data_inputs.exchange_code.as_str(),
         &return_components_payload.fitted_parameters,
+        &observed_signal_preparation,
         &stage_input.candidate_generation_input,
         observed_open_event_rate_per_hour,
     );
@@ -559,6 +582,7 @@ pub fn run_joint_refinement_calibration_stage(
     let (lower_bounds, upper_bounds) = build_parameter_bounds(
         &active_parameter_layout,
         baseline_parameter_vector.as_slice(),
+        &baseline_15m_calibration_sample,
     );
     let Some(runtime_hourly_seasonality_range_start_utc_nanos) = observed_data
         .hourly_simulation_start_utc
@@ -659,6 +683,7 @@ pub fn run_joint_refinement_calibration_stage(
         max_runtime_hourly_seasonality_factor,
         runtime_hourly_seasonality_factors,
         observed_data,
+        baseline_modeled_open_event_rate_per_hour,
         baseline_hawkes_fitted_parameters: hawkes_payload.fitted_parameters.clone(),
         baseline_return_components_fitted_parameters: return_components_payload
             .fitted_parameters
@@ -671,7 +696,10 @@ pub fn run_joint_refinement_calibration_stage(
         local_baseline_buckets: JointRefinementBaselineBuckets {
             aggregated_likelihood_fit: 1.0,
             aggregated_return_shape_fit: 1.0,
+            return_asymmetry_fit: 1.0,
+            tick_return_asymmetry_fit: 1.0,
             aggregated_return_scale_fit: 1.0,
+            tick_return_scale_fit: 1.0,
             business_time_return_scale_fit: 1.0,
             intraday_return_level_fit: 1.0,
             activity_shape_fit: 1.0,
@@ -682,7 +710,10 @@ pub fn run_joint_refinement_calibration_stage(
         final_baseline_buckets: JointRefinementBaselineBuckets {
             aggregated_likelihood_fit: 1.0,
             aggregated_return_shape_fit: 1.0,
+            return_asymmetry_fit: 1.0,
+            tick_return_asymmetry_fit: 1.0,
             aggregated_return_scale_fit: 1.0,
+            tick_return_scale_fit: 1.0,
             business_time_return_scale_fit: 1.0,
             intraday_return_level_fit: 1.0,
             activity_shape_fit: 1.0,
@@ -741,10 +772,21 @@ pub fn run_joint_refinement_calibration_stage(
                 .breakdown
                 .aggregated_return_shape_fit,
         ),
+        return_asymmetry_fit: raw_bucket_value_from_normalized(
+            baseline_local_evaluation.breakdown.return_asymmetry_fit,
+        ),
+        tick_return_asymmetry_fit: raw_bucket_value_from_normalized(
+            baseline_local_evaluation
+                .breakdown
+                .tick_return_asymmetry_fit,
+        ),
         aggregated_return_scale_fit: raw_bucket_value_from_normalized(
             baseline_local_evaluation
                 .breakdown
                 .aggregated_return_scale_fit,
+        ),
+        tick_return_scale_fit: raw_bucket_value_from_normalized(
+            baseline_local_evaluation.breakdown.tick_return_scale_fit,
         ),
         business_time_return_scale_fit: raw_bucket_value_from_normalized(
             baseline_local_evaluation
@@ -781,10 +823,21 @@ pub fn run_joint_refinement_calibration_stage(
                 .breakdown
                 .aggregated_return_shape_fit,
         ),
+        return_asymmetry_fit: raw_bucket_value_from_normalized(
+            baseline_final_evaluation.breakdown.return_asymmetry_fit,
+        ),
+        tick_return_asymmetry_fit: raw_bucket_value_from_normalized(
+            baseline_final_evaluation
+                .breakdown
+                .tick_return_asymmetry_fit,
+        ),
         aggregated_return_scale_fit: raw_bucket_value_from_normalized(
             baseline_final_evaluation
                 .breakdown
                 .aggregated_return_scale_fit,
+        ),
+        tick_return_scale_fit: raw_bucket_value_from_normalized(
+            baseline_final_evaluation.breakdown.tick_return_scale_fit,
         ),
         business_time_return_scale_fit: raw_bucket_value_from_normalized(
             baseline_final_evaluation
@@ -822,6 +875,21 @@ pub fn run_joint_refinement_calibration_stage(
         &bootstrap_context.active_parameter_layout,
         bootstrap_context.lower_bounds.as_slice(),
         bootstrap_context.upper_bounds.as_slice(),
+        &baseline_15m_calibration_sample,
+        selected_return_components_candidate(return_components_payload)
+            .map(|candidate| {
+                candidate
+                    .continuous_distribution_fit_breakdown
+                    .optimizer_basin_diagnostics
+                    .as_slice()
+            })
+            .unwrap_or(&[]),
+        observed_activity_log_shift(
+            bootstrap_context
+                .observed_data
+                .observed_open_event_rate_per_hour,
+            baseline_modeled_open_event_rate_per_hour,
+        ),
         joint_refinement_budget_schedule(&stage_solver_settings).restart_count,
     );
     let restart_outcomes = optimize_restart_seeds(
@@ -935,6 +1003,7 @@ pub fn run_joint_refinement_calibration_stage(
 struct JointRefinementAdmissibilityThresholds {
     aggregated_likelihood_fit: f64,
     aggregated_return_shape_fit: f64,
+    return_asymmetry_fit: f64,
     aggregated_return_scale_fit: f64,
     business_time_return_scale_fit: f64,
     intraday_return_level_fit: f64,
@@ -965,6 +1034,10 @@ fn select_best_restart_outcome<'a>(
                 .count()
         })
         .collect();
+    let has_admissible_candidate = restart_outcomes.iter().any(|candidate| {
+        joint_restart_outcome_is_valid(candidate)
+            && joint_restart_outcome_is_admissible(candidate, thresholds)
+    });
 
     let mut ranked_candidates: Vec<(usize, &JointRefinementRestartOutcome)> = restart_outcomes
         .iter()
@@ -972,34 +1045,7 @@ fn select_best_restart_outcome<'a>(
         .map(|(position, outcome)| (pareto_ranks[position], *outcome))
         .collect();
     ranked_candidates.sort_by(|left, right| {
-        let left_admissible = joint_restart_outcome_is_admissible(left.1, thresholds);
-        let right_admissible = joint_restart_outcome_is_admissible(right.1, thresholds);
-        (!left_admissible)
-            .cmp(&!right_admissible)
-            .then_with(|| left.0.cmp(&right.0))
-            .then_with(|| {
-                joint_restart_outcome_max_primary_metric(left.1)
-                    .total_cmp(&joint_restart_outcome_max_primary_metric(right.1))
-            })
-            .then_with(|| {
-                joint_restart_outcome_primary_metric_sum(left.1)
-                    .total_cmp(&joint_restart_outcome_primary_metric_sum(right.1))
-            })
-            .then_with(|| {
-                left.1
-                    .final_evaluation
-                    .breakdown
-                    .price_span_sanity_fit
-                    .total_cmp(&right.1.final_evaluation.breakdown.price_span_sanity_fit)
-            })
-            .then_with(|| {
-                left.1
-                    .final_evaluation
-                    .breakdown
-                    .weighted_objective
-                    .total_cmp(&right.1.final_evaluation.breakdown.weighted_objective)
-            })
-            .then_with(|| left.1.restart_id.cmp(&right.1.restart_id))
+        compare_joint_restart_outcomes(*left, *right, thresholds, has_admissible_candidate)
     });
 
     ranked_candidates.first().map(|(_, outcome)| *outcome)
@@ -1017,6 +1063,9 @@ fn joint_refinement_admissibility_thresholds(
             fifteen_minute_sample_count,
         ),
         aggregated_return_shape_fit: admissibility_threshold_from_sample_count(
+            fifteen_minute_sample_count,
+        ),
+        return_asymmetry_fit: admissibility_threshold_from_sample_count(
             fifteen_minute_sample_count,
         ),
         aggregated_return_scale_fit: admissibility_threshold_from_sample_count(
@@ -1046,6 +1095,7 @@ fn joint_restart_outcome_is_admissible(
     let breakdown = &restart_outcome.final_evaluation.breakdown;
     breakdown.aggregated_likelihood_fit <= thresholds.aggregated_likelihood_fit
         && breakdown.aggregated_return_shape_fit <= thresholds.aggregated_return_shape_fit
+        && breakdown.return_asymmetry_fit <= thresholds.return_asymmetry_fit
         && breakdown.aggregated_return_scale_fit <= thresholds.aggregated_return_scale_fit
         && breakdown.business_time_return_scale_fit <= thresholds.business_time_return_scale_fit
         && breakdown.intraday_return_level_fit <= thresholds.intraday_return_level_fit
@@ -1053,6 +1103,11 @@ fn joint_restart_outcome_is_admissible(
         && breakdown.activity_level_fit <= thresholds.activity_level_fit
         && breakdown.rv_activity_coupling_fit <= thresholds.rv_activity_coupling_fit
         && breakdown.price_span_sanity_fit <= thresholds.price_span_sanity_fit
+}
+
+fn joint_restart_outcome_is_valid(restart_outcome: &JointRefinementRestartOutcome) -> bool {
+    restart_outcome.local_evaluation.invalid_reason.is_none()
+        && restart_outcome.final_evaluation.invalid_reason.is_none()
 }
 
 fn joint_restart_outcome_dominates(
@@ -1076,34 +1131,8 @@ fn joint_restart_outcome_dominates(
 
 fn joint_restart_outcome_primary_metrics(
     restart_outcome: &JointRefinementRestartOutcome,
-) -> [f64; 8] {
-    let breakdown = &restart_outcome.final_evaluation.breakdown;
-    [
-        breakdown.aggregated_likelihood_fit,
-        breakdown.aggregated_return_shape_fit,
-        breakdown.aggregated_return_scale_fit,
-        breakdown.business_time_return_scale_fit,
-        breakdown.intraday_return_level_fit,
-        breakdown.activity_shape_fit,
-        breakdown.activity_level_fit,
-        breakdown.rv_activity_coupling_fit,
-    ]
-}
-
-fn joint_restart_outcome_primary_metric_sum(
-    restart_outcome: &JointRefinementRestartOutcome,
-) -> f64 {
-    joint_restart_outcome_primary_metrics(restart_outcome)
-        .into_iter()
-        .sum()
-}
-
-fn joint_restart_outcome_max_primary_metric(
-    restart_outcome: &JointRefinementRestartOutcome,
-) -> f64 {
-    joint_restart_outcome_primary_metrics(restart_outcome)
-        .into_iter()
-        .fold(f64::NEG_INFINITY, f64::max)
+) -> [f64; 11] {
+    joint_primary_metrics_from_breakdown(&restart_outcome.final_evaluation.breakdown)
 }
 
 fn build_joint_candidate_frontier_diagnostics(
@@ -1124,6 +1153,10 @@ fn build_joint_candidate_frontier_diagnostics(
                 .count()
         })
         .collect();
+    let has_admissible_candidate = restart_outcomes.iter().any(|candidate| {
+        joint_restart_outcome_is_valid(candidate)
+            && joint_restart_outcome_is_admissible(candidate, thresholds)
+    });
 
     let mut ranked_candidates: Vec<(usize, &JointRefinementRestartOutcome)> = restart_outcomes
         .iter()
@@ -1131,34 +1164,7 @@ fn build_joint_candidate_frontier_diagnostics(
         .map(|(position, outcome)| (pareto_ranks[position], outcome))
         .collect();
     ranked_candidates.sort_by(|left, right| {
-        let left_admissible = joint_restart_outcome_is_admissible(left.1, thresholds);
-        let right_admissible = joint_restart_outcome_is_admissible(right.1, thresholds);
-        (!left_admissible)
-            .cmp(&!right_admissible)
-            .then_with(|| left.0.cmp(&right.0))
-            .then_with(|| {
-                joint_restart_outcome_max_primary_metric(left.1)
-                    .total_cmp(&joint_restart_outcome_max_primary_metric(right.1))
-            })
-            .then_with(|| {
-                joint_restart_outcome_primary_metric_sum(left.1)
-                    .total_cmp(&joint_restart_outcome_primary_metric_sum(right.1))
-            })
-            .then_with(|| {
-                left.1
-                    .final_evaluation
-                    .breakdown
-                    .price_span_sanity_fit
-                    .total_cmp(&right.1.final_evaluation.breakdown.price_span_sanity_fit)
-            })
-            .then_with(|| {
-                left.1
-                    .final_evaluation
-                    .breakdown
-                    .weighted_objective
-                    .total_cmp(&right.1.final_evaluation.breakdown.weighted_objective)
-            })
-            .then_with(|| left.1.restart_id.cmp(&right.1.restart_id))
+        compare_joint_restart_outcomes(*left, *right, thresholds, has_admissible_candidate)
     });
 
     let lexicographic_rank_by_restart_id: BTreeMap<&str, usize> = ranked_candidates
@@ -1839,11 +1845,10 @@ fn joint_refinement_budget_schedule(
         .min(JOINT_REFINEMENT_MAX_RESTART_COUNT);
     let (base_outer_cycle_count, base_powell_settings) =
         joint_refinement_base_schedule_components(solver_settings);
-    let total_block_eval_budget =
-        3usize * base_outer_cycle_count * base_powell_settings.evaluation_budget;
+    let total_block_cycle_budget = base_outer_cycle_count * base_powell_settings.evaluation_budget;
     let outer_cycle_count = ((3usize * base_outer_cycle_count) / restart_count.max(1)).max(1);
     let evaluation_budget =
-        (total_block_eval_budget / (restart_count.max(1) * outer_cycle_count.max(1))).max(16);
+        (total_block_cycle_budget / (restart_count.max(1) * outer_cycle_count.max(1))).max(16);
     let line_search_evaluation_cap = (evaluation_budget / 4).clamp(4, 8);
 
     JointRefinementBudgetSchedule {
@@ -1898,6 +1903,17 @@ fn optimize_single_restart(
     let outer_cycle_count = budget_schedule.outer_cycle_count;
 
     for _ in 0..outer_cycle_count {
+        let (updated_nig_vector, nig_stop_reason, nig_evaluations) = optimize_parameter_block(
+            current_vector.as_slice(),
+            context.active_parameter_layout.nig_block.as_slice(),
+            context,
+            budget_schedule.powell_settings,
+            solver_settings,
+        );
+
+        current_vector = updated_nig_vector;
+        evaluation_count += nig_evaluations;
+
         let (updated_hawkes_vector, hawkes_stop_reason, hawkes_evaluations) =
             optimize_parameter_block(
                 current_vector.as_slice(),
@@ -1909,17 +1925,6 @@ fn optimize_single_restart(
 
         current_vector = updated_hawkes_vector;
         evaluation_count += hawkes_evaluations;
-
-        let (updated_nig_vector, nig_stop_reason, nig_evaluations) = optimize_parameter_block(
-            current_vector.as_slice(),
-            context.active_parameter_layout.nig_block.as_slice(),
-            context,
-            budget_schedule.powell_settings,
-            solver_settings,
-        );
-
-        current_vector = updated_nig_vector;
-        evaluation_count += nig_evaluations;
 
         let (updated_coupling_vector, coupling_stop_reason, coupling_evaluations) =
             optimize_parameter_block(
@@ -2129,6 +2134,23 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         context.observed_data.observed_open_event_rate_per_hour,
         context.observed_data.fallback_sell_share_proxy,
     );
+    let observed_tick_sample = rescale_continuous_return_calibration_sample_business_time_scales(
+        &context
+            .observed_data
+            .observed_tick_continuous_return_calibration_sample,
+        modeled_open_event_rate_per_hour
+            / context
+                .baseline_modeled_open_event_rate_per_hour
+                .max(1.0e-8),
+    );
+    let likelihood_tick = evaluate_configuration_likelihood_objective(
+        fitted_parameters
+            .return_components_fitted_parameters
+            .nig_shared_plus_shift_configuration,
+        &observed_tick_sample,
+        ContinuousLikelihoodFidelityTier::Full,
+    )
+    .shifted_objective_score;
     let likelihood_5m = evaluate_configuration_likelihood_objective(
         fitted_parameters
             .return_components_fitted_parameters
@@ -2145,7 +2167,7 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         ContinuousLikelihoodFidelityTier::Full,
     )
     .shifted_objective_score;
-    let raw_aggregated_likelihood_fit = 0.5 * (likelihood_5m + likelihood_15m);
+    let raw_aggregated_likelihood_fit = (likelihood_tick + likelihood_5m + likelihood_15m) / 3.0;
 
     let simulation_seeds = match fidelity_tier {
         JointRefinementFidelityTier::Local => vec![context.local_simulation_seed],
@@ -2177,7 +2199,10 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
     let resolved_seed_summaries = seed_summaries.into_iter().flatten().collect::<Vec<_>>();
 
     let mut aggregated_return_shape_scores = Vec::with_capacity(resolved_seed_summaries.len());
+    let mut return_asymmetry_scores = Vec::with_capacity(resolved_seed_summaries.len());
     let mut aggregated_return_scale_scores = Vec::with_capacity(resolved_seed_summaries.len());
+    let mut tick_return_asymmetry_scores = Vec::with_capacity(resolved_seed_summaries.len());
+    let mut tick_return_scale_scores = Vec::with_capacity(resolved_seed_summaries.len());
     let mut business_time_return_scale_scores = Vec::with_capacity(resolved_seed_summaries.len());
     let mut intraday_return_level_scores = Vec::with_capacity(resolved_seed_summaries.len());
     let mut activity_shape_scores = Vec::with_capacity(resolved_seed_summaries.len());
@@ -2199,10 +2224,16 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
             &seed_summary,
             &context.observed_data,
         ));
+        return_asymmetry_scores.push(return_asymmetry_fit(&seed_summary, &context.observed_data));
+        tick_return_asymmetry_scores.push(tick_return_asymmetry_fit(
+            &seed_summary,
+            &context.observed_data,
+        ));
         aggregated_return_scale_scores.push(aggregated_return_scale_fit(
             &seed_summary,
             &context.observed_data,
         ));
+        tick_return_scale_scores.push(tick_return_scale_fit(&seed_summary, &context.observed_data));
         business_time_return_scale_scores.push(business_time_return_scale_fit(
             &seed_summary,
             &context.observed_data,
@@ -2228,8 +2259,14 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
 
     let raw_aggregated_return_shape_fit = aggregated_return_shape_scores.iter().sum::<f64>()
         / aggregated_return_shape_scores.len().max(1) as f64;
+    let raw_return_asymmetry_fit =
+        return_asymmetry_scores.iter().sum::<f64>() / return_asymmetry_scores.len().max(1) as f64;
+    let raw_tick_return_asymmetry_fit = tick_return_asymmetry_scores.iter().sum::<f64>()
+        / tick_return_asymmetry_scores.len().max(1) as f64;
     let raw_aggregated_return_scale_fit = aggregated_return_scale_scores.iter().sum::<f64>()
         / aggregated_return_scale_scores.len().max(1) as f64;
+    let raw_tick_return_scale_fit =
+        tick_return_scale_scores.iter().sum::<f64>() / tick_return_scale_scores.len().max(1) as f64;
     let raw_business_time_return_scale_fit = business_time_return_scale_scores.iter().sum::<f64>()
         / business_time_return_scale_scores.len().max(1) as f64;
     let raw_intraday_return_level_fit = intraday_return_level_scores.iter().sum::<f64>()
@@ -2257,9 +2294,24 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         baseline_buckets.aggregated_return_shape_fit,
         JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR,
     );
+    let normalized_return_asymmetry_fit = zero_aware_normalized_bucket_value(
+        raw_return_asymmetry_fit,
+        baseline_buckets.return_asymmetry_fit,
+        JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR,
+    );
+    let normalized_tick_return_asymmetry_fit = zero_aware_normalized_bucket_value(
+        raw_tick_return_asymmetry_fit,
+        baseline_buckets.tick_return_asymmetry_fit,
+        JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR,
+    );
     let normalized_aggregated_return_scale_fit = zero_aware_normalized_bucket_value(
         raw_aggregated_return_scale_fit,
         baseline_buckets.aggregated_return_scale_fit,
+        JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR,
+    );
+    let normalized_tick_return_scale_fit = zero_aware_normalized_bucket_value(
+        raw_tick_return_scale_fit,
+        baseline_buckets.tick_return_scale_fit,
         JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR,
     );
     let normalized_business_time_return_scale_fit = zero_aware_normalized_bucket_value(
@@ -2298,8 +2350,11 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         * normalized_aggregated_likelihood_fit
         + JOINT_REFINEMENT_WEIGHT_AGGREGATED_RETURN_SHAPE_FIT
             * normalized_aggregated_return_shape_fit
+        + JOINT_REFINEMENT_WEIGHT_RETURN_ASYMMETRY_FIT * normalized_return_asymmetry_fit
+        + JOINT_REFINEMENT_WEIGHT_TICK_RETURN_ASYMMETRY_FIT * normalized_tick_return_asymmetry_fit
         + JOINT_REFINEMENT_WEIGHT_AGGREGATED_RETURN_SCALE_FIT
             * normalized_aggregated_return_scale_fit
+        + JOINT_REFINEMENT_WEIGHT_TICK_RETURN_SCALE_FIT * normalized_tick_return_scale_fit
         + JOINT_REFINEMENT_WEIGHT_BUSINESS_TIME_RETURN_SCALE_FIT
             * normalized_business_time_return_scale_fit
         + JOINT_REFINEMENT_WEIGHT_INTRADAY_RETURN_LEVEL_FIT * normalized_intraday_return_level_fit
@@ -2327,10 +2382,25 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
             } else {
                 normalized_aggregated_return_shape_fit
             },
+            return_asymmetry_fit: if use_raw_bucket_values {
+                raw_return_asymmetry_fit
+            } else {
+                normalized_return_asymmetry_fit
+            },
+            tick_return_asymmetry_fit: if use_raw_bucket_values {
+                raw_tick_return_asymmetry_fit
+            } else {
+                normalized_tick_return_asymmetry_fit
+            },
             aggregated_return_scale_fit: if use_raw_bucket_values {
                 raw_aggregated_return_scale_fit
             } else {
                 normalized_aggregated_return_scale_fit
+            },
+            tick_return_scale_fit: if use_raw_bucket_values {
+                raw_tick_return_scale_fit
+            } else {
+                normalized_tick_return_scale_fit
             },
             business_time_return_scale_fit: if use_raw_bucket_values {
                 raw_business_time_return_scale_fit
@@ -2385,7 +2455,10 @@ fn invalid_candidate_evaluation(
         breakdown: JointRefinementStageObjectiveBreakdown {
             aggregated_likelihood_fit: 100.0,
             aggregated_return_shape_fit: 100.0,
+            return_asymmetry_fit: 100.0,
+            tick_return_asymmetry_fit: 100.0,
             aggregated_return_scale_fit: 100.0,
+            tick_return_scale_fit: 100.0,
             business_time_return_scale_fit: 100.0,
             intraday_return_level_fit: 100.0,
             activity_shape_fit: 100.0,
@@ -2402,7 +2475,10 @@ fn invalid_candidate_evaluation(
 fn baseline_bucket_values_are_unity(baseline_buckets: &JointRefinementBaselineBuckets) -> bool {
     baseline_buckets.aggregated_likelihood_fit == 1.0
         && baseline_buckets.aggregated_return_shape_fit == 1.0
+        && baseline_buckets.return_asymmetry_fit == 1.0
+        && baseline_buckets.tick_return_asymmetry_fit == 1.0
         && baseline_buckets.aggregated_return_scale_fit == 1.0
+        && baseline_buckets.tick_return_scale_fit == 1.0
         && baseline_buckets.business_time_return_scale_fit == 1.0
         && baseline_buckets.intraday_return_level_fit == 1.0
         && baseline_buckets.activity_shape_fit == 1.0
@@ -2425,8 +2501,13 @@ fn aggregated_return_shape_fit(
         observed_data.observed_15m_shape_returns.as_slice(),
     )
     .profile_fit_score;
+    let shape_tick = distribution_profile_fit_score(
+        seed_summary.simulated_tick_shape_returns.as_slice(),
+        observed_data.observed_tick_shape_returns.as_slice(),
+    )
+    .profile_fit_score;
 
-    0.4 * shape_5m + 0.6 * shape_15m
+    (shape_tick + shape_5m + shape_15m) / 3.0
 }
 
 fn aggregated_return_scale_fit(
@@ -2441,8 +2522,52 @@ fn aggregated_return_scale_fit(
         seed_summary.simulated_5m_return_scale_summary,
         observed_data.observed_5m_return_scale_summary,
     );
+    let fit_tick = return_scale_horizon_fit(
+        seed_summary.simulated_tick_return_scale_summary,
+        observed_data.observed_tick_return_scale_summary,
+    );
 
-    0.75 * fit_15m + 0.25 * fit_5m
+    root_mean_square([fit_tick, fit_5m, fit_15m].as_slice())
+}
+
+fn tick_return_scale_fit(
+    seed_summary: &JointRefinementSeedSummary,
+    observed_data: &JointRefinementObservedData,
+) -> f64 {
+    return_scale_horizon_fit(
+        seed_summary.simulated_tick_return_scale_summary,
+        observed_data.observed_tick_return_scale_summary,
+    )
+}
+
+fn return_asymmetry_fit(
+    seed_summary: &JointRefinementSeedSummary,
+    observed_data: &JointRefinementObservedData,
+) -> f64 {
+    let fit_15m = return_asymmetry_horizon_fit(
+        seed_summary.simulated_15m_shape_returns.as_slice(),
+        observed_data.observed_15m_shape_returns.as_slice(),
+    );
+    let fit_5m = return_asymmetry_horizon_fit(
+        seed_summary.simulated_5m_shape_returns.as_slice(),
+        observed_data.observed_5m_shape_returns.as_slice(),
+    );
+    let fit_tick = return_asymmetry_horizon_fit(
+        seed_summary.simulated_tick_shape_returns.as_slice(),
+        observed_data.observed_tick_shape_returns.as_slice(),
+    );
+
+    root_mean_square([fit_tick, fit_5m, fit_15m].as_slice())
+}
+
+fn tick_return_asymmetry_fit(
+    seed_summary: &JointRefinementSeedSummary,
+    observed_data: &JointRefinementObservedData,
+) -> f64 {
+    return_asymmetry_horizon_fit(
+        seed_summary.simulated_tick_shape_returns.as_slice(),
+        observed_data.observed_tick_shape_returns.as_slice(),
+    )
 }
 
 fn business_time_return_scale_fit(
@@ -2465,6 +2590,14 @@ fn intraday_return_level_fit(
     seed_summary: &JointRefinementSeedSummary,
     observed_data: &JointRefinementObservedData,
 ) -> f64 {
+    let fit_tick = intraday_return_level_horizon_fit(
+        seed_summary
+            .simulated_tick_intraday_mean_absolute_returns
+            .as_slice(),
+        observed_data
+            .observed_tick_intraday_mean_absolute_returns
+            .as_slice(),
+    );
     let fit_15m = intraday_return_level_horizon_fit(
         seed_summary
             .simulated_15m_intraday_mean_absolute_returns
@@ -2482,7 +2615,7 @@ fn intraday_return_level_fit(
             .as_slice(),
     );
 
-    0.75 * fit_15m + 0.25 * fit_5m
+    (fit_tick + fit_15m + fit_5m) / 3.0
 }
 
 fn return_scale_horizon_fit(
@@ -2505,7 +2638,7 @@ fn return_scale_horizon_fit(
         JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
     );
 
-    (mean_abs_fit + realized_variance_fit + tail_fit) / 3.0
+    root_mean_square([mean_abs_fit, realized_variance_fit, tail_fit].as_slice())
 }
 
 fn business_time_bucket_return_scale_fit(
@@ -2643,8 +2776,15 @@ fn build_joint_objective_term_diagnostics(
     let observed_peak_hourly_tick_share = observed_peak_hourly_tick_count
         / observed_total_hourly_tick_count.max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR);
     let observed_return_scale_summary = observed_data.observed_15m_return_scale_summary;
+    let observed_tick_return_scale_summary = observed_data.observed_tick_return_scale_summary;
     let observed_return_shape_skewness =
         skewness_or_zero(observed_data.observed_15m_shape_returns.as_slice());
+    let observed_return_shape_bowley_skewness =
+        bowley_skewness_or_zero(observed_data.observed_15m_shape_returns.as_slice());
+    let observed_tick_shape_skewness =
+        skewness_or_zero(observed_data.observed_tick_shape_returns.as_slice());
+    let observed_tick_shape_bowley_skewness =
+        bowley_skewness_or_zero(observed_data.observed_tick_shape_returns.as_slice());
     let observed_rv_activity_metric = observed_data.observed_15m_rv_activity_metric;
     let observed_log_price_span = observed_data.observed_log_price_span;
 
@@ -2689,9 +2829,32 @@ fn build_joint_objective_term_diagnostics(
                 .simulated_15m_return_scale_summary
                 .mean_absolute_return
         }));
+    let simulated_realized_variance_tick =
+        average_value(seed_summaries.iter().map(|seed_summary| {
+            seed_summary
+                .simulated_tick_return_scale_summary
+                .realized_variance
+        }));
+    let simulated_mean_absolute_return_tick =
+        average_value(seed_summaries.iter().map(|seed_summary| {
+            seed_summary
+                .simulated_tick_return_scale_summary
+                .mean_absolute_return
+        }));
     let simulated_return_shape_skewness =
         average_value(seed_summaries.iter().map(|seed_summary| {
             skewness_or_zero(seed_summary.simulated_15m_shape_returns.as_slice())
+        }));
+    let simulated_return_shape_bowley_skewness =
+        average_value(seed_summaries.iter().map(|seed_summary| {
+            bowley_skewness_or_zero(seed_summary.simulated_15m_shape_returns.as_slice())
+        }));
+    let simulated_tick_shape_skewness = average_value(seed_summaries.iter().map(|seed_summary| {
+        skewness_or_zero(seed_summary.simulated_tick_shape_returns.as_slice())
+    }));
+    let simulated_tick_shape_bowley_skewness =
+        average_value(seed_summaries.iter().map(|seed_summary| {
+            bowley_skewness_or_zero(seed_summary.simulated_tick_shape_returns.as_slice())
         }));
     let simulated_rv_activity_correlation = average_value(
         seed_summaries
@@ -2744,12 +2907,50 @@ fn build_joint_objective_term_diagnostics(
             observed_return_scale_summary.mean_absolute_return,
             simulated_mean_absolute_return_15m,
         ),
+        build_positive_joint_objective_term(
+            "joint.return_scale.tick_realized_variance",
+            "joint.return_scale.tick_realized_variance",
+            "return_scale",
+            observed_tick_return_scale_summary.realized_variance,
+            simulated_realized_variance_tick,
+        ),
+        build_positive_joint_objective_term(
+            "joint.return_scale.tick_mean_absolute_return",
+            "joint.return_scale.tick_mean_absolute_return",
+            "return_scale",
+            observed_tick_return_scale_summary.mean_absolute_return,
+            simulated_mean_absolute_return_tick,
+        ),
         build_signed_joint_objective_term(
-            "joint.return_shape",
-            "joint.return_shape",
+            "joint.return_asymmetry.central_skewness",
+            "joint.return_asymmetry.central_skewness",
             "return_asymmetry",
             observed_return_shape_skewness,
             simulated_return_shape_skewness,
+            0.1,
+        ),
+        build_signed_joint_objective_term(
+            "joint.return_asymmetry.bowley_skewness",
+            "joint.return_asymmetry.bowley_skewness",
+            "return_asymmetry",
+            observed_return_shape_bowley_skewness,
+            simulated_return_shape_bowley_skewness,
+            0.1,
+        ),
+        build_signed_joint_objective_term(
+            "joint.return_asymmetry.tick_central_skewness",
+            "joint.return_asymmetry.tick_central_skewness",
+            "return_asymmetry",
+            observed_tick_shape_skewness,
+            simulated_tick_shape_skewness,
+            0.1,
+        ),
+        build_signed_joint_objective_term(
+            "joint.return_asymmetry.tick_bowley_skewness",
+            "joint.return_asymmetry.tick_bowley_skewness",
+            "return_asymmetry",
+            observed_tick_shape_bowley_skewness,
+            simulated_tick_shape_bowley_skewness,
             0.1,
         ),
         build_signed_joint_objective_term(
@@ -2841,6 +3042,109 @@ fn average_value(values: impl Iterator<Item = f64>) -> f64 {
     }
 }
 
+fn compare_joint_restart_outcomes(
+    left: (usize, &JointRefinementRestartOutcome),
+    right: (usize, &JointRefinementRestartOutcome),
+    thresholds: JointRefinementAdmissibilityThresholds,
+    has_admissible_candidate: bool,
+) -> Ordering {
+    let left_admissible = joint_restart_outcome_is_admissible(left.1, thresholds);
+    let right_admissible = joint_restart_outcome_is_admissible(right.1, thresholds);
+
+    compare_joint_candidate_breakdowns(
+        left.0,
+        &left.1.final_evaluation.breakdown,
+        left_admissible,
+        left.1.restart_id.as_str(),
+        right.0,
+        &right.1.final_evaluation.breakdown,
+        right_admissible,
+        right.1.restart_id.as_str(),
+        has_admissible_candidate,
+    )
+}
+
+fn joint_primary_metrics_from_breakdown(
+    breakdown: &JointRefinementStageObjectiveBreakdown,
+) -> [f64; 11] {
+    [
+        breakdown.aggregated_likelihood_fit,
+        breakdown.aggregated_return_shape_fit,
+        breakdown.return_asymmetry_fit,
+        breakdown.tick_return_asymmetry_fit,
+        breakdown.aggregated_return_scale_fit,
+        breakdown.tick_return_scale_fit,
+        breakdown.business_time_return_scale_fit,
+        breakdown.intraday_return_level_fit,
+        breakdown.activity_shape_fit,
+        breakdown.activity_level_fit,
+        breakdown.rv_activity_coupling_fit,
+    ]
+}
+
+fn compare_joint_candidate_breakdowns(
+    left_pareto_rank: usize,
+    left_breakdown: &JointRefinementStageObjectiveBreakdown,
+    left_admissible: bool,
+    left_restart_id: &str,
+    right_pareto_rank: usize,
+    right_breakdown: &JointRefinementStageObjectiveBreakdown,
+    right_admissible: bool,
+    right_restart_id: &str,
+    has_admissible_candidate: bool,
+) -> Ordering {
+    let left_max_primary_metric = joint_primary_metrics_from_breakdown(left_breakdown)
+        .into_iter()
+        .fold(f64::NEG_INFINITY, f64::max);
+    let right_max_primary_metric = joint_primary_metrics_from_breakdown(right_breakdown)
+        .into_iter()
+        .fold(f64::NEG_INFINITY, f64::max);
+    let left_primary_metric_sum = joint_primary_metrics_from_breakdown(left_breakdown)
+        .into_iter()
+        .sum::<f64>();
+    let right_primary_metric_sum = joint_primary_metrics_from_breakdown(right_breakdown)
+        .into_iter()
+        .sum::<f64>();
+
+    (!left_admissible)
+        .cmp(&!right_admissible)
+        .then_with(|| {
+            if has_admissible_candidate {
+                left_pareto_rank.cmp(&right_pareto_rank)
+            } else {
+                left_breakdown
+                    .weighted_objective
+                    .total_cmp(&right_breakdown.weighted_objective)
+            }
+        })
+        .then_with(|| {
+            if has_admissible_candidate {
+                left_max_primary_metric.total_cmp(&right_max_primary_metric)
+            } else {
+                Ordering::Equal
+            }
+        })
+        .then_with(|| {
+            if has_admissible_candidate {
+                left_primary_metric_sum.total_cmp(&right_primary_metric_sum)
+            } else {
+                Ordering::Equal
+            }
+        })
+        .then_with(|| {
+            left_breakdown
+                .weighted_objective
+                .total_cmp(&right_breakdown.weighted_objective)
+        })
+        .then_with(|| {
+            left_breakdown
+                .price_span_sanity_fit
+                .total_cmp(&right_breakdown.price_span_sanity_fit)
+        })
+        .then_with(|| left_pareto_rank.cmp(&right_pareto_rank))
+        .then_with(|| left_restart_id.cmp(right_restart_id))
+}
+
 fn skewness_or_zero(values: &[f64]) -> f64 {
     let finite_values = values
         .iter()
@@ -2871,6 +3175,57 @@ fn skewness_or_zero(values: &[f64]) -> f64 {
         .map(|value| (value / standard_deviation).powi(3))
         .sum::<f64>()
         / centered_values.len() as f64
+}
+
+fn bowley_skewness_or_zero(values: &[f64]) -> f64 {
+    let finite_values = values
+        .iter()
+        .copied()
+        .filter(|value| value.is_finite())
+        .collect::<Vec<_>>();
+    if finite_values.len() < 4 {
+        return 0.0;
+    }
+
+    let q1 = compute_finite_quantile_or_zero(finite_values.as_slice(), 0.25);
+    let q2 = compute_finite_quantile_or_zero(finite_values.as_slice(), 0.50);
+    let q3 = compute_finite_quantile_or_zero(finite_values.as_slice(), 0.75);
+    let denominator = (q3 - q1).abs().max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR);
+
+    ((q3 + q1) - 2.0 * q2) / denominator
+}
+
+fn signed_metric_distance(candidate_value: f64, observed_value: f64, minimum_scale: f64) -> f64 {
+    (candidate_value - observed_value).abs() / observed_value.abs().max(minimum_scale)
+}
+
+fn return_asymmetry_horizon_fit(candidate_profile: &[f64], observed_profile: &[f64]) -> f64 {
+    let candidate_central_skewness = skewness_or_zero(candidate_profile);
+    let observed_central_skewness = skewness_or_zero(observed_profile);
+    let candidate_bowley_skewness = bowley_skewness_or_zero(candidate_profile);
+    let observed_bowley_skewness = bowley_skewness_or_zero(observed_profile);
+
+    root_mean_square(
+        [
+            signed_metric_distance(candidate_central_skewness, observed_central_skewness, 0.1),
+            signed_metric_distance(candidate_bowley_skewness, observed_bowley_skewness, 0.1),
+        ]
+        .as_slice(),
+    )
+}
+
+fn root_mean_square(values: &[f64]) -> f64 {
+    let finite_values: Vec<f64> = values
+        .iter()
+        .copied()
+        .filter(|value| value.is_finite())
+        .collect();
+    if finite_values.is_empty() {
+        return f64::INFINITY;
+    }
+
+    (finite_values.iter().map(|value| value * value).sum::<f64>() / finite_values.len() as f64)
+        .sqrt()
 }
 
 fn violates_runtime_seasonality_scaled_stationarity(
@@ -3020,6 +3375,7 @@ fn build_observed_data(
     calendar_registry: &ExchangeCalendarRegistry,
     exchange_code: &str,
     return_components_fitted_parameters: &ReturnComponentsStageFittedParameters,
+    observed_signal_preparation: &ReturnComponentsStageJointRefinementObservedSignalPreparation,
     candidate_generation_input: &ReturnComponentsStageCandidateGenerationInput,
     observed_open_event_rate_per_hour: f64,
 ) -> JointRefinementObservedData {
@@ -3069,9 +3425,22 @@ fn build_observed_data(
         .iter()
         .map(|interval| interval.log_return)
         .collect::<Vec<_>>();
+    let observed_tick_sample_count = continuous_return_calibration_sample_observed_returns(
+        &observed_signal_preparation.continuous_return_calibration_sample,
+    )
+    .len();
+    let observed_tick_returns = sampled_observed_tick_returns(
+        candidate_generation_input
+            .observed_open_session_returns
+            .as_slice(),
+        observed_tick_sample_count,
+    );
 
+    let observed_tick_shape_returns = scale_normalized_returns(observed_tick_returns.as_slice());
     let observed_5m_shape_returns = scale_normalized_returns(observed_5m_log_returns.as_slice());
     let observed_15m_shape_returns = scale_normalized_returns(observed_15m_log_returns.as_slice());
+    let observed_tick_return_scale_summary =
+        return_scale_summary_from_returns(observed_tick_returns.as_slice());
     let observed_5m_return_scale_summary = return_scale_summary(observed_5m_intervals.as_slice());
     let observed_15m_return_scale_summary = return_scale_summary(observed_15m_intervals.as_slice());
 
@@ -3108,6 +3477,11 @@ fn build_observed_data(
         mean_absolute_return_by_utc_hour(observed_5m_intervals.as_slice());
     let observed_15m_intraday_mean_absolute_returns =
         mean_absolute_return_by_utc_hour(observed_15m_intervals.as_slice());
+    let observed_tick_intraday_mean_absolute_returns = mean_absolute_observed_return_by_utc_hour(
+        candidate_generation_input
+            .observed_open_session_returns
+            .as_slice(),
+    );
 
     let observed_hourly_tick_counts = tick_count_series(observed_hourly_intervals.as_slice());
 
@@ -3141,10 +3515,16 @@ fn build_observed_data(
     JointRefinementObservedData {
         observed_open_event_rate_per_hour,
         fallback_sell_share_proxy: candidate_generation_input.open_session_sell_share_proxy,
+        observed_tick_continuous_return_calibration_sample: observed_signal_preparation
+            .continuous_return_calibration_sample
+            .clone(),
         observed_5m_intervals,
         observed_15m_intervals,
+        observed_tick_intraday_mean_absolute_returns,
+        observed_tick_shape_returns,
         observed_5m_shape_returns,
         observed_15m_shape_returns,
+        observed_tick_return_scale_summary,
         observed_5m_return_scale_summary,
         observed_15m_return_scale_summary,
         observed_5m_business_time_bucket_thresholds,
@@ -3167,6 +3547,18 @@ fn build_observed_data(
         simulated_15m_interval_template,
         simulated_hourly_interval_template,
     }
+}
+
+fn sampled_observed_tick_returns(
+    observed_open_session_returns: &[ReturnComponentsObservedOpenSessionReturn],
+    target_count: usize,
+) -> Vec<f64> {
+    let raw_observed_tick_returns = observed_open_session_returns
+        .iter()
+        .map(|observation| observation.log_return)
+        .collect::<Vec<_>>();
+
+    sampled_return_values(raw_observed_tick_returns.as_slice(), target_count)
 }
 
 fn build_baseline_parameter_vector(
@@ -3298,6 +3690,7 @@ impl JointRefinementActiveParameterLayout {
 fn build_parameter_bounds(
     active_parameter_layout: &JointRefinementActiveParameterLayout,
     baseline_parameter_vector: &[f64],
+    baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
 ) -> (Vec<f64>, Vec<f64>) {
     let mut lower_bounds = vec![0.0; baseline_parameter_vector.len()];
     let mut upper_bounds = vec![0.0; baseline_parameter_vector.len()];
@@ -3306,30 +3699,15 @@ fn build_parameter_bounds(
         lower_bounds[*index] = -JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND;
         upper_bounds[*index] = JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND;
     }
-    lower_bounds[active_parameter_layout.nig_block[0]] = baseline_parameter_vector
-        [active_parameter_layout.nig_block[0]]
-        - JOINT_REFINEMENT_NIG_LOG_ALPHA_HALF_SPAN;
-    upper_bounds[active_parameter_layout.nig_block[0]] = baseline_parameter_vector
-        [active_parameter_layout.nig_block[0]]
-        + JOINT_REFINEMENT_NIG_LOG_ALPHA_HALF_SPAN;
-    lower_bounds[active_parameter_layout.nig_block[1]] = baseline_parameter_vector
-        [active_parameter_layout.nig_block[1]]
-        - JOINT_REFINEMENT_NIG_SKEW_HALF_SPAN;
-    upper_bounds[active_parameter_layout.nig_block[1]] = baseline_parameter_vector
-        [active_parameter_layout.nig_block[1]]
-        + JOINT_REFINEMENT_NIG_SKEW_HALF_SPAN;
-    lower_bounds[active_parameter_layout.nig_block[2]] = baseline_parameter_vector
-        [active_parameter_layout.nig_block[2]]
-        - JOINT_REFINEMENT_NIG_SKEW_HALF_SPAN;
-    upper_bounds[active_parameter_layout.nig_block[2]] = baseline_parameter_vector
-        [active_parameter_layout.nig_block[2]]
-        + JOINT_REFINEMENT_NIG_SKEW_HALF_SPAN;
-    lower_bounds[active_parameter_layout.nig_block[3]] = baseline_parameter_vector
-        [active_parameter_layout.nig_block[3]]
-        - JOINT_REFINEMENT_NIG_LOG_DELTA_HALF_SPAN;
-    upper_bounds[active_parameter_layout.nig_block[3]] = baseline_parameter_vector
-        [active_parameter_layout.nig_block[3]]
-        + JOINT_REFINEMENT_NIG_LOG_DELTA_HALF_SPAN;
+
+    let (nig_lower_bounds, nig_upper_bounds) =
+        nig_search_bounds_for_calibration_sample(baseline_15m_calibration_sample, 128);
+    for (coordinate_position, parameter_index) in
+        active_parameter_layout.nig_block.iter().enumerate()
+    {
+        lower_bounds[*parameter_index] = nig_lower_bounds[coordinate_position];
+        upper_bounds[*parameter_index] = nig_upper_bounds[coordinate_position];
+    }
 
     for index in &active_parameter_layout.coupling_block {
         lower_bounds[*index] = -JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND;
@@ -3344,52 +3722,54 @@ fn build_restart_seeds(
     active_parameter_layout: &JointRefinementActiveParameterLayout,
     lower_bounds: &[f64],
     upper_bounds: &[f64],
+    baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    return_component_basin_diagnostics: &[ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
+    activity_log_shift: f64,
     restart_count: usize,
 ) -> Vec<(String, Vec<f64>)> {
     let mut baseline = baseline_parameter_vector.to_vec();
     clamp_in_place(baseline.as_mut_slice(), lower_bounds, upper_bounds);
 
-    let mut higher_activity = baseline_parameter_vector.to_vec();
-    higher_activity[active_parameter_layout.log_lambda_scale_index] += 0.35;
-    higher_activity[active_parameter_layout.log_beta_scale_index] -= 0.20;
-    higher_activity[active_parameter_layout.log_self_excitation_scale_index] += 0.20;
-    higher_activity[active_parameter_layout.log_cross_excitation_scale_index] += 0.20;
+    let mut activity_aligned = baseline_parameter_vector.to_vec();
+    activity_aligned[active_parameter_layout.log_lambda_scale_index] = activity_log_shift;
+    clamp_in_place(activity_aligned.as_mut_slice(), lower_bounds, upper_bounds);
 
-    if let Some(index) = active_parameter_layout.known_activity_scale_index {
-        higher_activity[index] += 0.15;
-    }
-    if let Some(index) = active_parameter_layout.surprise_activity_scale_index {
-        higher_activity[index] += 0.15;
-    }
-
-    clamp_in_place(higher_activity.as_mut_slice(), lower_bounds, upper_bounds);
-
-    let mut lower_activity_stronger_move = baseline_parameter_vector.to_vec();
-    lower_activity_stronger_move[active_parameter_layout.log_lambda_scale_index] -= 0.35;
-    lower_activity_stronger_move[active_parameter_layout.log_self_excitation_scale_index] -= 0.20;
-    lower_activity_stronger_move[active_parameter_layout.log_cross_excitation_scale_index] -= 0.20;
-    lower_activity_stronger_move[active_parameter_layout.nig_block[0]] -= 0.35;
-    lower_activity_stronger_move[active_parameter_layout.nig_block[3]] += 0.35;
-
-    clamp_in_place(
-        lower_activity_stronger_move.as_mut_slice(),
-        lower_bounds,
-        upper_bounds,
-    );
+    let mut midpoint = lower_bounds
+        .iter()
+        .zip(upper_bounds.iter())
+        .map(|(lower_bound, upper_bound)| 0.5 * (lower_bound + upper_bound))
+        .collect::<Vec<_>>();
+    clamp_in_place(midpoint.as_mut_slice(), lower_bounds, upper_bounds);
 
     let mut restart_candidates = vec![
         ("baseline".to_string(), baseline),
-        ("higher_activity".to_string(), higher_activity),
-        (
-            "lower_activity_stronger_move".to_string(),
-            lower_activity_stronger_move,
-        ),
+        ("activity_aligned".to_string(), activity_aligned),
+        ("midpoint".to_string(), midpoint),
     ];
+    restart_candidates.extend(joint_nig_basin_restart_seeds(
+        baseline_parameter_vector,
+        active_parameter_layout,
+        lower_bounds,
+        upper_bounds,
+        baseline_15m_calibration_sample,
+        return_component_basin_diagnostics,
+        activity_log_shift,
+    ));
+    restart_candidates.extend(joint_nig_alpha_delta_restart_seeds(
+        baseline_parameter_vector,
+        active_parameter_layout,
+        lower_bounds,
+        upper_bounds,
+        baseline_15m_calibration_sample,
+        return_component_basin_diagnostics,
+        activity_log_shift,
+    ));
 
     let target_restart_count = restart_count.max(1).min(JOINT_REFINEMENT_MAX_RESTART_COUNT);
+    let mut deduplicated_candidates = deduplicate_restart_seed_candidates(restart_candidates);
     let mut halton_index = 1u64;
     let mut halton_position = 1usize;
-    while restart_candidates.len() < target_restart_count {
+    while deduplicated_candidates.len() < target_restart_count {
         let mut halton_seed = halton_parameter_vector(halton_index, lower_bounds, upper_bounds);
         if halton_seed.len() >= baseline_parameter_vector.len() {
             halton_seed[active_parameter_layout.log_lambda_scale_index] =
@@ -3401,16 +3781,195 @@ fn build_restart_seeds(
 
         clamp_in_place(halton_seed.as_mut_slice(), lower_bounds, upper_bounds);
 
-        restart_candidates.push((build_halton_restart_id(halton_position), halton_seed));
+        deduplicated_candidates = deduplicate_restart_seed_candidates({
+            let mut candidates = deduplicated_candidates;
+            candidates.push((build_halton_restart_id(halton_position), halton_seed));
+            candidates
+        });
 
         halton_index += 1;
         halton_position += 1;
     }
 
-    deduplicate_restart_seed_candidates(restart_candidates)
+    deduplicated_candidates
         .into_iter()
         .take(target_restart_count)
         .collect()
+}
+
+fn joint_nig_basin_restart_seeds(
+    baseline_parameter_vector: &[f64],
+    active_parameter_layout: &JointRefinementActiveParameterLayout,
+    lower_bounds: &[f64],
+    upper_bounds: &[f64],
+    baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    return_component_basin_diagnostics: &[ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
+    activity_log_shift: f64,
+) -> Vec<(String, Vec<f64>)> {
+    return_component_basin_diagnostics
+        .iter()
+        .filter_map(|diagnostic| {
+            project_basin_diagnostic_into_joint_nig_coordinates(
+                baseline_15m_calibration_sample,
+                diagnostic,
+            )
+            .map(|search_point| (diagnostic, search_point))
+        })
+        .flat_map(|(diagnostic, projected_search_point)| {
+            let mut baseline_nig_seed = baseline_parameter_vector.to_vec();
+            apply_nig_search_point(
+                baseline_nig_seed.as_mut_slice(),
+                active_parameter_layout,
+                projected_search_point,
+            );
+            clamp_in_place(baseline_nig_seed.as_mut_slice(), lower_bounds, upper_bounds);
+
+            let mut activity_aligned_nig_seed = baseline_nig_seed.clone();
+            activity_aligned_nig_seed[active_parameter_layout.log_lambda_scale_index] =
+                activity_log_shift;
+            clamp_in_place(
+                activity_aligned_nig_seed.as_mut_slice(),
+                lower_bounds,
+                upper_bounds,
+            );
+
+            vec![
+                (
+                    format!("nig_basin_{}", diagnostic.family_label),
+                    baseline_nig_seed,
+                ),
+                (
+                    format!("nig_basin_{}_activity_aligned", diagnostic.family_label),
+                    activity_aligned_nig_seed,
+                ),
+            ]
+        })
+        .collect()
+}
+
+fn joint_nig_alpha_delta_restart_seeds(
+    baseline_parameter_vector: &[f64],
+    active_parameter_layout: &JointRefinementActiveParameterLayout,
+    lower_bounds: &[f64],
+    upper_bounds: &[f64],
+    baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    return_component_basin_diagnostics: &[ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
+    activity_log_shift: f64,
+) -> Vec<(String, Vec<f64>)> {
+    return_component_basin_diagnostics
+        .iter()
+        .filter_map(|diagnostic| {
+            project_basin_diagnostic_into_joint_nig_coordinates(
+                baseline_15m_calibration_sample,
+                diagnostic,
+            )
+            .map(|search_point| (diagnostic, search_point))
+        })
+        .flat_map(|(diagnostic, projected_search_point)| {
+            let mut alpha_delta_seed = baseline_parameter_vector.to_vec();
+            apply_nig_alpha_delta_search_point(
+                alpha_delta_seed.as_mut_slice(),
+                active_parameter_layout,
+                projected_search_point,
+            );
+            clamp_in_place(alpha_delta_seed.as_mut_slice(), lower_bounds, upper_bounds);
+
+            let mut activity_aligned_alpha_delta_seed = alpha_delta_seed.clone();
+            activity_aligned_alpha_delta_seed[active_parameter_layout.log_lambda_scale_index] =
+                activity_log_shift;
+            clamp_in_place(
+                activity_aligned_alpha_delta_seed.as_mut_slice(),
+                lower_bounds,
+                upper_bounds,
+            );
+
+            vec![
+                (
+                    format!("nig_alpha_delta_{}", diagnostic.family_label),
+                    alpha_delta_seed,
+                ),
+                (
+                    format!(
+                        "nig_alpha_delta_{}_activity_aligned",
+                        diagnostic.family_label
+                    ),
+                    activity_aligned_alpha_delta_seed,
+                ),
+            ]
+        })
+        .collect()
+}
+
+fn selected_return_components_candidate(
+    return_components_payload: &ReturnComponentsStageFittedPayload,
+) -> Option<&ReturnComponentsStageCandidateDiagnostic> {
+    return_components_payload
+        .candidate_diagnostics
+        .iter()
+        .find(|candidate| candidate.candidate_id == return_components_payload.selected_candidate_id)
+}
+
+fn nig_basin_coordinates_are_finite(
+    diagnostic: &ReturnComponentsStageContinuousOptimizerBasinDiagnostic,
+) -> bool {
+    [
+        diagnostic.final_log_alpha,
+        diagnostic.final_buy_skew_coordinate,
+        diagnostic.final_sell_relative_coordinate,
+        diagnostic.final_log_delta_offset,
+    ]
+    .into_iter()
+    .all(f64::is_finite)
+}
+
+fn project_basin_diagnostic_into_joint_nig_coordinates(
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    diagnostic: &ReturnComponentsStageContinuousOptimizerBasinDiagnostic,
+) -> Option<NigShapeSearchPoint> {
+    if !nig_basin_coordinates_are_finite(diagnostic) {
+        return None;
+    }
+
+    let configuration = NigSharedPlusShiftConfiguration::try_new(
+        diagnostic.final_alpha,
+        diagnostic.final_beta_0,
+        diagnostic.final_delta,
+        0.0,
+        diagnostic.final_delta_beta,
+    )
+    .ok()?;
+
+    nig_search_point_from_configuration(calibration_sample, configuration)
+}
+
+fn apply_nig_search_point(
+    parameter_vector: &mut [f64],
+    active_parameter_layout: &JointRefinementActiveParameterLayout,
+    search_point: NigShapeSearchPoint,
+) {
+    parameter_vector[active_parameter_layout.nig_block[0]] = search_point.log_alpha;
+    parameter_vector[active_parameter_layout.nig_block[1]] = search_point.buy_skew_coordinate;
+    parameter_vector[active_parameter_layout.nig_block[2]] = search_point.sell_relative_coordinate;
+    parameter_vector[active_parameter_layout.nig_block[3]] = search_point.log_delta_offset;
+}
+
+fn apply_nig_alpha_delta_search_point(
+    parameter_vector: &mut [f64],
+    active_parameter_layout: &JointRefinementActiveParameterLayout,
+    search_point: NigShapeSearchPoint,
+) {
+    parameter_vector[active_parameter_layout.nig_block[0]] = search_point.log_alpha;
+    parameter_vector[active_parameter_layout.nig_block[3]] = search_point.log_delta_offset;
+}
+
+fn observed_activity_log_shift(
+    observed_open_event_rate_per_hour: f64,
+    modeled_open_event_rate_per_hour: f64,
+) -> f64 {
+    let observed_rate = observed_open_event_rate_per_hour.max(1.0e-8);
+    let modeled_rate = modeled_open_event_rate_per_hour.max(1.0e-8);
+
+    (observed_rate / modeled_rate).ln()
 }
 
 fn joint_refinement_final_simulation_seed_count(
@@ -3569,11 +4128,18 @@ fn build_seed_summary_for_candidate_seed(
         .iter()
         .map(|interval| interval.log_return)
         .collect::<Vec<_>>();
+    let simulated_tick_returns = sampled_trade_returns(
+        simulation_result.fine_path.as_slice(),
+        context.observed_data.observed_tick_shape_returns.len(),
+    );
 
+    let simulated_tick_shape_returns = scale_normalized_returns(simulated_tick_returns.as_slice());
     let simulated_5m_shape_returns = scale_normalized_returns(simulated_5m_log_returns.as_slice());
     let simulated_15m_shape_returns =
         scale_normalized_returns(simulated_15m_log_returns.as_slice());
 
+    let simulated_tick_return_scale_summary =
+        return_scale_summary_from_returns(simulated_tick_returns.as_slice());
     let simulated_5m_return_scale_summary = return_scale_summary(simulated_5m_intervals.as_slice());
     let simulated_15m_return_scale_summary =
         return_scale_summary(simulated_15m_intervals.as_slice());
@@ -3597,6 +4163,8 @@ fn build_seed_summary_for_candidate_seed(
         mean_absolute_return_by_utc_hour(simulated_5m_intervals.as_slice());
     let simulated_15m_intraday_mean_absolute_returns =
         mean_absolute_return_by_utc_hour(simulated_15m_intervals.as_slice());
+    let simulated_tick_intraday_mean_absolute_returns =
+        mean_absolute_trade_return_by_utc_hour(simulation_result.fine_path.as_slice());
 
     let simulated_hourly_tick_counts = tick_count_series(simulated_hourly_intervals.as_slice());
 
@@ -3606,12 +4174,15 @@ fn build_seed_summary_for_candidate_seed(
     Some(JointRefinementSeedSummary {
         simulated_5m_intervals,
         simulated_15m_intervals,
+        simulated_tick_shape_returns,
         simulated_5m_shape_returns,
         simulated_15m_shape_returns,
+        simulated_tick_return_scale_summary,
         simulated_5m_return_scale_summary,
         simulated_15m_return_scale_summary,
         simulated_5m_business_time_return_scale_summaries,
         simulated_15m_business_time_return_scale_summaries,
+        simulated_tick_intraday_mean_absolute_returns,
         simulated_5m_intraday_mean_absolute_returns,
         simulated_15m_intraday_mean_absolute_returns,
         simulated_hourly_tick_counts,
@@ -3767,15 +4338,28 @@ fn build_joint_refinement_stage_failure_report(
 
 #[cfg(test)]
 mod tests {
+    use std::cmp::Ordering;
+
     use super::{
         JointRefinementActiveParameterLayout, build_restart_seeds,
-        business_time_bucket_return_scale_fit, intraday_return_level_horizon_fit,
-        joint_refinement_budget_schedule,
+        business_time_bucket_return_scale_fit, compare_joint_candidate_breakdowns,
+        intraday_return_level_horizon_fit, joint_primary_metrics_from_breakdown,
+        joint_refinement_base_schedule_components, joint_refinement_budget_schedule,
+        project_basin_diagnostic_into_joint_nig_coordinates, return_asymmetry_horizon_fit,
+        root_mean_square, sampled_observed_tick_returns,
     };
     use crate::stages::joint_metrics::{
         JointRefinementBusinessTimeBucketReturnScaleSummaries, JointRefinementReturnScaleSummary,
     };
-    use janiform_calibration_artifacts::CalibrationOptimizerSettings;
+    use crate::stages::return_components::{
+        ReturnComponentsObservedOpenSessionReturn,
+        ReturnComponentsStageContinuousOptimizerBasinDiagnostic,
+        ReturnComponentsStageContinuousReturnCalibrationSample,
+        build_continuous_return_calibration_sample_from_components,
+    };
+    use janiform_calibration_artifacts::{
+        CalibrationOptimizerSettings, JointRefinementStageObjectiveBreakdown,
+    };
 
     fn build_test_solver_settings(cpu_count: usize) -> CalibrationOptimizerSettings {
         CalibrationOptimizerSettings::try_new("joint-test", 256, cpu_count, 1.0e-6, 1.0e-6, 10.0)
@@ -3797,6 +4381,70 @@ mod tests {
         }
     }
 
+    fn build_test_basin_diagnostic(
+        family_label: &str,
+        final_log_alpha: f64,
+        final_buy_skew_coordinate: f64,
+        final_sell_relative_coordinate: f64,
+        final_log_delta_offset: f64,
+    ) -> ReturnComponentsStageContinuousOptimizerBasinDiagnostic {
+        ReturnComponentsStageContinuousOptimizerBasinDiagnostic {
+            family_label: family_label.to_string(),
+            seed_objective: 1.0,
+            local_objective: 0.9,
+            final_objective: 0.8,
+            local_evaluation_count: 8,
+            stop_reason: "test".to_string(),
+            seed_log_alpha: final_log_alpha,
+            seed_buy_skew_coordinate: final_buy_skew_coordinate,
+            seed_sell_relative_coordinate: final_sell_relative_coordinate,
+            seed_log_delta_offset: final_log_delta_offset,
+            final_log_alpha,
+            final_buy_skew_coordinate,
+            final_sell_relative_coordinate,
+            final_log_delta_offset,
+            final_alpha: final_log_alpha.exp(),
+            final_beta_0: -0.5,
+            final_delta: final_log_delta_offset.exp(),
+            final_delta_beta: -0.2,
+            profile_fit_score: 0.8,
+            fitted_return_volatility: 0.01,
+            fitted_skewness: -0.1,
+        }
+    }
+
+    fn build_test_calibration_sample() -> ReturnComponentsStageContinuousReturnCalibrationSample {
+        build_continuous_return_calibration_sample_from_components(
+            vec![0.012, -0.009, 0.006, -0.004, 0.011, -0.007],
+            vec![1.0, 0.8, 1.2, 0.9, 1.1, 0.95],
+            vec![0.48, 0.53, 0.51, 0.47, 0.55, 0.49],
+            0.5,
+        )
+    }
+
+    fn build_test_joint_breakdown(
+        tick_return_asymmetry_fit: f64,
+        tick_return_scale_fit: f64,
+        weighted_objective: f64,
+    ) -> JointRefinementStageObjectiveBreakdown {
+        JointRefinementStageObjectiveBreakdown {
+            aggregated_likelihood_fit: 1.0,
+            aggregated_return_shape_fit: 1.0,
+            return_asymmetry_fit: 1.0,
+            tick_return_asymmetry_fit,
+            aggregated_return_scale_fit: 1.0,
+            tick_return_scale_fit,
+            business_time_return_scale_fit: 1.0,
+            intraday_return_level_fit: 1.0,
+            activity_shape_fit: 1.0,
+            activity_level_fit: 1.0,
+            rv_activity_coupling_fit: 1.0,
+            price_span_sanity_fit: 0.5,
+            weighted_objective,
+            hard_constraint_penalty: 0.0,
+        }
+    }
+
     #[test]
     fn joint_refinement_restart_count_scales_with_cpu_count_and_caps_at_24() {
         let single_core_schedule = joint_refinement_budget_schedule(&build_test_solver_settings(1));
@@ -3809,18 +4457,42 @@ mod tests {
     }
 
     #[test]
+    fn joint_refinement_high_core_budget_stays_within_base_block_budget() {
+        let solver_settings = build_test_solver_settings(64);
+        let (base_outer_cycle_count, base_powell_settings) =
+            joint_refinement_base_schedule_components(&solver_settings);
+        let base_total_block_evaluation_budget =
+            3usize * base_outer_cycle_count * base_powell_settings.evaluation_budget;
+
+        let high_core_schedule = joint_refinement_budget_schedule(&solver_settings);
+        let scheduled_block_evaluation_budget = high_core_schedule.restart_count
+            * high_core_schedule.outer_cycle_count
+            * 3usize
+            * high_core_schedule.powell_settings.evaluation_budget;
+
+        assert!(
+            scheduled_block_evaluation_budget <= base_total_block_evaluation_budget,
+            "scheduled block evaluation budget exceeded base budget: scheduled={scheduled_block_evaluation_budget} base={base_total_block_evaluation_budget}",
+        );
+    }
+
+    #[test]
     fn joint_refinement_restart_seed_generation_is_deterministic() {
         let active_parameter_layout = build_test_active_parameter_layout();
         let baseline_parameter_vector = vec![0.0; active_parameter_layout.vector_length()];
+        let baseline_15m_calibration_sample = build_test_calibration_sample();
 
         let lower_bounds = vec![-1.0; baseline_parameter_vector.len()];
-        let upper_bounds = vec![1.0; baseline_parameter_vector.len()];
+        let upper_bounds = vec![2.0; baseline_parameter_vector.len()];
 
         let first_restart_seeds = build_restart_seeds(
             baseline_parameter_vector.as_slice(),
             &active_parameter_layout,
             lower_bounds.as_slice(),
             upper_bounds.as_slice(),
+            &baseline_15m_calibration_sample,
+            &[],
+            0.25,
             8,
         );
         let second_restart_seeds = build_restart_seeds(
@@ -3828,15 +4500,116 @@ mod tests {
             &active_parameter_layout,
             lower_bounds.as_slice(),
             upper_bounds.as_slice(),
+            &baseline_15m_calibration_sample,
+            &[],
+            0.25,
             8,
         );
 
         assert_eq!(first_restart_seeds, second_restart_seeds);
         assert_eq!(first_restart_seeds.len(), 8);
         assert_eq!(first_restart_seeds[0].0, "baseline");
-        assert_eq!(first_restart_seeds[1].0, "higher_activity");
-        assert_eq!(first_restart_seeds[2].0, "lower_activity_stronger_move");
+        assert_eq!(first_restart_seeds[1].0, "activity_aligned");
+        assert_eq!(first_restart_seeds[2].0, "midpoint");
         assert_eq!(first_restart_seeds[3].0, "halton_01");
+    }
+
+    #[test]
+    fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
+        let active_parameter_layout = build_test_active_parameter_layout();
+        let baseline_parameter_vector = vec![0.0; active_parameter_layout.vector_length()];
+        let baseline_15m_calibration_sample = build_test_calibration_sample();
+        let lower_bounds = vec![-1.0; baseline_parameter_vector.len()];
+        let upper_bounds = vec![2.0; baseline_parameter_vector.len()];
+        let basin_diagnostics = vec![build_test_basin_diagnostic(
+            "skew_heavy",
+            0.4,
+            -0.2,
+            1.3,
+            -0.6,
+        )];
+
+        let restart_seeds = build_restart_seeds(
+            baseline_parameter_vector.as_slice(),
+            &active_parameter_layout,
+            lower_bounds.as_slice(),
+            upper_bounds.as_slice(),
+            &baseline_15m_calibration_sample,
+            basin_diagnostics.as_slice(),
+            0.25,
+            8,
+        );
+        let projected_search_point = project_basin_diagnostic_into_joint_nig_coordinates(
+            &baseline_15m_calibration_sample,
+            &basin_diagnostics[0],
+        )
+        .expect("basin diagnostic should project into joint coordinates");
+        let clamped_projected_coordinates = [
+            projected_search_point.log_alpha.clamp(
+                lower_bounds[active_parameter_layout.nig_block[0]],
+                upper_bounds[active_parameter_layout.nig_block[0]],
+            ),
+            projected_search_point.buy_skew_coordinate.clamp(
+                lower_bounds[active_parameter_layout.nig_block[1]],
+                upper_bounds[active_parameter_layout.nig_block[1]],
+            ),
+            projected_search_point.sell_relative_coordinate.clamp(
+                lower_bounds[active_parameter_layout.nig_block[2]],
+                upper_bounds[active_parameter_layout.nig_block[2]],
+            ),
+            projected_search_point.log_delta_offset.clamp(
+                lower_bounds[active_parameter_layout.nig_block[3]],
+                upper_bounds[active_parameter_layout.nig_block[3]],
+            ),
+        ];
+
+        assert_eq!(restart_seeds[3].0, "nig_basin_skew_heavy");
+        assert_eq!(restart_seeds[4].0, "nig_basin_skew_heavy_activity_aligned");
+        assert_eq!(
+            restart_seeds[3].1[active_parameter_layout.nig_block[0]],
+            clamped_projected_coordinates[0]
+        );
+        assert_eq!(
+            restart_seeds[3].1[active_parameter_layout.nig_block[1]],
+            clamped_projected_coordinates[1]
+        );
+        assert_eq!(
+            restart_seeds[3].1[active_parameter_layout.nig_block[2]],
+            clamped_projected_coordinates[2]
+        );
+        assert_eq!(
+            restart_seeds[3].1[active_parameter_layout.nig_block[3]],
+            clamped_projected_coordinates[3]
+        );
+        assert_eq!(
+            restart_seeds[4].1[active_parameter_layout.log_lambda_scale_index],
+            0.25
+        );
+        assert_eq!(restart_seeds[5].0, "nig_alpha_delta_skew_heavy");
+        assert_eq!(
+            restart_seeds[5].1[active_parameter_layout.nig_block[0]],
+            clamped_projected_coordinates[0]
+        );
+        assert_eq!(
+            restart_seeds[5].1[active_parameter_layout.nig_block[1]],
+            baseline_parameter_vector[active_parameter_layout.nig_block[1]]
+        );
+        assert_eq!(
+            restart_seeds[5].1[active_parameter_layout.nig_block[2]],
+            baseline_parameter_vector[active_parameter_layout.nig_block[2]]
+        );
+        assert_eq!(
+            restart_seeds[5].1[active_parameter_layout.nig_block[3]],
+            clamped_projected_coordinates[3]
+        );
+        assert_eq!(
+            restart_seeds[6].0,
+            "nig_alpha_delta_skew_heavy_activity_aligned"
+        );
+        assert_eq!(
+            restart_seeds[6].1[active_parameter_layout.log_lambda_scale_index],
+            0.25
+        );
     }
 
     #[test]
@@ -3883,5 +4656,117 @@ mod tests {
 
         assert_eq!(matched_fit, 0.0);
         assert!(amplified_fit > matched_fit);
+    }
+
+    #[test]
+    fn return_asymmetry_horizon_fit_penalizes_mirrored_asymmetry() {
+        let observed_profile = vec![-0.004, -0.002, -0.001, 0.0, 0.001, 0.002];
+        let matched_profile = observed_profile.clone();
+        let mirrored_profile = observed_profile
+            .iter()
+            .map(|value| -*value)
+            .collect::<Vec<_>>();
+
+        let matched_fit =
+            return_asymmetry_horizon_fit(matched_profile.as_slice(), observed_profile.as_slice());
+        let mirrored_fit =
+            return_asymmetry_horizon_fit(mirrored_profile.as_slice(), observed_profile.as_slice());
+
+        assert_eq!(matched_fit, 0.0);
+        assert!(mirrored_fit > matched_fit);
+    }
+
+    #[test]
+    fn root_mean_square_penalizes_concentrated_joint_misses() {
+        let concentrated_miss = root_mean_square([3.0, 0.0, 0.0].as_slice());
+        let balanced_miss = root_mean_square([1.0, 1.0, 1.0].as_slice());
+
+        assert!(concentrated_miss > balanced_miss);
+    }
+
+    #[test]
+    fn sampled_observed_tick_returns_use_raw_open_session_returns() {
+        let observed_open_session_returns = vec![
+            ReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: 1,
+                log_return: 0.01,
+                post_shock_activity_lift: 0.0,
+                sell_share_proxy: 0.5,
+            },
+            ReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: 2,
+                log_return: 0.02,
+                post_shock_activity_lift: 0.0,
+                sell_share_proxy: 0.5,
+            },
+            ReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: 3,
+                log_return: 0.03,
+                post_shock_activity_lift: 0.0,
+                sell_share_proxy: 0.5,
+            },
+            ReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: 4,
+                log_return: 0.04,
+                post_shock_activity_lift: 0.0,
+                sell_share_proxy: 0.5,
+            },
+        ];
+
+        let sampled_returns =
+            sampled_observed_tick_returns(observed_open_session_returns.as_slice(), 3);
+
+        assert_eq!(sampled_returns, vec![0.01, 0.02, 0.04]);
+    }
+
+    #[test]
+    fn joint_primary_metrics_include_direct_tick_distribution_terms() {
+        let breakdown = build_test_joint_breakdown(1.7, 1.9, 1.2);
+
+        let primary_metrics = joint_primary_metrics_from_breakdown(&breakdown);
+
+        assert_eq!(primary_metrics.len(), 11);
+        assert_eq!(primary_metrics[3], 1.7);
+        assert_eq!(primary_metrics[5], 1.9);
+    }
+
+    #[test]
+    fn admissible_candidate_ordering_uses_direct_tick_terms_before_weighted_tie_break() {
+        let better_tick_fit = build_test_joint_breakdown(0.8, 0.7, 1.4);
+        let worse_tick_fit = build_test_joint_breakdown(1.4, 1.5, 1.1);
+
+        let ordering = compare_joint_candidate_breakdowns(
+            1,
+            &better_tick_fit,
+            true,
+            "better_tick_fit",
+            1,
+            &worse_tick_fit,
+            true,
+            "worse_tick_fit",
+            true,
+        );
+
+        assert_eq!(ordering, Ordering::Less);
+    }
+
+    #[test]
+    fn admissible_candidate_ordering_uses_weighted_objective_after_primary_metrics_tie() {
+        let lower_objective = build_test_joint_breakdown(1.0, 1.0, 0.9);
+        let higher_objective = build_test_joint_breakdown(1.0, 1.0, 1.1);
+
+        let ordering = compare_joint_candidate_breakdowns(
+            1,
+            &lower_objective,
+            true,
+            "lower_objective",
+            1,
+            &higher_objective,
+            true,
+            "higher_objective",
+            true,
+        );
+
+        assert_eq!(ordering, Ordering::Less);
     }
 }

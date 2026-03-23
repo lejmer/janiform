@@ -259,6 +259,7 @@ struct NigShapeSearchBounds {
 struct ContinuousReturnOptimizerContext {
     observed_returns: Vec<f64>,
     business_time_scales: Vec<f64>,
+    mean_business_time_scale: f64,
     sell_share_proxies: Vec<f64>,
     integrated_buy_intensities: Vec<f64>,
     integrated_sell_intensities: Vec<f64>,
@@ -347,6 +348,12 @@ pub(super) fn mean_continuous_return_calibration_business_time_scale(
     arithmetic_mean(calibration_sample.business_time_scales.as_slice())
 }
 
+pub(crate) fn continuous_return_calibration_sample_observed_returns(
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+) -> &[f64] {
+    calibration_sample.observed_returns.as_slice()
+}
+
 pub(crate) fn build_continuous_return_calibration_sample_from_components(
     observed_returns: Vec<f64>,
     business_time_scales: Vec<f64>,
@@ -365,6 +372,25 @@ pub(crate) fn build_continuous_return_calibration_sample_from_components(
         scale_bucket_profiles,
         open_session_sell_share_proxy,
     }
+}
+
+pub(crate) fn rescale_continuous_return_calibration_sample_business_time_scales(
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    scale_multiplier: f64,
+) -> ReturnComponentsStageContinuousReturnCalibrationSample {
+    let resolved_scale_multiplier =
+        scale_multiplier.max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+
+    build_continuous_return_calibration_sample_from_components(
+        calibration_sample.observed_returns.clone(),
+        calibration_sample
+            .business_time_scales
+            .iter()
+            .map(|business_time_scale| business_time_scale * resolved_scale_multiplier)
+            .collect(),
+        calibration_sample.sell_share_proxies.clone(),
+        calibration_sample.open_session_sell_share_proxy,
+    )
 }
 
 pub(crate) fn evaluate_configuration_likelihood_objective(
@@ -428,6 +454,16 @@ pub(crate) fn nig_configuration_from_search_point(
     configuration_from_shape_search_point(&optimizer_context, search_point)
 }
 
+pub(crate) fn nig_search_bounds_for_calibration_sample(
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    moment_candidate_count: usize,
+) -> ([f64; 4], [f64; 4]) {
+    let search_bounds =
+        theoretical_search_bounds(calibration_sample.observed_profile, moment_candidate_count);
+
+    (search_bounds.lower_bounds, search_bounds.upper_bounds)
+}
+
 fn build_continuous_return_optimizer_context(
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
 ) -> ContinuousReturnOptimizerContext {
@@ -451,6 +487,10 @@ fn build_continuous_return_optimizer_context(
     ContinuousReturnOptimizerContext {
         observed_returns: calibration_sample.observed_returns.clone(),
         business_time_scales: calibration_sample.business_time_scales.clone(),
+        mean_business_time_scale: arithmetic_mean(
+            calibration_sample.business_time_scales.as_slice(),
+        )
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER),
         sell_share_proxies: calibration_sample.sell_share_proxies.clone(),
         integrated_buy_intensities,
         integrated_sell_intensities,
@@ -1677,11 +1717,14 @@ fn inferred_delta_center(
         .observed_return_volatility
         .powi(2)
         .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+    let mean_business_time_scale = optimizer_context
+        .mean_business_time_scale
+        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
     let variance_per_unit =
         variance_per_unit.max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
 
     Some(
-        (target_variance / variance_per_unit)
+        (target_variance / (variance_per_unit * mean_business_time_scale))
             .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER),
     )
 }
@@ -2070,6 +2113,11 @@ fn optimize_seed_candidates(
     seed_candidates
         .par_iter()
         .filter_map(|seed_candidate| {
+            let seed_final_evaluation = evaluate_cached_search_point(
+                optimizer_context,
+                seed_candidate.scored_candidate.search_point,
+                ContinuousLikelihoodFidelityTier::Full,
+            )?;
             let local_outcome = optimize_local_search_point(
                 optimizer_context,
                 seed_candidate.scored_candidate.search_point,
@@ -2077,17 +2125,28 @@ fn optimize_seed_candidates(
                 solver_settings,
             )?;
 
-            let final_evaluation = evaluate_cached_search_point(
+            let local_final_evaluation = evaluate_cached_search_point(
                 optimizer_context,
                 local_outcome.best_point,
                 ContinuousLikelihoodFidelityTier::Full,
             )?;
+            let (final_search_point, final_evaluation) =
+                if local_final_evaluation.objective.shifted_objective_score
+                    < seed_final_evaluation.objective.shifted_objective_score
+                {
+                    (local_outcome.best_point, local_final_evaluation)
+                } else {
+                    (
+                        seed_candidate.scored_candidate.search_point,
+                        seed_final_evaluation,
+                    )
+                };
 
             Some(OptimizedNigSearchCandidate {
                 configuration: final_evaluation.configuration,
                 family: seed_candidate.family,
                 seed_search_point: seed_candidate.scored_candidate.search_point,
-                final_search_point: local_outcome.best_point,
+                final_search_point,
                 optimizer_diagnostic: ContinuousReturnOptimizerDiagnostic {
                     seed_objective_score: seed_candidate.scored_candidate.objective_score,
                     local_objective_score: local_outcome.local_objective_score,
@@ -2869,6 +2928,7 @@ mod tests {
         build_nig_search_candidates, build_scale_bucket_profiles,
         build_search_regimes_from_moment_seeds, continuous_block_likelihood_objective,
         coordinate_to_ratio, coordinate_to_share, log_density_net_trading_time_return,
+        nig_configuration_from_search_point, nig_search_point_from_configuration,
         ratio_to_coordinate, relative_share_from_beta_ratios, sell_beta_ratio_from_relative_share,
         theoretical_search_bounds,
     };
@@ -2896,6 +2956,61 @@ mod tests {
         assert!(sell_ratio < buy_ratio);
         assert!(recovered_share > 0.0);
         assert!(recovered_share < 1.0);
+    }
+
+    #[test]
+    fn configuration_round_trip_preserves_delta_when_business_time_scale_is_large() {
+        let configuration =
+            NigSharedPlusShiftConfiguration::try_new(80.0, -12.0, 2.0e-4, 0.0, -8.0)
+                .expect("configuration should validate");
+        let driver_parameters = configuration
+            .derive_driver_parameters()
+            .expect("driver parameters should derive");
+        let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(73);
+        let business_time_scales: Vec<f64> = (0..128)
+            .map(|sample_index| 200.0 + sample_index as f64 * 4.0)
+            .collect();
+        let sell_share_proxies: Vec<f64> = (0..128)
+            .map(|sample_index| 0.30 + 0.40 * ((sample_index % 7) as f64 / 6.0))
+            .collect();
+        let observed_returns: Vec<f64> = business_time_scales
+            .iter()
+            .zip(sell_share_proxies.iter())
+            .map(|(business_time_scale, sell_share_proxy)| {
+                let sell_weight = sell_share_proxy.clamp(0.0, 1.0);
+                let buy_weight = 1.0 - sell_weight;
+                driver_parameters
+                    .sample_trading_time_return_increment(
+                        business_time_scale * buy_weight,
+                        business_time_scale * sell_weight,
+                        &mut randomness_stream,
+                    )
+                    .expect("synthetic increment should sample")
+                    .combined_increment
+            })
+            .collect();
+        let calibration_sample = ReturnComponentsStageContinuousReturnCalibrationSample {
+            observed_returns: observed_returns.clone(),
+            business_time_scales: business_time_scales.clone(),
+            sell_share_proxies: sell_share_proxies.clone(),
+            observed_profile: build_distribution_profile(observed_returns.as_slice()),
+            scale_bucket_profiles: build_scale_bucket_profiles(
+                observed_returns.as_slice(),
+                business_time_scales.as_slice(),
+            ),
+            open_session_sell_share_proxy: 0.5,
+        };
+
+        let search_point = nig_search_point_from_configuration(&calibration_sample, configuration)
+            .expect("search point should derive");
+        let recovered_configuration =
+            nig_configuration_from_search_point(&calibration_sample, search_point)
+                .expect("configuration should recover");
+
+        assert!((recovered_configuration.alpha - configuration.alpha).abs() <= 1.0e-10);
+        assert!((recovered_configuration.beta_0 - configuration.beta_0).abs() <= 1.0e-10);
+        assert!((recovered_configuration.delta - configuration.delta).abs() <= 1.0e-10);
+        assert!((recovered_configuration.delta_beta - configuration.delta_beta).abs() <= 1.0e-10);
     }
 
     #[test]

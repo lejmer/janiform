@@ -563,7 +563,10 @@ pub(crate) fn prepare_observed_signal_inputs_for_joint_refinement(
     calendar_registry: &ExchangeCalendarRegistry,
     candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
     activity_calibration_context: Option<ReturnComponentsStageActivityCalibrationContext>,
-) -> Result<(), ReturnComponentsStageCandidateGenerationInputError> {
+) -> Result<
+    ReturnComponentsStageJointRefinementObservedSignalPreparation,
+    ReturnComponentsStageCandidateGenerationInputError,
+> {
     let prepared_candidate_generation_input = prepare_candidate_generation_input(
         exchange_code,
         calendar_registry,
@@ -591,13 +594,23 @@ pub(crate) fn prepare_observed_signal_inputs_for_joint_refinement(
         fitted_signal_partition_layer,
         &fitted_surprise_episode_selection_layer,
     );
-    let _ = summarize_candidate_generation_signals(
+    let (_, continuous_return_calibration_sample) = summarize_candidate_generation_signals(
         &prepared_candidate_generation_input.candidate_generation_input,
         &sorted_signals,
         activity_calibration_context,
     );
 
-    Ok(())
+    Ok(
+        ReturnComponentsStageJointRefinementObservedSignalPreparation {
+            continuous_return_calibration_sample,
+        },
+    )
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ReturnComponentsStageJointRefinementObservedSignalPreparation {
+    pub continuous_return_calibration_sample:
+        continuous_fit::ReturnComponentsStageContinuousReturnCalibrationSample,
 }
 
 pub fn evaluate_return_components_exact_candidate(

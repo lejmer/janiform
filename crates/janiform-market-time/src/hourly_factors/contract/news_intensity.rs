@@ -24,8 +24,8 @@ use super::types::{
 /// Materialize hourly `nu_h` from known-news calendar anchors and surprise-news controls.
 ///
 /// Component policy:
-/// - Known component intensity is the count of scheduled known-news timestamps that fall in each
-///   interval bucket `[start, end)`.
+/// - Known component intensity is the interval-scheduled arrival count normalized to per-hour
+///   intensity over each bucket `[start, end)`.
 /// - Surprise component intensity is `surprise_baseline_intensity *
 ///   surprise_deterministic_time_multiplier`, where the multiplier defaults to `1.0`.
 /// - Total interval intensity is `known_component + surprise_component`.

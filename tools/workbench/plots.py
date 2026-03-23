@@ -1389,11 +1389,26 @@ def _build_series_analysis(series: WorkbenchPriceSeries) -> WorkbenchSeriesAnaly
     prices = series.prices
     hourly_event_counts = _hourly_event_counts_from_microseconds(timestamp_microseconds_utc)
     hourly_activity_profile = _hourly_activity_profile_from_microseconds(timestamp_microseconds_utc)
-    returns = _log_returns_array(prices)
-    hourly_absolute_return_profile = _hourly_absolute_return_profile_from_microseconds(
-        timestamp_microseconds_utc,
-        returns,
-    )
+    direct_return_timestamps_microseconds_utc = series.direct_return_timestamps_microseconds_utc
+    direct_returns = series.direct_returns
+
+    if (
+        direct_return_timestamps_microseconds_utc is not None
+        and direct_returns is not None
+        and direct_return_timestamps_microseconds_utc.size == direct_returns.size
+        and direct_returns.size > 0
+    ):
+        returns = direct_returns
+        hourly_absolute_return_profile = _hourly_absolute_return_profile_from_return_timestamps(
+            direct_return_timestamps_microseconds_utc,
+            direct_returns,
+        )
+    else:
+        returns = _log_returns_array(prices)
+        hourly_absolute_return_profile = _hourly_absolute_return_profile_from_microseconds(
+            timestamp_microseconds_utc,
+            returns,
+        )
     bucket_series_by_horizon = {
         horizon_minutes: _bucket_series_analysis(
             timestamp_microseconds_utc=timestamp_microseconds_utc,
@@ -1477,6 +1492,32 @@ def _hourly_absolute_return_profile_from_microseconds(
 
     hour_of_day = np.mod(
         np.floor_divide(timestamp_microseconds_utc[1:], 3_600_000_000),
+        24,
+    ).astype(np.int64)
+    absolute_returns = np.abs(returns)
+    summed_absolute_returns = np.bincount(
+        hour_of_day,
+        weights=absolute_returns,
+        minlength=24,
+    )
+    counts = np.bincount(hour_of_day, minlength=24)
+    hourly_profile = np.zeros(24, dtype=np.float64)
+    non_zero_mask = counts > 0
+    hourly_profile[non_zero_mask] = (
+        summed_absolute_returns[non_zero_mask] / counts[non_zero_mask]
+    )
+    return hourly_profile
+
+
+def _hourly_absolute_return_profile_from_return_timestamps(
+    return_timestamp_microseconds_utc: NDArray[np.int64],
+    returns: NDArray[np.float64],
+) -> NDArray[np.float64]:
+    if returns.size == 0 or return_timestamp_microseconds_utc.size != returns.size:
+        return np.zeros(24, dtype=np.float64)
+
+    hour_of_day = np.mod(
+        np.floor_divide(return_timestamp_microseconds_utc, 3_600_000_000),
         24,
     ).astype(np.int64)
     absolute_returns = np.abs(returns)

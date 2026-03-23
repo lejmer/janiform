@@ -609,6 +609,29 @@ fn news_intensity_materializer_supports_combined_known_and_surprise_components()
 }
 
 #[test]
+fn news_intensity_materializer_normalizes_known_news_to_per_hour_intensity() {
+    let registry = build_calendar_registry();
+
+    let output = materialize_hourly_news_intensity_factors(
+        &registry,
+        "XNYS",
+        parse_timestamp("2026-02-02T14:00:00Z"),
+        parse_timestamp("2026-02-02T15:00:00Z"),
+        ONE_HOUR_INTERVAL_NANOS / 2,
+        &[parse_timestamp("2026-02-02T14:05:00Z")
+            .timestamp_nanos_opt()
+            .expect("timestamp fixture must be in range")],
+        0.0,
+        &[],
+    )
+    .expect("sub-hour known-news materialization should succeed");
+
+    assert_eq!(output.known_component_nu_h, vec![2.0, 0.0]);
+    assert_eq!(output.surprise_component_nu_h, vec![0.0, 0.0]);
+    assert_eq!(output.nu_h, vec![2.0, 0.0]);
+}
+
+#[test]
 fn news_intensity_materializer_rejects_non_increasing_known_calendar_anchor_input() {
     let registry = build_calendar_registry();
 

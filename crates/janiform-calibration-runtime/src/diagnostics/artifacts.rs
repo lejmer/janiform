@@ -687,6 +687,7 @@ fn build_selection_rationale_artifact(
                 .count(),
             decisive_metric_ids: vec![
                 "joint.return_scale".to_string(),
+                "joint.return_asymmetry.central_skewness".to_string(),
                 "joint.activity_level".to_string(),
                 "joint.rv_activity_coupling".to_string(),
             ],

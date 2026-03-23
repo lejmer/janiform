@@ -146,19 +146,21 @@ def test_fit_outputs_resolved_configuration_and_provenance(
 
     assert payload["schema_version"] == cli_module.CLI_FIT_RESULT_SCHEMA_VERSION
     assert payload["command"] == cli_module.CLI_FIT_ENTRYPOINT
-    assert payload["model_output_path"] == str(output_dir / "model.json")
-    assert payload["report_path"] == str(output_dir / "fit_report.json")
+    run_directory = output_dir / "cli-fit-success"
+
+    assert payload["model_output_path"] == str(run_directory / "model.json")
+    assert payload["report_path"] == str(run_directory / "fit_report.json")
     assert payload["resolved_configuration"]["market_profile"]["selected_preset"]["preset_name"] == "us_equity_cash"
     assert payload["resolved_configuration"]["session"]["selected_preset"]["preset_name"] == "XNYS"
     assert payload["resolved_configuration"]["known_news"]["selected_preset"]["preset_name"] == "none"
     assert payload["model_summary"]["preset_provenance"]["session"]["inferred_from_data"] is False
     assert payload["session_resolution"]["resolution_kind"] == "explicit_override"
-    assert (output_dir / "model.json").exists()
-    assert (output_dir / "fit_report.json").exists()
-    assert (output_dir / "run.json").exists()
-    assert (output_dir / "model.json").read_text(encoding="utf-8").startswith("{\n  ")
+    assert (run_directory / "model.json").exists()
+    assert (run_directory / "fit_report.json").exists()
+    assert (run_directory / "run.json").exists()
+    assert (run_directory / "model.json").read_text(encoding="utf-8").startswith("{\n  ")
 
-    persisted_report = orjson.loads((output_dir / "fit_report.json").read_text(encoding="utf-8"))
+    persisted_report = orjson.loads((run_directory / "fit_report.json").read_text(encoding="utf-8"))
     assert "execution_input" not in persisted_report
     assert "stage_report_payloads" not in persisted_report
 

@@ -70,19 +70,18 @@ pub(crate) fn build_observed_open_session_interval_observations(
         return intervals;
     }
 
-    let aligned_window_start = intervals
-        .first()
-        .map(|interval| interval.interval_start_utc_nanos)
-        .unwrap_or(source_window.window_start_utc_nanos);
-
     for observation in observed_open_session_returns {
         if observation.return_timestamp_utc_nanos < source_window.window_start_utc_nanos
             || observation.return_timestamp_utc_nanos >= source_window.window_end_utc_nanos
         {
             continue;
         }
-        let interval_index = ((observation.return_timestamp_utc_nanos - aligned_window_start)
-            .div_euclid(interval_duration_nanos)) as usize;
+        let Some(interval_index) = interval_index_for_timestamp(
+            intervals.as_slice(),
+            observation.return_timestamp_utc_nanos,
+        ) else {
+            continue;
+        };
         let Some(interval) = intervals.get_mut(interval_index) else {
             continue;
         };
@@ -144,15 +143,10 @@ pub(crate) fn aggregate_simulated_path_to_interval_template(
         return intervals;
     }
 
-    let aligned_start = intervals
-        .first()
-        .map(|interval| interval.interval_start_utc_nanos)
-        .unwrap_or(0);
     for record in fine_path {
         accumulate_fine_path_record_into_intervals(
             record,
             intervals.as_mut_slice(),
-            aligned_start,
             interval_duration_nanos,
         );
     }
@@ -241,13 +235,27 @@ pub(crate) fn rolling_variance_activity_metric(
 pub(crate) fn return_scale_summary(
     intervals: &[JointRefinementAggregatedIntervalObservation],
 ) -> JointRefinementReturnScaleSummary {
-    let absolute_returns: Vec<f64> = intervals
+    let returns: Vec<f64> = intervals
         .iter()
-        .map(|interval| interval.log_return.abs())
+        .map(|interval| interval.log_return)
         .collect();
-    let realized_variance = intervals
+    return_scale_summary_from_returns(returns.as_slice())
+}
+
+pub(crate) fn return_scale_summary_from_returns(
+    returns: &[f64],
+) -> JointRefinementReturnScaleSummary {
+    let absolute_returns: Vec<f64> = returns
         .iter()
-        .map(|interval| interval.log_return * interval.log_return)
+        .copied()
+        .filter(|value| value.is_finite())
+        .map(f64::abs)
+        .collect();
+    let realized_variance = returns
+        .iter()
+        .copied()
+        .filter(|value| value.is_finite())
+        .map(|value| value * value)
         .sum::<f64>();
 
     JointRefinementReturnScaleSummary {
@@ -336,30 +344,66 @@ pub(crate) fn tick_count_series(
 pub(crate) fn mean_absolute_return_by_utc_hour(
     intervals: &[JointRefinementAggregatedIntervalObservation],
 ) -> Vec<f64> {
-    let mut absolute_return_sum_by_hour = [0.0; 24];
-    let mut interval_count_by_hour = [0usize; 24];
+    mean_absolute_return_profile_by_utc_hour(
+        intervals
+            .iter()
+            .map(|interval| (interval.interval_start_utc_nanos, interval.log_return)),
+    )
+}
 
-    for interval in intervals {
-        if !interval.log_return.is_finite() {
-            continue;
-        }
+pub(crate) fn mean_absolute_observed_return_by_utc_hour(
+    observed_returns: &[ReturnComponentsObservedOpenSessionReturn],
+) -> Vec<f64> {
+    mean_absolute_return_profile_by_utc_hour(observed_returns.iter().map(|observation| {
+        (
+            observation.return_timestamp_utc_nanos,
+            observation.log_return,
+        )
+    }))
+}
 
-        let hour_index = DateTime::<Utc>::from_timestamp_nanos(interval.interval_start_utc_nanos)
-            .hour() as usize;
+pub(crate) fn mean_absolute_trade_return_by_utc_hour(
+    fine_path: &[SeededFinePathRecord],
+) -> Vec<f64> {
+    mean_absolute_return_profile_by_utc_hour(fine_path.iter().filter_map(|record| {
+        matches!(
+            record.transition_kind,
+            SeededFinePathTransitionKind::BuyTrade | SeededFinePathTransitionKind::SellTrade
+        )
+        .then_some((
+            record.timestamp_utc_nanos,
+            record.return_components.total_return,
+        ))
+    }))
+}
 
-        absolute_return_sum_by_hour[hour_index] += interval.log_return.abs();
-        interval_count_by_hour[hour_index] += 1;
-    }
-
-    (0..24)
-        .map(|hour_index| {
-            if interval_count_by_hour[hour_index] == 0 {
-                0.0
-            } else {
-                absolute_return_sum_by_hour[hour_index] / interval_count_by_hour[hour_index] as f64
-            }
+pub(crate) fn sampled_trade_returns(
+    fine_path: &[SeededFinePathRecord],
+    target_count: usize,
+) -> Vec<f64> {
+    let finite_trade_returns: Vec<f64> = fine_path
+        .iter()
+        .filter_map(|record| {
+            matches!(
+                record.transition_kind,
+                SeededFinePathTransitionKind::BuyTrade | SeededFinePathTransitionKind::SellTrade
+            )
+            .then_some(record.return_components.total_return)
         })
-        .collect()
+        .filter(|value| value.is_finite())
+        .collect();
+
+    sampled_return_values(finite_trade_returns.as_slice(), target_count)
+}
+
+pub(crate) fn sampled_return_values(returns: &[f64], target_count: usize) -> Vec<f64> {
+    let finite_returns: Vec<f64> = returns
+        .iter()
+        .copied()
+        .filter(|value| value.is_finite())
+        .collect();
+
+    sample_values_by_equal_stride(finite_returns.as_slice(), target_count)
 }
 
 pub(crate) fn scale_normalized_returns(returns: &[f64]) -> Vec<f64> {
@@ -380,6 +424,25 @@ pub(crate) fn scale_normalized_returns(returns: &[f64]) -> Vec<f64> {
             } else {
                 0.0
             }
+        })
+        .collect()
+}
+
+fn sample_values_by_equal_stride(values: &[f64], target_count: usize) -> Vec<f64> {
+    if values.is_empty() || target_count == 0 {
+        return Vec::new();
+    }
+    if values.len() <= target_count {
+        return values.to_vec();
+    }
+    if target_count == 1 {
+        return vec![values[values.len() / 2]];
+    }
+
+    (0..target_count)
+        .filter_map(|sample_index| {
+            let source_index = sample_index.saturating_mul(values.len() - 1) / (target_count - 1);
+            values.get(source_index).copied()
         })
         .collect()
 }
@@ -514,7 +577,6 @@ fn finalize_sell_share_proxies(
 fn accumulate_fine_path_record_into_intervals(
     record: &SeededFinePathRecord,
     intervals: &mut [JointRefinementAggregatedIntervalObservation],
-    aligned_window_start: i64,
     interval_duration_nanos: i64,
 ) {
     if intervals.is_empty() || interval_duration_nanos <= 0 {
@@ -527,14 +589,22 @@ fn accumulate_fine_path_record_into_intervals(
     else {
         return;
     };
-    if record.timestamp_utc_nanos < aligned_window_start
+    let Some(first_interval_start_utc_nanos) = intervals
+        .first()
+        .map(|interval| interval.interval_start_utc_nanos)
+    else {
+        return;
+    };
+    if record.timestamp_utc_nanos < first_interval_start_utc_nanos
         || record.timestamp_utc_nanos >= last_interval_end_utc_nanos
     {
         return;
     }
 
-    let interval_index = ((record.timestamp_utc_nanos - aligned_window_start)
-        .div_euclid(interval_duration_nanos)) as usize;
+    let Some(interval_index) = interval_index_for_timestamp(intervals, record.timestamp_utc_nanos)
+    else {
+        return;
+    };
     let Some(interval) = intervals.get_mut(interval_index) else {
         return;
     };
@@ -552,6 +622,18 @@ fn accumulate_fine_path_record_into_intervals(
             _ => 0.5,
         };
     }
+}
+
+fn interval_index_for_timestamp(
+    intervals: &[JointRefinementAggregatedIntervalObservation],
+    timestamp_utc_nanos: i64,
+) -> Option<usize> {
+    let candidate_index = intervals
+        .partition_point(|interval| interval.interval_end_utc_nanos <= timestamp_utc_nanos);
+    let candidate_interval = intervals.get(candidate_index)?;
+    (candidate_interval.interval_start_utc_nanos <= timestamp_utc_nanos
+        && timestamp_utc_nanos < candidate_interval.interval_end_utc_nanos)
+        .then_some(candidate_index)
 }
 
 fn resolve_market_state(
@@ -589,6 +671,35 @@ fn rolling_sum(values: &[f64], window: usize) -> Vec<f64> {
     output
 }
 
+fn mean_absolute_return_profile_by_utc_hour<I>(timestamped_returns: I) -> Vec<f64>
+where
+    I: IntoIterator<Item = (i64, f64)>,
+{
+    let mut absolute_return_sum_by_hour = [0.0; 24];
+    let mut observation_count_by_hour = [0usize; 24];
+
+    for (timestamp_utc_nanos, log_return) in timestamped_returns {
+        if !log_return.is_finite() {
+            continue;
+        }
+
+        let hour_index = DateTime::<Utc>::from_timestamp_nanos(timestamp_utc_nanos).hour() as usize;
+        absolute_return_sum_by_hour[hour_index] += log_return.abs();
+        observation_count_by_hour[hour_index] += 1;
+    }
+
+    (0..24)
+        .map(|hour_index| {
+            if observation_count_by_hour[hour_index] == 0 {
+                0.0
+            } else {
+                absolute_return_sum_by_hour[hour_index]
+                    / observation_count_by_hour[hour_index] as f64
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -596,9 +707,10 @@ mod tests {
         JointRefinementAggregatedIntervalObservation,
         aggregate_simulated_path_to_interval_template,
         aggregate_simulated_path_to_interval_templates, business_time_bucket_thresholds,
-        log_ratio_distance, mean_absolute_return_by_utc_hour, normalized_profile_distance,
-        relative_rmse, return_scale_summaries_by_business_time_bucket, return_scale_summary,
-        rolling_variance_activity_metric, scale_normalized_returns,
+        interval_index_for_timestamp, log_ratio_distance, mean_absolute_return_by_utc_hour,
+        normalized_profile_distance, relative_rmse, return_scale_summaries_by_business_time_bucket,
+        return_scale_summary, return_scale_summary_from_returns, rolling_variance_activity_metric,
+        sampled_return_values, sampled_trade_returns, scale_normalized_returns,
         zeroed_interval_observation_template,
     };
     use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsRiskReturnComponents;
@@ -764,6 +876,175 @@ mod tests {
         assert_eq!(aggregated[0].tick_count, 1);
         assert_eq!(aggregated[0].log_return, 0.01);
         assert_eq!(aggregated[1].tick_count, 0);
+    }
+
+    #[test]
+    fn sampled_trade_returns_preserve_endpoints_and_requested_count() {
+        let fine_path: Vec<SeededFinePathRecord> = (0..6)
+            .map(|position| SeededFinePathRecord {
+                transition_index: position,
+                timestamp_utc_nanos: position as i64,
+                transition_kind: SeededFinePathTransitionKind::BuyTrade,
+                side: Some(SeededTickEventSide::Buy),
+                news_arrival_component: None,
+                market_state: SeededTickSimulationNewsEventMarketState::Open,
+                return_components: SufficientStatisticsRiskReturnComponents {
+                    buy_side_return: position as f64,
+                    sell_side_return: 0.0,
+                    trading_time_return: position as f64,
+                    open_jump_return: 0.0,
+                    closed_gap_return: 0.0,
+                    total_return: position as f64,
+                },
+                cumulative_log_return: position as f64,
+                state_snapshot: None,
+            })
+            .collect();
+
+        let sampled_returns = sampled_trade_returns(fine_path.as_slice(), 3);
+
+        assert_eq!(sampled_returns, vec![0.0, 2.0, 5.0]);
+    }
+
+    #[test]
+    fn sampled_return_values_drop_non_finite_values_before_stride_sampling() {
+        let sampled_returns =
+            sampled_return_values(&[0.0, f64::NAN, 1.0, f64::INFINITY, 2.0, 3.0], 3);
+
+        assert_eq!(sampled_returns, vec![0.0, 1.0, 3.0]);
+    }
+
+    #[test]
+    fn return_scale_summary_from_returns_matches_interval_variant() {
+        let intervals = vec![
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 0,
+                interval_end_utc_nanos: 1,
+                log_return: 0.01,
+                tick_count: 1,
+                sell_share_proxy: 0.5,
+            },
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 1,
+                interval_end_utc_nanos: 2,
+                log_return: -0.03,
+                tick_count: 1,
+                sell_share_proxy: 0.5,
+            },
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 2,
+                interval_end_utc_nanos: 3,
+                log_return: 0.02,
+                tick_count: 1,
+                sell_share_proxy: 0.5,
+            },
+        ];
+        let returns = vec![0.01, -0.03, 0.02];
+
+        assert_eq!(
+            return_scale_summary(intervals.as_slice()),
+            return_scale_summary_from_returns(returns.as_slice())
+        );
+    }
+
+    #[test]
+    fn sparse_open_session_templates_keep_records_after_closed_gap() {
+        let template = zeroed_interval_observation_template(&[
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 0,
+                interval_end_utc_nanos: 300,
+                log_return: 0.0,
+                tick_count: 0,
+                sell_share_proxy: 0.0,
+            },
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 900,
+                interval_end_utc_nanos: 1_200,
+                log_return: 0.0,
+                tick_count: 0,
+                sell_share_proxy: 0.0,
+            },
+        ]);
+        let fine_path = vec![
+            SeededFinePathRecord {
+                transition_index: 0,
+                timestamp_utc_nanos: 120,
+                transition_kind: SeededFinePathTransitionKind::BuyTrade,
+                side: Some(SeededTickEventSide::Buy),
+                news_arrival_component: None,
+                market_state: SeededTickSimulationNewsEventMarketState::Open,
+                return_components: SufficientStatisticsRiskReturnComponents {
+                    buy_side_return: 0.01,
+                    sell_side_return: 0.0,
+                    trading_time_return: 0.01,
+                    open_jump_return: 0.0,
+                    closed_gap_return: 0.0,
+                    total_return: 0.01,
+                },
+                cumulative_log_return: 0.01,
+                state_snapshot: None,
+            },
+            SeededFinePathRecord {
+                transition_index: 1,
+                timestamp_utc_nanos: 960,
+                transition_kind: SeededFinePathTransitionKind::SellTrade,
+                side: Some(SeededTickEventSide::Sell),
+                news_arrival_component: None,
+                market_state: SeededTickSimulationNewsEventMarketState::Open,
+                return_components: SufficientStatisticsRiskReturnComponents {
+                    buy_side_return: 0.0,
+                    sell_side_return: -0.02,
+                    trading_time_return: -0.02,
+                    open_jump_return: 0.0,
+                    closed_gap_return: 0.0,
+                    total_return: -0.02,
+                },
+                cumulative_log_return: -0.01,
+                state_snapshot: None,
+            },
+        ];
+
+        let aggregated = aggregate_simulated_path_to_interval_template(
+            fine_path.as_slice(),
+            template.as_slice(),
+            300,
+        );
+
+        assert_eq!(aggregated[0].tick_count, 1);
+        assert_eq!(aggregated[0].log_return, 0.01);
+        assert_eq!(aggregated[1].tick_count, 1);
+        assert_eq!(aggregated[1].log_return, -0.02);
+        assert_eq!(aggregated[1].sell_share_proxy, 1.0);
+    }
+
+    #[test]
+    fn interval_lookup_handles_sparse_templates() {
+        let template = [
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 0,
+                interval_end_utc_nanos: 300,
+                log_return: 0.0,
+                tick_count: 0,
+                sell_share_proxy: 0.0,
+            },
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 900,
+                interval_end_utc_nanos: 1_200,
+                log_return: 0.0,
+                tick_count: 0,
+                sell_share_proxy: 0.0,
+            },
+        ];
+
+        assert_eq!(
+            interval_index_for_timestamp(template.as_slice(), 120),
+            Some(0)
+        );
+        assert_eq!(interval_index_for_timestamp(template.as_slice(), 600), None);
+        assert_eq!(
+            interval_index_for_timestamp(template.as_slice(), 960),
+            Some(1)
+        );
     }
 
     #[test]

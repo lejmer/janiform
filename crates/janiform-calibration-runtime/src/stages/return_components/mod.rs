@@ -19,9 +19,11 @@ mod test_support;
 pub(crate) use continuous_fit::{
     ContinuousLikelihoodFidelityTier, NigShapeSearchPoint,
     ReturnComponentsStageContinuousReturnCalibrationSample,
-    build_continuous_return_calibration_sample_from_components, distribution_profile_fit_score,
+    build_continuous_return_calibration_sample_from_components,
+    continuous_return_calibration_sample_observed_returns, distribution_profile_fit_score,
     evaluate_configuration_likelihood_objective, nig_configuration_from_search_point,
-    nig_search_point_from_configuration,
+    nig_search_bounds_for_calibration_sample, nig_search_point_from_configuration,
+    rescale_continuous_return_calibration_sample_business_time_scales,
 };
 pub use contracts::*;
 pub use execution::*;

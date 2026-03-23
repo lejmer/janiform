@@ -37,6 +37,8 @@ _EMPTY_INT64_ARRAY = np.asarray([], dtype=np.int64)
 class WorkbenchPriceSeries:
     timestamp_microseconds_utc: NDArray[np.int64]
     prices: NDArray[np.float64]
+    direct_return_timestamps_microseconds_utc: Optional[NDArray[np.int64]] = None
+    direct_returns: Optional[NDArray[np.float64]] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -641,6 +643,10 @@ def _series_from_simulation_result(
     return WorkbenchPriceSeries(
         timestamp_microseconds_utc=timestamp_microseconds_utc[in_range_mask],
         prices=normalized_prices[in_range_mask],
+        direct_return_timestamps_microseconds_utc=_direct_return_timestamps_from_simulation_result(
+            simulation_result
+        ),
+        direct_returns=_direct_returns_from_simulation_result(simulation_result),
     )
 
 
@@ -941,6 +947,60 @@ def _empty_price_series() -> WorkbenchPriceSeries:
         timestamp_microseconds_utc=_EMPTY_INT64_ARRAY.copy(),
         prices=_EMPTY_FLOAT64_ARRAY.copy(),
     )
+
+
+def _direct_return_timestamps_from_simulation_result(
+    simulation_result: Any,
+) -> Optional[NDArray[np.int64]]:
+    fine_path_records = _trade_fine_path_records(simulation_result)
+    if fine_path_records is None:
+        return None
+
+    return np.asarray(
+        [int(record.timestamp_utc_nanos // 1_000) for record in fine_path_records],
+        dtype=np.int64,
+    )
+
+
+def _direct_returns_from_simulation_result(
+    simulation_result: Any,
+) -> Optional[NDArray[np.float64]]:
+    fine_path_records = _trade_fine_path_records(simulation_result)
+    if fine_path_records is None:
+        return None
+
+    return np.asarray(
+        [
+            float(record.return_components.total_return)
+            for record in fine_path_records
+        ],
+        dtype=np.float64,
+    )
+
+
+def _trade_fine_path_records(simulation_result: Any) -> Optional[list[Any]]:
+    raw_result = getattr(simulation_result, "raw_result", None)
+    fine_path = getattr(raw_result, "fine_path", None)
+    if fine_path is None:
+        return None
+
+    trade_records = [
+        record
+        for record in fine_path
+        if _is_trade_transition(getattr(record, "transition_kind", None))
+    ]
+    if len(trade_records) == 0:
+        return None
+
+    return trade_records
+
+
+def _is_trade_transition(transition_kind: Any) -> bool:
+    if transition_kind is None:
+        return False
+
+    normalized_label = str(getattr(transition_kind, "name", transition_kind)).strip().lower()
+    return normalized_label in {"buy_trade", "sell_trade"}
 
 
 def _empty_numeric_resolution(row_count: int) -> tuple[NDArray[np.float64], NDArray[np.bool_]]:
