@@ -5,8 +5,9 @@ mod types;
 
 use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyValueError};
-use pyo3::prelude::*;
-use pyo3::types::PyModule;
+use pyo3::prelude::{Bound, PyResult};
+use pyo3::pymodule;
+use pyo3::types::{PyModule, PyModuleMethods};
 
 create_exception!(_native, CalendarInvalidTimezoneError, PyException);
 create_exception!(_native, CalendarMissingExchangeError, PyException);

@@ -2,9 +2,10 @@ use janiform::pricing::{
     VanillaOptionPricingExecutionInput,
     run_vanilla_option_pricing as run_vanilla_option_pricing_core,
 };
-use pyo3::prelude::*;
+use pyo3::prelude::{Bound, Py, PyResult, Python};
+use pyo3::{pyfunction, wrap_pyfunction};
 use pyo3::types::PyAny;
-use pyo3::types::PyModule;
+use pyo3::types::{PyModule, PyModuleMethods};
 
 use crate::PricingExecutionError;
 use crate::python_value::{json_value_to_py_object, py_any_to_json_value};

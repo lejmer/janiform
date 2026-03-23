@@ -1,5 +1,31 @@
 mod support;
-use support::shared::*;
+use support::shared::{
+    BTreeSet, build_run_contract_for_caller_surface, build_run_contract_with_mode_and_resume,
+    calibration_stage_test_registry, fs, hawkes_stage_constraint_violating_candidate_fixture,
+    json, staged_run_inputs, temporary_checkpoint_directory,
+};
+use janiform_calibration_artifacts::{
+    CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION, CALIBRATION_DISK_CHECKPOINT_WRITE_POLICY,
+    CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
+    CALIBRATION_STAGED_RUN_FAILURE_TRIAGE_POLICY,
+    CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,
+    CALIBRATION_STAGE_CHECKPOINT_REFERENCE_POLICY,
+    CALIBRATION_STAGE_CHECKPOINT_SCHEMA_VERSION, CALIBRATION_STAGE_SEED_DERIVATION_POLICY,
+    CalibrationArtifactKind, CalibrationCallerSurface, CalibrationDatasetInputName,
+    CalibrationExecutionMode, CalibrationResumeSettings, CalibrationStage,
+    CalibrationStageSeedSource, calibration_artifact_manifest_path,
+    calibration_dataset_snapshot_artifact_path, calibration_last_success_checkpoint_path,
+    calibration_stage_checkpoint_path, calibration_stage_parameter_artifact_path,
+    derive_calibration_stage_seed_from_global_seed, load_calibration_artifact_manifest_from_disk,
+    load_calibration_dataset_snapshot_artifact_from_disk,
+    load_calibration_stage_parameter_artifact_from_disk,
+};
+use janiform_calibration_runtime::{
+    CalibrationMemoryCheckpointStore, CalibrationStageExecutionStatus,
+    CalibrationStagedRunFailure, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
+    HawkesStageExecutionFailure, calibration_checkpoint_reference_for_stage,
+    calibration_last_success_checkpoint_reference, run_staged_calibration_with_checkpointing,
+};
 
 #[test]
 fn staged_runner_emits_checkpoint_metadata_with_deterministic_identifiers_in_memory_mode() {

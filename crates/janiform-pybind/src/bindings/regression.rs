@@ -9,8 +9,11 @@ use janiform::verification::{
     run_deterministic_regression_harness as run_deterministic_regression_harness_core,
     run_open_closed_gap_leakage_regression_harness as run_open_closed_gap_leakage_regression_harness_core,
 };
-use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyMapping, PyModule};
+use pyo3::prelude::{Bound, PyErr, PyResult, Python};
+use pyo3::types::{
+    PyAny, PyAnyMethods, PyMapping, PyMappingMethods, PyModule, PyModuleMethods,
+};
+use pyo3::pyfunction;
 use serde_json::to_string as serialize_to_json_string;
 
 use super::calendar::parse_timestamp_utc;

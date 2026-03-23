@@ -12,8 +12,11 @@ use janiform::hourly_factors::{
     HourlySeasonalityFactorSource,
     provide_hourly_factor_contract as provide_hourly_factor_contract_core,
 };
-use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyMapping, PyModule};
+use pyo3::prelude::{Bound, PyErr, PyResult, Python};
+use pyo3::types::{
+    PyAny, PyAnyMethods, PyMapping, PyMappingMethods, PyModule, PyModuleMethods,
+};
+use pyo3::{pyfunction, wrap_pyfunction};
 
 use super::calendar::parse_timestamp_utc;
 use crate::types::{

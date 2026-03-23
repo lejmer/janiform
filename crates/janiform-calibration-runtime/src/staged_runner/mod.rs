@@ -2,8 +2,6 @@ use std::path::Path;
 use std::time::Instant;
 
 use chrono::Utc;
-use serde::Serialize;
-
 use super::checkpointing::{
     CalibrationInMemoryStagePayloadState, CalibrationMemoryCheckpointStore,
     LoadedInMemoryCheckpointState,
@@ -69,12 +67,17 @@ mod observer;
 mod payload_state;
 mod reporting;
 
-use checkpointing::*;
+use checkpointing::{build_stage_checkpoint_metadata, build_stage_parameter_artifact_input};
 pub use contracts::*;
-use dispatch::*;
-use observer::*;
-use payload_state::*;
-use reporting::*;
+use dispatch::{expected_stage_output_artifact_reference, run_stage_for_staged_execution};
+use observer::emit_observer_event;
+use payload_state::{
+    restore_in_memory_payload_state_from_stage_parameter_artifact,
+    update_in_memory_payload_state,
+};
+use reporting::{
+    build_staged_run_failure_report, diagnostic_runtime_profile_entry_for_stage_report,
+};
 
 /// Execute staged calibration with deterministic checkpoint emission after each successful stage.
 ///

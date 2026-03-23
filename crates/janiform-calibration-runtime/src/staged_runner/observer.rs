@@ -1,4 +1,4 @@
-use super::*;
+use super::CalibrationStagedRunObserverEvent;
 
 pub(super) fn emit_observer_event(
     observer: &mut Option<&mut dyn FnMut(CalibrationStagedRunObserverEvent)>,

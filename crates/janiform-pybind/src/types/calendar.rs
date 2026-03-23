@@ -1,5 +1,5 @@
 use janiform::calendar::ExchangeCalendarRegistry;
-use pyo3::prelude::*;
+use pyo3::pyclass;
 
 #[pyclass(module = "janiform._native", name = "CalendarRegistry")]
 pub(crate) struct PyCalendarRegistry {

@@ -3,7 +3,7 @@ use janiform::seasonality::{
     DayOfWeekSeasonalityEstimateOutput, DayOfYearSeasonalityEstimateOutput,
     DeterministicSeasonalityCompositionOutput, IntradaySeasonalityEstimateOutput,
 };
-use pyo3::prelude::*;
+use pyo3::{pyclass, pymethods};
 
 #[pyclass(
     module = "janiform._native",

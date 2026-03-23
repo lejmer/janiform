@@ -1,6 +1,6 @@
 use janiform::calibration::{CalibrationMemoryCheckpointStore, CalibrationStage};
 use pyo3::exceptions::PyValueError;
-use pyo3::prelude::*;
+use pyo3::{PyResult, pyclass, pymethods};
 
 #[pyclass(module = "janiform._native", name = "CalibrationMemoryCheckpointStore")]
 pub(crate) struct PyCalibrationMemoryCheckpointStore {
