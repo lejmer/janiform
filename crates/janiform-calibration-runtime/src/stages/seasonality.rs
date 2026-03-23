@@ -207,6 +207,7 @@ pub(crate) fn build_runtime_hourly_seasonality_factors_from_components(
     if range_end_utc_nanos <= range_start_utc_nanos {
         return Ok(Vec::new());
     }
+
     if interval_duration_nanos <= 0 {
         return Err("runtime seasonality materialization requires a positive interval".to_string());
     }
@@ -215,6 +216,7 @@ pub(crate) fn build_runtime_hourly_seasonality_factors_from_components(
             "runtime seasonality materialization requires non-empty intraday factors".to_string(),
         );
     }
+
     if day_of_week_factor.len() < 7 {
         return Err(format!(
             "runtime seasonality materialization requires at least 7 weekday factors, found {}",
@@ -248,6 +250,7 @@ pub(crate) fn build_runtime_hourly_seasonality_factors_from_components(
             timezone,
             interval_start_utc_nanos,
         )?);
+
         interval_start_utc_nanos = interval_start_utc_nanos
             .checked_add(interval_duration_nanos)
             .ok_or_else(|| {
@@ -306,6 +309,7 @@ pub(crate) fn maximum_realizable_runtime_hourly_seasonality_factor_from_componen
         .copied()
         .filter(|value| value.is_finite())
         .fold(1.0, f64::max);
+
     let weekday_day_of_year_max = maximum_realizable_weekday_day_of_year_factor_product(
         day_of_week_factor,
         day_of_year_factor,
@@ -738,6 +742,7 @@ pub fn run_seasonality_calibration_stage(
     };
 
     let handoffs = build_seasonality_stage_handoff_outputs(run_spec);
+
     let resolved_stage_seed =
         resolve_calibration_stage_seed_metadata(run_spec, CalibrationStage::Seasonality);
 
@@ -835,6 +840,7 @@ fn neutralize_day_of_week_component_when_under_supported(
     }
 
     let bucket_count = estimate.day_of_week_factor.len();
+
     DayOfWeekSeasonalityEstimateOutput {
         day_of_week_log_component: vec![0.0; bucket_count],
         day_of_week_factor: vec![1.0; bucket_count],
@@ -858,6 +864,7 @@ fn neutralize_day_of_year_component_when_under_supported(
     }
 
     let bucket_count = estimate.day_of_year_factor.len();
+
     DayOfYearSeasonalityEstimateOutput {
         day_of_year_log_component: vec![0.0; bucket_count],
         day_of_year_factor: vec![1.0; bucket_count],

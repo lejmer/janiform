@@ -41,6 +41,7 @@ where
     }
 
     let dimension = initial_point.len();
+
     let mut current_point = clamp_point(initial_point, lower_bounds, upper_bounds);
     let mut current_objective = evaluate(current_point.as_slice())?;
 
@@ -72,8 +73,8 @@ where
                 settings,
                 evaluate,
             );
-            evaluation_count += line_search_outcome.evaluation_count;
 
+            evaluation_count += line_search_outcome.evaluation_count;
             if evaluation_count >= settings.evaluation_budget {
                 return Some(PowellOptimizerResult {
                     best_point,
@@ -101,10 +102,12 @@ where
 
         let cycle_displacement =
             subtract_points(current_point.as_slice(), cycle_start_point.as_slice());
+
         let maximum_coordinate_displacement = cycle_displacement
             .iter()
             .map(|coordinate| coordinate.abs())
             .fold(0.0, f64::max);
+
         let cycle_improvement = cycle_start_objective - current_objective;
         let objective_tolerance = settings
             .absolute_tolerance
@@ -130,6 +133,7 @@ where
         }
 
         let composite_direction = cycle_displacement;
+
         let composite_line_search_outcome = minimize_along_direction(
             current_point.as_slice(),
             composite_direction.as_slice(),
@@ -138,8 +142,8 @@ where
             settings,
             evaluate,
         );
-        evaluation_count += composite_line_search_outcome.evaluation_count;
 
+        evaluation_count += composite_line_search_outcome.evaluation_count;
         if evaluation_count >= settings.evaluation_budget {
             return Some(PowellOptimizerResult {
                 best_point,
@@ -209,6 +213,7 @@ where
     let mut evaluation_count = 0usize;
 
     let golden_ratio = (5.0_f64.sqrt() - 1.0) * 0.5;
+
     let mut left = lower_step;
     let mut right = upper_step;
     let mut left_inner = right - golden_ratio * (right - left);
@@ -222,6 +227,7 @@ where
         upper_bounds,
         evaluate,
     );
+
     let mut right_inner_evaluation = evaluate_line_search_step(
         current_point,
         direction,
@@ -230,6 +236,7 @@ where
         upper_bounds,
         evaluate,
     );
+
     evaluation_count += 2;
 
     update_best_line_search_evaluation(
@@ -267,7 +274,9 @@ where
                 upper_bounds,
                 evaluate,
             );
+
             evaluation_count += 1;
+
             update_best_line_search_evaluation(
                 left_inner_evaluation.as_ref(),
                 &mut best_point,
@@ -287,7 +296,9 @@ where
                 upper_bounds,
                 evaluate,
             );
+
             evaluation_count += 1;
+
             update_best_line_search_evaluation(
                 right_inner_evaluation.as_ref(),
                 &mut best_point,
@@ -323,7 +334,9 @@ where
         lower_bounds,
         upper_bounds,
     );
+
     let candidate_objective = evaluate(candidate_point.as_slice())?;
+
     Some((candidate_point, candidate_objective))
 }
 
@@ -364,6 +377,7 @@ fn bounded_step_interval(
             / direction_component;
         let step_to_upper = (upper_bounds[coordinate_index] - current_point[coordinate_index])
             / direction_component;
+
         let coordinate_lower_step = step_to_lower.min(step_to_upper);
         let coordinate_upper_step = step_to_lower.max(step_to_upper);
 
