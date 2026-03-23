@@ -794,13 +794,17 @@ pub fn evaluate_return_components_exact_candidate(
         return_distribution_diagnostic: continuous_return_evaluation.diagnostic,
         continuous_return_sample_diagnostic:
             ReturnComponentsStageContinuousReturnSampleDiagnostic {
-                observed_returns: continuous_return_calibration_sample
-                    .observed_returns
-                    .clone(),
+                observed_returns:
+                    continuous_fit::continuous_return_calibration_sample_observed_returns(
+                        &continuous_return_calibration_sample,
+                    )
+                    .to_vec(),
                 fitted_returns: continuous_return_evaluation.fitted_returns.clone(),
-                business_time_scales: continuous_return_calibration_sample
-                    .business_time_scales
-                    .clone(),
+                business_time_scales:
+                    continuous_fit::continuous_return_calibration_sample_business_time_scales(
+                        &continuous_return_calibration_sample,
+                    )
+                    .to_vec(),
             },
         continuous_distribution_fit_breakdown: continuous_return_evaluation.fit_breakdown,
         surprise_arrival_diagnostic,
