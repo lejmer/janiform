@@ -1734,7 +1734,12 @@ mod tests {
         RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
     };
     use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
+    use janiform_affine_oracle::sufficient_statistics::{
+        SufficientStatisticsIntervalStatistics, SufficientStatisticsRiskIntervalFactors,
+        SufficientStatisticsRiskModelInputs, SufficientStatisticsRiskReturnComponents,
+    };
     use janiform_model_kernels::hawkes::{HawkesKernelLoadings, HawkesKernelParameters};
+    use janiform_model_kernels::hawkes::HawkesExcitationState;
     use janiform_model_kernels::news::{
         CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
         GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
@@ -1743,7 +1748,14 @@ mod tests {
     };
     use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
-    use super::*;
+    use super::{
+        COARSE_SIMULATION_INTERVAL_TIMING_POLICY,
+        COARSE_SIMULATION_PATH_OUTPUT_SCHEMA_METADATA_VERSION,
+        COARSE_SIMULATION_PATH_RECORD_SCHEMA_VERSION, COARSE_SIMULATION_PATH_SCHEMA_VERSION,
+        COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION, CoarseSimulationModelInputs,
+        CoarseSimulationPath, CoarseSimulationPathError, CoarseSimulationPathRecord,
+        CoarseSimulationRunRequest, CoarseSimulationRunRequestError, IntervalDeltaGridError,
+    };
 
     #[test]
     fn coarse_run_request_round_trip_serialization_preserves_time_anchor_and_interval_semantics() {

@@ -4,8 +4,9 @@ use janiform::calendar::{
     ExchangeCalendarResolveError, MarketState, TimestampEventInputRecord,
     TimestampEventPreprocessingError, TimestampEventSessionFilter,
 };
-use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyMapping};
+use pyo3::prelude::{Bound, PyErr, PyResult, Python};
+use pyo3::pymethods;
+use pyo3::types::{PyAny, PyAnyMethods, PyMapping, PyMappingMethods};
 
 use crate::types::{PyCalendarRegistry, PyTimestampEventPreprocessingResult};
 use crate::{

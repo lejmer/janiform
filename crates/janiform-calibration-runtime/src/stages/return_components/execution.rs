@@ -29,10 +29,50 @@ use janiform_model_kernels::news::{
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
 use super::activity_coupling_fit;
-use super::constants::*;
+use super::constants::{
+    RETURN_COMPONENTS_STAGE_CANDIDATE_GENERATION_POLICY,
+    RETURN_COMPONENTS_STAGE_DETERMINISTIC_SEED_POLICY,
+    RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
+    RETURN_COMPONENTS_STAGE_OBJECTIVE_METRIC_BUCKET_POLICY,
+    RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT,
+    RETURN_COMPONENTS_STAGE_SIGNAL_PREPROCESSING_POLICY,
+    RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_FIT_POLICY,
+    RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_NORMALIZATION_POLICY,
+    RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_RESOLUTION_HOURS,
+    RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_WEEKLY_PROFILE_BUCKET_COUNT,
+};
 use super::continuous_fit;
 use super::continuous_layer_fit;
-use super::contracts::*;
+use super::contracts::{
+    ReturnComponentsActivityCouplingCandidateFamily, ReturnComponentsCloseOpenGapDetectionPolicy,
+    ReturnComponentsDetectedCloseOpenGapCandidate, ReturnComponentsDetectedIntradayJumpCandidate,
+    ReturnComponentsKnownNewsArrivalCandidateFamily,
+    ReturnComponentsObservedCloseOpenBoundaryObservation,
+    ReturnComponentsObservedOpenSessionReturn, ReturnComponentsRealizedKnownNewsReturnSample,
+    ReturnComponentsReturnJumpMarkScaleCandidateFamily,
+    ReturnComponentsStageActivityCalibrationContextSnapshot,
+    ReturnComponentsStageActivityCouplingDiagnostic, ReturnComponentsStageActivityInput,
+    ReturnComponentsStageCandidateDiagnostic, ReturnComponentsStageCandidateFamilies,
+    ReturnComponentsStageCandidateFamilyCounts, ReturnComponentsStageCandidateGenerationInput,
+    ReturnComponentsStageCandidateGenerationInputError, ReturnComponentsStageCandidateInput,
+    ReturnComponentsStageCandidateProvenance, ReturnComponentsStageCandidateSourceWindow,
+    ReturnComponentsStageConstraintViolationDiagnostic,
+    ReturnComponentsStageContinuousReturnSampleDiagnostic,
+    ReturnComponentsStageDeterministicSeedMetadata, ReturnComponentsStageDiagnosticPolicy,
+    ReturnComponentsStageExactCandidateEvaluation,
+    ReturnComponentsStageExactCandidateEvaluationError, ReturnComponentsStageExecutionFailure,
+    ReturnComponentsStageExecutionInput, ReturnComponentsStageExecutionMetadata,
+    ReturnComponentsStageExecutionReport, ReturnComponentsStageFittedPayload,
+    ReturnComponentsStageGapDiagnostic, ReturnComponentsStageHandoffOutput,
+    ReturnComponentsStageJumpDiagnostic, ReturnComponentsStageObjectiveScoringPolicy,
+    ReturnComponentsStageObservedSignalSummaryStatistics,
+    ReturnComponentsStagePriceRangeSanityDiagnostic, ReturnComponentsStagePriceRangeSanityPolicy,
+    ReturnComponentsStageQuantileBinningPolicy,
+    ReturnComponentsStageReturnDistributionDiagnostic, ReturnComponentsStageSignalSourceWindow,
+    ReturnComponentsStageSurpriseArrivalDiagnostic,
+    ReturnComponentsStageSurpriseEpisodeSelectionPolicy, ReturnComponentsSurpriseJumpEpisode,
+    ReturnComponentsSurpriseNewsArrivalCandidateFamily,
+};
 use super::diagnostic_policy_fit;
 use super::known_arrival_fit;
 use super::mark_layer_fit;
@@ -2510,8 +2550,46 @@ mod tests {
         DoubleExponentialBaseShockConfiguration, GammaSeverityMarkConfiguration,
     };
 
-    use super::*;
+    use super::{
+        RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
+        RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT,
+        ReturnComponentsActivityCouplingCandidateFamily,
+        ReturnComponentsCloseOpenGapDetectionPolicy,
+        ReturnComponentsDetectedIntradayJumpCandidate,
+        ReturnComponentsObservedCloseOpenBoundaryObservation,
+        ReturnComponentsObservedOpenSessionReturn,
+        ReturnComponentsReturnJumpMarkScaleCandidateFamily,
+        ReturnComponentsStageCandidateGenerationInput,
+        ReturnComponentsStageCandidateGenerationInputError,
+        ReturnComponentsStageFittedParameters,
+        ReturnComponentsStageObservedSignalSummaryStatistics,
+        ReturnComponentsStageSignalSourceWindow, ReturnComponentsStageSortedSignalInputs,
+        ReturnComponentsSurpriseNewsArrivalCandidateFamily,
+        build_activity_coupling_diagnostic, build_gap_diagnostic, build_jump_diagnostic,
+        build_price_range_sanity_diagnostic, build_surprise_arrival_diagnostic,
+        default_surprise_deterministic_intensity_profile, derive_close_open_gap_candidates,
+        evaluate_return_components_exact_candidate, sample_standard_deviation,
+        sort_candidate_generation_signals, summarize_candidate_generation_signals,
+        summarize_return_distribution,
+    };
+    use crate::calendar::ExchangeCalendarRegistry;
     use crate::calendar::ExchangeCalendarRegistryLoader;
+    use crate::stages::return_components::continuous_fit;
+    use crate::stages::return_components::contracts::{
+        ReturnComponentsKnownNewsCalendarInput, ReturnComponentsStageObjectiveMetricWeights,
+    };
+    use crate::stages::return_components::diagnostic_policy_fit;
+    use crate::stages::return_components::objective_scoring_policy_fit;
+    use crate::stages::return_components::price_range_policy_fit;
+    use crate::stages::return_components::signal_partition_fit;
+    use crate::stages::return_components::surprise_episode_selection_fit;
+    use janiform_calibration_artifacts::CalibrationOptimizerSettings;
+    use janiform_model_kernels::news::{
+        CoupledGapMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
+        NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
+        SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
+    };
+    use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
     #[test]
     fn derived_close_open_gap_detection_filters_zero_gap_boundaries() {

@@ -932,11 +932,37 @@ impl CalibrationReturnComponentsActivityContextPayload {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{
+        CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
+        CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesObservedSourceRegime,
+        CalibrationHawkesStageCandidateInput,
+        CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
+        CalibrationReturnComponentsDetectedIntradayJumpCandidate,
+        CalibrationReturnComponentsKnownNewsCalendarInput,
+        CalibrationReturnComponentsKnownNewsReturnSample,
+        CalibrationReturnComponentsObjectiveMetricWeights,
+        CalibrationReturnComponentsObservedCloseOpenBoundaryObservation,
+        CalibrationReturnComponentsObservedOpenSessionReturn,
+        CalibrationReturnComponentsSignalSourceWindow,
+        CalibrationReturnComponentsStageCandidateGenerationInput,
+        CalibrationSeasonalityStageExecutionInput, CalibrationSharedNewsMarkLawConfiguration,
+        CalibrationStagedExecutionBridgeError, CalibrationStagedExecutionInput,
+        CalibrationStagedExecutionRuntimeResources, CalibrationTimestampEventRecord,
+    };
+    use std::path::PathBuf;
 
     use janiform_calibration_artifacts::{
         CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationRunDataInputs,
-        CalibrationRunSeedSettings, CalibrationStageSeedOverride, CalibrationStageSolverSettings,
+        CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
+        CalibrationStageSeedOverride, CalibrationStageSolverSettings,
+    };
+    use janiform_model_kernels::hawkes::{
+        HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
+        HawkesStructuredRhoSelfDominancePolicy,
+    };
+    use janiform_model_kernels::news::{
+        CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
+        GammaSeverityMarkConfiguration,
     };
 
     fn valid_request(execution_mode: CalibrationExecutionMode) -> CalibrationRunSpec {

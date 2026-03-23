@@ -3,7 +3,7 @@ use janiform::hourly_factors::{
     HourlyFactorContractOutput, HourlyNewsIntensityMaterializationOutput,
     HourlySeasonalityMaterializationOutput,
 };
-use pyo3::prelude::*;
+use pyo3::{pyclass, pymethods};
 
 #[pyclass(module = "janiform._native", name = "HourlyFactorContractResult")]
 #[derive(Clone)]

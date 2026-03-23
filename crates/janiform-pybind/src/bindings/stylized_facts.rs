@@ -2,8 +2,9 @@ use janiform::verification::{
     StylizedFactHorizonComparisonReportGeneratorRequest,
     run_stylized_fact_horizon_comparison_report_generator as run_stylized_fact_horizon_comparison_report_generator_core,
 };
-use pyo3::prelude::*;
-use pyo3::types::PyModule;
+use pyo3::prelude::{Bound, PyResult, Python};
+use pyo3::types::{PyModule, PyModuleMethods};
+use pyo3::{pyfunction, wrap_pyfunction};
 
 use crate::SeasonalityInputValidationError;
 
