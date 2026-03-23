@@ -582,21 +582,10 @@ where
         SimulationRandomnessSubstreamDomain::EndogenousSellEventCount,
         substream_index,
     );
-    let mut a_plus_stream = randomness_factory.create_substream(
-        seed,
-        SimulationRandomnessSubstreamDomain::EndogenousBuyEventTimestamp,
-        substream_index,
-    );
-    let mut a_minus_stream = randomness_factory.create_substream(
-        seed,
-        SimulationRandomnessSubstreamDomain::EndogenousSellEventTimestamp,
-        substream_index,
-    );
-
     let sampled_n_plus = sample_count_from_expectation(expected_n_plus, &mut n_plus_stream);
     let sampled_n_minus = sample_count_from_expectation(expected_n_minus, &mut n_minus_stream);
-    let sampled_a_plus = sample_exponential_with_mean(expected_a_plus, &mut a_plus_stream);
-    let sampled_a_minus = sample_exponential_with_mean(expected_a_minus, &mut a_minus_stream);
+    let sampled_a_plus = expected_a_plus;
+    let sampled_a_minus = expected_a_minus;
 
     SufficientStatisticsIntervalStatistics::try_new(
         sampled_a_plus,
@@ -698,19 +687,6 @@ where
     sampled_count.min(MAX_INTERVAL_STATISTICS_COUNT)
 }
 
-fn sample_exponential_with_mean<R>(mean: f64, randomness_stream: &mut R) -> f64
-where
-    R: SimulationRandomnessStream,
-{
-    if !mean.is_finite() || mean <= 0.0 {
-        return 0.0;
-    }
-
-    let bounded_draw = randomness_stream
-        .next_unit_interval_f64()
-        .clamp(0.0, 1.0 - f64::EPSILON);
-    -mean * (1.0 - bounded_draw).ln()
-}
 /// Update one interval boundary state using sampled sufficient statistics.
 ///
 /// Composition order:

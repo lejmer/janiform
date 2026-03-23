@@ -94,6 +94,12 @@ pub enum SeededTickSimulationRunError {
         timestamp_utc_nanos: i64,
         source: ExchangeCalendarResolveError,
     },
+    CalendarSessionBoundaryResolutionFailed {
+        exchange_code: String,
+        timezone_name: String,
+        local_date: String,
+        local_time: String,
+    },
     InvalidAccumulatedNewsRoutingTotal {
         field: &'static str,
         value: f64,
@@ -240,6 +246,15 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "failed to resolve market state for exchange `{exchange_code}` at timestamp {timestamp_utc_nanos}: {source}"
             ),
+            Self::CalendarSessionBoundaryResolutionFailed {
+                exchange_code,
+                timezone_name,
+                local_date,
+                local_time,
+            } => write!(
+                formatter,
+                "failed to resolve session boundary for exchange `{exchange_code}` in timezone `{timezone_name}` at local {local_date} {local_time}"
+            ),
             Self::InvalidAccumulatedNewsRoutingTotal { field, value } => write!(
                 formatter,
                 "accumulated news routing total {field} must remain finite, found {value}"
@@ -287,6 +302,7 @@ impl Error for SeededTickSimulationRunError {
             Self::TradingTimeSamplingFailure { source, .. } => Some(source),
             Self::InvalidReturnComponents { source, .. } => Some(source),
             Self::InvalidTransitionStep { source } => Some(source),
+            Self::CalendarSessionBoundaryResolutionFailed { .. } => None,
             _ => None,
         }
     }

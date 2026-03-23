@@ -6,7 +6,6 @@ from .contracts import (
     MarketDataSessionRegularWindow,
     MarketDataSessionResolution,
 )
-from .resolution import resolve_market_data_session_configuration
 
 __all__ = [
     "CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_ENTRYPOINT",
@@ -15,5 +14,4 @@ __all__ = [
     "MarketDataSessionRecurringClosedWindow",
     "MarketDataSessionRegularWindow",
     "MarketDataSessionResolution",
-    "resolve_market_data_session_configuration",
 ]

@@ -148,10 +148,21 @@ class StagedCalibrationResponse(ContractModel):
     status: CalibrationStageExecutionStatus
     stage_reports: tuple[CalibrationStageReport, ...]
     emitted_checkpoints: tuple[CalibrationCheckpointMetadata, ...]
+    diagnostic_artifact_references: tuple[dict[str, Any], ...] = ()
+    diagnostic_artifact_bundle: Optional[dict[str, Any]] = None
     resumed_from_checkpoint_reference: Optional[str] = None
     resumed_from_last_successful_stage: Optional[CalibrationStage] = None
     started_from_stage: Optional[CalibrationStage] = None
     failure: Optional[CalibrationFailureDetails] = None
+
+    def to_payload(self) -> dict[str, Any]:
+        payload = super().to_payload()
+        if not self.diagnostic_artifact_references:
+            payload.pop("diagnostic_artifact_references", None)
+        if self.diagnostic_artifact_bundle is None:
+            payload.pop("diagnostic_artifact_bundle", None)
+
+        return payload
 
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any) -> StagedCalibrationResponse:
@@ -170,8 +181,49 @@ class StagedCalibrationResponse(ContractModel):
             "emitted_checkpoints",
             CALIBRATION_ERROR_FACTORY,
         )
+        raw_diagnostic_artifact_references = raw_payload.get("diagnostic_artifact_references", ())
+        if isinstance(raw_diagnostic_artifact_references, str) or not isinstance(
+            raw_diagnostic_artifact_references,
+            tuple | list,
+        ):
+            raise _calibration_error(
+                "diagnostic_artifact_references",
+                "must be a sequence when provided",
+            )
+        raw_diagnostic_artifact_bundle = raw_payload.get("diagnostic_artifact_bundle")
         raw_resumed_stage = raw_payload.get("resumed_from_last_successful_stage")
         raw_started_stage = raw_payload.get("started_from_stage")
+
+        if raw_diagnostic_artifact_bundle is not None and not isinstance(
+            raw_diagnostic_artifact_bundle,
+            dict,
+        ):
+            raise _calibration_error(
+                "diagnostic_artifact_bundle",
+                "must be an object when provided",
+            )
+        normalized_diagnostic_artifact_references: list[dict[str, Any]] = []
+        for reference_index, raw_reference in enumerate(raw_diagnostic_artifact_references):
+            field_path = f"diagnostic_artifact_references[{reference_index}]"
+            if not isinstance(raw_reference, dict):
+                raise _calibration_error(field_path, "must be an object")
+
+            normalized_diagnostic_artifact_references.append(
+                {
+                    "artifact_family": require_non_empty_string(
+                        raw_reference,
+                        "artifact_family",
+                        f"{field_path}.artifact_family",
+                        CALIBRATION_ERROR_FACTORY,
+                    ),
+                    "relative_path": require_non_empty_string(
+                        raw_reference,
+                        "relative_path",
+                        f"{field_path}.relative_path",
+                        CALIBRATION_ERROR_FACTORY,
+                    ),
+                }
+            )
 
         return StagedCalibrationResponse(
             schema_version=require_non_empty_string(
@@ -208,6 +260,10 @@ class StagedCalibrationResponse(ContractModel):
                 )
                 for checkpoint_index, raw_checkpoint in enumerate(raw_emitted_checkpoints)
             ),
+            diagnostic_artifact_references=tuple(normalized_diagnostic_artifact_references),
+            diagnostic_artifact_bundle=dict(raw_diagnostic_artifact_bundle)
+            if raw_diagnostic_artifact_bundle is not None
+            else None,
             resumed_from_checkpoint_reference=raw_payload.get("resumed_from_checkpoint_reference"),
             resumed_from_last_successful_stage=(
                 CalibrationStage(raw_resumed_stage)

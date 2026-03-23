@@ -184,9 +184,10 @@ from janiform.simulation.shared import HawkesKernelParameters
 - `janiform.calibration.market_data.request`
   - Ownership: typed market-data request validation and serialization
 - `janiform.calibration.market_data.ingestion`
-  - Ownership: source-loading and normalized market-data records
+  - Ownership: source-schema inspection helpers and market-data source summary contracts
 - `janiform.calibration.market_data.translation`
   - Ownership: translation from market-data requests into staged execution inputs
+  - Boundary rule: translation results may expose execution input, diagnostics, provenance, and fit-level summaries, but must not expose a Python-owned full-dataset IR of loaded market-data rows
 - `janiform.calibration.market_data.workflow`
   - Ownership: prepared market-data calibration artifacts and workflow entrypoints
 - `janiform.calibration.staged`
@@ -219,7 +220,7 @@ from janiform.simulation.shared import HawkesKernelParameters
 - `janiform.calibration.sessions.contracts`
   - Ownership: session-resolution contracts and weekly session window models
 - `janiform.calibration.sessions.resolution`
-  - Ownership: market-data session-resolution workflow
+  - Ownership: helper-only calendar-registry materialization utilities for explicit or preset-backed session definitions
 - `janiform.cli.commands.calibration`
   - Ownership: calibration CLI command handlers and calibration-specific CLI boundary normalization
 - `janiform.cli.commands.development`
@@ -253,6 +254,8 @@ The default high-level path is:
 The advanced staged-calibration entrypoint is:
 
 - `run_staged_calibration`
+- `StagedCalibrationResponse` carries `diagnostic_artifact_bundle` for successful in-memory runs
+  and `diagnostic_artifact_references` for successful disk-mode runs
 
 The default full staged calibration path now executes:
 
@@ -308,9 +311,6 @@ from janiform.calibration.staged.results import StagedCalibrationResponse
 from janiform.calibration.presets import PresetRegistry, SessionPresetReference
 from janiform.calibration.presets.references import MarketProfileReference
 from janiform.calibration.sessions import MarketDataSessionResolution
-from janiform.calibration.sessions.resolution import (
-    resolve_market_data_session_configuration,
-)
 ```
 
 ## Experimental namespace policy

@@ -231,7 +231,10 @@ fn staged_runner_full_workflow_is_reproducible_across_repeated_runs_in_both_mode
         None,
     );
 
-    assert_eq!(first_memory_report, second_memory_report);
+    assert_eq!(
+        normalized_report_for_reproducibility(first_memory_report),
+        normalized_report_for_reproducibility(second_memory_report)
+    );
 
     let checkpoint_directory = temporary_checkpoint_directory("repeat-full-disk");
     let disk_contract = build_run_contract_with_mode_and_resume(
@@ -255,7 +258,10 @@ fn staged_runner_full_workflow_is_reproducible_across_repeated_runs_in_both_mode
         Some(second_checkpoint_directory.as_path()),
     );
 
-    assert_eq!(first_disk_report, second_disk_report);
+    assert_eq!(
+        normalized_report_for_reproducibility(first_disk_report),
+        normalized_report_for_reproducibility(second_disk_report)
+    );
 
     let _ = fs::remove_dir_all(checkpoint_directory);
     let _ = fs::remove_dir_all(second_checkpoint_directory);
@@ -1103,4 +1109,16 @@ fn staged_runner_rejects_incompatible_checkpoints_and_mode_specific_runtime_requ
     );
 
     let _ = fs::remove_dir_all(checkpoint_directory);
+}
+
+fn normalized_report_for_reproducibility(
+    mut report: CalibrationStagedRunReport,
+) -> CalibrationStagedRunReport {
+    if let Some(bundle) = report.diagnostic_artifact_bundle.as_mut() {
+        for entry in &mut bundle.runtime_profile.entries {
+            entry.elapsed_seconds = 0.0;
+        }
+    }
+
+    report
 }

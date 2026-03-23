@@ -20,6 +20,8 @@ use super::sampling::{
     sample_exponential_with_rate, sample_gamma_shape_scale, utc_timestamp_from_nanos,
 };
 
+const ONE_HOUR_NANOS: f64 = 3_600_000_000_000.0;
+
 /// Known scheduled-news arrival configuration with explicit UTC anchors.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -157,7 +159,12 @@ impl NewsArrivalConfiguration {
                     value: known_scheduled_arrival_count_usize,
                 }
             })?;
-        let known_component_intensity = known_scheduled_arrival_count as f64;
+        let interval_duration_in_hours = (intensity_input.interval_end_utc_nanos
+            - intensity_input.interval_start_utc_nanos)
+            as f64
+            / ONE_HOUR_NANOS;
+        let known_component_intensity =
+            known_scheduled_arrival_count as f64 / interval_duration_in_hours;
         if !known_component_intensity.is_finite() || known_component_intensity < 0.0 {
             return Err(
                 NewsComponentIntensityEvaluationError::InvalidKnownComponentIntensity {

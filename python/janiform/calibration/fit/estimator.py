@@ -37,11 +37,10 @@ from ..market_data.contracts import (
     CalibrationSessionConfigurationInput,
     CalibrationTickDataColumnMapping,
 )
-from ..market_data.ingestion import load_market_data_calibration_inputs
 from ..market_data.request import MarketDataCalibrationRequest
 from ..market_data.translation import (
-    _load_market_data_translation_inputs,
-    _translate_loaded_market_data_request_to_staged_execution_input,
+    resolve_market_data_session_configuration_from_source_file,
+    translate_market_data_request_to_staged_execution_input,
 )
 from ..market_data.workflow import (
     PreparedMarketDataCalibration,
@@ -70,7 +69,6 @@ from ..sessions.resolution import (
     _build_recurring_closed_windows,
     _looks_like_continuous_weekday_template,
     _regular_session_windows_from_exchange_artifact,
-    resolve_market_data_session_configuration,
 )
 from ..staged.contracts import CalibrationStageExecutionStatus
 from ..staged.runtime import _run_staged_calibration_with_raw_payload
@@ -455,11 +453,9 @@ class JaniformEstimator:
                 working_directory=working_directory,
             )
             effective_progress.update(detail="loading market data")
-            loaded_inputs_result = _load_market_data_translation_inputs(request)
             effective_progress.update(detail="translating market data")
-            translation_result = _translate_loaded_market_data_request_to_staged_execution_input(
-                normalized_request=request,
-                loaded_inputs_result=loaded_inputs_result,
+            translation_result = translate_market_data_request_to_staged_execution_input(
+                request,
                 cpu_count=self._cpu_count,
             )
             prepared = _prepare_market_data_calibration_from_translation_result(
@@ -476,12 +472,8 @@ class JaniformEstimator:
             prepared=prepared,
             resolved_configuration=resolved_configuration,
             input_inference=input_inference,
-            fit_warning=_detect_interval_data_warning(
-                translation_result.loaded_inputs.tick_data.records
-            ),
-            reference_price=_extract_reference_price(
-                translation_result.loaded_inputs.tick_data.records
-            ),
+            fit_warning=translation_result.fit_warning,
+            reference_price=translation_result.reference_price,
             temporary_directory=temporary_directory,
         )
 
@@ -526,15 +518,13 @@ class JaniformEstimator:
             normalization_policy=normalization_policy,
             output_preferences=self._output_preferences,
         )
-        progress.update(detail="loading tick data for session inference")
-        loaded_inputs = load_market_data_calibration_inputs(request)
-        progress.update(detail="resolving inferred session")
-        resolved_session = resolve_market_data_session_configuration(
-            request,
-            loaded_inputs.tick_data,
+        progress.update(detail="resolving session from market data")
+        return resolve_market_data_session_configuration_from_source_file(
+            session_configuration=request.session_configuration,
+            tick_data_source=request.tick_data_source,
+            tick_data_column_mapping=request.column_mapping.tick_data,
+            normalization_policy=request.normalization_policy,
         )
-
-        return resolved_session.session_resolution
 
     def _requires_session_inference(self) -> bool:
         if self._session_reference is not None:
@@ -852,10 +842,7 @@ def _build_session_configuration_input(
     *,
     working_directory: Optional[Path],
 ) -> CalibrationSessionConfigurationInput:
-    if len(resolved_session.applied_override_fields) == 0 and (
-        resolved_session.inferred_from_data
-        or resolved_session.selected_preset is not None
-    ):
+    if len(resolved_session.applied_override_fields) == 0 and resolved_session.inferred_from_data:
         return CalibrationSessionConfigurationInput(
             exchange_code=resolved_session.configuration.exchange_code,
             session_timezone=resolved_session.configuration.timezone_name,
@@ -944,67 +931,8 @@ def _resolved_configuration_requires_materialization(
 
     return not (
         len(resolved_configuration.session.applied_override_fields) == 0
-        and (
-            resolved_configuration.session.inferred_from_data
-            or resolved_configuration.session.selected_preset is not None
-        )
+        and resolved_configuration.session.inferred_from_data
     )
-
-
-def _extract_reference_price(normalized_records: tuple[Any, ...]) -> Optional[float]:
-    if len(normalized_records) == 0:
-        return None
-
-    last_record = normalized_records[-1]
-    price = cast(Optional[float], last_record.price)
-    return price
-
-
-def _detect_interval_data_warning(normalized_records: tuple[Any, ...]) -> Optional[str]:
-    if len(normalized_records) < 4:
-        return None
-
-    deltas_in_seconds: list[int] = []
-    for previous_record, current_record in zip(normalized_records, normalized_records[1:]):
-        previous_timestamp = cast(datetime, previous_record.timestamp)
-        current_timestamp = cast(datetime, current_record.timestamp)
-        delta_seconds = int((current_timestamp - previous_timestamp).total_seconds())
-        if delta_seconds > 0:
-            deltas_in_seconds.append(delta_seconds)
-
-    if len(deltas_in_seconds) < 3:
-        return None
-
-    aligned_to_minute_count = sum(delta_seconds % 60 == 0 for delta_seconds in deltas_in_seconds)
-    dominant_delta_seconds = max(
-        set(deltas_in_seconds),
-        key=deltas_in_seconds.count,
-    )
-    dominant_delta_share = deltas_in_seconds.count(dominant_delta_seconds) / len(deltas_in_seconds)
-
-    if dominant_delta_seconds < 60:
-        return None
-    if aligned_to_minute_count / len(deltas_in_seconds) < 0.8:
-        return None
-    if dominant_delta_share < 0.6:
-        return None
-
-    return (
-        "The supplied fit input appears to be interval data rather than tick data. "
-        f"Janiform detected a dominant spacing of {_format_interval_warning_delta(dominant_delta_seconds)}, "
-        "so fitting the model on this data will likely produce an invalid fit."
-    )
-
-
-def _format_interval_warning_delta(delta_seconds: int) -> str:
-    if delta_seconds % 86_400 == 0:
-        return f"{delta_seconds // 86_400}D"
-    if delta_seconds % 3_600 == 0:
-        return f"{delta_seconds // 3_600}h"
-    if delta_seconds % 60 == 0:
-        return f"{delta_seconds // 60}min"
-
-    return f"{delta_seconds}s"
 
 
 __all__ = ["JaniformEstimator"]

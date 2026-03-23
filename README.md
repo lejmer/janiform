@@ -80,6 +80,9 @@ Set `JaniformEstimator(cpu_count=...)` or `janiform fit --cpu-count ...` when yo
 control how many CPU cores staged calibration uses while evaluating candidate parameter sets.
 The default full calibration workflow now runs four stages in order:
 `seasonality`, `hawkes`, `return_components`, and `joint_refinement`.
+Successful staged calibration responses expose diagnostic artifacts directly in memory mode
+through `diagnostic_artifact_bundle`, and expose persisted diagnostics in disk mode through
+`diagnostic_artifact_references`.
 
 ## Developer Environment Setup
 
@@ -231,6 +234,7 @@ python3 scripts/generate_crate_readmes.py
 - `presets/sources/`: Human-reviewed preset source manifests used to generate bundled runtime artifacts
 - `python/janiform/`: Python package, CLI entrypoints, and typed workflow contracts, including package-backed workflow namespaces such as `janiform.simulation`
 - `python/janiform/calibration/_bundled_presets/generated/`: Checked-in bundled preset artifacts and runtime index consumed by the preset registry
+- `tools/workbench/`: PyQt6 calibration workbench plus headless report generation for staged-calibration diagnostic bundles
 - `examples/`: Executable public-API workflow examples for simulation, pricing, and calibration
 - `tests/`: Python tests and shared fixtures
 - `docs/`: Design and development documentation
@@ -244,6 +248,8 @@ python3 scripts/generate_crate_readmes.py
 - Vanilla option pricing example: `examples/pricing_workflow.py`
 - Primary market-data calibration example with tick-data `csv`, tick-data `parquet`, explicit known-news inputs, and optional option-surface files: `examples/market_data_calibration_workflow.py`
 - Advanced staged calibration example with default `memory` mode, explicit `disk` override, raw observed open-session return evidence including local sell-share proxies for return-components fitting, and internal close-open gap detection from raw boundary observations: `examples/calibration_workflow.py`
+- Calibration diagnostics workbench: `python -m tools.workbench <run-directory-or-response-json>`
+- Headless calibration diagnostics report and plot export: `python -m tools.workbench.report --input <run-directory-or-response-json> --output-dir <report-dir>`
 - Default high-level fitting now lives under `janiform.calibration` through `JaniformEstimator.fit(...)`, which returns a lean `JaniformModel` and can optionally surface a separate `JaniformFitReport`
 - Runtime hourly seasonality reconstructed from calibration output should use `janiform.hourly_factors.build_runtime_hourly_seasonality_source_from_calibration_payload(...)` rather than manual component recomposition in consumers
 - Workflow package roots remain curated convenience surfaces, and natural public domain modules such as `janiform.simulation.seeded` and `janiform.calibration.staged.inputs` are also supported when they make ownership clearer

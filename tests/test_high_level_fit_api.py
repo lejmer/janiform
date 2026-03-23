@@ -6,10 +6,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, NoReturn, Self
 
+import pyarrow as pa
+import pandas
 import pytest
+from pyarrow import parquet
 
 import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.calibration.fit.model as fit_model_module
+import janiform.calibration.market_data.ingestion as market_data_ingestion_module
 from janiform.calibration import CalibrationValidationError
 from janiform._timestamps import datetime_to_utc_nanos
 from janiform.calibration.fit import (
@@ -28,6 +32,7 @@ from janiform.calibration.market_data import (
 )
 from janiform.calibration.staged import StagedCalibrationResponse, validate_staged_calibration_response
 from janiform.calendar import CalendarRegistry, MarketState
+from janiform.simulation import SeededTickEventSide
 
 
 def test_janiform_estimator_fit_returns_model_for_default_high_level_workflow(
@@ -78,7 +83,7 @@ def test_janiform_estimator_fit_returns_model_for_default_high_level_workflow(
     assert model.metadata["selected_stages"] == ["seasonality"]
 
 
-def test_janiform_estimator_supports_simple_zero_config_tick_fit_without_tempdir(
+def test_janiform_estimator_supports_simple_zero_config_tick_fit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -104,11 +109,6 @@ def test_janiform_estimator_supports_simple_zero_config_tick_fit_without_tempdir
         ),
     )
 
-    def _unexpected_tempdir(*args, **kwargs) -> NoReturn:
-        raise AssertionError("temporary directory should not be created for the common memory path")
-
-    monkeypatch.setattr(fit_estimator_module, "TemporaryDirectory", _unexpected_tempdir)
-
     estimator = JaniformEstimator(
         market_profile="us_equity_cash",
     )
@@ -125,6 +125,53 @@ def test_janiform_estimator_supports_simple_zero_config_tick_fit_without_tempdir
     assert model.metadata["input_inference"]["tick_price_input_policy"] == "explicit_price_column"
     assert model.metadata["input_inference"]["tick_price_columns"]["price_column"] == "trade_price"
     assert model.metadata["input_inference"]["tick_price_columns"]["trade_sign_column"] == "trade_sign"
+
+
+def test_prepare_fit_workflow_uses_column_only_parquet_schema_discovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.parquet"
+    parquet.write_table(
+        pa.table(
+            {
+                "time": [datetime(2026, 2, 2, 14, 30, tzinfo=UTC)],
+                "close": [1.0850],
+            }
+        ),
+        tick_data_path,
+    )
+
+    class _StopAfterInference(Exception):
+        pass
+
+    def _unexpected_read_table(*args: object, **kwargs: object) -> NoReturn:
+        del args, kwargs
+        raise AssertionError("fit input inference should not materialize a parquet table")
+
+    def _stop_after_inference(*args: object, **kwargs: object) -> NoReturn:
+        del args, kwargs
+        raise _StopAfterInference()
+
+    monkeypatch.setattr(market_data_ingestion_module.parquet, "read_table", _unexpected_read_table)
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "translate_market_data_request_to_staged_execution_input",
+        _stop_after_inference,
+    )
+
+    estimator = JaniformEstimator(market_profile="eurusd_spot")
+
+    with pytest.raises(_StopAfterInference):
+        estimator._prepare_fit_workflow(
+            run_id="high-level-parquet-schema-only",
+            tick_data_path=tick_data_path,
+            tick_data_format=CalibrationInputFileFormat.PARQUET,
+            tick_data_provenance_label="tick_data",
+            option_surface_path=None,
+            option_surface_format=CalibrationInputFileFormat.PARQUET,
+            option_surface_provenance_label="option_surface",
+        )
 
 
 def test_prepare_model_runtime_factors_uses_fitted_surprise_intensity_profile(
@@ -380,7 +427,7 @@ def test_high_level_model_summary_exposes_fitted_parameters_and_provenance(
         "event_count": 0,
         "active": False,
     }
-    assert summary["session_resolution"]["resolution_kind"] == "automatic_inference"
+    assert summary["session_resolution"]["resolution_kind"] == "explicit_override"
     assert summary["fitted_parameter_summary"]["selected_candidate_ids"] == {
         "hawkes": "candidate_stable_low_loss",
         "return_components": "return_candidate_balanced",
@@ -556,6 +603,54 @@ def test_loaded_high_level_model_runtime_seasonality_requires_structural_paramet
             range_end_utc=datetime(2026, 2, 2, 16, tzinfo=UTC),
             interval="1h",
         )
+
+
+def test_high_level_runtime_seasonality_zeroes_closed_intervals_for_coarse_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-closed-seasonality-gating",
+    )
+
+    runtime_factors = fit_model_module._prepare_model_runtime_factors(
+        model,
+        start_time_utc=datetime(2026, 2, 2, 14, 0, tzinfo=UTC),
+        horizon_interval_count=4,
+        interval="15min",
+    )
+
+    assert runtime_factors.seasonality_hourly_factors == pytest.approx(
+        (0.0, 0.0, 1.0, 1.0)
+    )
+
+
+def test_runtime_coarse_news_intensity_components_scale_known_news_to_per_hour_units() -> None:
+    known_news_timestamp_utc = datetime(2026, 2, 2, 14, 5, tzinfo=UTC)
+    news_materialization = SimpleNamespace(
+        interval_start_utc_nanos=(
+            datetime_to_utc_nanos(datetime(2026, 2, 2, 14, 0, tzinfo=UTC)),
+            datetime_to_utc_nanos(datetime(2026, 2, 2, 14, 15, tzinfo=UTC)),
+        ),
+        interval_end_utc_nanos=(
+            datetime_to_utc_nanos(datetime(2026, 2, 2, 14, 15, tzinfo=UTC)),
+            datetime_to_utc_nanos(datetime(2026, 2, 2, 14, 30, tzinfo=UTC)),
+        ),
+        surprise_component_nu_h=(0.2, 0.3),
+    )
+
+    known_component_nu_h, surprise_component_nu_h = (
+        fit_model_module._normalize_runtime_coarse_news_intensity_components(
+            news_materialization=news_materialization,
+            known_news_event_timestamps_utc=(known_news_timestamp_utc,),
+            interval_delta=0.25,
+        )
+    )
+
+    assert known_component_nu_h == pytest.approx((4.0, 0.0))
+    assert surprise_component_nu_h == pytest.approx((0.2, 0.3))
 
 
 def test_high_level_model_simulate_dispatches_by_interval_mode(
@@ -881,6 +976,69 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
     )
 
 
+def test_persist_seeded_tick_simulation_preserves_non_trade_fine_path_rows() -> None:
+    import janiform._workflow_outputs as workflow_outputs_module
+
+    class _CapturingSink:
+        def __init__(self) -> None:
+            self.rows: list[dict[str, Any]] = []
+
+        def write_records(self, records: list[dict[str, Any]]) -> None:
+            self.rows.extend(records)
+
+        def close(self) -> None:
+            return None
+
+    sink = _CapturingSink()
+    preferences = workflow_outputs_module.SimulationOutputPreferences(
+        file_format="parquet",
+        timestamp_column="timestamp_utc",
+        timestamp_timezone="UTC",
+        tick_price_input_policy="explicit_price_column",
+        price_column="trade_price",
+        trade_sign_column="trade_sign",
+        bid_column=None,
+        ask_column=None,
+        reference_price=100.0,
+    )
+    simulation_result = SimpleNamespace(
+        fine_path=(
+            SimpleNamespace(
+                timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
+                cumulative_log_return=0.10,
+                side=SeededTickEventSide.BUY,
+            ),
+            SimpleNamespace(
+                timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 15, tzinfo=UTC)),
+                cumulative_log_return=0.12,
+                side=None,
+            ),
+        )
+    )
+
+    workflow_outputs_module.persist_seeded_tick_simulation(
+        simulation_result=simulation_result,
+        output_path=Path("simulation.parquet"),
+        preferences=preferences,
+        sink=sink,
+    )
+
+    assert [row["timestamp_utc"] for row in sink.rows] == [
+        datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+        datetime(2026, 2, 2, 15, 15, tzinfo=UTC),
+    ]
+    assert [row["trade_price"] for row in sink.rows] == pytest.approx(
+        [
+            100.0 * math.exp(0.10),
+            100.0 * math.exp(0.12),
+        ]
+    )
+    assert [row["trade_sign"] for row in sink.rows] == [
+        SeededTickEventSide.BUY.value,
+        None,
+    ]
+
+
 def test_high_level_seeded_simulation_result_preserves_empty_tabular_schema(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -973,6 +1131,72 @@ def test_high_level_simulation_result_materializes_datetime_timestamps_in_memory
 
     assert pandas_frame.iloc[0]["timestamp_utc"] == datetime(2026, 2, 2, 15, tzinfo=UTC)
     assert captured_output_paths == [Path("simulation.parquet")]
+
+
+def test_high_level_seeded_simulation_result_exports_full_fine_path_to_tabular_surfaces(
+    tmp_path: Path,
+) -> None:
+    result = JaniformSimulationResult(
+        simulation_kind="seeded_tick",
+        metadata={},
+        provenance={},
+        diagnostics={},
+        raw_result=SimpleNamespace(
+            fine_path=(
+                SimpleNamespace(
+                    timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
+                    cumulative_log_return=0.10,
+                    side=SeededTickEventSide.BUY,
+                ),
+                SimpleNamespace(
+                    timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 15, tzinfo=UTC)),
+                    cumulative_log_return=0.12,
+                    side=None,
+                ),
+            )
+        ),
+        _preferences=SimpleNamespace(
+            timestamp_column="timestamp_utc",
+            timestamp_timezone="UTC",
+            tick_price_input_policy="explicit_price_column",
+            price_column="trade_price",
+            trade_sign_column="trade_sign",
+            reference_price=100.0,
+        ),
+    )
+
+    pandas_frame = result.to_pandas()
+    numpy_array = result.to_numpy()
+    parquet_path = tmp_path / "seeded-simulation.parquet"
+    result.to_parquet(parquet_path)
+    parquet_rows = parquet.read_table(parquet_path).to_pylist()
+
+    assert list(pandas_frame["timestamp_utc"]) == [
+        datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+        datetime(2026, 2, 2, 15, 15, tzinfo=UTC),
+    ]
+    assert list(pandas_frame["trade_price"]) == pytest.approx(
+        [
+            100.0 * math.exp(0.10),
+            100.0 * math.exp(0.12),
+        ]
+    )
+    assert pandas_frame.iloc[0]["trade_sign"] == "buy"
+    assert pandas.isna(pandas_frame.iloc[1]["trade_sign"])
+    assert numpy_array.shape == (2, 3)
+    assert list(numpy_array[:, 2]) == ["buy", None]
+    assert parquet_rows == [
+        {
+            "timestamp_utc": datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+            "trade_price": pytest.approx(100.0 * math.exp(0.10)),
+            "trade_sign": "buy",
+        },
+        {
+            "timestamp_utc": datetime(2026, 2, 2, 15, 15, tzinfo=UTC),
+            "trade_price": pytest.approx(100.0 * math.exp(0.12)),
+            "trade_sign": None,
+        },
+    ]
 
 
 def test_high_level_model_price_option_dispatches_through_canonical_pricing_runner(
@@ -1081,44 +1305,34 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
         encoding="utf-8",
     )
 
-    load_call_count = 0
     translate_call_count = 0
-    extra_python_load_count = 0
-    original_load_translation_inputs = fit_estimator_module._load_market_data_translation_inputs
-    original_translate_loaded_inputs = (
-        fit_estimator_module._translate_loaded_market_data_request_to_staged_execution_input
+    session_resolution_load_count = 0
+    original_translate_request = (
+        fit_estimator_module.translate_market_data_request_to_staged_execution_input
     )
-    original_load_market_data = fit_estimator_module.load_market_data_calibration_inputs
+    original_session_resolution = (
+        fit_estimator_module.resolve_market_data_session_configuration_from_source_file
+    )
 
-    def counting_load_translation_inputs(*args, **kwargs):
-        nonlocal load_call_count
-        load_call_count += 1
-        return original_load_translation_inputs(*args, **kwargs)
-
-    def counting_translate_loaded_inputs(*args, **kwargs):
+    def counting_translate_request(*args, **kwargs):
         nonlocal translate_call_count
         translate_call_count += 1
-        return original_translate_loaded_inputs(*args, **kwargs)
+        return original_translate_request(*args, **kwargs)
 
-    def unexpected_extra_python_load(*args, **kwargs):
-        nonlocal extra_python_load_count
-        extra_python_load_count += 1
-        return original_load_market_data(*args, **kwargs)
+    def counting_session_resolution(*args, **kwargs):
+        nonlocal session_resolution_load_count
+        session_resolution_load_count += 1
+        return original_session_resolution(*args, **kwargs)
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_load_market_data_translation_inputs",
-        counting_load_translation_inputs,
+        "translate_market_data_request_to_staged_execution_input",
+        counting_translate_request,
     )
     monkeypatch.setattr(
         fit_estimator_module,
-        "_translate_loaded_market_data_request_to_staged_execution_input",
-        counting_translate_loaded_inputs,
-    )
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "load_market_data_calibration_inputs",
-        unexpected_extra_python_load,
+        "resolve_market_data_session_configuration_from_source_file",
+        counting_session_resolution,
     )
     monkeypatch.setattr(
         fit_estimator_module,
@@ -1145,9 +1359,8 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
         tick_data_format=CalibrationInputFileFormat.CSV,
     )
 
-    assert load_call_count == 1
     assert translate_call_count == 1
-    assert extra_python_load_count == 0
+    assert session_resolution_load_count == 0
 
 
 def test_high_level_fit_progress_splits_loading_and_translation_steps(

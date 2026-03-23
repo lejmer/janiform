@@ -878,6 +878,14 @@ def run_staged_calibration(
 ) -> object: ...
 
 
+def run_staged_calibration_with_events(
+    execution_input: object,
+    calendar_registry: CalendarRegistry,
+    event_callback: object,
+    memory_checkpoint_store: Optional[CalibrationMemoryCheckpointStore] = None,
+) -> object: ...
+
+
 def evaluate_return_components_candidate(
     candidate_generation_input: object,
     observed_summary_statistics: object,
@@ -890,6 +898,19 @@ def evaluate_return_components_candidate(
 def preprocess_market_data_translation_request(
     preprocessing_request: object,
     calendar_registry: CalendarRegistry,
+) -> object: ...
+
+
+def load_and_preprocess_market_data_translation_request(
+    loading_request: object,
+) -> object: ...
+
+
+def resolve_market_data_session_configuration_from_source_file(
+    session_configuration: object,
+    tick_data_source: object,
+    tick_data_column_mapping: object,
+    normalization_policy: object,
 ) -> object: ...
 
 

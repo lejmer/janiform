@@ -28,8 +28,9 @@ use janiform_model_kernels::news::{
 
 use super::checkpointing::CalibrationMemoryCheckpointStore;
 use super::staged_runner::{
-    CalibrationStagedRunInputs, CalibrationStagedRunReport,
+    CalibrationStagedRunInputs, CalibrationStagedRunObserverEvent, CalibrationStagedRunReport,
     run_staged_calibration_with_checkpointing,
+    run_staged_calibration_with_checkpointing_and_observer,
 };
 use super::stages::hawkes::HawkesStageCandidateInput;
 use super::stages::return_components::{
@@ -561,12 +562,31 @@ pub fn run_staged_calibration_from_execution_input(
     memory_checkpoint_store: Option<&mut CalibrationMemoryCheckpointStore>,
 ) -> Result<CalibrationStagedRunReport, CalibrationStagedExecutionBridgeError> {
     let execution_plan = execution_input.build_execution_plan()?;
+
     Ok(run_staged_calibration_with_checkpointing(
         &execution_plan.run_contract,
         calendar_registry,
         execution_plan.staged_run_inputs,
         memory_checkpoint_store,
         execution_plan.disk_checkpoint_directory.as_deref(),
+    ))
+}
+
+pub fn run_staged_calibration_from_execution_input_with_observer(
+    execution_input: CalibrationStagedExecutionInput,
+    calendar_registry: &ExchangeCalendarRegistry,
+    memory_checkpoint_store: Option<&mut CalibrationMemoryCheckpointStore>,
+    observer: &mut dyn FnMut(CalibrationStagedRunObserverEvent),
+) -> Result<CalibrationStagedRunReport, CalibrationStagedExecutionBridgeError> {
+    let execution_plan = execution_input.build_execution_plan()?;
+
+    Ok(run_staged_calibration_with_checkpointing_and_observer(
+        &execution_plan.run_contract,
+        calendar_registry,
+        execution_plan.staged_run_inputs,
+        memory_checkpoint_store,
+        execution_plan.disk_checkpoint_directory.as_deref(),
+        Some(observer),
     ))
 }
 

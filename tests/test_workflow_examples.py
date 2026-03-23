@@ -55,16 +55,16 @@ def test_simulation_example_runs_with_deterministic_summary() -> None:
             "transition_count": 8,
             "event_projection_count": 5,
             "first_transition": {
-                "cumulative_log_return": 0.2645866072827854,
+                "cumulative_log_return": 0.18658834106678446,
                 "market_state": "open",
                 "news_arrival_component": None,
                 "return_components": {
-                    "buy_side_return": -0.15584667947115877,
+                    "buy_side_return": -0.08487291377195044,
                     "closed_gap_return": 0.0,
                     "open_jump_return": 0.0,
-                    "sell_side_return": 0.42043328675394415,
-                    "total_return": 0.2645866072827854,
-                    "trading_time_return": 0.2645866072827854,
+                    "sell_side_return": 0.2714612548387349,
+                    "total_return": 0.18658834106678446,
+                    "trading_time_return": 0.18658834106678446,
                 },
                 "side": "sell",
                 "state_snapshot": None,
@@ -73,7 +73,7 @@ def test_simulation_example_runs_with_deterministic_summary() -> None:
                 "transition_kind": "sell_trade",
             },
             "last_transition": {
-                "cumulative_log_return": -0.2169953075506372,
+                "cumulative_log_return": -0.29499357376663815,
                 "market_state": "open",
                 "news_arrival_component": None,
                 "return_components": {

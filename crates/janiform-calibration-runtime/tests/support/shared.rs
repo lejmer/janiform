@@ -49,9 +49,24 @@ pub(crate) fn assert_joint_refinement_objective_breakdown_matches(
         &format!("{context} aggregated_return_shape_fit"),
     );
     assert_f64_within_one_ulp(
+        actual_breakdown.return_asymmetry_fit,
+        expected_breakdown.return_asymmetry_fit,
+        &format!("{context} return_asymmetry_fit"),
+    );
+    assert_f64_within_one_ulp(
+        actual_breakdown.tick_return_asymmetry_fit,
+        expected_breakdown.tick_return_asymmetry_fit,
+        &format!("{context} tick_return_asymmetry_fit"),
+    );
+    assert_f64_within_one_ulp(
         actual_breakdown.aggregated_return_scale_fit,
         expected_breakdown.aggregated_return_scale_fit,
         &format!("{context} aggregated_return_scale_fit"),
+    );
+    assert_f64_within_one_ulp(
+        actual_breakdown.tick_return_scale_fit,
+        expected_breakdown.tick_return_scale_fit,
+        &format!("{context} tick_return_scale_fit"),
     );
     assert_f64_within_one_ulp(
         actual_breakdown.business_time_return_scale_fit,

@@ -355,6 +355,30 @@ fn deterministic_intensity_model_rejects_out_of_domain_inputs() {
 }
 
 #[test]
+fn known_news_arrival_intensity_is_normalized_to_per_hour_rate() {
+    let configuration = NewsArrivalConfiguration {
+        known: super::KnownNewsArrivalConfiguration {
+            scheduled_event_timestamps_utc_nanos: vec![1_710_000_000_000_000_000],
+        },
+        surprise: super::SurpriseNewsArrivalConfiguration {
+            baseline_intensity: 0.0,
+        },
+    };
+
+    let intensity_output = configuration
+        .evaluate_with_deterministic_time_multiplier(NewsArrivalIntensityEvaluationInput {
+            interval_start_utc_nanos: 1_710_000_000_000_000_000,
+            interval_end_utc_nanos: 1_710_001_800_000_000_000,
+            surprise_deterministic_time_multiplier: 1.0,
+        })
+        .expect("half-hour interval should evaluate");
+
+    assert_eq!(intensity_output.known_scheduled_arrival_count, 1);
+    assert!((intensity_output.known_component_intensity - 2.0).abs() <= 1e-12);
+    assert!((intensity_output.total_intensity - 2.0).abs() <= 1e-12);
+}
+
+#[test]
 fn default_composable_pipeline_wires_gamma_and_double_exponential_components() {
     let configuration = sample_process_configuration();
     let pipeline: DefaultNewsMarkPipeline = configuration.default_mark_pipeline();

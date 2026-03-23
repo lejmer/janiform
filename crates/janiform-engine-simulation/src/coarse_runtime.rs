@@ -9,6 +9,7 @@ use crate::risk::{
     sample_interval_statistics_from_transform_slices_with_randomness_factory,
     solve_sufficient_statistics_transform_slices, update_boundary_state_from_interval_statistics,
 };
+use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
 use janiform_foundations::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessSubstreamDomain,
     SplitMix64SimulationRandomnessFactory,
@@ -91,9 +92,7 @@ where
         let current_statistics_context = SufficientStatisticsTransformSliceContext::try_new(
             interval_index,
             run_request.interval_factors.s_h[interval_index],
-            run_request
-                .interval_factors
-                .news_intensity_input_at(interval_index),
+            endogenous_statistics_news_intensity_input(),
             run_request.interval_delta,
             terminal_state,
         )
@@ -690,9 +689,17 @@ fn adaptive_transform_slice_settings(
     }
 }
 
+fn endogenous_statistics_news_intensity_input() -> ExponentialAffineTransformNewsIntensityInput {
+    // Coarse runtime samples exogenous news explicitly for direct jumps and boundary excitation.
+    // Keep the transform-slice statistics endogenous-only so the same news process is not
+    // absorbed once in the affine counts and again in the explicit event sampler.
+    ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
+        .expect("zero news intensity must be a valid affine input")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::adaptive_transform_slice_settings;
+    use super::{adaptive_transform_slice_settings, endogenous_statistics_news_intensity_input};
 
     #[test]
     fn adaptive_transform_slice_settings_stay_linear_for_high_intensity_regimes() {
@@ -717,5 +724,13 @@ mod tests {
             count_relative_error < 0.02,
             "adaptive count probe should stay near the linear regime, relative_error={count_relative_error}"
         );
+    }
+
+    #[test]
+    fn endogenous_statistics_news_intensity_input_is_zeroed() {
+        let input = endogenous_statistics_news_intensity_input();
+
+        assert_eq!(input.known_nu_h, 0.0);
+        assert_eq!(input.surprise_nu_h, 0.0);
     }
 }

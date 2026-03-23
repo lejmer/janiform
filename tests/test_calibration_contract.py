@@ -292,6 +292,74 @@ def test_staged_calibration_response_rejects_missing_stage_reports() -> None:
     assert captured_error.value.failure.message == "is required"
 
 
+def test_staged_calibration_response_accepts_diagnostic_artifact_bundle() -> None:
+    response_payload = _valid_response_payload()
+    response_payload["diagnostic_artifact_references"] = [
+        {
+            "artifact_family": "observed_targets",
+            "relative_path": "diagnostics/observed_targets.json",
+        }
+    ]
+    response_payload["diagnostic_artifact_bundle"] = {
+        "observed_targets": {
+            "schema_version": "calibration.diagnostics.observed_targets.v1",
+            "target_builder_version": "test",
+            "targets": [],
+        },
+        "candidate_frontier": {
+            "schema_version": "calibration.diagnostics.candidate_frontier.v1",
+            "frontier_entries": [],
+        },
+        "coarse_tick_consistency": {
+            "schema_version": "calibration.diagnostics.coarse_tick_consistency.v1",
+            "metrics": [],
+        },
+        "selection_rationale": {
+            "schema_version": "calibration.diagnostics.selection_rationale.v1",
+            "decision": {
+                "selection_stage": "joint_refinement",
+                "selected_candidate_id": "candidate-001",
+                "selection_policy": "test",
+                "validity_screened_candidate_count": 1,
+                "admissible_candidate_count": 1,
+                "pareto_frontier_count": 1,
+                "tie_break_candidate_count": 1,
+                "decisive_metric_ids": [],
+                "rationale": "test",
+            },
+        },
+        "simulation_summary": {
+            "schema_version": "calibration.diagnostics.simulation_summary.v1",
+            "summaries": [],
+        },
+        "search_surface_manifest": {
+            "schema_version": "calibration.diagnostics.search_surface_manifest.v1",
+            "surfaces": [],
+        },
+        "runtime_profile": {
+            "schema_version": "calibration.diagnostics.runtime_profile.v1",
+            "cpu_count": 24,
+            "entries": [],
+        },
+    }
+
+    validated_response = validate_staged_calibration_response(response_payload)
+
+    assert validated_response.diagnostic_artifact_references == (
+        {
+            "artifact_family": "observed_targets",
+            "relative_path": "diagnostics/observed_targets.json",
+        },
+    )
+    assert validated_response.diagnostic_artifact_bundle is not None
+    assert (
+        validated_response.diagnostic_artifact_bundle["selection_rationale"]["decision"][
+            "selected_candidate_id"
+        ]
+        == "candidate-001"
+    )
+
+
 def _valid_request_model() -> StagedCalibrationRequest:
     return StagedCalibrationRequest(
         run_id="run-001",

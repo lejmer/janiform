@@ -75,6 +75,14 @@ Execution-mode policies:
   - value:
     `path_seed_partitioned_from_root_seed_and_path_index_with_shared_substream_mixer.v1`
 
+The transform-slice sampler currently uses:
+
+- count sampling via deterministic fractional rounding from slice-implied means
+- integrated-intensity sampling via the slice-implied means directly
+
+This avoids injecting extra coarse-time variance from an additional surrogate
+sampling law for `A_plus` and `A_minus`.
+
 Multi-interval validation suite entrypoint:
 
 - `run_sufficient_statistics_multi_interval_validation_suite`

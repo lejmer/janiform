@@ -38,6 +38,7 @@ from ..sessions.contracts import (
 )
 from ..staged.inputs import StagedCalibrationExecutionInput
 from ..staged.results import StagedCalibrationResponse
+from ..._timestamps import datetime_to_utc_nanos
 from ..._workflow_outputs import (
     SimulationArtifactSink,
     generate_workflow_run_id,
@@ -50,6 +51,7 @@ from ..._workflow_outputs import (
 from ..._workflow_progress import JaniformOutputController
 from ..._contracts import serialize_pretty_json
 from ...calendar import CalendarRegistry
+from ...calendar import MarketState
 from .._errors import _calibration_error
 from ...hourly_factors import (
     HourlyNewsIntensityMaterializationSettings,
@@ -717,6 +719,7 @@ def _prepare_model_runtime_factors(
         range_end_utc=range_end_utc,
         interval=interval,
     )
+    known_news_event_timestamps_utc = _resolved_known_news_event_timestamps(model)
     news_materialization = materialize_hourly_news_intensity_factors(
         calendar_registry=calendar_registry,
         exchange_code=exchange_code,
@@ -724,7 +727,7 @@ def _prepare_model_runtime_factors(
         range_end_utc=range_end_utc,
         interval=interval,
         settings=HourlyNewsIntensityMaterializationSettings(
-            known_scheduled_event_timestamps_utc=_resolved_known_news_event_timestamps(model),
+            known_scheduled_event_timestamps_utc=known_news_event_timestamps_utc,
             surprise_baseline_intensity=_surprise_baseline_intensity(model),
             surprise_deterministic_time_multiplier_by_interval_index=(
                 _surprise_deterministic_time_multiplier_by_interval_index(
@@ -751,10 +754,26 @@ def _prepare_model_runtime_factors(
         "return_components.fitted_parameters.news_process_configuration.shared_mark_law",
     )
 
+    interval_delta = interval_duration_nanos / 3_600_000_000_000.0
+    seasonality_hourly_factors = _gate_runtime_seasonality_to_open_intervals(
+        calendar_registry=calendar_registry,
+        exchange_code=exchange_code,
+        range_start_utc=start_time_utc,
+        interval_duration_nanos=interval_duration_nanos,
+        seasonality_hourly_factors=tuple(float(value) for value in seasonality_source.hourly_factors),
+    )
+    known_component_nu_h, surprise_component_nu_h = (
+        _normalize_runtime_coarse_news_intensity_components(
+            news_materialization=news_materialization,
+            known_news_event_timestamps_utc=known_news_event_timestamps_utc,
+            interval_delta=interval_delta,
+        )
+    )
+
     return _PreparedModelRuntimeFactors(
         calendar_registry=calendar_registry,
         exchange_code=exchange_code,
-        interval_delta=interval_duration_nanos / 3_600_000_000_000.0,
+        interval_delta=interval_delta,
         range_end_utc=range_end_utc,
         kernel_parameters=HawkesKernelParameters.from_mapping(
             _require_payload_mapping(
@@ -784,9 +803,79 @@ def _prepare_model_runtime_factors(
             ),
         ),
         news_process_configuration=news_process_configuration,
-        seasonality_hourly_factors=tuple(float(value) for value in seasonality_source.hourly_factors),
-        known_component_nu_h=tuple(float(value) for value in news_materialization.known_component_nu_h),
-        surprise_component_nu_h=tuple(float(value) for value in news_materialization.surprise_component_nu_h),
+        seasonality_hourly_factors=seasonality_hourly_factors,
+        known_component_nu_h=known_component_nu_h,
+        surprise_component_nu_h=surprise_component_nu_h,
+    )
+
+
+def _gate_runtime_seasonality_to_open_intervals(
+    *,
+    calendar_registry: CalendarRegistry,
+    exchange_code: str,
+    range_start_utc: datetime,
+    interval_duration_nanos: int,
+    seasonality_hourly_factors: tuple[float, ...],
+) -> tuple[float, ...]:
+    interval_duration = timedelta(seconds=interval_duration_nanos / 1_000_000_000)
+    gated_hourly_factors: list[float] = []
+    interval_start_utc = _normalize_runtime_utc_timestamp(
+        range_start_utc,
+        field_name="range_start_utc",
+    )
+
+    for hourly_factor in seasonality_hourly_factors:
+        market_state = calendar_registry.resolve_market_state(
+            exchange_code,
+            interval_start_utc,
+        )
+        gated_hourly_factors.append(
+            hourly_factor if market_state == MarketState.OPEN else 0.0
+        )
+        interval_start_utc += interval_duration
+
+    return tuple(gated_hourly_factors)
+
+
+def _normalize_runtime_coarse_news_intensity_components(
+    *,
+    news_materialization: Any,
+    known_news_event_timestamps_utc: tuple[datetime, ...],
+    interval_delta: float,
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    known_news_event_timestamps_utc_nanos = tuple(
+        datetime_to_utc_nanos(timestamp_utc)
+        for timestamp_utc in known_news_event_timestamps_utc
+    )
+    known_component_nu_h: list[float] = []
+    surprise_component_nu_h: list[float] = []
+
+    for interval_start_utc_nanos, interval_end_utc_nanos, surprise_component_nu_h_value in zip(
+        news_materialization.interval_start_utc_nanos,
+        news_materialization.interval_end_utc_nanos,
+        news_materialization.surprise_component_nu_h,
+        strict=True,
+    ):
+        known_news_event_count = _count_known_news_events_in_interval(
+            known_news_event_timestamps_utc_nanos,
+            int(interval_start_utc_nanos),
+            int(interval_end_utc_nanos),
+        )
+        known_component_nu_h.append(known_news_event_count / interval_delta)
+        surprise_component_nu_h.append(max(float(surprise_component_nu_h_value), 0.0))
+
+    return tuple(known_component_nu_h), tuple(surprise_component_nu_h)
+
+
+def _count_known_news_events_in_interval(
+    known_news_event_timestamps_utc_nanos: tuple[int, ...],
+    interval_start_utc_nanos: int,
+    interval_end_utc_nanos: int,
+) -> int:
+    return sum(
+        1
+        for timestamp_utc_nanos in known_news_event_timestamps_utc_nanos
+        if interval_start_utc_nanos <= timestamp_utc_nanos < interval_end_utc_nanos
     )
 
 
@@ -1694,6 +1783,13 @@ def _build_model_metadata(
         },
         "simulation_output_preferences": {
             "reference_price": reference_price,
+        },
+        "diagnostic_artifacts": {
+            "artifact_bundle_available": staged_response.diagnostic_artifact_bundle is not None,
+            "artifact_families": [
+                reference.artifact_family
+                for reference in staged_response.diagnostic_artifact_references
+            ],
         },
         "input_inference": input_inference,
         "diagnostics": [
