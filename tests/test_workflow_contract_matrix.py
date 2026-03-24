@@ -56,6 +56,7 @@ from janiform.simulation import (
     run_seeded_tick_event_simulation,
     validate_seeded_tick_simulation_response,
 )
+from janiform.simulation.seeded.contracts import build_disabled_seeded_mean_reversion_runtime_inputs
 from tests.calibration_test_support import (
     build_valid_execution_input_model,
     build_valid_execution_input_payload,
@@ -262,7 +263,11 @@ def _build_simulation_direct_response_payload(calendar_registry, tmp_path: Path)
                         "closed_gap_return": 0.0,
                         "total_return": 0.05,
                     },
-                    "cumulative_log_return": 0.05,
+                    "core_total_return_increment": 0.05,
+                    "observed_log_price": 0.05,
+                    "anchor_value": 0.0,
+                    "deviation_from_anchor": 0.05,
+                    "cumulative_core_log_return": 0.05,
                 }
             ],
             "event_tape": [
@@ -270,6 +275,10 @@ def _build_simulation_direct_response_payload(calendar_registry, tmp_path: Path)
                     "event_index": 0,
                     "timestamp_utc_nanos": 100,
                     "side": SeededTickEventSide.BUY.value,
+                    "core_total_return_increment": 0.05,
+                    "observed_log_price": 0.05,
+                    "anchor_value": 0.0,
+                    "deviation_from_anchor": 0.05,
                 }
             ],
         }
@@ -294,6 +303,15 @@ def _build_simulation_boundary_response_payload(calendar_registry, tmp_path: Pat
             materialization_method="explicit_hourly_input.v1",
         ),
     )
+
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_disabled_seeded_mean_reversion_runtime_inputs(
+        hourly_factor_contract=hourly_factor_contract
+    )
+
     request = SeededTickSimulationRequest.from_runtime_inputs(
         seed=17,
         start_time_utc=start_time_utc,
@@ -339,6 +357,9 @@ def _build_simulation_boundary_response_payload(calendar_registry, tmp_path: Pat
         ),
         initial_excitation_state=_valid_excitation_state(),
         hourly_factor_contract=hourly_factor_contract,
+        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
     )
 
     return run_seeded_tick_event_simulation(request).to_payload()
@@ -501,7 +522,11 @@ def _run_simulation_invalid_response_side(calendar_registry) -> None:
                         "closed_gap_return": 0.0,
                         "total_return": 0.05,
                     },
-                    "cumulative_log_return": 0.05,
+                    "core_total_return_increment": 0.05,
+                    "observed_log_price": 0.05,
+                    "anchor_value": 0.0,
+                    "deviation_from_anchor": 0.05,
+                    "cumulative_core_log_return": 0.05,
                 }
             ],
         }

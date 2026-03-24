@@ -17,10 +17,11 @@ use janiform_calibration_artifacts::{
     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CalibrationExecutionMode,
     CalibrationOptimizerSettings, CalibrationRunSpec, CalibrationStage,
-    CalibrationStageHandoffTransport, MeanReversionFittedParameters,
-    ReturnComponentsStageFittedParameters, SurpriseNewsDeterministicIntensityProfile,
-    resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
+    CalibrationStageHandoffTransport, ReturnComponentsStageFittedParameters,
+    SurpriseNewsDeterministicIntensityProfile, resolve_calibration_stage_seed_metadata,
+    stage_solver_settings_for_stage,
 };
+use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
 use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
@@ -2548,7 +2549,7 @@ fn build_return_components_stage_failure_report(
 #[cfg(test)]
 mod tests {
     use chrono::{TimeZone, Utc};
-    use janiform_calibration_artifacts::MeanReversionFittedParameters;
+    use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
     use janiform_model_kernels::news::{
         DoubleExponentialBaseShockConfiguration, GammaSeverityMarkConfiguration,
     };

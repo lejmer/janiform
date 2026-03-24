@@ -116,19 +116,16 @@ impl MeanReversionAnchorModel {
                     );
                 }
 
-                let source_alignment_policy =
-                    self.source_alignment_policy.as_ref().ok_or(
-                        MeanReversionAnchorModelValidationError::MissingFieldForAnchorModelKind {
-                            anchor_model_kind: self.anchor_model_kind,
-                            field: "source_alignment_policy",
-                        },
-                    )?;
+                let source_alignment_policy = self.source_alignment_policy.as_ref().ok_or(
+                    MeanReversionAnchorModelValidationError::MissingFieldForAnchorModelKind {
+                        anchor_model_kind: self.anchor_model_kind,
+                        field: "source_alignment_policy",
+                    },
+                )?;
                 if source_alignment_policy.trim().is_empty() {
-                    return Err(
-                        MeanReversionAnchorModelValidationError::EmptyStringField {
-                            field: "source_alignment_policy",
-                        },
-                    );
+                    return Err(MeanReversionAnchorModelValidationError::EmptyStringField {
+                        field: "source_alignment_policy",
+                    });
                 }
 
                 if self.source_interval_start_utc_nanos.is_empty() {
@@ -178,8 +175,7 @@ impl MeanReversionAnchorModel {
 
                 let mut previous_interval_end_utc_nanos: Option<i64> = None;
                 for interval_index in 0..expected_length {
-                    let interval_start_utc_nanos =
-                        self.source_interval_start_utc_nanos[interval_index];
+                    let interval_start_utc_nanos = self.source_interval_start_utc_nanos[interval_index];
 
                     let interval_end_utc_nanos = self.source_interval_end_utc_nanos[interval_index];
                     if interval_end_utc_nanos <= interval_start_utc_nanos {
@@ -192,28 +188,25 @@ impl MeanReversionAnchorModel {
                         );
                     }
 
-                    if let Some(previous_end_utc_nanos) = previous_interval_end_utc_nanos {
-                        if interval_start_utc_nanos < previous_end_utc_nanos {
-                            return Err(
-                                MeanReversionAnchorModelValidationError::OverlappingIntervalBoundary {
-                                    interval_index,
-                                    previous_end_utc_nanos,
-                                    start_utc_nanos: interval_start_utc_nanos,
-                                },
-                            );
-                        }
+                    if let Some(previous_end_utc_nanos) = previous_interval_end_utc_nanos
+                        && interval_start_utc_nanos < previous_end_utc_nanos
+                    {
+                        return Err(
+                            MeanReversionAnchorModelValidationError::OverlappingIntervalBoundary {
+                                interval_index,
+                                previous_end_utc_nanos,
+                                start_utc_nanos: interval_start_utc_nanos,
+                            },
+                        );
                     }
 
-                    validate_finite_number(
-                        self.anchor_values[interval_index],
-                        "anchor_values",
-                    )
-                    .map_err(|source| {
-                        MeanReversionAnchorModelValidationError::NonFiniteField {
-                            field: source.field,
-                            value: source.value,
-                        }
-                    })?;
+                    validate_finite_number(self.anchor_values[interval_index], "anchor_values")
+                        .map_err(|source| {
+                            MeanReversionAnchorModelValidationError::NonFiniteField {
+                                field: source.field,
+                                value: source.value,
+                            }
+                        })?;
 
                     previous_interval_end_utc_nanos = Some(interval_end_utc_nanos);
                 }
@@ -314,13 +307,11 @@ impl MeanReversionRuntimeIntervalAnchors {
 
         let expected_length = self.end_anchor_values.len();
         if self.interval_deltas.len() != expected_length {
-            return Err(
-                MeanReversionRuntimeIntervalAnchorsValidationError::LengthMismatch {
-                    expected: expected_length,
-                    found: self.interval_deltas.len(),
-                    field: "interval_deltas",
-                },
-            );
+            return Err(MeanReversionRuntimeIntervalAnchorsValidationError::LengthMismatch {
+                expected: expected_length,
+                found: self.interval_deltas.len(),
+                field: "interval_deltas",
+            });
         }
 
         for (interval_index, anchor_value) in self.end_anchor_values.iter().enumerate() {
@@ -462,10 +453,7 @@ impl Display for MeanReversionAnchorModelValidationError {
                 field,
                 expected,
                 found,
-            } => write!(
-                formatter,
-                "{field} must contain {expected} values, found {found}"
-            ),
+            } => write!(formatter, "{field} must contain {expected} values, found {found}"),
             Self::InvalidIntervalBoundary {
                 interval_index,
                 start_utc_nanos,
@@ -540,10 +528,7 @@ impl Display for MeanReversionRuntimeIntervalAnchorsValidationError {
                 field,
                 expected,
                 found,
-            } => write!(
-                formatter,
-                "{field} must contain {expected} values, found {found}"
-            ),
+            } => write!(formatter, "{field} must contain {expected} values, found {found}"),
             Self::InvalidIntervalDelta {
                 interval_index,
                 value,

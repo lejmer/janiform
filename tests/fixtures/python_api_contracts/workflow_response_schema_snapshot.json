@@ -1215,8 +1215,20 @@
           "item_profiles": [
             {
               "fields": {
+                "anchor_value": {
+                  "type": "float"
+                },
+                "core_total_return_increment": {
+                  "type": "float"
+                },
+                "deviation_from_anchor": {
+                  "type": "float"
+                },
                 "event_index": {
                   "type": "int"
+                },
+                "observed_log_price": {
+                  "type": "float"
                 },
                 "side": {
                   "type": "string"
@@ -1274,7 +1286,16 @@
           "item_profiles": [
             {
               "fields": {
-                "cumulative_log_return": {
+                "anchor_value": {
+                  "type": "float"
+                },
+                "core_total_return_increment": {
+                  "type": "float"
+                },
+                "cumulative_core_log_return": {
+                  "type": "float"
+                },
+                "deviation_from_anchor": {
                   "type": "float"
                 },
                 "market_state": {
@@ -1282,6 +1303,9 @@
                 },
                 "news_arrival_component": {
                   "type": "null"
+                },
+                "observed_log_price": {
+                  "type": "float"
                 },
                 "return_components": {
                   "fields": {
@@ -1326,7 +1350,16 @@
             },
             {
               "fields": {
-                "cumulative_log_return": {
+                "anchor_value": {
+                  "type": "float"
+                },
+                "core_total_return_increment": {
+                  "type": "float"
+                },
+                "cumulative_core_log_return": {
+                  "type": "float"
+                },
+                "deviation_from_anchor": {
                   "type": "float"
                 },
                 "market_state": {
@@ -1334,6 +1367,9 @@
                 },
                 "news_arrival_component": {
                   "type": "null"
+                },
+                "observed_log_price": {
+                  "type": "float"
                 },
                 "return_components": {
                   "fields": {
@@ -1468,8 +1504,20 @@
           "item_profiles": [
             {
               "fields": {
+                "anchor_value": {
+                  "type": "float"
+                },
+                "core_total_return_increment": {
+                  "type": "float"
+                },
+                "deviation_from_anchor": {
+                  "type": "float"
+                },
                 "event_index": {
                   "type": "int"
+                },
+                "observed_log_price": {
+                  "type": "float"
                 },
                 "side": {
                   "type": "string"
@@ -1527,7 +1575,16 @@
           "item_profiles": [
             {
               "fields": {
-                "cumulative_log_return": {
+                "anchor_value": {
+                  "type": "float"
+                },
+                "core_total_return_increment": {
+                  "type": "float"
+                },
+                "cumulative_core_log_return": {
+                  "type": "float"
+                },
+                "deviation_from_anchor": {
                   "type": "float"
                 },
                 "market_state": {
@@ -1535,6 +1592,9 @@
                 },
                 "news_arrival_component": {
                   "type": "null"
+                },
+                "observed_log_price": {
+                  "type": "float"
                 },
                 "return_components": {
                   "fields": {

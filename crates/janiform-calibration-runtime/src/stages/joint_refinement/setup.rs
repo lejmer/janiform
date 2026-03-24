@@ -1,8 +1,9 @@
 use chrono::{DateTime, Datelike, Duration, Timelike, Utc};
 use janiform_engine_simulation::{
-    SeededTickEventStateSnapshotCapture, SeededTickSimulationModelInputs,
-    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
-    run_seeded_tick_event_simulation,
+    MeanReversionBoundaryState, MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors, SeededTickEventStateSnapshotCapture,
+    SeededTickSimulationModelInputs, SeededTickSimulationRunConfig,
+    SeededTickSimulationRunOptions, run_seeded_tick_event_simulation,
 };
 use janiform_market_time::hourly_factors::{
     HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
@@ -46,7 +47,7 @@ use super::execution::{
 };
 use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, JointRefinementStageFittedParameters,
-    MeanReversionFittedParameters, ReturnComponentsStageFittedParameters,
+    ReturnComponentsStageFittedParameters,
 };
 
 pub(super) fn parameter_vector_to_fitted_parameters(
@@ -951,6 +952,21 @@ pub(super) fn build_seed_summary_for_candidate_seed(
                     y_minus_plus: 0.0,
                     y_minus_minus: 0.0,
                 },
+                mean_reversion_fitted_parameters: MeanReversionFittedParameters::disabled(),
+                mean_reversion_runtime_interval_anchors:
+                    MeanReversionRuntimeIntervalAnchors::try_new(
+                        hourly_factor_contract.metadata.interval_alignment_policy,
+                        0.0,
+                        vec![0.0; context.observed_data.hourly_simulation_interval_count],
+                        vec![
+                            hourly_factor_contract.interval_duration_nanos as f64
+                                / JOINT_REFINEMENT_ONE_HOUR_NANOS as f64;
+                            context.observed_data.hourly_simulation_interval_count
+                        ],
+                    )
+                    .ok()?,
+                initial_mean_reversion_boundary_state:
+                    MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0).ok()?,
                 hourly_factor_contract,
                 calendar_registry: calendar_registry.clone(),
             },

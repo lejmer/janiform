@@ -42,6 +42,7 @@ from .coarse import (
     validate_coarse_simulation_run_request,
 )
 from .seeded import (
+    build_disabled_seeded_mean_reversion_runtime_inputs,
     HawkesExcitationState,
     HawkesKernelLoadings,
     HawkesKernelParameters,
@@ -101,6 +102,7 @@ __all__ = [
     "HawkesExcitationState",
     "HawkesKernelLoadings",
     "HawkesKernelParameters",
+    "build_disabled_seeded_mean_reversion_runtime_inputs",
     "MeanReversionAnchorModel",
     "MeanReversionAnchorModelKind",
     "MeanReversionBoundaryState",

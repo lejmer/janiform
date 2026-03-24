@@ -1080,12 +1080,12 @@ def test_persist_seeded_tick_simulation_preserves_non_trade_fine_path_rows() -> 
         fine_path=(
             SimpleNamespace(
                 timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
-                cumulative_log_return=0.10,
+                observed_log_price=0.10,
                 side=SeededTickEventSide.BUY,
             ),
             SimpleNamespace(
                 timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 15, tzinfo=UTC)),
-                cumulative_log_return=0.12,
+                observed_log_price=0.12,
                 side=None,
             ),
         )
@@ -1220,12 +1220,12 @@ def test_high_level_seeded_simulation_result_exports_full_fine_path_to_tabular_s
             fine_path=(
                 SimpleNamespace(
                     timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
-                    cumulative_log_return=0.10,
+                    observed_log_price=0.10,
                     side=SeededTickEventSide.BUY,
                 ),
                 SimpleNamespace(
                     timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 15, tzinfo=UTC)),
-                    cumulative_log_return=0.12,
+                    observed_log_price=0.12,
                     side=None,
                 ),
             )

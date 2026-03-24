@@ -600,7 +600,19 @@ class SeededFinePathChunkColumns:
     def total_return(self) -> list[float]: ...
 
     @property
-    def cumulative_log_return(self) -> list[float]: ...
+    def core_total_return_increment(self) -> list[float]: ...
+
+    @property
+    def observed_log_price(self) -> list[float]: ...
+
+    @property
+    def anchor_value(self) -> list[float]: ...
+
+    @property
+    def deviation_from_anchor(self) -> list[float]: ...
+
+    @property
+    def cumulative_core_log_return(self) -> list[float]: ...
 
     @property
     def state_snapshot_y_plus_plus(self) -> list[float | None]: ...
@@ -633,6 +645,18 @@ class SeededTickEventTapeChunkColumns:
 
     @property
     def side(self) -> list[str]: ...
+
+    @property
+    def core_total_return_increment(self) -> list[float]: ...
+
+    @property
+    def observed_log_price(self) -> list[float]: ...
+
+    @property
+    def anchor_value(self) -> list[float]: ...
+
+    @property
+    def deviation_from_anchor(self) -> list[float]: ...
 
     @property
     def state_snapshot_y_plus_plus(self) -> list[float | None]: ...
@@ -928,6 +952,9 @@ def run_seeded_tick_event_simulation(
     initial_excitation_state: object,
     hourly_factor_contract: HourlyFactorContractResult,
     news_process_configuration: object,
+    mean_reversion_fitted_parameters: object,
+    mean_reversion_runtime_interval_anchors: object,
+    initial_mean_reversion_boundary_state: object,
     *,
     debug_trace_enabled: bool = False,
     sample_every_nth_transition: int = 1,
