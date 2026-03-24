@@ -1,10 +1,32 @@
 mod support;
 use support::shared::{
-    Utc, build_calibration_stage_parameter_artifact, build_joint_refinement_stage_success_report,
-    build_run_contract_with_mode_and_resume, build_validation_metric_artifact_fixture,
+    CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION,
+    CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION,
+    CalibrationArtifactManifest, CalibrationArtifactManifestMetricStatus,
+    CalibrationArtifactManifestMetricStatusCount, CalibrationArtifactRunPreparationMode,
+    CalibrationArtifactRunWriter, CalibrationExecutionMode,
+    CalibrationExperimentIndexLookupRequest, CalibrationStageParameterArtifact,
+    CalibrationStagedRunStageReport, CalibrationValidationMetricArtifact,
+    CalibrationValidationMetricArtifactRole::Diagnostics,
+    CalibrationValidationMetricStageOutputLink, CalibrationValidationMetricStatus,
+    HawkesStageExecutionInput, ReturnComponentsStageExecutionInput, SeasonalityStageExecutionInput,
+    TimeZone, Utc, build_calibration_artifact_manifest,
+    build_calibration_dataset_snapshot_artifact, build_calibration_stage_parameter_artifact,
+    build_joint_refinement_stage_success_report, build_run_contract_with_mode_and_resume,
+    build_validation_metric_artifact_fixture, calibration_experiment_index_path_for_root,
     calibration_stage_test_registry, calibration_stage_timestamp_fixture, fs,
-    hawkes_stage_candidate_fixture, return_components_stage_candidate_generation_fixture,
-    temporary_checkpoint_directory, utc_nanos,
+    hawkes_stage_candidate_fixture, load_calibration_experiment_index_from_disk,
+    lookup_calibration_experiment_index_records,
+    persist_calibration_artifact_manifest_to_disk,
+    persist_calibration_artifact_manifest_to_run_directory,
+    persist_calibration_dataset_snapshot_artifact_to_run_directory,
+    persist_calibration_stage_parameter_artifact_to_run_directory,
+    persist_calibration_validation_metric_artifact_to_disk,
+    rebuild_calibration_experiment_index_from_disk,
+    return_components_stage_candidate_generation_fixture,
+    run_hawkes_calibration_stage, run_return_components_calibration_stage,
+    run_seasonality_calibration_stage, temporary_checkpoint_directory,
+    update_calibration_experiment_index_for_run, utc_nanos,
 };
 
 #[test]
@@ -424,7 +446,7 @@ fn build_diagnostics_artifact(
 
     CalibrationValidationMetricArtifact::try_new(
         run_id,
-        CalibrationValidationMetricArtifactRole::Diagnostics,
+        Diagnostics,
         stage_parameter_artifacts
             .iter()
             .map(|artifact| CalibrationValidationMetricStageOutputLink {

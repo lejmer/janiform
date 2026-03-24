@@ -4,7 +4,7 @@ use serde_json::Value;
 
 mod support;
 use support::shared::{
-    PathBuf, Utc, assert_hawkes_fitted_parameters_match,
+    PathBuf, TimeZone, Utc, assert_hawkes_fitted_parameters_match,
     assert_joint_refinement_fitted_parameters_match,
     assert_joint_refinement_objective_breakdown_matches,
     assert_joint_refinement_optimizer_diagnostics_matches, assert_optimizer_state_matches,
@@ -21,7 +21,7 @@ use janiform_calibration_artifacts::{
     CalibrationExecutionMode, CalibrationStage, CalibrationStageParameterArtifact,
     CalibrationStageParameterPayload, CalibrationValidationMetricArtifact,
     CalibrationValidationMetricArtifactRole, build_calibration_artifact_manifest,
-    build_calibration_dataset_snapshot_artifact, build_calibration_stage_parameter_artifact,
+    build_calibration_dataset_snapshot_artifact,
     calibration_artifact_manifest_path, calibration_stage_parameter_artifact_path,
     persist_calibration_artifact_manifest_to_disk,
     persist_calibration_dataset_snapshot_artifact_to_disk,

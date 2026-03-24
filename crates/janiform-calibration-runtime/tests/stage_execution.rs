@@ -1,5 +1,17 @@
 mod support;
 use support::shared::{
+    CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
+    CALIBRATION_RETURN_COMPONENTS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
+    CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION,
+    CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
+    CalibrationExecutionMode, CalibrationRunSeedSettings, CalibrationRunSpec,
+    CalibrationStage, CalibrationStageExecutionStatus, CalibrationStageSeedOverride,
+    CalibrationStageSolverSettings, HawkesStageExecutionFailure,
+    HawkesStageExecutionInput, JointRefinementStageExecutionInput,
+    JointRefinementStageHawkesInput, JointRefinementStageReturnComponentsInput,
+    JointRefinementStageSeasonalityFactorsInput, ReturnComponentsStageActivityInput,
+    ReturnComponentsStageExecutionFailure, ReturnComponentsStageExecutionInput,
+    SeasonalityStageExecutionFailure, SeasonalityStageExecutionInput,
     HawkesKernelValidationStatus, HawkesStructuredAlphaParameterization, build_data_inputs,
     build_hawkes_stage_run_spec, build_hawkes_stage_success_payload,
     build_return_components_stage_pipeline_run_spec,
@@ -8,7 +20,10 @@ use support::shared::{
     build_solver_settings, calibration_stage_test_registry,
     calibration_stage_timestamp_fixture, hawkes_stage_candidate_fixture,
     hawkes_stage_constraint_violating_candidate_fixture,
-    return_components_stage_candidate_generation_fixture, timestamp_input_record,
+    return_components_stage_candidate_generation_fixture,
+    run_hawkes_calibration_stage, run_joint_refinement_calibration_stage,
+    run_return_components_calibration_stage, run_seasonality_calibration_stage,
+    timestamp_input_record,
 };
 
 #[test]
@@ -502,7 +517,7 @@ fn hawkes_stage_refines_seasonality_scaled_supercritical_candidates_to_stable_ou
         original_candidate
             .warnings
             .iter()
-            .any(|warning| { warning.contains("effective branching ratio") })
+            .any(|warning: &String| warning.contains("effective branching ratio"))
     );
     assert_eq!(selected_candidate.constraint_violation_count, 0);
     assert!(
@@ -575,7 +590,7 @@ fn hawkes_stage_refines_supercritical_candidates_under_unobserved_runtime_envelo
         original_candidate
             .warnings
             .iter()
-            .any(|warning| { warning.contains("effective branching ratio") })
+            .any(|warning: &String| warning.contains("effective branching ratio"))
     );
     assert_eq!(selected_candidate.constraint_violation_count, 0);
     assert!(
@@ -668,9 +683,9 @@ fn hawkes_stage_objective_terms_change_with_candidate_implied_metrics() {
         (high_loss.implied_metrics.runtime_effective_branching_margin
             - (1.0
                 - high_loss
-                    .implied_metrics
-                    .max_runtime_effective_branching_ratio)
-                .max(0.0))
+                .implied_metrics
+                .max_runtime_effective_branching_ratio)
+                .max(0.0_f64))
         .abs()
             < 1.0e-12
     );
@@ -714,7 +729,7 @@ fn hawkes_stage_surfaces_unrealistic_implied_event_volume_warnings() {
         candidate
             .warnings
             .iter()
-            .any(|warning| warning.contains("observation window"))
+            .any(|warning: &String| warning.contains("observation window"))
     );
     assert!(
         candidate
