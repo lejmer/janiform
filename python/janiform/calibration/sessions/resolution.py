@@ -7,7 +7,7 @@ from .contracts import (
     MarketDataSessionRegularWindow,
     _session_resolution_error,
 )
-from ..._contracts import serialize_deterministic_json
+from ...contracts import serialize_deterministic_json
 
 
 _TRADING_WEEKDAYS: tuple[str, ...] = (

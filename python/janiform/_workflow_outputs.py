@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Optional, Protocol, cast
 import pyarrow as pyarrow
 from pyarrow import parquet
 
-from ._contracts import serialize_pretty_json
+from .contracts import serialize_pretty_json
 from .calibration.fit.report import JaniformFitReport
 from .calendar import CalendarRegistry, MarketState
 from .pricing import VanillaOptionPricingRunResult

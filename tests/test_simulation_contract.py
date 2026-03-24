@@ -12,6 +12,8 @@ from janiform.simulation import (
     HawkesKernelLoadings,
     HawkesKernelParameters,
     KnownNewsArrivalConfiguration,
+    MeanReversionBoundaryState,
+    MeanReversionRuntimeIntervalAnchors,
     NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration,
     NewsProcessConfiguration,
@@ -94,6 +96,32 @@ def test_simulation_response_roundtrip_serialization_is_deterministic() -> None:
 
     assert deserialized_response == validated_response
     assert json.loads(serialized_response)["event_tape"][0]["side"] == "buy"
+
+
+def test_mean_reversion_runtime_interval_anchors_roundtrip_serialization_is_deterministic() -> None:
+    interval_anchors = MeanReversionRuntimeIntervalAnchors(
+        interval_alignment_policy="explicit_runtime_interval_grid_alignment.v1",
+        start_anchor_value=4.2,
+        end_anchor_values=(4.1, 4.0),
+        interval_deltas=(1.0, 1.0),
+    )
+
+    serialized = interval_anchors.to_json()
+    deserialized = MeanReversionRuntimeIntervalAnchors.from_mapping(json.loads(serialized))
+
+    assert deserialized == interval_anchors
+
+
+def test_mean_reversion_boundary_state_rejects_observed_anchor_invariant_drift() -> None:
+    with pytest.raises(
+        ValueError,
+        match="deviation: must equal observed_log_price - anchor_value",
+    ):
+        MeanReversionBoundaryState(
+            observed_log_price=5.0,
+            anchor_value=1.5,
+            deviation=3.7,
+        )
 
 
 def test_simulation_response_rejects_invalid_side_with_structured_error() -> None:

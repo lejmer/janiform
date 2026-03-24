@@ -43,6 +43,15 @@ from janiform.calibration.staged import (
 from janiform.pricing import GammaSeverityMarkConfiguration
 
 
+def build_disabled_mean_reversion_fitted_parameters_payload() -> dict[str, Any]:
+    return {
+        "kappa": 0.0,
+        "anchor_model": {
+            "anchor_model_kind": "disabled",
+        },
+    }
+
+
 def build_valid_execution_input_model(
     *,
     execution_mode: CalibrationExecutionMode = CalibrationExecutionMode.MEMORY,

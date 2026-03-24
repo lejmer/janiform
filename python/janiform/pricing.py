@@ -5,7 +5,7 @@ from types import ModuleType
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
-from ._contracts import (
+from .contracts import (
     ContractModel,
     ValidationErrorFactory,
     parse_json_object,

@@ -14,7 +14,11 @@ from pyarrow import parquet
 import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.calibration.fit.model as fit_model_module
 import janiform.calibration.market_data.ingestion as market_data_ingestion_module
-from janiform.calibration import CalibrationValidationError
+from janiform.calibration import (
+    CalibrationValidationError,
+    MeanReversionAnchorModel,
+    MeanReversionFittedParameters,
+)
 from janiform._timestamps import datetime_to_utc_nanos
 from janiform.calibration.fit import (
     JaniformEstimator,
@@ -33,6 +37,7 @@ from janiform.calibration.market_data import (
 from janiform.calibration.staged import StagedCalibrationResponse, validate_staged_calibration_response
 from janiform.calendar import CalendarRegistry, MarketState
 from janiform.simulation import SeededTickEventSide
+from tests.calibration_test_support import build_disabled_mean_reversion_fitted_parameters_payload
 
 
 def test_janiform_estimator_fit_returns_model_for_default_high_level_workflow(
@@ -457,10 +462,71 @@ def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_metada
     assert loaded_model.summary() == model.summary()
     assert "execution_input" not in persisted_payload
     assert "stage_report_payloads" not in persisted_payload
+    assert (
+        persisted_payload["parameters"]["return_components"]["fitted_parameters"][
+            "mean_reversion_fitted_parameters"
+        ]
+        == build_disabled_mean_reversion_fitted_parameters_payload()
+    )
     assert "timestamp_utc_nanos" not in persisted_payload["parameters"]["seasonality"]
     assert "normalized_combined_factor_by_event" not in persisted_payload["parameters"]["seasonality"]
     assert first_path.read_text(encoding="utf-8").startswith("{\n  ")
     assert first_path.read_text(encoding="utf-8") == second_path.read_text(encoding="utf-8")
+
+
+def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_mean_reversion_block(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-mean-reversion-roundtrip",
+    )
+
+    mean_reversion_payload = MeanReversionFittedParameters(
+        kappa=0.25,
+        anchor_model=MeanReversionAnchorModel.deterministic_interval_grid(
+            source_interval_start_utc_nanos=(10, 20),
+            source_interval_end_utc_nanos=(20, 30),
+            anchor_values=(4.2, 4.1),
+            source_alignment_policy="piecewise_constant_utc_interval_grid.v1",
+        ),
+    ).to_payload()
+
+    model.parameters["return_components"]["fitted_parameters"][
+        "mean_reversion_fitted_parameters"
+    ] = mean_reversion_payload
+    model.parameters["joint_refinement"]["fitted_parameters"]["return_components_fitted_parameters"][
+        "mean_reversion_fitted_parameters"
+    ] = mean_reversion_payload
+    model.parameters["joint_refinement"]["baseline_return_components_fitted_parameters"][
+        "mean_reversion_fitted_parameters"
+    ] = mean_reversion_payload
+
+    persisted_model_path = tmp_path / "model-mean-reversion.json"
+
+    model.save(persisted_model_path)
+    loaded_model = JaniformModel.load(persisted_model_path)
+
+    assert (
+        loaded_model.parameters["return_components"]["fitted_parameters"][
+            "mean_reversion_fitted_parameters"
+        ]
+        == mean_reversion_payload
+    )
+    assert (
+        loaded_model.parameters["joint_refinement"]["fitted_parameters"][
+            "return_components_fitted_parameters"
+        ]["mean_reversion_fitted_parameters"]
+        == mean_reversion_payload
+    )
+    assert (
+        loaded_model.parameters["joint_refinement"]["baseline_return_components_fitted_parameters"][
+            "mean_reversion_fitted_parameters"
+        ]
+        == mean_reversion_payload
+    )
 
 
 def test_loaded_high_level_model_runtime_seasonality_prefers_compact_parameters(
@@ -472,7 +538,9 @@ def test_loaded_high_level_model_runtime_seasonality_prefers_compact_parameters(
         monkeypatch,
         run_id="high-level-model-native-seasonality",
     )
+
     persisted_model_path = tmp_path / "model.json"
+
     model.save(persisted_model_path)
     loaded_model = JaniformModel.load(persisted_model_path)
 
@@ -536,8 +604,10 @@ def test_loaded_high_level_model_runtime_seasonality_infers_intraday_bin_width(
         run_id="high-level-model-infer-seasonality-bin-width",
     )
     persisted_model_path = tmp_path / "model.json"
+
     model.save(persisted_model_path)
     loaded_model = JaniformModel.load(persisted_model_path)
+
     loaded_model.parameters["seasonality"] = {
         **loaded_model.parameters["seasonality"],
         "intraday_minutes_per_bin": None,
@@ -579,9 +649,12 @@ def test_loaded_high_level_model_runtime_seasonality_requires_structural_paramet
         monkeypatch,
         run_id="high-level-model-structural-seasonality-required",
     )
+
     persisted_model_path = tmp_path / "missing-structural-seasonality-model.json"
+
     model.save(persisted_model_path)
     loaded_model = JaniformModel.load(persisted_model_path)
+
     loaded_model.parameters["seasonality"] = {
         "schema_version": loaded_model.parameters["seasonality"]["schema_version"],
         "exchange_code": loaded_model.parameters["seasonality"]["exchange_code"],
@@ -662,10 +735,12 @@ def test_high_level_model_simulate_dispatches_by_interval_mode(
         monkeypatch,
         run_id="high-level-model-simulate",
     )
+
     prepared_inputs = fit_model_module._PreparedModelSimulationInputs(
         coarse_request=object(),
         seeded_request=object(),
     )
+
     captured_calls: list[tuple[str, Any]] = []
     coarse_result = object()
     tick_result = object()
@@ -1774,6 +1849,7 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "exposure_weighted_mean_one_over_source_window.v1"
                             ),
                         },
+                        "mean_reversion_fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
                     },
                 },
             },
@@ -1876,6 +1952,7 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                     "exposure_weighted_mean_one_over_source_window.v1"
                                 ),
                             },
+                            "mean_reversion_fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
                         },
                     },
                     "baseline_hawkes_fitted_parameters": {
@@ -1966,6 +2043,7 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "exposure_weighted_mean_one_over_source_window.v1"
                             ),
                         },
+                        "mean_reversion_fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
                     },
                     "objective_breakdown": {
                         "aggregated_likelihood_fit": 1.0,

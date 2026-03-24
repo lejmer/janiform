@@ -7,7 +7,7 @@ from pyarrow import parquet
 
 from .contracts import CalibrationInputFileFormat, CalibrationInputFileReference
 from .._errors import _calibration_error
-from ..._contracts import ContractModel
+from ...contracts import ContractModel
 
 
 CALIBRATION_MARKET_DATA_INGESTION_ERROR_ID = "calibration.validation.market_data_ingestion"

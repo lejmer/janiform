@@ -8,7 +8,7 @@ from ..sessions.contracts import (
     MarketDataSessionRecurringClosedWindow,
     MarketDataSessionRegularWindow,
 )
-from ..._contracts import (
+from ...contracts import (
     ContractModel,
     parse_json_object,
     require_datetime_utc,

@@ -7,7 +7,7 @@ from ..shared.errors import (
     _simulation_error,
     _simulation_integration_error,
 )
-from ..._contracts import (
+from ...contracts import (
     ContractModel,
     require_mapping,
     require_non_negative_finite_number,

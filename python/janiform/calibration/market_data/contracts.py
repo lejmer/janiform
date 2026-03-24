@@ -12,7 +12,7 @@ from ..staged.contracts import (
     CalibrationExecutionMode,
     _parse_calibration_execution_mode,
 )
-from ..._contracts import (
+from ...contracts import (
     ContractModel,
     require_mapping,
     require_non_empty_string,

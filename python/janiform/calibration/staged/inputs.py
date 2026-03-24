@@ -9,7 +9,7 @@ from .contracts import (
     CalibrationTradeSign,
 )
 from .._errors import CALIBRATION_ERROR_FACTORY, _calibration_error, _require_bool
-from ..._contracts import (
+from ...contracts import (
     ContractModel,
     parse_json_object,
     require_finite_number,

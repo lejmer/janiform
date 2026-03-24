@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "67bbbd9a213f54cd2f3ca4ae9c773f86c579203cf6a30b92ee4a300e7eca58f5",
+  "approved_snapshot_sha256": "844122adb0c484b0b1a54251014e558fecb257fb7f3895e7d3e81a5253998549",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -482,6 +482,33 @@
       "rationale": "Promoted `_run_staged_calibration_with_raw_payload_and_events` to the public API since it may be useful for developers to have access to it.",
       "snapshot_sha256": "67bbbd9a213f54cd2f3ca4ae9c773f86c579203cf6a30b92ee4a300e7eca58f5",
       "summary": "Approve the promotion of `_run_staged_calibration_with_raw_payload_and_events` to the public API, removing the underscore from the name at the same time."
+    },
+    {
+      "approved_on": "2026-03-24",
+      "docs_updated": [
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "The anchor-deviation rollout adds canonical mean-reversion model and runtime contracts that are re-exported through janiform.calibration and janiform.simulation, so the approved Python snapshot must record the new public symbols without inventing ad hoc anchor payloads in later workflow layers.",
+      "snapshot_sha256": "6a4f5d07d27442a96372bafdddf8734f5442e8a6ae4f933b40adddde24f7a168",
+      "summary": "Approve the canonical public mean-reversion contracts for calibration and simulation."
+    },
+    {
+      "approved_on": "2026-03-24",
+      "docs_updated": [
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "Mean-reversion is now a supported shared domain module instead of a private underscore-backed implementation shard, so the approved snapshot must record janiform.mean_reversion as the ownership path while keeping the curated calibration and simulation re-exports intact.",
+      "snapshot_sha256": "d47b2a14bdd99c92f307c364b415674115e6a4b40634a53b0eb6f14f326a79a7",
+      "summary": "Approve janiform.mean_reversion as the canonical ownership path for mean-reversion contracts."
+    },
+    {
+      "approved_on": "2026-03-24",
+      "docs_updated": [
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "The shared contract namespace now lives under one public janiform.contracts package, replacing both the private underscore helper module and the short-lived janiform.mean_reversion surface, so the approved snapshot must record that single canonical contract import path and its exported validation primitives.",
+      "snapshot_sha256": "844122adb0c484b0b1a54251014e558fecb257fb7f3895e7d3e81a5253998549",
+      "summary": "Approve janiform.contracts as the single public contract namespace."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_2",

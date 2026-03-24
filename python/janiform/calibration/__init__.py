@@ -1,3 +1,8 @@
+from ..contracts import (
+    MeanReversionAnchorModel,
+    MeanReversionAnchorModelKind,
+    MeanReversionFittedParameters,
+)
 from ._errors import CalibrationValidationError, CalibrationValidationFailure
 from .fit import JaniformEstimator, JaniformFitReport, JaniformModel, JaniformSimulationResult
 from .market_data import (
@@ -84,6 +89,9 @@ __all__ = [
     "MarketDataSessionRegularWindow",
     "MarketDataSessionResolution",
     "MarketProfileReference",
+    "MeanReversionAnchorModel",
+    "MeanReversionAnchorModelKind",
+    "MeanReversionFittedParameters",
     "PresetCategory",
     "PresetReferenceUsageMode",
     "PresetRegistry",

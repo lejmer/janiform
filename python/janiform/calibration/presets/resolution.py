@@ -30,7 +30,7 @@ from .registry import (
 )
 from .._errors import _calibration_error
 from ..sessions.contracts import MarketDataSessionResolution
-from ..._contracts import ContractModel
+from ...contracts import ContractModel
 
 DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME = "none"
 RESOLVED_PRESET_WORKFLOW_CONFIGURATION_SCHEMA_VERSION = (

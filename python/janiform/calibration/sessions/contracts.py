@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from ..._contracts import ContractModel, require_non_empty_string
+from ...contracts import ContractModel, require_non_empty_string
 from .._errors import _calibration_error
 
 

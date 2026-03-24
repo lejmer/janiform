@@ -16,7 +16,7 @@ from .contracts import (
     validate_tick_price_input_policy,
 )
 from .._errors import CALIBRATION_ERROR_FACTORY, _calibration_error
-from ..._contracts import (
+from ...contracts import (
     ContractModel,
     parse_json_object,
     require_mapping,

@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
-from ._contracts import (
+from .contracts import (
     ContractModel,
     ValidationErrorFactory,
     parse_json_object,
@@ -532,7 +532,7 @@ def require_positive_or_negative_impl(raw_payload: dict[str, Any], field_name: s
 
 
 def require_positive_or_negative_number(raw_payload: dict[str, Any], field_name: str, field_path: str) -> float:
-    from ._contracts import require_finite_number
+    from .contracts import require_finite_number
 
     return require_finite_number(raw_payload, field_name, field_path, RISK_ERROR_FACTORY)
 
