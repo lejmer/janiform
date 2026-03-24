@@ -4427,7 +4427,8 @@
     },
     "janiform.calibration.staged.runtime": {
       "exports": [
-        "run_staged_calibration"
+        "run_staged_calibration",
+        "run_staged_calibration_with_raw_payload_and_events"
       ],
       "module_name": "janiform.calibration.staged.runtime",
       "schema_identifiers": [],
@@ -4435,6 +4436,10 @@
         "run_staged_calibration": {
           "kind": "function",
           "signature": "(execution_input: 'StagedCalibrationExecutionInput', *, calendar_registry: 'CalendarRegistry') -> 'StagedCalibrationResponse'"
+        },
+        "run_staged_calibration_with_raw_payload_and_events": {
+          "kind": "function",
+          "signature": "(execution_input: 'StagedCalibrationExecutionInput', *, calendar_registry: 'CalendarRegistry', event_callback: 'Optional[Callable[[dict[str, Any]], None]]') -> 'tuple[StagedCalibrationResponse, dict[str, Any]]'"
         }
       }
     },

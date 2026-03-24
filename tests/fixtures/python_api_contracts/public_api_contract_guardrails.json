@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "44b419c87d30e911e1c27fbca77ea28b5423936494b81d74473caa8145befb86",
+  "approved_snapshot_sha256": "67bbbd9a213f54cd2f3ca4ae9c773f86c579203cf6a30b92ee4a300e7eca58f5",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -473,6 +473,15 @@
       "rationale": "The remaining Python cleanup leaves janiform.calibration.sessions.resolution as a helper-only module with no schema-owning workflow boundary, so the approved snapshot must stop recording stale private schema metadata there and match the trimmed source-loading and session-helper implementation.",
       "snapshot_sha256": "44b419c87d30e911e1c27fbca77ea28b5423936494b81d74473caa8145befb86",
       "summary": "Approve the helper-only cleanup for Python session-resolution and source-loading modules."
+    },
+    {
+      "approved_on": "2026-03-24",
+      "docs_updated": [
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "Promoted `_run_staged_calibration_with_raw_payload_and_events` to the public API since it may be useful for developers to have access to it.",
+      "snapshot_sha256": "67bbbd9a213f54cd2f3ca4ae9c773f86c579203cf6a30b92ee4a300e7eca58f5",
+      "summary": "Approve the promotion of `_run_staged_calibration_with_raw_payload_and_events` to the public API, removing the underscore from the name at the same time."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_2",
