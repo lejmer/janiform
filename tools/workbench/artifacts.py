@@ -109,6 +109,7 @@ def _load_from_run_directory(run_directory: Path) -> WorkbenchArtifacts:
     model_payload = _load_json_file(model_path) if model_path.is_file() else None
     if fit_report_path.is_file():
         payload = _load_json_file(fit_report_path)
+
         bundle = _extract_diagnostic_bundle(payload)
         if bundle is None:
             raise ValueError(
@@ -117,6 +118,7 @@ def _load_from_run_directory(run_directory: Path) -> WorkbenchArtifacts:
 
         metadata = _extract_metadata_from_document(payload)
         metadata["run_directory"] = str(run_directory)
+
         return _build_workbench_artifacts(
             source_path=run_directory,
             source_kind="run_directory",

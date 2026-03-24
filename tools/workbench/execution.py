@@ -95,8 +95,8 @@ class WorkbenchExecutionWorker(QObject):
         self._heartbeat_stop: Event = Event()
 
     def run(self) -> None:
-        heartbeat_thread: Optional[Thread] = None
-        prepared_workflow: Any = None
+        from janiform.calibration.fit.estimator import _PreparedHighLevelFitWorkflow
+        prepared_workflow: Optional[_PreparedHighLevelFitWorkflow] = None
 
         try:
             estimator = JaniformEstimator(
@@ -170,7 +170,7 @@ class WorkbenchExecutionWorker(QObject):
                 subtask="staged_calibration",
             )
 
-            heartbeat_thread = self._start_heartbeat()
+            heartbeat_thread: Optional[Thread] = self._start_heartbeat()
 
             staged_response, raw_response_payload = (
                 run_staged_calibration_with_raw_payload_and_events(
