@@ -26,14 +26,14 @@ def _run_staged_calibration_with_raw_payload(
     *,
     calendar_registry: CalendarRegistry,
 ) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
-    return _run_staged_calibration_with_raw_payload_and_events(
+    return run_staged_calibration_with_raw_payload_and_events(
         execution_input,
         calendar_registry=calendar_registry,
         event_callback=None,
     )
 
 
-def _run_staged_calibration_with_raw_payload_and_events(
+def run_staged_calibration_with_raw_payload_and_events(
     execution_input: StagedCalibrationExecutionInput,
     *,
     calendar_registry: CalendarRegistry,
@@ -134,4 +134,5 @@ def run_staged_calibration(
 
 __all__ = [
     "run_staged_calibration",
+    "run_staged_calibration_with_raw_payload_and_events",
 ]
