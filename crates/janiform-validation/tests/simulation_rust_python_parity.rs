@@ -5,8 +5,9 @@ use std::fs;
 
 use chrono::{DateTime, Utc};
 use janiform_engine_simulation::{
-    SeededTickEventSide, SeededTickSimulationModelInputs, SeededTickSimulationRunConfig,
-    run_seeded_tick_event_simulation,
+    MeanReversionBoundaryState, MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors, SeededTickEventSide, SeededTickSimulationModelInputs,
+    SeededTickSimulationRunConfig, run_seeded_tick_event_simulation,
 };
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use janiform_market_time::hourly_factors::{
@@ -448,6 +449,25 @@ fn run_fixture_case(
                 y_minus_plus: fixture_case.initial_excitation_state.y_minus_plus,
                 y_minus_minus: fixture_case.initial_excitation_state.y_minus_minus,
             },
+            mean_reversion_fitted_parameters: MeanReversionFittedParameters::disabled(),
+            mean_reversion_runtime_interval_anchors:
+                MeanReversionRuntimeIntervalAnchors::try_new(
+                    hourly_factor_contract.metadata.interval_alignment_policy,
+                    0.0,
+                    vec![0.0; fixture_case.horizon_interval_count],
+                    vec![
+                        hourly_factor_contract.interval_duration_nanos as f64
+                            / ONE_HOUR_NANOS as f64;
+                        fixture_case.horizon_interval_count
+                    ],
+                )
+                .map_err(|source| {
+                    format!("invalid disabled mean-reversion runtime anchors: {source}")
+                })?,
+            initial_mean_reversion_boundary_state:
+                MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0).map_err(|source| {
+                    format!("invalid disabled mean-reversion boundary state: {source}")
+                })?,
             hourly_factor_contract,
             calendar_registry: calendar_registry.clone(),
             nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
@@ -466,6 +486,7 @@ fn first_mismatch_diagnostic(
     fixture_case: &SeededTickSimulationParityFixtureCase,
 ) -> Option<String> {
     let projected_event_path = run_result.projected_event_path();
+
     let observed_timestamps: Vec<i64> = projected_event_path
         .iter()
         .map(|event_record| event_record.timestamp_utc_nanos)
@@ -605,6 +626,7 @@ fn summarize_counts_by_interval(
     let mut interval_event_counts = vec![0usize; horizon_interval_count];
     let mut interval_buy_counts = vec![0usize; horizon_interval_count];
     let mut interval_sell_counts = vec![0usize; horizon_interval_count];
+
     let range_start_utc_nanos = parse_utc_timestamp(range_start_utc)?
         .timestamp_nanos_opt()
         .ok_or_else(|| "range_start_utc cannot be represented in nanoseconds".to_string())?;
@@ -620,7 +642,9 @@ fn summarize_counts_by_interval(
         }
 
         let interval_index = interval_index as usize;
+
         interval_event_counts[interval_index] += 1;
+
         match side_label.as_str() {
             "buy" => interval_buy_counts[interval_index] += 1,
             "sell" => interval_sell_counts[interval_index] += 1,

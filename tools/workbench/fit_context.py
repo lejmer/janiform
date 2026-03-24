@@ -673,7 +673,7 @@ def _series_from_seeded_raw_result(
 
     interval_microseconds = int(interval.total_seconds() * 1_000_000)
     next_record_index = 0
-    latest_cumulative_log_return = 0.0
+    latest_observed_log_price = 0.0
     timestamp_microseconds_utc: list[int] = []
     prices: list[float] = []
 
@@ -687,7 +687,7 @@ def _series_from_seeded_raw_result(
             if int(record.timestamp_utc_nanos) > current_interval_end_utc_nanos:
                 break
 
-            latest_cumulative_log_return = float(record.cumulative_log_return)
+            latest_observed_log_price = float(record.observed_log_price)
             next_record_index += 1
 
         if not _interval_is_open(
@@ -705,7 +705,7 @@ def _series_from_seeded_raw_result(
             continue
 
         timestamp_microseconds_utc.append(interval_end_microseconds_utc)
-        prices.append(reference_price * math.exp(latest_cumulative_log_return))
+        prices.append(reference_price * math.exp(latest_observed_log_price))
 
     if len(timestamp_microseconds_utc) == 0:
         return _empty_price_series()

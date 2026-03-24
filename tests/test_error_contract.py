@@ -50,12 +50,20 @@ from janiform.simulation import (
     load_hourly_factor_contract_for_simulation,
     run_seeded_tick_event_simulation,
 )
+from janiform.simulation.seeded.contracts import build_disabled_seeded_mean_reversion_runtime_inputs
 from tests.calibration_test_support import build_valid_execution_input_model
+from tests.simulation_test_support import build_disabled_mean_reversion_runtime_contracts
 
 START_TIME_UTC = datetime(2026, 2, 2, tzinfo=UTC)
 
 
 def test_validation_error_string_format_is_stable() -> None:
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_disabled_mean_reversion_runtime_contracts(interval_count=2)
+
     with pytest.raises(SeededTickSimulationValidationError) as captured_error:
         SeededTickSimulationRequest(
             seed=17,
@@ -101,6 +109,9 @@ def test_validation_error_string_format_is_stable() -> None:
                 ),
             ),
             initial_excitation_state=_valid_excitation_state(),
+            mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+            mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+            initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
             hourly_factor_summary=simulation_module.SeededTickSimulationHourlyFactorSummary(
                 schema_version="seasonality.hourly_factor.contract.v1",
                 exchange_code="XNYS",
@@ -649,6 +660,15 @@ def _valid_hourly_factor_contract(calendar_registry: CalendarRegistry) -> Hourly
 
 
 def _valid_simulation_request(calendar_registry: CalendarRegistry) -> SeededTickSimulationRequest:
+    hourly_factor_contract = _valid_hourly_factor_contract(calendar_registry)
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_disabled_seeded_mean_reversion_runtime_inputs(
+        hourly_factor_contract=hourly_factor_contract
+    )
+
     return SeededTickSimulationRequest.from_runtime_inputs(
         seed=17,
         start_time_utc=START_TIME_UTC,
@@ -693,7 +713,10 @@ def _valid_simulation_request(calendar_registry: CalendarRegistry) -> SeededTick
             ),
         ),
         initial_excitation_state=_valid_excitation_state(),
-        hourly_factor_contract=_valid_hourly_factor_contract(calendar_registry),
+        hourly_factor_contract=hourly_factor_contract,
+        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
     )
 
 

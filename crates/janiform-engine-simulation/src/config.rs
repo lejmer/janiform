@@ -1,6 +1,10 @@
 //! Seeded simulation run configuration contracts and validation.
 
 use chrono::{DateTime, Utc};
+use janiform_model_kernels::mean_reversion::{
+    MeanReversionAnchorModelKind, MeanReversionBoundaryState,
+    MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
+};
 use serde::Serialize;
 
 use crate::calendar::ExchangeCalendarRegistry;
@@ -11,7 +15,7 @@ use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
 use super::constants::{
     DEFAULT_DEBUG_TRACE_MAX_RECORDS_PER_CHUNK, DEFAULT_DEBUG_TRACE_SAMPLE_EVERY_NTH_TRANSITION,
-    SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY,
+    ONE_HOUR_NANOS, SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY,
 };
 use super::error::SeededTickSimulationRunError;
 use super::runtime::{
@@ -111,10 +115,10 @@ impl Default for SeededTickSimulationRunOptions {
 /// Required model inputs for seeded fine-path simulation runs.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeededTickSimulationModelInputs {
-    /// Canonical Hawkes kernel parameter payload.
+    /// Hawkes kernel parameter payload.
     pub kernel_parameters: HawkesKernelParameters,
 
-    /// Canonical NIG return decomposition payload shared with the coarse engine.
+    /// NIG return decomposition payload shared with the coarse engine.
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
 
     /// Shared news process configuration consumed by both seeded and coarse simulation.
@@ -123,10 +127,19 @@ pub struct SeededTickSimulationModelInputs {
     /// Excitation state carried into the first simulated interval.
     pub initial_excitation_state: HawkesExcitationState,
 
+    /// Fitted mean-reversion parameter payload.
+    pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
+
+    /// Runtime-aligned anchor values for the simulated interval grid.
+    pub mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
+
+    /// Observed-state boundary payload carried into the first simulated interval.
+    pub initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
+
     /// Interval-aligned hourly factors (`s_h`, `nu_h`) used by the simulator.
     pub hourly_factor_contract: HourlyFactorContractOutput,
 
-    /// Canonical calendar registry used to resolve open and closed market states.
+    /// Calendar registry used to resolve open and closed market states.
     pub calendar_registry: ExchangeCalendarRegistry,
 }
 
@@ -180,6 +193,8 @@ impl SeededTickSimulationRunConfig {
     }
 
     pub fn validate(&self) -> Result<(), SeededTickSimulationRunError> {
+        const MEAN_REVERSION_ALIGNMENT_TOLERANCE: f64 = 1.0e-12;
+
         if self.horizon_interval_count == 0 {
             return Err(SeededTickSimulationRunError::InvalidHorizonIntervalCount { value: 0 });
         }
@@ -251,6 +266,135 @@ impl SeededTickSimulationRunConfig {
             self.horizon_interval_count,
         )?;
 
+        self.model_inputs
+            .mean_reversion_fitted_parameters
+            .validate()
+            .map_err(|source| {
+                SeededTickSimulationRunError::InvalidMeanReversionFittedParameters { source }
+            })?;
+        self.model_inputs
+            .mean_reversion_runtime_interval_anchors
+            .validate()
+            .map_err(|source| {
+                SeededTickSimulationRunError::InvalidMeanReversionRuntimeIntervalAnchors {
+                    source,
+                }
+            })?;
+        self.model_inputs
+            .initial_mean_reversion_boundary_state
+            .validate()
+            .map_err(|source| {
+                SeededTickSimulationRunError::InvalidMeanReversionBoundaryState { source }
+            })?;
+
+        let runtime_interval_anchors = &self.model_inputs.mean_reversion_runtime_interval_anchors;
+        if runtime_interval_anchors.end_anchor_values.len() != self.horizon_interval_count {
+            return Err(
+                SeededTickSimulationRunError::MeanReversionRuntimeAnchorIntervalCountMismatch {
+                    expected_interval_count: self.horizon_interval_count,
+                    observed_interval_count: runtime_interval_anchors.end_anchor_values.len(),
+                },
+            );
+        }
+
+        if runtime_interval_anchors.interval_alignment_policy
+            != hourly_factor_contract.metadata.interval_alignment_policy
+        {
+            return Err(
+                SeededTickSimulationRunError::MeanReversionRuntimeAnchorAlignmentPolicyMismatch {
+                    expected_policy: hourly_factor_contract
+                        .metadata
+                        .interval_alignment_policy
+                        .to_string(),
+                    observed_policy: runtime_interval_anchors.interval_alignment_policy.clone(),
+                },
+            );
+        }
+
+        let initial_boundary_state = &self.model_inputs.initial_mean_reversion_boundary_state;
+        if (initial_boundary_state.anchor_value - runtime_interval_anchors.start_anchor_value).abs()
+            > MEAN_REVERSION_ALIGNMENT_TOLERANCE
+        {
+            return Err(
+                SeededTickSimulationRunError::MeanReversionBoundaryStateStartAnchorMismatch {
+                    boundary_anchor_value: initial_boundary_state.anchor_value,
+                    runtime_start_anchor_value: runtime_interval_anchors.start_anchor_value,
+                },
+            );
+        }
+
+        for interval_index in 0..self.horizon_interval_count {
+            let expected_interval_delta = (hourly_factor_contract.interval_end_utc_nanos
+                [interval_index]
+                - hourly_factor_contract.interval_start_utc_nanos[interval_index])
+                as f64
+                / ONE_HOUR_NANOS as f64;
+            let observed_interval_delta = runtime_interval_anchors.interval_deltas[interval_index];
+            if (observed_interval_delta - expected_interval_delta).abs()
+                > MEAN_REVERSION_ALIGNMENT_TOLERANCE
+            {
+                return Err(
+                    SeededTickSimulationRunError::MeanReversionRuntimeAnchorIntervalDeltaMismatch {
+                        interval_index,
+                        expected_interval_delta,
+                        observed_interval_delta,
+                    },
+                );
+            }
+        }
+
+        match self
+            .model_inputs
+            .mean_reversion_fitted_parameters
+            .anchor_model
+            .anchor_model_kind
+        {
+            MeanReversionAnchorModelKind::Disabled => {
+                if self.model_inputs.mean_reversion_fitted_parameters.kappa != 0.0 {
+                    return Err(
+                        SeededTickSimulationRunError::DisabledMeanReversionRequiresZeroKappa {
+                            value: self.model_inputs.mean_reversion_fitted_parameters.kappa,
+                        },
+                    );
+                }
+
+                validate_flat_runtime_anchors(
+                    runtime_interval_anchors,
+                    runtime_interval_anchors.start_anchor_value,
+                    MEAN_REVERSION_ALIGNMENT_TOLERANCE,
+                )?;
+            }
+            MeanReversionAnchorModelKind::Constant => {
+                let expected_anchor_value = self
+                    .model_inputs
+                    .mean_reversion_fitted_parameters
+                    .anchor_model
+                    .anchor_value
+                    .ok_or(
+                        SeededTickSimulationRunError::MeanReversionConstantAnchorMissingValue,
+                    )?;
+
+                if (runtime_interval_anchors.start_anchor_value - expected_anchor_value).abs()
+                    > MEAN_REVERSION_ALIGNMENT_TOLERANCE
+                {
+                    return Err(
+                        SeededTickSimulationRunError::MeanReversionRuntimeConstantAnchorMismatch {
+                            interval_index: None,
+                            expected_anchor_value,
+                            observed_anchor_value: runtime_interval_anchors.start_anchor_value,
+                        },
+                    );
+                }
+
+                validate_flat_runtime_anchors(
+                    runtime_interval_anchors,
+                    expected_anchor_value,
+                    MEAN_REVERSION_ALIGNMENT_TOLERANCE,
+                )?;
+            }
+            MeanReversionAnchorModelKind::DeterministicIntervalGrid => {}
+        }
+
         if let Some((
             max_seasonality_factor,
             spectral_radius_alpha_over_beta,
@@ -296,4 +440,29 @@ impl SeededTickSimulationRunConfig {
 
         Ok(())
     }
+}
+
+fn validate_flat_runtime_anchors(
+    runtime_interval_anchors: &MeanReversionRuntimeIntervalAnchors,
+    expected_anchor_value: f64,
+    tolerance: f64,
+) -> Result<(), SeededTickSimulationRunError> {
+    for (interval_index, observed_anchor_value) in runtime_interval_anchors
+        .end_anchor_values
+        .iter()
+        .copied()
+        .enumerate()
+    {
+        if (observed_anchor_value - expected_anchor_value).abs() > tolerance {
+            return Err(
+                SeededTickSimulationRunError::MeanReversionRuntimeConstantAnchorMismatch {
+                    interval_index: Some(interval_index),
+                    expected_anchor_value,
+                    observed_anchor_value,
+                },
+            );
+        }
+    }
+
+    Ok(())
 }

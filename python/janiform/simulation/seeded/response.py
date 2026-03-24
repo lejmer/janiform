@@ -300,7 +300,20 @@ def _parse_seeded_fine_path_chunk_columns(
     open_jump_return_column = cast(list[float], chunk_payload.open_jump_return)
     closed_gap_return_column = cast(list[float], chunk_payload.closed_gap_return)
     total_return_column = cast(list[float], chunk_payload.total_return)
-    cumulative_log_return_column = cast(list[float], chunk_payload.cumulative_log_return)
+    core_total_return_increment_column = cast(
+        list[float],
+        chunk_payload.core_total_return_increment,
+    )
+    observed_log_price_column = cast(list[float], chunk_payload.observed_log_price)
+    anchor_value_column = cast(list[float], chunk_payload.anchor_value)
+    deviation_from_anchor_column = cast(
+        list[float],
+        chunk_payload.deviation_from_anchor,
+    )
+    cumulative_core_log_return_column = cast(
+        list[float],
+        chunk_payload.cumulative_core_log_return,
+    )
     state_snapshot_y_plus_plus_column = cast(
         list[Optional[float]],
         chunk_payload.state_snapshot_y_plus_plus,
@@ -341,7 +354,11 @@ def _parse_seeded_fine_path_chunk_columns(
         open_jump_return_column,
         closed_gap_return_column,
         total_return_column,
-        cumulative_log_return_column,
+        core_total_return_increment_column,
+        observed_log_price_column,
+        anchor_value_column,
+        deviation_from_anchor_column,
+        cumulative_core_log_return_column,
         state_snapshot_y_plus_plus_column,
         state_snapshot_y_plus_minus_column,
         state_snapshot_y_minus_plus_column,
@@ -378,7 +395,11 @@ def _parse_seeded_fine_path_chunk_columns(
                 closed_gap_return=closed_gap_return_column[chunk_offset],
                 total_return=total_return_column[chunk_offset],
             ),
-            cumulative_log_return=cumulative_log_return_column[chunk_offset],
+            core_total_return_increment=core_total_return_increment_column[chunk_offset],
+            observed_log_price=observed_log_price_column[chunk_offset],
+            anchor_value=anchor_value_column[chunk_offset],
+            deviation_from_anchor=deviation_from_anchor_column[chunk_offset],
+            cumulative_core_log_return=cumulative_core_log_return_column[chunk_offset],
             state_snapshot=_build_state_snapshot(
                 y_plus_plus=state_snapshot_y_plus_plus_column[chunk_offset],
                 y_plus_minus=state_snapshot_y_plus_minus_column[chunk_offset],
@@ -403,6 +424,16 @@ def _parse_seeded_event_tape_chunk_columns(
     event_index_column = cast(list[int], chunk_payload.event_index)
     timestamp_column = cast(list[int], chunk_payload.timestamp_utc_nanos)
     side_column = cast(list[str], chunk_payload.side)
+    core_total_return_increment_column = cast(
+        list[float],
+        chunk_payload.core_total_return_increment,
+    )
+    observed_log_price_column = cast(list[float], chunk_payload.observed_log_price)
+    anchor_value_column = cast(list[float], chunk_payload.anchor_value)
+    deviation_from_anchor_column = cast(
+        list[float],
+        chunk_payload.deviation_from_anchor,
+    )
     state_snapshot_y_plus_plus_column = cast(
         list[Optional[float]],
         chunk_payload.state_snapshot_y_plus_plus,
@@ -434,6 +465,10 @@ def _parse_seeded_event_tape_chunk_columns(
         len(event_index_column),
         timestamp_column,
         side_column,
+        core_total_return_increment_column,
+        observed_log_price_column,
+        anchor_value_column,
+        deviation_from_anchor_column,
         state_snapshot_y_plus_plus_column,
         state_snapshot_y_plus_minus_column,
         state_snapshot_y_minus_plus_column,
@@ -447,6 +482,10 @@ def _parse_seeded_event_tape_chunk_columns(
             event_index=event_index_column[chunk_offset],
             timestamp_utc_nanos=timestamp_column[chunk_offset],
             side=SeededTickEventSide(side_column[chunk_offset]),
+            core_total_return_increment=core_total_return_increment_column[chunk_offset],
+            observed_log_price=observed_log_price_column[chunk_offset],
+            anchor_value=anchor_value_column[chunk_offset],
+            deviation_from_anchor=deviation_from_anchor_column[chunk_offset],
             state_snapshot=_build_state_snapshot(
                 y_plus_plus=state_snapshot_y_plus_plus_column[chunk_offset],
                 y_plus_minus=state_snapshot_y_plus_minus_column[chunk_offset],

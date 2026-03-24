@@ -8,7 +8,8 @@ use janiform_engine_risk::{
 };
 use janiform_engine_simulation::{
     CoarseSimulationModelInputs, CoarseSimulationPath, CoarseSimulationPathRecord,
-    CoarseSimulationRunRequest, SeededTickEventStateSnapshotCapture,
+    CoarseSimulationRunRequest, MeanReversionBoundaryState, MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors, SeededTickEventStateSnapshotCapture,
     SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
     SeededTickSimulationRunConfig, SeededTickSimulationRunOptions, run_coarse_simulation,
     run_seeded_tick_event_simulation,
@@ -564,9 +565,18 @@ fn build_seeded_model_inputs(
     hourly_factor_contract: HourlyFactorContractOutput,
     known_news_timestamps_utc_nanos: Vec<i64>,
 ) -> SeededTickSimulationModelInputs {
+    let (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = disabled_mean_reversion_runtime_inputs(&hourly_factor_contract);
+
     SeededTickSimulationModelInputs {
         kernel_parameters: build_kernel_parameters(),
         initial_excitation_state: default_initial_excitation_state(),
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
         hourly_factor_contract,
         calendar_registry: ExchangeCalendarRegistry::from_artifact(
             build_calendar_registry_artifact(),
@@ -580,6 +590,30 @@ fn build_seeded_model_inputs(
             known_news_timestamps_utc_nanos,
         ),
     }
+}
+
+fn disabled_mean_reversion_runtime_inputs(
+    hourly_factor_contract: &HourlyFactorContractOutput,
+) -> (
+    MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors,
+    MeanReversionBoundaryState,
+) {
+    (
+        MeanReversionFittedParameters::disabled(),
+        MeanReversionRuntimeIntervalAnchors::try_new(
+            hourly_factor_contract.metadata.interval_alignment_policy,
+            0.0,
+            vec![0.0; hourly_factor_contract.interval_indices.len()],
+            vec![
+                hourly_factor_contract.interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64;
+                hourly_factor_contract.interval_indices.len()
+            ],
+        )
+        .expect("disabled mean-reversion runtime anchors should construct"),
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            .expect("disabled mean-reversion boundary state should construct"),
+    )
 }
 
 fn build_risk_model_inputs() -> SufficientStatisticsRiskModelInputs {

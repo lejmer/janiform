@@ -23,6 +23,7 @@ from janiform.simulation import (
     load_hourly_factor_contract_for_simulation,
     run_seeded_tick_event_simulation,
 )
+from janiform.simulation.seeded.contracts import build_disabled_seeded_mean_reversion_runtime_inputs
 
 ONE_HOUR_NANOS: int = 3_600_000_000_000
 START_TIME_UTC: datetime = datetime(2026, 2, 2, tzinfo=UTC)
@@ -309,6 +310,14 @@ def _run_seeded_case(
         ),
     )
 
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_disabled_seeded_mean_reversion_runtime_inputs(
+        hourly_factor_contract=hourly_factor_contract
+    )
+
     request = SeededTickSimulationRequest.from_runtime_inputs(
         seed=seed,
         start_time_utc=start_time_utc,
@@ -359,6 +368,9 @@ def _run_seeded_case(
             "y_minus_minus": 0.0,
         }),
         hourly_factor_contract=hourly_factor_contract,
+        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
     )
 
     return run_seeded_tick_event_simulation(request)

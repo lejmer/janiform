@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 
-use crate::MeanReversionFittedParameters;
 use janiform_model_kernels::hawkes::{
     HawkesKernelParameters, HawkesStructuredAlphaParameterization,
     HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
 };
+use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
 use janiform_model_kernels::news::NewsProcessConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 

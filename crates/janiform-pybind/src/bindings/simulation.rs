@@ -2,7 +2,8 @@ use janiform::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernel
 use janiform::news::NewsProcessConfiguration;
 use janiform::nig::NigSharedPlusShiftConfiguration;
 use janiform::simulation::{
-    CoarseSimulationRunRequest, SeededTickEventStateSnapshotCapture,
+    CoarseSimulationRunRequest, MeanReversionBoundaryState, MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors, SeededTickEventStateSnapshotCapture,
     SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
     SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
     run_coarse_simulation as run_coarse_simulation_core,
@@ -48,7 +49,7 @@ fn run_coarse_simulation(py: Python<'_>, run_request: &Bound<'_, PyAny>) -> PyRe
 }
 
 #[pyfunction]
-#[pyo3(signature = (seed, start_time_utc, horizon_interval_count, kernel_parameters, nig_shared_plus_shift_configuration, initial_excitation_state, hourly_factor_contract, news_process_configuration, *, debug_trace_enabled = false, sample_every_nth_transition = 1, max_records_per_chunk = 1024, state_snapshot_capture = "disabled"))]
+#[pyo3(signature = (seed, start_time_utc, horizon_interval_count, kernel_parameters, nig_shared_plus_shift_configuration, initial_excitation_state, hourly_factor_contract, news_process_configuration, mean_reversion_fitted_parameters, mean_reversion_runtime_interval_anchors, initial_mean_reversion_boundary_state, *, debug_trace_enabled = false, sample_every_nth_transition = 1, max_records_per_chunk = 1024, state_snapshot_capture = "disabled"))]
 fn run_seeded_tick_event_simulation(
     py: Python<'_>,
     seed: u64,
@@ -59,6 +60,9 @@ fn run_seeded_tick_event_simulation(
     initial_excitation_state: &Bound<'_, PyAny>,
     hourly_factor_contract: &PyHourlyFactorContractResult,
     news_process_configuration: &Bound<'_, PyAny>,
+    mean_reversion_fitted_parameters: &Bound<'_, PyAny>,
+    mean_reversion_runtime_interval_anchors: &Bound<'_, PyAny>,
+    initial_mean_reversion_boundary_state: &Bound<'_, PyAny>,
     debug_trace_enabled: bool,
     sample_every_nth_transition: u64,
     max_records_per_chunk: usize,
@@ -80,6 +84,18 @@ fn run_seeded_tick_event_simulation(
             "news_process_configuration failed to deserialize: {source}"
         ))
     })?;
+    let parsed_mean_reversion_fitted_parameters =
+        parse_seeded_simulation_mean_reversion_fitted_parameters(
+            mean_reversion_fitted_parameters,
+        )?;
+    let parsed_mean_reversion_runtime_interval_anchors =
+        parse_seeded_simulation_mean_reversion_runtime_interval_anchors(
+            mean_reversion_runtime_interval_anchors,
+        )?;
+    let parsed_initial_mean_reversion_boundary_state =
+        parse_seeded_simulation_mean_reversion_boundary_state(
+            initial_mean_reversion_boundary_state,
+        )?;
     let parsed_state_snapshot_capture =
         parse_seeded_simulation_state_snapshot_capture(state_snapshot_capture)?;
 
@@ -101,6 +117,11 @@ fn run_seeded_tick_event_simulation(
             nig_shared_plus_shift_configuration: parsed_nig_shared_plus_shift_configuration,
             news_process_configuration: parsed_news_process_configuration,
             initial_excitation_state: parsed_initial_excitation_state,
+            mean_reversion_fitted_parameters: parsed_mean_reversion_fitted_parameters,
+            mean_reversion_runtime_interval_anchors:
+                parsed_mean_reversion_runtime_interval_anchors,
+            initial_mean_reversion_boundary_state:
+                parsed_initial_mean_reversion_boundary_state,
             hourly_factor_contract: hourly_factor_contract.output.clone(),
             calendar_registry: hourly_factor_contract.calendar_registry.clone(),
         },
@@ -118,6 +139,70 @@ fn run_seeded_tick_event_simulation(
     )?;
 
     Ok(PySeededTickSimulationNativeResult { output: run_result })
+}
+
+fn parse_seeded_simulation_mean_reversion_fitted_parameters(
+    raw_mean_reversion_fitted_parameters: &Bound<'_, PyAny>,
+) -> PyResult<MeanReversionFittedParameters> {
+    let parsed_parameters = serde_json::from_value::<MeanReversionFittedParameters>(
+        py_any_to_json_value(raw_mean_reversion_fitted_parameters)?,
+    )
+    .map_err(|source| {
+        SeasonalityInputValidationError::new_err(format!(
+            "mean_reversion_fitted_parameters failed to deserialize: {source}"
+        ))
+    })?;
+
+    parsed_parameters.validate().map_err(|source| {
+        SeasonalityInputValidationError::new_err(format!(
+            "mean_reversion_fitted_parameters failed validation: {source}"
+        ))
+    })?;
+
+    Ok(parsed_parameters)
+}
+
+fn parse_seeded_simulation_mean_reversion_runtime_interval_anchors(
+    raw_mean_reversion_runtime_interval_anchors: &Bound<'_, PyAny>,
+) -> PyResult<MeanReversionRuntimeIntervalAnchors> {
+    let parsed_runtime_interval_anchors =
+        serde_json::from_value::<MeanReversionRuntimeIntervalAnchors>(py_any_to_json_value(
+            raw_mean_reversion_runtime_interval_anchors,
+        )?)
+        .map_err(|source| {
+            SeasonalityInputValidationError::new_err(format!(
+                "mean_reversion_runtime_interval_anchors failed to deserialize: {source}"
+            ))
+        })?;
+
+    parsed_runtime_interval_anchors.validate().map_err(|source| {
+        SeasonalityInputValidationError::new_err(format!(
+            "mean_reversion_runtime_interval_anchors failed validation: {source}"
+        ))
+    })?;
+
+    Ok(parsed_runtime_interval_anchors)
+}
+
+fn parse_seeded_simulation_mean_reversion_boundary_state(
+    raw_initial_mean_reversion_boundary_state: &Bound<'_, PyAny>,
+) -> PyResult<MeanReversionBoundaryState> {
+    let parsed_boundary_state = serde_json::from_value::<MeanReversionBoundaryState>(
+        py_any_to_json_value(raw_initial_mean_reversion_boundary_state)?,
+    )
+    .map_err(|source| {
+        SeasonalityInputValidationError::new_err(format!(
+            "initial_mean_reversion_boundary_state failed to deserialize: {source}"
+        ))
+    })?;
+
+    parsed_boundary_state.validate().map_err(|source| {
+        SeasonalityInputValidationError::new_err(format!(
+            "initial_mean_reversion_boundary_state failed validation: {source}"
+        ))
+    })?;
+
+    Ok(parsed_boundary_state)
 }
 
 fn parse_seeded_simulation_kernel_parameters(

@@ -24,6 +24,10 @@ mod constants;
 mod error;
 mod runtime;
 
+pub use janiform_model_kernels::mean_reversion::{
+    MeanReversionAnchorModel, MeanReversionAnchorModelKind, MeanReversionBoundaryState,
+    MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
+};
 pub use api::{
     evolve_hawkes_state, load_hourly_factor_contract,
     project_hawkes_intensities_simulation_interval, sample_nig_trading_time_increment,

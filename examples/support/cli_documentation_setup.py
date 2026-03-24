@@ -14,7 +14,11 @@ from janiform.hourly_factors import (
     materialize_hourly_seasonality_factors,
 )
 from janiform.pricing import VanillaOptionPricingExecutionInput
-from janiform.simulation import SeededTickSimulationRequest, load_hourly_factor_contract_for_simulation
+from janiform.simulation import (
+    SeededTickSimulationRequest,
+    build_disabled_seeded_mean_reversion_runtime_inputs,
+    load_hourly_factor_contract_for_simulation,
+)
 
 from ._shared import (
     CALENDAR_REGISTRY_JSON,
@@ -199,6 +203,13 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
         seasonality_source=build_simulation_seasonality_source(),
         news_intensity_source=build_simulation_news_source(),
     )
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_disabled_seeded_mean_reversion_runtime_inputs(
+        hourly_factor_contract=hourly_factor_contract
+    )
     simulation_request = SeededTickSimulationRequest.from_runtime_inputs(
         seed=17,
         start_time_utc=SIMULATION_RANGE_START_UTC,
@@ -208,6 +219,9 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
         news_process_configuration=build_simulation_news_process_configuration(),
         initial_excitation_state=build_initial_excitation_state(),
         hourly_factor_contract=hourly_factor_contract,
+        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
     )
     simulation_request_path = output_directory / "simulation_request.json"
     simulation_request_path.write_text(

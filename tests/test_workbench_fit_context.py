@@ -663,15 +663,15 @@ def test_workbench_comparison_builds_seeded_15m_series_from_raw_path(
                 fine_path=[
                     SimpleNamespace(
                         timestamp_utc_nanos=int(first_interval_event_utc.timestamp() * 1_000_000_000),
-                        cumulative_log_return=0.20,
+                        observed_log_price=0.20,
                     ),
                     SimpleNamespace(
                         timestamp_utc_nanos=int(second_interval_event_utc.timestamp() * 1_000_000_000),
-                        cumulative_log_return=0.25,
+                        observed_log_price=0.25,
                     ),
                     SimpleNamespace(
                         timestamp_utc_nanos=int(third_interval_event_utc.timestamp() * 1_000_000_000),
-                        cumulative_log_return=0.30,
+                        observed_log_price=0.30,
                     ),
                 ]
             )

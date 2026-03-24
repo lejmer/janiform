@@ -93,6 +93,7 @@ from ...simulation import (
     run_coarse_simulation,
     run_seeded_tick_event_simulation,
 )
+from ...simulation.seeded.contracts import build_disabled_seeded_mean_reversion_runtime_inputs
 
 
 _HIGH_LEVEL_MODEL_PERSISTENCE_SCHEMA_VERSION = "calibration.high_level.model.v1"
@@ -575,6 +576,42 @@ def _prepare_model_simulation_inputs(
                 exchange_code=runtime_factors.exchange_code,
             )
         case "seeded_tick":
+            hourly_factor_contract = load_hourly_factor_contract_for_simulation(
+                calendar_registry=runtime_factors.calendar_registry,
+                exchange_code=runtime_factors.exchange_code,
+                range_start_utc=start_time_utc,
+                range_end_utc=runtime_factors.range_end_utc,
+                interval=interval,
+                seasonality_source=_build_runtime_hourly_seasonality_source_from_model(
+                    model,
+                    calendar_registry=runtime_factors.calendar_registry,
+                    exchange_code=runtime_factors.exchange_code,
+                    range_start_utc=start_time_utc,
+                    range_end_utc=runtime_factors.range_end_utc,
+                    interval=interval,
+                ),
+                news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
+                    known_scheduled_event_timestamps_utc=_resolved_known_news_event_timestamps(model),
+                    surprise_baseline_intensity=_surprise_baseline_intensity(model),
+                    surprise_deterministic_time_multiplier_by_interval_index=(
+                        _surprise_deterministic_time_multiplier_by_interval_index(
+                            model,
+                            range_start_utc=start_time_utc,
+                            range_end_utc=runtime_factors.range_end_utc,
+                            interval_duration_nanos=_parse_interval_duration_nanos(interval),
+                        )
+                    ),
+                ),
+            )
+
+            (
+                mean_reversion_fitted_parameters,
+                mean_reversion_runtime_interval_anchors,
+                initial_mean_reversion_boundary_state,
+            ) = build_disabled_seeded_mean_reversion_runtime_inputs(
+                hourly_factor_contract=hourly_factor_contract,
+            )
+
             seeded_request = SeededTickSimulationRequest.from_runtime_inputs(
                 seed=seed,
                 start_time_utc=start_time_utc,
@@ -583,33 +620,10 @@ def _prepare_model_simulation_inputs(
                 nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
                 news_process_configuration=runtime_factors.news_process_configuration,
                 initial_excitation_state=effective_initial_state,
-                hourly_factor_contract=load_hourly_factor_contract_for_simulation(
-                    calendar_registry=runtime_factors.calendar_registry,
-                    exchange_code=runtime_factors.exchange_code,
-                    range_start_utc=start_time_utc,
-                    range_end_utc=runtime_factors.range_end_utc,
-                    interval=interval,
-                    seasonality_source=_build_runtime_hourly_seasonality_source_from_model(
-                        model,
-                        calendar_registry=runtime_factors.calendar_registry,
-                        exchange_code=runtime_factors.exchange_code,
-                        range_start_utc=start_time_utc,
-                        range_end_utc=runtime_factors.range_end_utc,
-                        interval=interval,
-                    ),
-                    news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
-                        known_scheduled_event_timestamps_utc=_resolved_known_news_event_timestamps(model),
-                        surprise_baseline_intensity=_surprise_baseline_intensity(model),
-                        surprise_deterministic_time_multiplier_by_interval_index=(
-                            _surprise_deterministic_time_multiplier_by_interval_index(
-                                model,
-                                range_start_utc=start_time_utc,
-                                range_end_utc=runtime_factors.range_end_utc,
-                                interval_duration_nanos=_parse_interval_duration_nanos(interval),
-                            )
-                        ),
-                    ),
-                ),
+                mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+                mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+                initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
+                hourly_factor_contract=hourly_factor_contract,
                 debug_trace_enabled=debug_trace_enabled,
                 sample_every_nth_transition=sample_every_nth_transition,
                 max_records_per_chunk=max_records_per_chunk,

@@ -5,7 +5,6 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, Optional
 
-import orjson
 import pyarrow as pa
 from pyarrow import parquet
 
@@ -42,6 +41,7 @@ from janiform.simulation import (
     SurpriseNewsArrivalConfiguration,
     load_hourly_factor_contract_for_simulation,
 )
+from janiform.simulation.seeded.contracts import build_disabled_seeded_mean_reversion_runtime_inputs
 
 
 def build_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
@@ -63,6 +63,13 @@ def build_simulation_request(calendar_registry_json: str) -> SeededTickSimulatio
         range_end_utc=start_time_utc + timedelta(hours=2),
         seasonality_source=HourlySeasonalityProviderExplicitSource(hourly_factors=(1.0, 0.9)),
         news_intensity_source=HourlyNewsIntensityProviderExplicitSource(hourly_factors=(0.2, 0.1)),
+    )
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_disabled_seeded_mean_reversion_runtime_inputs(
+        hourly_factor_contract=hourly_factor_contract
     )
 
     return SeededTickSimulationRequest.from_runtime_inputs(
@@ -130,6 +137,9 @@ def build_simulation_request(calendar_registry_json: str) -> SeededTickSimulatio
             ),
         ),
         hourly_factor_contract=hourly_factor_contract,
+        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
     )
 
 

@@ -6882,6 +6882,7 @@
         "SeededTickSimulationValidationFailure",
         "SharedNewsMarkLawConfiguration",
         "SurpriseNewsArrivalConfiguration",
+        "build_disabled_seeded_mean_reversion_runtime_inputs",
         "deserialize_coarse_simulation_path",
         "deserialize_coarse_simulation_run_request",
         "deserialize_seeded_tick_simulation_response",
@@ -7285,11 +7286,15 @@
             "news_arrival_component",
             "market_state",
             "return_components",
-            "cumulative_log_return",
+            "core_total_return_increment",
+            "observed_log_price",
+            "anchor_value",
+            "deviation_from_anchor",
+            "cumulative_core_log_return",
             "state_snapshot"
           ],
           "kind": "contract_model",
-          "signature": "(transition_index: 'int', timestamp_utc_nanos: 'int', transition_kind: 'SeededFinePathTransitionKind', side: 'Optional[SeededTickEventSide]', news_arrival_component: 'Optional[SeededFinePathNewsArrivalComponent]', market_state: 'MarketState', return_components: 'SufficientStatisticsRiskReturnComponents', cumulative_log_return: 'float', state_snapshot: 'Optional[SeededTickEventStateSnapshot]' = None) -> 'None'"
+          "signature": "(transition_index: 'int', timestamp_utc_nanos: 'int', transition_kind: 'SeededFinePathTransitionKind', side: 'Optional[SeededTickEventSide]', news_arrival_component: 'Optional[SeededFinePathNewsArrivalComponent]', market_state: 'MarketState', return_components: 'SufficientStatisticsRiskReturnComponents', core_total_return_increment: 'float', observed_log_price: 'float', anchor_value: 'float', deviation_from_anchor: 'float', cumulative_core_log_return: 'float', state_snapshot: 'Optional[SeededTickEventStateSnapshot]' = None) -> 'None'"
         },
         "SeededFinePathTransitionKind": {
           "kind": "enum",
@@ -7317,10 +7322,14 @@
             "event_index",
             "timestamp_utc_nanos",
             "side",
+            "core_total_return_increment",
+            "observed_log_price",
+            "anchor_value",
+            "deviation_from_anchor",
             "state_snapshot"
           ],
           "kind": "contract_model",
-          "signature": "(event_index: 'int', timestamp_utc_nanos: 'int', side: 'SeededTickEventSide', state_snapshot: 'Optional[SeededTickEventStateSnapshot]' = None) -> 'None'"
+          "signature": "(event_index: 'int', timestamp_utc_nanos: 'int', side: 'SeededTickEventSide', core_total_return_increment: 'float', observed_log_price: 'float', anchor_value: 'float', deviation_from_anchor: 'float', state_snapshot: 'Optional[SeededTickEventStateSnapshot]' = None) -> 'None'"
         },
         "SeededTickEventSide": {
           "kind": "enum",
@@ -7415,6 +7424,9 @@
             "nig_shared_plus_shift_configuration",
             "news_process_configuration",
             "initial_excitation_state",
+            "mean_reversion_fitted_parameters",
+            "mean_reversion_runtime_interval_anchors",
+            "initial_mean_reversion_boundary_state",
             "hourly_factor_summary",
             "debug_trace_enabled",
             "sample_every_nth_transition",
@@ -7422,7 +7434,7 @@
             "state_snapshot_capture"
           ],
           "kind": "contract_model",
-          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
+          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
         },
         "SeededTickSimulationResponse": {
           "field_names": [
@@ -7475,6 +7487,10 @@
           ],
           "kind": "contract_model",
           "signature": "(baseline_intensity: 'float') -> 'None'"
+        },
+        "build_disabled_seeded_mean_reversion_runtime_inputs": {
+          "kind": "function",
+          "signature": "(*, hourly_factor_contract: 'HourlyFactorContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]'"
         },
         "deserialize_coarse_simulation_path": {
           "kind": "function",
@@ -7890,6 +7906,7 @@
         "SeededTickSimulationResponse",
         "SeededTickSimulationValidationError",
         "SeededTickSimulationValidationFailure",
+        "build_disabled_seeded_mean_reversion_runtime_inputs",
         "deserialize_seeded_tick_simulation_response",
         "load_hourly_factor_contract_for_simulation",
         "run_seeded_tick_event_simulation",
@@ -8009,11 +8026,15 @@
             "news_arrival_component",
             "market_state",
             "return_components",
-            "cumulative_log_return",
+            "core_total_return_increment",
+            "observed_log_price",
+            "anchor_value",
+            "deviation_from_anchor",
+            "cumulative_core_log_return",
             "state_snapshot"
           ],
           "kind": "contract_model",
-          "signature": "(transition_index: 'int', timestamp_utc_nanos: 'int', transition_kind: 'SeededFinePathTransitionKind', side: 'Optional[SeededTickEventSide]', news_arrival_component: 'Optional[SeededFinePathNewsArrivalComponent]', market_state: 'MarketState', return_components: 'SufficientStatisticsRiskReturnComponents', cumulative_log_return: 'float', state_snapshot: 'Optional[SeededTickEventStateSnapshot]' = None) -> 'None'"
+          "signature": "(transition_index: 'int', timestamp_utc_nanos: 'int', transition_kind: 'SeededFinePathTransitionKind', side: 'Optional[SeededTickEventSide]', news_arrival_component: 'Optional[SeededFinePathNewsArrivalComponent]', market_state: 'MarketState', return_components: 'SufficientStatisticsRiskReturnComponents', core_total_return_increment: 'float', observed_log_price: 'float', anchor_value: 'float', deviation_from_anchor: 'float', cumulative_core_log_return: 'float', state_snapshot: 'Optional[SeededTickEventStateSnapshot]' = None) -> 'None'"
         },
         "SeededFinePathTransitionKind": {
           "kind": "enum",
@@ -8057,10 +8078,14 @@
             "event_index",
             "timestamp_utc_nanos",
             "side",
+            "core_total_return_increment",
+            "observed_log_price",
+            "anchor_value",
+            "deviation_from_anchor",
             "state_snapshot"
           ],
           "kind": "contract_model",
-          "signature": "(event_index: 'int', timestamp_utc_nanos: 'int', side: 'SeededTickEventSide', state_snapshot: 'Optional[SeededTickEventStateSnapshot]' = None) -> 'None'"
+          "signature": "(event_index: 'int', timestamp_utc_nanos: 'int', side: 'SeededTickEventSide', core_total_return_increment: 'float', observed_log_price: 'float', anchor_value: 'float', deviation_from_anchor: 'float', state_snapshot: 'Optional[SeededTickEventStateSnapshot]' = None) -> 'None'"
         },
         "SeededTickEventSide": {
           "kind": "enum",
@@ -8171,6 +8196,9 @@
             "nig_shared_plus_shift_configuration",
             "news_process_configuration",
             "initial_excitation_state",
+            "mean_reversion_fitted_parameters",
+            "mean_reversion_runtime_interval_anchors",
+            "initial_mean_reversion_boundary_state",
             "hourly_factor_summary",
             "debug_trace_enabled",
             "sample_every_nth_transition",
@@ -8178,7 +8206,7 @@
             "state_snapshot_capture"
           ],
           "kind": "contract_model",
-          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
+          "signature": "(seed: 'int', start_time_utc: 'datetime', horizon_interval_count: 'int', kernel_parameters: 'HawkesKernelParameters', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', news_process_configuration: 'NewsProcessConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState', hourly_factor_summary: 'SeededTickSimulationHourlyFactorSummary', debug_trace_enabled: 'bool' = False, sample_every_nth_transition: 'int' = 1, max_records_per_chunk: 'int' = 1024, state_snapshot_capture: 'SeededTickEventStateSnapshotCapture' = <SeededTickEventStateSnapshotCapture.DISABLED: 'disabled'>) -> 'None'"
         },
         "SeededTickSimulationResponse": {
           "field_names": [
@@ -8215,6 +8243,10 @@
           ],
           "kind": "contract_model",
           "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
+        },
+        "build_disabled_seeded_mean_reversion_runtime_inputs": {
+          "kind": "function",
+          "signature": "(*, hourly_factor_contract: 'HourlyFactorContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]'"
         },
         "deserialize_seeded_tick_simulation_response": {
           "kind": "function",

@@ -281,7 +281,7 @@ def persist_seeded_tick_simulation(
             output_row = _seeded_tick_output_row(
                 timestamp_value=timestamp_value,
                 timestamp_column=preferences.timestamp_column,
-                price_value=preferences.reference_price * math.exp(record.cumulative_log_return),
+                price_value=preferences.reference_price * math.exp(record.observed_log_price),
                 side_value=None if record.side is None else record.side.value,
                 preferences=preferences,
             )

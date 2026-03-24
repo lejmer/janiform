@@ -47,6 +47,7 @@ from ...simulation import (
     SeededTickSimulationRequest,
     load_hourly_factor_contract_for_simulation,
 )
+from ...simulation.seeded.contracts import build_disabled_seeded_mean_reversion_runtime_inputs
 
 
 def _build_intraday_seasonality_settings(
@@ -760,6 +761,14 @@ def _attach_runtime_hourly_factor_contract(
             )
         )
 
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_disabled_seeded_mean_reversion_runtime_inputs(
+        hourly_factor_contract=hourly_factor_contract,
+    )
+
     return SeededTickSimulationRequest.from_runtime_inputs(
         seed=request.seed,
         start_time_utc=request.start_time_utc,
@@ -768,6 +777,9 @@ def _attach_runtime_hourly_factor_contract(
         nig_shared_plus_shift_configuration=request.nig_shared_plus_shift_configuration,
         news_process_configuration=request.news_process_configuration,
         initial_excitation_state=request.initial_excitation_state,
+        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
         hourly_factor_contract=hourly_factor_contract,
         debug_trace_enabled=request.debug_trace_enabled,
         sample_every_nth_transition=request.sample_every_nth_transition,
@@ -811,4 +823,3 @@ def _override_calibration_execution_mode(
             "runtime_resources": None if runtime_resources is None else runtime_resources.to_payload(),
         }
     )
-
