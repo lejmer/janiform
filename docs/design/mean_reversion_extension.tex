@@ -1,0 +1,167 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,mathtools,bm}
+
+\title{Janiform Model Math Summary}
+\author{}
+\date{}
+
+\begin{document}
+    \maketitle
+
+    \section*{11. Anchor–Deviation Extension (Mean-Reverting Layer)}
+
+    \subsection*{11.1. Motivation}
+    To allow the model to express assets with long-horizon anchoring behavior
+    (e.g., FX, commodities, spreads), we introduce a minimal mean-reverting
+    extension that preserves the existing Janiform core as the innovation driver.
+
+    The goal is to add an equilibrium-restoring mechanism without modifying
+    the Hawkes--NIG--news structure or introducing strong identifiability conflicts.
+
+    \subsection*{11.2. Anchored Log-Price Dynamics}
+
+    Let \(X_t^{\mathrm{JF}}\) denote the original Janiform return process:
+    \[
+        dX_t^{\mathrm{JF}} = d\big(L^+_{A_t^+} - L^-_{A_t^-} + M_t + G_t\big).
+    \]
+
+    Define the observed log-price \(X_t\) via:
+    \[
+        dX_t = -\kappa\big(X_t - A_t\big)\,dt + dX_t^{\mathrm{JF}},
+    \]
+    where:
+    \begin{itemize}
+        \item \(\kappa \ge 0\) is the mean-reversion speed,
+        \item \(A_t\) is an anchor (equilibrium) process.
+    \end{itemize}
+
+    This nests the original model:
+    \[
+        \kappa = 0 \quad \Rightarrow \quad dX_t = dX_t^{\mathrm{JF}}.
+    \]
+
+    \subsection*{11.3. Anchor Process \(A_t\)}
+
+    The anchor \(A_t\) is intentionally kept low-dimensional to preserve identifiability.
+    Typical specifications include:
+
+    \paragraph{(i) Constant anchor}
+    \[
+        A_t \equiv m.
+    \]
+
+    \paragraph{(ii) Deterministic seasonal anchor}
+    \[
+        A_t = f_{\mathrm{seasonal}}(t),
+    \]
+    where \(f_{\mathrm{seasonal}}\) may depend on time-of-day, day-of-week,
+    day-of-year, or known calendar structure.
+
+    \paragraph{(iii) Slowly varying anchor}
+    \[
+        dA_t = \mu_A(t)\,dt,
+    \]
+    with \(\mu_A(t)\) constrained to be low-frequency.
+
+    In all cases, \(A_t\) is either fixed or externally estimated in the first stage,
+    and not fully free during initial calibration.
+
+    \subsection*{11.4. Deviation Formulation}
+
+    Define the deviation from anchor:
+    \[
+        D_t := X_t - A_t.
+    \]
+
+    Then:
+    \[
+        dD_t = -\kappa D_t\,dt + dX_t^{\mathrm{JF}} - dA_t.
+    \]
+
+    This shows explicitly that:
+    \begin{itemize}
+        \item the Janiform process acts as the innovation driver,
+        \item the deviation \(D_t\) is mean reverting toward zero,
+        \item the anchor \(A_t\) shifts the equilibrium level.
+    \end{itemize}
+
+    \subsection*{11.5. Integrated Form}
+
+    For a time interval \([t, t+\Delta]\), the solution is:
+    \[
+        X_{t+\Delta}
+        =
+        A_{t+\Delta}
+        +
+        e^{-\kappa \Delta}\big(X_t - A_t\big)
+        +
+        \int_t^{t+\Delta} e^{-\kappa(t+\Delta - s)}\,dX_s^{\mathrm{JF}}.
+    \]
+
+    This representation highlights:
+    \begin{itemize}
+        \item exponential decay of deviations from the anchor,
+        \item filtering of Janiform increments through the kernel \(e^{-\kappa(\cdot)}\).
+    \end{itemize}
+
+    \subsection*{11.6. Interpretation}
+
+    \begin{itemize}
+        \item The Janiform core \(X_t^{\mathrm{JF}}\) continues to model:
+        \begin{itemize}
+            \item heavy tails,
+            \item jump behavior,
+            \item self-excitation,
+            \item news-driven shocks,
+            \item short- to medium-horizon dynamics.
+        \end{itemize}
+
+        \item The new term \(-\kappa(X_t - A_t)\) introduces:
+        \begin{itemize}
+            \item long-horizon anchoring,
+            \item equilibrium-restoring dynamics,
+            \item control over unrealistic drift at large time scales.
+        \end{itemize}
+    \end{itemize}
+
+    \subsection*{11.7. Calibration Strategy (Staged)}
+
+    To preserve stability and identifiability:
+
+    \begin{enumerate}
+        \item Calibrate the original Janiform model (\(\kappa=0\)) as before.
+        \item Specify or estimate \(A_t\) (deterministic or low-frequency).
+        \item Estimate \(\kappa\) using lower-frequency or aggregated data.
+        \item Optionally perform limited joint refinement (though this step should be left unimplemented unless shown to be necessary).
+    \end{enumerate}
+
+    \subsection*{11.8. Identifiability Constraints}
+
+    To minimize parameter competition:
+
+    \begin{itemize}
+        \item \(A_t\) must be low-dimensional or externally constrained.
+        \item \(\kappa\) should correspond to slower time scales than Hawkes decay.
+        \item No feedback from \(X_t\) or \(D_t\) into:
+        \begin{itemize}
+            \item Hawkes intensities,
+            \item Lévy drivers,
+            \item news processes.
+        \end{itemize}
+        \item No additional jump structure is introduced in the deviation layer.
+    \end{itemize}
+
+    \subsection*{11.9. Summary}
+
+    This extension introduces mean reversion as a separate structural layer,
+    without modifying the internal Janiform dynamics. It provides:
+
+    \begin{itemize}
+        \item a nested generalization of the original model,
+        \item minimal disruption to existing calibration,
+        \item explicit control over long-horizon behavior,
+        \item flexibility across asset classes via the choice of \(A_t\).
+    \end{itemize}
+
+\end{document}
