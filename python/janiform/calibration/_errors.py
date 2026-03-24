@@ -1,6 +1,6 @@
 from typing import Any, Optional
 
-from .._contracts import ValidationErrorFactory
+from ..contracts import ValidationErrorFactory
 from ..errors import (
     ContractValidationFailure,
     JaniformErrorCategory,

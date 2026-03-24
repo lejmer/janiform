@@ -6,6 +6,12 @@ pub(crate) use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(crate) use chrono::{TimeZone, Utc};
 pub(crate) use janiform_calibration_artifacts::*;
+use janiform_model_kernels::news::{
+    CoupledGapMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
+    NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
+    SurpriseNewsArrivalConfiguration,
+};
+use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 pub(crate) use serde_json::json;
 
 pub(crate) fn build_data_inputs() -> CalibrationRunDataInputs {
@@ -129,6 +135,29 @@ pub(crate) fn build_valid_run_spec_with_mode(
         build_solver_settings_for_all_stages(),
     )
     .expect("run spec should validate")
+}
+
+pub(crate) fn build_deterministic_interval_grid_mean_reversion_parameters()
+-> MeanReversionFittedParameters {
+    MeanReversionFittedParameters::try_new(
+        0.25,
+        MeanReversionAnchorModel::deterministic_interval_grid(
+            vec![
+                utc_nanos(2026, 3, 2, 14, 0, 0),
+                utc_nanos(2026, 3, 2, 15, 0, 0),
+                utc_nanos(2026, 3, 2, 16, 0, 0),
+            ],
+            vec![
+                utc_nanos(2026, 3, 2, 15, 0, 0),
+                utc_nanos(2026, 3, 2, 16, 0, 0),
+                utc_nanos(2026, 3, 2, 17, 0, 0),
+            ],
+            vec![4.2, 4.1, 4.0],
+            "piecewise_constant_utc_interval_grid.v1",
+        )
+        .expect("deterministic interval-grid anchor should validate"),
+    )
+    .expect("mean reversion fitted parameters should validate")
 }
 
 pub(crate) fn build_valid_artifact_manifest() -> CalibrationArtifactManifest {
@@ -534,6 +563,122 @@ pub(crate) fn build_seasonality_stage_parameter_artifact_fixture(
         ),
     )
     .expect("seasonality stage parameter artifact should build")
+}
+
+pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
+    run_contract: &CalibrationRunContract,
+) -> CalibrationStageParameterArtifact {
+    let stage_seed_metadata = resolve_calibration_stage_seed_metadata(
+        &run_contract.run_spec,
+        CalibrationStage::ReturnComponents,
+    );
+    let solver_settings = stage_solver_settings_for_stage(
+        &run_contract.run_spec,
+        CalibrationStage::ReturnComponents,
+    )
+    .expect("return-components solver settings should exist");
+
+    let fitted_parameters = ReturnComponentsStageFittedParameters {
+        nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration {
+            alpha: 2.3,
+            beta_0: -0.8,
+            delta: 0.7,
+            mu: 0.1,
+            delta_beta: -0.2,
+        },
+        news_process_configuration: NewsProcessConfiguration::try_new(
+            NewsArrivalConfiguration {
+                known: KnownNewsArrivalConfiguration {
+                    scheduled_event_timestamps_utc_nanos: Vec::new(),
+                },
+                surprise: SurpriseNewsArrivalConfiguration {
+                    baseline_intensity: 0.02,
+                },
+            },
+            SharedNewsMarkLawConfiguration {
+                gamma_severity_marks: janiform_model_kernels::news::GammaSeverityMarkConfiguration {
+                    shape_k: 1.4,
+                    scale_theta: 0.6,
+                },
+                double_exponential_base_shock:
+                    janiform_model_kernels::news::DoubleExponentialBaseShockConfiguration {
+                        probability_positive: 0.35,
+                        eta_plus: 2.1,
+                        eta_minus: 3.0,
+                    },
+                coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.8 },
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 1.0,
+                return_jump_scale: 1.0,
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 1.0,
+                return_jump_scale: 1.0,
+            },
+        )
+        .expect("news process configuration should validate"),
+        surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile {
+            weekly_hour_utc_multipliers: (0..168)
+                .map(|hour_index| if hour_index == 14 { 2.0 } else { 1.0 })
+                .collect(),
+            profile_resolution_hours: 1,
+            fit_policy:
+                "selected_exogenous_surprise_episode_rate_per_utc_hour_of_week_with_baseline_shrinkage.v1"
+                    .to_string(),
+            normalization_policy: "exposure_weighted_mean_one_over_source_window.v1"
+                .to_string(),
+        },
+        mean_reversion_fitted_parameters:
+            build_deterministic_interval_grid_mean_reversion_parameters(),
+    };
+
+    build_calibration_stage_parameter_artifact(
+        run_contract,
+        CalibrationStageParameterArtifactInput::ReturnComponents(
+            ReturnComponentsStageParameterArtifactInput {
+                metadata: CalibrationStageParameterBuildMetadata {
+                    stage_output_schema_version:
+                        CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION.to_string(),
+                    run_global_seed: stage_seed_metadata.run_global_seed,
+                    stage_seed: stage_seed_metadata.stage_seed,
+                    stage_seed_source: stage_seed_metadata.stage_seed_source,
+                    stage_seed_derivation_policy: CALIBRATION_STAGE_SEED_DERIVATION_POLICY
+                        .to_string(),
+                    solver_settings: solver_settings.clone(),
+                },
+                optimizer_state: CalibrationStageParameterOptimizerStateInput {
+                    backend_id: "return_components.fixture_search.v1".to_string(),
+                    random_seed: stage_seed_metadata.stage_seed,
+                    selection_policy:
+                        "validity_then_weighted_objective_then_lexicographic_tie_break.v1"
+                            .to_string(),
+                    penalty_policy: "hard_constraint_violation_additive_penalty.v1".to_string(),
+                    bounds_policy: "candidate_family_cartesian_product.v1".to_string(),
+                    solver_settings: solver_settings.clone(),
+                    input_candidate_count: 12,
+                    valid_candidate_count: 9,
+                    selected_candidate_raw_objective: 1.25,
+                    selected_candidate_penalized_objective: 1.25,
+                },
+                selected_candidate_id: "return_candidate_balanced".to_string(),
+                fitted_parameters,
+                candidate_generation_policy:
+                    "return_components.candidate_generation.layered_family_search.v1"
+                        .to_string(),
+                objective_weighting_policy:
+                    "return_components.objective_weighting.weighted_metric_sum.v1".to_string(),
+                objective_metric_bucket_policy:
+                    "return_components.objective_metrics.bucketed_fit_quality.v1".to_string(),
+                activity_input_transport: CalibrationStageHandoffTransport::InMemoryOutput,
+                activity_selected_hawkes_candidate_id: Some(
+                    "candidate_stable_low_loss".to_string(),
+                ),
+                activity_artifact_reference: None,
+            },
+        ),
+    )
+    .expect("return-components stage parameter artifact should build")
 }
 
 pub(crate) fn build_stage_checkpoint_metadata_fixture(

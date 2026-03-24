@@ -49,10 +49,9 @@ from ..._workflow_outputs import (
     write_simulation_artifacts,
 )
 from ..._workflow_progress import JaniformOutputController
-from ..._contracts import serialize_pretty_json
+from ...contracts import MeanReversionFittedParameters, serialize_pretty_json
 from ...calendar import CalendarRegistry
 from ...calendar import MarketState
-from .._errors import _calibration_error
 from ...hourly_factors import (
     HourlyNewsIntensityMaterializationSettings,
     HourlyNewsIntensityProviderMaterializedSource,
@@ -74,6 +73,7 @@ from ...pricing import (
     VanillaOptionPricingRunResult,
     run_vanilla_option_pricing,
 )
+from .._errors import _calibration_error
 from ...seasonality import SessionFilter, preprocess_timestamp_events
 from ...risk import (
     SufficientStatisticsRiskEquationSpecification,
@@ -1898,7 +1898,67 @@ def _normalize_model_parameters(raw_parameters: Mapping[str, Any]) -> dict[str, 
             if isinstance(raw_value, list):
                 raw_seasonality[field_name] = tuple(raw_value)
 
+    _normalize_mean_reversion_model_parameters(parameters)
+
     return parameters
+
+
+def _normalize_mean_reversion_model_parameters(parameters: dict[str, Any]) -> None:
+    raw_return_components = parameters.get("return_components")
+    if isinstance(raw_return_components, Mapping):
+        fitted_parameters = raw_return_components.get("fitted_parameters")
+        if isinstance(fitted_parameters, Mapping):
+            _normalize_return_components_mean_reversion_block(
+                fitted_parameters,
+                field_path="parameters.return_components.fitted_parameters",
+            )
+
+    raw_joint_refinement = parameters.get("joint_refinement")
+    if not isinstance(raw_joint_refinement, Mapping):
+        return
+
+    raw_fitted_parameters = raw_joint_refinement.get("fitted_parameters")
+    if isinstance(raw_fitted_parameters, Mapping):
+        raw_return_components_fitted_parameters = raw_fitted_parameters.get(
+            "return_components_fitted_parameters"
+        )
+        if isinstance(raw_return_components_fitted_parameters, Mapping):
+            _normalize_return_components_mean_reversion_block(
+                raw_return_components_fitted_parameters,
+                field_path=(
+                    "parameters.joint_refinement.fitted_parameters.return_components_fitted_parameters"
+                ),
+            )
+
+    raw_baseline_return_components = raw_joint_refinement.get(
+        "baseline_return_components_fitted_parameters"
+    )
+    if isinstance(raw_baseline_return_components, Mapping):
+        _normalize_return_components_mean_reversion_block(
+            raw_baseline_return_components,
+            field_path="parameters.joint_refinement.baseline_return_components_fitted_parameters",
+        )
+
+
+def _normalize_return_components_mean_reversion_block(
+    fitted_parameters: Mapping[str, Any],
+    *,
+    field_path: str,
+) -> None:
+    if not isinstance(fitted_parameters, dict):
+        return
+
+    raw_mean_reversion = fitted_parameters.get("mean_reversion_fitted_parameters")
+    if not isinstance(raw_mean_reversion, Mapping):
+        raise _calibration_error(
+            f"{field_path}.mean_reversion_fitted_parameters",
+            "must be an object",
+        )
+
+    fitted_parameters["mean_reversion_fitted_parameters"] = MeanReversionFittedParameters.from_mapping(
+        dict(raw_mean_reversion),
+        field_path=f"{field_path}.mean_reversion_fitted_parameters",
+    ).to_payload()
 
 
 def _resolved_component_provenance(

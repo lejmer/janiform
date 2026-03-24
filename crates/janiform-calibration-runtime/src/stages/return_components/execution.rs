@@ -17,9 +17,9 @@ use janiform_calibration_artifacts::{
     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CalibrationExecutionMode,
     CalibrationOptimizerSettings, CalibrationRunSpec, CalibrationStage,
-    CalibrationStageHandoffTransport, ReturnComponentsStageFittedParameters,
-    SurpriseNewsDeterministicIntensityProfile, resolve_calibration_stage_seed_metadata,
-    stage_solver_settings_for_stage,
+    CalibrationStageHandoffTransport, MeanReversionFittedParameters,
+    ReturnComponentsStageFittedParameters, SurpriseNewsDeterministicIntensityProfile,
+    resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
 };
 use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
@@ -546,6 +546,7 @@ pub fn run_return_components_calibration_stage(
                     .normalization_policy
                     .clone(),
             },
+            mean_reversion_fitted_parameters: MeanReversionFittedParameters::disabled(),
         },
         candidate_diagnostics,
         candidate_generation_policy: RETURN_COMPONENTS_STAGE_CANDIDATE_GENERATION_POLICY,
@@ -2363,6 +2364,7 @@ fn collect_return_components_stage_constraint_violations(
             news_process_configuration: candidate_input.news_process_configuration.clone(),
             surprise_deterministic_intensity_profile:
                 default_surprise_deterministic_intensity_profile(),
+            mean_reversion_fitted_parameters: MeanReversionFittedParameters::disabled(),
         },
     )
 }
@@ -2546,6 +2548,7 @@ fn build_return_components_stage_failure_report(
 #[cfg(test)]
 mod tests {
     use chrono::{TimeZone, Utc};
+    use janiform_calibration_artifacts::MeanReversionFittedParameters;
     use janiform_model_kernels::news::{
         DoubleExponentialBaseShockConfiguration, GammaSeverityMarkConfiguration,
     };
@@ -3025,6 +3028,7 @@ mod tests {
             .expect("news process configuration should validate"),
             surprise_deterministic_intensity_profile:
                 default_surprise_deterministic_intensity_profile(),
+            mean_reversion_fitted_parameters: MeanReversionFittedParameters::disabled(),
         };
         let fitted_signal_partition_layer = signal_partition_fit::fit_signal_partition_layer(
             candidate_generation_input

@@ -10,7 +10,7 @@ from importlib import import_module
 from types import ModuleType
 from typing import Any, Optional
 
-from janiform._contracts import ContractModel, serialize_deterministic_json
+from janiform.contracts import ContractModel, serialize_deterministic_json
 
 PUBLIC_API_CONTRACT_SNAPSHOT_SCHEMA_VERSION = "python.public_api_contract.snapshot.v1"
 PUBLIC_API_CONTRACT_GUARDRAIL_MANIFEST_SCHEMA_VERSION = "python.public_api_contract.guardrail_manifest.v1"
@@ -23,6 +23,7 @@ PUBLIC_CONTRACT_MODULE_NAMES: tuple[str, ...] = (
     "janiform.errors",
     "janiform.calendar",
     "janiform.hourly_factors",
+    "janiform.contracts",
     "janiform.seasonality",
     "janiform.simulation",
     "janiform.simulation.coarse",

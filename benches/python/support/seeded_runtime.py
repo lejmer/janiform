@@ -8,7 +8,7 @@ from typing import Any, Optional, cast
 
 from pyarrow import parquet
 
-from janiform._contracts import (
+from janiform.contracts import (
     ContractModel,
     parse_json_object,
     require_datetime_utc,

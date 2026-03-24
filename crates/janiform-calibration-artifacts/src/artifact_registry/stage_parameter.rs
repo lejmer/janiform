@@ -410,6 +410,18 @@ impl CalibrationStageParameterArtifact {
                     },
                 )?;
                 validate_return_components_stage_parameter_boundary(payload)?;
+
+                payload
+                    .fitted_parameters
+                    .mean_reversion_fitted_parameters
+                    .validate()
+                    .map_err(|source| {
+                        CalibrationStageParameterArtifactValidationError::InvalidMeanReversionParameters {
+                            stage: self.stage,
+                            error_message: source.to_string(),
+                        }
+                    })?;
+
                 validate_optimizer_state_presence(self.stage, self.optimizer_state.as_ref())?;
             }
             CalibrationStageParameterPayload::JointRefinement(payload) => {
@@ -420,6 +432,30 @@ impl CalibrationStageParameterArtifact {
                         field: "stage_parameters.joint_refinement.selected_candidate_id",
                     },
                 )?;
+
+                payload
+                    .fitted_parameters
+                    .return_components_fitted_parameters
+                    .mean_reversion_fitted_parameters
+                    .validate()
+                    .map_err(|source| {
+                        CalibrationStageParameterArtifactValidationError::InvalidMeanReversionParameters {
+                            stage: self.stage,
+                            error_message: source.to_string(),
+                        }
+                    })?;
+
+                payload
+                    .baseline_return_components_fitted_parameters
+                    .mean_reversion_fitted_parameters
+                    .validate()
+                    .map_err(|source| {
+                        CalibrationStageParameterArtifactValidationError::InvalidMeanReversionParameters {
+                            stage: self.stage,
+                            error_message: source.to_string(),
+                        }
+                    })?;
+
                 validate_optimizer_state_presence(self.stage, self.optimizer_state.as_ref())?;
             }
         }
@@ -482,6 +518,7 @@ impl CalibrationStageParameterArtifact {
                         .to_string(),
                 },
             )?;
+
             optimizer_state
                 .optimizer_adapter_metadata
                 .solver_settings
@@ -846,6 +883,10 @@ pub enum CalibrationStageParameterArtifactValidationError {
         stage: CalibrationStage,
         error_message: String,
     },
+    InvalidMeanReversionParameters {
+        stage: CalibrationStage,
+        error_message: String,
+    },
     HawkesBoundaryMismatch {
         expected_transport: &'static str,
     },
@@ -927,6 +968,13 @@ impl Display for CalibrationStageParameterArtifactValidationError {
             } => write!(
                 formatter,
                 "stage parameter artifact for `{stage:?}` uses invalid optimizer_state: {error_message}"
+            ),
+            Self::InvalidMeanReversionParameters {
+                stage,
+                error_message,
+            } => write!(
+                formatter,
+                "stage parameter artifact for `{stage:?}` uses invalid mean_reversion_fitted_parameters: {error_message}"
             ),
             Self::HawkesBoundaryMismatch { expected_transport } => write!(
                 formatter,

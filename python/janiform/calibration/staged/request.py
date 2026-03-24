@@ -15,7 +15,7 @@ from .contracts import (
     CalibrationStageSolverSettings,
     _parse_calibration_execution_mode,
 )
-from ..._contracts import (
+from ...contracts import (
     ContractModel,
     parse_json_object,
     require_mapping,

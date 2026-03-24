@@ -42,7 +42,7 @@ from ..staged.inputs import (
     StagedCalibrationExecutionInput,
 )
 from ..staged.request import StagedCalibrationRequest
-from ..._contracts import serialize_deterministic_json
+from ...contracts import serialize_deterministic_json
 from ..._native_api import native_exception_matches, native_module
 from ...calendar import CalendarRegistry
 

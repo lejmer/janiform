@@ -46,7 +46,7 @@ use super::execution::{
 };
 use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, JointRefinementStageFittedParameters,
-    ReturnComponentsStageFittedParameters,
+    MeanReversionFittedParameters, ReturnComponentsStageFittedParameters,
 };
 
 pub(super) fn parameter_vector_to_fitted_parameters(
@@ -165,6 +165,7 @@ pub(super) fn parameter_vector_to_fitted_parameters(
             .baseline_return_components_fitted_parameters
             .surprise_deterministic_intensity_profile
             .clone(),
+        mean_reversion_fitted_parameters: MeanReversionFittedParameters::disabled(),
     };
 
     return_components_fitted_parameters

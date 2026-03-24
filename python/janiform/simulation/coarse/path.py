@@ -26,7 +26,7 @@ from ..shared.errors import (
     SIMULATION_ERROR_FACTORY,
     _simulation_error,
 )
-from ..._contracts import (
+from ...contracts import (
     ContractModel,
     parse_json_object,
     require_datetime_utc,

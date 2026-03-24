@@ -3,7 +3,7 @@ from enum import StrEnum
 from typing import Any, Optional
 
 from .._errors import CALIBRATION_ERROR_FACTORY, _calibration_error
-from ..._contracts import (
+from ...contracts import (
     ContractModel,
     require_finite_number,
     require_mapping,

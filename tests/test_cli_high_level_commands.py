@@ -17,6 +17,7 @@ from janiform.calibration.market_data import (
     CalibrationTickPriceInputPolicy,
 )
 from janiform.calibration.staged import validate_staged_calibration_response
+from tests.calibration_test_support import build_disabled_mean_reversion_fitted_parameters_payload
 from tests.cli_test_support import invoke_cli, normalize_help_output, render_help
 
 
@@ -891,6 +892,7 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "exposure_weighted_mean_one_over_source_window.v1"
                             ),
                         },
+                        "mean_reversion_fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
                     },
                 },
             },
@@ -899,6 +901,8 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
     }
 
     return validate_staged_calibration_response(raw_response), raw_response
+
+
 
 
 def _failed_return_components_staged_runner_payload(run_id: str) -> tuple[StagedCalibrationResponse, dict[str, Any]]:

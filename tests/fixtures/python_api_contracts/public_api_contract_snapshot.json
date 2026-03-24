@@ -147,6 +147,9 @@
         "MarketDataSessionRegularWindow",
         "MarketDataSessionResolution",
         "MarketProfileReference",
+        "MeanReversionAnchorModel",
+        "MeanReversionAnchorModelKind",
+        "MeanReversionFittedParameters",
         "PreparedMarketDataCalibration",
         "PresetCategory",
         "PresetReferenceUsageMode",
@@ -533,6 +536,43 @@
           ],
           "kind": "contract_model",
           "signature": "(usage_mode: 'PresetReferenceUsageMode', registry_scope: 'Optional[PresetRegistryScope]' = None, preset_name: 'Optional[str]' = None, configuration: 'Optional[MarketProfileExplicitConfiguration]' = None, override_patch: 'Optional[MarketProfileOverridePatch]' = None) -> 'None'"
+        },
+        "MeanReversionAnchorModel": {
+          "field_names": [
+            "anchor_model_kind",
+            "anchor_value",
+            "source_interval_start_utc_nanos",
+            "source_interval_end_utc_nanos",
+            "anchor_values",
+            "source_alignment_policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', anchor_value: 'Optional[float]' = None, source_interval_start_utc_nanos: 'tuple[int, ...]' = (), source_interval_end_utc_nanos: 'tuple[int, ...]' = (), anchor_values: 'tuple[float, ...]' = (), source_alignment_policy: 'Optional[str]' = None) -> 'None'"
+        },
+        "MeanReversionAnchorModelKind": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "DISABLED",
+              "value": "disabled"
+            },
+            {
+              "name": "CONSTANT",
+              "value": "constant"
+            },
+            {
+              "name": "DETERMINISTIC_INTERVAL_GRID",
+              "value": "deterministic_interval_grid"
+            }
+          ]
+        },
+        "MeanReversionFittedParameters": {
+          "field_names": [
+            "kappa",
+            "anchor_model"
+          ],
+          "kind": "contract_model",
+          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
         },
         "PreparedMarketDataCalibration": {
           "field_names": [
@@ -5164,6 +5204,206 @@
         }
       }
     },
+    "janiform.contracts": {
+      "exports": [
+        "ContractModel",
+        "MeanReversionAnchorModel",
+        "MeanReversionAnchorModelKind",
+        "MeanReversionBoundaryState",
+        "MeanReversionFittedParameters",
+        "MeanReversionRuntimeIntervalAnchors",
+        "ValidationErrorFactory",
+        "compute_hawkes_alpha_over_beta_spectral_radius",
+        "parse_json_object",
+        "require_datetime_utc",
+        "require_field",
+        "require_finite_number",
+        "require_finite_scalar",
+        "require_integer",
+        "require_mapping",
+        "require_non_empty_string",
+        "require_non_negative_finite_number",
+        "require_non_negative_finite_scalar",
+        "require_non_negative_integer",
+        "require_positive_finite_number",
+        "require_positive_finite_scalar",
+        "require_positive_integer",
+        "require_sequence",
+        "require_string",
+        "serialize_deterministic_json",
+        "serialize_pretty_json",
+        "validate_exact_integer",
+        "validate_exact_number",
+        "validate_exact_optional_integer",
+        "validate_exact_string",
+        "validate_required_field_list"
+      ],
+      "module_name": "janiform.contracts",
+      "schema_identifiers": [],
+      "symbols": {
+        "ContractModel": {
+          "field_names": [],
+          "kind": "contract_model",
+          "signature": "()"
+        },
+        "MeanReversionAnchorModel": {
+          "field_names": [
+            "anchor_model_kind",
+            "anchor_value",
+            "source_interval_start_utc_nanos",
+            "source_interval_end_utc_nanos",
+            "anchor_values",
+            "source_alignment_policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', anchor_value: 'Optional[float]' = None, source_interval_start_utc_nanos: 'tuple[int, ...]' = (), source_interval_end_utc_nanos: 'tuple[int, ...]' = (), anchor_values: 'tuple[float, ...]' = (), source_alignment_policy: 'Optional[str]' = None) -> 'None'"
+        },
+        "MeanReversionAnchorModelKind": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "DISABLED",
+              "value": "disabled"
+            },
+            {
+              "name": "CONSTANT",
+              "value": "constant"
+            },
+            {
+              "name": "DETERMINISTIC_INTERVAL_GRID",
+              "value": "deterministic_interval_grid"
+            }
+          ]
+        },
+        "MeanReversionBoundaryState": {
+          "field_names": [
+            "observed_log_price",
+            "anchor_value",
+            "deviation"
+          ],
+          "kind": "contract_model",
+          "signature": "(observed_log_price: 'float', anchor_value: 'float', deviation: 'float') -> 'None'"
+        },
+        "MeanReversionFittedParameters": {
+          "field_names": [
+            "kappa",
+            "anchor_model"
+          ],
+          "kind": "contract_model",
+          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
+        },
+        "MeanReversionRuntimeIntervalAnchors": {
+          "field_names": [
+            "interval_alignment_policy",
+            "start_anchor_value",
+            "end_anchor_values",
+            "interval_deltas"
+          ],
+          "kind": "contract_model",
+          "signature": "(interval_alignment_policy: 'str', start_anchor_value: 'float', end_anchor_values: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'"
+        },
+        "ValidationErrorFactory": {
+          "kind": "constant",
+          "value": "ValidationErrorFactory"
+        },
+        "compute_hawkes_alpha_over_beta_spectral_radius": {
+          "kind": "function",
+          "signature": "(plus_plus: 'float', plus_minus: 'float', minus_plus: 'float', minus_minus: 'float', beta: 'float') -> 'float'"
+        },
+        "parse_json_object": {
+          "kind": "function",
+          "signature": "(payload_json: 'str', payload_label: 'str', error_factory: 'ValidationErrorFactory') -> 'Mapping[str, Any]'"
+        },
+        "require_datetime_utc": {
+          "kind": "function",
+          "signature": "(raw_value: 'object', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'datetime'"
+        },
+        "require_field": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'Any'"
+        },
+        "require_finite_number": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory', *, number_message: 'str' = 'must be a finite number') -> 'float'"
+        },
+        "require_finite_scalar": {
+          "kind": "function",
+          "signature": "(raw_value: 'object', field_path: 'str', error_factory: 'ValidationErrorFactory', *, number_message: 'str' = 'must be a finite number') -> 'float'"
+        },
+        "require_integer": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'int'"
+        },
+        "require_mapping": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'Mapping[str, Any]'"
+        },
+        "require_non_empty_string": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'str'"
+        },
+        "require_non_negative_finite_number": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'float'"
+        },
+        "require_non_negative_finite_scalar": {
+          "kind": "function",
+          "signature": "(raw_value: 'object', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'float'"
+        },
+        "require_non_negative_integer": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'int'"
+        },
+        "require_positive_finite_number": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'float'"
+        },
+        "require_positive_finite_scalar": {
+          "kind": "function",
+          "signature": "(raw_value: 'object', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'float'"
+        },
+        "require_positive_integer": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'int'"
+        },
+        "require_sequence": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'Sequence[object]'"
+        },
+        "require_string": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'str'"
+        },
+        "serialize_deterministic_json": {
+          "kind": "function",
+          "signature": "(value: 'object') -> 'str'"
+        },
+        "serialize_pretty_json": {
+          "kind": "function",
+          "signature": "(value: 'object') -> 'str'"
+        },
+        "validate_exact_integer": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', expected_value: 'int', error_factory: 'ValidationErrorFactory', *, context_suffix: 'Optional[str]' = None) -> 'None'"
+        },
+        "validate_exact_number": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', expected_value: 'float', error_factory: 'ValidationErrorFactory', *, context_suffix: 'Optional[str]' = None) -> 'None'"
+        },
+        "validate_exact_optional_integer": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', expected_value: 'Optional[int]', error_factory: 'ValidationErrorFactory') -> 'None'"
+        },
+        "validate_exact_string": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', expected_value: 'str', error_factory: 'ValidationErrorFactory') -> 'None'"
+        },
+        "validate_required_field_list": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', expected_field_names: 'Sequence[str]', error_factory: 'ValidationErrorFactory') -> 'None'"
+        }
+      }
+    },
     "janiform.errors": {
       "exports": [
         "ContractValidationFailure",
@@ -6617,6 +6857,11 @@
         "HourlyNewsIntensityProviderSource",
         "HourlySeasonalityProviderSource",
         "KnownNewsArrivalConfiguration",
+        "MeanReversionAnchorModel",
+        "MeanReversionAnchorModelKind",
+        "MeanReversionBoundaryState",
+        "MeanReversionFittedParameters",
+        "MeanReversionRuntimeIntervalAnchors",
         "NewsArrivalConfiguration",
         "NewsComponentMarkScaleConfiguration",
         "NewsProcessConfiguration",
@@ -6920,6 +7165,62 @@
           ],
           "kind": "contract_model",
           "signature": "(scheduled_event_timestamps_utc_nanos: 'tuple[int, ...]') -> 'None'"
+        },
+        "MeanReversionAnchorModel": {
+          "field_names": [
+            "anchor_model_kind",
+            "anchor_value",
+            "source_interval_start_utc_nanos",
+            "source_interval_end_utc_nanos",
+            "anchor_values",
+            "source_alignment_policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', anchor_value: 'Optional[float]' = None, source_interval_start_utc_nanos: 'tuple[int, ...]' = (), source_interval_end_utc_nanos: 'tuple[int, ...]' = (), anchor_values: 'tuple[float, ...]' = (), source_alignment_policy: 'Optional[str]' = None) -> 'None'"
+        },
+        "MeanReversionAnchorModelKind": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "DISABLED",
+              "value": "disabled"
+            },
+            {
+              "name": "CONSTANT",
+              "value": "constant"
+            },
+            {
+              "name": "DETERMINISTIC_INTERVAL_GRID",
+              "value": "deterministic_interval_grid"
+            }
+          ]
+        },
+        "MeanReversionBoundaryState": {
+          "field_names": [
+            "observed_log_price",
+            "anchor_value",
+            "deviation"
+          ],
+          "kind": "contract_model",
+          "signature": "(observed_log_price: 'float', anchor_value: 'float', deviation: 'float') -> 'None'"
+        },
+        "MeanReversionFittedParameters": {
+          "field_names": [
+            "kappa",
+            "anchor_model"
+          ],
+          "kind": "contract_model",
+          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
+        },
+        "MeanReversionRuntimeIntervalAnchors": {
+          "field_names": [
+            "interval_alignment_policy",
+            "start_anchor_value",
+            "end_anchor_values",
+            "interval_deltas"
+          ],
+          "kind": "contract_model",
+          "signature": "(interval_alignment_policy: 'str', start_anchor_value: 'float', end_anchor_values: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'"
         },
         "NewsArrivalConfiguration": {
           "field_names": [
@@ -7942,6 +8243,11 @@
         "HawkesExcitationState",
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
+        "MeanReversionAnchorModel",
+        "MeanReversionAnchorModelKind",
+        "MeanReversionBoundaryState",
+        "MeanReversionFittedParameters",
+        "MeanReversionRuntimeIntervalAnchors",
         "SeededTickEventSide",
         "SeededTickEventStateSnapshotCapture",
         "SeededTickSimulationValidationError",
@@ -7979,6 +8285,62 @@
           ],
           "kind": "contract_model",
           "signature": "(lambda_bar: 'float', beta: 'float', alpha: 'HawkesKernelLoadings', rho: 'HawkesKernelLoadings') -> 'None'"
+        },
+        "MeanReversionAnchorModel": {
+          "field_names": [
+            "anchor_model_kind",
+            "anchor_value",
+            "source_interval_start_utc_nanos",
+            "source_interval_end_utc_nanos",
+            "anchor_values",
+            "source_alignment_policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', anchor_value: 'Optional[float]' = None, source_interval_start_utc_nanos: 'tuple[int, ...]' = (), source_interval_end_utc_nanos: 'tuple[int, ...]' = (), anchor_values: 'tuple[float, ...]' = (), source_alignment_policy: 'Optional[str]' = None) -> 'None'"
+        },
+        "MeanReversionAnchorModelKind": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "DISABLED",
+              "value": "disabled"
+            },
+            {
+              "name": "CONSTANT",
+              "value": "constant"
+            },
+            {
+              "name": "DETERMINISTIC_INTERVAL_GRID",
+              "value": "deterministic_interval_grid"
+            }
+          ]
+        },
+        "MeanReversionBoundaryState": {
+          "field_names": [
+            "observed_log_price",
+            "anchor_value",
+            "deviation"
+          ],
+          "kind": "contract_model",
+          "signature": "(observed_log_price: 'float', anchor_value: 'float', deviation: 'float') -> 'None'"
+        },
+        "MeanReversionFittedParameters": {
+          "field_names": [
+            "kappa",
+            "anchor_model"
+          ],
+          "kind": "contract_model",
+          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
+        },
+        "MeanReversionRuntimeIntervalAnchors": {
+          "field_names": [
+            "interval_alignment_policy",
+            "start_anchor_value",
+            "end_anchor_values",
+            "interval_deltas"
+          ],
+          "kind": "contract_model",
+          "signature": "(interval_alignment_policy: 'str', start_anchor_value: 'float', end_anchor_values: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'"
         },
         "SeededTickEventSide": {
           "kind": "enum",

@@ -6,6 +6,7 @@ import pytest
 
 import janiform
 import janiform.cli as cli_module
+import janiform.contracts as contracts_module
 import janiform.errors as errors_module
 import janiform.hourly_factors as hourly_factors_module
 import janiform.pricing as pricing_module
@@ -128,6 +129,11 @@ def test_simulation_public_symbols_live_in_simulation_module() -> None:
         "HourlyNewsIntensityProviderSource",
         "HourlySeasonalityProviderSource",
         "KnownNewsArrivalConfiguration",
+        "MeanReversionAnchorModel",
+        "MeanReversionAnchorModelKind",
+        "MeanReversionBoundaryState",
+        "MeanReversionFittedParameters",
+        "MeanReversionRuntimeIntervalAnchors",
         "NewsArrivalConfiguration",
         "NewsComponentMarkScaleConfiguration",
         "NewsProcessConfiguration",
@@ -163,6 +169,23 @@ def test_simulation_public_symbols_live_in_simulation_module() -> None:
 
 def test_simulation_public_module_is_a_package() -> None:
     assert hasattr(simulation_module, "__path__")
+
+
+def test_contracts_public_symbols_live_in_contracts_module() -> None:
+    expected_exports = {
+        "ContractModel",
+        "MeanReversionAnchorModel",
+        "MeanReversionAnchorModelKind",
+        "MeanReversionBoundaryState",
+        "MeanReversionFittedParameters",
+        "MeanReversionRuntimeIntervalAnchors",
+        "ValidationErrorFactory",
+        "serialize_deterministic_json",
+        "serialize_pretty_json",
+    }
+
+    assert expected_exports <= set(contracts_module.__all__)
+    assert expected_exports <= set(dir(contracts_module))
 
 
 def test_simulation_seeded_public_submodule_is_supported_domain_import() -> None:
@@ -227,6 +250,11 @@ def test_simulation_shared_public_submodule_is_supported_domain_import() -> None
         "HawkesExcitationState",
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
+        "MeanReversionAnchorModel",
+        "MeanReversionAnchorModelKind",
+        "MeanReversionBoundaryState",
+        "MeanReversionFittedParameters",
+        "MeanReversionRuntimeIntervalAnchors",
         "SeededTickEventSide",
         "SeededTickEventStateSnapshotCapture",
         "SeededTickSimulationValidationError",
@@ -271,6 +299,9 @@ def test_simulation_root_and_shared_submodule_share_supported_symbols() -> None:
 
     assert simulation_module.HawkesKernelParameters is simulation_shared_module.HawkesKernelParameters
     assert simulation_module.HawkesExcitationState is simulation_shared_module.HawkesExcitationState
+    assert contracts_module.MeanReversionAnchorModel is simulation_shared_module.MeanReversionAnchorModel
+    assert simulation_module.MeanReversionFittedParameters is simulation_shared_module.MeanReversionFittedParameters
+    assert simulation_module.MeanReversionBoundaryState is simulation_shared_module.MeanReversionBoundaryState
     assert (
         simulation_module.SeededTickSimulationValidationError
         is simulation_shared_module.SeededTickSimulationValidationError
@@ -363,6 +394,7 @@ def test_hourly_factor_support_symbols_live_in_hourly_factor_module() -> None:
 def test_private_modules_are_not_exposed_through_public_exports() -> None:
     assert "native_module" not in validation_module.__all__
     assert "harness" not in validation_module.__all__
+    assert import_module("janiform.contracts").__name__ == "janiform.contracts"
     assert import_module("janiform.simulation.coarse").__name__ == "janiform.simulation.coarse"
     assert import_module("janiform.simulation.seeded").__name__ == "janiform.simulation.seeded"
     assert import_module("janiform.simulation.shared").__name__ == "janiform.simulation.shared"
@@ -375,6 +407,15 @@ def test_private_modules_are_not_exposed_through_public_exports() -> None:
 
     with pytest.raises(ModuleNotFoundError):
         import_module("janiform.simulation._shared")
+
+    with pytest.raises(ModuleNotFoundError):
+        import_module("janiform.mean_reversion")
+
+    with pytest.raises(ModuleNotFoundError):
+        import_module("janiform._mean_reversion")
+
+    with pytest.raises(ModuleNotFoundError):
+        import_module("janiform._contracts")
 
     with pytest.raises(ModuleNotFoundError):
         import_module("janiform.api")
@@ -432,6 +473,9 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
         "MarketDataSessionRegularWindow",
         "MarketDataSessionResolution",
         "MarketProfileReference",
+        "MeanReversionAnchorModel",
+        "MeanReversionAnchorModelKind",
+        "MeanReversionFittedParameters",
         "PresetReferenceUsageMode",
         "PresetCategory",
         "PresetRegistry",

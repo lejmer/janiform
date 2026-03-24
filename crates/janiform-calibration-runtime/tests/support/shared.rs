@@ -347,6 +347,12 @@ fn assert_return_components_fitted_parameters_match(
             ),
         );
     }
+
+    assert_eq!(
+        actual_parameters.mean_reversion_fitted_parameters,
+        expected_parameters.mean_reversion_fitted_parameters,
+        "{context} mean_reversion_fitted_parameters drifted"
+    );
 }
 
 fn assert_nig_shared_plus_shift_configuration_match(

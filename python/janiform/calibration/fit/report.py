@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..._contracts import serialize_pretty_json
+from ...contracts import serialize_pretty_json
 from ..market_data.contracts import CalibrationMarketDataWorkflowScope
 from ..market_data.workflow import (
     MarketDataCalibrationPreparationDiagnostics,

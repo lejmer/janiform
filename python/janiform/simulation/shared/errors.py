@@ -8,7 +8,7 @@ from ...errors import (
     JaniformIntegrationError,
     JaniformValidationError,
 )
-from ..._contracts import ValidationErrorFactory
+from ...contracts import ValidationErrorFactory
 
 
 SIMULATION_VALIDATION_ERROR_ID = "simulation.validation.contract"

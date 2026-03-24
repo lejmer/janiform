@@ -9,7 +9,7 @@ from .contracts import (
     _parse_calibration_execution_mode,
 )
 from .._errors import CALIBRATION_ERROR_FACTORY, _calibration_error
-from ..._contracts import (
+from ...contracts import (
     ContractModel,
     parse_json_object,
     require_non_empty_string,

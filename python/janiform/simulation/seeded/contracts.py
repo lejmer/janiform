@@ -13,7 +13,7 @@ from ..shared import (
 )
 from ..shared.contracts import _parse_seeded_tick_state_snapshot_capture
 from ..shared.errors import SIMULATION_ERROR_FACTORY, _simulation_error
-from ..._contracts import (
+from ...contracts import (
     ContractModel,
     require_datetime_utc,
     require_finite_number,

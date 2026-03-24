@@ -30,6 +30,11 @@ from janiform.calibration.market_data import (
     serialize_market_data_calibration_request,
     validate_market_data_calibration_request,
 )
+from janiform.calibration import (
+    MeanReversionAnchorModel,
+    MeanReversionAnchorModelKind,
+    MeanReversionFittedParameters,
+)
 from janiform.calibration.staged import (
     CalibrationExecutionMode,
     CalibrationOptimizerSettings,
@@ -193,6 +198,44 @@ def test_staged_calibration_execution_input_roundtrip_serialization_is_determini
 
     assert deserialized_execution_input == execution_input
     assert json.loads(serialized_execution_input)["request"]["execution_mode"] == "memory"
+
+
+def test_mean_reversion_fitted_parameters_roundtrip_serialization_is_deterministic() -> None:
+    fitted_parameters = MeanReversionFittedParameters(
+        kappa=0.25,
+        anchor_model=MeanReversionAnchorModel.deterministic_interval_grid(
+            source_interval_start_utc_nanos=(10, 20),
+            source_interval_end_utc_nanos=(20, 30),
+            anchor_values=(4.2, 4.1),
+            source_alignment_policy="piecewise_constant_utc_interval_grid.v1",
+        ),
+    )
+
+    serialized = fitted_parameters.to_json()
+    deserialized = MeanReversionFittedParameters.from_mapping(json.loads(serialized))
+
+    assert deserialized == fitted_parameters
+    assert json.loads(serialized)["anchor_model"]["anchor_model_kind"] == (
+        MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID.value
+    )
+
+
+def test_mean_reversion_fitted_parameters_reject_negative_kappa() -> None:
+    with pytest.raises(ValueError, match="kappa: must be non-negative"):
+        MeanReversionFittedParameters(
+            kappa=-0.01,
+            anchor_model=MeanReversionAnchorModel.disabled(),
+        )
+
+
+def test_mean_reversion_anchor_model_rejects_non_finite_anchor_values() -> None:
+    with pytest.raises(ValueError, match="anchor_values\\[1\\]: must be a finite number"):
+        MeanReversionAnchorModel.deterministic_interval_grid(
+            source_interval_start_utc_nanos=(10, 20),
+            source_interval_end_utc_nanos=(20, 30),
+            anchor_values=(4.2, float("nan")),
+            source_alignment_policy="piecewise_constant_utc_interval_grid.v1",
+        )
 
 
 def test_staged_calibration_execution_input_requires_explicit_selected_stage_inputs() -> None:

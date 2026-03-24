@@ -122,6 +122,8 @@ For coarse workflows and shared simulation contracts, the same pattern applies:
 from janiform.simulation.coarse import CoarseSimulationRunRequest, run_coarse_simulation
 
 from janiform.simulation.shared import HawkesKernelParameters
+
+from janiform.contracts import MeanReversionFittedParameters
 ```
 
 ## Supported public modules
@@ -140,6 +142,8 @@ from janiform.simulation.shared import HawkesKernelParameters
   - Ownership: exchange calendar queries shared across workflows
 - `janiform.hourly_factors`
   - Ownership: interval-aligned `s_h` and `nu_h` contract materialization shared by simulation and pricing
+- `janiform.contracts`
+  - Ownership: shared contract primitives and cross-cutting domain contracts, including anchor-deviation mean reversion
 - `janiform.seasonality`
   - Ownership: deterministic seasonality estimation and composition
 - `janiform.validation`

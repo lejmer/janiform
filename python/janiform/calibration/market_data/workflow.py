@@ -14,7 +14,7 @@ from ..sessions.contracts import MarketDataSessionResolution
 from ..staged.inputs import StagedCalibrationExecutionInput
 from ..staged.results import StagedCalibrationResponse
 from ..staged.runtime import run_staged_calibration
-from ..._contracts import ContractModel
+from ...contracts import ContractModel
 
 
 @dataclass(frozen=True, slots=True)

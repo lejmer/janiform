@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::MeanReversionFittedParameters;
 use janiform_model_kernels::hawkes::{
     HawkesKernelParameters, HawkesStructuredAlphaParameterization,
     HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
@@ -42,6 +43,7 @@ pub struct ReturnComponentsStageFittedParameters {
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     pub news_process_configuration: NewsProcessConfiguration,
     pub surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile,
+    pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
