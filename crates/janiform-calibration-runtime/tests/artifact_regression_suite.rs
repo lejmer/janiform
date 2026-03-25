@@ -38,7 +38,8 @@ use support::shared::{
     TimeZone, Utc, assert_hawkes_fitted_parameters_match,
     assert_joint_refinement_fitted_parameters_match, assert_optimizer_state_matches,
     build_calibration_stage_parameter_artifact, build_joint_refinement_stage_success_report,
-    build_run_contract_for_caller_surface, build_run_contract_with_mode_and_resume,
+    build_mean_reversion_stage_success_report, build_run_contract_for_caller_surface,
+    build_run_contract_with_mode_and_resume,
     build_stage_output_links, build_validation_metric_artifact_fixture,
     calibration_stage_test_registry, calibration_stage_timestamp_fixture,
     default_calibration_execution_mode_for_surface, hawkes_stage_candidate_fixture,
@@ -667,6 +668,7 @@ fn commit_persisted_artifact_regression_fixture(
             return_components_stage_candidate_generation_fixture(),
         ),
     );
+    let mean_reversion_report = build_mean_reversion_stage_success_report();
     let joint_refinement_report = build_joint_refinement_stage_success_report();
 
     let stage_parameter_artifacts = vec![
@@ -685,6 +687,11 @@ fn commit_persisted_artifact_regression_fixture(
             &CalibrationStagedRunStageReport::ReturnComponents(return_components_report),
         )
         .expect("return-components stage artifact should build"),
+        build_calibration_stage_parameter_artifact(
+            &run_contract,
+            &CalibrationStagedRunStageReport::MeanReversion(mean_reversion_report),
+        )
+        .expect("mean-reversion stage artifact should build"),
         build_calibration_stage_parameter_artifact(
             &run_contract,
             &CalibrationStagedRunStageReport::JointRefinement(joint_refinement_report),
@@ -1174,6 +1181,39 @@ fn assert_stage_artifact_matches(
             assert_eq!(
                 loaded_payload.fitted_parameters, expected_payload.fitted_parameters,
                 "fixture_id={} return-components fitted_parameters drifted",
+                fixture_id
+            );
+        }
+        (
+            CalibrationStageParameterPayload::MeanReversion(loaded_payload),
+            CalibrationStageParameterPayload::MeanReversion(expected_payload),
+        ) => {
+            assert_eq!(
+                loaded_payload.fitted_parameters, expected_payload.fitted_parameters,
+                "fixture_id={} mean-reversion fitted_parameters drifted",
+                fixture_id
+            );
+            assert_eq!(
+                loaded_payload.diagnostics, expected_payload.diagnostics,
+                "fixture_id={} mean-reversion diagnostics drifted",
+                fixture_id
+            );
+            assert_eq!(
+                loaded_payload.return_components_input_transport,
+                expected_payload.return_components_input_transport,
+                "fixture_id={} mean-reversion return_components_input_transport drifted",
+                fixture_id
+            );
+            assert_eq!(
+                loaded_payload.return_components_selected_candidate_id,
+                expected_payload.return_components_selected_candidate_id,
+                "fixture_id={} mean-reversion return_components_selected_candidate_id drifted",
+                fixture_id
+            );
+            assert_eq!(
+                loaded_payload.return_components_artifact_reference,
+                expected_payload.return_components_artifact_reference,
+                "fixture_id={} mean-reversion return_components_artifact_reference drifted",
                 fixture_id
             );
         }

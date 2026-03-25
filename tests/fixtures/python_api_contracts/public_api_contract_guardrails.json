@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "3d6c532819eec4f7b38ad93f055ae06c08c0d00866b2b42679d1696fb911de13",
+  "approved_snapshot_sha256": "133fcfeccbaacb8364bab3bf112adf08b7bf1a642ec6b2acd123ec0136c71bcf",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -527,6 +527,16 @@
       "rationale": "The anchor-deviation rollout now surfaces observed-state end-of-interval fields on the public coarse simulation and sufficient-statistics risk contracts, so the approved Python API snapshot must record those fields explicitly instead of preserving the earlier core-return-only shapes.",
       "snapshot_sha256": "3d6c532819eec4f7b38ad93f055ae06c08c0d00866b2b42679d1696fb911de13",
       "summary": "Approve observed-state coarse simulation and risk contract fields in the public Python API snapshot."
+    },
+    {
+      "approved_on": "2026-03-25",
+      "docs_updated": [
+        "README.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "The staged calibration surface now includes an explicit mean-reversion stage input with lower-frequency observed log-price samples and the corresponding public stage enum value, so the approved Python snapshot must record the new execution-input field and input contracts instead of preserving the pre-anchor-deviation orchestration boundary.",
+      "snapshot_sha256": "133fcfeccbaacb8364bab3bf112adf08b7bf1a642ec6b2acd123ec0136c71bcf",
+      "summary": "Approve the public staged-calibration mean-reversion execution input contracts."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_2",

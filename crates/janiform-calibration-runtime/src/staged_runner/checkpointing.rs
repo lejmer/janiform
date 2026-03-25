@@ -149,6 +149,38 @@ pub(super) fn build_stage_parameter_artifact_input(
                 },
             ))
         }
+        CalibrationStagedRunStageReport::MeanReversion(report) => {
+            let payload = report
+                .fitted_stage_payload
+                .as_ref()
+                .ok_or_else(|| "successful mean-reversion stage is missing its payload".to_string())?;
+            let metadata = report
+                .metadata
+                .as_ref()
+                .ok_or_else(|| "successful mean-reversion stage is missing metadata".to_string())?;
+
+            Ok(CalibrationStageParameterArtifactInput::MeanReversion(
+                janiform_calibration_artifacts::MeanReversionStageParameterArtifactInput {
+                    metadata: build_stage_parameter_metadata(
+                        metadata.stage_output_schema_version,
+                        metadata.run_global_seed,
+                        metadata.stage_seed,
+                        metadata.stage_seed_source,
+                        metadata.stage_seed_derivation_policy,
+                        metadata.solver_settings.clone(),
+                    ),
+                    fitted_parameters: payload.fitted_parameters.clone(),
+                    diagnostics: payload.diagnostics.clone(),
+                    return_components_input_transport: payload.return_components_input_transport,
+                    return_components_selected_candidate_id: payload
+                        .return_components_selected_candidate_id
+                        .clone(),
+                    return_components_artifact_reference: payload
+                        .return_components_artifact_reference
+                        .clone(),
+                },
+            ))
+        }
         CalibrationStagedRunStageReport::JointRefinement(report) => {
             let payload = report.fitted_stage_payload.as_ref().ok_or_else(|| {
                 "successful joint-refinement stage is missing its payload".to_string()

@@ -44,8 +44,9 @@ fn parse_calibration_stage(raw_stage: &str) -> PyResult<CalibrationStage> {
         "seasonality" => Ok(CalibrationStage::Seasonality),
         "hawkes" => Ok(CalibrationStage::Hawkes),
         "return_components" => Ok(CalibrationStage::ReturnComponents),
+        "mean_reversion" => Ok(CalibrationStage::MeanReversion),
         _ => Err(PyValueError::new_err(
-            "stage must be one of: seasonality, hawkes, return_components",
+            "stage must be one of: seasonality, hawkes, return_components, mean_reversion",
         )),
     }
 }

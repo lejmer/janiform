@@ -60,9 +60,28 @@
                 }
               },
               "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "mean_reversion"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                }
+              },
+              "type": "object"
             }
           ],
-          "length": 3,
+          "length": 4,
           "type": "array"
         },
         "execution_mode": {
@@ -183,9 +202,40 @@
                 }
               },
               "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "mean_reversion"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "mean_reversion"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
             }
           ],
-          "length": 3,
+          "length": 4,
           "type": "array"
         },
         "started_from_stage": {
@@ -258,9 +308,28 @@
                 }
               },
               "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "mean_reversion"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                }
+              },
+              "type": "object"
             }
           ],
-          "length": 3,
+          "length": 4,
           "type": "array"
         },
         "execution_mode": {
@@ -381,9 +450,40 @@
                 }
               },
               "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "mean_reversion"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "mean_reversion"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
             }
           ],
-          "length": 3,
+          "length": 4,
           "type": "array"
         },
         "started_from_stage": {

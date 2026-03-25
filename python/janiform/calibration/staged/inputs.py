@@ -11,6 +11,7 @@ from .contracts import (
 from .._errors import CALIBRATION_ERROR_FACTORY, _calibration_error, _require_bool
 from ...contracts import (
     ContractModel,
+    MeanReversionAnchorModelKind,
     parse_json_object,
     require_finite_number,
     require_integer,
@@ -1674,6 +1675,131 @@ class CalibrationStagedExecutionRuntimeResources(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
+class CalibrationMeanReversionStageObservation(ContractModel):
+    observation_timestamp_utc_nanos: int
+    observed_log_price: float
+
+    def __post_init__(self) -> None:
+        require_finite_number(
+            {"observed_log_price": self.observed_log_price},
+            "observed_log_price",
+            "observed_log_price",
+            CALIBRATION_ERROR_FACTORY,
+        )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationMeanReversionStageObservation:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationMeanReversionStageObservation(
+            observation_timestamp_utc_nanos=require_integer(
+                raw_payload,
+                "observation_timestamp_utc_nanos",
+                f"{field_path}.observation_timestamp_utc_nanos",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            observed_log_price=require_finite_number(
+                raw_payload,
+                "observed_log_price",
+                f"{field_path}.observed_log_price",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationMeanReversionStageExecutionInput(ContractModel):
+    requested_anchor_model_kind: MeanReversionAnchorModelKind
+    calibration_grid_kind: str
+    calibration_grid_interval_hours: float
+    source_observation_count: int
+    coverage_ratio: float
+    observations: tuple[CalibrationMeanReversionStageObservation, ...] = ()
+    disabled_stage_reason: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if not self.calibration_grid_kind.strip():
+            raise _calibration_error("calibration_grid_kind", "must be a non-empty string")
+        if self.calibration_grid_interval_hours <= 0.0:
+            raise _calibration_error(
+                "calibration_grid_interval_hours",
+                "must be strictly positive",
+            )
+        if self.source_observation_count < 0:
+            raise _calibration_error("source_observation_count", "must be non-negative")
+        if self.coverage_ratio < 0.0:
+            raise _calibration_error("coverage_ratio", "must be non-negative")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationMeanReversionStageExecutionInput:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        raw_observations = raw_payload.get("observations", [])
+        if isinstance(raw_observations, str) or not isinstance(raw_observations, list | tuple):
+            raise _calibration_error(f"{field_path}.observations", "must be a sequence")
+
+        disabled_stage_reason = raw_payload.get("disabled_stage_reason")
+        if disabled_stage_reason is not None and not isinstance(disabled_stage_reason, str):
+            raise _calibration_error(
+                f"{field_path}.disabled_stage_reason",
+                "must be a string when provided",
+            )
+
+        return CalibrationMeanReversionStageExecutionInput(
+            requested_anchor_model_kind=MeanReversionAnchorModelKind(
+                require_string(
+                    raw_payload,
+                    "requested_anchor_model_kind",
+                    f"{field_path}.requested_anchor_model_kind",
+                    CALIBRATION_ERROR_FACTORY,
+                )
+            ),
+            calibration_grid_kind=require_non_empty_string(
+                raw_payload,
+                "calibration_grid_kind",
+                f"{field_path}.calibration_grid_kind",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            calibration_grid_interval_hours=require_positive_finite_number(
+                raw_payload,
+                "calibration_grid_interval_hours",
+                f"{field_path}.calibration_grid_interval_hours",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            source_observation_count=require_non_negative_integer(
+                raw_payload,
+                "source_observation_count",
+                f"{field_path}.source_observation_count",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            coverage_ratio=require_non_negative_finite_number(
+                raw_payload,
+                "coverage_ratio",
+                f"{field_path}.coverage_ratio",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            observations=tuple(
+                CalibrationMeanReversionStageObservation.from_mapping(
+                    raw_observation,
+                    field_path=f"{field_path}.observations[{observation_index}]",
+                )
+                for observation_index, raw_observation in enumerate(raw_observations)
+            ),
+            disabled_stage_reason=disabled_stage_reason,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class StagedCalibrationExecutionInput(ContractModel):
     schema_version: str
     request: StagedCalibrationRequest
@@ -1682,6 +1808,7 @@ class StagedCalibrationExecutionInput(ContractModel):
     return_components_candidate_generation_input: Optional[
         CalibrationReturnComponentsStageCandidateGenerationInput
     ] = None
+    mean_reversion_stage_input: Optional[CalibrationMeanReversionStageExecutionInput] = None
     runtime_resources: Optional[CalibrationStagedExecutionRuntimeResources] = None
 
     def __post_init__(self) -> None:
@@ -1735,6 +1862,17 @@ class StagedCalibrationExecutionInput(ContractModel):
             raise _calibration_error(
                 "return_components_candidate_generation_input",
                 "must not be provided when return_components is not selected",
+            )
+
+        if CalibrationStage.MEAN_REVERSION in selected_stage_set and self.mean_reversion_stage_input is None:
+            raise _calibration_error(
+                "mean_reversion_stage_input",
+                "is required when selected_stages contains mean_reversion",
+            )
+        if CalibrationStage.MEAN_REVERSION not in selected_stage_set and self.mean_reversion_stage_input is not None:
+            raise _calibration_error(
+                "mean_reversion_stage_input",
+                "must not be provided when mean_reversion is not selected",
             )
 
         match self.request.execution_mode:
@@ -1818,6 +1956,20 @@ class StagedCalibrationExecutionInput(ContractModel):
                 )
                 else None
             ),
+            mean_reversion_stage_input=(
+                CalibrationMeanReversionStageExecutionInput.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "mean_reversion_stage_input",
+                        "mean_reversion_stage_input",
+                        CALIBRATION_ERROR_FACTORY,
+                    ),
+                    field_path="mean_reversion_stage_input",
+                )
+                if "mean_reversion_stage_input" in raw_payload
+                and raw_payload["mean_reversion_stage_input"] is not None
+                else None
+            ),
             runtime_resources=(
                 CalibrationStagedExecutionRuntimeResources.from_mapping(
                     require_mapping(
@@ -1865,6 +2017,8 @@ __all__ = [
     'CalibrationHawkesStructuredRhoSelfDominancePolicy',
     'CalibrationIntradaySeasonalityEstimatorSettings',
     'CalibrationIntradaySmoothingKernel',
+    'CalibrationMeanReversionStageExecutionInput',
+    'CalibrationMeanReversionStageObservation',
     'CalibrationObjectiveTermInput',
     'CalibrationReturnComponentsCloseOpenGapDetectionPolicy',
     'CalibrationReturnComponentsDetectedIntradayJumpCandidate',

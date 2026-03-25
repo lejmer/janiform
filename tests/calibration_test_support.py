@@ -15,6 +15,8 @@ from janiform.calibration.staged import (
     CalibrationHawkesStructuredRhoSelfDominancePolicy,
     CalibrationIntradaySeasonalityEstimatorSettings,
     CalibrationIntradaySmoothingKernel,
+    CalibrationMeanReversionStageExecutionInput,
+    CalibrationMeanReversionStageObservation,
     CalibrationOptimizerSettings,
     CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
     CalibrationReturnComponentsDetectedIntradayJumpCandidate,
@@ -40,6 +42,7 @@ from janiform.calibration.staged import (
     StagedCalibrationExecutionInput,
     StagedCalibrationRequest,
 )
+from janiform.contracts import MeanReversionAnchorModelKind
 from janiform.pricing import GammaSeverityMarkConfiguration
 
 
@@ -70,6 +73,7 @@ def build_valid_execution_input_model(
                 CalibrationStage.SEASONALITY,
                 CalibrationStage.HAWKES,
                 CalibrationStage.RETURN_COMPONENTS,
+                CalibrationStage.MEAN_REVERSION,
             ),
             seed_settings=CalibrationRunSeedSettings(
                 global_seed=17,
@@ -84,6 +88,7 @@ def build_valid_execution_input_model(
                 _solver_settings(CalibrationStage.SEASONALITY),
                 _solver_settings(CalibrationStage.HAWKES),
                 _solver_settings(CalibrationStage.RETURN_COMPONENTS),
+                _solver_settings(CalibrationStage.MEAN_REVERSION),
             ),
         ),
         seasonality_stage_input=CalibrationSeasonalityStageExecutionInput(
@@ -260,6 +265,31 @@ def build_valid_execution_input_model(
                 gap_fit_weight=1.0,
                 activity_coupling_fit_weight=1.0,
                 price_range_sanity_fit_weight=1.0,
+            ),
+        ),
+        mean_reversion_stage_input=CalibrationMeanReversionStageExecutionInput(
+            requested_anchor_model_kind=MeanReversionAnchorModelKind.CONSTANT,
+            calibration_grid_kind="synthetic_daily_close_grid.v1",
+            calibration_grid_interval_hours=24.0,
+            source_observation_count=4,
+            coverage_ratio=1.0,
+            observations=(
+                CalibrationMeanReversionStageObservation(
+                    observation_timestamp_utc_nanos=1770042600000000000,
+                    observed_log_price=4.60,
+                ),
+                CalibrationMeanReversionStageObservation(
+                    observation_timestamp_utc_nanos=1770129000000000000,
+                    observed_log_price=4.58,
+                ),
+                CalibrationMeanReversionStageObservation(
+                    observation_timestamp_utc_nanos=1770215400000000000,
+                    observed_log_price=4.57,
+                ),
+                CalibrationMeanReversionStageObservation(
+                    observation_timestamp_utc_nanos=1770301800000000000,
+                    observed_log_price=4.59,
+                ),
             ),
         ),
         runtime_resources=(

@@ -5,10 +5,11 @@ use super::{
     CalibrationStagedRunInputs, CalibrationStagedRunStageReport, ExchangeCalendarRegistry,
     HawkesStageExecutionInput, HawkesStageSeasonalityInput, JointRefinementStageExecutionInput,
     JointRefinementStageHawkesInput, JointRefinementStageReturnComponentsInput,
+    MeanReversionStageReturnComponentsInput,
     ReturnComponentsStageActivityInput, ReturnComponentsStageExecutionInput,
     run_hawkes_calibration_stage, run_joint_refinement_calibration_stage,
-    run_return_components_calibration_stage, run_seasonality_calibration_stage,
-    stage_output_artifact_references_for_stage,
+    run_mean_reversion_calibration_stage, run_return_components_calibration_stage,
+    run_seasonality_calibration_stage, stage_output_artifact_references_for_stage,
 };
 
 pub(super) fn run_stage_for_staged_execution(
@@ -152,6 +153,53 @@ pub(super) fn run_stage_for_staged_execution(
                         candidate_generation_input,
                     },
                 ),
+            ))
+        }
+        CalibrationStage::MeanReversion => {
+            let Some(mut stage_input) = staged_run_inputs.mean_reversion_stage_input.take() else {
+                return Err(CalibrationStagedRunFailure::MissingStageInput {
+                    stage: CalibrationStage::MeanReversion,
+                });
+            };
+
+            let return_components_input_transport = expected_stage_handoff_transport(
+                run_spec,
+                CalibrationStage::ReturnComponents,
+                CalibrationStage::MeanReversion,
+            );
+
+            stage_input.return_components_input = Some(match return_components_input_transport {
+                CalibrationStageHandoffTransport::InMemoryOutput => {
+                    let Some(return_components_stage_payload) =
+                        payload_state.return_components_stage_payload.as_ref()
+                    else {
+                        return Err(
+                            CalibrationStagedRunFailure::MissingInMemoryUpstreamPayload {
+                                required_stage: CalibrationStage::ReturnComponents,
+                                consuming_stage: CalibrationStage::MeanReversion,
+                            },
+                        );
+                    };
+
+                    MeanReversionStageReturnComponentsInput::InMemoryOutput {
+                        selected_candidate_id: return_components_stage_payload
+                            .selected_candidate_id
+                            .clone(),
+                    }
+                }
+                CalibrationStageHandoffTransport::PersistedArtifactReference => {
+                    MeanReversionStageReturnComponentsInput::PersistedArtifactReference {
+                        artifact_reference: expected_stage_handoff_artifact_reference(
+                            run_spec,
+                            CalibrationStage::ReturnComponents,
+                            CalibrationStage::MeanReversion,
+                        ),
+                    }
+                }
+            });
+
+            Ok(CalibrationStagedRunStageReport::MeanReversion(
+                run_mean_reversion_calibration_stage(run_spec, calendar_registry, stage_input),
             ))
         }
         CalibrationStage::JointRefinement => {
@@ -327,6 +375,7 @@ pub(super) fn calibration_stage_token(stage: CalibrationStage) -> &'static str {
         CalibrationStage::Seasonality => "seasonality",
         CalibrationStage::Hawkes => "hawkes",
         CalibrationStage::ReturnComponents => "return_components",
+        CalibrationStage::MeanReversion => "mean_reversion",
         CalibrationStage::JointRefinement => "joint_refinement",
     }
 }

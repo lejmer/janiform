@@ -78,8 +78,8 @@ pandas_frame = simulation.to_pandas()
 
 Set `JaniformEstimator(cpu_count=...)` or `janiform fit --cpu-count ...` when you want to
 control how many CPU cores staged calibration uses while evaluating candidate parameter sets.
-The default full calibration workflow now runs four stages in order:
-`seasonality`, `hawkes`, `return_components`, and `joint_refinement`.
+The default full calibration workflow now runs five stages in order:
+`seasonality`, `hawkes`, `return_components`, `mean_reversion`, and `joint_refinement`.
 Successful staged calibration responses expose diagnostic artifacts directly in memory mode
 through `diagnostic_artifact_bundle`, and expose persisted diagnostics in disk mode through
 `diagnostic_artifact_references`.

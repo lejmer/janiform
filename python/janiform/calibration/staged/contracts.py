@@ -33,6 +33,7 @@ class CalibrationStage(StrEnum):
     SEASONALITY = "seasonality"
     HAWKES = "hawkes"
     RETURN_COMPONENTS = "return_components"
+    MEAN_REVERSION = "mean_reversion"
     JOINT_REFINEMENT = "joint_refinement"
 
 
@@ -115,7 +116,7 @@ class CalibrationStageSeedOverride(ContractModel):
         except ValueError as e:
             raise _calibration_error(
                 f"{field_path}.stage",
-                "must be one of: seasonality, hawkes, return_components, joint_refinement",
+                "must be one of: seasonality, hawkes, return_components, mean_reversion, joint_refinement",
             ) from e
 
         return CalibrationStageSeedOverride(
@@ -264,7 +265,7 @@ class CalibrationStageSolverSettings(ContractModel):
         except ValueError as e:
             raise _calibration_error(
                 f"{field_path}.stage",
-                "must be one of: seasonality, hawkes, return_components",
+                "must be one of: seasonality, hawkes, return_components, mean_reversion, joint_refinement",
             ) from e
 
         return CalibrationStageSolverSettings(

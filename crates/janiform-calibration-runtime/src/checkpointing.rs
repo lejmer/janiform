@@ -6,6 +6,7 @@ use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::joint_refinement::{
     JointRefinementStageFittedPayload, JointRefinementStageSeasonalityFactorsInput,
 };
+use crate::stages::mean_reversion::MeanReversionStageFittedPayload;
 use crate::stages::return_components::ReturnComponentsStageFittedPayload;
 use crate::stages::seasonality::SeasonalityStageNormalizedPayload;
 
@@ -16,6 +17,7 @@ pub(crate) struct CalibrationInMemoryStagePayloadState {
         Option<JointRefinementStageSeasonalityFactorsInput>,
     pub(crate) hawkes_stage_payload: Option<HawkesStageFittedPayload>,
     pub(crate) return_components_stage_payload: Option<ReturnComponentsStageFittedPayload>,
+    pub(crate) mean_reversion_stage_payload: Option<MeanReversionStageFittedPayload>,
     pub(crate) joint_refinement_stage_payload: Option<JointRefinementStageFittedPayload>,
 }
 

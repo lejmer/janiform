@@ -396,6 +396,11 @@ pub fn compute_sorted_quantile_or_zero(sorted_values: &[f64], quantile_level: f6
     if quantile.is_nan() { 0.0 } else { quantile }
 }
 
+/// Compute the median from an already sorted sample.
+pub fn compute_sorted_median(sorted_values: &[f64]) -> f64 {
+    compute_sorted_quantile(sorted_values, 0.5)
+}
+
 /// Compute an interpolated quantile after filtering non-finite values and sorting the sample.
 pub fn compute_finite_quantile_or_zero(values: &[f64], quantile_level: f64) -> f64 {
     let mut finite_values: Vec<f64> = values
@@ -410,6 +415,11 @@ pub fn compute_finite_quantile_or_zero(values: &[f64], quantile_level: f64) -> f
     finite_values.sort_by(f64::total_cmp);
 
     compute_sorted_quantile_or_zero(finite_values.as_slice(), quantile_level)
+}
+
+/// Compute the median after filtering non-finite values and sorting the sample.
+pub fn compute_finite_median_or_zero(values: &[f64]) -> f64 {
+    compute_finite_quantile_or_zero(values, 0.5)
 }
 
 /// Compute a probability-weighted moment for a sorted sample.
@@ -597,13 +607,7 @@ pub fn median_abs(values: &[f64]) -> f64 {
     }
 
     retained_values.sort_by(f64::total_cmp);
-
-    let midpoint = retained_values.len() / 2;
-    if retained_values.len() % 2 == 0 {
-        (retained_values[midpoint - 1] + retained_values[midpoint]) / 2.0
-    } else {
-        retained_values[midpoint]
-    }
+    compute_sorted_median(retained_values.as_slice())
 }
 
 /// Compute the median absolute value of strictly non-zero finite observations.
@@ -619,13 +623,7 @@ pub fn median_abs_non_zero(values: &[f64]) -> Option<f64> {
     }
 
     retained_values.sort_by(f64::total_cmp);
-
-    let midpoint = retained_values.len() / 2;
-    Some(if retained_values.len() % 2 == 0 {
-        (retained_values[midpoint - 1] + retained_values[midpoint]) / 2.0
-    } else {
-        retained_values[midpoint]
-    })
+    Some(compute_sorted_median(retained_values.as_slice()))
 }
 
 /// Use a data-normalized smoothing pseudocount rather than a fixed constant.
@@ -665,8 +663,8 @@ mod tests {
     use super::{
         arithmetic_mean, arithmetic_mean_or_zero, bowley_skewness_from_sorted,
         central_skewness_or_zero, clamp_to_open_unit_interval, clamp_to_unit_interval,
-        coefficient_of_variation, compute_finite_quantile_or_zero,
-        compute_probability_weighted_moment, compute_sorted_quantile,
+        coefficient_of_variation, compute_finite_median_or_zero, compute_finite_quantile_or_zero,
+        compute_probability_weighted_moment, compute_sorted_median, compute_sorted_quantile,
         compute_sorted_quantile_or_zero, finite_arithmetic_mean_or_zero, integer_square_root,
         l_moment_lambda2_from_sorted, l_moment_tau3_from_sorted, logistic, median_abs,
         median_abs_non_zero, normalized_pseudocount, pearson_correlation, relative_rmse,
@@ -720,8 +718,11 @@ mod tests {
         assert_eq!(unique_sorted_values(&[2.0, 1.0, 2.0]), vec![1.0, 2.0]);
         assert_eq!(normalized_pseudocount(4), 0.25);
         assert_eq!(logistic(0.0), 0.5);
+        assert_eq!(compute_sorted_median(&[1.0, 2.0, 4.0]), 2.0);
+        assert_eq!(compute_sorted_median(&[1.0, 2.0, 3.0, 4.0]), 2.5);
         assert_eq!(compute_sorted_quantile(&[1.0, 2.0, 4.0], 0.5), 2.0);
         assert_eq!(compute_sorted_quantile_or_zero(&[], 0.5), 0.0);
+        assert_eq!(compute_finite_median_or_zero(&[1.0, f64::NAN, 3.0]), 2.0);
         assert_eq!(
             compute_finite_quantile_or_zero(&[1.0, f64::NAN, 3.0], 0.5),
             2.0

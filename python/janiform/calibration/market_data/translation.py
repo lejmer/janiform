@@ -36,13 +36,15 @@ from ..staged.contracts import (
 )
 from ..staged.inputs import (
     CalibrationHawkesStageCandidateInput,
+    CalibrationMeanReversionStageExecutionInput,
+    CalibrationMeanReversionStageObservation,
     CalibrationReturnComponentsStageCandidateGenerationInput,
     CalibrationSeasonalityStageExecutionInput,
     CalibrationStagedExecutionRuntimeResources,
     StagedCalibrationExecutionInput,
 )
 from ..staged.request import StagedCalibrationRequest
-from ...contracts import serialize_deterministic_json
+from ...contracts import MeanReversionAnchorModelKind, serialize_deterministic_json
 from ..._native_api import native_exception_matches, native_module
 from ...calendar import CalendarRegistry
 
@@ -247,6 +249,10 @@ def _translate_market_data_request_from_source_files(
         hawkes_candidate_inputs=native_loading_output.preprocessing_output.hawkes_candidate_inputs,
         return_components_candidate_generation_input=(
             native_loading_output.preprocessing_output.return_components_candidate_generation_input
+        ),
+        mean_reversion_stage_input=_default_mean_reversion_stage_input(
+            selected_stages=selected_stages,
+            preprocessing_output=native_loading_output.preprocessing_output,
         ),
         runtime_resources=_runtime_resources_from_request(normalized_request),
     )
@@ -834,6 +840,7 @@ def _selected_stages_for_scope(
                 CalibrationStage.SEASONALITY,
                 CalibrationStage.HAWKES,
                 CalibrationStage.RETURN_COMPONENTS,
+                CalibrationStage.MEAN_REVERSION,
                 CalibrationStage.JOINT_REFINEMENT,
             )
         case CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE:
@@ -841,8 +848,37 @@ def _selected_stages_for_scope(
                 CalibrationStage.SEASONALITY,
                 CalibrationStage.HAWKES,
                 CalibrationStage.RETURN_COMPONENTS,
+                CalibrationStage.MEAN_REVERSION,
                 CalibrationStage.JOINT_REFINEMENT,
             )
+
+
+def _default_mean_reversion_stage_input(
+    *,
+    selected_stages: tuple[CalibrationStage, ...],
+    preprocessing_output: _MarketDataPreprocessingOutput,
+) -> Optional[CalibrationMeanReversionStageExecutionInput]:
+    if CalibrationStage.MEAN_REVERSION not in selected_stages:
+        return None
+
+    observation_count = (
+        len(preprocessing_output.return_components_candidate_generation_input.observed_open_session_returns)
+        if preprocessing_output.return_components_candidate_generation_input is not None
+        else 0
+    )
+
+    return CalibrationMeanReversionStageExecutionInput(
+        requested_anchor_model_kind=MeanReversionAnchorModelKind.DISABLED,
+        calibration_grid_kind="market_data_translation_disabled_mean_reversion_grid.v1",
+        calibration_grid_interval_hours=24.0,
+        source_observation_count=observation_count,
+        coverage_ratio=0.0,
+        observations=(),
+        disabled_stage_reason=(
+            "market_data_translation_defaults_mean_reversion_stage_to_disabled_until_"
+            "explicit_lower_frequency_grid_materialization_is_requested.v1"
+        ),
+    )
 
 
 def _build_dataset_reference(run_id: str, dataset_role: str, provenance_label: str) -> str:

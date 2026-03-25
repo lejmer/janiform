@@ -50,10 +50,10 @@ fn staged_runner_emits_checkpoint_metadata_with_deterministic_identifiers_in_mem
         "{report:#?}"
     );
     assert!(report.failure.is_none());
-    assert_eq!(report.emitted_checkpoints.len(), 4);
+    assert_eq!(report.emitted_checkpoints.len(), 5);
     assert_eq!(
         checkpoint_store.checkpoint_count_for_run(run_contract.run_spec.run_id.as_str()),
-        4
+        5
     );
 
     let first_checkpoint = report
@@ -146,7 +146,7 @@ fn staged_runner_reports_run_and_stage_seed_metadata_for_all_stages() {
         CalibrationStageExecutionStatus::Success,
         "{report:#?}"
     );
-    assert_eq!(report.stage_reports.len(), 4);
+    assert_eq!(report.stage_reports.len(), 5);
 
     for stage_report in &report.stage_reports {
         match stage_report {
@@ -194,6 +194,25 @@ fn staged_runner_reports_run_and_stage_seed_metadata_for_all_stages() {
                         17,
                         CalibrationStage::ReturnComponents
                     )
+                );
+                assert_eq!(
+                    metadata.stage_seed_source,
+                    CalibrationStageSeedSource::DerivedFromGlobalSeed
+                );
+                assert_eq!(
+                    metadata.stage_seed_derivation_policy,
+                    CALIBRATION_STAGE_SEED_DERIVATION_POLICY
+                );
+            }
+            CalibrationStagedRunStageReport::MeanReversion(mean_reversion_report) => {
+                let metadata = mean_reversion_report
+                    .metadata
+                    .as_ref()
+                    .expect("mean-reversion stage metadata should be present");
+                assert_eq!(metadata.run_global_seed, 17);
+                assert_eq!(
+                    metadata.stage_seed,
+                    derive_calibration_stage_seed_from_global_seed(17, CalibrationStage::MeanReversion)
                 );
                 assert_eq!(
                     metadata.stage_seed_source,
@@ -386,6 +405,7 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
         CalibrationStage::Seasonality,
         CalibrationStage::Hawkes,
         CalibrationStage::ReturnComponents,
+        CalibrationStage::MeanReversion,
         CalibrationStage::JointRefinement,
     ] {
         let artifact_path = calibration_stage_parameter_artifact_path(
@@ -415,7 +435,7 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
             .filter(|artifact_reference| artifact_reference.artifact_kind
                 == CalibrationArtifactKind::StageOutput)
             .count(),
-        4
+        5
     );
     assert_eq!(
         manifest
@@ -424,7 +444,7 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
             .filter(|artifact_reference| artifact_reference.artifact_kind
                 == CalibrationArtifactKind::StageCheckpoint)
             .count(),
-        4
+        5
     );
 
     let memory_checkpoint_directory =
@@ -526,7 +546,9 @@ fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
         CalibrationCallerSurface::PythonImportableApi,
         None,
     );
+
     let mut python_default_store = CalibrationMemoryCheckpointStore::new();
+
     let python_default_report = run_staged_calibration_with_checkpointing(
         &python_default_contract,
         &calendar_registry,
@@ -542,7 +564,7 @@ fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
         python_default_report.execution_mode,
         CalibrationExecutionMode::Memory
     );
-    assert_eq!(python_default_report.stage_reports.len(), 4);
+    assert_eq!(python_default_report.stage_reports.len(), 5);
 
     let cli_default_checkpoint_directory = temporary_checkpoint_directory("cli-default-run");
     let cli_default_contract = build_run_contract_for_caller_surface(
@@ -565,7 +587,7 @@ fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
         cli_default_report.execution_mode,
         CalibrationExecutionMode::Disk
     );
-    assert_eq!(cli_default_report.stage_reports.len(), 4);
+    assert_eq!(cli_default_report.stage_reports.len(), 5);
 
     let cli_override_contract = build_run_contract_for_caller_surface(
         "run-cli-memory-override",
@@ -588,7 +610,7 @@ fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
         cli_override_report.execution_mode,
         CalibrationExecutionMode::Memory
     );
-    assert_eq!(cli_override_report.stage_reports.len(), 4);
+    assert_eq!(cli_override_report.stage_reports.len(), 5);
 
     let python_override_checkpoint_directory =
         temporary_checkpoint_directory("python-disk-override-run");
@@ -612,7 +634,7 @@ fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
         python_override_report.execution_mode,
         CalibrationExecutionMode::Disk
     );
-    assert_eq!(python_override_report.stage_reports.len(), 4);
+    assert_eq!(python_override_report.stage_reports.len(), 5);
 
     let _ = fs::remove_dir_all(cli_default_checkpoint_directory);
     let _ = fs::remove_dir_all(python_override_checkpoint_directory);
@@ -625,8 +647,11 @@ fn staged_runner_stage_abort_failure_report_exposes_schema_and_triage_metadata()
         CalibrationExecutionMode::Memory,
         None,
     );
+
     let calendar_registry = calibration_stage_test_registry();
+
     let mut checkpoint_store = CalibrationMemoryCheckpointStore::new();
+
     let mut staged_inputs = staged_run_inputs(true, true, true);
     staged_inputs.hawkes_candidate_inputs =
         Some(vec![hawkes_stage_constraint_violating_candidate_fixture()]);
@@ -879,8 +904,8 @@ fn staged_runner_resume_from_last_successful_stage_works_in_memory_mode() {
         resume_report.started_from_stage,
         Some(CalibrationStage::ReturnComponents)
     );
-    assert_eq!(resume_report.stage_reports.len(), 2);
-    assert_eq!(resume_report.emitted_checkpoints.len(), 2);
+    assert_eq!(resume_report.stage_reports.len(), 3);
+    assert_eq!(resume_report.emitted_checkpoints.len(), 3);
 }
 
 #[test]
@@ -922,8 +947,8 @@ fn staged_runner_resume_from_selected_stage_works_in_memory_mode() {
         resume_report.started_from_stage,
         Some(CalibrationStage::Hawkes)
     );
-    assert_eq!(resume_report.stage_reports.len(), 3);
-    assert_eq!(resume_report.emitted_checkpoints.len(), 3);
+    assert_eq!(resume_report.stage_reports.len(), 4);
+    assert_eq!(resume_report.emitted_checkpoints.len(), 4);
 }
 
 #[test]
@@ -991,7 +1016,7 @@ fn staged_runner_resume_from_last_and_selected_stage_work_in_disk_mode() {
         resume_from_last_report.started_from_stage,
         Some(CalibrationStage::ReturnComponents)
     );
-    assert_eq!(resume_from_last_report.stage_reports.len(), 2);
+    assert_eq!(resume_from_last_report.stage_reports.len(), 3);
     assert!(calibration_artifact_manifest_path(checkpoint_directory.as_path(), run_id).exists());
     assert!(
         !checkpoint_directory
